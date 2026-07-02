@@ -1,0 +1,27 @@
+{
+	"recommendations": [
+		"anthropic.claude-code",
+		"bierner.markdown-footnotes",
+		"bierner.markdown-preview-github-styles",
+		"bierner.markdown-yaml-preamble",
+		"biomejs.biome",
+		"davidanson.vscode-markdownlint",
+		"eamodio.gitlens",
+		"github.copilot-chat",
+		"github.vscode-github-actions",
+		"github.vscode-pull-request-github",
+		"mikestead.dotenv",
+		"ms-vscode.live-server",
+		"ms-vscode.vscode-speech",
+		"ms-vscode.vscode-typescript-next",
+		"redhat.vscode-yaml",
+		"tombi-toml.tombi",
+		"tombonnike.vscode-status-bar-format-toggle",
+		"typescriptteam.native-preview",
+		"unifiedjs.vscode-mdx",
+		"vercel.turbo-vsc",
+		"vitest.explorer",
+		"vscode.vscode-typescript-next",
+		"yoavbls.pretty-ts-errors"
+	]
+}

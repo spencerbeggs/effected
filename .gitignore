@@ -1,0 +1,39 @@
+**/.DS_Store
+**/node_modules
+**/*.tsbuildinfo
+
+# Generated TypeScript declaration files for config files
+*.config.d.ts
+**/build
+**/dist
+**/.rslib
+**/.artifacts
+**/.turbo
+**/.coverage
+**/.vitest
+**/.cache
+coverage/
+**/*.asc
+pnpm-publish-summary.json
+pnpm-release.json
+.changeset/status.json
+
+# Environment files (keep .example files committed)
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.workflow
+.env.workflow-cli
+!.env.example
+!.env.*.example
+
+# Claude AI files
+.claude/settings.local.json
+.claude/plans/
+.claude/cache/
+docs/superpowers/
+.claude/plugins-debug.log
+.playwright-mcp
+.mcp.json

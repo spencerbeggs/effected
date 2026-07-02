@@ -1,0 +1,59 @@
+# Set default line ending handling
+* text=auto
+
+# Source code files
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.mjs text eol=lf
+*.mts text eol=lf
+*.cts text eol=lf
+
+# Configuration files
+*.json text eol=lf
+*.jsonc text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+
+# Documentation files
+*.md text eol=lf
+*.mdx text eol=lf
+
+# Build and config files
+*.config.* text eol=lf
+*.rc text eol=lf
+Dockerfile text eol=lf
+.env* text eol=lf
+
+# License and readme files
+LICENSE text eol=lf
+README* text eol=lf
+CHANGELOG* text eol=lf
+CLAUDE.md text eol=lf
+
+# Lockfiles - preserve original formatting and merge strategy
+pnpm-lock.yaml text eol=lf merge=ours
+package-lock.json text eol=lf
+yarn.lock text eol=lf
+
+# Images and assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.svg text eol=lf
+*.webmanifest text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+
+# Exclude from language statistics (GitHub Linguist)
+docs/dist/** linguist-generated=true
+**/dist/** linguist-generated=true
+**/node_modules/** linguist-vendored=true
+**/*.d.ts linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+lib/turbo/schema.json linguist-generated=true

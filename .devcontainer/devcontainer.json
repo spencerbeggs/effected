@@ -1,0 +1,57 @@
+{
+	"name": "savvy-web-standard",
+	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+	"features": {
+		"ghcr.io/savvy-web/features/biome:0.1.0": {},
+		"ghcr.io/savvy-web/features/node:0.1.0": {},
+		"ghcr.io/savvy-web/features/bats:0.1.0": {},
+		"ghcr.io/savvy-web/features/kcov:0.1.0": {},
+		"ghcr.io/savvy-web/features/package-manager:0.1.0": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"anthropic.claude-code",
+				"bierner.markdown-footnotes",
+				"bierner.markdown-preview-github-styles",
+				"bierner.markdown-yaml-preamble",
+				"biomejs.biome",
+				"davidanson.vscode-markdownlint",
+				"eamodio.gitlens",
+				"github.vscode-github-actions",
+				"github.vscode-pull-request-github",
+				"mikestead.dotenv",
+				"ms-vscode.live-server",
+				"ms-vscode.vscode-speech",
+				"ms-vscode.vscode-typescript-next",
+				"redhat.vscode-yaml",
+				"tombi-toml.tombi",
+				"tombonnike.vscode-status-bar-format-toggle",
+				"typescriptteam.native-preview",
+				"unifiedjs.vscode-mdx",
+				"vercel.turbo-vsc",
+				"vitest.explorer",
+				"vscode.vscode-typescript-next",
+				"yoavbls.pretty-ts-errors"
+			],
+			"settings": {
+				"terminal.integrated.defaultProfile.linux": "zsh",
+				"terminal.integrated.profiles.linux": {
+					"bash": {
+						"path": "bash",
+						"icon": "terminal-bash"
+					},
+					"zsh": {
+						"path": "zsh"
+					}
+				}
+			}
+		}
+	},
+	"remoteUser": "vscode",
+	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+	"workspaceFolder": "/workspace",
+	"postCreateCommand": "bash .devcontainer/postCreate.sh",
+	"postStartCommand": "if [ -x /usr/local/bin/init-firewall.sh ] && command -v sudo >/dev/null 2>&1; then sudo /usr/local/bin/init-firewall.sh; else echo 'Skipping firewall init (script or sudo unavailable).'; fi",
+	"waitFor": "postStartCommand"
+}

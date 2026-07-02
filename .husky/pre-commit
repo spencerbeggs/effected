@@ -1,0 +1,34 @@
+#!/usr/bin/env sh
+# Pre-commit hook with savvy managed sections
+# Custom hooks can go above, below, or between the managed sections
+
+# --- BEGIN SAVVY-BASE MANAGED SECTION ---
+ROOT=$(git rev-parse --show-toplevel)
+
+in_ci() { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; }
+
+detect_pm() {
+  if [ -f "$ROOT/package.json" ]; then
+    pm=$(jq -r '.packageManager // empty' "$ROOT/package.json" 2>/dev/null | cut -d'@' -f1)
+    if [ -n "$pm" ]; then echo "$pm"; return; fi
+  fi
+  if   [ -f "$ROOT/pnpm-lock.yaml" ]; then echo "pnpm"
+  elif [ -f "$ROOT/yarn.lock" ];      then echo "yarn"
+  elif [ -f "$ROOT/bun.lock" ];       then echo "bun"
+  else echo "npm"; fi
+}
+PM=$(detect_pm)
+
+pm_exec() {
+  case "$PM" in
+    pnpm) pnpm exec "$@" ;;
+    yarn) yarn exec "$@" ;;
+    bun)  bun x "$@" ;;
+    *)    npx --no -- "$@" ;;
+  esac
+}
+# --- END SAVVY-BASE MANAGED SECTION ---
+
+# --- BEGIN SAVVY-LINT MANAGED SECTION ---
+in_ci || pm_exec lint-staged --config "$ROOT/lib/configs/lint-staged.config.ts"
+# --- END SAVVY-LINT MANAGED SECTION ---

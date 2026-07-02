@@ -1,0 +1,23 @@
+body {
+	background-color: rgb(255, 255, 255);
+	max-height: max-content;
+}
+
+.github-markdown-body {
+	max-height: max-content;
+	max-width: 1012px;
+	margin-left: auto;
+	margin-right: auto;
+	border-bottom-width: 1px;
+	border-image-outset: 0;
+	border-image-repeat: stretch;
+	border-image-slice: 100%;
+	border-image-source: none;
+	border-image-width: 1;
+	border-left-color: rgb(209, 217, 224);
+	border-left-style: solid;
+	border-left-width: 1px;
+	border-right-color: rgb(209, 217, 224);
+	border-right-style: solid;
+	border-right-width: 1px;
+}

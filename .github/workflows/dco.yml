@@ -1,0 +1,19 @@
+name: DCO
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  dco:
+    name: DCO Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: DCO Check
+        uses: cpanato/dco-check-action@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,16 @@
+# Query to get all packages with their paths and available tasks
+# IDE support is configured via .graphqlrc.yml in the repo root
+# To update the schema: pnpm gen:turbo-schema
+query PackagesWithTasks {
+	packages {
+		items {
+			name
+			path
+			tasks {
+				items {
+					name
+				}
+			}
+		}
+	}
+}

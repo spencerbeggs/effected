@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# Managed by savvy-hooks
+# Custom hooks can go above or below the managed section
+
+# --- BEGIN SAVVY-HOOKS MANAGED SECTION ---
+if ! { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; }; then
+  git config core.fileMode false
+  git ls-files -z '*.sh' | xargs -0 chmod +x 2>/dev/null || true
+fi
+# --- END SAVVY-HOOKS MANAGED SECTION ---

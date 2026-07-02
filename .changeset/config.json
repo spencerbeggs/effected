@@ -1,0 +1,18 @@
+{
+	"$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+	"changelog": [
+		"@savvy-web/silk/changesets/changelog",
+		{
+			"repo": "spencerbeggs/pnpm-module-template"
+		}
+	],
+	"commit": false,
+	"access": "restricted",
+	"baseBranch": "main",
+	"updateInternalDependencies": "patch",
+	"ignore": [],
+	"privatePackages": {
+		"tag": true,
+		"version": true
+	}
+}

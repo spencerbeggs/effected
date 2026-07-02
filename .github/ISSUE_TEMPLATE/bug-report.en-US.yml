@@ -1,0 +1,43 @@
+name: "🐞 Bug Report"
+description: Report a Bug to Savvy Web Systems
+title: "[Bug]: "
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this issue! Before submitting, please note:
+
+         - Confirm that your problem cannot be solved by official documentation.
+         - Make sure you've searched in the [Issues](https://github.com/savvy-web/workflow/issues) and haven't found the same issue.
+         - If it's not bug report, please post on the [Discussions](https://github.com/savvy-web/workflow/discussions).
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Please describe the Bug, including screenshots, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Version
+      description: Run `pnpm dlx envinfo --system --npmPackages '@savvy-web/*' --markdown` in your project, and paste the output into the textarea below.
+      placeholder: |
+        System:
+        Browsers:
+        npmPackages:
+      render: sh
+    validations:
+      required: false
+
+  - type: input
+    id: repro
+    attributes:
+      label: Reproduce link
+      description: "Please provide a minimal reproduction of the issue. You can fork this repo as a starter."
+      placeholder: paste link here
+    validations:
+      required: false

@@ -1,0 +1,55 @@
+# Dependabot configuration for pnpm monorepo
+# Documentation: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Root workspace dependencies
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 10
+    groups:
+      # Group all non-major updates together
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    labels:
+      - "dependencies"
+      - "automated"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    assignees:
+      - "spencerbeggs"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    labels:
+      - "dependencies"
+      - "ci"
+      - "automated"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+# Additional configuration notes:
+# - Uses pnpm via npm ecosystem (Dependabot handles pnpm lockfiles)
+# - Groups minor and patch updates to reduce PR noise
+# - Monthly updates for individual packages to avoid disruption
+# - Weekly updates for root and critical dependencies
+# - Includes GitHub Actions updates for CI/CD maintenance
+# - Conventional commit messages matching your commitlint config

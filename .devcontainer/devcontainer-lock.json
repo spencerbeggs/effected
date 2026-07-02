@@ -1,0 +1,29 @@
+{
+	"features": {
+		"ghcr.io/savvy-web/features/bats:0.1.0": {
+			"version": "0.1.0",
+			"resolved": "ghcr.io/savvy-web/features/bats@sha256:e190a20821606fc0cdda791e9baddea2c1d66a968c60150befd1311fdb1c4c2e",
+			"integrity": "sha256:e190a20821606fc0cdda791e9baddea2c1d66a968c60150befd1311fdb1c4c2e"
+		},
+		"ghcr.io/savvy-web/features/biome:0.1.0": {
+			"version": "0.1.0",
+			"resolved": "ghcr.io/savvy-web/features/biome@sha256:7568464febde9d4a2a3fe5ae65bd0b8995a5d58346074f05c89129e9add5d447",
+			"integrity": "sha256:7568464febde9d4a2a3fe5ae65bd0b8995a5d58346074f05c89129e9add5d447"
+		},
+		"ghcr.io/savvy-web/features/kcov:0.1.0": {
+			"version": "0.1.0",
+			"resolved": "ghcr.io/savvy-web/features/kcov@sha256:d850b716000642f7a6aac9669a6082ffb147e13b6618d7cd471f4406b7900d9c",
+			"integrity": "sha256:d850b716000642f7a6aac9669a6082ffb147e13b6618d7cd471f4406b7900d9c"
+		},
+		"ghcr.io/savvy-web/features/node:0.1.0": {
+			"version": "0.1.0",
+			"resolved": "ghcr.io/savvy-web/features/node@sha256:d9872aa420f01dde537526972a02cf2c576805a1785f5b1241e4f5f905d7ac48",
+			"integrity": "sha256:d9872aa420f01dde537526972a02cf2c576805a1785f5b1241e4f5f905d7ac48"
+		},
+		"ghcr.io/savvy-web/features/package-manager:0.1.0": {
+			"version": "0.1.0",
+			"resolved": "ghcr.io/savvy-web/features/package-manager@sha256:06281f29e2ea08208d2593d7cd24c640fe7ba47a2a17118c584f232eeddbfff2",
+			"integrity": "sha256:06281f29e2ea08208d2593d7cd24c640fe7ba47a2a17118c584f232eeddbfff2"
+		}
+	}
+}
