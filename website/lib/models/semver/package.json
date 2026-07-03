@@ -1,0 +1,33 @@
+{
+	"name": "@effected/semver",
+	"version": "0.0.0",
+	"private": false,
+	"description": "pnpm config dependency for centralized catalog management across the Effected ecosystem.",
+	"keywords": ["pnpm", "pnpm-plugin", "config-dependency", "catalog", "monorepo", "effected"],
+	"homepage": "https://github.com/spencerbeggs/effected/packages/semver#readme",
+	"bugs": {
+		"url": "https://github.com/spencerbeggs/effected/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/semver"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"email": "spencer@beggs.codes",
+		"url": "https://spencerbeg.gs"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"import": "./index.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	}
+}

@@ -1,6 +1,64 @@
 packages:
-  - .
+  - packages/*
+  - website
 autoInstallPeers: true
+catalogs:
+  effect:
+    "@effect/ai-anthropic": ^4.0.0-beta.93
+    "@effect/ai-openai": ^4.0.0-beta.93
+    "@effect/ai-openai-compat": ^4.0.0-beta.93
+    "@effect/ai-openrouter": ^4.0.0-beta.93
+    "@effect/atom-react": ^4.0.0-beta.93
+    "@effect/atom-solid": ^4.0.0-beta.93
+    "@effect/atom-vue": ^4.0.0-beta.93
+    "@effect/openapi-generator": ^4.0.0-beta.93
+    "@effect/opentelemetry": ^4.0.0-beta.93
+    "@effect/platform-browser": ^4.0.0-beta.93
+    "@effect/platform-bun": ^4.0.0-beta.93
+    "@effect/platform-node": ^4.0.0-beta.93
+    "@effect/platform-node-shared": ^4.0.0-beta.93
+    "@effect/sql-clickhouse": ^4.0.0-beta.93
+    "@effect/sql-d1": ^4.0.0-beta.93
+    "@effect/sql-libsql": ^4.0.0-beta.93
+    "@effect/sql-mssql": ^4.0.0-beta.93
+    "@effect/sql-mysql2": ^4.0.0-beta.93
+    "@effect/sql-pg": ^4.0.0-beta.93
+    "@effect/sql-pglite": ^4.0.0-beta.93
+    "@effect/sql-sqlite-bun": ^4.0.0-beta.93
+    "@effect/sql-sqlite-do": ^4.0.0-beta.93
+    "@effect/sql-sqlite-node": ^4.0.0-beta.93
+    "@effect/sql-sqlite-react-native": ^4.0.0-beta.93
+    "@effect/sql-sqlite-wasm": ^4.0.0-beta.93
+    "@effect/vitest": ^4.0.0-beta.93
+    effect: ^4.0.0-beta.93
+  effectPeers:
+    "@effect/ai-anthropic": ^4.0.0-beta.93
+    "@effect/ai-openai": ^4.0.0-beta.93
+    "@effect/ai-openai-compat": ^4.0.0-beta.93
+    "@effect/ai-openrouter": ^4.0.0-beta.93
+    "@effect/atom-react": ^4.0.0-beta.93
+    "@effect/atom-solid": ^4.0.0-beta.93
+    "@effect/atom-vue": ^4.0.0-beta.93
+    "@effect/openapi-generator": ^4.0.0-beta.93
+    "@effect/opentelemetry": ^4.0.0-beta.93
+    "@effect/platform-browser": ^4.0.0-beta.93
+    "@effect/platform-bun": ^4.0.0-beta.93
+    "@effect/platform-node": ^4.0.0-beta.93
+    "@effect/platform-node-shared": ^4.0.0-beta.93
+    "@effect/sql-clickhouse": ^4.0.0-beta.93
+    "@effect/sql-d1": ^4.0.0-beta.93
+    "@effect/sql-libsql": ^4.0.0-beta.93
+    "@effect/sql-mssql": ^4.0.0-beta.93
+    "@effect/sql-mysql2": ^4.0.0-beta.93
+    "@effect/sql-pg": ^4.0.0-beta.93
+    "@effect/sql-pglite": ^4.0.0-beta.93
+    "@effect/sql-sqlite-bun": ^4.0.0-beta.93
+    "@effect/sql-sqlite-do": ^4.0.0-beta.93
+    "@effect/sql-sqlite-node": ^4.0.0-beta.93
+    "@effect/sql-sqlite-react-native": ^4.0.0-beta.93
+    "@effect/sql-sqlite-wasm": ^4.0.0-beta.93
+    "@effect/vitest": ^4.0.0-beta.93
+    effect: ^4.0.0-beta.93
 configDependencies:
-  "@savvy-web/pnpm-plugin-silk": 0.18.1+sha512-a2QwBB68PUAX3u2qQr/LsSa8wThoau4E3eZLeVuAyCroztBnWbOMu2QDyhMx1A4wc9pUSPpTXnSDJC1qbzY1kA==
+  "@savvy-web/pnpm-plugin-silk": 0.19.0+sha512-g2IsUkl6ERf7VbC64pYRva4eIDFsUqTwfbikN7BpFfGvbDA0G+Qk/p6F/lvbRLr9tyMcW1OVnABrD9nb7zgcxg==
 loglevel: info

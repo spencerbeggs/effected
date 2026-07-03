@@ -1,5 +1,4 @@
 import { AgentPlugin } from "@vitest-agent/plugin";
-// biome-ignore lint/correctness/noUndeclaredDependencies: declared as peer dependency in @vitest-agent/plugin
 import { defineConfig } from "vitest/config";
 
 export default async () => {

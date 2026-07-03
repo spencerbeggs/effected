@@ -1,0 +1,1 @@
+# @effected/pnpm-plugin-effect

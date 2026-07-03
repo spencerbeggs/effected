@@ -1,0 +1,15 @@
+[
+	{
+		"text": "Packages",
+		"link": "/packages",
+		"activeMatch": "^/(packages|semver)(/(.*)?)?$",
+		"position": "right",
+		"items": [
+			{
+				"text": "@effected/semver",
+				"link": "/semver",
+				"activeMatch": "^/semver/?$"
+			}
+		]
+	}
+]

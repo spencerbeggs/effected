@@ -1,4 +1,4 @@
 {
 	"$schema": "https://json.schemastore.org/tsconfig",
-	"extends": "@savvy-web/bundler/tsconfig/ecma.json"
+	"extends": "@savvy-web/silk/tsconfig/node/root.json"
 }

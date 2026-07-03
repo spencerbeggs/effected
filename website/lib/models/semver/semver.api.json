@@ -1,0 +1,210 @@
+{
+	"metadata": {
+		"toolPackage": "@microsoft/api-extractor",
+		"toolVersion": "7.58.9",
+		"schemaVersion": 1011,
+		"oldestForwardsCompatibleVersion": 1001,
+		"tsdocConfig": {
+			"$schema": "https://developer.microsoft.com/json-schemas/tsdoc/v0/tsdoc.schema.json",
+			"noStandardTags": true,
+			"tagDefinitions": [
+				{
+					"tagName": "@alpha",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@beta",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@defaultValue",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@decorator",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@deprecated",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@eventProperty",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@example",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@experimental",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@inheritDoc",
+					"syntaxKind": "inline"
+				},
+				{
+					"tagName": "@internal",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@label",
+					"syntaxKind": "inline"
+				},
+				{
+					"tagName": "@link",
+					"syntaxKind": "inline",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@override",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@packageDocumentation",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@param",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@privateRemarks",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@public",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@readonly",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@remarks",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@returns",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@sealed",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@see",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@throws",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@typeParam",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@virtual",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@jsx",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@jsxRuntime",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@jsxFrag",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@jsxImportSource",
+					"syntaxKind": "block"
+				}
+			],
+			"supportForTags": {
+				"@alpha": true,
+				"@beta": true,
+				"@defaultValue": true,
+				"@decorator": true,
+				"@deprecated": true,
+				"@eventProperty": true,
+				"@example": true,
+				"@experimental": true,
+				"@inheritDoc": true,
+				"@internal": true,
+				"@label": true,
+				"@link": true,
+				"@override": true,
+				"@packageDocumentation": true,
+				"@param": true,
+				"@privateRemarks": true,
+				"@public": true,
+				"@readonly": true,
+				"@remarks": true,
+				"@returns": true,
+				"@sealed": true,
+				"@see": true,
+				"@throws": true,
+				"@typeParam": true,
+				"@virtual": true,
+				"@jsx": true,
+				"@jsxRuntime": true,
+				"@jsxFrag": true,
+				"@jsxImportSource": true
+			},
+			"reportUnsupportedHtmlElements": true
+		}
+	},
+	"kind": "Package",
+	"canonicalReference": "@effected/semver!",
+	"docComment": "",
+	"name": "@effected/semver",
+	"preserveMemberOrder": false,
+	"members": [
+		{
+			"kind": "EntryPoint",
+			"canonicalReference": "@effected/semver!",
+			"name": "",
+			"preserveMemberOrder": false,
+			"members": [
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!hello:var",
+					"docComment": "/**\n * This is a placeholder file for the \\@effected/semver package. It can be used to export any functionality related to semantic versioning that you want to expose from this package.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "hello = "
+						},
+						{
+							"kind": "Content",
+							"text": "\"world\""
+						}
+					],
+					"fileUrlPath": "src/index.ts",
+					"initializerTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "hello",
+					"variableTypeTokenRange": {
+						"startIndex": 0,
+						"endIndex": 0
+					}
+				}
+			]
+		}
+	]
+}

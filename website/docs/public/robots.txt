@@ -1,0 +1,5 @@
+# Soft launch - prevent all indexing
+User-agent: *
+Allow: /llms.txt
+Allow: /llms-full.txt
+Disallow: /

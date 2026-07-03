@@ -5,6 +5,7 @@
 	"gitignore": true,
 	"noBanner": true,
 	"ignores": [
+		"**/.git",
 		"**/node_modules",
 		"**/.cache",
 		"**/coverage",
@@ -13,7 +14,6 @@
 		"**/CHANGELOG.md",
 		"**/.claude/plans",
 		"**/docs/superpowers",
-		"**/.git",
 		"**/__test__/**/fixtures/**",
 		"**/__fixtures__/**"
 	],
@@ -46,7 +46,9 @@
 		"MD024": {
 			"siblings_only": true
 		},
-		"MD025": true,
+		"MD025": {
+			"front_matter_title": ""
+		},
 		"MD026": true,
 		"MD027": true,
 		"MD028": true,

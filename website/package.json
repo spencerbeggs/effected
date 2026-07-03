@@ -1,0 +1,24 @@
+{
+	"name": "docs",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "rspress build",
+		"dev": "node lib/scripts/dev.mts",
+		"preview": "node lib/scripts/preview.mts",
+		"types:check": "tsgo --noEmit"
+	},
+	"devDependencies": {
+		"@rspress/core": "^2.0.15",
+		"@rspress/plugin-sitemap": "^2.0.15",
+		"@types/node": "catalog:silk",
+		"@types/react": "catalog:silk",
+		"@types/react-dom": "catalog:silk",
+		"@typescript/native-preview": "catalog:silk",
+		"react": "catalog:silk",
+		"react-dom": "catalog:silk",
+		"rspress-plugin-api-extractor": "^0.3.4",
+		"rspress-plugin-mermaid": "^1.0.1"
+	}
+}

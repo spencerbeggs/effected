@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="130" viewBox="0 0 800 130"><title>vitest-agent</title><g transform="translate(2,7) scale(0.45)">
+  <polygon points="94,86 102,50 154,50 162,86" fill="#2A0820"/>
+  <polygon points="134,55 117,73 127,73 121,84 139,63 129,63" fill="#FF6BD0"/>
+  <rect x="50" y="86" width="156" height="140" rx="46" fill="#D6219B"/>
+  <rect x="34" y="84" width="188" height="22" rx="11" fill="#2A0820"/>
+  <rect x="70" y="128" width="116" height="44" rx="22" fill="#2A0820"/>
+  <circle cx="104" cy="150" r="11" fill="#FF6BD0"/>
+  <circle cx="152" cy="150" r="11" fill="#FF6BD0"/></g><text x="150" y="92" font-family="Space Grotesk" font-weight="700" font-size="92" letter-spacing="-2"><tspan fill="#FFFFFF">vitest-</tspan><tspan fill="#FF6BD0">agent</tspan></text></svg>

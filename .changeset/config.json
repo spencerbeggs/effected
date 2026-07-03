@@ -3,7 +3,7 @@
 	"changelog": [
 		"@savvy-web/silk/changesets/changelog",
 		{
-			"repo": "spencerbeggs/pnpm-module-template"
+			"repo": "spencerbeggs/effected"
 		}
 	],
 	"commit": false,
