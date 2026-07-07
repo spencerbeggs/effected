@@ -40,6 +40,21 @@ function safeParseInt(value: string, radix: number): number | bigint {
 	return BigInt(`${prefix}${value}`);
 }
 
+/**
+ * Classify a plain scalar's numeric form for duplicate-key identity. `1` is an
+ * `!!int` and `1.0` an `!!float` even though both resolve to the JS number `1`,
+ * so they are distinct mapping keys; `1` and `0x1` are both `!!int 1` and so
+ * are the same key. Returns `null` for non-numeric plain text. Uses the same
+ * regexes as {@link resolvePlainScalar} so the classification always agrees
+ * with how the value was resolved.
+ */
+export function classifyPlainNumeric(raw: string): "int" | "float" | null {
+	const t = raw.trim();
+	if (OCT_RE.test(t) || HEX_RE.test(t) || INT_RE.test(t)) return "int";
+	if (INF_RE.test(t) || NAN_RE.test(t) || FLOAT_RE.test(t)) return "float";
+	return null;
+}
+
 function resolvePlainScalar(value: string): unknown {
 	if (value === "" || NULL_RE.test(value)) return null;
 	if (TRUE_RE.test(value)) return true;

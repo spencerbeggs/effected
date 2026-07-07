@@ -48,6 +48,58 @@ describe("Yaml", () => {
 			}),
 		);
 
+		describe("duplicate-key identity distinguishes YAML node type, not just JS value", () => {
+			// Keys are the same mapping key only when they are the same YAML node —
+			// same type and value. An !!int and an !!float that resolve to equal JS
+			// numbers are distinct keys; different presentations of the same !!int
+			// are the same key.
+			const rejects = [
+				["equal integers written differently", "{1: a, 0x1: b}"], // both !!int 1
+				["equal integers, decimal vs octal", "{8: a, 0o10: b}"], // both !!int 8
+				["the same float twice", "{1.5: a, 1.5: b}"],
+				["the same string twice", "{k: a, k: b}"],
+				["string vs quoted string", '{k: a, "k": b}'],
+			] as const;
+			for (const [label, doc] of rejects) {
+				it.effect(`rejects ${label}`, () =>
+					Effect.gen(function* () {
+						const error = yield* Effect.flip(Yaml.parse(doc));
+						assert.isTrue(
+							error.diagnostics.some((d) => d.code === "DuplicateKey"),
+							doc,
+						);
+					}),
+				);
+			}
+
+			// These resolve to distinct YAML nodes, so the parse must NOT reject
+			// them as duplicate keys — even where the lossy JS object then collapses
+			// them onto one property (int vs float, int vs string).
+			const accepts = [
+				["int vs float, unit value", "{1: a, 1.0: b}"],
+				["int vs float via exponent", "{1000: a, 1e3: b}"],
+				["int vs string of the same digits", '{1: a, "1": b}'],
+				["float vs a different float", "{1.5: a, 2.5: b}"],
+			] as const;
+			for (const [label, doc] of accepts) {
+				it.effect(`accepts ${label}`, () =>
+					Effect.gen(function* () {
+						const result = yield* Effect.result(Yaml.parse(doc));
+						assert.isTrue(result._tag === "Success", `${doc} should parse`);
+					}),
+				);
+			}
+
+			it.effect("an int and a float key with equal JS value are not a duplicate", () =>
+				Effect.gen(function* () {
+					const value = (yield* Yaml.parse("{1: int, 1.0: float}")) as Record<string, unknown>;
+					// The lossy JS object collapses both onto the "1" property (last
+					// wins), but the parse itself must not have rejected the document.
+					assert.strictEqual(value["1"], "float");
+				}),
+			);
+		});
+
 		it.effect("rejects trailing top-level content after the document value", () =>
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(Yaml.parse("a: 1\nb"));

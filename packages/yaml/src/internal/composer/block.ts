@@ -14,6 +14,7 @@ import type { CstNode } from "../cst.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import {
 	blockMapStartsWithValueSep,
+	classifyPlainNumeric,
 	collectMultilineKey,
 	collectMultilinePlainScalar,
 	findFirstContent,
@@ -931,20 +932,53 @@ function consumeValueNodeForNullKey(
 	return i > startIdx ? { node: null, nextIdx: i } : null;
 }
 
+/**
+ * Canonical duplicate-key identity for a scalar key. Two keys collide only if
+ * they are the same YAML node: same type *and* value. Resolved JS values alone
+ * are ambiguous for numbers — `!!int 1` and `!!float 1.0` both become the JS
+ * number `1` yet are distinct keys — so the number branch disambiguates int
+ * from float via the source form (or an explicit tag). String/bool/null keys
+ * are distinguished by their type prefix, so `1` (int) never collides with
+ * `"1"` (string) or `true`.
+ */
+function keyIdentity(key: YamlScalar, text: string): string {
+	const v = key.value;
+	if (v === null) return "null";
+	switch (typeof v) {
+		case "boolean":
+			return `b:${v}`;
+		case "string":
+			return `s:${v}`;
+		case "bigint":
+			return `i:${v.toString()}`;
+		case "number": {
+			const raw = text.slice(key.offset, key.offset + key.length).trim();
+			let kind = classifyPlainNumeric(raw);
+			if (key.tag !== undefined) {
+				if (key.tag.includes("float")) kind = "float";
+				else if (key.tag.includes("int")) kind = "int";
+			}
+			return `${kind === "float" ? "f" : "i"}:${v}`;
+		}
+		default:
+			return `o:${String(v)}`;
+	}
+}
+
 export function checkDuplicateKeys(pairs: YamlPair[], state: ComposerState): void {
-	const seen = new Set<unknown>();
+	const seen = new Set<string>();
 	for (const pair of pairs) {
 		if (pair.key instanceof YamlScalar) {
-			const keyValue = pair.key.value;
-			if (seen.has(keyValue)) {
+			const id = keyIdentity(pair.key, state.text);
+			if (seen.has(id)) {
 				state.warnings.push({
 					code: "DuplicateKey",
-					message: `Duplicate key: ${String(keyValue)}`,
+					message: `Duplicate key: ${String(pair.key.value)}`,
 					offset: pair.key.offset,
 					length: pair.key.length,
 				});
 			}
-			seen.add(keyValue);
+			seen.add(id);
 		}
 	}
 }
