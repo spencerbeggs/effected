@@ -10,7 +10,7 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "e125a18943298a074ffeed64389905f5baa06e0d1a5061f0e55cfe5a2f44cdae",
+			"hash": "d5f6ff4367bc60db96e4260153b01a208551dd0a78c080708ba5fd5c832ffbbb",
 			"recordedAt": "2026-07-07"
 		},
 		{
@@ -22,7 +22,7 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "a00516fa072edb58cbe9855d34e692969be2a8015909c85c3ad9e95a09c1314f",
+			"hash": "aa9cce011754fce4a899927b97104b7768435e36d84067ef3c05100ea3ee9b5c",
 			"recordedAt": "2026-07-07"
 		},
 		{

@@ -18,12 +18,13 @@ Five foundational design docs live in `.claude/design/effected/` (config: `.clau
 
 ### Migration Workflow
 
-Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port. `@effected/semver` landed first and `@effected/jsonc` second; the order after firms up as lessons land.
+Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port. `@effected/semver` landed first, `@effected/jsonc` second, and `@effected/yaml` third; the order after firms up as lessons land.
 
 ## Repository Layout
 
 - `packages/semver` — first migrated library: strict SemVer 2.0.0 schemas (pure tier).
 - `packages/jsonc` — second migrated library: zero-dependency JSONC parse/edit/format schemas (pure tier).
+- `packages/yaml` — third migrated library: YAML parse/edit/format schemas over an internal engine plus public modules (Yaml facade, YamlDiagnostic, YamlNode, YamlDocument, YamlEdit, YamlFormat, YamlVisitor) (pure tier).
 - `packages/effect4` — temporary testbed for the Effect v4 toolchain setup.
 - `packages/pnpm-plugin-effect` — repo infrastructure, not a library migration: pnpm catalog/config plugin (built with `rolldown-pnpm-config`; `pnpm pnpm:export` / `pnpm:preview` / `pnpm:up`).
 - `plugin/` — "effective", a Claude Code plugin (skills + effect-dev agent) dogfooded during migrations; in development.

@@ -12,6 +12,7 @@ related:
   - migration-playbook.md
   - packages/semver.md
   - packages/jsonc.md
+  - packages/yaml.md
 ---
 
 # Package inventory
@@ -28,9 +29,9 @@ All ten source repos were reviewed against [effect-standards.md](effect-standard
 
 | Source repo | Target package | Tier (provisional) | Status | Notes |
 | --- | --- | --- | --- | --- |
-| semver-effect | @effected/semver | pure | migrated (feat/semver-migration, pending merge) | First migration; DX exemplar; design: [packages/semver.md](packages/semver.md) |
-| jsonc-effect | @effected/jsonc | pure | migrated (feat/jsonc-migration, pending merge) | Second migration; design: [packages/jsonc.md](packages/jsonc.md); yaml parity convention recorded there |
-| yaml-effect | @effected/yaml | pure | not started | Pure tier confirmed; parity with @effected/jsonc; only justified extraction is a possible later @effected/text-edit micro-kernel (Edit/Range/Path/diff), decided after both ports |
+| semver-effect | @effected/semver | pure | merged | First migration; DX exemplar; design: [packages/semver.md](packages/semver.md) |
+| jsonc-effect | @effected/jsonc | pure | merged | Second migration; design: [packages/jsonc.md](packages/jsonc.md); yaml parity convention recorded there |
+| yaml-effect | @effected/yaml | pure | migrated (feat/yaml-migration, pending merge) | Third migration; design: [packages/yaml.md](packages/yaml.md); yaml/jsonc parity convention held except YamlFormattingOptions (see design) |
 | json-schema-effect | @effected/json-schema | boundary | not started | File writes are load-bearing for silk-release-action; core JSON Schema generation superseded by v4 `Schema.toJsonSchemaDocument` — remaining value is TOML tooling (tombi/taplo builders, Ajv validation, scaffolder); one package, Scaffold/Tombi/Taplo seam available if split later |
 | package-json-effect | @effected/package-json | boundary | not started | Split candidate reversed by review: stays one package with IO confined to a single `PackageJsonFile.ts` module (the v3 split motivation — the @effect/platform peer — evaporates in v4); a future split is a one-module extraction |
 | xdg-effect | @effected/xdg | boundary | not started | Extraction candidate: SQLite cache/state services → a separate @effected sqlite package (name TBD at migration); post-extraction xdg is a small fs+env boundary lib; its json-schema-effect dependency is a dead facade and gets cut |
