@@ -10,7 +10,7 @@ import { VersionDiff } from "./VersionDiff.js";
  * be referenced directly — named and exported only so API Extractor can
  * resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const EmptyCacheError_base: Schema.Class<
 	EmptyCacheError,
@@ -36,7 +36,7 @@ export class EmptyCacheError extends EmptyCacheError_base {
  * meant to be referenced directly — named and exported only so API
  * Extractor can resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const VersionNotFoundError_base: Schema.Class<
 	VersionNotFoundError,
@@ -69,7 +69,7 @@ export class VersionNotFoundError extends VersionNotFoundError_base {
  * meant to be referenced directly — named and exported only so API
  * Extractor can resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const UnsatisfiedRangeError_base: Schema.Class<
 	UnsatisfiedRangeError,
@@ -168,7 +168,7 @@ const dedupeSorted = (versions: ReadonlyArray<SemVer>): ReadonlyArray<SemVer> =>
  * referenced directly — named and exported only so API Extractor can
  * resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const VersionCache_base: Context.ServiceClass<VersionCache, "@effected/semver/VersionCache", VersionCacheShape> =
 	Context.Service<VersionCache, VersionCacheShape>()("@effected/semver/VersionCache");

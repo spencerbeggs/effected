@@ -10,7 +10,7 @@ import { SemVer } from "./SemVer.js";
  * to be referenced directly — named and exported only so API Extractor can
  * resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const InvalidRangeError_base: Schema.Class<
 	InvalidRangeError,
@@ -57,7 +57,7 @@ export type ComparatorSet = ReadonlyArray<Comparator>;
  * referenced directly — named and exported only so API Extractor can
  * resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const Range_base: Schema.Class<
 	Range,
@@ -286,7 +286,7 @@ export class Range extends Range_base {
  * Not meant to be referenced directly — named and exported only so API
  * Extractor can resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const UnsatisfiableConstraintError_base: Schema.Class<
 	UnsatisfiableConstraintError,

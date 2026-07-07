@@ -18,7 +18,7 @@ const classifyDiff = (a: SemVer, b: SemVer): "major" | "minor" | "patch" | "prer
  * referenced directly — named and exported only so API Extractor can
  * resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const VersionDiff_base: Schema.Class<
 	VersionDiff,

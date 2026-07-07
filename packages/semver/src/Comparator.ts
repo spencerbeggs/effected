@@ -8,7 +8,7 @@ import { SemVer } from "./SemVer.js";
  * meant to be referenced directly — named and exported only so API
  * Extractor can resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const InvalidComparatorError_base: Schema.Class<
 	InvalidComparatorError,
@@ -47,7 +47,7 @@ export class InvalidComparatorError extends InvalidComparatorError_base {
  * referenced directly — named and exported only so API Extractor can
  * resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const Comparator_base: Schema.Class<
 	Comparator,
