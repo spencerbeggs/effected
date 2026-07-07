@@ -73,6 +73,41 @@ Rules that are each load-bearing:
   `dist/prod/issues.json` genuinely clean (zero warnings on
   @effected/semver); suppressions would only hide regressions.
 
+## Internal types in `@public` signatures cascade
+
+The binary release-tag rule — *anything a `@public` signature references must
+itself be `@public`* — applies to **method and function parameter/return
+types**, not just heritage clauses. A single internal type on a public
+signature triggers a cascade: API Extractor reports `ae-forgotten-export`
+for that type AND every const/type it transitively references. In the yaml
+port, one internal `RawDiagnostic` parameter on a `@public`
+`YamlDiagnostic.fromRaw(raw: RawDiagnostic, …)` produced **12**
+forgotten-export warnings (the whole `internal/diagnostics` module — the
+record type, its staged code-const arrays, and their derived unions).
+
+Two fixes:
+
+- **Inline a structural type** on the public signature so no internal symbol
+  is named — best for engine-internal record types that should not become
+  public surface:
+
+  ```ts
+  static fromRaw(
+   raw: { readonly code: YamlErrorCode; readonly message: string; readonly offset: number; readonly length: number },
+   text: string,
+  ): YamlDiagnostic { … }
+  ```
+
+- **Or tag the referenced type `@public`** and re-export it — only when it is
+  genuinely part of the API.
+
+Prefer the structural-inline form for anything living under `src/internal/`;
+publishing an internal record type just to satisfy the rollup is the same
+mistake as the banned `*Base` ceremony. Watch for this on `X.fromRaw` /
+`X.of` / codec-adapter statics that bridge the internal engine to the public
+classes — they are exactly where an internal record type sneaks onto a
+`@public` signature.
+
 ## Related
 
 Links from TSDoc to inherited members (`{@link SemVer.make}` where `make`

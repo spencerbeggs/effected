@@ -28,9 +28,24 @@ not listed here, check `node_modules/effect/dist/` for the module and its
 | `Data.TaggedError("Tag")<Payload>` | `Schema.TaggedErrorClass<Self>()("Tag", fields)` — schema-backed, yieldable, serializable |
 | `Option.fromNullable(x)` patterns | Check the exact v4 name/arity; `Option.fromNullishOr` takes ONE argument. When unsure, construct explicitly: `x === undefined ? Option.none() : Option.some(x)` |
 | filters via `Schema.filter(...)` | `.check(Schema.isInt(), Schema.isBetween({ minimum, maximum }), Schema.isPattern(regex), ...)` |
+| `Effect.either(fx)` / the `Either` module | **`Either` is gone from the common surface.** `Effect.result(fx)` returns `Effect<Result<A, E>>`; branch with `Result.isSuccess` / `Result.isFailure` (from `effect/Result`). In tests, `yield* Effect.result(...)` then assert `result._tag === "Success"`, or use `Effect.flip` to pull the error out |
+| `Effect.catchAllDefect(f)` | `Effect.catchDefect(f)` — same shape, renamed |
 
 ## Constructor and validation semantics
 
+- **`new X({...})` VALIDATES structurally in v4** (v3's did not). Passing an
+  explicit `undefined` for a `Schema.optionalKey` field throws
+  `Expected string, got undefined` — a *present* key whose value is
+  `undefined` is not the same as an *absent* key. `{ disableChecks: true }`
+  does NOT rescue you; it skips `.check(...)` refinements only, not the
+  structural parse. `X.make` behaves identically. In engine/hot-path code
+  that builds nodes from possibly-absent fields, use conditional spreads:
+  `new Node({ offset, length, ...(anchor !== undefined ? { anchor } : {}) })`.
+  This bites *pervasively* in v3→v4 ports — v3 engines pass bare
+  possibly-undefined fields everywhere (`makeScalar`, `compose*`), and each
+  site is a latent runtime throw. Measured `new` overhead of validation is
+  ~8%, so keep `new` on hot paths for the ergonomics; just never pass
+  explicit `undefined`.
 - `X.make(input)` validates only what the field schemas constrain. Bare
   `Schema.Number` fields accept `-1.5`; attach `.check(...)` constraints or
   `make` is a rubber stamp.

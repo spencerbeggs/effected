@@ -33,6 +33,15 @@ static readonly FromString: Schema.Codec<SemVer, string> = Schema.String.pipe(
 
 - `decode` produces the target schema's **Encoded** form (a plain field
   record); the class schema then validates and instantiates it.
+- **When `decode` produces class INSTANCES, not the encoded record, make the
+  `decodeTo` target `Schema.instanceOf(Doc)`, not the class schema `Doc`.**
+  A document codec whose `decode` calls `Doc.parse(input)` and returns `Doc`
+  instances cannot use `Schema.decodeTo(Doc, …)` — the class schema expects
+  the encoded struct and the transformation types will not line up. Wrapping
+  the target as `Schema.decodeTo(Schema.instanceOf(Doc), …)` types the
+  transformation against the instance and typechecks. The common `FromString`
+  case above (decode → encoded record, target = the class) is unchanged; this
+  is only for codecs that hand back already-constructed instances.
 - **The explicit `Schema.Codec<Self, string>` annotation is load-bearing**: a
   static initializer that references its own class (`Schema.decodeTo(SemVer,
   ...)`) otherwise trips TypeScript's circular-inference error. Annotating
