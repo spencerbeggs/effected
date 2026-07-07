@@ -239,7 +239,11 @@ function decodeDoubleQuoted(raw: string): string {
 				}
 				case "U": {
 					const hex = inner.slice(i + 1, i + 9);
-					result += String.fromCodePoint(Number.parseInt(hex, 16));
+					// Defensive: the lexer already rejects `\U` escapes above U+10FFFF
+					// with an error token, but guard the composer's re-decode too so a
+					// stray code point can never throw a RangeError as a defect.
+					const cp = Number.parseInt(hex, 16);
+					result += cp <= 0x10ffff ? String.fromCodePoint(cp) : "\uFFFD";
 					i += 8;
 					break;
 				}

@@ -541,8 +541,13 @@ export function createScanner(text: string): YamlScanner {
 					case "U": {
 						advance(); // skip 'U'
 						const hex = text.slice(pos, pos + 8);
-						if (hex.length === 8 && /^[\da-fA-F]{8}$/.test(hex)) {
-							value += String.fromCodePoint(Number.parseInt(hex, 16));
+						// A well-formed 8-hex-digit escape can still denote a code point
+						// above the Unicode maximum (U+10FFFF); that is invalid YAML and
+						// must surface as an error token, never a String.fromCodePoint
+						// RangeError escaping as an unhandled defect.
+						const cp = hex.length === 8 && /^[\da-fA-F]{8}$/.test(hex) ? Number.parseInt(hex, 16) : Number.NaN;
+						if (cp <= 0x10ffff) {
+							value += String.fromCodePoint(cp);
 							advance(8);
 						} else {
 							return makeToken("error", text.slice(start, pos), start, sLine, sCol);

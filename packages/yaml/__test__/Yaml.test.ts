@@ -183,6 +183,18 @@ describe("Yaml", () => {
 			}),
 		);
 
+		it.effect("a \\U escape above U+10FFFF fails with a typed error, never a defect", () =>
+			Effect.gen(function* () {
+				// The largest valid Unicode code point is U+10FFFF; \U00110000 is one
+				// past it. It must surface as a YamlParseError, not a RangeError defect
+				// from String.fromCodePoint escaping the typed error channel.
+				const error = yield* Effect.flip(Yaml.parse('"\\U00110000"'));
+				assert.strictEqual(error._tag, "YamlParseError");
+				const valid = yield* Yaml.parse('"\\U0001F600"');
+				assert.strictEqual(valid, "😀");
+			}),
+		);
+
 		it.effect("deeply nested flow collections fail with NestingDepthExceeded, not a stack overflow", () =>
 			Effect.gen(function* () {
 				const n = 5000;
