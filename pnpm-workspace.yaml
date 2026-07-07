@@ -60,5 +60,5 @@ catalogs:
     "@effect/vitest": ^4.0.0-beta.93
     effect: ^4.0.0-beta.93
 configDependencies:
-  "@savvy-web/pnpm-plugin-silk": 0.20.0+sha512-wVThM+d9hqvOwBvDl01cSwgLZte51cjyh+OVK06JZ0wbjonhQxesnn4Ik7PuMuMVLw8zVMAcrN+O0rTvgOKkLw==
+  "@savvy-web/pnpm-plugin-silk": 0.21.0+sha512-UADjHt3lC5T22L4g9OjaI4QFaifvCN4viInTfb691R5blYSfoEw3YJ0UDdKzLLzXHPYZEfJShb5tY0SR9pq8Rw==
 loglevel: info
