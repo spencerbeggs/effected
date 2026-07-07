@@ -1,0 +1,108 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Schema } from "effect";
+import { YamlDocument, YamlMap, YamlParseError } from "../src/index.js";
+
+describe("YamlDocument", () => {
+	describe("parse", () => {
+		it.effect("keeps the AST, directives and framing flags", () =>
+			Effect.gen(function* () {
+				const doc = yield* YamlDocument.parse("%YAML 1.2\n---\nname: Alice\n...\n");
+				assert.instanceOf(doc.contents, YamlMap);
+				assert.deepStrictEqual(
+					doc.directives.map((d) => ({ name: d.name, parameters: [...d.parameters] })),
+					[{ name: "YAML", parameters: ["1.2"] }],
+				);
+				assert.isTrue(doc.hasDocumentStart);
+				assert.isTrue(doc.hasDocumentEnd);
+				assert.deepStrictEqual(doc.errors, []);
+			}),
+		);
+
+		it.effect("surfaces recoverable issues as warnings-as-data instead of failing", () =>
+			Effect.gen(function* () {
+				// A duplicate mapping key is recorded as a warning on the document;
+				// only the value-level Yaml.parse promotes it under uniqueKeys.
+				const doc = yield* YamlDocument.parse("a: 1\na: 2");
+				assert.isTrue(doc.warnings.some((w) => w.code === "DuplicateKey"));
+				assert.isAbove(doc.warnings[0]?.line ?? -1, -1);
+			}),
+		);
+
+		it.effect("fails with YamlParseError on fatal diagnostics", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(YamlDocument.parse("a: *missing"));
+				assert.instanceOf(error, YamlParseError);
+				assert.isTrue(error.diagnostics.some((d) => d.code === "UndefinedAlias"));
+			}),
+		);
+
+		it.effect("returns an empty document for empty input", () =>
+			Effect.gen(function* () {
+				const doc = yield* YamlDocument.parse("");
+				assert.isNull(doc.contents);
+				assert.deepStrictEqual(doc.errors, []);
+			}),
+		);
+	});
+
+	describe("parseAll", () => {
+		it.effect("parses documents in order with per-document framing", () =>
+			Effect.gen(function* () {
+				const docs = yield* YamlDocument.parseAll("a: 1\n---\nb: 2");
+				assert.strictEqual(docs.length, 2);
+				assert.deepStrictEqual(docs[0]?.toValue(), { a: 1 });
+				assert.deepStrictEqual(docs[1]?.toValue(), { b: 2 });
+				assert.isFalse(docs[0]?.hasDocumentStart ?? true);
+				assert.isTrue(docs[1]?.hasDocumentStart);
+			}),
+		);
+	});
+
+	describe("stringify", () => {
+		it.effect("round-trips a parsed document", () =>
+			Effect.gen(function* () {
+				const doc = yield* YamlDocument.parse("name: Alice\nage: 30\n");
+				const text = yield* doc.stringify();
+				const again = yield* YamlDocument.parse(text);
+				assert.deepStrictEqual(again.toValue(), { name: "Alice", age: 30 });
+			}),
+		);
+	});
+
+	describe("toValue", () => {
+		it.effect("resolves anchors and aliases", () =>
+			Effect.gen(function* () {
+				const doc = yield* YamlDocument.parse("base: &x 1\nref: *x");
+				assert.deepStrictEqual(doc.toValue(), { base: 1, ref: 1 });
+			}),
+		);
+
+		it.effect("returns null for empty documents", () =>
+			Effect.gen(function* () {
+				const doc = yield* YamlDocument.parse("");
+				assert.isNull(doc.toValue());
+			}),
+		);
+	});
+
+	describe("schema", () => {
+		it.effect("decodes text into a document and encodes it back", () =>
+			Effect.gen(function* () {
+				const codec = YamlDocument.schema();
+				const doc = yield* Schema.decodeUnknownEffect(codec)("key: value\n");
+				assert.instanceOf(doc, YamlDocument);
+				assert.deepStrictEqual(doc.toValue(), { key: "value" });
+				const text = yield* Schema.encodeUnknownEffect(codec)(doc);
+				assert.strictEqual(text, "key: value\n");
+			}),
+		);
+
+		it.effect("decode failures surface as SchemaError carrying the aggregate message", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(Schema.decodeUnknownEffect(YamlDocument.schema())("a: *missing"));
+				assert.strictEqual(error._tag, "SchemaError");
+				assert.include(String(error), "YAML parse failed");
+			}),
+		);
+	});
+});

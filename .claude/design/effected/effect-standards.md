@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-06
-last-synced: 2026-07-06
+updated: 2026-07-07
+last-synced: 2026-07-07
 completeness: 92
 related:
   - architecture.md
@@ -122,7 +122,7 @@ Internal dependencies between `@effected` packages use `workspace:*`. Whether an
 
 ### API Extractor × Effect class factories
 
-Effect class factories (`Schema.Class`, `Schema.TaggedClass`, `Schema.TaggedErrorClass`, `Context.Service`) produce anonymous heritage types that API Extractor reports as `ae-forgotten-export` (CI-fatal under the silk bundler). House policy, verified empirically on @effected/semver: each factory-backed class gets a named, exported, `@internal`-tagged `X_base` const with an explicit factory-return-type annotation, re-exported from the entry point. Residual non-fatal `ae-incompatible-release-tags` warnings are accepted until `@savvy-web/tsdown-plugins` ships an allowance. *Public* base exports (v3's doubled `*ErrorBase` surface) remain banned. Idiom and worked example: `plugin/skills/effect-api-extractor-bases/SKILL.md`.
+Effect class factories (`Schema.Class`, `Schema.TaggedClass`, `Schema.TaggedErrorClass`, `Context.Service`) produce anonymous heritage types that API Extractor reports as `ae-forgotten-export` (CI-fatal under the silk bundler). House policy, ratified 2026-07-07 (semver commit 5f854fb) and applied across the semver, jsonc and yaml ports: each factory-backed class gets a named, exported, `@public`-tagged `X_base` const with an explicit factory-return-type annotation, re-exported from the entry point, plus any schema helper const its annotation references (silk's binary release-tag policy means anything a `@public` signature references must itself be `@public`). This yields a zero-warning `dist/prod/issues.json`; the earlier `@internal`-tagged idiom, which left residual non-fatal `ae-incompatible-release-tags` warnings, is superseded. The extra public surface is the accepted cost, distinguished from v3's banned doubled `*ErrorBase` ceremony by not-for-direct-use doc comments on every base. Idiom and worked example: `plugin/skills/effect-api-extractor-bases/SKILL.md`.
 
 ## References
 
