@@ -1,0 +1,47 @@
+{
+	"$schema": "https://raw.githubusercontent.com/spencerbeggs/design-docs-plugin/main/design-docs.schema.json",
+	"version": "1.0.0",
+	"project": {
+		"name": "spencerbeggs/effected",
+		"type": "monorepo",
+		"repository": "https://github.com/spencerbeggs/effected",
+		"maintainer": "C. Spencer Beggs"
+	},
+	"paths": {
+		"designDocs": ".claude/design",
+		"skills": ".claude/skills",
+		"context": "CLAUDE.md",
+		"localContext": "CLAUDE.local.md"
+	},
+	"modules": {
+		"effected": {
+			"path": ".",
+			"designDocsPath": ".claude/design/effected",
+			"categories": ["architecture", "meta", "documentation"],
+			"maintainer": "C. Spencer Beggs"
+		}
+	},
+	"quality": {
+		"designDocs": {
+			"requireFrontmatter": true,
+			"requireTOC": false,
+			"minSections": ["Overview"]
+		},
+		"context": {
+			"rootMaxWords": 2000,
+			"childMaxWords": 1000,
+			"requireDesignDocPointers": true
+		}
+	},
+	"integration": {
+		"ci": {
+			"enabled": false,
+			"validateOnPR": false,
+			"syncOnMerge": false
+		},
+		"git": {
+			"trackDesignDocs": true,
+			"requireReviewForChanges": false
+		}
+	}
+}

@@ -1,5 +1,20 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
 	"extends": ["@savvy-web/silk/biome"],
-	"root": true
+	"root": true,
+	"overrides": [
+		{
+			// savvy.build.ts scripts resolve @savvy-web/bundler from the workspace
+			// root via Node's upward walk (see CLAUDE.md, Build Pipeline) — the
+			// dependency is deliberately not declared in package manifests.
+			"includes": ["**/savvy.build.ts"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"noUndeclaredDependencies": "off"
+					}
+				}
+			}
+		}
+	]
 }

@@ -30,14 +30,12 @@
 		"pnpm:export": "rolldown-pnpm-config export",
 		"pnpm:preview": "rolldown-pnpm-config preview",
 		"pnpm:up": "rolldown-pnpm-config upgrade savvy.build.ts",
-		"prepare": "turbo run build:dev",
 		"types:check": "tsgo --noEmit"
 	},
 	"devDependencies": {
-		"@savvy-web/bundler": "^1.1.6",
 		"@types/node": "catalog:silk",
 		"@typescript/native-preview": "catalog:silk",
-		"rolldown-pnpm-config": "^0.2.0",
+		"rolldown-pnpm-config": "^0.2.1",
 		"typescript": "catalog:silk"
 	},
 	"engines": {

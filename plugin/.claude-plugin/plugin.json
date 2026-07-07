@@ -1,0 +1,12 @@
+{
+	"name": "effective",
+	"description": "Vitest test data, coverage analysis, and notes for LLM coding agents via MCP tools",
+	"version": "0.0.0",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"url": "https://spencerbeg.gs"
+	},
+	"homepage": "https://github.com/spencerbeggs/effected",
+	"repository": "https://github.com/spencerbeggs/effected.git",
+	"license": "MIT"
+}

@@ -1,0 +1,35 @@
+{
+	"version": 1,
+	"refs": [
+		{
+			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/architecture.md",
+			"hash": "bcdd7ec96654899a49ce9e6bd9da6e1277564ee2d743a23bec269a453c88d20c",
+			"recordedAt": "2026-07-06"
+		},
+		{
+			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/effect-standards.md",
+			"hash": "8c98f4bf5ed9e44e8d74a554ef91808b8f6a42e9c06bfaddd76cfcbe68d14b7d",
+			"recordedAt": "2026-07-06"
+		},
+		{
+			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/migration-playbook.md",
+			"hash": "67113de4f2a382934fd3408dd1d7538f9153361b15b2ac34d8c3c103b25bef8c",
+			"recordedAt": "2026-07-06"
+		},
+		{
+			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/package-inventory.md",
+			"hash": "52b0cc4d0cf0f2ceff67fe616cf1bb0fdd82cd079fd8d6388668d81f2db88c62",
+			"recordedAt": "2026-07-06"
+		},
+		{
+			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/plugin.md",
+			"hash": "e96bfa968c91b1800ac41008a6739c7b081afa917b5ef807af836688a70129cd",
+			"recordedAt": "2026-07-06"
+		}
+	]
+}

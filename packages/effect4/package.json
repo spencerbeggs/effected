@@ -1,17 +1,16 @@
 {
-	"name": "@effected/semver",
+	"name": "@effected/effect4",
 	"version": "0.0.0",
 	"private": true,
-	"description": "pnpm config dependency for centralized catalog management across the Effected ecosystem.",
-	"keywords": ["pnpm", "pnpm-plugin", "config-dependency", "catalog", "monorepo", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/semver#readme",
+	"description": "A demo package for testing Effect v4 setup.",
+	"homepage": "https://github.com/spencerbeggs/effected/packages/effect4#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/spencerbeggs/effected.git",
-		"directory": "packages/semver"
+		"directory": "packages/effect4"
 	},
 	"license": "MIT",
 	"author": {
@@ -30,8 +29,10 @@
 		"types:check": "tsgo --noEmit"
 	},
 	"devDependencies": {
+		"@effect/vitest": "catalog:effect",
 		"@types/node": "catalog:silk",
 		"@typescript/native-preview": "catalog:silk",
+		"effect": "catalog:effect",
 		"typescript": "catalog:silk"
 	},
 	"engines": {
