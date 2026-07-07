@@ -10,6 +10,7 @@ related:
   - architecture.md
   - effect-standards.md
   - migration-playbook.md
+  - packages/semver.md
 ---
 
 # Package inventory
@@ -26,7 +27,7 @@ All ten source repos were reviewed against [effect-standards.md](effect-standard
 
 | Source repo | Target package | Tier (provisional) | Status | Notes |
 | --- | --- | --- | --- | --- |
-| semver-effect | @effected/semver | pure | next up | First migration; DX exemplar |
+| semver-effect | @effected/semver | pure | migrated (feat/semver-migration, pending merge) | First migration; DX exemplar; design: [packages/semver.md](packages/semver.md) |
 | jsonc-effect | @effected/jsonc | pure | not started | Pure tier confirmed; API-contract parity with @effected/yaml is a migration requirement |
 | yaml-effect | @effected/yaml | pure | not started | Pure tier confirmed; parity with @effected/jsonc; only justified extraction is a possible later @effected/text-edit micro-kernel (Edit/Range/Path/diff), decided after both ports |
 | json-schema-effect | @effected/json-schema | boundary | not started | File writes are load-bearing for silk-release-action; core JSON Schema generation superseded by v4 `Schema.toJsonSchemaDocument` — remaining value is TOML tooling (tombi/taplo builders, Ajv validation, scaffolder); one package, Scaffold/Tombi/Taplo seam available if split later |

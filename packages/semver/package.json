@@ -2,8 +2,8 @@
 	"name": "@effected/semver",
 	"version": "0.0.0",
 	"private": true,
-	"description": "pnpm config dependency for centralized catalog management across the Effected ecosystem.",
-	"keywords": ["pnpm", "pnpm-plugin", "config-dependency", "catalog", "monorepo", "effected"],
+	"description": "Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas.",
+	"keywords": ["semver", "semantic-versioning", "effect", "schema", "range", "version", "effected"],
 	"homepage": "https://github.com/spencerbeggs/effected/packages/semver#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
@@ -19,6 +19,7 @@
 		"email": "spencer@beggs.codes",
 		"url": "https://spencerbeg.gs"
 	},
+	"sideEffects": false,
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
@@ -30,9 +31,14 @@
 		"types:check": "tsgo --noEmit"
 	},
 	"devDependencies": {
+		"@effect/vitest": "catalog:effect",
 		"@types/node": "catalog:silk",
 		"@typescript/native-preview": "catalog:silk",
+		"effect": "catalog:effect",
 		"typescript": "catalog:silk"
+	},
+	"peerDependencies": {
+		"effect": "catalog:effect"
 	},
 	"engines": {
 		"node": ">=24.11.0"

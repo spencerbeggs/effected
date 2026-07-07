@@ -1,6 +1,6 @@
 {
 	"name": "effective",
-	"description": "Vitest test data, coverage analysis, and notes for LLM coding agents via MCP tools",
+	"description": "Effect v4 development skills distilled from the @effected package migrations — construct mappings, Schema.Class domain-model patterns, and toolchain idioms",
 	"version": "0.0.0",
 	"author": {
 		"name": "C. Spencer Beggs",

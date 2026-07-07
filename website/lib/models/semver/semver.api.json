@@ -178,31 +178,4907 @@
 			"preserveMemberOrder": false,
 			"members": [
 				{
-					"kind": "Variable",
-					"canonicalReference": "@effected/semver!hello:var",
-					"docComment": "/**\n * This is a placeholder file for the \\@effected/semver package. It can be used to export any functionality related to semantic versioning that you want to expose from this package.\n *\n * @public\n */\n",
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!Comparator:class",
+					"docComment": "/**\n * A single version constraint: a comparison operator applied to a version. Comparator strings accept an optional operator prefix (`=`, `>`, `>=`, `<`, `<=`) followed by a complete version; a missing operator means `=`. Wildcards and range sugar are not allowed — those belong to `Range`.\n *\n * @example\n * ```ts\n * import { Comparator, SemVer } from \"@effected/semver\";\n * import { Effect } from \"effect\";\n *\n * const program = Effect.gen(function* () {\n *   const comparator = yield* Comparator.parse(\">=1.2.3\");\n *   const version = yield* SemVer.parse(\"2.0.0\");\n *   console.log(comparator.test(version)); // true\n * });\n * ```\n *\n * @public\n */\n",
 					"excerptTokens": [
 						{
 							"kind": "Content",
-							"text": "hello = "
+							"text": "declare class Comparator extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "Comparator_base",
+							"canonicalReference": "@effected/semver!Comparator_base"
 						},
 						{
 							"kind": "Content",
-							"text": "\"world\""
+							"text": " "
 						}
 					],
-					"fileUrlPath": "src/index.ts",
-					"initializerTokenRange": {
+					"fileUrlPath": "src/Comparator.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "Comparator",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Comparator.FromString:member",
+							"docComment": "/**\n * Schema transformation between the comparator string (e.g. `\">=1.2.3\"`) and {@link Comparator}.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly FromString: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Schema.Codec",
+									"canonicalReference": "!Schema.Codec:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "Comparator",
+									"canonicalReference": "@effected/semver!Comparator:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", string>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "FromString",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 5
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Comparator.parse:member",
+							"docComment": "/**\n * Parse a comparator string (e.g. `\">=1.2.3\"`).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly parse: "
+								},
+								{
+									"kind": "Content",
+									"text": "(input: string) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "Comparator",
+									"canonicalReference": "@effected/semver!Comparator:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "InvalidComparatorError",
+									"canonicalReference": "@effected/semver!InvalidComparatorError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", never>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "parse",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 8
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!Comparator#test:member(1)",
+							"docComment": "/**\n * Test whether a version satisfies this comparator.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "test(version: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "version",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "test"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!Comparator#toString:member(1)",
+							"docComment": "/**\n * The comparator string; the `=` operator is implicit.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "toString(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "toString"
+						}
+					],
+					"extendsTokenRange": {
 						"startIndex": 1,
 						"endIndex": 2
 					},
-					"isReadonly": true,
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "TypeAlias",
+					"canonicalReference": "@effected/semver!ComparatorSet:type",
+					"docComment": "/**\n * A comparator set: comparators combined with AND semantics. A version must satisfy every comparator in the set to match.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "type ComparatorSet = "
+						},
+						{
+							"kind": "Reference",
+							"text": "ReadonlyArray",
+							"canonicalReference": "!ReadonlyArray:interface"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "Comparator",
+							"canonicalReference": "@effected/semver!Comparator:class"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						},
+						{
+							"kind": "Content",
+							"text": ";"
+						}
+					],
+					"fileUrlPath": "src/Range.ts",
 					"releaseTag": "Public",
-					"name": "hello",
-					"variableTypeTokenRange": {
-						"startIndex": 0,
-						"endIndex": 0
+					"name": "ComparatorSet",
+					"typeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 5
 					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!EmptyCacheError:class",
+					"docComment": "/**\n * Indicates that an extremum (`latest`/`oldest`) was requested from an empty cache.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class EmptyCacheError extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "EmptyCacheError_base",
+							"canonicalReference": "@effected/semver!EmptyCacheError_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/VersionCache.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "EmptyCacheError",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!EmptyCacheError#message:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get message(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "message",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!InvalidComparatorError:class",
+					"docComment": "/**\n * Indicates that a string could not be parsed as a single comparator.\n *\n * Raised by {@link Comparator.parse} and the decode direction of {@link Comparator.FromString}.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class InvalidComparatorError extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "InvalidComparatorError_base",
+							"canonicalReference": "@effected/semver!InvalidComparatorError_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/Comparator.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "InvalidComparatorError",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!InvalidComparatorError#message:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get message(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "message",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!InvalidRangeError:class",
+					"docComment": "/**\n * Indicates that a string could not be parsed as a range expression.\n *\n * Raised by {@link Range.parse}, the decode direction of {@link Range.FromString} and `VersionCache.resolveString`.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class InvalidRangeError extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "InvalidRangeError_base",
+							"canonicalReference": "@effected/semver!InvalidRangeError_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/Range.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "InvalidRangeError",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!InvalidRangeError#message:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get message(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "message",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!InvalidVersionError:class",
+					"docComment": "/**\n * Indicates that a string could not be parsed as a valid SemVer 2.0.0 version.\n *\n * Raised by {@link SemVer.parse} and the decode direction of {@link SemVer.FromString}. Unlike node-semver, no loose parsing or `v`-prefix coercion is performed.\n *\n * @see\n *\n * {@link https://semver.org | SemVer 2.0.0 Specification}\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class InvalidVersionError extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "InvalidVersionError_base",
+							"canonicalReference": "@effected/semver!InvalidVersionError_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "InvalidVersionError",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!InvalidVersionError#message:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get message(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "message",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!Range_2:class",
+					"docComment": "/**\n * A SemVer range expression: a union (OR) of {@link ComparatorSet}s. Supports node-semver syntax — hyphen ranges (`1.0.0 - 2.0.0`), X-ranges (`1.x`, `*`), tilde (`~1.2.3`), caret (`^1.2.3`) and `||` unions — which parsing desugars into primitive comparators and normalizes.\n *\n * @example\n * ```ts\n * import { Range, SemVer } from \"@effected/semver\";\n * import { Effect } from \"effect\";\n *\n * const program = Effect.gen(function* () {\n *   const range = yield* Range.parse(\"^1.0.0\");\n *   const version = yield* SemVer.parse(\"1.5.0\");\n *   console.log(range.test(version)); // true\n * });\n * ```\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class Range extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "Range_base",
+							"canonicalReference": "@effected/semver!Range_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/Range.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "Range_2",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.equivalent:member",
+							"docComment": "/**\n * Test whether two ranges are semantically equivalent: each is a {@link Range.isSubset | subset} of the other. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly equivalent: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => boolean;\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): boolean;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "equivalent",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!Range_2#filter:member(1)",
+							"docComment": "/**\n * Filter versions that satisfy this range, preserving order.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "filter(versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 6,
+								"endIndex": 10
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "versions",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 5
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "filter"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.filter:member",
+							"docComment": "/**\n * Filter versions that satisfy a range, preserving order. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly filter: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">;\n    (versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">, range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "filter",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 22
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.FromString:member",
+							"docComment": "/**\n * Schema transformation between the range expression string and {@link Range}: decoding parses, desugars and normalizes; encoding prints `a b || c d`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly FromString: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Schema.Codec",
+									"canonicalReference": "!Schema.Codec:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", string>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "FromString",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 5
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.intersect:member",
+							"docComment": "/**\n * Intersect two ranges via a cross-product of their comparator sets, keeping only satisfiable combinations. Fails with {@link UnsatisfiableConstraintError} when no satisfiable set remains — an honest typed failure instead of an unsatisfiable range. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly intersect: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "UnsatisfiableConstraintError",
+									"canonicalReference": "@effected/semver!UnsatisfiableConstraintError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">;\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "UnsatisfiableConstraintError",
+									"canonicalReference": "@effected/semver!UnsatisfiableConstraintError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "intersect",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 22
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.isSubset:member",
+							"docComment": "/**\n * Check whether every version matched by `sub` is also matched by `sup`. Dual API.\n *\n * @remarks\n *\n * This check is a conservative approximation: it may return `false` for ranges that are technically subsets when the sub-range straddles comparator-set boundaries in the sup-range. For example, `>=1.0.0 <3.0.0` is a subset of `>=1.0.0 <2.0.0 || >=2.0.0 <3.0.0`, but `isSubset` returns `false` because no single sup-set fully implies the sub-set. This is a known limitation; false negatives are safe (they prevent incorrect simplification).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly isSubset: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (sup: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (sub: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => boolean;\n    (sub: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", sup: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): boolean;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "isSubset",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.maxSatisfying:member",
+							"docComment": "/**\n * Highest satisfying version, or `Option.none()`. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly maxSatisfying: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">;\n    (versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">, range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "maxSatisfying",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 22
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.minSatisfying:member",
+							"docComment": "/**\n * Lowest satisfying version, or `Option.none()`. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly minSatisfying: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">;\n    (versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">, range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "minSatisfying",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 22
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.parse:member",
+							"docComment": "/**\n * Parse a range expression and normalize its comparator sets.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly parse: "
+								},
+								{
+									"kind": "Content",
+									"text": "(input: string) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "InvalidRangeError",
+									"canonicalReference": "@effected/semver!InvalidRangeError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", never>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "parse",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 8
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.satisfies:member",
+							"docComment": "/**\n * Test whether a version satisfies a range. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly satisfies: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (version: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => boolean;\n    (version: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): boolean;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "satisfies",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!Range_2.simplify:member(1)",
+							"docComment": "/**\n * Remove redundant comparator sets: a set is redundant when another set in the range is a subset of it (more restrictive and already covered).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static simplify(range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "range",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "simplify"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!Range_2#test:member(1)",
+							"docComment": "/**\n * Test whether a version satisfies this range.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "test(version: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "version",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "test"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!Range_2#toString:member(1)",
+							"docComment": "/**\n * The range expression string, `a b || c d`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "toString(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "toString"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!Range_2.union:member",
+							"docComment": "/**\n * Combine two ranges with OR semantics: the union of their comparator sets. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly union: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "union",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 14
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!SemVer:class",
+					"docComment": "/**\n * A parsed SemVer 2.0.0 version: an Effect `Schema.Class` whose fields are validated in-schema (non-negative integer components, well-formed identifiers), so `SemVer.make` only produces valid versions.\n *\n * Instance methods are the canonical API; cross-cutting operations exist as dual statics on the class. The string representation is the schema's encoded form via {@link SemVer.FromString}.\n *\n * @example\n * ```ts\n * import { SemVer } from \"@effected/semver\";\n * import { Effect } from \"effect\";\n *\n * const program = Effect.gen(function* () {\n *   const v = yield* SemVer.parse(\"1.2.3\");\n *   const next = v.bump.minor();          // 1.3.0\n *   console.log(v.gt(next));              // false\n *   console.log(next.isStable);           // true\n * });\n * ```\n *\n * @see\n *\n * {@link https://semver.org | SemVer 2.0.0 Specification}\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class SemVer extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "SemVer_base",
+							"canonicalReference": "@effected/semver!SemVer_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "SemVer",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer#__computed:member(1)",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "["
+								},
+								{
+									"kind": "Reference",
+									"text": "Equal",
+									"canonicalReference": "!unknown"
+								},
+								{
+									"kind": "Content",
+									"text": ".symbol](that: "
+								},
+								{
+									"kind": "Content",
+									"text": "unknown"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 5,
+								"endIndex": 6
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "that",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 4
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "__computed"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer#bump:member",
+							"docComment": "/**\n * Version bumping operations, grouped for discoverability.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get bump(): "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVerBump",
+									"canonicalReference": "@effected/semver!SemVerBump:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "bump",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer#compare:member(1)",
+							"docComment": "/**\n * Compare `this` to `that` per SemVer 2.0.0 precedence. Returns `-1`, `0`, or `1`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "compare(that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "-1 | 0 | 1"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "that",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "compare"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.compare:member",
+							"docComment": "/**\n * Compare two versions. Returns `-1`, `0`, or `1`. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly compare: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => -1 | 0 | 1;\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): -1 | 0 | 1;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "compare",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer#equal:member(1)",
+							"docComment": "/**\n * Test whether `this` equals `that` (ignores build metadata).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "equal(that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "that",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "equal"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.equal:member",
+							"docComment": "/**\n * Test whether two versions are equal (ignores build metadata). Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly equal: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => boolean;\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): boolean;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "equal",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.FromString:member",
+							"docComment": "/**\n * Schema transformation between the canonical version string and {@link SemVer}: decoding parses with the strict grammar, encoding prints `major.minor.patch[-prerelease][+build]`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly FromString: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Schema.Codec",
+									"canonicalReference": "!Schema.Codec:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", string>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "FromString",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 5
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer.groupBy:member(1)",
+							"docComment": "/**\n * Group versions by major (`\"1\"`), major.minor (`\"1.2\"`) or major.minor.patch (`\"1.2.3\"`) key. Groups and their members are in ascending precedence order. Pure derivation — an immutable record, not a service operation.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static groupBy(versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ", strategy: "
+								},
+								{
+									"kind": "Content",
+									"text": "\"major\" | \"minor\" | \"patch\""
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Record",
+									"canonicalReference": "!Record:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<string, "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 8,
+								"endIndex": 14
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "versions",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 5
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "strategy",
+									"parameterTypeTokenRange": {
+										"startIndex": 6,
+										"endIndex": 7
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "groupBy"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer#gt:member(1)",
+							"docComment": "/**\n * Test whether `this > that`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "gt(that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "that",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "gt"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.gt:member",
+							"docComment": "/**\n * Test whether `self > that`. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly gt: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => boolean;\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): boolean;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "gt",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer#gte:member(1)",
+							"docComment": "/**\n * Test whether `this >= that`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "gte(that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "that",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "gte"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.gte:member",
+							"docComment": "/**\n * Test whether `self >= that`. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly gte: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => boolean;\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): boolean;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "gte",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer#isPrerelease:member",
+							"docComment": "/**\n * Whether this is a prerelease version.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get isPrerelease(): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "isPrerelease",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer#isStable:member",
+							"docComment": "/**\n * Whether this is a stable (non-prerelease) version.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get isStable(): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "isStable",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer.latestByMajor:member(1)",
+							"docComment": "/**\n * The highest version for each distinct major version, ascending.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static latestByMajor(versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 6,
+								"endIndex": 10
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "versions",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 5
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "latestByMajor"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer.latestByMinor:member(1)",
+							"docComment": "/**\n * The highest version for each distinct major.minor pair, ascending.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static latestByMinor(versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 6,
+								"endIndex": 10
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "versions",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 5
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "latestByMinor"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer#lt:member(1)",
+							"docComment": "/**\n * Test whether `this < that`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "lt(that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "that",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "lt"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.lt:member",
+							"docComment": "/**\n * Test whether `self < that`. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly lt: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => boolean;\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): boolean;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "lt",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer#lte:member(1)",
+							"docComment": "/**\n * Test whether `this <= that`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "lte(that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "that",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "lte"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.lte:member",
+							"docComment": "/**\n * Test whether `self <= that`. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly lte: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => boolean;\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): boolean;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "lte",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer.max:member(1)",
+							"docComment": "/**\n * Highest version, or `Option.none()` if the array is empty.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static max(versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 6,
+								"endIndex": 10
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "versions",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 5
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "max"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer.min:member(1)",
+							"docComment": "/**\n * Lowest version, or `Option.none()` if the array is empty.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static min(versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 6,
+								"endIndex": 10
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "versions",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 5
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "min"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer#neq:member(1)",
+							"docComment": "/**\n * Test whether `this` does not equal `that` (ignores build metadata).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "neq(that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "that",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "neq"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.neq:member",
+							"docComment": "/**\n * Test whether two versions are not equal (ignores build metadata). Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly neq: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => boolean;\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", that: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): boolean;\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "neq",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer.of:member(1)",
+							"docComment": "/**\n * Positional convenience constructor: `SemVer.of(1, 2, 3)`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static of(major: "
+								},
+								{
+									"kind": "Content",
+									"text": "number"
+								},
+								{
+									"kind": "Content",
+									"text": ", minor: "
+								},
+								{
+									"kind": "Content",
+									"text": "number"
+								},
+								{
+									"kind": "Content",
+									"text": ", patch: "
+								},
+								{
+									"kind": "Content",
+									"text": "number"
+								},
+								{
+									"kind": "Content",
+									"text": ", prerelease?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<string | number>"
+								},
+								{
+									"kind": "Content",
+									"text": ", build?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<string>"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 13,
+								"endIndex": 14
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "major",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "minor",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 4
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "patch",
+									"parameterTypeTokenRange": {
+										"startIndex": 5,
+										"endIndex": 6
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "prerelease",
+									"parameterTypeTokenRange": {
+										"startIndex": 7,
+										"endIndex": 9
+									},
+									"isOptional": true
+								},
+								{
+									"parameterName": "build",
+									"parameterTypeTokenRange": {
+										"startIndex": 10,
+										"endIndex": 12
+									},
+									"isOptional": true
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "of"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.Order:member",
+							"docComment": "/**\n * `Order` instance following SemVer 2.0.0 precedence (§11); build metadata is ignored (§10).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly Order: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Order.Order",
+									"canonicalReference": "!Order.Order:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "Order",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 5
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.OrderWithBuild:member",
+							"docComment": "/**\n * `Order` instance that additionally compares build metadata lexically when versions are otherwise equal, producing a total order over distinct version strings. Not spec precedence — use {@link SemVer.Order} unless a deterministic tiebreak across build metadata is required.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly OrderWithBuild: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Order.Order",
+									"canonicalReference": "!Order.Order:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "OrderWithBuild",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 5
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.parse:member",
+							"docComment": "/**\n * Parse a strict SemVer 2.0.0 version string.\n *\n * Rejects `v`/`V` prefixes, `=` prefixes, leading zeros on numeric identifiers and partially consumed input.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly parse: "
+								},
+								{
+									"kind": "Content",
+									"text": "(input: string) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "InvalidVersionError",
+									"canonicalReference": "@effected/semver!InvalidVersionError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", never>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "parse",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 8
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer.rsort:member(1)",
+							"docComment": "/**\n * Sort versions descending by SemVer precedence. Returns a new array.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static rsort(versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Array",
+									"canonicalReference": "!Array:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 6,
+								"endIndex": 10
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "versions",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 5
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "rsort"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer.sort:member(1)",
+							"docComment": "/**\n * Sort versions ascending by SemVer precedence. Returns a new array.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static sort(versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Array",
+									"canonicalReference": "!Array:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 6,
+								"endIndex": 10
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "versions",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 5
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "sort"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVer#toString:member(1)",
+							"docComment": "/**\n * The canonical `major.minor.patch[-prerelease][+build]` string.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "toString(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "toString"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!SemVer.truncate:member",
+							"docComment": "/**\n * Strip components below the given level: `\"prerelease\"` keeps only `major.minor.patch`, `\"build\"` keeps the prerelease but drops build metadata. Dual API.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly truncate: "
+								},
+								{
+									"kind": "Content",
+									"text": "{\n    (level: \"prerelease\" | \"build\"): (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";\n    (self: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", level: \"prerelease\" | \"build\"): "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";\n  }"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "truncate",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!SemVerBump:class",
+					"docComment": "/**\n * Grouped bump operations returned by the {@link SemVer.bump} accessor. Every operation returns a new {@link SemVer}; build metadata never survives a bump.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class SemVerBump "
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "SemVerBump",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Constructor",
+							"canonicalReference": "@effected/semver!SemVerBump:constructor(1)",
+							"docComment": "/**\n * Constructs a new instance of the `SemVerBump` class\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "constructor(v: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ");"
+								}
+							],
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "v",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							]
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVerBump#major:member(1)",
+							"docComment": "/**\n * Bump major (resets minor, patch, prerelease, build).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "major(): "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "major"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVerBump#minor:member(1)",
+							"docComment": "/**\n * Bump minor (resets patch, prerelease, build).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "minor(): "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "minor"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVerBump#patch:member(1)",
+							"docComment": "/**\n * Bump patch (resets prerelease, build).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "patch(): "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "patch"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVerBump#prerelease:member(1)",
+							"docComment": "/**\n * Bump prerelease, optionally with a named identifier. Node-semver compatible: a stable version starts a prerelease of the next patch (`1.0.0` → `1.0.1-0`), switching identifiers resets the counter, and a trailing numeric identifier increments.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "prerelease(id?: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 4
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "id",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": true
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "prerelease"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!SemVerBump#release:member(1)",
+							"docComment": "/**\n * Strip prerelease and build, keeping major.minor.patch.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "release(): "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "release"
+						}
+					],
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!UnsatisfiableConstraintError:class",
+					"docComment": "/**\n * Indicates that intersecting ranges produced no satisfiable comparator set.\n *\n * Raised by {@link Range.intersect} when the constraints are mutually exclusive. Carries the conflicting ranges.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class UnsatisfiableConstraintError extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "UnsatisfiableConstraintError_base",
+							"canonicalReference": "@effected/semver!UnsatisfiableConstraintError_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/Range.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "UnsatisfiableConstraintError",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!UnsatisfiableConstraintError#message:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get message(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "message",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!UnsatisfiedRangeError:class",
+					"docComment": "/**\n * Indicates that the cache contains versions but none satisfies the requested range. Carries the range and the versions that were available, and is fully serializable — both payload fields are schema classes.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class UnsatisfiedRangeError extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "UnsatisfiedRangeError_base",
+							"canonicalReference": "@effected/semver!UnsatisfiedRangeError_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/VersionCache.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "UnsatisfiedRangeError",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!UnsatisfiedRangeError#message:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get message(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "message",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!VersionCache:class",
+					"docComment": "/**\n * An in-memory sorted version cache: mutation, query, resolution and navigation over a set of {@link SemVer} versions ordered by SemVer precedence. Pure state (a `Ref` of a sorted array) — no IO.\n *\n * Provide {@link VersionCache.layer} to construct the live implementation.\n *\n * @example\n * ```ts\n * import { SemVer, VersionCache } from \"@effected/semver\";\n * import { Effect } from \"effect\";\n *\n * const program = Effect.gen(function* () {\n *   const cache = yield* VersionCache;\n *   yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(2, 0, 0)]);\n *   const latest = yield* cache.latest();\n *   console.log(latest.toString()); // \"2.0.0\"\n * }).pipe(Effect.provide(VersionCache.layer));\n * ```\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class VersionCache extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "VersionCache_base",
+							"canonicalReference": "@effected/semver!VersionCache_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/VersionCache.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "VersionCache",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!VersionCache.layer:member",
+							"docComment": "/**\n * Live implementation backed by a `Ref` of a sorted, deduplicated array. Requires nothing: range strings are parsed with {@link Range.parse} directly.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly layer: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Layer.Layer",
+									"canonicalReference": "!Layer.Layer:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "VersionCache",
+									"canonicalReference": "@effected/semver!VersionCache:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "layer",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 5
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Interface",
+					"canonicalReference": "@effected/semver!VersionCacheShape:interface",
+					"docComment": "/**\n * Operations of the {@link VersionCache} service.\n *\n * Every query is a thunk; queries over the whole cache (`versions`, `filter`) never fail and return `[]` when nothing matches, while extremum and navigation operations fail typed. `next`/`prev` layer two different absences deliberately: the error channel means \"the pivot version is not cached\", `Option.none()` means \"the pivot is at the boundary\".\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "interface VersionCacheShape "
+						}
+					],
+					"fileUrlPath": "src/VersionCache.ts",
+					"releaseTag": "Public",
+					"name": "VersionCacheShape",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#add:member",
+							"docComment": "/**\n * Add a single version to the cache.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly add: "
+								},
+								{
+									"kind": "Content",
+									"text": "(version: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<void>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "add",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 6
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#diff:member",
+							"docComment": "/**\n * Diff two cached versions. Fails with {@link VersionNotFoundError} when either is missing.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly diff: "
+								},
+								{
+									"kind": "Content",
+									"text": "(a: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", b: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "VersionDiff",
+									"canonicalReference": "@effected/semver!VersionDiff:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "VersionNotFoundError",
+									"canonicalReference": "@effected/semver!VersionNotFoundError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "diff",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 12
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#filter:member",
+							"docComment": "/**\n * All cached versions satisfying a range; `[]` when empty or none match.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly filter: "
+								},
+								{
+									"kind": "Content",
+									"text": "(range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "filter",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#latest:member",
+							"docComment": "/**\n * The highest cached version. Fails with {@link EmptyCacheError} when empty.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly latest: "
+								},
+								{
+									"kind": "Content",
+									"text": "() => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "EmptyCacheError",
+									"canonicalReference": "@effected/semver!EmptyCacheError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "latest",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 8
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#load:member",
+							"docComment": "/**\n * Replace all cached versions with the given array.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly load: "
+								},
+								{
+									"kind": "Content",
+									"text": "(versions: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<void>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "load",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 8
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#next:member",
+							"docComment": "/**\n * The next higher cached version, `Option.none()` at the upper boundary.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly next: "
+								},
+								{
+									"kind": "Content",
+									"text": "(version: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">, "
+								},
+								{
+									"kind": "Reference",
+									"text": "VersionNotFoundError",
+									"canonicalReference": "@effected/semver!VersionNotFoundError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "next",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 12
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#oldest:member",
+							"docComment": "/**\n * The lowest cached version. Fails with {@link EmptyCacheError} when empty.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly oldest: "
+								},
+								{
+									"kind": "Content",
+									"text": "() => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "EmptyCacheError",
+									"canonicalReference": "@effected/semver!EmptyCacheError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "oldest",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 8
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#prev:member",
+							"docComment": "/**\n * The next lower cached version, `Option.none()` at the lower boundary.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly prev: "
+								},
+								{
+									"kind": "Content",
+									"text": "(version: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">, "
+								},
+								{
+									"kind": "Reference",
+									"text": "VersionNotFoundError",
+									"canonicalReference": "@effected/semver!VersionNotFoundError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "prev",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 12
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#remove:member",
+							"docComment": "/**\n * Remove a single version from the cache.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly remove: "
+								},
+								{
+									"kind": "Content",
+									"text": "(version: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<void>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "remove",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 6
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#resolve:member",
+							"docComment": "/**\n * The highest cached version satisfying a range. Fails with {@link UnsatisfiedRangeError} when none match.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly resolve: "
+								},
+								{
+									"kind": "Content",
+									"text": "(range: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Range",
+									"canonicalReference": "@effected/semver!Range_2:class"
+								},
+								{
+									"kind": "Content",
+									"text": ") => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "UnsatisfiedRangeError",
+									"canonicalReference": "@effected/semver!UnsatisfiedRangeError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "resolve",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#resolveString:member",
+							"docComment": "/**\n * Parse a range expression and resolve it.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly resolveString: "
+								},
+								{
+									"kind": "Content",
+									"text": "(input: string) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", "
+								},
+								{
+									"kind": "Reference",
+									"text": "InvalidRangeError",
+									"canonicalReference": "@effected/semver!InvalidRangeError:class"
+								},
+								{
+									"kind": "Content",
+									"text": " | "
+								},
+								{
+									"kind": "Reference",
+									"text": "UnsatisfiedRangeError",
+									"canonicalReference": "@effected/semver!UnsatisfiedRangeError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "resolveString",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 10
+							}
+						},
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/semver!VersionCacheShape#versions:member",
+							"docComment": "/**\n * All cached versions in ascending order; `[]` when empty.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly versions: "
+								},
+								{
+									"kind": "Content",
+									"text": "() => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "versions",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 8
+							}
+						}
+					],
+					"extendsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!VersionDiff:class",
+					"docComment": "/**\n * The difference between two {@link SemVer} versions: the classification of the change plus signed numeric deltas. A `Schema.TaggedClass` — the one concept in this package where serialized tag discrimination earns its keep.\n *\n * The `type` field is the highest-precedence field that differs: `\"major\"`, `\"minor\"`, `\"patch\"`, `\"prerelease\"` (only prerelease identifiers differ), `\"build\"` (only build metadata differs) or `\"none\"`.\n *\n * @example\n * ```ts\n * import { SemVer, VersionDiff } from \"@effected/semver\";\n * import { Effect } from \"effect\";\n *\n * const program = Effect.gen(function* () {\n *   const a = yield* SemVer.parse(\"1.2.3\");\n *   const b = yield* SemVer.parse(\"2.0.0\");\n *   const diff = VersionDiff.between(a, b);\n *   console.log(diff.type);  // \"major\"\n *   console.log(diff.major); // 1\n * });\n * ```\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class VersionDiff extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "VersionDiff_base",
+							"canonicalReference": "@effected/semver!VersionDiff_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/VersionDiff.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "VersionDiff",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!VersionDiff.between:member(1)",
+							"docComment": "/**\n * Compute the diff from `a` to `b`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static between(a: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", b: "
+								},
+								{
+									"kind": "Reference",
+									"text": "SemVer",
+									"canonicalReference": "@effected/semver!SemVer:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "VersionDiff",
+									"canonicalReference": "@effected/semver!VersionDiff:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 5,
+								"endIndex": 6
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "a",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "b",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 4
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "between"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/semver!VersionDiff#toString:member(1)",
+							"docComment": "/**\n * Human-readable summary, e.g. `major (1.2.3 → 2.0.0)`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "toString(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "toString"
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/semver!VersionNotFoundError:class",
+					"docComment": "/**\n * Indicates that a navigation operation (`diff`/`next`/`prev`) referenced a version that is not in the cache.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class VersionNotFoundError extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "VersionNotFoundError_base",
+							"canonicalReference": "@effected/semver!VersionNotFoundError_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/VersionCache.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "VersionNotFoundError",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/semver!VersionNotFoundError#message:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get message(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "message",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
 				}
 			]
 		}
