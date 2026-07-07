@@ -3,6 +3,24 @@ import { Effect, Schema } from "effect";
 import { JsoncEdit, JsoncFormatter, JsoncFormattingOptions, JsoncRange } from "../src/index.js";
 
 describe("JsoncFormatter", () => {
+	describe("range restriction", () => {
+		it("the final-newline edit respects a range that excludes the document end", () => {
+			const text = '{"a":1}';
+			const options = JsoncFormattingOptions.make({ insertFinalNewline: true });
+			const range = JsoncRange.make({ offset: 0, length: 3 });
+			const edits = JsoncFormatter.format(text, range, options);
+			assert.isFalse(edits.some((e) => e.content === "\n" && e.offset >= text.length - 1));
+		});
+
+		it("the final-newline edit is produced when the range covers the document end", () => {
+			const text = '{"a":1}';
+			const options = JsoncFormattingOptions.make({ insertFinalNewline: true });
+			const range = JsoncRange.make({ offset: 0, length: text.length });
+			const out = JsoncFormatter.formatToString(text, range, options);
+			assert.isTrue(out.endsWith("\n"));
+		});
+	});
+
 	describe("format / formatToString", () => {
 		it("reflows a compact object with default options", () => {
 			assert.strictEqual(JsoncFormatter.formatToString('{"a":1,"b":2}'), '{\n  "a": 1,\n  "b": 2\n}');

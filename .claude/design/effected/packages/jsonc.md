@@ -57,7 +57,7 @@ A judgement call beyond the review: **`JsoncFormatter` is kept as its own module
 
 Uniform-Effect-everywhere was the defensible alternative the review named; it is rejected here because the pure/Effect split makes the fallible operations legible at the call site (an `Effect` return type *means* "this can produce a `JsoncParseError`") and keeps the flagship pure operations ergonomic.
 
-As-built: `Jsonc.equals` / `equalsValue` are pure *total* booleans (as designed) — the notable deviation is that they compare **error-recovered** parses and therefore never fail. v3 returned `Effect<boolean, JsoncParseError>`; the as-built statics run the recovery parser (which always produces a best-effort value even on malformed input) and compare what it yields, so there is no error channel to surface. This is best-effort comparison of the recovery parser's output, not a comparison that can reject its inputs.
+As-built: `Jsonc.equals` / `equalsValue` are pure *total* booleans (as designed), but PR review hardened their semantics against a footgun: inputs with **any** parse errors now compare unequal (return `false`) rather than comparing the recovery parser's best-effort output. Malformed input is never equal to anything — this closes the hole where `{ bad }` compared equal to `{}`. The statics still run the recovery parser, but they short-circuit to `false` whenever either side produced parse errors, and only compare the recovered values when both sides parsed cleanly; they remain total with no error channel to surface. v3 instead returned `Effect<boolean, JsoncParseError>` and failed on malformed input.
 
 ## Target public API
 

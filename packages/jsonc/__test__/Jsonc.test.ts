@@ -110,6 +110,50 @@ describe("Jsonc", () => {
 			assert.isTrue(Jsonc.equalsValue('{ "port": 3000, "host": "x" }', { host: "x", port: 3000 }));
 			assert.isFalse(Jsonc.equalsValue('{ "a": 1 }', { a: 2 }));
 		});
+
+		it("malformed input is never equal to anything", () => {
+			assert.isFalse(Jsonc.equals("{ bad }", "{}"));
+			assert.isFalse(Jsonc.equals("{}", "{ bad }"));
+			assert.isFalse(Jsonc.equalsValue("{ bad }", {}));
+		});
+	});
+
+	describe("hostile input", () => {
+		it.effect("__proto__ becomes an own data property, never a prototype mutation", () =>
+			Effect.gen(function* () {
+				const text = '{ "__proto__": { "polluted": true } }';
+				const value = (yield* Jsonc.parse(text)) as Record<string, unknown>;
+				assert.strictEqual(Object.getPrototypeOf(value), Object.prototype);
+				assert.isTrue(Object.hasOwn(value, "__proto__"));
+				assert.isFalse("polluted" in {});
+				const tree = yield* Jsonc.parseTree(text);
+				const fromTree = Option.getOrThrow(tree).toValue() as Record<string, unknown>;
+				assert.strictEqual(Object.getPrototypeOf(fromTree), Object.prototype);
+				assert.isTrue(Object.hasOwn(fromTree, "__proto__"));
+			}),
+		);
+
+		it.effect("rejects unescaped control characters inside strings", () =>
+			Effect.gen(function* () {
+				const text = `{ "a": "x${String.fromCharCode(1)}y" }`;
+				const error = yield* Effect.flip(Jsonc.parse(text));
+				assert.isTrue(error.errors.some((e) => e.code === "InvalidCharacter"));
+			}),
+		);
+
+		it.effect("survives documents with tens of thousands of consecutive line breaks", () =>
+			Effect.gen(function* () {
+				const text = `[1,${"\n".repeat(50000)}2]`;
+				assert.deepStrictEqual(yield* Jsonc.parse(text), [1, 2]);
+			}),
+		);
+
+		it.effect("counts U+2028/U+2029 as line breaks in error positions", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(Jsonc.parse("{\u2028bad}"));
+				assert.isTrue(error.errors.some((e) => e.line === 1));
+			}),
+		);
 	});
 
 	describe("schema pipeline", () => {

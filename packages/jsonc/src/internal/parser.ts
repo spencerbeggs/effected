@@ -271,6 +271,10 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 			const value = parseValue();
 			if (value === undefined) {
 				pushError("ValueExpected", [], ["CloseBrace", "Comma"]);
+			} else if (key === "__proto__") {
+				// Define as an own data property — plain assignment would mutate the
+				// object's prototype (JSON.parse semantics, pollution-safe).
+				Object.defineProperty(obj, key, { value, writable: true, enumerable: true, configurable: true });
 			} else {
 				obj[key] = value;
 			}

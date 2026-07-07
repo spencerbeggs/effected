@@ -166,6 +166,11 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 			} else if (isLineBreak(ch)) {
 				tokenError = "UnexpectedEndOfString";
 				return result + text.substring(start, pos);
+			} else if (ch <= 0x1f) {
+				// Unescaped C0 control characters are invalid inside strings (JSON
+				// grammar); keep scanning so the token stays intact for recovery.
+				tokenError = "InvalidCharacter";
+				pos++;
 			} else {
 				pos++;
 			}
@@ -223,7 +228,10 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 		return text.substring(start, pos);
 	};
 
-	const scan = (): SyntaxKind => {
+	// Single-token scan. Trivia skipping happens in the iterative wrapper below —
+	// recursing here per skipped token overflows the stack on comment/blank-line
+	// heavy documents.
+	const scanCore = (): SyntaxKind => {
 		tokenValue = "";
 		tokenError = "None";
 
@@ -243,7 +251,6 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 				ch = pos < len ? text.charCodeAt(pos) : 0;
 			} while (isWhitespace(ch));
 			tokenValue = text.substring(tokenOffset, pos);
-			if (ignoreTrivia) return scan();
 			token = "Trivia";
 			return token;
 		}
@@ -256,7 +263,6 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 				pos++; // \r\n
 			}
 			tokenValue = text.substring(tokenOffset, pos);
-			if (ignoreTrivia) return scan();
 			token = "LineBreak";
 			return token;
 		}
@@ -308,7 +314,6 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 						pos++;
 					}
 					tokenValue = text.substring(tokenOffset, pos);
-					if (ignoreTrivia) return scan();
 					token = "LineComment";
 					return token;
 				}
@@ -337,7 +342,6 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 						tokenError = "UnexpectedEndOfComment";
 					}
 					tokenValue = text.substring(tokenOffset, pos);
-					if (ignoreTrivia) return scan();
 					token = "BlockComment";
 					return token;
 				}
@@ -402,6 +406,14 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 				tokenError = "InvalidCharacter";
 				return token;
 		}
+	};
+
+	const scan = (): SyntaxKind => {
+		let t = scanCore();
+		while (ignoreTrivia && (t === "Trivia" || t === "LineBreak" || t === "LineComment" || t === "BlockComment")) {
+			t = scanCore();
+		}
+		return t;
 	};
 
 	return {

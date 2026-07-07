@@ -62,6 +62,36 @@ describe("JsoncVisitor", () => {
 		});
 	});
 
+	describe("malformed-input recovery", () => {
+		it.effect("terminates with bounded events on an invalid array element", () =>
+			Effect.gen(function* () {
+				const events = yield* Stream.runCollect(JsoncVisitor.visit("[@]"));
+				const errorTags = events.filter((e) => e._tag === "Error");
+				assert.isAbove(errorTags.length, 0);
+				// The stream must end — a non-consuming recovery loops forever here.
+				assert.isBelow(events.length, 10);
+			}),
+		);
+
+		it.effect("does not consume a container closer during recovery", () =>
+			Effect.gen(function* () {
+				const events = yield* Stream.runCollect(JsoncVisitor.visit('{ "a": }'));
+				const tags = events.map((e) => e._tag);
+				assert.include(tags, "Error");
+				assert.include(tags, "ObjectEnd");
+			}),
+		);
+
+		it.effect("emits EndOfFileExpected for trailing top-level tokens", () =>
+			Effect.gen(function* () {
+				const events = yield* Stream.runCollect(JsoncVisitor.visit("1 2"));
+				const error = events.find((e) => e._tag === "Error");
+				assert.isDefined(error);
+				assert.strictEqual(error?._tag === "Error" ? error.code : undefined, "EndOfFileExpected");
+			}),
+		);
+	});
+
 	describe("visitCollect replacement", () => {
 		it.effect("Stream.filter + runCollect covers the dropped convenience", () =>
 			Effect.gen(function* () {

@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
-import { Jsonc, JsoncEdit, JsoncModificationError, JsoncModifier } from "../src/index.js";
+import { Jsonc, JsoncEdit, JsoncFormattingOptions, JsoncModificationError, JsoncModifier } from "../src/index.js";
 
 const apply = (text: string, edits: ReadonlyArray<JsoncEdit>) => JsoncEdit.applyAll(text, edits);
 
@@ -98,6 +98,73 @@ describe("JsoncModifier", () => {
 				const text = '{ "a\\"b": 1 }';
 				const edits = yield* JsoncModifier.modify(text, ['a"b'], 42);
 				assert.deepStrictEqual(yield* Jsonc.parse(apply(text, edits)), { 'a"b': 42 });
+			}),
+		);
+	});
+
+	describe("structural comma handling (never string-searched)", () => {
+		it.effect("deleting a key preceded by a comma-bearing block comment does not corrupt the document", () =>
+			Effect.gen(function* () {
+				const text = '{ "a": 1, /* x, y */ "b": 2 }';
+				const edits = yield* JsoncModifier.modify(text, ["b"], undefined);
+				assert.deepStrictEqual(yield* Jsonc.parse(apply(text, edits)), { a: 1 });
+			}),
+		);
+
+		it.effect("deleting a key after a comma-bearing line comment yields a valid document", () =>
+			Effect.gen(function* () {
+				// The comment sits between the separator comma and the deleted entry,
+				// so it is removed with the entry — what must never happen is a cut
+				// INSIDE the comment leaving a corrupt half-comment behind.
+				const text = '{\n  "a": 1, // keep, please\n  "b": 2\n}';
+				const edits = yield* JsoncModifier.modify(text, ["b"], undefined);
+				const out = apply(text, edits);
+				assert.deepStrictEqual(yield* Jsonc.parse(out), { a: 1 });
+				assert.notInclude(out, "please");
+			}),
+		);
+
+		it.effect("deleting the first property of a nested object leaves earlier siblings intact", () =>
+			Effect.gen(function* () {
+				const text = '{ "z": [1, 2], "o": { "a": 1, "b": 2 } }';
+				const edits = yield* JsoncModifier.modify(text, ["o", "a"], undefined);
+				assert.deepStrictEqual(yield* Jsonc.parse(apply(text, edits)), { z: [1, 2], o: { b: 2 } });
+			}),
+		);
+
+		it.effect("deleting the last array element leaves no dangling comma", () =>
+			Effect.gen(function* () {
+				const text = "[1, 2, 3]";
+				const edits = yield* JsoncModifier.modify(text, [2], undefined);
+				assert.deepStrictEqual(yield* Jsonc.parse(apply(text, edits)), [1, 2]);
+			}),
+		);
+
+		it.effect("deleting the first array element sees the separator through a comment", () =>
+			Effect.gen(function* () {
+				const text = "[ 1 /* c */, 2 ]";
+				const edits = yield* JsoncModifier.modify(text, [0], undefined);
+				assert.deepStrictEqual(yield* Jsonc.parse(apply(text, edits)), [2]);
+			}),
+		);
+	});
+
+	describe("generated content", () => {
+		it.effect("JSON-escapes inserted keys containing special characters", () =>
+			Effect.gen(function* () {
+				const key = 'he"y\\there';
+				const edits = yield* JsoncModifier.modify("{}", [key], 1);
+				const parsed = yield* Jsonc.parse(apply("{}", edits));
+				assert.deepStrictEqual(parsed, { [key]: 1 });
+			}),
+		);
+
+		it.effect("honors insertSpaces: false in serialized values", () =>
+			Effect.gen(function* () {
+				const options = { formattingOptions: JsoncFormattingOptions.make({ insertSpaces: false }) };
+				const edits = yield* JsoncModifier.modify("{}", ["a"], { b: 1 }, options);
+				assert.include(edits[0].content, '\t"b"');
+				assert.deepStrictEqual(yield* Jsonc.parse(apply("{}", edits)), { a: { b: 1 } });
 			}),
 		);
 	});

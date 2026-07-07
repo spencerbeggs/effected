@@ -90,9 +90,12 @@ export class JsoncModifier {
 		const insertSpaces = fmt?.insertSpaces ?? true;
 		const eol = fmt?.eol ?? "\n";
 		const indentUnit = insertSpaces ? " ".repeat(tabSize) : "\t";
+		// JSON.stringify accepts a string indent — pass the tab unit through so
+		// insertSpaces: false is honored in generated content, not just gaps.
+		const jsonIndent: string | number = insertSpaces ? tabSize : "\t";
 
 		if (path.length === 0) {
-			const content = value === undefined ? "" : JSON.stringify(value, null, tabSize);
+			const content = value === undefined ? "" : JSON.stringify(value, null, jsonIndent);
 			return [JsoncEdit.make({ offset: 0, length: text.length, content })] as ReadonlyArray<JsoncEdit>;
 		}
 
@@ -110,34 +113,20 @@ export class JsoncModifier {
 
 			case "Located": {
 				if (value === undefined) {
-					if (result.container === "object") {
-						let removeStart = result.keyStart;
-						let removeEnd = result.valueEnd;
-						const beforeKey = text.substring(0, removeStart).trimEnd();
-						const commaPosBefore = beforeKey.lastIndexOf(",");
-						if (commaPosBefore >= 0) {
-							removeStart = commaPosBefore;
-						} else {
-							const afterValue = text.substring(removeEnd);
-							const trailing = afterValue.match(/^(\s*,)/);
-							if (trailing !== null) {
-								removeEnd += trailing[1].length;
-							}
-						}
-						return [
-							JsoncEdit.make({ offset: removeStart, length: removeEnd - removeStart, content: "" }),
-						] as ReadonlyArray<JsoncEdit>;
-					}
+					// Comma positions come from navigate()'s scanner tokens, never from
+					// searching the raw text — commas inside comments are invisible here.
+					let removeStart = result.keyStart;
 					let removeEnd = result.valueEnd;
-					const after = text.substring(removeEnd).trimStart();
-					if (after.startsWith(",")) {
-						removeEnd = text.indexOf(",", removeEnd) + 1;
+					if (result.commaBefore !== undefined) {
+						removeStart = result.commaBefore;
+					} else if (result.commaAfter !== undefined) {
+						removeEnd = result.commaAfter + 1;
 					}
 					return [
-						JsoncEdit.make({ offset: result.valueStart, length: removeEnd - result.valueStart, content: "" }),
+						JsoncEdit.make({ offset: removeStart, length: removeEnd - removeStart, content: "" }),
 					] as ReadonlyArray<JsoncEdit>;
 				}
-				const serialized = JSON.stringify(value, null, tabSize);
+				const serialized = JSON.stringify(value, null, jsonIndent);
 				return [
 					JsoncEdit.make({
 						offset: result.valueStart,
@@ -151,14 +140,14 @@ export class JsoncModifier {
 				if (value === undefined) {
 					return [] as ReadonlyArray<JsoncEdit>;
 				}
-				const serialized = JSON.stringify(value, null, tabSize);
+				const serialized = JSON.stringify(value, null, jsonIndent);
 				const indent = indentUnit.repeat(result.depth);
 				const outdent = indentUnit.repeat(result.depth - 1);
 				if (result.container === "object") {
-					const key = String(path[path.length - 1]);
+					const key = JSON.stringify(String(path[path.length - 1]));
 					const insertText = result.isFirst
-						? `${eol}${indent}"${key}": ${serialized}${eol}${outdent}`
-						: `,${eol}${indent}"${key}": ${serialized}`;
+						? `${eol}${indent}${key}: ${serialized}${eol}${outdent}`
+						: `,${eol}${indent}${key}: ${serialized}`;
 					return [JsoncEdit.make({ offset: result.at, length: 0, content: insertText })] as ReadonlyArray<JsoncEdit>;
 				}
 				const insertText = result.isFirst

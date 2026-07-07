@@ -196,7 +196,7 @@
 						{
 							"kind": "Method",
 							"canonicalReference": "@effected/jsonc!Jsonc.equals:member(1)",
-							"docComment": "/**\n * Compare two JSONC strings for semantic equality: comments, whitespace, formatting and object key order are ignored; array order is significant. Best-effort — compares the recovered parse of each input. Pure and total.\n */\n",
+							"docComment": "/**\n * Compare two JSONC strings for semantic equality: comments, whitespace, formatting and object key order are ignored; array order is significant. Malformed input is never equal to anything — parse errors on either side yield `false` rather than comparing recovery-parser artifacts. Pure and total.\n */\n",
 							"excerptTokens": [
 								{
 									"kind": "Content",
@@ -260,7 +260,7 @@
 						{
 							"kind": "Method",
 							"canonicalReference": "@effected/jsonc!Jsonc.equalsValue:member(1)",
-							"docComment": "/**\n * Compare a JSONC string against an existing JavaScript value with the same semantics as {@link Jsonc.equals}. Pure and total.\n */\n",
+							"docComment": "/**\n * Compare a JSONC string against an existing JavaScript value with the same semantics as {@link Jsonc.equals}: malformed `text` yields `false`. Pure and total.\n */\n",
 							"excerptTokens": [
 								{
 									"kind": "Content",

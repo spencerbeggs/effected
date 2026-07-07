@@ -176,6 +176,11 @@ const lineChar = (text: string, offset: number): { line: number; character: numb
 			}
 			line++;
 			lineStart = i + 1;
+		} else if (ch === 0x2028 || ch === 0x2029) {
+			// LS/PS count as line breaks in the scanner; stay aligned so error
+			// positions after them are correct.
+			line++;
+			lineStart = i + 1;
 		}
 	}
 	return { line, character: offset - lineStart };
@@ -305,18 +310,30 @@ export class Jsonc {
 	/**
 	 * Compare two JSONC strings for semantic equality: comments, whitespace,
 	 * formatting and object key order are ignored; array order is significant.
-	 * Best-effort — compares the recovered parse of each input. Pure and total.
+	 * Malformed input is never equal to anything — parse errors on either side
+	 * yield `false` rather than comparing recovery-parser artifacts. Pure and
+	 * total.
 	 */
 	static equals(a: string, b: string): boolean {
-		return deepEqual(parseValueInternal(a, {}).value, parseValueInternal(b, {}).value);
+		const ra = parseValueInternal(a, {});
+		const rb = parseValueInternal(b, {});
+		if (ra.errors.length > 0 || rb.errors.length > 0) {
+			return false;
+		}
+		return deepEqual(ra.value, rb.value);
 	}
 
 	/**
 	 * Compare a JSONC string against an existing JavaScript value with the same
-	 * semantics as {@link Jsonc.equals}. Pure and total.
+	 * semantics as {@link Jsonc.equals}: malformed `text` yields `false`. Pure
+	 * and total.
 	 */
 	static equalsValue(text: string, value: unknown): boolean {
-		return deepEqual(parseValueInternal(text, {}).value, value);
+		const r = parseValueInternal(text, {});
+		if (r.errors.length > 0) {
+			return false;
+		}
+		return deepEqual(r.value, value);
 	}
 
 	/**

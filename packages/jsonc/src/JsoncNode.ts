@@ -206,7 +206,14 @@ function evaluateNode(node: JsoncNode): unknown {
 				for (const prop of node.children) {
 					if (prop.type === "property" && prop.children !== undefined && prop.children.length === 2) {
 						const key = prop.children[0].value as string;
-						obj[key] = evaluateNode(prop.children[1]);
+						const value = evaluateNode(prop.children[1]);
+						if (key === "__proto__") {
+							// Own data property, not a prototype mutation — matches the value
+							// parser and JSON.parse semantics.
+							Object.defineProperty(obj, key, { value, writable: true, enumerable: true, configurable: true });
+						} else {
+							obj[key] = value;
+						}
 					}
 				}
 			}

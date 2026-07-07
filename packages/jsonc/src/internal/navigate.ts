@@ -23,6 +23,15 @@ export interface Located {
 	readonly valueStart: number;
 	/** Tight end offset of the value (excludes trailing whitespace/comments). */
 	readonly valueEnd: number;
+	/**
+	 * Offset of the separator comma preceding this entry in its container, or
+	 * undefined when the entry is first. Captured from the comma token itself so
+	 * edit synthesis never searches raw text (commas inside comments are
+	 * invisible here).
+	 */
+	readonly commaBefore?: number | undefined;
+	/** Offset of the comma token immediately following the value, if any. */
+	readonly commaAfter?: number | undefined;
 }
 
 /** The target does not exist; an insertion point was resolved instead. */
@@ -138,9 +147,11 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 			let found = false;
 			let lastValueEnd = scanner.getTokenOffset();
 			let isFirst = true;
+			let lastComma: number | undefined;
 
 			while (currentToken !== "CloseBrace" && currentToken !== "EOF") {
 				if (!isFirst && currentToken === "Comma") {
+					lastComma = scanner.getTokenOffset();
 					currentToken = scanner.scan();
 				}
 				if (currentToken === "String") {
@@ -155,7 +166,16 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 						if (depth === path.length) {
 							const valueStart = scanner.getTokenOffset();
 							const valueEnd = skipValue();
-							return { _tag: "Located", container: "object", keyStart, valueStart, valueEnd };
+							const commaAfter = currentToken === "Comma" ? scanner.getTokenOffset() : undefined;
+							return {
+								_tag: "Located",
+								container: "object",
+								keyStart,
+								valueStart,
+								valueEnd,
+								commaBefore: lastComma,
+								commaAfter,
+							};
 						}
 						break; // descend into this value on the next segment
 					}
@@ -179,16 +199,27 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 			currentToken = scanner.scan();
 			let idx = 0;
 			let lastEnd = scanner.getTokenOffset();
+			let lastComma: number | undefined;
 
 			while (currentToken !== "CloseBracket" && currentToken !== "EOF") {
 				if (idx > 0 && currentToken === "Comma") {
+					lastComma = scanner.getTokenOffset();
 					currentToken = scanner.scan();
 				}
 				if (idx === segment) {
 					if (depth === path.length) {
 						const valueStart = scanner.getTokenOffset();
 						const valueEnd = skipValue();
-						return { _tag: "Located", container: "array", keyStart: valueStart, valueStart, valueEnd };
+						const commaAfter = currentToken === "Comma" ? scanner.getTokenOffset() : undefined;
+						return {
+							_tag: "Located",
+							container: "array",
+							keyStart: valueStart,
+							valueStart,
+							valueEnd,
+							commaBefore: lastComma,
+							commaAfter,
+						};
 					}
 					break; // descend into this element on the next segment
 				}

@@ -154,13 +154,20 @@ function* visitGen(text: string, disallowComments: boolean): Generator<JsoncVisi
 				});
 				yield* scanNext();
 				return true;
-			default:
+			default: {
 				yield JsoncVisitorEvent.Error({
 					code: "ValueExpected",
 					offset: scanner.getTokenOffset(),
 					length: scanner.getTokenLength(),
 				});
+				// Consume the offending token so recovery always makes progress —
+				// leaving it in place loops forever on inputs like `[bad]`. Container
+				// closers stay put so the enclosing visit can close normally.
+				if (t !== "CloseBrace" && t !== "CloseBracket" && t !== "EOF") {
+					yield* scanNext();
+				}
 				return false;
+			}
 		}
 	}
 
@@ -307,5 +314,12 @@ function* visitGen(text: string, disallowComments: boolean): Generator<JsoncVisi
 	yield* scanNext();
 	if (scanner.getToken() !== "EOF") {
 		yield* visitValue();
+		if (scanner.getToken() !== "EOF") {
+			yield JsoncVisitorEvent.Error({
+				code: "EndOfFileExpected",
+				offset: scanner.getTokenOffset(),
+				length: scanner.getTokenLength(),
+			});
+		}
 	}
 }

@@ -128,7 +128,9 @@ function formatImpl(
 	if (insertFinalNewline && prevTokenEnd >= 0) {
 		const trailing = text.substring(prevTokenEnd);
 		if (!trailing.endsWith(eol)) {
-			edits.push(JsoncEdit.make({ offset: prevTokenEnd, length: trailing.length, content: eol }));
+			// Routed through addEdit so the documented range restriction applies to
+			// this edit like every other.
+			addEdit(prevTokenEnd, trailing.length, eol);
 		}
 	}
 
