@@ -1,0 +1,66 @@
+---
+title: "Comparator | Class | API | @effected/semver"
+description: "A single version constraint: a comparison operator applied to a version. Comparator strings accept an optional operator prefix (`=`, `>`, `>=`, `<`, `<=`) followed by a complete version; a missing operator means `=`. Wildcards and range sugar are not allowed — those belong to `Range`."
+head:
+  - - meta
+    - property: "og:url"
+      content: "https://effected.spencerbeg.gs/semver/api/class/comparator"
+  - - meta
+    - property: "og:type"
+      content: article
+  - - meta
+    - property: "og:description"
+      content: "A single version constraint: a comparison operator applied to a version. Comparator strings accept an optional operator prefix (`=`, `>`, `>=`, `<`, `<=`) followed by a complete version; a missing operator means `=`. Wildcards and range sugar are not allowed — those belong to `Range`."
+  - - meta
+    - property: "og:image"
+      content: "https://effected.spencerbeg.gs/og-image.png"
+  - - meta
+    - property: "og:image:alt"
+      content: "@effected/semver - @effected/semver API Documentation"
+  - - meta
+    - property: "article:published_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:modified_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:section"
+      content: Classes
+  - - meta
+    - property: "article:tag"
+      content: TypeScript
+  - - meta
+    - property: "article:tag"
+      content: API
+  - - meta
+    - property: "article:tag"
+      content: "@effected/semver"
+---
+
+
+import { SourceCode } from "@rspress/core/theme";
+import { ParametersTable } from "rspress-plugin-api-extractor/runtime";
+import { ApiSignature, ApiMember, ApiExample } from "rspress-plugin-api-extractor/runtime";
+
+# Comparator
+
+A single version constraint: a comparison operator applied to a version. Comparator strings accept an optional operator prefix (`=`, `>`, `>=`, `<`, `<=`) followed by a complete version; a missing operator means `=`. Wildcards and range sugar are not allowed — those belong to `Range`.
+
+<ApiSignature code={"class Comparator extends Comparator_base {\n    static readonly FromString: Schema.Codec<Comparator, string>;\n    static readonly parse: (input: string) => Effect.Effect<Comparator, InvalidComparatorError, never>;\n    test(version: SemVer): boolean;\n    toString(): string;\n}"} source={"class Comparator extends Comparator_base {\n    static readonly FromString: Schema.Codec<Comparator, string>;\n    static readonly parse: (input: string) => Effect.Effect<Comparator, InvalidComparatorError, never>;\n    test(version: SemVer): boolean;\n    toString(): string;\n}"} apiScope={"semver"} />
+
+## Static Properties
+
+<ApiMember code={"static readonly FromString: Schema.Codec<Comparator, string>;"} source={"class Comparator extends Comparator_base {\nstatic readonly FromString: Schema.Codec<Comparator, string>;\n}"} apiScope={"semver"} memberName={"FromString"} summary={"Schema transformation between the comparator string (e.g. `\">=1.2.3\"`) and [Comparator](/semver/api/class/comparator)."} id={"fromstring"} />
+
+<ApiMember code={"static readonly parse: (input: string) => Effect.Effect<Comparator, InvalidComparatorError, never>;"} source={"class Comparator extends Comparator_base {\nstatic readonly parse: (input: string) => Effect.Effect<Comparator, InvalidComparatorError, never>;\n}"} apiScope={"semver"} memberName={"parse"} summary={"Parse a comparator string (e.g. `\">=1.2.3\"`)."} id={"parse"} />
+
+## Methods
+
+<ApiMember code={"test(version: SemVer): boolean;"} source={"class Comparator extends Comparator_base {\ntest(version: SemVer): boolean;\n}"} apiScope={"semver"} memberName={"test"} summary={"Test whether a version satisfies this comparator."} id={"test"} hasParameters={false} />
+
+<ApiMember code={"toString(): string;"} source={"class Comparator extends Comparator_base {\ntoString(): string;\n}"} apiScope={"semver"} memberName={"toString"} summary={"The comparator string; the `=` operator is implicit."} id={"tostring"} hasParameters={false} />
+
+## Examples
+
+<ApiExample code={"import { Comparator, SemVer } from \"@effected/semver\";\nimport { Effect } from \"effect\";\n\nconst program = Effect.gen(function* () {\n  const comparator = yield* Comparator.parse(\">=1.2.3\");\n  const version = yield* SemVer.parse(\"2.0.0\");\n  console.log(comparator.test(version)); // true\n});"} source={"// @noErrors\nimport { Comparator, SemVer } from \"@effected/semver\";\nimport { Effect } from \"effect\";\n\nconst program = Effect.gen(function* () {\n  const comparator = yield* Comparator.parse(\">=1.2.3\");\n  const version = yield* SemVer.parse(\"2.0.0\");\n  console.log(comparator.test(version)); // true\n});"} apiScope={"semver"} />
+

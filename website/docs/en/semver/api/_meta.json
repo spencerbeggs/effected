@@ -1,8 +1,24 @@
 [
 	{
 		"type": "dir",
-		"name": "variable",
-		"label": "Variables",
+		"name": "class",
+		"label": "Classes",
+		"collapsible": true,
+		"collapsed": true,
+		"overviewHeaders": [2]
+	},
+	{
+		"type": "dir",
+		"name": "interface",
+		"label": "Interfaces",
+		"collapsible": true,
+		"collapsed": true,
+		"overviewHeaders": [2]
+	},
+	{
+		"type": "dir",
+		"name": "type",
+		"label": "Types",
 		"collapsible": true,
 		"collapsed": true,
 		"overviewHeaders": [2]

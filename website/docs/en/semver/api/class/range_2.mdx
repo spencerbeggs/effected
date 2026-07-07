@@ -1,0 +1,88 @@
+---
+title: "Range_2 | Class | API | @effected/semver"
+description: "A SemVer range expression: a union (OR) of ComparatorSets. Supports node-semver syntax — hyphen ranges (`1.0.0 - 2.0.0`), X-ranges (`1.x`, `*`), tilde (`~1.2.3`), caret (`^1.2.3`) and `||` unions — which parsing desugars into primitive comparators and normalizes."
+head:
+  - - meta
+    - property: "og:url"
+      content: "https://effected.spencerbeg.gs/semver/api/class/range_2"
+  - - meta
+    - property: "og:type"
+      content: article
+  - - meta
+    - property: "og:description"
+      content: "A SemVer range expression: a union (OR) of ComparatorSets. Supports node-semver syntax — hyphen ranges (`1.0.0 - 2.0.0`), X-ranges (`1.x`, `*`), tilde (`~1.2.3`), caret (`^1.2.3`) and `||` unions — which parsing desugars into primitive comparators and normalizes."
+  - - meta
+    - property: "og:image"
+      content: "https://effected.spencerbeg.gs/og-image.png"
+  - - meta
+    - property: "og:image:alt"
+      content: "@effected/semver - @effected/semver API Documentation"
+  - - meta
+    - property: "article:published_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:modified_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:section"
+      content: Classes
+  - - meta
+    - property: "article:tag"
+      content: TypeScript
+  - - meta
+    - property: "article:tag"
+      content: API
+  - - meta
+    - property: "article:tag"
+      content: "@effected/semver"
+---
+
+
+import { SourceCode } from "@rspress/core/theme";
+import { ParametersTable } from "rspress-plugin-api-extractor/runtime";
+import { ApiSignature, ApiMember, ApiExample } from "rspress-plugin-api-extractor/runtime";
+
+# Range_2
+
+A SemVer range expression: a union (OR) of ComparatorSets. Supports node-semver syntax — hyphen ranges (`1.0.0 - 2.0.0`), X-ranges (`1.x`, `*`), tilde (`~1.2.3`), caret (`^1.2.3`) and `||` unions — which parsing desugars into primitive comparators and normalizes.
+
+<ApiSignature code={"class Range_2 extends Range_base {\n    static readonly equivalent: {\n    (that: Range): (self: Range) => boolean;\n    (self: Range, that: Range): boolean;\n  };\n    static readonly filter: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => ReadonlyArray<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): ReadonlyArray<SemVer>;\n  };\n    static readonly FromString: Schema.Codec<Range, string>;\n    static readonly intersect: {\n    (that: Range): (self: Range) => Effect.Effect<Range, UnsatisfiableConstraintError>;\n    (self: Range, that: Range): Effect.Effect<Range, UnsatisfiableConstraintError>;\n  };\n    static readonly isSubset: {\n    (sup: Range): (sub: Range) => boolean;\n    (sub: Range, sup: Range): boolean;\n  };\n    static readonly maxSatisfying: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;\n  };\n    static readonly minSatisfying: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;\n  };\n    static readonly parse: (input: string) => Effect.Effect<Range, InvalidRangeError, never>;\n    static readonly satisfies: {\n    (range: Range): (version: SemVer) => boolean;\n    (version: SemVer, range: Range): boolean;\n  };\n    static readonly union: {\n    (that: Range): (self: Range) => Range;\n    (self: Range, that: Range): Range;\n  };\n    static simplify(range: Range): Range;\n    filter(versions: ReadonlyArray<SemVer>): ReadonlyArray<SemVer>;\n    test(version: SemVer): boolean;\n    toString(): string;\n}"} source={"class Range_2 extends Range_base {\n    static readonly equivalent: {\n    (that: Range): (self: Range) => boolean;\n    (self: Range, that: Range): boolean;\n  };\n    static readonly filter: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => ReadonlyArray<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): ReadonlyArray<SemVer>;\n  };\n    static readonly FromString: Schema.Codec<Range, string>;\n    static readonly intersect: {\n    (that: Range): (self: Range) => Effect.Effect<Range, UnsatisfiableConstraintError>;\n    (self: Range, that: Range): Effect.Effect<Range, UnsatisfiableConstraintError>;\n  };\n    static readonly isSubset: {\n    (sup: Range): (sub: Range) => boolean;\n    (sub: Range, sup: Range): boolean;\n  };\n    static readonly maxSatisfying: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;\n  };\n    static readonly minSatisfying: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;\n  };\n    static readonly parse: (input: string) => Effect.Effect<Range, InvalidRangeError, never>;\n    static readonly satisfies: {\n    (range: Range): (version: SemVer) => boolean;\n    (version: SemVer, range: Range): boolean;\n  };\n    static readonly union: {\n    (that: Range): (self: Range) => Range;\n    (self: Range, that: Range): Range;\n  };\n    static simplify(range: Range): Range;\n    filter(versions: ReadonlyArray<SemVer>): ReadonlyArray<SemVer>;\n    test(version: SemVer): boolean;\n    toString(): string;\n}"} apiScope={"semver"} />
+
+## Static Properties
+
+<ApiMember code={"static readonly equivalent: {\n    (that: Range): (self: Range) => boolean;\n    (self: Range, that: Range): boolean;\n  };"} source={"class Range_2 extends Range_base {\nstatic readonly equivalent: {\n    (that: Range): (self: Range) => boolean;\n    (self: Range, that: Range): boolean;\n  };\n}"} apiScope={"semver"} memberName={"equivalent"} summary={"Test whether two ranges are semantically equivalent: each is a of the other. Dual API."} id={"equivalent"} />
+
+<ApiMember code={"static readonly filter: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => ReadonlyArray<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): ReadonlyArray<SemVer>;\n  };"} source={"class Range_2 extends Range_base {\nstatic readonly filter: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => ReadonlyArray<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): ReadonlyArray<SemVer>;\n  };\n}"} apiScope={"semver"} memberName={"filter"} summary={"Filter versions that satisfy a range, preserving order. Dual API."} id={"static-property-filter"} />
+
+<ApiMember code={"static readonly FromString: Schema.Codec<Range, string>;"} source={"class Range_2 extends Range_base {\nstatic readonly FromString: Schema.Codec<Range, string>;\n}"} apiScope={"semver"} memberName={"FromString"} summary={"Schema transformation between the range expression string and Range: decoding parses, desugars and normalizes; encoding prints `a b || c d`."} id={"fromstring"} />
+
+<ApiMember code={"static readonly intersect: {\n    (that: Range): (self: Range) => Effect.Effect<Range, UnsatisfiableConstraintError>;\n    (self: Range, that: Range): Effect.Effect<Range, UnsatisfiableConstraintError>;\n  };"} source={"class Range_2 extends Range_base {\nstatic readonly intersect: {\n    (that: Range): (self: Range) => Effect.Effect<Range, UnsatisfiableConstraintError>;\n    (self: Range, that: Range): Effect.Effect<Range, UnsatisfiableConstraintError>;\n  };\n}"} apiScope={"semver"} memberName={"intersect"} summary={"Intersect two ranges via a cross-product of their comparator sets, keeping only satisfiable combinations. Fails with [UnsatisfiableConstraintError](/semver/api/class/unsatisfiableconstrainterror) when no satisfiable set remains — an honest typed failure instead of an unsatisfiable range. Dual API."} id={"intersect"} />
+
+<ApiMember code={"static readonly isSubset: {\n    (sup: Range): (sub: Range) => boolean;\n    (sub: Range, sup: Range): boolean;\n  };"} source={"class Range_2 extends Range_base {\nstatic readonly isSubset: {\n    (sup: Range): (sub: Range) => boolean;\n    (sub: Range, sup: Range): boolean;\n  };\n}"} apiScope={"semver"} memberName={"isSubset"} summary={"Check whether every version matched by `sub` is also matched by `sup`. Dual API."} id={"issubset"} />
+
+<ApiMember code={"static readonly maxSatisfying: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;\n  };"} source={"class Range_2 extends Range_base {\nstatic readonly maxSatisfying: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;\n  };\n}"} apiScope={"semver"} memberName={"maxSatisfying"} summary={"Highest satisfying version, or `Option.none()`. Dual API."} id={"maxsatisfying"} />
+
+<ApiMember code={"static readonly minSatisfying: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;\n  };"} source={"class Range_2 extends Range_base {\nstatic readonly minSatisfying: {\n    (range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;\n    (versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;\n  };\n}"} apiScope={"semver"} memberName={"minSatisfying"} summary={"Lowest satisfying version, or `Option.none()`. Dual API."} id={"minsatisfying"} />
+
+<ApiMember code={"static readonly parse: (input: string) => Effect.Effect<Range, InvalidRangeError, never>;"} source={"class Range_2 extends Range_base {\nstatic readonly parse: (input: string) => Effect.Effect<Range, InvalidRangeError, never>;\n}"} apiScope={"semver"} memberName={"parse"} summary={"Parse a range expression and normalize its comparator sets."} id={"parse"} />
+
+<ApiMember code={"static readonly satisfies: {\n    (range: Range): (version: SemVer) => boolean;\n    (version: SemVer, range: Range): boolean;\n  };"} source={"class Range_2 extends Range_base {\nstatic readonly satisfies: {\n    (range: Range): (version: SemVer) => boolean;\n    (version: SemVer, range: Range): boolean;\n  };\n}"} apiScope={"semver"} memberName={"satisfies"} summary={"Test whether a version satisfies a range. Dual API."} id={"satisfies"} />
+
+<ApiMember code={"static readonly union: {\n    (that: Range): (self: Range) => Range;\n    (self: Range, that: Range): Range;\n  };"} source={"class Range_2 extends Range_base {\nstatic readonly union: {\n    (that: Range): (self: Range) => Range;\n    (self: Range, that: Range): Range;\n  };\n}"} apiScope={"semver"} memberName={"union"} summary={"Combine two ranges with OR semantics: the union of their comparator sets. Dual API."} id={"union"} />
+
+## Static Methods
+
+<ApiMember code={"static simplify(range: Range): Range;"} source={"class Range_2 extends Range_base {\nstatic simplify(range: Range): Range;\n}"} apiScope={"semver"} memberName={"simplify"} summary={"Remove redundant comparator sets: a set is redundant when another set in the range is a subset of it (more restrictive and already covered)."} id={"simplify"} hasParameters={false} />
+
+## Methods
+
+<ApiMember code={"filter(versions: ReadonlyArray<SemVer>): ReadonlyArray<SemVer>;"} source={"class Range_2 extends Range_base {\nfilter(versions: ReadonlyArray<SemVer>): ReadonlyArray<SemVer>;\n}"} apiScope={"semver"} memberName={"filter"} summary={"Filter versions that satisfy this range, preserving order."} id={"static-property-filter"} hasParameters={false} />
+
+<ApiMember code={"test(version: SemVer): boolean;"} source={"class Range_2 extends Range_base {\ntest(version: SemVer): boolean;\n}"} apiScope={"semver"} memberName={"test"} summary={"Test whether a version satisfies this range."} id={"test"} hasParameters={false} />
+
+<ApiMember code={"toString(): string;"} source={"class Range_2 extends Range_base {\ntoString(): string;\n}"} apiScope={"semver"} memberName={"toString"} summary={"The range expression string, `a b || c d`."} id={"tostring"} hasParameters={false} />
+
+## Examples
+
+<ApiExample code={"import { Range, SemVer } from \"@effected/semver\";\nimport { Effect } from \"effect\";\n\nconst program = Effect.gen(function* () {\n  const range = yield* Range.parse(\"^1.0.0\");\n  const version = yield* SemVer.parse(\"1.5.0\");\n  console.log(range.test(version)); // true\n});"} source={"// @noErrors\nimport { Range, SemVer } from \"@effected/semver\";\nimport { Effect } from \"effect\";\n\nconst program = Effect.gen(function* () {\n  const range = yield* Range.parse(\"^1.0.0\");\n  const version = yield* SemVer.parse(\"1.5.0\");\n  console.log(range.test(version)); // true\n});"} apiScope={"semver"} />
+

@@ -178,6 +178,94 @@
 			"preserveMemberOrder": false,
 			"members": [
 				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!buildIdentifier:var",
+					"docComment": "/**\n * Build identifiers allow leading zeros and all-digit tokens (SemVer §10). Not meant to be used directly — exported because it appears in the type of {@link SemVer_base}'s public members, which API Extractor must resolve.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "buildIdentifier: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.String",
+							"canonicalReference": "!Schema.String:type"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "buildIdentifier",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					}
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!Comparator_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link Comparator}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "Comparator_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "Comparator",
+							"canonicalReference": "@effected/semver!Comparator:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Struct",
+							"canonicalReference": "!Schema.Struct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  readonly operator: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Literals",
+							"canonicalReference": "!Schema.Literals:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<[\"=\", \">\", \">=\", \"<\", \"<=\"]>;\n  readonly version: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "SemVer",
+							"canonicalReference": "@effected/semver!SemVer:class"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "Comparator_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 11
+					}
+				},
+				{
 					"kind": "Class",
 					"canonicalReference": "@effected/semver!Comparator:class",
 					"docComment": "/**\n * A single version constraint: a comparison operator applied to a version. Comparator strings accept an optional operator prefix (`=`, `>`, `>=`, `<`, `<=`) followed by a complete version; a missing operator means `=`. Wildcards and range sugar are not allowed — those belong to `Range`.\n *\n * @example\n * ```ts\n * import { Comparator, SemVer } from \"@effected/semver\";\n * import { Effect } from \"effect\";\n *\n * const program = Effect.gen(function* () {\n *   const comparator = yield* Comparator.parse(\">=1.2.3\");\n *   const version = yield* SemVer.parse(\"2.0.0\");\n *   console.log(comparator.test(version)); // true\n * });\n * ```\n *\n * @public\n */\n",
@@ -431,6 +519,61 @@
 					}
 				},
 				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!EmptyCacheError_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link EmptyCacheError}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "EmptyCacheError_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "EmptyCacheError",
+							"canonicalReference": "@effected/semver!EmptyCacheError:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"EmptyCacheError\", {}>, "
+						},
+						{
+							"kind": "Reference",
+							"text": "Cause.YieldableError",
+							"canonicalReference": "!Cause.YieldableError:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/VersionDiff.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "EmptyCacheError_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 9
+					}
+				},
+				{
 					"kind": "Class",
 					"canonicalReference": "@effected/semver!EmptyCacheError:class",
 					"docComment": "/**\n * Indicates that an extremum (`latest`/`oldest`) was requested from an empty cache.\n *\n * @public\n */\n",
@@ -491,6 +634,88 @@
 						"endIndex": 2
 					},
 					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!InvalidComparatorError_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link InvalidComparatorError}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "InvalidComparatorError_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "InvalidComparatorError",
+							"canonicalReference": "@effected/semver!InvalidComparatorError:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"InvalidComparatorError\", {\n  readonly input: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".String;\n  readonly position: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number>;\n}>, "
+						},
+						{
+							"kind": "Reference",
+							"text": "Cause.YieldableError",
+							"canonicalReference": "!Cause.YieldableError:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "InvalidComparatorError_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 15
+					}
 				},
 				{
 					"kind": "Class",
@@ -555,6 +780,88 @@
 					"implementsTokenRanges": []
 				},
 				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!InvalidRangeError_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link InvalidRangeError}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "InvalidRangeError_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "InvalidRangeError",
+							"canonicalReference": "@effected/semver!InvalidRangeError:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"InvalidRangeError\", {\n  readonly input: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".String;\n  readonly position: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number>;\n}>, "
+						},
+						{
+							"kind": "Reference",
+							"text": "Cause.YieldableError",
+							"canonicalReference": "!Cause.YieldableError:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/Comparator.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "InvalidRangeError_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 15
+					}
+				},
+				{
 					"kind": "Class",
 					"canonicalReference": "@effected/semver!InvalidRangeError:class",
 					"docComment": "/**\n * Indicates that a string could not be parsed as a range expression.\n *\n * Raised by {@link Range.parse}, the decode direction of {@link Range.FromString} and `VersionCache.resolveString`.\n *\n * @public\n */\n",
@@ -617,6 +924,88 @@
 					"implementsTokenRanges": []
 				},
 				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!InvalidVersionError_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link InvalidVersionError}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "InvalidVersionError_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "InvalidVersionError",
+							"canonicalReference": "@effected/semver!InvalidVersionError:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"InvalidVersionError\", {\n  readonly input: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".String;\n  readonly position: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number>;\n}>, "
+						},
+						{
+							"kind": "Reference",
+							"text": "Cause.YieldableError",
+							"canonicalReference": "!Cause.YieldableError:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "InvalidVersionError_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 15
+					}
+				},
+				{
 					"kind": "Class",
 					"canonicalReference": "@effected/semver!InvalidVersionError:class",
 					"docComment": "/**\n * Indicates that a string could not be parsed as a valid SemVer 2.0.0 version.\n *\n * Raised by {@link SemVer.parse} and the decode direction of {@link SemVer.FromString}. Unlike node-semver, no loose parsing or `v`-prefix coercion is performed.\n *\n * @see\n *\n * {@link https://semver.org | SemVer 2.0.0 Specification}\n *\n * @public\n */\n",
@@ -677,6 +1066,76 @@
 						"endIndex": 2
 					},
 					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!nonNegativeInteger:var",
+					"docComment": "/**\n * Non-negative safe integer schema shared by the `major`/`minor`/`patch` fields. Not meant to be used directly — exported because it appears in the type of {@link SemVer_base}'s public members, which API Extractor must resolve.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "nonNegativeInteger: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Number",
+							"canonicalReference": "!Schema.Number:type"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "nonNegativeInteger",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					}
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!prereleaseIdentifier:var",
+					"docComment": "/**\n * String prerelease identifiers must contain at least one non-digit: all-numeric identifiers are numbers (the grammar parses them as such), so requiring a non-digit keeps decode/encode round-trips canonical. Written without lookahead so `Schema.toArbitrary` can derive a generator. Not meant to be used directly — exported because it appears in the type of {@link SemVer_base}'s public members, which API Extractor must resolve.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "prereleaseIdentifier: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Union",
+							"canonicalReference": "!Schema.Union:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<readonly ["
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.String",
+							"canonicalReference": "!Schema.String:type"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Number",
+							"canonicalReference": "!Schema.Number:type"
+						},
+						{
+							"kind": "Content",
+							"text": "]>"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "prereleaseIdentifier",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 7
+					}
 				},
 				{
 					"kind": "Class",
@@ -1778,6 +2237,188 @@
 						"endIndex": 2
 					},
 					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!Range_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link Range}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "Range_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "Range",
+							"canonicalReference": "@effected/semver!Range_2:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Struct",
+							"canonicalReference": "!Schema.Struct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  readonly sets: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.$Array",
+							"canonicalReference": "!Schema.$Array:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.$Array",
+							"canonicalReference": "!Schema.$Array:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Comparator",
+							"canonicalReference": "@effected/semver!Comparator:class"
+						},
+						{
+							"kind": "Content",
+							"text": ">>;\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "Range_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 13
+					}
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!SemVer_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link SemVer}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "SemVer_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "SemVer",
+							"canonicalReference": "@effected/semver!SemVer:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Struct",
+							"canonicalReference": "!Schema.Struct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  readonly major: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "nonNegativeInteger",
+							"canonicalReference": "@effected/semver!nonNegativeInteger:var"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  readonly minor: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "nonNegativeInteger",
+							"canonicalReference": "@effected/semver!nonNegativeInteger:var"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  readonly patch: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "nonNegativeInteger",
+							"canonicalReference": "@effected/semver!nonNegativeInteger:var"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  readonly prerelease: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.$Array",
+							"canonicalReference": "!Schema.$Array:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "prereleaseIdentifier",
+							"canonicalReference": "@effected/semver!prereleaseIdentifier:var"
+						},
+						{
+							"kind": "Content",
+							"text": ">;\n  readonly build: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.$Array",
+							"canonicalReference": "!Schema.$Array:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "buildIdentifier",
+							"canonicalReference": "@effected/semver!buildIdentifier:var"
+						},
+						{
+							"kind": "Content",
+							"text": ">;\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "SemVer_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 21
+					}
 				},
 				{
 					"kind": "Class",
@@ -3960,6 +4601,79 @@
 					"implementsTokenRanges": []
 				},
 				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!UnsatisfiableConstraintError_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link UnsatisfiableConstraintError}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "UnsatisfiableConstraintError_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "UnsatisfiableConstraintError",
+							"canonicalReference": "@effected/semver!UnsatisfiableConstraintError:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"UnsatisfiableConstraintError\", {\n  readonly constraints: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.$Array",
+							"canonicalReference": "!Schema.$Array:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Range",
+							"canonicalReference": "@effected/semver!Range_2:class"
+						},
+						{
+							"kind": "Content",
+							"text": ">;\n}>, "
+						},
+						{
+							"kind": "Reference",
+							"text": "Cause.YieldableError",
+							"canonicalReference": "!Cause.YieldableError:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/Range.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "UnsatisfiableConstraintError_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 13
+					}
+				},
+				{
 					"kind": "Class",
 					"canonicalReference": "@effected/semver!UnsatisfiableConstraintError:class",
 					"docComment": "/**\n * Indicates that intersecting ranges produced no satisfiable comparator set.\n *\n * Raised by {@link Range.intersect} when the constraints are mutually exclusive. Carries the conflicting ranges.\n *\n * @public\n */\n",
@@ -4022,6 +4736,88 @@
 					"implementsTokenRanges": []
 				},
 				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!UnsatisfiedRangeError_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link UnsatisfiedRangeError}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "UnsatisfiedRangeError_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "UnsatisfiedRangeError",
+							"canonicalReference": "@effected/semver!UnsatisfiedRangeError:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"UnsatisfiedRangeError\", {\n  readonly range: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Range",
+							"canonicalReference": "@effected/semver!Range_2:class"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  readonly available: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.$Array",
+							"canonicalReference": "!Schema.$Array:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "SemVer",
+							"canonicalReference": "@effected/semver!SemVer:class"
+						},
+						{
+							"kind": "Content",
+							"text": ">;\n}>, "
+						},
+						{
+							"kind": "Reference",
+							"text": "Cause.YieldableError",
+							"canonicalReference": "!Cause.YieldableError:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "UnsatisfiedRangeError_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 15
+					}
+				},
+				{
 					"kind": "Class",
 					"canonicalReference": "@effected/semver!UnsatisfiedRangeError:class",
 					"docComment": "/**\n * Indicates that the cache contains versions but none satisfies the requested range. Carries the range and the versions that were available, and is fully serializable — both payload fields are schema classes.\n *\n * @public\n */\n",
@@ -4082,6 +4878,52 @@
 						"endIndex": 2
 					},
 					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!VersionCache_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link VersionCache}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "VersionCache_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Context.ServiceClass",
+							"canonicalReference": "!Context.ServiceClass:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "VersionCache",
+							"canonicalReference": "@effected/semver!VersionCache:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", \"@effected/semver/VersionCache\", "
+						},
+						{
+							"kind": "Reference",
+							"text": "VersionCacheShape",
+							"canonicalReference": "@effected/semver!VersionCacheShape:interface"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/VersionCache.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "VersionCache_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 7
+					}
 				},
 				{
 					"kind": "Class",
@@ -4889,6 +5731,106 @@
 					"extendsTokenRanges": []
 				},
 				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!VersionDiff_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link VersionDiff}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "VersionDiff_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "VersionDiff",
+							"canonicalReference": "@effected/semver!VersionDiff:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"VersionDiff\", {\n  readonly type: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Literals",
+							"canonicalReference": "!Schema.Literals:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<[\"major\", \"minor\", \"patch\", \"prerelease\", \"build\", \"none\"]>;\n  readonly from: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "SemVer",
+							"canonicalReference": "@effected/semver!SemVer:class"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  readonly to: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "SemVer",
+							"canonicalReference": "@effected/semver!SemVer:class"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  readonly major: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly minor: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly patch: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/SemVer.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "VersionDiff_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 19
+					}
+				},
+				{
 					"kind": "Class",
 					"canonicalReference": "@effected/semver!VersionDiff:class",
 					"docComment": "/**\n * The difference between two {@link SemVer} versions: the classification of the change plus signed numeric deltas. A `Schema.TaggedClass` — the one concept in this package where serialized tag discrimination earns its keep.\n *\n * The `type` field is the highest-precedence field that differs: `\"major\"`, `\"minor\"`, `\"patch\"`, `\"prerelease\"` (only prerelease identifiers differ), `\"build\"` (only build metadata differs) or `\"none\"`.\n *\n * @example\n * ```ts\n * import { SemVer, VersionDiff } from \"@effected/semver\";\n * import { Effect } from \"effect\";\n *\n * const program = Effect.gen(function* () {\n *   const a = yield* SemVer.parse(\"1.2.3\");\n *   const b = yield* SemVer.parse(\"2.0.0\");\n *   const diff = VersionDiff.between(a, b);\n *   console.log(diff.type);  // \"major\"\n *   console.log(diff.major); // 1\n * });\n * ```\n *\n * @public\n */\n",
@@ -5017,6 +5959,70 @@
 						"endIndex": 2
 					},
 					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/semver!VersionNotFoundError_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link VersionNotFoundError}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "VersionNotFoundError_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "VersionNotFoundError",
+							"canonicalReference": "@effected/semver!VersionNotFoundError:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"VersionNotFoundError\", {\n  readonly version: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "SemVer",
+							"canonicalReference": "@effected/semver!SemVer:class"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n}>, "
+						},
+						{
+							"kind": "Reference",
+							"text": "Cause.YieldableError",
+							"canonicalReference": "!Cause.YieldableError:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/VersionCache.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "VersionNotFoundError_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 11
+					}
 				},
 				{
 					"kind": "Class",

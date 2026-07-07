@@ -1,0 +1,66 @@
+---
+title: "SemVerBump | Class | API | @effected/semver"
+description: Grouped bump operations returned by the SemVer accessor. Every operation returns a new SemVer; build metadata never survives a bump.
+head:
+  - - meta
+    - property: "og:url"
+      content: "https://effected.spencerbeg.gs/semver/api/class/semverbump"
+  - - meta
+    - property: "og:type"
+      content: article
+  - - meta
+    - property: "og:description"
+      content: Grouped bump operations returned by the SemVer accessor. Every operation returns a new SemVer; build metadata never survives a bump.
+  - - meta
+    - property: "og:image"
+      content: "https://effected.spencerbeg.gs/og-image.png"
+  - - meta
+    - property: "og:image:alt"
+      content: "@effected/semver - @effected/semver API Documentation"
+  - - meta
+    - property: "article:published_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:modified_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:section"
+      content: Classes
+  - - meta
+    - property: "article:tag"
+      content: TypeScript
+  - - meta
+    - property: "article:tag"
+      content: API
+  - - meta
+    - property: "article:tag"
+      content: "@effected/semver"
+---
+
+
+import { SourceCode } from "@rspress/core/theme";
+import { ParametersTable } from "rspress-plugin-api-extractor/runtime";
+import { ApiSignature, ApiMember, ApiExample } from "rspress-plugin-api-extractor/runtime";
+
+# SemVerBump
+
+Grouped bump operations returned by the SemVer accessor. Every operation returns a new SemVer; build metadata never survives a bump.
+
+<ApiSignature code={"class SemVerBump {\n    constructor(v: SemVer);\n    major(): SemVer;\n    minor(): SemVer;\n    patch(): SemVer;\n    prerelease(id?: string): SemVer;\n    release(): SemVer;\n}"} source={"class SemVerBump {\n    constructor(v: SemVer);\n    major(): SemVer;\n    minor(): SemVer;\n    patch(): SemVer;\n    prerelease(id?: string): SemVer;\n    release(): SemVer;\n}"} apiScope={"semver"} />
+
+## Constructors
+
+<ApiMember code={"constructor(v: SemVer);"} source={"class SemVerBump {\nconstructor(v: SemVer);\n}"} apiScope={"semver"} memberName="constructor" summary={"Constructs a new instance of the `SemVerBump` class"} id={"constructor"} hasParameters={false} />
+
+## Methods
+
+<ApiMember code={"major(): SemVer;"} source={"class SemVerBump {\nmajor(): SemVer;\n}"} apiScope={"semver"} memberName={"major"} summary={"Bump major (resets minor, patch, prerelease, build)."} id={"major"} hasParameters={false} />
+
+<ApiMember code={"minor(): SemVer;"} source={"class SemVerBump {\nminor(): SemVer;\n}"} apiScope={"semver"} memberName={"minor"} summary={"Bump minor (resets patch, prerelease, build)."} id={"minor"} hasParameters={false} />
+
+<ApiMember code={"patch(): SemVer;"} source={"class SemVerBump {\npatch(): SemVer;\n}"} apiScope={"semver"} memberName={"patch"} summary={"Bump patch (resets prerelease, build)."} id={"patch"} hasParameters={false} />
+
+<ApiMember code={"prerelease(id?: string): SemVer;"} source={"class SemVerBump {\nprerelease(id?: string): SemVer;\n}"} apiScope={"semver"} memberName={"prerelease"} summary={"Bump prerelease, optionally with a named identifier. Node-semver compatible: a stable version starts a prerelease of the next patch (`1.0.0` → `1.0.1-0`), switching identifiers resets the counter, and a trailing numeric identifier increments."} id={"prerelease"} hasParameters={false} />
+
+<ApiMember code={"release(): SemVer;"} source={"class SemVerBump {\nrelease(): SemVer;\n}"} apiScope={"semver"} memberName={"release"} summary={"Strip prerelease and build, keeping major.minor.patch."} id={"release"} hasParameters={false} />
+
