@@ -3,14 +3,15 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-07-06
-last-synced: 2026-07-06
+updated: 2026-07-07
+last-synced: 2026-07-07
 completeness: 85
 related:
   - architecture.md
   - effect-standards.md
   - migration-playbook.md
   - packages/semver.md
+  - packages/jsonc.md
 ---
 
 # Package inventory
@@ -28,7 +29,7 @@ All ten source repos were reviewed against [effect-standards.md](effect-standard
 | Source repo | Target package | Tier (provisional) | Status | Notes |
 | --- | --- | --- | --- | --- |
 | semver-effect | @effected/semver | pure | migrated (feat/semver-migration, pending merge) | First migration; DX exemplar; design: [packages/semver.md](packages/semver.md) |
-| jsonc-effect | @effected/jsonc | pure | not started | Pure tier confirmed; API-contract parity with @effected/yaml is a migration requirement |
+| jsonc-effect | @effected/jsonc | pure | migrated (feat/jsonc-migration, pending merge) | Second migration; design: [packages/jsonc.md](packages/jsonc.md); yaml parity convention recorded there |
 | yaml-effect | @effected/yaml | pure | not started | Pure tier confirmed; parity with @effected/jsonc; only justified extraction is a possible later @effected/text-edit micro-kernel (Edit/Range/Path/diff), decided after both ports |
 | json-schema-effect | @effected/json-schema | boundary | not started | File writes are load-bearing for silk-release-action; core JSON Schema generation superseded by v4 `Schema.toJsonSchemaDocument` — remaining value is TOML tooling (tombi/taplo builders, Ajv validation, scaffolder); one package, Scaffold/Tombi/Taplo seam available if split later |
 | package-json-effect | @effected/package-json | boundary | not started | Split candidate reversed by review: stays one package with IO confined to a single `PackageJsonFile.ts` module (the v3 split motivation — the @effect/platform peer — evaporates in v4); a future split is a one-module extraction |

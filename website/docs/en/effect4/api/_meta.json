@@ -1,0 +1,10 @@
+[
+	{
+		"type": "dir",
+		"name": "variable",
+		"label": "Variables",
+		"collapsible": true,
+		"collapsed": true,
+		"overviewHeaders": [2]
+	}
+]

@@ -1,0 +1,58 @@
+---
+title: "VersionCache | Class | API | @effected/semver"
+description: "An in-memory sorted version cache: mutation, query, resolution and navigation over a set of SemVer versions ordered by SemVer precedence. Pure state (a `Ref` of a sorted array) — no IO. Provide VersionCache to construct the live implementation."
+head:
+  - - meta
+    - property: "og:url"
+      content: "https://effected.spencerbeg.gs/semver/api/class/versioncache"
+  - - meta
+    - property: "og:type"
+      content: article
+  - - meta
+    - property: "og:description"
+      content: "An in-memory sorted version cache: mutation, query, resolution and navigation over a set of SemVer versions ordered by SemVer precedence. Pure state (a `Ref` of a sorted array) — no IO. Provide VersionCache to construct the live implementation."
+  - - meta
+    - property: "og:image"
+      content: "https://effected.spencerbeg.gs/og-image.png"
+  - - meta
+    - property: "og:image:alt"
+      content: "@effected/semver - @effected/semver API Documentation"
+  - - meta
+    - property: "article:published_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:modified_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:section"
+      content: Classes
+  - - meta
+    - property: "article:tag"
+      content: TypeScript
+  - - meta
+    - property: "article:tag"
+      content: API
+  - - meta
+    - property: "article:tag"
+      content: "@effected/semver"
+---
+
+
+import { SourceCode } from "@rspress/core/theme";
+import { ParametersTable } from "rspress-plugin-api-extractor/runtime";
+import { ApiSignature, ApiMember, ApiExample } from "rspress-plugin-api-extractor/runtime";
+
+# VersionCache
+
+An in-memory sorted version cache: mutation, query, resolution and navigation over a set of SemVer versions ordered by SemVer precedence. Pure state (a `Ref` of a sorted array) — no IO. Provide VersionCache to construct the live implementation.
+
+<ApiSignature code={"class VersionCache extends VersionCache_base {\n    static readonly layer: Layer.Layer<VersionCache>;\n}"} source={"class VersionCache extends VersionCache_base {\n    static readonly layer: Layer.Layer<VersionCache>;\n}"} apiScope={"semver"} />
+
+## Static Properties
+
+<ApiMember code={"static readonly layer: Layer.Layer<VersionCache>;"} source={"class VersionCache extends VersionCache_base {\nstatic readonly layer: Layer.Layer<VersionCache>;\n}"} apiScope={"semver"} memberName={"layer"} summary={"Live implementation backed by a `Ref` of a sorted, deduplicated array. Requires nothing: range strings are parsed with Range directly."} id={"layer"} />
+
+## Examples
+
+<ApiExample code={"import { SemVer, VersionCache } from \"@effected/semver\";\nimport { Effect } from \"effect\";\n\nconst program = Effect.gen(function* () {\n  const cache = yield* VersionCache;\n  yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(2, 0, 0)]);\n  const latest = yield* cache.latest();\n  console.log(latest.toString()); // \"2.0.0\"\n}).pipe(Effect.provide(VersionCache.layer));"} source={"// @noErrors\nimport { SemVer, VersionCache } from \"@effected/semver\";\nimport { Effect } from \"effect\";\n\nconst program = Effect.gen(function* () {\n  const cache = yield* VersionCache;\n  yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(2, 0, 0)]);\n  const latest = yield* cache.latest();\n  console.log(latest.toString()); // \"2.0.0\"\n}).pipe(Effect.provide(VersionCache.layer));"} apiScope={"semver"} />
+

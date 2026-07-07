@@ -1,7 +1,77 @@
 [
 	{
 		"type": "file",
-		"name": "hello",
-		"label": "hello"
+		"name": "buildidentifier",
+		"label": "buildIdentifier"
+	},
+	{
+		"type": "file",
+		"name": "comparator_base",
+		"label": "Comparator_base"
+	},
+	{
+		"type": "file",
+		"name": "emptycacheerror_base",
+		"label": "EmptyCacheError_base"
+	},
+	{
+		"type": "file",
+		"name": "invalidcomparatorerror_base",
+		"label": "InvalidComparatorError_base"
+	},
+	{
+		"type": "file",
+		"name": "invalidrangeerror_base",
+		"label": "InvalidRangeError_base"
+	},
+	{
+		"type": "file",
+		"name": "invalidversionerror_base",
+		"label": "InvalidVersionError_base"
+	},
+	{
+		"type": "file",
+		"name": "nonnegativeinteger",
+		"label": "nonNegativeInteger"
+	},
+	{
+		"type": "file",
+		"name": "prereleaseidentifier",
+		"label": "prereleaseIdentifier"
+	},
+	{
+		"type": "file",
+		"name": "range_base",
+		"label": "Range_base"
+	},
+	{
+		"type": "file",
+		"name": "semver_base",
+		"label": "SemVer_base"
+	},
+	{
+		"type": "file",
+		"name": "unsatisfiableconstrainterror_base",
+		"label": "UnsatisfiableConstraintError_base"
+	},
+	{
+		"type": "file",
+		"name": "unsatisfiedrangeerror_base",
+		"label": "UnsatisfiedRangeError_base"
+	},
+	{
+		"type": "file",
+		"name": "versioncache_base",
+		"label": "VersionCache_base"
+	},
+	{
+		"type": "file",
+		"name": "versiondiff_base",
+		"label": "VersionDiff_base"
+	},
+	{
+		"type": "file",
+		"name": "versionnotfounderror_base",
+		"label": "VersionNotFoundError_base"
 	}
 ]

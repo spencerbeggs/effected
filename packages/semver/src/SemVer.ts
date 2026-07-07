@@ -8,7 +8,7 @@ import { compareBuild, comparePrereleaseIdentifier } from "./internal/order.js";
  * meant to be referenced directly — named and exported only so API
  * Extractor can resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const InvalidVersionError_base: Schema.Class<
 	InvalidVersionError,
@@ -46,10 +46,11 @@ export class InvalidVersionError extends InvalidVersionError_base {
 
 /**
  * Non-negative safe integer schema shared by the `major`/`minor`/`patch`
- * fields. Not part of the public API — exported only because it appears in
- * the type of {@link SemVer_base}, which API Extractor must resolve.
+ * fields. Not meant to be used directly — exported because it appears in
+ * the type of {@link SemVer_base}'s public members, which API Extractor must
+ * resolve.
  *
- * @internal
+ * @public
  */
 export const nonNegativeInteger = Schema.Number.check(
 	Schema.isInt(),
@@ -60,11 +61,11 @@ export const nonNegativeInteger = Schema.Number.check(
  * String prerelease identifiers must contain at least one non-digit:
  * all-numeric identifiers are numbers (the grammar parses them as such), so
  * requiring a non-digit keeps decode/encode round-trips canonical. Written
- * without lookahead so `Schema.toArbitrary` can derive a generator. Not part
- * of the public API — exported only because it appears in the type of
- * {@link SemVer_base}, which API Extractor must resolve.
+ * without lookahead so `Schema.toArbitrary` can derive a generator. Not
+ * meant to be used directly — exported because it appears in the type of
+ * {@link SemVer_base}'s public members, which API Extractor must resolve.
  *
- * @internal
+ * @public
  */
 export const prereleaseIdentifier = Schema.Union([
 	Schema.String.check(Schema.isPattern(/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/)),
@@ -73,10 +74,10 @@ export const prereleaseIdentifier = Schema.Union([
 
 /**
  * Build identifiers allow leading zeros and all-digit tokens (SemVer §10).
- * Not part of the public API — exported only because it appears in the type
- * of {@link SemVer_base}, which API Extractor must resolve.
+ * Not meant to be used directly — exported because it appears in the type of
+ * {@link SemVer_base}'s public members, which API Extractor must resolve.
  *
- * @internal
+ * @public
  */
 export const buildIdentifier = Schema.String.check(Schema.isPattern(/^[0-9A-Za-z-]+$/));
 
@@ -85,7 +86,7 @@ export const buildIdentifier = Schema.String.check(Schema.isPattern(/^[0-9A-Za-z
  * referenced directly — named and exported only so API Extractor can
  * resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const SemVer_base: Schema.Class<
 	SemVer,

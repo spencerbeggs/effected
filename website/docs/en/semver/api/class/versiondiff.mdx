@@ -1,0 +1,62 @@
+---
+title: "VersionDiff | Class | API | @effected/semver"
+description: "The difference between two SemVer versions: the classification of the change plus signed numeric deltas. A `Schema.TaggedClass` — the one concept in this package where serialized tag discrimination earns its keep. The `type` field is the highest-precedence field that differs: `\"major\"`, `\"minor\"`, `\"patch\"`, `\"prerelease\"` (only prerelease identifiers differ), `\"build\"` (only build metadata differs) or `\"none\"`."
+head:
+  - - meta
+    - property: "og:url"
+      content: "https://effected.spencerbeg.gs/semver/api/class/versiondiff"
+  - - meta
+    - property: "og:type"
+      content: article
+  - - meta
+    - property: "og:description"
+      content: "The difference between two SemVer versions: the classification of the change plus signed numeric deltas. A `Schema.TaggedClass` — the one concept in this package where serialized tag discrimination earns its keep. The `type` field is the highest-precedence field that differs: `\"major\"`, `\"minor\"`, `\"patch\"`, `\"prerelease\"` (only prerelease identifiers differ), `\"build\"` (only build metadata differs) or `\"none\"`."
+  - - meta
+    - property: "og:image"
+      content: "https://effected.spencerbeg.gs/og-image.png"
+  - - meta
+    - property: "og:image:alt"
+      content: "@effected/semver - @effected/semver API Documentation"
+  - - meta
+    - property: "article:published_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:modified_time"
+      content: "2026-07-07T07:28:51.022Z"
+  - - meta
+    - property: "article:section"
+      content: Classes
+  - - meta
+    - property: "article:tag"
+      content: TypeScript
+  - - meta
+    - property: "article:tag"
+      content: API
+  - - meta
+    - property: "article:tag"
+      content: "@effected/semver"
+---
+
+
+import { SourceCode } from "@rspress/core/theme";
+import { ParametersTable } from "rspress-plugin-api-extractor/runtime";
+import { ApiSignature, ApiMember, ApiExample } from "rspress-plugin-api-extractor/runtime";
+
+# VersionDiff
+
+The difference between two SemVer versions: the classification of the change plus signed numeric deltas. A `Schema.TaggedClass` — the one concept in this package where serialized tag discrimination earns its keep. The `type` field is the highest-precedence field that differs: `"major"`, `"minor"`, `"patch"`, `"prerelease"` (only prerelease identifiers differ), `"build"` (only build metadata differs) or `"none"`.
+
+<ApiSignature code={"class VersionDiff extends VersionDiff_base {\n    static between(a: SemVer, b: SemVer): VersionDiff;\n    toString(): string;\n}"} source={"class VersionDiff extends VersionDiff_base {\n    static between(a: SemVer, b: SemVer): VersionDiff;\n    toString(): string;\n}"} apiScope={"semver"} />
+
+## Static Methods
+
+<ApiMember code={"static between(a: SemVer, b: SemVer): VersionDiff;"} source={"class VersionDiff extends VersionDiff_base {\nstatic between(a: SemVer, b: SemVer): VersionDiff;\n}"} apiScope={"semver"} memberName={"between"} summary={"Compute the diff from `a` to `b`."} id={"between"} hasParameters={false} />
+
+## Methods
+
+<ApiMember code={"toString(): string;"} source={"class VersionDiff extends VersionDiff_base {\ntoString(): string;\n}"} apiScope={"semver"} memberName={"toString"} summary={"Human-readable summary, e.g. `major (1.2.3 → 2.0.0)`."} id={"tostring"} hasParameters={false} />
+
+## Examples
+
+<ApiExample code={"import { SemVer, VersionDiff } from \"@effected/semver\";\nimport { Effect } from \"effect\";\n\nconst program = Effect.gen(function* () {\n  const a = yield* SemVer.parse(\"1.2.3\");\n  const b = yield* SemVer.parse(\"2.0.0\");\n  const diff = VersionDiff.between(a, b);\n  console.log(diff.type); // \"major\"\n  console.log(diff.major); // 1\n});"} source={"// @noErrors\nimport { SemVer, VersionDiff } from \"@effected/semver\";\nimport { Effect } from \"effect\";\n\nconst program = Effect.gen(function* () {\n  const a = yield* SemVer.parse(\"1.2.3\");\n  const b = yield* SemVer.parse(\"2.0.0\");\n  const diff = VersionDiff.between(a, b);\n  console.log(diff.type); // \"major\"\n  console.log(diff.major); // 1\n});"} apiScope={"semver"} />
+

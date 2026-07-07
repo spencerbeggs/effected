@@ -1,0 +1,58 @@
+---
+title: "JsoncFormatter | Class | API | @effected/jsonc"
+description: Pure JSONC formatting statics. Not instantiable.
+head:
+  - - meta
+    - property: "og:url"
+      content: "https://effected.spencerbeg.gs/jsonc/api/class/jsoncformatter"
+  - - meta
+    - property: "og:type"
+      content: article
+  - - meta
+    - property: "og:description"
+      content: Pure JSONC formatting statics. Not instantiable.
+  - - meta
+    - property: "og:image"
+      content: "https://effected.spencerbeg.gs/og-image.png"
+  - - meta
+    - property: "og:image:alt"
+      content: "@effected/jsonc - @effected/jsonc API Documentation"
+  - - meta
+    - property: "article:published_time"
+      content: "2026-07-07T09:03:50.252Z"
+  - - meta
+    - property: "article:modified_time"
+      content: "2026-07-07T09:03:50.252Z"
+  - - meta
+    - property: "article:section"
+      content: Classes
+  - - meta
+    - property: "article:tag"
+      content: TypeScript
+  - - meta
+    - property: "article:tag"
+      content: API
+  - - meta
+    - property: "article:tag"
+      content: "@effected/jsonc"
+---
+
+
+import { SourceCode } from "@rspress/core/theme";
+import { ParametersTable } from "rspress-plugin-api-extractor/runtime";
+import { ApiSignature, ApiMember, ApiExample } from "rspress-plugin-api-extractor/runtime";
+
+# JsoncFormatter
+
+Pure JSONC formatting statics. Not instantiable.
+
+<ApiSignature code={"class JsoncFormatter {\n    static format(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): ReadonlyArray<JsoncEdit>;\n    static formatToString(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): string;\n}"} source={"class JsoncFormatter {\n    static format(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): ReadonlyArray<JsoncEdit>;\n    static formatToString(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): string;\n}"} apiScope={"jsonc"} />
+
+## Static Methods
+
+<ApiMember code={"static format(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): ReadonlyArray<JsoncEdit>;"} source={"class JsoncFormatter {\nstatic format(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): ReadonlyArray<JsoncEdit>;\n}"} apiScope={"jsonc"} memberName={"format"} summary={"Compute formatting edits for a JSONC document. Non-mutating — apply the result with `JsoncEdit.applyAll`. Pure and total."} id={"format"} hasParameters={true} />
+
+<ParametersTable parameters={[{"name":"text","type":"string","description":"The JSONC source to format."},{"name":"range","type":"JsoncRange","description":"Optional sub-range; only edits within it are returned."},{"name":"options","type":"JsoncFormattingOptions","description":"Optional [JsoncFormattingOptions](/jsonc/api/class/jsoncformattingoptions); absent fields use defaults (tabSize 2, spaces, `\"\\n\"`, no final newline, reflow)."}]} />
+
+<ApiMember code={"static formatToString(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): string;"} source={"class JsoncFormatter {\nstatic formatToString(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): string;\n}"} apiScope={"jsonc"} memberName={"formatToString"} summary={"Format `text` and apply the resulting edits in one step (`applyAll ∘ format`). The sole surviving convenience from v3's `formatAndApply`. Pure and total."} id={"formattostring"} hasParameters={false} />
+

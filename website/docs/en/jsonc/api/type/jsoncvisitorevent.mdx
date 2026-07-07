@@ -1,0 +1,50 @@
+---
+title: "JsoncVisitorEvent | Type | API | @effected/jsonc"
+description: "The discriminated union of JSONC visitor events. Each variant carries an `offset` and `length`; begin/property/literal events also carry `path` context, and `Error` events carry a `JsoncParseErrorCode`."
+head:
+  - - meta
+    - property: "og:url"
+      content: "https://effected.spencerbeg.gs/jsonc/api/type/jsoncvisitorevent"
+  - - meta
+    - property: "og:type"
+      content: article
+  - - meta
+    - property: "og:description"
+      content: "The discriminated union of JSONC visitor events. Each variant carries an `offset` and `length`; begin/property/literal events also carry `path` context, and `Error` events carry a `JsoncParseErrorCode`."
+  - - meta
+    - property: "og:image"
+      content: "https://effected.spencerbeg.gs/og-image.png"
+  - - meta
+    - property: "og:image:alt"
+      content: "@effected/jsonc - @effected/jsonc API Documentation"
+  - - meta
+    - property: "article:published_time"
+      content: "2026-07-07T09:03:50.252Z"
+  - - meta
+    - property: "article:modified_time"
+      content: "2026-07-07T09:03:50.252Z"
+  - - meta
+    - property: "article:section"
+      content: Types
+  - - meta
+    - property: "article:tag"
+      content: TypeScript
+  - - meta
+    - property: "article:tag"
+      content: API
+  - - meta
+    - property: "article:tag"
+      content: "@effected/jsonc"
+---
+
+
+import { SourceCode } from "@rspress/core/theme";
+import { ParametersTable } from "rspress-plugin-api-extractor/runtime";
+import { ApiSignature, ApiExample } from "rspress-plugin-api-extractor/runtime";
+
+# JsoncVisitorEvent
+
+The discriminated union of JSONC visitor events. Each variant carries an `offset` and `length`; begin/property/literal events also carry `path` context, and `Error` events carry a `JsoncParseErrorCode`.
+
+<ApiSignature code={"type JsoncVisitorEvent = Data.TaggedEnum<{\n  ObjectBegin: {\n    readonly offset: number;\n    readonly length: number;\n    readonly path: JsoncPath;\n  };\n  ObjectEnd: {\n    readonly offset: number;\n    readonly length: number;\n  };\n  ObjectProperty: {\n    readonly property: string;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: JsoncPath;\n  };\n  ArrayBegin: {\n    readonly offset: number;\n    readonly length: number;\n    readonly path: JsoncPath;\n  };\n  ArrayEnd: {\n    readonly offset: number;\n    readonly length: number;\n  };\n  LiteralValue: {\n    readonly value: unknown;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: JsoncPath;\n  };\n  Separator: {\n    readonly character: string;\n    readonly offset: number;\n    readonly length: number;\n  };\n  Comment: {\n    readonly offset: number;\n    readonly length: number;\n  };\n  Error: {\n    readonly code: JsoncParseErrorCode;\n    readonly offset: number;\n    readonly length: number;\n  };\n}>;"} source={"type JsoncVisitorEvent = Data.TaggedEnum<{\n  ObjectBegin: {\n    readonly offset: number;\n    readonly length: number;\n    readonly path: JsoncPath;\n  };\n  ObjectEnd: {\n    readonly offset: number;\n    readonly length: number;\n  };\n  ObjectProperty: {\n    readonly property: string;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: JsoncPath;\n  };\n  ArrayBegin: {\n    readonly offset: number;\n    readonly length: number;\n    readonly path: JsoncPath;\n  };\n  ArrayEnd: {\n    readonly offset: number;\n    readonly length: number;\n  };\n  LiteralValue: {\n    readonly value: unknown;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: JsoncPath;\n  };\n  Separator: {\n    readonly character: string;\n    readonly offset: number;\n    readonly length: number;\n  };\n  Comment: {\n    readonly offset: number;\n    readonly length: number;\n  };\n  Error: {\n    readonly code: JsoncParseErrorCode;\n    readonly offset: number;\n    readonly length: number;\n  };\n}>;"} apiScope={"jsonc"} />
+
