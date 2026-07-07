@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-06
-last-synced: 2026-07-06
+updated: 2026-07-07
+last-synced: 2026-07-07
 completeness: 95
 related:
   - ../architecture.md
@@ -116,7 +116,7 @@ v3 has zero instrumentation. Per the observability standard, `Effect.fn("name")`
 - Dead errors `InvalidBumpError` and `InvalidPrereleaseError` (verification above).
 - `prettyPrint` and the `Printable` union — a dispatcher over four types that all already have `toString`.
 - All floating util functions (`utils/compare.ts`, `bump.ts`, `matching.ts`, `algebra.ts`, `parseRange.ts` exports plus `parseValidSemVer`/`parseSingleComparator`) — absorbed as instance methods and dual statics.
-- All ten *public* `*ErrorBase` export pairs — v3's doubled public surface stays banned. Assumption corrected as-built: the extractor ceremony does not die with `Schema.TaggedErrorClass` — an inline factory heritage clause is `ae-forgotten-export` (CI-fatal). The adopted house policy (approved) is named, exported, `@internal`-tagged `X_base` consts with explicit factory-return-type annotations, re-exported from `index.ts`, accepting residual non-fatal `ae-incompatible-release-tags` warnings (12 at migration time) until `@savvy-web/tsdown-plugins` ships an allowance. Idiom: `plugin/skills/effect-api-extractor-bases/SKILL.md`.
+- All ten *public* `*ErrorBase` export pairs — v3's doubled public surface stays banned. Assumption corrected as-built: the extractor ceremony does not die with `Schema.TaggedErrorClass` — an inline factory heritage clause is `ae-forgotten-export` (CI-fatal). Ratified policy as-built (2026-07-07, commit 5f854fb): named, exported, `@public`-tagged `X_base` consts with explicit factory-return-type annotations, re-exported from `index.ts`, plus the schema helper consts their annotations reference (`nonNegativeInteger`, `prereleaseIdentifier`, `buildIdentifier` in `src/SemVer.ts`) tagged `@public` too — anything referenced by a `@public` signature must itself be `@public` under silk's binary release-tag policy. This yields a zero-warning `dist/prod/issues.json` (the earlier `@internal`-with-residual-`ae-incompatible-release-tags`-warnings idiom is superseded). The extra public surface is the accepted cost, distinguished from the banned v3 `*ErrorBase` ceremony by not-for-direct-use doc comments on every base and helper. Idiom: `plugin/skills/effect-api-extractor-bases/SKILL.md`.
 - The `eq` alias for `equal`.
 - The index.ts static-wiring block and the `*.module.test.ts` suite that existed only to verify it; `"sideEffects"` declaration becomes `false`.
 - From `VersionCache`: the grouping trio (`groupBy`, `latestByMajor`, `latestByMinor`) as service methods — pure statics on `SemVer` instead; the `versions` property getter (thunk now); `filter`'s `EmptyCacheError` (never fails now, `[]` uniformly); the mutable `Map` return from `groupBy`.

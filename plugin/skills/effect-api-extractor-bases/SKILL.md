@@ -1,6 +1,6 @@
 ---
 name: effect-api-extractor-bases
-description: Use when API Extractor reports ae-forgotten-export for anonymous base classes of Effect class factories (Schema.Class, Schema.TaggedClass, Schema.TaggedErrorClass, Context.Service) — the house idiom is a named, exported, @internal X_base const with an explicit type annotation, re-exported from the entry point, accepting residual non-fatal ae-incompatible-release-tags warnings.
+description: Use when API Extractor reports ae-forgotten-export for anonymous base classes of Effect class factories (Schema.Class, Schema.TaggedClass, Schema.TaggedErrorClass, Context.Service) — the house idiom is a named, exported, @public X_base const with an explicit type annotation, re-exported from the entry point, documented as not for direct use. Yields a zero-warning issues.json.
 ---
 
 # API Extractor × Effect class factories
@@ -12,9 +12,14 @@ under the silk bundler. The three possible states are mutually exclusive
 
 1. **Inline factory call** → `ae-forgotten-export` (CI-fatal). Not viable.
 2. **Named `@internal` base** → residual `ae-incompatible-release-tags`
-   warnings (non-fatal). **This is the house policy.**
-3. **Named `@public` base** → zero warnings but two public exports per
-   concept — the v3 `*ErrorBase` ceremony, banned by effect-standards.
+   warnings (non-fatal, but they keep `issues.json` dirty and trip the
+   tsdoc monitor). Rejected 2026-07-07.
+3. **Named `@public` base** → zero warnings; two public exports per
+   concept. **This is the house policy.** The extra surface is the accepted
+   cost of a clean artifact under the binary release-tag policy — each base
+   carries a doc comment stating it is not meant to be referenced directly,
+   which distinguishes it from the v3 `*ErrorBase` ceremony (undocumented
+   API Extractor workarounds presented as real surface).
 
 ## The idiom
 
@@ -24,7 +29,7 @@ under the silk bundler. The three possible states are mutually exclusive
  * referenced directly — named and exported only so API Extractor can
  * resolve the heritage clause of the class it backs.
  *
- * @internal
+ * @public
  */
 export const SemVer_base: Schema.Class<
  SemVer,
@@ -47,16 +52,17 @@ Rules that are each load-bearing:
 - **Re-export every `X_base` from `src/index.ts`.** API Extractor only sees
   symbols reachable from the entry point; exporting from the defining module
   alone still reports forgotten-export.
-- **Schema helpers referenced by the annotation become `@internal` exports
-  too** (e.g. field schemas like `nonNegativeInteger`) — they now appear in
-  the base's type.
+- **Schema helpers referenced by the annotation become `@public` exports
+  too** (e.g. field schemas like `nonNegativeInteger`) — they appear in the
+  base's type, and the binary release-tag policy propagates: anything a
+  `@public` signature references must itself be `@public`. Give each the
+  same not-for-direct-use doc comment.
 - **Ordering:** a base whose fields reference another class in the same file
   (`UnsatisfiedRangeError_base` referencing `Range`) must be declared AFTER
   that class.
-- **Do not suppress warnings and do not mark bases `@public`.** The residual
-  `ae-incompatible-release-tags` entries in `dist/prod/issues.json` are the
-  accepted cost until `@savvy-web/tsdown-plugins` ships an allowance for the
-  pattern.
+- **Do not suppress warnings.** The `@public` tagging makes
+  `dist/prod/issues.json` genuinely clean (zero warnings on
+  @effected/semver); suppressions would only hide regressions.
 
 ## Related
 
