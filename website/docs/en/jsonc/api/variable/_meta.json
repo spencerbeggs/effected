@@ -1,0 +1,57 @@
+[
+	{
+		"type": "file",
+		"name": "jsoncedit_base",
+		"label": "JsoncEdit_base"
+	},
+	{
+		"type": "file",
+		"name": "jsoncformattingoptions_base",
+		"label": "JsoncFormattingOptions_base"
+	},
+	{
+		"type": "file",
+		"name": "jsoncmodificationerror_base",
+		"label": "JsoncModificationError_base"
+	},
+	{
+		"type": "file",
+		"name": "jsoncnode_base",
+		"label": "JsoncNode_base"
+	},
+	{
+		"type": "file",
+		"name": "jsoncnodetype",
+		"label": "JsoncNodeType"
+	},
+	{
+		"type": "file",
+		"name": "jsoncparseerror_base",
+		"label": "JsoncParseError_base"
+	},
+	{
+		"type": "file",
+		"name": "jsoncparseerrorcode",
+		"label": "JsoncParseErrorCode"
+	},
+	{
+		"type": "file",
+		"name": "jsoncparseerrordetail_base",
+		"label": "JsoncParseErrorDetail_base"
+	},
+	{
+		"type": "file",
+		"name": "jsoncparseoptions_base",
+		"label": "JsoncParseOptions_base"
+	},
+	{
+		"type": "file",
+		"name": "jsoncrange_base",
+		"label": "JsoncRange_base"
+	},
+	{
+		"type": "file",
+		"name": "jsoncvisitorevent",
+		"label": "JsoncVisitorEvent"
+	}
+]

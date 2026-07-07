@@ -1,0 +1,3345 @@
+{
+	"metadata": {
+		"toolPackage": "@microsoft/api-extractor",
+		"toolVersion": "7.58.9",
+		"schemaVersion": 1011,
+		"oldestForwardsCompatibleVersion": 1001,
+		"tsdocConfig": {
+			"$schema": "https://developer.microsoft.com/json-schemas/tsdoc/v0/tsdoc.schema.json",
+			"noStandardTags": true,
+			"tagDefinitions": [
+				{
+					"tagName": "@alpha",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@beta",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@defaultValue",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@decorator",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@deprecated",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@eventProperty",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@example",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@experimental",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@inheritDoc",
+					"syntaxKind": "inline"
+				},
+				{
+					"tagName": "@internal",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@label",
+					"syntaxKind": "inline"
+				},
+				{
+					"tagName": "@link",
+					"syntaxKind": "inline",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@override",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@packageDocumentation",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@param",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@privateRemarks",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@public",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@readonly",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@remarks",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@returns",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@sealed",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@see",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@throws",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@typeParam",
+					"syntaxKind": "block",
+					"allowMultiple": true
+				},
+				{
+					"tagName": "@virtual",
+					"syntaxKind": "modifier"
+				},
+				{
+					"tagName": "@jsx",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@jsxRuntime",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@jsxFrag",
+					"syntaxKind": "block"
+				},
+				{
+					"tagName": "@jsxImportSource",
+					"syntaxKind": "block"
+				}
+			],
+			"supportForTags": {
+				"@alpha": true,
+				"@beta": true,
+				"@defaultValue": true,
+				"@decorator": true,
+				"@deprecated": true,
+				"@eventProperty": true,
+				"@example": true,
+				"@experimental": true,
+				"@inheritDoc": true,
+				"@internal": true,
+				"@label": true,
+				"@link": true,
+				"@override": true,
+				"@packageDocumentation": true,
+				"@param": true,
+				"@privateRemarks": true,
+				"@public": true,
+				"@readonly": true,
+				"@remarks": true,
+				"@returns": true,
+				"@sealed": true,
+				"@see": true,
+				"@throws": true,
+				"@typeParam": true,
+				"@virtual": true,
+				"@jsx": true,
+				"@jsxRuntime": true,
+				"@jsxFrag": true,
+				"@jsxImportSource": true
+			},
+			"reportUnsupportedHtmlElements": true
+		}
+	},
+	"kind": "Package",
+	"canonicalReference": "@effected/jsonc!",
+	"docComment": "",
+	"name": "@effected/jsonc",
+	"preserveMemberOrder": false,
+	"members": [
+		{
+			"kind": "EntryPoint",
+			"canonicalReference": "@effected/jsonc!",
+			"name": "",
+			"preserveMemberOrder": false,
+			"members": [
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!Jsonc:class",
+					"docComment": "/**\n * Static entry points for JSONC parsing, editing-adjacent utilities and the schema factories. Not instantiable.\n *\n * @example\n * ```ts\n * import { Jsonc } from \"@effected/jsonc\";\n * import { Effect } from \"effect\";\n *\n * const program = Effect.gen(function* () {\n *   const value = yield* Jsonc.parse('{ \"port\": 3000 // dev\\n }');\n *   return value; // { port: 3000 }\n * });\n * ```\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class Jsonc "
+						}
+					],
+					"fileUrlPath": "src/Jsonc.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "Jsonc",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!Jsonc.equals:member(1)",
+							"docComment": "/**\n * Compare two JSONC strings for semantic equality: comments, whitespace, formatting and object key order are ignored; array order is significant. Best-effort — compares the recovered parse of each input. Pure and total.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static equals(a: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ", b: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 5,
+								"endIndex": 6
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "a",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "b",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 4
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "equals"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!Jsonc.equalsValue:member(1)",
+							"docComment": "/**\n * Compare a JSONC string against an existing JavaScript value with the same semantics as {@link Jsonc.equals}. Pure and total.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static equalsValue(text: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ", value: "
+								},
+								{
+									"kind": "Content",
+									"text": "unknown"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "boolean"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 5,
+								"endIndex": 6
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "text",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "value",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 4
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "equalsValue"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!Jsonc.fromString:member(1)",
+							"docComment": "/**\n * A `Schema<unknown, string>` decoding JSONC with the given `options` (defaults when omitted). Encoding is `JSON.stringify` with 2-space indent, so comments do not survive a round-trip encode.\n *\n * Schema-producing: each call returns a fresh schema whose derivation caches are not shared across calls. Bind the result to a `const` on hot paths; for the default-options case use {@link Jsonc.JsoncFromString}.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static fromString(options?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncParseOptions",
+									"canonicalReference": "@effected/jsonc!JsoncParseOptions:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Schema.Codec",
+									"canonicalReference": "!Schema.Codec:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<unknown, string>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 5
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "options",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": true
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "fromString"
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/jsonc!Jsonc.JsoncFromString:member",
+							"docComment": "/**\n * The zero-config `Schema<unknown, string>` — `Jsonc.fromString()` with default options, pre-bound so the common case needs no memoization discipline.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly JsoncFromString: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Schema.Codec",
+									"canonicalReference": "!Schema.Codec:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<unknown, string>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "JsoncFromString",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 3
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/jsonc!Jsonc.parse:member",
+							"docComment": "/**\n * Parse JSONC into a plain JavaScript value. Error-recovery parsing: collects every parse error and fails once with the aggregate {@link JsoncParseError}. Returns `unknown`, never `any`.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly parse: "
+								},
+								{
+									"kind": "Content",
+									"text": "(text: string, options?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncParseOptions",
+									"canonicalReference": "@effected/jsonc!JsoncParseOptions:class"
+								},
+								{
+									"kind": "Content",
+									"text": " | undefined) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<unknown, "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncParseError",
+									"canonicalReference": "@effected/jsonc!JsoncParseError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", never>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "parse",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 8
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/jsonc!Jsonc.parseTree:member",
+							"docComment": "/**\n * Parse JSONC into an immutable {@link JsoncNode} AST. `Option.none()` for empty input (with `allowEmptyContent`); the aggregate {@link JsoncParseError} for malformed input.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly parseTree: "
+								},
+								{
+									"kind": "Content",
+									"text": "(text: string, options?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncParseOptions",
+									"canonicalReference": "@effected/jsonc!JsoncParseOptions:class"
+								},
+								{
+									"kind": "Content",
+									"text": " | undefined) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.None",
+									"canonicalReference": "!Option.None:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncNode",
+									"canonicalReference": "@effected/jsonc!JsoncNode:class"
+								},
+								{
+									"kind": "Content",
+									"text": "> | "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Some",
+									"canonicalReference": "!Option.Some:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncNode",
+									"canonicalReference": "@effected/jsonc!JsoncNode:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">, "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncParseError",
+									"canonicalReference": "@effected/jsonc!JsoncParseError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", never>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "parseTree",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 16
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!Jsonc.schema:member(1)",
+							"docComment": "/**\n * Compose {@link Jsonc.fromString} with a target schema, yielding a `Schema<A, string>` that decodes JSONC straight into a validated domain value — the reason an Effect-native JSONC library exists.\n *\n * Schema-producing: bind the result to a `const` on hot paths (see {@link Jsonc.fromString}).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static schema<T, E>(target: "
+								},
+								{
+									"kind": "Reference",
+									"text": "Schema.Codec",
+									"canonicalReference": "!Schema.Codec:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<T, E>"
+								},
+								{
+									"kind": "Content",
+									"text": ", options?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncParseOptions",
+									"canonicalReference": "@effected/jsonc!JsoncParseOptions:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Schema.Codec",
+									"canonicalReference": "!Schema.Codec:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<T, string>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"typeParameters": [
+								{
+									"typeParameterName": "T",
+									"constraintTokenRange": {
+										"startIndex": 0,
+										"endIndex": 0
+									},
+									"defaultTypeTokenRange": {
+										"startIndex": 0,
+										"endIndex": 0
+									}
+								},
+								{
+									"typeParameterName": "E",
+									"constraintTokenRange": {
+										"startIndex": 0,
+										"endIndex": 0
+									},
+									"defaultTypeTokenRange": {
+										"startIndex": 0,
+										"endIndex": 0
+									}
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 6,
+								"endIndex": 8
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "target",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 3
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "options",
+									"parameterTypeTokenRange": {
+										"startIndex": 4,
+										"endIndex": 5
+									},
+									"isOptional": true
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "schema"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!Jsonc.stripComments:member(1)",
+							"docComment": "/**\n * Remove all comments from JSONC, producing valid JSON. Pass a `replaceCh` (e.g. `\" \"`) to replace each comment character instead of deleting it, keeping all offsets stable (line breaks inside block comments are kept). Pure and total.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static stripComments(text: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ", replaceCh?: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 5,
+								"endIndex": 6
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "text",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "replaceCh",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 4
+									},
+									"isOptional": true
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "stripComments"
+						}
+					],
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncEdit_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link JsoncEdit}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncEdit_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncEdit",
+							"canonicalReference": "@effected/jsonc!JsoncEdit:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Struct",
+							"canonicalReference": "!Schema.Struct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  readonly offset: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly length: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly content: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".String;\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/JsoncEdit.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncEdit_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 13
+					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncEdit:class",
+					"docComment": "/**\n * A non-mutating text edit: replace the span `[offset, offset + length)` with `content`. Set `length` to `0` to insert, `content` to `\"\"` to delete.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncEdit extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncEdit_base",
+							"canonicalReference": "@effected/jsonc!JsoncEdit_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/JsoncEdit.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncEdit",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!JsoncEdit.applyAll:member(1)",
+							"docComment": "/**\n * Apply `edits` to `text`, producing a new string. Edits are applied in reverse-offset order so earlier offsets stay valid; the input `edits` array is not mutated. Pure and total.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static applyAll(text: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ", edits: "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncEdit",
+									"canonicalReference": "@effected/jsonc!JsoncEdit:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 8,
+								"endIndex": 9
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "text",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "edits",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 7
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "applyAll"
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncFormatter:class",
+					"docComment": "/**\n * Pure JSONC formatting statics. Not instantiable.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncFormatter "
+						}
+					],
+					"fileUrlPath": "src/JsoncEdit.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncFormatter",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!JsoncFormatter.format:member(1)",
+							"docComment": "/**\n * Compute formatting edits for a JSONC document. Non-mutating — apply the result with `JsoncEdit.applyAll`. Pure and total.\n *\n * @param text - The JSONC source to format.\n *\n * @param range - Optional sub-range; only edits within it are returned.\n *\n * @param options - Optional {@link JsoncFormattingOptions}; absent fields use defaults (tabSize 2, spaces, `\"\\n\"`, no final newline, reflow).\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static format(text: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ", range?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncRange",
+									"canonicalReference": "@effected/jsonc!JsoncRange:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", options?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncFormattingOptions",
+									"canonicalReference": "@effected/jsonc!JsoncFormattingOptions:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "ReadonlyArray",
+									"canonicalReference": "!ReadonlyArray:interface"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncEdit",
+									"canonicalReference": "@effected/jsonc!JsoncEdit:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"fileUrlPath": "src/JsoncFormatter.ts",
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 7,
+								"endIndex": 11
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "text",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "range",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 4
+									},
+									"isOptional": true
+								},
+								{
+									"parameterName": "options",
+									"parameterTypeTokenRange": {
+										"startIndex": 5,
+										"endIndex": 6
+									},
+									"isOptional": true
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "format"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!JsoncFormatter.formatToString:member(1)",
+							"docComment": "/**\n * Format `text` and apply the resulting edits in one step (`applyAll ∘ format`). The sole surviving convenience from v3's `formatAndApply`. Pure and total.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static formatToString(text: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ", range?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncRange",
+									"canonicalReference": "@effected/jsonc!JsoncRange:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", options?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncFormattingOptions",
+									"canonicalReference": "@effected/jsonc!JsoncFormattingOptions:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"fileUrlPath": "src/JsoncFormatter.ts",
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 7,
+								"endIndex": 8
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "text",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "range",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 4
+									},
+									"isOptional": true
+								},
+								{
+									"parameterName": "options",
+									"parameterTypeTokenRange": {
+										"startIndex": 5,
+										"endIndex": 6
+									},
+									"isOptional": true
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "formatToString"
+						}
+					],
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncFormattingOptions_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link JsoncFormattingOptions}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncFormattingOptions_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncFormattingOptions",
+							"canonicalReference": "@effected/jsonc!JsoncFormattingOptions:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Struct",
+							"canonicalReference": "!Schema.Struct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  readonly tabSize: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number>;\n  readonly insertSpaces: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Boolean>;\n  readonly eol: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".String>;\n  readonly insertFinalNewline: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Boolean>;\n  readonly keepLines: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Boolean>;\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/JsoncEdit.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncFormattingOptions_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 27
+					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncFormattingOptions:class",
+					"docComment": "/**\n * Options controlling JSONC formatting.\n *\n * All fields are omissible; the formatter resolves absent fields to defaults: `tabSize` 2, `insertSpaces` `true`, `eol` `\"\\n\"`, `insertFinalNewline` `false`, `keepLines` `false`.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncFormattingOptions extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncFormattingOptions_base",
+							"canonicalReference": "@effected/jsonc!JsoncFormattingOptions_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/JsoncEdit.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncFormattingOptions",
+					"preserveMemberOrder": false,
+					"members": [],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncModificationError_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link JsoncModificationError}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncModificationError_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncModificationError",
+							"canonicalReference": "@effected/jsonc!JsoncModificationError:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"JsoncModificationError\", {\n  readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.$Array",
+							"canonicalReference": "!Schema.$Array:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Union",
+							"canonicalReference": "!Schema.Union:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<readonly [typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".String, typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number]>>;\n  readonly reason: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".String;\n  readonly offset: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number>;\n}>, "
+						},
+						{
+							"kind": "Reference",
+							"text": "Cause.YieldableError",
+							"canonicalReference": "!Cause.YieldableError:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/JsoncNode.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncModificationError_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 23
+					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncModificationError:class",
+					"docComment": "/**\n * Raised when `JsoncModifier.modify` cannot navigate the requested path (a structural mismatch) or would produce an invalid edit.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncModificationError extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncModificationError_base",
+							"canonicalReference": "@effected/jsonc!JsoncModificationError_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/JsoncModifier.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncModificationError",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/jsonc!JsoncModificationError#message:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get message(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "message",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncModifier:class",
+					"docComment": "/**\n * Structural JSONC modification statics. Not instantiable.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncModifier "
+						}
+					],
+					"fileUrlPath": "src/JsoncModifier.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncModifier",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/jsonc!JsoncModifier.modify:member",
+							"docComment": "/**\n * Compute the edits that set, replace or delete `value` at `path` in `text`.\n *\n * Passing `value === undefined` deletes the target property or element (including its surrounding comma). A missing insertion target appends after the last property/element. Fails with {@link JsoncModificationError} on a structural mismatch.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static readonly modify: "
+								},
+								{
+									"kind": "Content",
+									"text": "(text: string, path: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncPath",
+									"canonicalReference": "@effected/jsonc!JsoncPath:type"
+								},
+								{
+									"kind": "Content",
+									"text": ", value: unknown, options?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncModifyOptions",
+									"canonicalReference": "@effected/jsonc!JsoncModifyOptions:interface"
+								},
+								{
+									"kind": "Content",
+									"text": " | undefined) => "
+								},
+								{
+									"kind": "Reference",
+									"text": "Effect.Effect",
+									"canonicalReference": "!Effect.Effect:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<readonly "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncEdit",
+									"canonicalReference": "@effected/jsonc!JsoncEdit:class"
+								},
+								{
+									"kind": "Content",
+									"text": "[], "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncModificationError",
+									"canonicalReference": "@effected/jsonc!JsoncModificationError:class"
+								},
+								{
+									"kind": "Content",
+									"text": ", never>"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "modify",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 12
+							},
+							"isStatic": true,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Interface",
+					"canonicalReference": "@effected/jsonc!JsoncModifyOptions:interface",
+					"docComment": "/**\n * Options for `JsoncModifier.modify`: formatting controls for generated text.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "interface JsoncModifyOptions "
+						}
+					],
+					"fileUrlPath": "src/JsoncModifier.ts",
+					"releaseTag": "Public",
+					"name": "JsoncModifyOptions",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "PropertySignature",
+							"canonicalReference": "@effected/jsonc!JsoncModifyOptions#formattingOptions:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "readonly formattingOptions?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncFormattingOptions",
+									"canonicalReference": "@effected/jsonc!JsoncFormattingOptions:class"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": true,
+							"releaseTag": "Public",
+							"name": "formattingOptions",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							}
+						}
+					],
+					"extendsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncNode_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link JsoncNode}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs. The recursive `children` field is annotated as `Schema.Schema<JsoncNode>` (not `typeof JsoncNode`) to keep the self-reference resolvable without a circular type error.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncNode_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncNode",
+							"canonicalReference": "@effected/jsonc!JsoncNode:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Struct",
+							"canonicalReference": "!Schema.Struct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  readonly type: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncNodeType",
+							"canonicalReference": "@effected/jsonc!JsoncNodeType:var"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  readonly offset: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly length: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly value: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Unknown>;\n  readonly colonOffset: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number>;\n  readonly children: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.$Array",
+							"canonicalReference": "!Schema.$Array:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.suspend",
+							"canonicalReference": "!Schema.suspend:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Schema",
+							"canonicalReference": "!Schema.Schema:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncNode",
+							"canonicalReference": "@effected/jsonc!JsoncNode:class"
+						},
+						{
+							"kind": "Content",
+							"text": ">>>>;\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/JsoncNode.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncNode_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 31
+					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncNode:class",
+					"docComment": "/**\n * An immutable JSONC AST node produced by `Jsonc.parseTree`.\n *\n * The `parent` field present in Microsoft's `jsonc-parser` is intentionally omitted: circular references would break structural equality, serialization and Schema encode/decode. Child relationships are expressed via `children`, and the recursive type is handled with `Schema.suspend`.\n *\n * - `type` — the `JsoncNodeType` discriminator. - `offset` / `length` — the node's span in the source (tight token-end discipline: spans never swallow trailing whitespace or comments). - `value` — the decoded JS value for leaf nodes; omitted for structural nodes. - `colonOffset` — for `property` nodes, the offset of the `:` separator. - `children` — child nodes for `object`, `array` and `property` nodes.\n *\n * Construct via `JsoncNode.make(...)`, never `new JsoncNode(...)`.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncNode extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncNode_base",
+							"canonicalReference": "@effected/jsonc!JsoncNode_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/JsoncNode.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncNode",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!JsoncNode#find:member(1)",
+							"docComment": "/**\n * Find a descendant node by path. String segments navigate object properties; number segments navigate array indices. Returns `Option.none()` when any segment cannot be resolved. Pure.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "find(path: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncPath",
+									"canonicalReference": "@effected/jsonc!JsoncPath:type"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncNode",
+									"canonicalReference": "@effected/jsonc!JsoncNode:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 7
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "path",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "find"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!JsoncNode#findAtOffset:member(1)",
+							"docComment": "/**\n * Find the innermost node whose span covers `offset`, or `Option.none()` if the offset is outside this subtree. Pure.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "findAtOffset(offset: "
+								},
+								{
+									"kind": "Content",
+									"text": "number"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncNode",
+									"canonicalReference": "@effected/jsonc!JsoncNode:class"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 7
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "offset",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "findAtOffset"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!JsoncNode#pathAt:member(1)",
+							"docComment": "/**\n * Return the JSON path to the innermost node covering `offset`, or `Option.none()` if the offset is outside this subtree. The inverse of {@link JsoncNode.find}. Pure.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "pathAt(offset: "
+								},
+								{
+									"kind": "Content",
+									"text": "number"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Option.Option",
+									"canonicalReference": "!Option.Option:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncPath",
+									"canonicalReference": "@effected/jsonc!JsoncPath:type"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 3,
+								"endIndex": 7
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "offset",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "pathAt"
+						},
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!JsoncNode#toValue:member(1)",
+							"docComment": "/**\n * Reconstruct the plain JavaScript value represented by this subtree. Pure and total — never fails, so no `Effect` wrapper.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "toValue(): "
+								},
+								{
+									"kind": "Content",
+									"text": "unknown"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": false,
+							"returnTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "toValue"
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "TypeAlias",
+					"canonicalReference": "@effected/jsonc!JsoncNodeType:type",
+					"docComment": "/**\n * The union of all JSONC AST node type string literals.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "type JsoncNodeType = "
+						},
+						{
+							"kind": "Content",
+							"text": "typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncNodeType",
+							"canonicalReference": "@effected/jsonc!JsoncNodeType:var"
+						},
+						{
+							"kind": "Content",
+							"text": ".Type"
+						},
+						{
+							"kind": "Content",
+							"text": ";"
+						}
+					],
+					"fileUrlPath": "src/JsoncNode.ts",
+					"releaseTag": "Public",
+					"name": "JsoncNodeType",
+					"typeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 4
+					}
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncNodeType:var",
+					"docComment": "/**\n * Discriminator values for JSONC AST node types: the JSON value types (`string`/`number`/`boolean`/`null`), the structural types (`object`/`array`) and the `property` key-value pair type.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncNodeType: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Literals",
+							"canonicalReference": "!Schema.Literals:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<readonly [\"object\", \"array\", \"property\", \"string\", \"number\", \"boolean\", \"null\"]>"
+						}
+					],
+					"fileUrlPath": "src/JsoncNode.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncNodeType",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 3
+					}
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncParseError_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link JsoncParseError}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncParseError_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseError",
+							"canonicalReference": "@effected/jsonc!JsoncParseError:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.TaggedStruct",
+							"canonicalReference": "!Schema.TaggedStruct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<\"JsoncParseError\", {\n  readonly errors: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.$Array",
+							"canonicalReference": "!Schema.$Array:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorDetail",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorDetail:class"
+						},
+						{
+							"kind": "Content",
+							"text": ">;\n  readonly input: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".String;\n}>, "
+						},
+						{
+							"kind": "Reference",
+							"text": "Cause.YieldableError",
+							"canonicalReference": "!Cause.YieldableError:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						}
+					],
+					"fileUrlPath": "src/Jsonc.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncParseError_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 15
+					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncParseError:class",
+					"docComment": "/**\n * Error-recovery parse failure: aggregates every {@link JsoncParseErrorDetail} encountered, so a single failure reports the whole batch. Raised by {@link Jsonc.parse}, {@link Jsonc.parseTree} and the decode direction of the schema factories.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncParseError extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseError_base",
+							"canonicalReference": "@effected/jsonc!JsoncParseError_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/Jsonc.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncParseError",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Property",
+							"canonicalReference": "@effected/jsonc!JsoncParseError#message:member",
+							"docComment": "",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "get message(): "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isReadonly": true,
+							"isOptional": false,
+							"releaseTag": "Public",
+							"name": "message",
+							"propertyTypeTokenRange": {
+								"startIndex": 1,
+								"endIndex": 2
+							},
+							"isStatic": false,
+							"isProtected": false,
+							"isAbstract": false
+						}
+					],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "TypeAlias",
+					"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:type",
+					"docComment": "/**\n * The union of all JSONC parse-error code string literals.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "type JsoncParseErrorCode = "
+						},
+						{
+							"kind": "Content",
+							"text": "typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorCode",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:var"
+						},
+						{
+							"kind": "Content",
+							"text": ".Type"
+						},
+						{
+							"kind": "Content",
+							"text": ";"
+						}
+					],
+					"fileUrlPath": "src/Jsonc.ts",
+					"releaseTag": "Public",
+					"name": "JsoncParseErrorCode",
+					"typeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 4
+					}
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:var",
+					"docComment": "/**\n * The single public parse-error code vocabulary. Not meant to be used directly — exported because it appears in the type of {@link JsoncParseErrorDetail_base}'s public members, which API Extractor must resolve.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncParseErrorCode: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Literals",
+							"canonicalReference": "!Schema.Literals:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<readonly [\"InvalidSymbol\", \"InvalidNumberFormat\", \"PropertyNameExpected\", \"ValueExpected\", \"ColonExpected\", \"CommaExpected\", \"CloseBraceExpected\", \"CloseBracketExpected\", \"EndOfFileExpected\", \"InvalidCommentToken\", \"UnexpectedEndOfComment\", \"UnexpectedEndOfString\", \"UnexpectedEndOfNumber\", \"InvalidUnicode\", \"InvalidEscapeCharacter\", \"InvalidCharacter\"]>"
+						}
+					],
+					"fileUrlPath": "src/JsoncNode.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncParseErrorCode",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 3
+					}
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncParseErrorDetail_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link JsoncParseErrorDetail}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncParseErrorDetail_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorDetail",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorDetail:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Struct",
+							"canonicalReference": "!Schema.Struct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  readonly code: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorCode",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:var"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  readonly offset: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly length: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly line: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly character: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/Jsonc.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncParseErrorDetail_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 17
+					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncParseErrorDetail:class",
+					"docComment": "/**\n * One recovered parse error: its `JsoncParseErrorCode` and its exact position (`offset`/`length`, plus zero-based `line`/`character`). A single {@link JsoncParseError} reports a batch of these.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncParseErrorDetail extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorDetail_base",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorDetail_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/Jsonc.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncParseErrorDetail",
+					"preserveMemberOrder": false,
+					"members": [],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncParseOptions_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link JsoncParseOptions}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncParseOptions_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseOptions",
+							"canonicalReference": "@effected/jsonc!JsoncParseOptions:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Struct",
+							"canonicalReference": "!Schema.Struct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  readonly disallowComments: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Boolean>;\n  readonly allowTrailingComma: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Boolean>;\n  readonly allowEmptyContent: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.optionalKey",
+							"canonicalReference": "!Schema.optionalKey:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Boolean>;\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/Jsonc.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncParseOptions_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 19
+					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncParseOptions:class",
+					"docComment": "/**\n * Options controlling parse behavior. All fields are omissible; absent fields resolve to `disallowComments` `false`, `allowTrailingComma` `true` (the deliberate JSONC-convention default, differing from Microsoft's parser) and `allowEmptyContent` `false`.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncParseOptions extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseOptions_base",
+							"canonicalReference": "@effected/jsonc!JsoncParseOptions_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/Jsonc.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncParseOptions",
+					"preserveMemberOrder": false,
+					"members": [],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "TypeAlias",
+					"canonicalReference": "@effected/jsonc!JsoncPath:type",
+					"docComment": "/**\n * An ordered sequence of {@link JsoncSegment} values describing a location within a JSONC document tree.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "type JsoncPath = "
+						},
+						{
+							"kind": "Reference",
+							"text": "ReadonlyArray",
+							"canonicalReference": "!ReadonlyArray:interface"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncSegment",
+							"canonicalReference": "@effected/jsonc!JsoncSegment:type"
+						},
+						{
+							"kind": "Content",
+							"text": ">"
+						},
+						{
+							"kind": "Content",
+							"text": ";"
+						}
+					],
+					"fileUrlPath": "src/JsoncNode.ts",
+					"releaseTag": "Public",
+					"name": "JsoncPath",
+					"typeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 5
+					}
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncRange_base:var",
+					"docComment": "/**\n * Schema-generated base class backing {@link JsoncRange}. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncRange_base: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Class",
+							"canonicalReference": "!Schema.Class:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<"
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncRange",
+							"canonicalReference": "@effected/jsonc!JsoncRange:class"
+						},
+						{
+							"kind": "Content",
+							"text": ", "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema.Struct",
+							"canonicalReference": "!Schema.Struct:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  readonly offset: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n  readonly length: typeof "
+						},
+						{
+							"kind": "Reference",
+							"text": "Schema",
+							"canonicalReference": "!unknown:member"
+						},
+						{
+							"kind": "Content",
+							"text": ".Number;\n}>, {}>"
+						}
+					],
+					"fileUrlPath": "src/JsoncNode.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncRange_base",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 11
+					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncRange:class",
+					"docComment": "/**\n * A range within a JSONC document, expressed as a zero-based character `offset` and a `length` in UTF-16 code units. Pass to `JsoncFormatter.format` to restrict formatting to a region.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncRange extends "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncRange_base",
+							"canonicalReference": "@effected/jsonc!JsoncRange_base"
+						},
+						{
+							"kind": "Content",
+							"text": " "
+						}
+					],
+					"fileUrlPath": "src/JsoncEdit.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncRange",
+					"preserveMemberOrder": false,
+					"members": [],
+					"extendsTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					},
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "TypeAlias",
+					"canonicalReference": "@effected/jsonc!JsoncSegment:type",
+					"docComment": "/**\n * A single path segment: a `string` for object property keys or a `number` for array indices.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "type JsoncSegment = "
+						},
+						{
+							"kind": "Content",
+							"text": "string | number"
+						},
+						{
+							"kind": "Content",
+							"text": ";"
+						}
+					],
+					"fileUrlPath": "dist/prod/npm/pkg/index.d.ts",
+					"releaseTag": "Public",
+					"name": "JsoncSegment",
+					"typeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 2
+					}
+				},
+				{
+					"kind": "Class",
+					"canonicalReference": "@effected/jsonc!JsoncVisitor:class",
+					"docComment": "/**\n * SAX-style JSONC visitor statics. Not instantiable.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "declare class JsoncVisitor "
+						}
+					],
+					"fileUrlPath": "src/JsoncVisitor.ts",
+					"releaseTag": "Public",
+					"isAbstract": false,
+					"name": "JsoncVisitor",
+					"preserveMemberOrder": false,
+					"members": [
+						{
+							"kind": "Method",
+							"canonicalReference": "@effected/jsonc!JsoncVisitor.visit:member(1)",
+							"docComment": "/**\n * Create a lazy `Stream` of `JsoncVisitorEvent` from JSONC text. Events are produced on demand, so combining with `Stream.take` allows efficient partial scans of large documents.\n *\n * @param text - The JSONC source to visit.\n *\n * @param options - Optional {@link JsoncParseOptions}; only comment handling is consulted.\n */\n",
+							"excerptTokens": [
+								{
+									"kind": "Content",
+									"text": "static visit(text: "
+								},
+								{
+									"kind": "Content",
+									"text": "string"
+								},
+								{
+									"kind": "Content",
+									"text": ", options?: "
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncParseOptions",
+									"canonicalReference": "@effected/jsonc!JsoncParseOptions:class"
+								},
+								{
+									"kind": "Content",
+									"text": "): "
+								},
+								{
+									"kind": "Reference",
+									"text": "Stream.Stream",
+									"canonicalReference": "!Stream.Stream:type"
+								},
+								{
+									"kind": "Content",
+									"text": "<"
+								},
+								{
+									"kind": "Reference",
+									"text": "JsoncVisitorEvent",
+									"canonicalReference": "@effected/jsonc!JsoncVisitorEvent:type"
+								},
+								{
+									"kind": "Content",
+									"text": ">"
+								},
+								{
+									"kind": "Content",
+									"text": ";"
+								}
+							],
+							"isStatic": true,
+							"returnTypeTokenRange": {
+								"startIndex": 5,
+								"endIndex": 9
+							},
+							"releaseTag": "Public",
+							"isProtected": false,
+							"overloadIndex": 1,
+							"parameters": [
+								{
+									"parameterName": "text",
+									"parameterTypeTokenRange": {
+										"startIndex": 1,
+										"endIndex": 2
+									},
+									"isOptional": false
+								},
+								{
+									"parameterName": "options",
+									"parameterTypeTokenRange": {
+										"startIndex": 3,
+										"endIndex": 4
+									},
+									"isOptional": true
+								}
+							],
+							"isOptional": false,
+							"isAbstract": false,
+							"name": "visit"
+						}
+					],
+					"implementsTokenRanges": []
+				},
+				{
+					"kind": "TypeAlias",
+					"canonicalReference": "@effected/jsonc!JsoncVisitorEvent:type",
+					"docComment": "/**\n * The discriminated union of JSONC visitor events. Each variant carries an `offset` and `length`; begin/property/literal events also carry `path` context, and `Error` events carry a `JsoncParseErrorCode`.\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "type JsoncVisitorEvent = "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum",
+							"canonicalReference": "!Data.TaggedEnum:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n  ObjectBegin: {\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  };\n  ObjectEnd: {\n    readonly offset: number;\n    readonly length: number;\n  };\n  ObjectProperty: {\n    readonly property: string;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  };\n  ArrayBegin: {\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  };\n  ArrayEnd: {\n    readonly offset: number;\n    readonly length: number;\n  };\n  LiteralValue: {\n    readonly value: unknown;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  };\n  Separator: {\n    readonly character: string;\n    readonly offset: number;\n    readonly length: number;\n  };\n  Comment: {\n    readonly offset: number;\n    readonly length: number;\n  };\n  Error: {\n    readonly code: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorCode",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    readonly offset: number;\n    readonly length: number;\n  };\n}>"
+						},
+						{
+							"kind": "Content",
+							"text": ";"
+						}
+					],
+					"fileUrlPath": "src/JsoncModifier.ts",
+					"releaseTag": "Public",
+					"name": "JsoncVisitorEvent",
+					"typeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 13
+					}
+				},
+				{
+					"kind": "Variable",
+					"canonicalReference": "@effected/jsonc!JsoncVisitorEvent:var",
+					"docComment": "/**\n * Constructors and matchers for the `JsoncVisitorEvent` union (e.g. `JsoncVisitorEvent.ObjectBegin({ offset, length, path })`, `JsoncVisitorEvent.$is(\"LiteralValue\")`).\n *\n * @public\n */\n",
+					"excerptTokens": [
+						{
+							"kind": "Content",
+							"text": "JsoncVisitorEvent: "
+						},
+						{
+							"kind": "Content",
+							"text": "{\n  readonly $is: <Tag extends \"ArrayBegin\" | \"ArrayEnd\" | \"Comment\" | \"Error\" | \"LiteralValue\" | \"ObjectBegin\" | \"ObjectEnd\" | \"ObjectProperty\" | \"Separator\">(tag: Tag) => (u: unknown) => "
+						},
+						{
+							"kind": "Reference",
+							"text": "u",
+							"canonicalReference": "@effected/jsonc!~u"
+						},
+						{
+							"kind": "Content",
+							"text": " is "
+						},
+						{
+							"kind": "Reference",
+							"text": "Extract",
+							"canonicalReference": "!Extract:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ArrayBegin\";\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  }, {\n    readonly _tag: Tag;\n  }> | "
+						},
+						{
+							"kind": "Reference",
+							"text": "Extract",
+							"canonicalReference": "!Extract:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ArrayEnd\";\n    readonly offset: number;\n    readonly length: number;\n  }, {\n    readonly _tag: Tag;\n  }> | "
+						},
+						{
+							"kind": "Reference",
+							"text": "Extract",
+							"canonicalReference": "!Extract:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"Comment\";\n    readonly offset: number;\n    readonly length: number;\n  }, {\n    readonly _tag: Tag;\n  }> | "
+						},
+						{
+							"kind": "Reference",
+							"text": "Extract",
+							"canonicalReference": "!Extract:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"Error\";\n    readonly code: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorCode",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    readonly offset: number;\n    readonly length: number;\n  }, {\n    readonly _tag: Tag;\n  }> | "
+						},
+						{
+							"kind": "Reference",
+							"text": "Extract",
+							"canonicalReference": "!Extract:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"LiteralValue\";\n    readonly value: unknown;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  }, {\n    readonly _tag: Tag;\n  }> | "
+						},
+						{
+							"kind": "Reference",
+							"text": "Extract",
+							"canonicalReference": "!Extract:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ObjectBegin\";\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  }, {\n    readonly _tag: Tag;\n  }> | "
+						},
+						{
+							"kind": "Reference",
+							"text": "Extract",
+							"canonicalReference": "!Extract:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ObjectEnd\";\n    readonly offset: number;\n    readonly length: number;\n  }, {\n    readonly _tag: Tag;\n  }> | "
+						},
+						{
+							"kind": "Reference",
+							"text": "Extract",
+							"canonicalReference": "!Extract:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ObjectProperty\";\n    readonly property: string;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  }, {\n    readonly _tag: Tag;\n  }> | "
+						},
+						{
+							"kind": "Reference",
+							"text": "Extract",
+							"canonicalReference": "!Extract:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"Separator\";\n    readonly character: string;\n    readonly offset: number;\n    readonly length: number;\n  }, {\n    readonly _tag: Tag;\n  }>;\n  readonly $match: {\n    <Cases extends {\n      readonly ArrayBegin: (args: {\n        readonly _tag: \"ArrayBegin\";\n        readonly offset: number;\n        readonly length: number;\n        readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      }) => any;\n      readonly ArrayEnd: (args: {\n        readonly _tag: \"ArrayEnd\";\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n      readonly Comment: (args: {\n        readonly _tag: \"Comment\";\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n      readonly Error: (args: {\n        readonly _tag: \"Error\";\n        readonly code: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorCode",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n      readonly LiteralValue: (args: {\n        readonly _tag: \"LiteralValue\";\n        readonly value: unknown;\n        readonly offset: number;\n        readonly length: number;\n        readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      }) => any;\n      readonly ObjectBegin: (args: {\n        readonly _tag: \"ObjectBegin\";\n        readonly offset: number;\n        readonly length: number;\n        readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      }) => any;\n      readonly ObjectEnd: (args: {\n        readonly _tag: \"ObjectEnd\";\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n      readonly ObjectProperty: (args: {\n        readonly _tag: \"ObjectProperty\";\n        readonly property: string;\n        readonly offset: number;\n        readonly length: number;\n        readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      }) => any;\n      readonly Separator: (args: {\n        readonly _tag: \"Separator\";\n        readonly character: string;\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n    }>(cases: Cases): (value: {\n      readonly _tag: \"ArrayBegin\";\n      readonly offset: number;\n      readonly length: number;\n      readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    } | {\n      readonly _tag: \"ArrayEnd\";\n      readonly offset: number;\n      readonly length: number;\n    } | {\n      readonly _tag: \"Comment\";\n      readonly offset: number;\n      readonly length: number;\n    } | {\n      readonly _tag: \"Error\";\n      readonly code: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorCode",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      readonly offset: number;\n      readonly length: number;\n    } | {\n      readonly _tag: \"LiteralValue\";\n      readonly value: unknown;\n      readonly offset: number;\n      readonly length: number;\n      readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    } | {\n      readonly _tag: \"ObjectBegin\";\n      readonly offset: number;\n      readonly length: number;\n      readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    } | {\n      readonly _tag: \"ObjectEnd\";\n      readonly offset: number;\n      readonly length: number;\n    } | {\n      readonly _tag: \"ObjectProperty\";\n      readonly property: string;\n      readonly offset: number;\n      readonly length: number;\n      readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    } | {\n      readonly _tag: \"Separator\";\n      readonly character: string;\n      readonly offset: number;\n      readonly length: number;\n    }) => import(\"effect/Unify\").Unify<"
+						},
+						{
+							"kind": "Reference",
+							"text": "ReturnType",
+							"canonicalReference": "!ReturnType:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<Cases[\"ArrayBegin\" | \"ArrayEnd\" | \"Comment\" | \"Error\" | \"LiteralValue\" | \"ObjectBegin\" | \"ObjectEnd\" | \"ObjectProperty\" | \"Separator\"]>>;\n    <Cases extends {\n      readonly ArrayBegin: (args: {\n        readonly _tag: \"ArrayBegin\";\n        readonly offset: number;\n        readonly length: number;\n        readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      }) => any;\n      readonly ArrayEnd: (args: {\n        readonly _tag: \"ArrayEnd\";\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n      readonly Comment: (args: {\n        readonly _tag: \"Comment\";\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n      readonly Error: (args: {\n        readonly _tag: \"Error\";\n        readonly code: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorCode",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n      readonly LiteralValue: (args: {\n        readonly _tag: \"LiteralValue\";\n        readonly value: unknown;\n        readonly offset: number;\n        readonly length: number;\n        readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      }) => any;\n      readonly ObjectBegin: (args: {\n        readonly _tag: \"ObjectBegin\";\n        readonly offset: number;\n        readonly length: number;\n        readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      }) => any;\n      readonly ObjectEnd: (args: {\n        readonly _tag: \"ObjectEnd\";\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n      readonly ObjectProperty: (args: {\n        readonly _tag: \"ObjectProperty\";\n        readonly property: string;\n        readonly offset: number;\n        readonly length: number;\n        readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      }) => any;\n      readonly Separator: (args: {\n        readonly _tag: \"Separator\";\n        readonly character: string;\n        readonly offset: number;\n        readonly length: number;\n      }) => any;\n    }>(value: {\n      readonly _tag: \"ArrayBegin\";\n      readonly offset: number;\n      readonly length: number;\n      readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    } | {\n      readonly _tag: \"ArrayEnd\";\n      readonly offset: number;\n      readonly length: number;\n    } | {\n      readonly _tag: \"Comment\";\n      readonly offset: number;\n      readonly length: number;\n    } | {\n      readonly _tag: \"Error\";\n      readonly code: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorCode",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n      readonly offset: number;\n      readonly length: number;\n    } | {\n      readonly _tag: \"LiteralValue\";\n      readonly value: unknown;\n      readonly offset: number;\n      readonly length: number;\n      readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    } | {\n      readonly _tag: \"ObjectBegin\";\n      readonly offset: number;\n      readonly length: number;\n      readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    } | {\n      readonly _tag: \"ObjectEnd\";\n      readonly offset: number;\n      readonly length: number;\n    } | {\n      readonly _tag: \"ObjectProperty\";\n      readonly property: string;\n      readonly offset: number;\n      readonly length: number;\n      readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    } | {\n      readonly _tag: \"Separator\";\n      readonly character: string;\n      readonly offset: number;\n      readonly length: number;\n    }, cases: Cases): import(\"effect/Unify\").Unify<"
+						},
+						{
+							"kind": "Reference",
+							"text": "ReturnType",
+							"canonicalReference": "!ReturnType:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<Cases[\"ArrayBegin\" | \"ArrayEnd\" | \"Comment\" | \"Error\" | \"LiteralValue\" | \"ObjectBegin\" | \"ObjectEnd\" | \"ObjectProperty\" | \"Separator\"]>>;\n  };\n  readonly ArrayBegin: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum.ConstructorFrom",
+							"canonicalReference": "!Data.TaggedEnum.ConstructorFrom:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ArrayBegin\";\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  }, \"_tag\">;\n  readonly ArrayEnd: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum.ConstructorFrom",
+							"canonicalReference": "!Data.TaggedEnum.ConstructorFrom:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ArrayEnd\";\n    readonly offset: number;\n    readonly length: number;\n  }, \"_tag\">;\n  readonly Comment: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum.ConstructorFrom",
+							"canonicalReference": "!Data.TaggedEnum.ConstructorFrom:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"Comment\";\n    readonly offset: number;\n    readonly length: number;\n  }, \"_tag\">;\n  readonly Error: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum.ConstructorFrom",
+							"canonicalReference": "!Data.TaggedEnum.ConstructorFrom:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"Error\";\n    readonly code: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncParseErrorCode",
+							"canonicalReference": "@effected/jsonc!JsoncParseErrorCode:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n    readonly offset: number;\n    readonly length: number;\n  }, \"_tag\">;\n  readonly LiteralValue: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum.ConstructorFrom",
+							"canonicalReference": "!Data.TaggedEnum.ConstructorFrom:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"LiteralValue\";\n    readonly value: unknown;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  }, \"_tag\">;\n  readonly ObjectBegin: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum.ConstructorFrom",
+							"canonicalReference": "!Data.TaggedEnum.ConstructorFrom:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ObjectBegin\";\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  }, \"_tag\">;\n  readonly ObjectEnd: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum.ConstructorFrom",
+							"canonicalReference": "!Data.TaggedEnum.ConstructorFrom:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ObjectEnd\";\n    readonly offset: number;\n    readonly length: number;\n  }, \"_tag\">;\n  readonly ObjectProperty: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum.ConstructorFrom",
+							"canonicalReference": "!Data.TaggedEnum.ConstructorFrom:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"ObjectProperty\";\n    readonly property: string;\n    readonly offset: number;\n    readonly length: number;\n    readonly path: "
+						},
+						{
+							"kind": "Reference",
+							"text": "JsoncPath",
+							"canonicalReference": "@effected/jsonc!JsoncPath:type"
+						},
+						{
+							"kind": "Content",
+							"text": ";\n  }, \"_tag\">;\n  readonly Separator: "
+						},
+						{
+							"kind": "Reference",
+							"text": "Data.TaggedEnum.ConstructorFrom",
+							"canonicalReference": "!Data.TaggedEnum.ConstructorFrom:type"
+						},
+						{
+							"kind": "Content",
+							"text": "<{\n    readonly _tag: \"Separator\";\n    readonly character: string;\n    readonly offset: number;\n    readonly length: number;\n  }, \"_tag\">;\n}"
+						}
+					],
+					"fileUrlPath": "src/JsoncVisitor.ts",
+					"isReadonly": true,
+					"releaseTag": "Public",
+					"name": "JsoncVisitorEvent",
+					"variableTypeTokenRange": {
+						"startIndex": 1,
+						"endIndex": 104
+					}
+				}
+			]
+		}
+	]
+}

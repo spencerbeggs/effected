@@ -1,0 +1,60 @@
+---
+title: "JsoncNode | Class | API | @effected/jsonc"
+description: "An immutable JSONC AST node produced by `Jsonc.parseTree`. The `parent` field present in Microsoft's `jsonc-parser` is intentionally omitted: circular references would break structural equality, serialization and Schema encode/decode. Child relationships are expressed via `children`, and the recursive type is handled with `Schema.suspend`. - `type` — the `JsoncNodeType` discriminator. - `offset` / `length` — the node's span in the source (tight token-end discipline: spans never swallow trailing whitespace or comments). - `value` — the decoded JS value for leaf nodes; omitted for structural nodes. - `colonOffset` — for `property` nodes, the offset of the `:` separator. - `children` — child nodes for `object`, `array` and `property` nodes. Construct via `JsoncNode.make(...)`, never `new JsoncNode(...)`."
+head:
+  - - meta
+    - property: "og:url"
+      content: "https://effected.spencerbeg.gs/jsonc/api/class/jsoncnode"
+  - - meta
+    - property: "og:type"
+      content: article
+  - - meta
+    - property: "og:description"
+      content: "An immutable JSONC AST node produced by `Jsonc.parseTree`. The `parent` field present in Microsoft's `jsonc-parser` is intentionally omitted: circular references would break structural equality, serialization and Schema encode/decode. Child relationships are expressed via `children`, and the recursive type is handled with `Schema.suspend`. - `type` — the `JsoncNodeType` discriminator. - `offset` / `length` — the node's span in the source (tight token-end discipline: spans never swallow trailing whitespace or comments). - `value` — the decoded JS value for leaf nodes; omitted for structural nodes. - `colonOffset` — for `property` nodes, the offset of the `:` separator. - `children` — child nodes for `object`, `array` and `property` nodes. Construct via `JsoncNode.make(...)`, never `new JsoncNode(...)`."
+  - - meta
+    - property: "og:image"
+      content: "https://effected.spencerbeg.gs/og-image.png"
+  - - meta
+    - property: "og:image:alt"
+      content: "@effected/jsonc - @effected/jsonc API Documentation"
+  - - meta
+    - property: "article:published_time"
+      content: "2026-07-07T09:03:50.252Z"
+  - - meta
+    - property: "article:modified_time"
+      content: "2026-07-07T09:03:50.252Z"
+  - - meta
+    - property: "article:section"
+      content: Classes
+  - - meta
+    - property: "article:tag"
+      content: TypeScript
+  - - meta
+    - property: "article:tag"
+      content: API
+  - - meta
+    - property: "article:tag"
+      content: "@effected/jsonc"
+---
+
+
+import { SourceCode } from "@rspress/core/theme";
+import { ParametersTable } from "rspress-plugin-api-extractor/runtime";
+import { ApiSignature, ApiMember, ApiExample } from "rspress-plugin-api-extractor/runtime";
+
+# JsoncNode
+
+An immutable JSONC AST node produced by `Jsonc.parseTree`. The `parent` field present in Microsoft's `jsonc-parser` is intentionally omitted: circular references would break structural equality, serialization and Schema encode/decode. Child relationships are expressed via `children`, and the recursive type is handled with `Schema.suspend`. - `type` — the `JsoncNodeType` discriminator. - `offset` / `length` — the node's span in the source (tight token-end discipline: spans never swallow trailing whitespace or comments). - `value` — the decoded JS value for leaf nodes; omitted for structural nodes. - `colonOffset` — for `property` nodes, the offset of the `:` separator. - `children` — child nodes for `object`, `array` and `property` nodes. Construct via `JsoncNode.make(...)`, never `new JsoncNode(...)`.
+
+<ApiSignature code={"class JsoncNode extends JsoncNode_base {\n    find(path: JsoncPath): Option.Option<JsoncNode>;\n    findAtOffset(offset: number): Option.Option<JsoncNode>;\n    pathAt(offset: number): Option.Option<JsoncPath>;\n    toValue(): unknown;\n}"} source={"class JsoncNode extends JsoncNode_base {\n    find(path: JsoncPath): Option.Option<JsoncNode>;\n    findAtOffset(offset: number): Option.Option<JsoncNode>;\n    pathAt(offset: number): Option.Option<JsoncPath>;\n    toValue(): unknown;\n}"} apiScope={"jsonc"} />
+
+## Methods
+
+<ApiMember code={"find(path: JsoncPath): Option.Option<JsoncNode>;"} source={"class JsoncNode extends JsoncNode_base {\nfind(path: JsoncPath): Option.Option<JsoncNode>;\n}"} apiScope={"jsonc"} memberName={"find"} summary={"Find a descendant node by path. String segments navigate object properties; number segments navigate array indices. Returns `Option.none()` when any segment cannot be resolved. Pure."} id={"find"} hasParameters={false} />
+
+<ApiMember code={"findAtOffset(offset: number): Option.Option<JsoncNode>;"} source={"class JsoncNode extends JsoncNode_base {\nfindAtOffset(offset: number): Option.Option<JsoncNode>;\n}"} apiScope={"jsonc"} memberName={"findAtOffset"} summary={"Find the innermost node whose span covers `offset`, or `Option.none()` if the offset is outside this subtree. Pure."} id={"findatoffset"} hasParameters={false} />
+
+<ApiMember code={"pathAt(offset: number): Option.Option<JsoncPath>;"} source={"class JsoncNode extends JsoncNode_base {\npathAt(offset: number): Option.Option<JsoncPath>;\n}"} apiScope={"jsonc"} memberName={"pathAt"} summary={"Return the JSON path to the innermost node covering `offset`, or `Option.none()` if the offset is outside this subtree. The inverse of [JsoncNode](/jsonc/api/class/jsoncnode). Pure."} id={"pathat"} hasParameters={false} />
+
+<ApiMember code={"toValue(): unknown;"} source={"class JsoncNode extends JsoncNode_base {\ntoValue(): unknown;\n}"} apiScope={"jsonc"} memberName={"toValue"} summary={"Reconstruct the plain JavaScript value represented by this subtree. Pure and total — never fails, so no `Effect` wrapper."} id={"tovalue"} hasParameters={false} />
+

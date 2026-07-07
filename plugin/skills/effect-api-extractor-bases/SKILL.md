@@ -49,6 +49,15 @@ Rules that are each load-bearing:
   type 'any' because it is referenced ... in its own initializer`. Copy the
   factory's return-type shape from the installed `effect` `.d.ts`
   (`Schema.Class<Self, Fields, Inherited>`, `Context.ServiceClass<...>`).
+- **Recursive classes: annotate self-references as `Schema.Schema<Self>`.**
+  For a `Schema.suspend`-recursive class (e.g. an AST node whose `children`
+  field references itself), copying the factory return type verbatim makes
+  `typeof Self` circular (`TS2506` "referenced in its own base expression"),
+  and `Schema.Codec<Self>` fails because Encoded (plain struct) differs from
+  Type (class with methods). Use `Schema.Schema<Self>` for the suspend
+  callback's return type AND the self-referential field inside the base
+  annotation — lazy, type-only, and still yields a zero-warning
+  `issues.json` (proven on @effected/jsonc's `JsoncNode_base`).
 - **Re-export every `X_base` from `src/index.ts`.** API Extractor only sees
   symbols reachable from the entry point; exporting from the defining module
   alone still reports forgotten-export.

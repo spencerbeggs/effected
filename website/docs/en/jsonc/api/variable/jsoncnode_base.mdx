@@ -1,0 +1,50 @@
+---
+title: "JsoncNode_base | Variable | API | @effected/jsonc"
+description: "Schema-generated base class backing JsoncNode. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs. The recursive `children` field is annotated as `Schema.Schema<JsoncNode>` (not `typeof JsoncNode`) to keep the self-reference resolvable without a circular type error."
+head:
+  - - meta
+    - property: "og:url"
+      content: "https://effected.spencerbeg.gs/jsonc/api/variable/jsoncnode_base"
+  - - meta
+    - property: "og:type"
+      content: article
+  - - meta
+    - property: "og:description"
+      content: "Schema-generated base class backing JsoncNode. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs. The recursive `children` field is annotated as `Schema.Schema<JsoncNode>` (not `typeof JsoncNode`) to keep the self-reference resolvable without a circular type error."
+  - - meta
+    - property: "og:image"
+      content: "https://effected.spencerbeg.gs/og-image.png"
+  - - meta
+    - property: "og:image:alt"
+      content: "@effected/jsonc - @effected/jsonc API Documentation"
+  - - meta
+    - property: "article:published_time"
+      content: "2026-07-07T09:03:50.252Z"
+  - - meta
+    - property: "article:modified_time"
+      content: "2026-07-07T09:03:50.252Z"
+  - - meta
+    - property: "article:section"
+      content: Variables
+  - - meta
+    - property: "article:tag"
+      content: TypeScript
+  - - meta
+    - property: "article:tag"
+      content: API
+  - - meta
+    - property: "article:tag"
+      content: "@effected/jsonc"
+---
+
+
+import { SourceCode } from "@rspress/core/theme";
+import { ParametersTable } from "rspress-plugin-api-extractor/runtime";
+import { ApiSignature, ApiExample } from "rspress-plugin-api-extractor/runtime";
+
+# JsoncNode_base
+
+Schema-generated base class backing JsoncNode. Not meant to be referenced directly — named and exported only so API Extractor can resolve the heritage clause of the class it backs. The recursive `children` field is annotated as `Schema.Schema<JsoncNode>` (not `typeof JsoncNode`) to keep the self-reference resolvable without a circular type error.
+
+<ApiSignature code={"JsoncNode_base: Schema.Class<JsoncNode, Schema.Struct<{\n  readonly type: typeof JsoncNodeType;\n  readonly offset: typeof Schema.Number;\n  readonly length: typeof Schema.Number;\n  readonly value: Schema.optionalKey<typeof Schema.Unknown>;\n  readonly colonOffset: Schema.optionalKey<typeof Schema.Number>;\n  readonly children: Schema.optionalKey<Schema.$Array<Schema.suspend<Schema.Schema<JsoncNode>>>>;\n}>, {}>"} source={"JsoncNode_base: Schema.Class<JsoncNode, Schema.Struct<{\n  readonly type: typeof JsoncNodeType;\n  readonly offset: typeof Schema.Number;\n  readonly length: typeof Schema.Number;\n  readonly value: Schema.optionalKey<typeof Schema.Unknown>;\n  readonly colonOffset: Schema.optionalKey<typeof Schema.Number>;\n  readonly children: Schema.optionalKey<Schema.$Array<Schema.suspend<Schema.Schema<JsoncNode>>>>;\n}>, {}>"} apiScope={"jsonc"} />
+
