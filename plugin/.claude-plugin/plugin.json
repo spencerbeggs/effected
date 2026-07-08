@@ -1,6 +1,6 @@
 {
 	"name": "effective",
-	"description": "Effect v4 development skills distilled from the @effected package migrations — construct mappings, Schema.Class domain-model patterns, and toolchain idioms",
+	"description": "Effect v4 development skills, specialist subagents (developer, reviewer, migrator), and a session briefing — distilled from the @effected package migrations and the official Effect-TS v4 guides: Schema-as-classes, services & layers, core idioms, observability, testing, the v3→v4 migration reference, and API-surface/hardening discipline",
 	"version": "0.0.0",
 	"author": {
 		"name": "C. Spencer Beggs",
