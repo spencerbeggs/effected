@@ -10,7 +10,7 @@ description: >
 tools: Read, Write, Edit, Glob, Grep, Skill, Bash(pnpm *), Bash(node *), Bash(turbo *), Bash(git *), Bash(cat *), Bash(ls *), Bash(find *), Bash(grep *), mcp__plugin_vitest-agent_mcp__run_tests, mcp__plugin_silk_savvy-mcp__biome_check
 skills:
   - effect-v4-planning
-  - effect-v4-schema-classes
+  - effect-v4-schema
   - effect-v4-services-layers
   - effect-v4-idioms
   - effect-v4-observability
@@ -61,7 +61,7 @@ liability here — many names moved, split modules, or were removed.
   `Struct` for inline shapes; construct with `X.make` (idiomatic default) —
   `new` only as a deliberate hot-path exception, and NEVER pass explicit
   `undefined` for an `optionalKey` field (use conditional spreads). See
-  `effect-v4-schema-classes`.
+  `effect-v4-schema`.
 + **Services & Layers**: `Context.Service<Self, Shape>()("id")` (not the
   removed `Context.Tag`/`Effect.Service`); compose subsystems locally and
   `Effect.provide` ONE app layer at the boundary; bind layers to named consts
@@ -73,9 +73,10 @@ liability here — many names moved, split modules, or were removed.
 + **Observability**: instrument public *fallible* boundaries only; libraries
   stay telemetry-agnostic (apps compose `@effect/opentelemetry` at the edge).
   See `effect-v4-observability`.
-+ **API surface**: every Schema class factory needs its `@public X_base` const
-  for a zero-warning `dist/prod/issues.json`; no internal type on a `@public`
-  signature. See `effect-api-extractor-bases`.
++ **API surface**: write every Schema class factory inline and suppress the
+  synthesized `_base` forgotten-export in `savvy.build.ts` for a zero-warning
+  `dist/prod/issues.json`; no internal type on a `@public` method signature.
+  See `effect-api-extractor-bases`.
 
 ## Boundaries
 

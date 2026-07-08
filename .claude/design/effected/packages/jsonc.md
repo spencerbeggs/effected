@@ -12,6 +12,8 @@ related:
   - ../migration-playbook.md
   - ../package-inventory.md
   - semver.md
+  - package-json.md
+  - npm.md
 ---
 
 # @effected/jsonc design

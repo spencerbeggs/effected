@@ -11,7 +11,7 @@ four design pillars, then makes you emit a compact **design summary** and get
 buy-in **before** any implementation code exists.
 
 Why this skill exists: strong, skill-equipped agents — ones that already know the
-`X_base` idiom, the layer-memoization discipline, `Clock` for testability — still
+api-extractor-bases idiom, the layer-memoization discipline, `Clock` for testability — still
 dive straight to code, rationalize the decisions afterward, and **silently drop
 whole pillars** (observability is the usual casualty). The mechanism that stops
 that is not willpower; it is the required-slot summary below. You cannot leave the
@@ -40,7 +40,7 @@ Observability row blank.
 Each pillar: the decisions to make, the idiomatic ruling, and the skill that owns
 the mechanics. Consult the linked skill; do not re-derive it here.
 
-### Pillar 1 — Data types & errors → `effect-v4-schema-classes`, `effect-v4-idioms`, `hardening-a-parser-port`
+### Pillar 1 — Data types & errors → `effect-v4-schema`, `effect-v4-idioms`, `hardening-a-parser-port`
 
 **Schemas.** Struct-vs-Class (Struct is the default; Class for behavior,
 equality, or a nominal domain type); optionality (`optionalKey` vs `optional` vs

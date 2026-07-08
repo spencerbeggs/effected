@@ -29,6 +29,13 @@ Argument order differs from v3: **type params first** via
 `Context.Service<Self, Shape>()`, **then** the id string via `("Database")`.
 (v3 was `Context.Tag("Database")<Self, Shape>()` — the id moved to the end.)
 
+The `Database` form above — `Context.Service<Self, Shape>()("id")` with **no
+`make` option** — is the **contract-only** service: it declares a shape but
+bakes in no default impl. There is no `.layer` to inherit; wire it with a
+separate `Layer.succeed(Database, { query: … })` bound to a named `const` (first
+boundary port). Reach for it when the implementation is supplied at the edge (or
+differs per environment) rather than owned by the service.
+
 **Shape-inferred `make` form** — implementation and API stay together, TS
 derives the shape. Prefer it when the impl is small; prefer the explicit
 generic shape when you want the contract stated before the code:
@@ -72,6 +79,15 @@ value:
 Database.use((db) => db.query("SELECT 1")); // Effect<string, never, Database>
 Config.useSync((c) => c.url);               // pure callback ⇒ Effect<string, never, Config>
 ```
+
+`use` takes an effectful callback and returns `Effect<A, E, R | Self>`;
+`useSync` takes a **pure** callback and returns `Effect<A, never, Self>` (it just
+lets the accessor body be synchronous — both still return an `Effect`). The v3
+proxy accessors weren't merely renamed; they were removed because the mapped-type
+proxy **erased generics** — a `get<T>(key): Effect<T>` collapsed to
+`Effect<unknown>` and overloads were lost. `use`/`useSync` preserve the real
+method signatures, which is the other reason to prefer them (or `yield*`) over
+reaching for a v3-style accessor.
 
 For a config knob / feature flag with a default (not a full API), use
 `Context.Reference<T>(id, { defaultValue: () => ... })` instead of a
@@ -134,6 +150,14 @@ const AppLayer = Layer.mergeAll(DbSubsystem, HttpLayer).pipe(Layer.provide(Telem
 
 Effect.runPromise(program.pipe(Effect.provide(AppLayer))); // provide at the OUTERMOST edge
 ```
+
+> **Cycle-avoidance (first boundary port):** put a composite layer that merges
+> two concept modules — e.g. `Default = Layer.mergeAll(A.noop, B.noop)` — in
+> `index.ts`, not in one of the concept modules. If it lived in module `A`, and
+> `B` imports `A`, the merge would pull `A → B → A` into a cycle
+> (`noImportCycles` is an error here). The entrypoint already depends on both
+> concept modules, so hanging the composite there keeps the concept modules
+> import-cycle-free.
 
 Business logic *requires* services (they stay in `R`); composition happens
 in layers; `Effect.provide` happens at the app / test entry point.

@@ -1,19 +1,19 @@
----
-name: effect-v4-schema-classes
-description: Use when designing an Effect v4 Schema domain model — the Class-vs-Struct decision, fields & optionality, checks/refine/makeFilter, tagged unions, transformations & codecs (FromString statics via decodeTo), make-vs-new construction, deriving instead of duplicating, brand/Opaque scalars, derived tooling (toArbitrary/toJsonSchemaDocument/…), and custom Equal/Hash. Covers the idiomatic v4 way plus the traps that only surface at test or property-test time (hash fast-path, lookahead regex, non-canonical field models). Verify every identifier against installed effect, not memory.
----
+# Schema house style — worked patterns
 
-# Schema domain-model patterns (Effect v4)
+The `@effected` house patterns for Effect v4 `Schema`: the opinionated defaults
+and the traps that only surface at test or property-test time. This is the depth
+behind the **Do this, not this** rules in the `effect-v4-schema` `SKILL.md` — read
+those for the at-a-glance directives, come here for the worked examples and the
+reasoning.
 
-The class IS the schema: one `Schema.Class` carries fields, validation,
-methods, statics, and derived tooling (`toArbitrary`, `toEquivalence`,
+The class IS the schema: one `Schema.Class` carries fields, validation, methods,
+statics, and derived tooling (`toArbitrary`, `toEquivalence`,
 `toJsonSchemaDocument`) in a single artifact. These patterns keep that artifact
-idiomatic and sound. Everything below is verified against
-`effect@4.0.0-beta.93`; v4 betas move fast, so probe anything not shown here
-before writing it (`node --input-type=module -e "import * as S from
-'effect/Schema'; console.log(typeof S.X)"`). For a v3→v4 name lookup, see the
-`effect-v4-construct-map` skill — this skill teaches the idiomatic v4 shape, not
-the rename table.
+idiomatic and sound. Everything below is verified against `effect@4.0.0-beta.93`;
+v4 betas move fast, so probe anything not shown here before writing it
+(`node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)"`).
+For a v3→v4 name lookup, see `effect-v4-construct-map`; for the canonical
+upstream detail on any construct, see the vendored `references/` in this skill.
 
 ## Class vs Struct: the first decision
 
@@ -62,6 +62,15 @@ never pass an explicit `undefined` for a `Schema.optionalKey` field (a *present*
 `new Node({ offset, ...(anchor !== undefined ? { anchor } : {}) })`. See
 `effect-v4-construct-map` for the full construction/validation semantics.
 
+**Instances are NOT `Pipeable` in v4** (first boundary port). The factory's
+instance type is `S["Type"] & Inherited` — the decoded record plus any brand,
+neither of which declares `Pipeable`. A runtime `.pipe` method exists on the
+prototype, so it *runs*, but tsgo rejects instance `.pipe(...)`. If you want
+pipeable instances — e.g. to call a dual-signature `Function.dual` static
+pipeably (`node.pipe(Node.move(2))`) — retain the manual `Pipeable` overload
+block on the class (the `pipe(...args) { return pipeArguments(this, args) }`
+member) so the instance type advertises it.
+
 ## Fields & optionality
 
 - `Schema.optionalKey(schema)` → exact optional **property**; the key may be
@@ -103,6 +112,8 @@ Three distinct tools — pick by intent:
   `isFinite`, `isMinLength`, `isMaxLength`, `isLengthBetween`, `isPattern`,
   `isNonEmpty`, `isUUID`, `isULID`, `isCapitalized`. (`positive`/`negative`/
   `nonNegative`/`nonPositive` were **removed** — compose `isGreaterThan(0)` etc.)
+  Match the bounds to what your parser enforces (safe integers), or a
+  `make`-constructed value can print a string the parser then rejects.
 
 - **Type-narrowing** → `Schema.refine(refinement)` (v3 `filter(refinement)`):
 
@@ -285,6 +296,29 @@ const UserId = Schema.String.pipe(Schema.brand("UserId")); // nominal refinement
 // Schema.Opaque — opaque schema-backed type, same runtime shape
 ```
 
+**A branded scalar that also needs a statics namespace** (first boundary port):
+a `const` brand schema and a TS `namespace` of the same name **cannot merge** (a
+namespace only merges with a class/function/enum, never a `const`). Attach the
+statics with `Object.assign` instead, and keep two typing rules straight:
+
+```ts
+// leave the brand const type-inferred — an explicit annotation would name the
+// private Schema.filter internals:
+const PackageName = Object.assign(
+ Schema.String.pipe(Schema.brand("PackageName")),
+ { of: (s: string): PackageName => /* … */ } satisfies PackageNameStatics,
+);
+// type the EXPORTED brand so @public doesn't leak the private brand const:
+export type PackageName = string & Brand.Brand<"PackageName">;
+```
+
+- Don't annotate the brand `const` — inference keeps the private `Schema.filter`
+  type out of the public surface; an explicit annotation drags it in.
+- `satisfies` the statics object against an interface so the shape is checked
+  without widening.
+- Export the type as `string & Brand.Brand<"Name">`, not `typeof PackageName`,
+  so the `@public` type is clean.
+
 ## Derived tooling — exact names
 
 From any schema (the class included):
@@ -338,20 +372,6 @@ Then the property test is one honest line of intent:
 ```ts
 it.effect.prop("round-trips decode(encode(v))", [SemVer], ([v]) => /* … */);
 ```
-
-## Integer fields
-
-`Schema.Number` alone accepts anything numeric. For version-like components:
-
-```ts
-const nonNegativeInteger = Schema.Number.check(
- Schema.isInt(),
- Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
-);
-```
-
-Match the schema bounds to what your parser enforces (safe integers), or
-`make`-constructed values can print strings the parser rejects.
 
 ## Watch the import graph when placing statics
 

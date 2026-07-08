@@ -128,11 +128,14 @@ Effect.map(Option.some(42).asEffect(), (n) => n + 1)
 Define errors as `Schema.TaggedErrorClass` (see `effect-v4-construct-map` for
 the full migration row). The payoff at the call site: an instance is yieldable —
 `yield* new MyError({...})` fails the effect — and it is `instanceof Error`.
-Capture unknown throwables with a `Schema.Defect` field:
+Capture unknown throwables with a `Schema.Defect()` field — `Schema.Defect` is a
+**callable** in beta.93, not a bare schema value. The bare `cause: Schema.Defect`
+typechecks but throws at construction (`Cannot read properties of undefined
+(reading 'encoding')`); you must call it:
 
 ```ts
 class ParseError extends Schema.TaggedErrorClass<ParseError>()("ParseError", {
-  cause: Schema.Defect
+  cause: Schema.Defect() // NOT Schema.Defect — the bare form throws when constructed
 }) {}
 
 Effect.try({

@@ -39,11 +39,23 @@ Mirror [`packages/yaml/package.json`](../../../packages/yaml/package.json) as th
 - `private: true` is deliberate — the bundler's `publishConfig`-driven transform produces the publishable manifest at build time. NEVER set `private: false` in source (see the Build Pipeline note in the root `CLAUDE.md`).
 - `repository.directory` must be `packages/X` — a per-package field that is easy to leave pointing at the copied sibling.
 - `exports`: `{ ".": "./src/index.ts", "./package.json": "./package.json" }`.
-- `scripts`: `build:dev` = `node savvy.build.ts --target dev`, `build:prod` = `node savvy.build.ts --target prod`, `types:check` = `tsgo --noEmit`.
+- `scripts`: `build:dev` = `node savvy.build.ts --target dev`, `build:prod` = `node savvy.build.ts --target prod`, `types:check` = `tsgo --noEmit`. A package that depends on a sibling `@effected/*` package via `workspace:*` ALSO needs `prepare` = `turbo run build:dev` — see [cross-package build dependencies](#cross-package-build-dependencies).
 - `devDependencies`: `@effect/vitest`, `@effect/tsgo`, `effect` at `catalog:effect`; `@types/node`, `typescript` at `catalog:silk`.
 - `peerDependencies`: `effect` at `catalog:effect` — libraries keep `effect` as a peer.
 - `engines`: `node >=24.11.0`.
 - `publishConfig`: `{ access: public, directory: dist/dev/pkg, linkDirectory: true, targets: { npm: true } }`.
+
+## Cross-package build dependencies
+
+`publishConfig.linkDirectory: true` (+ `directory: dist/dev/pkg`) means pnpm links a `workspace:*` `@effected/*` dependency into its consumer's `node_modules` **pointing at the dependency's `dist/dev/pkg`, not its source** (e.g. `node_modules/@effected/npm → ../../../npm/dist/dev/pkg`). So the dependency must be **built** before the consumer can import it — importing `@effected/npm` from an unbuilt sibling resolves to a dangling symlink. This does not bite a pure leaf package (nothing it imports needs building), but it breaks the consumer's tests in a fresh checkout where no `dist/dev/pkg` exists yet — CI runs `vitest run` across all packages against a clean install, so a package with sibling `@effected/*` deps fails to resolve them and its sibling-importing test files silently drop from collection.
+
+The fix is the **`prepare` pattern**: any package with a `workspace:*` edge to another `@effected/*` package adds
+
+```json
+{ "scripts": { "prepare": "turbo run build:dev" } }
+```
+
+pnpm runs the workspace package's `prepare` on install (verified: a fresh/forced `pnpm install` fires `packages/X prepare$ turbo run build:dev`), and `turbo run build:dev` — scoped to that package — builds it **and its dependencies** in topological order via the `^build:dev` task edge, so every `dist/dev/pkg` the consumer links to exists before tests run. Only the **consumer** needs the script; its pure-leaf dependencies are built by the consumer's `turbo run build:dev` and do not need their own `prepare`. `@effected/package-json` is the first package to require this (it depends on `@effected/npm` and `@effected/semver`).
 
 ## The load-bearing toolchain choice: @effect/tsgo
 

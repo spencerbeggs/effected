@@ -31,9 +31,10 @@ probe beats an hour of type-error archaeology).
 
 <skills>
 Available via the Skill tool (several also auto-load on trigger):
-- effect-v4-schema-classes — Schema-as-classes domain models (the flagship): the
-  Class-vs-Struct decision, optionality, checks/refine/makeFilter, codecs, the
-  FromString static, make-vs-new, brand/Opaque, custom Equal/Hash.
+- effect-v4-schema — the one Schema skill (the flagship): house "do this, not this"
+  rules + worked patterns (Class-vs-Struct, optionality, checks/refine/makeFilter,
+  codecs, the FromString static, make-vs-new, brand/Opaque, custom Equal/Hash) on
+  top of Effect's canonical guide split into loadable references/.
 - effect-v4-services-layers — Context.Service class form, Layer composition, and
   the memoization discipline (build-once-by-reference; the layer-function trap).
 - effect-v4-idioms — core Effect: typed errors, Result (Either is gone),
