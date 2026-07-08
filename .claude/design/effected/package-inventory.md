@@ -15,6 +15,7 @@ related:
   - packages/yaml.md
   - packages/package-json.md
   - packages/npm.md
+  - packages/config-file.md
 ---
 
 # Package inventory
@@ -37,7 +38,7 @@ All ten source repos were reviewed against [effect-standards.md](effect-standard
 | json-schema-effect | @effected/json-schema | boundary | not started | File writes are load-bearing for silk-release-action; core JSON Schema generation superseded by v4 `Schema.toJsonSchemaDocument` — remaining value is TOML tooling (tombi/taplo builders, Ajv validation, scaffolder); one package, Scaffold/Tombi/Taplo seam available if split later |
 | package-json-effect | @effected/package-json | boundary | implemented on `feat/package-json` (steps 3–4 complete); design: [packages/package-json.md](packages/package-json.md) | Split candidate reversed by review: stays one package with IO confined to a single `PackageJsonFile.ts` module (the v3 split motivation — the @effect/platform peer — evaporates in v4); a future split is a one-module extraction. Landed GREEN (34 v3 files → 13 src, 71/71 tests). Spins out a new internal sibling `@effected/npm` for the resolver contracts (see [internal packages](#internal-packages-no-source-repo) and [packages/npm.md](packages/npm.md)) |
 | xdg-effect | @effected/xdg | boundary | not started | Extraction candidate: SQLite cache/state services → a separate @effected sqlite package (name TBD at migration); post-extraction xdg is a small fs+env boundary lib; its json-schema-effect dependency is a dead facade and gets cut |
-| config-file-effect | @effected/config-file | boundary | not started | JSON codec in core; TOML behind subpath/optional dep; JSONC/YAML via thin adapter codecs over @effected/jsonc and @effected/yaml; file watcher deferred to a later phase; error-model redesign is the headline migration work; confirmed it does NOT depend on json-schema-effect |
+| config-file-effect | @effected/config-file | boundary | designed on `feat/config-file` (step 2 complete); design: [packages/config-file.md](packages/config-file.md) | Error-model redesign (one stringly mega-error → seven `Schema.TaggedErrorClass` types with narrowed per-method unions) is the headline work. JSON codec in core; core carries **zero runtime deps**. The review's subpath-export plan is **superseded**: subpath exports are not used in this monorepo, so each optional dep becomes a package — the migration expands into a family (see [config-file family](#the-config-file-family)). Watcher deferred to its own cycle and needs redesign, not translation. Confirmed it does NOT depend on json-schema-effect |
 | workspaces-effect | @effected/workspaces | boundary | not started | @effected/lockfiles extraction confirmed clean (pure tier) after two pre-repairs: importer-path→name resolution moves out of the lockfile reader and integrity checking becomes pure |
 | type-registry-effect | @effected/type-registry | boundary | not started | TypeRegistry facade becomes a Context.Service; createTypeScriptCache extraction candidate; @effect/sql surface is entirely indirect and collapses behind @effected/xdg; unused semver-effect dependency to remove-or-use |
 | runtime-resolver | @effected/runtime-resolver | boundary | not started | Boundary confirmed (already Effect v3 internally); new split candidate: its @effect/cli binary moves to a separate CLI package (peers currently leak onto API consumers); depends on @effected/semver so it sequences after semver |
@@ -57,6 +58,7 @@ Extraction candidates recorded above are surfaced by review; final decisions lan
 Packages created inside the monorepo rather than migrated from a `*-effect` source repo, so they carry no migration-table row:
 
 - `@effected/npm` (pure tier) — extracted from the `@effected/package-json` port to hold the dependency-resolution service contracts (`CatalogResolver`, `WorkspaceResolver`) and `DependencyResolutionError` that package-json defines but cannot implement. Initial surface is exactly what package-json's port needs; it expands when `@effected/workspaces`/`@effected/lockfiles` land. **Implemented on `feat/package-json` (landed alongside the package-json port, 11/11 tests green).** Design: [packages/npm.md](packages/npm.md).
+- `@effected/toml` (pure tier) — a full-parity TOML format package (parse/stringify/Schema plus the CST/edit/format/visitor pipeline), sibling to `@effected/jsonc` and `@effected/yaml`. Surfaced by the `@effected/config-file` design: with subpath exports off the table, the TOML codec needs a package, and a `smol-toml` wrapper would make it the first `@effected` format package with a runtime dependency. Built zero-dep with a ported-with-attribution internal engine, hardened per the `hardening-a-parser-port` skill. **Not started**; its own spec → plan → implement cycle, sequenced after `@effected/config-file` (which does not depend on it — only the toml adapter does).
 - `@effected/pnpm-plugin-effect` (infra) — the pnpm config dependency (built with `rolldown-pnpm-config`) that publishes the `effect` and `effectPeers` catalogs every `@effected/*` package pins against, and the source of truth for the workspace peer discipline. Maintained via `pnpm pnpm:up` / `pnpm:export`. Pre-existing repo infrastructure; design doc and initial-release changeset added on `feat/package-json`. Design: [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md).
 
 ## Migration order (provisional)
@@ -67,12 +69,27 @@ Dependency sequencing from the review synthesis (`.claude/reviews/SYNTHESIS.md`)
 2. jsonc
 3. yaml
 4. package-json
-5. config-file
+5. config-file (+ the config-file family, below)
 6. xdg (+ SQLite extraction)
 7. json-schema
 8. workspaces (+ @effected/lockfiles extraction)
 9. type-registry
 10. runtime-resolver (+ CLI split)
+
+### The config-file family
+
+Because this monorepo does not use subpath exports, every optional dependency of `@effected/config-file` becomes a package boundary. Migration #5 therefore delivers a family rather than a package, each member on its own spec → plan → implement cycle:
+
+| Package | Tier | Order | Depends on |
+| --- | --- | --- | --- |
+| `@effected/config-file` (core pipeline + JSON codec) | boundary | 5a | `effect` (peer) only |
+| `@effected/config-file-jsonc` | boundary | 5b | `@effected/jsonc`, `@effected/config-file` |
+| `@effected/config-file-yaml` | boundary | 5c | `@effected/yaml`, `@effected/config-file` |
+| `@effected/toml` | pure | 5d | — |
+| `@effected/config-file-toml` | boundary | 5e | `@effected/toml`, `@effected/config-file` |
+| `@effected/config-file-watcher` | boundary | 5f | `@effected/config-file` |
+
+5a–5c land together; the core does not depend on `@effected/toml`, so the full-parity TOML port does not block migration #5. Dependency direction is strictly acyclic: config-file → format packages, never the reverse.
 
 ## External consumers (stay in their own repos)
 
