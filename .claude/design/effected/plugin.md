@@ -42,7 +42,7 @@ Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `descrip
 
 **API-surface and hardening discipline:**
 
-- `effect-api-extractor-bases` — the `@public X_base` idiom that yields a zero-warning API Extractor `issues.json` (now a repo standard; see [effect-standards.md](effect-standards.md)).
+- `effect-api-extractor-bases` — the inline-factory + scoped `_base` suppression idiom that yields a zero-warning API Extractor `issues.json` (now a repo standard; see [effect-standards.md](effect-standards.md)).
 - `hardening-a-parser-port` — depth guards, code-point/proto/C0 checks and the invariant that malformed input fails through the typed error channel, never as a defect.
 
 ## Specialist agents

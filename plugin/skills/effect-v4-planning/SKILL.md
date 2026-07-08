@@ -11,7 +11,7 @@ four design pillars, then makes you emit a compact **design summary** and get
 buy-in **before** any implementation code exists.
 
 Why this skill exists: strong, skill-equipped agents — ones that already know the
-`X_base` idiom, the layer-memoization discipline, `Clock` for testability — still
+api-extractor-bases idiom, the layer-memoization discipline, `Clock` for testability — still
 dive straight to code, rationalize the decisions afterward, and **silently drop
 whole pillars** (observability is the usual casualty). The mechanism that stops
 that is not willpower; it is the required-slot summary below. You cannot leave the

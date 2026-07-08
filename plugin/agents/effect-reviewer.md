@@ -44,9 +44,11 @@ driving a v3→v4 port (that is the migrator).
    / `Effect.result` not the removed `Either`; `Context.Service` not `Context.Tag`;
    layers bound to consts (no layer-returning functions that rebuild resources);
    `Effect.fn` spans on public *fallible* boundaries only.
-3. **Check the API surface.** Every Schema class factory has its `@public X_base`
-   const; no internal type leaks onto a `@public` signature; `dist/prod/issues.json`
-   is zero-warning.
+3. **Check the API surface.** Every Schema class factory is written inline with
+   its synthesized `_base` warning suppressed in `savvy.build.ts` (not a
+   `@public X_base` const); no internal type leaks onto a `@public` method
+   signature; `dist/prod/issues.json` is zero-warning (base entries in the
+   `suppressed` bucket).
 4. **Check the hardening class** for parser/engine code: depth guards in both
    pipeline stages, code-point range checks before `String.fromCodePoint`,
    `__proto__` as an own property, C0 rejection — each with a hostile-input test.

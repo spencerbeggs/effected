@@ -73,9 +73,10 @@ liability here — many names moved, split modules, or were removed.
 + **Observability**: instrument public *fallible* boundaries only; libraries
   stay telemetry-agnostic (apps compose `@effect/opentelemetry` at the edge).
   See `effect-v4-observability`.
-+ **API surface**: every Schema class factory needs its `@public X_base` const
-  for a zero-warning `dist/prod/issues.json`; no internal type on a `@public`
-  signature. See `effect-api-extractor-bases`.
++ **API surface**: write every Schema class factory inline and suppress the
+  synthesized `_base` forgotten-export in `savvy.build.ts` for a zero-warning
+  `dist/prod/issues.json`; no internal type on a `@public` method signature.
+  See `effect-api-extractor-bases`.
 
 ## Boundaries
 

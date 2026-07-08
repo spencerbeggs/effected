@@ -51,10 +51,11 @@ though you write and run tests as part of the port.
    biggest repeat-offender: `new X({...})` now VALIDATES, so never pass explicit
    `undefined` for an `optionalKey` field (conditional spreads); `Either` → `Result`;
    `Context.Tag`/`Effect.Service` → `Context.Service`; `Layer.scoped` → `Layer.effect`.
-4. **Build the public surface idiomatically.** Schema classes with `@public X_base`
-   consts; typed error channel carrying structured diagnostics, never `reason`
-   strings; `Effect.fn` spans on public fallible boundaries only. Lean on the
-   best-practice skills.
+4. **Build the public surface idiomatically.** Schema class factories written
+   inline with the synthesized `_base` forgotten-export suppressed in
+   `savvy.build.ts` (no `@public X_base` const); typed error channel carrying
+   structured diagnostics, never `reason` strings; `Effect.fn` spans on public
+   fallible boundaries only. Lean on the best-practice skills.
 5. **Harden proactively.** Untrusted-input engines need the full checklist:
    depth guards in both pipeline stages, code-point range checks, `__proto__` as
    own property, C0 rejection, and the invariant that malformed input fails as a
