@@ -19,6 +19,7 @@
 
 import type { Cause } from "effect";
 import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import type { ParseFlags, RawParseError } from "./internal/parser.js";
 import {
 	JSONC_PARSE_ERROR_CODES,
@@ -192,15 +193,20 @@ const toDetails = (text: string, errors: ReadonlyArray<RawParseError>): Readonly
 		return JsoncParseErrorDetail.make({ code: e.code, offset: e.offset, length: e.length, line, character });
 	});
 
-const deepEqual = (a: unknown, b: unknown): boolean => {
+const deepEqual = (a: unknown, b: unknown, depth = 0): boolean => {
 	if (a === b) return true;
+	// Over-deep comparison (reachable via `equalsValue`, whose `value` side is
+	// an arbitrary caller-supplied structure): treat as unequal rather than
+	// recursing past the cap and overflowing the stack as a defect. Values
+	// produced by the parser are already bounded to the same depth.
+	if (depth >= MAX_NESTING_DEPTH) return false;
 	if (a === null || b === null) return false;
 	if (typeof a !== typeof b) return false;
 
 	if (Array.isArray(a)) {
 		if (!Array.isArray(b) || a.length !== b.length) return false;
 		for (let i = 0; i < a.length; i++) {
-			if (!deepEqual(a[i], b[i])) return false;
+			if (!deepEqual(a[i], b[i], depth + 1)) return false;
 		}
 		return true;
 	}
@@ -213,7 +219,7 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
 		const bKeys = Object.keys(bObj);
 		if (aKeys.length !== bKeys.length) return false;
 		for (const key of aKeys) {
-			if (!Object.hasOwn(bObj, key) || !deepEqual(aObj[key], bObj[key])) return false;
+			if (!Object.hasOwn(bObj, key) || !deepEqual(aObj[key], bObj[key], depth + 1)) return false;
 		}
 		return true;
 	}
@@ -381,6 +387,12 @@ export class Jsonc {
 	 * {@link Jsonc.fromString}).
 	 */
 	static schema<T, E>(target: Schema.Codec<T, E>, options?: JsoncParseOptions): Schema.Codec<T, string> {
+		// The double-cast is sound: `fromString` decodes to `Schema.Unknown`, whose
+		// decoded type is `unknown` — precisely the decode-input any `target` codec
+		// accepts. Re-typing `target`'s Encoded from `E` to `unknown` lets the two
+		// compose; the resulting codec decodes `string -> T`, which the outer cast
+		// restates. The runtime is untouched — only the Encoded type parameter is
+		// widened, and `Schema.Unknown` accepts every value at runtime.
 		return Jsonc.fromString(options).pipe(
 			Schema.decodeTo(target as unknown as Schema.Codec<T, unknown>),
 		) as unknown as Schema.Codec<T, string>;

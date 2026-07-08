@@ -2,8 +2,6 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Equal, Hash, Option, Schema } from "effect";
 import { InvalidVersionError, SemVer } from "../src/index.js";
 
-const parse = (input: string) => Effect.runSync(SemVer.parse(input));
-
 describe("SemVer", () => {
 	describe("parse", () => {
 		it.effect("parses a full version", () =>
@@ -105,19 +103,19 @@ describe("SemVer", () => {
 		);
 
 		it("dual statics support both call forms", () => {
-			const a = parse("1.0.0");
-			const b = parse("2.0.0");
+			const a = SemVer.of(1, 0, 0);
+			const b = SemVer.of(2, 0, 0);
 			assert.strictEqual(SemVer.compare(a, b), -1);
 			assert.strictEqual(SemVer.compare(b)(a), -1);
 			assert.isTrue(SemVer.lt(a, b));
 			// Data-last: gt(that)(self) tests self > that.
 			assert.isTrue(SemVer.gt(a)(b));
-			assert.isTrue(SemVer.equal(a, parse("1.0.0+different.build")));
+			assert.isTrue(SemVer.equal(a, SemVer.of(1, 0, 0, [], ["different", "build"])));
 		});
 
 		it("Order ignores build metadata; OrderWithBuild breaks ties", () => {
-			const plain = parse("1.0.0");
-			const withBuild = parse("1.0.0+abc");
+			const plain = SemVer.of(1, 0, 0);
+			const withBuild = SemVer.of(1, 0, 0, [], ["abc"]);
 			assert.strictEqual(SemVer.Order(plain, withBuild), 0);
 			assert.isBelow(SemVer.OrderWithBuild(plain, withBuild), 0);
 		});
@@ -125,63 +123,63 @@ describe("SemVer", () => {
 
 	describe("equality and hashing", () => {
 		it("ignores build metadata but not prerelease (SemVer §10/§11)", () => {
-			const a = parse("1.2.3-alpha.1+build.1");
-			const b = parse("1.2.3-alpha.1+build.2");
-			const c = parse("1.2.3-alpha.2+build.1");
+			const a = SemVer.of(1, 2, 3, ["alpha", 1], ["build", "1"]);
+			const b = SemVer.of(1, 2, 3, ["alpha", 1], ["build", "2"]);
+			const c = SemVer.of(1, 2, 3, ["alpha", 2], ["build", "1"]);
 			assert.isTrue(Equal.equals(a, b));
 			assert.isFalse(Equal.equals(a, c));
 		});
 
 		it("hash agrees with equality across build metadata", () => {
-			const a = parse("1.2.3-alpha.1+build.1");
-			const b = parse("1.2.3-alpha.1+build.2");
+			const a = SemVer.of(1, 2, 3, ["alpha", 1], ["build", "1"]);
+			const b = SemVer.of(1, 2, 3, ["alpha", 1], ["build", "2"]);
 			assert.strictEqual(Hash.hash(a), Hash.hash(b));
 		});
 	});
 
 	describe("predicates", () => {
 		it("isStable / isPrerelease", () => {
-			assert.isTrue(parse("1.0.0").isStable);
-			assert.isFalse(parse("1.0.0").isPrerelease);
-			assert.isTrue(parse("1.0.0-rc.1").isPrerelease);
-			assert.isFalse(parse("1.0.0-rc.1").isStable);
+			assert.isTrue(SemVer.of(1, 0, 0).isStable);
+			assert.isFalse(SemVer.of(1, 0, 0).isPrerelease);
+			assert.isTrue(SemVer.of(1, 0, 0, ["rc", 1]).isPrerelease);
+			assert.isFalse(SemVer.of(1, 0, 0, ["rc", 1]).isStable);
 		});
 	});
 
 	describe("bump", () => {
 		it("major/minor/patch reset lower components and metadata", () => {
-			const v = parse("1.2.3-beta.1+build");
+			const v = SemVer.of(1, 2, 3, ["beta", 1], ["build"]);
 			assert.strictEqual(v.bump.major().toString(), "2.0.0");
 			assert.strictEqual(v.bump.minor().toString(), "1.3.0");
 			assert.strictEqual(v.bump.patch().toString(), "1.2.4");
 		});
 
 		it("prerelease bump on a stable version starts the next patch prerelease", () => {
-			assert.strictEqual(parse("1.0.0").bump.prerelease().toString(), "1.0.1-0");
-			assert.strictEqual(parse("1.0.0").bump.prerelease("alpha").toString(), "1.0.1-alpha.0");
+			assert.strictEqual(SemVer.of(1, 0, 0).bump.prerelease().toString(), "1.0.1-0");
+			assert.strictEqual(SemVer.of(1, 0, 0).bump.prerelease("alpha").toString(), "1.0.1-alpha.0");
 		});
 
 		it("prerelease bump increments a trailing numeric identifier", () => {
-			assert.strictEqual(parse("1.0.1-alpha.0").bump.prerelease().toString(), "1.0.1-alpha.1");
-			assert.strictEqual(parse("1.0.1-alpha.0").bump.prerelease("alpha").toString(), "1.0.1-alpha.1");
+			assert.strictEqual(SemVer.of(1, 0, 1, ["alpha", 0]).bump.prerelease().toString(), "1.0.1-alpha.1");
+			assert.strictEqual(SemVer.of(1, 0, 1, ["alpha", 0]).bump.prerelease("alpha").toString(), "1.0.1-alpha.1");
 		});
 
 		it("switching prerelease identifiers resets the counter", () => {
-			assert.strictEqual(parse("1.0.1-alpha.4").bump.prerelease("beta").toString(), "1.0.1-beta.0");
+			assert.strictEqual(SemVer.of(1, 0, 1, ["alpha", 4]).bump.prerelease("beta").toString(), "1.0.1-beta.0");
 		});
 
 		it("appends a counter to a non-numeric tail", () => {
-			assert.strictEqual(parse("1.0.1-alpha").bump.prerelease().toString(), "1.0.1-alpha.0");
+			assert.strictEqual(SemVer.of(1, 0, 1, ["alpha"]).bump.prerelease().toString(), "1.0.1-alpha.0");
 		});
 
 		it("release strips prerelease and build", () => {
-			assert.strictEqual(parse("1.2.3-rc.1+meta").bump.release().toString(), "1.2.3");
+			assert.strictEqual(SemVer.of(1, 2, 3, ["rc", 1], ["meta"]).bump.release().toString(), "1.2.3");
 		});
 	});
 
 	describe("truncate", () => {
 		it("truncates to release or to prerelease-with-no-build", () => {
-			const v = parse("1.2.3-alpha.1+build");
+			const v = SemVer.of(1, 2, 3, ["alpha", 1], ["build"]);
 			assert.strictEqual(SemVer.truncate(v, "prerelease").toString(), "1.2.3");
 			assert.strictEqual(SemVer.truncate(v, "build").toString(), "1.2.3-alpha.1");
 			assert.strictEqual(SemVer.truncate("build")(v).toString(), "1.2.3-alpha.1");
@@ -189,7 +187,7 @@ describe("SemVer", () => {
 	});
 
 	describe("collections", () => {
-		const versions = ["2.0.0", "1.0.0-alpha", "1.0.0", "1.5.0"].map(parse);
+		const versions = [SemVer.of(2, 0, 0), SemVer.of(1, 0, 0, ["alpha"]), SemVer.of(1, 0, 0), SemVer.of(1, 5, 0)];
 
 		it("sort ascending / rsort descending", () => {
 			assert.deepStrictEqual(SemVer.sort(versions).map(String), ["1.0.0-alpha", "1.0.0", "1.5.0", "2.0.0"]);
@@ -204,13 +202,19 @@ describe("SemVer", () => {
 		});
 
 		it("groupBy returns an immutable record keyed by strategy", () => {
-			const grouped = SemVer.groupBy(["1.0.0", "1.5.0", "2.0.0"].map(parse), "major");
+			const grouped = SemVer.groupBy([SemVer.of(1, 0, 0), SemVer.of(1, 5, 0), SemVer.of(2, 0, 0)], "major");
 			assert.deepStrictEqual(Object.keys(grouped), ["1", "2"]);
 			assert.deepStrictEqual(grouped["1"].map(String), ["1.0.0", "1.5.0"]);
 		});
 
 		it("latestByMajor / latestByMinor keep the highest per group", () => {
-			const input = ["1.0.0", "1.5.0", "1.5.9", "2.0.0", "2.1.0"].map(parse);
+			const input = [
+				SemVer.of(1, 0, 0),
+				SemVer.of(1, 5, 0),
+				SemVer.of(1, 5, 9),
+				SemVer.of(2, 0, 0),
+				SemVer.of(2, 1, 0),
+			];
 			assert.deepStrictEqual(SemVer.latestByMajor(input).map(String), ["1.5.9", "2.1.0"]);
 			assert.deepStrictEqual(SemVer.latestByMinor(input).map(String), ["1.0.0", "1.5.9", "2.0.0", "2.1.0"]);
 		});

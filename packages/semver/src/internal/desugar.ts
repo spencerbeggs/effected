@@ -100,7 +100,7 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
 
 	if (minor === null) {
 		// 1.x or 1.*
-		if (operator === null || operator === "" || operator === "=") {
+		if (operator === null || operator === "=") {
 			return [comp(">=", sv(major, 0, 0)), comp("<", sv(major + 1, 0, 0, [0]))];
 		}
 		if (operator === ">") {
@@ -120,7 +120,7 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
 	}
 
 	// patch is null (minor is set): 1.2.x
-	if (operator === null || operator === "" || operator === "=") {
+	if (operator === null || operator === "=") {
 		return [comp(">=", sv(major, minor, 0)), comp("<", sv(major, minor + 1, 0, [0]))];
 	}
 	if (operator === ">") {

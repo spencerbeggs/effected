@@ -12,6 +12,7 @@
  */
 
 import { Option, Schema } from "effect";
+import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 
 /**
  * A single path segment: a `string` for object property keys or a `number`
@@ -127,18 +128,7 @@ export class JsoncNode extends JsoncNode_base {
 	 * if the offset is outside this subtree. Pure.
 	 */
 	findAtOffset(offset: number): Option.Option<JsoncNode> {
-		if (offset < this.offset || offset >= this.offset + this.length) {
-			return Option.none();
-		}
-		if (this.children === undefined) {
-			return Option.some(this);
-		}
-		for (const child of this.children) {
-			if (offset >= child.offset && offset < child.offset + child.length) {
-				return child.findAtOffset(offset);
-			}
-		}
-		return Option.some(this);
+		return findAtOffsetImpl(this, offset, 0);
 	}
 
 	/**
@@ -155,15 +145,41 @@ export class JsoncNode extends JsoncNode_base {
 	 * and total — never fails, so no `Effect` wrapper.
 	 */
 	toValue(): unknown {
-		return evaluateNode(this);
+		return evaluateNode(this, 0);
 	}
 }
 
-function buildPath(node: JsoncNode, targetOffset: number, currentPath: Array<JsoncSegment>): Option.Option<JsoncPath> {
+// Recursive walkers below cap their descent at MAX_NESTING_DEPTH. A tree built
+// by the parser is already bounded (the parser caps at the same depth), but a
+// tree assembled by hand via `JsoncNode.make` can nest arbitrarily deep, so each
+// walker guards independently — returning a bounded placeholder (Option.none()
+// or null) rather than overflowing the stack as a defect.
+
+function findAtOffsetImpl(node: JsoncNode, offset: number, depth: number): Option.Option<JsoncNode> {
+	if (offset < node.offset || offset >= node.offset + node.length) {
+		return Option.none();
+	}
+	if (node.children === undefined || depth >= MAX_NESTING_DEPTH) {
+		return Option.some(node);
+	}
+	for (const child of node.children) {
+		if (offset >= child.offset && offset < child.offset + child.length) {
+			return findAtOffsetImpl(child, offset, depth + 1);
+		}
+	}
+	return Option.some(node);
+}
+
+function buildPath(
+	node: JsoncNode,
+	targetOffset: number,
+	currentPath: Array<JsoncSegment>,
+	depth = 0,
+): Option.Option<JsoncPath> {
 	if (targetOffset < node.offset || targetOffset >= node.offset + node.length) {
 		return Option.none();
 	}
-	if (node.children === undefined) {
+	if (node.children === undefined || depth >= MAX_NESTING_DEPTH) {
 		return Option.some(currentPath);
 	}
 	if (node.type === "object") {
@@ -182,7 +198,7 @@ function buildPath(node: JsoncNode, targetOffset: number, currentPath: Array<Jso
 					targetOffset >= valueChild.offset &&
 					targetOffset < valueChild.offset + valueChild.length
 				) {
-					return buildPath(valueChild, targetOffset, valuePath);
+					return buildPath(valueChild, targetOffset, valuePath, depth + 1);
 				}
 				return Option.some(valuePath);
 			}
@@ -191,14 +207,19 @@ function buildPath(node: JsoncNode, targetOffset: number, currentPath: Array<Jso
 		for (let i = 0; i < node.children.length; i++) {
 			const child = node.children[i];
 			if (targetOffset >= child.offset && targetOffset < child.offset + child.length) {
-				return buildPath(child, targetOffset, [...currentPath, i]);
+				return buildPath(child, targetOffset, [...currentPath, i], depth + 1);
 			}
 		}
 	}
 	return Option.some(currentPath);
 }
 
-function evaluateNode(node: JsoncNode): unknown {
+function evaluateNode(node: JsoncNode, depth: number): unknown {
+	// Over-deep subtree (only reachable on a hand-built tree): stop descending
+	// and yield a bounded `null` placeholder rather than overflowing the stack.
+	if (depth >= MAX_NESTING_DEPTH) {
+		return node.type === "object" ? {} : node.type === "array" ? [] : null;
+	}
 	switch (node.type) {
 		case "object": {
 			const obj: Record<string, unknown> = {};
@@ -206,7 +227,7 @@ function evaluateNode(node: JsoncNode): unknown {
 				for (const prop of node.children) {
 					if (prop.type === "property" && prop.children !== undefined && prop.children.length === 2) {
 						const key = prop.children[0].value as string;
-						const value = evaluateNode(prop.children[1]);
+						const value = evaluateNode(prop.children[1], depth + 1);
 						if (key === "__proto__") {
 							// Own data property, not a prototype mutation — matches the value
 							// parser and JSON.parse semantics.
@@ -220,9 +241,9 @@ function evaluateNode(node: JsoncNode): unknown {
 			return obj;
 		}
 		case "array":
-			return (node.children ?? []).map(evaluateNode);
+			return (node.children ?? []).map((child) => evaluateNode(child, depth + 1));
 		case "property":
-			return node.children?.[1] !== undefined ? evaluateNode(node.children[1]) : undefined;
+			return node.children?.[1] !== undefined ? evaluateNode(node.children[1], depth + 1) : undefined;
 		default:
 			return node.value;
 	}

@@ -14,6 +14,7 @@
  */
 
 import { Data, Stream } from "effect";
+import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { scanErrorToCode } from "./internal/parser.js";
 import type { SyntaxKind } from "./internal/scanner.js";
 import { createScanner } from "./internal/scanner.js";
@@ -78,6 +79,33 @@ export class JsoncVisitor {
 function* visitGen(text: string, disallowComments: boolean): Generator<JsoncVisitorEvent> {
 	const scanner = createScanner(text, false);
 	const path: Array<JsoncSegment> = [];
+	// Current collection-nesting depth. Deeply-nested input would otherwise
+	// overflow the stack via visitObject/visitArray recursion — a defect when the
+	// stream is pulled. At the cap the visitor emits one in-band Error event and
+	// skips the over-deep subtree iteratively (see MAX_NESTING_DEPTH).
+	let depth = 0;
+
+	// Consume a balanced container (current token is its opener) by counting
+	// bracket depth over the token stream — never recursing, never emitting.
+	function skipDeepContainer(): void {
+		let level = 0;
+		for (;;) {
+			const t = scanner.getToken();
+			if (t === "EOF") {
+				return;
+			}
+			if (t === "OpenBrace" || t === "OpenBracket") {
+				level++;
+			} else if (t === "CloseBrace" || t === "CloseBracket") {
+				level--;
+				if (level === 0) {
+					scanner.scan();
+					return;
+				}
+			}
+			scanner.scan();
+		}
+	}
 
 	function* scanNext(): Generator<JsoncVisitorEvent, SyntaxKind> {
 		for (;;) {
@@ -137,10 +165,40 @@ function* visitGen(text: string, disallowComments: boolean): Generator<JsoncVisi
 	function* visitValue(): Generator<JsoncVisitorEvent, boolean> {
 		const t = scanner.getToken();
 		switch (t) {
-			case "OpenBrace":
-				return yield* visitObject();
-			case "OpenBracket":
-				return yield* visitArray();
+			case "OpenBrace": {
+				if (depth >= MAX_NESTING_DEPTH) {
+					yield JsoncVisitorEvent.Error({
+						code: "NestingDepthExceeded",
+						offset: scanner.getTokenOffset(),
+						length: scanner.getTokenLength(),
+					});
+					skipDeepContainer();
+					return false;
+				}
+				depth++;
+				try {
+					return yield* visitObject();
+				} finally {
+					depth--;
+				}
+			}
+			case "OpenBracket": {
+				if (depth >= MAX_NESTING_DEPTH) {
+					yield JsoncVisitorEvent.Error({
+						code: "NestingDepthExceeded",
+						offset: scanner.getTokenOffset(),
+						length: scanner.getTokenLength(),
+					});
+					skipDeepContainer();
+					return false;
+				}
+				depth++;
+				try {
+					return yield* visitArray();
+				} finally {
+					depth--;
+				}
+			}
 			case "String":
 			case "Number":
 			case "True":

@@ -180,4 +180,34 @@ describe("JsoncModifier", () => {
 			}),
 		);
 	});
+
+	describe("hostile input (hardening)", () => {
+		it.effect("replaces a value past a deeply nested sibling without a stack-overflow defect", () =>
+			Effect.gen(function* () {
+				// The scanner-based navigator must skip the deep sibling `d` to reach
+				// `a`; its skip is iterative, so hostile nesting cannot overflow.
+				const deep = `${"[".repeat(20000)}1${"]".repeat(20000)}`;
+				const text = `{ "d": ${deep}, "a": 1 }`;
+				const result = yield* Effect.result(JsoncModifier.modify(text, ["a"], 2));
+				assert.isTrue(result._tag === "Success");
+				const edits = yield* JsoncModifier.modify(text, ["a"], 2);
+				assert.strictEqual(JsoncEdit.applyAll(text, edits).includes('"a": 2'), true);
+			}),
+		);
+
+		it.effect("modifying a value slot that holds a container closer does not swallow the closer", () =>
+			Effect.gen(function* () {
+				// Malformed input: the `k` value slot is empty, so the token where a
+				// value should start is the object's own `}`. skipValue() must not
+				// consume that closer as the (absent) value — doing so decrements the
+				// bracket level past zero and splices the `}` into the edit range,
+				// corrupting the document.
+				const text = '{"k":}';
+				const edits = yield* JsoncModifier.modify(text, ["k"], 5);
+				const out = JsoncEdit.applyAll(text, edits);
+				assert.strictEqual(out.endsWith("}"), true);
+				assert.deepStrictEqual(yield* Jsonc.parse(out), { k: 5 });
+			}),
+		);
+	});
 });

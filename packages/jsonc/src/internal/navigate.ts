@@ -83,57 +83,37 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 	}
 
 	// Skip the value starting at currentToken and return its tight end offset.
+	//
+	// Iterative balanced-bracket skip rather than a recursive structural walk:
+	// counting bracket depth over the flat token stream skips any value —
+	// scalar or arbitrarily-nested collection — with the same tight end offset a
+	// structural descent would report (strings tokenize whole, so braces inside
+	// them never affect the count). Being non-recursive, it cannot overflow the
+	// stack on hostile deeply-nested input, so `navigate` (and `JsoncModifier`)
+	// need no separate depth cap.
 	function skipValue(): number {
-		switch (currentToken) {
-			case "OpenBrace": {
-				let end = tokenEnd();
-				currentToken = scanner.scan();
-				let first = true;
-				while (currentToken !== "CloseBrace" && currentToken !== "EOF") {
-					if (!first && currentToken === "Comma") {
-						currentToken = scanner.scan();
-					}
-					if (currentToken === "String") {
-						currentToken = scanner.scan(); // skip key
-						if (currentToken === "Colon") {
-							currentToken = scanner.scan(); // skip colon
-							end = skipValue(); // skip value
-						}
-					} else {
-						end = tokenEnd();
-						currentToken = scanner.scan();
-					}
-					first = false;
-				}
-				if (currentToken === "CloseBrace") {
-					end = tokenEnd();
-					currentToken = scanner.scan();
-				}
-				return end;
-			}
-			case "OpenBracket": {
-				let end = tokenEnd();
-				currentToken = scanner.scan();
-				let first = true;
-				while (currentToken !== "CloseBracket" && currentToken !== "EOF") {
-					if (!first && currentToken === "Comma") {
-						currentToken = scanner.scan();
-					}
-					end = skipValue();
-					first = false;
-				}
-				if (currentToken === "CloseBracket") {
-					end = tokenEnd();
-					currentToken = scanner.scan();
-				}
-				return end;
-			}
-			default: {
-				const end = tokenEnd();
-				currentToken = scanner.scan();
-				return end;
-			}
+		// Malformed input can route a non-value token here: JsoncModifier.modify
+		// passes raw text straight to navigate(), so a value slot may actually hold
+		// a container closer (e.g. `{"k":}`) or EOF. There is no value to skip —
+		// return the current start offset without consuming the token, so the edit
+		// spans an empty range and the caller's loop still sees the closer, rather
+		// than decrementing the level past zero and splicing the closer into the
+		// value range.
+		if (currentToken === "CloseBrace" || currentToken === "CloseBracket" || currentToken === "EOF") {
+			return scanner.getTokenOffset();
 		}
+		let level = 0;
+		let end = tokenEnd();
+		do {
+			if (currentToken === "OpenBrace" || currentToken === "OpenBracket") {
+				level++;
+			} else if (currentToken === "CloseBrace" || currentToken === "CloseBracket") {
+				level--;
+			}
+			end = tokenEnd();
+			currentToken = scanner.scan();
+		} while (level > 0 && currentToken !== "EOF");
+		return end;
 	}
 
 	let depth = 0;
