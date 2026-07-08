@@ -1,31 +1,11 @@
-/**
- * Valid npm package names: the `ScopedPackageName` /
- * `UnscopedPackageName` branded schemas, the `PackageName` union
- * with its classification statics (`PackageName.isValid`,
- * `PackageName.scope`, `PackageName.unscoped`, `PackageName.isScoped`), and the
- * {@link InvalidPackageNameError} the concept raises.
- *
- * @packageDocumentation
- */
+// Valid npm package names: the `ScopedPackageName` / `UnscopedPackageName`
+// branded schemas, the `PackageName` union with its classification statics
+// (`PackageName.isValid`, `PackageName.scope`, `PackageName.unscoped`,
+// `PackageName.isScoped`), and the `InvalidPackageNameError` the concept
+// raises.
 
-import type { Cause } from "effect";
+import type { Brand } from "effect";
 import { Option, Schema } from "effect";
-
-/**
- * Schema-generated base class backing {@link InvalidPackageNameError}. Not
- * meant to be referenced directly — named and exported only so API Extractor
- * can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const InvalidPackageNameError_base: Schema.Class<
-	InvalidPackageNameError,
-	Schema.TaggedStruct<"InvalidPackageNameError", { readonly input: typeof Schema.String }>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<InvalidPackageNameError>()("InvalidPackageNameError", {
-	/** The raw input string that failed validation. */
-	input: Schema.String,
-});
 
 /**
  * Indicates that a string could not be used as a valid npm package name.
@@ -35,7 +15,13 @@ export const InvalidPackageNameError_base: Schema.Class<
  *
  * @public
  */
-export class InvalidPackageNameError extends InvalidPackageNameError_base {
+export class InvalidPackageNameError extends Schema.TaggedErrorClass<InvalidPackageNameError>()(
+	"InvalidPackageNameError",
+	{
+		/** The raw input string that failed validation. */
+		input: Schema.String,
+	},
+) {
 	override get message(): string {
 		return `Invalid package name "${this.input}": does not satisfy npm naming rules`;
 	}
@@ -63,7 +49,7 @@ export const ScopedPackageName = Schema.String.pipe(
  *
  * @public
  */
-export type ScopedPackageName = typeof ScopedPackageName.Type;
+export type ScopedPackageName = string & Brand.Brand<"ScopedPackageName">;
 
 /**
  * A valid npm unscoped package name (no `@scope/` prefix).
@@ -80,7 +66,7 @@ export const UnscopedPackageName = Schema.String.pipe(
  *
  * @public
  */
-export type UnscopedPackageName = typeof UnscopedPackageName.Type;
+export type UnscopedPackageName = string & Brand.Brand<"UnscopedPackageName">;
 
 /**
  * A valid npm package name, scoped or unscoped.

@@ -131,7 +131,9 @@ As-built: `publishConfig` and `repository` are modeled as an **open `Schema.Reco
 
 `PackageName` / `ScopedPackageName` / `UnscopedPackageName` brands (the union with the hand-rolled npm-name validator, ported as `.check(...)` + `Schema.brand`). Statics: `isValid(s)`, `scope(name)`, `unscoped(name)`, `isScoped(name)` — absorbing the v3 floating `PackageNameUtil` object. Owns `InvalidPackageNameError`.
 
-As-built: the statics are attached via **`Object.assign`** — a `const` and a `namespace` cannot merge in TS, so the brand const plus its statics are composed with `Object.assign` rather than a declaration merge. The brand consts are left type-inferred. The npm name grammar was tightened to **lookahead-free regexes** (first character must not be `.` or `_`) so `Schema.toArbitrary` property tests derive — arguably more correct than v3's lookahead form.
+As-built: the statics are attached via **`Object.assign`** — a `const` and a `namespace` cannot merge in TS, so the brand const plus its statics are composed with `Object.assign` rather than a declaration merge. The npm name grammar was tightened to **lookahead-free regexes** (first character must not be `.` or `_`) so `Schema.toArbitrary` property tests derive — arguably more correct than v3's lookahead form.
+
+As-built (realignment, 2026-07-08): the `ScopedPackageName` and `UnscopedPackageName` branded types are now exported explicitly as `string & Brand.Brand<"ScopedPackageName">` / `string & Brand.Brand<"UnscopedPackageName">` rather than the type-inferred `typeof X.Type` form — self-documenting on the public surface, resolving to the same type, and matching the `DependencySpecifierBrand` shape. (`SpdxLicense` got the same treatment; see [License](#license--packagemanager--person--devengines).)
 
 ### DependencySpecifier
 
@@ -145,7 +147,7 @@ As-built: statics are attached via **`Object.assign`** (same `const`-plus-`names
 
 ### License / PackageManager / Person / DevEngines
 
-- `License.ts` — `SpdxLicense` brand validating real SPDX expressions (`spdx-expression-parse`), incl. `UNLICENSED` and `SEE LICENSE IN`; `InvalidSpdxLicenseError`.
+- `License.ts` — `SpdxLicense` brand validating real SPDX expressions (`spdx-expression-parse`), incl. `UNLICENSED` and `SEE LICENSE IN`; `InvalidSpdxLicenseError`. As-built (realignment, 2026-07-08): the `SpdxLicense` type exports explicitly as `string & Brand.Brand<"SpdxLicense">`, not `typeof SpdxLicense.Type`.
 - `PackageManager.ts` — class parsing `"pnpm@10.x+sha512.abc"` into `name`/`version`/`integrity: Option` with a string codec (integrity is a genuine `Schema.Option` field — absence is computed on). As-built: `integrity` is kept as a genuine `Schema.Option` as designed. The `FromString` codec uses `Schema.instanceOf(PackageManager)` as its `decodeTo` target (decode produces class *instances*, so `instanceOf` is the correct destination — the same v4 fact `YamlDocument.schema` hit).
 - `Person.ts` — class parsing `"Name <email> (url)"` into structured fields and encoding back, **now wired into `Package.author`/`contributors`**.
 - `DevEngines.ts` — `DevEngine` class + `devEngines` field schema.
@@ -232,6 +234,8 @@ v3 has zero instrumentation. Per the [observability standard](../effect-standard
 
 Per the [ratified house policy](../effect-standards.md#api-extractor--effect-class-factories) and the `effect-api-extractor-bases` skill: every Effect class factory gets a named, exported, `@public`-tagged `X_base` const with an explicit factory-return-type annotation, re-exported from `index.ts`, each carrying a not-for-direct-use doc comment. This port has a **large** base surface — `Schema.Class` for `Package`, `PackageManager`, `Person`, `DevEngine`; `Schema.Class`/brand bases for `PackageName`, `DependencySpecifier`, `License`; `Schema.TaggedClass` (or `Schema.Class` with `kind`) for `Dependency`; `Schema.TaggedErrorClass` for all ~10 errors; `Context.Service` bases for the four services. Any schema helper const referenced by those annotations (field codecs in `internal/fields.ts` that leak into a `@public` signature, literal sets, the `kind` union) is likewise `@public` — silk's binary release-tag policy propagates. Target: a zero-warning `dist/prod/issues.json`. **`Package`'s wire transform and `.extend()` factory are the heavy case** — the transform's return type and the `rest`-partition helper must annotate cleanly; expect to lean on the `Schema.Schema<Self>` form the recursive nodes used in jsonc/yaml if `Package.schema` self-references.
 
+As-built (realignment, 2026-07-08): the `@public X_base` idiom above is superseded by the inline factory form (see [effect-standards.md](../effect-standards.md#api-extractor--effect-class-factories)). Despite the large base surface (`Package`, `PackageManager`, `Person`, `DevEngine`, the brand classes, `Dependency`, all ~10 `TaggedErrorClass` errors, the `Context.Service` bases), every factory is now written inline with **no exported `*_base` const**; the synthesized `_base` heritage symbols are suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern) and land in the `issues.json` `suppressed` bucket, keeping it zero-warning. The reusable field codecs (`DependencyMapField`, `BinField`, `ExportsField`, etc. in `Package.ts`) stay **`@public`** — they are genuine reusable API referenced by the `Package` field annotations, not `_base` scaffolding, so the binary release-tag policy still applies to them; only the `*_base` symbols were removed.
+
 ## v4 API drift to verify early
 
 The discipline (semver was burned mid-port by v4 removing `SortedSet`): verify the exposed v4 surface *before* committing. Facts already house-verified during jsonc/yaml and adopted here: no `ParseResult` module (use `Schema.decodeTo`/`SchemaIssue.InvalidValue`); no `Either` root export (`Result` + `Effect.result`); `Schema.optionalKey`/`suspend`/`decodeTo`/`TaggedErrorClass` shapes; `typeof X.Type` for the type. **Remaining to verify at port time**, each resolving to an as-built note:
@@ -281,7 +285,7 @@ The contracts therefore live in **[@effected/npm](npm.md)** (pure tier): `Catalo
 - **The `./schema` second entry point** — one entry; field codecs become statics or `internal/` privates.
 - **The four copy-pasted dependency classes** — one `Dependency` with a `kind` field; getters written once.
 - **The two sources of truth for specifier classification** — merged into `DependencySpecifier`.
-- **All 10 `*Base` error exports** — v3's doubled public error surface stays banned; the API-Extractor need is the separate documented `@public X_base` idiom.
+- **All 10 `*Base` error exports** — v3's doubled public error surface stays banned; the API-Extractor need is met by the inline factory + narrow `_base` suppression (see the [API Extractor bases](#api-extractor-bases-house-policy) as-built note): no `*_base` symbol is exported at all.
 - **The `PackageJson*` service prefixes and `*Schema` suffixes** — the package name and "class IS the schema" remove the disambiguation need; the `SpdxLicense as SpdxLicenseSchema` / `PackageNameType` alias gymnastics die.
 - **`PackageJsonFormatter` + `PackageJsonTransformer` services** — pure `internal/format.ts` functions surfaced as options.
 - **The `CatalogResolver` / `WorkspaceResolver` contracts** — extracted to [@effected/npm](npm.md); package-json imports the tags rather than defining them (decision 4, [resolution belongs to @effected/npm](#resolution-belongs-to-effectednpm)).

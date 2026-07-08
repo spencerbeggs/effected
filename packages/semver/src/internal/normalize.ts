@@ -1,8 +1,6 @@
-/**
- * Comparator-set normalization: a stable sort by operator weight and version
- * precedence, plus semantic deduplication. Comparators that differ only in
- * build metadata are duplicate constraints (SemVer §10) and collapse to one.
- */
+// Comparator-set normalization: a stable sort by operator weight and version
+// precedence, plus semantic deduplication. Comparators that differ only in
+// build metadata are duplicate constraints (SemVer §10) and collapse to one.
 
 import type { ComparatorParts } from "./order.js";
 import { compareParts } from "./order.js";
@@ -48,6 +46,7 @@ const removeDuplicates = (set: ReadonlyArray<ComparatorParts>): ReadonlyArray<Co
 const normalizeComparatorSet = (set: ReadonlyArray<ComparatorParts>): ReadonlyArray<ComparatorParts> =>
 	sortComparators(removeDuplicates(set));
 
+/** Normalize every comparator set in a range: sort and deduplicate each independently. */
 export const normalizeSets = (
 	sets: ReadonlyArray<ReadonlyArray<ComparatorParts>>,
 ): ReadonlyArray<ReadonlyArray<ComparatorParts>> => sets.map(normalizeComparatorSet);

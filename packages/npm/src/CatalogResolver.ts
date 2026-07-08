@@ -1,59 +1,60 @@
-/**
- * The `CatalogResolver` service contract for resolving pnpm `catalog:`
- * specifiers, plus its no-op default layer.
- *
- * The {@link DependencyResolutionError} it raises lives in `WorkspaceResolver.ts`
- * and is imported type-only here, so the only runtime edge runs
- * `CatalogResolver → WorkspaceResolver` and `noImportCycles` stays satisfied.
- *
- * @packageDocumentation
- */
+// The `CatalogResolver` service contract for resolving pnpm `catalog:`
+// specifiers, plus its no-op default layer.
+//
+// The `DependencyResolutionError` it raises lives in `WorkspaceResolver.ts`
+// and is imported type-only here, so the only runtime edge runs
+// `CatalogResolver -> WorkspaceResolver`, keeping `noImportCycles` satisfied.
 
 import { Context, Effect, Layer, Option } from "effect";
 import type { DependencyResolutionError } from "./WorkspaceResolver.js";
 
 /**
- * Service-key base backing {@link CatalogResolver}. Not meant to be referenced
- * directly — named and exported only so API Extractor can resolve the heritage
- * clause of the class it backs.
+ * Contract for resolving pnpm `catalog:` dependency specifiers to concrete
+ * version ranges.
+ *
+ * `rangeOf` takes a package name and an optional catalog name
+ * (`Option.none()` selects the default catalog) and returns the configured
+ * range as `Option.some`, or `Option.none()` when the specifier is absent
+ * from the catalog. By convention the error channel is reserved for a
+ * failure in the resolution mechanism itself (e.g. an unreadable catalog
+ * file) — an unmatched package or catalog name is an `Option.none()`
+ * success, not a {@link DependencyResolutionError}.
+ *
+ * This is a contract-only service: {@link CatalogResolver.noop} is the sole
+ * implementation this package ships, and it resolves nothing. Real consumers
+ * (e.g. `@effected/workspaces`) provide a working implementation at the
+ * application boundary.
+ *
+ * @example
+ * ```ts
+ * import { Effect, Option } from "effect";
+ * import { CatalogResolver } from "@effected/npm";
+ *
+ * const program = Effect.gen(function* () {
+ *   const resolver = yield* CatalogResolver;
+ *   return yield* resolver.rangeOf("effect", Option.none());
+ * });
+ *
+ * Effect.runPromise(Effect.provide(program, CatalogResolver.noop));
+ * // => Option.none()
+ * ```
  *
  * @public
  */
-export const CatalogResolver_base: Context.ServiceClass<
+export class CatalogResolver extends Context.Service<
 	CatalogResolver,
-	"@effected/npm/CatalogResolver",
 	{
 		readonly rangeOf: (
 			packageName: string,
 			catalog: Option.Option<string>,
 		) => Effect.Effect<Option.Option<string>, DependencyResolutionError>;
 	}
-> = Context.Service<
-	CatalogResolver,
-	{
-		readonly rangeOf: (
-			packageName: string,
-			catalog: Option.Option<string>,
-		) => Effect.Effect<Option.Option<string>, DependencyResolutionError>;
-	}
->()("@effected/npm/CatalogResolver");
-
-/**
- * Resolves pnpm `catalog:` specifiers. Given a package name and an optional
- * catalog name (`Option.none()` = the default catalog), `rangeOf` returns the
- * configured range as `Option.some`, or `Option.none()` if it cannot be
- * resolved.
- *
- * The package ships {@link CatalogResolver.noop} — a pure no-op layer that
- * resolves nothing — as its default. Real consumers (e.g. `@effected/workspaces`)
- * provide an implementation at the application boundary.
- *
- * @public
- */
-export class CatalogResolver extends CatalogResolver_base {
+>()("@effected/npm/CatalogResolver") {
 	/**
-	 * No-op default layer: `rangeOf` always succeeds with `Option.none()`.
-	 * A pure `Layer.succeed`, bound to a const so it memoizes by reference.
+	 * No-op default: `rangeOf` always succeeds with `Option.none()`, never
+	 * consulting an actual catalog. A pure `Layer.succeed`, bound to a const
+	 * so it memoizes by reference — the layer is built once, not once per
+	 * reference to `CatalogResolver.noop`.
 	 */
 	static readonly noop: Layer.Layer<CatalogResolver> = Layer.succeed(CatalogResolver, {
 		rangeOf: () => Effect.succeed(Option.none()),

@@ -1,15 +1,12 @@
-/**
- * The recursive JSONC AST node and the path vocabulary used to navigate it.
- *
- * `JsoncNode` is a `Schema.Class` with a `Schema.suspend` self-reference for
- * `children`; it deliberately carries no parent pointers (circular references
- * would break structural equality, serialization and Schema encode/decode).
- * Navigation methods (`find`, `findAtOffset`, `pathAt`) walk `children`
- * locally and return `Option`, never a `NotFound` error. Value extraction
- * (`toValue`) is a pure total function per the package Effect-wrapping policy.
- *
- * @packageDocumentation
- */
+// The recursive JSONC AST node and the path vocabulary used to navigate it.
+//
+// `JsoncNode` is a `Schema.Class` with a `Schema.suspend` self-reference for
+// `children`; it deliberately carries no parent pointers (circular references
+// would break structural equality, serialization and Schema encode/decode).
+// Navigation methods (`find`, `findAtOffset`, `pathAt`) walk `children`
+// locally and return `Option`, never a `NotFound` error. Value extraction
+// (`toValue`) is a pure total function per the package Effect-wrapping
+// policy.
 
 import { Option, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
@@ -47,36 +44,6 @@ export const JsoncNodeType = Schema.Literals(["object", "array", "property", "st
 export type JsoncNodeType = typeof JsoncNodeType.Type;
 
 /**
- * Schema-generated base class backing {@link JsoncNode}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs. The recursive `children` field is
- * annotated as `Schema.Schema<JsoncNode>` (not `typeof JsoncNode`) to keep the
- * self-reference resolvable without a circular type error.
- *
- * @public
- */
-export const JsoncNode_base: Schema.Class<
-	JsoncNode,
-	Schema.Struct<{
-		readonly type: typeof JsoncNodeType;
-		readonly offset: typeof Schema.Number;
-		readonly length: typeof Schema.Number;
-		readonly value: Schema.optionalKey<typeof Schema.Unknown>;
-		readonly colonOffset: Schema.optionalKey<typeof Schema.Number>;
-		readonly children: Schema.optionalKey<Schema.$Array<Schema.suspend<Schema.Schema<JsoncNode>>>>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<JsoncNode>("JsoncNode")({
-	type: JsoncNodeType,
-	offset: Schema.Number,
-	length: Schema.Number,
-	value: Schema.optionalKey(Schema.Unknown),
-	colonOffset: Schema.optionalKey(Schema.Number),
-	children: Schema.optionalKey(Schema.Array(Schema.suspend((): Schema.Schema<JsoncNode> => JsoncNode))),
-});
-
-/**
  * An immutable JSONC AST node produced by `Jsonc.parseTree`.
  *
  * The `parent` field present in Microsoft's `jsonc-parser` is intentionally
@@ -95,11 +62,22 @@ export const JsoncNode_base: Schema.Class<
  *
  * @public
  */
-export class JsoncNode extends JsoncNode_base {
+export class JsoncNode extends Schema.Class<JsoncNode>("JsoncNode")({
+	type: JsoncNodeType,
+	offset: Schema.Number,
+	length: Schema.Number,
+	value: Schema.optionalKey(Schema.Unknown),
+	colonOffset: Schema.optionalKey(Schema.Number),
+	children: Schema.optionalKey(Schema.Array(Schema.suspend((): Schema.Schema<JsoncNode> => JsoncNode))),
+}) {
 	/**
 	 * Find a descendant node by path. String segments navigate object
 	 * properties; number segments navigate array indices. Returns
 	 * `Option.none()` when any segment cannot be resolved. Pure.
+	 *
+	 * @param path - The path to resolve, relative to this node.
+	 * @returns The descendant node, or `Option.none()` when `path` cannot be
+	 *   resolved.
 	 */
 	find(path: JsoncPath): Option.Option<JsoncNode> {
 		let current: JsoncNode | undefined = this;
@@ -126,6 +104,10 @@ export class JsoncNode extends JsoncNode_base {
 	/**
 	 * Find the innermost node whose span covers `offset`, or `Option.none()`
 	 * if the offset is outside this subtree. Pure.
+	 *
+	 * @param offset - The zero-based character offset to locate.
+	 * @returns The innermost covering node, or `Option.none()` when `offset`
+	 *   falls outside this subtree.
 	 */
 	findAtOffset(offset: number): Option.Option<JsoncNode> {
 		return findAtOffsetImpl(this, offset, 0);
@@ -135,6 +117,10 @@ export class JsoncNode extends JsoncNode_base {
 	 * Return the JSON path to the innermost node covering `offset`, or
 	 * `Option.none()` if the offset is outside this subtree. The inverse of
 	 * {@link JsoncNode.find}. Pure.
+	 *
+	 * @param offset - The zero-based character offset to locate.
+	 * @returns The path to the innermost covering node, or `Option.none()`
+	 *   when `offset` falls outside this subtree.
 	 */
 	pathAt(offset: number): Option.Option<JsoncPath> {
 		return buildPath(this, offset, []);
@@ -143,6 +129,9 @@ export class JsoncNode extends JsoncNode_base {
 	/**
 	 * Reconstruct the plain JavaScript value represented by this subtree. Pure
 	 * and total — never fails, so no `Effect` wrapper.
+	 *
+	 * @returns The plain JavaScript value (object, array, string, number,
+	 *   boolean or `null`) this subtree represents.
 	 */
 	toValue(): unknown {
 		return evaluateNode(this, 0);

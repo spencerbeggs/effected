@@ -1,30 +1,10 @@
-/**
- * SPDX license validation: the `SpdxLicense` branded schema (accepting
- * real SPDX expressions plus the `UNLICENSED` and `SEE LICENSE IN` special
- * cases) and the {@link InvalidSpdxLicenseError} the concept raises.
- *
- * @packageDocumentation
- */
+// SPDX license validation: the `SpdxLicense` branded schema (accepting real
+// SPDX expressions plus the `UNLICENSED` and `SEE LICENSE IN` special cases)
+// and the `InvalidSpdxLicenseError` the concept raises.
 
-import type { Cause } from "effect";
+import type { Brand } from "effect";
 import { Schema } from "effect";
 import spdxParse from "spdx-expression-parse";
-
-/**
- * Schema-generated base class backing {@link InvalidSpdxLicenseError}. Not
- * meant to be referenced directly — named and exported only so API Extractor
- * can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const InvalidSpdxLicenseError_base: Schema.Class<
-	InvalidSpdxLicenseError,
-	Schema.TaggedStruct<"InvalidSpdxLicenseError", { readonly input: typeof Schema.String }>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<InvalidSpdxLicenseError>()("InvalidSpdxLicenseError", {
-	/** The raw input string that failed validation. */
-	input: Schema.String,
-});
 
 /**
  * Indicates that a string is not a valid SPDX license identifier or expression.
@@ -34,7 +14,13 @@ export const InvalidSpdxLicenseError_base: Schema.Class<
  *
  * @public
  */
-export class InvalidSpdxLicenseError extends InvalidSpdxLicenseError_base {
+export class InvalidSpdxLicenseError extends Schema.TaggedErrorClass<InvalidSpdxLicenseError>()(
+	"InvalidSpdxLicenseError",
+	{
+		/** The raw input string that failed validation. */
+		input: Schema.String,
+	},
+) {
 	override get message(): string {
 		return `Invalid SPDX license "${this.input}": not a recognized identifier or expression`;
 	}
@@ -75,4 +61,4 @@ export const SpdxLicense = Schema.String.pipe(
  *
  * @public
  */
-export type SpdxLicense = typeof SpdxLicense.Type;
+export type SpdxLicense = string & Brand.Brand<"SpdxLicense">;

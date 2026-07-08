@@ -1,14 +1,10 @@
-/**
- * Pure JSONC formatting: compute the minimal set of whitespace edits that
- * bring a document to canonical shape, or apply them in one step.
- *
- * Kept as its own concept module (rather than folded into the `Jsonc` facade)
- * so the jsonc and yaml surfaces stay structurally symmetric — `YamlFormatter`
- * will want the identical shape. Both statics are pure and total: computing
- * edits never fails, so there is no `Effect` wrapper.
- *
- * @packageDocumentation
- */
+// Pure JSONC formatting: compute the minimal set of whitespace edits that
+// bring a document to canonical shape, or apply them in one step.
+//
+// Kept as its own concept module (rather than folded into the `Jsonc` facade)
+// so the jsonc and yaml surfaces stay structurally symmetric — `YamlFormatter`
+// will want the identical shape. Both statics are pure and total: computing
+// edits never fails, so there is no `Effect` wrapper.
 
 import type { SyntaxKind } from "./internal/scanner.js";
 import { createScanner } from "./internal/scanner.js";
@@ -31,6 +27,8 @@ export class JsoncFormatter {
 	 * @param range - Optional sub-range; only edits within it are returned.
 	 * @param options - Optional {@link JsoncFormattingOptions}; absent fields use
 	 *   defaults (tabSize 2, spaces, `"\n"`, no final newline, reflow).
+	 * @returns The edits that bring `text` (or `range`) to canonical shape;
+	 *   apply them with `JsoncEdit.applyAll`.
 	 */
 	static format(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): ReadonlyArray<JsoncEdit> {
 		return formatImpl(text, range, options);
@@ -40,6 +38,12 @@ export class JsoncFormatter {
 	 * Format `text` and apply the resulting edits in one step
 	 * (`applyAll ∘ format`). The sole surviving convenience from v3's
 	 * `formatAndApply`. Pure and total.
+	 *
+	 * @param text - The JSONC source to format.
+	 * @param range - Optional sub-range; only edits within it are applied.
+	 * @param options - Optional {@link JsoncFormattingOptions}; see
+	 *   {@link JsoncFormatter.format} for defaults.
+	 * @returns The formatted text.
 	 */
 	static formatToString(text: string, range?: JsoncRange, options?: JsoncFormattingOptions): string {
 		return JsoncEdit.applyAll(text, formatImpl(text, range, options));

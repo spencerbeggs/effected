@@ -1,12 +1,10 @@
-/**
- * Shared comparison primitives over structural version parts.
- *
- * Every module in the package compares versions through these functions, so
- * SemVer 2.0.0 precedence rules live exactly once. Operating on structural
- * parts (not the `SemVer` class) keeps this module import-cycle-free: the
- * grammar, desugar and normalize pipeline and the `SemVer` class itself all
- * consume it.
- */
+// Shared comparison primitives over structural version parts.
+//
+// Every module in the package compares versions through these functions, so
+// SemVer 2.0.0 precedence rules live exactly once. Operating on structural
+// parts (not the `SemVer` class) keeps this module import-cycle-free: the
+// grammar, desugar and normalize pipeline and the `SemVer` class itself all
+// consume it.
 
 /** Structural fields of a parsed version, shared by the parser pipeline. */
 export interface VersionParts {
@@ -17,7 +15,7 @@ export interface VersionParts {
 	readonly build: ReadonlyArray<string>;
 }
 
-/** A comparison operator accepted by comparators. */
+/** The relational operator prefix of a comparator (`=`, `>`, `>=`, `<`, `<=`). */
 export type ComparatorOperator = "=" | ">" | ">=" | "<" | "<=";
 
 /** Structural fields of a parsed comparator. */

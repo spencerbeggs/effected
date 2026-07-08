@@ -7,7 +7,33 @@ description: >
   implementation in Effect to this agent; it carries the effective plugin's
   v4 best-practice skills and the discipline of verifying every API against
   the installed `effect` beta rather than v3 memory.
-tools: Read, Write, Edit, Glob, Grep, Skill, Bash(pnpm *), Bash(node *), Bash(turbo *), Bash(git *), Bash(cat *), Bash(ls *), Bash(find *), Bash(grep *), mcp__plugin_vitest-agent_mcp__run_tests, mcp__plugin_silk_savvy-mcp__biome_check
+tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Skill
+  - TodoWrite
+  - ToolSearch
+  - SendMessage
+  - ReportFindings
+  - TaskCreate
+  - TaskUpdate
+  - TaskList
+  - TaskGet
+  - Bash
+  - WebFetch
+  - WebSearch
+  - mcp__plugin_vitest-agent_mcp__run_tests
+  - mcp__plugin_vitest-agent_mcp__test_errors
+  - mcp__plugin_vitest-agent_mcp__test_history
+  - mcp__plugin_vitest-agent_mcp__test_coverage
+  - mcp__plugin_vitest-agent_mcp__file_coverage
+  - mcp__plugin_vitest-agent_mcp__triage_brief
+  - mcp__plugin_silk_savvy-mcp__biome_check
+  - mcp__plugin_silk_savvy-mcp__turbo_inspect
+  - mcp__plugin_silk_savvy-mcp__workspace_info
 skills:
   - effect-v4-planning
   - effect-v4-schema

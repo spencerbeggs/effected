@@ -19,13 +19,15 @@ Six foundational design docs live in `.claude/design/effected/` (config: `.claud
 
 ### Migration Workflow
 
-Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port. `@effected/semver` landed first, `@effected/jsonc` second, and `@effected/yaml` third; the order after firms up as lessons land.
+Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port. `@effected/semver` landed first, `@effected/jsonc` second, `@effected/yaml` third, and `@effected/package-json` fourth (the first boundary-tier port, which also spun out the internal `@effected/npm` sibling); the order after firms up as lessons land.
 
 ## Repository Layout
 
 - `packages/semver` — first migrated library: strict SemVer 2.0.0 schemas (pure tier).
 - `packages/jsonc` — second migrated library: zero-dependency JSONC parse/edit/format schemas (pure tier).
 - `packages/yaml` — third migrated library: YAML parse/edit/format schemas over an internal engine plus public modules (Yaml facade, YamlDiagnostic, YamlNode, YamlDocument, YamlEdit, YamlFormat, YamlVisitor) (pure tier).
+- `packages/package-json` — fourth migrated library and first boundary-tier port: package.json schemas (`Package` Schema.Class, dependency-specifier taxonomy, semantic field decoding) with IO confined to a single `PackageJsonFile.ts` module (boundary tier).
+- `packages/npm` — internal sibling (no source repo) spun out of the package-json port: dependency-resolution service contracts (`CatalogResolver`, `WorkspaceResolver`, `DependencyResolutionError`) (pure tier).
 - `packages/pnpm-plugin-effect` — repo infrastructure, not a library migration: pnpm catalog/config plugin (built with `rolldown-pnpm-config`; `pnpm pnpm:export` / `pnpm:preview` / `pnpm:up`).
 - `plugin/` — "effective", a Claude Code plugin (skills + effect-dev agent) dogfooded during migrations; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.

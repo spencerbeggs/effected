@@ -1,17 +1,16 @@
-/**
- * YAML stringifier engine — converts JavaScript values and AST nodes to YAML
- * text, including the canonical-output logic exercised by the yaml-test-suite
- * byte-equality assertion family.
- *
- * Sync throughout; the two v3 `Effect.try` failure wrappers become the thrown
- * {@link StringifyFailure}, which the public facade catches and materializes
- * into the public error type. Implements configurable formatting with support
- * for block/flow styles, scalar quoting rules, and round-trip preservation of
- * AST node styles.
- */
+// YAML stringifier engine — converts JavaScript values and AST nodes to YAML
+// text, including the canonical-output logic exercised by the
+// yaml-test-suite byte-equality assertion family.
+//
+// Sync throughout; the two v3 `Effect.try` failure wrappers become the
+// thrown `StringifyFailure`, which the public facade catches and
+// materializes into the public error type. Implements configurable
+// formatting with support for block/flow styles, scalar quoting rules, and
+// round-trip preservation of AST node styles.
 
 import type { CollectionStyle, ScalarStyle, YamlNode } from "../YamlNode.js";
 import { YamlAlias, YamlMap, YamlPair, YamlScalar, YamlSeq } from "../YamlNode.js";
+import { MAX_NESTING_DEPTH } from "./composer/state.js";
 import {
 	hasInteriorTrailingWhitespace,
 	hasNewlineSpacesTab,
@@ -33,6 +32,22 @@ export class StringifyFailure extends Error {
 		super(reason);
 		this.name = "StringifyFailure";
 		this.reason = reason;
+	}
+}
+
+/**
+ * Thrown by the value-stringifier trio when its mutual recursion exceeds
+ * {@link MAX_NESTING_DEPTH}. A deeply-nested acyclic value (e.g. a 50 000-deep
+ * array) would otherwise overflow the call stack as an unhandled `RangeError`
+ * defect; the facade catches this and materializes a fatal
+ * `YamlStringifyError` (a `NestingDepthExceeded` diagnostic), keeping the
+ * failure on the typed error channel — the stringify mirror of the composer's
+ * nesting-depth guard.
+ */
+export class StringifyDepthExceeded extends Error {
+	constructor() {
+		super(`Nesting depth exceeded maximum of ${MAX_NESTING_DEPTH}`);
+		this.name = "StringifyDepthExceeded";
 	}
 }
 
@@ -415,7 +430,14 @@ function createContext(options?: StringifyOptionsInput): StringifyContext {
  * responsible for prepending the appropriate indentation prefix to each line.
  * This avoids double-indentation when embedding nested collections.
  */
-function stringifyLines(value: unknown, ctx: StringifyContext): string[] {
+function stringifyLines(value: unknown, ctx: StringifyContext, depth: number): string[] {
+	// Depth guard: the value-stringifier trio (this fn, stringifyArrayLines and
+	// stringifyObjectLines) is mutually recursive with no natural bound, so a
+	// deeply-nested acyclic value would overflow the stack as a RangeError
+	// defect. Cap at the shared MAX_NESTING_DEPTH and throw a typed internal
+	// error the facade materializes into a YamlStringifyError.
+	if (depth > MAX_NESTING_DEPTH) throw new StringifyDepthExceeded();
+
 	// null / undefined
 	if (value === null || value === undefined) return ["null"];
 
@@ -440,7 +462,7 @@ function stringifyLines(value: unknown, ctx: StringifyContext): string[] {
 		detectCircular(value, ctx.seen);
 		ctx.seen.add(value as object);
 		try {
-			return stringifyArrayLines(value, ctx);
+			return stringifyArrayLines(value, ctx, depth);
 		} finally {
 			ctx.seen.delete(value as object);
 		}
@@ -451,7 +473,7 @@ function stringifyLines(value: unknown, ctx: StringifyContext): string[] {
 		detectCircular(value, ctx.seen);
 		ctx.seen.add(value as object);
 		try {
-			return stringifyObjectLines(value as Record<string, unknown>, ctx);
+			return stringifyObjectLines(value as Record<string, unknown>, ctx, depth);
 		} finally {
 			ctx.seen.delete(value as object);
 		}
@@ -464,13 +486,13 @@ function stringifyLines(value: unknown, ctx: StringifyContext): string[] {
 /**
  * Stringifies a JavaScript array into YAML sequence lines (no leading indent).
  */
-function stringifyArrayLines(arr: unknown[], ctx: StringifyContext): string[] {
+function stringifyArrayLines(arr: unknown[], ctx: StringifyContext, depth: number): string[] {
 	if (arr.length === 0) {
 		return ["[]"];
 	}
 
 	if (ctx.defaultCollectionStyle === "flow") {
-		const items = arr.map((item) => stringifyLines(item, ctx).join(" "));
+		const items = arr.map((item) => stringifyLines(item, ctx, depth + 1).join(" "));
 		return [`[${items.join(", ")}]`];
 	}
 
@@ -478,7 +500,7 @@ function stringifyArrayLines(arr: unknown[], ctx: StringifyContext): string[] {
 	const pad = " ".repeat(ctx.indent);
 	const lines: string[] = [];
 	for (const item of arr) {
-		const itemLines = stringifyLines(item, ctx);
+		const itemLines = stringifyLines(item, ctx, depth + 1);
 		if (itemLines.length === 1) {
 			lines.push(`- ${itemLines[0]}`);
 		} else {
@@ -517,7 +539,7 @@ function isBlockCollection(value: unknown, ctx: StringifyContext): boolean {
 /**
  * Stringifies a JavaScript object into YAML mapping lines (no leading indent).
  */
-function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContext): string[] {
+function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContext, depth: number): string[] {
 	const keys = Object.keys(obj);
 	if (keys.length === 0) {
 		return ["{}"];
@@ -530,7 +552,7 @@ function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContex
 	if (ctx.defaultCollectionStyle === "flow") {
 		const pairs = keys.map((k) => {
 			const keyStr = renderString(k, "plain", "");
-			const valStr = stringifyLines(obj[k], ctx).join(" ");
+			const valStr = stringifyLines(obj[k], ctx, depth + 1).join(" ");
 			return `${keyStr}: ${valStr}`;
 		});
 		return [`{${pairs.join(", ")}}`];
@@ -547,7 +569,7 @@ function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContex
 	for (const k of keys) {
 		const keyStr = renderKey(k);
 		const val = obj[k];
-		const valLines = stringifyLines(val, ctx);
+		const valLines = stringifyLines(val, ctx, depth + 1);
 
 		if (valLines.length === 1 && !isBlockCollection(val, ctx)) {
 			// Scalar or empty/flow collection — safe to place inline
@@ -782,15 +804,24 @@ export function stripNodeComments(node: YamlNode): YamlNode {
  * Stringifies a YAML AST node into lines (no leading indent), respecting
  * style metadata from the node.
  */
-function stringifyNodeLines(node: YamlNode, ctx: StringifyContext): string[] {
+function stringifyNodeLines(node: YamlNode, ctx: StringifyContext, depth: number): string[] {
+	// Depth guard, symmetric to the value-path trio: the node-path stringifier
+	// (this fn plus its map/seq helpers) is mutually recursive with no natural
+	// bound, so a synthetic AST nested deeper than the composer's cap would
+	// overflow the stack as a RangeError defect on a public boundary
+	// (YamlDocument.stringify / YamlDocument.schema encode). Parsed ASTs are
+	// composer-bounded to MAX_NESTING_DEPTH and never trip this; only hand-built
+	// deep trees do.
+	if (depth > MAX_NESTING_DEPTH) throw new StringifyDepthExceeded();
+
 	if (node instanceof YamlScalar) {
 		return stringifyScalarNodeLines(node, ctx);
 	}
 	if (node instanceof YamlMap) {
-		return stringifyMapNodeLines(node, ctx);
+		return stringifyMapNodeLines(node, ctx, depth);
 	}
 	if (node instanceof YamlSeq) {
-		return stringifySeqNodeLines(node, ctx);
+		return stringifySeqNodeLines(node, ctx, depth);
 	}
 	if (node instanceof YamlAlias) {
 		return [`*${node.name}`];
@@ -861,7 +892,7 @@ function stringifyScalarNodeLines(node: YamlScalar, ctx: StringifyContext): stri
 /**
  * Stringifies a YamlMap node into lines, using the node's collection style.
  */
-function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext): string[] {
+function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: number): string[] {
 	const style: CollectionStyle = ctx.forceDefaultStyles
 		? ctx.defaultCollectionStyle
 		: (node.style ?? ctx.defaultCollectionStyle);
@@ -883,8 +914,8 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext): string[] {
 
 	if (style === "flow") {
 		const pairs = items.map((pair) => {
-			const keyStr = pair.key ? stringifyNodeLines(pair.key, ctx).join(" ") : "null";
-			const valStr = pair.value ? stringifyNodeLines(pair.value, ctx).join(" ") : "null";
+			const keyStr = pair.key ? stringifyNodeLines(pair.key, ctx, depth + 1).join(" ") : "null";
+			const valStr = pair.value ? stringifyNodeLines(pair.value, ctx, depth + 1).join(" ") : "null";
 			return `${keyStr}: ${valStr}`;
 		});
 		let line = `{${pairs.join(", ")}}`;
@@ -920,7 +951,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext): string[] {
 			(pair.key instanceof YamlMap || pair.key instanceof YamlSeq) && pair.key.items.length > 0;
 		const isComplexKey = keyIsNonEmptyCollection || keyIsScalarWithNewline;
 		if (isComplexKey) {
-			const keyLines = stringifyNodeLines(pair.key, ctx);
+			const keyLines = stringifyNodeLines(pair.key, ctx, depth + 1);
 			// Emit "? " followed by the key
 			lines.push(`? ${keyLines[0]}`);
 			// When the first key line is just metadata (`&anchor` and/or `!tag`),
@@ -943,7 +974,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext): string[] {
 			if (!valNode) {
 				lines.push(":");
 			} else {
-				const valLines = stringifyNodeLines(valNode, ctx);
+				const valLines = stringifyNodeLines(valNode, ctx, depth + 1);
 				if (valLines.length === 1) {
 					lines.push(`: ${valLines[0]}`);
 				} else {
@@ -1011,7 +1042,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext): string[] {
 		) {
 			resolvedKeyStr = pair.key.value;
 		} else {
-			resolvedKeyStr = pair.key ? stringifyNodeLines(pair.key, ctx).join(" ") : "null";
+			resolvedKeyStr = pair.key ? stringifyNodeLines(pair.key, ctx, depth + 1).join(" ") : "null";
 		}
 		const keyStr = resolvedKeyStr;
 		// Alias keys need a space before the colon to avoid the alias name
@@ -1043,7 +1074,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext): string[] {
 			continue;
 		}
 		const valCtx: StringifyContext = { ...ctx, parentPosition: "block-map-value" };
-		const valLines = stringifyNodeLines(valNode, valCtx);
+		const valLines = stringifyNodeLines(valNode, valCtx, depth + 1);
 		const isBlockSeqValue =
 			valNode instanceof YamlSeq &&
 			valNode.items.length > 0 &&
@@ -1151,7 +1182,7 @@ function stripScalarMetadataPrefix(line: string): string {
 /**
  * Stringifies a YamlSeq node into lines, using the node's collection style.
  */
-function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext): string[] {
+function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext, depth: number): string[] {
 	const style: CollectionStyle = ctx.forceDefaultStyles
 		? ctx.defaultCollectionStyle
 		: (node.style ?? ctx.defaultCollectionStyle);
@@ -1165,7 +1196,7 @@ function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext): string[] {
 	}
 
 	if (style === "flow") {
-		const parts = items.map((item) => stringifyNodeLines(item, ctx).join(" "));
+		const parts = items.map((item) => stringifyNodeLines(item, ctx, depth + 1).join(" "));
 		let line = `[${parts.join(", ")}]`;
 		const flowPrefix = buildMetadataPrefix(node.tag, node.anchor);
 		if (flowPrefix) line = `${flowPrefix} ${line}`;
@@ -1177,7 +1208,7 @@ function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext): string[] {
 	const lines: string[] = [];
 	const itemCtx: StringifyContext = { ...ctx, parentPosition: "block-seq-item" };
 	for (const item of items) {
-		const itemLines = stringifyNodeLines(item, itemCtx);
+		const itemLines = stringifyNodeLines(item, itemCtx, depth + 1);
 		if (itemLines.length === 1) {
 			// Empty value: just `-` with no trailing space
 			lines.push(itemLines[0] === "" ? "-" : `- ${itemLines[0]}`);
@@ -1228,7 +1259,7 @@ function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext): string[] {
  */
 export function stringifyValue(value: unknown, options?: StringifyOptionsInput): string {
 	const ctx = createContext(options);
-	const result = stringifyLines(value, ctx).join("\n");
+	const result = stringifyLines(value, ctx, 0).join("\n");
 	return (options?.finalNewline ?? true) ? `${result}\n` : result;
 }
 
@@ -1266,7 +1297,7 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 		return finalNewline ? "null\n" : "null";
 	}
 
-	const result = stringifyNodeLines(contents, ctx).join("\n");
+	const result = stringifyNodeLines(contents, ctx, 0).join("\n");
 	const body = finalNewline ? `${result}\n` : result;
 
 	// In canonical mode, an explicit `...` end marker is required when:

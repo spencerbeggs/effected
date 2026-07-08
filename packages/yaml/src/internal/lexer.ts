@@ -1,10 +1,8 @@
-/**
- * YAML 1.2 lexer — tokenizes raw YAML text into {@link YamlToken} records.
- *
- * This is the only mutable module in the pipeline: the scanner uses imperative
- * character-by-character scanning with position tracking. `createScanner` IS
- * the state machine; `lexAll` drives it to completion.
- */
+// YAML 1.2 lexer — tokenizes raw YAML text into YamlToken records.
+//
+// This is the only mutable module in the pipeline: the scanner uses
+// imperative character-by-character scanning with position tracking.
+// `createScanner` IS the state machine; `lexAll` drives it to completion.
 
 import type { YamlToken, YamlTokenKind } from "./token.js";
 

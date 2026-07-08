@@ -1,25 +1,19 @@
-/**
- * The `Yaml` facade: value-level parsing, stringification, comment stripping,
- * semantic equality and the flagship schema factories, plus the parse and
- * stringify options and errors they raise.
- *
- * `Yaml` is a namespace of statics over the internal engine and the schema
- * layer — not itself a schema class. Per the package Effect-wrapping policy,
- * `parse`/`parseAll`/`stringify` and schema decoding carry real typed error
- * channels; `stripComments`/`equals`/`equalsValue` are pure total functions.
- *
- * @remarks
- * Cycle firewall: the internal engine returns raw `{ code, message, offset,
- * length }` diagnostic records and plain document records; this module
- * materializes {@link YamlDiagnostic} instances (deriving `line`/`character`
- * from `offset`) and constructs the aggregate {@link YamlParseError} /
- * {@link YamlStringifyError}. The dependency edge runs facade → engine only,
- * so `noImportCycles` stays satisfied.
- *
- * @packageDocumentation
- */
+// The `Yaml` facade: value-level parsing, stringification, comment stripping,
+// semantic equality and the flagship schema factories, plus the parse and
+// stringify options and errors they raise.
+//
+// `Yaml` is a namespace of statics over the internal engine and the schema
+// layer — not itself a schema class. Per the package Effect-wrapping policy,
+// `parse`/`parseAll`/`stringify` and schema decoding carry real typed error
+// channels; `stripComments`/`equals`/`equalsValue` are pure total functions.
+//
+// Cycle firewall: the internal engine returns raw `{ code, message, offset,
+// length }` diagnostic records and plain document records; this module
+// materializes YamlDiagnostic instances (deriving `line`/`character` from
+// `offset`) and constructs the aggregate YamlParseError / YamlStringifyError.
+// The dependency edge runs facade → engine only, so `noImportCycles` stays
+// satisfied.
 
-import type { Cause } from "effect";
 import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { buildAnchorMap } from "./internal/composer/anchors.js";
 import { composeAllDocuments, composeFirstDocument } from "./internal/composer/document.js";
@@ -27,32 +21,10 @@ import type { RawDiagnostic } from "./internal/diagnostics.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import type { ParseOptionsInput, StringifyOptionsInput } from "./internal/options.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
-import { StringifyFailure, stringifyValue } from "./internal/stringifier.js";
+import { StringifyDepthExceeded, StringifyFailure, stringifyValue } from "./internal/stringifier.js";
 import { YamlDiagnostic } from "./YamlDiagnostic.js";
 import type { YamlNode } from "./YamlNode.js";
-import { CollectionStyle, ScalarStyle } from "./YamlNode.js";
-
-/**
- * Schema-generated base class backing {@link YamlParseOptions}. Not meant to
- * be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const YamlParseOptions_base: Schema.Class<
-	YamlParseOptions,
-	Schema.Struct<{
-		readonly strict: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly maxAliasCount: Schema.optionalKey<typeof Schema.Number>;
-		readonly uniqueKeys: Schema.optionalKey<typeof Schema.Boolean>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<YamlParseOptions>("YamlParseOptions")({
-	strict: Schema.optionalKey(Schema.Boolean),
-	maxAliasCount: Schema.optionalKey(Schema.Number),
-	uniqueKeys: Schema.optionalKey(Schema.Boolean),
-});
+import { AliasExpansionBudgetExceeded, CollectionStyle, ScalarStyle, nodeToJsValue } from "./YamlNode.js";
 
 /**
  * Options controlling parse behavior. All fields are omissible; absent fields
@@ -62,37 +34,11 @@ export const YamlParseOptions_base: Schema.Class<
  *
  * @public
  */
-export class YamlParseOptions extends YamlParseOptions_base {}
-
-/**
- * Schema-generated base class backing {@link YamlStringifyOptions}. Not meant
- * to be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const YamlStringifyOptions_base: Schema.Class<
-	YamlStringifyOptions,
-	Schema.Struct<{
-		readonly indent: Schema.optionalKey<typeof Schema.Number>;
-		readonly lineWidth: Schema.optionalKey<typeof Schema.Number>;
-		readonly defaultScalarStyle: Schema.optionalKey<typeof ScalarStyle>;
-		readonly defaultCollectionStyle: Schema.optionalKey<typeof CollectionStyle>;
-		readonly sortKeys: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly finalNewline: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly forceDefaultStyles: Schema.optionalKey<typeof Schema.Boolean>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<YamlStringifyOptions>("YamlStringifyOptions")({
-	indent: Schema.optionalKey(Schema.Number),
-	lineWidth: Schema.optionalKey(Schema.Number),
-	defaultScalarStyle: Schema.optionalKey(ScalarStyle),
-	defaultCollectionStyle: Schema.optionalKey(CollectionStyle),
-	sortKeys: Schema.optionalKey(Schema.Boolean),
-	finalNewline: Schema.optionalKey(Schema.Boolean),
-	forceDefaultStyles: Schema.optionalKey(Schema.Boolean),
-});
+export class YamlParseOptions extends Schema.Class<YamlParseOptions>("YamlParseOptions")({
+	strict: Schema.optionalKey(Schema.Boolean),
+	maxAliasCount: Schema.optionalKey(Schema.Number),
+	uniqueKeys: Schema.optionalKey(Schema.Boolean),
+}) {}
 
 /**
  * Options controlling stringify behavior. All fields are omissible; absent
@@ -102,29 +48,15 @@ export const YamlStringifyOptions_base: Schema.Class<
  *
  * @public
  */
-export class YamlStringifyOptions extends YamlStringifyOptions_base {}
-
-/**
- * Schema-generated base class backing {@link YamlParseError}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const YamlParseError_base: Schema.Class<
-	YamlParseError,
-	Schema.TaggedStruct<
-		"YamlParseError",
-		{
-			readonly diagnostics: Schema.$Array<typeof YamlDiagnostic>;
-			readonly input: typeof Schema.String;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<YamlParseError>()("YamlParseError", {
-	diagnostics: Schema.Array(YamlDiagnostic),
-	input: Schema.String,
-});
+export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("YamlStringifyOptions")({
+	indent: Schema.optionalKey(Schema.Number),
+	lineWidth: Schema.optionalKey(Schema.Number),
+	defaultScalarStyle: Schema.optionalKey(ScalarStyle),
+	defaultCollectionStyle: Schema.optionalKey(CollectionStyle),
+	sortKeys: Schema.optionalKey(Schema.Boolean),
+	finalNewline: Schema.optionalKey(Schema.Boolean),
+	forceDefaultStyles: Schema.optionalKey(Schema.Boolean),
+}) {}
 
 /**
  * Error-recovery parse failure: aggregates every fatal {@link YamlDiagnostic}
@@ -134,35 +66,16 @@ export const YamlParseError_base: Schema.Class<
  *
  * @public
  */
-export class YamlParseError extends YamlParseError_base {
+export class YamlParseError extends Schema.TaggedErrorClass<YamlParseError>()("YamlParseError", {
+	diagnostics: Schema.Array(YamlDiagnostic),
+	input: Schema.String,
+}) {
 	override get message(): string {
 		const count = this.diagnostics.length;
 		const summary = this.diagnostics.map((d) => `${d.code} at ${d.line}:${d.character}`).join("; ");
 		return `YAML parse failed with ${count} error${count === 1 ? "" : "s"}: ${summary}`;
 	}
 }
-
-/**
- * Schema-generated base class backing {@link YamlStringifyError}. Not meant
- * to be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const YamlStringifyError_base: Schema.Class<
-	YamlStringifyError,
-	Schema.TaggedStruct<
-		"YamlStringifyError",
-		{
-			readonly diagnostics: Schema.$Array<typeof YamlDiagnostic>;
-			readonly value: typeof Schema.Unknown;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<YamlStringifyError>()("YamlStringifyError", {
-	diagnostics: Schema.Array(YamlDiagnostic),
-	value: Schema.Unknown,
-});
 
 /**
  * Stringification failure (the circular-reference guard), carrying structured
@@ -172,7 +85,10 @@ export const YamlStringifyError_base: Schema.Class<
  *
  * @public
  */
-export class YamlStringifyError extends YamlStringifyError_base {
+export class YamlStringifyError extends Schema.TaggedErrorClass<YamlStringifyError>()("YamlStringifyError", {
+	diagnostics: Schema.Array(YamlDiagnostic),
+	value: Schema.Unknown,
+}) {
 	override get message(): string {
 		const summary = this.diagnostics.map((d) => d.message).join("; ");
 		return `YAML stringify failed: ${summary}`;
@@ -218,11 +134,39 @@ const failureRecords = (doc: RawYamlDocument, uniqueKeys: boolean): ReadonlyArra
 	return uniqueKeys ? doc.warnings.filter((w) => w.code === "DuplicateKey") : [];
 };
 
-/** Extract per-document values for a multi-document stream (anchors per doc). */
-const documentValue = (doc: RawYamlDocument): unknown => {
-	const anchors = buildAnchorMap(doc.contents);
-	return doc.contents === null ? null : doc.contents.toValue(anchors);
-};
+/**
+ * Extract a document's plain-JS value with an alias-expansion budget derived
+ * from `maxAliasCount`, materializing a "billion laughs" blow-up as a typed
+ * fatal {@link YamlParseError} (`AliasCountExceeded`) instead of letting the
+ * heap-exhausting expansion escape as an unhandled defect.
+ */
+const extractDocumentValue = (
+	contents: YamlNode | null,
+	anchors: Map<string, YamlNode>,
+	maxAliasCount: number,
+	text: string,
+): Effect.Effect<unknown, YamlParseError> =>
+	Effect.try({
+		try: () => nodeToJsValue(contents, anchors, maxAliasCount),
+		catch: (defect) => {
+			if (defect instanceof AliasExpansionBudgetExceeded) {
+				return new YamlParseError({
+					diagnostics: [
+						YamlDiagnostic.make({
+							code: "AliasCountExceeded",
+							message: defect.message,
+							offset: 0,
+							length: 0,
+							line: 0,
+							character: 0,
+						}),
+					],
+					input: text,
+				});
+			}
+			throw defect;
+		},
+	});
 
 const stringifyOrFail = (value: unknown, options?: YamlStringifyOptions): Effect.Effect<string, YamlStringifyError> =>
 	Effect.try({
@@ -243,6 +187,24 @@ const stringifyOrFail = (value: unknown, options?: YamlStringifyOptions): Effect
 					value,
 				});
 			}
+			// Deeply-nested acyclic value overflowed the stringifier's recursion
+			// budget — surface it as a fatal stringify error, not a stack-overflow
+			// defect.
+			if (defect instanceof StringifyDepthExceeded) {
+				return new YamlStringifyError({
+					diagnostics: [
+						YamlDiagnostic.make({
+							code: "NestingDepthExceeded",
+							message: defect.message,
+							offset: 0,
+							length: 0,
+							line: 0,
+							character: 0,
+						}),
+					],
+					value,
+				});
+			}
 			throw defect;
 		},
 	});
@@ -252,6 +214,13 @@ const stringifyOrFail = (value: unknown, options?: YamlStringifyOptions): Effect
 /**
  * Static entry points for YAML parsing, stringification, comment stripping,
  * semantic equality and the schema factories. Not instantiable.
+ *
+ * @remarks
+ * `parse`/`parseAll`/`stringify` and the schema factories carry real typed
+ * error channels — including the hardening guards (an alias-expansion budget
+ * on decode, a nesting-depth cap on encode) that keep malformed or
+ * adversarial input on the typed channel instead of surfacing as an unhandled
+ * defect. `stripComments`/`equals`/`equalsValue` are pure total functions.
  *
  * @example
  * ```ts
@@ -274,6 +243,11 @@ export class Yaml {
 	 * anchors and aliases. Error-recovery parsing: collects every fatal
 	 * diagnostic and fails once with the aggregate {@link YamlParseError}.
 	 * Returns `unknown`, never `any`.
+	 *
+	 * A "billion laughs" alias-expansion blow-up (an alias chain whose
+	 * resolved size grows exponentially relative to `maxAliasCount`) also
+	 * fails through {@link YamlParseError} with an `AliasCountExceeded`
+	 * diagnostic, never as an unhandled defect.
 	 */
 	static readonly parse = Effect.fn("Yaml.parse")(function* (text: string, options?: YamlParseOptions) {
 		const doc = composeFirstDocument(text, toParseInput(options));
@@ -284,7 +258,7 @@ export class Yaml {
 		// An empty map lets toValue register anchors incrementally, so aliases
 		// resolve to the most recent anchor at the point of use.
 		const anchors = new Map<string, YamlNode>();
-		return doc.contents === null ? null : (doc.contents.toValue(anchors) as unknown);
+		return yield* extractDocumentValue(doc.contents, anchors, options?.maxAliasCount ?? 100, text);
 	});
 
 	/**
@@ -292,6 +266,10 @@ export class Yaml {
 	 * values (one per document, in order). Any fatal diagnostic in any
 	 * document — or a stream-level directive-placement error — fails the
 	 * whole Effect with the aggregate {@link YamlParseError}.
+	 *
+	 * A "billion laughs" alias-expansion blow-up in any document also fails
+	 * through {@link YamlParseError} with an `AliasCountExceeded` diagnostic,
+	 * never as an unhandled defect.
 	 */
 	static readonly parseAll = Effect.fn("Yaml.parseAll")(function* (text: string, options?: YamlParseOptions) {
 		const { documents, streamErrors } = composeAllDocuments(text, toParseInput(options));
@@ -303,12 +281,22 @@ export class Yaml {
 		if (failures.length > 0) {
 			return yield* new YamlParseError({ diagnostics: toDiagnostics(text, failures), input: text });
 		}
-		return documents.map(documentValue) as ReadonlyArray<unknown>;
+		const maxAliasCount = options?.maxAliasCount ?? 100;
+		const values: Array<unknown> = [];
+		for (const d of documents) {
+			// Per-document anchor map (anchors are document-scoped in a stream).
+			const anchors = buildAnchorMap(d.contents);
+			values.push(yield* extractDocumentValue(d.contents, anchors, maxAliasCount, text));
+		}
+		return values as ReadonlyArray<unknown>;
 	});
 
 	/**
 	 * Stringify a plain JavaScript value as YAML. Fails with
-	 * {@link YamlStringifyError} on circular references.
+	 * {@link YamlStringifyError} on circular references (`CircularReference`)
+	 * or on a value nested deeper than the stringifier's recursion budget
+	 * (`NestingDepthExceeded`) — both surface through the typed error channel
+	 * rather than as an unhandled stack-overflow defect.
 	 */
 	static readonly stringify = Effect.fn("Yaml.stringify")(function* (value: unknown, options?: YamlStringifyOptions) {
 		return yield* stringifyOrFail(value, options);
@@ -506,7 +494,17 @@ function parseForEquality(text: string): { readonly malformed: boolean; readonly
 		return { malformed: true, value: undefined };
 	}
 	const anchors = new Map<string, YamlNode>();
-	return { malformed: false, value: doc.contents === null ? null : doc.contents.toValue(anchors) };
+	try {
+		return { malformed: false, value: nodeToJsValue(doc.contents, anchors, 100) };
+	} catch (err) {
+		// A "billion laughs" alias bomb parses clean but blows up on expansion;
+		// treat it as malformed (never equal to anything) rather than letting the
+		// budget guard escape as a defect.
+		if (err instanceof AliasExpansionBudgetExceeded) {
+			return { malformed: true, value: undefined };
+		}
+		throw err;
+	}
 }
 
 /**

@@ -3,7 +3,13 @@
 	"tasks": {
 		"build": {
 			"cache": false,
-			"dependsOn": ["@effected/semver#build:prod"],
+			"dependsOn": [
+				"@effected/jsonc#build:prod",
+				"@effected/npm#build:prod",
+				"@effected/package-json#build:prod",
+				"@effected/semver#build:prod",
+				"@effected/yaml#build:prod"
+			],
 			"outputLogs": "full",
 			"outputs": ["dist/**"]
 		},

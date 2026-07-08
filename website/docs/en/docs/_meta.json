@@ -1,0 +1,40 @@
+[
+	{
+		"type": "section-header",
+		"label": "Documentation"
+	},
+	{
+		"type": "file",
+		"name": "index.mdx",
+		"label": "Overview"
+	},
+	{
+		"type": "section-header",
+		"label": "Packages"
+	},
+	{
+		"type": "custom-link",
+		"link": "/jsonc",
+		"label": "@effected/jsonc"
+	},
+	{
+		"type": "custom-link",
+		"link": "/npm",
+		"label": "@effected/npm"
+	},
+	{
+		"type": "custom-link",
+		"link": "/package-json",
+		"label": "@effected/package-json"
+	},
+	{
+		"type": "custom-link",
+		"link": "/semver",
+		"label": "@effected/semver"
+	},
+	{
+		"type": "custom-link",
+		"link": "/yaml",
+		"label": "@effected/yaml"
+	}
+]

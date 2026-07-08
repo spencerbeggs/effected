@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { Yaml, YamlParseError, YamlStringifyError } from "../src/index.js";
 
 describe("Yaml", () => {
@@ -153,6 +153,23 @@ describe("Yaml", () => {
 				assert.strictEqual(error.value, value);
 			}),
 		);
+
+		it.effect("a deeply nested acyclic value fails typed, never a stack-overflow defect", () =>
+			Effect.gen(function* () {
+				// The value-stringifier trio is mutually recursive with no natural
+				// bound; a 50 000-deep acyclic array would overflow the stack as a
+				// RangeError defect. The depth cap must surface it on the typed channel.
+				let value: unknown = 1;
+				for (let i = 0; i < 50000; i++) value = [value];
+
+				const result = yield* Effect.result(Yaml.stringify(value));
+				if (!Result.isFailure(result)) {
+					assert.fail("a 50 000-deep acyclic value must fail, not overflow the stack");
+				}
+				assert.instanceOf(result.failure, YamlStringifyError);
+				assert.strictEqual(result.failure.diagnostics[0]?.code, "NestingDepthExceeded");
+			}),
+		);
 	});
 
 	describe("stripComments", () => {
@@ -261,6 +278,50 @@ describe("Yaml", () => {
 				for (let i = 0; i < 4000; i++) text += `${" ".repeat(i)}k:\n`;
 				const error = yield* Effect.flip(Yaml.parse(text));
 				assert.isTrue(error.diagnostics.some((d) => d.code === "NestingDepthExceeded"));
+			}),
+		);
+
+		it.effect("an alias-expansion 'billion laughs' bomb under the token budget fails typed, not OOM", () =>
+			Effect.gen(function* () {
+				// A chain of anchored flow sequences, each referencing the previous
+				// ten times: a1=[x×10], a2=[*a1×10], … a8=[*a7×10], top: *a8.
+				// Only 71 alias TOKENS (7×10 + 1) — under the default maxAliasCount of
+				// 100 — but *a8 expands to ~10^8 materialized nodes. The composer's
+				// per-token guard cannot catch it; the value-extraction budget must.
+				const width = 10;
+				const depth = 8;
+				const lines: string[] = [`a1: &a1 [${Array.from({ length: width }, () => "x").join(", ")}]`];
+				for (let i = 2; i <= depth; i++) {
+					lines.push(`a${i}: &a${i} [${Array.from({ length: width }, () => `*a${i - 1}`).join(", ")}]`);
+				}
+				lines.push(`top: *a${depth}`);
+				const bomb = lines.join("\n");
+
+				const result = yield* Effect.result(Yaml.parse(bomb));
+				if (!Result.isFailure(result)) {
+					assert.fail("expected the alias bomb to fail, not materialize");
+				}
+				assert.instanceOf(result.failure, YamlParseError);
+				assert.isTrue(result.failure.diagnostics.some((d) => d.code === "AliasCountExceeded"));
+			}),
+		);
+
+		it.effect("a benign document with many small distinct aliases still parses (budget does not false-positive)", () =>
+			Effect.gen(function* () {
+				// 90 distinct anchors, each a small scalar, each referenced once — well
+				// under any expansion bound. Proves the budget counts real expanded
+				// output, not raw alias tokens, so legitimate alias-heavy documents pass.
+				const anchors = Array.from({ length: 90 }, (_, i) => `a${i}: &n${i} ${i}`);
+				const refs = Array.from({ length: 90 }, (_, i) => `r${i}: *n${i}`);
+				const doc = [...anchors, ...refs].join("\n");
+
+				const result = yield* Effect.result(Yaml.parse(doc));
+				if (!Result.isSuccess(result)) {
+					assert.fail("a benign alias-heavy document must not trip the expansion budget");
+				}
+				const value = result.success as Record<string, number>;
+				assert.strictEqual(value.r0, 0);
+				assert.strictEqual(value.r89, 89);
 			}),
 		);
 	});

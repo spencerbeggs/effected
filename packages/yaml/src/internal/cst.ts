@@ -1,8 +1,6 @@
-/**
- * Internal Concrete Syntax Tree types. The CST layer is not public surface —
- * a `Stream<CstNode>` interface is deferred until an LSP-tooling consumer
- * materializes.
- */
+// Internal Concrete Syntax Tree types. The CST layer is not public surface —
+// a `Stream<CstNode>` interface is deferred until an LSP-tooling consumer
+// materializes.
 
 /** The 15 node types produced by the YAML CST parser. */
 export type CstNodeType =

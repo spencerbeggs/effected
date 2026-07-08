@@ -1,23 +1,17 @@
-/**
- * The `Jsonc` facade: parsing, comment stripping, semantic equality and the
- * flagship schema factories, plus the parse-error vocabulary they raise.
- *
- * `Jsonc` is a namespace of statics over the internal parser and the schema
- * layer — not itself a schema class. Per the package Effect-wrapping policy,
- * `parse`/`parseTree` and schema decoding carry a real `JsoncParseError`
- * channel; `stripComments`/`equals`/`equalsValue` are pure total functions.
- *
- * @remarks
- * Cycle firewall: the internal parser returns raw error records
- * (`{ code, offset, length }`) and this module maps them into
- * {@link JsoncParseErrorDetail} — deriving `line`/`character` from `offset` —
- * and builds the aggregate {@link JsoncParseError}. The dependency edge runs
- * facade → parser only, so `noImportCycles` stays satisfied.
- *
- * @packageDocumentation
- */
+// The `Jsonc` facade: parsing, comment stripping, semantic equality and the
+// flagship schema factories, plus the parse-error vocabulary they raise.
+//
+// `Jsonc` is a namespace of statics over the internal parser and the schema
+// layer — not itself a schema class. Per the package Effect-wrapping policy,
+// `parse`/`parseTree` and schema decoding carry a real `JsoncParseError`
+// channel; `stripComments`/`equals`/`equalsValue` are pure total functions.
+//
+// Cycle firewall: the internal parser returns raw error records
+// (`{ code, offset, length }`) and this module maps them into
+// `JsoncParseErrorDetail` — deriving `line`/`character` from `offset` — and
+// builds the aggregate `JsoncParseError`. The dependency edge runs facade →
+// parser only, so `noImportCycles` stays satisfied.
 
-import type { Cause } from "effect";
 import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import type { ParseFlags, RawParseError } from "./internal/parser.js";
@@ -31,9 +25,8 @@ import { createScanner } from "./internal/scanner.js";
 import { JsoncNode } from "./JsoncNode.js";
 
 /**
- * The single public parse-error code vocabulary. Not meant to be used directly
- * — exported because it appears in the type of {@link JsoncParseErrorDetail_base}'s
- * public members, which API Extractor must resolve.
+ * The single public parse-error code vocabulary, appearing as the `code` field
+ * of {@link JsoncParseErrorDetail}.
  *
  * @public
  */
@@ -47,61 +40,19 @@ export const JsoncParseErrorCode = Schema.Literals(JSONC_PARSE_ERROR_CODES);
 export type JsoncParseErrorCode = typeof JsoncParseErrorCode.Type;
 
 /**
- * Schema-generated base class backing {@link JsoncParseErrorDetail}. Not meant
- * to be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const JsoncParseErrorDetail_base: Schema.Class<
-	JsoncParseErrorDetail,
-	Schema.Struct<{
-		readonly code: typeof JsoncParseErrorCode;
-		readonly offset: typeof Schema.Number;
-		readonly length: typeof Schema.Number;
-		readonly line: typeof Schema.Number;
-		readonly character: typeof Schema.Number;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<JsoncParseErrorDetail>("JsoncParseErrorDetail")({
-	code: JsoncParseErrorCode,
-	offset: Schema.Number,
-	length: Schema.Number,
-	line: Schema.Number,
-	character: Schema.Number,
-});
-
-/**
  * One recovered parse error: its `JsoncParseErrorCode` and its exact
  * position (`offset`/`length`, plus zero-based `line`/`character`). A single
  * {@link JsoncParseError} reports a batch of these.
  *
  * @public
  */
-export class JsoncParseErrorDetail extends JsoncParseErrorDetail_base {}
-
-/**
- * Schema-generated base class backing {@link JsoncParseError}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const JsoncParseError_base: Schema.Class<
-	JsoncParseError,
-	Schema.TaggedStruct<
-		"JsoncParseError",
-		{
-			readonly errors: Schema.$Array<typeof JsoncParseErrorDetail>;
-			readonly input: typeof Schema.String;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<JsoncParseError>()("JsoncParseError", {
-	errors: Schema.Array(JsoncParseErrorDetail),
-	input: Schema.String,
-});
+export class JsoncParseErrorDetail extends Schema.Class<JsoncParseErrorDetail>("JsoncParseErrorDetail")({
+	code: JsoncParseErrorCode,
+	offset: Schema.Number,
+	length: Schema.Number,
+	line: Schema.Number,
+	character: Schema.Number,
+}) {}
 
 /**
  * Error-recovery parse failure: aggregates every {@link JsoncParseErrorDetail}
@@ -111,7 +62,10 @@ export const JsoncParseError_base: Schema.Class<
  *
  * @public
  */
-export class JsoncParseError extends JsoncParseError_base {
+export class JsoncParseError extends Schema.TaggedErrorClass<JsoncParseError>()("JsoncParseError", {
+	errors: Schema.Array(JsoncParseErrorDetail),
+	input: Schema.String,
+}) {
 	override get message(): string {
 		const count = this.errors.length;
 		const summary = this.errors.map((e) => `${e.code} at ${e.line}:${e.character}`).join("; ");
@@ -120,36 +74,24 @@ export class JsoncParseError extends JsoncParseError_base {
 }
 
 /**
- * Schema-generated base class backing {@link JsoncParseOptions}. Not meant to
- * be referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
+ * Options controlling parse behavior. All fields are omissible.
+ *
+ * - `disallowComments` — reject line and block comments as a parse error
+ *   instead of the JSONC default of allowing them. Defaults to `false`.
+ * - `allowTrailingComma` — accept a trailing comma before a closing `}`/`]`.
+ *   Defaults to `true` — the deliberate JSONC-convention default, differing
+ *   from Microsoft's parser (which defaults to `false`).
+ * - `allowEmptyContent` — treat empty or whitespace/comment-only input as
+ *   valid, yielding `Option.none()` from {@link Jsonc.parseTree} instead of a
+ *   `ValueExpected` parse error. Defaults to `false`.
  *
  * @public
  */
-export const JsoncParseOptions_base: Schema.Class<
-	JsoncParseOptions,
-	Schema.Struct<{
-		readonly disallowComments: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly allowTrailingComma: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly allowEmptyContent: Schema.optionalKey<typeof Schema.Boolean>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<JsoncParseOptions>("JsoncParseOptions")({
+export class JsoncParseOptions extends Schema.Class<JsoncParseOptions>("JsoncParseOptions")({
 	disallowComments: Schema.optionalKey(Schema.Boolean),
 	allowTrailingComma: Schema.optionalKey(Schema.Boolean),
 	allowEmptyContent: Schema.optionalKey(Schema.Boolean),
-});
-
-/**
- * Options controlling parse behavior. All fields are omissible; absent fields
- * resolve to `disallowComments` `false`, `allowTrailingComma` `true` (the
- * deliberate JSONC-convention default, differing from Microsoft's parser) and
- * `allowEmptyContent` `false`.
- *
- * @public
- */
-export class JsoncParseOptions extends JsoncParseOptions_base {}
+}) {}
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
@@ -253,6 +195,12 @@ export class Jsonc {
 	 * Parse JSONC into a plain JavaScript value. Error-recovery parsing:
 	 * collects every parse error and fails once with the aggregate
 	 * {@link JsoncParseError}. Returns `unknown`, never `any`.
+	 *
+	 * @param text - The JSONC source to parse.
+	 * @param options - Optional {@link JsoncParseOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns An `Effect` that succeeds with the decoded value, or fails with
+	 *   the aggregate {@link JsoncParseError}.
 	 */
 	static readonly parse = Effect.fn("Jsonc.parse")(function* (text: string, options?: JsoncParseOptions) {
 		const { value, errors } = parseValueInternal(text, toFlags(options));
@@ -266,6 +214,13 @@ export class Jsonc {
 	 * Parse JSONC into an immutable {@link JsoncNode} AST. `Option.none()` for
 	 * empty input (with `allowEmptyContent`); the aggregate
 	 * {@link JsoncParseError} for malformed input.
+	 *
+	 * @param text - The JSONC source to parse.
+	 * @param options - Optional {@link JsoncParseOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns An `Effect` that succeeds with `Option.some(root)` (or
+	 *   `Option.none()` for empty input), or fails with the aggregate
+	 *   {@link JsoncParseError}.
 	 */
 	static readonly parseTree = Effect.fn("Jsonc.parseTree")(function* (text: string, options?: JsoncParseOptions) {
 		const { root, errors } = parseTreeInternal(text, toFlags(options));
@@ -280,6 +235,12 @@ export class Jsonc {
 	 * (e.g. `" "`) to replace each comment character instead of deleting it,
 	 * keeping all offsets stable (line breaks inside block comments are kept).
 	 * Pure and total.
+	 *
+	 * @param text - The JSONC source to strip.
+	 * @param replaceCh - Optional single character replacing each stripped
+	 *   comment character (offset-preserving); when omitted, comments are
+	 *   deleted outright and offsets shift.
+	 * @returns The comment-free text.
 	 */
 	static stripComments(text: string, replaceCh?: string): string {
 		const scanner = createScanner(text);
@@ -319,6 +280,10 @@ export class Jsonc {
 	 * Malformed input is never equal to anything — parse errors on either side
 	 * yield `false` rather than comparing recovery-parser artifacts. Pure and
 	 * total.
+	 *
+	 * @param a - The first JSONC source.
+	 * @param b - The second JSONC source.
+	 * @returns `true` when `a` and `b` decode to structurally equal values.
 	 */
 	static equals(a: string, b: string): boolean {
 		const ra = parseValueInternal(a, {});
@@ -333,6 +298,11 @@ export class Jsonc {
 	 * Compare a JSONC string against an existing JavaScript value with the same
 	 * semantics as {@link Jsonc.equals}: malformed `text` yields `false`. Pure
 	 * and total.
+	 *
+	 * @param text - The JSONC source to decode and compare.
+	 * @param value - The plain JavaScript value to compare against.
+	 * @returns `true` when `text` decodes to a value structurally equal to
+	 *   `value`.
 	 */
 	static equalsValue(text: string, value: unknown): boolean {
 		const r = parseValueInternal(text, {});
@@ -347,9 +317,16 @@ export class Jsonc {
 	 * (defaults when omitted). Encoding is `JSON.stringify` with 2-space indent,
 	 * so comments do not survive a round-trip encode.
 	 *
+	 * @remarks
 	 * Schema-producing: each call returns a fresh schema whose derivation caches
 	 * are not shared across calls. Bind the result to a `const` on hot paths;
 	 * for the default-options case use {@link Jsonc.JsoncFromString}.
+	 *
+	 * @param options - Optional {@link JsoncParseOptions} controlling the
+	 *   decode direction.
+	 * @returns A codec decoding JSONC `string` to `unknown`, failing the decode
+	 *   direction with the aggregate {@link JsoncParseError} wrapped as a
+	 *   schema issue.
 	 */
 	static fromString(options?: JsoncParseOptions): Schema.Codec<unknown, string> {
 		const flags = toFlags(options);
@@ -383,8 +360,14 @@ export class Jsonc {
 	 * `Schema<A, string>` that decodes JSONC straight into a validated domain
 	 * value — the reason an Effect-native JSONC library exists.
 	 *
+	 * @remarks
 	 * Schema-producing: bind the result to a `const` on hot paths (see
 	 * {@link Jsonc.fromString}).
+	 *
+	 * @param target - The domain schema decoded values must satisfy.
+	 * @param options - Optional {@link JsoncParseOptions} controlling the JSONC
+	 *   decode step.
+	 * @returns A codec decoding a JSONC `string` straight into `T`.
 	 */
 	static schema<T, E>(target: Schema.Codec<T, E>, options?: JsoncParseOptions): Schema.Codec<T, string> {
 		// The double-cast is sound: `fromString` decodes to `Schema.Unknown`, whose

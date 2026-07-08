@@ -1,25 +1,16 @@
-/**
- * SAX-style AST visitor: a demand-driven `Stream` of typed events over a
- * parsed YAML document, enabling early termination (`Stream.take`) without
- * building a full in-memory result beyond the AST itself.
- *
- * The event union is a `Data.TaggedEnum` — serializable tagged values with
- * structural equality, consistent with the rest of the library — replacing
- * v3's eleven `Schema.TaggedClass` event classes and its 24 `is*` guards
- * (`_tag` narrowing suffices). Diagnostics recorded while composing (fatal or
- * not) surface as `Error` events inside the union rather than failing the
- * stream, so `visit` stays infallible at the type level; the underlying
- * engine's `maxAliasCount` denial-of-service guard carries over unchanged
- * (an exceeded count records an `AliasCountExceeded` diagnostic the same way
- * any other composer diagnostic does). v3's `visitCollect` is dropped:
- * `Stream.filter` + `Stream.runCollect` cover it (and in v4 `runCollect`
- * already yields an `Array`, so no `Chunk.toReadonlyArray` step is needed).
- *
- * This is the AST-level visitor only — the CST/token layers stay internal
- * per the design's deferral of a public tokenizer/CST surface.
- *
- * @packageDocumentation
- */
+// SAX-style AST visitor: a demand-driven `Stream` of typed events over a
+// parsed YAML document, enabling early termination (`Stream.take`) without
+// building a full in-memory result beyond the AST itself.
+//
+// The event union is a `Data.TaggedEnum` — serializable tagged values with
+// structural equality, consistent with the rest of the library — replacing
+// v3's eleven `Schema.TaggedClass` event classes and its 24 `is*` guards
+// (`_tag` narrowing suffices). v3's `visitCollect` is dropped: `Stream.filter`
+// + `Stream.runCollect` cover it (and in v4 `runCollect` already yields an
+// `Array`, so no `Chunk.toReadonlyArray` step is needed).
+//
+// This is the AST-level visitor only — the CST/token layers stay internal
+// per the design's deferral of a public tokenizer/CST surface.
 
 import { Data, Stream } from "effect";
 import { composeAllDocuments } from "./internal/composer/document.js";
@@ -100,6 +91,12 @@ export class YamlVisitor {
 	 * `DocumentStart`/`DocumentEnd` pair per document. Events are produced on
 	 * demand, so combining with `Stream.take` allows efficient partial scans
 	 * of large documents without materializing the whole event sequence.
+	 *
+	 * @remarks
+	 * Infallible at the type level: diagnostics recorded while composing
+	 * (fatal or not, including an exceeded `maxAliasCount`, recorded as
+	 * `AliasCountExceeded`) surface as `Error` events inside the stream rather
+	 * than failing it.
 	 */
 	static visit(text: string, options?: YamlParseOptions): Stream.Stream<YamlVisitorEvent> {
 		return Stream.fromIterable(visitGen(text, options));

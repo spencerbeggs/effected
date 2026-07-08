@@ -1,8 +1,6 @@
-/**
- * Anchor/alias machinery: alias node construction, anchor registration and
- * name scanning, plus the anchor-map/value-extraction helpers the facade and
- * compliance harness drive (`buildAnchorMap`, `getNodeValue`).
- */
+// Anchor/alias machinery: alias node construction, anchor registration and
+// name scanning, plus the anchor-map/value-extraction helpers the facade and
+// compliance harness drive (`buildAnchorMap`, `getNodeValue`).
 
 import type { YamlNode } from "../../YamlNode.js";
 import { YamlAlias, YamlMap, YamlScalar, YamlSeq } from "../../YamlNode.js";

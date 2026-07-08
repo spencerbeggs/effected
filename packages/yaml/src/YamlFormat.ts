@@ -1,48 +1,18 @@
-/**
- * The formatting/modification concept: computing non-mutating edits that
- * reformat a document or change a value at a path, via the library's
- * parse → transform AST → stringify → diff pipeline.
- *
- * @remarks
- * `format`/`formatToString` are pure and total (edit computation never
- * fails — malformed input yields no edits rather than corrupting the
- * document). `modify`/`modifyToString` carry a real error channel:
- * navigation failures against the composed AST raise
- * {@link YamlModificationError}, which — per the structure-preserving-errors
- * house rule — carries `diagnostics: ReadonlyArray<YamlDiagnostic>`, never a
- * collapsed `reason` string.
- *
- * Cycle firewall: this module drives the internal engine directly
- * (`composeFirstDocument`, `stringifyDocument`) exactly as `Yaml.ts` does;
- * nothing imports `YamlFormat.ts` back.
- *
- * **Range parameter vs. `YamlFormattingOptions.range`.** The design lists
- * `format`/`formatToString` with a separate positional `range` parameter
- * (mirroring `JsoncFormatter.format(text, range?, options?)`) while also
- * having `YamlFormattingOptions` carry its own `range` field (derived
- * alongside `preserveComments` for schema completeness — e.g. so a caller
- * can bake a range into a reusable options instance). Both are honored: the
- * positional `range` argument takes precedence when given; `options?.range`
- * is the fallback. The positional accepts a plain `{ offset, length }`
- * object as well as a `YamlRange` instance (both expose the same two
- * fields), so callers do not need `YamlRange.make(...)` for the common case.
- *
- * **`modify`'s `options` parameter** is a bare {@link YamlStringifyOptions}
- * (not a range-carrying bag) — it controls only the internal re-stringify
- * step; there is no v3 precedent for a `modify` options parameter to derive
- * from, so this is the minimal, direct choice.
- *
- * Neither `format` nor `modify` catch the internal stringifier's
- * `StringifyFailure` (the circular-reference guard): both build their output
- * AST from either already-parsed nodes or `jsValueToNode`'s scalar-only
- * synthesis, so a cycle can never occur here — if `StringifyFailure` were
- * ever thrown it would indicate an internal invariant violation, not a
- * user-facing error, and is left to surface as an uncaught defect.
- *
- * @packageDocumentation
- */
+// The formatting/modification concept: computing non-mutating edits that
+// reformat a document or change a value at a path, via the library's
+// parse → transform AST → stringify → diff pipeline.
+//
+// Cycle firewall: this module drives the internal engine directly
+// (`composeFirstDocument`, `stringifyDocument`) exactly as `Yaml.ts` does;
+// nothing imports `YamlFormat.ts` back.
+//
+// Neither `format` nor `modify` catch the internal stringifier's
+// `StringifyFailure` (the circular-reference guard): both build their output
+// AST from either already-parsed nodes or `jsValueToNode`'s scalar-only
+// synthesis, so a cycle can never occur here — if `StringifyFailure` were
+// ever thrown it would indicate an internal invariant violation, not a
+// user-facing error, and is left to surface as an uncaught defect.
 
-import type { Cause } from "effect";
 import { Effect, Schema } from "effect";
 import { composeFirstDocument } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
@@ -66,38 +36,6 @@ import { YamlMap, YamlPair, YamlScalar, YamlSeq } from "./YamlNode.js";
 export type YamlRangeLike = YamlRange | { readonly offset: number; readonly length: number };
 
 /**
- * Schema-generated base class backing {@link YamlFormattingOptions}. Not meant
- * to be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs. Shared fields are
- * derived from {@link YamlStringifyOptions} at runtime (`...fields` spread);
- * this annotation spells the resulting field types out explicitly because a
- * `typeof YamlStringifyOptions.fields & {...}` intersection does not resolve
- * cleanly through the base-class heritage clause.
- *
- * @public
- */
-export const YamlFormattingOptions_base: Schema.Class<
-	YamlFormattingOptions,
-	Schema.Struct<{
-		readonly indent: Schema.optionalKey<typeof Schema.Number>;
-		readonly lineWidth: Schema.optionalKey<typeof Schema.Number>;
-		readonly defaultScalarStyle: (typeof YamlStringifyOptions.fields)["defaultScalarStyle"];
-		readonly defaultCollectionStyle: (typeof YamlStringifyOptions.fields)["defaultCollectionStyle"];
-		readonly sortKeys: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly finalNewline: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly forceDefaultStyles: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly preserveComments: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly range: Schema.optionalKey<typeof YamlRange>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<YamlFormattingOptions>("YamlFormattingOptions")({
-	...YamlStringifyOptions.fields,
-	preserveComments: Schema.optionalKey(Schema.Boolean),
-	range: Schema.optionalKey(YamlRange),
-});
-
-/**
  * Options controlling formatting behavior: every {@link YamlStringifyOptions}
  * field (derived, not hand-duplicated) plus `preserveComments` (default
  * `true`) and `range` (restrict edits to a region; see the module-level
@@ -105,29 +43,11 @@ export const YamlFormattingOptions_base: Schema.Class<
  *
  * @public
  */
-export class YamlFormattingOptions extends YamlFormattingOptions_base {}
-
-/**
- * Schema-generated base class backing {@link YamlModificationError}. Not
- * meant to be referenced directly — named and exported only so API Extractor
- * can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const YamlModificationError_base: Schema.Class<
-	YamlModificationError,
-	Schema.TaggedStruct<
-		"YamlModificationError",
-		{
-			readonly path: Schema.$Array<Schema.Union<readonly [typeof Schema.String, typeof Schema.Number]>>;
-			readonly diagnostics: Schema.$Array<typeof YamlDiagnostic>;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<YamlModificationError>()("YamlModificationError", {
-	path: Schema.Array(Schema.Union([Schema.String, Schema.Number])),
-	diagnostics: Schema.Array(YamlDiagnostic),
-});
+export class YamlFormattingOptions extends Schema.Class<YamlFormattingOptions>("YamlFormattingOptions")({
+	...YamlStringifyOptions.fields,
+	preserveComments: Schema.optionalKey(Schema.Boolean),
+	range: Schema.optionalKey(YamlRange),
+}) {}
 
 /**
  * Raised when `YamlFormat.modify` cannot navigate the requested path against
@@ -137,7 +57,10 @@ export const YamlModificationError_base: Schema.Class<
  *
  * @public
  */
-export class YamlModificationError extends YamlModificationError_base {
+export class YamlModificationError extends Schema.TaggedErrorClass<YamlModificationError>()("YamlModificationError", {
+	path: Schema.Array(Schema.Union([Schema.String, Schema.Number])),
+	diagnostics: Schema.Array(YamlDiagnostic),
+}) {
 	override get message(): string {
 		const summary = this.diagnostics.map((d) => d.message).join("; ");
 		return `Modification failed at path [${this.path.join(", ")}]: ${summary}`;
@@ -368,6 +291,15 @@ function rebuildSeq(node: YamlSeq, items: ReadonlyArray<YamlNode>): YamlSeq {
 /**
  * Formatting and modification statics. Not instantiable.
  *
+ * @remarks
+ * `format`/`formatToString` are pure and total (edit computation never fails
+ * — malformed input yields no edits rather than corrupting the document).
+ * `modify`/`modifyToString` carry a real error channel: navigation failures
+ * against the composed AST raise {@link YamlModificationError}, which — per
+ * the structure-preserving-errors house rule — carries
+ * `diagnostics: ReadonlyArray<YamlDiagnostic>`, never a collapsed `reason`
+ * string.
+ *
  * @public
  */
 export class YamlFormat {
@@ -378,6 +310,12 @@ export class YamlFormat {
 	 * result with `YamlEdit.applyAll` (or use {@link YamlFormat.formatToString}).
 	 * Pure and total: malformed input (a fatal parse error) yields `[]` rather
 	 * than corrupting the document.
+	 *
+	 * @remarks
+	 * The positional `range` argument takes precedence over
+	 * `options?.range` when both are given; either accepts a plain
+	 * `{ offset, length }` object as well as a {@link YamlRange} instance, so
+	 * callers do not need `YamlRange.make(...)` for the common case.
 	 */
 	static format(text: string, range?: YamlRangeLike, options?: YamlFormattingOptions): ReadonlyArray<YamlEdit> {
 		const formatted = formatDocument(text, options);
@@ -411,6 +349,11 @@ export class YamlFormat {
 	 * graphs are not recursively lowered into AST nodes). Fails with
 	 * {@link YamlModificationError} on a fatal parse error or a structural
 	 * navigation mismatch.
+	 *
+	 * @remarks
+	 * `options` is a bare {@link YamlStringifyOptions} — it controls only the
+	 * internal re-stringify step, not a range (there is no range to restrict
+	 * for a path-targeted modification).
 	 */
 	static readonly modify = Effect.fn("YamlFormat.modify")(function* (
 		text: string,

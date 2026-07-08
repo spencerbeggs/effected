@@ -144,6 +144,14 @@ Effect.try({
 })
 ```
 
+`cause: Schema.Defect()` is **only** for wrapping an *unknown throwable* you
+caught. It is the wrong tool for a **synthetic domain error** you raise yourself
+from structured data (e.g. a navigation mismatch carrying `expected`/`depth`, or a
+validation failure with a known shape). There, the fix for a `reason: string`
+that flattens discriminating data is to **promote that data to typed fields** and
+keep `reason` as the human `message` — not to add a `Defect`. Rule of thumb:
+`Defect` captures a *foreign* failure; typed fields describe a *known* one.
+
 Failing through this typed channel — never letting a `throw` escape as an
 unhandled defect — is the invariant `hardening-a-parser-port` enforces.
 

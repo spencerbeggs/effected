@@ -1,13 +1,11 @@
-/**
- * Internal diagnostic vocabulary: the staged error-code sets, the raw
- * diagnostic record the engine emits, and the single fatal-code predicate.
- *
- * The engine never constructs public error/diagnostic classes — it emits raw
- * `{ code, message, offset, length }` records and the public facade
- * materializes `YamlDiagnostic` (computing `line`/`character` from `offset`
- * against the source text). This keeps the import arrow pointing facade →
- * engine, never back (`noImportCycles` is error-level).
- */
+// Internal diagnostic vocabulary: the staged error-code sets, the raw
+// diagnostic record the engine emits, and the single fatal-code predicate.
+//
+// The engine never constructs public error/diagnostic classes — it emits raw
+// `{ code, message, offset, length }` records and the public facade
+// materializes `YamlDiagnostic` (computing `line`/`character` from `offset`
+// against the source text). This keeps the import arrow pointing facade →
+// engine, never back (`noImportCycles` is error-level).
 
 /** Error codes emitted by the lexer stage. */
 export const YAML_LEX_ERROR_CODES = [

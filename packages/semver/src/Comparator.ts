@@ -1,66 +1,30 @@
-import type { Cause } from "effect";
 import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { formatComparator, parseComparator } from "./internal/grammar.js";
 import { SemVer } from "./SemVer.js";
 
 /**
- * Schema-generated base class backing {@link InvalidComparatorError}. Not
- * meant to be referenced directly — named and exported only so API
- * Extractor can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const InvalidComparatorError_base: Schema.Class<
-	InvalidComparatorError,
-	Schema.TaggedStruct<
-		"InvalidComparatorError",
-		{
-			readonly input: typeof Schema.String;
-			readonly position: Schema.optionalKey<typeof Schema.Number>;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<InvalidComparatorError>()("InvalidComparatorError", {
-	/** The raw input string that failed to parse. */
-	input: Schema.String,
-	/** The character position where parsing failed, if available. */
-	position: Schema.optionalKey(Schema.Number),
-});
-
-/**
  * Indicates that a string could not be parsed as a single comparator.
  *
- * Raised by {@link Comparator.parse} and the decode direction of
- * {@link Comparator.FromString}.
+ * Raised by {@link Comparator.parse}. The decode direction of
+ * {@link Comparator.FromString} reports the same failure through a generic
+ * `Schema` parse error instead of this class, carrying the same message.
  *
  * @public
  */
-export class InvalidComparatorError extends InvalidComparatorError_base {
+export class InvalidComparatorError extends Schema.TaggedErrorClass<InvalidComparatorError>()(
+	"InvalidComparatorError",
+	{
+		/** The raw input string that failed to parse. */
+		input: Schema.String,
+		/** The character position where parsing failed, if available. */
+		position: Schema.optionalKey(Schema.Number),
+	},
+) {
 	override get message(): string {
 		const base = `Invalid comparator: "${this.input}"`;
 		return this.position !== undefined ? `${base} at position ${this.position}` : base;
 	}
 }
-
-/**
- * Schema-generated base class backing {@link Comparator}. Not meant to be
- * referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const Comparator_base: Schema.Class<
-	Comparator,
-	Schema.Struct<{
-		readonly operator: Schema.Literals<["=", ">", ">=", "<", "<="]>;
-		readonly version: typeof SemVer;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<Comparator>("Comparator")({
-	operator: Schema.Literals(["=", ">", ">=", "<", "<="]),
-	version: SemVer,
-});
 
 /**
  * A single version constraint: a comparison operator applied to a version.
@@ -76,13 +40,21 @@ export const Comparator_base: Schema.Class<
  * const program = Effect.gen(function* () {
  *   const comparator = yield* Comparator.parse(">=1.2.3");
  *   const version = yield* SemVer.parse("2.0.0");
- *   console.log(comparator.test(version)); // true
+ *   return comparator.test(version);
  * });
+ *
+ * console.log(Effect.runSync(program));
+ * // => true
  * ```
  *
  * @public
  */
-export class Comparator extends Comparator_base {
+export class Comparator extends Schema.Class<Comparator>("Comparator")({
+	/** The relational operator applied to `version`; a missing prefix in the source string means `=`. */
+	operator: Schema.Literals(["=", ">", ">=", "<", "<="]),
+	/** The version the operator is applied against. */
+	version: SemVer,
+}) {
 	// ── Schema ──────────────────────────────────────────────────────────
 
 	/**

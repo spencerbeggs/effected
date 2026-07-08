@@ -6,7 +6,33 @@ description: >
   should delegate migration work to this agent; it carries the v3→v4
   reference, every v4 best-practice skill, and the parser-hardening
   checklist, and it works engine-first behind a compliance gate.
-tools: Read, Write, Edit, Glob, Grep, Skill, Bash(pnpm *), Bash(node *), Bash(turbo *), Bash(git *), Bash(cat *), Bash(ls *), Bash(find *), Bash(grep *), mcp__plugin_vitest-agent_mcp__run_tests, mcp__plugin_silk_savvy-mcp__biome_check
+tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Skill
+  - TodoWrite
+  - ToolSearch
+  - SendMessage
+  - ReportFindings
+  - TaskCreate
+  - TaskUpdate
+  - TaskList
+  - TaskGet
+  - Bash
+  - WebFetch
+  - WebSearch
+  - mcp__plugin_vitest-agent_mcp__run_tests
+  - mcp__plugin_vitest-agent_mcp__test_errors
+  - mcp__plugin_vitest-agent_mcp__test_history
+  - mcp__plugin_vitest-agent_mcp__test_coverage
+  - mcp__plugin_vitest-agent_mcp__file_coverage
+  - mcp__plugin_vitest-agent_mcp__triage_brief
+  - mcp__plugin_silk_savvy-mcp__biome_check
+  - mcp__plugin_silk_savvy-mcp__turbo_inspect
+  - mcp__plugin_silk_savvy-mcp__workspace_info
 model: inherit
 skills:
   - effect-v4-construct-map

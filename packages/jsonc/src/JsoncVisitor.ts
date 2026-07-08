@@ -1,17 +1,14 @@
-/**
- * SAX-style visitor: a demand-driven `Stream` of typed events over a JSONC
- * document, enabling early termination (`Stream.take`) without building an AST.
- *
- * The event union is a `Data.TaggedEnum` — serializable tagged values with
- * structural equality, consistent with the rest of the library — replacing v3's
- * plain object literals. Malformed input surfaces as `Error` events inside the
- * union (mirroring v3's `onError` callback), so the stream stays infallible at
- * the type level. v3's `visitCollect` is dropped: `Stream.filter` +
- * `Stream.runCollect` cover it (and in v4 `runCollect` already yields an
- * `Array`, so no `Chunk.toReadonlyArray` step is needed).
- *
- * @packageDocumentation
- */
+// SAX-style visitor: a demand-driven `Stream` of typed events over a JSONC
+// document, enabling early termination (`Stream.take`) without building an
+// AST.
+//
+// The event union is a `Data.TaggedEnum` — serializable tagged values with
+// structural equality, consistent with the rest of the library — replacing
+// v3's plain object literals. Malformed input surfaces as `Error` events
+// inside the union (mirroring v3's `onError` callback), so the stream stays
+// infallible at the type level. v3's `visitCollect` is dropped: `Stream.filter`
+// + `Stream.runCollect` cover it (and in v4 `runCollect` already yields an
+// `Array`, so no `Chunk.toReadonlyArray` step is needed).
 
 import { Data, Stream } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
@@ -22,9 +19,19 @@ import type { JsoncParseErrorCode, JsoncParseOptions } from "./Jsonc.js";
 import type { JsoncPath, JsoncSegment } from "./JsoncNode.js";
 
 /**
- * The discriminated union of JSONC visitor events. Each variant carries an
- * `offset` and `length`; begin/property/literal events also carry `path`
- * context, and `Error` events carry a `JsoncParseErrorCode`.
+ * The discriminated union of JSONC visitor events. Every variant carries
+ * `offset` and `length`; `ObjectBegin`, `ArrayBegin`, `ObjectProperty` and
+ * `LiteralValue` also carry `path` context (the location being entered).
+ *
+ * - `ObjectBegin` / `ObjectEnd` — an object's opening `{` / closing `}`.
+ * - `ObjectProperty` — an object key, ahead of its value; `property` is the
+ *   key string.
+ * - `ArrayBegin` / `ArrayEnd` — an array's opening `[` / closing `]`.
+ * - `LiteralValue` — a scalar value (`string`/`number`/`boolean`/`null`);
+ *   `value` is the decoded JS value.
+ * - `Separator` — a `,` or `:` token; `character` is which one.
+ * - `Comment` — a line or block comment span.
+ * - `Error` — a recovered parse error; `code` is its `JsoncParseErrorCode`.
  *
  * @public
  */
@@ -70,6 +77,9 @@ export class JsoncVisitor {
 	 * @param text - The JSONC source to visit.
 	 * @param options - Optional {@link JsoncParseOptions}; only comment handling
 	 *   is consulted.
+	 * @returns A lazy `Stream` of `JsoncVisitorEvent`, infallible at the type
+	 *   level — malformed input surfaces as in-band `Error` events rather than
+	 *   failing the stream.
 	 */
 	static visit(text: string, options?: JsoncParseOptions): Stream.Stream<JsoncVisitorEvent> {
 		return Stream.fromIterable(visitGen(text, options?.disallowComments ?? false));

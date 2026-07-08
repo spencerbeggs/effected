@@ -1,17 +1,15 @@
-/**
- * JSONC scanner (lexer): converts a JSONC string into a stream of tokens.
- *
- * Private implementation, zero dependencies. Ported near-verbatim from the v3
- * `createScanner`/`JsoncScanner` (which was public); in `@effected/jsonc` the
- * scanner is internal — there is no public tokenizer surface (a
- * `Stream<JsoncToken>` tokenizer is deferred until a consumer materializes).
- * Reference: Microsoft's jsonc-parser scanner design (MIT).
- *
- * Line/character tracking is intentionally dropped here: the `Jsonc` facade
- * derives `line`/`character` from a token `offset` against the source text when
- * it materializes a `JsoncParseErrorDetail`, so the scanner only needs to
- * track byte offsets.
- */
+// JSONC scanner (lexer): converts a JSONC string into a stream of tokens.
+//
+// Private implementation, zero dependencies. Ported near-verbatim from the v3
+// `createScanner`/`JsoncScanner` (which was public); in `@effected/jsonc` the
+// scanner is internal — there is no public tokenizer surface (a
+// `Stream<JsoncToken>` tokenizer is deferred until a consumer materializes).
+// Reference: Microsoft's jsonc-parser scanner design (MIT).
+//
+// Line/character tracking is intentionally dropped here: the `Jsonc` facade
+// derives `line`/`character` from a token `offset` against the source text
+// when it materializes a `JsoncParseErrorDetail`, so the scanner only needs
+// to track byte offsets.
 
 /** Token kinds produced by the scanner. Internal — not a public vocabulary. */
 export type SyntaxKind =

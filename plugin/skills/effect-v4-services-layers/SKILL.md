@@ -126,7 +126,11 @@ const DatabaseLayer = Layer.effect(Database)(
 `Layer.effect(this, this.make)`). Both compile.
 
 Name the primary layer **`layer`** (e.g. `Database.layer`), never v3's
-`Default` / `Live`. Use suffixes for variants (`layerTest`).
+`Default` / `Live`. Use suffixes for variants (`layerTest`). The one exception
+is the `index.ts` composite convenience export that merges two concept modules'
+primary layers — `Default` is the idiomatic name there (see **Cycle-avoidance**
+below); it is not a service's own primary layer, so it does not violate this
+rule.
 
 ### Composition operators
 

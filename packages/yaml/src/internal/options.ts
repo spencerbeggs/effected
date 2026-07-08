@@ -1,9 +1,7 @@
-/**
- * Internal option shapes consumed by the engine. The public facade owns the
- * `Schema.Class` option types (`YamlParseOptions`, `YamlStringifyOptions`,
- * `YamlFormattingOptions`); the engine takes these plain records so it never
- * imports the facade. Defaults are applied where consumed (`?? default`).
- */
+// Internal option shapes consumed by the engine. The public facade owns the
+// `Schema.Class` option types (`YamlParseOptions`, `YamlStringifyOptions`,
+// `YamlFormattingOptions`); the engine takes these plain records so it never
+// imports the facade. Defaults are applied where consumed (`?? default`).
 
 import type { CollectionStyle, ScalarStyle } from "../YamlNode.js";
 

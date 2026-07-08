@@ -1,38 +1,9 @@
-/**
- * The `packageManager` field model: a {@link PackageManager} class parsing
- * `"pnpm@10.33.0+sha512.abc"` into `name` / `version` / `integrity` (a genuine
- * `Option` — absence is computed on by {@link PackageManager.hasIntegrity}),
- * with a {@link PackageManager.FromString} string codec.
- *
- * @packageDocumentation
- */
+// The `packageManager` field model: a `PackageManager` class parsing
+// `"pnpm@10.33.0+sha512.abc"` into `name` / `version` / `integrity` (a genuine
+// `Option` — absence is computed on by `PackageManager.hasIntegrity`), with a
+// `PackageManager.FromString` string codec.
 
 import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
-
-/**
- * Schema-generated base class backing {@link PackageManager}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const PackageManager_base: Schema.Class<
-	PackageManager,
-	Schema.Struct<{
-		readonly name: typeof Schema.String;
-		readonly version: typeof Schema.String;
-		readonly integrity: Schema.Option<typeof Schema.String>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<PackageManager>("PackageManager")({
-	/** The package-manager name (e.g. `pnpm`). */
-	name: Schema.String,
-	/** The version (e.g. `10.33.0`). */
-	version: Schema.String,
-	/** The optional integrity hash (e.g. `sha512.abc`). */
-	integrity: Schema.Option(Schema.String),
-});
 
 const PACKAGE_MANAGER_RE = /^([a-z]+)@(\d+\.\d+\.\d+(?:-[a-zA-Z0-9._-]+)?)(?:\+(.+))?$/;
 
@@ -42,7 +13,14 @@ const PACKAGE_MANAGER_RE = /^([a-z]+)@(\d+\.\d+\.\d+(?:-[a-zA-Z0-9._-]+)?)(?:\+(
  *
  * @public
  */
-export class PackageManager extends PackageManager_base {
+export class PackageManager extends Schema.Class<PackageManager>("PackageManager")({
+	/** The package-manager name (e.g. `pnpm`). */
+	name: Schema.String,
+	/** The version (e.g. `10.33.0`). */
+	version: Schema.String,
+	/** The optional integrity hash (e.g. `sha512.abc`). */
+	integrity: Schema.Option(Schema.String),
+}) {
 	/**
 	 * Schema transformation between the `"name@version+integrity"` string and a
 	 * {@link PackageManager}.

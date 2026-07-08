@@ -14,11 +14,13 @@
  *
  * const program = Effect.gen(function* () {
  *   const version = yield* SemVer.parse("1.2.3");
- *   const next = version.bump.minor();       // 1.3.0
+ *   const next = version.bump.minor();
  *   const range = yield* Range.parse("^1.0.0");
- *   console.log(range.test(version));        // true
- *   console.log(version.gt(next));           // false
+ *   return [next.toString(), range.test(version), version.gt(next)] as const;
  * });
+ *
+ * console.log(Effect.runSync(program));
+ * // => ["1.3.0", true, false]
  * ```
  *
  * @see {@link https://semver.org | SemVer 2.0.0 Specification}
@@ -27,35 +29,19 @@
  * @packageDocumentation
  */
 
-export { Comparator, Comparator_base, InvalidComparatorError, InvalidComparatorError_base } from "./Comparator.js";
+export { Comparator, InvalidComparatorError } from "./Comparator.js";
 export {
 	type ComparatorSet,
 	InvalidRangeError,
-	InvalidRangeError_base,
 	Range,
-	Range_base,
 	UnsatisfiableConstraintError,
-	UnsatisfiableConstraintError_base,
 } from "./Range.js";
-export {
-	InvalidVersionError,
-	InvalidVersionError_base,
-	SemVer,
-	SemVerBump,
-	SemVer_base,
-	buildIdentifier,
-	nonNegativeInteger,
-	prereleaseIdentifier,
-} from "./SemVer.js";
+export { InvalidVersionError, SemVer, SemVerBump } from "./SemVer.js";
 export {
 	EmptyCacheError,
-	EmptyCacheError_base,
 	UnsatisfiedRangeError,
-	UnsatisfiedRangeError_base,
 	VersionCache,
 	type VersionCacheShape,
-	VersionCache_base,
 	VersionNotFoundError,
-	VersionNotFoundError_base,
 } from "./VersionCache.js";
-export { VersionDiff, VersionDiff_base } from "./VersionDiff.js";
+export { VersionDiff } from "./VersionDiff.js";

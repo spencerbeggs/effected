@@ -1,45 +1,21 @@
-/**
- * The parsed-document concept: {@link YamlDocument} (root AST node plus
- * errors/warnings-as-data, directives and document framing) and
- * {@link YamlDirective}.
- *
- * The recoverable-parse design lives here: non-fatal diagnostics surface as
- * data on `errors`/`warnings` while fatal ones fail `parse`/`parseAll` with a
- * typed `YamlParseError`.
- *
- * @packageDocumentation
- */
+// The parsed-document concept: YamlDocument (root AST node plus
+// errors/warnings-as-data, directives and document framing) and
+// YamlDirective.
+//
+// The recoverable-parse design lives here: non-fatal diagnostics surface as
+// data on `errors`/`warnings` while fatal ones fail `parse`/`parseAll` with a
+// typed `YamlParseError`.
 
 import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { composeAllDocuments, composeFirstDocument } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
-import { StringifyFailure, stringifyDocument } from "./internal/stringifier.js";
+import { StringifyDepthExceeded, StringifyFailure, stringifyDocument } from "./internal/stringifier.js";
 import type { YamlParseOptions, YamlStringifyOptions } from "./Yaml.js";
 import { YamlParseError, YamlStringifyError } from "./Yaml.js";
 import { YamlDiagnostic } from "./YamlDiagnostic.js";
 import type { YamlNode as YamlNodeType } from "./YamlNode.js";
 import { YamlNode } from "./YamlNode.js";
-
-/**
- * Schema-generated base class backing {@link YamlDirective}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const YamlDirective_base: Schema.Class<
-	YamlDirective,
-	Schema.Struct<{
-		readonly name: typeof Schema.String;
-		readonly parameters: Schema.$Array<typeof Schema.String>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<YamlDirective>("YamlDirective")({
-	name: Schema.String,
-	parameters: Schema.Array(Schema.String),
-});
 
 /**
  * A YAML directive appearing before a document (e.g. `%YAML 1.2` or
@@ -49,40 +25,10 @@ export const YamlDirective_base: Schema.Class<
  *
  * @public
  */
-export class YamlDirective extends YamlDirective_base {}
-
-/**
- * Schema-generated base class backing {@link YamlDocument}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs. The recursive `contents` field
- * is annotated as `Schema.Schema<YamlNode>` per the recursive-class idiom.
- *
- * @public
- */
-export const YamlDocument_base: Schema.Class<
-	YamlDocument,
-	Schema.Struct<{
-		readonly contents: Schema.NullOr<Schema.suspend<Schema.Schema<YamlNodeType>>>;
-		readonly errors: Schema.$Array<typeof YamlDiagnostic>;
-		readonly warnings: Schema.$Array<typeof YamlDiagnostic>;
-		readonly directives: Schema.$Array<typeof YamlDirective>;
-		readonly comment: Schema.optionalKey<typeof Schema.String>;
-		readonly hasDocumentStart: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly hasDocumentEnd: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly hasDocumentStartTab: Schema.optionalKey<typeof Schema.Boolean>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<YamlDocument>("YamlDocument")({
-	contents: Schema.NullOr(Schema.suspend((): Schema.Schema<YamlNodeType> => YamlNode)),
-	errors: Schema.Array(YamlDiagnostic),
-	warnings: Schema.Array(YamlDiagnostic),
-	directives: Schema.Array(YamlDirective),
-	comment: Schema.optionalKey(Schema.String),
-	hasDocumentStart: Schema.optionalKey(Schema.Boolean),
-	hasDocumentEnd: Schema.optionalKey(Schema.Boolean),
-	hasDocumentStartTab: Schema.optionalKey(Schema.Boolean),
-});
+export class YamlDirective extends Schema.Class<YamlDirective>("YamlDirective")({
+	name: Schema.String,
+	parameters: Schema.Array(Schema.String),
+}) {}
 
 /**
  * A parsed YAML document: the root {@link (YamlNode:type)} (or `null` when
@@ -95,7 +41,16 @@ export const YamlDocument_base: Schema.Class<
  *
  * @public
  */
-export class YamlDocument extends YamlDocument_base {
+export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
+	contents: Schema.NullOr(Schema.suspend((): Schema.Schema<YamlNodeType> => YamlNode)),
+	errors: Schema.Array(YamlDiagnostic),
+	warnings: Schema.Array(YamlDiagnostic),
+	directives: Schema.Array(YamlDirective),
+	comment: Schema.optionalKey(Schema.String),
+	hasDocumentStart: Schema.optionalKey(Schema.Boolean),
+	hasDocumentEnd: Schema.optionalKey(Schema.Boolean),
+	hasDocumentStartTab: Schema.optionalKey(Schema.Boolean),
+}) {
 	/**
 	 * Parse a single YAML document, keeping the full AST, directives and
 	 * recovered diagnostics. Fails with the aggregate {@link YamlParseError}
@@ -166,7 +121,10 @@ export class YamlDocument extends YamlDocument_base {
 	/**
 	 * Stringify this document (contents, directives and framing) as YAML.
 	 * Fails with {@link YamlStringifyError} on circular references introduced
-	 * into a synthetic AST.
+	 * into a synthetic AST (`CircularReference`) or on a synthetic AST nested
+	 * deeper than the stringifier's recursion budget (`NestingDepthExceeded`)
+	 * — both surface through the typed error channel rather than as an
+	 * unhandled stack-overflow defect.
 	 */
 	stringify(options?: YamlStringifyOptions): Effect.Effect<string, YamlStringifyError> {
 		return Effect.try({
@@ -178,6 +136,24 @@ export class YamlDocument extends YamlDocument_base {
 							YamlDiagnostic.make({
 								code: "CircularReference",
 								message: defect.reason,
+								offset: 0,
+								length: 0,
+								line: 0,
+								character: 0,
+							}),
+						],
+						value: this,
+					});
+				}
+				// A synthetic AST nested deeper than the stringifier's cap overflowed
+				// the node-path recursion — surface it typed, not as a stack-overflow
+				// defect.
+				if (defect instanceof StringifyDepthExceeded) {
+					return new YamlStringifyError({
+						diagnostics: [
+							YamlDiagnostic.make({
+								code: "NestingDepthExceeded",
+								message: defect.message,
 								offset: 0,
 								length: 0,
 								line: 0,

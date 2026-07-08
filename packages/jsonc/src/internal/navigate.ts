@@ -1,14 +1,12 @@
-/**
- * Scanner-based path navigation for the modifier. Private implementation.
- *
- * This replaces v3's self-admittedly fragile `lastIndexOf('"segment"')`
- * backwards string search — which broke on keys containing quote characters —
- * with structural resolution through the scanner's tokens: the matching
- * property's key offset is captured directly from the key token, never guessed
- * from the source text. `navigate` returns a plain structural result;
- * `JsoncModifier` synthesizes edits and constructs `JsoncModificationError`
- * from it, so this module never imports the facade or the edit vocabulary.
- */
+// Scanner-based path navigation for the modifier. Private implementation.
+//
+// This replaces v3's self-admittedly fragile `lastIndexOf('"segment"')`
+// backwards string search — which broke on keys containing quote characters —
+// with structural resolution through the scanner's tokens: the matching
+// property's key offset is captured directly from the key token, never
+// guessed from the source text. `navigate` returns a plain structural result;
+// `JsoncModifier` synthesizes edits and constructs `JsoncModificationError`
+// from it, so this module never imports the facade or the edit vocabulary.
 
 import type { JsoncPath } from "../JsoncNode.js";
 import { createScanner } from "./scanner.js";

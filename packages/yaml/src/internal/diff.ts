@@ -1,8 +1,6 @@
-/**
- * Character-level text diffing shared by the formatter and modifier: turns
- * (original, modified) into minimal raw edit records. The facade materializes
- * public `YamlEdit` instances from these.
- */
+// Character-level text diffing shared by the formatter and modifier: turns
+// (original, modified) into minimal raw edit records. The facade
+// materializes public `YamlEdit` instances from these.
 
 /** A raw text-edit record: replace `[offset, offset + length)` with `content`. */
 export interface RawEdit {

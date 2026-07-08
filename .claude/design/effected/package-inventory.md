@@ -44,6 +44,14 @@ All ten source repos were reviewed against [effect-standards.md](effect-standard
 
 Extraction candidates recorded above are surfaced by review; final decisions land during each migration's design.
 
+## Cross-package realignment (2026-07-08)
+
+`chore/realignment` is a cross-package cleanup pass over the five landed packages (semver, jsonc, yaml, package-json, npm), not a new migration. Three shifts touch package state:
+
+- **Inline API-Extractor factories everywhere.** All five packages were converted from the transitional `@public X_base` idiom to the inline class-factory form with a narrow `_base` suppression in each `savvy.build.ts`, per the [effect-standards API-Extractor policy](effect-standards.md#api-extractor--effect-class-factories). The `@public X_base` backlog is fully cleared; every package retains a zero-warning `issues.json`.
+- **yaml input-hardening extended.** Beyond the composer/CST depth caps already recorded in [packages/yaml.md](packages/yaml.md), two more defect surfaces now fail typed: an alias-expansion "billion laughs" bomb that stayed under `maxAliasCount` but OOM-crashed the heap (now bounded by a materialized-node budget, fatal `AliasCountExceeded`), and deep-input stack overflows in `Yaml.stringify` (value path) and `YamlDocument.stringify` (node path), now capped at `MAX_NESTING_DEPTH = 256` (fatal `NestingDepthExceeded`).
+- **Structured error shapes.** jsonc's `JsoncModificationError` moved from a `reason: string` to typed `expected`/`depth` fields (the structure-preserving-errors house rule; yaml's `YamlModificationError` was already compliant), and package-json's `ScopedPackageName`/`UnscopedPackageName`/`SpdxLicense` branded types now export as `string & Brand.Brand<…>` rather than `typeof X.Type`.
+
 ## Internal packages (no source repo)
 
 Packages created inside the monorepo rather than migrated from a `*-effect` source repo, so they carry no migration-table row:

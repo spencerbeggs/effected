@@ -23,8 +23,8 @@ port: 3000 # dev server
 
 ### Parsing and Comments
 
-* `Yaml.parse` / `Yaml.parseAll` — error-recovery parsing of a single document or a multi-document stream into plain values, resolving anchors and aliases; both fail with an aggregate `YamlParseError`.
-* `Yaml.stringify` — encode a plain value as YAML text, failing with `YamlStringifyError` on circular references.
+* `Yaml.parse` / `Yaml.parseAll` — error-recovery parsing of a single document or a multi-document stream into plain values, resolving anchors and aliases; both fail with an aggregate `YamlParseError`. A runaway alias expansion (the YAML "billion laughs" bomb) is bounded and fails typed with an `AliasCountExceeded` diagnostic instead of exhausting the heap.
+* `Yaml.stringify` — encode a plain value as YAML text, failing with `YamlStringifyError` on circular references, or on excessively deep nesting (a `NestingDepthExceeded` diagnostic) instead of overflowing the stack.
 * `Yaml.stripComments` — pure, offset-preserving comment removal; quote-aware, so `#` inside a quoted scalar is content, not a comment.
 * `Yaml.equals` / `Yaml.equalsValue` — semantic equality ignoring comments, whitespace, formatting and mapping key order; malformed input on either side is never equal to anything.
 
@@ -48,4 +48,4 @@ port: 3000 # dev server
 
 ### Typed Errors and Diagnostics
 
-Every error type — `YamlParseError`, `YamlStringifyError`, `YamlModificationError` — carries a structured `YamlDiagnostic` (`code` / `message` / `offset` / `length` / `line` / `character`) rather than an opaque message. Hardening baked into the parser: `__proto__` keys decode as own data properties rather than prototype pollution, raw C0 control characters are rejected, and nesting depth is capped (`NestingDepthExceeded`) so hostile input errors out instead of overflowing the stack.
+Every error type — `YamlParseError`, `YamlStringifyError`, `YamlModificationError` — carries a structured `YamlDiagnostic` (`code` / `message` / `offset` / `length` / `line` / `character`) rather than an opaque message. Hardening baked into both parsing and stringifying: `__proto__` keys decode as own data properties rather than prototype pollution, raw C0 control characters are rejected, and nesting depth is capped (`NestingDepthExceeded`) on both directions so hostile or pathological input errors out instead of overflowing the stack.

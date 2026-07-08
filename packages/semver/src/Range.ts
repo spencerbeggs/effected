@@ -1,4 +1,3 @@
-import type { Cause } from "effect";
 import { Effect, Function as Fn, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { Comparator } from "./Comparator.js";
 import { formatRange, parseRange } from "./internal/grammar.js";
@@ -6,38 +5,21 @@ import { normalizeSets } from "./internal/normalize.js";
 import { SemVer } from "./SemVer.js";
 
 /**
- * Schema-generated base class backing {@link InvalidRangeError}. Not meant
- * to be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
+ * Indicates that a string could not be parsed as a range expression.
+ *
+ * Raised by {@link Range.parse} and `VersionCache.resolveString` (which
+ * parses through it). The decode direction of {@link Range.FromString}
+ * reports the same failure through a generic `Schema` parse error instead of
+ * this class, carrying the same message.
  *
  * @public
  */
-export const InvalidRangeError_base: Schema.Class<
-	InvalidRangeError,
-	Schema.TaggedStruct<
-		"InvalidRangeError",
-		{
-			readonly input: typeof Schema.String;
-			readonly position: Schema.optionalKey<typeof Schema.Number>;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<InvalidRangeError>()("InvalidRangeError", {
+export class InvalidRangeError extends Schema.TaggedErrorClass<InvalidRangeError>()("InvalidRangeError", {
 	/** The raw input string that failed to parse. */
 	input: Schema.String,
 	/** The character position where parsing failed, if available. */
 	position: Schema.optionalKey(Schema.Number),
-});
-
-/**
- * Indicates that a string could not be parsed as a range expression.
- *
- * Raised by {@link Range.parse}, the decode direction of
- * {@link Range.FromString} and `VersionCache.resolveString`.
- *
- * @public
- */
-export class InvalidRangeError extends InvalidRangeError_base {
+}) {
 	override get message(): string {
 		const base = `Invalid range expression: "${this.input}"`;
 		return this.position !== undefined ? `${base} at position ${this.position}` : base;
@@ -53,24 +35,6 @@ export class InvalidRangeError extends InvalidRangeError_base {
 export type ComparatorSet = ReadonlyArray<Comparator>;
 
 /**
- * Schema-generated base class backing {@link Range}. Not meant to be
- * referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const Range_base: Schema.Class<
-	Range,
-	Schema.Struct<{
-		readonly sets: Schema.$Array<Schema.$Array<typeof Comparator>>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<Range>("Range")({
-	sets: Schema.Array(Schema.Array(Comparator)),
-});
-
-/**
  * A SemVer range expression: a union (OR) of {@link ComparatorSet}s.
  * Supports node-semver syntax — hyphen ranges (`1.0.0 - 2.0.0`), X-ranges
  * (`1.x`, `*`), tilde (`~1.2.3`), caret (`^1.2.3`) and `||` unions — which
@@ -84,13 +48,19 @@ export const Range_base: Schema.Class<
  * const program = Effect.gen(function* () {
  *   const range = yield* Range.parse("^1.0.0");
  *   const version = yield* SemVer.parse("1.5.0");
- *   console.log(range.test(version)); // true
+ *   return range.test(version);
  * });
+ *
+ * console.log(Effect.runSync(program));
+ * // => true
  * ```
  *
  * @public
  */
-export class Range extends Range_base {
+export class Range extends Schema.Class<Range>("Range")({
+	/** Comparator sets combined with OR semantics; a version matches when it satisfies any set. */
+	sets: Schema.Array(Schema.Array(Comparator)),
+}) {
 	// ── Schema ──────────────────────────────────────────────────────────
 
 	/**
@@ -134,7 +104,10 @@ export class Range extends Range_base {
 
 	// ── Matching statics (dual) ─────────────────────────────────────────
 
-	/** Test whether a version satisfies a range. Dual API. */
+	/**
+	 * Test whether a version satisfies a range; see {@link Range.test} for the
+	 * prerelease matching rule. Dual API.
+	 */
 	static readonly satisfies: {
 		(range: Range): (version: SemVer) => boolean;
 		(version: SemVer, range: Range): boolean;
@@ -246,8 +219,9 @@ export class Range extends Range_base {
 	} = Fn.dual(2, (self: Range, that: Range): boolean => Range.isSubset(self, that) && Range.isSubset(that, self));
 
 	/**
-	 * Remove redundant comparator sets: a set is redundant when another set
-	 * in the range is a subset of it (more restrictive and already covered).
+	 * Remove redundant comparator sets: a set is redundant when it is a
+	 * subset of another set in the range (every version it matches already
+	 * matches that broader set, so the union gains nothing by keeping it).
 	 */
 	static simplify(range: Range): Range {
 		const sets = range.sets.filter((set, i) => {
@@ -260,7 +234,15 @@ export class Range extends Range_base {
 
 	// ── Instance ────────────────────────────────────────────────────────
 
-	/** Test whether a version satisfies this range. */
+	/**
+	 * Test whether a version satisfies this range.
+	 *
+	 * @remarks
+	 * Matches node-semver's prerelease restriction: a prerelease version only
+	 * satisfies the range when at least one comparator in the matching set
+	 * carries a prerelease on the same `major.minor.patch` tuple. This keeps
+	 * `^1.2.3` from unexpectedly matching `1.2.4-alpha`.
+	 */
 	test(version: SemVer): boolean {
 		return this.sets.some((set) => satisfiesSet(version, set));
 	}
@@ -282,27 +264,6 @@ export class Range extends Range_base {
 }
 
 /**
- * Schema-generated base class backing {@link UnsatisfiableConstraintError}.
- * Not meant to be referenced directly — named and exported only so API
- * Extractor can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const UnsatisfiableConstraintError_base: Schema.Class<
-	UnsatisfiableConstraintError,
-	Schema.TaggedStruct<
-		"UnsatisfiableConstraintError",
-		{
-			readonly constraints: Schema.$Array<typeof Range>;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<UnsatisfiableConstraintError>()("UnsatisfiableConstraintError", {
-	/** The ranges whose intersection is empty. */
-	constraints: Schema.Array(Range),
-});
-
-/**
  * Indicates that intersecting ranges produced no satisfiable comparator set.
  *
  * Raised by {@link Range.intersect} when the constraints are mutually
@@ -310,7 +271,13 @@ export const UnsatisfiableConstraintError_base: Schema.Class<
  *
  * @public
  */
-export class UnsatisfiableConstraintError extends UnsatisfiableConstraintError_base {
+export class UnsatisfiableConstraintError extends Schema.TaggedErrorClass<UnsatisfiableConstraintError>()(
+	"UnsatisfiableConstraintError",
+	{
+		/** The ranges whose intersection is empty. */
+		constraints: Schema.Array(Range),
+	},
+) {
 	override get message(): string {
 		const count = this.constraints.length;
 		return `No version satisfies all ${count} constraint${count === 1 ? "" : "s"}`;

@@ -176,7 +176,10 @@ describe("JsoncModifier", () => {
 				assert.instanceOf(error, JsoncModificationError);
 				assert.strictEqual(error._tag, "JsoncModificationError");
 				assert.deepStrictEqual([...error.path], ["a", "b"]);
+				assert.strictEqual(error.expected, "object");
+				assert.strictEqual(typeof error.depth, "number");
 				assert.include(error.message, "Modification failed");
+				assert.include(error.message, `expected ${error.expected} at depth ${error.depth}`);
 			}),
 		);
 	});

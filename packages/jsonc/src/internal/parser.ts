@@ -1,18 +1,16 @@
-/**
- * Recursive-descent JSONC parser: value mode (plain JS values) and tree mode
- * ({@link JsoncNode} AST). Private implementation.
- *
- * This module owns the single copy of the scan-error to parse-code mapping
- * ({@link scanErrorToCode}), consumed by both this parser and the visitor. It
- * returns plain results plus raw error records (`{ code, offset, length }`) and
- * MUST NOT import from `Jsonc.ts`: the facade maps raw records into
- * `JsoncParseErrorDetail` (computing `line`/`character` from `offset`) and
- * constructs the aggregate `JsoncParseError` itself, so the dependency edge
- * runs facade to parser only — never the reverse (a cycle would trip the
- * error-level `noImportCycles` lint).
- *
- * Reference: Microsoft's jsonc-parser parser design (MIT).
- */
+// Recursive-descent JSONC parser: value mode (plain JS values) and tree mode
+// (`JsoncNode` AST). Private implementation.
+//
+// This module owns the single copy of the scan-error to parse-code mapping
+// (`scanErrorToCode`), consumed by both this parser and the visitor. It
+// returns plain results plus raw error records (`{ code, offset, length }`)
+// and MUST NOT import from `Jsonc.ts`: the facade maps raw records into
+// `JsoncParseErrorDetail` (computing `line`/`character` from `offset`) and
+// constructs the aggregate `JsoncParseError` itself, so the dependency edge
+// runs facade to parser only — never the reverse (a cycle would trip the
+// error-level `noImportCycles` lint).
+//
+// Reference: Microsoft's jsonc-parser parser design (MIT).
 
 import { JsoncNode } from "../JsoncNode.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";

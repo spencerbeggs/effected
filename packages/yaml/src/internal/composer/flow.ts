@@ -1,9 +1,7 @@
-/**
- * Flow-collection composition: flow mappings, flow sequences, and the
- * flow-children flattening walk. Imports the shared pair-building machinery
- * from `block.ts`; block composition reaches these composers through
- * `state.flow` so the import stays one-directional (flow → block).
- */
+// Flow-collection composition: flow mappings, flow sequences, and the
+// flow-children flattening walk. Imports the shared pair-building machinery
+// from `block.ts`; block composition reaches these composers through
+// `state.flow` so the import stays one-directional (flow → block).
 
 import type { CollectionStyle, ScalarStyle, YamlNode, YamlPair } from "../../YamlNode.js";
 import { YamlMap, YamlScalar, YamlSeq } from "../../YamlNode.js";

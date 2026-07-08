@@ -1,20 +1,15 @@
-/**
- * The structured diagnostic concept: {@link YamlDiagnostic} (carried by both
- * error payloads and `YamlDocument`'s warnings-as-data arrays), the staged
- * error-code literal unions, and the single fatal-code predicate.
- *
- * @remarks
- * Cycle firewall: the internal engine emits raw `{ code, message, offset,
- * length }` records; this module materializes them into `YamlDiagnostic`,
- * deriving `line`/`character` from `offset` against the source text. The
- * dependency edge runs public modules → engine only.
- *
- * The five-field positional core (`code`/`offset`/`length`/`line`/`character`)
- * is structurally identical to `JsoncParseErrorDetail` per the jsonc/yaml
- * parity convention; `message` is yaml's additive extra.
- *
- * @packageDocumentation
- */
+// The structured diagnostic concept: YamlDiagnostic (carried by both error
+// payloads and YamlDocument's warnings-as-data arrays), the staged error-code
+// literal unions, and the single fatal-code predicate.
+//
+// Cycle firewall: the internal engine emits raw `{ code, message, offset,
+// length }` records; this module materializes them into `YamlDiagnostic`,
+// deriving `line`/`character` from `offset` against the source text. The
+// dependency edge runs public modules → engine only.
+//
+// The five-field positional core (`code`/`offset`/`length`/`line`/`character`)
+// is structurally identical to `JsoncParseErrorDetail` per the jsonc/yaml
+// parity convention; `message` is yaml's additive extra.
 
 import { Schema } from "effect";
 import {
@@ -119,42 +114,26 @@ export const YamlErrorCode = Schema.Union([
 export type YamlErrorCode = typeof YamlErrorCode.Type;
 
 /**
- * Schema-generated base class backing {@link YamlDiagnostic}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
+ * One structured diagnostic: its {@link (YamlErrorCode:type)}, a
+ * human-readable `message`, and its exact position (`offset`/`length`, plus
+ * zero-based `line`/`character`). Used for both errors and warnings-as-data;
+ * fatality is a property of the code — see {@link YamlDiagnostic.isFatal}.
+ *
+ * @remarks
+ * The five-field positional core (`code`/`offset`/`length`/`line`/`character`)
+ * is structurally identical to `@effected/jsonc`'s parse-error detail shape;
+ * `message` is this package's additive extra.
  *
  * @public
  */
-export const YamlDiagnostic_base: Schema.Class<
-	YamlDiagnostic,
-	Schema.Struct<{
-		readonly code: typeof YamlErrorCode;
-		readonly message: typeof Schema.String;
-		readonly offset: typeof Schema.Number;
-		readonly length: typeof Schema.Number;
-		readonly line: typeof Schema.Number;
-		readonly character: typeof Schema.Number;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<YamlDiagnostic>("YamlDiagnostic")({
+export class YamlDiagnostic extends Schema.Class<YamlDiagnostic>("YamlDiagnostic")({
 	code: YamlErrorCode,
 	message: Schema.String,
 	offset: Schema.Number,
 	length: Schema.Number,
 	line: Schema.Number,
 	character: Schema.Number,
-});
-
-/**
- * One structured diagnostic: its {@link (YamlErrorCode:type)}, a
- * human-readable `message`, and its exact position (`offset`/`length`, plus
- * zero-based `line`/`character`). Used for both errors and warnings-as-data;
- * fatality is a property of the code — see {@link YamlDiagnostic.isFatal}.
- *
- * @public
- */
-export class YamlDiagnostic extends YamlDiagnostic_base {
+}) {
 	/**
 	 * The single fatal-code predicate: whether diagnostics with this code
 	 * abort a parse (vs. being recoverable warnings-as-data). Declared once,

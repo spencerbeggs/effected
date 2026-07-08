@@ -1,4 +1,3 @@
-import type { Cause } from "effect";
 import { Context, Effect, Layer, Option, Ref, Schema } from "effect";
 import type { InvalidRangeError } from "./Range.js";
 import { Range } from "./Range.js";
@@ -6,51 +5,16 @@ import { SemVer } from "./SemVer.js";
 import { VersionDiff } from "./VersionDiff.js";
 
 /**
- * Schema-generated base class backing {@link EmptyCacheError}. Not meant to
- * be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const EmptyCacheError_base: Schema.Class<
-	EmptyCacheError,
-	// biome-ignore lint/complexity/noBannedTypes: `EmptyCacheError` has no payload fields
-	Schema.TaggedStruct<"EmptyCacheError", {}>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<EmptyCacheError>()("EmptyCacheError", {});
-
-/**
  * Indicates that an extremum (`latest`/`oldest`) was requested from an empty
  * cache.
  *
  * @public
  */
-export class EmptyCacheError extends EmptyCacheError_base {
+export class EmptyCacheError extends Schema.TaggedErrorClass<EmptyCacheError>()("EmptyCacheError", {}) {
 	override get message(): string {
 		return "Version cache is empty";
 	}
 }
-
-/**
- * Schema-generated base class backing {@link VersionNotFoundError}. Not
- * meant to be referenced directly — named and exported only so API
- * Extractor can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const VersionNotFoundError_base: Schema.Class<
-	VersionNotFoundError,
-	Schema.TaggedStruct<
-		"VersionNotFoundError",
-		{
-			readonly version: typeof SemVer;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<VersionNotFoundError>()("VersionNotFoundError", {
-	/** The version that was not found. */
-	version: SemVer,
-});
 
 /**
  * Indicates that a navigation operation (`diff`/`next`/`prev`) referenced a
@@ -58,35 +22,14 @@ export const VersionNotFoundError_base: Schema.Class<
  *
  * @public
  */
-export class VersionNotFoundError extends VersionNotFoundError_base {
+export class VersionNotFoundError extends Schema.TaggedErrorClass<VersionNotFoundError>()("VersionNotFoundError", {
+	/** The version that was not found. */
+	version: SemVer,
+}) {
 	override get message(): string {
 		return `Version not found in cache: ${this.version.toString()}`;
 	}
 }
-
-/**
- * Schema-generated base class backing {@link UnsatisfiedRangeError}. Not
- * meant to be referenced directly — named and exported only so API
- * Extractor can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const UnsatisfiedRangeError_base: Schema.Class<
-	UnsatisfiedRangeError,
-	Schema.TaggedStruct<
-		"UnsatisfiedRangeError",
-		{
-			readonly range: typeof Range;
-			readonly available: Schema.$Array<typeof SemVer>;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<UnsatisfiedRangeError>()("UnsatisfiedRangeError", {
-	/** The range that could not be satisfied. */
-	range: Range,
-	/** The versions that were available for matching. */
-	available: Schema.Array(SemVer),
-});
 
 /**
  * Indicates that the cache contains versions but none satisfies the
@@ -95,7 +38,12 @@ export const UnsatisfiedRangeError_base: Schema.Class<
  *
  * @public
  */
-export class UnsatisfiedRangeError extends UnsatisfiedRangeError_base {
+export class UnsatisfiedRangeError extends Schema.TaggedErrorClass<UnsatisfiedRangeError>()("UnsatisfiedRangeError", {
+	/** The range that could not be satisfied. */
+	range: Range,
+	/** The versions that were available for matching. */
+	available: Schema.Array(SemVer),
+}) {
 	override get message(): string {
 		const count = this.available.length;
 		return `No version satisfies range ${this.range.toString()} (${count} version${count === 1 ? "" : "s"} available)`;
@@ -129,7 +77,11 @@ export interface VersionCacheShape {
 	readonly oldest: () => Effect.Effect<SemVer, EmptyCacheError>;
 	/** The highest cached version satisfying a range. Fails with {@link UnsatisfiedRangeError} when none match. */
 	readonly resolve: (range: Range) => Effect.Effect<SemVer, UnsatisfiedRangeError>;
-	/** Parse a range expression and resolve it. */
+	/**
+	 * Parse a range expression and resolve it. Fails with
+	 * {@link InvalidRangeError} when `input` does not parse, or
+	 * {@link UnsatisfiedRangeError} when it parses but nothing matches.
+	 */
 	readonly resolveString: (input: string) => Effect.Effect<SemVer, InvalidRangeError | UnsatisfiedRangeError>;
 	/** All cached versions satisfying a range; `[]` when empty or none match. */
 	readonly filter: (range: Range) => Effect.Effect<ReadonlyArray<SemVer>>;
@@ -164,16 +116,6 @@ const dedupeSorted = (versions: ReadonlyArray<SemVer>): ReadonlyArray<SemVer> =>
 };
 
 /**
- * Schema-generated base class backing {@link VersionCache}. Not meant to be
- * referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const VersionCache_base: Context.ServiceClass<VersionCache, "@effected/semver/VersionCache", VersionCacheShape> =
-	Context.Service<VersionCache, VersionCacheShape>()("@effected/semver/VersionCache");
-
-/**
  * An in-memory sorted version cache: mutation, query, resolution and
  * navigation over a set of {@link SemVer} versions ordered by SemVer
  * precedence. Pure state (a `Ref` of a sorted array) — no IO.
@@ -189,13 +131,16 @@ export const VersionCache_base: Context.ServiceClass<VersionCache, "@effected/se
  *   const cache = yield* VersionCache;
  *   yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(2, 0, 0)]);
  *   const latest = yield* cache.latest();
- *   console.log(latest.toString()); // "2.0.0"
+ *   return latest.toString();
  * }).pipe(Effect.provide(VersionCache.layer));
+ *
+ * console.log(Effect.runSync(program));
+ * // => "2.0.0"
  * ```
  *
  * @public
  */
-export class VersionCache extends VersionCache_base {
+export class VersionCache extends Context.Service<VersionCache, VersionCacheShape>()("@effected/semver/VersionCache") {
 	/**
 	 * Live implementation backed by a `Ref` of a sorted, deduplicated array.
 	 * Requires nothing: range strings are parsed with {@link Range.parse}
@@ -248,9 +193,15 @@ export class VersionCache extends VersionCache_base {
 
 				versions: () => Ref.get(ref),
 
-				latest: () => Effect.map(requireNonEmpty, (arr) => arr[arr.length - 1]),
+				latest: Effect.fn("VersionCache.latest")(function* () {
+					const arr = yield* requireNonEmpty;
+					return arr[arr.length - 1];
+				}),
 
-				oldest: () => Effect.map(requireNonEmpty, (arr) => arr[0]),
+				oldest: Effect.fn("VersionCache.oldest")(function* () {
+					const arr = yield* requireNonEmpty;
+					return arr[0];
+				}),
 
 				resolve,
 

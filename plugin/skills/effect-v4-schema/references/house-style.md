@@ -296,6 +296,14 @@ const UserId = Schema.String.pipe(Schema.brand("UserId")); // nominal refinement
 // Schema.Opaque — opaque schema-backed type, same runtime shape
 ```
 
+**Export the branded type as `string & Brand.Brand<"Name">`, not `typeof X.Type`
+— for EVERY exported brand**, whether or not it carries a statics namespace. Both
+forms resolve to the same type, but `typeof X.Type` reads as an opaque alias on
+the public surface while the explicit `string & Brand.Brand<"Name">` is
+self-documenting. The `"Name"` string must match the schema's `Schema.brand("Name")`
+literal exactly. (The statics-namespace case below is one instance of this rule,
+not the only one it applies to.)
+
 **A branded scalar that also needs a statics namespace** (first boundary port):
 a `const` brand schema and a TS `namespace` of the same name **cannot merge** (a
 namespace only merges with a class/function/enum, never a `const`). Attach the

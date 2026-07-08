@@ -1,14 +1,8 @@
-/**
- * The {@link PackageValidator} service: validate a {@link Package} against a set
- * of {@link ValidationRule}s, aggregating every failure into one
- * {@link PackageValidationError}. Ships {@link PackageValidator.layer} (the
- * default rule set) and the genuinely-parameterized
- * {@link PackageValidator.layerRules} factory.
- *
- * @packageDocumentation
- */
+// The `PackageValidator` service: validate a `Package` against a set of
+// `ValidationRule`s, aggregating every failure into one
+// `PackageValidationError`. Ships `PackageValidator.layer` (the default rule
+// set) and the genuinely-parameterized `PackageValidator.layerRules` factory.
 
-import type { Cause } from "effect";
 import { Context, Effect, HashMap, Layer, Option, Result, Schema } from "effect";
 import type { Package } from "./Package.js";
 
@@ -38,39 +32,6 @@ export interface ValidationRule {
 }
 
 /**
- * Schema-generated base class backing {@link PackageValidationError}. Not meant
- * to be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const PackageValidationError_base: Schema.Class<
-	PackageValidationError,
-	Schema.TaggedStruct<
-		"PackageValidationError",
-		{
-			readonly failures: Schema.$Array<
-				Schema.Struct<{
-					readonly rule: typeof Schema.String;
-					readonly message: typeof Schema.String;
-					readonly path: Schema.Option<typeof Schema.String>;
-				}>
-			>;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<PackageValidationError>()("PackageValidationError", {
-	/** The aggregated rule failures. */
-	failures: Schema.Array(
-		Schema.Struct({
-			rule: Schema.String,
-			message: Schema.String,
-			path: Schema.Option(Schema.String),
-		}),
-	),
-});
-
-/**
  * Indicates that a {@link Package} failed one or more validation rules.
  *
  * Raised by {@link PackageValidator}. Every rule failure is aggregated on
@@ -78,7 +39,19 @@ export const PackageValidationError_base: Schema.Class<
  *
  * @public
  */
-export class PackageValidationError extends PackageValidationError_base {
+export class PackageValidationError extends Schema.TaggedErrorClass<PackageValidationError>()(
+	"PackageValidationError",
+	{
+		/** The aggregated rule failures. */
+		failures: Schema.Array(
+			Schema.Struct({
+				rule: Schema.String,
+				message: Schema.String,
+				path: Schema.Option(Schema.String),
+			}),
+		),
+	},
+) {
 	override get message(): string {
 		const lines = this.failures.map((failure) => {
 			const path = Option.match(failure.path, { onNone: () => "", onSome: (value) => ` (at ${value})` });
@@ -179,34 +152,38 @@ const runRules = Effect.fn("PackageValidator.validate")(function* (pkg: Package,
 });
 
 /**
- * Service-key base backing {@link PackageValidator}. Not meant to be referenced
- * directly — named and exported only so API Extractor can resolve the heritage
- * clause of the class it backs.
- *
- * @public
- */
-export const PackageValidator_base: Context.ServiceClass<
-	PackageValidator,
-	"@effected/package-json/PackageValidator",
-	{ readonly validate: (pkg: Package) => Effect.Effect<void, PackageValidationError> }
-> = Context.Service<
-	PackageValidator,
-	{ readonly validate: (pkg: Package) => Effect.Effect<void, PackageValidationError> }
->()("@effected/package-json/PackageValidator");
-
-/**
  * Validates a {@link Package} against a set of {@link ValidationRule}s,
  * aggregating every failure into one {@link PackageValidationError}.
  *
+ * @example
+ * ```ts
+ * import { Package, PackageValidator } from "@effected/package-json";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const pkg = yield* Package.decode({ name: "my-pkg", version: "1.0.0" });
+ *   const validator = yield* PackageValidator;
+ *   yield* validator.validate(pkg);
+ * }).pipe(Effect.provide(PackageValidator.layer));
+ * ```
+ *
  * @public
  */
-export class PackageValidator extends PackageValidator_base {
+export class PackageValidator extends Context.Service<
+	PackageValidator,
+	{ readonly validate: (pkg: Package) => Effect.Effect<void, PackageValidationError> }
+>()("@effected/package-json/PackageValidator") {
 	/** The default layer, backed by {@link defaultRules}. */
 	static readonly layer: Layer.Layer<PackageValidator> = Layer.succeed(PackageValidator, {
 		validate: (pkg) => runRules(pkg, defaultRules),
 	});
 
-	/** Build a layer from a custom set of rules (a genuinely-parameterized factory). */
+	/**
+	 * Build a layer from a custom set of rules (a genuinely-parameterized factory).
+	 *
+	 * @param config - the rule set to validate against, replacing {@link defaultRules}
+	 * @returns a layer providing `PackageValidator` backed by `config.rules`
+	 */
 	static layerRules(config: { readonly rules: ReadonlyArray<ValidationRule> }): Layer.Layer<PackageValidator> {
 		return Layer.succeed(PackageValidator, { validate: (pkg) => runRules(pkg, config.rules) });
 	}

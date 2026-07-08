@@ -1,35 +1,15 @@
-/**
- * The single dependency-specifier concept: the {@link DependencySpecifier}
- * branded schema, the protocol {@link DependencySpecifier.protocolOf | taxonomy}
- * statics (merging v3's two drifting classifiers into one source of truth), a
- * typed {@link DependencySpecifier.decode | decode} helper, and the
- * {@link InvalidDependencySpecifierError} the concept raises.
- *
- * Range detection decodes `@effected/semver`'s `Range.FromString` **purely**
- * via {@link Schema.decodeUnknownExit} — no `Effect.runSync` inside a getter.
- *
- * @packageDocumentation
- */
+// The single dependency-specifier concept: the `DependencySpecifier` branded
+// schema, its protocol taxonomy statics (`DependencySpecifier.protocolOf` and
+// friends, merging v3's two drifting classifiers into one source of truth), a
+// typed `DependencySpecifier.decode` helper, and the
+// `InvalidDependencySpecifierError` the concept raises.
+//
+// Range detection decodes `@effected/semver`'s `Range.FromString` purely via
+// `Schema.decodeUnknownExit` — no `Effect.runSync` inside a getter.
 
 import { Range } from "@effected/semver";
-import type { Brand, Cause } from "effect";
+import type { Brand } from "effect";
 import { Effect, Exit, Option, Schema } from "effect";
-
-/**
- * Schema-generated base class backing {@link InvalidDependencySpecifierError}.
- * Not meant to be referenced directly — named and exported only so API
- * Extractor can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const InvalidDependencySpecifierError_base: Schema.Class<
-	InvalidDependencySpecifierError,
-	Schema.TaggedStruct<"InvalidDependencySpecifierError", { readonly input: typeof Schema.String }>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<InvalidDependencySpecifierError>()("InvalidDependencySpecifierError", {
-	/** The raw input string that failed validation. */
-	input: Schema.String,
-});
 
 /**
  * Indicates that a string could not be parsed as a valid dependency specifier.
@@ -39,7 +19,13 @@ export const InvalidDependencySpecifierError_base: Schema.Class<
  *
  * @public
  */
-export class InvalidDependencySpecifierError extends InvalidDependencySpecifierError_base {
+export class InvalidDependencySpecifierError extends Schema.TaggedErrorClass<InvalidDependencySpecifierError>()(
+	"InvalidDependencySpecifierError",
+	{
+		/** The raw input string that failed validation. */
+		input: Schema.String,
+	},
+) {
 	override get message(): string {
 		return `Invalid dependency specifier "${this.input}": not a recognized specifier`;
 	}
@@ -126,7 +112,7 @@ const isTag = (value: string): boolean => protocolOf(value) === "tag";
 export const isValidDependencySpecifier = (value: string): boolean =>
 	value.length > 0 && protocolOf(value) !== "unknown";
 
-/** Taxonomy statics attached to the {@link DependencySpecifier} schema value. */
+/** Taxonomy statics attached to the `DependencySpecifier` schema value. */
 interface DependencySpecifierStatics {
 	/** Classify a specifier into a single protocol; `"unknown"` for unrecognized input. */
 	readonly protocolOf: (value: string) => DependencyProtocol;
@@ -179,8 +165,8 @@ const decode = (input: string): Effect.Effect<DependencySpecifierBrand, InvalidD
 	);
 
 /**
- * A valid dependency version specifier, carrying the protocol
- * {@link DependencySpecifier.protocolOf | taxonomy} statics that classify any
+ * A valid dependency version specifier, carrying the protocol taxonomy
+ * statics (`DependencySpecifier.protocolOf` and friends) that classify any
  * specifier string. Use it as a schema for a specifier field and reach for the
  * statics to inspect a raw string.
  *

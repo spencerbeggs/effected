@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
-import { YamlDocument, YamlMap, YamlParseError } from "../src/index.js";
+import { Effect, Result, Schema } from "effect";
+import { YamlDocument, YamlMap, YamlParseError, YamlScalar, YamlSeq, YamlStringifyError } from "../src/index.js";
 
 describe("YamlDocument", () => {
 	describe("parse", () => {
@@ -65,6 +65,28 @@ describe("YamlDocument", () => {
 				const text = yield* doc.stringify();
 				const again = yield* YamlDocument.parse(text);
 				assert.deepStrictEqual(again.toValue(), { name: "Alice", age: 30 });
+			}),
+		);
+
+		it.effect("a synthetic AST deeper than the cap fails typed, never a stack-overflow defect", () =>
+			Effect.gen(function* () {
+				// The node-path stringifier (stringifyNodeLines &co.) is mutually
+				// recursive with no natural bound. Parsed ASTs are composer-bounded to
+				// MAX_NESTING_DEPTH (256), but a hand-built tree nested past it would
+				// overflow the stack as a RangeError defect on this public boundary.
+				// Nest 300 YamlSeq nodes around a scalar leaf — beyond the 256 cap.
+				let contents: YamlSeq | YamlScalar = YamlScalar.make({ value: 1, style: "plain", offset: 0, length: 0 });
+				for (let i = 0; i < 300; i++) {
+					contents = YamlSeq.make({ items: [contents], style: "block", offset: 0, length: 0 });
+				}
+				const doc = YamlDocument.make({ contents, errors: [], warnings: [], directives: [] });
+
+				const result = yield* Effect.result(doc.stringify());
+				if (!Result.isFailure(result)) {
+					assert.fail("a 300-deep synthetic AST must fail, not overflow the stack");
+				}
+				assert.instanceOf(result.failure, YamlStringifyError);
+				assert.strictEqual(result.failure.diagnostics[0]?.code, "NestingDepthExceeded");
 			}),
 		);
 	});
