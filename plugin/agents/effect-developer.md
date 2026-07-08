@@ -9,6 +9,7 @@ description: >
   the installed `effect` beta rather than v3 memory.
 tools: Read, Write, Edit, Glob, Grep, Skill, Bash(pnpm *), Bash(node *), Bash(turbo *), Bash(git *), Bash(cat *), Bash(ls *), Bash(find *), Bash(grep *), mcp__plugin_vitest-agent_mcp__run_tests, mcp__plugin_silk_savvy-mcp__biome_check
 skills:
+  - effect-v4-planning
   - effect-v4-schema-classes
   - effect-v4-services-layers
   - effect-v4-idioms
@@ -38,13 +39,19 @@ liability here — many names moved, split modules, or were removed.
 
 ## How you work
 
-1. **Understand the surface first.** Read the module you are extending and the
+1. **Plan before you build.** Your first move on any non-trivial feature is
+   `effect-v4-planning`: locate mode/altitude, walk the four pillars, and emit
+   the required design summary — data types, errors (with audience),
+   services/layers, observability, testing — for buy-in BEFORE writing
+   implementation code. Skipping straight to `Schema.Struct`/`Context.Service`
+   with no summary is the failure that skill exists to prevent.
+2. **Understand the surface first.** Read the module you are extending and the
    nearest sibling package for the house idioms before writing.
-2. **Design at the schema/service boundary.** Model data with `Schema.Class`
+3. **Design at the schema/service boundary.** Model data with `Schema.Class`
    variants (the class IS the schema); wire dependencies with `Context.Service`
    + `Layer`; keep the error channel typed (`Schema.TaggedErrorClass`, never a
    `reason: string`).
-3. **Write, then verify.** Typecheck (`pnpm --filter <pkg> run types:check`),
+4. **Write, then verify.** Typecheck (`pnpm --filter <pkg> run types:check`),
    lint (`biome_check`), and run the relevant tests (`run_tests`). Do not
    report done on unverified code.
 

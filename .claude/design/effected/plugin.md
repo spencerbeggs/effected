@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-07
-last-synced: 2026-07-07
+updated: 2026-07-08
+last-synced: 2026-07-08
 completeness: 90
 related:
   - architecture.md
@@ -22,7 +22,11 @@ The plugin's ethos is "verify against the installed beta, not v3 memory": every 
 
 ## Skill catalog
 
-Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `description` is the authoritative trigger. They group into three roles.
+Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `description` is the authoritative trigger. They group into four roles.
+
+**Process/orchestration** — runs before the others and decides *what* to write:
+
+- `effect-v4-planning` — the orchestration skill: it walks four design pillars (data types and errors, services and layers, observability, testability), then forces a compact "design summary" for buy-in before any implementation code exists. Handles greenfield (design forward from a required-slot template) and brownfield (audit existing code against the pillars into a gap table, each gap carrying a recommended disposition — refactor-now, improve-incrementally or defer). It orchestrates the detailed skills below rather than restating them; on a port it defers to the playbook and `effect-v4-construct-map` for mechanics and contributes only the forward-design lenses.
 
 **Best-practice skills** — the idiomatic v4 way for writing new code:
 
@@ -45,9 +49,9 @@ Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `descrip
 
 Three subagents live under `plugin/agents/`, each arriving with the relevant skills preloaded via its frontmatter `skills` list. The delegation triggers below are what the main agent dispatches on.
 
-- `effect-developer` — writes new idiomatic v4 code (schemas, services and layers, typed errors, CLIs). Skills: schema-classes, services-layers, idioms, observability, api-extractor-bases. Delegate feature implementation here.
+- `effect-developer` — writes new idiomatic v4 code (schemas, services and layers, typed errors, CLIs); step 1 on any non-trivial feature is `effect-v4-planning` — emit the design summary for buy-in before implementation. Skills: planning, schema-classes, services-layers, idioms, observability, api-extractor-bases. Delegate feature implementation here.
 - `effect-reviewer` — reviews v4 code for idiom, error-channel and API-surface correctness, and writes or strengthens `@effect/vitest` tests. Skills: testing, idioms, schema-classes, services-layers, observability, hardening, api-extractor-bases. Delegate review and test authoring here.
-- `effect-migrator` — drives v3→v4 ports engine-first behind a compliance gate. Skills: construct-map plus every best-practice skill, hardening and api-extractor-bases. Delegate migration work here; this agent drives the next port per the playbook.
+- `effect-migrator` — drives v3→v4 ports engine-first behind a compliance gate; after reading the design doc it runs the `effect-v4-planning` pillars over the *target* v4 shape for the forward-design lenses (error audiences, observability posture, testability), deferring to the migration playbook and construct-map for port mechanics (migration order, the compliance gate, v3→v4 name lookups). Skills: construct-map and planning plus every best-practice skill, hardening and api-extractor-bases. Delegate migration work here; this agent drives the next port per the playbook.
 
 ## SessionStart briefing hook
 

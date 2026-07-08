@@ -10,6 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Skill, Bash(pnpm *), Bash(node *), Bash(tu
 model: inherit
 skills:
   - effect-v4-construct-map
+  - effect-v4-planning
   - effect-v4-schema-classes
   - effect-v4-services-layers
   - effect-v4-idioms
@@ -37,7 +38,11 @@ though you write and run tests as part of the port.
 
 1. **Read the design doc first.** The port implements the approved
    `.claude/design/effected/packages/<pkg>.md` spec; follow it, and record any
-   forced deviation as an as-built note.
+   forced deviation as an as-built note. Run the `effect-v4-planning` pillars
+   over the *target* v4 shape for the forward-design lenses the spec may not
+   walk method-by-method — error audiences, observability posture, testability —
+   but defer to this playbook and `effect-v4-construct-map` for port mechanics
+   (migration order, the compliance gate, v3→v4 name lookups).
 2. **Port the engine as-is into `src/internal/` first**, then gate on the
    package's compliance/behavior suite BEFORE building the public surface. Green
    compliance is what makes the aggressive redesign safe.

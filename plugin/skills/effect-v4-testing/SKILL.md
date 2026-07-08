@@ -41,6 +41,13 @@ describe("Jsonc", () => {
 - **Never** `it("...", () => Effect.runPromise(program))`. Plain `it()` is fine
   only for genuinely non-Effect pure code (`Jsonc.stripComments`, `Yaml.equals`)
   — anything that yields an Effect uses `it.effect`.
+- **Never launder an Effect into a fixture with `Effect.runSync`.** If a test
+  input comes from an Effect (a parse, a decode), the test *is* an `it.effect`
+  and you `yield*` it. If you only need a domain value to assert other behavior,
+  build it with `X.make` from structured fields. A pure `it()` whose input is
+  `Effect.runSync(X.parse(input))` is the same smell as `runPromise` in the
+  body — it hides an execution the runner rule exists to surface. Both roads
+  lead away from `runSync`.
 - **Assert with `assert.*`**, not `expect`, inside Effect programs — it reads
   uniformly in generator bodies. House usage: `assert.deepStrictEqual`,
   `assert.strictEqual`, `assert.isTrue`, `assert.instanceOf`, `assert.include`,

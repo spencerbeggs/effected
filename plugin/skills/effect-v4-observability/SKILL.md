@@ -29,6 +29,13 @@ yaml) are a *specialization* of that guide, not a deviation.
 library for free — because the library only emits named spans at the operations
 a user actually calls.
 
+**Coverage is uniform, not selective.** "Boundaries only" is a ceiling (don't go
+below the public boundary), not a filter for picking the interesting ones. Every
+public fallible method of a service gets a named span — if one is traced, all of
+them are. Partial coverage is worse than none: a user tracing their app sees one
+method light up but not its equally-public siblings and reasonably concludes
+those never ran or cannot fail. The blind spot reads as signal.
+
 ## Tracing — `Effect.fn` is the v4 idiom
 
 `Effect.fn`, `Effect.fnUntraced`, `Effect.withSpan`, `Effect.withSpanScoped`,
