@@ -8,12 +8,13 @@ This is **effected**, a pnpm monorepo (npm org `@effected`) that consolidates Sp
 
 ## Design Documentation
 
-Five foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
+Six foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
 
 - Architecture → `@./.claude/design/effected/architecture.md` — Load when: changing repo structure, build pipeline, tooling, or workspace/catalog setup.
 - Effect standards → `@./.claude/design/effected/effect-standards.md` — Load when: designing or porting a library API, or making dependency/peer-closure decisions.
 - Package inventory → `@./.claude/design/effected/package-inventory.md` — Load when: picking the next migration target or updating a package's migration status.
 - Migration playbook → `@./.claude/design/effected/migration-playbook.md` — Load when: starting or continuing a package migration.
+- Package setup → `@./.claude/design/effected/package-setup.md` — Load when: scaffolding or adding a new workspace package.
 - Plugin → `@./.claude/design/effected/plugin.md` — Load when: working in `plugin/` on the "effective" Claude Code plugin.
 
 ### Migration Workflow
@@ -25,7 +26,6 @@ Migrations happen one package at a time per the migration playbook: write the pa
 - `packages/semver` — first migrated library: strict SemVer 2.0.0 schemas (pure tier).
 - `packages/jsonc` — second migrated library: zero-dependency JSONC parse/edit/format schemas (pure tier).
 - `packages/yaml` — third migrated library: YAML parse/edit/format schemas over an internal engine plus public modules (Yaml facade, YamlDiagnostic, YamlNode, YamlDocument, YamlEdit, YamlFormat, YamlVisitor) (pure tier).
-- `packages/effect4` — temporary testbed for the Effect v4 toolchain setup.
 - `packages/pnpm-plugin-effect` — repo infrastructure, not a library migration: pnpm catalog/config plugin (built with `rolldown-pnpm-config`; `pnpm pnpm:export` / `pnpm:preview` / `pnpm:up`).
 - `plugin/` — "effective", a Claude Code plugin (skills + effect-dev agent) dogfooded during migrations; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
@@ -34,7 +34,7 @@ Migrations happen one package at a time per the migration playbook: write the pa
 
 [Turbo](https://turbo.build/) orchestrates builds across workspace packages: `pnpm build` runs `turbo run build:dev build:prod`. Each package builds with `node savvy.build.ts` using [@savvy-web/bundler](https://github.com/savvy-web/bundler), producing `dist/dev/` and `dist/prod/` outputs. Task graph: `build:prod` depends on `types:check` and `build:dev`; both depend on upstream `^build:dev`.
 
-`@savvy-web/bundler` lives in the **root** `devDependencies` deliberately — package `savvy.build.ts` scripts resolve it via Node's upward `node_modules` walk; do not move it into package `devDependencies`. The workspace pins peer resolution with `autoInstallPeers: false` + `dedupePeerDependents: false` in `pnpm-workspace.yaml`, with silk's and `@vitest-agent/plugin`'s tool peers declared explicitly in root `devDependencies` — see the peer-closure discipline in `@./.claude/design/effected/effect-standards.md` for why.
+`@savvy-web/bundler` lives in the **root** `devDependencies` deliberately — package `savvy.build.ts` scripts resolve it via Node's upward `node_modules` walk; do not move it into package `devDependencies`. The workspace runs `autoInstallPeers: true` + `dedupePeerDependents: false` in `pnpm-workspace.yaml`, so root `devDependencies` collapse to `@savvy-web/bundler`, `@savvy-web/silk`, and `@vitest-agent/plugin` with the rest auto-installed as peers. The v4/v3 toolchain split is held by each package using `@effect/tsgo` (`catalog:effect`) as its typechecker rather than `@typescript/native-preview` (`catalog:silk`). This leans on a pnpm resolver quirk and is temporary, pending upstream patch pnpm/pnpm#12847 — see the peer-closure discipline in `@./.claude/design/effected/effect-standards.md` for why.
 
 Source `package.json` files are `"private": true` — this is intentional. The bundler's `publishConfig`-driven transform produces the publishable manifest at build time; never set `"private": false` in source.
 

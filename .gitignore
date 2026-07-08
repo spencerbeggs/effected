@@ -37,3 +37,9 @@ docs/superpowers/
 .claude/plugins-debug.log
 .playwright-mcp
 .mcp.json
+
+# Docs ignores
+website/lib/models/*
+website/docs/en/*/api/
+website/api-docs-snapshot.db-*
+website/api-docs-snapshot.db

@@ -1,7 +1,7 @@
 packages:
   - packages/*
   - website
-autoInstallPeers: false
+autoInstallPeers: true
 catalogs:
   effect:
     "@effect/ai-anthropic": ^4.0.0-beta.93
@@ -30,6 +30,7 @@ catalogs:
     "@effect/sql-sqlite-react-native": ^4.0.0-beta.93
     "@effect/sql-sqlite-wasm": ^4.0.0-beta.93
     "@effect/vitest": ^4.0.0-beta.93
+    "@effect/tsgo": ^0.16.2
     effect: ^4.0.0-beta.93
   effectPeers:
     "@effect/ai-anthropic": ^4.0.0-beta.93
@@ -58,8 +59,18 @@ catalogs:
     "@effect/sql-sqlite-react-native": ^4.0.0-beta.93
     "@effect/sql-sqlite-wasm": ^4.0.0-beta.93
     "@effect/vitest": ^4.0.0-beta.93
+    "@effect/tsgo": ^0.16.0
     effect: ^4.0.0-beta.93
 configDependencies:
   "@savvy-web/pnpm-plugin-silk": 0.21.0+sha512-UADjHt3lC5T22L4g9OjaI4QFaifvCN4viInTfb691R5blYSfoEw3YJ0UDdKzLLzXHPYZEfJShb5tY0SR9pq8Rw==
-dedupePeerDependents: false
+dedupeDirectDeps: false
 loglevel: info
+minimumReleaseAgeExclude:
+  - "@effect/tsgo-darwin-arm64@0.16.2"
+  - "@effect/tsgo-darwin-x64@0.16.2"
+  - "@effect/tsgo-linux-arm64@0.16.2"
+  - "@effect/tsgo-linux-arm@0.16.2"
+  - "@effect/tsgo-linux-x64@0.16.2"
+  - "@effect/tsgo-win32-arm64@0.16.2"
+  - "@effect/tsgo-win32-x64@0.16.2"
+  - "@effect/tsgo@0.16.2"

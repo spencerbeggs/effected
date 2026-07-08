@@ -3,13 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-06
-last-synced: 2026-07-06
+updated: 2026-07-07
+last-synced: 2026-07-07
 completeness: 80
 related:
   - effect-standards.md
   - package-inventory.md
   - migration-playbook.md
+  - package-setup.md
   - plugin.md
 ---
 
@@ -33,8 +34,7 @@ No npm releases initially. Changesets stays wired but idle until the foundation 
 
 ## Layout
 
-- `packages/*` — one directory per `@effected` library.
-- `packages/effect4` — temporary v4 pattern testbed; retires once the semver port proves the pipeline.
+- `packages/*` — one directory per `@effected` library; see [package-setup.md](package-setup.md) for how a package is scaffolded.
 - `packages/pnpm-plugin-effect` — repo infrastructure (pnpm catalog/config plugin), not a library port.
 - `plugin/` — the "effective" Claude Code plugin; see [plugin.md](plugin.md).
 - `website/` — RSPress docs site with per-package api-extractor models under `website/lib/models/`.

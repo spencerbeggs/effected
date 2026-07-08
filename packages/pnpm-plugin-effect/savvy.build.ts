@@ -143,6 +143,10 @@ await build({
 							peer: "^4.0.0-beta.93",
 							strategy: "interop",
 						},
+						"@effect/tsgo": {
+							range: "^0.16.2",
+							peer: "^0.16.2",
+						},
 					},
 				},
 			},

@@ -33,7 +33,7 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@types/node": "catalog:silk",
-		"@typescript/native-preview": "catalog:silk",
+		"@effect/tsgo": "catalog:effect",
 		"effect": "catalog:effect",
 		"typescript": "catalog:silk"
 	},

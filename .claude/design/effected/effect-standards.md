@@ -10,6 +10,7 @@ related:
   - architecture.md
   - package-inventory.md
   - migration-playbook.md
+  - package-setup.md
   - plugin.md
 ---
 
@@ -104,15 +105,15 @@ Hard-won lesson from savvy-web/systems#228 and spencerbeggs/vitest-agent#127: ev
 
 ### Verified workspace configuration
 
-This is the consumer-side configuration that keeps the effect v4 beta from poisoning the v3 build toolchain, verified deterministic across repeated clean installs on pnpm 11.10.0. The live settings are in `pnpm-workspace.yaml`; this records why each exists.
+The consumer-side configuration that keeps the effect v4 beta from poisoning the v3 build toolchain. The live settings are in `pnpm-workspace.yaml` and the root `package.json`; this records why each exists and how a package plugs in (see [package-setup.md](package-setup.md) for the per-package file manifest).
 
 1. Every published tool in the dependency chain declares its complete `@effect/*` peer closure as regular dependencies. Fixed in `@savvy-web/tsdown-plugins@1.1.6`, `@savvy-web/bundler@1.1.7`, `@savvy-web/silk@2.1.2`, `@savvy-web/cli@1.5.2`, `@savvy-web/mcp@1.6.7`, `rolldown-pnpm-config@0.2.1` and the July 2026 `@vitest-agent/*` releases. Outstanding: rspress-plugin-api-extractor ([spencerbeggs/rspress-plugin-api-extractor#69](https://github.com/spencerbeggs/rspress-plugin-api-extractor/issues/69)).
-2. `pnpm-workspace.yaml` sets `autoInstallPeers: false` — with a v4 beta in the workspace, auto-installed `effect` peers resolve to the workspace-preferred v4 even where a nearer dependency provides v3.
-3. `pnpm-workspace.yaml` sets `dedupePeerDependents: false` — the decisive setting: with dedupe on, pnpm unifies peer subgraphs across importers, bleeding the effect4 package's v4 into other importers' v3 chains even with `autoInstallPeers` off and complete closures (nondeterministically across installs).
-4. Because `autoInstallPeers` is off, the root `package.json` explicitly declares the tool peers of `@savvy-web/silk` (biome, changesets, commitlint, husky, lint-staged, markdownlint, turbo, typescript, etc.) and `@vitest-agent/plugin` (vitest, coverage providers, cli, mcp) in `devDependencies`.
-5. `@savvy-web/bundler` stays in root `devDependencies` only — packages resolve it via Node's upward walk — keeping the effect4 importer free of v3 tooling.
+2. `pnpm-workspace.yaml` sets `autoInstallPeers: true`. The tool peers of `@savvy-web/silk` (biome, changesets, commitlint, husky, lint-staged, markdownlint, turbo, typescript, etc.) and `@vitest-agent/plugin` (vitest, coverage providers, cli, mcp) are auto-installed rather than declared explicitly.
+3. Each package uses `@effect/tsgo: catalog:effect` for the `tsgo` typechecker instead of `@typescript/native-preview: catalog:silk`. This is the change that keeps the v4 beta from poisoning the v3 toolchain under `autoInstallPeers: true` — the typechecker rides the `effect` (v4) catalog rather than the `silk` (v3-tooling) catalog, so auto-installed `effect` peers in the tooling chain no longer resolve the workspace-preferred v4 into v3-wanting importers.
+4. `pnpm-workspace.yaml` keeps `dedupePeerDependents: false` — with dedupe on, pnpm unifies peer subgraphs across importers, bleeding v4 into other importers' v3 chains (nondeterministically across installs).
+5. The root `package.json` `devDependencies` collapsed to just `@savvy-web/bundler`, `@savvy-web/silk` and `@vitest-agent/plugin`; everything else that item 2 used to enumerate is now an auto-installed peer. `@savvy-web/bundler` stays in root `devDependencies` only — packages resolve it via Node's upward walk.
 
-Consequence: missing peers now surface as `pnpm peers check` warnings instead of silently mis-installed versions — treat new warnings there as closure defects to fix upstream.
+IMPORTANT: this configuration leans on current pnpm resolver behavior and is explicitly TEMPORARY. The permanent fix is a pnpm patch submitted upstream as [pnpm/pnpm#12847](https://github.com/pnpm/pnpm/pull/12847); until it lands, `pnpm peers check` still reports residual unmet `effect` peer warnings from transitive v3-wanting deps (e.g. `@effect/platform-node`, `@effect/sql-sqlite-node`). Those residual warnings are expected under this interim setup, not closure defects to chase — but a genuinely new peer warning outside that known set is still a closure defect to fix upstream.
 
 ## Cross-@effected dependencies
 

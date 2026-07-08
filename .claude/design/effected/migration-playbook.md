@@ -3,13 +3,14 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-07-06
-last-synced: 2026-07-06
+updated: 2026-07-07
+last-synced: 2026-07-07
 completeness: 80
 related:
   - architecture.md
   - effect-standards.md
   - package-inventory.md
+  - package-setup.md
   - plugin.md
 ---
 
@@ -31,4 +32,4 @@ The per-package flywheel for moving a v3 `*-effect` repo into this monorepo. Eac
 
 ## Ordering
 
-semver first. Subsequent order is decided as lessons land, likely the pure tier before the boundary tier. `packages/effect4` serves as the v4 pattern testbed until the semver port proves the pipeline, then retires.
+semver first. Subsequent order is decided as lessons land, likely the pure tier before the boundary tier. The `packages/effect4` v4-pattern testbed has retired now that the pipeline is proven across the semver, jsonc and yaml ports; [package-setup.md](package-setup.md) is the durable scaffold reference in its place.
