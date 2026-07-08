@@ -92,6 +92,16 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 	// stack on hostile deeply-nested input, so `navigate` (and `JsoncModifier`)
 	// need no separate depth cap.
 	function skipValue(): number {
+		// Malformed input can route a non-value token here: JsoncModifier.modify
+		// passes raw text straight to navigate(), so a value slot may actually hold
+		// a container closer (e.g. `{"k":}`) or EOF. There is no value to skip —
+		// return the current start offset without consuming the token, so the edit
+		// spans an empty range and the caller's loop still sees the closer, rather
+		// than decrementing the level past zero and splicing the closer into the
+		// value range.
+		if (currentToken === "CloseBrace" || currentToken === "CloseBracket" || currentToken === "EOF") {
+			return scanner.getTokenOffset();
+		}
 		let level = 0;
 		let end = tokenEnd();
 		do {

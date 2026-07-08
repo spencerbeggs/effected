@@ -178,9 +178,15 @@ describe("Jsonc", () => {
 			}),
 		);
 
-		it("equalsValue caps recursion against a hostile hand-built value instead of overflowing", () => {
-			// The `value` side of equalsValue is arbitrary caller data \u2014 build one
-			// far deeper than the cap and confirm it compares (unequal) without throwing.
+		it("equalsValue returns false without throwing on a hostile hand-built value", () => {
+			// The `value` side of equalsValue is arbitrary caller data. deepEqual only
+			// recurses where both sides match structurally, so a one-sided deep value
+			// bails at the first type mismatch (here depth 1: array vs the parsed
+			// number) and cannot drive recursion deep \u2014 the MAX_NESTING_DEPTH branch in
+			// deepEqual is belt-and-suspenders for a hypothetical two-sided-deep caller
+			// (unreachable today: the text side is bounded by the parser's own cap).
+			// This pins the user-facing contract: hostile input compares unequal and
+			// never throws.
 			let value: unknown = 1;
 			for (let i = 0; i < 20000; i++) value = [value];
 			assert.doesNotThrow(() => Jsonc.equalsValue("[1]", value));
