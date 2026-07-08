@@ -45,8 +45,8 @@ Effect.runPromise(program).then(console.log);
 
 ## Features
 
-- `Yaml.parse` / `Yaml.parseAll` — error-recovery parsing of a single document or a multi-document stream into plain values, resolving anchors and aliases and aggregating every diagnostic into one `YamlParseError` rather than failing on the first.
-- `Yaml.stringify` — serialize a plain value back to YAML, failing with `YamlStringifyError` on circular references.
+- `Yaml.parse` / `Yaml.parseAll` — error-recovery parsing of a single document or a multi-document stream into plain values, resolving anchors and aliases and aggregating every diagnostic into one `YamlParseError` rather than failing on the first; a runaway alias expansion (the YAML "billion laughs" bomb) is bounded and surfaced as a typed `YamlParseError` carrying an `AliasCountExceeded` diagnostic rather than exhausting the heap.
+- `Yaml.stringify` — serialize a plain value back to YAML, failing typed with `YamlStringifyError` on circular references, or on excessively deep nesting (a `NestingDepthExceeded` diagnostic) rather than overflowing the stack.
 - `Yaml.stripComments` — quote-aware, offset-preserving comment removal that keeps line numbers stable, or every byte offset stable when given a replacement character.
 - `Yaml.equals` / `Yaml.equalsValue` — semantic equality that ignores comments, whitespace, formatting and mapping key order while keeping sequence order significant.
 - `Yaml.schema` / `Yaml.fromString` / `Yaml.YamlFromString` / `Yaml.allFromString` — string→domain schema factories that decode YAML, a single document or a `---`-separated stream, directly into a validated Effect `Schema` value.

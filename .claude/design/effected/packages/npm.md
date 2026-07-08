@@ -23,7 +23,7 @@ Why it exists as its own package rather than living in package-json: resolution 
 
 **Scope discipline: minimal to start.** The initial surface is exactly what package-json's port needs — the two resolver contracts, their no-op default layers, and the shared error. It is **not** a general "npm/pnpm vocabulary" package yet: `DependencySpecifier` (the specifier taxonomy) and `PackageName` (npm naming) deliberately stay in [@effected/package-json](package-json.md) for now. `@effected/npm` **expands and refactors when `@effected/workspaces` / `@effected/lockfiles` and pnpm use cases land** — those packages carry their own richer resolution machinery (a `CatalogSet` value object, a live catalog resolver, the `@pnpm/catalogs.*` footprint; see the workspaces review) and will reconcile it against these contracts at their migration, growing `@effected/npm` in the process. Extracting the vocabulary concepts is a later, evidence-driven decision, not a day-one one.
 
-Status: **implemented on `feat/package-json` (landed alongside the package-json port).** The verify-at-port-time notes below resolve to inline "As-built:" notes; the package shipped GREEN with all gates passing — **11/11 tests**, `pnpm typecheck` clean, biome clean and a zero-warning `dist/prod/issues.json`. The public surface is exactly `CatalogResolver(_base)`, `WorkspaceResolver(_base)`, `DependencyResolutionError(_base)` and the composite `Default` layer.
+Status: **implemented on `feat/package-json` (landed alongside the package-json port).** The verify-at-port-time notes below resolve to inline "As-built:" notes; the package shipped GREEN with all gates passing — **11/11 tests**, `pnpm typecheck` clean, biome clean and a zero-warning `dist/prod/issues.json`. The public surface is exactly `CatalogResolver`, `WorkspaceResolver`, `DependencyResolutionError` and the composite `Default` layer. (As-built (realignment, 2026-07-08): the transitional `@public X_base` consts are gone — the three factories are written inline with the synthesized `_base` symbols suppressed in `savvy.build.ts`; see [API Extractor bases](#api-extractor-bases-house-policy).)
 
 ## Tier and dependencies
 
@@ -52,7 +52,7 @@ As-built: `WorkspaceResolver.ts` owns `DependencyResolutionError`; `CatalogResol
 
 ## Target API
 
-As-built: the service contract form is `Context.Service<Self, Shape>()("@effected/npm/CatalogResolver")` — **type params first (self + shape), the string id last, no `make` option** — and the `@public` base annotation is `Context.ServiceClass<Self, "id", Shape>`. The `Shape` is inlined structurally at the call site rather than exported as a separate named interface. Both resolvers follow this identical idiom. No-op layers are `static readonly noop = Layer.succeed(Class, { ...impl })` bound to a const (memoized by reference).
+As-built: the service contract form is `Context.Service<Self, Shape>()("@effected/npm/CatalogResolver")` — **type params first (self + shape), the string id last, no `make` option**. The `Shape` is inlined structurally at the call site rather than exported as a separate named interface. Both resolvers follow this identical idiom. As-built (realignment, 2026-07-08): the class is written inline with no `@public` base annotation — the former `Context.ServiceClass<Self, "id", Shape>` return-type annotation is gone and the synthesized `_base` symbol is suppressed in `savvy.build.ts`. No-op layers are `static readonly noop = Layer.succeed(Class, { ...impl })` bound to a const (memoized by reference).
 
 ### CatalogResolver
 
@@ -78,12 +78,14 @@ As-built: the cause field is `Schema.Defect()` — **`Schema.Defect` is a callab
 
 ## v4 API drift to verify early
 
-- **`Context.Service` contract-only form** — the exact v4 spelling for a service that declares a *shape* with no baked-in default implementation (the layer is separate). Confirm the `Context.Service` class form and how the no-op layer is written against it (`Layer.succeed` with the interface object). This is the same idiom package-json's `PackageValidator` uses, so the two ports share the discovery. As-built: `Context.Service<Self, Shape>()("id")` with type params first and id last; base annotation `Context.ServiceClass<Self, "id", Shape>`; no-op layer `Layer.succeed(Class, { ...impl })` (see [Target API](#target-api) as-built note).
+- **`Context.Service` contract-only form** — the exact v4 spelling for a service that declares a *shape* with no baked-in default implementation (the layer is separate). Confirm the `Context.Service` class form and how the no-op layer is written against it (`Layer.succeed` with the interface object). This is the same idiom package-json's `PackageValidator` uses, so the two ports share the discovery. As-built: `Context.Service<Self, Shape>()("id")` with type params first and id last, written inline (the transitional `Context.ServiceClass<Self, "id", Shape>` base annotation was removed in the realignment — see [Target API](#target-api) as-built note); no-op layer `Layer.succeed(Class, { ...impl })`.
 - **`Schema.TaggedErrorClass` with a `Schema.Defect` cause field** — already house-verified in semver/jsonc/yaml; reused here unchanged. As-built: `Schema.Defect` must be **called** (`Schema.Defect()`) in beta.93 — the bare value throws at construction.
 
 ## API Extractor bases (house policy)
 
-Per the [ratified house policy](../effect-standards.md#api-extractor--effect-class-factories) and the `effect-api-extractor-bases` skill: the `Context.Service` classes and the `Schema.TaggedErrorClass` each get a named, exported, `@public`-tagged `X_base` const with an explicit factory-return-type annotation, re-exported from `index.ts`, each with a not-for-direct-use doc comment. Small surface — three factory-backed classes — so a zero-warning `dist/prod/issues.json` is straightforward.
+Per the [ratified house policy](../effect-standards.md#api-extractor--effect-class-factories) and the `effect-api-extractor-bases` skill: the two `Context.Service` classes and the `Schema.TaggedErrorClass` are written inline (`export class X extends Context.Service<X, Shape>()("id") {}` / `Schema.TaggedErrorClass<X>()("X", {...})`), with the synthesized `_base` heritage symbols suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern). Small surface — three factory-backed classes — so a zero-warning `dist/prod/issues.json` (every `*_base` in the `suppressed` bucket) is straightforward.
+
+The original port landed on the transitional `@public X_base` idiom; the realignment (2026-07-08) converted it to the inline form above alongside the other four packages, a mechanical narrowing that removed the exported base consts.
 
 ## Testing strategy
 

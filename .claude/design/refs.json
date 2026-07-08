@@ -10,7 +10,7 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "002b1584741ea39fde1c7368a7970e6949a0e47490922e061480b78e7d813aab",
+			"hash": "f9282e414b443aa063fc2a3144a26bcdce17a4822c9e498cce10cef60cae8679",
 			"recordedAt": "2026-07-08"
 		},
 		{
@@ -22,19 +22,19 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "a1e0a0bece4a71bf51d6dc3f80f28a7fc46ddce0edc4a92c673e55dcca81d4a0",
+			"hash": "3ed243212e5366a607bda02c0f5a3f1118cc69ebf7ad23d2eef82c9fe0526c34",
 			"recordedAt": "2026-07-08"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-setup.md",
-			"hash": "bc1da59d02ef2d35236db5446d0edafae403e7dbd48c9d404f8f47103e772f48",
-			"recordedAt": "2026-07-07"
+			"hash": "bf0b3d1749cefcff838fbb228623e44efc17b128a72fa1fb80e734876e8c46c9",
+			"recordedAt": "2026-07-08"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/plugin.md",
-			"hash": "f432f00393cb40e25942525eef2a4d5193740dbdb70428c0731afdf5a01dc598",
+			"hash": "1c526c58a3705f39c46a8a359d066a6f1206b5989d3f76c50fa5980cab69aa45",
 			"recordedAt": "2026-07-08"
 		}
 	]
