@@ -30,7 +30,7 @@ Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `descrip
 
 **Best-practice skills** — the idiomatic v4 way for writing new code:
 
-- `effect-v4-schema-classes` — the flagship Schema domain-model skill: Class-vs-Struct, optionality, checks/refine/makeFilter, codecs, `FromString` statics, make-vs-new, brand/Opaque, custom Equal/Hash.
+- `effect-v4-schema` — the flagship Schema skill: house "do this, not this" rules + worked patterns (Class-vs-Struct, optionality, checks/refine/makeFilter, codecs, `FromString` statics, make-vs-new, brand/Opaque, custom Equal/Hash) in `references/house-style.md`, over Effect's canonical guide split into `references/`.
 - `effect-v4-services-layers` — `Context.Service` class form, Layer composition and the build-once memoization discipline.
 - `effect-v4-idioms` — core Effect: typed errors and Result, generators, scope, forking, structural equality.
 - `effect-v4-observability` — spans/logging/metrics, OTel composed at the app edge, the house rule that pure-tier libraries instrument public fallible boundaries only.

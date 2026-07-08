@@ -40,7 +40,7 @@ Observability row blank.
 Each pillar: the decisions to make, the idiomatic ruling, and the skill that owns
 the mechanics. Consult the linked skill; do not re-derive it here.
 
-### Pillar 1 — Data types & errors → `effect-v4-schema-classes`, `effect-v4-idioms`, `hardening-a-parser-port`
+### Pillar 1 — Data types & errors → `effect-v4-schema`, `effect-v4-idioms`, `hardening-a-parser-port`
 
 **Schemas.** Struct-vs-Class (Struct is the default; Class for behavior,
 equality, or a nominal domain type); optionality (`optionalKey` vs `optional` vs

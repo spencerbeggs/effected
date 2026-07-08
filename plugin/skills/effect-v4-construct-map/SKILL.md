@@ -198,7 +198,7 @@ Module-name changes for imports — the v3 `ParseResult` module split apart:
 > Derived-tooling exact names: `toJsonSchemaDocument` (**not** `toJsonSchema`),
 > `toEquivalence`, `toFormatter`, `toStandardSchemaV1`.
 
-Idiomatic form → see `effect-v4-schema-classes` (Class-vs-Struct decision,
+Idiomatic form → see `effect-v4-schema` (Class-vs-Struct decision,
 `FromString` static codec, `optionalKey` vs `optional`, `refine` vs `makeFilter`,
 derived tooling, brand/opaque, "don't duplicate schemas").
 

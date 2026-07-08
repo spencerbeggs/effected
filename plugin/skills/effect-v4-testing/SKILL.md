@@ -172,7 +172,7 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
   generators from `.check(...)` constraints, and fast-check's `stringMatching`
   throws `Assertions of kind Lookahead not implemented yet`. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`. See
-  `effect-v4-schema-classes` for making field models canonical so round-trip
+  `effect-v4-schema` for making field models canonical so round-trip
   properties do not lie.
 
 ## Time-dependent logic: `TestClock`

@@ -80,6 +80,15 @@ Database.use((db) => db.query("SELECT 1")); // Effect<string, never, Database>
 Config.useSync((c) => c.url);               // pure callback ⇒ Effect<string, never, Config>
 ```
 
+`use` takes an effectful callback and returns `Effect<A, E, R | Self>`;
+`useSync` takes a **pure** callback and returns `Effect<A, never, Self>` (it just
+lets the accessor body be synchronous — both still return an `Effect`). The v3
+proxy accessors weren't merely renamed; they were removed because the mapped-type
+proxy **erased generics** — a `get<T>(key): Effect<T>` collapsed to
+`Effect<unknown>` and overloads were lost. `use`/`useSync` preserve the real
+method signatures, which is the other reason to prefer them (or `yield*`) over
+reaching for a v3-style accessor.
+
 For a config knob / feature flag with a default (not a full API), use
 `Context.Reference<T>(id, { defaultValue: () => ... })` instead of a
 service.

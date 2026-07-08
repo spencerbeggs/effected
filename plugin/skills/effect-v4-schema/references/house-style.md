@@ -1,19 +1,19 @@
----
-name: effect-v4-schema-classes
-description: Use when designing an Effect v4 Schema domain model — the Class-vs-Struct decision, fields & optionality, checks/refine/makeFilter, tagged unions, transformations & codecs (FromString statics via decodeTo), make-vs-new construction, deriving instead of duplicating, brand/Opaque scalars, derived tooling (toArbitrary/toJsonSchemaDocument/…), and custom Equal/Hash. Covers the idiomatic v4 way plus the traps that only surface at test or property-test time (hash fast-path, lookahead regex, non-canonical field models). Verify every identifier against installed effect, not memory.
----
+# Schema house style — worked patterns
 
-# Schema domain-model patterns (Effect v4)
+The `@effected` house patterns for Effect v4 `Schema`: the opinionated defaults
+and the traps that only surface at test or property-test time. This is the depth
+behind the **Do this, not this** rules in the `effect-v4-schema` `SKILL.md` — read
+those for the at-a-glance directives, come here for the worked examples and the
+reasoning.
 
-The class IS the schema: one `Schema.Class` carries fields, validation,
-methods, statics, and derived tooling (`toArbitrary`, `toEquivalence`,
+The class IS the schema: one `Schema.Class` carries fields, validation, methods,
+statics, and derived tooling (`toArbitrary`, `toEquivalence`,
 `toJsonSchemaDocument`) in a single artifact. These patterns keep that artifact
-idiomatic and sound. Everything below is verified against
-`effect@4.0.0-beta.93`; v4 betas move fast, so probe anything not shown here
-before writing it (`node --input-type=module -e "import * as S from
-'effect/Schema'; console.log(typeof S.X)"`). For a v3→v4 name lookup, see the
-`effect-v4-construct-map` skill — this skill teaches the idiomatic v4 shape, not
-the rename table.
+idiomatic and sound. Everything below is verified against `effect@4.0.0-beta.93`;
+v4 betas move fast, so probe anything not shown here before writing it
+(`node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)"`).
+For a v3→v4 name lookup, see `effect-v4-construct-map`; for the canonical
+upstream detail on any construct, see the vendored `references/` in this skill.
 
 ## Class vs Struct: the first decision
 
@@ -112,6 +112,8 @@ Three distinct tools — pick by intent:
   `isFinite`, `isMinLength`, `isMaxLength`, `isLengthBetween`, `isPattern`,
   `isNonEmpty`, `isUUID`, `isULID`, `isCapitalized`. (`positive`/`negative`/
   `nonNegative`/`nonPositive` were **removed** — compose `isGreaterThan(0)` etc.)
+  Match the bounds to what your parser enforces (safe integers), or a
+  `make`-constructed value can print a string the parser then rejects.
 
 - **Type-narrowing** → `Schema.refine(refinement)` (v3 `filter(refinement)`):
 
@@ -370,20 +372,6 @@ Then the property test is one honest line of intent:
 ```ts
 it.effect.prop("round-trips decode(encode(v))", [SemVer], ([v]) => /* … */);
 ```
-
-## Integer fields
-
-`Schema.Number` alone accepts anything numeric. For version-like components:
-
-```ts
-const nonNegativeInteger = Schema.Number.check(
- Schema.isInt(),
- Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
-);
-```
-
-Match the schema bounds to what your parser enforces (safe integers), or
-`make`-constructed values can print strings the parser rejects.
 
 ## Watch the import graph when placing statics
 

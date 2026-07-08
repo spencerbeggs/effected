@@ -11,7 +11,7 @@ model: inherit
 skills:
   - effect-v4-construct-map
   - effect-v4-planning
-  - effect-v4-schema-classes
+  - effect-v4-schema
   - effect-v4-services-layers
   - effect-v4-idioms
   - effect-v4-observability
