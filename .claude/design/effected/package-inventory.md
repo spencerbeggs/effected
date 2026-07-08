@@ -49,6 +49,7 @@ Extraction candidates recorded above are surfaced by review; final decisions lan
 Packages created inside the monorepo rather than migrated from a `*-effect` source repo, so they carry no migration-table row:
 
 - `@effected/npm` (pure tier) — extracted from the `@effected/package-json` port to hold the dependency-resolution service contracts (`CatalogResolver`, `WorkspaceResolver`) and `DependencyResolutionError` that package-json defines but cannot implement. Initial surface is exactly what package-json's port needs; it expands when `@effected/workspaces`/`@effected/lockfiles` land. **Implemented on `feat/package-json` (landed alongside the package-json port, 11/11 tests green).** Design: [packages/npm.md](packages/npm.md).
+- `@effected/pnpm-plugin-effect` (infra) — the pnpm config dependency (built with `rolldown-pnpm-config`) that publishes the `effect` and `effectPeers` catalogs every `@effected/*` package pins against, and the source of truth for the workspace peer discipline. Maintained via `pnpm pnpm:up` / `pnpm:export`. Pre-existing repo infrastructure; design doc and initial-release changeset added on `feat/package-json`. Design: [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md).
 
 ## Migration order (provisional)
 
