@@ -13,6 +13,8 @@ related:
   - packages/semver.md
   - packages/jsonc.md
   - packages/yaml.md
+  - packages/package-json.md
+  - packages/npm.md
 ---
 
 # Package inventory
@@ -33,7 +35,7 @@ All ten source repos were reviewed against [effect-standards.md](effect-standard
 | jsonc-effect | @effected/jsonc | pure | merged | Second migration; design: [packages/jsonc.md](packages/jsonc.md); yaml parity convention recorded there; post-merge input-hardening applied (depth cap across five recursive surfaces), tracking issue #13 open for `parseTree` revalidation perf |
 | yaml-effect | @effected/yaml | pure | merged | Third migration; design: [packages/yaml.md](packages/yaml.md); yaml/jsonc parity convention held except YamlFormattingOptions (see design) |
 | json-schema-effect | @effected/json-schema | boundary | not started | File writes are load-bearing for silk-release-action; core JSON Schema generation superseded by v4 `Schema.toJsonSchemaDocument` — remaining value is TOML tooling (tombi/taplo builders, Ajv validation, scaffolder); one package, Scaffold/Tombi/Taplo seam available if split later |
-| package-json-effect | @effected/package-json | boundary | not started | Split candidate reversed by review: stays one package with IO confined to a single `PackageJsonFile.ts` module (the v3 split motivation — the @effect/platform peer — evaporates in v4); a future split is a one-module extraction |
+| package-json-effect | @effected/package-json | boundary | implemented on `feat/package-json` (steps 3–4 complete); design: [packages/package-json.md](packages/package-json.md) | Split candidate reversed by review: stays one package with IO confined to a single `PackageJsonFile.ts` module (the v3 split motivation — the @effect/platform peer — evaporates in v4); a future split is a one-module extraction. Landed GREEN (34 v3 files → 13 src, 71/71 tests). Spins out a new internal sibling `@effected/npm` for the resolver contracts (see [internal packages](#internal-packages-no-source-repo) and [packages/npm.md](packages/npm.md)) |
 | xdg-effect | @effected/xdg | boundary | not started | Extraction candidate: SQLite cache/state services → a separate @effected sqlite package (name TBD at migration); post-extraction xdg is a small fs+env boundary lib; its json-schema-effect dependency is a dead facade and gets cut |
 | config-file-effect | @effected/config-file | boundary | not started | JSON codec in core; TOML behind subpath/optional dep; JSONC/YAML via thin adapter codecs over @effected/jsonc and @effected/yaml; file watcher deferred to a later phase; error-model redesign is the headline migration work; confirmed it does NOT depend on json-schema-effect |
 | workspaces-effect | @effected/workspaces | boundary | not started | @effected/lockfiles extraction confirmed clean (pure tier) after two pre-repairs: importer-path→name resolution moves out of the lockfile reader and integrity checking becomes pure |
@@ -41,6 +43,12 @@ All ten source repos were reviewed against [effect-standards.md](effect-standard
 | runtime-resolver | @effected/runtime-resolver | boundary | not started | Boundary confirmed (already Effect v3 internally); new split candidate: its @effect/cli binary moves to a separate CLI package (peers currently leak onto API consumers); depends on @effected/semver so it sequences after semver |
 
 Extraction candidates recorded above are surfaced by review; final decisions land during each migration's design.
+
+## Internal packages (no source repo)
+
+Packages created inside the monorepo rather than migrated from a `*-effect` source repo, so they carry no migration-table row:
+
+- `@effected/npm` (pure tier) — extracted from the `@effected/package-json` port to hold the dependency-resolution service contracts (`CatalogResolver`, `WorkspaceResolver`) and `DependencyResolutionError` that package-json defines but cannot implement. Initial surface is exactly what package-json's port needs; it expands when `@effected/workspaces`/`@effected/lockfiles` land. **Implemented on `feat/package-json` (landed alongside the package-json port, 11/11 tests green).** Design: [packages/npm.md](packages/npm.md).
 
 ## Migration order (provisional)
 

@@ -41,6 +41,22 @@ export const SemVer_base: Schema.Class<
 export class SemVer extends SemVer_base { /* ... */ }
 ```
 
+For a `Context.Service` class the base annotation is the two-stage no-`make`
+overload's return type — `Context.ServiceClass<Self, "id", Shape>` (id as the
+literal, shape third):
+
+```ts
+/** Service base backing {@link Registry}. Not for direct use. @public */
+export const Registry_base: Context.ServiceClass<
+ Registry,
+ "Registry",
+ { readonly resolve: (name: string) => Effect.Effect<string> }
+> = Context.Service<Registry>()("Registry");
+
+/** ... @public */
+export class Registry extends Registry_base { /* ... */ }
+```
+
 Rules that are each load-bearing:
 
 - **The explicit type annotation is mandatory.** Splitting the factory call
@@ -112,3 +128,11 @@ classes — they are exactly where an internal record type sneaks onto a
 
 Links from TSDoc to inherited members (`{@link SemVer.make}` where `make`
 comes from the base) are unresolvable — use a backtick code span instead.
+
+The same trap fires for any name carrying **both a value and a type
+declaration** — e.g. a branded scalar (a `const` schema plus its exported
+`type` of the same name, like `PackageName` or `SpdxLicense`). API Extractor
+cannot disambiguate the two declarations, so **both** the bare `{@link X}`
+**and** the member `{@link X.member}` resolve to `ae-unresolved-link`. Use
+backtick code spans (`` `PackageName` ``, `` `PackageName.of` ``) for those,
+not `{@link}` (first boundary port).

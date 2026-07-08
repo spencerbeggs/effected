@@ -62,6 +62,15 @@ never pass an explicit `undefined` for a `Schema.optionalKey` field (a *present*
 `new Node({ offset, ...(anchor !== undefined ? { anchor } : {}) })`. See
 `effect-v4-construct-map` for the full construction/validation semantics.
 
+**Instances are NOT `Pipeable` in v4** (first boundary port). The factory's
+instance type is `S["Type"] & Inherited` — the decoded record plus any brand,
+neither of which declares `Pipeable`. A runtime `.pipe` method exists on the
+prototype, so it *runs*, but tsgo rejects instance `.pipe(...)`. If you want
+pipeable instances — e.g. to call a dual-signature `Function.dual` static
+pipeably (`node.pipe(Node.move(2))`) — retain the manual `Pipeable` overload
+block on the class (the `pipe(...args) { return pipeArguments(this, args) }`
+member) so the instance type advertises it.
+
 ## Fields & optionality
 
 - `Schema.optionalKey(schema)` → exact optional **property**; the key may be
@@ -284,6 +293,29 @@ interchangeable:
 const UserId = Schema.String.pipe(Schema.brand("UserId")); // nominal refinement
 // Schema.Opaque — opaque schema-backed type, same runtime shape
 ```
+
+**A branded scalar that also needs a statics namespace** (first boundary port):
+a `const` brand schema and a TS `namespace` of the same name **cannot merge** (a
+namespace only merges with a class/function/enum, never a `const`). Attach the
+statics with `Object.assign` instead, and keep two typing rules straight:
+
+```ts
+// leave the brand const type-inferred — an explicit annotation would name the
+// private Schema.filter internals:
+const PackageName = Object.assign(
+ Schema.String.pipe(Schema.brand("PackageName")),
+ { of: (s: string): PackageName => /* … */ } satisfies PackageNameStatics,
+);
+// type the EXPORTED brand so @public doesn't leak the private brand const:
+export type PackageName = string & Brand.Brand<"PackageName">;
+```
+
+- Don't annotate the brand `const` — inference keeps the private `Schema.filter`
+  type out of the public surface; an explicit annotation drags it in.
+- `satisfies` the statics object against an interface so the shape is checked
+  without widening.
+- Export the type as `string & Brand.Brand<"Name">`, not `typeof PackageName`,
+  so the `@public` type is clean.
 
 ## Derived tooling — exact names
 

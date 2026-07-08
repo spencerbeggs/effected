@@ -29,6 +29,7 @@ Removed or fundamentally changed modules:
 | `SortedSet` | **Removed entirely.** Use a sorted `ReadonlyArray` + `Order` (binary-search insert, dedupe on `compare === 0`) or `HashSet` when order is not needed |
 | `Hash.cached(this)(h)` | **Removed.** Hash without caching; a cheap canonical form is `Hash.string(canonicalString)` |
 | `effect/schema/Check` (guessed name) | Does not exist. Check combinators live on `Schema` itself as `Schema.is*` |
+| `Option.fromNullable(x)` | **Gone.** `Option.fromUndefinedOr(x)` for `T \| undefined` (first boundary port; `fromNullable` `typeof` is `undefined`) |
 
 Constructor and validation semantics (this bites *pervasively* in v3→v4 ports):
 
@@ -144,6 +145,19 @@ Variadic → array / restructure:
 
 > `mapFields` is an **instance method** on struct schemas (`St.mapFields(...)`),
 > NOT a `Schema.mapFields` static.
+>
+> Top-level `Schema.transform` / `Schema.transformOrFail` **do not exist as
+> callables** in beta.93 (`typeof` is `undefined`; calling throws
+> `Schema.transform is not a function`) — observed in the first boundary port.
+> The v4 form is always `Source.pipe(Schema.decodeTo(Target,
+> SchemaTransformation.transform({ decode, encode })))` (or `transformOrFail`);
+> `transform` lives on `SchemaTransformation`, not `Schema`.
+>
+> Open struct: `Schema.Struct(fields, indexSignature)` (the 2-arg form) **runs at
+> runtime but is REJECTED by tsgo** (it wants `Schema.StructWithRest` — which does
+> exist). Don't reach for the 2-arg struct; model an open remainder with
+> `Schema.Record(key, value)` or a `decodeTo` key-partition instead (first
+> boundary port).
 
 Removed (no v4 equivalent): `validate*` (use `decode*` + `toType`), `keyof`,
 `NonEmptyArrayEnsure`, `withDefaults`, `Data(schema)` (v4 `Equal.equals` is

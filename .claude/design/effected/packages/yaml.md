@@ -13,6 +13,8 @@ related:
   - ../package-inventory.md
   - semver.md
   - jsonc.md
+  - package-json.md
+  - npm.md
 ---
 
 # @effected/yaml design
