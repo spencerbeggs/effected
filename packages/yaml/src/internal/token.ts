@@ -1,8 +1,6 @@
-/**
- * Internal lexical token types. The token layer is not public surface — a
- * `Stream<YamlToken>` tokenizer interface is deferred until an LSP-tooling
- * consumer materializes.
- */
+// Internal lexical token types. The token layer is not public surface — a
+// `Stream<YamlToken>` tokenizer interface is deferred until an LSP-tooling
+// consumer materializes.
 
 /** The 22 token kinds produced by the YAML lexer. */
 export type YamlTokenKind =

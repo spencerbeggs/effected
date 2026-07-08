@@ -1,44 +1,22 @@
-/**
- * The `devEngines` field model: a {@link DevEngine} class (a single runtime or
- * package-manager constraint) and the {@link DevEnginesSchema} struct grouping
- * the `packageManager` / `runtime` / `os` / `cpu` / `libc` constraint slots.
- *
- * @packageDocumentation
- */
+// The `devEngines` field model: a `DevEngine` class (a single runtime or
+// package-manager constraint) and the `DevEnginesSchema` struct grouping the
+// `packageManager` / `runtime` / `os` / `cpu` / `libc` constraint slots.
 
 import { Schema } from "effect";
-
-/**
- * Schema-generated base class backing {@link DevEngine}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const DevEngine_base: Schema.Class<
-	DevEngine,
-	Schema.Struct<{
-		readonly name: typeof Schema.String;
-		readonly version: Schema.optionalKey<typeof Schema.String>;
-		readonly onFail: Schema.optionalKey<Schema.Literals<["warn", "error", "ignore"]>>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<DevEngine>("DevEngine")({
-	/** The engine name (e.g. `node`, `pnpm`). */
-	name: Schema.String,
-	/** The optional version constraint. */
-	version: Schema.optionalKey(Schema.String),
-	/** The optional behavior when the constraint is unmet. */
-	onFail: Schema.optionalKey(Schema.Literals(["warn", "error", "ignore"])),
-});
 
 /**
  * A single `devEngines` constraint with a name and optional `version` / `onFail`.
  *
  * @public
  */
-export class DevEngine extends DevEngine_base {}
+export class DevEngine extends Schema.Class<DevEngine>("DevEngine")({
+	/** The engine name (e.g. `node`, `pnpm`). */
+	name: Schema.String,
+	/** The optional version constraint. */
+	version: Schema.optionalKey(Schema.String),
+	/** The optional behavior when the constraint is unmet. */
+	onFail: Schema.optionalKey(Schema.Literals(["warn", "error", "ignore"])),
+}) {}
 
 /**
  * A `devEngines` constraint slot: a single {@link DevEngine} or an array of them.

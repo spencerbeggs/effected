@@ -1,13 +1,11 @@
-/**
- * Document-level composition: the per-CST-document compose walk, directive
- * validation (per-document and cross-document), the sourceMultiline
- * decoration post-pass, and the two engine entry points the facade and the
- * compliance harness drive (`composeFirstDocument`, `composeAllDocuments`).
- *
- * This module wires the flow-composer dispatch into state (see
- * `state.ts`) — it is the only composer module that imports both `block.ts`
- * and `flow.ts`, and nothing in the engine imports it back.
- */
+// Document-level composition: the per-CST-document compose walk, directive
+// validation (per-document and cross-document), the sourceMultiline
+// decoration post-pass, and the two engine entry points the facade and the
+// compliance harness drive (`composeFirstDocument`, `composeAllDocuments`).
+//
+// This module wires the flow-composer dispatch into state (see `state.ts`)
+// — it is the only composer module that imports both `block.ts` and
+// `flow.ts`, and nothing in the engine imports it back.
 
 import type { YamlNode } from "../../YamlNode.js";
 import { YamlAlias, YamlMap, YamlPair, YamlScalar, YamlSeq } from "../../YamlNode.js";

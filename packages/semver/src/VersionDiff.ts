@@ -14,37 +14,6 @@ const classifyDiff = (a: SemVer, b: SemVer): "major" | "minor" | "patch" | "prer
 };
 
 /**
- * Schema-generated base class backing {@link VersionDiff}. Not meant to be
- * referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const VersionDiff_base: Schema.Class<
-	VersionDiff,
-	Schema.TaggedStruct<
-		"VersionDiff",
-		{
-			readonly type: Schema.Literals<["major", "minor", "patch", "prerelease", "build", "none"]>;
-			readonly from: typeof SemVer;
-			readonly to: typeof SemVer;
-			readonly major: typeof Schema.Number;
-			readonly minor: typeof Schema.Number;
-			readonly patch: typeof Schema.Number;
-		}
-	>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.TaggedClass's own `Brand = {}` default
-	{}
-> = Schema.TaggedClass<VersionDiff>()("VersionDiff", {
-	type: Schema.Literals(["major", "minor", "patch", "prerelease", "build", "none"]),
-	from: SemVer,
-	to: SemVer,
-	major: Schema.Number,
-	minor: Schema.Number,
-	patch: Schema.Number,
-});
-
-/**
  * The difference between two {@link SemVer} versions: the classification of
  * the change plus signed numeric deltas. A `Schema.TaggedClass` — the one
  * concept in this package where serialized tag discrimination earns its
@@ -63,15 +32,36 @@ export const VersionDiff_base: Schema.Class<
  *   const a = yield* SemVer.parse("1.2.3");
  *   const b = yield* SemVer.parse("2.0.0");
  *   const diff = VersionDiff.between(a, b);
- *   console.log(diff.type);  // "major"
- *   console.log(diff.major); // 1
+ *   return [diff.type, diff.major] as const;
  * });
+ *
+ * console.log(Effect.runSync(program));
+ * // => ["major", 1]
  * ```
  *
  * @public
  */
-export class VersionDiff extends VersionDiff_base {
-	/** Compute the diff from `a` to `b`. */
+export class VersionDiff extends Schema.TaggedClass<VersionDiff>()("VersionDiff", {
+	/** The highest-precedence field that differs between `from` and `to`; see the class doc for the classification order. */
+	type: Schema.Literals(["major", "minor", "patch", "prerelease", "build", "none"]),
+	/** The earlier version being compared. */
+	from: SemVer,
+	/** The later version being compared. */
+	to: SemVer,
+	/** Signed delta of the major component (`to.major - from.major`). */
+	major: Schema.Number,
+	/** Signed delta of the minor component (`to.minor - from.minor`). */
+	minor: Schema.Number,
+	/** Signed delta of the patch component (`to.patch - from.patch`). */
+	patch: Schema.Number,
+}) {
+	/**
+	 * Compute the diff from `a` to `b`.
+	 *
+	 * @param a - the earlier version
+	 * @param b - the later version
+	 * @returns the classified diff with signed numeric deltas
+	 */
 	static between(a: SemVer, b: SemVer): VersionDiff {
 		return VersionDiff.make({
 			type: classifyDiff(a, b),

@@ -47,7 +47,7 @@
 		"**/node_modules": false
 	},
 	"gitlens.statusBar.pullRequests.enabled": true,
-	"typescript.experimental.useTsgo": true,
+	"js/ts.experimental.useTsgo": true,
 	"gitlens.gitkraken.cli.integration.enabled": true,
 	"github-actions.workflows.pinned.refresh.enabled": true,
 	// GitHub Actions IDE configuration
@@ -94,7 +94,7 @@
 		"formattingDisabled": "Formatting: $(x)"
 	},
 	"turbo.useLocalTurbo": true,
-	"typescript.enablePromptUseWorkspaceTsdk": true,
+	"js/ts.tsdk.promptToUseWorkspaceVersion": true,
 	"yaml.completion": true,
 	"yaml.hover": true,
 	"yaml.schemaStore.enable": true,

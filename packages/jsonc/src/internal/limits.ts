@@ -1,11 +1,9 @@
-/**
- * Shared hardening limits. Private implementation, zero dependencies.
- *
- * Lives in its own leaf module so every recursive surface — the parser, the
- * AST value-extractor, the semantic-equality walker and the SAX visitor — can
- * import the same cap without an import cycle (the parser imports `JsoncNode`,
- * so `JsoncNode` must not import the parser).
- */
+// Shared hardening limits. Private implementation, zero dependencies.
+//
+// Lives in its own leaf module so every recursive surface — the parser, the
+// AST value-extractor, the semantic-equality walker and the SAX visitor — can
+// import the same cap without an import cycle (the parser imports
+// `JsoncNode`, so `JsoncNode` must not import the parser).
 
 /**
  * Maximum collection-nesting depth any recursive walk over untrusted input will

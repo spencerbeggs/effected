@@ -1,9 +1,7 @@
-/**
- * Tag-handle resolution and directive parsing/validation local to tags.
- * `parseDirective` lives here (not in `document.ts`) because
- * `validateTagHandlesInDocument` needs it and `document.ts` already imports
- * this module — the reverse import would be a cycle.
- */
+// Tag-handle resolution and directive parsing/validation local to tags.
+// `parseDirective` lives here (not in `document.ts`) because
+// `validateTagHandlesInDocument` needs it and `document.ts` already imports
+// this module — the reverse import would be a cycle.
 
 import type { CstNode } from "../cst.js";
 import type { RawDirective } from "../raw-document.js";

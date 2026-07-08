@@ -30,25 +30,10 @@ export {
 	JsoncParseError,
 	JsoncParseErrorCode,
 	JsoncParseErrorDetail,
-	JsoncParseErrorDetail_base,
-	JsoncParseError_base,
 	JsoncParseOptions,
-	JsoncParseOptions_base,
 } from "./Jsonc.js";
-export {
-	JsoncEdit,
-	JsoncEdit_base,
-	JsoncFormattingOptions,
-	JsoncFormattingOptions_base,
-	JsoncRange,
-	JsoncRange_base,
-} from "./JsoncEdit.js";
+export { JsoncEdit, JsoncFormattingOptions, JsoncRange } from "./JsoncEdit.js";
 export { JsoncFormatter } from "./JsoncFormatter.js";
-export {
-	JsoncModificationError,
-	JsoncModificationError_base,
-	JsoncModifier,
-	type JsoncModifyOptions,
-} from "./JsoncModifier.js";
-export { JsoncNode, JsoncNodeType, JsoncNode_base, type JsoncPath, type JsoncSegment } from "./JsoncNode.js";
+export { JsoncModificationError, JsoncModifier, type JsoncModifyOptions } from "./JsoncModifier.js";
+export { JsoncNode, JsoncNodeType, type JsoncPath, type JsoncSegment } from "./JsoncNode.js";
 export { JsoncVisitor, JsoncVisitorEvent } from "./JsoncVisitor.js";

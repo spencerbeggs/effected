@@ -1,13 +1,11 @@
-/**
- * Pure package.json serialization helpers: canonical top-level key ordering
- * (the `sort-package-json` order), dependency-map alphabetization and
- * empty-dependency-map stripping. These replace the v3 `PackageJsonFormatter`
- * and `PackageJsonTransformer` services — both were pure `Record → Record`
- * steps, so they collapse to functions surfaced through `Package.toJsonString`
- * and `PackageJsonFile.write` options.
- *
- * Private implementation module — never re-exported from `index.ts`.
- */
+// Pure package.json serialization helpers: canonical top-level key ordering
+// (the `sort-package-json` order), dependency-map alphabetization and
+// empty-dependency-map stripping. These replace the v3 `PackageJsonFormatter`
+// and `PackageJsonTransformer` services — both were pure `Record → Record`
+// steps, so they collapse to functions surfaced through `Package.toJsonString`
+// and `PackageJsonFile.write` options.
+//
+// Private implementation module — never re-exported from `index.ts`.
 
 /**
  * Canonical top-level key order, matching `sort-package-json`. Keys not listed

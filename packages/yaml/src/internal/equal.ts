@@ -1,7 +1,5 @@
-/**
- * Deep structural equality for plain JavaScript values — the primitive behind
- * the facade's semantic `equals`/`equalsValue` statics.
- */
+// Deep structural equality for plain JavaScript values — the primitive
+// behind the facade's semantic `equals`/`equalsValue` statics.
 
 /**
  * Deep-compare two plain JS values for structural equality.

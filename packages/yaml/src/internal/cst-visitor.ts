@@ -1,27 +1,25 @@
-/**
- * SAX-style CST visitor for YAML documents.
- *
- * `cstEvents()` walks YAML source text and yields {@link CstVisitorEvent}
- * values in document order. All content is delivered as raw source strings —
- * no type resolution occurs at the CST level. CST-level parse errors are
- * surfaced as {@link CstErrorEvent} records rather than thrown failures.
- *
- * ### CST structure notes
- *
- * The parser produces a CST where block-map nodes do NOT include their first
- * key scalar. Instead, the first key of a block mapping appears as a sibling
- * node (at the parent level) immediately before the block-map node that holds
- * the `:` indicator and value. This means:
- *
- * For `name: John`, the document children are:
- * - `flow-scalar("name")` — the key (outside the block-map)
- * - `block-map(": John")` — children start with whitespace(":") then the value
- *
- * The visitor detects this "scalar → block-map" sibling pattern and emits the
- * scalar as a `CstKeyEvent`. Inside a block-map, the first non-trivia scalar
- * is always a value; scalars then alternate as key/value pairs for subsequent
- * entries.
- */
+// SAX-style CST visitor for YAML documents.
+//
+// `cstEvents()` walks YAML source text and yields CstVisitorEvent values in
+// document order. All content is delivered as raw source strings — no type
+// resolution occurs at the CST level. CST-level parse errors are surfaced as
+// CstErrorEvent records rather than thrown failures.
+//
+// CST structure notes:
+//
+// The parser produces a CST where block-map nodes do NOT include their first
+// key scalar. Instead, the first key of a block mapping appears as a sibling
+// node (at the parent level) immediately before the block-map node that holds
+// the `:` indicator and value. This means:
+//
+// For `name: John`, the document children are:
+// - `flow-scalar("name")` — the key (outside the block-map)
+// - `block-map(": John")` — children start with whitespace(":") then the value
+//
+// The visitor detects this "scalar → block-map" sibling pattern and emits the
+// scalar as a `CstKeyEvent`. Inside a block-map, the first non-trivia scalar
+// is always a value; scalars then alternate as key/value pairs for subsequent
+// entries.
 
 import type { CstNode } from "./cst.js";
 import { parseCSTAll } from "./cst-parser.js";

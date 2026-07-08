@@ -1,12 +1,9 @@
-/**
- * Block-collection composition: block mappings (with the sibling-first-key
- * CST shape), block sequences, flat block maps, and the shared pair-building
- * machinery (`SemanticItem`, `buildPairs`) that flow composition also uses.
- *
- * Cross-seam recursion into flow composition goes through `state.flow`
- * (see {@link import("./state.js").FlowComposers}) so this module never
- * imports `flow.ts`.
- */
+// Block-collection composition: block mappings (with the sibling-first-key
+// CST shape), block sequences, flat block maps, and the shared pair-building
+// machinery (`SemanticItem`, `buildPairs`) that flow composition also uses.
+//
+// Cross-seam recursion into flow composition goes through `state.flow` (see
+// `FlowComposers` in `state.ts`) so this module never imports `flow.ts`.
 
 import type { CollectionStyle, ScalarStyle, YamlNode } from "../../YamlNode.js";
 import { YamlMap, YamlPair, YamlScalar, YamlSeq } from "../../YamlNode.js";

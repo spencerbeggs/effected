@@ -1,20 +1,11 @@
-/**
- * The mutually-recursive YAML AST: {@link YamlScalar}, {@link YamlMap},
- * {@link YamlSeq}, {@link YamlPair}, {@link YamlAlias} and the
- * {@link (YamlNode:type)} union, co-located in one module to break the import
- * cycle inherent in the recursive node types.
- *
- * Nodes deliberately carry no parent pointers (circular references would break
- * structural equality, serialization and Schema encode/decode). Child
- * relationships are expressed via `items`/`key`/`value`, and the recursive
- * types are handled with `Schema.suspend`.
- *
- * Construct via `YamlScalar.make(...)` etc., never `new YamlScalar(...)` —
- * the internal composer's hot-path `new` construction is the one recorded
- * exception.
- *
- * @packageDocumentation
- */
+// The mutually-recursive YAML AST: YamlScalar, YamlMap, YamlSeq, YamlPair,
+// YamlAlias and the YamlNode union, co-located in one module to break the
+// import cycle inherent in the recursive node types.
+//
+// Nodes deliberately carry no parent pointers (circular references would
+// break structural equality, serialization and Schema encode/decode). Child
+// relationships are expressed via `items`/`key`/`value`, and the recursive
+// types are handled with `Schema.suspend`.
 
 import { Option, Schema } from "effect";
 import type { YamlPath } from "./YamlEdit.js";
@@ -55,8 +46,7 @@ export type CollectionStyle = typeof CollectionStyle.Type;
 
 /**
  * Block-scalar chomping indicators (`-` strip, default clip, `+` keep).
- * Referenced by the {@link YamlScalar} field schema; exported only so the
- * `@public` base annotations can name it. Not meant to be referenced directly.
+ * Referenced by the {@link YamlScalar} `chomp` field schema.
  *
  * @public
  */
@@ -68,45 +58,6 @@ export const ScalarChomp = Schema.Literals(["strip", "clip", "keep"]);
  * @public
  */
 export type ScalarChomp = typeof ScalarChomp.Type;
-
-/**
- * Schema-generated base class backing {@link YamlScalar}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const YamlScalar_base: Schema.Class<
-	YamlScalar,
-	Schema.TaggedStruct<
-		"YamlScalar",
-		{
-			readonly value: typeof Schema.Unknown;
-			readonly tag: Schema.optionalKey<typeof Schema.String>;
-			readonly style: typeof ScalarStyle;
-			readonly anchor: Schema.optionalKey<typeof Schema.String>;
-			readonly comment: Schema.optionalKey<typeof Schema.String>;
-			readonly chomp: Schema.optionalKey<typeof ScalarChomp>;
-			readonly raw: Schema.optionalKey<typeof Schema.String>;
-			readonly sourceMultiline: Schema.optionalKey<typeof Schema.Boolean>;
-			readonly offset: typeof Schema.Number;
-			readonly length: typeof Schema.Number;
-		}
-	>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.TaggedClass's own `Brand = {}` default
-	{}
-> = Schema.TaggedClass<YamlScalar>()("YamlScalar", {
-	value: Schema.Unknown,
-	tag: Schema.optionalKey(Schema.String),
-	style: ScalarStyle,
-	anchor: Schema.optionalKey(Schema.String),
-	comment: Schema.optionalKey(Schema.String),
-	chomp: Schema.optionalKey(ScalarChomp),
-	raw: Schema.optionalKey(Schema.String),
-	sourceMultiline: Schema.optionalKey(Schema.Boolean),
-	offset: Schema.Number,
-	length: Schema.Number,
-});
 
 /**
  * A YAML scalar AST node, representing a leaf value such as a string,
@@ -128,7 +79,18 @@ export const YamlScalar_base: Schema.Class<
  *
  * @public
  */
-export class YamlScalar extends YamlScalar_base {
+export class YamlScalar extends Schema.TaggedClass<YamlScalar>()("YamlScalar", {
+	value: Schema.Unknown,
+	tag: Schema.optionalKey(Schema.String),
+	style: ScalarStyle,
+	anchor: Schema.optionalKey(Schema.String),
+	comment: Schema.optionalKey(Schema.String),
+	chomp: Schema.optionalKey(ScalarChomp),
+	raw: Schema.optionalKey(Schema.String),
+	sourceMultiline: Schema.optionalKey(Schema.Boolean),
+	offset: Schema.Number,
+	length: Schema.Number,
+}) {
 	/**
 	 * Navigate to a descendant by path (string segments for mapping keys,
 	 * numbers for sequence indices). `Option.none()` when any segment cannot
@@ -162,34 +124,9 @@ export class YamlScalar extends YamlScalar_base {
 	 * of use); unresolvable aliases yield `null`. Pure and total.
 	 */
 	toValue(anchors?: Map<string, YamlNode>): unknown {
-		return nodeToValue(this, anchors);
+		return nodeToValue(this, anchors, defaultBudget());
 	}
 }
-
-/**
- * Schema-generated base class backing {@link YamlAlias}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const YamlAlias_base: Schema.Class<
-	YamlAlias,
-	Schema.TaggedStruct<
-		"YamlAlias",
-		{
-			readonly name: typeof Schema.String;
-			readonly offset: typeof Schema.Number;
-			readonly length: typeof Schema.Number;
-		}
-	>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.TaggedClass's own `Brand = {}` default
-	{}
-> = Schema.TaggedClass<YamlAlias>()("YamlAlias", {
-	name: Schema.String,
-	offset: Schema.Number,
-	length: Schema.Number,
-});
 
 /**
  * A YAML alias AST node, referencing a previously defined anchor by name
@@ -197,7 +134,11 @@ export const YamlAlias_base: Schema.Class<
  *
  * @public
  */
-export class YamlAlias extends YamlAlias_base {
+export class YamlAlias extends Schema.TaggedClass<YamlAlias>()("YamlAlias", {
+	name: Schema.String,
+	offset: Schema.Number,
+	length: Schema.Number,
+}) {
 	/** See `YamlScalar.find`. Pure. */
 	find(path: YamlPath): Option.Option<YamlNode> {
 		return findByPath(this, path);
@@ -215,7 +156,7 @@ export class YamlAlias extends YamlAlias_base {
 
 	/** See `YamlScalar.toValue`. Pure and total. */
 	toValue(anchors?: Map<string, YamlNode>): unknown {
-		return nodeToValue(this, anchors);
+		return nodeToValue(this, anchors, defaultBudget());
 	}
 }
 
@@ -224,6 +165,12 @@ export class YamlAlias extends YamlAlias_base {
  * {@link YamlScalar}, {@link YamlMap}, {@link YamlSeq} and {@link YamlAlias}.
  * Defined lazily via `Schema.suspend` to break the recursive reference chain
  * `YamlNode → YamlMap → YamlPair → YamlNode`.
+ *
+ * @remarks
+ * Construct member nodes via their `.make(...)` static (e.g.
+ * `YamlScalar.make(...)`), never `new YamlScalar(...)` — the internal
+ * composer's hot-path `new` construction is the one recorded exception, kept
+ * internal to the engine for its allocation-sensitive walk.
  *
  * @public
  */
@@ -239,74 +186,16 @@ export const YamlNode: Schema.Schema<YamlScalar | YamlMap | YamlSeq | YamlAlias>
 export type YamlNode = YamlScalar | YamlMap | YamlSeq | YamlAlias;
 
 /**
- * Schema-generated base class backing {@link YamlPair}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs. The recursive `key`/`value`
- * fields are annotated as `Schema.Schema<YamlNode>` (not `typeof YamlNode`)
- * to keep the mutual references resolvable without a circular type error.
- *
- * @public
- */
-export const YamlPair_base: Schema.Class<
-	YamlPair,
-	Schema.TaggedStruct<
-		"YamlPair",
-		{
-			readonly key: Schema.suspend<Schema.Schema<YamlNode>>;
-			readonly value: Schema.NullOr<Schema.suspend<Schema.Schema<YamlNode>>>;
-			readonly comment: Schema.optionalKey<typeof Schema.String>;
-		}
-	>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.TaggedClass's own `Brand = {}` default
-	{}
-> = Schema.TaggedClass<YamlPair>()("YamlPair", {
-	key: Schema.suspend((): Schema.Schema<YamlNode> => YamlNode),
-	value: Schema.NullOr(Schema.suspend((): Schema.Schema<YamlNode> => YamlNode)),
-	comment: Schema.optionalKey(Schema.String),
-});
-
-/**
  * A YAML key-value pair AST node, representing one entry within a mapping.
  * `value` is `null` when absent (e.g. `key:` with no value).
  *
  * @public
  */
-export class YamlPair extends YamlPair_base {}
-
-/**
- * Schema-generated base class backing {@link YamlMap}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const YamlMap_base: Schema.Class<
-	YamlMap,
-	Schema.TaggedStruct<
-		"YamlMap",
-		{
-			readonly items: Schema.$Array<Schema.suspend<Schema.Schema<YamlPair>>>;
-			readonly tag: Schema.optionalKey<typeof Schema.String>;
-			readonly anchor: Schema.optionalKey<typeof Schema.String>;
-			readonly style: typeof CollectionStyle;
-			readonly comment: Schema.optionalKey<typeof Schema.String>;
-			readonly sourceMultiline: Schema.optionalKey<typeof Schema.Boolean>;
-			readonly offset: typeof Schema.Number;
-			readonly length: typeof Schema.Number;
-		}
-	>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.TaggedClass's own `Brand = {}` default
-	{}
-> = Schema.TaggedClass<YamlMap>()("YamlMap", {
-	items: Schema.Array(Schema.suspend((): Schema.Schema<YamlPair> => YamlPair)),
-	tag: Schema.optionalKey(Schema.String),
-	anchor: Schema.optionalKey(Schema.String),
-	style: CollectionStyle,
+export class YamlPair extends Schema.TaggedClass<YamlPair>()("YamlPair", {
+	key: Schema.suspend((): Schema.Schema<YamlNode> => YamlNode),
+	value: Schema.NullOr(Schema.suspend((): Schema.Schema<YamlNode> => YamlNode)),
 	comment: Schema.optionalKey(Schema.String),
-	sourceMultiline: Schema.optionalKey(Schema.Boolean),
-	offset: Schema.Number,
-	length: Schema.Number,
-});
+}) {}
 
 /**
  * A YAML mapping AST node, representing a collection of {@link YamlPair}
@@ -318,7 +207,16 @@ export const YamlMap_base: Schema.Class<
  *
  * @public
  */
-export class YamlMap extends YamlMap_base {
+export class YamlMap extends Schema.TaggedClass<YamlMap>()("YamlMap", {
+	items: Schema.Array(Schema.suspend((): Schema.Schema<YamlPair> => YamlPair)),
+	tag: Schema.optionalKey(Schema.String),
+	anchor: Schema.optionalKey(Schema.String),
+	style: CollectionStyle,
+	comment: Schema.optionalKey(Schema.String),
+	sourceMultiline: Schema.optionalKey(Schema.Boolean),
+	offset: Schema.Number,
+	length: Schema.Number,
+}) {
 	/** See `YamlScalar.find`. Pure. */
 	find(path: YamlPath): Option.Option<YamlNode> {
 		return findByPath(this, path);
@@ -336,35 +234,17 @@ export class YamlMap extends YamlMap_base {
 
 	/** See `YamlScalar.toValue`. Pure and total. */
 	toValue(anchors?: Map<string, YamlNode>): unknown {
-		return nodeToValue(this, anchors);
+		return nodeToValue(this, anchors, defaultBudget());
 	}
 }
 
 /**
- * Schema-generated base class backing {@link YamlSeq}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
+ * A YAML sequence AST node, representing an ordered list of
+ * {@link (YamlNode:type)} values.
  *
  * @public
  */
-export const YamlSeq_base: Schema.Class<
-	YamlSeq,
-	Schema.TaggedStruct<
-		"YamlSeq",
-		{
-			readonly items: Schema.$Array<Schema.suspend<Schema.Schema<YamlNode>>>;
-			readonly tag: Schema.optionalKey<typeof Schema.String>;
-			readonly anchor: Schema.optionalKey<typeof Schema.String>;
-			readonly style: typeof CollectionStyle;
-			readonly comment: Schema.optionalKey<typeof Schema.String>;
-			readonly sourceMultiline: Schema.optionalKey<typeof Schema.Boolean>;
-			readonly offset: typeof Schema.Number;
-			readonly length: typeof Schema.Number;
-		}
-	>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.TaggedClass's own `Brand = {}` default
-	{}
-> = Schema.TaggedClass<YamlSeq>()("YamlSeq", {
+export class YamlSeq extends Schema.TaggedClass<YamlSeq>()("YamlSeq", {
 	items: Schema.Array(Schema.suspend((): Schema.Schema<YamlNode> => YamlNode)),
 	tag: Schema.optionalKey(Schema.String),
 	anchor: Schema.optionalKey(Schema.String),
@@ -373,15 +253,7 @@ export const YamlSeq_base: Schema.Class<
 	sourceMultiline: Schema.optionalKey(Schema.Boolean),
 	offset: Schema.Number,
 	length: Schema.Number,
-});
-
-/**
- * A YAML sequence AST node, representing an ordered list of
- * {@link (YamlNode:type)} values.
- *
- * @public
- */
-export class YamlSeq extends YamlSeq_base {
+}) {
 	/** See `YamlScalar.find`. Pure. */
 	find(path: YamlPath): Option.Option<YamlNode> {
 		return findByPath(this, path);
@@ -399,7 +271,7 @@ export class YamlSeq extends YamlSeq_base {
 
 	/** See `YamlScalar.toValue`. Pure and total. */
 	toValue(anchors?: Map<string, YamlNode>): unknown {
-		return nodeToValue(this, anchors);
+		return nodeToValue(this, anchors, defaultBudget());
 	}
 }
 
@@ -537,8 +409,82 @@ function setOwnProperty(obj: Record<string, unknown>, key: string, value: unknow
 	}
 }
 
-function nodeToValue(node: YamlNode | null, anchors?: Map<string, YamlNode>): unknown {
+/**
+ * Thrown by the value-extraction walk when alias expansion materializes more
+ * output nodes than the budget allows — the YAML "billion laughs" guard. A
+ * chain of aliases each referencing the previous (`a2: [*a1×10]`, `a3:
+ * [*a2×10]`, …) multiplies output size exponentially while the alias-*token*
+ * count stays small, so the composer's per-token `maxAliasCount` limit does
+ * not catch it; only bounding the expanded node count does.
+ *
+ * Not re-exported from the package entry point (`index.ts`) — the facade
+ * catches it and materializes a fatal `AliasCountExceeded` `YamlParseError`
+ * (or, for `Yaml.equals`, treats the input as malformed).
+ */
+export class AliasExpansionBudgetExceeded extends Error {
+	constructor(limit: number) {
+		super(`Alias expansion exceeded budget of ${limit} nodes`);
+		this.name = "AliasExpansionBudgetExceeded";
+	}
+}
+
+/**
+ * Multiplier converting a `maxAliasCount` budget into a cap on the number of
+ * output nodes materialized *through alias expansion*. Deliberately generous:
+ * alias-free content never ticks the counter (see {@link nodeToValue}), so a
+ * large but benign document — or a single alias referencing a large alias-free
+ * block — stays far under the cap, while an exponential alias chain accumulates
+ * across the shared budget and trips it long before the heap is exhausted.
+ */
+const ALIAS_EXPANSION_FACTOR = 10_000;
+
+/** The output-node cap for a given `maxAliasCount`. */
+export function aliasExpansionLimit(maxAliasCount: number): number {
+	return (maxAliasCount + 1) * ALIAS_EXPANSION_FACTOR;
+}
+
+/** Default cap for a direct `toValue()` call, matching the default `maxAliasCount` of 100. */
+const DEFAULT_ALIAS_EXPANSION_LIMIT = aliasExpansionLimit(100);
+
+/** Mutable counter carried through one value-extraction walk. */
+interface ExpansionBudget {
+	count: number;
+	readonly limit: number;
+}
+
+/** A fresh default budget for a direct `toValue()` call. */
+function defaultBudget(): ExpansionBudget {
+	return { count: 0, limit: DEFAULT_ALIAS_EXPANSION_LIMIT };
+}
+
+/**
+ * Value extraction with an explicit alias-expansion budget derived from
+ * `maxAliasCount`. The facade drives this so a `maxAliasCount` from parse
+ * options bounds the "billion laughs" expansion; throws
+ * {@link AliasExpansionBudgetExceeded} when the cap is exceeded. Not
+ * re-exported from the package entry point.
+ */
+export function nodeToJsValue(node: YamlNode | null, anchors: Map<string, YamlNode>, maxAliasCount: number): unknown {
+	return nodeToValue(node, anchors, { count: 0, limit: aliasExpansionLimit(maxAliasCount) });
+}
+
+function nodeToValue(
+	node: YamlNode | null,
+	anchors?: Map<string, YamlNode>,
+	budget?: ExpansionBudget,
+	counting = false,
+): unknown {
 	if (node === null) return null;
+	// Count only nodes materialized *through* an alias expansion (counting=true).
+	// Alias-free content never ticks the counter, so large but benign documents
+	// are not falsely rejected; an exponential alias chain accumulates across the
+	// shared budget and trips the cap before the heap is exhausted.
+	if (counting && budget !== undefined) {
+		budget.count++;
+		if (budget.count > budget.limit) {
+			throw new AliasExpansionBudgetExceeded(budget.limit);
+		}
+	}
 	// Register this node's anchor incrementally so aliases resolve to the most
 	// recent anchor at the point of reference (not the last definition in the
 	// entire document).
@@ -558,18 +504,20 @@ function nodeToValue(node: YamlNode | null, anchors?: Map<string, YamlNode>): un
 				key = String(pair.key.value ?? "");
 			} else if (pair.key instanceof YamlAlias) {
 				const resolved = anchors?.get(pair.key.name);
-				key = resolved !== undefined ? String(nodeToValue(resolved, anchors) ?? "") : "";
+				// Resolving an alias key enters alias expansion → count its subtree.
+				key = resolved !== undefined ? String(nodeToValue(resolved, anchors, budget, true) ?? "") : "";
 			} else {
 				key = "";
 			}
-			setOwnProperty(result, key, nodeToValue(pair.value, anchors));
+			setOwnProperty(result, key, nodeToValue(pair.value, anchors, budget, counting));
 		}
 		return result;
 	}
-	if (node instanceof YamlSeq) return node.items.map((item) => nodeToValue(item, anchors));
+	if (node instanceof YamlSeq) return node.items.map((item) => nodeToValue(item, anchors, budget, counting));
 	if (node instanceof YamlAlias) {
 		const resolved = anchors?.get(node.name);
-		return resolved !== undefined ? nodeToValue(resolved, anchors) : null;
+		// Resolving an alias enters alias expansion → count the resolved subtree.
+		return resolved !== undefined ? nodeToValue(resolved, anchors, budget, true) : null;
 	}
 	return null;
 }

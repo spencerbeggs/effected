@@ -1,11 +1,7 @@
-/**
- * The single {@link Dependency} model — one class carrying a `kind` field
- * (`prod` / `dev` / `peer` / `optional`) rather than v3's four copy-pasted
- * `Schema.TaggedClass`es. The protocol getters are written once, delegating to
- * {@link DependencySpecifier}.
- *
- * @packageDocumentation
- */
+// The single `Dependency` model — one class carrying a `kind` field
+// (`prod` / `dev` / `peer` / `optional`) rather than v3's four copy-pasted
+// `Schema.TaggedClass`es. The protocol getters are written once, delegating to
+// `DependencySpecifier`.
 
 import type { Range } from "@effected/semver";
 import { Option, Schema } from "effect";
@@ -20,23 +16,13 @@ import { DependencySpecifier } from "./DependencySpecifier.js";
 export type DependencyKind = "prod" | "dev" | "peer" | "optional";
 
 /**
- * Schema-generated base class backing {@link Dependency}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
+ * A resolved dependency entry pairing a package name with its version
+ * specifier and the {@link DependencyKind | kind} of map it came from. The
+ * protocol predicates delegate to `DependencySpecifier`.
  *
  * @public
  */
-export const Dependency_base: Schema.Class<
-	Dependency,
-	Schema.Struct<{
-		readonly name: typeof Schema.String;
-		readonly specifier: typeof Schema.String;
-		readonly kind: Schema.Literals<["prod", "dev", "peer", "optional"]>;
-		readonly isOptional: Schema.optionalKey<typeof Schema.Boolean>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<Dependency>("Dependency")({
+export class Dependency extends Schema.Class<Dependency>("Dependency")({
 	/** The package name. */
 	name: Schema.String,
 	/** The raw version specifier. */
@@ -45,16 +31,7 @@ export const Dependency_base: Schema.Class<
 	kind: Schema.Literals(["prod", "dev", "peer", "optional"]),
 	/** For `peer` dependencies, whether the peer is optional (from `peerDependenciesMeta`). */
 	isOptional: Schema.optionalKey(Schema.Boolean),
-});
-
-/**
- * A resolved dependency entry pairing a package name with its version
- * specifier and the {@link DependencyKind | kind} of map it came from. The
- * protocol predicates delegate to {@link DependencySpecifier}.
- *
- * @public
- */
-export class Dependency extends Dependency_base {
+}) {
 	/** The classified protocol, or `None` for an empty specifier. */
 	get protocol(): Option.Option<DependencyProtocol> {
 		return this.specifier.length === 0 ? Option.none() : Option.some(DependencySpecifier.protocolOf(this.specifier));

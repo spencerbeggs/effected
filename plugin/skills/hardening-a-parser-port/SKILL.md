@@ -35,6 +35,14 @@ composer, or scanner then evaluator), **both** recursive stages need a guard:
 - Emit ONE fatal diagnostic (`e.code === "NestingDepthExceeded"` deduped), not
   one per level.
 
+**Single-stage recursive-descent parsers need only one cap.** The two-stage rule
+above is for a `lex → build-tree → walk-tree` pipeline (yaml's CST + composer). A
+parser with an *iterative* scanner and a single recursive build stage (jsonc) has
+one recursive build surface — cap it once. Guard any independent post-hoc walker
+over the already-bounded tree separately; **equal** caps are fine there, because
+the builder's output can never exceed the walker's cap, so the walker's guard only
+fires on a hand-built tree. Do not mis-flag equal caps as a defect in that shape.
+
 ## Range-check every `String.fromCodePoint` / `fromCharCode` fed by parsed hex
 
 An escape like `\U00110000` (8 hex digits) can denote a code point above the

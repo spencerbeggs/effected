@@ -1,10 +1,8 @@
-/**
- * Scalar resolution and decoding: YAML 1.2 Core Schema type resolution
- * (spec chapter 10.3.2), flow/block scalar decoding, multi-line plain-scalar
- * collection, and the CST-scanning helpers those routines share with the
- * block/flow/document seams (placed here because this is the lowest seam
- * that uses them — everything above already imports this module).
- */
+// Scalar resolution and decoding: YAML 1.2 Core Schema type resolution
+// (spec chapter 10.3.2), flow/block scalar decoding, multi-line plain-scalar
+// collection, and the CST-scanning helpers those routines share with the
+// block/flow/document seams (placed here because this is the lowest seam
+// that uses them — everything above already imports this module).
 
 import type { ScalarStyle } from "../../YamlNode.js";
 import { YamlScalar } from "../../YamlNode.js";

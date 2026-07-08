@@ -1,16 +1,10 @@
-/**
- * Structural JSONC modification: compute the edits needed to set, replace or
- * delete a value at a path, without mutating the source.
- *
- * Navigation goes through the scanner-based `internal/navigate.ts` (a
- * correctness fix over v3's fragile string search); this module owns only edit
- * synthesis and the {@link JsoncModificationError} it raises on a navigation
- * miss or invalid edit.
- *
- * @packageDocumentation
- */
+// Structural JSONC modification: compute the edits needed to set, replace or
+// delete a value at a path, without mutating the source.
+//
+// Navigation goes through the scanner-based `internal/navigate.ts` (a
+// correctness fix over v3's fragile string search); this module owns only edit
+// synthesis and the `JsoncModificationError` it raises on a navigation miss.
 
-import type { Cause } from "effect";
 import { Effect, Schema } from "effect";
 import { navigate } from "./internal/navigate.js";
 import type { JsoncFormattingOptions } from "./JsoncEdit.js";
@@ -18,39 +12,40 @@ import { JsoncEdit } from "./JsoncEdit.js";
 import type { JsoncPath } from "./JsoncNode.js";
 
 /**
- * Schema-generated base class backing {@link JsoncModificationError}. Not meant
- * to be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
+ * Raised when `JsoncModifier.modify` cannot navigate the requested path: the
+ * value at `depth` is not the container kind (`expected`) the next path segment
+ * requires.
+ *
+ * - `path` — the full path that was passed to `JsoncModifier.modify`.
+ * - `expected` — the container kind (`"object"` or `"array"`) the segment at
+ *   `depth` required.
+ * - `depth` — the 1-based index into `path` where navigation failed.
+ * - `offset` — reserved for a future source-position annotation; currently
+ *   always omitted (navigation reports the mismatch structurally, without a
+ *   text offset).
+ *
+ * @remarks
+ * Follows the structure-preserving-errors house rule — the mismatch's
+ * discriminating data is carried as typed fields (`path`, `expected`, `depth`,
+ * optional `offset`), not collapsed into a `reason: string`. This mirrors
+ * `YamlModificationError`'s posture (its fields differ because the underlying
+ * failures differ; the jsonc/yaml parity convention binds `Edit`/`Range`/`Path`,
+ * not this error).
  *
  * @public
  */
-export const JsoncModificationError_base: Schema.Class<
-	JsoncModificationError,
-	Schema.TaggedStruct<
-		"JsoncModificationError",
-		{
-			readonly path: Schema.$Array<Schema.Union<readonly [typeof Schema.String, typeof Schema.Number]>>;
-			readonly reason: typeof Schema.String;
-			readonly offset: Schema.optionalKey<typeof Schema.Number>;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<JsoncModificationError>()("JsoncModificationError", {
-	path: Schema.Array(Schema.Union([Schema.String, Schema.Number])),
-	reason: Schema.String,
-	offset: Schema.optionalKey(Schema.Number),
-});
-
-/**
- * Raised when `JsoncModifier.modify` cannot navigate the requested path (a
- * structural mismatch) or would produce an invalid edit.
- *
- * @public
- */
-export class JsoncModificationError extends JsoncModificationError_base {
+export class JsoncModificationError extends Schema.TaggedErrorClass<JsoncModificationError>()(
+	"JsoncModificationError",
+	{
+		path: Schema.Array(Schema.Union([Schema.String, Schema.Number])),
+		expected: Schema.Literals(["object", "array"]),
+		depth: Schema.Number,
+		offset: Schema.optionalKey(Schema.Number),
+	},
+) {
 	override get message(): string {
 		const at = this.offset !== undefined ? ` (offset ${this.offset})` : "";
-		return `Modification failed at path [${this.path.join(", ")}]${at}: ${this.reason}`;
+		return `Modification failed at path [${this.path.join(", ")}]${at}: expected ${this.expected} at depth ${this.depth}`;
 	}
 }
 
@@ -60,6 +55,7 @@ export class JsoncModificationError extends JsoncModificationError_base {
  * @public
  */
 export interface JsoncModifyOptions {
+	/** Formatting applied to inserted/replaced content (indentation, EOL, spacing). */
 	readonly formattingOptions?: JsoncFormattingOptions;
 }
 
@@ -78,6 +74,17 @@ export class JsoncModifier {
 	 * (including its surrounding comma). A missing insertion target appends after
 	 * the last property/element. Fails with {@link JsoncModificationError} on a
 	 * structural mismatch.
+	 *
+	 * @param text - The JSONC source to modify.
+	 * @param path - The location to set, replace or delete; `[]` replaces the
+	 *   whole document.
+	 * @param value - The plain JavaScript value to write, serialized with
+	 *   `JSON.stringify`; `undefined` deletes the target instead.
+	 * @param options - Optional {@link JsoncModifyOptions} controlling
+	 *   formatting of generated content.
+	 * @returns An `Effect` that succeeds with the edits to apply (via
+	 *   `JsoncEdit.applyAll`), or fails with {@link JsoncModificationError} when
+	 *   `path` cannot be navigated.
 	 */
 	static readonly modify = Effect.fn("JsoncModifier.modify")(function* (
 		text: string,
@@ -105,7 +112,8 @@ export class JsoncModifier {
 			case "Mismatch":
 				return yield* new JsoncModificationError({
 					path,
-					reason: `expected ${result.expected} at depth ${result.depth}`,
+					expected: result.expected,
+					depth: result.depth,
 				});
 
 			case "NoOp":

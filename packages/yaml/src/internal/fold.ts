@@ -1,9 +1,7 @@
-/**
- * Block/flow scalar folding helpers: rendering multi-line string values as
- * block-literal (`|`), block-folded (`>`) and fold-encoded single-quoted
- * scalars, plus the whitespace analyses that decide when block styles cannot
- * represent a value faithfully.
- */
+// Block/flow scalar folding helpers: rendering multi-line string values as
+// block-literal (`|`), block-folded (`>`) and fold-encoded single-quoted
+// scalars, plus the whitespace analyses that decide when block styles cannot
+// represent a value faithfully.
 
 /**
  * C0 control characters (except TAB) that must be escaped in double-quoted scalars.

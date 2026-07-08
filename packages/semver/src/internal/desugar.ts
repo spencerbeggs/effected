@@ -1,12 +1,15 @@
-/**
- * Desugaring of range sugar (caret, tilde, X-ranges, hyphen ranges) into
- * primitive comparator sets, matching node-semver semantics. Operates on
- * structural parts; the `Range` schema materializes classes from the result.
- */
+// Desugaring of range sugar (caret, tilde, X-ranges, hyphen ranges) into
+// primitive comparator sets, matching node-semver semantics. Operates on
+// structural parts; the `Range` schema materializes classes from the result.
 
 import type { ComparatorOperator, ComparatorParts, VersionParts } from "./order.js";
 
-/** A partially specified version as written in range sugar (`1.x`, `1.2`). */
+/**
+ * A partially specified version as written in range sugar (`1.x`, `1.2`,
+ * `*`). `null` in `major`/`minor`/`patch` marks an unspecified (wildcard)
+ * component; `prerelease`/`build` are only populated when the fully
+ * specified suffix of a partial version carries them.
+ */
 export interface PartialParts {
 	readonly major: number | null;
 	readonly minor: number | null;
@@ -25,6 +28,11 @@ const sv = (
 
 const comp = (operator: ComparatorOperator, version: VersionParts): ComparatorParts => ({ operator, version });
 
+/**
+ * Desugar a tilde range (`~1.2.3`, `~1.2`, `~1`) into a `>=`/`<` comparator
+ * pair that allows patch-level changes when a minor version is specified,
+ * and minor-level changes when it is not.
+ */
 export const desugarTilde = (p: PartialParts): ReadonlyArray<ComparatorParts> => {
 	const major = p.major ?? 0;
 	const minor = p.minor;
@@ -40,6 +48,12 @@ export const desugarTilde = (p: PartialParts): ReadonlyArray<ComparatorParts> =>
 	return [comp(">=", sv(major, minor, patch, p.prerelease)), comp("<", sv(major, minor + 1, 0, [0]))];
 };
 
+/**
+ * Desugar a caret range (`^1.2.3`) into a `>=`/`<` comparator pair per npm's
+ * compatibility rules: changes are allowed in the rightmost of
+ * major/minor/patch that is non-zero (so `^0.2.3` allows patch bumps only,
+ * `^0.0.3` allows none).
+ */
 export const desugarCaret = (p: PartialParts): ReadonlyArray<ComparatorParts> => {
 	const major = p.major ?? 0;
 	const minor = p.minor;
@@ -78,6 +92,13 @@ export const desugarCaret = (p: PartialParts): ReadonlyArray<ComparatorParts> =>
 	return [comp(">=", lower), comp("<", sv(0, 0, 1, [0]))];
 };
 
+/**
+ * Desugar an X-range (`1.x`, `1.2.x`, `*`) or a fully-specified
+ * operator-prefixed version into its equivalent comparator set. A fully
+ * specified version with no operator (or `=`) desugars to a single `=`
+ * comparator; wildcards expand to the bounding `>=`/`<` pair implied by the
+ * given `operator`.
+ */
 export const desugarXRange = (operator: string | null, p: PartialParts): ReadonlyArray<ComparatorParts> => {
 	const major = p.major;
 	const minor = p.minor;
@@ -139,6 +160,12 @@ export const desugarXRange = (operator: string | null, p: PartialParts): Readonl
 	return [comp("<", sv(major, minor + 1, 0, [0]))];
 };
 
+/**
+ * Desugar a hyphen range (`1.2.3 - 2.3.4`) into a comparator pair: `>=` the
+ * lower bound and, for the upper bound, `<=` when it is fully specified or
+ * `<` the next unspecified component when it is partial (`1.2.3 - 2.3` →
+ * `>=1.2.3 <2.4.0-0`).
+ */
 export const desugarHyphen = (lower: PartialParts, upper: PartialParts): ReadonlyArray<ComparatorParts> => {
 	const lowerVersion = sv(lower.major ?? 0, lower.minor ?? 0, lower.patch ?? 0, lower.prerelease);
 

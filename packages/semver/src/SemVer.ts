@@ -1,111 +1,48 @@
-import type { Cause } from "effect";
 import { Effect, Equal, Function as Fn, Hash, Option, Order, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { formatVersion, parseVersion } from "./internal/grammar.js";
 import { compareBuild, comparePrereleaseIdentifier } from "./internal/order.js";
 
 /**
- * Schema-generated base class backing {@link InvalidVersionError}. Not
- * meant to be referenced directly — named and exported only so API
- * Extractor can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const InvalidVersionError_base: Schema.Class<
-	InvalidVersionError,
-	Schema.TaggedStruct<
-		"InvalidVersionError",
-		{
-			readonly input: typeof Schema.String;
-			readonly position: Schema.optionalKey<typeof Schema.Number>;
-		}
-	>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<InvalidVersionError>()("InvalidVersionError", {
-	/** The raw input string that failed to parse. */
-	input: Schema.String,
-	/** The character position where parsing failed, if available. */
-	position: Schema.optionalKey(Schema.Number),
-});
-
-/**
  * Indicates that a string could not be parsed as a valid SemVer 2.0.0 version.
  *
- * Raised by {@link SemVer.parse} and the decode direction of
- * {@link SemVer.FromString}. Unlike node-semver, no loose parsing or
- * `v`-prefix coercion is performed.
+ * Raised by {@link SemVer.parse}. The decode direction of
+ * {@link SemVer.FromString} reports the same failure through a generic
+ * `Schema` parse error instead of this class, carrying the same message.
+ * Unlike node-semver, no loose parsing or `v`-prefix coercion is performed.
  *
  * @see {@link https://semver.org | SemVer 2.0.0 Specification}
  * @public
  */
-export class InvalidVersionError extends InvalidVersionError_base {
+export class InvalidVersionError extends Schema.TaggedErrorClass<InvalidVersionError>()("InvalidVersionError", {
+	/** The raw input string that failed to parse. */
+	input: Schema.String,
+	/** The character position where parsing failed, if available. */
+	position: Schema.optionalKey(Schema.Number),
+}) {
 	override get message(): string {
 		const base = `Invalid version string: "${this.input}"`;
 		return this.position !== undefined ? `${base} at position ${this.position}` : base;
 	}
 }
 
-/**
- * Non-negative safe integer schema shared by the `major`/`minor`/`patch`
- * fields. Not meant to be used directly — exported because it appears in
- * the type of {@link SemVer_base}'s public members, which API Extractor must
- * resolve.
- *
- * @public
- */
-export const nonNegativeInteger = Schema.Number.check(
+// Non-negative safe integer schema shared by the `major`/`minor`/`patch`
+// fields.
+const nonNegativeInteger = Schema.Number.check(
 	Schema.isInt(),
 	Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
 );
 
-/**
- * String prerelease identifiers must contain at least one non-digit:
- * all-numeric identifiers are numbers (the grammar parses them as such), so
- * requiring a non-digit keeps decode/encode round-trips canonical. Written
- * without lookahead so `Schema.toArbitrary` can derive a generator. Not
- * meant to be used directly — exported because it appears in the type of
- * {@link SemVer_base}'s public members, which API Extractor must resolve.
- *
- * @public
- */
-export const prereleaseIdentifier = Schema.Union([
+// String prerelease identifiers must contain at least one non-digit:
+// all-numeric identifiers are numbers (the grammar parses them as such), so
+// requiring a non-digit keeps decode/encode round-trips canonical. Written
+// without lookahead so `Schema.toArbitrary` can derive a generator.
+const prereleaseIdentifier = Schema.Union([
 	Schema.String.check(Schema.isPattern(/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/)),
 	nonNegativeInteger,
 ]);
 
-/**
- * Build identifiers allow leading zeros and all-digit tokens (SemVer §10).
- * Not meant to be used directly — exported because it appears in the type of
- * {@link SemVer_base}'s public members, which API Extractor must resolve.
- *
- * @public
- */
-export const buildIdentifier = Schema.String.check(Schema.isPattern(/^[0-9A-Za-z-]+$/));
-
-/**
- * Schema-generated base class backing {@link SemVer}. Not meant to be
- * referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const SemVer_base: Schema.Class<
-	SemVer,
-	Schema.Struct<{
-		readonly major: typeof nonNegativeInteger;
-		readonly minor: typeof nonNegativeInteger;
-		readonly patch: typeof nonNegativeInteger;
-		readonly prerelease: Schema.$Array<typeof prereleaseIdentifier>;
-		readonly build: Schema.$Array<typeof buildIdentifier>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<SemVer>("SemVer")({
-	major: nonNegativeInteger,
-	minor: nonNegativeInteger,
-	patch: nonNegativeInteger,
-	prerelease: Schema.Array(prereleaseIdentifier),
-	build: Schema.Array(buildIdentifier),
-});
+// Build identifiers allow leading zeros and all-digit tokens (SemVer §10).
+const buildIdentifier = Schema.String.check(Schema.isPattern(/^[0-9A-Za-z-]+$/));
 
 /**
  * A parsed SemVer 2.0.0 version: an Effect `Schema.Class` whose fields are
@@ -123,16 +60,29 @@ export const SemVer_base: Schema.Class<
  *
  * const program = Effect.gen(function* () {
  *   const v = yield* SemVer.parse("1.2.3");
- *   const next = v.bump.minor();          // 1.3.0
- *   console.log(v.gt(next));              // false
- *   console.log(next.isStable);           // true
+ *   const next = v.bump.minor();
+ *   return [next.toString(), v.gt(next), next.isStable] as const;
  * });
+ *
+ * console.log(Effect.runSync(program));
+ * // => ["1.3.0", false, true]
  * ```
  *
  * @see {@link https://semver.org | SemVer 2.0.0 Specification}
  * @public
  */
-export class SemVer extends SemVer_base {
+export class SemVer extends Schema.Class<SemVer>("SemVer")({
+	/** The major version component; incompatible API changes. */
+	major: nonNegativeInteger,
+	/** The minor version component; backward-compatible functionality. */
+	minor: nonNegativeInteger,
+	/** The patch version component; backward-compatible fixes. */
+	patch: nonNegativeInteger,
+	/** Prerelease identifiers, most-significant first; `[]` for a stable version. */
+	prerelease: Schema.Array(prereleaseIdentifier),
+	/** Build metadata identifiers; ignored by precedence comparisons (§10). */
+	build: Schema.Array(buildIdentifier),
+}) {
 	// ── Schema ──────────────────────────────────────────────────────────
 
 	/**
@@ -166,6 +116,10 @@ export class SemVer extends SemVer_base {
 	 *
 	 * Rejects `v`/`V` prefixes, `=` prefixes, leading zeros on numeric
 	 * identifiers and partially consumed input.
+	 *
+	 * @param input - the version string to parse
+	 * @returns the parsed {@link SemVer}. Fails with {@link InvalidVersionError}
+	 * when `input` is not a valid version string.
 	 */
 	static readonly parse = Effect.fn("SemVer.parse")(function* (input: string) {
 		const result = parseVersion(input);
@@ -175,7 +129,16 @@ export class SemVer extends SemVer_base {
 		return SemVer.make(result.value);
 	});
 
-	/** Positional convenience constructor: `SemVer.of(1, 2, 3)`. */
+	/**
+	 * Positional convenience constructor: `SemVer.of(1, 2, 3)`.
+	 *
+	 * @param major - the major version component
+	 * @param minor - the minor version component
+	 * @param patch - the patch version component
+	 * @param prerelease - prerelease identifiers, most-significant first; defaults to none
+	 * @param build - build metadata identifiers; defaults to none
+	 * @returns the constructed {@link SemVer}
+	 */
 	static of(
 		major: number,
 		minor: number,
@@ -501,6 +464,9 @@ export class SemVerBump {
 	 * compatible: a stable version starts a prerelease of the next patch
 	 * (`1.0.0` → `1.0.1-0`), switching identifiers resets the counter, and a
 	 * trailing numeric identifier increments.
+	 *
+	 * @param id - the prerelease identifier prefix (e.g. `"rc"`); when omitted, only the trailing numeric counter is bumped
+	 * @returns the bumped {@link SemVer}
 	 */
 	prerelease(id?: string): SemVer {
 		const { major, minor, patch } = this.v;

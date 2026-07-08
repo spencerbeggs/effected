@@ -118,6 +118,10 @@ real and must be fixed, not suppressed:
   ): YamlDiagnostic { … }
   ```
 
+  (This is the **landed** form, not a hypothetical: `@effected/yaml`'s
+  `YamlDiagnostic.fromRaw` ships exactly this structural-inline signature — the
+  12-warning `RawDiagnostic` incident above is what motivated it.)
+
 - **Or tag the referenced type `@public`** and re-export it — only when it is
   genuinely part of the API.
 

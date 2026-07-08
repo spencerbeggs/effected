@@ -1,14 +1,40 @@
 [
 	{
+		"text": "Docs",
+		"link": "/docs",
+		"activeMatch": "^/docs/(.*)?$",
+		"position": "right"
+	},
+	{
 		"text": "Packages",
 		"link": "/packages",
 		"activeMatch": "^/(packages|semver)(/(.*)?)?$",
 		"position": "right",
 		"items": [
 			{
+				"text": "@effected/jsonc",
+				"link": "/jsonc",
+				"activeMatch": "^/jsonc/?$"
+			},
+			{
+				"text": "@effected/npm",
+				"link": "/npm",
+				"activeMatch": "^/npm/?$"
+			},
+			{
+				"text": "@effected/package-json",
+				"link": "/package-json",
+				"activeMatch": "^/package-json/?$"
+			},
+			{
 				"text": "@effected/semver",
 				"link": "/semver",
 				"activeMatch": "^/semver/?$"
+			},
+			{
+				"text": "@effected/yaml",
+				"link": "/yaml",
+				"activeMatch": "^/yaml/?$"
 			}
 		]
 	}

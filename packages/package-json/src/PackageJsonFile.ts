@@ -1,15 +1,10 @@
-/**
- * The {@link PackageJsonFile} service — the **only** IO module. It reads and
- * writes package.json over **core** `FileSystem` / `Path` (v4, no
- * `@effect/platform` peer), so the layer requires those services and the
- * consumer provides a platform implementation (`@effect/platform-node`) at the
- * edge. Merges v3's `PackageJsonReader` + `PackageJsonWriter`; resolution is
- * **not** fused into `write` (compose {@link Package.resolve} explicitly).
- *
- * @packageDocumentation
- */
+// The `PackageJsonFile` service — the only IO module. It reads and writes
+// package.json over core `FileSystem` / `Path` (v4, no `@effect/platform`
+// peer), so the layer requires those services and the consumer provides a
+// platform implementation (`@effect/platform-node`) at the edge. Merges v3's
+// `PackageJsonReader` + `PackageJsonWriter`; resolution is not fused into
+// `write` (compose `Package.resolve` explicitly).
 
-import type { Cause } from "effect";
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
 import type { PackageDecodeError, PackageFormatOptions } from "./Package.js";
 import { Package } from "./Package.js";
@@ -17,50 +12,21 @@ import { Package } from "./Package.js";
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 /**
- * Schema-generated base class backing {@link PackageJsonReadError}. Not meant to
- * be referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const PackageJsonReadError_base: Schema.Class<
-	PackageJsonReadError,
-	Schema.TaggedStruct<"PackageJsonReadError", { readonly path: typeof Schema.String; readonly cause: Schema.Defect }>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<PackageJsonReadError>()("PackageJsonReadError", {
-	/** The path that could not be read. */
-	path: Schema.String,
-	/** The underlying failure, preserved structurally. */
-	cause: Schema.Defect(),
-});
-
-/**
  * Indicates that a package.json file could not be read from the filesystem
  * (a filesystem error other than not-found).
  *
  * @public
  */
-export class PackageJsonReadError extends PackageJsonReadError_base {
+export class PackageJsonReadError extends Schema.TaggedErrorClass<PackageJsonReadError>()("PackageJsonReadError", {
+	/** The path that could not be read. */
+	path: Schema.String,
+	/** The underlying failure, preserved structurally. */
+	cause: Schema.Defect(),
+}) {
 	override get message(): string {
 		return `Failed to read package.json from "${this.path}"`;
 	}
 }
-
-/**
- * Schema-generated base class backing {@link PackageJsonNotFoundError}. Not
- * meant to be referenced directly — named and exported only so API Extractor
- * can resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const PackageJsonNotFoundError_base: Schema.Class<
-	PackageJsonNotFoundError,
-	Schema.TaggedStruct<"PackageJsonNotFoundError", { readonly path: typeof Schema.String }>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<PackageJsonNotFoundError>()("PackageJsonNotFoundError", {
-	/** The path where package.json was expected. */
-	path: Schema.String,
-});
 
 /**
  * Indicates that no package.json file exists at the expected path. Carries its
@@ -68,58 +34,33 @@ export const PackageJsonNotFoundError_base: Schema.Class<
  *
  * @public
  */
-export class PackageJsonNotFoundError extends PackageJsonNotFoundError_base {
+export class PackageJsonNotFoundError extends Schema.TaggedErrorClass<PackageJsonNotFoundError>()(
+	"PackageJsonNotFoundError",
+	{
+		/** The path where package.json was expected. */
+		path: Schema.String,
+	},
+) {
 	override get message(): string {
 		return `package.json not found at "${this.path}"`;
 	}
 }
 
 /**
- * Schema-generated base class backing {@link PackageJsonParseError}. Not meant
- * to be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const PackageJsonParseError_base: Schema.Class<
-	PackageJsonParseError,
-	Schema.TaggedStruct<"PackageJsonParseError", { readonly path: typeof Schema.String; readonly cause: Schema.Defect }>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<PackageJsonParseError>()("PackageJsonParseError", {
-	/** The path whose contents failed to parse as JSON. */
-	path: Schema.String,
-	/** The underlying `SyntaxError`, preserved structurally. */
-	cause: Schema.Defect(),
-});
-
-/**
  * Indicates that a package.json file's contents are not valid JSON.
  *
  * @public
  */
-export class PackageJsonParseError extends PackageJsonParseError_base {
+export class PackageJsonParseError extends Schema.TaggedErrorClass<PackageJsonParseError>()("PackageJsonParseError", {
+	/** The path whose contents failed to parse as JSON. */
+	path: Schema.String,
+	/** The underlying `SyntaxError`, preserved structurally. */
+	cause: Schema.Defect(),
+}) {
 	override get message(): string {
 		return `Failed to parse package.json at "${this.path}"`;
 	}
 }
-
-/**
- * Schema-generated base class backing {@link PackageJsonWriteError}. Not meant
- * to be referenced directly — named and exported only so API Extractor can
- * resolve the heritage clause of the class it backs.
- *
- * @public
- */
-export const PackageJsonWriteError_base: Schema.Class<
-	PackageJsonWriteError,
-	Schema.TaggedStruct<"PackageJsonWriteError", { readonly path: typeof Schema.String; readonly cause: Schema.Defect }>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<PackageJsonWriteError>()("PackageJsonWriteError", {
-	/** The path that could not be written. */
-	path: Schema.String,
-	/** The underlying filesystem failure, preserved structurally. Narrowed to the write failure only. */
-	cause: Schema.Defect(),
-});
 
 /**
  * Indicates that a package.json file could not be written to the filesystem.
@@ -128,16 +69,20 @@ export const PackageJsonWriteError_base: Schema.Class<
  *
  * @public
  */
-export class PackageJsonWriteError extends PackageJsonWriteError_base {
+export class PackageJsonWriteError extends Schema.TaggedErrorClass<PackageJsonWriteError>()("PackageJsonWriteError", {
+	/** The path that could not be written. */
+	path: Schema.String,
+	/** The underlying filesystem failure, preserved structurally. Narrowed to the write failure only. */
+	cause: Schema.Defect(),
+}) {
 	override get message(): string {
 		return `Failed to write package.json to "${this.path}"`;
 	}
 }
 
 /**
- * The shape of the {@link PackageJsonFile} service. Not meant to be referenced
- * directly — exported only because it appears in {@link PackageJsonFile_base}'s
- * public type, which API Extractor must resolve.
+ * The shape of the {@link PackageJsonFile} service — the value produced by
+ * {@link PackageJsonFile.make} and carried by its layer.
  *
  * @public
  */
@@ -162,26 +107,29 @@ export interface PackageJsonFileShape {
 }
 
 /**
- * Service-key base backing {@link PackageJsonFile}. Not meant to be referenced
- * directly — named and exported only so API Extractor can resolve the heritage
- * clause of the class it backs.
- *
- * @public
- */
-export const PackageJsonFile_base: Context.ServiceClass<
-	PackageJsonFile,
-	"@effected/package-json/PackageJsonFile",
-	PackageJsonFileShape
-> = Context.Service<PackageJsonFile, PackageJsonFileShape>()("@effected/package-json/PackageJsonFile");
-
-/**
  * Reads and writes package.json over core `FileSystem` / `Path`. The layer
  * requires those services; provide `@effect/platform-node`'s `NodeFileSystem` /
  * `NodePath` (or a bun equivalent) at the application boundary.
  *
+ * @example
+ * ```ts
+ * import { PackageJsonFile } from "@effected/package-json";
+ * import { NodeFileSystem, NodePath } from "@effect/platform-node";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const files = yield* PackageJsonFile;
+ *   const pkg = yield* files.read("./package.json");
+ *   console.log(pkg.name);
+ * }).pipe(Effect.provide(PackageJsonFile.layer), Effect.provide(NodeFileSystem.layer), Effect.provide(NodePath.layer));
+ * ```
+ *
  * @public
  */
-export class PackageJsonFile extends PackageJsonFile_base {
+export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJsonFileShape>()(
+	"@effected/package-json/PackageJsonFile",
+) {
+	/** Build the service implementation from `FileSystem` / `Path` in context; use {@link PackageJsonFile.layer} to provide it. */
 	static readonly make: Effect.Effect<PackageJsonFileShape, never, FileSystem.FileSystem | Path.Path> = Effect.gen(
 		function* () {
 			const fs = yield* FileSystem.FileSystem;

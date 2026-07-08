@@ -1,18 +1,13 @@
-/**
- * The core {@link Package} model: a rich `Schema.Class` for a package.json
- * document with computed getters, dual-signature immutable-mutation statics, a
- * derived-patch {@link Package.copyWith | copyWith}, the `rest` catch-all with
- * its wire transform / `.extend()` story ({@link Package.schema},
- * {@link Package.wireFor}), the pure {@link Package.toJsonString} serializer,
- * and {@link Package.resolve} over the `@effected/npm` resolver contracts.
- *
- * @packageDocumentation
- */
+// The core `Package` model: a rich `Schema.Class` for a package.json document
+// with computed getters, dual-signature immutable-mutation statics, a
+// derived-patch `copyWith`, the `rest` catch-all with its wire transform /
+// `.extend()` story (`Package.schema`, `Package.wireFor`), the pure
+// `Package.toJsonString` serializer, and `Package.resolve` over the
+// `@effected/npm` resolver contracts.
 
 import { CatalogResolver, WorkspaceResolver } from "@effected/npm";
 import type { InvalidVersionError } from "@effected/semver";
 import { SemVer } from "@effected/semver";
-import type { Cause } from "effect";
 import { Effect, Function as Fn, HashMap, Option, Pipeable, Schema, SchemaTransformation } from "effect";
 import { Dependency } from "./Dependency.js";
 import { DevEnginesSchema } from "./DevEngines.js";
@@ -23,9 +18,9 @@ import { InvalidPackageNameError, PackageName } from "./PackageName.js";
 import { Person } from "./Person.js";
 
 // ── Field codecs ────────────────────────────────────────────────────────────
-// Exported @public because they appear (via `typeof`) in the type of
-// `Package_base`'s members, which API Extractor must resolve. Not meant to be
-// referenced directly — use `Package` and its fields.
+// Exported @public as reusable field schemas: they compose the `Package` model
+// and are available for `.extend()`ed subclasses. Reach for `Package` and its
+// fields directly for ordinary use.
 
 const toHashMap = SchemaTransformation.transform({
 	decode: (record: { readonly [x: string]: string }) => HashMap.fromIterable(Object.entries(record)),
@@ -103,22 +98,6 @@ export const RepositoryField = Schema.Union([Schema.String, Schema.Record(Schema
 // ── Errors ──────────────────────────────────────────────────────────────────
 
 /**
- * Schema-generated base class backing {@link PackageDecodeError}. Not meant to
- * be referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const PackageDecodeError_base: Schema.Class<
-	PackageDecodeError,
-	Schema.TaggedStruct<"PackageDecodeError", { readonly cause: Schema.Defect }>,
-	Cause.YieldableError
-> = Schema.TaggedErrorClass<PackageDecodeError>()("PackageDecodeError", {
-	/** The underlying `SchemaError`, preserved structurally rather than stringified. */
-	cause: Schema.Defect(),
-});
-
-/**
  * Indicates that a JSON value could not be decoded into a valid {@link Package}.
  *
  * Raised by {@link Package.decode}. The underlying `SchemaError` is preserved on
@@ -127,7 +106,10 @@ export const PackageDecodeError_base: Schema.Class<
  *
  * @public
  */
-export class PackageDecodeError extends PackageDecodeError_base {
+export class PackageDecodeError extends Schema.TaggedErrorClass<PackageDecodeError>()("PackageDecodeError", {
+	/** The underlying `SchemaError`, preserved structurally rather than stringified. */
+	cause: Schema.Defect(),
+}) {
 	override get message(): string {
 		return "Failed to decode package.json";
 	}
@@ -161,77 +143,13 @@ const resolveFormatOptions = (options?: PackageFormatOptions) => ({
 // ── Model ───────────────────────────────────────────────────────────────────
 
 /**
- * Schema-generated base class backing {@link Package}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const Package_base: Schema.Class<
-	Package,
-	Schema.Struct<{
-		readonly name: typeof PackageName;
-		readonly version: Schema.Codec<SemVer, string>;
-		readonly description: Schema.optionalKey<typeof Schema.String>;
-		readonly private: Schema.optionalKey<typeof Schema.Boolean>;
-		readonly type: Schema.optionalKey<Schema.Literals<["module", "commonjs"]>>;
-		readonly main: Schema.optionalKey<typeof Schema.String>;
-		readonly license: Schema.optionalKey<typeof SpdxLicense>;
-		readonly author: Schema.optionalKey<Schema.Union<[typeof Person, Schema.Codec<Person, string>]>>;
-		readonly contributors: Schema.optionalKey<
-			Schema.$Array<Schema.Union<[typeof Person, Schema.Codec<Person, string>]>>
-		>;
-		readonly repository: Schema.optionalKey<typeof RepositoryField>;
-		readonly dependencies: typeof DependencyMapField;
-		readonly devDependencies: typeof DependencyMapField;
-		readonly peerDependencies: typeof DependencyMapField;
-		readonly optionalDependencies: typeof DependencyMapField;
-		readonly peerDependenciesMeta: Schema.optionalKey<typeof PeerDependenciesMetaField>;
-		readonly scripts: typeof DependencyMapField;
-		readonly bin: Schema.optionalKey<typeof BinField>;
-		readonly engines: Schema.optionalKey<typeof StringMapField>;
-		readonly exports: Schema.optionalKey<typeof ExportsField>;
-		readonly publishConfig: Schema.optionalKey<typeof PublishConfigField>;
-		readonly packageManager: Schema.optionalKey<Schema.Codec<PackageManager, string>>;
-		readonly devEngines: Schema.optionalKey<typeof DevEnginesSchema>;
-		readonly rest: Schema.optionalKey<Schema.$Record<typeof Schema.String, typeof Schema.Unknown>>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<Package>("Package")({
-	name: PackageName,
-	version: SemVer.FromString,
-	description: Schema.optionalKey(Schema.String),
-	private: Schema.optionalKey(Schema.Boolean),
-	type: Schema.optionalKey(Schema.Literals(["module", "commonjs"])),
-	main: Schema.optionalKey(Schema.String),
-	license: Schema.optionalKey(SpdxLicense),
-	author: Schema.optionalKey(Person.FromValue),
-	contributors: Schema.optionalKey(Schema.Array(Person.FromValue)),
-	repository: Schema.optionalKey(RepositoryField),
-	dependencies: DependencyMapField,
-	devDependencies: DependencyMapField,
-	peerDependencies: DependencyMapField,
-	optionalDependencies: DependencyMapField,
-	peerDependenciesMeta: Schema.optionalKey(PeerDependenciesMetaField),
-	scripts: DependencyMapField,
-	bin: Schema.optionalKey(BinField),
-	engines: Schema.optionalKey(StringMapField),
-	exports: Schema.optionalKey(ExportsField),
-	publishConfig: Schema.optionalKey(PublishConfigField),
-	packageManager: Schema.optionalKey(PackageManager.FromString),
-	devEngines: Schema.optionalKey(DevEnginesSchema),
-	rest: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-});
-
-/**
  * A patch over {@link Package}'s modeled fields — every field optional,
  * derived from the schema so it never drifts from the model.
  *
  * @public
  */
 export type PackagePatch = Partial<{
-	readonly [K in keyof (typeof Package_base)["fields"]]: (typeof Package_base)["fields"][K]["Type"];
+	readonly [K in keyof (typeof Package)["fields"]]: (typeof Package)["fields"][K]["Type"];
 }>;
 
 const RawJson = Schema.Record(Schema.String, Schema.Unknown);
@@ -300,7 +218,31 @@ const catalogName = (specifier: string): Option.Option<string> => {
  *
  * @public
  */
-export class Package extends Package_base {
+export class Package extends Schema.Class<Package>("Package")({
+	name: PackageName,
+	version: SemVer.FromString,
+	description: Schema.optionalKey(Schema.String),
+	private: Schema.optionalKey(Schema.Boolean),
+	type: Schema.optionalKey(Schema.Literals(["module", "commonjs"])),
+	main: Schema.optionalKey(Schema.String),
+	license: Schema.optionalKey(SpdxLicense),
+	author: Schema.optionalKey(Person.FromValue),
+	contributors: Schema.optionalKey(Schema.Array(Person.FromValue)),
+	repository: Schema.optionalKey(RepositoryField),
+	dependencies: DependencyMapField,
+	devDependencies: DependencyMapField,
+	peerDependencies: DependencyMapField,
+	optionalDependencies: DependencyMapField,
+	peerDependenciesMeta: Schema.optionalKey(PeerDependenciesMetaField),
+	scripts: DependencyMapField,
+	bin: Schema.optionalKey(BinField),
+	engines: Schema.optionalKey(StringMapField),
+	exports: Schema.optionalKey(ExportsField),
+	publishConfig: Schema.optionalKey(PublishConfigField),
+	packageManager: Schema.optionalKey(PackageManager.FromString),
+	devEngines: Schema.optionalKey(DevEnginesSchema),
+	rest: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+}) {
 	// ── Pipeable ──────────────────────────────────────────────────────────
 	// v4 `Schema.Class` instances are not `Pipeable` out of the box, so the
 	// manual overload block is retained to make `pkg.pipe(Package.setVersion(v))`
@@ -327,6 +269,9 @@ export class Package extends Package_base {
 	/**
 	 * Build the wire codec for a `.extend()`ed subclass, so its custom fields
 	 * decode as typed members and are excluded from `rest`.
+	 *
+	 * @param Class - the extended `Schema.Class`, carrying its own `fields`
+	 * @returns a codec between an open JSON object and `Class` instances
 	 */
 	static wireFor<Self extends Package>(
 		// biome-ignore lint/suspicious/noExplicitAny: invariant Encoded slot — see makeWire
@@ -340,6 +285,10 @@ export class Package extends Package_base {
 	/**
 	 * Decode an unknown JSON value into a {@link Package}, normalizing any
 	 * `SchemaError` to a typed {@link PackageDecodeError} at the boundary.
+	 *
+	 * @param input - the parsed package.json JSON value (e.g. from `JSON.parse`)
+	 * @returns an Effect resolving to the decoded `Package`
+	 * @throws (typed) `PackageDecodeError` when `input` does not satisfy the schema
 	 */
 	static readonly decode = Effect.fn("Package.decode")(function* (input: unknown) {
 		return yield* Schema.decodeUnknownEffect(Package.schema)(input).pipe(

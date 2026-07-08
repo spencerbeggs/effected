@@ -1,9 +1,8 @@
-/**
- * YAML 1.2 CST parser — transforms a token stream into a Concrete Syntax Tree.
- *
- * The CST preserves every character of the original input, including whitespace,
- * comments, and structural indicators. No value interpretation occurs at this stage.
- */
+// YAML 1.2 CST parser — transforms a token stream into a Concrete Syntax Tree.
+//
+// The CST preserves every character of the original input, including
+// whitespace, comments, and structural indicators. No value interpretation
+// occurs at this stage.
 
 import type { CstNode, CstNodeType } from "./cst.js";
 import { lexAll } from "./lexer.js";

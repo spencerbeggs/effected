@@ -1,8 +1,6 @@
-/**
- * Composer state, shared metadata types, and position/text utilities used
- * across the composer seams. Imports nothing from the other composer modules
- * so every seam can depend on it without cycles.
- */
+// Composer state, shared metadata types, and position/text utilities used
+// across the composer seams. Imports nothing from the other composer modules
+// so every seam can depend on it without cycles.
 
 import type { YamlMap, YamlNode, YamlSeq } from "../../YamlNode.js";
 import type { CstNode } from "../cst.js";

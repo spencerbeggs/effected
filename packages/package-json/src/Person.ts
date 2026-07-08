@@ -1,39 +1,10 @@
-/**
- * The `author` / `contributors` field model: a {@link Person} class with
- * structured `name` / `email` / `url`, plus {@link Person.FromString} — the
- * `"Name <email> (url)"` shorthand codec — and {@link Person.FromValue}, the
- * union accepting either the object or the shorthand string. Wired into
- * `Package.author` / `Package.contributors`.
- *
- * @packageDocumentation
- */
+// The `author` / `contributors` field model: a `Person` class with structured
+// `name` / `email` / `url`, plus `Person.FromString` — the
+// `"Name <email> (url)"` shorthand codec — and `Person.FromValue`, the union
+// accepting either the object or the shorthand string. Wired into
+// `Package.author` / `Package.contributors`.
 
 import { Schema, SchemaTransformation } from "effect";
-
-/**
- * Schema-generated base class backing {@link Person}. Not meant to be
- * referenced directly — named and exported only so API Extractor can resolve
- * the heritage clause of the class it backs.
- *
- * @public
- */
-export const Person_base: Schema.Class<
-	Person,
-	Schema.Struct<{
-		readonly name: typeof Schema.String;
-		readonly email: Schema.optionalKey<typeof Schema.String>;
-		readonly url: Schema.optionalKey<typeof Schema.String>;
-	}>,
-	// biome-ignore lint/complexity/noBannedTypes: matches Schema.Class's own `Inherited = {}` default
-	{}
-> = Schema.Class<Person>("Person")({
-	/** The person's name. */
-	name: Schema.String,
-	/** The optional email address. */
-	email: Schema.optionalKey(Schema.String),
-	/** The optional homepage URL. */
-	url: Schema.optionalKey(Schema.String),
-});
 
 const parsePersonString = (input: string): Person => {
 	const emailMatch = input.match(/<([^>]+)>/);
@@ -54,7 +25,14 @@ const parsePersonString = (input: string): Person => {
  *
  * @public
  */
-export class Person extends Person_base {
+export class Person extends Schema.Class<Person>("Person")({
+	/** The person's name. */
+	name: Schema.String,
+	/** The optional email address. */
+	email: Schema.optionalKey(Schema.String),
+	/** The optional homepage URL. */
+	url: Schema.optionalKey(Schema.String),
+}) {
 	/**
 	 * Schema transformation between the `"Name <email> (url)"` shorthand string
 	 * and a {@link Person}.

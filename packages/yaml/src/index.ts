@@ -1,5 +1,16 @@
 /**
- * Zero-dependency YAML parsing, editing and formatting as Effect schemas.
+ * Zero-dependency YAML 1.2 parsing, editing and formatting as Effect schemas.
+ *
+ * @remarks
+ * {@link Yaml} is the value-level facade (`parse`/`parseAll`/`stringify`,
+ * comment stripping, semantic equality and the schema factories);
+ * {@link YamlDocument} exposes the full parsed AST plus recovered
+ * diagnostics; {@link YamlFormat} computes non-mutating format/modify edits
+ * that preserve comments and whitespace; {@link YamlVisitor} streams
+ * SAX-style AST events. All fallible entry points — parse, stringify, encode
+ * and modify — carry typed errors built from {@link YamlDiagnostic}, never a
+ * collapsed string reason or an unhandled defect on malformed or adversarial
+ * input.
  *
  * @packageDocumentation
  */
@@ -7,49 +18,33 @@
 export {
 	Yaml,
 	YamlParseError,
-	YamlParseError_base,
 	YamlParseOptions,
-	YamlParseOptions_base,
 	YamlStringifyError,
-	YamlStringifyError_base,
 	YamlStringifyOptions,
-	YamlStringifyOptions_base,
 } from "./Yaml.js";
 export {
 	YamlComposerErrorCode,
 	YamlDiagnostic,
-	YamlDiagnostic_base,
 	YamlErrorCode,
 	YamlLexErrorCode,
 	YamlModifyErrorCode,
 	YamlParseErrorCode,
 	YamlStringifyErrorCode,
 } from "./YamlDiagnostic.js";
-export { YamlDirective, YamlDirective_base, YamlDocument, YamlDocument_base } from "./YamlDocument.js";
+export { YamlDirective, YamlDocument } from "./YamlDocument.js";
 export type { YamlPath, YamlSegment } from "./YamlEdit.js";
-export { YamlEdit, YamlEdit_base, YamlRange, YamlRange_base } from "./YamlEdit.js";
+export { YamlEdit, YamlRange } from "./YamlEdit.js";
 export type { YamlRangeLike } from "./YamlFormat.js";
-export {
-	YamlFormat,
-	YamlFormattingOptions,
-	YamlFormattingOptions_base,
-	YamlModificationError,
-	YamlModificationError_base,
-} from "./YamlFormat.js";
+export { YamlFormat, YamlFormattingOptions, YamlModificationError } from "./YamlFormat.js";
 export {
 	CollectionStyle,
 	ScalarChomp,
 	ScalarStyle,
 	YamlAlias,
-	YamlAlias_base,
 	YamlMap,
-	YamlMap_base,
 	YamlNode,
 	YamlPair,
-	YamlPair_base,
 	YamlScalar,
-	YamlScalar_base,
 	YamlSeq,
-	YamlSeq_base,
 } from "./YamlNode.js";
 export { YamlVisitor, YamlVisitorEvent } from "./YamlVisitor.js";
