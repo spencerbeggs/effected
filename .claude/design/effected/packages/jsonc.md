@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-07
-last-synced: 2026-07-07
+updated: 2026-07-08
+last-synced: 2026-07-08
 completeness: 95
 related:
   - ../architecture.md
@@ -137,6 +137,14 @@ As-built: the firewall landed exactly as designed. `src/internal/parser.ts` owns
 **Single scan-error mapping (review §2).** The v3 scan-error→parse-code translation was duplicated in both `parse.ts#scanNext` and `visitor.ts#scanNext`. It collapses to a single internal helper in `internal/parser.ts`, consumed by both the parser and the visitor. The two overlapping vocabularies (`JsoncScanError` + `JsoncParseErrorCode`) unify: raw scanner codes stay internal to `scanner.ts`; `JsoncParseErrorCode` is the single public code vocabulary.
 
 **Dead error dropped (review §2).** `JsoncNodeNotFoundError` (and its `*Base` pair) is exported and documented in v3 as "`findNode` may fail with this error" and is in the `JsoncError` union, but nothing in `src/` ever raises it — `findNode` returns `Option.none()`, which is the better design. The error is dropped; the `Option` return is kept. This mirrors semver's verified-dead `InvalidBumpError`/`InvalidPrereleaseError` removal.
+
+## Input hardening (as-built)
+
+Post-merge hardening (`fbca71a`). Deeply-nested hostile input previously overflowed the stack as an unhandled `RangeError`/`Cause.Die` defect on every untrusted-input entry point, violating the parser invariant that malformed input must fail through the typed channel. Per the [effect-standards input-hardening standard](../effect-standards.md#input-hardening-standards), collection-nesting depth is now capped at a shared `MAX_NESTING_DEPTH = 256` in `src/internal/limits.ts` — a zero-dependency leaf module so every recursive surface imports the same cap without an import cycle (the parser imports `JsoncNode`, so `JsoncNode` cannot import the parser). The cap mirrors `@effected/yaml`'s composer cap for cross-package parity.
+
+Unlike yaml's two-stage CST/composer shape, jsonc's recursion is spread across **five independent surfaces**, each guarded separately: the recursive-descent parser's value and tree modes (a new `NestingDepthExceeded` code in `JsoncParseErrorCode`, one deduped fatal diagnostic; over-deep containers are consumed iteratively via bracket-counting so recovery still makes progress), `JsoncNode.toValue`/`findAtOffset`/`buildPath`, `Jsonc.equals`/`equalsValue`'s structural walk (over-deep comparison returns `false`), the `JsoncVisitor` SAX walk (in-band error event) and `internal/navigate.ts#skipValue` (rewritten iteratively). In tree mode a `treeOverflow` flag makes an over-deep `parseTree` build empty-children container nodes and fail fast: the facade discards the tree whenever errors exist (a depth overflow always records one) and `JsoncNode.make` re-validates the recursive `children` field per level, so building the full capped-depth tree would be pathologically slow.
+
+Known follow-up ([tracking issue #13](https://github.com/spencerbeggs/effected/issues/13), not fixed here): `Jsonc.parseTree` / `JsoncNode.make` is exponential in nesting depth because each `Schema.suspend` node revalidates its subtree per level — a pre-existing perf/DoS issue the depth guard exposed rather than introduced. Recommended fix is a validation-free internal tree-builder path; deferred.
 
 ## Equal and Hash semantics
 

@@ -1,9 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect, Equal, Schema } from "effect";
 import { Comparator, InvalidComparatorError, SemVer } from "../src/index.js";
-
-const parse = (input: string) => Effect.runSync(Comparator.parse(input));
-const version = (input: string) => Effect.runSync(SemVer.parse(input));
 
 describe("Comparator", () => {
 	describe("parse", () => {
@@ -48,30 +45,46 @@ describe("Comparator", () => {
 				assert.strictEqual(encoded, "<=2.0.0");
 			}),
 		);
+
+		it.effect.prop("round-trips decode(encode(c))", [Comparator], ([c]) =>
+			Effect.gen(function* () {
+				const encoded = yield* Schema.encodeUnknownEffect(Comparator.FromString)(c);
+				const decoded = yield* Schema.decodeUnknownEffect(Comparator.FromString)(encoded);
+				assert.isTrue(Equal.equals(decoded, c), `expected ${decoded.toString()} to equal ${c.toString()}`);
+				assert.deepStrictEqual([...decoded.version.build], [...c.version.build]);
+			}),
+		);
 	});
 
 	describe("test", () => {
-		it("evaluates every operator against SemVer precedence", () => {
-			const v = version("1.5.0");
-			assert.isTrue(parse(">=1.0.0").test(v));
-			assert.isTrue(parse(">1.0.0").test(v));
-			assert.isTrue(parse("<2.0.0").test(v));
-			assert.isTrue(parse("<=1.5.0").test(v));
-			assert.isTrue(parse("1.5.0").test(v));
-			assert.isFalse(parse(">2.0.0").test(v));
-			assert.isFalse(parse("=1.0.0").test(v));
-		});
+		it.effect("evaluates every operator against SemVer precedence", () =>
+			Effect.gen(function* () {
+				const v = yield* SemVer.parse("1.5.0");
+				assert.isTrue((yield* Comparator.parse(">=1.0.0")).test(v));
+				assert.isTrue((yield* Comparator.parse(">1.0.0")).test(v));
+				assert.isTrue((yield* Comparator.parse("<2.0.0")).test(v));
+				assert.isTrue((yield* Comparator.parse("<=1.5.0")).test(v));
+				assert.isTrue((yield* Comparator.parse("1.5.0")).test(v));
+				assert.isFalse((yield* Comparator.parse(">2.0.0")).test(v));
+				assert.isFalse((yield* Comparator.parse("=1.0.0")).test(v));
+			}),
+		);
 
-		it("ignores build metadata when matching", () => {
-			assert.isTrue(parse("1.5.0+abc").test(version("1.5.0+xyz")));
-		});
+		it.effect("ignores build metadata when matching", () =>
+			Effect.gen(function* () {
+				const c = yield* Comparator.parse("1.5.0+abc");
+				assert.isTrue(c.test(yield* SemVer.parse("1.5.0+xyz")));
+			}),
+		);
 	});
 
 	describe("toString", () => {
-		it("prints the operator with = implicit", () => {
-			assert.strictEqual(parse(">=1.2.3").toString(), ">=1.2.3");
-			assert.strictEqual(parse("=1.2.3").toString(), "1.2.3");
-			assert.strictEqual(parse("1.2.3").toString(), "1.2.3");
-		});
+		it.effect("prints the operator with = implicit", () =>
+			Effect.gen(function* () {
+				assert.strictEqual((yield* Comparator.parse(">=1.2.3")).toString(), ">=1.2.3");
+				assert.strictEqual((yield* Comparator.parse("=1.2.3")).toString(), "1.2.3");
+				assert.strictEqual((yield* Comparator.parse("1.2.3")).toString(), "1.2.3");
+			}),
+		);
 	});
 });

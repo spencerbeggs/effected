@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-07
-last-synced: 2026-07-07
+updated: 2026-07-08
+last-synced: 2026-07-08
 completeness: 95
 related:
   - ../architecture.md
@@ -107,7 +107,9 @@ The custom `[Equal.symbol]`/`[Hash.symbol]` implementation survives: structural 
 
 ## Observability plan
 
-v3 has zero instrumentation. Per the observability standard, `Effect.fn("name")` at public operation boundaries only — the effectful, failure-carrying operations: `SemVer.parse`, `Range.parse`, `Comparator.parse`, `Range.intersect`, `VersionCache.resolve`, `VersionCache.resolveString` (~6 ops). Pure synchronous comparisons, bumps and matching are not instrumented; internal grammar helpers get no spans. The library stays telemetry-agnostic — no OTel configuration anywhere.
+v3 has zero instrumentation. Per the observability standard, `Effect.fn("name")` at public operation boundaries only — the effectful, failure-carrying operations: `SemVer.parse`, `Range.parse`, `Comparator.parse`, `Range.intersect`, and every fallible `VersionCache` boundary (`resolve`, `resolveString`, `diff`, `next`, `prev`). Pure synchronous comparisons, bumps and matching are not instrumented; internal grammar helpers get no spans. The library stays telemetry-agnostic — no OTel configuration anywhere.
+
+As-built (v4 best-practice review, `7d1704d`): `VersionCache.diff`/`next`/`prev` were converted from anonymous `Effect.gen` to named `Effect.fn` spans, so every public fallible boundary of the service is instrumented uniformly rather than only `resolve`/`resolveString`. The same review removed unreachable `operator === ""` branches in `internal/desugar.ts`'s x-range desugaring (dead since the grammar never emits an empty operator).
 
 ## Deliberately not ported
 

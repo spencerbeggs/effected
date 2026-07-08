@@ -15,6 +15,7 @@
  */
 
 import { JsoncNode } from "../JsoncNode.js";
+import { MAX_NESTING_DEPTH } from "./limits.js";
 import type { ScanError, SyntaxKind } from "./scanner.js";
 import { createScanner } from "./scanner.js";
 
@@ -40,6 +41,7 @@ export const JSONC_PARSE_ERROR_CODES = [
 	"InvalidUnicode",
 	"InvalidEscapeCharacter",
 	"InvalidCharacter",
+	"NestingDepthExceeded",
 ] as const;
 
 /** A single parse-error code. */
@@ -110,6 +112,16 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 	const allowEmptyContent = flags.allowEmptyContent ?? false;
 
 	let currentToken: SyntaxKind = "Unknown";
+	// Current collection-nesting depth. Guards every recursive-descent surface
+	// (parseArray/parseObject and their tree-mode twins) against stack overflow
+	// on hostile deeply-nested input — see MAX_NESTING_DEPTH.
+	let depth = 0;
+	// Set once tree-mode nesting exceeds the cap. From then on, container nodes
+	// are built with EMPTY children: the tree is discarded by the facade whenever
+	// errors exist (and a depth overflow always records one), and `JsoncNode.make`
+	// re-validates the recursive `children` field per level, so building the full
+	// capped-depth tree would be pathologically slow. Fail fast instead.
+	let treeOverflow = false;
 
 	// Defeats TS control-flow narrowing — scanNext() mutates currentToken via closure.
 	function token(): SyntaxKind {
@@ -144,6 +156,42 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 	// this value so spans never swallow trailing whitespace or comments.
 	function tokenEnd(): number {
 		return scanner.getTokenOffset() + scanner.getTokenLength();
+	}
+
+	// One fatal, deduped depth diagnostic — anchored at the token that would have
+	// pushed nesting past the cap. Mirrors the composer guard in @effected/yaml.
+	function pushDepthError(): void {
+		if (!errors.some((e) => e.code === "NestingDepthExceeded")) {
+			errors.push({
+				code: "NestingDepthExceeded",
+				offset: scanner.getTokenOffset(),
+				length: scanner.getTokenLength(),
+			});
+		}
+	}
+
+	// Iteratively consume a balanced container (the current token is its opener)
+	// by counting bracket depth over the token stream — never recursing. Used at
+	// the depth cap so an over-deep subtree is skipped without adding stack
+	// frames; recovery still makes progress past it.
+	function skipContainer(): void {
+		let level = 0;
+		for (;;) {
+			const t = token();
+			if (t === "EOF") {
+				return;
+			}
+			if (t === "OpenBrace" || t === "OpenBracket") {
+				level++;
+			} else if (t === "CloseBrace" || t === "CloseBracket") {
+				level--;
+				if (level === 0) {
+					scanNext();
+					return;
+				}
+			}
+			scanNext();
+		}
 	}
 
 	function pushError(code: ParseCode, skipUntilAfter: SyntaxKind[] = [], skipUntil: SyntaxKind[] = []): void {
@@ -206,41 +254,65 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 	}
 
 	function parseArray(): unknown[] {
-		scanNext(); // skip [
-		const arr: unknown[] = [];
-		let needsComma = false;
+		if (depth >= MAX_NESTING_DEPTH) {
+			pushDepthError();
+			skipContainer();
+			return [];
+		}
+		depth++;
+		try {
+			scanNext(); // skip [
+			const arr: unknown[] = [];
+			let needsComma = false;
 
-		while (token() !== "CloseBracket" && token() !== "EOF") {
-			if (token() === "Comma") {
-				if (!needsComma) {
-					pushError("ValueExpected");
+			while (token() !== "CloseBracket" && token() !== "EOF") {
+				if (token() === "Comma") {
+					if (!needsComma) {
+						pushError("ValueExpected");
+					}
+					scanNext();
+					if (token() === "CloseBracket" && allowTrailingComma) {
+						break;
+					}
+				} else if (needsComma) {
+					pushError("CommaExpected");
 				}
-				scanNext();
-				if (token() === "CloseBracket" && allowTrailingComma) {
-					break;
+				const value = parseValue();
+				if (value === undefined) {
+					pushError("ValueExpected", [], ["CloseBracket", "Comma"]);
+				} else {
+					arr.push(value);
 				}
-			} else if (needsComma) {
-				pushError("CommaExpected");
+				needsComma = true;
 			}
-			const value = parseValue();
-			if (value === undefined) {
-				pushError("ValueExpected", [], ["CloseBracket", "Comma"]);
+
+			if (token() !== "CloseBracket") {
+				pushError("CloseBracketExpected");
 			} else {
-				arr.push(value);
+				scanNext();
 			}
-			needsComma = true;
-		}
 
-		if (token() !== "CloseBracket") {
-			pushError("CloseBracketExpected");
-		} else {
-			scanNext();
+			return arr;
+		} finally {
+			depth--;
 		}
-
-		return arr;
 	}
 
 	function parseObject(): Record<string, unknown> {
+		if (depth >= MAX_NESTING_DEPTH) {
+			pushDepthError();
+			skipContainer();
+			return {};
+		}
+		depth++;
+		try {
+			return parseObjectBody();
+		} finally {
+			depth--;
+		}
+	}
+
+	function parseObjectBody(): Record<string, unknown> {
 		scanNext(); // skip {
 		const obj: Record<string, unknown> = {};
 		let needsComma = false;
@@ -322,6 +394,21 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 
 	function parseArrayTree(): JsoncNode {
 		const offset = scanner.getTokenOffset();
+		if (depth >= MAX_NESTING_DEPTH) {
+			pushDepthError();
+			treeOverflow = true;
+			skipContainer();
+			return JsoncNode.make({ type: "array", offset, length: scanner.getTokenOffset() - offset, children: [] });
+		}
+		depth++;
+		try {
+			return parseArrayTreeBody(offset);
+		} finally {
+			depth--;
+		}
+	}
+
+	function parseArrayTreeBody(offset: number): JsoncNode {
 		const children: JsoncNode[] = [];
 		scanNext(); // skip [
 		let needsComma = false;
@@ -355,11 +442,26 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 			end = tokenEnd();
 			scanNext();
 		}
-		return JsoncNode.make({ type: "array", offset, length: end - offset, children });
+		return JsoncNode.make({ type: "array", offset, length: end - offset, children: treeOverflow ? [] : children });
 	}
 
 	function parseObjectTree(): JsoncNode {
 		const offset = scanner.getTokenOffset();
+		if (depth >= MAX_NESTING_DEPTH) {
+			pushDepthError();
+			treeOverflow = true;
+			skipContainer();
+			return JsoncNode.make({ type: "object", offset, length: scanner.getTokenOffset() - offset, children: [] });
+		}
+		depth++;
+		try {
+			return parseObjectTreeBody(offset);
+		} finally {
+			depth--;
+		}
+	}
+
+	function parseObjectTreeBody(offset: number): JsoncNode {
 		const children: JsoncNode[] = [];
 		scanNext(); // skip {
 		let needsComma = false;
@@ -442,7 +544,7 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 			end = tokenEnd();
 			scanNext();
 		}
-		return JsoncNode.make({ type: "object", offset, length: end - offset, children });
+		return JsoncNode.make({ type: "object", offset, length: end - offset, children: treeOverflow ? [] : children });
 	}
 
 	// ── Drive ───────────────────────────────────────────────────────────────

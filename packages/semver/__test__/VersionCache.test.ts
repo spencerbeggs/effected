@@ -9,8 +9,6 @@ import {
 	VersionNotFoundError,
 } from "../src/index.js";
 
-const v = (input: string) => Effect.runSync(SemVer.parse(input));
-
 // One memoized layer for the whole group; each test loads its own state
 // (load replaces the cache contents) instead of re-providing per test.
 layer(VersionCache.layer)("VersionCache", (it) => {
@@ -18,7 +16,12 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 		it.effect("load replaces contents, sorted and deduplicated by precedence", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("2.0.0"), v("1.0.0"), v("1.5.0"), v("1.5.0+build")]);
+				yield* cache.load([
+					SemVer.of(2, 0, 0),
+					SemVer.of(1, 0, 0),
+					SemVer.of(1, 5, 0),
+					SemVer.of(1, 5, 0, [], ["build"]),
+				]);
 				const versions = yield* cache.versions();
 				assert.deepStrictEqual(versions.map(String), ["1.0.0", "1.5.0", "2.0.0"]);
 			}),
@@ -27,9 +30,9 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 		it.effect("add inserts in order and ignores build-metadata duplicates", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("1.0.0"), v("2.0.0")]);
-				yield* cache.add(v("1.5.0"));
-				yield* cache.add(v("1.5.0+other"));
+				yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(2, 0, 0)]);
+				yield* cache.add(SemVer.of(1, 5, 0));
+				yield* cache.add(SemVer.of(1, 5, 0, [], ["other"]));
 				assert.deepStrictEqual((yield* cache.versions()).map(String), ["1.0.0", "1.5.0", "2.0.0"]);
 			}),
 		);
@@ -37,8 +40,8 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 		it.effect("remove drops the precedence-equal version", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("1.0.0"), v("1.5.0")]);
-				yield* cache.remove(v("1.5.0+build"));
+				yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(1, 5, 0)]);
+				yield* cache.remove(SemVer.of(1, 5, 0, [], ["build"]));
 				assert.deepStrictEqual((yield* cache.versions()).map(String), ["1.0.0"]);
 			}),
 		);
@@ -66,7 +69,7 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 		it.effect("latest and oldest return the extremes", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("1.0.0"), v("3.0.0"), v("2.0.0")]);
+				yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(3, 0, 0), SemVer.of(2, 0, 0)]);
 				assert.strictEqual(String(yield* cache.latest()), "3.0.0");
 				assert.strictEqual(String(yield* cache.oldest()), "1.0.0");
 			}),
@@ -77,7 +80,7 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 		it.effect("resolve returns the highest satisfying version", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("1.0.0"), v("1.5.0"), v("1.9.0"), v("2.0.0")]);
+				yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(1, 5, 0), SemVer.of(1, 9, 0), SemVer.of(2, 0, 0)]);
 				const range = yield* Range.parse("^1.0.0");
 				assert.strictEqual(String(yield* cache.resolve(range)), "1.9.0");
 			}),
@@ -86,7 +89,7 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 		it.effect("resolve fails UnsatisfiedRangeError with range and available versions", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("1.0.0")]);
+				yield* cache.load([SemVer.of(1, 0, 0)]);
 				const range = yield* Range.parse(">=2.0.0");
 				const error = yield* Effect.flip(cache.resolve(range));
 				assert.instanceOf(error, UnsatisfiedRangeError);
@@ -99,7 +102,7 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 		it.effect("resolveString parses then resolves, surfacing both failure modes", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("1.2.0")]);
+				yield* cache.load([SemVer.of(1, 2, 0)]);
 				assert.strictEqual(String(yield* cache.resolveString("^1.0.0")), "1.2.0");
 				const parseError = yield* Effect.flip(cache.resolveString("not a range!"));
 				assert.strictEqual(parseError._tag, "InvalidRangeError");
@@ -114,9 +117,9 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 				const range = yield* Range.parse("^1.0.0");
 				yield* cache.load([]);
 				assert.deepStrictEqual(yield* cache.filter(range), []);
-				yield* cache.load([v("2.0.0")]);
+				yield* cache.load([SemVer.of(2, 0, 0)]);
 				assert.deepStrictEqual(yield* cache.filter(range), []);
-				yield* cache.add(v("1.1.0"));
+				yield* cache.add(SemVer.of(1, 1, 0));
 				assert.deepStrictEqual((yield* cache.filter(range)).map(String), ["1.1.0"]);
 			}),
 		);
@@ -126,8 +129,8 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 		it.effect("diff computes between cached versions", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("1.0.0"), v("2.0.0")]);
-				const diff = yield* cache.diff(v("1.0.0"), v("2.0.0"));
+				yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(2, 0, 0)]);
+				const diff = yield* cache.diff(SemVer.of(1, 0, 0), SemVer.of(2, 0, 0));
 				assert.strictEqual(diff.type, "major");
 			}),
 		);
@@ -135,23 +138,23 @@ layer(VersionCache.layer)("VersionCache", (it) => {
 		it.effect("diff fails VersionNotFoundError for uncached versions", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("1.0.0")]);
-				const error = yield* Effect.flip(cache.diff(v("1.0.0"), v("9.9.9")));
+				yield* cache.load([SemVer.of(1, 0, 0)]);
+				const error = yield* Effect.flip(cache.diff(SemVer.of(1, 0, 0), SemVer.of(9, 9, 9)));
 				assert.instanceOf(error, VersionNotFoundError);
 				assert.strictEqual(error.message, "Version not found in cache: 9.9.9");
-				assert.isTrue(Equal.equals(error.version, v("9.9.9")));
+				assert.isTrue(Equal.equals(error.version, SemVer.of(9, 9, 9)));
 			}),
 		);
 
 		it.effect("next/prev return Option neighbours and fail for uncached pivots", () =>
 			Effect.gen(function* () {
 				const cache = yield* VersionCache;
-				yield* cache.load([v("1.0.0"), v("2.0.0"), v("3.0.0")]);
-				assert.deepStrictEqual((yield* cache.next(v("2.0.0"))).pipe(Option.map(String)), Option.some("3.0.0"));
-				assert.deepStrictEqual((yield* cache.prev(v("2.0.0"))).pipe(Option.map(String)), Option.some("1.0.0"));
-				assert.isTrue(Option.isNone(yield* cache.next(v("3.0.0"))));
-				assert.isTrue(Option.isNone(yield* cache.prev(v("1.0.0"))));
-				const error = yield* Effect.flip(cache.next(v("9.9.9")));
+				yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(2, 0, 0), SemVer.of(3, 0, 0)]);
+				assert.deepStrictEqual((yield* cache.next(SemVer.of(2, 0, 0))).pipe(Option.map(String)), Option.some("3.0.0"));
+				assert.deepStrictEqual((yield* cache.prev(SemVer.of(2, 0, 0))).pipe(Option.map(String)), Option.some("1.0.0"));
+				assert.isTrue(Option.isNone(yield* cache.next(SemVer.of(3, 0, 0))));
+				assert.isTrue(Option.isNone(yield* cache.prev(SemVer.of(1, 0, 0))));
+				const error = yield* Effect.flip(cache.next(SemVer.of(9, 9, 9)));
 				assert.strictEqual(error._tag, "VersionNotFoundError");
 			}),
 		);

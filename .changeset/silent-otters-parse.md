@@ -40,4 +40,4 @@ const program = Effect.gen(function* () {
 
 ### Typed Errors
 
-`JsoncParseError` (parse failures, carrying the full `JsoncParseErrorDetail` batch with `line`/`character` positions) and `JsoncModificationError` (edit-computation failures) are `Schema.TaggedErrorClass` errors with structured payload fields, not opaque messages.
+`JsoncParseError` (parse failures, carrying the full `JsoncParseErrorDetail` batch with `line`/`character` positions) and `JsoncModificationError` (edit-computation failures) are `Schema.TaggedErrorClass` errors with structured payload fields, not opaque messages. Hardening baked into the parser: nesting depth is capped (`NestingDepthExceeded`) so hostile input errors out through `parse`, `parseTree`, `visit`, `modify`, and `equals`/`equalsValue` instead of overflowing the stack.

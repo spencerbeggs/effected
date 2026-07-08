@@ -261,37 +261,34 @@ export class VersionCache extends VersionCache_base {
 
 				filter: (range) => Effect.map(Ref.get(ref), (arr) => arr.filter((v) => range.test(v))),
 
-				diff: (a, b) =>
-					Effect.gen(function* () {
-						const arr = yield* Ref.get(ref);
-						if (Option.isNone(locate(arr, a))) {
-							return yield* new VersionNotFoundError({ version: a });
-						}
-						if (Option.isNone(locate(arr, b))) {
-							return yield* new VersionNotFoundError({ version: b });
-						}
-						return VersionDiff.between(a, b);
-					}),
+				diff: Effect.fn("VersionCache.diff")(function* (a: SemVer, b: SemVer) {
+					const arr = yield* Ref.get(ref);
+					if (Option.isNone(locate(arr, a))) {
+						return yield* new VersionNotFoundError({ version: a });
+					}
+					if (Option.isNone(locate(arr, b))) {
+						return yield* new VersionNotFoundError({ version: b });
+					}
+					return VersionDiff.between(a, b);
+				}),
 
-				next: (version) =>
-					Effect.gen(function* () {
-						const arr = yield* Ref.get(ref);
-						const index = locate(arr, version);
-						if (Option.isNone(index)) {
-							return yield* new VersionNotFoundError({ version });
-						}
-						return index.value < arr.length - 1 ? Option.some(arr[index.value + 1]) : Option.none();
-					}),
+				next: Effect.fn("VersionCache.next")(function* (version: SemVer) {
+					const arr = yield* Ref.get(ref);
+					const index = locate(arr, version);
+					if (Option.isNone(index)) {
+						return yield* new VersionNotFoundError({ version });
+					}
+					return index.value < arr.length - 1 ? Option.some(arr[index.value + 1]) : Option.none();
+				}),
 
-				prev: (version) =>
-					Effect.gen(function* () {
-						const arr = yield* Ref.get(ref);
-						const index = locate(arr, version);
-						if (Option.isNone(index)) {
-							return yield* new VersionNotFoundError({ version });
-						}
-						return index.value > 0 ? Option.some(arr[index.value - 1]) : Option.none();
-					}),
+				prev: Effect.fn("VersionCache.prev")(function* (version: SemVer) {
+					const arr = yield* Ref.get(ref);
+					const index = locate(arr, version);
+					if (Option.isNone(index)) {
+						return yield* new VersionNotFoundError({ version });
+					}
+					return index.value > 0 ? Option.some(arr[index.value - 1]) : Option.none();
+				}),
 			} satisfies VersionCacheShape;
 		}),
 	);

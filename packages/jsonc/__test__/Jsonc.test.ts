@@ -1,6 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { Jsonc, JsoncNode, JsoncParseError, JsoncParseOptions } from "../src/index.js";
+
+const deeplyNested = `${"[".repeat(20000)}1${"]".repeat(20000)}`;
 
 describe("Jsonc", () => {
 	describe("parse", () => {
@@ -154,6 +156,36 @@ describe("Jsonc", () => {
 				assert.isTrue(error.errors.some((e) => e.line === 1));
 			}),
 		);
+
+		it.effect("deeply nested input fails with NestingDepthExceeded, not a stack-overflow defect (parse)", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(Jsonc.parse(deeplyNested));
+				assert.instanceOf(error, JsoncParseError);
+				assert.isTrue(error.errors.some((e) => e.code === "NestingDepthExceeded"));
+				// Effect.result proves the failure is a typed Failure, never a defect.
+				const result = yield* Effect.result(Jsonc.parse(deeplyNested));
+				assert.isTrue(Result.isFailure(result));
+			}),
+		);
+
+		it.effect("deeply nested input fails with NestingDepthExceeded, not a stack-overflow defect (parseTree)", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(Jsonc.parseTree(deeplyNested));
+				assert.instanceOf(error, JsoncParseError);
+				assert.isTrue(error.errors.some((e) => e.code === "NestingDepthExceeded"));
+				const result = yield* Effect.result(Jsonc.parseTree(deeplyNested));
+				assert.isTrue(Result.isFailure(result));
+			}),
+		);
+
+		it("equalsValue caps recursion against a hostile hand-built value instead of overflowing", () => {
+			// The `value` side of equalsValue is arbitrary caller data \u2014 build one
+			// far deeper than the cap and confirm it compares (unequal) without throwing.
+			let value: unknown = 1;
+			for (let i = 0; i < 20000; i++) value = [value];
+			assert.doesNotThrow(() => Jsonc.equalsValue("[1]", value));
+			assert.isFalse(Jsonc.equalsValue("[1]", value));
+		});
 	});
 
 	describe("schema pipeline", () => {
@@ -195,6 +227,19 @@ describe("Jsonc", () => {
 				assert.include(String(error), "JSONC parse failed");
 			}),
 		);
+
+		it.effect("schema(Target) surfaces a SchemaError when TARGET validation fails, distinct from a parse failure", () =>
+			Effect.gen(function* () {
+				const ConfigFromJsonc = Jsonc.schema(Config);
+				// Well-formed JSONC (parse succeeds) but the wrong shape for Config —
+				// the failure comes from the target schema, not the JSONC parser.
+				const error = yield* Effect.flip(
+					Schema.decodeUnknownEffect(ConfigFromJsonc)('{ "name": "app", "version": "not-a-number" }'),
+				);
+				assert.strictEqual(error._tag, "SchemaError");
+				assert.notInclude(String(error), "JSONC parse failed");
+			}),
+		);
 	});
 
 	describe("parse ∘ stripComments agreement (property)", () => {
@@ -213,6 +258,14 @@ describe("Jsonc", () => {
 				assert.deepStrictEqual(JSON.parse(stripped), value);
 				const parsed = yield* Jsonc.parse(commented);
 				assert.deepStrictEqual(parsed, value);
+			}),
+		);
+
+		it.effect.prop("JsoncFromString round-trips decode(encode(v)) back to the original value", [Sample], ([value]) =>
+			Effect.gen(function* () {
+				const encoded = yield* Schema.encodeUnknownEffect(Jsonc.JsoncFromString)(value);
+				const decoded = yield* Schema.decodeUnknownEffect(Jsonc.JsoncFromString)(encoded);
+				assert.deepStrictEqual(decoded, value);
 			}),
 		);
 	});

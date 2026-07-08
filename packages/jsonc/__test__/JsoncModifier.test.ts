@@ -180,4 +180,19 @@ describe("JsoncModifier", () => {
 			}),
 		);
 	});
+
+	describe("hostile input (hardening)", () => {
+		it.effect("replaces a value past a deeply nested sibling without a stack-overflow defect", () =>
+			Effect.gen(function* () {
+				// The scanner-based navigator must skip the deep sibling `d` to reach
+				// `a`; its skip is iterative, so hostile nesting cannot overflow.
+				const deep = `${"[".repeat(20000)}1${"]".repeat(20000)}`;
+				const text = `{ "d": ${deep}, "a": 1 }`;
+				const result = yield* Effect.result(JsoncModifier.modify(text, ["a"], 2));
+				assert.isTrue(result._tag === "Success");
+				const edits = yield* JsoncModifier.modify(text, ["a"], 2);
+				assert.strictEqual(JsoncEdit.applyAll(text, edits).includes('"a": 2'), true);
+			}),
+		);
+	});
 });

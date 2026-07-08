@@ -90,6 +90,18 @@ describe("JsoncVisitor", () => {
 				assert.strictEqual(error?._tag === "Error" ? error.code : undefined, "EndOfFileExpected");
 			}),
 		);
+
+		it.effect("deeply nested input yields a NestingDepthExceeded Error event, never a stack-overflow defect", () =>
+			Effect.gen(function* () {
+				const deep = `${"[".repeat(20000)}1${"]".repeat(20000)}`;
+				// The stream is infallible by design (errors are in-band events), so
+				// it must complete — the depth guard turns the overflow into an event.
+				const result = yield* Effect.result(Stream.runCollect(JsoncVisitor.visit(deep)));
+				assert.isTrue(result._tag === "Success");
+				const events = yield* Stream.runCollect(JsoncVisitor.visit(deep));
+				assert.isTrue(events.some((e) => JsoncVisitorEvent.$is("Error")(e) && e.code === "NestingDepthExceeded"));
+			}),
+		);
 	});
 
 	describe("visitCollect replacement", () => {
