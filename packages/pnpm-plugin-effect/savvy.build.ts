@@ -2,6 +2,11 @@ import { build } from "@savvy-web/bundler";
 import { PnpmConfigPlugin } from "rolldown-pnpm-config";
 
 await build({
+	meta: {
+		tsdoc: {
+			suppressWarnings: [{ messageId: "ae-forgotten-export", pattern: "_base" }],
+		},
+	},
 	plugins: [
 		PnpmConfigPlugin({
 			name: "@effected/pnpm-plugin-effect",

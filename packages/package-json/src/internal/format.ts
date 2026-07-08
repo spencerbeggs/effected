@@ -57,6 +57,13 @@ const KEY_ORDER: ReadonlyArray<string> = [
 
 const KEY_INDEX = new Map(KEY_ORDER.map((k, i) => [k, i] as const));
 
+/**
+ * Deterministic, locale-independent string comparison by code point. A bare
+ * `localeCompare` sorts differently across ICU builds/locales; package.json key
+ * order must be stable everywhere.
+ */
+const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 const DEPENDENCY_KEYS: ReadonlySet<string> = new Set([
 	"dependencies",
 	"devDependencies",
@@ -68,7 +75,7 @@ const DEPENDENCY_KEYS: ReadonlySet<string> = new Set([
 /** Alphabetize the entries of a plain-object dependency map. */
 const sortDependencyMap = (value: Record<string, unknown>): Record<string, unknown> => {
 	const result: Record<string, unknown> = {};
-	for (const key of Object.keys(value).sort((a, b) => a.localeCompare(b))) {
+	for (const key of Object.keys(value).sort(byCodePoint)) {
 		result[key] = value[key];
 	}
 	return result;
@@ -92,7 +99,7 @@ export const sortKeys = (obj: Record<string, unknown>): Record<string, unknown> 
 
 	// biome-ignore lint/style/noNonNullAssertion: keys in `known` are all present in KEY_INDEX
 	known.sort((a, b) => KEY_INDEX.get(a[0])! - KEY_INDEX.get(b[0])!);
-	rest.sort((a, b) => a[0].localeCompare(b[0]));
+	rest.sort((a, b) => byCodePoint(a[0], b[0]));
 
 	const result: Record<string, unknown> = {};
 	for (const [key, value] of [...known, ...rest]) {

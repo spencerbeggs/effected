@@ -20,8 +20,8 @@ import type { Package } from "./Package.js";
 export interface RuleFailure {
 	/** A human-readable description of the failure. */
 	readonly message: string;
-	/** The JSON path where the failure occurred, if applicable. */
-	readonly path?: Option.Option<string>;
+	/** The JSON path where the failure occurred; `Option.none()` when not applicable. */
+	readonly path: Option.Option<string>;
 }
 
 /**
@@ -170,7 +170,7 @@ const runRules = Effect.fn("PackageValidator.validate")(function* (pkg: Package,
 	for (const rule of rules) {
 		const result = yield* Effect.result(rule.validate(pkg));
 		if (Result.isFailure(result)) {
-			failures.push({ rule: rule.name, message: result.failure.message, path: result.failure.path ?? Option.none() });
+			failures.push({ rule: rule.name, message: result.failure.message, path: result.failure.path });
 		}
 	}
 	if (failures.length > 0) {

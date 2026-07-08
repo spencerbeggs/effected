@@ -123,34 +123,8 @@ const isTag = (value: string): boolean => protocolOf(value) === "tag";
  *
  * @public
  */
-export const isValidDependencySpecifier = (value: string): boolean => {
-	if (value.length === 0) return false;
-	if (
-		value.startsWith("file:") ||
-		value.startsWith("link:") ||
-		value.startsWith("portal:") ||
-		value.startsWith("git+") ||
-		value.startsWith("git://") ||
-		value.startsWith("github:") ||
-		value.startsWith("gist:") ||
-		value.startsWith("bitbucket:") ||
-		value.startsWith("gitlab:") ||
-		value.startsWith("http://") ||
-		value.startsWith("https://") ||
-		value.startsWith("npm:") ||
-		value.startsWith("catalog:") ||
-		value.startsWith("workspace:")
-	) {
-		return true;
-	}
-	// GitHub shorthand: user/repo or user/repo#ref
-	if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+(#.*)?$/.test(value)) return true;
-	// Semver-ish: starts with a range-leading character
-	if (/^[\d^~>=<*|xX]/.test(value)) return true;
-	// Dist-tags: alphanumeric strings like "latest", "next", "beta"
-	if (/^[a-zA-Z][a-zA-Z0-9._-]*$/.test(value)) return true;
-	return false;
-};
+export const isValidDependencySpecifier = (value: string): boolean =>
+	value.length > 0 && protocolOf(value) !== "unknown";
 
 /** Taxonomy statics attached to the {@link DependencySpecifier} schema value. */
 interface DependencySpecifierStatics {

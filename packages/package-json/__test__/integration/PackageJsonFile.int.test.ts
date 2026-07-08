@@ -62,7 +62,7 @@ describe("PackageJsonFile", () => {
 				assert.isTrue(pkg.isPrivate);
 				assert.isTrue(pkg.isESM);
 				assert.isTrue(pkg.packageManager !== undefined);
-				assert.strictEqual(Option.getOrThrow(Option.fromUndefinedOr(pkg.packageManager)).name, "pnpm");
+				assert.strictEqual(pkg.packageManager?.name, "pnpm");
 				assert.isTrue(HashMap.has(pkg.scripts, "build"));
 			}),
 		);
@@ -167,10 +167,28 @@ describe("PackageJsonFile round-trip", () => {
 			}),
 		);
 
-		it.effect("snapshot of the full round-trip output", () =>
+		it.effect("full round-trip preserves nested, encoded and unknown-shaped fields", () =>
 			Effect.gen(function* () {
 				const result = yield* roundtrip("full");
-				assert.isDefined(result);
+				// packageManager is a codec — it must re-encode to the exact string.
+				assert.strictEqual(result.packageManager, "pnpm@10.33.0+sha512.abc123");
+				// private flag and nested structural fields survive verbatim.
+				assert.strictEqual(result.private, true);
+				assert.deepStrictEqual(result.exports, { ".": "./src/index.ts", "./utils": "./src/utils.ts" });
+				assert.deepStrictEqual(result.bin, { "my-cli": "./dist/cli.js" });
+				assert.deepStrictEqual(result.peerDependenciesMeta, { effect: { optional: true } });
+				assert.deepStrictEqual(result.optionalDependencies, { fsevents: "^2.3.0" });
+				assert.deepStrictEqual(result.engines, { node: ">=18.0.0" });
+				assert.deepStrictEqual(result.devEngines, {
+					packageManager: { name: "pnpm", version: "10.33.0", onFail: "ignore" },
+					runtime: [{ name: "node", version: "24.11.0", onFail: "ignore" }],
+				});
+				assert.deepStrictEqual(result.publishConfig, {
+					access: "public",
+					directory: "dist/npm",
+					linkDirectory: true,
+					registry: "https://registry.npmjs.org/",
+				});
 			}),
 		);
 	});

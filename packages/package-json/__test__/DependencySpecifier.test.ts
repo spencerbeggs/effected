@@ -58,6 +58,7 @@ describe("DependencySpecifier.protocolOf", () => {
 		["user/repo", "git"],
 		["file:../x", "file"],
 		["./local", "file"],
+		["/absolute/path", "file"],
 		["link:../x", "link"],
 		["portal:../x", "portal"],
 		["catalog:silk", "catalog"],
@@ -71,6 +72,16 @@ describe("DependencySpecifier.protocolOf", () => {
 		for (const [specifier, protocol] of cases) {
 			assert.strictEqual(DependencySpecifier.protocolOf(specifier), protocol, specifier);
 		}
+	});
+
+	it("isValid agrees with protocolOf, including bare paths", () => {
+		// Regression: isValid delegates to protocolOf, so a bare absolute/relative
+		// path (classified "file") is valid — the two no longer drift.
+		assert.isTrue(DependencySpecifier.isValid("/absolute/path"));
+		assert.strictEqual(DependencySpecifier.protocolOf("/absolute/path"), "file");
+		assert.isTrue(DependencySpecifier.isValid("./local"));
+		assert.strictEqual(DependencySpecifier.protocolOf("./local"), "file");
+		assert.isFalse(DependencySpecifier.isValid("!!garbage"));
 	});
 
 	it("isRange decodes ranges purely (no tag, no protocol)", () => {

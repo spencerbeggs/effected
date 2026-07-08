@@ -143,8 +143,12 @@ This supersedes two earlier idioms: the `@internal`-tagged base (residual
 non-fatal `ae-incompatible-release-tags`, rejected 2026-07-07) and the
 `@public X_base` const-with-explicit-annotation idiom (ratified 2026-07-07,
 retired 2026-07-08 once the inline form + scoped `_base` suppression was
-validated on the recursive and `Context.Service` cases). Already-migrated
-packages (`semver`, `jsonc`, `yaml`, `package-json`, `npm`) retain the
-`@public X_base` form and convert to the inline form opportunistically — a
-mechanical narrowing (delete the base const + annotation, inline the factory
-into the heritage clause, add the suppression line), not a redesign.
+validated on the recursive and `Context.Service` cases).
+
+The inline factory + scoped `_base` suppression is the **single policy** — use
+it for all new code. The already-migrated packages (`semver`, `jsonc`, `yaml`,
+`package-json`, `npm`) still carry the old `@public X_base` form; that is a
+**transitional backlog to convert, not an alternative convention**. The
+conversion is a mechanical narrowing (delete the base const + annotation, inline
+the factory into the heritage clause, add the suppression line), not a redesign
+— do it when you next touch each file.

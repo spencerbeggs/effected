@@ -188,15 +188,19 @@ export class PackageJsonFile extends PackageJsonFile_base {
 			const path = yield* Path.Path;
 
 			const read = Effect.fn("PackageJsonFile.read")(function* (target: string) {
-				const exists = yield* fs
-					.exists(target)
-					.pipe(Effect.mapError((cause) => new PackageJsonReadError({ path: target, cause })));
-				if (!exists) {
-					return yield* new PackageJsonNotFoundError({ path: target });
-				}
+				// Read directly — no `exists` pre-check (that TOCTOU race reports a
+				// file deleted between the two calls as PackageJsonReadError). The
+				// core FileSystem fails with a PlatformError whose `reason._tag` is
+				// "NotFound" for a missing file; route only that to NotFound.
 				const content = yield* fs
 					.readFileString(target)
-					.pipe(Effect.mapError((cause) => new PackageJsonReadError({ path: target, cause })));
+					.pipe(
+						Effect.mapError((cause) =>
+							cause.reason._tag === "NotFound"
+								? new PackageJsonNotFoundError({ path: target })
+								: new PackageJsonReadError({ path: target, cause }),
+						),
+					);
 				const json = yield* Effect.try({
 					try: () => JSON.parse(content) as unknown,
 					catch: (cause) => new PackageJsonParseError({ path: target, cause }),
