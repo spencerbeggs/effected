@@ -132,14 +132,75 @@ onto a `@public` signature.
 
 ## TSDoc `{@link}` traps
 
-Links from TSDoc to inherited members (`{@link SemVer.make}` where `make` comes
-from the base) are unresolvable — use a backtick code span instead. The same
-trap fires for any name carrying **both a value and a type declaration** — e.g.
-a branded scalar (a `const` schema plus its exported `type` of the same name,
-like `PackageName` or `SpdxLicense`): API Extractor cannot disambiguate the two
-declarations, so **both** the bare `{@link X}` **and** the member
-`{@link X.member}` resolve to `ae-unresolved-link`. Use backtick code spans
-(`` `PackageName` ``, `` `PackageName.of` ``) for those, not `{@link}`.
+**Merged value + type names: use a member-reference selector, not a backtick.**
+
+Any name carrying **both a value and a type declaration** — an `interface` plus
+a `const` of the same name (`ConfigCodec`, `MergeStrategy`, `VersionAccess`), or
+a branded scalar's `const` schema plus its exported `type` (`PackageName`,
+`SpdxLicense`) — cannot be disambiguated by API Extractor from a bare link. Both
+`{@link X}` and `{@link X.member}` resolve to `ae-unresolved-link`, and the
+diagnostic says so literally: *"the reference is ambiguous… you need to add a
+TSDoc member reference selector."*
+
+The fix is the selector, and the link keeps working:
+
+```ts
+/** Wrap any {@link (ConfigCodec:interface)} with AES-GCM encryption. */
+/** See {@link (ConfigResolver:variable).staticDir}. */
+/** The decoded form of {@link (ConfigEventPayload:variable)}. */
+/** A branded scalar: {@link (PackageName:type)}. */
+```
+
+Pick the selector that names the declaration you mean: `:interface`, `:variable`,
+`:class`, `:type`. Getting it wrong still emits `ae-unresolved-link` — `:type` on
+an interface does not resolve — so a zero-warning build is the proof you chose
+correctly. `@effected/yaml` (`{@link (YamlSegment:type)}`) and
+`@effected/config-file` (`{@link (ConfigCodec:interface)}`) both ship these
+zero-warning.
+
+**Do not "fix" these by deleting the link.** Replacing a resolvable
+`{@link (X:interface)}` with an inert backtick span silently removes an API-doc
+cross-reference. This skill previously prescribed exactly that, on the false
+premise that no `{@link}` form resolves for a merged name; the `@effected/config-file`
+port disproved it (five selectors, warnings → 0).
+
+**Backtick spans remain correct for one case:** links to *inherited* members,
+`{@link SemVer.make}` where `make` comes from the synthesized base. Those are
+genuinely unresolvable — there is no selector for a member the declaration does
+not own. Write `` `SemVer.make` ``.
+
+**A note on reading `issues.json`.** Its `file` names the source, but its `line`
+indexes the **generated `.d.ts`**. Locate a `tsdoc-*` or `ae-unresolved-link`
+defect textually, not by jumping to that line number — the position routinely
+lands on a class declaration thirty lines from the offending comment, which has
+sent more than one agent chasing an innocent symbol.
+
+## Reading the gate without fooling yourself
+
+`issues.json` is a **false-green oracle**. Three rules, each learned by being burned:
+
+1. **Build through Turbo, never the raw script.** `build:prod` dependsOn
+   `types:check` and `build:dev`. Running `node savvy.build.ts --target prod`
+   directly skips `build:dev`, emits no `.d.ts`, and API Extractor dies inside
+   `SourceMapper` with *"The referenced path was not found: …/pkg/index.d.ts"*.
+   Use `pnpm build --filter <pkg>` from the repo root.
+
+2. **A crashed build writes a truncated `issues.json`** — `errors: 0,
+   warnings: 0, suppressed: 0` — byte-shaped exactly like a perfectly clean
+   gate. **`suppressed: 0` is the tell**: a package with class factories always
+   has one `_base` entry per factory. Always check the build's exit code before
+   trusting the file. Never conclude "clean" from the file alone.
+
+3. **An incremental build can hide warnings.** A stale `dist/.tsbuildinfo.lib`
+   feeds API Extractor an old `.d.ts`, so a warning present in a cold build is
+   absent from the incremental one. Read the gate from a cold build (`rm -rf`
+   the package's `dist` first) whenever the answer matters.
+
+`dist/` is gitignored and shared. It carries no commit, no cleanliness, and no
+exit-code provenance, so it is only evidence when *your* build exited 0 against
+a clean tree with nothing else building. If you mutate source to prove a fix is
+load-bearing, **rebuild afterward** — otherwise you leave an artifact that
+describes a tree no commit ever contained.
 
 ## History
 
