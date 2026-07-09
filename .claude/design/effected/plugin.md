@@ -40,6 +40,7 @@ Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `descrip
 **The migration reference:**
 
 - `effect-v4-construct-map` — the comprehensive v3→v4 lookup, per-domain rename/restructure tables. Consulted before reaching for any v3 API name.
+- `effect-v4-source-lookup` — what to do when the construct-map is silent or the question is behavioural: the evidence ladder and the probe preconditions. Loaded by all three agents. See [the recorded coupling](#recorded-coupling-the-vendored-path).
 
 **API-surface and hardening discipline:**
 
@@ -86,9 +87,21 @@ Encoded as skill preconditions because each was learned by being burned:
 
 ### Recorded coupling: the vendored path
 
-The plugin's skills must never reference `repos/effect-smol`. That path exists because the plugin is currently loaded only from this repo; once published, it is absent from a consumer's tree, and a skill that cannot find its evidence source does not stop — it falls back on v3 memory, which is the exact failure the plugin exists to prevent. Silent fallback is worse than a hard error.
+The plugin is currently loaded only from this repo (`claude --plugin-dir plugin`), so its agents and skills may assume the vendored tree exists. Once published, that path is absent from a consumer's tree — and a skill that cannot find its evidence source does not stop, it falls back on v3 memory, which is the exact failure the plugin exists to prevent. Silent fallback is worse than a hard error, because it is indistinguishable from success.
 
-The boundary: plugin skills carry distilled, already-verified facts. `improve` is what goes and verifies, and it alone may assume the vendored tree. **Exit condition:** if a plugin skill ever needs source access, the path moves behind a check that fails loudly when absent.
+Two things contain it. **Exactly one file in `plugin/` names the path**: `plugin/skills/effect-v4-source-lookup/SKILL.md`. The three agents load that skill and reference the ladder, never the directory — one file to genericize rather than four, and the invariant is checkable (`grep -rl 'repos/effect-smol' plugin/ | wc -l` is 1).
+
+And the path is written `${CLAUDE_PROJECT_DIR}/repos/effect-smol`, using [skill string substitution](https://code.claude.com/docs/en/skills.md) (Claude Code ≥ 2.1.196). This is not cosmetic: the probe protocol has agents `cd` into a package before running anything, and a relative `repos/effect-smol/...` silently fails to resolve from there. The substitution also makes the guard trivial — the skill runs a `test -d` preflight and **stops loudly** when the tree is missing.
+
+`${CLAUDE_PROJECT_DIR}` resolves to the *consuming project's* root, which today is this repo and after publication will not be. So the loud failure is already correct; what remains is the fallback chain.
+
+**Exit condition, owned by `improve`:** before publication, `effect-v4-source-lookup` gains fallbacks ahead of its hard failure — an explicit override, then the installed `.d.ts` under `node_modules/effect` (version-exact, settles existence and signature, no implementations, so rung 3 still needs a probe) — and only then fails.
+
+### `effect-v4-source-lookup`
+
+The rung-2/rung-3 skill, loaded by all three agents. It carries the ladder, the probe preconditions, and the worked example that shows the rungs disagreeing: `migration/services.md` never mentions `Context.Key`; a runtime `typeof Context.Key` reports `undefined` because it is type-only; and `Context.ts:65` declares `export interface Key<out Identifier, out Shape>`, giving existence, type-only-ness and the covariance that sank an approved design — all three facts available only at rung 2.
+
+Its addition corrected a live trap in `effect-developer`, whose "prime directive" prescribed `node -e "console.log(typeof S.TheThing)"` as the existence probe. That check reports `undefined` for every type-only symbol in v4, so the agent's own verification ritual was a false-negative generator.
 
 ## SessionStart briefing hook
 

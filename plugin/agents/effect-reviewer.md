@@ -37,6 +37,7 @@ tools:
 model: inherit
 skills:
   - effect-v4-testing
+  - effect-v4-source-lookup
   - effect-v4-idioms
   - effect-v4-schema
   - effect-v4-services-layers
@@ -64,6 +65,12 @@ driving a v3→v4 port (that is the migrator).
 
 1. **Read the change and the tests together.** A behavior claim without a test
    is unverified — flag it or write the test.
+
+   Before you assert an API is wrong, confirm it with `effect-v4-source-lookup`.
+   A reviewer who rejects correct v4 code from v3 memory costs more than the bug
+   would have. Read the vendored Effect source for existence and signature;
+   probe from inside the package for behaviour. The migration notes are
+   prescriptive and silent on most removals — their silence is not evidence.
 2. **Check the v4 idiom, not just the logic.** Walk the change against the
    skills: typed error channel (no `reason: string`, no defect escaping as a
    crash — malformed input must fail through `Effect<_, DomainError>`); `Result`

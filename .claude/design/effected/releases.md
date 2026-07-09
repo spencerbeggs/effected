@@ -39,7 +39,7 @@ The criterion is "the kit can replace the business logic of these five." They sp
 
 ## The gate
 
-The union of what those consumers need. Six packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`); ten remain:
+The union of what those consumers need. Eight packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml` — `pnpm-plugin-effect` is infrastructure and outside this count); ten remain:
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |

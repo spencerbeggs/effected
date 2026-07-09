@@ -1,0 +1,104 @@
+# @effected/package-json
+
+package.json parsing, editing, validation and file IO as Effect schemas. Fourth
+migration; merged. 13 `src/` modules (down from 34 v3 files), 11 test files,
+72 tests.
+
+**Design doc:** `@./.claude/design/effected/packages/package-json.md` — load when
+changing the public surface, the `rest` wire transform, or the error taxonomy.
+
+## Tier: boundary
+
+The first boundary-tier port. **All IO lives in `src/PackageJsonFile.ts`** — one
+module, one `Context.Service`, two methods (`read`, `write`). Every other module
+is pure. Keep it that way: if a change wants to read or write, route it through
+`PackageJsonFile` or leave it to the caller.
+
+`PackageJsonFile` reads and writes over core `FileSystem` / `Path` (v4 — no
+`@effect/platform` peer). Its layer requires those services; the consumer
+provides `@effect/platform-node` at the edge.
+
+Boundary tier permits external runtime deps where they carry weight. This is the
+only `@effected` package with one: `spdx-expression-parse` (typed by the ambient
+shim `src/spdx-expression-parse.d.ts`). It also depends on `@effected/npm` and
+`@effected/semver` via `workspace:*`. Pure-tier packages get neither.
+
+A review proposed splitting the IO into its own package; **the split was
+reversed**. The v3 motivation — isolating the `@effect/platform` peer — evaporates
+in v4, where platform abstractions live in `effect` core. A future split remains
+a one-module extraction.
+
+## Relationship to @effected/npm
+
+`Package.resolve` expands `catalog:` and `workspace:` specifiers, but this
+package cannot implement resolution — it has no view of the workspace. The
+service contracts (`CatalogResolver`, `WorkspaceResolver`,
+`DependencyResolutionError`) therefore spun out into the internal sibling
+`@effected/npm`, which ships shape-only contracts plus no-op layers. `Package.ts`
+imports them; an application supplies the real implementation.
+
+`PackageJsonFile.write` never resolves. Compose `Package.resolve` explicitly.
+
+## Public surface
+
+Everything exports from `src/index.ts` (single entry point; no barrel
+re-exports below it).
+
+- **`Package.ts`** — the `Package` `Schema.Class`: typed known fields plus a
+  `rest` catch-all for round-trip fidelity, computed getters (`isPrivate`,
+  `isScoped`, `isESM`, `hasDependency`, `get*Dependencies`), dual-signature
+  mutation statics via `Function.dual` (`setVersion`, `addDependency`, …),
+  `copyWith`, `Package.decode`, the `Package.schema` wire codec plus
+  `Package.wireFor` for `.extend()`ed subclasses, `Package.resolve`, and the
+  pure `toJsonString` serializer. Also the `@public` field schemas
+  (`DependencyMapField`, `StringMapField`, `BinField`, `ExportsField`,
+  `PublishConfigField`, `PeerDependenciesMetaField`, `RepositoryField`) — these
+  are genuine reusable API on their own merit, not scaffolding.
+- **`DependencySpecifier.ts`** — the specifier taxonomy: one `protocolOf`
+  classifier (`range` | `tag` | `git` | `url` | `npm` | `file` | `link` |
+  `portal` | `catalog` | `workspace` | `unknown`) and its predicate statics,
+  merging v3's two drifting classifiers.
+- **`Dependency.ts`** — one class with a `kind` field, replacing v3's four
+  copy-pasted tagged classes.
+- **`PackageName.ts`**, **`License.ts`**, **`PackageManager.ts`**,
+  **`Person.ts`**, **`DevEngines.ts`** — leaf concepts, each owning its own
+  statics and its own error.
+- **`PackageValidator.ts`** — rule-based validation over a decoded `Package`;
+  `layer` (default rules) and the parameterized `layerRules` factory.
+- **`PackageJsonFile.ts`** — the IO surface.
+- **`internal/format.ts`** — private; canonical key order, dependency sorting,
+  empty-map stripping. Never re-export it.
+
+## Conventions and gotchas
+
+- **Branded types** export as `string & Brand.Brand<"…">`, never
+  `typeof X.Type`. Applies to `ScopedPackageName`, `UnscopedPackageName`,
+  `SpdxLicense`, `DependencySpecifierBrand`.
+- **No `*_base` exports.** Class factories are written inline. `savvy.build.ts`
+  carries a **narrow** suppression: `{ messageId: "ae-forgotten-export",
+  pattern: "_base" }`. **Never widen it.** An internal type named on a `@public`
+  method signature is a different symbol that still forgotten-exports — inline it
+  structurally or mark it `@public`.
+- `Schema.Class` instances are not `Pipeable` in v4; `Package` hand-rolls the
+  `pipe` overload block. Preserve it if you touch the class.
+- `parseRange` decodes via `Schema.decodeUnknownExit` — never run an Effect
+  inside a getter.
+- `PackageJsonFile.read` deliberately has no `exists` pre-check (TOCTOU); it
+  routes `PlatformError` with `reason._tag === "NotFound"` to
+  `PackageJsonNotFoundError`.
+- `package.json` stays `"private": true`. The bundler emits the publishable
+  manifest.
+
+## Test and build
+
+```bash
+pnpm vitest run packages/package-json          # this package's tests
+pnpm build --filter @effected/package-json     # from the repo root
+```
+
+Tests live in `__test__/` (`integration/*.int.test.ts` for `PackageJsonFile`),
+use `@effect/vitest`, and assert with `assert.*` — **never `expect`**.
+
+Never run `node savvy.build.ts --target prod` directly: it skips `build:dev`,
+emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a
+clean gate.

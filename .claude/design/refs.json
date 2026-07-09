@@ -4,14 +4,14 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/architecture.md",
-			"hash": "ae5ef8866c37a18650cc2da91060242f96d5c1997f998ae262f4dad141703da4",
-			"recordedAt": "2026-07-07"
+			"hash": "ba0f75fc4cf1605782e6d8379099fb8aef48f66833cb0afbb7c731b660489a5e",
+			"recordedAt": "2026-07-09"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "f9282e414b443aa063fc2a3144a26bcdce17a4822c9e498cce10cef60cae8679",
-			"recordedAt": "2026-07-08"
+			"hash": "70dae8c6adfceb9d17226a6ba20dcee0174e36ec21abf9f79ef57d2efbb6f02a",
+			"recordedAt": "2026-07-09"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -22,8 +22,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "3ed243212e5366a607bda02c0f5a3f1118cc69ebf7ad23d2eef82c9fe0526c34",
-			"recordedAt": "2026-07-08"
+			"hash": "b2cf91edc5b8a106108012bb52e67118f8b710c9d11648d5b436381c78a10823",
+			"recordedAt": "2026-07-09"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -34,8 +34,26 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/plugin.md",
-			"hash": "1c526c58a3705f39c46a8a359d066a6f1206b5989d3f76c50fa5980cab69aa45",
-			"recordedAt": "2026-07-08"
+			"hash": "5de0531df11d19ffacf06ac24141d26f1ec953f8e34b26a4c63fa9593b169c22",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/releases.md",
+			"hash": "c3e144accd23bf29413a5463b34aff81799fa1c0a23b5148fa3ebf267f25c03b",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/config-file/CLAUDE.md",
+			"target": ".claude/design/effected/packages/config-file.md",
+			"hash": "22faa967e7a7f2f16f6ca15afe66bb5447777cf11873e9a3cdf0cb3e30ad3c70",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/yaml/CLAUDE.md",
+			"target": ".claude/design/effected/packages/yaml.md",
+			"hash": "a0949232663cbd34e3d1271d5131466ab86a2382ec38a57fa29739967d34bc20",
+			"recordedAt": "2026-07-09"
 		}
 	]
 }

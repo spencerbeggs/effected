@@ -36,6 +36,7 @@ tools:
 model: inherit
 skills:
   - effect-v4-construct-map
+  - effect-v4-source-lookup
   - effect-v4-planning
   - effect-v4-schema
   - effect-v4-services-layers
@@ -77,6 +78,14 @@ though you write and run tests as part of the port.
    biggest repeat-offender: `new X({...})` now VALIDATES, so never pass explicit
    `undefined` for an `optionalKey` field (conditional spreads); `Either` → `Result`;
    `Context.Tag`/`Effect.Service` → `Context.Service`; `Layer.scoped` → `Layer.effect`.
+
+   When the construct-map is silent, or when you are about to rely on a v4
+   API's *behaviour* rather than its name, do not guess and do not settle for
+   the migration notes — they are prescriptive and routinely omit removals.
+   Climb the ladder in `effect-v4-source-lookup`: the vendored Effect source
+   settles existence and signature; only a probe run from inside the package
+   settles semantics. Any v4 fact you win this way is worth reporting back so it
+   lands in the skills.
 4. **Build the public surface idiomatically.** Schema class factories written
    inline with the synthesized `_base` forgotten-export suppressed in
    `savvy.build.ts` (no `@public X_base` const); typed error channel carrying

@@ -36,6 +36,7 @@ tools:
   - mcp__plugin_silk_savvy-mcp__workspace_info
 skills:
   - effect-v4-planning
+  - effect-v4-source-lookup
   - effect-v4-schema
   - effect-v4-services-layers
   - effect-v4-idioms
@@ -54,14 +55,23 @@ Effect-TS v4 guides; lean on them and do not re-derive from v3 memory.
 ## Prime directive: verify against the installed package
 
 Effect v4 is a fast-moving beta (`effect@4.0.0-beta.94` at time of writing).
-Before you write any API you are not 100% certain of, probe it:
+Before you write any API you are not 100% certain of, confirm it. v3 muscle
+memory is a liability here — many names moved, split modules, or were removed.
 
-```bash
-cd packages/<pkg> && node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.TheThing)"
-```
+Use `effect-v4-source-lookup` and climb only as far as your claim needs:
+migration notes settle **renames**, the vendored Effect source settles
+**existence and signature**, and only a probe settles **semantics**. Always run
+the probe from inside a package — the workspace root resolves `effect@3` and
+will describe the v3 surface with complete confidence.
 
-One probe beats an hour of type-error archaeology. v3 muscle memory is a
-liability here — many names moved, split modules, or were removed.
+**A runtime `typeof` check is not an existence test.** Many v4 symbols are
+type-only: `typeof Context.Key` is `undefined`, and a probe that concludes
+"`Context.Key` does not exist" from that is wrong in the most expensive
+direction. Confirm existence by reading the source or by type-checking a probe
+file at the package root, never by a bare `node -e "typeof ..."`.
+
+One probe beats an hour of type-error archaeology. A probe that cannot fail
+beats nothing at all — write the control first and watch it fail.
 
 ## How you work
 

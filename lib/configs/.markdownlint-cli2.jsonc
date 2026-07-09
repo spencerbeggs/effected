@@ -16,7 +16,8 @@
 		"**/docs/superpowers",
 		"**/__test__/**/fixtures/**",
 		"**/__fixtures__/**",
-		"**/skills/*/references/[0-9]*.md"
+		"**/skills/*/references/[0-9]*.md",
+		"**/repos/**"
 	],
 	"customRules": ["@savvy-web/silk/changesets/markdownlint"],
 	"config": {
