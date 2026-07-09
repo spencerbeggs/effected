@@ -27,11 +27,19 @@ import type { ConfigFileShape, ConfigLoadError } from "./ConfigFile.js";
  * 3. **The decoded value is handed over as-is.** `fromUnknown` descends with
  *    `Object.hasOwn`, and a `Schema.Class` instance carries its fields as own
  *    properties, so no encoding step is required. The corollary: leaves are read
- *    in their **decoded** form. A field whose decoded type is not a JSON
- *    primitive — a `Date`, an `Option` — is not readable through a `Config`
- *    accessor, because `fromUnknown` only turns strings, numbers, booleans and
- *    bigints into values. Such a field is still reachable through `load`, which
- *    is the API that was designed to carry it.
+ *    in their **decoded** form, and a field whose decoded type is not a JSON
+ *    primitive is exposed **structurally**, not turned into a value — with no
+ *    two decoded types exposed the same way. A `Date` has no own enumerable
+ *    properties, so it descends as an empty record and any nested read finds
+ *    nothing. Such a field reports the same `ConfigError` as a missing key —
+ *    `Expected string, got undefined` — so a `Config` read of a present `Date`
+ *    field looks exactly like a typo in the key name. An `Option.some`
+ *    descends as a record carrying Effect's internal `value` own-property, so
+ *    `Config.nested(Config.string("value"), "field")` happens to read the
+ *    wrapped value straight through — an internal representation, not a
+ *    supported spelling. An `Option.none` has no own keys and so reads as
+ *    absent, making `Some` and `None` asymmetric. None of this is a supported
+ *    way to read such a field: `load` is the API that was designed to carry it.
  *
  * Descent by own property is also why a prototype getter and `__proto__` are
  * both unreachable through the returned provider.
@@ -71,12 +79,15 @@ export interface LayerConfigProviderOptions {
  * `ConfigProvider`, so `Config` accessors read env first and the file second.
  *
  * @remarks
- * This is the composition the v3 library could not express. v4's ambient
- * `ConfigProvider` is a `Context.Reference` whose default value is
- * `ConfigProvider.fromEnv()`, so with no further wiring this layer already
- * yields the intended precedence: environment variable wins, config file
- * supplies whatever the environment lacks. Provide a different
- * `ConfigProvider.layer(...)` beneath it to change what "ambient" means.
+ * This is the composition the v3 library could not express. This layer
+ * composes beneath the **ambient** `ConfigProvider`, v4's `Context.Reference`
+ * for it, so a consumer supplying `ConfigProvider.layer(...)` controls
+ * precedence explicitly: whatever that provider resolves wins, and the config
+ * file supplies whatever it lacks. That reference's own default is
+ * `ConfigProvider.fromEnv()`, which is what most applications want; this
+ * module composes beneath whichever provider is ambient rather than pinning
+ * that default itself, so verify the precedence you need with the provider
+ * you actually wire in.
  *
  * The load happens when the layer is built, and a {@link ConfigFileNotFoundError}
  * surfaces in the layer's error channel rather than degrading to an empty
@@ -96,9 +107,10 @@ export const layerConfigProvider = <Self, A>(
 	// A `Context.Key` *is* an `Effect<Shape, never, Identifier>`, so the service
 	// lookup needs no `asEffect`, and `Self` flows straight into the layer's `R`.
 	const provider = Effect.flatMap(tag, asConfigProvider);
-	// Two call sites rather than `{ asPrimary: options?.asPrimary }`: passing the
-	// key explicitly as `undefined` is not the same as omitting it.
-	return options?.asPrimary !== undefined
-		? ConfigProvider.layerAdd(provider, { asPrimary: options.asPrimary })
-		: ConfigProvider.layerAdd(provider);
+	// `layerAdd`'s own options type is `{ asPrimary?: boolean | undefined }`, so
+	// forwarding `options?.asPrimary` directly — rather than branching on it — is
+	// not the "explicit undefined" pitfall a `Schema`-validated constructor would
+	// have: `layerAdd` reads the field with `?.`, so an explicit `undefined` and
+	// an omitted key are identical here.
+	return ConfigProvider.layerAdd(provider, { asPrimary: options?.asPrimary });
 };
