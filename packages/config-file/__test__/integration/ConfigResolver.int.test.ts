@@ -107,4 +107,79 @@ describe("ConfigResolver against a real filesystem", () => {
 			}),
 		).pipe(Effect.provide(Platform)),
 	);
+
+	it.effect("upwardWalk: an earlier-listed subpath wins over a later one in the same directory", () =>
+		withTempDir((root) =>
+			Effect.gen(function* () {
+				yield* Effect.promise(() => nodeFs.mkdir(nodePath.join(root, ".config"), { recursive: true }));
+				yield* Effect.promise(() => nodeFs.writeFile(nodePath.join(root, ".config", ".apprc"), "{}"));
+				yield* Effect.promise(() => nodeFs.writeFile(nodePath.join(root, ".apprc"), "{}"));
+
+				const resolver = ConfigResolver.upwardWalk({
+					filename: ".apprc",
+					cwd: root,
+					stopAt: root,
+					subpaths: [".config", "."],
+				});
+				const found = yield* resolver.resolve;
+
+				assert.strictEqual(Option.getOrNull(found), nodePath.join(root, ".config", ".apprc"));
+			}),
+		).pipe(Effect.provide(Platform)),
+	);
+
+	it.effect("upwardWalk searches stopAt itself, not just directories strictly above it", () =>
+		withTempDir((root) =>
+			Effect.gen(function* () {
+				const deep = nodePath.join(root, "a", "b");
+				yield* Effect.promise(() => nodeFs.mkdir(deep, { recursive: true }));
+				yield* Effect.promise(() => nodeFs.writeFile(nodePath.join(root, ".apprc"), "{}"));
+
+				const resolver = ConfigResolver.upwardWalk({ filename: ".apprc", cwd: deep, stopAt: root });
+				const found = yield* resolver.resolve;
+
+				assert.strictEqual(Option.getOrNull(found), nodePath.join(root, ".apprc"));
+			}),
+		).pipe(Effect.provide(Platform)),
+	);
+
+	it.effect("workspaceRoot absorbs an unparsable package.json and keeps ascending to the real root", () =>
+		withTempDir((root) =>
+			Effect.gen(function* () {
+				const malformedDir = nodePath.join(root, "malformed");
+				const deep = nodePath.join(malformedDir, "pkg");
+				yield* Effect.promise(() => nodeFs.mkdir(deep, { recursive: true }));
+				yield* Effect.promise(() => nodeFs.writeFile(nodePath.join(malformedDir, "package.json"), "{ not json"));
+				yield* Effect.promise(() =>
+					nodeFs.writeFile(nodePath.join(root, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n"),
+				);
+				yield* Effect.promise(() => nodeFs.writeFile(nodePath.join(root, ".apprc"), "{}"));
+
+				const found = yield* ConfigResolver.workspaceRoot({ filename: ".apprc", cwd: deep }).resolve;
+
+				assert.strictEqual(Option.getOrNull(found), nodePath.join(root, ".apprc"));
+			}),
+		).pipe(Effect.provide(Platform)),
+	);
+
+	it.effect("workspaceRoot does not treat a package.json without a workspaces field as a root", () =>
+		withTempDir((root) =>
+			Effect.gen(function* () {
+				const decoyDir = nodePath.join(root, "mid");
+				const deep = nodePath.join(decoyDir, "deep");
+				yield* Effect.promise(() => nodeFs.mkdir(deep, { recursive: true }));
+				yield* Effect.promise(() =>
+					nodeFs.writeFile(nodePath.join(decoyDir, "package.json"), JSON.stringify({ name: "decoy" })),
+				);
+				yield* Effect.promise(() =>
+					nodeFs.writeFile(nodePath.join(root, "package.json"), JSON.stringify({ workspaces: ["packages/*"] })),
+				);
+				yield* Effect.promise(() => nodeFs.writeFile(nodePath.join(root, ".apprc"), "{}"));
+
+				const found = yield* ConfigResolver.workspaceRoot({ filename: ".apprc", cwd: deep }).resolve;
+
+				assert.strictEqual(Option.getOrNull(found), nodePath.join(root, ".apprc"));
+			}),
+		).pipe(Effect.provide(Platform)),
+	);
 });
