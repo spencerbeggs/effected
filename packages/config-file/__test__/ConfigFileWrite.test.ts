@@ -204,25 +204,55 @@ describe("ConfigFile write-path error-union narrowing (type-level)", () => {
 	// These assignments FAIL THE TYPECHECK if a method's error channel is wider
 	// than the design permits. `write` takes an explicit path, so it can never
 	// fail with ConfigFileNotFoundError.
-	it("narrows each write-path method's error channel", () =>
-		Effect.runSync(
-			Effect.gen(function* () {
+	it.effect("narrows each write-path method's error channel", () =>
+		Effect.gen(function* () {
+			const cfg = yield* AppConfig;
+
+			// No ConfigFileNotFoundError: the path is explicit. No
+			// ConfigDefaultPathMissingError: no default path is consulted.
+			const _write: (value: AppShape, path: string) => Effect.Effect<void, ConfigWriteError, never> = cfg.write;
+			// No ConfigFileNotFoundError: `save` never discovers anything.
+			const _save: (value: AppShape) => Effect.Effect<string, ConfigSaveError, never> = cfg.save;
+			// `update` loads, so it inherits the whole load union, plus save's.
+			const _update: (
+				fn: (current: AppShape) => AppShape,
+				defaultValue?: AppShape,
+			) => Effect.Effect<AppShape, ConfigUpdateError, never> = cfg.update;
+
+			assert.isFunction(_write);
+			assert.isFunction(_save);
+			assert.isFunction(_update);
+		}).pipe(Effect.provide(layerFor(recordingFs({})))),
+	);
+});
+
+describe("ConfigFile.layer with an empty resolver chain", () => {
+	// Regression for the RR inference gap: `resolvers: []` with no other
+	// resolver gives `RR` zero inference candidates. Before `RR` defaulted to
+	// `never`, this configuration failed to typecheck at all — `RR` inferred
+	// `unknown`, collapsing the layer's `R` to `unknown` and breaking
+	// `Effect.provide` downstream. A write-only config service (discovery
+	// disabled, `save` still wired through `defaultPath`) is a legitimate
+	// configuration this must support.
+	it.effect("saves via defaultPath alone when resolvers is empty", () =>
+		Effect.gen(function* () {
+			const host = recordingFs({});
+			const writeOnlyLayer = ConfigFile.layer(AppConfig, {
+				schema: AppShape,
+				codec: ConfigCodec.json,
+				resolvers: [],
+				strategy: MergeStrategy.firstMatch<AppShape>(),
+				defaultPath: Effect.succeed("/write-only/.apprc"),
+			}).pipe(Layer.provide(Layer.mergeAll(host.layer, Path.layer)));
+
+			const written = yield* Effect.gen(function* () {
 				const cfg = yield* AppConfig;
+				return yield* cfg.save(new AppShape({ port: 42 }));
+			}).pipe(Effect.provide(writeOnlyLayer));
 
-				// No ConfigFileNotFoundError: the path is explicit. No
-				// ConfigDefaultPathMissingError: no default path is consulted.
-				const _write: (value: AppShape, path: string) => Effect.Effect<void, ConfigWriteError, never> = cfg.write;
-				// No ConfigFileNotFoundError: `save` never discovers anything.
-				const _save: (value: AppShape) => Effect.Effect<string, ConfigSaveError, never> = cfg.save;
-				// `update` loads, so it inherits the whole load union, plus save's.
-				const _update: (
-					fn: (current: AppShape) => AppShape,
-					defaultValue?: AppShape,
-				) => Effect.Effect<AppShape, ConfigUpdateError, never> = cfg.update;
-
-				assert.isFunction(_write);
-				assert.isFunction(_save);
-				assert.isFunction(_update);
-			}).pipe(Effect.provide(layerFor(recordingFs({})))),
-		));
+			assert.strictEqual(written, "/write-only/.apprc");
+			assert.deepStrictEqual(host.mkdirs, ["/write-only"]);
+			assert.deepStrictEqual(JSON.parse(host.files["/write-only/.apprc"] as string), { port: 42 });
+		}),
+	);
 });

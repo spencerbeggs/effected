@@ -400,7 +400,7 @@ const makeImpl = <A, I, RR>(
  *
  * @public
  */
-const layer = <Self, A, I, RR>(
+const layer = <Self, A, I, RR = never>(
 	tag: Context.Key<Self, ConfigFileShape<A>>,
 	options: ConfigFileOptions<A, I, RR>,
 ): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | RR> =>
