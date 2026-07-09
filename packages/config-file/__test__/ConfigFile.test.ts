@@ -17,12 +17,17 @@ const memoryFs = (files: Record<string, string>) =>
 			Object.hasOwn(files, p) ? Effect.succeed(files[p] as string) : Effect.fail(new Error(`ENOENT: ${p}`)),
 	} as unknown as FileSystem.FileSystem);
 
-const layerFor = (files: Record<string, string>, resolvers = [ConfigResolver.explicitPath("/app/.apprc")]) =>
+const layerFor = (
+	files: Record<string, string>,
+	resolvers = [ConfigResolver.explicitPath("/app/.apprc")],
+	validate?: (value: AppShape) => Effect.Effect<AppShape, ConfigValidationError>,
+) =>
 	ConfigFile.layer(AppConfig, {
 		schema: AppShape,
 		codec: ConfigCodec.json,
 		resolvers,
 		strategy: MergeStrategy.firstMatch<AppShape>(),
+		...(validate !== undefined && { validate }),
 	}).pipe(Layer.provide(Layer.mergeAll(memoryFs(files), Path.layer)));
 
 describe("ConfigFile.load", () => {
@@ -186,6 +191,50 @@ describe("ConfigFile.loadFrom / validate", () => {
 			assert.instanceOf(error, ConfigValidationError);
 			assert.isTrue(Option.isNone(error.path));
 		}).pipe(Effect.provide(layerFor({}))),
+	);
+});
+
+describe("ConfigFile options.validate", () => {
+	const rejectPort0 = (value: AppShape): Effect.Effect<AppShape, ConfigValidationError> =>
+		value.port === 0
+			? Effect.fail(new ConfigValidationError({ path: Option.none(), issue: "port must not be 0" }))
+			: Effect.succeed(value);
+
+	it.effect("cfg.load fails with ConfigValidationError when the caller hook rejects a schema-valid document", () =>
+		Effect.gen(function* () {
+			const cfg = yield* AppConfig;
+			const error = yield* Effect.flip(cfg.load);
+			assert.instanceOf(error, ConfigValidationError);
+			assert.strictEqual(error._tag, "ConfigValidationError");
+		}).pipe(Effect.provide(layerFor({ "/app/.apprc": `{"port":0}` }, undefined, rejectPort0))),
+	);
+
+	it.effect("cfg.load succeeds when the caller hook passes the value through", () =>
+		Effect.gen(function* () {
+			const cfg = yield* AppConfig;
+			const value = yield* cfg.load;
+			assert.strictEqual(value.port, 8080);
+		}).pipe(Effect.provide(layerFor({ "/app/.apprc": `{"port":8080}` }, undefined, rejectPort0))),
+	);
+
+	it.effect("cfg.validate(value) also runs the caller hook, not just the schema", () =>
+		Effect.gen(function* () {
+			const cfg = yield* AppConfig;
+			const error = yield* Effect.flip(cfg.validate({ port: 0 }));
+			assert.instanceOf(error, ConfigValidationError);
+		}).pipe(Effect.provide(layerFor({}, undefined, rejectPort0))),
+	);
+
+	it.effect("loadOrDefault returns defaultValue as-is, without running the schema or options.validate on it", () =>
+		Effect.gen(function* () {
+			const cfg = yield* AppConfig;
+			// port: 0 would be rejected by rejectPort0 if it were run, and by the
+			// schema if re-decoded. Its return unmolested pins the v3-parity behavior.
+			const defaultValue = new AppShape({ port: 0 });
+			const value = yield* cfg.loadOrDefault(defaultValue);
+			assert.strictEqual(value, defaultValue);
+			assert.strictEqual(value.port, 0);
+		}).pipe(Effect.provide(layerFor({}, undefined, rejectPort0))),
 	);
 });
 

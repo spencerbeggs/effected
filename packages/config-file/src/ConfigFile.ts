@@ -120,9 +120,22 @@ export interface ConfigFileShape<A> {
 	readonly load: Effect.Effect<A, ConfigLoadError>;
 	/** Read, decode and validate one explicit path. */
 	readonly loadFrom: (path: string) => Effect.Effect<A, ConfigReadError>;
-	/** Every source the resolver chain found, in priority order. Empty is success. */
+	/**
+	 * Every source the resolver chain found, in priority order. Empty is success.
+	 *
+	 * @remarks
+	 * A found-but-corrupt source ABORTS discovery with a typed error rather than
+	 * being silently skipped: silently skipping a corrupt file would mean running
+	 * on the wrong config. This is deliberate, and is parity with v3.
+	 */
 	readonly discover: Effect.Effect<ReadonlyArray<ConfigSource<A>>, ConfigReadError>;
-	/** Like {@link ConfigFileShape.load}, but yields `defaultValue` when nothing is found. */
+	/**
+	 * Like {@link ConfigFileShape.load}, but yields `defaultValue` when nothing is found.
+	 *
+	 * @remarks
+	 * `defaultValue` is returned as-is: neither the schema nor `options.validate`
+	 * is applied to it. It is trusted caller input, not a discovered document.
+	 */
 	readonly loadOrDefault: (defaultValue: A) => Effect.Effect<A, ConfigReadError>;
 	/** Decode and validate an in-memory value. */
 	readonly validate: (value: unknown) => Effect.Effect<A, ConfigValidationError>;
@@ -249,6 +262,11 @@ const makeImpl = <A, I, RR>(
  * Resolver requirements flow into the layer's `R` type. v3 cast them away with
  * `as Effect.Effect<Option<string>>`, making `Layer<Service, never, FileSystem>`
  * a claim rather than a proof.
+ *
+ * `ConfigFile.layer` is a layer-RETURNING function, not a layer: calling it
+ * twice builds two independent service instances. Bind its result to a const
+ * and provide that const, per the memoization discipline — do not call
+ * `ConfigFile.layer(...)` inline at each provide site.
  *
  * @public
  */
