@@ -80,7 +80,7 @@ export interface ConfigMigrationOptions {
  * {@link ConfigMigrationError}.
  *
  * @remarks
- * `up` and {@link VersionAccess} are caller-supplied code with a declared error
+ * `up` and {@link (VersionAccess:interface)} are caller-supplied code with a declared error
  * channel: they signal failure with `Effect.fail`. A `throw` from one of them is
  * a contract violation — a programmer bug, not a data condition — and stays a
  * defect so a consumer's `catchTag("ConfigMigrationError")` cannot silently
