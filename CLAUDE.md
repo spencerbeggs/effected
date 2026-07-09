@@ -60,11 +60,15 @@ It is excluded from pnpm (not a workspace package), turbo, vitest, Biome (`"incl
 
 **Never point a writing tool at it.** The markdownlint config sets `"fix": true`, so an invocation aimed explicitly at that path silently rewrites the vendored migration notes. Never write to `repos/effect-smol` by any means.
 
-Re-pin when the catalog bumps:
+Re-pin when the catalog bumps. This repo allows no merge commits and `git subtree pull` creates one, so the pull is followed by a squash:
 
 ```bash
 git subtree pull --prefix=repos/effect-smol <url> effect@<tag> --squash
+git reset --soft HEAD~2   # drop the merge commit and the squashed-content commit
+git commit --no-verify    # carry the git-subtree-dir / git-subtree-split trailers forward
 ```
+
+The trailers are load-bearing: `git subtree pull` locates the vendored tree by grepping ancestor commit messages for `git-subtree-dir`, so dropping them leaves the *next* re-pin with no split point. `--no-verify` because lint-staged would otherwise process ~2,000 vendored files. Full recipe: [architecture.md](.claude/design/effected/architecture.md#re-pinning-when-the-effect-catalog-bumps).
 
 ## Build Pipeline
 

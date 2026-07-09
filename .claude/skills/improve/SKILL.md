@@ -131,8 +131,12 @@ Track it as a ticket like any other; it is a skill defect that has not bitten ye
 - Migration notes (rung 1): `repos/effect-smol/migration/*.md`
 - Design record for this loop: `.claude/design/effected/plugin.md`
 
-When the `effect` catalog bumps, the subtree is re-pinned so the two never drift:
+When the `effect` catalog bumps, the subtree is re-pinned so the two never drift. This repo allows no merge commits and `git subtree pull` creates one, so the pull is followed by a squash:
 
 ```bash
 git subtree pull --prefix=repos/effect-smol https://github.com/Effect-TS/effect-smol.git effect@<new-tag> --squash
+git reset --soft HEAD~2   # drop the merge commit and the squashed-content commit
+git commit --no-verify    # carry the git-subtree-dir / git-subtree-split trailers forward
 ```
+
+Carry both `git-subtree-dir` and `git-subtree-split` trailers into the squashed message. `git subtree pull` finds the vendored tree's origin by grepping ancestor commit messages for `git-subtree-dir`; drop them and the *next* re-pin has no split point. Rationale: `.claude/design/effected/architecture.md`.
