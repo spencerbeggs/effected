@@ -1,6 +1,6 @@
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
 import type { ConfigCodec, ConfigCodecError } from "./ConfigCodec.js";
-import type { ConfigResolver } from "./ConfigResolver.js";
+import { ConfigResolver } from "./ConfigResolver.js";
 import type { ConfigSource, MergeStrategy, NonEmptySources } from "./MergeStrategy.js";
 
 /**
@@ -416,8 +416,117 @@ const layer = <Self, A, I, RR = never>(
 	);
 
 /**
+ * Options for {@link ConfigFile.testLayer}.
+ *
+ * @remarks
+ * Deliberately has no `resolvers`: `testLayer` synthesizes one
+ * {@link ConfigResolver.staticDir} per seeded file, in `files` insertion order,
+ * so the first key wins under {@link MergeStrategy.firstMatch}.
+ *
+ * It also has no `defaultPath`. Nothing in the temp directory is a defensible
+ * default write target, so `save` and `update` fail with
+ * {@link ConfigDefaultPathMissingError} under this layer — the honest answer.
+ * Exercise the write path with {@link ConfigFile.layer} instead.
+ *
+ * @public
+ */
+export interface ConfigFileTestOptions<A, I> {
+	/** The schema every seeded document is decoded through. */
+	readonly schema: Schema.Codec<A, I>;
+	/** How file content becomes an unknown document, and back. */
+	readonly codec: ConfigCodec;
+	/** How several discovered sources become one value. */
+	readonly strategy: MergeStrategy<A>;
+	/**
+	 * Filenames (relative to the temp dir) mapped to their raw contents.
+	 *
+	 * @remarks
+	 * A name may contain separators (`"nested/.apprc"`); the parent directory is
+	 * created for you.
+	 */
+	readonly files: Record<string, string>;
+	/** An optional caller-supplied check run after schema decoding. */
+	readonly validate?: (value: A) => Effect.Effect<A, ConfigValidationError>;
+}
+
+/**
+ * A scoped layer that seeds `files` into a temp directory, wires the **real**
+ * live implementation over them, and removes the directory when the scope
+ * closes.
+ *
+ * @remarks
+ * Deliberately not a mock. It delegates to the very same `makeImpl` that
+ * {@link ConfigFile.layer} uses, so tests exercise the actual codec, resolver
+ * and merge pipeline rather than a parallel implementation that can drift from
+ * it. A stubbed test layer would make every downstream test a claim about the
+ * stub instead of about the code under test.
+ *
+ * Platform-agnostic: the consumer supplies the `FileSystem` layer, and the temp
+ * directory is created through `FileSystem.makeTempDirectory` rather than
+ * `node:fs`.
+ *
+ * `Layer.scoped` does not exist in v4. `Layer.effect` types its layer as
+ * `Layer<I, E, Exclude<R, Scope>>`, so an `Effect.addFinalizer` inside it binds
+ * to the layer's own scope and runs on release without surfacing `Scope` in the
+ * layer's requirements.
+ *
+ * @example
+ * ```ts
+ * const TestConfig = ConfigFile.testLayer(AppConfig, {
+ * 	schema: AppShape,
+ * 	codec: ConfigCodec.json,
+ * 	strategy: MergeStrategy.firstMatch<AppShape>(),
+ * 	files: { ".apprc": `{"port":4242}` },
+ * }).pipe(Layer.provide(NodeContext.layer));
+ * ```
+ *
+ * @public
+ */
+const testLayer = <Self, A, I>(
+	tag: Context.Key<Self, ConfigFileShape<A>>,
+	options: ConfigFileTestOptions<A, I>,
+): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path> =>
+	Layer.effect(
+		tag,
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const path = yield* Path.Path;
+			// The resolvers below need exactly this context. Taking it from the
+			// ambient environment avoids rebuilding it — and avoids a cast.
+			const resolverEnv = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
+
+			// Failures here are test-harness defects, not config errors: die.
+			const dir = yield* fs.makeTempDirectory({ prefix: "effected-config-file-" }).pipe(Effect.orDie);
+			yield* Effect.addFinalizer(() => fs.remove(dir, { recursive: true }).pipe(Effect.orDie));
+
+			for (const [name, content] of Object.entries(options.files)) {
+				const target = path.join(dir, name);
+				yield* fs.makeDirectory(path.dirname(target), { recursive: true }).pipe(Effect.orDie);
+				yield* fs.writeFileString(target, content).pipe(Effect.orDie);
+			}
+
+			const resolvers = Object.keys(options.files).map((name) => ConfigResolver.staticDir({ dir, filename: name }));
+
+			return makeImpl(
+				{
+					schema: options.schema,
+					codec: options.codec,
+					strategy: options.strategy,
+					resolvers,
+					// Conditional spread: passing `validate: undefined` explicitly is not
+					// the same as omitting it.
+					...(options.validate !== undefined && { validate: options.validate }),
+				},
+				fs,
+				path,
+				resolverEnv,
+			);
+		}),
+	);
+
+/**
  * The config file service: a per-schema service factory and its layers.
  *
  * @public
  */
-export const ConfigFile = { Service, layer } as const;
+export const ConfigFile = { Service, layer, testLayer } as const;
