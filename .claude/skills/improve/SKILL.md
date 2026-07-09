@@ -108,20 +108,26 @@ Stop if you catch yourself doing any of these. Each has happened.
 
 ## Pre-publish debt
 
+**Status: discharged 2026-07-09 ([#20](https://github.com/spencerbeggs/effected/issues/20)).** Kept here because the invariants below still need holding.
+
 The plugin is currently loaded only from this repo (`claude --plugin-dir plugin`), so `${CLAUDE_PROJECT_DIR}/repos/effect-smol` resolves. That substitution points at the **consuming project's** root — today the same directory, but not once the plugin is published elsewhere.
 
-`effect-v4-source-lookup` already fails loudly when the tree is absent, which is the half that matters: it never degrades into v3 memory. **This skill owns the remaining half before the plugin ships:**
+`effect-v4-source-lookup` now resolves an ordered ladder: `$EFFECT_SMOL_SRC` override → the vendored subtree → `node_modules/effect/src` → hard failure. Two facts settled it, and the second corrects what this section used to claim:
 
-1. Add fallbacks ahead of the hard failure in `${CLAUDE_PROJECT_DIR}/plugin/skills/effect-v4-source-lookup/SKILL.md` — an explicit override first, then the installed `.d.ts` under `node_modules/effect` (version-exact, settles rung 2, no implementations so it cannot serve rung 3), then fail.
-2. Keep the path in that one file. Re-verify each agent (`${CLAUDE_PROJECT_DIR}/plugin/agents/*.md`) names the ladder but not the directory:
+- **`effect` publishes its source.** Its `files` array is `["src/**/*.ts", "dist/**/*.js", …]`, so every consumer has the complete v4 TypeScript source, `internal/` implementations included — not merely `.d.ts`. `node_modules/effect/src/Context.ts:65` is byte-identical to the vendored tree's, same line. Rung 2 survives publication at full fidelity.
+- **Rung 1 does not survive.** No `migration/`, `ai-docs/`, or `LLMS.md` ships in the package. The ladder announces this and sends the reader to rung 2, rather than papering over it.
+
+**The version gate is the load-bearing line.** `effect@3` *also* ships `src/`, so a bare `require.resolve` from the workspace root returns a complete, confident, wrong rung-2 source. The resolver must **refuse** a non-`4.*` resolution, not report it — a printed version is a version a reader skims past. This was caught by running the resolver's own control (no tree + only v3 resolvable → must exit 1, must not serve v3), which the first draft failed.
+
+Two invariants remain this skill's to keep:
+
+1. Keep the path in one file. Re-verify each agent (`${CLAUDE_PROJECT_DIR}/plugin/agents/*.md`) names the ladder but not the directory:
 
    ```bash
    test "$(grep -rl 'repos/effect-smol' plugin/ | wc -l)" -eq 1
    ```
 
-3. **Never trade the loud failure for a quiet fallback.** Silent degradation to v3 memory is the precise failure the plugin exists to prevent, and it is indistinguishable from success.
-
-Track it as a ticket like any other; it is a skill defect that has not bitten yet.
+2. **Never trade the loud failure for a quiet fallback.** Every step of the ladder resolves to a version-exact source tree or does not resolve; no step resolves to recollection. Silent degradation to v3 memory is the precise failure the plugin exists to prevent, and it is indistinguishable from success.
 
 ## Where things are
 

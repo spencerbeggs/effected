@@ -1,6 +1,6 @@
 ---
 name: hardening-a-parser-port
-description: Use when porting or writing a recursive-descent parser, lexer, or tree-walker over untrusted text in the @effected monorepo — the class of hardening the cloud reviewer scans for on every migration. Covers stack-overflow depth guards (in BOTH pipeline stages), code-point range checks, prototype-pollution, control-character rejection, and the invariant that malformed input must fail through the typed error channel, never as an unhandled defect.
+description: Use when porting or writing a recursive-descent parser, lexer, or tree-walker over untrusted text in the @effected monorepo — the class of hardening the cloud reviewer scans for on every migration. Covers stack-overflow depth guards (on EVERY recursion surface, which a facade has N of — not two), code-point range checks scoped to formats with wide escapes, prototype-pollution, control-character rejection, and the invariant that malformed input must fail through the typed error channel, never as an unhandled defect.
 ---
 
 # Hardening a parser port
@@ -12,42 +12,86 @@ every `@effected` parser migration (jsonc, yaml, and the boundary-tier ports
 to come). Write each guard together with its hostile-input regression test; a
 hardening claim without a test is unverified.
 
-## No unbounded recursion — guard BOTH pipeline stages
+## No unbounded recursion — enumerate every recursion surface, then close each
 
 Any recursive descent over untrusted input needs a depth cap, or deeply-nested
 input throws `RangeError: Maximum call stack size exceeded` as a defect that
 escapes the typed channel.
 
-In a two-stage `lex → build-tree → walk-tree` pipeline (CST parser then
-composer, or scanner then evaluator), **both** recursive stages need a guard:
+**Enumerate the surfaces before you guard any of them.** A *recursion surface* is
+any function that re-enters itself over user-controlled structure. A package's
+public facade with N recursive helpers has **N surfaces, not two** — and they do
+not share a cap just because they share a tree. Grep for self-recursion across
+`src/`, list what you find, and close every entry on the list. The two-stage
+CST/composer pipeline below is **one instance of this rule, not the frame**.
 
-- Cap the **tree-walker** (composer) at `MAX_NESTING_DEPTH`; on exhaustion push
-  a single fatal diagnostic and return a leaf placeholder instead of recursing.
-  Pair `enter`/`exit` in `try/finally` at every collection-composer entry.
-- Cap the **tree-builder** (CST parser) slightly ABOVE the walker's cap, so the
-  walker's user-facing diagnostic fires first when the capped tree is walked;
-  the builder's guard is the backstop that keeps tree *construction* from
-  overflowing.
+`@effected/jsonc` is the worked example: an *iterative* scanner and a
+single-stage recursive-descent parser, yet **six** independent surfaces, each of
+which overflowed the stack on `"[".repeat(20000) + "]".repeat(20000)` before it
+was closed:
+
+| # | surface | closed by |
+| --- | --- | --- |
+| 1 | `internal/parser.ts` value mode (`parseValue`→`parseArray`/`parseObject`) | cap |
+| 2 | `internal/parser.ts` tree mode (`parseValueTree`→`…Tree`) | cap |
+| 3 | `JsoncNode.evaluateNode` (backs `toValue`) | cap |
+| 4 | `JsoncVisitor.visitGen` | cap |
+| 5 | `Jsonc.deepEqual` | cap |
+| 6 | `internal/navigate.skipValue` | **rewritten iteratively** |
+
+Two remedies, and the second is often the better one:
+
+- **Cap it** at `MAX_NESTING_DEPTH`; on exhaustion emit a single fatal diagnostic
+  and return a leaf placeholder instead of recursing. Pair `enter`/`exit` in
+  `try/finally` at every collection entry.
+- **Remove the recursion.** `navigate.skipValue` skips a value by counting
+  bracket depth over the flat token stream (`navigate.ts:85`). Being
+  non-recursive it *cannot* overflow, so `navigate` and `JsoncModifier` need no
+  cap — and no test can regress one they don't have. Prefer this wherever the
+  walk is a skip or a scan rather than a transform.
+
+Then, whichever remedy:
+
 - **Measure the real overflow point and set the cap with wide margin.** Do not
   guess — a multi-frame recursion chain overflows far shallower than "levels of
   nesting" suggests (yaml overflowed at ~900 composer levels because each level
-  is several stack frames; the cap is 256, the CST cap 264).
+  is several stack frames; the cap is 256).
 - Emit ONE fatal diagnostic (`e.code === "NestingDepthExceeded"` deduped), not
   one per level.
 
-**Single-stage recursive-descent parsers need only one cap.** The two-stage rule
-above is for a `lex → build-tree → walk-tree` pipeline (yaml's CST + composer). A
-parser with an *iterative* scanner and a single recursive build stage (jsonc) has
-one recursive build surface — cap it once. Guard any independent post-hoc walker
-over the already-bounded tree separately; **equal** caps are fine there, because
-the builder's output can never exceed the walker's cap, so the walker's guard only
-fires on a hand-built tree. Do not mis-flag equal caps as a defect in that shape.
+### The two-stage pipeline is a special case
 
-## Range-check every `String.fromCodePoint` / `fromCharCode` fed by parsed hex
+In a two-stage `lex → build-tree → walk-tree` pipeline (yaml's CST parser then
+composer), the two surfaces are *coupled*, so their caps are chosen together:
 
-An escape like `\U00110000` (8 hex digits) can denote a code point above the
-Unicode maximum `U+10FFFF`; `String.fromCodePoint` throws a `RangeError` that
-escapes as a defect. Validate before the call:
+- Cap the **tree-walker** (composer) at `MAX_NESTING_DEPTH` (yaml: 256).
+- Cap the **tree-builder** (CST parser) slightly ABOVE it (yaml: 264), so the
+  walker's user-facing diagnostic fires first when the capped tree is walked; the
+  builder's guard is the backstop that keeps tree *construction* from overflowing.
+
+Where a post-hoc walker instead runs over an **already-bounded** tree (jsonc's
+`evaluateNode`, `deepEqual`), **equal** caps are correct — the builder's output can
+never exceed the walker's cap, so the walker's guard fires only on a hand-built
+tree. Do not mis-flag equal caps as a defect in that shape, and do not demand a
++8 offset where the two surfaces are independent rather than chained.
+
+## Range-check `String.fromCodePoint` fed by parsed hex — in formats that have wide escapes
+
+**Scope this check to the format before you go looking.** It applies only where an
+escape can denote a code point above the Unicode maximum `U+10FFFF`:
+
+| format | widest escape | max value | check needed? |
+| --- | --- | --- | --- |
+| YAML | `\U00110000` (8 hex) | unbounded | **yes** |
+| JSON / JSONC | `￿` (4 hex) | `0xFFFF` | **no** — structurally impossible |
+
+A JSON-family scanner using `String.fromCharCode` on a 4-hex value is *already*
+correct and needs no guard; `@effected/jsonc` is exactly this case. Do not go
+hunting for a `fromCodePoint` range hazard in a format that cannot express one,
+and do not flag its absence as a finding.
+
+Where the format *does* have wide escapes, `String.fromCodePoint` throws a
+`RangeError` that escapes as a defect. Validate before the call:
 
 ```ts
 const cp = /* parse hex */;
@@ -55,10 +99,8 @@ if (cp <= 0x10ffff) value += String.fromCodePoint(cp);
 else return makeErrorToken(/* … */); // typed error, not a throw
 ```
 
-Guard **both** the lexer (which builds the scalar value inline and throws
-first, mid-scan) and any composer re-decode of the same source. 4-hex-digit
-`\u` escapes max out at `0xFFFF` and are always safe; only the wide forms need
-the check.
+Guard **both** the lexer (which builds the scalar value inline and throws first,
+mid-scan) and any composer re-decode of the same source.
 
 ## `__proto__` and special keys → own data properties
 
@@ -149,8 +191,14 @@ depending on an invisible detail of how the caller built their effect.
 
 ## How the reviewer checks
 
-It re-derives each claim against source: depth guards paired in `try/finally`
-with the CST cap above the composer cap, the `0x10FFFF` bound before
-`fromCodePoint`, the `defineProperty` route for `__proto__`, the C0 scan. Ship
-the guard AND its hostile-input test in the same commit, or the claim reads as
-unverified.
+It re-derives each claim against source: **every** recursion surface enumerated
+and then either capped (paired `enter`/`exit` in `try/finally`) or provably
+non-recursive; the `0x10FFFF` bound before `fromCodePoint` *in formats with wide
+escapes*; the `defineProperty` route for `__proto__`; the C0 scan. Ship the guard
+AND its hostile-input test in the same commit, or the claim reads as unverified.
+
+Two ways this check goes wrong in both directions. Guarding only the surfaces the
+two-stage frame predicts leaves the rest of the facade — `toValue`, `equals`,
+`visit`, `modify` — overflowing on the same input. Demanding a guard on a surface
+whose format or control flow cannot reach it manufactures a finding. Enumerate,
+then judge each surface on its own.
