@@ -1,5 +1,4 @@
-import type { Path } from "effect";
-import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
 import type { ConfigCodec, ConfigCodecError } from "./ConfigCodec.js";
 import type { ConfigResolver } from "./ConfigResolver.js";
 import type { ConfigSource, MergeStrategy, NonEmptySources } from "./MergeStrategy.js";
@@ -63,6 +62,29 @@ export class ConfigFileWriteError extends Schema.TaggedErrorClass<ConfigFileWrit
 }
 
 /**
+ * Indicates that {@link ConfigFileShape.save} or {@link ConfigFileShape.update}
+ * was called on a service configured without a `defaultPath`.
+ *
+ * @remarks
+ * v3 reported this as `ConfigError({ operation: "save", reason: "no default
+ * path configured" })` — indistinguishable by tag from a real write failure.
+ *
+ * It carries no `path` field on purpose. The whole point of this failure is
+ * that there is no path; a {@link ConfigFileWriteError} with a fabricated path
+ * would be a lie, and lying error payloads are what this port exists to undo.
+ *
+ * @public
+ */
+export class ConfigDefaultPathMissingError extends Schema.TaggedErrorClass<ConfigDefaultPathMissingError>()(
+	"ConfigDefaultPathMissingError",
+	{},
+) {
+	override get message(): string {
+		return "No `defaultPath` configured: `save` and `update` require ConfigFileOptions.defaultPath";
+	}
+}
+
+/**
  * Indicates that parsed config content did not satisfy the schema, or that a
  * caller-supplied `validate` rejected it.
  *
@@ -106,6 +128,32 @@ export type ConfigLoadError = ConfigFileNotFoundError | ConfigFileReadError | Co
 export type ConfigReadError = ConfigFileReadError | ConfigCodecError | ConfigValidationError;
 
 /**
+ * The failure modes of encoding and writing one known path.
+ *
+ * @remarks
+ * Deliberately excludes {@link ConfigFileNotFoundError} — the path is explicit,
+ * so there is nothing to discover — and {@link ConfigDefaultPathMissingError},
+ * because no default path is consulted.
+ *
+ * @public
+ */
+export type ConfigWriteError = ConfigFileWriteError | ConfigCodecError | ConfigValidationError;
+
+/**
+ * The failure modes of {@link ConfigFileShape.save}.
+ *
+ * @public
+ */
+export type ConfigSaveError = ConfigWriteError | ConfigDefaultPathMissingError;
+
+/**
+ * The failure modes of {@link ConfigFileShape.update}, which loads and then saves.
+ *
+ * @public
+ */
+export type ConfigUpdateError = ConfigLoadError | ConfigFileWriteError | ConfigDefaultPathMissingError;
+
+/**
  * The config file service, generic over the decoded config type `A`.
  *
  * @remarks
@@ -139,6 +187,29 @@ export interface ConfigFileShape<A> {
 	readonly loadOrDefault: (defaultValue: A) => Effect.Effect<A, ConfigReadError>;
 	/** Decode and validate an in-memory value. */
 	readonly validate: (value: unknown) => Effect.Effect<A, ConfigValidationError>;
+	/**
+	 * Encode `value` and write it to an explicit `path`.
+	 *
+	 * @remarks
+	 * Does **not** create the parent directory — that is
+	 * {@link ConfigFileShape.save}'s job, and the distinction is load-bearing:
+	 * `write` targets a path the caller already vouched for.
+	 */
+	readonly write: (value: A, path: string) => Effect.Effect<void, ConfigWriteError>;
+	/**
+	 * Resolve `defaultPath`, `mkdir -p` its parent, encode `value` into it, and
+	 * return the path written.
+	 */
+	readonly save: (value: A) => Effect.Effect<string, ConfigSaveError>;
+	/**
+	 * Load the current value, apply `fn`, {@link ConfigFileShape.save} the result
+	 * and return it.
+	 *
+	 * @remarks
+	 * With `defaultValue` the load cannot fail with
+	 * {@link ConfigFileNotFoundError}; without it, it can.
+	 */
+	readonly update: (fn: (current: A) => A, defaultValue?: A) => Effect.Effect<A, ConfigUpdateError>;
 }
 
 /**
@@ -169,6 +240,18 @@ export interface ConfigFileOptions<A, I, RR> {
 	readonly strategy: MergeStrategy<A>;
 	/** An optional caller-supplied check run after schema decoding. */
 	readonly validate?: (value: A) => Effect.Effect<A, ConfigValidationError>;
+	/**
+	 * Where {@link ConfigFileShape.save} writes when given no explicit path.
+	 *
+	 * @remarks
+	 * Its requirements join the resolvers' in `RR` and flow into the layer's `R`.
+	 * v3 typed this `Effect<string, ConfigError, any>` and cast the requirements
+	 * away at the call site.
+	 *
+	 * When absent, `save` and `update` fail with
+	 * {@link ConfigDefaultPathMissingError}.
+	 */
+	readonly defaultPath?: Effect.Effect<string, never, RR>;
 }
 
 /**
@@ -189,6 +272,7 @@ const Service =
 const makeImpl = <A, I, RR>(
 	options: ConfigFileOptions<A, I, RR>,
 	fs: FileSystem.FileSystem,
+	path: Path.Path,
 	resolverEnv: Context.Context<RR>,
 ): ConfigFileShape<A> => {
 	const decode = (parsed: unknown, at: Option.Option<string>): Effect.Effect<A, ConfigValidationError> =>
@@ -246,12 +330,58 @@ const makeImpl = <A, I, RR>(
 		return yield* runValidate(decoded);
 	});
 
+	/**
+	 * Shared by `write` and `save`. Not an `Effect.fn`: it is internal, and the
+	 * public boundaries that call it already open a span.
+	 */
+	const encodeAndWrite = (value: A, target: string): Effect.Effect<void, ConfigWriteError> =>
+		Effect.gen(function* () {
+			const encoded = yield* Schema.encodeEffect(options.schema)(value).pipe(
+				// Same normalization as `decode`: carry the structured issue, never stringify.
+				Effect.catchTag("SchemaError", (error) =>
+					Effect.fail(new ConfigValidationError({ path: Option.some(target), issue: error.issue })),
+				),
+			);
+			const serialized = yield* options.codec.stringify(encoded);
+			yield* fs
+				.writeFileString(target, serialized)
+				.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));
+		});
+
+	const write = Effect.fn("ConfigFile.write")(function* (value: A, target: string) {
+		// No `makeDirectory` here, deliberately: `write` trusts the caller's path.
+		yield* encodeAndWrite(value, target);
+	});
+
+	const save = Effect.fn("ConfigFile.save")(function* (value: A) {
+		const configured = options.defaultPath;
+		if (configured === undefined) return yield* Effect.fail(new ConfigDefaultPathMissingError({}));
+		// `defaultPath`'s requirements are `RR`, satisfied by the same context the
+		// resolvers use. No cast — v3 wrote `as Effect.Effect<string, ConfigError>`.
+		const target = yield* Effect.provide(configured, resolverEnv);
+		yield* fs
+			.makeDirectory(path.dirname(target), { recursive: true })
+			.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));
+		yield* encodeAndWrite(value, target);
+		return target;
+	});
+
+	const update = Effect.fn("ConfigFile.update")(function* (fn: (current: A) => A, defaultValue?: A) {
+		const current = defaultValue !== undefined ? yield* loadOrDefault(defaultValue) : yield* load();
+		const updated = fn(current);
+		yield* save(updated);
+		return updated;
+	});
+
 	return {
 		load: load(),
 		loadFrom,
 		discover: discover(),
 		loadOrDefault,
 		validate,
+		write,
+		save,
+		update,
 	};
 };
 
@@ -278,8 +408,10 @@ const layer = <Self, A, I, RR>(
 		tag,
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
+			// `save` needs `dirname`. Task 5 declared Path in `R` without yielding it.
+			const path = yield* Path.Path;
 			const resolverEnv = yield* Effect.context<RR>();
-			return makeImpl(options, fs, resolverEnv);
+			return makeImpl(options, fs, path, resolverEnv);
 		}),
 	);
 
