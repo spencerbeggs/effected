@@ -177,9 +177,30 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
 
 ## Time-dependent logic: `TestClock`
 
-`TestClock` is provided by default under `it.effect`. Drive virtual time so
-schedules, timeouts, and retries resolve deterministically instead of waiting on
-the wall clock:
+**`it.effect` ALWAYS installs a virtual `TestClock`. This is not opt-in.** Any
+`Effect.sleep` / `Effect.delay` / `Effect.timeout` in a test body will **never
+advance on its own** — the test hangs until vitest's 5000ms timeout kills it,
+with no message pointing at the clock. If a test hangs for exactly five seconds,
+suspect wall-clock time before you suspect your code.
+
+Either drive the clock with `TestClock.adjust`, or **restructure the test to
+need no time at all**. For an interrupt, prefer a failing sibling over a timeout:
+
+```ts
+// Interrupts the first effect, clock-free. `Effect.never` is not clock-backed.
+yield* Effect.exit(
+  Effect.all([codec.stringify(value), Effect.fail("x")], { concurrency: 2 }),
+)
+```
+
+Note what that `Effect.all` reports: the **sibling's `Fail`** on the aggregate
+cause, not the interrupt (`hasFails` true, `hasInterrupts` false). Asserting
+`Cause.hasInterrupts` on the outer exit would pass for the wrong reason. Assert
+on the *observable consequence* instead — that the interrupted resource still
+works afterward.
+
+Drive virtual time so schedules, timeouts, and retries resolve deterministically
+instead of waiting on the wall clock:
 
 ```ts
 import { TestClock } from "effect/testing";
@@ -205,15 +226,55 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
   when one lands; verify the exact signatures against the installed beta when
   you first reach for it.
 
+## Draining a `PubSub` under `it.effect`
+
+Three sharp edges, all clock-adjacent:
+
+- **`PubSub.takeAll` suspends on an empty subscription.** Its return type is
+  `Effect<NonEmptyArray<A>>` — that *is* the proof. Under the virtual clock it
+  hangs to the vitest timeout. Use `PubSub.takeUpTo(sub, n)`, which returns what
+  is there.
+- **`PubSub.subscribe` requires a `Scope`**, and there is no `it.scoped`. Pipe
+  `Effect.scoped` **before** `Effect.provide`.
+- **`Effect.fork` does not exist** — it is `forkChild` / `forkScoped` /
+  `forkIn` / `forkDetach`. And `Stream.fromQueue` rejects a `Subscription`.
+
+The clock-free drain: subscribe, run the operation, then `takeUpTo`.
+
+```ts
+it.effect("emits the events", () =>
+  Effect.gen(function* () {
+    const svc = yield* ConfigEvents;
+    const sub = yield* PubSub.subscribe(svc.events);
+    yield* runTheOperation;
+    const events = yield* PubSub.takeUpTo(sub, Number.MAX_SAFE_INTEGER);
+    assert.deepStrictEqual(events.map((e) => e.event._tag), ["Discovered", "Loaded"]);
+  }).pipe(Effect.scoped, Effect.provide(layers)),
+);
+```
+
+If the service resolves its dependency from the **caller's** context at call
+time, that layer must be `Layer.mergeAll`'d into the test's context, not buried
+under `Layer.provide` beneath the service's own layer.
+
 ## House conventions
 
 - Tests live in each package's `__test__/` directory (`*.test.ts`), never
   co-located in `src/`.
 - Construct domain values via the schema's `X.make`, never `new`.
-- Use `assert.*` for explicit checks inside Effect programs.
+- **Assert with `assert.*` from `@effect/vitest`, never `expect`.** Every test
+  file in this monorepo does. `expect(x).toEqual(y)` → `assert.deepStrictEqual`;
+  `toBe` → `assert.strictEqual`; `toBeInstanceOf` → `assert.instanceOf`;
+  `toBe(true)` → `assert.isTrue`; `toHaveLength` → `assert.lengthOf`.
 - Keep the boundary honest: assert that the package's own error escapes
   (`error._tag === "JsoncParseError"`), and that the schema path surfaces a
   `SchemaError` — the two must not drift.
+- **A test that cannot fail is worse than no test.** Before trusting a new
+  guard, security check, or negative assertion, *break the implementation and
+  watch the test go red*, then restore it. Two tests in this monorepo's history
+  passed identically with and without the code they claimed to pin: a
+  prototype-pollution guard whose payload could never mutate the asserted
+  object, and a `@ts-expect-error` in a file the tsconfig silently excluded.
 
 > **Version note.** Every signature above was verified against
 > `@effect/vitest@4.0.0-beta.93` on `effect@4.0.0-beta.93`. If the `effect`

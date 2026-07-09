@@ -183,6 +183,52 @@ if (Cause.hasInterrupts(cause)) { /* was interrupted */ }
 The full guard/extractor rename table lives in `effect-v4-construct-map`; the
 idiom to internalize is *iterate `reasons`, switch on `_tag`*.
 
+### Probing `catchCause` — the obvious experiment lies
+
+`Effect.catchCause`'s handler **does not run** when a fiber suspended in
+`Effect.never` is interrupted externally; it **does** run on an interrupt cause
+flowing through the chain (`Effect.interrupt`). The natural probe for "does
+`catchCause` swallow interrupts?" is the former and returns the wrong answer.
+Probe with `Effect.interrupt.pipe(Effect.catchCause(h))` — the handler runs,
+`Cause.hasInterrupts(c)` is `true`, and the effect **succeeds**. It swallows
+interruption. That is almost never what you want.
+
+## `Effect.cached` memoizes the `Exit` — failures *and interrupts*
+
+`Effect.cached(self)` returns `Effect<Effect<A, E, R>>` whose inner effect
+replays the **first `Exit`**, whatever it was. Not just the success. A failure is
+cached. **An interrupt is cached.**
+
+That last one is the trap, because interruption is not a property of the effect
+at all — it is a property of whichever fiber happens to touch it first. An
+`Effect.timeout`, an `Effect.race`, a cancelled request, or a sibling failing
+under `Effect.all` will permanently poison the memo for every later caller. The
+replayed cause is an *interrupt*, which sits outside the effect's declared `E`
+channel and is not recoverable with `Effect.catch` — so a memoized value's
+declared error type becomes **unsound**.
+
+Failure caching is its own footgun: a caller reaching for the natural spelling,
+`Effect.retry(useTheMemo(), policy)`, silently no-ops — each retry replays the
+cached `Exit` without re-running the underlying effect. Library-side failure
+caching *destroys* the caller's ability to own the retry policy.
+
+**For success-only memoization**, invalidate on any non-success exit:
+
+```ts
+const [resolve, invalidate] = Effect.runSync(
+  Effect.cachedInvalidateWithTTL(expensiveEffect, Duration.infinity),
+)
+const memo = Effect.onExit(resolve, (exit) =>
+  Exit.isSuccess(exit) ? Effect.void : invalidate,
+)
+```
+
+Success is computed once, across sequential and concurrent observers. A failure
+or interrupt is retried on the next call, and callers bound their own retries by
+wrapping the *inner* effect. Reach for bare `Effect.cached` only when you
+genuinely want a terminal failure — and say so in the TSDoc, including the
+interrupt behavior, because no consumer will guess it.
+
 ## Scope and resource management
 
 Resource idioms are unchanged — tie cleanup to a scope:

@@ -19,7 +19,7 @@ Six foundational design docs live in `.claude/design/effected/` (config: `.claud
 
 ### Migration Workflow
 
-Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port. `@effected/semver` landed first, `@effected/jsonc` second, `@effected/yaml` third, and `@effected/package-json` fourth (the first boundary-tier port, which also spun out the internal `@effected/npm` sibling); the order after firms up as lessons land.
+Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port. `@effected/semver` landed first, `@effected/jsonc` second, `@effected/yaml` third, and `@effected/package-json` fourth (the first boundary-tier port, which also spun out the internal `@effected/npm` sibling); `@effected/config-file` landed fifth (the second boundary-tier port) and, because this monorepo does not use subpath exports, expanded into a family with `@effected/config-file-jsonc` and `@effected/config-file-yaml` codec adapters. `@effected/toml` (a new internal package, no source repo) queues next, followed by `@effected/config-file-toml` and `@effected/config-file-watcher`; the order after firms up as lessons land.
 
 ## Repository Layout
 
@@ -28,6 +28,9 @@ Migrations happen one package at a time per the migration playbook: write the pa
 - `packages/yaml` — third migrated library: YAML parse/edit/format schemas over an internal engine plus public modules (Yaml facade, YamlDiagnostic, YamlNode, YamlDocument, YamlEdit, YamlFormat, YamlVisitor) (pure tier).
 - `packages/package-json` — fourth migrated library and first boundary-tier port: package.json schemas (`Package` Schema.Class, dependency-specifier taxonomy, semantic field decoding) with IO confined to a single `PackageJsonFile.ts` module (boundary tier).
 - `packages/npm` — internal sibling (no source repo) spun out of the package-json port: dependency-resolution service contracts (`CatalogResolver`, `WorkspaceResolver`, `DependencyResolutionError`) (pure tier).
+- `packages/config-file` — fifth migrated library and second boundary-tier port: composable config file loading (codec × resolver × strategy pipeline, per-schema `Context.Service` factory, tagged errors, PubSub events, `EncryptedCodec`, `ConfigMigration`, v4 `ConfigProvider` integration) (boundary tier).
+- `packages/config-file-jsonc` — codec adapter over `@effected/jsonc` for `@effected/config-file` (pure tier).
+- `packages/config-file-yaml` — codec adapter over `@effected/yaml` for `@effected/config-file` (pure tier).
 - `packages/pnpm-plugin-effect` — repo infrastructure, not a library migration: pnpm catalog/config plugin (built with `rolldown-pnpm-config`; `pnpm pnpm:export` / `pnpm:preview` / `pnpm:up`).
 - `plugin/` — "effective", a Claude Code plugin (skills + effect-dev agent) dogfooded during migrations; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.

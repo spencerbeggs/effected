@@ -57,12 +57,27 @@ Idiomatic form → see `effect-v4-idioms` (construction style, `new` vs `make`).
 
 ## Schema
 
+**`Schema.Schema` takes ONE type argument in v4.** The two-sided form is
+`Schema.Codec`:
+
+~~~ts
+// v3                              // v4
+Schema.Schema<A, I>                Schema.Codec<A, I>
+                                   // interface Schema<out T>
+                                   // interface Codec<out T, out E = T, RD = never, RE = never> extends Schema<T>
+~~~
+
+`Codec`'s never-defaulted `RD` / `RE` requirement channels are load-bearing:
+they are what keeps `decodeUnknownEffect`'s `R` empty. Annotate a schema
+parameter as `Schema.Codec<A, I>` when you need both sides; `Schema.Schema<A>`
+when you only need the decoded type.
+
 The largest delta set. Straight renames (auto):
 
 | v3 | v4 |
 | --- | --- |
 | `asSchema(s)` | `revealCodec(s)` |
-| `encodedSchema(s)` | `toEncoded(s)` |
+| `encodedSchema(s)` | `toEncoded(s)` — the v3 name is **gone**, not renamed in place |
 | `typeSchema(s)` | `toType(s)` |
 | `compose(b)` | `decodeTo(b)` |
 | `annotations(ann)` | `annotate(ann)` |
@@ -226,6 +241,33 @@ arg order (the reverse of v3).
 > `Layer.effect(Svc)(effect)` and data-first `Layer.effect(Svc, effect)`
 > compile in beta.93.
 
+### The tag's *parameter type* is `Context.Key`, not `Context.Tag`
+
+The table above is the **class-definition** site. When you *accept a tag as a
+parameter* — writing a generic layer builder, say — the type is `Context.Key`:
+
+~~~ts
+const layer = <Self, A, I, RR = never>(
+  tag: Context.Key<Self, ConfigFileShape<A>>,   // NOT Context.Tag — that name is gone
+  options: ConfigFileOptions<A, I, RR>,
+): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | RR> => …
+~~~
+
+Three facts that cost real debugging time:
+
+- **`Context.Key` is type-only.** `typeof Context.Key === "undefined"` at
+  runtime, indistinguishable from "removed" under the obvious probe. So is
+  `Context.Tag`. Check the `.d.ts`, not `typeof`.
+- **`Key<out Identifier, out Shape>` — `Shape` is covariant.** A tag for a wider
+  service satisfies a parameter typed for a narrower one. `Service` and
+  `ServiceClass` are declared `in out Shape`, but **both extend `Key`**, so the
+  invariance does not save you. Consequence: you *cannot* subtract a method from
+  a service at a layer boundary — a "read-only" overload will typecheck and then
+  the method will be missing at runtime. A service's shape is fixed at its
+  `Context.Service` declaration.
+- **`Context.Key` extends `Effect`.** `Effect.flatMap(tag, f)` needs no
+  `.asEffect()`.
+
 Idiomatic form → see `effect-v4-services-layers` (`Context.Service` class vs
 function form, `use`/`useSync` vs `yield*`, layer composition
 `provide`/`provideMerge`/`mergeAll`, memoization discipline, `ManagedRuntime`).
@@ -263,6 +305,45 @@ Generators, yieldables, forking, runtime, scope, cause, equality:
 | FiberRef set | `FiberRef.set` | `Effect.provideService` |
 | Cause shape | recursive tree (`Sequential`/`Parallel`/…) | flat `{ reasons: Reason[] }`, `Reason = Fail \| Die \| Interrupt` |
 | Cause empty | `Cause.isEmptyType(c)` | `c.reasons.length === 0` |
+| Exit → cause | `Exit.causeOption(exit)` | **Gone.** `Exit.getCause(exit)` → `Option<Cause<E>>` |
+| Fail vs Die | inspect the tree | `Cause.hasFails(c)` / `Cause.hasDies(c)` / `Cause.hasInterrupts(c)` |
+
+To assert *malformed input fails typed rather than defecting* — the invariant
+`hardening-a-parser-port` demands — pair them:
+
+~~~ts
+const exit = yield* Effect.exit(codec.parse(bad))
+const cause = Exit.getCause(exit)          // Option<Cause<E>>
+if (Option.isSome(cause)) {
+  assert.isTrue(Cause.hasFails(cause.value))
+  assert.isFalse(Cause.hasDies(cause.value))
+}
+~~~
+
+### `Config` accessors are lowercase — and the capitalized names are Schemas
+
+`Schema.String` teaches you that capitalized is the v4 name. **That
+generalization is wrong for `Config`.**
+
+| you want | v4 |
+| --- | --- |
+| `Config.String("port")` | `Config.string("port")` — `Config.String` is `undefined` |
+| `Config.Number(...)` | `Config.number(...)` |
+| — | `Config.Boolean` / `Config.Port` / `Config.LogLevel` **exist but are Schemas, not Configs** |
+
+`ConfigProvider.fromUnknown` does **not** flatten: `Config.string("db.host")`
+fails; use `Config.nested(Config.string("host"), "db")`. And `orElse` changed
+arity — v3's `orElse(self, () => that)` `LazyArg` form is now
+`orElse(self, that: ConfigProvider)`, `dual(2)`. `tsc` catches the thunk
+(TS2345); untyped JS does not, and it half-works — succeeding for keys the
+primary holds and throwing only on the fallback path.
+
+### `@effect/platform-node`
+
+`NodeContext` **does not exist** in `@effect/platform-node@4.0.0-beta.93`. The
+aggregate is `NodeServices`. And `NodeFileSystem.layer` alone does not satisfy
+`FileSystem.FileSystem | Path.Path` — compose
+`Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)`.
 | Cause type guards | `isFailType` / `isDieType` / `isInterruptType` | `isFailReason` / `isDieReason` / `isInterruptReason` |
 | Cause presence | `isFailure` / `isDie` / `isInterrupted` / `isInterruptedOnly` | `hasFails` / `hasDies` / `hasInterrupts` / `hasInterruptsOnly` |
 | Cause seq/par | `Cause.sequential` / `parallel` | `Cause.combine` (seq/par distinction gone) |
@@ -326,15 +407,47 @@ layers, error-path testing).
 
 ## How to verify quickly
 
-Run from any workspace package that depends on the v4 catalog:
+One runtime probe beats an hour of type-error archaeology — **but a probe that
+answers from the wrong place is worse than no probe**, because it confirms a
+conclusion with total confidence. Four rules, each earned:
 
-```bash
-node --input-type=module -e "
+**1. `cd` into the package. Print the resolved version inside the probe.**
+The repo root resolves `effect@3.x`; only `packages/<pkg>/` resolves the v4
+beta. A root-run probe reports the **v3** surface — and will sometimes *agree*
+with the v4 answer by luck, which no working-directory warning can catch.
+
+~~~bash
+cd packages/<pkg> && node --input-type=module -e "
+const v = (await import('effect/package.json', { with: { type: 'json' } })).default.version;
+console.log('resolved effect:', v);   // must be 4.x, or your answer is meaningless
 import * as S from 'effect/Schema';
 console.log(typeof S.TheApiYouWant);
 "
-```
+~~~
 
-For dual/curried APIs, probe the arity (`L.effect.length`); for
-removed-vs-present, `typeof` returns `'undefined'` when gone. One runtime probe
-beats an hour of type-error archaeology.
+**2. `typeof x === 'undefined'` does NOT mean "removed".** Type-only exports
+(`Context.Key`, `Context.Tag`) are `undefined` at runtime while being perfectly
+alive in the `.d.ts`. For a type, read `node_modules/effect/dist/*.d.ts` —
+note the declarations are at `dist/`, **not** `dist/dts/`.
+
+**3. A probe file must LIVE inside the package.** Bare specifiers resolve from
+the file's location, not the cwd, so a probe copied to `/tmp` cannot resolve
+`effect` at all. But the tsconfig `include` is `${configDir}/*.ts` and does
+**not** match subdirectories — a probe in a subdir silently falls out of the
+compilation program and gives a **false pass** on a deliberate control error.
+Put it at the package root. **Run your control error FIRST**, confirm it fires,
+then test the real thing. Delete it by *absolute* path immediately — a probe
+left at the package root breaks every other agent's `types:check`.
+
+**4. Construct memoized global state in the same order the code under test
+will.** `ConfigProvider.fromEnv()` snapshots `process.env` at construction and
+`Context.Reference` memoizes; a probe that reads the reference before setting
+the var "proves" the provider ignores the environment.
+
+For dual/curried APIs, probe the arity (`L.effect.length`).
+
+**When a shell tool errors, that is not an answer.** `rg` against a nonexistent
+path prints an error that reads like a clean no-match; `rg -E` is parsed as
+`--encoding` under the `ugrep` alias and dies. Never pair a search with an
+`|| echo "absent"` fallback — the failure becomes the conclusion. Verify the
+path exists first.
