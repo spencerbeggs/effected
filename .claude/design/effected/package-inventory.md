@@ -3,9 +3,9 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-07-08
-last-synced: 2026-07-08
-completeness: 85
+updated: 2026-07-09
+last-synced: 2026-07-09
+completeness: 87
 related:
   - architecture.md
   - effect-standards.md
@@ -38,7 +38,7 @@ All ten source repos were reviewed against [effect-standards.md](effect-standard
 | json-schema-effect | @effected/json-schema | boundary | not started | File writes are load-bearing for silk-release-action; core JSON Schema generation superseded by v4 `Schema.toJsonSchemaDocument` — remaining value is TOML tooling (tombi/taplo builders, Ajv validation, scaffolder); one package, Scaffold/Tombi/Taplo seam available if split later |
 | package-json-effect | @effected/package-json | boundary | implemented on `feat/package-json` (steps 3–4 complete); design: [packages/package-json.md](packages/package-json.md) | Split candidate reversed by review: stays one package with IO confined to a single `PackageJsonFile.ts` module (the v3 split motivation — the @effect/platform peer — evaporates in v4); a future split is a one-module extraction. Landed GREEN (34 v3 files → 13 src, 71/71 tests). Spins out a new internal sibling `@effected/npm` for the resolver contracts (see [internal packages](#internal-packages-no-source-repo) and [packages/npm.md](packages/npm.md)) |
 | xdg-effect | @effected/xdg | boundary | not started | Extraction candidate: SQLite cache/state services → a separate @effected sqlite package (name TBD at migration); post-extraction xdg is a small fs+env boundary lib; its json-schema-effect dependency is a dead facade and gets cut |
-| config-file-effect | @effected/config-file | boundary | designed on `feat/config-file` (step 2 complete); design: [packages/config-file.md](packages/config-file.md) | Error-model redesign (one stringly mega-error → seven `Schema.TaggedErrorClass` types with narrowed per-method unions) is the headline work. JSON codec in core; core carries **zero runtime deps**. The review's subpath-export plan is **superseded**: subpath exports are not used in this monorepo, so each optional dep becomes a package — the migration expands into a family (see [config-file family](#the-config-file-family)). Watcher deferred to its own cycle and needs redesign, not translation. Confirmed it does NOT depend on json-schema-effect |
+| config-file-effect | @effected/config-file | boundary | implemented on `feat/config-file` (5a–5c landed: core + `-jsonc` + `-yaml` adapters, playbook steps 3–4 complete); design: [packages/config-file.md](packages/config-file.md) | Error-model redesign (one stringly mega-error → eight `Schema.TaggedErrorClass` types with narrowed per-method unions, one — `ConfigDefaultPathMissingError` — added at port time) is the headline work. JSON codec in core; core carries **zero runtime deps**. The review's subpath-export plan is **superseded**: subpath exports are not used in this monorepo, so each optional dep becomes a package — the migration expands into a family (see [config-file family](#the-config-file-family)). Landed GREEN: core 111 tests, `-jsonc` adapter 4 tests, `-yaml` adapter 5 tests; whole-repo gate typecheck 15/15, build 28/28, tests 1830/1830. Watcher deferred to its own cycle and needs redesign, not translation. Confirmed it does NOT depend on json-schema-effect |
 | workspaces-effect | @effected/workspaces | boundary | not started | @effected/lockfiles extraction confirmed clean (pure tier) after two pre-repairs: importer-path→name resolution moves out of the lockfile reader and integrity checking becomes pure |
 | type-registry-effect | @effected/type-registry | boundary | not started | TypeRegistry facade becomes a Context.Service; createTypeScriptCache extraction candidate; @effect/sql surface is entirely indirect and collapses behind @effected/xdg; unused semver-effect dependency to remove-or-use |
 | runtime-resolver | @effected/runtime-resolver | boundary | not started | Boundary confirmed (already Effect v3 internally); new split candidate: its @effect/cli binary moves to a separate CLI package (peers currently leak onto API consumers); depends on @effected/semver so it sequences after semver |
@@ -80,16 +80,16 @@ Dependency sequencing from the review synthesis (`.claude/reviews/SYNTHESIS.md`)
 
 Because this monorepo does not use subpath exports, every optional dependency of `@effected/config-file` becomes a package boundary. Migration #5 therefore delivers a family rather than a package, each member on its own spec → plan → implement cycle:
 
-| Package | Tier | Order | Depends on |
-| --- | --- | --- | --- |
-| `@effected/config-file` (core pipeline + JSON codec) | boundary | 5a | `effect` (peer) only |
-| `@effected/config-file-jsonc` | boundary | 5b | `@effected/jsonc`, `@effected/config-file` |
-| `@effected/config-file-yaml` | boundary | 5c | `@effected/yaml`, `@effected/config-file` |
-| `@effected/toml` | pure | 5d | — |
-| `@effected/config-file-toml` | boundary | 5e | `@effected/toml`, `@effected/config-file` |
-| `@effected/config-file-watcher` | boundary | 5f | `@effected/config-file` |
+| Package | Tier | Order | Status | Depends on |
+| --- | --- | --- | --- | --- |
+| `@effected/config-file` (core pipeline + JSON codec) | boundary | 5a | **done** — 111 tests | `effect` (peer) only |
+| `@effected/config-file-jsonc` | pure | 5b | **done** — 4 tests | `@effected/jsonc`, `@effected/config-file` |
+| `@effected/config-file-yaml` | pure | 5c | **done** — 5 tests | `@effected/yaml`, `@effected/config-file` |
+| `@effected/toml` | pure | 5d | not started | — |
+| `@effected/config-file-toml` | pure | 5e | not started | `@effected/toml`, `@effected/config-file` |
+| `@effected/config-file-watcher` | boundary | 5f | not started | `@effected/config-file` |
 
-5a–5c land together; the core does not depend on `@effected/toml`, so the full-parity TOML port does not block migration #5. Dependency direction is strictly acyclic: config-file → format packages, never the reverse.
+5a–5c landed together on `feat/config-file`; the core does not depend on `@effected/toml`, so the full-parity TOML port does not block migration #5. Dependency direction is strictly acyclic: config-file → format packages, never the reverse. 5d–5f remain, each still its own spec → plan → implement cycle.
 
 ## External consumers (stay in their own repos)
 
