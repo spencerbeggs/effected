@@ -101,7 +101,7 @@ const runPhase = <A>(
  * @remarks
  * The returned codec's error channel **widens** to include
  * {@link ConfigMigrationError} rather than flattening migration failures into
- * the inner codec's error — the reason the {@link ConfigCodec} seam is generic
+ * the inner codec's error — the reason the {@link (ConfigCodec:interface)} seam is generic
  * in its error type.
  *
  * @public

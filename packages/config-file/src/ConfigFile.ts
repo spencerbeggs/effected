@@ -68,8 +68,9 @@ export class ConfigFileWriteError extends Schema.TaggedErrorClass<ConfigFileWrit
  * was called on a service configured without a `defaultPath`.
  *
  * @remarks
- * v3 reported this as `ConfigError({ operation: "save", reason: "no default
- * path configured" })` — indistinguishable by tag from a real write failure.
+ * v3 reported this as a generic `ConfigError` carrying `operation: "save"` and
+ * `reason: "no default path configured"` — indistinguishable by tag from a real
+ * write failure.
  *
  * It carries no `path` field on purpose. The whole point of this failure is
  * that there is no path; a {@link ConfigFileWriteError} with a fabricated path
@@ -528,8 +529,9 @@ const layer = <Self, A, I, RR = never>(
  *
  * @remarks
  * Deliberately has no `resolvers`: `testLayer` synthesizes one
- * {@link ConfigResolver.staticDir} per seeded file, in `files` insertion order,
- * so the first key wins under {@link MergeStrategy.firstMatch}.
+ * {@link (ConfigResolver:variable).staticDir} per seeded file, in `files`
+ * insertion order, so the first key wins under
+ * {@link (MergeStrategy:variable).firstMatch}.
  *
  * It also has no `defaultPath`. Nothing in the temp directory is a defensible
  * default write target, so `save` and `update` fail with
@@ -585,7 +587,7 @@ export interface ConfigFileTestOptions<A, I> {
  * 	codec: ConfigCodec.json,
  * 	strategy: MergeStrategy.firstMatch<AppShape>(),
  * 	files: { ".apprc": `{"port":4242}` },
- * }).pipe(Layer.provide(NodeContext.layer));
+ * }).pipe(Layer.provide(NodeServices.layer));
  * ```
  *
  * @public

@@ -67,7 +67,7 @@ export const ConfigEventPayload = Schema.Union([
 ]);
 
 /**
- * The decoded form of {@link ConfigEventPayload}: a tagged union a subscriber
+ * The decoded form of {@link (ConfigEventPayload:variable)}: a tagged union a subscriber
  * narrows with `switch (payload._tag)`.
  *
  * @public

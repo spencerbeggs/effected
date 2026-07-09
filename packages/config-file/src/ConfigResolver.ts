@@ -22,8 +22,6 @@ export interface ConfigResolver<R = never> {
 	readonly resolve: Effect.Effect<Option.Option<string>, never, R>;
 }
 
-type FsPath = FileSystem.FileSystem | Path.Path;
-
 /** Absorb any failure into `Option.none()` — the resolver contract. */
 const absorb = <R>(
 	effect: Effect.Effect<Option.Option<string>, unknown, R>,
@@ -45,7 +43,7 @@ const probeSubpaths = (
 		(candidate) => fs.exists(candidate),
 	);
 
-const explicitPath = (target: string): ConfigResolver<FsPath> => ({
+const explicitPath = (target: string): ConfigResolver<FileSystem.FileSystem | Path.Path> => ({
 	name: "explicit",
 	resolve: absorb(
 		Effect.gen(function* () {
@@ -55,7 +53,10 @@ const explicitPath = (target: string): ConfigResolver<FsPath> => ({
 	),
 });
 
-const staticDir = (options: { readonly dir: string; readonly filename: string }): ConfigResolver<FsPath> => ({
+const staticDir = (options: {
+	readonly dir: string;
+	readonly filename: string;
+}): ConfigResolver<FileSystem.FileSystem | Path.Path> => ({
 	name: "static",
 	resolve: absorb(
 		Effect.gen(function* () {
@@ -72,7 +73,7 @@ const upwardWalk = (options: {
 	readonly cwd?: string;
 	readonly stopAt?: string;
 	readonly subpaths?: ReadonlyArray<string>;
-}): ConfigResolver<FsPath> => ({
+}): ConfigResolver<FileSystem.FileSystem | Path.Path> => ({
 	name: "walk",
 	resolve: absorb(
 		Effect.gen(function* () {
@@ -100,7 +101,7 @@ const rootAnchored = (
 	name: string,
 	isRoot: (fs: FileSystem.FileSystem, path: Path.Path, dir: string) => Effect.Effect<boolean, unknown>,
 	options: { readonly filename: string; readonly cwd?: string; readonly subpaths?: ReadonlyArray<string> },
-): ConfigResolver<FsPath> => ({
+): ConfigResolver<FileSystem.FileSystem | Path.Path> => ({
 	name,
 	resolve: absorb(
 		Effect.gen(function* () {
@@ -146,13 +147,13 @@ const gitRoot = (options: {
 	readonly filename: string;
 	readonly cwd?: string;
 	readonly subpaths?: ReadonlyArray<string>;
-}): ConfigResolver<FsPath> => rootAnchored("git", isGitRoot, options);
+}): ConfigResolver<FileSystem.FileSystem | Path.Path> => rootAnchored("git", isGitRoot, options);
 
 const workspaceRoot = (options: {
 	readonly filename: string;
 	readonly cwd?: string;
 	readonly subpaths?: ReadonlyArray<string>;
-}): ConfigResolver<FsPath> => rootAnchored("workspace", isWorkspaceRoot, options);
+}): ConfigResolver<FileSystem.FileSystem | Path.Path> => rootAnchored("workspace", isWorkspaceRoot, options);
 
 const systemEtc = (options: {
 	readonly app: string;
@@ -163,7 +164,7 @@ const systemEtc = (options: {
 	 * in test environments — and as an escape hatch for non-standard layouts.
 	 */
 	readonly dir?: string;
-}): ConfigResolver<FsPath> => ({
+}): ConfigResolver<FileSystem.FileSystem | Path.Path> => ({
 	name: "system",
 	resolve: absorb(
 		Effect.gen(function* () {

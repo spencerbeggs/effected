@@ -91,7 +91,7 @@ const keyEffect = (keySource: EncryptedCodecKey): Effect.Effect<CryptoKey, Confi
 		: Effect.mapError(deriveKey(keySource.passphrase, keySource.salt), toPublic);
 
 /**
- * Wrap any {@link ConfigCodec} with AES-GCM encryption.
+ * Wrap any {@link (ConfigCodec:interface)} with AES-GCM encryption.
  *
  * @remarks
  * `stringify` serializes with the inner codec, generates a random 12-byte IV,
