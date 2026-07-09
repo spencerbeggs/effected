@@ -1,5 +1,7 @@
-import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, PubSub, Schema } from "effect";
 import type { ConfigCodec, ConfigCodecError } from "./ConfigCodec.js";
+import type { ConfigEventPayload, ConfigEvents, ConfigEventsShape } from "./ConfigEvent.js";
+import { ConfigEvent } from "./ConfigEvent.js";
 import { ConfigResolver } from "./ConfigResolver.js";
 import type { ConfigSource, MergeStrategy, NonEmptySources } from "./MergeStrategy.js";
 
@@ -252,6 +254,16 @@ export interface ConfigFileOptions<A, I, RR> {
 	 * {@link ConfigDefaultPathMissingError}.
 	 */
 	readonly defaultPath?: Effect.Effect<string, never, RR>;
+	/**
+	 * The opt-in event hook. Pass the `ConfigEvents` class itself.
+	 *
+	 * @remarks
+	 * A **key**, not an instance: the service is looked up in the ambient context
+	 * at call time with `Effect.serviceOption`, so it never enters the layer's
+	 * `R`. When this is omitted, `emit` is `Effect.void` — it does not even
+	 * perform the lookup. That is what "zero-cost when absent" means here.
+	 */
+	readonly events?: Context.Key<ConfigEvents, ConfigEventsShape>;
 }
 
 /**
@@ -275,6 +287,45 @@ const makeImpl = <A, I, RR>(
 	path: Path.Path,
 	resolverEnv: Context.Context<RR>,
 ): ConfigFileShape<A> => {
+	/**
+	 * Publish one event, or nothing at all.
+	 *
+	 * @remarks
+	 * Three properties hold, in order of how easy they are to lose:
+	 *
+	 * 1. **Zero-cost when absent.** No `events` option means `Effect.void` — no
+	 *    context lookup, no `DateTime.now`, no allocation.
+	 * 2. **Never a requirement.** `Effect.serviceOption` reads the ambient context
+	 *    without adding to `R`, so wiring events cannot change a layer's type.
+	 * 3. **Never fatal.** A subscriber's hub is consumer-supplied code. `catch`
+	 *    absorbs its typed failures and `catchDefect` its throws; interruption is
+	 *    deliberately left to propagate, because a config load that is being
+	 *    interrupted must stay interrupted.
+	 */
+	const emit = (payload: ConfigEventPayload): Effect.Effect<void> =>
+		options.events === undefined
+			? Effect.void
+			: Effect.serviceOption(options.events).pipe(
+					Effect.flatMap(
+						Option.match({
+							onNone: () => Effect.void,
+							onSome: (svc) =>
+								Effect.gen(function* () {
+									const timestamp = yield* DateTime.now;
+									yield* PubSub.publish(svc.events, new ConfigEvent({ timestamp, event: payload }));
+								}),
+						}),
+					),
+					Effect.catch(() => Effect.void),
+					Effect.catchDefect(() => Effect.void),
+				);
+
+	/** The public, path-and-resolver view of the sources that fed a load. */
+	const sourceRefs = (
+		sources: ReadonlyArray<ConfigSource<A>>,
+	): ReadonlyArray<{ readonly path: string; readonly resolver: string }> =>
+		sources.map((s) => ({ path: s.path, resolver: s.resolver }));
+
 	const decode = (parsed: unknown, at: Option.Option<string>): Effect.Effect<A, ConfigValidationError> =>
 		Schema.decodeUnknownEffect(options.schema)(parsed).pipe(
 			// Normalize the schema failure at the boundary. Never leak SchemaError
@@ -291,9 +342,21 @@ const makeImpl = <A, I, RR>(
 		const raw = yield* fs
 			.readFileString(target)
 			.pipe(Effect.mapError((cause) => new ConfigFileReadError({ path: target, cause })));
-		const parsed = yield* options.codec.parse(raw);
-		const decoded = yield* decode(parsed, Option.some(target));
-		return yield* runValidate(decoded);
+
+		const parsed = yield* options.codec
+			.parse(raw)
+			.pipe(Effect.tapError((error) => emit({ _tag: "ParseFailed", path: target, codec: options.codec.name, error })));
+		yield* emit({ _tag: "Parsed", path: target, codec: options.codec.name });
+
+		// Schema decoding and the caller's `validate` are one validation step from a
+		// subscriber's point of view: both answer "is this document acceptable?".
+		const validated = yield* Effect.gen(function* () {
+			const decoded = yield* decode(parsed, Option.some(target));
+			return yield* runValidate(decoded);
+		}).pipe(Effect.tapError((error) => emit({ _tag: "ValidationFailed", path: target, error })));
+		yield* emit({ _tag: "Validated", path: target });
+
+		return validated;
 	});
 
 	const discover = Effect.fn("ConfigFile.discover")(function* () {
@@ -303,6 +366,8 @@ const makeImpl = <A, I, RR>(
 			const found = yield* Effect.provide(resolver.resolve, resolverEnv);
 			if (Option.isSome(found)) {
 				const target = found.value;
+				// Emitted before the read, so a corrupt file is still reported as found.
+				yield* emit({ _tag: "Discovered", path: target, resolver: resolver.name });
 				sources.push({ path: target, resolver: resolver.name, value: yield* loadFrom(target) });
 			}
 		}
@@ -311,18 +376,40 @@ const makeImpl = <A, I, RR>(
 
 	const searched = options.resolvers.map((r) => r.name);
 
+	/**
+	 * Merge the discovered sources and announce the result. Shared by `load` and
+	 * `loadOrDefault`, which in v3 each re-inlined it and drifted apart.
+	 *
+	 * Both events carry EVERY contributing source. v3 reported `sources[0].path`,
+	 * which is wrong under `layeredMerge`, where all of them contributed.
+	 */
+	const mergeAndEmit = (sources: NonEmptySources<A>): Effect.Effect<A> =>
+		Effect.gen(function* () {
+			const value = yield* options.strategy.resolve(sources);
+			const refs = sourceRefs(sources);
+			yield* emit({ _tag: "Resolved", sources: refs, strategy: options.strategy.name });
+			yield* emit({ _tag: "Loaded", sources: refs });
+			return value;
+		});
+
 	const load = Effect.fn("ConfigFile.load")(function* () {
 		const sources = yield* discover();
-		if (sources.length === 0) return yield* Effect.fail(new ConfigFileNotFoundError({ searched }));
+		if (sources.length === 0) {
+			yield* emit({ _tag: "NotFound" });
+			return yield* Effect.fail(new ConfigFileNotFoundError({ searched }));
+		}
 		// Guarded by the check above; TypeScript cannot narrow Array<T> to [T, ...T[]].
-		return yield* options.strategy.resolve(sources as unknown as NonEmptySources<A>);
+		return yield* mergeAndEmit(sources as unknown as NonEmptySources<A>);
 	});
 
 	const loadOrDefault = Effect.fn("ConfigFile.loadOrDefault")(function* (defaultValue: A) {
 		const sources = yield* discover();
-		if (sources.length === 0) return defaultValue;
+		if (sources.length === 0) {
+			yield* emit({ _tag: "NotFound" });
+			return defaultValue;
+		}
 		// Guarded by the check above; TypeScript cannot narrow Array<T> to [T, ...T[]].
-		return yield* options.strategy.resolve(sources as unknown as NonEmptySources<A>);
+		return yield* mergeAndEmit(sources as unknown as NonEmptySources<A>);
 	});
 
 	const validate = Effect.fn("ConfigFile.validate")(function* (value: unknown) {
@@ -342,34 +429,55 @@ const makeImpl = <A, I, RR>(
 					Effect.fail(new ConfigValidationError({ path: Option.some(target), issue: error.issue })),
 				),
 			);
-			const serialized = yield* options.codec.stringify(encoded);
+			const serialized = yield* options.codec
+				.stringify(encoded)
+				.pipe(Effect.tapError((error) => emit({ _tag: "StringifyFailed", codec: options.codec.name, error })));
 			yield* fs
 				.writeFileString(target, serialized)
 				.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));
 		});
 
+	/**
+	 * Resolve `defaultPath`, `mkdir -p` its parent and write. Shared by `save`
+	 * and `update`, and — crucially — emits nothing.
+	 *
+	 * v3's `update` called the public `save`, so a single `update` published
+	 * `Written` + `Saved` + `Updated`; v3 documented this as a known smell. Event
+	 * granularity is per-operation, so the emitting boundary must sit in the
+	 * public method, never in the shared internals it delegates to.
+	 */
+	const saveTo = (value: A): Effect.Effect<string, ConfigSaveError> =>
+		Effect.gen(function* () {
+			const configured = options.defaultPath;
+			if (configured === undefined) return yield* Effect.fail(new ConfigDefaultPathMissingError({}));
+			// `defaultPath`'s requirements are `RR`, satisfied by the same context the
+			// resolvers use. No cast — v3 wrote `as Effect.Effect<string, ConfigError>`.
+			const target = yield* Effect.provide(configured, resolverEnv);
+			yield* fs
+				.makeDirectory(path.dirname(target), { recursive: true })
+				.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));
+			yield* encodeAndWrite(value, target);
+			return target;
+		});
+
 	const write = Effect.fn("ConfigFile.write")(function* (value: A, target: string) {
 		// No `makeDirectory` here, deliberately: `write` trusts the caller's path.
 		yield* encodeAndWrite(value, target);
+		yield* emit({ _tag: "Written", path: target });
 	});
 
 	const save = Effect.fn("ConfigFile.save")(function* (value: A) {
-		const configured = options.defaultPath;
-		if (configured === undefined) return yield* Effect.fail(new ConfigDefaultPathMissingError({}));
-		// `defaultPath`'s requirements are `RR`, satisfied by the same context the
-		// resolvers use. No cast — v3 wrote `as Effect.Effect<string, ConfigError>`.
-		const target = yield* Effect.provide(configured, resolverEnv);
-		yield* fs
-			.makeDirectory(path.dirname(target), { recursive: true })
-			.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));
-		yield* encodeAndWrite(value, target);
+		const target = yield* saveTo(value);
+		yield* emit({ _tag: "Saved", path: target });
 		return target;
 	});
 
 	const update = Effect.fn("ConfigFile.update")(function* (fn: (current: A) => A, defaultValue?: A) {
 		const current = defaultValue !== undefined ? yield* loadOrDefault(defaultValue) : yield* load();
 		const updated = fn(current);
-		yield* save(updated);
+		// `saveTo`, not `save`: calling the public method would leak its `Saved`.
+		const target = yield* saveTo(updated);
+		yield* emit({ _tag: "Updated", path: target });
 		return updated;
 	});
 

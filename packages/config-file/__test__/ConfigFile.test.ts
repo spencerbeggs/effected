@@ -1,21 +1,14 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { Effect, Layer, Option, Path, Schema } from "effect";
 import { ConfigCodec, ConfigCodecError } from "../src/ConfigCodec.js";
 import type { ConfigLoadError, ConfigReadError } from "../src/ConfigFile.js";
 import { ConfigFile, ConfigFileNotFoundError, ConfigFileReadError, ConfigValidationError } from "../src/ConfigFile.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
+import { memoryFs } from "./helpers.js";
 
 class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
 class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("test/AppConfig") {}
-
-/** An in-memory FileSystem seeded with `files`; anything else is ENOENT. */
-const memoryFs = (files: Record<string, string>) =>
-	Layer.succeed(FileSystem.FileSystem, {
-		exists: (p: string) => Effect.succeed(Object.hasOwn(files, p)),
-		readFileString: (p: string) =>
-			Object.hasOwn(files, p) ? Effect.succeed(files[p] as string) : Effect.fail(new Error(`ENOENT: ${p}`)),
-	} as unknown as FileSystem.FileSystem);
 
 const layerFor = (
 	files: Record<string, string>,

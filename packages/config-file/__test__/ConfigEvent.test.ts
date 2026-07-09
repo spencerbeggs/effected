@@ -1,0 +1,265 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Layer, Option, Path, PubSub, Schema } from "effect";
+import { ConfigCodec } from "../src/ConfigCodec.js";
+import type { ConfigEvent } from "../src/ConfigEvent.js";
+import { ConfigEventPayload, ConfigEvents } from "../src/ConfigEvent.js";
+import { ConfigFile } from "../src/ConfigFile.js";
+import { ConfigResolver } from "../src/ConfigResolver.js";
+import { MergeStrategy } from "../src/MergeStrategy.js";
+import type { RecordingFs } from "./helpers.js";
+import { memoryFs, recordingFs } from "./helpers.js";
+
+class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
+class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("test/EventConfig") {}
+
+/**
+ * One `ConfigEvents.layer` value, bound to a const and reused. Calling
+ * `ConfigEvents.layer` is cheap, but building it twice inside one provide graph
+ * would mint two PubSubs — the subscriber would watch one and `emit` would
+ * publish to the other.
+ */
+const eventsLayer = ConfigEvents.layer;
+
+/** Read every event buffered on `sub` without blocking and without a clock. */
+const drain = (sub: PubSub.Subscription<ConfigEvent>): Effect.Effect<ReadonlyArray<ConfigEvent>> =>
+	PubSub.takeUpTo(sub, Number.MAX_SAFE_INTEGER);
+
+const tagsOf = (events: ReadonlyArray<ConfigEvent>): ReadonlyArray<string> => events.map((e) => e.event._tag);
+
+/** A read-only config service wired to `ConfigEvents`, over an in-memory host. */
+const readLayer = (files: Record<string, string>, resolvers = [ConfigResolver.explicitPath("/app/.apprc")]) =>
+	Layer.mergeAll(
+		eventsLayer,
+		ConfigFile.layer(AppConfig, {
+			schema: AppShape,
+			codec: ConfigCodec.json,
+			resolvers,
+			strategy: MergeStrategy.layeredMerge<AppShape>(),
+			events: ConfigEvents,
+		}).pipe(Layer.provide(Layer.mergeAll(memoryFs(files), Path.layer))),
+	);
+
+/** A writable config service wired to `ConfigEvents`. */
+const writeLayer = (host: RecordingFs, defaultPath: string) =>
+	Layer.mergeAll(
+		eventsLayer,
+		ConfigFile.layer(AppConfig, {
+			schema: AppShape,
+			codec: ConfigCodec.json,
+			resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
+			strategy: MergeStrategy.firstMatch<AppShape>(),
+			defaultPath: Effect.succeed(defaultPath),
+			events: ConfigEvents,
+		}).pipe(Layer.provide(Layer.mergeAll(host.layer, Path.layer))),
+	);
+
+describe("ConfigEventPayload", () => {
+	// The v3 union declared `Stringified` and `ResolutionFailed` and never emitted
+	// either. A variant that cannot occur is a lie in the type. Decoding is the
+	// honest probe: if the variant is gone, its tag does not decode.
+	it.effect("does not define the never-emitted v3 variants", () =>
+		Effect.gen(function* () {
+			for (const tag of ["Stringified", "ResolutionFailed"] as const) {
+				const result = yield* Effect.result(Schema.decodeUnknownEffect(ConfigEventPayload)({ _tag: tag }));
+				assert.strictEqual(result._tag, "Failure", `"${tag}" must not be a ConfigEventPayload variant`);
+			}
+		}),
+	);
+
+	it.effect("still defines the variants the pipeline does emit", () =>
+		Effect.gen(function* () {
+			const result = yield* Effect.result(Schema.decodeUnknownEffect(ConfigEventPayload)({ _tag: "NotFound" }));
+			assert.strictEqual(result._tag, "Success");
+		}),
+	);
+});
+
+describe("ConfigEvent source reporting", () => {
+	// v3 reported `sources[0].path` on `Resolved` and `Loaded`. Under
+	// `layeredMerge` EVERY source contributed to the merged value, so naming only
+	// the first is simply wrong.
+	it.effect("Resolved carries every contributing source under layeredMerge", () =>
+		Effect.gen(function* () {
+			const svc = yield* ConfigEvents;
+			const sub = yield* PubSub.subscribe(svc.events);
+			const cfg = yield* AppConfig;
+			yield* cfg.load;
+
+			const collected = yield* drain(sub);
+			const resolved = collected.map((e) => e.event).find((p) => p._tag === "Resolved");
+			if (resolved === undefined || resolved._tag !== "Resolved") {
+				return assert.fail("expected a Resolved event");
+			}
+
+			assert.deepStrictEqual(
+				resolved.sources.map((s) => s.path),
+				["/a/.apprc", "/etc/.apprc"],
+			);
+			assert.deepStrictEqual(
+				resolved.sources.map((s) => s.resolver),
+				["explicit", "explicit"],
+			);
+			assert.strictEqual(resolved.strategy, "layered-merge");
+		}).pipe(
+			Effect.scoped,
+			Effect.provide(
+				readLayer({ "/a/.apprc": `{"port":8080}`, "/etc/.apprc": `{"port":80}` }, [
+					ConfigResolver.explicitPath("/a/.apprc"),
+					ConfigResolver.explicitPath("/etc/.apprc"),
+				]),
+			),
+		),
+	);
+
+	it.effect("Loaded carries every contributing source too", () =>
+		Effect.gen(function* () {
+			const svc = yield* ConfigEvents;
+			const sub = yield* PubSub.subscribe(svc.events);
+			const cfg = yield* AppConfig;
+			yield* cfg.load;
+
+			const collected = yield* drain(sub);
+			const loaded = collected.map((e) => e.event).find((p) => p._tag === "Loaded");
+			if (loaded === undefined || loaded._tag !== "Loaded") {
+				return assert.fail("expected a Loaded event");
+			}
+
+			assert.deepStrictEqual(
+				loaded.sources.map((s) => s.path),
+				["/a/.apprc", "/etc/.apprc"],
+			);
+		}).pipe(
+			Effect.scoped,
+			Effect.provide(
+				readLayer({ "/a/.apprc": `{"port":8080}`, "/etc/.apprc": `{"port":80}` }, [
+					ConfigResolver.explicitPath("/a/.apprc"),
+					ConfigResolver.explicitPath("/etc/.apprc"),
+				]),
+			),
+		),
+	);
+});
+
+describe("ConfigEvent per-operation granularity", () => {
+	// These two pin that `Written` and `Saved` ARE live variants, so the
+	// `update` test below cannot pass vacuously by simply never emitting them.
+	it.effect("write emits Written", () =>
+		Effect.gen(function* () {
+			const svc = yield* ConfigEvents;
+			const sub = yield* PubSub.subscribe(svc.events);
+			const cfg = yield* AppConfig;
+			yield* cfg.write(new AppShape({ port: 3 }), "/explicit/.apprc");
+
+			assert.include(tagsOf(yield* drain(sub)), "Written");
+		}).pipe(Effect.scoped, Effect.provide(writeLayer(recordingFs({}), "/app/.apprc"))),
+	);
+
+	it.effect("save emits Saved", () =>
+		Effect.gen(function* () {
+			const svc = yield* ConfigEvents;
+			const sub = yield* PubSub.subscribe(svc.events);
+			const cfg = yield* AppConfig;
+			yield* cfg.save(new AppShape({ port: 3 }));
+
+			assert.include(tagsOf(yield* drain(sub)), "Saved");
+		}).pipe(Effect.scoped, Effect.provide(writeLayer(recordingFs({}), "/app/.apprc"))),
+	);
+
+	// v3 emitted Written + Saved + Updated for a single `update` call and
+	// documented it as a known smell: `update` called the public `save`, which
+	// emitted its own events. `update` now drives the internal write path.
+	it.effect("update emits Updated exactly once and does not emit Written or Saved", () =>
+		Effect.gen(function* () {
+			const svc = yield* ConfigEvents;
+			const sub = yield* PubSub.subscribe(svc.events);
+			const cfg = yield* AppConfig;
+			yield* cfg.update((current) => new AppShape({ port: current.port + 1 }));
+
+			const tags = tagsOf(yield* drain(sub));
+			assert.lengthOf(
+				tags.filter((t) => t === "Updated"),
+				1,
+			);
+			assert.notInclude(tags, "Written");
+			assert.notInclude(tags, "Saved");
+		}).pipe(Effect.scoped, Effect.provide(writeLayer(recordingFs({ "/app/.apprc": `{"port":1}` }), "/app/.apprc"))),
+	);
+
+	it.effect("Updated names the path that was written", () =>
+		Effect.gen(function* () {
+			const svc = yield* ConfigEvents;
+			const sub = yield* PubSub.subscribe(svc.events);
+			const cfg = yield* AppConfig;
+			yield* cfg.update((current) => new AppShape({ port: current.port + 1 }));
+
+			const updated = (yield* drain(sub)).map((e) => e.event).find((p) => p._tag === "Updated");
+			if (updated === undefined || updated._tag !== "Updated") {
+				return assert.fail("expected an Updated event");
+			}
+			assert.strictEqual(updated.path, "/app/.apprc");
+		}).pipe(Effect.scoped, Effect.provide(writeLayer(recordingFs({ "/app/.apprc": `{"port":1}` }), "/app/.apprc"))),
+	);
+});
+
+describe("ConfigEvents opt-in", () => {
+	/** The same service, built WITHOUT the `events` option. */
+	const noEventsLayer = ConfigFile.layer(AppConfig, {
+		schema: AppShape,
+		codec: ConfigCodec.json,
+		resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
+		strategy: MergeStrategy.firstMatch<AppShape>(),
+	}).pipe(Layer.provide(Layer.mergeAll(memoryFs({ "/app/.apprc": `{"port":8080}` }), Path.layer)));
+
+	it.effect("a layer built without `events` loads with no ConfigEvents in context", () =>
+		Effect.gen(function* () {
+			// If `emit` required the service rather than short-circuiting, this
+			// would fail to build: nothing provides ConfigEvents here.
+			assert.isTrue(Option.isNone(yield* Effect.serviceOption(ConfigEvents)));
+
+			const cfg = yield* AppConfig;
+			const value = yield* cfg.load;
+			assert.strictEqual(value.port, 8080);
+		}).pipe(Effect.provide(noEventsLayer)),
+	);
+
+	it.effect("publishes nothing when `events` is omitted, even if ConfigEvents is in context", () =>
+		Effect.gen(function* () {
+			const svc = yield* ConfigEvents;
+			const sub = yield* PubSub.subscribe(svc.events);
+			const cfg = yield* AppConfig;
+			yield* cfg.load;
+
+			// `emit` is gated on `options.events`, not on service availability: it
+			// never even looks the service up. Zero-cost, not a no-op subscriber.
+			assert.deepStrictEqual(tagsOf(yield* drain(sub)), []);
+		}).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(eventsLayer, noEventsLayer))),
+	);
+
+	it.effect("a subscriber that explodes on publish never fails a config load", () =>
+		Effect.gen(function* () {
+			const cfg = yield* AppConfig;
+			const value = yield* cfg.load;
+			assert.strictEqual(value.port, 8080);
+		}).pipe(
+			Effect.provide(
+				Layer.mergeAll(
+					// A hostile ConfigEvents whose PubSub throws the moment it is published to.
+					Layer.succeed(ConfigEvents, {
+						events: {
+							publish: () => {
+								throw new Error("subscriber exploded");
+							},
+						} as unknown as PubSub.PubSub<ConfigEvent>,
+					}),
+					ConfigFile.layer(AppConfig, {
+						schema: AppShape,
+						codec: ConfigCodec.json,
+						resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
+						strategy: MergeStrategy.firstMatch<AppShape>(),
+						events: ConfigEvents,
+					}).pipe(Layer.provide(Layer.mergeAll(memoryFs({ "/app/.apprc": `{"port":8080}` }), Path.layer))),
+				),
+			),
+		),
+	);
+});

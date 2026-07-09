@@ -57,7 +57,9 @@ describe("ConfigFile.testLayer", () => {
 		}),
 	);
 
-	it.effect("runs the real validate hook and surfaces its typed failure", () =>
+	// No `options.validate` is supplied here: the failure comes from the schema
+	// itself, decoded through the real pipeline the test layer wires up.
+	it.effect("surfaces a real schema decode failure as ConfigValidationError", () =>
 		Effect.gen(function* () {
 			const result = yield* Effect.gen(function* () {
 				const cfg = yield* AppConfig;

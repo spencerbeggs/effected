@@ -1,52 +1,18 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Path, Schema } from "effect";
+import { Effect, Layer, Path, Schema } from "effect";
 import type { ConfigCodec as ConfigCodecShape } from "../src/ConfigCodec.js";
 import { ConfigCodec, ConfigCodecError } from "../src/ConfigCodec.js";
 import type { ConfigSaveError, ConfigUpdateError, ConfigWriteError } from "../src/ConfigFile.js";
 import { ConfigDefaultPathMissingError, ConfigFile, ConfigFileWriteError } from "../src/ConfigFile.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
+import type { RecordingFs } from "./helpers.js";
+import { hostileFs, recordingFs } from "./helpers.js";
 
 class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
 class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("test/WriteConfig") {}
 
-/** Records every write and every mkdir so the tests can assert on them. */
-const recordingFs = (files: Record<string, string>) => {
-	const mkdirs: Array<string> = [];
-	const fs = {
-		exists: (p: string) => Effect.succeed(Object.hasOwn(files, p)),
-		readFileString: (p: string) =>
-			Object.hasOwn(files, p) ? Effect.succeed(files[p] as string) : Effect.fail(new Error(`ENOENT: ${p}`)),
-		writeFileString: (p: string, content: string) =>
-			Effect.sync(() => {
-				files[p] = content;
-			}),
-		makeDirectory: (p: string) =>
-			Effect.sync(() => {
-				mkdirs.push(p);
-			}),
-	} as unknown as FileSystem.FileSystem;
-	return { layer: Layer.succeed(FileSystem.FileSystem, fs), files, mkdirs };
-};
-
-/**
- * A host whose every write is rejected. `makeDirectory` is absent on purpose:
- * if `write` ever started creating directories, this would throw rather than
- * quietly pass.
- */
-const hostileFs = (): ReturnType<typeof recordingFs> => {
-	const fs = {
-		exists: () => Effect.succeed(false),
-		writeFileString: () => Effect.fail(new Error("EROFS")),
-	} as unknown as FileSystem.FileSystem;
-	return { layer: Layer.succeed(FileSystem.FileSystem, fs), files: {}, mkdirs: [] };
-};
-
-const layerFor = (
-	host: ReturnType<typeof recordingFs>,
-	defaultPath?: string,
-	codec: ConfigCodecShape = ConfigCodec.json,
-) =>
+const layerFor = (host: RecordingFs, defaultPath?: string, codec: ConfigCodecShape = ConfigCodec.json) =>
 	ConfigFile.layer(AppConfig, {
 		schema: AppShape,
 		codec,
