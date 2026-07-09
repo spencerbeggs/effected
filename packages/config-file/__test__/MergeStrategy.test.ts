@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import type { ConfigSource } from "../src/MergeStrategy.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
 
@@ -67,6 +67,63 @@ describe("MergeStrategy.layeredMerge", () => {
 			assert.isUndefined((value as Record<string, unknown>).polluted);
 			// Defense in depth: the shared prototype really is untouched too.
 			assert.isUndefined(({} as Record<string, unknown>).polluted);
+		}),
+	);
+});
+
+describe("MergeStrategy.layeredMerge — value identity", () => {
+	class Doc extends Schema.Class<Doc>("Doc")({ port: Schema.Number, host: Schema.String }) {
+		get origin(): string {
+			return `http://${this.host}:${this.port}`;
+		}
+	}
+
+	it.effect("preserves the document's class instance and its prototype getters", () =>
+		Effect.gen(function* () {
+			const strategy = MergeStrategy.layeredMerge<Doc>();
+			const value = yield* strategy.resolve([
+				src("/a", "walk", new Doc({ port: 1, host: "a" })),
+				src("/etc", "system", new Doc({ port: 2, host: "b" })),
+			]);
+			// `load` declares Effect<A>. Returning a structurally-equal POJO would be a lie.
+			assert.instanceOf(value, Doc);
+			assert.strictEqual(value.origin, "http://a:1");
+		}),
+	);
+
+	it.effect("a nested Date is atomic — higher priority wins it whole, never spread", () =>
+		Effect.gen(function* () {
+			const strategy = MergeStrategy.layeredMerge<Record<string, unknown>>();
+			const hi = new Date("2020-01-01T00:00:00.000Z");
+			const lo = new Date("2021-01-01T00:00:00.000Z");
+			const value = yield* strategy.resolve([src("/a", "walk", { at: hi }), src("/etc", "system", { at: lo })]);
+			assert.instanceOf(value.at, Date);
+			assert.strictEqual((value.at as Date).toISOString(), "2020-01-01T00:00:00.000Z");
+		}),
+	);
+
+	it.effect("a nested class instance is atomic — higher priority wins it whole", () =>
+		Effect.gen(function* () {
+			class Section extends Schema.Class<Section>("Section")({ a: Schema.Number, b: Schema.Number }) {}
+			const strategy = MergeStrategy.layeredMerge<Record<string, unknown>>();
+			const value = yield* strategy.resolve([
+				src("/a", "walk", { db: new Section({ a: 1, b: 1 }) }),
+				src("/etc", "system", { db: new Section({ a: 9, b: 9 }) }),
+			]);
+			assert.instanceOf(value.db, Section);
+			assert.deepStrictEqual({ a: (value.db as Section).a, b: (value.db as Section).b }, { a: 1, b: 1 });
+		}),
+	);
+
+	it.effect("a nested Map is atomic", () =>
+		Effect.gen(function* () {
+			const strategy = MergeStrategy.layeredMerge<Record<string, unknown>>();
+			const value = yield* strategy.resolve([
+				src("/a", "walk", { m: new Map([["k", 1]]) }),
+				src("/etc", "system", { m: new Map([["k", 2]]) }),
+			]);
+			assert.instanceOf(value.m, Map);
+			assert.strictEqual((value.m as Map<string, number>).get("k"), 1);
 		}),
 	);
 });

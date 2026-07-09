@@ -329,6 +329,19 @@ As-built: the API-Extractor gate was **vacuous for eleven tasks** across this po
 - Polling-only, though `FileSystem.watch` exists on the platform abstraction. The redesign offers both.
 - Its tests use real-time sleeps; they move to `TestClock.adjust`.
 
+## As-built: `layeredMerge` preserves value identity
+
+Caught in PR review. `layeredMerge` runs over the **decoded** `ConfigSource.value`s, and the original `deepMerge` spread each into a fresh `{}`. For a `Schema.Class` document — the house standard — that returned a structurally-equal plain object cast as `A`: `instanceof` was false and every class getter was gone, while `load` still declared `Effect<A>`. A consumer calling a class method got a `TypeError` that typechecked. The old `isPlainObject` (`typeof v === "object" && v !== null && !Array.isArray(v)`) also admitted `Date`, `Map`, `Set` and `RegExp`, so a nested `Date` was spread into `{}` — total data loss, not merely identity loss.
+
+Two changes, both verified by probe:
+
+- `deepMerge` builds its result on `target`'s prototype (`Object.create(Object.getPrototypeOf(target))`) rather than spreading into `{}`, so the decoded document survives as a real instance and still encodes cleanly through the schema. It also consults `Object.hasOwn` rather than `in`, so a prototype getter can never shadow a real key.
+- `isPlainObject` narrows to a **true** plain object (prototype is `Object.prototype` or `null`), gating recursion. `canMerge` admits two record-like values sharing a prototype. Consequence: nested `Date` / `Map` / `Set` / `RegExp` / class instances are **atomic** — the highest-priority source that defines one wins it whole. Nested plain objects (a `Schema.Struct` section) still merge field-wise.
+
+`Object.prototype.toString` cannot discriminate here: `Schema.Class`, `DateTime` and `Option` all report `[object Object]`. Only the prototype test is safe. Merging two same-prototype values is sound regardless, because `deepMerge` keeps every own key of the higher-priority target and only adds keys absent from it — so same-class exotics degenerate to "higher priority wins".
+
+Note also that each source is decoded **individually** before the strategy sees it, so `layeredMerge` overrides values across tiers; it cannot fill a field missing from a source, because that source would fail its own schema decode first.
+
 ## Deliberately not ported
 
 - **The `ConfigError` mega-error** — eight tagged errors (the seven designed plus `ConfigDefaultPathMissingError`, added at port time) with structured `cause` fields and narrowed per-method unions.

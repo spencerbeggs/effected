@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { deepMerge, isPlainObject } from "./internal/deepMerge.js";
+import { canMerge, deepMerge } from "./internal/deepMerge.js";
 
 /**
  * A single configuration source discovered during a resolver-chain pass.
@@ -39,6 +39,24 @@ const firstMatch = <A>(): MergeStrategy<A> => ({
 	resolve: (sources) => Effect.succeed(sources[0].value),
 });
 
+/**
+ * Deep-merge every contributing source, higher priority winning on conflict.
+ *
+ * @remarks
+ * Two values merge only when both are record-like and share a prototype, so a
+ * document decoded through `Schema.Class` merges with another of the same class
+ * and **survives as a real instance** — `instanceof` holds and its getters
+ * still work. Everything else is atomic: a nested `Date`, `Map`, `Set`,
+ * `RegExp`, array, or class instance is taken whole from the highest-priority
+ * source that defines it, never reshaped field-by-field.
+ *
+ * The alternative — spreading each value into a fresh object — would make
+ * `load`'s declared `Effect<A>` a lie, handing back a structurally-equal plain
+ * object whose class methods are gone and whose `Date` fields have decayed to
+ * `{}`.
+ *
+ * Nested *plain* objects (a `Schema.Struct` section) still merge field-wise.
+ */
 const layeredMerge = <A>(): MergeStrategy<A> => ({
 	name: "layered-merge",
 	resolve: (sources) => {
@@ -46,7 +64,9 @@ const layeredMerge = <A>(): MergeStrategy<A> => ({
 		let merged: unknown = sources[sources.length - 1]?.value;
 		for (let i = sources.length - 2; i >= 0; i--) {
 			const higher = sources[i]?.value;
-			merged = isPlainObject(merged) && isPlainObject(higher) ? deepMerge(higher, merged) : higher;
+			merged = canMerge(merged, higher)
+				? deepMerge(higher as Record<string, unknown>, merged as Record<string, unknown>)
+				: higher;
 		}
 		return Effect.succeed(merged as A);
 	},
