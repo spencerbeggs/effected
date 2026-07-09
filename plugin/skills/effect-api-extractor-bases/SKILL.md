@@ -164,10 +164,18 @@ cross-reference. This skill previously prescribed exactly that, on the false
 premise that no `{@link}` form resolves for a merged name; the `@effected/config-file`
 port disproved it (five selectors, warnings → 0).
 
-**Backtick spans remain correct for one case:** links to *inherited* members,
-`{@link SemVer.make}` where `make` comes from the synthesized base. Those are
-genuinely unresolvable — there is no selector for a member the declaration does
-not own. Write `` `SemVer.make` ``.
+**Backtick spans remain correct for two cases**, where no selector helps:
+
+1. **Inherited members** — `{@link SemVer.make}` where `make` comes from the
+   synthesized base. There is no selector for a member the declaration does not
+   own. Write `` `SemVer.make` ``.
+2. **Cross-package symbols you only `import type`.** A selector disambiguates
+   *between local declarations*; it cannot reach a symbol API Extractor never
+   rolled up into this package entry point. An adapter that does
+   `import type { ConfigCodec } from "@effected/config-file"` and writes
+   `{@link (ConfigCodec:interface)}` still gets `ae-unresolved-link`. Write
+   `` `ConfigCodec` ``. Expect this on **every** adapter package that plugs
+   into a seam it does not own.
 
 **A note on reading `issues.json`.** Its `file` names the source, but its `line`
 indexes the **generated `.d.ts`**. Locate a `tsdoc-*` or `ae-unresolved-link`
