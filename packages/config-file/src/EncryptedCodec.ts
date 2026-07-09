@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Duration, Effect, Exit, Schema } from "effect";
 import type { ConfigCodec } from "./ConfigCodec.js";
 import type { CryptoFailure } from "./internal/crypto.js";
 import { IV_LENGTH, decrypt, deriveKey, encrypt, fromBase64, randomIv, toBase64 } from "./internal/crypto.js";
@@ -54,10 +54,11 @@ export const EncryptedCodecKey = {
 	 * Use a pre-derived `CryptoKey` effect directly.
 	 *
 	 * @remarks
-	 * The effect is evaluated once per codec instance and its result — success
-	 * *or* failure — is reused for every encrypt/decrypt operation. If the key
-	 * comes from a source that can fail transiently, such as a KMS, put the
-	 * `Effect.retry` inside this effect: a failure reaching the codec is cached.
+	 * The effect is resolved once per codec instance and its **success** is
+	 * reused for every encrypt/decrypt operation. A failure or an interruption
+	 * is not cached — the next operation resolves it again. Supply your own
+	 * `Effect.retry` inside this effect to bound retries; wrap it in
+	 * `Effect.cached` yourself if you want a failure to be terminal.
 	 *
 	 * A `throw` from it is a programmer bug and stays a defect; signal
 	 * recoverable failure with `Effect.fail`.
@@ -71,8 +72,10 @@ export const EncryptedCodecKey = {
 	 * Derive a `CryptoKey` from a passphrase and salt via PBKDF2.
 	 *
 	 * @remarks
-	 * Derivation runs lazily on the first encrypt/decrypt call and the result is
-	 * reused for subsequent operations on that codec instance.
+	 * Derivation runs lazily on the first encrypt/decrypt call. It is resolved
+	 * once per codec instance and its **success** is reused for subsequent
+	 * operations on that instance. A failure or an interruption is not cached —
+	 * the next operation derives again.
 	 */
 	fromPassphrase: (passphrase: string, salt: Uint8Array): EncryptedCodecKey => ({
 		_tag: "Passphrase",
@@ -112,14 +115,27 @@ export function EncryptedCodec<E>(
 	// Memoize so the key is resolved once per codec instance, even across forked
 	// fibers. v3 leaned on a mutable closure variable inside the async body, and
 	// memoized only the passphrase path despite documenting otherwise.
-	// `Effect.cached` is lazy: nothing runs until the first parse/stringify.
-	const getKey: Effect.Effect<CryptoKey, ConfigEncryptionError> = Effect.runSync(Effect.cached(keyEffect(keySource)));
+	//
+	// Only SUCCESS may be memoized. `Effect.cached` alone memoizes the whole
+	// `Exit`, so an interrupt — a property of whichever caller's fiber touched
+	// the key first, not of the key effect — would be replayed forever, outside
+	// this codec's declared error channel and unrecoverable via `Effect.catch`.
+	// Invalidating on any non-success exit lets the next caller resolve again,
+	// matching v3, which assigned its memo only after the `await` returned.
+	// Lazy either way: nothing runs until the first parse/stringify.
+	const [resolveKey, invalidateKey] = Effect.runSync(
+		Effect.cachedInvalidateWithTTL(keyEffect(keySource), Duration.infinity),
+	);
+	const getKey: Effect.Effect<CryptoKey, ConfigEncryptionError> = Effect.onExit(resolveKey, (exit) =>
+		Exit.isSuccess(exit) ? Effect.void : invalidateKey,
+	);
 
 	return {
 		name,
 		parse: (raw) =>
 			Effect.gen(function* () {
-				const key = yield* getKey;
+				// Validate the envelope before resolving the key: malformed input must
+				// not be able to force a key resolution, which may be a KMS round-trip.
 				const combined = yield* Effect.mapError(fromBase64(raw), toPublic);
 
 				if (combined.length <= IV_LENGTH) {
@@ -128,6 +144,7 @@ export function EncryptedCodec<E>(
 					);
 				}
 
+				const key = yield* getKey;
 				const iv = combined.slice(0, IV_LENGTH);
 				const ciphertext = combined.slice(IV_LENGTH);
 				const plaintext = yield* Effect.mapError(decrypt(key, iv, ciphertext), toPublic);

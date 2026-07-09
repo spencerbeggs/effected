@@ -201,7 +201,7 @@ describe("EncryptedCodec", () => {
 		}),
 	);
 
-	it.effect("a failing key effect surfaces as ConfigEncryptionError and is resolved only once", () =>
+	it.effect("a failing key effect is retried after failure", () =>
 		Effect.gen(function* () {
 			let attempts = 0;
 			const boom = new ConfigEncryptionError({ phase: "key-derivation", cause: new Error("kms down") });
@@ -214,11 +214,62 @@ describe("EncryptedCodec", () => {
 			const codec = EncryptedCodec(Codec.json, failing);
 
 			const first = yield* Effect.flip(codec.stringify({ a: 1 }));
-			const second = yield* Effect.flip(codec.parse("whatever"));
+			// A well-formed envelope: parse validates it before resolving the key, so
+			// this reaches the key rather than short-circuiting on the too-short guard.
+			const second = yield* Effect.flip(codec.parse(btoa("x".repeat(32))));
+			// The deterministic failure still fails, by identity, every time...
 			assert.strictEqual(first, boom);
 			assert.strictEqual(second, boom);
-			// Effect.cached memoizes the Exit, so the failure is replayed, not retried.
-			assert.strictEqual(attempts, 1);
+			// ...but only success is memoized, so each operation resolves the key again.
+			assert.strictEqual(attempts, 2);
+		}),
+	);
+
+	it.effect("an interrupted operation does not poison the codec", () =>
+		Effect.gen(function* () {
+			let attempts = 0;
+			const counting = EncryptedCodecKey.fromCryptoKey(
+				Effect.suspend((): Effect.Effect<CryptoKey, ConfigEncryptionError> => {
+					attempts++;
+					// Park the first resolution so the sibling failure interrupts it.
+					return attempts === 1 ? Effect.never : generateKeyForTest();
+				}),
+			);
+			const codec = EncryptedCodec(Codec.json, counting);
+
+			// Clock-free by construction: `it.effect` runs on a virtual TestClock, so a
+			// timeout- or sleep-driven interrupt would never fire. A failing sibling
+			// under `Effect.all` interrupts the parked key resolution immediately.
+			const exit = yield* Effect.exit(
+				Effect.all([codec.stringify({ a: 1 }), Effect.fail("sibling")], { concurrency: 2 }),
+			);
+			assert.isTrue(Exit.isFailure(exit));
+
+			// The interrupt was not memoized: the codec re-resolves and still works.
+			const ciphertext = yield* codec.stringify({ port: 8080 });
+			assert.deepStrictEqual(yield* codec.parse(ciphertext), { port: 8080 });
+			assert.strictEqual(attempts, 2);
+		}),
+	);
+
+	it.effect("a transient key failure recovers on the next operation", () =>
+		Effect.gen(function* () {
+			let attempts = 0;
+			const flaky = EncryptedCodecKey.fromCryptoKey(
+				Effect.suspend((): Effect.Effect<CryptoKey, ConfigEncryptionError> => {
+					attempts++;
+					return attempts === 1
+						? Effect.fail(new ConfigEncryptionError({ phase: "key-derivation", cause: new Error("kms down") }))
+						: generateKeyForTest();
+				}),
+			);
+			const codec = EncryptedCodec(Codec.json, flaky);
+
+			assert.instanceOf(yield* Effect.flip(codec.stringify({ a: 1 })), ConfigEncryptionError);
+			// The failure was not cached, so the retry derives a usable key.
+			const ciphertext = yield* codec.stringify({ port: 8080 });
+			assert.deepStrictEqual(yield* codec.parse(ciphertext), { port: 8080 });
+			assert.strictEqual(attempts, 2);
 		}),
 	);
 
