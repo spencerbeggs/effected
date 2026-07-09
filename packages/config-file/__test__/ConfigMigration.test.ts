@@ -76,9 +76,8 @@ describe("ConfigMigration.make", () => {
 		}),
 	);
 
-	it.effect("a migration whose up throws synchronously surfaces as a typed ConfigMigrationError, not a defect", () =>
+	it.effect("a migration that throws instead of failing its Effect is a defect, not a typed error", () =>
 		Effect.gen(function* () {
-			const boom = new Error("migration bug: threw instead of failing the Effect");
 			const codec = ConfigMigration.make({
 				codec: ConfigCodec.json,
 				migrations: [
@@ -86,31 +85,44 @@ describe("ConfigMigration.make", () => {
 						version: 2,
 						name: "throws-sync",
 						up: () => {
-							throw boom;
+							throw new Error("bug");
 						},
 					},
 				],
 			});
-
 			const exit = yield* Effect.exit(codec.parse(`{"version":1}`));
 			assert.isTrue(Exit.isFailure(exit));
-			if (Exit.isFailure(exit)) {
-				const cause = Exit.getCause(exit);
-				assert.isTrue(Option.isSome(cause));
-				if (Option.isSome(cause)) {
-					// A synchronous throw from caller-supplied migration code still
-					// surfaces through the typed Fail channel, never as an unhandled Die.
-					assert.isTrue(Cause.hasFails(cause.value));
-					assert.isFalse(Cause.hasDies(cause.value));
-				}
+			const cause = Exit.getCause(exit);
+			assert.isTrue(Option.isSome(cause));
+			if (Option.isSome(cause)) {
+				// A throw from caller-supplied migration code is a programmer bug: it stays a
+				// defect so catchTag("ConfigMigrationError") cannot silently swallow it.
+				assert.isTrue(Cause.hasDies(cause.value));
+				assert.isFalse(Cause.hasFails(cause.value));
 			}
+		}),
+	);
 
-			const error = yield* Effect.flip(codec.parse(`{"version":1}`));
-			assert.instanceOf(error, ConfigMigrationError);
-			assert.strictEqual((error as ConfigMigrationError).phase, "apply");
-			assert.strictEqual((error as ConfigMigrationError).name, "throws-sync");
-			assert.strictEqual((error as ConfigMigrationError).version, 2);
-			assert.strictEqual((error as ConfigMigrationError).cause, boom);
+	it.effect("a throw inside the returned Effect dies the same way", () =>
+		Effect.gen(function* () {
+			const codec = ConfigMigration.make({
+				codec: ConfigCodec.json,
+				migrations: [
+					{
+						version: 2,
+						name: "throws-inside",
+						up: () =>
+							Effect.sync(() => {
+								throw new Error("bug");
+							}),
+					},
+				],
+			});
+			const exit = yield* Effect.exit(codec.parse(`{"version":1}`));
+			assert.isTrue(Exit.isFailure(exit));
+			const cause = Exit.getCause(exit);
+			assert.isTrue(Option.isSome(cause));
+			if (Option.isSome(cause)) assert.isTrue(Cause.hasDies(cause.value));
 		}),
 	);
 });

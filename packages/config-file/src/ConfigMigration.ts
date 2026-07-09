@@ -6,9 +6,9 @@ import type { ConfigCodec, ConfigCodecError } from "./ConfigCodec.js";
  *
  * @remarks
  * `phase` says where: reading the current version, applying a step, or writing
- * the new version back. `cause` preserves the underlying failure by identity —
- * even when the failing step threw synchronously instead of failing an Effect.
- * v3 assembled all three into a prose `reason` string.
+ * the new version back. `cause` preserves the underlying failure by identity
+ * when the failing step signals recoverable failure with `Effect.fail`. v3
+ * assembled all three into a prose `reason` string.
  *
  * @public
  */
@@ -41,6 +41,10 @@ export class ConfigMigrationError extends Schema.TaggedErrorClass<ConfigMigratio
 export interface ConfigFileMigration {
 	readonly version: number;
 	readonly name: string;
+	/**
+	 * Transforms the parsed config. Signal recoverable failure with `Effect.fail`;
+	 * a synchronous `throw` is treated as a defect, not a `ConfigMigrationError`.
+	 */
 	readonly up: (raw: unknown) => Effect.Effect<unknown, unknown>;
 }
 
@@ -72,30 +76,24 @@ export interface ConfigMigrationOptions {
 }
 
 /**
- * Runs one migration phase, normalizing both an Effect failure and a
- * synchronous throw into a {@link ConfigMigrationError}.
+ * Runs one migration phase, mapping its declared failure into a
+ * {@link ConfigMigrationError}.
  *
  * @remarks
- * `up` and a caller-supplied {@link VersionAccess} are plugin code: nothing
- * stops an implementation from throwing instead of failing an Effect. Malformed
- * plugin behavior gets the same treatment this port gives malformed input
- * everywhere else — a typed failure, never a bare defect — so `cause` still
- * survives by identity instead of dying the fiber.
+ * `up` and {@link VersionAccess} are caller-supplied code with a declared error
+ * channel: they signal failure with `Effect.fail`. A `throw` from one of them is
+ * a contract violation — a programmer bug, not a data condition — and stays a
+ * defect so a consumer's `catchTag("ConfigMigrationError")` cannot silently
+ * swallow it. `Effect.suspend` ensures a throw raised while constructing the
+ * effect dies exactly like a throw raised while running it.
  */
 const runPhase = <A>(
 	phase: "read-version" | "apply" | "write-version",
 	version: number,
 	name: string,
 	run: () => Effect.Effect<A, unknown>,
-): Effect.Effect<A, ConfigMigrationError> => {
-	let effect: Effect.Effect<A, unknown>;
-	try {
-		effect = run();
-	} catch (cause) {
-		return Effect.fail(new ConfigMigrationError({ version, name, phase, cause }));
-	}
-	return effect.pipe(Effect.mapError((cause) => new ConfigMigrationError({ version, name, phase, cause })));
-};
+): Effect.Effect<A, ConfigMigrationError> =>
+	Effect.suspend(run).pipe(Effect.mapError((cause) => new ConfigMigrationError({ version, name, phase, cause })));
 
 /**
  * Wrap a codec so that parsed content is brought up to the latest version.
