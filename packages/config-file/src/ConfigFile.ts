@@ -294,13 +294,14 @@ const makeImpl = <A, I, RR>(
 	 * Three properties hold, in order of how easy they are to lose:
 	 *
 	 * 1. **Zero-cost when absent.** No `events` option means `Effect.void` — no
-	 *    context lookup, no `DateTime.now`, no allocation.
+	 *    context lookup, no `DateTime.now`.
 	 * 2. **Never a requirement.** `Effect.serviceOption` reads the ambient context
 	 *    without adding to `R`, so wiring events cannot change a layer's type.
-	 * 3. **Never fatal.** A subscriber's hub is consumer-supplied code. `catch`
-	 *    absorbs its typed failures and `catchDefect` its throws; interruption is
-	 *    deliberately left to propagate, because a config load that is being
-	 *    interrupted must stay interrupted.
+	 * 3. **Never fatal.** A subscriber's hub is consumer-supplied code. It cannot
+	 *    FAIL — `PubSub.publish` has no error channel — but it CAN throw, and
+	 *    `catchDefect` absorbs that; interruption is deliberately left to
+	 *    propagate, because a config load that is being interrupted must stay
+	 *    interrupted.
 	 */
 	const emit = (payload: ConfigEventPayload): Effect.Effect<void> =>
 		options.events === undefined
@@ -316,8 +317,7 @@ const makeImpl = <A, I, RR>(
 								}),
 						}),
 					),
-					Effect.catch(() => Effect.void),
-					Effect.catchDefect(() => Effect.void),
+					Effect.catchDefect((defect) => Effect.logDebug("ConfigEvents.emit: consumer hub raised a defect", defect)),
 				);
 
 	/** The public, path-and-resolver view of the sources that fed a load. */

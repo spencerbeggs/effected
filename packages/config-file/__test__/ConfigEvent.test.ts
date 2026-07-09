@@ -201,6 +201,52 @@ describe("ConfigEvent per-operation granularity", () => {
 	);
 });
 
+describe("ConfigEvent failure variants carry structured errors", () => {
+	// v3 stringified every failure's `reason`. If a subscriber's only way to
+	// branch on a failure is `error.message`, the structured-error contract this
+	// package exists to enforce is a claim nobody is checking.
+	it.effect("ParseFailed is emitted with a structured ConfigCodecError, never a string", () =>
+		Effect.gen(function* () {
+			const svc = yield* ConfigEvents;
+			const sub = yield* PubSub.subscribe(svc.events);
+			const cfg = yield* AppConfig;
+			yield* Effect.result(cfg.load);
+
+			const collected = yield* drain(sub);
+			const parseFailed = collected.map((e) => e.event).find((p) => p._tag === "ParseFailed");
+			if (parseFailed === undefined || parseFailed._tag !== "ParseFailed") {
+				return assert.fail("expected a ParseFailed event");
+			}
+
+			assert.isNotString(parseFailed.error);
+			assert.strictEqual((parseFailed.error as { _tag: unknown })._tag, "ConfigCodecError");
+		}).pipe(Effect.scoped, Effect.provide(readLayer({ "/app/.apprc": "{ not json" }))),
+	);
+
+	it.effect("ValidationFailed is emitted with a structured ConfigValidationError, never a string", () =>
+		Effect.gen(function* () {
+			const svc = yield* ConfigEvents;
+			const sub = yield* PubSub.subscribe(svc.events);
+			const cfg = yield* AppConfig;
+			yield* Effect.result(cfg.load);
+
+			const collected = yield* drain(sub);
+			const validationFailed = collected.map((e) => e.event).find((p) => p._tag === "ValidationFailed");
+			if (validationFailed === undefined || validationFailed._tag !== "ValidationFailed") {
+				return assert.fail("expected a ValidationFailed event");
+			}
+
+			assert.isNotString(validationFailed.error);
+			assert.strictEqual((validationFailed.error as { _tag: unknown })._tag, "ConfigValidationError");
+		}).pipe(
+			Effect.scoped,
+			// `port` must be a number; a string fails the schema, which is what
+			// `decode` — not the codec — must reject.
+			Effect.provide(readLayer({ "/app/.apprc": `{"port":"not-a-number"}` })),
+		),
+	);
+});
+
 describe("ConfigEvents opt-in", () => {
 	/** The same service, built WITHOUT the `events` option. */
 	const noEventsLayer = ConfigFile.layer(AppConfig, {
@@ -235,7 +281,7 @@ describe("ConfigEvents opt-in", () => {
 		}).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(eventsLayer, noEventsLayer))),
 	);
 
-	it.effect("a subscriber that explodes on publish never fails a config load", () =>
+	it.effect("a structurally invalid consumer-supplied hub never fails a config load", () =>
 		Effect.gen(function* () {
 			const cfg = yield* AppConfig;
 			const value = yield* cfg.load;
@@ -243,7 +289,11 @@ describe("ConfigEvents opt-in", () => {
 		}).pipe(
 			Effect.provide(
 				Layer.mergeAll(
-					// A hostile ConfigEvents whose PubSub throws the moment it is published to.
+					// A hub shaped nothing like a real PubSub. `PubSub.publish` is a free
+					// function that reads the hub's internal fields directly, so this does
+					// not invoke `publish` below — it throws from inside `PubSub.publish`
+					// itself when it dereferences a field that does not exist. That throw
+					// is exactly the class of defect `catchDefect` must absorb.
 					Layer.succeed(ConfigEvents, {
 						events: {
 							publish: () => {
