@@ -69,3 +69,29 @@ describe("ConfigResolver error absorption", () => {
 		assert.strictEqual(ConfigResolver.systemEtc({ app: "y", filename: "z" }).name, "system");
 	});
 });
+
+describe("ConfigResolver — an unreadable ancestor must not abort root discovery", () => {
+	/** `/a/b` is unreadable; the real root lives above it at `/a`. */
+	const flakyFs = Layer.succeed(FileSystem.FileSystem, {
+		exists: (p: string) => {
+			if (p.startsWith("/a/b/")) return Effect.fail(new Error("EACCES: permission denied"));
+			if (p === "/a/.git" || p === "/a/.apprc") return Effect.succeed(true);
+			return Effect.succeed(false);
+		},
+		readFileString: () => Effect.fail(new Error("EACCES: permission denied")),
+	} as unknown as FileSystem.FileSystem);
+
+	it.effect("gitRoot finds the root above an unreadable ancestor", () =>
+		Effect.gen(function* () {
+			const found = yield* ConfigResolver.gitRoot({ filename: ".apprc", cwd: "/a/b/c" }).resolve;
+			assert.strictEqual(Option.getOrNull(found), "/a/.apprc");
+		}).pipe(Effect.provide(Layer.mergeAll(flakyFs, Path.layer))),
+	);
+
+	it.effect("upwardWalk skips an unreadable directory and keeps ascending", () =>
+		Effect.gen(function* () {
+			const found = yield* ConfigResolver.upwardWalk({ filename: ".apprc", cwd: "/a/b/c" }).resolve;
+			assert.strictEqual(Option.getOrNull(found), "/a/.apprc");
+		}).pipe(Effect.provide(Layer.mergeAll(flakyFs, Path.layer))),
+	);
+});

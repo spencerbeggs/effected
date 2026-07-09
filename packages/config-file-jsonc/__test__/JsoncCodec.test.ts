@@ -52,4 +52,17 @@ describe("JsoncCodec", () => {
 			}
 		}),
 	);
+
+	it.effect("wraps a stringify failure as ConfigCodecError with the cause preserved", () =>
+		Effect.gen(function* () {
+			const circular: Record<string, unknown> = {};
+			circular.self = circular;
+			const error = yield* Effect.flip(JsoncCodec.stringify(circular));
+			assert.instanceOf(error, ConfigCodecError);
+			assert.strictEqual(error.codec, "jsonc");
+			assert.strictEqual(error.operation, "stringify");
+			// Structural, never stringified: a string has no prototype chain to TypeError.
+			assert.instanceOf(error.cause, TypeError);
+		}),
+	);
 });

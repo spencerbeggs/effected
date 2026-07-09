@@ -342,6 +342,68 @@ Two changes, both verified by probe:
 
 Note also that each source is decoded **individually** before the strategy sees it, so `layeredMerge` overrides values across tiers; it cannot fill a field missing from a source, because that source would fail its own schema decode first.
 
+### As-built: the prototype-preserving merge reopened prototype pollution
+
+The first fix above used `Object.assign(Object.create(proto), target)`. That was wrong, and the
+review caught it. `Object.assign` copies with `[[Set]]` semantics, so an own `__proto__` key on
+`target` — which `JSON.parse` happily produces — resolves to `Object.prototype`'s inherited
+accessor and **reassigns the result's prototype to attacker-controlled data**. The `FORBIDDEN` set
+only filtered `source`, and `deepMerge(higher, merged)` passes the *highest-priority* document as
+`target`. The spread it replaced (`{ ...target }`) was safe by accident: object spread uses
+`CreateDataProperty` and never invokes a setter.
+
+Verified before and after:
+
+~~~text
+hostile = JSON.parse('{"ok":1,"__proto__":{"polluted":true}}')
+Object.assign : result prototype polluted -> true
+spread        : result prototype polluted -> false
+~~~
+
+`deepMerge` now filters **both** sides through `FORBIDDEN` and copies every key with
+`Object.defineProperty`, which creates an own data property and never consults the prototype chain.
+Two tests pin it: a hostile `__proto__` on the higher-priority document, and a hostile `__proto__`
+nested under a key absent from the target (the wholesale-copy branch, which stays inert).
+
+The lesson worth keeping: a prototype-preserving merge and a prototype-pollution guard interact.
+Preserving the prototype means `result` inherits `Object.prototype`'s `__proto__` accessor, so any
+write that goes through `[[Set]]` can move the prototype. Only `defineProperty` is safe.
+
+### As-built: one unreadable ancestor no longer aborts root discovery
+
+`rootAnchored` absorbed failures at the resolver boundary, so a single `EACCES` on an ancestor
+turned the whole ascent into `Option.none()` — hiding a valid `.git` or `pnpm-workspace.yaml` above
+it. `findUpward` now absorbs each probe individually, so an unreadable directory is skipped and the
+walk continues. Its error channel is `never` as a result, which makes the resolver-absorption
+contract a property of the walk rather than of the wrapper. Pinned by a test with an unreadable
+`/a/b` and a real root at `/a`.
+
+### As-built: `update` serializes its read-modify-write
+
+`update` is load → transform → save. Two concurrent calls both read the old document across the
+read's async boundary and both write their own transform of it, so one caller's change was silently
+lost. It now holds a one-permit `Semaphore` (`Semaphore.makeUnsafe(1)`, one per service instance)
+across the whole critical section.
+
+Note `Effect.makeSemaphore` does not exist in v4 — `Semaphore` is a top-level module
+(`Semaphore.make` / `makeUnsafe`, then `withPermits(1)(effect)`).
+
+This guards one service instance in one process. It is **not** a file lock: another process writing
+the same path can still clobber.
+
+The first version of the test passed against a synchronous in-memory `FileSystem` and proved
+nothing — with no async boundary the fibers never interleave. The second version leaked the race
+the other way: it logged the value before yielding but returned `files[p]` *after*, so the second
+fiber read the first fiber's write. A read must snapshot at read time. Only then does the
+unserialized implementation fail, `expected 1 to equal 2`.
+
+### As-built: PBKDF2 raised to 600,000 iterations
+
+The crypto was ported verbatim from v3, which used 100,000. OWASP's current guidance for
+PBKDF2-HMAC-SHA256 is 600,000. Nothing is published, so raising it costs no ciphertext
+compatibility, and derivation is memoized per codec instance so the cost is paid once. This is the
+one deliberate divergence from the verbatim-port policy, and it is recorded in the changeset.
+
 ## Deliberately not ported
 
 - **The `ConfigError` mega-error** — eight tagged errors (the seven designed plus `ConfigDefaultPathMissingError`, added at port time) with structured `cause` fields and narrowed per-method unions.

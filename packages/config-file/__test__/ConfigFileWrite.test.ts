@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Path, Schema } from "effect";
+import { Effect, FileSystem, Layer, Path, Schema } from "effect";
 import type { ConfigCodec as ConfigCodecShape } from "../src/ConfigCodec.js";
 import { ConfigCodec, ConfigCodecError } from "../src/ConfigCodec.js";
 import type { ConfigSaveError, ConfigUpdateError, ConfigWriteError } from "../src/ConfigFile.js";
@@ -219,6 +219,60 @@ describe("ConfigFile.layer with an empty resolver chain", () => {
 			assert.strictEqual(written, "/write-only/.apprc");
 			assert.deepStrictEqual(host.mkdirs, ["/write-only"]);
 			assert.deepStrictEqual(JSON.parse(host.files["/write-only/.apprc"] as string), { port: 42 });
+		}),
+	);
+});
+
+describe("ConfigFile.update — concurrency", () => {
+	/**
+	 * A recording FileSystem whose read yields to the scheduler, so two fibers
+	 * genuinely interleave between `load` and `save`. Without that boundary the
+	 * effects run to completion one after the other and no race is possible —
+	 * a test over a synchronous FileSystem passes whether or not `update` is
+	 * serialized, which proves nothing.
+	 */
+	const yieldingFs = (files: Record<string, string>) => ({
+		files,
+		layer: Layer.succeed(FileSystem.FileSystem, {
+			exists: (p: string) => Effect.succeed(Object.hasOwn(files, p)),
+			readFileString: (p: string) =>
+				Effect.gen(function* () {
+					// Snapshot before yielding: a real read observes the file as it was when the
+					// read began. Returning `files[p]` after the yield would silently hand the
+					// second fiber the first fiber's write, masking the very race under test.
+					if (!Object.hasOwn(files, p)) return yield* Effect.fail(new Error(`ENOENT: ${p}`));
+					const snapshot = files[p] as string;
+					yield* Effect.yieldNow;
+					return snapshot;
+				}),
+			writeFileString: (p: string, content: string) =>
+				Effect.sync(() => {
+					files[p] = content;
+				}),
+			makeDirectory: () => Effect.void,
+		} as unknown as FileSystem.FileSystem),
+	});
+
+	it.effect("two concurrent updates both land; neither write is lost", () =>
+		Effect.gen(function* () {
+			const host = yieldingFs({ "/app/.apprc": `{"port":0}` });
+			const layer = ConfigFile.layer(AppConfig, {
+				schema: AppShape,
+				codec: ConfigCodec.json,
+				resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
+				strategy: MergeStrategy.firstMatch<AppShape>(),
+				defaultPath: Effect.succeed("/app/.apprc"),
+			}).pipe(Layer.provide(Layer.mergeAll(host.layer, Path.layer)));
+
+			yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				const bump = cfg.update((current) => new AppShape({ port: current.port + 1 }));
+				// Unserialized, both fibers read port=0 across the yield and both write 1.
+				yield* Effect.all([bump, bump], { concurrency: 2 });
+			}).pipe(Effect.provide(layer));
+
+			const final = JSON.parse(host.files["/app/.apprc"] as string) as { port: number };
+			assert.strictEqual(final.port, 2, "both increments must survive");
 		}),
 	);
 });

@@ -14,11 +14,11 @@ Config loading is where a well-typed application usually gives up: a library fin
 ## Install
 
 ```bash
-npm install @effected/config-file effect
+npm install @effected/config-file effect @effect/platform-node
 ```
 
 ```bash
-pnpm add @effected/config-file effect
+pnpm add @effected/config-file effect @effect/platform-node
 ```
 
 Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package itself adds no other runtime dependencies. Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.
@@ -116,7 +116,7 @@ export const loadOrFallback = (config: ConfigFileShape<AppShape>) =>
 Only the zero-dependency `ConfigCodec.json` ships in core. Codecs for other formats live in sibling packages, so core stays dependency-free and you pay only for the parser you use:
 
 - `@effected/config-file-jsonc` — JSONC, built on `@effected/jsonc`.
-- `@effected/config-file-yaml` — YAML, built on `@effected/yaml`. Not yet built.
+- `@effected/config-file-yaml` — YAML, built on `@effected/yaml`.
 - `@effected/config-file-toml` — TOML. Not yet built.
 
 Codecs compose. `EncryptedCodec` wraps any codec with AES-GCM, and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version. Each *widens* the error channel rather than flattening its failures into the inner codec's error:

@@ -95,6 +95,10 @@ export const secret = EncryptedCodec(migrating, EncryptedCodecKey.fromPassphrase
 
 `ConfigEvents` — an opt-in `PubSub` of `ConfigEvent`, honestly zero-cost when omitted: no `events` option means no context lookup at all. Failure events carry the structured typed error, never a `reason` string.
 
+### Security
+
+`EncryptedCodec`'s PBKDF2 key derivation runs at 600,000 iterations rather than the 100,000 its v3 predecessor used, following current OWASP guidance for PBKDF2-HMAC-SHA256. Derivation is memoized per codec instance, so the cost is paid once. This is the one deliberate divergence from an otherwise verbatim port of v3's AES-GCM implementation.
+
 ### Not yet ported
 
 The file watcher (`@effected/config-file-watcher`) and the TOML codec (`@effected/config-file-toml`, waiting on `@effected/toml`) are their own migration cycles and are not part of this release.

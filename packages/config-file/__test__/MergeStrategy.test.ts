@@ -127,3 +127,33 @@ describe("MergeStrategy.layeredMerge — value identity", () => {
 		}),
 	);
 });
+
+describe("MergeStrategy.layeredMerge — prototype pollution via the higher-priority source", () => {
+	it.effect("a hostile __proto__ on the HIGHER-priority document cannot reassign the result's prototype", () =>
+		Effect.gen(function* () {
+			const strategy = MergeStrategy.layeredMerge<Record<string, unknown>>();
+			// `deepMerge(higher, merged)` passes the highest-priority document as `target`.
+			const hostile = JSON.parse(`{"ok":1,"__proto__":{"polluted":true}}`) as Record<string, unknown>;
+			const value = yield* strategy.resolve([src("/a", "walk", hostile), src("/etc", "system", { other: 2 })]);
+
+			const proto = Object.getPrototypeOf(value) as Record<string, unknown> | null;
+			assert.strictEqual(proto, Object.prototype, "the result's prototype must not be attacker-controlled");
+			assert.isUndefined((value as { polluted?: unknown }).polluted);
+			assert.isUndefined(({} as Record<string, unknown>).polluted);
+		}),
+	);
+
+	it.effect("a hostile __proto__ nested under a key absent from the target stays inert", () =>
+		Effect.gen(function* () {
+			const strategy = MergeStrategy.layeredMerge<Record<string, unknown>>();
+			// `section` exists only on the lower-priority source, so it is copied wholesale.
+			const lower = JSON.parse(`{"section":{"__proto__":{"polluted":true}}}`) as Record<string, unknown>;
+			const value = yield* strategy.resolve([src("/a", "walk", { ok: 1 }), src("/etc", "system", lower)]);
+
+			const section = value.section as Record<string, unknown>;
+			assert.strictEqual(Object.getPrototypeOf(section), Object.prototype);
+			assert.isUndefined((section as { polluted?: unknown }).polluted);
+			assert.isUndefined(({} as Record<string, unknown>).polluted);
+		}),
+	);
+});

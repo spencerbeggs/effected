@@ -1,4 +1,4 @@
-import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, PubSub, Schema } from "effect";
+import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, PubSub, Schema, Semaphore } from "effect";
 import type { ConfigCodec, ConfigCodecError } from "./ConfigCodec.js";
 import type { ConfigEventPayload, ConfigEvents, ConfigEventsShape } from "./ConfigEvent.js";
 import { ConfigEvent } from "./ConfigEvent.js";
@@ -473,13 +473,31 @@ const makeImpl = <A, I, RR>(
 		return target;
 	});
 
+	/**
+	 * Serializes `update`'s read-modify-write. One permit, one service instance.
+	 *
+	 * @remarks
+	 * `update` is load → transform → save. Without a lock, two concurrent calls
+	 * both read the old document across the read's async boundary and both write
+	 * their own transform of it, so one caller's change is silently lost. The
+	 * lock covers the whole critical section, not just the write.
+	 *
+	 * This guards a single service instance in a single process. It is not a file
+	 * lock: another process writing the same path concurrently can still clobber.
+	 */
+	const updateLock = Semaphore.makeUnsafe(1);
+
 	const update = Effect.fn("ConfigFile.update")(function* (fn: (current: A) => A, defaultValue?: A) {
-		const current = defaultValue !== undefined ? yield* loadOrDefault(defaultValue) : yield* load();
-		const updated = fn(current);
-		// `saveTo`, not `save`: calling the public method would leak its `Saved`.
-		const target = yield* saveTo(updated);
-		yield* emit({ _tag: "Updated", path: target });
-		return updated;
+		return yield* updateLock.withPermits(1)(
+			Effect.gen(function* () {
+				const current = defaultValue !== undefined ? yield* loadOrDefault(defaultValue) : yield* load();
+				const updated = fn(current);
+				// `saveTo`, not `save`: calling the public method would leak its `Saved`.
+				const target = yield* saveTo(updated);
+				yield* emit({ _tag: "Updated", path: target });
+				return updated;
+			}),
+		);
 	});
 
 	return {

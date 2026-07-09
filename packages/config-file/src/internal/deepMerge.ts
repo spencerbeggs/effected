@@ -56,16 +56,31 @@ export const deepMerge = (
 	target: Record<string, unknown>,
 	source: Record<string, unknown>,
 ): Record<string, unknown> => {
-	const result: Record<string, unknown> = Object.assign(Object.create(Object.getPrototypeOf(target)), target);
+	const result: Record<string, unknown> = Object.create(Object.getPrototypeOf(target));
+	// `target`'s keys must be filtered too, and copied as data properties. A bare
+	// assignment uses [[Set]] semantics, so an own `__proto__` key on the
+	// higher-priority document would reach `Object.prototype`'s inherited accessor
+	// and reassign `result`'s prototype to attacker-controlled data — defeating
+	// FORBIDDEN and the prototype we just installed. `Object.assign` and `result[k] = v`
+	// both do this; `defineProperty` does not.
+	for (const key of Object.keys(target)) {
+		if (FORBIDDEN.has(key)) continue;
+		define(result, key, target[key]);
+	}
 	for (const key of Object.keys(source)) {
 		if (FORBIDDEN.has(key)) continue;
 		const sourceValue = source[key];
 		const targetValue = result[key];
 		if (Object.hasOwn(result, key) && isPlainObject(targetValue) && isPlainObject(sourceValue)) {
-			result[key] = deepMerge(targetValue, sourceValue);
+			define(result, key, deepMerge(targetValue, sourceValue));
 		} else if (!Object.hasOwn(result, key)) {
-			result[key] = sourceValue;
+			define(result, key, sourceValue);
 		}
 	}
 	return result;
+};
+
+/** Create an own data property, never invoking a setter inherited from the prototype chain. */
+const define = (target: Record<string, unknown>, key: string, value: unknown): void => {
+	Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true });
 };
