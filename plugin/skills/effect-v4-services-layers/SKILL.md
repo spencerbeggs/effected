@@ -5,7 +5,7 @@ description: Use when defining Effect v4 services or wiring Layers — the `Cont
 
 # Services & Layers (Effect v4)
 
-Verified against `effect@4.0.0-beta.93`. A service is a typed key into the
+Verified against `effect@4.0.0-beta.94`. A service is a typed key into the
 runtime's context; a layer is the recipe that builds it. Get three things
 right — the one service form, provide-once composition, and memoization by
 reference — and the wiring stays honest and cheap. For the v3→v4 name

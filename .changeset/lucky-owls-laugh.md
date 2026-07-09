@@ -6,4 +6,4 @@
 
 | Dependency | Type           | Action | From | To             |
 | ---------- | -------------- | ------ | ---- | -------------- |
-| effect     | peerDependency | added  | —    | ^4.0.0-beta.93 |
+| effect     | peerDependency | added  | —    | ^4.0.0-beta.94 |

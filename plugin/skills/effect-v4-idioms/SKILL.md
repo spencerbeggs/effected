@@ -1,6 +1,6 @@
 ---
 name: effect-v4-idioms
-description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Verified against effect@4.0.0-beta.93.
+description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Verified against effect@4.0.0-beta.94.
 ---
 
 # Effect v4 core idioms
@@ -10,7 +10,7 @@ runtime, equality. This is the *how to write it well* companion to
 `effect-v4-construct-map` (which owns the flat v3→v4 rename tables and the
 `Context.Service` / `Schema.TaggedErrorClass` migration rows — cross-reference it
 rather than duplicate). Every identifier below was probed against
-`effect@4.0.0-beta.93`; when you reach past this list, run one runtime probe
+`effect@4.0.0-beta.94`; when you reach past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)
 before writing — v4 betas move fast and muscle memory lies.
 
@@ -129,7 +129,7 @@ Define errors as `Schema.TaggedErrorClass` (see `effect-v4-construct-map` for
 the full migration row). The payoff at the call site: an instance is yieldable —
 `yield* new MyError({...})` fails the effect — and it is `instanceof Error`.
 Capture unknown throwables with a `Schema.Defect()` field — `Schema.Defect` is a
-**callable** in beta.93, not a bare schema value. The bare `cause: Schema.Defect`
+**callable** in beta.94, not a bare schema value. The bare `cause: Schema.Defect`
 typechecks but throws at construction (`Cannot read properties of undefined
 (reading 'encoding')`); you must call it:
 

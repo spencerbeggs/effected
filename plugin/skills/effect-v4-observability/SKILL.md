@@ -5,7 +5,7 @@ description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry t
 
 # Effect v4 observability
 
-Effect-core APIs below are verified against `effect@4.0.0-beta.93`.
+Effect-core APIs below are verified against `effect@4.0.0-beta.94`.
 `@effect/opentelemetry` is **not installed** in this monorepo — every
 `@effect/opentelemetry` example is *shape per the official guide; verify against
 the installed package when first adopted*. v4 betas move fast; when an API is not
@@ -40,7 +40,7 @@ those never ran or cannot fail. The blind spot reads as signal.
 
 `Effect.fn`, `Effect.fnUntraced`, `Effect.withSpan`, `Effect.withSpanScoped`,
 `Effect.withParentSpan`, `Effect.annotateCurrentSpan`, `Effect.withLogSpan` — all
-present as `function` in beta.93.
+present as `function` in beta.94.
 
 ```ts
 import { Effect } from "effect"
@@ -85,7 +85,7 @@ const sync = Effect.fn("User.sync")(function* (id: string) {
 ## Structured logging
 
 `Effect.log`, `logTrace`, `logDebug`, `logInfo`, `logWarning`, `logError`,
-`logFatal`, `annotateLogs` — all `function` in beta.93. They flow through the
+`logFatal`, `annotateLogs` — all `function` in beta.94. They flow through the
 current fiber: span context, annotations, and log spans attach automatically.
 
 ```ts
@@ -101,7 +101,7 @@ through the engine — a public boundary may log, the hot path does not.
 
 ## Metrics
 
-Probed beta.93 `Metric` surface: `counter`, `gauge`, `histogram`, `frequency`,
+Probed beta.94 `Metric` surface: `counter`, `gauge`, `histogram`, `frequency`,
 `summary`, `timer`, `withAttributes`, `withConstantInput`, `linearBoundaries`,
 `exponentialBoundaries`, `boundariesFromIterable` — all `function`.
 
@@ -142,7 +142,7 @@ its call to the library.
 > Everything in this section is **shape per the official guide; verify against
 > the installed `@effect/opentelemetry` when first adopted.** The package is not
 > in this monorepo. Confirm the beta version compatible with
-> `effect@4.0.0-beta.93` and the exact option names before shipping.
+> `effect@4.0.0-beta.94` and the exact option names before shipping.
 
 Libraries never touch this. An **application** composes one telemetry layer at its
 top level:

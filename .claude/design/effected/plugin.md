@@ -3,13 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-08
-last-synced: 2026-07-08
-completeness: 90
+updated: 2026-07-09
+last-synced: 2026-07-09
+completeness: 92
 related:
   - architecture.md
   - effect-standards.md
   - migration-playbook.md
+  - releases.md
 ---
 
 # The "effective" Claude Code plugin
@@ -18,7 +19,7 @@ related:
 
 `plugin/` houses "effective", a Claude Code plugin for Effect v4 development. It ships a catalog of skills, three specialist subagents and a SessionStart briefing hook, and is dogfooded during the migrations described in [migration-playbook.md](migration-playbook.md). It is repo infrastructure, not an `@effected` library (see [architecture.md](architecture.md)). During dogfooding it is loaded via `claude --plugin-dir plugin` — the root `package.json` `claude` script.
 
-The plugin's ethos is "verify against the installed beta, not v3 memory": every skill was authored from distillations where each API was probed against the installed `effect@4.0.0-beta.93`. The corpus sources were the Effect team's migration notes (`Effect-TS/effect-smol/migration/*`) and the official skill guides ([Effect-TS/skills](https://github.com/Effect-TS/skills)). Our own migration lessons feed back in per step 6 of the playbook — `effect-v4-construct-map` and `hardening-a-parser-port` are the flywheel's distilled lessons.
+The plugin's ethos is "verify against the installed beta, not v3 memory": every skill was authored from distillations where each API was probed against the installed `effect` beta pinned in the `effect` catalog. The corpus sources were the Effect team's migration notes (`Effect-TS/effect-smol/migration/*`) and the official skill guides ([Effect-TS/skills](https://github.com/Effect-TS/skills)). Our own migration lessons feed back in per step 6 of the playbook — `effect-v4-construct-map` and `hardening-a-parser-port` are the flywheel's distilled lessons, and the [`improve` skill](#the-improve-skill) is the mechanism that carries them.
 
 ## Skill catalog
 
@@ -52,6 +53,42 @@ Three subagents live under `plugin/agents/`, each arriving with the relevant ski
 - `effect-developer` — writes new idiomatic v4 code (schemas, services and layers, typed errors, CLIs); step 1 on any non-trivial feature is `effect-v4-planning` — emit the design summary for buy-in before implementation. Skills: planning, schema-classes, services-layers, idioms, observability, api-extractor-bases. Delegate feature implementation here.
 - `effect-reviewer` — reviews v4 code for idiom, error-channel and API-surface correctness, and writes or strengthens `@effect/vitest` tests. Skills: testing, idioms, schema-classes, services-layers, observability, hardening, api-extractor-bases. Delegate review and test authoring here.
 - `effect-migrator` — drives v3→v4 ports engine-first behind a compliance gate; after reading the design doc it runs the `effect-v4-planning` pillars over the *target* v4 shape for the forward-design lenses (error audiences, observability posture, testability), deferring to the migration playbook and construct-map for port mechanics (migration order, the compliance gate, v3→v4 name lookups). Skills: construct-map and planning plus every best-practice skill, hardening and api-extractor-bases. Delegate migration work here; this agent drives the next port per the playbook.
+
+## The `improve` skill
+
+`.claude/skills/improve` is a **project-level** skill, not a plugin skill. It is aware of `plugin/skills/` and edits them; the plugin carries no self-improvement machinery of its own. A tool does not grade itself, and the separation keeps the plugin publishable while the improvement loop stays free to assume this repo's layout.
+
+It closes the loop the plugin's ethos already implies: migrations falsify skill claims, and something has to turn those falsifications back into skill edits.
+
+**Harvest** runs at the end of a migration. It reads the retractions recorded in `.superpowers/sdd/progress.md` and the PR review threads, and files a ticket for each skill claim that turned out false, carrying the claim and the artifact that killed it. This is what produced issues #9–#12 on `spencerbeggs/effected` by hand during the `config-file` cycle — two against `hardening-a-parser-port`, one each against `effect-v4-testing` and `effect-v4-observability`.
+
+**Tune** runs against those open tickets. For each it climbs an evidence ladder, only as far as the claim requires, then amends the skill and closes the ticket citing what it found.
+
+### The evidence ladder
+
+The rungs are ordered by cost, and each answers a strictly different class of question. The ordering was established empirically on 2026-07-09 by testing the corpus against facts this repo had already won by probing.
+
+1. **Migration notes and skill guides** (`effect-smol/migration/*.md`, `Effect-TS/skills` references). Cheap, and authoritative for the **rename** class. `migration/forking.md` names `Effect.fork` → `Effect.forkChild` in a table; `migration/cause.md` gives `Cause.isFailure` → `Cause.hasFails`.
+2. **Vendored source** (`repos/effect-smol`, pinned to the catalog's beta tag; see [architecture.md](architecture.md#vendored-source)). Authoritative for **existence and signature**.
+3. **A probe run from inside the package.** The only rung that settles **semantics**.
+
+The docs are prescriptive rather than exhaustive, which is why rung 1 cannot be the last rung. `migration/services.md` migrates `Context.Tag` → `Context.Service` and never mentions `Context.Key` at all — yet `Context.Key` is the primitive the port needed, and its `out Shape` covariance is what sank a design that had already been approved. `migration/forking.md` never mentions that `Effect.makeSemaphore` is gone and `Semaphore` is now a top-level module. `migration/cause.md` never mentions `Exit.causeOption` → `Exit.getCause`. Nothing short of source settles a removal; nothing short of a probe settles behaviour like `Effect.cached` memoizing an interrupt `Exit`.
+
+Hence the rule that keeps a skill edit non-vacuous: **an edit must cite the highest rung that actually settles its claim.** Renames may cite docs. Existence claims must cite source. Semantic claims must cite a runnable probe. Citing a doc passage for a semantic claim is how these skills acquired their errors in the first place — the v3 docs confirm the v3 semantics, confidently.
+
+### Probe preconditions
+
+Encoded as skill preconditions because each was learned by being burned:
+
+- **Probes run from inside the package.** The workspace root resolves `effect@3.21.4` and reports the v3 surface without hesitation. Every probe prints its resolved `effect` version.
+- **Probe files live at the package root.** The tsconfig `include` is `${configDir}/*.ts`, which does not match subdirectories — a probe in a subdirectory silently leaves the compilation program and false-passes its control.
+- **The control assertion runs first.** A probe that cannot fail is worse than no probe.
+
+### Recorded coupling: the vendored path
+
+The plugin's skills must never reference `repos/effect-smol`. That path exists because the plugin is currently loaded only from this repo; once published, it is absent from a consumer's tree, and a skill that cannot find its evidence source does not stop — it falls back on v3 memory, which is the exact failure the plugin exists to prevent. Silent fallback is worse than a hard error.
+
+The boundary: plugin skills carry distilled, already-verified facts. `improve` is what goes and verifies, and it alone may assume the vendored tree. **Exit condition:** if a plugin skill ever needs source access, the path moves behind a check that fails loudly when absent.
 
 ## SessionStart briefing hook
 

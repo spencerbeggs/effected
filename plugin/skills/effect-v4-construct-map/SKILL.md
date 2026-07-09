@@ -1,6 +1,6 @@
 ---
 name: effect-v4-construct-map
-description: Comprehensive Effect v3→v4 migration reference — the single lookup for "what did this v3 API become in v4." Use when porting Effect v3 code or reaching for a v3 API name (Context.Tag, Either, Schema variadic unions, filter combinators, Metric.tagged, Cause guards, forkDaemon). Per-domain rename/restructure tables verified against effect@4.0.0-beta.93. Consult BEFORE reaching for a v3 name; verify anything not listed against the installed package, not memory.
+description: Comprehensive Effect v3→v4 migration reference — the single lookup for "what did this v3 API become in v4." Use when porting Effect v3 code or reaching for a v3 API name (Context.Tag, Either, Schema variadic unions, filter combinators, Metric.tagged, Cause guards, forkDaemon). Per-domain rename/restructure tables verified against effect@4.0.0-beta.94. Consult BEFORE reaching for a v3 name; verify anything not listed against the installed package, not memory.
 ---
 
 # Effect v3 → v4 migration reference
@@ -11,7 +11,7 @@ lives in the five best-practices skills cross-referenced below — this skill is
 the lookup, not the tutorial.
 
 **Ethos — verify against the installed package, not memory.** Everything below
-is verified against `effect@4.0.0-beta.93`. v4 betas move fast: when an API is
+is verified against `effect@4.0.0-beta.94`. v4 betas move fast: when an API is
 not listed here, check `node_modules/effect/dist/` for the module and its
 `.d.ts` signature before writing code. Never trust v3 muscle memory. One runtime
 probe beats an hour of type-error archaeology — see [How to verify
@@ -162,7 +162,7 @@ Variadic → array / restructure:
 > NOT a `Schema.mapFields` static.
 >
 > Top-level `Schema.transform` / `Schema.transformOrFail` **do not exist as
-> callables** in beta.93 (`typeof` is `undefined`; calling throws
+> callables** in beta.94 (`typeof` is `undefined`; calling throws
 > `Schema.transform is not a function`) — observed in the first boundary port.
 > The v4 form is always `Source.pipe(Schema.decodeTo(Target,
 > SchemaTransformation.transform({ decode, encode })))` (or `transformOrFail`);
@@ -239,7 +239,7 @@ arg order (the reverse of v3).
 
 > `Layer.effect` / `Layer.succeed` are **dual**: both the curried
 > `Layer.effect(Svc)(effect)` and data-first `Layer.effect(Svc, effect)`
-> compile in beta.93.
+> compile in beta.94.
 
 ### The tag's *parameter type* is `Context.Key`, not `Context.Tag`
 
@@ -340,7 +340,7 @@ primary holds and throwing only on the fallback path.
 
 ### `@effect/platform-node`
 
-`NodeContext` **does not exist** in `@effect/platform-node@4.0.0-beta.93`. The
+`NodeContext` **does not exist** in `@effect/platform-node@4.0.0-beta.94`. The
 aggregate is `NodeServices`. And `NodeFileSystem.layer` alone does not satisfy
 `FileSystem.FileSystem | Path.Path` — compose
 `Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)`.
@@ -385,7 +385,7 @@ equality motivation, `ManagedRuntime` for multiple entrypoints).
 | span/stack-frame ergonomics via `Effect.gen` + manual `withSpan` | `Effect.fn("name")(function* …)` is now the **default constructor** for reusable business ops (auto span + stack frames); `Effect.fn(function* …)` (no name) keeps frames without a named span; `Effect.fnUntraced` is the measured-hot-path escape hatch |
 | attach a metric to an effect | `Effect.track(metric)` (post-processing arg to `Effect.fn`) |
 
-Stable/unchanged in v4 (present in beta.93): `Effect.withSpan`,
+Stable/unchanged in v4 (present in beta.94): `Effect.withSpan`,
 `withSpanScoped`, `withParentSpan`, `annotateCurrentSpan`, `withLogSpan`, the
 `Effect.log*` family. OTel bridge layers (`NodeSdk.layer`, `Tracer.layer`,
 `Metrics.layer`, `Logger.layer`) live in `@effect/opentelemetry` — **not

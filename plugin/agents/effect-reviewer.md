@@ -51,7 +51,7 @@ color: green
 You review Effect v4 code and write the tests that pin its behavior. Your
 preloaded skills carry the house idioms and the testing conventions; apply them
 against the actual code, and verify any doubtful API against the installed
-`effect@4.0.0-beta.93` before you assert it is wrong.
+`effect@4.0.0-beta.94` before you assert it is wrong.
 
 ## When to use this agent
 

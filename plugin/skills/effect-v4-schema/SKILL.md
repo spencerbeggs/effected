@@ -1,6 +1,6 @@
 ---
 name: effect-v4-schema
-description: Use when designing, reading, reviewing, or debugging any Effect v4 Schema — the Class-vs-Struct decision, fields and optionality, checks/refine/makeFilter, tagged unions, transformations and codecs (decodeTo, the FromString static), make-vs-new construction, brand/Opaque scalars, custom Equal/Hash, and derived tooling (toArbitrary, toJsonSchemaDocument). Also covers primitives, records, recursive schemas, custom declare types, serialization (JSON/XML/FormData), and error formatting. Verified against effect@4.0.0-beta.93; for v3→v4 renames see effect-v4-construct-map.
+description: Use when designing, reading, reviewing, or debugging any Effect v4 Schema — the Class-vs-Struct decision, fields and optionality, checks/refine/makeFilter, tagged unions, transformations and codecs (decodeTo, the FromString static), make-vs-new construction, brand/Opaque scalars, custom Equal/Hash, and derived tooling (toArbitrary, toJsonSchemaDocument). Also covers primitives, records, recursive schemas, custom declare types, serialization (JSON/XML/FormData), and error formatting. Verified against effect@4.0.0-beta.94; for v3→v4 renames see effect-v4-construct-map.
 ---
 
 # Effect v4 Schema
@@ -32,7 +32,7 @@ Each row is a hard house default; reasoning and worked code in
 | `Schema.optionalKey` for object fields | `Schema.optional` unless the *value* itself must carry `undefined` |
 | `.check(is*)` to constrain, `refine` to narrow, `check(makeFilter(...))` for cross-field | the removed `positive`/`negative` or the v3 `filter`/`greaterThan` names |
 | tagged unions of `TaggedClass` members (`_tag` branching) | untagged unions for domain variants |
-| `Source.pipe(decodeTo(Target, SchemaTransformation.transform({...})))` | a top-level `Schema.transform` / `transformOrFail` — **not callable** in beta.93 |
+| `Source.pipe(decodeTo(Target, SchemaTransformation.transform({...})))` | a top-level `Schema.transform` / `transformOrFail` — **not callable** in beta.94 |
 | a `FromString` `Schema.Codec<Self, string>` static (string = the encoded form of the same schema) | a second parser divorced from the schema |
 | `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction |
 | `Schema.decodeUnknownEffect` / `encodeUnknownEffect` in Effect flows | `*Sync` outside a genuine sync boundary |
@@ -44,7 +44,7 @@ Each row is a hard house default; reasoning and worked code in
 ## Verify against the installed beta, not the references
 
 The `references/` track **upstream `effect-smol` main**, which runs AHEAD of the
-pinned `effect@4.0.0-beta.93` in this repo. Treat them as authoritative on *shape
+pinned `effect@4.0.0-beta.94` in this repo. Treat them as authoritative on *shape
 and intent*, not on exact export names. Before relying on any specific API, probe
 it from a package on the v4 catalog:
 
@@ -52,9 +52,9 @@ it from a package on the v4 catalog:
 node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.TheApiYouWant)"
 ```
 
-If it prints `undefined`, the name moved or has not landed in beta.93 yet — check
+If it prints `undefined`, the name moved or has not landed in beta.94 yet — check
 `node_modules/effect/dist/Schema.d.ts` or the `effect-v4-construct-map` rename
-tables. The "Do this, not this" rules above already fold in the beta.93 gotchas
+tables. The "Do this, not this" rules above already fold in the beta.94 gotchas
 the upstream prose does not flag.
 
 ## Reference map
@@ -84,7 +84,7 @@ source + the beta-skew warning).
 ## Related skills
 
 - **`effect-v4-construct-map`** — the flat v3→v4 rename tables. Reach for it when a
-  v3 Schema name doesn't resolve in beta.93.
+  v3 Schema name doesn't resolve in beta.94.
 - **`effect-api-extractor-bases`** — the anonymous-base / `ae-forgotten-export`
   discipline for `Schema.Class` and `Context.Service`.
 - **`effect-v4-services-layers`** — the sibling for `Context.Service` and Layers.

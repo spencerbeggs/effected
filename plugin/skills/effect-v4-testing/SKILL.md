@@ -32,7 +32,7 @@ describe("Jsonc", () => {
   environment (`TestClock` + `TestConsole`). Its type is
   `Tester<R | Scope.Scope>` — it already carries a `Scope`, so scoped effects
   (`Effect.acquireRelease`, scoped layers) run **directly** under `it.effect`.
-- **There is no `it.scoped`** in `@effect/vitest@4.0.0-beta.93` — the Tester
+- **There is no `it.scoped`** in `@effect/vitest@4.0.0-beta.94` — the Tester
   surface is `skip`/`skipIf`/`runIf`/`only`/`each`/`fails`/`prop`. Do not reach
   for it; scoped resources need no separate tester.
 - **`it.live`** (`Tester<Scope.Scope | R>`) opts into the real `Clock` and live
@@ -277,6 +277,6 @@ under `Layer.provide` beneath the service's own layer.
   object, and a `@ts-expect-error` in a file the tsconfig silently excluded.
 
 > **Version note.** Every signature above was verified against
-> `@effect/vitest@4.0.0-beta.93` on `effect@4.0.0-beta.93`. If the `effect`
+> `@effect/vitest@4.0.0-beta.94` on `effect@4.0.0-beta.94`. If the `effect`
 > catalog bumps, re-verify the `layer` options bag and the
 > `it.prop`-throws-on-Schema behavior first — those are the most likely to shift.

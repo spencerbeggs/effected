@@ -3,14 +3,15 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-08
-last-synced: 2026-07-08
-completeness: 92
+updated: 2026-07-09
+last-synced: 2026-07-09
+completeness: 93
 related:
   - architecture.md
   - package-inventory.md
   - migration-playbook.md
   - package-setup.md
+  - releases.md
   - plugin.md
 ---
 
@@ -44,6 +45,21 @@ Only entrypoint files — `src/index.ts` and any published subpath entrypoints �
 - **Boundary** libraries perform IO at package boundaries. They program against platform abstractions — in v4 these largely live in `effect` core (the v4 catalog carries `@effect/platform-node` but no plain `@effect/platform`) — and the consumer provides the platform implementation (platform-node/bun) at the edge.
 
 Tier assignments per package are provisional until confirmed at migration time; see [package-inventory.md](package-inventory.md).
+
+**Tier follows a package's own surface, not its neighbours'.** A codec adapter that wraps `parse`/`stringify` and never touches `FileSystem` is pure, even though its only consumer is a boundary library — `@effected/config-file-jsonc` and `-yaml` are pure for exactly this reason. Conversely, a package is boundary the moment it performs IO itself, regardless of how thin the IO is.
+
+### Dependency policy
+
+The goal is to stay as Effect-native as possible, because a program built only from Effect primitives composes and typechecks as one thing. That is a strong default, not an absolute: reinventing a wheel has a cost too, and the policy is tier-scoped rather than global.
+
+- **Pure tier: no external runtime dependencies.** Peer-depend on `effect`, nothing else. A pure package *may* depend on other pure `@effected` packages (`workspace:*`) — the rule bounds the external surface, not the internal graph.
+- **Boundary tier: external runtime dependencies are permitted** where they carry real weight and no Effect-native equivalent exists. `@effected/package-json` takes `spdx-expression-parse`; `@effected/workspaces` takes `@pnpm/catalogs.*`. Each such dependency is a decision recorded in that package's design doc, not a default.
+
+The rule has a sharp consequence worth stating plainly, because it settles a question that keeps recurring: **a format package cannot wrap a third-party parser.** Parsing has no IO, so a format package is pure, so it may not take a runtime dependency. `@effected/toml` therefore cannot be a `smol-toml` wrapper — it vendors a ported-with-attribution engine into `src/internal/`, exactly as `@effected/jsonc` (1,245 lines) and `@effected/yaml` (9,973 lines) already did, hardened per the input-hardening standards below.
+
+This is less of a constraint than it sounds, which is why the rule is worth keeping rather than carving out. `smol-toml` is BSD-3-Clause, zero-dependency and 211KB unpacked; vendoring it *is* the wrapper, on the same schedule, and a from-scratch engine remains an optional later replacement rather than a prerequisite. Both migrated engines took this path already. The rule bites only where the third-party code is large, encumbered, or itself dependency-laden — and in that case a pure package was the wrong shape to begin with.
+
+**Injecting IO does not make a package boundary.** `@effected/walker` performs filesystem traversal yet is pure tier, because it takes its probe as a parameter — `findUpward(dirs, candidatesFor, exists)` never imports `FileSystem`. Taking the effectful operation as a seam and letting the caller supply it is the ordinary way a pure package participates in IO, and it is what keeps `effect` the only peer.
 
 ## Schema standards
 
@@ -126,6 +142,8 @@ IMPORTANT: this configuration leans on current pnpm resolver behavior and is exp
 ## Cross-@effected dependencies
 
 Internal dependencies between `@effected` packages use `workspace:*`. Whether an edge is a peer or regular dependency is decided per edge at design time.
+
+The graph must stay **acyclic**. Every package releases together (see [releases.md](releases.md)), so a cycle is not caught by a publish order that fails — it simply becomes permanent. The kit can carry as many small packages as the seams justify; what it cannot carry is a back-edge. In practice every edge runs from boundary toward pure, or from pure toward more-pure, and an edge that wants to run the other way is a sign the shared thing belongs in a third package. When `@effected/config-file` hit this during its port, the fix was not a new package but relocating the error classes it was reaching backwards for.
 
 ## Toolchain constraints
 
