@@ -129,10 +129,15 @@ const toFields = (raw: PnpmLockfileRawType): LockfileFields => {
 
 	if (raw.packages) {
 		for (const [key, pkg] of Object.entries(raw.packages)) {
-			const atIndex = key.lastIndexOf("@");
+			// Keys may carry a peer-resolution suffix — "fdir@6.5.0(picomatch@4.0.4)" —
+			// whose inner "@" would corrupt the split; names never contain "(", so
+			// everything from the first "(" is suffix.
+			const parenIndex = key.indexOf("(");
+			const bare = parenIndex === -1 ? key : key.slice(0, parenIndex);
+			const atIndex = bare.lastIndexOf("@");
 			if (atIndex <= 0) continue; // malformed "name@version" keys are skipped, never thrown on
-			const name = key.slice(0, atIndex);
-			const version = key.slice(atIndex + 1);
+			const name = bare.slice(0, atIndex);
+			const version = bare.slice(atIndex + 1);
 			const integrity = pkg.resolution?.integrity;
 			packages.push(
 				ResolvedPackage.make({
