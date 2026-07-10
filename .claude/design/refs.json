@@ -16,13 +16,13 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/migration-playbook.md",
-			"hash": "4e261b8a2465c15dc03e0e047f7299a348b2629e4a5a73cfdbfa161f843e7bfb",
-			"recordedAt": "2026-07-07"
+			"hash": "bf423a074155b3c5b0c1d979a98d28e360673d4d3a6b290328f903b253c7d7d0",
+			"recordedAt": "2026-07-10"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "1afed8d4d6c1f971886b7b7151c09c05a35200e950444e8f69784896ae3a3246",
+			"hash": "5529184bddc008578056318c0d4cd8447739fc58560008f4c69f15d79cbc7bfa",
 			"recordedAt": "2026-07-10"
 		},
 		{
@@ -40,7 +40,7 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/releases.md",
-			"hash": "f6e6df3bd8133094ac23139d2563c31e63f5b15a684b98181e1577dc3e3a922b",
+			"hash": "e5b716ef7302cba6aa77a3b4b1b6833ec19f78b814ba754502816a367681cccf",
 			"recordedAt": "2026-07-10"
 		},
 		{
@@ -78,6 +78,12 @@
 			"target": ".claude/design/effected/packages/jsonc.md",
 			"hash": "a9c5e12bc3862cea5d8fa87a146e9364fad2db15a6ee1bfc530d0a81bc9200b0",
 			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/lockfiles/CLAUDE.md",
+			"target": ".claude/design/effected/packages/lockfiles.md",
+			"hash": "3a2bed2524251712934f34ad98acf7bb62b0286d0ed8ab6fbf158cdd8910752a",
+			"recordedAt": "2026-07-10"
 		},
 		{
 			"source": "packages/npm/CLAUDE.md",

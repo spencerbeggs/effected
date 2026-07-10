@@ -237,6 +237,37 @@ importers:
         version: 6.0.3
     publishDirectory: dist/dev/pkg
 
+  packages/lockfiles:
+    devDependencies:
+      '@effect/tsgo':
+        specifier: catalog:effect
+        version: 0.18.1
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-beta.94(effect@4.0.0-beta.94)(vitest@4.1.10)
+      '@effected/jsonc':
+        specifier: workspace:*
+        version: link:../jsonc/dist/dev/pkg
+      '@effected/semver':
+        specifier: workspace:*
+        version: link:../semver/dist/dev/pkg
+      '@effected/yaml':
+        specifier: workspace:*
+        version: link:../yaml/dist/dev/pkg
+      '@savvy-web/bundler':
+        specifier: ^1.1.9
+        version: 1.1.9(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3)
+      '@types/node':
+        specifier: catalog:silk
+        version: 26.1.1
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.94
+      typescript:
+        specifier: catalog:silk
+        version: 6.0.3
+    publishDirectory: dist/dev/pkg
+
   packages/npm:
     devDependencies:
       '@effect/tsgo':
