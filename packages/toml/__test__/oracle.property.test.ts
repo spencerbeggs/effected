@@ -237,6 +237,14 @@ const documentArb = tableArb(3);
 
 // ── The differential properties ────────────────────────────────────────────
 
+/**
+ * Fixed seed so a CI property failure reproduces locally: an unseeded run
+ * draws a fresh seed per invocation, making a red CI run unreplayable. Bump
+ * the seed deliberately (with a green run) when fresh coverage is wanted;
+ * the corpus differential below is exhaustive and does not depend on it.
+ */
+const ORACLE_FC_PARAMS = { numRuns: 250, seed: 20260710 } as const;
+
 describe("smol-toml differential oracle", () => {
 	it.effect.prop(
 		"our stringify parses identically under both parsers",
@@ -247,7 +255,7 @@ describe("smol-toml differential oracle", () => {
 				const ours = yield* Toml.parse(text);
 				assert.deepStrictEqual(canon(ours), canon(oracle(text)), text);
 			}),
-		{ fastCheck: { numRuns: 250 } },
+		{ fastCheck: ORACLE_FC_PARAMS },
 	);
 
 	it.effect.prop(
@@ -259,7 +267,7 @@ describe("smol-toml differential oracle", () => {
 				const ours = yield* Toml.parse(text);
 				assert.deepStrictEqual(canon(ours), canon(oracle(text)), text);
 			}),
-		{ fastCheck: { numRuns: 250 } },
+		{ fastCheck: ORACLE_FC_PARAMS },
 	);
 
 	it.effect("NaN round-trips through our stringify into NaN under both parsers", () =>

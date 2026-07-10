@@ -26,6 +26,16 @@ import { Toml, TomlParseError, TomlStringifyError } from "../src/Toml.js";
 import { TomlDocument } from "../src/TomlDocument.js";
 import { TomlFormat, TomlModificationError } from "../src/TomlFormat.js";
 
+/**
+ * Elapsed-time ceiling for the scale and path-depth rows. The bound is a
+ * hang/quadratic-blowup guard, not a performance target: linear behavior was
+ * verified out of band (12.5k->126ms through 100k->762ms key-values locally),
+ * and a quadratic parse at these sizes would take minutes. 30s tolerates
+ * shared CI runners, which measured ~4x slower than local (5,955ms for the
+ * 2MB document that takes ~1.4s here) and flaked the previous 5s bound.
+ */
+const ELAPSED_BOUND_MS = 30_000;
+
 /** Flip a failing parse and hand back the typed error. */
 const parseError = (text: string) =>
 	Effect.gen(function* () {
@@ -221,7 +231,7 @@ describe("hostile input", () => {
 				const elapsed = performance.now() - started;
 				assert.instanceOf(error, TomlModificationError);
 				assert.strictEqual((error as TomlModificationError).diagnostic.code, "NestingDepthExceeded");
-				assert.isBelow(elapsed, 5_000);
+				assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 			}),
 		);
 	});
@@ -237,7 +247,7 @@ describe("hostile input", () => {
 				const elapsed = performance.now() - started;
 				assert.strictEqual(Object.keys(value).length, 50_000);
 				assert.strictEqual(value.k49999, "x".repeat(28));
-				assert.isBelow(elapsed, 5_000);
+				assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 			}),
 		);
 
@@ -248,7 +258,7 @@ describe("hostile input", () => {
 				const value = (yield* Toml.parse(`s = "${payload}"\n`)) as Record<string, unknown>;
 				const elapsed = performance.now() - started;
 				assert.strictEqual(value.s, payload);
-				assert.isBelow(elapsed, 5_000);
+				assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 			}),
 		);
 
@@ -258,7 +268,7 @@ describe("hostile input", () => {
 				const error = yield* parseError(`s = "${"x".repeat(1_048_576)}`);
 				const elapsed = performance.now() - started;
 				assert.strictEqual(codeOf(error), "UnterminatedString");
-				assert.isBelow(elapsed, 5_000);
+				assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 			}),
 		);
 	});
