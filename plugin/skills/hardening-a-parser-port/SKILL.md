@@ -1,6 +1,6 @@
 ---
 name: hardening-a-parser-port
-description: Use when porting or writing a recursive-descent parser, lexer, or tree-walker over untrusted text in the @effected monorepo — the class of hardening the cloud reviewer scans for on every migration. Covers stack-overflow depth guards (on EVERY recursion surface, which a facade has N of — not two), code-point range checks scoped to formats with wide escapes, prototype-pollution, control-character rejection, and the invariant that malformed input must fail through the typed error channel, never as an unhandled defect.
+description: Use when porting or writing a recursive-descent parser, lexer, or tree-walker over untrusted text in the @effected monorepo — the class of hardening the cloud reviewer scans for on every migration. Covers stack-overflow depth guards (on EVERY recursion surface, which a facade has N of — not two), numeric bound guards that must reject NaN and non-integers, code-point range checks scoped to formats with wide escapes, prototype-pollution, control-character rejection, and the invariant that malformed input must fail through the typed error channel, never as an unhandled defect.
 ---
 
 # Hardening a parser port
@@ -74,6 +74,41 @@ Where a post-hoc walker instead runs over an **already-bounded** tree (jsonc's
 never exceed the walker's cap, so the walker's guard fires only on a hand-built
 tree. Do not mis-flag equal caps as a defect in that shape, and do not demand a
 +8 offset where the two surfaces are independent rather than chained.
+
+## Numeric bound guards — `if (n < LIMIT)` silently admits `NaN` and non-integers
+
+The guard on a **numeric option** (a `maxDepth`, a size cap, an iteration bound)
+has an obvious spelling that is wrong in a way invisible to review and to a
+green suite. `NaN < 1` is `false`, and so is `2.5 < 1` — every relational
+comparison against `NaN` is `false`. So:
+
+```ts
+if (maxDepth < 1) return yield* Effect.die(...);   // NaN and 2.5 sail past
+for (let depth = 0; depth < maxDepth; depth++) { ... }  // 0 < NaN is ALSO false
+```
+
+`maxDepth: NaN` skips the guard **and** runs the loop zero times, returning an
+empty result — indistinguishable from a legitimate empty result, which is the
+exact silent outcome the guard was written to forbid. A fractional bound
+truncates at a non-integer instead of dying. These are the two inputs a caller
+most plausibly passes by accident: an unparsed `Number(env.MAX_DEPTH)`, or a
+computed average.
+
+Guard integrality and range together, and prove it:
+
+```ts
+if (!Number.isInteger(maxDepth) || maxDepth < 1) {
+  return yield* Effect.die(new Error(`maxDepth must be a positive integer, received ${maxDepth}`));
+}
+```
+
+Ship a test for `NaN` and one for a fractional value, each **watched failing
+against the bare `< LIMIT` comparison** — a guard whose failure mode is
+"returns empty" is untestable by inspection. And when you document the guard,
+state the full predicate: prose that says "`maxDepth < 1` is a defect" invites
+a reader to conclude `2.5` is accepted (this exact partial documentation
+shipped alongside the partial guard in `@effected/walker` before both were
+fixed).
 
 ## Range-check `String.fromCodePoint` fed by parsed hex — in formats that have wide escapes
 

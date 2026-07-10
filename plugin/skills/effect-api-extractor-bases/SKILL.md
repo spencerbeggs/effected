@@ -164,6 +164,29 @@ cross-reference. This skill previously prescribed exactly that, on the false
 premise that no `{@link}` form resolves for a merged name; the `@effected/config-file`
 port disproved it (five selectors, warnings → 0).
 
+**Member of a const-only namespace object: link through the exported name — no
+selector, and the bare member name never resolves.** Every package entry point
+in this repo exports the shape
+
+```ts
+const ascend = (...) => ...                    // module-local, NOT exported
+export const Walker = { ascend } as const;     // the only export
+```
+
+Here `{@link ascend}` is `ae-unresolved-link` — not because the name is
+ambiguous, but because **there is no export by that name**, so no selector can
+fix it (`{@link (ascend:variable)}` stays red). Do not pattern-match "bare link
+unresolved ⇒ reach for a selector"; that heuristic belongs to the merged-name
+case above, where the diagnostic says "ambiguous". When the diagnostic says
+*"does not have an export"*, the fix is a plain member reference through the
+exported const — `{@link Walker.ascend}` — with no selector, because `Walker`
+carries a value declaration only. `packages/config-file/src/ConfigMigration.ts`
+(`{@link ConfigMigration.make}`) and `packages/walker/src/Walker.ts` both ship
+this form warnings-clean. Expect the mistake to recur: `Jsonc`,
+`ConfigResolver`, `ConfigMigration`, `ConfigCodec`, `MergeStrategy`, and
+`Walker` all use this export shape, and the failure is invisible to `pnpm test`
+and `types:check` — it only surfaces in the **prod** build's `issues.json`.
+
 **Backtick spans remain correct for two cases**, where no selector helps:
 
 1. **Inherited members** — `{@link SemVer.make}` where `make` comes from the

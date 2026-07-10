@@ -1,6 +1,6 @@
 ---
 name: effect-v4-idioms
-description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Verified against effect@4.0.0-beta.94.
+description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Verified against effect@4.0.0-beta.94.
 ---
 
 # Effect v4 core idioms
@@ -83,6 +83,47 @@ Effect.fail(42).pipe(
 ```
 
 Use `Effect.catchCauseFilter` for the cause-level equivalent.
+
+**`Effect.catch` recovers typed failures ONLY — defects and interrupts pass
+straight through.** Probed on beta.94: `Effect.fail("x").pipe(Effect.catch(h))`
+succeeds with the handler's value, while the same pipe on `Effect.die` and
+`Effect.interrupt` exits `Failure` with the `Die`/`Interrupt` reason intact.
+The corollary bites in code whose error channel is later declared `never`: a
+bare `JSON.parse` (or any throwing host call) inside such a function is a
+**defect**, so no downstream `Effect.catch` will absorb it — it escapes through
+the `never` channel. Wrap the throwing call locally (`try/catch` or
+`Effect.try`) at the point it can throw; do not assume a catch further out has
+you covered.
+
+## `PlatformError` — the error type of core IO
+
+Core `FileSystem` / `Path` operations fail with `PlatformError`, and its shape
+is not guessable: `effect` re-exports the module **as a namespace**
+(`export * as PlatformError from "./PlatformError.ts"`, index.ts:397) and the
+error **class** is declared inside it (PlatformError.ts:157, a
+`Data.TaggedError("PlatformError")`). So the type you write is the doubled
+`PlatformError.PlatformError`:
+
+```ts
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path } from "effect";
+
+const isGitRoot = (
+  dir: string,
+): Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    return yield* fs.exists(path.join(dir, ".git"));
+  });
+```
+
+Written once it looks like a typo — which is exactly why it gets replaced with
+`unknown`. Do not: typing a `FileSystem`-backed channel `unknown` violates the
+house standard (never collapse errors to `string`/`unknown` early) when the
+precise type is one `import type` away. `fs.exists: (path: string) =>
+Effect.Effect<boolean, PlatformError>` (FileSystem.ts:134) — verified against
+beta.94.
 
 **New in v4** — recover a nested `reason` without stripping the parent error
 from the channel (e.g. an `AiError` whose `reason` is a `RateLimitError`):

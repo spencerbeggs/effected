@@ -89,7 +89,7 @@ Run at the end of a migration, before the branch is forgotten.
 
 Run against open skill tickets.
 
-1. List them: `gh issue list --repo spencerbeggs/effected --state open`. Skill tickets are titled `<skill-name>: …`. As of 2026-07-09 the queue is #9, #10, #11, #12.
+1. List them: `gh issue list --repo spencerbeggs/effected --state open`. Skill tickets are titled `<skill-name>: …`.
 2. For each ticket, classify the claim — rename, existence, or semantics — and climb to exactly that rung. No further, no less.
 3. Amend the skill in `plugin/skills/<name>/SKILL.md`. State the corrected fact **and the trap it replaces**, so a future reader recognises the error rather than re-deriving it.
 4. Close the ticket citing the evidence. Rung 2 cites a file and line under `repos/effect-smol`. Rung 3 pastes the probe and its output, including the resolved version line.

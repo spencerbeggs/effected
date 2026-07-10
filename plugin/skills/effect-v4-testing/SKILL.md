@@ -1,6 +1,6 @@
 ---
 name: effect-v4-testing
-description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result, providing test/mock layers with layer(...), property tests with it.effect.prop over a Schema, and TestClock for time-dependent logic. Covers the sharp edges (no it.scoped, it.prop throws on a Schema) that only surface at test time.
+description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result, providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, and the mutate-the-edges discipline for proving a suite can fail. Covers the sharp edges (no it.scoped, it.prop throws on a Schema) that only surface at test time.
 ---
 
 # Effect v4 testing with `@effect/vitest`
@@ -93,8 +93,17 @@ and `Effect.result` are how you *prove* it in a test.
 
 ## Providing test / mock layers
 
-When a package has services (a `Context.Service` with a static
-`layer`), provide them at the **suite boundary** with `layer(...)`, not with
+`layer(...)` applies to **any service in a test's `R` — owned or consumed**.
+Its signature (`@effect/vitest` `dist/index.d.ts:155`) takes any
+`Layer.Layer<R, E>`; nothing requires the package under test to declare the
+service. A package that owns no services but *consumes* `Path.Path` or
+`FileSystem.FileSystem` through its `R` channel is exactly the package that
+needs suite-boundary layers — do not read "has services" as a gate. (This
+skill previously did, and the walker migration plan was consequently written
+with per-test `.pipe(Effect.provide(Path.layer))` on every test — the very
+pattern the rule forbids.)
+
+Provide services at the **suite boundary** with `layer(...)`, not with
 per-test `.pipe(Effect.provide(L))`. The top-level `layer` builds the layer once
 per group, memoizes it via a `MemoMap`, keeps the scope open for the group, and
 closes it in `afterAll`:
@@ -126,9 +135,33 @@ describe("foo", () => {
 - `layer(L, { excludeTestServices: true })` runs the group **without** the
   `TestClock`/`TestConsole` overrides (keep live behavior for that group).
 
-The pure-tier packages (semver, jsonc, yaml) have no services yet, so no house
-file exercises `layer(...)` — adopt it when a service-tier package lands. For
-service and layer design, see `effect-v4-services-layers`.
+**Testing a boundary-tier package that does real IO needs no platform
+package.** `Path.layer` and `FileSystem.layerNoop(partial)` both come from
+`effect` core (Path.ts:870; FileSystem.ts:1040 — and there is **no**
+`FileSystem.layer` in core, only `layerNoop`), so a package like
+`@effected/walker` tests filesystem behavior with zero `@effect/platform-node`
+devDependency:
+
+```ts
+import { layer } from "@effect/vitest";
+import { Effect, FileSystem, Path } from "effect";
+
+layer(Path.layer)("path ops", (it) => {
+  it.effect("Path is in R, no Effect.provide in the body", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      assert.strictEqual(path.dirname("/a/b"), "/a");
+    }));
+});
+
+layer(FileSystem.layerNoop({ exists: (p) => Effect.succeed(p === "/a/.rc") }))(
+  "stubbed filesystem", (it) => { /* fs.exists consults the stub */ });
+```
+
+A suite-boundary layer cannot vary per test, so a suite with several filesystem
+fixtures needs **one `layer(...)` block per distinct fixture** — that is the
+house shape in `packages/walker/__test__/`. For service and layer design, see
+`effect-v4-services-layers`.
 
 ## Property testing with `it.effect.prop`
 
@@ -257,6 +290,42 @@ If the service resolves its dependency from the **caller's** context at call
 time, that layer must be `Layer.mergeAll`'d into the test's context, not buried
 under `Layer.provide` beneath the service's own layer.
 
+## A test that cannot fail is worse than no test — mutate the edges
+
+A green suite proves nothing about the properties no test can observe. Over
+one migration (`@effected/walker`), **eight** distinct mutants each survived a
+fully green suite — no short-circuit, dropped first match, last-instead-of-first
+directory, wrong iteration order, dropped error absorption, dropped `stopAt`,
+whole-chain probe instead of anchored root. Every one had the same shape: **the
+tests exercised the middle of a range and never its edges.** Two of the eight
+were real behavioral bugs waiting to be introduced, and two of the holes
+predated the migration — 120 inherited tests passed unmodified while unable to
+catch a regression in either property.
+
+For any test walking an ordered collection, check:
+
+- Does a winning case land on the **first** element? The **last**? A **middle**
+  one? (An implementation that probes everything and picks the first hit passes
+  every suite whose only order-observing test wins on the last candidate.)
+- Is there a case with **more than one** of every dimension the code iterates —
+  e.g. several directories × several candidates per directory? Interleaving
+  bugs are invisible until both dimensions are plural.
+- Is every **failure path** in a fixture actually exercised, or does every
+  fixture succeed?
+- Is the property pinned through the **public seam the consumer calls**, or
+  only through the primitive it delegates to? A property proven on `firstMatch`
+  says nothing about `findUpward` unless a test crosses that seam.
+- For an option like `stopAt`, does any test place the target **beyond** it, so
+  the option must actually do something to pass?
+
+The discipline: before committing a test you believe pins a property, **break
+the implementation in the way the property forbids** (with the editor — never
+`git checkout`/`git stash`, other work lives in the tree), watch that exact
+test go red, revert the mutation, and confirm `git status --porcelain` is
+clean. Suite strength is not predictable by grepping `__test__/` — a mutation
+in one module may be caught by tests that never name it, because a shared test
+layer routes through it. Only the mutant tells you.
+
 ## House conventions
 
 - Tests live in each package's `__test__/` directory (`*.test.ts`), never
@@ -269,10 +338,8 @@ under `Layer.provide` beneath the service's own layer.
 - Keep the boundary honest: assert that the package's own error escapes
   (`error._tag === "JsoncParseError"`), and that the schema path surfaces a
   `SchemaError` — the two must not drift.
-- **A test that cannot fail is worse than no test.** Before trusting a new
-  guard, security check, or negative assertion, *break the implementation and
-  watch the test go red*, then restore it. Two tests in this monorepo's history
-  passed identically with and without the code they claimed to pin: a
+- **A test that cannot fail is worse than no test** — see the mutation section
+  above. Two more historical cases beyond the walker eight: a
   prototype-pollution guard whose payload could never mutate the asserted
   object, and a `@ts-expect-error` in a file the tsconfig silently excluded.
 

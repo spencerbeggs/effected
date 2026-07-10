@@ -10,16 +10,15 @@
 		"types:check": "tsgo --noEmit"
 	},
 	"devDependencies": {
-		"@rspress/core": "^2.0.16",
-		"@rspress/plugin-sitemap": "^2.0.16",
+		"@rspress/core": "^2.0.17",
+		"@rspress/plugin-sitemap": "^2.0.17",
 		"@types/node": "catalog:silk",
 		"@types/react": "catalog:silk",
 		"@types/react-dom": "catalog:silk",
 		"@typescript/native-preview": "catalog:silk",
-		"effect": "catalog:silk",
 		"react": "catalog:silk",
 		"react-dom": "catalog:silk",
-		"rspress-plugin-api-extractor": "^0.3.6",
+		"rspress-plugin-api-extractor": "^0.3.7",
 		"rspress-plugin-mermaid": "^1.0.1"
 	}
 }
