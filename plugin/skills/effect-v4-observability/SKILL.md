@@ -1,6 +1,6 @@
 ---
 name: effect-v4-observability
-description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry to Effect v4 code — covers Effect.fn named spans, the Effect.log* family, Metric counters/gauges/histograms with Metric.withAttributes (NOT the removed Metric.tagged), and wiring @effect/opentelemetry at the app edge. Encodes the house rule: pure-tier libraries instrument public fallible boundaries only and stay telemetry-agnostic; apps compose OTel at the infrastructure layer.
+description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry to Effect v4 code — covers Effect.fn named spans, the Effect.log* family, Metric counters/gauges/histograms with Metric.withAttributes (NOT the removed Metric.tagged), and wiring @effect/opentelemetry at the app edge. Encodes the house rule that pure-tier libraries instrument public fallible boundaries only and stay telemetry-agnostic, while apps compose OTel at the infrastructure layer.
 ---
 
 # Effect v4 observability
