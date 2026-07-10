@@ -28,7 +28,7 @@ This is not a port of a collection of `*-effect` libraries that happen to share 
 Two consequences follow, and they are why the reframe is recorded rather than assumed:
 
 - **The unit of design is the kit, not the package.** Packages get carved along the seams the applications actually press on, not along the boundaries the source repos happened to inherit. `xdg-effect` shipped app-directory resolution and a SQLite store in one package; those are two things, and the kit splits them. Conversely, a split is not automatically right: `@pnpm/catalogs.*` stays inside `@effected/workspaces` because nothing yet asks for it separately.
-- **The kit is finished, and finishing is defined.** The scope is closed by the five applications named in [releases.md](releases.md), not by the number of `*-effect` repos remaining. One source repo (`json-schema-effect`) falls off the roadmap under that test, `@effected/toml` is rescoped by it from a full-parity format package down to `parse`/`stringify`/Schema, and the remaining work is a list of ten packages rather than an open horizon.
+- **The kit is finished, and finishing is defined.** The scope is closed by the five applications named in [releases.md](releases.md), not by the number of `*-effect` repos remaining. One source repo (`json-schema-effect`) falls off the roadmap under that test, `@effected/toml` is rescoped by it from a full-parity format package down to `parse`/`stringify`/Schema, and the remaining work is the closed migration list in [package-inventory.md](package-inventory.md#migration-order-provisional) rather than an open horizon.
 
 ## Scope: libraries only
 

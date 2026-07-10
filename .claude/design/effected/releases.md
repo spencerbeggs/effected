@@ -39,12 +39,12 @@ The criterion is "the kit can replace the business logic of these five." They sp
 
 ## The gate
 
-The union of what those consumers need. Nine packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker` — `pnpm-plugin-effect` is infrastructure and outside this count); ten remain:
+The union of what those consumers need. Ten packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker`, `glob` — `pnpm-plugin-effect` is infrastructure and outside this count); nine remain:
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
 | `@effected/walker` | boundary | merged | `config-file`, `xdg` and `workspaces` all traverse paths |
-| `@effected/glob` | pure | not started | `workspaces` drops its `minimatch` runtime dep for it |
+| `@effected/glob` | pure | merged | `workspaces` drops its `minimatch` runtime dep for it |
 | `@effected/lockfiles` | pure | not started | `workspaces` reads lockfiles |
 | `@effected/store` | integrated | not started | SQLite cache + migrated state (`@effect/sql-sqlite-node`); both remaining consumers use it |
 | `@effected/xdg` | boundary | not started | `vitest-agent`, `type-registry` |
