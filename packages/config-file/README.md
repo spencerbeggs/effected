@@ -117,7 +117,7 @@ Only the zero-dependency `ConfigCodec.json` ships in core. Codecs for other form
 
 - `@effected/config-file-jsonc` — JSONC, built on `@effected/jsonc`.
 - `@effected/config-file-yaml` — YAML, built on `@effected/yaml`.
-- `@effected/config-file-toml` — TOML. Not yet built.
+- `@effected/config-file-toml` — TOML, built on `@effected/toml`.
 
 Codecs compose. `EncryptedCodec` wraps any codec with AES-GCM, and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version. Each *widens* the error channel rather than flattening its failures into the inner codec's error:
 
