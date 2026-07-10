@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-09
-last-synced: 2026-07-09
+updated: 2026-07-10
+last-synced: 2026-07-10
 completeness: 98
 related:
   - ../effect-standards.md
@@ -33,7 +33,7 @@ It vendors a ported-with-attribution engine into `src/internal/` because of depe
 
 `@effected/glob` vendors the **complete** minimatch 10.2.5 engine (plus brace-expansion 5.0.7 and balanced-match 4.0.4): extglobs, `{a,b}` braces, character classes including POSIX classes, true `**` globstar, negation, `#`-comment handling and the full options surface.
 
-Scoping the port to today's call sites — the `@effected/toml` precedent ([releases.md](../releases.md#effectedtoml-is-scoped-by-its-consumer)) — was considered and **rejected**: unlike toml, glob's broader dialect has known future consumers. Glob matching is a common utility that the five consuming applications will need directly, not just `@effected/workspaces`. The consumer-contract survey (2026-07-09) still defines the **minimum** the package must satisfy — the two workspaces call sites, which use only segment-scoped `*`/`?`, leading-`!` negation, literals and anchored matching, with zero options — it just no longer bounds the dialect.
+Scoping the port to today's call sites — the original `@effected/toml` precedent, itself since reversed ([releases.md](../releases.md#effectedtoml-is-a-full-parity-format-package)) — was considered and **rejected**: unlike toml, glob's broader dialect has known future consumers. Glob matching is a common utility that the five consuming applications will need directly, not just `@effected/workspaces`. The consumer-contract survey (2026-07-09) still defines the **minimum** the package must satisfy — the two workspaces call sites, which use only segment-scoped `*`/`?`, leading-`!` negation, literals and anchored matching, with zero options — it just no longer bounds the dialect.
 
 The anti-drift concern that motivated a fixed dialect is solved differently: the v3 repo had three drifting glob semantics because each call site carried its own engine, and the fix is everyone sharing **one** engine, not having zero options. `GlobSet` — the workspaces contract — pins its fixed semantics internally (default options), so the enumerator and `matchesDependency` semantics stay drift-free while applications get the full dialect through `GlobPattern` options.
 
@@ -153,7 +153,7 @@ Glob itself does **no** enumeration — pure string→predicate only. That bound
 
 ## As built (2026-07-09)
 
-The port merged with 134 tests (a 130-row compliance table asserting expected outcome AND oracle agreement per row, four oracle property tests against the exact-pinned minimatch 10.2.5 devDependency, a hostile-input suite) and a zero-warning `issues.json` whose suppressed bucket holds only the four synthesized `_base` symbols. Four as-built notes against the design above:
+The port merged with 139 tests (a 130-row compliance table asserting expected outcome AND oracle agreement per row, four oracle property tests against the exact-pinned minimatch 10.2.5 devDependency, a hostile-input suite) and a zero-warning `issues.json` whose suppressed bucket holds only the four synthesized `_base` symbols. Four as-built notes against the design above:
 
 1. **Budget exhaustion is a typed error, not upstream's silent truncation — a second behavioral deviation.** Upstream `expand_` silently truncates the expansion list at `max` and matches against the truncated set; silent truncation silently changes match semantics, and the `ExpansionBudgetExceeded` reason this design mandates is unreachable under it. The port throws the guard signal instead. The "only one deviation" claim in the headline section is qualified accordingly.
 2. **`braceExpandMax` is schema-bounded `[1, 100_000]`**, tighter than the "positive integers" this design specified. Rationale: a `GlobPattern` value is pinned as *always defaults-compilable* (the schema check), and `compile` first validates under the effective options; bounding the one cap that can produce a compile-time typed failure above by the stock budget means permissive options can never admit a pattern the defaults check would reject, so `compile` never faces a make-time throw it cannot type. `maxGlobstarRecursion`/`maxExtglobRecursion` stay bare positive integers (neither produces a compile-time typed failure: globstar is a match-time false negative, extglob over-nesting degrades).

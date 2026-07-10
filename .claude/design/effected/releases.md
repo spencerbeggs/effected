@@ -3,13 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-09
-last-synced: 2026-07-09
+updated: 2026-07-10
+last-synced: 2026-07-10
 completeness: 85
 related:
   - architecture.md
   - package-inventory.md
   - effect-standards.md
+  - packages/toml.md
 ---
 
 # Release criteria
@@ -39,7 +40,7 @@ The criterion is "the kit can replace the business logic of these five." They sp
 
 ## The gate
 
-The union of what those consumers need. Ten packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker`, `glob` — `pnpm-plugin-effect` is infrastructure and outside this count); nine remain:
+The union of what those consumers need. Eleven packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker`, `glob`, `toml` — `pnpm-plugin-effect` is infrastructure and outside this count); eight remain:
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
@@ -52,14 +53,12 @@ The union of what those consumers need. Ten packages are already merged (`semver
 | `@effected/app-kit` | integrated | not started | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`) |
 | `@effected/type-registry` | integrated | not started | `rspress-plugin-api-extractor`, and a migration target |
 | `@effected/runtime-resolver` | boundary | not started | a migration target; its `@effect/cli` binary splits into a separate integrated CLI package |
-| `@effected/toml` | pure | not started | `@soda3js/config` |
+| `@effected/toml` | pure | merged | `@soda3js/config` |
 | `@effected/config-file-toml` | pure | not started | `@soda3js/config` |
 
-### `@effected/toml` is scoped by its consumer
+### `@effected/toml` is a full-parity format package
 
-The inventory previously specced `@effected/toml` as a full-parity format package — parse, stringify, Schema, plus a CST/edit/format/visitor pipeline mirroring `@effected/jsonc` and `@effected/yaml`. Its only known consumer imports two functions: `import { parse, stringify } from "smol-toml"`. **Initial scope is `parse`/`stringify`/Schema. No CST, no edit-in-place, no formatter, no visitor** — those get built when something asks for them, and nothing does.
-
-Under the [pure-tier dependency policy](effect-standards.md#dependency-policy) it cannot take `smol-toml` as a runtime dependency, and it does not need to. `smol-toml` is BSD-3-Clause, zero-dependency and 211KB unpacked — roughly `@effected/jsonc`'s scale. It is **vendored with attribution into `src/internal/`**, exactly as jsonc's and yaml's engines already are (yaml's is a port of the `yaml` package, not original work). Vendoring is the fast path *and* the compliant one; a from-scratch parser is a later, optional replacement, and the input-hardening standards apply either way.
+**Re-specced 2026-07-10, superseding the 2026-07-09 rescope this section previously recorded** (parse/stringify-only over a vendored smol-toml port). `@effected/toml` is a full-parity sibling to `@effected/jsonc` and `@effected/yaml` — parse, stringify, Schema, lossless CST, edit-in-place, formatter, visitor — on a **from-scratch Effect-native engine** targeting TOML 1.0.0, with `smol-toml` appearing only as a devDependency test oracle. The gate consumer `@soda3js/config` still needs only parse/stringify: the consumer contract defines the minimum the package must satisfy, no longer its bound — the same reversal glob made of this section's original scoping precedent. [packages/toml.md](packages/toml.md) is authoritative.
 
 ### Not on the gate
 

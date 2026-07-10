@@ -22,8 +22,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "f0cdb91be2d92deb1d64677f2fb9e6b81251e6757ca6b915bace37ca8db54581",
-			"recordedAt": "2026-07-09"
+			"hash": "388dea7f87d4f3bed1326f166732e17555b424e610142c3439926bc3182e6f69",
+			"recordedAt": "2026-07-10"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -40,8 +40,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/releases.md",
-			"hash": "3732f77a4e7ec7ceebb56f13142a41371988fa0c6873ca1c0a7f1a320f70cb69",
-			"recordedAt": "2026-07-09"
+			"hash": "f6e6df3bd8133094ac23139d2563c31e63f5b15a684b98181e1577dc3e3a922b",
+			"recordedAt": "2026-07-10"
 		},
 		{
 			"source": "packages/config-file-jsonc/CLAUDE.md",
@@ -96,6 +96,12 @@
 			"target": ".claude/design/effected/packages/semver.md",
 			"hash": "e9af85ecc0fece234ac5da306b74b00c84f4d5e49aa89f70c48be14900453a74",
 			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/toml/CLAUDE.md",
+			"target": ".claude/design/effected/packages/toml.md",
+			"hash": "64e7eb6b4f4db97437ee4e5ac8d63c91e92ed66655bbddddd50fe2baaf05b200",
+			"recordedAt": "2026-07-10"
 		},
 		{
 			"source": "packages/walker/CLAUDE.md",

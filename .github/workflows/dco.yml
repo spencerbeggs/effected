@@ -13,7 +13,25 @@ jobs:
       contents: read
       pull-requests: read
     steps:
+      # Checks commit messages via the commits API rather than the PR diff:
+      # the previous action (cpanato/dco-check-action) ran `gh pr diff`, which
+      # GitHub refuses for PRs touching more than 300 files, failing the check
+      # on large-but-valid PRs (e.g. ones vendoring a test corpus).
       - name: DCO Check
-        uses: cpanato/dco-check-action@main
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS=$'\t' read -r sha subject; do
+            message=$(gh api "repos/${{ github.repository }}/commits/$sha" --jq '.commit.message')
+            if ! grep -qE '^Signed-off-by: .+ <.+@.+>$' <<<"$message"; then
+              echo "::error::Commit $sha ($subject) is missing a Signed-off-by trailer"
+              failed=1
+            fi
+          done < <(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/commits" \
+            --paginate --jq '.[] | [.sha, (.commit.message | split("\n")[0])] | @tsv')
+          if [ "$failed" -eq 0 ]; then
+            echo "All commits carry a Signed-off-by trailer."
+          fi
+          exit "$failed"
