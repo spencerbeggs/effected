@@ -105,6 +105,20 @@ describe("hostile input", () => {
 				assert.strictEqual(error.diagnostic.code, "NestingDepthExceeded");
 			}),
 		);
+
+		it.effect("a value parsed at exactly the depth bound round-trips through stringify", () =>
+			Effect.gen(function* () {
+				// Parse guards container descent only, so 256 nested arrays with a
+				// non-empty leaf parse; stringify must count the same way — a guard
+				// that also checked the scalar leaf would see depth 257 and give
+				// stringify a one-level tighter bound than parse (PR #31 review).
+				const doc = `a = ${"[".repeat(256)}1${"]".repeat(256)}\n`;
+				const value = yield* Toml.parse(doc);
+				const text = yield* Toml.stringify(value);
+				const back = yield* Toml.parse(text);
+				assert.deepStrictEqual(back, value);
+			}),
+		);
 	});
 
 	describe("stringify — cycles", () => {

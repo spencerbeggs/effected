@@ -174,12 +174,18 @@ const checkCircular = (value: object, ancestors: Set<object>, path: Path): void 
 
 /** One value as an inline fragment: scalars, inline arrays, inline tables. */
 const renderInline = (value: unknown, path: Path, depth: number, ancestors: Set<object>): string => {
-	guardDepth(depth);
+	// Guard on container DESCENT only, never on a scalar leaf — mirroring the
+	// parse side, which checks parseArray/parseInlineTable at the opening
+	// bracket and never guards the leaf. Guarding the leaf too would give
+	// stringify a one-level tighter effective bound than parse: a value parsed
+	// at exactly MAX_NESTING_DEPTH containers with a non-empty innermost
+	// element would fail to re-emit.
 	const scalar = renderScalar(value, path);
 	if (scalar !== undefined) {
 		return scalar;
 	}
 	if (Array.isArray(value)) {
+		guardDepth(depth);
 		checkCircular(value, ancestors, path);
 		ancestors.add(value);
 		const items = value.map((item, index) => renderInline(item, [...path, index], depth + 1, ancestors));
@@ -187,6 +193,7 @@ const renderInline = (value: unknown, path: Path, depth: number, ancestors: Set<
 		return `[${items.join(", ")}]`;
 	}
 	if (isPlainObject(value)) {
+		guardDepth(depth);
 		checkCircular(value, ancestors, path);
 		ancestors.add(value);
 		const parts = Object.keys(value).map(
