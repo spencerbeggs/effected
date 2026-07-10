@@ -38,6 +38,15 @@ describe("Jsonc", () => {
 - **`it.live`** (`Tester<Scope.Scope | R>`) opts into the real `Clock` and live
   runtime services with no test-env overrides. Use only when a test genuinely
   needs wall-clock behavior; the default stays `it.effect`.
+- **`it.effect` takes a Vitest timeout as its third argument** —
+  `it.effect(name, self, timeout?: number | TestOptions)` (`@effect/vitest`
+  `dist/index.d.ts:33`). The trap: any real-time elapsed assertion above
+  Vitest's default 5000ms is **dead code** without it — Vitest aborts the test
+  before the assertion runs, and the failure reads "Test timed out in 5000ms",
+  not your bound. A wall-clock ceiling and the test's timeout must be
+  calibrated together; whichever is lower is the effective bound (the toml
+  scale suite shipped a 30s `assert.isBelow` under the 5s default and CI
+  red-flagged the *same* test twice before the timeout argument was added).
 - **Never** `it("...", () => Effect.runPromise(program))`. Plain `it()` is fine
   only for genuinely non-Effect pure code (`Jsonc.stripComments`, `Yaml.equals`)
   — anything that yields an Effect uses `it.effect`.
@@ -90,6 +99,25 @@ Effect<E,A,R>`, `Effect.result: Effect<A,E,R> => Effect<Result<A,E>,never,R>`,
 This is the same invariant the parser-hardening skill enforces: malformed input
 fails through the typed channel, never as an unhandled defect. `Effect.flip`
 and `Effect.result` are how you *prove* it in a test.
+
+The invariant has a second half those two cannot prove: **genuine defects must
+NOT be swallowed into the typed channel** (a catch-all that masks a programmer
+error as a domain error passes every flip-based test). Asserting a Die takes
+the exit apart (`Cause.isDieReason`/`isFailReason` and `.cause.reasons`
+verified against beta.94 `Cause.d.ts`/`Exit.d.ts`; working example:
+`packages/toml/__test__/hostile.test.ts` "defect passthrough"):
+
+```ts
+const exit = yield* Effect.exit(program);
+assert.isTrue(Exit.isFailure(exit));
+assert.isFalse(exit.cause.reasons.some(Cause.isFailReason)); // NOT a typed Fail
+const die = exit.cause.reasons.find(Cause.isDieReason);
+assert.instanceOf(die?.defect, Error);          // the ORIGINAL error, unmasked
+assert.notInstanceOf(die?.defect, MyTypedError); // not laundered into E
+```
+
+The no-Fail-reason line is the discriminating assertion — without it, an
+implementation that wraps the defect in a typed error still passes.
 
 ## Providing test / mock layers
 

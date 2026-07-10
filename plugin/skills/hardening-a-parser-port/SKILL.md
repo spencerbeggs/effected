@@ -58,6 +58,19 @@ Then, whichever remedy:
   is several stack frames; the cap is 256).
 - Emit ONE fatal diagnostic (`e.code === "NestingDepthExceeded"` deduped), not
   one per level.
+- **Paired codec directions must count depth in the same units — container
+  descent, never leaves.** toml's parse guarded at the opening bracket only
+  (scalar leaves unchecked) while its stringify guarded at the top of every
+  node, leaves included: a document at exactly the cap with a **non-empty**
+  innermost element parsed but failed to re-emit — a typed failure both ways,
+  so nothing defected, but the round-trip broke at the exact boundary and the
+  "same cap on both sides" claim in the docs was quietly false. Neither a
+  679-case compliance corpus nor a differential oracle caught it, because the
+  only fixture at the bound had an *empty* innermost container (no leaf to
+  reach the phantom extra level). The fix and the regression discipline: hoist
+  guards into the container branches on both directions, and pin a round-trip
+  test at exactly the cap with a non-empty innermost value
+  (effected PR #31 review; fix `ecc5f1a4`).
 
 ### The two-stage pipeline is a special case
 
