@@ -1,11 +1,11 @@
 # @effected/pnpm-plugin-effect
 
-Repo infrastructure that also ships. It is **not** a library migration and not an `@effected` library — the pure/boundary tier taxonomy does not apply, and it has no tests and no source repo it was ported from. It does publish to npm.
+Repo infrastructure that also ships. It is **not** a library migration and not an `@effected` library — the three-tier taxonomy (pure / boundary / integrated) does not apply, and it has no tests and no source repo it was ported from. It does publish to npm.
 
 For consumers it is a **convenience, entirely optional**: it lets a workspace pin its `effect` dependencies and peer floors the same way this repo does. That mattered most under Effect v3, where computing peer-dependency floors by hand was painful. Under v4 it is less necessary — treat it as a nicety, not a requirement.
 
 **For full design rationale:**
-→ `@./.claude/design/effected/packages/pnpm-plugin-effect.md`
+→ `@../../.claude/design/effected/packages/pnpm-plugin-effect.md`
 
 Load when changing catalog strategy, advancing the Effect beta, or debugging workspace peer resolution.
 

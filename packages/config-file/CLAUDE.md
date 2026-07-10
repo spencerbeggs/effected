@@ -1,13 +1,16 @@
 # @effected/config-file
 
 Composable config file loading for Effect: pluggable codecs, resolution
-strategies and merge behaviors. Fifth migrated package and the **second
-boundary-tier port**, after `@effected/package-json`.
+strategies and merge behaviors. Fifth migrated package and the **first
+boundary-tier port** (`@effected/package-json`, which also does file IO, is
+integrated tier for its lone external dependency).
 
-**Boundary tier:** it reads and writes files. Even so it carries **zero runtime
-dependencies** — `effect` is its only peer, and `FileSystem`/`Path` arrive from
-the consumer's platform layer. Keep it that way: a format parser or a crypto
-library belongs in a sibling package.
+**Boundary tier:** it reads and writes files through `effect`-core platform
+abstractions — `FileSystem`/`Path` arrive from the consumer's platform layer —
+and depends on `effect` (its only peer) and `@effected/*` alone. That
+effect-only-plus-IO profile *is* boundary tier; it takes no external runtime
+dependency. Taking a format parser or a crypto library would make it
+**integrated**, which is exactly why those live in sibling packages.
 
 **Design doc:** `@../../.claude/design/effected/packages/config-file.md` — load
 when changing the pipeline seams, the error set, or the package family
@@ -93,11 +96,13 @@ Read the comments before touching these; each shape is load-bearing.
   `__proto__` / `constructor` / `prototype` are filtered from **both** sides.
   Two values merge only if both are record-like **and share a prototype**, so a
   decoded `Schema.Class` survives a merge as a real instance.
-- **`internal/walkUp.ts`** absorbs **each probe individually**
-  (`Effect.catch(exists(candidate), () => Effect.succeed(false))`), so one
-  `EACCES` ancestor does not abort the ascent — absorbing only at the resolver
-  boundary would turn that into a silent `Option.none()`. Error channel is
-  `never`; `ascend` is bounded by `dirname`'s root fixpoint plus `maxDepth`.
+- **`isWorkspaceRoot`'s `try`/`catch` around `JSON.parse`** (`ConfigResolver.ts`)
+  is load-bearing. A parse throw is a defect, not a failure; `Walker.firstMatch`
+  (which `findRoot` calls into) absorbs failures with `Effect.catch`, which does
+  **not** catch defects. Without the `try`/`catch`, a malformed `package.json`
+  would leak a defect through a predicate whose error channel is typed
+  `PlatformError.PlatformError`, not `never`. Removing it is a regression, not a
+  simplification.
 - **`internal/crypto.ts`** uses PBKDF2 at **600,000** iterations (OWASP) and
   imports **nothing** from the package — it defines its own `CryptoFailure` union
   so Biome's error-level `noImportCycles` stays satisfied. `EncryptedCodec` lifts
@@ -111,14 +116,19 @@ The JSON codec lives in core because it is free. Format codecs live in siblings
 exports**, so each optional dependency becomes a package. Dependency direction is
 strictly acyclic: **config-file → format packages, never the reverse.**
 
-**Planned:** when `@effected/walker` lands, `internal/walkUp.ts` is deleted and
-the resolvers are re-expressed over walker's primitives. `walkUp.ts` is already
-pure with its probe injected, so the extraction is a move, not a redesign — the
-core trades its zero-dependency property for one `workspace:*` edge.
+**`internal/walkUp.ts` is gone.** `@effected/walker` landed and the resolvers
+— `upwardWalk`, `rootAnchored` (and through it `gitRoot`/`workspaceRoot`) — are
+now expressed over `Walker.ascend`, `Walker.findUpward` and `Walker.findRoot`.
+`@effected/walker` is **boundary tier**; depending on it does not change
+config-file's own tier — tier 2 does not propagate (R3), so config-file stays
+boundary. The new edge is `"@effected/walker": "workspace:*"` in both
+`devDependencies` and `peerDependencies`, matching how
+`@effected/config-file-jsonc` declares its workspace deps. Runtime
+`dependencies` is still empty.
 
 ## Testing and building
 
-Tests live in `__test__/` (11 files, 120 passing), use `@effect/vitest`, and
+Tests live in `__test__/` (11 files, 124 passing), use `@effect/vitest`, and
 assert with `assert.*` — **never** `expect`.
 
 ```bash

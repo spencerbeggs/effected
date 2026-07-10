@@ -44,9 +44,57 @@
 			"recordedAt": "2026-07-09"
 		},
 		{
+			"source": "packages/config-file-jsonc/CLAUDE.md",
+			"target": ".claude/design/effected/packages/config-file.md",
+			"hash": "3d29f4815065f752b50d7e54c37837d0ee51e587b4faa58e7f268388fd915dc2",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/config-file-yaml/CLAUDE.md",
+			"target": ".claude/design/effected/packages/config-file.md",
+			"hash": "3d29f4815065f752b50d7e54c37837d0ee51e587b4faa58e7f268388fd915dc2",
+			"recordedAt": "2026-07-09"
+		},
+		{
 			"source": "packages/config-file/CLAUDE.md",
 			"target": ".claude/design/effected/packages/config-file.md",
-			"hash": "22faa967e7a7f2f16f6ca15afe66bb5447777cf11873e9a3cdf0cb3e30ad3c70",
+			"hash": "3d29f4815065f752b50d7e54c37837d0ee51e587b4faa58e7f268388fd915dc2",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/jsonc/CLAUDE.md",
+			"target": ".claude/design/effected/packages/jsonc.md",
+			"hash": "a9c5e12bc3862cea5d8fa87a146e9364fad2db15a6ee1bfc530d0a81bc9200b0",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/npm/CLAUDE.md",
+			"target": ".claude/design/effected/packages/npm.md",
+			"hash": "279846de2aca0abf19f2d1da088ee680d70741d701979bb031dfe0b618efbb3a",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/package-json/CLAUDE.md",
+			"target": ".claude/design/effected/packages/package-json.md",
+			"hash": "4c091af90d09d085c05193e0f092cbe1d0089c2ad582083217c3e9615e5ee433",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/pnpm-plugin-effect/CLAUDE.md",
+			"target": ".claude/design/effected/packages/pnpm-plugin-effect.md",
+			"hash": "2d5d47f3e3c6fd762fb5f825eedfe2473c9bdaaa819b145bbdddf6aa10975d7c",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/semver/CLAUDE.md",
+			"target": ".claude/design/effected/packages/semver.md",
+			"hash": "e9af85ecc0fece234ac5da306b74b00c84f4d5e49aa89f70c48be14900453a74",
+			"recordedAt": "2026-07-09"
+		},
+		{
+			"source": "packages/walker/CLAUDE.md",
+			"target": ".claude/design/effected/packages/walker.md",
+			"hash": "ef827b6727527ae16044dc05d8ad357a615f91a842a0341f91b85a45dfb3ab9f",
 			"recordedAt": "2026-07-09"
 		},
 		{

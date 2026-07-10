@@ -1,17 +1,17 @@
 {
-	"name": "@effected/pnpm-plugin-effect",
+	"name": "@effected/walker",
 	"version": "0.0.0",
 	"private": true,
-	"description": "pnpm config dependency for centralized catalog management across the Effected ecosystem.",
-	"keywords": ["pnpm", "pnpm-plugin", "config-dependency", "catalog", "monorepo", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/pnpm-plugin-effect#readme",
+	"description": "Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate.",
+	"keywords": ["path", "traversal", "walk", "find-up", "effect", "effected"],
+	"homepage": "https://github.com/spencerbeggs/effected/packages/walker#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/spencerbeggs/effected.git",
-		"directory": "packages/pnpm-plugin-effect"
+		"directory": "packages/walker"
 	},
 	"license": "MIT",
 	"author": {
@@ -19,6 +19,7 @@
 		"email": "spencer@beggs.codes",
 		"url": "https://spencerbeg.gs"
 	},
+	"sideEffects": false,
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
@@ -27,17 +28,18 @@
 	"scripts": {
 		"build:dev": "node savvy.build.ts --target dev",
 		"build:prod": "node savvy.build.ts --target prod",
-		"pnpm:export": "rolldown-pnpm-config export",
-		"pnpm:preview": "rolldown-pnpm-config preview",
-		"pnpm:up": "rolldown-pnpm-config upgrade savvy.build.ts",
 		"types:check": "tsgo --noEmit"
 	},
 	"devDependencies": {
+		"@effect/tsgo": "catalog:effect",
+		"@effect/vitest": "catalog:effect",
 		"@savvy-web/bundler": "^1.1.8",
 		"@types/node": "catalog:silk",
-		"@typescript/native-preview": "catalog:silk",
-		"rolldown-pnpm-config": "^0.2.1",
+		"effect": "catalog:effect",
 		"typescript": "catalog:silk"
+	},
+	"peerDependencies": {
+		"effect": "catalog:effect"
 	},
 	"engines": {
 		"node": ">=24.11.0"

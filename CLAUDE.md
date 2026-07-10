@@ -26,9 +26,9 @@ Seven foundational design docs live in `.claude/design/effected/` (config: `.cla
 
 Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port.
 
-Eight packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`. Ten remain, in order: **walker → toml → config-file-toml → lockfiles → store → xdg → workspaces → app-kit → type-registry → runtime-resolver**. `@effected/json-schema` is off the roadmap entirely.
+Nine packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker`. Ten remain, in order: **glob → toml → config-file-toml → lockfiles → store → xdg → workspaces → app-kit → type-registry → runtime-resolver**. `@effected/json-schema` is off the roadmap entirely.
 
-The order after `walker` firms up as lessons land. `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
+`@effected/glob` — new on the roadmap — is a planned pure-tier package vendoring a ported-with-attribution minimatch engine; its only consumer is `@effected/workspaces`, and it is built on its own spec → plan → implement cycle immediately after `walker`. The order after `walker` firms up as lessons land. `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
 
 ## Repository Layout
 
@@ -40,16 +40,17 @@ The order after `walker` firms up as lessons land. `package-inventory.md` and `r
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. Parenthetical tags mark each package's tier in the three-tier taxonomy (pure / boundary / integrated) defined in `effect-standards.md`.
 
 - `semver` — strict SemVer 2.0.0 schemas; the repo's DX north star (pure).
 - `jsonc` — zero-dependency JSONC parse/edit/format schemas (pure).
 - `yaml` — zero-dependency YAML 1.2 parse/edit/format schemas; largest package in the repo (pure).
-- `package-json` — package.json schemas, validation and file IO (boundary).
+- `package-json` — package.json schemas, validation and file IO (integrated).
 - `npm` — dependency-resolution contracts for `catalog:` / `workspace:` specifiers (pure).
 - `config-file` — composable config file loading: codec × resolver × strategy (boundary).
 - `config-file-jsonc` — `ConfigCodec` adapter over `@effected/jsonc` (pure).
 - `config-file-yaml` — `ConfigCodec` adapter over `@effected/yaml` (pure).
+- `walker` — upward path traversal; the one absorbing loop (boundary).
 - `pnpm-plugin-effect` — pnpm catalog/config plugin; repo infrastructure, not a library migration, so the tier taxonomy does not apply. It does publish to npm, as an optional convenience letting users pin their `effect` dependencies and peer floors the way this repo does.
 
 ### repos/effect-smol
@@ -58,7 +59,7 @@ A `git subtree` of Effect-TS/effect-smol, pinned to the tag matching the `effect
 
 It is excluded from pnpm (not a workspace package), turbo, vitest, Biome (`"includes": ["!repos"]`) and markdownlint (`"ignores": ["**/repos/**"]`).
 
-**Never point a writing tool at it.** The markdownlint config sets `"fix": true`, so an invocation aimed explicitly at that path silently rewrites the vendored migration notes. Never write to `repos/effect-smol` by any means.
+**Never point a writing tool at it.** Never write to `repos/effect-smol` by any means.
 
 Re-pin when the catalog bumps. This repo allows no merge commits and `git subtree pull` creates one, so the pull is followed by a squash:
 
@@ -76,9 +77,11 @@ The trailers are load-bearing: `git subtree pull` locates the vendored tree by g
 
 **Never run `node savvy.build.ts --target prod` directly.** It skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. Build through `pnpm build --filter <pkg>`.
 
-`@savvy-web/bundler` lives in the **root** `devDependencies` deliberately — package `savvy.build.ts` scripts resolve it via Node's upward `node_modules` walk; do not move it into package `devDependencies`. The workspace sets `autoInstallPeers: true`, so root `devDependencies` collapse to `@savvy-web/bundler`, `@savvy-web/silk`, and `@vitest-agent/plugin` with the rest auto-installed as peers.
+`@savvy-web/bundler` is a **`devDependency` of every package that builds** — it is what `savvy.build.ts` imports. Never put it in `dependencies`, or the publishable manifest ships a build tool at runtime. The workspace sets `autoInstallPeers: true`, so root `devDependencies` are just `@savvy-web/silk` and `@vitest-agent/plugin`, with the rest auto-installed as peers.
 
-The v4/v3 toolchain split is held by each package declaring `@effect/tsgo` (`catalog:effect`) as its typechecker devDependency rather than `@typescript/native-preview` (`catalog:silk`). What matters is the **declaration**, not the binary: it makes the typechecker's own `effect` peer ride the v4 catalog instead of the silk (v3-tooling) catalog. Under `autoInstallPeers: true` that stops the auto-installed `effect` peers in the tooling chain from resolving the workspace-preferred v4 into v3-wanting importers. This leans on current pnpm resolver behaviour and is **temporary**, pending upstream patch pnpm/pnpm#12847 (approved, expected to land shortly). See the peer-closure discipline in `@./.claude/design/effected/effect-standards.md`.
+It used to live at the root only, resolved by Node's upward `node_modules` walk, because a per-package copy put a v3-wanting `@effect/platform-node` beside a v4 `effect` in every importer. Fixed upstream in pnpm 11.11.0.
+
+The v4/v3 toolchain split is held by each package declaring `@effect/tsgo` (`catalog:effect`) as its typechecker devDependency rather than `@typescript/native-preview` (`catalog:silk`). What matters is the **declaration**, not the binary: it makes the typechecker's own `effect` peer ride the v4 catalog instead of the silk (v3-tooling) catalog. Under `autoInstallPeers: true` that stops the auto-installed `effect` peers in the tooling chain from resolving the workspace-preferred v4 into v3-wanting importers. Upstream patch pnpm/pnpm#12847 landed in **pnpm 11.11.0**, so this declaration may no longer be needed; it stays until someone verifies that removing it keeps `pnpm peers check` clean. See the peer-closure discipline in `@./.claude/design/effected/effect-standards.md`.
 
 Source `package.json` files are `"private": true` — this is intentional. The bundler's `publishConfig`-driven transform produces the publishable manifest at build time; never set `"private": false` in source.
 
@@ -113,8 +116,12 @@ The `@savvy-web/*` packages are in active development — if behavior seems unex
 - **Biome**: `biome.jsonc` extends `@savvy-web/silk/biome`.
 - **Commitlint**: `lib/configs/commitlint.config.ts` uses `CommitlintConfig.silk()`.
 - **Lint-staged**: `lib/configs/lint-staged.config.ts` uses `Preset.silk()`.
-- **Markdownlint**: config at `lib/configs/.markdownlint-cli2.jsonc`; runs with `"fix": true`.
+- **Markdownlint**: config at `lib/configs/.markdownlint-cli2.jsonc`. Check with `pnpm lint:md`, fix with `pnpm lint:md:fix`.
 - **Husky hooks**: `pre-commit` runs lint-staged; `commit-msg` runs commitlint; `post-checkout` / `post-commit` / `post-merge` maintain file modes and script exec bits.
+
+**Never invoke `markdownlint-cli2` directly — run `pnpm lint:md` or `pnpm lint:md:fix`.** The tool *merges* explicit path arguments with the config's repo-wide `globs` rather than narrowing to them, so "lint just my file" lints every markdown file in the repo. The config therefore omits `fix` entirely: present, it overrides the `--fix` flag in both directions; absent, the flag decides.
+
+**Never run `git checkout` / `git restore` / `git stash` to undo unexpected working-tree changes.** Other agents and earlier steps hold uncommitted work there. Inspect the diff and repair what is actually wrong.
 
 ## Conventions
 
@@ -128,7 +135,7 @@ The `@savvy-web/*` packages are in active development — if behavior seems unex
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml` (`catalog:effect`, `catalog:effectPeers`, `catalog:silk`), managed via `packages/pnpm-plugin-effect`.
 
-Treat new `pnpm peers check` warnings as upstream closure defects to fix, not warnings to silence. The residual `effect` peer warnings from transitive v3-wanting dependencies (`@effect/platform-node`, `@effect/sql-sqlite-node`) are **expected** under the interim setup — do not chase them. A warning outside that known set is a genuine defect.
+Treat new `pnpm peers check` warnings as upstream closure defects to fix, not warnings to silence. One residual warning is **expected**: `@effect/platform`, `@effect/rpc`, `@effect/sql` and `@effect/cluster` want `effect@^3.21.x`, reaching the tree through the build/test tooling chain (`@savvy-web/bundler` → `@savvy-web/tsdown-plugins` → `@effect/platform-node`; `@savvy-web/silk` and `@vitest-agent/plugin` → `@effect/cli`). It is under investigation — do not chase it. A warning outside that set is a genuine defect.
 
 Always check the lockfile diff after an install: a plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from it.
 

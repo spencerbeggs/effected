@@ -1,7 +1,6 @@
 {
 	"$schema": "https://raw.githubusercontent.com/DavidAnson/markdownlint-cli2/v0.22.0/schema/markdownlint-cli2-config-schema.json",
 	"globs": ["**/*.{md,mdx}"],
-	"fix": true,
 	"gitignore": true,
 	"noBanner": true,
 	"ignores": [

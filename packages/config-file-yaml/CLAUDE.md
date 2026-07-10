@@ -7,7 +7,7 @@ A single `ConfigCodec` adapter, `YamlCodec`, plugging `@effected/yaml` into
 `effect`. Zero runtime dependencies, no IO. Merged. 2 `src/` files, 1 test file,
 5 tests. Deliberately tiny — do not grow it.
 
-**For the full design:** → `@./.claude/design/effected/packages/config-file.md`
+**For the full design:** → `@../../.claude/design/effected/packages/config-file.md`
 
 Load when changing the codec seam, the family's package boundaries, or the
 adapter's error mapping.
@@ -18,13 +18,15 @@ This monorepo **does not use subpath exports**. Every optional dependency of
 `@effected/config-file` therefore becomes its own package rather than an
 `exports` subpath.
 
-## Why pure tier, despite serving a boundary package
+## Why pure tier, despite depending on a boundary package
 
-**Tier follows a package's own surface, not its neighbours'.** This adapter
-wraps `parse` / `stringify` and never touches `FileSystem`, so it is pure —
-even though its only consumer, `@effected/config-file`, is boundary tier and
-does the reading and writing. This was gotten wrong once; do not re-derive it
-from the dependency edge.
+**Tier 2 does not propagate (R3).** This adapter depends on boundary-tier
+`@effected/config-file`, but a boundary package's IO is discharged by the app's
+platform layer at the edge, so a consumer pays no external install for it — the
+dependency does not lift this package's tier. Its own surface does no IO either:
+it wraps `parse` / `stringify` and never touches `FileSystem` (R4: tier follows a
+package's own surface). This was gotten wrong once; do not re-derive it from the
+dependency edge.
 
 ## Acyclicity: the codec lives here, not in `@effected/yaml`
 

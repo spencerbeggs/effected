@@ -1,5 +1,6 @@
+import { Walker } from "@effected/walker";
+import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path } from "effect";
-import { ascend, findUpward } from "./internal/walkUp.js";
 
 /**
  * A composable config file resolver: one lookup strategy.
@@ -28,20 +29,6 @@ const absorb = <R>(
 ): Effect.Effect<Option.Option<string>, never, R> => Effect.catch(effect, () => Effect.succeed(Option.none()));
 
 const cwdOf = (given: string | undefined): string => given ?? globalThis.process?.cwd?.() ?? "/";
-
-/** Probe `subpaths` under `dir`, first match wins. */
-const probeSubpaths = (
-	fs: FileSystem.FileSystem,
-	path: Path.Path,
-	dir: string,
-	filename: string,
-	subpaths: ReadonlyArray<string>,
-): Effect.Effect<Option.Option<string>, unknown> =>
-	findUpward(
-		[dir],
-		(base) => subpaths.map((sub) => path.join(base, sub, filename)),
-		(candidate) => fs.exists(candidate),
-	);
 
 const explicitPath = (target: string): ConfigResolver<FileSystem.FileSystem | Path.Path> => ({
 	name: "explicit",
@@ -75,21 +62,14 @@ const upwardWalk = (options: {
 	readonly subpaths?: ReadonlyArray<string>;
 }): ConfigResolver<FileSystem.FileSystem | Path.Path> => ({
 	name: "walk",
-	resolve: absorb(
-		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem;
-			const path = yield* Path.Path;
-			const subpaths = options.subpaths ?? ["."];
-			const dirs = ascend(path, cwdOf(options.cwd), {
-				...(options.stopAt !== undefined && { stopAt: options.stopAt }),
-			});
-			return yield* findUpward(
-				dirs,
-				(dir) => subpaths.map((sub) => path.join(dir, sub, options.filename)),
-				(candidate) => fs.exists(candidate),
-			);
-		}),
-	),
+	resolve: Effect.gen(function* () {
+		const path = yield* Path.Path;
+		const subpaths = options.subpaths ?? ["."];
+		const dirs = yield* Walker.ascend(cwdOf(options.cwd), {
+			...(options.stopAt !== undefined && { stopAt: options.stopAt }),
+		});
+		return yield* Walker.findUpward(dirs, (dir) => subpaths.map((sub) => path.join(dir, sub, options.filename)));
+	}),
 });
 
 /**
@@ -99,36 +79,41 @@ const upwardWalk = (options: {
  */
 const rootAnchored = (
 	name: string,
-	isRoot: (fs: FileSystem.FileSystem, path: Path.Path, dir: string) => Effect.Effect<boolean, unknown>,
+	isRoot: (dir: string) => Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path>,
 	options: { readonly filename: string; readonly cwd?: string; readonly subpaths?: ReadonlyArray<string> },
 ): ConfigResolver<FileSystem.FileSystem | Path.Path> => ({
 	name,
-	resolve: absorb(
-		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem;
-			const path = yield* Path.Path;
-			const dirs = ascend(path, cwdOf(options.cwd));
+	resolve: Effect.gen(function* () {
+		const path = yield* Path.Path;
+		const dirs = yield* Walker.ascend(cwdOf(options.cwd));
 
-			const root = yield* findUpward(
-				dirs,
-				(dir) => [dir],
-				(dir) => isRoot(fs, path, dir),
-			);
-			if (Option.isNone(root)) return Option.none();
+		const root = yield* Walker.findRoot(dirs, isRoot);
+		if (Option.isNone(root)) return Option.none();
 
-			const subpaths = options.subpaths ?? ["."];
-			return yield* probeSubpaths(fs, path, root.value, options.filename, subpaths);
-		}),
-	),
+		const subpaths = options.subpaths ?? ["."];
+		return yield* Walker.findUpward([root.value], (dir) =>
+			subpaths.map((sub) => path.join(dir, sub, options.filename)),
+		);
+	}),
 });
 
 /** `.git` may be a directory (a normal repo) or a file (a worktree pointing at the real repo). */
-const isGitRoot = (fs: FileSystem.FileSystem, path: Path.Path, dir: string): Effect.Effect<boolean, unknown> =>
-	fs.exists(path.join(dir, ".git"));
+const isGitRoot = (
+	dir: string,
+): Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		return yield* fs.exists(path.join(dir, ".git"));
+	});
 
 /** A workspace root is marked by `pnpm-workspace.yaml`, or a `package.json` with a `workspaces` field. */
-const isWorkspaceRoot = (fs: FileSystem.FileSystem, path: Path.Path, dir: string): Effect.Effect<boolean, unknown> =>
+const isWorkspaceRoot = (
+	dir: string,
+): Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
 		if (yield* fs.exists(path.join(dir, "pnpm-workspace.yaml"))) return true;
 		const pkgPath = path.join(dir, "package.json");
 		if (yield* fs.exists(pkgPath)) {

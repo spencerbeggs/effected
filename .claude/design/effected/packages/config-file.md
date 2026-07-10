@@ -14,13 +14,14 @@ related:
   - jsonc.md
   - yaml.md
   - package-json.md
+  - walker.md
 ---
 
 # @effected/config-file design
 
 ## Overview
 
-Target design for `@effected/config-file`, the **fifth** package migration (step 2 of [migration-playbook.md](../migration-playbook.md)) and the **second boundary-tier port** after [package-json.md](package-json.md). Source is config-file-effect (`/Users/spencer/workspaces/spencerbeggs/config-file-effect`, v0.3.0, Effect v3); the step-1 analysis is `.claude/reviews/config-file.md` and this design implements its §3 v4-mapping, §4 layout, §5 split recommendation and §6 peer findings against [effect-standards.md](../effect-standards.md).
+Target design for `@effected/config-file`, the **fifth** package migration (step 2 of [migration-playbook.md](../migration-playbook.md)) and, under the [three-tier taxonomy](../effect-standards.md#three-tier-library-taxonomy), the **first boundary-tier port** — [package-json.md](package-json.md) also does IO but was reclassified **integrated** for its `spdx-expression-parse` dependency, so config-file is the first port whose tier is boundary. Source is config-file-effect (`/Users/spencer/workspaces/spencerbeggs/config-file-effect`, v0.3.0, Effect v3); the step-1 analysis is `.claude/reviews/config-file.md` and this design implements its §3 v4-mapping, §4 layout, §5 split recommendation and §6 peer findings against [effect-standards.md](../effect-standards.md).
 
 Like the four ports before it this is a redesign, not a lift-and-shift, and it is **v4-native throughout — no v3 pattern is preserved merely because v3 shipped it**.
 
@@ -61,7 +62,7 @@ The **codec adapters are pure tier**, not boundary: tier follows a package's own
 
 As-built: 5a–5c (`@effected/config-file`, `@effected/config-file-jsonc`, `@effected/config-file-yaml`) shipped together on `feat/config-file` per plan; 5d–5f (`@effected/toml`, `@effected/config-file-toml`, `@effected/config-file-watcher`) remain not started, per [package-inventory.md](../package-inventory.md#the-config-file-family). Of those, 5d and 5e are on the [release gate](../releases.md#the-gate) and 5f is not.
 
-Planned change, 2026-07-09: when `@effected/walker` lands, this package's `internal/walkUp.ts` is deleted and the `ConfigResolver` strategies are re-expressed as named strategies over walker's primitives — `ascend`, `findUpward`, root-anchored discovery. `walkUp.ts` is already pure with its probe injected (`findUpward(dirs, candidatesFor, exists)`), which is exactly why walker can be pure tier; the extraction is a move, not a redesign. The core stops being zero-dependency and gains one `workspace:*` edge.
+As-built, 2026-07-09: `@effected/walker` landed. This package's `internal/walkUp.ts` was deleted and the `ConfigResolver` strategies — `upwardWalk` and `rootAnchored` (and through it `gitRoot`/`workspaceRoot`) — are now expressed over walker's primitives: `Walker.ascend`, `Walker.findUpward`, `Walker.findRoot`. Walker is **boundary tier** — it does the IO itself through core `FileSystem`/`Path`, arriving via the `R` channel rather than an injected `exists` parameter — but config-file **stayed tier 2 by [R3](../effect-standards.md#dependency-policy)**, since a boundary dependency does not propagate; the extraction was a move, not a redesign. The core gained `@effected/walker` as a `workspace:*` edge in both `devDependencies` and `peerDependencies`, and kept its zero-external-runtime-dependency property. The suite grew from 120 to 124 tests. See [packages/walker.md](walker.md#consumer-impact-the-config-file-refactor).
 
 ## Tier and dependencies
 
@@ -107,13 +108,11 @@ src/
                        #   (merges events/ConfigEvent.ts + events/ConfigEvents.ts)
   ConfigProvider.ts    # additive v4 integration: ConfigFile.asConfigProvider
   internal/
-    walkUp.ts          # the shared ascend-until-root iteration (UpwardWalk, GitRoot and
-                       #   WorkspaceRoot each hand-roll this today)
     deepMerge.ts
     crypto.ts          # PBKDF2 derivation, IV framing, base64 helpers
 ~~~
 
-Nine folders + 17 files collapse to **9 concept files + 3 internal helpers**. Every non-entrypoint module imports explicitly from defining modules — no barrels, no re-export facades.
+Nine folders + 17 files collapsed to **9 concept files + internal helpers**. Every non-entrypoint module imports explicitly from defining modules — no barrels, no re-export facades. As-built: the tree above is post-walker-extraction — `internal/walkUp.ts` originally held the shared ascend-until-root iteration but was deleted when `@effected/walker` landed (see [Scope and the package set](#scope-and-the-package-set) above).
 
 `internal/crypto.ts` is kept deliberately clean: `EncryptedCodec` is the strongest future split candidate (~230 lines of WebCrypto orthogonal to config loading), and the design keeps that extraction cheap without paying for a package that has one consumer today.
 

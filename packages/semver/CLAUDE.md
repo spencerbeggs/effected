@@ -8,7 +8,7 @@ shape elsewhere, copy what this package does.
 `"sideEffects": false`. Never add a filesystem, network or clock dependency
 here; a boundary-tier consumer owns that.
 
-**Design doc:** `@./.claude/design/effected/packages/semver.md` — load when
+**Design doc:** `@../../.claude/design/effected/packages/semver.md` — load when
 changing the public API, the error set, or the grammar pipeline.
 
 ## Public surface

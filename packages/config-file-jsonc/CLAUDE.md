@@ -4,7 +4,7 @@ A `ConfigCodec` adapter plugging `@effected/jsonc` into `@effected/config-file`'
 codec seam, so config files may be JSON with comments and trailing commas. Two
 source files. Deliberately tiny — resist the urge to grow it.
 
-**Design doc:** `@./.claude/design/effected/packages/config-file.md` — load when
+**Design doc:** `@../../.claude/design/effected/packages/config-file.md` — load when
 changing the codec seam or the family's dependency shape. This package has none
 of its own.
 
@@ -14,9 +14,12 @@ of its own.
 `effect`; zero runtime dependencies. All three edges are peers so the consumer's
 graph holds one `ConfigCodec` interface identity and one format-package instance.
 
-Pure **despite** its only consumer being boundary tier: tier follows a package's
-own surface, not its neighbours'. An adapter performs no IO — it wraps `parse` /
-`stringify` and never touches `FileSystem`. This has been gotten wrong once.
+Pure **despite depending on** boundary-tier `@effected/config-file`: tier 2 does
+not propagate (R3), because a boundary package's IO is discharged by the app's
+platform layer at the edge, so a consumer pays no external install for it. The
+adapter itself performs no IO either — it wraps `parse` / `stringify` and never
+touches `FileSystem` (R4: tier follows a package's own surface). This has been
+gotten wrong once.
 
 ## Why a separate package
 

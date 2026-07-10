@@ -36,6 +36,7 @@
 		"@effect/vitest": "catalog:effect",
 		"@effected/config-file": "workspace:*",
 		"@effected/yaml": "workspace:*",
+		"@savvy-web/bundler": "^1.1.8",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
 		"typescript": "catalog:silk"

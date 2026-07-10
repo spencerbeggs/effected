@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-08
-last-synced: 2026-07-08
+updated: 2026-07-09
+last-synced: 2026-07-09
 completeness: 85
 related:
   - ../architecture.md
@@ -56,7 +56,7 @@ The end-user-facing half of this (install + the two patterns) is the package [RE
 
 The `effect` / `effectPeers` catalogs this package defines are the mechanism behind the [peer-dependency discipline](../effect-standards.md#peer-dependency-discipline) in the standards: `@effected/*` libraries keep `effect` as a `catalog:effect` peer, and the interim pnpm-resolver configuration (`autoInstallPeers`, the `@effect/tsgo`-as-typechecker choice) that keeps the v4 beta from poisoning the v3 silk toolchain operates over the catalogs generated here. Advancing the beta is a single `pnpm pnpm:up` + `pnpm pnpm:export` — **user-run commands; agents must not invoke them.**
 
-**Corrected 2026-07-09:** this section previously listed `dedupePeerDependents: false` among the live settings. The key is not present in `pnpm-workspace.yaml`, in an `.npmrc` (there is none), or in this package's source; it was removed once the peer-poisoning was fixed. The workspace does set `dedupeDirectDeps: false`.
+**Corrected 2026-07-09:** this section previously listed `dedupePeerDependents: false` among the live settings. The key is not present in `pnpm-workspace.yaml`, in an `.npmrc` (there is none), or in this package's source; it was removed once the peer-poisoning was fixed. `dedupeDirectDeps: false` was also dropped once pnpm 11.11.0 landed the upstream peer-resolution fix (see [effect-standards.md](../effect-standards.md#the-upstream-pnpm-fix-landed-2026-07-09)); neither key is set, and pnpm's defaults apply.
 
 This package is **repo infrastructure that also ships.** It carries no pure/boundary tier — the library taxonomy does not apply — but it is a real, publishable npm package (`publishConfig.targets.npm` is `true`), offered as an optional convenience so consumers can pin their `effect` dependencies and peers the way this repo does. Its value is largest under Effect v3, where computing peer-dependency floors by hand was genuinely hard; v4 makes that easier, so the package is a convenience rather than a necessity.
 

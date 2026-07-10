@@ -4,24 +4,27 @@ package.json parsing, editing, validation and file IO as Effect schemas. Fourth
 migration; merged. 13 `src/` modules (down from 34 v3 files), 11 test files,
 72 tests.
 
-**Design doc:** `@./.claude/design/effected/packages/package-json.md` — load when
+**Design doc:** `@../../.claude/design/effected/packages/package-json.md` — load when
 changing the public surface, the `rest` wire transform, or the error taxonomy.
 
-## Tier: boundary
+## Tier: integrated
 
-The first boundary-tier port. **All IO lives in `src/PackageJsonFile.ts`** — one
+**Integrated tier**, because it takes one external runtime dependency:
+`spdx-expression-parse` (typed by the ambient shim
+`src/spdx-expression-parse.d.ts`). Under the three-tier taxonomy any runtime
+import outside `effect` core makes a package integrated — this is the only
+`@effected` package that carries such a dependency. It also depends on
+`@effected/npm` and `@effected/semver` via `workspace:*`; those pure-to-integrated
+`workspace:*` edges are separate from the `spdx` dep that sets the tier.
+
+It also does IO, and **all of it lives in `src/PackageJsonFile.ts`** — one
 module, one `Context.Service`, two methods (`read`, `write`). Every other module
 is pure. Keep it that way: if a change wants to read or write, route it through
-`PackageJsonFile` or leave it to the caller.
-
-`PackageJsonFile` reads and writes over core `FileSystem` / `Path` (v4 — no
-`@effect/platform` peer). Its layer requires those services; the consumer
-provides `@effect/platform-node` at the edge.
-
-Boundary tier permits external runtime deps where they carry weight. This is the
-only `@effected` package with one: `spdx-expression-parse` (typed by the ambient
-shim `src/spdx-expression-parse.d.ts`). It also depends on `@effected/npm` and
-`@effected/semver` via `workspace:*`. Pure-tier packages get neither.
+`PackageJsonFile` or leave it to the caller. `PackageJsonFile` reads and writes
+over core `FileSystem` / `Path` (v4 — no `@effect/platform` peer); its layer
+requires those services, and the consumer provides `@effect/platform-node` at the
+edge. The IO alone would make it boundary; the `spdx-expression-parse` dependency
+is what lifts it to integrated.
 
 A review proposed splitting the IO into its own package; **the split was
 reversed**. The v3 motivation — isolating the `@effect/platform` peer — evaporates
