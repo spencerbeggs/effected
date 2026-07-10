@@ -1,0 +1,7 @@
+{
+	"session_id": "test-session-bats-compact",
+	"cwd": "/Users/spencer/workspaces/spencerbeggs/effected",
+	"transcript_path": "/tmp/bats-effective-compact.jsonl",
+	"hook_event_name": "SessionStart",
+	"source": "compact"
+}
