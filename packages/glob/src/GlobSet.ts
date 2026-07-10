@@ -67,6 +67,13 @@ export class GlobSet extends Schema.Class<GlobSet>("GlobSet")(
 	// classification cannot fail for constructed instances. Classification is
 	// per expanded alternative: brace-expand each include under default options
 	// and route each alternative by its own magic.
+	//
+	// The literal bucket keys on the engine's UNESCAPED single row, never the
+	// raw alternative source — the engine matches candidates in unescaped form,
+	// so keying on an escaped-magic source (foo\*bar) would silently drop every
+	// match its member pattern accepts. Comments match nothing and contribute
+	// nothing; anything else an exact-string key cannot represent (negation, a
+	// row the engine did not reduce to plain strings) is engine-matched instead.
 	#classify(): Classified {
 		if (this.#classified !== undefined) return this.#classified;
 		const literals: Array<string> = [];
@@ -80,12 +87,21 @@ export class GlobSet extends Schema.Class<GlobSet>("GlobSet")(
 				continue;
 			}
 			for (const alternative of braceExpand(pattern, {})) {
-				const compiled = GlobPattern.make({ source: alternative });
-				if (compiled.hasMagic) {
-					wildcards.push(compiled);
-				} else if (!seenLiterals.has(alternative)) {
-					seenLiterals.add(alternative);
-					literals.push(alternative);
+				const engine = new Minimatch(alternative, {});
+				if (engine.hasMagic()) {
+					wildcards.push(GlobPattern.make({ source: alternative }));
+					continue;
+				}
+				if (engine.comment) continue;
+				const row = engine.set.length === 1 ? engine.set[0] : undefined;
+				if (engine.negate || row === undefined || !row.every((part) => typeof part === "string")) {
+					wildcards.push(GlobPattern.make({ source: alternative }));
+					continue;
+				}
+				const key = row.join("/");
+				if (!seenLiterals.has(key)) {
+					seenLiterals.add(key);
+					literals.push(key);
 				}
 			}
 		}
@@ -136,12 +152,16 @@ export class GlobSet extends Schema.Class<GlobSet>("GlobSet")(
 		return this.#classify().excludes.some((e) => e.matches(candidate));
 	}
 
-	/** The deduped non-magic include alternatives, in first-seen order. */
+	/** The deduped effective literal include paths (unescaped), in first-seen order. */
 	get literals(): ReadonlyArray<string> {
 		return this.#classify().literals;
 	}
 
-	/** The magic include alternatives, compiled. */
+	/**
+	 * The include alternatives the engine must match, compiled: every magic
+	 * alternative, plus the rare non-magic shapes an exact-string key cannot
+	 * represent (whole-pattern negation from a brace alternative).
+	 */
 	get wildcards(): ReadonlyArray<GlobPattern> {
 		return this.#classify().wildcards;
 	}

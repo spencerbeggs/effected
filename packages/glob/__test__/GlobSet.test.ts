@@ -226,3 +226,59 @@ describe("GlobSet: construction and failure", () => {
 		}),
 	);
 });
+
+// The literal fast-path must key on what the engine actually matches — the
+// unescaped effective path — never the raw member source. An exact-string key
+// cannot represent comments or negation either; those route to the engine.
+describe("GlobSet: literals key on the effective unescaped path", () => {
+	it.effect("an escaped-magic literal include matches its unescaped candidate", () =>
+		Effect.gen(function* () {
+			const member = yield* GlobPattern.compile("foo\\*bar");
+			assert.isTrue(member.matches("foo*bar"));
+
+			const set = yield* GlobSet.compile(["foo\\*bar"]);
+			assert.isTrue(set.matches("foo*bar"));
+			assert.isFalse(set.matches("foo\\*bar"));
+			assert.deepStrictEqual(set.literals, ["foo*bar"]);
+		}),
+	);
+
+	it.effect("escaped and bare spellings of one effective literal dedupe", () =>
+		Effect.gen(function* () {
+			const set = yield* GlobSet.compile(["a\\{b", "a{b"]);
+			assert.deepStrictEqual(set.literals, ["a{b"]);
+			assert.isTrue(set.matches("a{b"));
+		}),
+	);
+
+	it.effect("a comment member contributes nothing", () =>
+		Effect.gen(function* () {
+			const set = yield* GlobSet.compile(["#note", "real/path"]);
+			assert.isFalse(set.matches("#note"));
+			assert.deepStrictEqual(set.literals, ["real/path"]);
+		}),
+	);
+
+	it.effect("a negated brace alternative is engine-matched, not string-keyed", () =>
+		Effect.gen(function* () {
+			const set = yield* GlobSet.compile(["{!x,y}"]);
+			assert.isTrue(set.matches("z"));
+			assert.isFalse(set.matches("x"));
+		}),
+	);
+
+	it.effect("set matching agrees with member-wise pattern matching", () =>
+		Effect.gen(function* () {
+			const patterns = ["foo\\*bar", "a\\{b", "#c", "plain/lit", ""];
+			const set = yield* GlobSet.compile(patterns);
+			const members = yield* Effect.forEach(patterns, (p) => GlobPattern.compile(p));
+			for (const candidate of ["foo*bar", "foo\\*bar", "a{b", "#c", "plain/lit", "", "other"]) {
+				assert.strictEqual(
+					set.matches(candidate),
+					members.some((m) => m.matches(candidate)),
+					`candidate ${JSON.stringify(candidate)}`,
+				);
+			}
+		}),
+	);
+});
