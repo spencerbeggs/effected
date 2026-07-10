@@ -237,53 +237,72 @@ describe("hostile input", () => {
 	});
 
 	describe("modify — path depth", () => {
-		it.effect("a 100_000-segment path fails typed promptly, before any parse work", () =>
-			Effect.gen(function* () {
-				const path = Array.from({ length: 100_000 }, (_, i) => `k${i}`);
-				const started = performance.now();
-				const error = yield* Effect.flip(TomlFormat.modify("a = 1\n", path, 2));
-				const elapsed = performance.now() - started;
-				assert.instanceOf(error, TomlModificationError);
-				assert.strictEqual((error as TomlModificationError).diagnostic.code, "NestingDepthExceeded");
-				assert.isBelow(elapsed, ELAPSED_BOUND_MS);
-			}),
+		it.effect(
+			"a 100_000-segment path fails typed promptly, before any parse work",
+			() =>
+				Effect.gen(function* () {
+					const path = Array.from({ length: 100_000 }, (_, i) => `k${i}`);
+					const started = performance.now();
+					const error = yield* Effect.flip(TomlFormat.modify("a = 1\n", path, 2));
+					const elapsed = performance.now() - started;
+					assert.instanceOf(error, TomlModificationError);
+					assert.strictEqual((error as TomlModificationError).diagnostic.code, "NestingDepthExceeded");
+					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
+				}),
+			ELAPSED_BOUND_MS,
 		);
 	});
 
+	// Every row asserting against ELAPSED_BOUND_MS also passes it as the
+	// Vitest test timeout: the default 5s ceiling would abort the test before
+	// the elapsed assertion runs, turning the bound into dead code on a slow
+	// CI runner (this exact document measured ~5,955ms there).
 	describe("scale", () => {
-		it.effect("a 2MB document of 50_000 key-values parses under the timeout", () =>
-			Effect.gen(function* () {
-				const lines = Array.from({ length: 50_000 }, (_, i) => `k${String(i).padStart(5, "0")} = "${"x".repeat(28)}"`);
-				const doc = `${lines.join("\n")}\n`;
-				assert.isAtLeast(doc.length, 2_000_000);
-				const started = performance.now();
-				const value = (yield* Toml.parse(doc)) as Record<string, unknown>;
-				const elapsed = performance.now() - started;
-				assert.strictEqual(Object.keys(value).length, 50_000);
-				assert.strictEqual(value.k49999, "x".repeat(28));
-				assert.isBelow(elapsed, ELAPSED_BOUND_MS);
-			}),
+		it.effect(
+			"a 2MB document of 50_000 key-values parses under the timeout",
+			() =>
+				Effect.gen(function* () {
+					const lines = Array.from(
+						{ length: 50_000 },
+						(_, i) => `k${String(i).padStart(5, "0")} = "${"x".repeat(28)}"`,
+					);
+					const doc = `${lines.join("\n")}\n`;
+					assert.isAtLeast(doc.length, 2_000_000);
+					const started = performance.now();
+					const value = (yield* Toml.parse(doc)) as Record<string, unknown>;
+					const elapsed = performance.now() - started;
+					assert.strictEqual(Object.keys(value).length, 50_000);
+					assert.strictEqual(value.k49999, "x".repeat(28));
+					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
+				}),
+			ELAPSED_BOUND_MS,
 		);
 
-		it.effect("a 1MB single-line string parses", () =>
-			Effect.gen(function* () {
-				const payload = "x".repeat(1_048_576);
-				const started = performance.now();
-				const value = (yield* Toml.parse(`s = "${payload}"\n`)) as Record<string, unknown>;
-				const elapsed = performance.now() - started;
-				assert.strictEqual(value.s, payload);
-				assert.isBelow(elapsed, ELAPSED_BOUND_MS);
-			}),
+		it.effect(
+			"a 1MB single-line string parses",
+			() =>
+				Effect.gen(function* () {
+					const payload = "x".repeat(1_048_576);
+					const started = performance.now();
+					const value = (yield* Toml.parse(`s = "${payload}"\n`)) as Record<string, unknown>;
+					const elapsed = performance.now() - started;
+					assert.strictEqual(value.s, payload);
+					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
+				}),
+			ELAPSED_BOUND_MS,
 		);
 
-		it.effect("a 1MB unterminated string fails typed promptly — no quadratic scan", () =>
-			Effect.gen(function* () {
-				const started = performance.now();
-				const error = yield* parseError(`s = "${"x".repeat(1_048_576)}`);
-				const elapsed = performance.now() - started;
-				assert.strictEqual(codeOf(error), "UnterminatedString");
-				assert.isBelow(elapsed, ELAPSED_BOUND_MS);
-			}),
+		it.effect(
+			"a 1MB unterminated string fails typed promptly — no quadratic scan",
+			() =>
+				Effect.gen(function* () {
+					const started = performance.now();
+					const error = yield* parseError(`s = "${"x".repeat(1_048_576)}`);
+					const elapsed = performance.now() - started;
+					assert.strictEqual(codeOf(error), "UnterminatedString");
+					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
+				}),
+			ELAPSED_BOUND_MS,
 		);
 	});
 
