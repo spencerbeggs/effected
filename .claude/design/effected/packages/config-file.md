@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-09
-last-synced: 2026-07-09
+updated: 2026-07-10
+last-synced: 2026-07-10
 completeness: 90
 related:
   - ../architecture.md
@@ -60,7 +60,7 @@ Dependency direction stays strictly acyclic: **config-file → format packages, 
 
 The **codec adapters are pure tier**, not boundary: tier follows a package's own surface, and an adapter performs no IO — it wraps `parse` / `stringify` and never touches `FileSystem`. Only `@effected/config-file` (which reads and writes files) and `@effected/config-file-watcher` (which watches them) are boundary tier.
 
-As-built: 5a–5c (`@effected/config-file`, `@effected/config-file-jsonc`, `@effected/config-file-yaml`) shipped together on `feat/config-file` per plan; 5d–5f (`@effected/toml`, `@effected/config-file-toml`, `@effected/config-file-watcher`) remain not started, per [package-inventory.md](../package-inventory.md#the-config-file-family). Of those, 5d and 5e are on the [release gate](../releases.md#the-gate) and 5f is not.
+As-built: 5a–5c (`@effected/config-file`, `@effected/config-file-jsonc`, `@effected/config-file-yaml`) shipped together on `feat/config-file` per plan. As of 2026-07-10, 5d (`@effected/toml`) is merged and 5e (`@effected/config-file-toml`) is implemented on `feat/config-file-toml`; only 5f (`@effected/config-file-watcher`) remains not started, per [package-inventory.md](../package-inventory.md#the-config-file-family). 5d and 5e are on the [release gate](../releases.md#the-gate) and 5f is not.
 
 As-built, 2026-07-09: `@effected/walker` landed. This package's `internal/walkUp.ts` was deleted and the `ConfigResolver` strategies — `upwardWalk` and `rootAnchored` (and through it `gitRoot`/`workspaceRoot`) — are now expressed over walker's primitives: `Walker.ascend`, `Walker.findUpward`, `Walker.findRoot`. Walker is **boundary tier** — it does the IO itself through core `FileSystem`/`Path`, arriving via the `R` channel rather than an injected `exists` parameter — but config-file **stayed tier 2 by [R3](../effect-standards.md#dependency-policy)**, since a boundary dependency does not propagate; the extraction was a move, not a redesign. The core gained `@effected/walker` as a `workspace:*` edge in both `devDependencies` and `peerDependencies`, and kept its zero-external-runtime-dependency property. The suite grew from 120 to 124 tests. See [packages/walker.md](walker.md#consumer-impact-the-config-file-refactor).
 
@@ -323,6 +323,7 @@ As-built: the API-Extractor gate was **vacuous for eleven tasks** across this po
 
 - **`@effected/config-file-jsonc` — 4 tests.** `@effected/jsonc` has **no `stringify`** — its schema layer's encode is `Effect.succeed(JSON.stringify(value, null, 2))`, so JSONC comments never survive a decode/encode round-trip *by design* of the underlying package. Consequently `JsoncCodec.stringify` is **byte-identical** to `ConfigCodec.json.stringify`; `JsoncEdit`/`JsoncModifier` from `@effected/jsonc` cannot help here because they are edit-based and require the *original* source text, while `ConfigCodec.stringify`'s seam is stateless — `(value) => Effect<string, E>`, with no "prior text" input to edit against. **Open seam question, recorded rather than resolved:** a comment-preserving write would require `ConfigCodec.stringify` itself to accept the prior raw text as an input, which is a change to the `@effected/config-file` seam, not something an adapter can retrofit on its own. Not pursued this cycle.
 - **`@effected/config-file-yaml` — 5 tests.** `@effected/yaml` has a **real** `stringify` — a class with static `parse`/`stringify`, both `Effect.fn`, failing `YamlParseError` / `YamlStringifyError` respectively. No fallback and no comment-loss caveat; this adapter is the straightforward case the design anticipated.
+- **`@effected/config-file-toml` — 5 tests.** Like `-yaml`, `@effected/toml` has a **real** `stringify` (`Toml.parse`/`Toml.stringify`, both `Effect.fn`, failing `TomlParseError`/`TomlStringifyError`), so the adapter is the straightforward one-file `Effect.mapError` case — each direction wraps into `ConfigCodecError({ codec: "toml", operation, cause })` with the cause preserved structurally. Unlike either sibling, stringify has a **cheap genuine failure case** — TOML has no null — so this is the first adapter whose tests pin `operation: "stringify"` with a structural `TomlStringifyError` cause (`UnsupportedValue` diagnostic). The hostile-input test trips `@effected/toml`'s parse-side nesting-depth cap (`MAX_NESTING_DEPTH = 256`; 1000 nested arrays) and asserts typed failure (`Cause.hasFails`, not `hasDies`) with a `NestingDepthExceeded` diagnostic. Value-model note: TOML date-times decode to the four `TomlDateTime` classes and integers past ±(2^53 − 1) decode to `bigint`; the seam is `unknown`, so no adapter handling was needed — the consumer's schema decides.
 
 ## Watcher redesign (deferred cycle)
 

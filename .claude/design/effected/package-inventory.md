@@ -80,7 +80,7 @@ Merged: 1. semver — 2. jsonc — 3. yaml — 4. package-json (+ npm) — 5. co
 
 Remaining, eight packages:
 
-1. **config-file-toml** — closes the config-file family. The adapter is a ~20-line follow-on over the stable `ConfigCodec` seam; toml merged, so nothing blocks it now.
+1. **config-file-toml** — closes the config-file family. The adapter is a ~20-line follow-on over the stable `ConfigCodec` seam. **Implemented on `feat/config-file-toml` (playbook steps 3–4 complete)** — 5 tests, zero-warning `dist/prod/issues.json` (`suppressed: 0`, no class factories); moves to the merged list when the branch lands.
 2. **lockfiles** — pure, no inbound blockers.
 3. **store** — extracted from xdg; needed by type-registry and both external consumers.
 4. **xdg** — after store, so it lands already slim.
@@ -101,7 +101,7 @@ Because this monorepo does not use subpath exports, every optional dependency of
 | `@effected/config-file-jsonc` | pure | 5b | **done** — 4 tests | `@effected/jsonc`, `@effected/config-file` |
 | `@effected/config-file-yaml` | pure | 5c | **done** — 5 tests | `@effected/yaml`, `@effected/config-file` |
 | `@effected/toml` | pure | 5d | **merged — 1415 tests** | none — from-scratch engine, zero runtime deps ([packages/toml.md](packages/toml.md)) |
-| `@effected/config-file-toml` | pure | 5e | not started — on the gate | `@effected/toml`, `@effected/config-file` |
+| `@effected/config-file-toml` | pure | 5e | implemented on `feat/config-file-toml` — 5 tests, on the gate | `@effected/toml`, `@effected/config-file` |
 | `@effected/config-file-watcher` | boundary | 5f | not started — **off the gate** | `@effected/config-file` |
 
 5a–5c landed together on `feat/config-file`; the core does not depend on `@effected/toml`, so the TOML port does not block migration #5. Dependency direction is strictly acyclic: config-file → format packages, never the reverse. 5d–5e are on the [release gate](releases.md#the-gate) — `@soda3js/config` is the TOML consumer that puts them there. 5f is not on the gate and needs redesign rather than translation.

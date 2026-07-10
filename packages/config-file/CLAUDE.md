@@ -111,7 +111,7 @@ Read the comments before touching these; each shape is load-bearing.
 ## Package family
 
 The JSON codec lives in core because it is free. Format codecs live in siblings
-— `@effected/config-file-jsonc`, `@effected/config-file-yaml`, later
+— `@effected/config-file-jsonc`, `@effected/config-file-yaml` and
 `@effected/config-file-toml` — because this monorepo **does not use subpath
 exports**, so each optional dependency becomes a package. Dependency direction is
 strictly acyclic: **config-file → format packages, never the reverse.**
