@@ -39,18 +39,19 @@ The criterion is "the kit can replace the business logic of these five." They sp
 
 ## The gate
 
-The union of what those consumers need. Eight packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml` — `pnpm-plugin-effect` is infrastructure and outside this count); ten remain:
+The union of what those consumers need. Nine packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker` — `pnpm-plugin-effect` is infrastructure and outside this count); ten remain:
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
-| `@effected/walker` | pure | not started | `config-file`, `xdg` and `workspaces` all traverse paths |
+| `@effected/walker` | boundary | merged | `config-file`, `xdg` and `workspaces` all traverse paths |
+| `@effected/glob` | pure | not started | `workspaces` drops its `minimatch` runtime dep for it |
 | `@effected/lockfiles` | pure | not started | `workspaces` reads lockfiles |
-| `@effected/store` | boundary | not started | SQLite cache + migrated state; both remaining consumers use it |
+| `@effected/store` | integrated | not started | SQLite cache + migrated state (`@effect/sql-sqlite-node`); both remaining consumers use it |
 | `@effected/xdg` | boundary | not started | `vitest-agent`, `type-registry` |
-| `@effected/workspaces` | boundary | not started | `vitest-agent` |
-| `@effected/app-kit` | boundary | not started | the composition layer over `xdg` + `config-file` + `store` |
-| `@effected/type-registry` | boundary | not started | `rspress-plugin-api-extractor`, and a migration target |
-| `@effected/runtime-resolver` | boundary | not started | a migration target |
+| `@effected/workspaces` | integrated | not started | `vitest-agent`; takes `@pnpm/catalogs.*` |
+| `@effected/app-kit` | integrated | not started | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`) |
+| `@effected/type-registry` | integrated | not started | `rspress-plugin-api-extractor`, and a migration target |
+| `@effected/runtime-resolver` | boundary | not started | a migration target; its `@effect/cli` binary splits into a separate integrated CLI package |
 | `@effected/toml` | pure | not started | `@soda3js/config` |
 | `@effected/config-file-toml` | pure | not started | `@soda3js/config` |
 

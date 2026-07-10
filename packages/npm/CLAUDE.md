@@ -3,7 +3,7 @@
 Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers.
 
 **For full design rationale and deferred decisions:**
-→ `@./.claude/design/effected/packages/npm.md`
+→ `@../../.claude/design/effected/packages/npm.md`
 
 Load when changing contract shapes, adding a resident concept, or reconciling against a real resolver.
 
