@@ -127,7 +127,8 @@ A probe that cannot fail is worse than no probe. Every precondition below exists
 2. **Print the resolved version inside every probe.** If it does not say `4.0.0-beta.<n>`, the probe measured v3 and every conclusion from it is void.
 3. **Probe files live at the package root.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories. A probe in a subdirectory silently drops out of the compilation program, and its control error never fires — it false-passes.
 4. **Run the control first.** Write a line you *know* must fail. Watch it fail. Only then write the real assertion.
-5. **Delete the probe by absolute path** when done.
+5. **A probe of any multi-value API must exercise a NON-first member.** A probe that constructs with the first literal of a union, the first element of a list, or the first overload succeeds under both the correct reading and a silently-degraded one — it cannot fail, so it settles nothing. The `@effected/glob` planning probe for `Schema.Literal("a", "b", "c")` passed precisely because it constructed with `"a"`; only a `"b"` construction exposed that v4's runtime keeps the first literal and drops the rest.
+6. **Delete the probe by absolute path** when done.
 
 ```bash
 cd packages/<pkg>

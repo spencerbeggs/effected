@@ -199,8 +199,18 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
   ```
 
   Feed a Schema instead and you must use `it.effect.prop`.
-- Run config (`numRuns`, `seed`, …) goes in the options bag as
-  `{ fastCheck: { numRuns: 1000 } }` alongside `timeout`.
+- **Schemas go in the ARRAY form only — the named-record form is broken in
+  beta.94.** `it.effect.prop("…", { n: Schema.Number }, ({ n }) => …)`
+  type-accepts a Schema but dies at collection with fast-check's
+  `Invalid parameter encountered at index 0: expecting an Arbitrary`: the
+  internals convert the Schema via `toArbitrary` and then unconditionally
+  overwrite the converted value with the raw Schema
+  (`@effect/vitest@4.0.0-beta.94` `dist/internal/internal.js:92-98`), so
+  `fc.record` receives the Schema itself. The error never names Schema, so it
+  reads like a caller mistake — it is not. Raw `FastCheck` arbitraries still
+  work in record form; Schemas require the array form (`[Schema.Number]`,
+  destructure positionally). Surfaced by the `@effected/glob` port; re-probe
+  on each catalog bump in case the upstream fix lands.
 - **`isPattern` regexes must be lookahead-free.** `Schema.toArbitrary` derives
   generators from `.check(...)` constraints, and fast-check's `stringMatching`
   throws `Assertions of kind Lookahead not implemented yet`. Rewrite
