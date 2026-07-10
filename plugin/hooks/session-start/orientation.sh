@@ -31,6 +31,13 @@ probe beats an hour of type-error archaeology).
 
 <skills>
 Available via the Skill tool (several also auto-load on trigger):
+- effect-v4-planning — the design-first gate: run before writing any
+  implementation code. Walks four design pillars (data types, errors,
+  services/layers, observability, testing) and requires a compact design
+  summary before Schema.Struct/Context.Service gets touched.
+- effect-v4-source-lookup — the evidence ladder for confirming a v4 API before
+  relying on it: migration notes settle renames, vendored source settles
+  existence and signature, only a probe settles semantics.
 - effect-v4-schema — the one Schema skill (the flagship): house "do this, not this"
   rules + worked patterns (Class-vs-Struct, optionality, checks/refine/makeFilter,
   codecs, the FromString static, make-vs-new, brand/Opaque, custom Equal/Hash) on
