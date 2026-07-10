@@ -26,9 +26,7 @@ Seven foundational design docs live in `.claude/design/effected/` (config: `.cla
 
 Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port.
 
-Nine packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker`. Ten remain, in order: **glob → toml → config-file-toml → lockfiles → store → xdg → workspaces → app-kit → type-registry → runtime-resolver**. `@effected/json-schema` is off the roadmap entirely.
-
-`@effected/glob` — new on the roadmap — is a planned pure-tier package vendoring a ported-with-attribution minimatch engine; its only consumer is `@effected/workspaces`, and it is built on its own spec → plan → implement cycle immediately after `walker`. The order after `walker` firms up as lessons land. `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
+Ten packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker`, `glob`. Nine remain, in order: **toml → config-file-toml → lockfiles → store → xdg → workspaces → app-kit → type-registry → runtime-resolver**. `@effected/json-schema` is off the roadmap entirely. The order after each merge firms up as lessons land. `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
 
 ## Repository Layout
 
@@ -51,6 +49,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `config-file-jsonc` — `ConfigCodec` adapter over `@effected/jsonc` (pure).
 - `config-file-yaml` — `ConfigCodec` adapter over `@effected/yaml` (pure).
 - `walker` — upward path traversal; the one absorbing loop (boundary).
+- `glob` — the full minimatch dialect as pure string→predicate schemas; vendored, hardened engine (pure).
 - `pnpm-plugin-effect` — pnpm catalog/config plugin; repo infrastructure, not a library migration, so the tier taxonomy does not apply. It does publish to npm, as an optional convenience letting users pin their `effect` dependencies and peer floors the way this repo does.
 
 ### repos/effect-smol
