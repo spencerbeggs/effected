@@ -1,6 +1,73 @@
 ---
 title: "@effected/glob"
-description: Auto-generated API documentation for "@effected/glob"
+description: "Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates."
 ---
 
-# Documentation
+# @effected/glob
+
+Full-fidelity glob matching as Effect schemas. The complete minimatch dialect — extglobs, `{a,b}` braces and sequences, character classes including POSIX classes, true `**` globstar, negation — compiled to pure string predicates, hardened against hostile input, with zero runtime dependencies.
+
+## Why @effected/glob
+
+Glob matching is string → predicate compilation, and compilation can fail: a pattern can be too long, expand past a budget, or nest past a depth cap. This package makes that boundary typed. `GlobPattern.compile` fails with a structured `GlobPatternError` carrying the reason, the limit and the actual value — never a thrown surprise — while `matches` stays **total**: every guard fires at compile time, before an instance exists, so no hostile pattern produces a stack overflow, an OOM or a hang at match time.
+
+The engine is a ported-with-attribution vendoring of minimatch 10.2.5 (plus brace-expansion 5.0.7 and balanced-match 4.0.4), which is house policy for a pure-tier package: vendor and attribute, never take a runtime dependency. The real minimatch is pinned as a devDependency-only test oracle, and the suite property-tests the vendored engine against it continuously.
+
+## Install
+
+```bash
+npm install @effected/glob effect
+```
+
+```bash
+pnpm add @effected/glob effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies.
+
+## Quick start
+
+```ts
+import { GlobPattern, GlobSet } from "@effected/glob";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  // Single patterns: compile once (fallible), then match totally.
+  const pattern = yield* GlobPattern.compile("packages/**");
+  pattern.matches("packages/a"); // true
+  pattern.matches("packages/a/b"); // true — ** really crosses levels
+
+  // Include/exclude sets: a leading ! is an exclusion filter.
+  const set = yield* GlobSet.compile(["packages/*", "!packages/internal"]);
+  set.matches("packages/core"); // true
+  set.matches("packages/internal"); // false
+});
+```
+
+Patterns embed in config schemas through the `FromString` codec, so decoding a config validates that every pattern in it actually compiles:
+
+```ts
+import { GlobPattern } from "@effected/glob";
+import { Schema } from "effect";
+
+const Config = Schema.Struct({
+  include: Schema.Array(GlobPattern.FromString),
+});
+// Decoding validates compilability; an uncompilable pattern fails as a SchemaError.
+```
+
+## The hardening that upstream left open
+
+Vendoring an engine means owning its denial-of-service surface, and porting it revealed a real hole. Coalescible extglob types in minimatch's AST parser recurse with a depth increment of zero, so stock minimatch 10.2.5 **stack-overflows at default options** on a pattern of roughly 60KB — comfortably under its own 64KB length cap. `@effected/glob` adds a structural backstop that counts every descent, plus depth guards on the brace-expansion and regex-construction recursion surfaces.
+
+Every upstream guard is preserved: the 64KB pattern-length cap, brace-expansion's budget and its two load-bearing DoS fixes, and the ReDoS-safe brace pre-check from CVE-2022-3517. One behavior deliberately changed: exhausting the expansion budget now **fails typed** where upstream silently truncated, because silent truncation silently changes match semantics.
+
+## Two deliberate deviations from minimatch
+
+`platform` is an explicit option defaulting to `"posix"`; `process.platform` is never read. All win32 handling — UNC paths, drive letters, backslash splitting — sits behind that option, so the caller who knows their platform passes it in and matching never depends on ambient environment.
+
+And `**` is real. `packages/**` matches `packages/a/b`, not just `packages/a`. A one-level approximation of globstar is exactly the bug that made nested workspace packages silently undiscoverable in this repo's predecessor tooling.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/glob/api).

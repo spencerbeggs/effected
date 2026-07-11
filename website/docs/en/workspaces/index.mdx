@@ -1,0 +1,120 @@
+---
+title: "@effected/workspaces"
+description: "Monorepo workspace tooling for Effect: discovery, the dependency graph, package-manager detection, pnpm catalogs and git change detection."
+---
+
+# @effected/workspaces
+
+Monorepo workspace tooling for Effect. Find the workspace root, enumerate its packages, walk the dependency graph, detect the package manager, resolve pnpm catalogs, read the lockfile, and work out which packages a git range touches. Works with npm, pnpm, yarn Berry and bun.
+
+## Why @effected/workspaces
+
+Monorepo tooling keeps re-deriving the same facts: where the root is, which directories are packages, what depends on what, what a `catalog:` specifier means, and which packages a change affects. Each tool re-derives them slightly differently, and the differences show up as bugs. This package answers those questions once, as services you provide at the edge and swap in tests.
+
+## Install
+
+```bash
+npm install @effected/workspaces effect
+```
+
+```bash
+pnpm add @effected/workspaces effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. You provide a `FileSystem` and `Path` implementation at the edge — `@effect/platform-node` or `@effect/platform-bun`.
+
+## Quick start
+
+```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { DependencyGraph, WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+// Bind the layer to a const: layers memoize by reference, so calling
+// Workspaces.layer() twice builds the whole stack twice.
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLive = Workspaces.layer().pipe(Layer.provide(Platform));
+
+const program = Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+
+  const packages = yield* discovery.listPackages();
+  const graph = DependencyGraph.make({ packages });
+
+  // Parallel build tiers: level 0 depends on nothing in the workspace.
+  return yield* graph.levels();
+});
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive)));
+```
+
+## Discovery is honest about what a glob means
+
+A `packages/**` pattern finds packages nested more than one level deep. That sounds like it should go without saying, and it is exactly the bug this package exists to have fixed: the predecessor library silently rewrote a trailing `/**` to `/*`, so a nested package went undiscovered with **no diagnostic at all**. An empty result is indistinguishable from a workspace that genuinely has no packages there.
+
+The enumerator runs on [`@effected/glob`](/glob)'s vendored engine, which classifies the pattern set and decides between a single-level read and a bounded iterative descent. The descent is a worklist rather than a recursion, so it cannot overflow, and it is bounded by a depth cap, a visit budget and an unconditional `node_modules` / `.git` prune.
+
+## Change detection, without a git subprocess baked in
+
+`ChangeDetector` offers three depths of analysis on one service — the raw changed files, the packages that own them, and the transitive blast radius through the dependency graph.
+
+```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { ChangeDetectionOptions, ChangeDetector, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+// layerWithGit adds ChangeDetector over the Node GitReader.
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLive = Workspaces.layerWithGit().pipe(Layer.provide(Platform));
+
+const program = Effect.gen(function* () {
+  const detector = yield* ChangeDetector;
+  const affected = yield* detector.affectedPackages(
+    ChangeDetectionOptions.make({ base: "origin/main" }),
+  );
+  return affected.map((pkg) => pkg.name);
+});
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive)));
+```
+
+Git runs through a `GitReader` service rather than a hard-coded subprocess call, so a test provides a fake and needs no repository on disk, and a Bun or Deno consumer swaps the layer. Effect v4 core has no subprocess API, so `GitReader` is this package's own contract with a `node:child_process` default.
+
+## pnpm catalogs
+
+`WorkspaceCatalogs` assembles a workspace's catalogs with pnpm's own precedence and resolves `catalog:` specifiers against the result.
+
+It also supplies the real implementations of [`@effected/npm`](/npm)'s `CatalogResolver` and `WorkspaceResolver` contracts — the ones [`@effected/package-json`](/package-json) declares but cannot fill. Provide `Workspaces.resolvers` and a manifest's `catalog:` and `workspace:` specifiers resolve for real:
+
+```ts
+import { Workspaces } from "@effected/workspaces";
+import { Layer } from "effect";
+
+const WorkspacesLive = Workspaces.layer();
+const Resolvers = Workspaces.resolvers.pipe(Layer.provide(WorkspacesLive));
+
+// Package.resolve now rewrites `catalog:` and `workspace:` to concrete ranges.
+```
+
+## The synchronous escape hatch
+
+Vitest's config-time project discovery cannot await. Two functions exist for exactly that case, and they are Node-only and synchronous:
+
+```ts
+import { findWorkspaceRootSync, getWorkspacePackagesSync } from "@effected/workspaces";
+
+const root = findWorkspaceRootSync();
+const packages = root === null ? [] : getWorkspacePackagesSync(root);
+```
+
+They drive the same traversal state machine as the Effect surface — the same dequeue order, depth rule, visit budget and prune list — so the two can never disagree about what a pattern means. Two hand-written copies is exactly how they drifted before. Prefer the Effect API everywhere you can run one.
+
+## Errors carry fields, not prose
+
+Every failure is a tagged error class with structured fields you branch on. A `WorkspacePatternError` carries a `kind` of `missingBaseDir`, `uncompilable`, `depthExceeded` or `budgetExceeded` — not a sentence you have to parse.
+
+A malformed `package.json`, an unenumerable pattern, a missing lockfile and a failed git command all fail through the typed channel. A developer wiring mistake — an uncompilable glob literal, a fractional depth cap — is a defect, so the typed channel stays the domain errors a caller actually branches on.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/workspaces/api).

@@ -55,7 +55,7 @@ There is no `Command` / `CommandExecutor` (`Stdio` is the current process's stre
 
 ### `WorkspacePackage` is deliberately tolerant
 
-It does **not** embed `@effected/package-json`'s `Package`: that model requires a strict `SemVer`, so one member with an odd version would fail discovery for the whole repo. `pkg.manifest()` is the opt-in bridge to the strict model.
+It does **not** embed `@effected/package-json`'s `Package`: that model requires a strict `SemVer`, so one member with an odd version would fail discovery for the whole repo. `WorkspacePackage.manifest(pkg)` is the opt-in bridge to the strict model — a **static**, not an instance method (`static readonly manifest = Effect.fn(...)(function* (self: WorkspacePackage))`), so `pkg.manifest()` does not exist.
 
 ## Ambient cwd
 

@@ -1,6 +1,83 @@
 ---
 title: "@effected/toml"
-description: Auto-generated API documentation for "@effected/toml"
+description: "Zero-dependency TOML 1.0.0 parsing, editing and formatting as Effect schemas, on a from-scratch engine."
 ---
 
-# Documentation
+# @effected/toml
+
+Zero-dependency TOML 1.0.0 parsing, editing and formatting expressed as Effect schemas and pure functions. Parse TOML into plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
+
+## Why @effected/toml
+
+TOML is the format behind `Cargo.toml`, `pyproject.toml` and a large share of the Rust and Python toolchains. Most JavaScript TOML libraries round-trip through a plain-object model, which loses every comment and blank line the moment you write the file back out.
+
+This is the first format package in the repo with no vendored code. `@effected/jsonc`, `@effected/yaml` and `@effected/glob` each port an upstream engine with attribution; TOML's engine is original work, built from the TOML 1.0.0 specification directly rather than translated from a reference implementation. That bought a shape the ported engines could not have: a **lossless linear CST** whose expression spans tile the source byte-exact, so `TomlDocument.parse(text).stringify()` reconstructs any valid document byte for byte. There is no separate re-serialization path that can drift from the source, because stringify is a concatenation of the slices the parser recorded.
+
+## Install
+
+```bash
+npm install @effected/toml effect
+```
+
+```bash
+pnpm add @effected/toml effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies.
+
+## Quick start
+
+Decode TOML straight into a validated domain value by composing your schema with `Toml.schema`, or reach for the pre-bound `Toml.TomlFromString` codec directly:
+
+```ts
+import { Toml } from "@effected/toml";
+import { Effect, Schema } from "effect";
+
+const Config = Schema.Struct({ name: Schema.String, port: Schema.Number });
+const ConfigFromToml = Toml.schema(Config);
+
+const program = Effect.gen(function* () {
+  return yield* Schema.decodeUnknownEffect(ConfigFromToml)(`
+    name = "api"
+    port = 3000
+  `);
+});
+
+Effect.runPromise(program).then(console.log);
+// { name: "api", port: 3000 }
+```
+
+## Editing preserves every comment
+
+Because edits are byte-minimal splices against the CST rather than a re-serialization, modifying a value leaves the rest of the document untouched:
+
+```ts
+import { TomlFormat } from "@effected/toml";
+import { Effect } from "effect";
+
+const source = `# server config
+name = "api"
+port = 3000 # dev default
+`;
+
+const program = TomlFormat.modifyToString(source, ["port"], 8080);
+
+Effect.runPromise(program).then(console.log);
+// # server config
+// name = "api"
+// port = 8080 # dev default
+```
+
+## TOML's date-times are real value objects
+
+TOML has four date-time types, and one of them — a local date-time with no offset and no timezone — has no equivalent in Effect's `DateTime` module and no faithful representation as a JavaScript `Date`. So `TomlLocalDate`, `TomlLocalTime`, `TomlLocalDateTime` and `TomlOffsetDateTime` are `Schema.Class` value objects with real leap-year-aware Gregorian calendar validation, a canonical `toString` and structural equality. None of them subclasses `Date`, because a `Date` cannot represent a wall-clock date-time that has deliberately no timezone at all.
+
+Integers split between `number` and `bigint` at `±(2^53 − 1)`, and both sides are bounds-checked against TOML's 64-bit integer range.
+
+## Correctness is proven twice
+
+The vendored [toml-test](https://github.com/toml-lang/toml-test) 1.0.0 compliance corpus — 205 valid and 474 invalid cases — runs to 100% pass with no skip list. Independently, `smol-toml` is pinned as a devDependency-only differential oracle for a property-test suite. Neither substitutes for the other, and neither is a runtime dependency.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/toml/api).

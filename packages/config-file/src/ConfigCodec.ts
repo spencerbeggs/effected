@@ -1,4 +1,5 @@
-import { Effect, Schema } from "effect";
+import type { Effect } from "effect";
+import { Schema } from "effect";
 
 /**
  * Indicates that a codec failed to parse or stringify configuration content.
@@ -31,6 +32,14 @@ export class ConfigCodecError extends Schema.TaggedErrorClass<ConfigCodecError>(
  * decorator codecs such as `EncryptedCodec` and `ConfigMigration.make` widen it
  * rather than flattening their own failures into a string.
  *
+ * The four built-in codecs — `JsonCodec`, `JsoncCodec`, `YamlCodec` and
+ * `TomlCodec` — are free-standing named exports, one per module, and are
+ * deliberately never collected into a namespace object. Collecting them would
+ * make this module a dispatch table: referencing it at all would reach every
+ * codec, and every codec would reach its parsing engine, so importing the JSON
+ * codec alone would drag the JSONC, YAML and TOML engines into the bundle.
+ * Name the one codec you use and a bundler drops the rest.
+ *
  * @public
  */
 export interface ConfigCodec<E = ConfigCodecError> {
@@ -38,25 +47,3 @@ export interface ConfigCodec<E = ConfigCodecError> {
 	readonly parse: (raw: string) => Effect.Effect<unknown, E>;
 	readonly stringify: (value: unknown) => Effect.Effect<string, E>;
 }
-
-const json: ConfigCodec = {
-	name: "json",
-	parse: (raw) =>
-		Effect.try({
-			try: () => JSON.parse(raw) as unknown,
-			catch: (cause) => new ConfigCodecError({ codec: "json", operation: "parse", cause }),
-		}),
-	stringify: (value) =>
-		Effect.try({
-			try: () => JSON.stringify(value, null, 2),
-			catch: (cause) => new ConfigCodecError({ codec: "json", operation: "stringify", cause }),
-		}),
-};
-
-/**
- * Built-in codecs. Only the zero-dependency JSON codec ships in core; JSONC,
- * YAML and TOML codecs live in their own adapter packages.
- *
- * @public
- */
-export const ConfigCodec = { json } as const;

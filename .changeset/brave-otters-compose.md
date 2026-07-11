@@ -7,7 +7,7 @@
 Initial release of `@effected/config-file` — composable config file loading for Effect v4. Declare a resolver chain (an explicit path, an upward walk from the cwd, the workspace or git root, `/etc`), decode every discovered file through an Effect `Schema`, and combine the results with a merge strategy. Codecs, resolvers and merge strategies are all pluggable seams, and every failure arrives as a tagged error carrying a structured payload rather than prose — so "no config anywhere" is routable separately from "the config I found is broken":
 
 ```ts
-import { ConfigCodec, ConfigFile, ConfigResolver, MergeStrategy } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 
@@ -20,7 +20,7 @@ class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("app/Config") 
 
 const AppConfigLive = ConfigFile.layer(AppConfig, {
   schema: AppShape,
-  codec: ConfigCodec.json,
+  codec: JsonCodec,
   resolvers: [ConfigResolver.upwardWalk({ filename: ".apprc" })],
   strategy: MergeStrategy.firstMatch<AppShape>(),
 });
@@ -36,7 +36,7 @@ Effect.runPromise(program.pipe(Effect.provide(AppConfigLive), Effect.provide(Pla
 // AppShape { port: 3000, host: "localhost" }
 ```
 
-Reading and writing needs a `FileSystem` and a `Path`, provided once at the edge — the package itself adds no runtime dependencies beyond the `effect` peer.
+Reading and writing needs a `FileSystem` and a `Path`, provided once at the edge — the package itself has no *external* runtime dependencies. The four codecs are backed by `@effected/jsonc`, `@effected/yaml` and `@effected/toml`, taken as workspace peers; those format engines are first-party and themselves dependency-free.
 
 ### A tagged error per failure mode, not one stringly-typed `ConfigError`
 
@@ -64,16 +64,38 @@ A config's identity is `class AppConfig extends ConfigFile.Service<AppConfig, Ap
 * `ConfigResolver.explicitPath` / `staticDir` / `upwardWalk` / `workspaceRoot` / `gitRoot` / `systemEtc` — a resolver's error channel is `never` by contract, so one unreadable tier never aborts the chain.
 * `MergeStrategy.firstMatch` takes the highest-priority match; `MergeStrategy.layeredMerge` deep-merges every source that matched, with higher-priority keys winning. (The v3 predecessor called this seam `ConfigWalkStrategy`, despite it never walking anything — the `upwardWalk` resolver does that — and named a source's priority tier `ConfigSource.tier`; here it's `MergeStrategy` and `ConfigSource.resolver`.)
 
-### Codecs compose
+### Four codecs, shipped as free-standing exports
 
-Only the zero-dependency `ConfigCodec.json` ships in core; format-specific codecs live in sibling packages (`@effected/config-file-jsonc`, `@effected/config-file-yaml` today; `@effected/config-file-toml` waits on `@effected/toml`). `EncryptedCodec` wraps any codec with AES-GCM, and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version — each *widens* the error channel rather than flattening its failures into the inner codec's:
+JSON, JSONC, YAML and TOML all ship in core, one named export each — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`. Each is a `ConfigCodec` ready to pass to `ConfigFile.layer`, `MergeStrategy`, `EncryptedCodec` or `ConfigMigration.make`, and every one of them fails with `ConfigCodecError`, wrapping the underlying format error structurally in `cause` rather than flattening it to a string:
 
 ```ts
-import { ConfigCodec, ConfigMigration, EncryptedCodec, EncryptedCodecKey } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, MergeStrategy, TomlCodec } from "@effected/config-file";
+
+const AppConfigLive = ConfigFile.layer(AppConfig, {
+  schema: AppShape,
+  codec: TomlCodec,
+  resolvers: [ConfigResolver.upwardWalk({ filename: ".apprc.toml" })],
+  strategy: MergeStrategy.firstMatch<AppShape>(),
+});
+```
+
+`ConfigCodec` is the **interface only** — the codecs are deliberately *not* collected into a namespace object. A namespace object is a barrel with different syntax: touching it reaches every codec, each codec reaches its parsing engine, and a JSON-only consumer drags the JSONC, YAML and TOML engines into their bundle. Import the one codec you name and a bundler drops the rest.
+
+* `JsonCodec` (`name: "json"`) — strict JSON, zero parsing engine behind it.
+* `JsoncCodec` (`name: "jsonc"`) — comment- and trailing-comma-tolerant parsing, the format behind `tsconfig.json` and VS Code settings. **Its `stringify` writes plain JSON, not JSONC** — `@effected/jsonc` exposes no comment-preserving encode, so comments do not survive a load-mutate-save round trip.
+* `YamlCodec` (`name: "yaml"`) — YAML 1.2, and unlike the JSONC codec it has a genuine encode path: `stringify` round-trips through `@effected/yaml`'s own serializer, with no comment-loss caveat.
+* `TomlCodec` (`name: "toml"`) — TOML 1.0.0. `@effected/toml`'s hardening rides along: array and inline-table nesting past the engine's depth cap fails as a typed `ConfigCodecError` carrying a positioned `NestingDepthExceeded` diagnostic, never a stack-overflow defect — on both the parse and stringify sides. TOML's value model surfaces honestly at the seam: date-times decode to `@effected/toml`'s four date-time classes, integers beyond ±(2^53 − 1) decode to `bigint`, and a document carrying `null` (which TOML cannot represent) fails `stringify` with a structured `UnsupportedValue` diagnostic in `cause`.
+
+### Codecs compose
+
+`EncryptedCodec` wraps any codec with AES-GCM, and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version — each *widens* the error channel rather than flattening its failures into the inner codec's:
+
+```ts
+import { ConfigMigration, EncryptedCodec, EncryptedCodecKey, JsonCodec } from "@effected/config-file";
 import { Effect } from "effect";
 
 const migrating = ConfigMigration.make({
-  codec: ConfigCodec.json,
+  codec: JsonCodec,
   migrations: [
     {
       version: 2,
@@ -101,4 +123,4 @@ export const secret = EncryptedCodec(migrating, EncryptedCodecKey.fromPassphrase
 
 ### Not yet ported
 
-The file watcher (`@effected/config-file-watcher`) and the TOML codec (`@effected/config-file-toml`, waiting on `@effected/toml`) are their own migration cycles and are not part of this release.
+The file watcher (`@effected/config-file-watcher`) is its own migration cycle and is not part of this release.

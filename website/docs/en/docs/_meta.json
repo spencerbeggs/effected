@@ -19,21 +19,6 @@
 	},
 	{
 		"type": "custom-link",
-		"link": "/config-file-jsonc",
-		"label": "@effected/config-file-jsonc"
-	},
-	{
-		"type": "custom-link",
-		"link": "/config-file-toml",
-		"label": "@effected/config-file-toml"
-	},
-	{
-		"type": "custom-link",
-		"link": "/config-file-yaml",
-		"label": "@effected/config-file-yaml"
-	},
-	{
-		"type": "custom-link",
 		"link": "/glob",
 		"label": "@effected/glob"
 	},
@@ -59,6 +44,21 @@
 	},
 	{
 		"type": "custom-link",
+		"link": "/pnpm-plugin-effect",
+		"label": "@effected/pnpm-plugin-effect"
+	},
+	{
+		"type": "custom-link",
+		"link": "/runtime-resolver",
+		"label": "@effected/runtime-resolver"
+	},
+	{
+		"type": "custom-link",
+		"link": "/runtime-resolver-cli",
+		"label": "@effected/runtime-resolver-cli"
+	},
+	{
+		"type": "custom-link",
 		"link": "/semver",
 		"label": "@effected/semver"
 	},
@@ -76,6 +76,16 @@
 		"type": "custom-link",
 		"link": "/walker",
 		"label": "@effected/walker"
+	},
+	{
+		"type": "custom-link",
+		"link": "/workspaces",
+		"label": "@effected/workspaces"
+	},
+	{
+		"type": "custom-link",
+		"link": "/xdg",
+		"label": "@effected/xdg"
 	},
 	{
 		"type": "custom-link",

@@ -9,7 +9,11 @@ Zero-dependency TOML 1.0.0 parsing, editing and formatting expressed as Effect s
 
 ## Why @effected/toml
 
-TOML is the config format behind `Cargo.toml`, `pyproject.toml` and a large share of the Rust and Python toolchains. Most JavaScript TOML libraries either round-trip through a plain-object model — losing every comment and blank line the moment you write the file back out — or vendor a parser never built for editing in place. `@effected/toml` is a from-scratch engine: a lossless linear CST whose expression spans tile the source byte-exact, so `TomlDocument.parse(text).stringify() === text` for any valid document, plus a semantic pass that resolves the full 1.0.0 table/key model on top of it. Edits are computed as byte-minimal splices against that CST, so formatting and path-based modification preserve every comment and every byte you did not touch. All fallible entry points carry a typed error built from `TomlDiagnostic` — never a collapsed string reason or an unhandled defect, even on hostile input.
+TOML is the config format behind `Cargo.toml`, `pyproject.toml` and a large share of the Rust and Python toolchains — files that people maintain by hand and comment heavily. Most JavaScript TOML libraries round-trip through a plain-object model, which loses every comment and blank line the moment you write the file back out.
+
+The engine here is written from scratch against the TOML 1.0.0 spec, and it is the only format package in this repo that vendors no upstream code at all. It parses into a lossless linear CST whose expression spans tile the source byte-exact, so `TomlDocument.parse(text).stringify()` reproduces the original text exactly for any valid document. There is no separate re-serialization path that can drift from the source. Edits are byte-minimal splices against that CST, so formatting and path-based modification preserve every comment and every byte you did not touch.
+
+The value model is honest about TOML's types rather than flattening them into JavaScript's. Integers past ±(2^53 − 1) decode to `bigint` instead of silently losing precision, and TOML's four date-time types decode to four calendar-validated value classes instead of a `Date` that cannot represent a local time. TOML has no null, so `Toml.stringify` on a value containing `null` fails with a structured `UnsupportedValue` diagnostic naming the offending path rather than dropping the key. Every fallible entry point carries a typed error built from `TomlDiagnostic`, and nesting-depth guards on both the parse and the stringify side mean hostile input fails through that channel rather than as a stack overflow.
 
 ## Install
 
@@ -25,7 +29,7 @@ Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package itself
 
 ## Quick start
 
-Decode TOML straight into a validated domain value by composing your schema with `Toml.schema`, or reach for the pre-bound `Toml.TomlFromString` codec directly:
+Compose your schema with `Toml.schema` to decode TOML straight into a validated domain value, or reach for the pre-bound `Toml.TomlFromString` codec when you just want the plain value:
 
 ```ts
 import { Toml } from "@effected/toml";
@@ -35,19 +39,32 @@ const Config = Schema.Struct({ name: Schema.String, port: Schema.Number });
 const ConfigFromToml = Toml.schema(Config);
 
 const program = Effect.gen(function* () {
-  const config = yield* Schema.decodeUnknownEffect(ConfigFromToml)(`
+  return yield* Schema.decodeUnknownEffect(ConfigFromToml)(`
     name = "api"
     port = 3000
   `);
-  const raw = yield* Schema.decodeUnknownEffect(Toml.TomlFromString)('name = "Alice"\nage = 30');
-  return { config, raw };
 });
 
 Effect.runPromise(program).then(console.log);
-// { config: { name: "api", port: 3000 }, raw: { name: "Alice", age: 30 } }
+// { name: "api", port: 3000 }
 ```
 
-Edit a document in place without disturbing its comments:
+`Toml.stringify` goes the other way, emitting canonical TOML:
+
+```ts
+import { Toml } from "@effected/toml";
+import { Effect } from "effect";
+
+Effect.runPromise(Toml.stringify({ title: "app", server: { port: 8080 } })).then(console.log);
+// title = "app"
+//
+// [server]
+// port = 8080
+```
+
+## Editing without losing comments
+
+`TomlFormat.modify` computes a `TomlEdit` array against the parsed CST; `modifyToString` applies it in one step. Comments, blank lines and layout that an edit does not cover come through byte-identical:
 
 ```ts
 import { TomlFormat } from "@effected/toml";
@@ -58,30 +75,53 @@ name = "api"
 port = 3000 # dev default
 `;
 
-const program = Effect.gen(function* () {
-  return yield* TomlFormat.modifyToString(source, ["port"], 8080);
-});
-
-Effect.runPromise(program).then(console.log);
+Effect.runPromise(TomlFormat.modifyToString(source, ["port"], 8080)).then(console.log);
 // # server config
 // name = "api"
 // port = 8080 # dev default
+```
+
+## Value model
+
+TOML's types do not all have a JavaScript equivalent, so the ones that do not get a real one:
+
+| TOML | Decodes to |
+| ---- | ---------- |
+| Integer within ±(2^53 − 1) | `number` |
+| Integer beyond ±(2^53 − 1), inside the 64-bit range | `bigint` — precision is never silently lost |
+| Integer outside the 64-bit range | fails with an `IntegerOutOfRange` diagnostic |
+| Offset date-time (`1979-05-27T07:32:00Z`) | `TomlOffsetDateTime` |
+| Local date-time (`1979-05-27T07:32:00`) | `TomlLocalDateTime` |
+| Local date (`1979-05-27`) | `TomlLocalDate` |
+| Local time (`07:32:00`) | `TomlLocalTime` |
+
+The four date-time classes are `Schema.Class` value objects with real Gregorian-calendar validation and structural equality, not `Date` subclasses: JavaScript's `Date` has no way to represent a date with no time, or a time with no offset.
+
+TOML cannot represent `null` at all. Rather than dropping the key or writing an empty string, `Toml.stringify` fails:
+
+```ts
+import { Toml } from "@effected/toml";
+import { Effect } from "effect";
+
+Effect.runPromise(Effect.result(Toml.stringify({ a: null }))).then(console.log);
+// Failure with TomlStringifyError, whose `diagnostic` carries:
+// { code: "UnsupportedValue", message: "unsupported null value at a", ... }
 ```
 
 ## Features
 
 - `Toml.parse` / `Toml.stringify` — value-level parse and canonical stringify, both carrying typed `TomlParseError` / `TomlStringifyError` channels, including nesting-depth guards on adversarial input.
 - `Toml.fromString` / `Toml.TomlFromString` / `Toml.schema` — string→domain schema factories that decode TOML directly into a validated Effect `Schema` value.
-- `TomlDocument` — the lossless document: `parse`/`schema`/`toValue`/`stringify`, backed by the linear CST whose expression spans reconstruct the source byte-exact.
-- `TomlEdit` / `TomlRange` (+ `applyAll`) — the non-mutating text-edit vocabulary shared by the formatter and modifier, parity-identical to `@effected/jsonc`'s and `@effected/yaml`'s edit shapes.
-- `TomlFormat` — `format`/`formatToString` compute conservative, comment-preserving formatting edits; `modify`/`modifyToString` compute the edits to replace, delete or insert a value at a path, resolved through the document's semantic view.
+- `TomlDocument` — the lossless document: `parse`, `schema`, `toValue` and `stringify`, backed by the linear CST whose expression spans reconstruct the source byte-exact.
+- `TomlEdit` / `TomlRange` (with `applyAll`) — the non-mutating text-edit vocabulary shared by the formatter and the modifier, and identical in shape to `@effected/jsonc`'s and `@effected/yaml`'s.
+- `TomlFormat` — `format` and `formatToString` compute conservative, comment-preserving formatting edits; `modify` and `modifyToString` compute the edits to replace, delete or insert a value at a path.
 - `TomlVisitor` — walk a parsed document as a `Stream` of visitor events.
-- `TomlDiagnostic` — a structured diagnostic (`code`, `message`, `offset`/`length`, `line`/`character`) every typed error carries, across five staged error-code unions.
-- The four `TomlDateTime` classes (`TomlLocalDate`, `TomlLocalTime`, `TomlLocalDateTime`, `TomlOffsetDateTime`) — TOML's date-time types as calendar-validated Effect `Schema.Class` value objects.
+- `TomlDiagnostic` — the structured diagnostic (`code`, `message`, `offset`, `length`, `line`, `character`) every typed error carries, across five staged error-code unions.
+- `TomlLocalDate` / `TomlLocalTime` / `TomlLocalDateTime` / `TomlOffsetDateTime` — TOML's date-time types as calendar-validated `Schema.Class` value objects.
 
-## Testing
+## Conformance
 
-Two devDependency-only test oracles keep the engine honest without becoming runtime dependencies: `smol-toml` (exact-pinned, imported only under `__test__/oracle.property.test.ts`) backs a differential property suite, and the vendored [toml-test](https://github.com/toml-lang/toml-test) 1.0.0 compliance corpus (`__test__/fixtures/toml-test/`) is run to 100% pass with no skip list.
+The engine runs the [toml-test](https://github.com/toml-lang/toml-test) 1.0.0 compliance corpus — every valid case and every invalid case — to a 100% pass rate with no skip list, and a differential property suite cross-checks it against an independent TOML parser. Both oracles are devDependency-only; neither reaches your runtime.
 
 ## License
 

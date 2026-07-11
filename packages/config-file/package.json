@@ -2,8 +2,21 @@
 	"name": "@effected/config-file",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Composable config file loading for Effect: pluggable codecs, resolution strategies, and merge behaviors.",
-	"keywords": ["config", "config-file", "codec", "resolver", "merge-strategy", "effect", "schema", "effected"],
+	"description": "Composable config file loading for Effect: JSON, JSONC, YAML and TOML codecs, resolution strategies, and merge behaviors.",
+	"keywords": [
+		"config",
+		"config-file",
+		"codec",
+		"json",
+		"jsonc",
+		"yaml",
+		"toml",
+		"resolver",
+		"merge-strategy",
+		"effect",
+		"schema",
+		"effected"
+	],
 	"homepage": "https://github.com/spencerbeggs/effected/packages/config-file#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
@@ -35,14 +48,20 @@
 		"@effect/platform-node": "catalog:effect",
 		"@effect/tsgo": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
+		"@effected/jsonc": "workspace:*",
+		"@effected/toml": "workspace:*",
 		"@effected/walker": "workspace:*",
+		"@effected/yaml": "workspace:*",
 		"@savvy-web/bundler": "^1.1.9",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
 		"typescript": "catalog:silk"
 	},
 	"peerDependencies": {
+		"@effected/jsonc": "workspace:*",
+		"@effected/toml": "workspace:*",
 		"@effected/walker": "workspace:*",
+		"@effected/yaml": "workspace:*",
 		"effect": "catalog:effect"
 	},
 	"engines": {

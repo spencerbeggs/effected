@@ -1,9 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Config, ConfigProvider, Effect, Layer, Path, Schema } from "effect";
-import { ConfigCodec } from "../src/ConfigCodec.js";
 import { ConfigFile } from "../src/ConfigFile.js";
 import { asConfigProvider, layerConfigProvider } from "../src/ConfigProvider.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
+import { JsonCodec } from "../src/JsonCodec.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
 import { memoryFs } from "./helpers.js";
 
@@ -18,7 +18,7 @@ class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("test/Provider
 const layerFor = (files: Record<string, string>) =>
 	ConfigFile.layer(AppConfig, {
 		schema: AppShape,
-		codec: ConfigCodec.json,
+		codec: JsonCodec,
 		resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
 		strategy: MergeStrategy.firstMatch<AppShape>(),
 	}).pipe(Layer.provide(Layer.mergeAll(memoryFs(files), Path.layer)));

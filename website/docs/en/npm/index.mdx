@@ -1,6 +1,59 @@
 ---
 title: "@effected/npm"
-description: Auto-generated API documentation for "@effected/npm"
+description: "Effect service contracts for resolving pnpm catalog: and workspace: dependency specifiers."
 ---
 
-# Documentation
+# @effected/npm
+
+Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers. Two `Context.Service` contracts, the tagged error they raise, and no-op default layers. This package ships shapes, not resolution logic.
+
+## Why @effected/npm
+
+A `package.json` document library can *see* a `catalog:` or `workspace:*` specifier, but it cannot resolve one — resolving requires a view of the workspace and its catalogs that a document library has no access to. So `@effected/package-json` defines what resolution looks like and this package holds the contract; `@effected/workspaces` supplies the real implementation.
+
+That is the whole package: contract here, implementation elsewhere. It is the smallest package in the repo and the one most likely to be invisible to you, because you consume it through the two packages on either side of it.
+
+## Install
+
+```bash
+npm install @effected/npm effect
+```
+
+```bash
+pnpm add @effected/npm effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. There are no runtime dependencies and no IO — defining a contract runs no effect, and the default layers are `Layer.succeed` over functions returning `Option.none()`.
+
+## Quick start
+
+The `Default` layer satisfies both contracts while resolving nothing, which is what you provide when a consumer needs the resolvers to typecheck but has no workspace to resolve against:
+
+```ts
+import { CatalogResolver, Default, WorkspaceResolver } from "@effected/npm";
+import { Effect, Option } from "effect";
+
+const program = Effect.gen(function* () {
+  const catalog = yield* CatalogResolver;
+  const workspace = yield* WorkspaceResolver;
+  return yield* Effect.all([
+    catalog.rangeOf("effect", Option.none()),
+    workspace.versionOf("@effected/semver"),
+  ]);
+});
+
+Effect.runPromise(Effect.provide(program, Default)).then(console.log);
+// [Option.none(), Option.none()]
+```
+
+Provide `Workspaces.resolvers` from `@effected/workspaces` instead, and the same program resolves against a real workspace.
+
+## An unmatched specifier is not an error
+
+The invariant the whole contract turns on. `rangeOf` and `versionOf` return `Option<string>`, and `Option.none()` means "no entry for this package" — a perfectly ordinary answer. `DependencyResolutionError` is reserved for failure of the resolution *mechanism*: an unreadable catalog file, a malformed workspace record. A package that simply is not in the catalog is a `None`, not a failure, and blurring the two would force every caller to route an error channel for a non-event.
+
+`DependencyResolutionError` carries its `cause` structurally as a `Schema.Defect`, never folded into a string.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/npm/api).

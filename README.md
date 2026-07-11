@@ -12,14 +12,15 @@ A pnpm monorepo (npm org `@effected`) building an [Effect](https://effect.websit
 | [@effected/toml](packages/toml) | pure | TOML 1.0.0 parsing, editing and formatting as Effect schemas: typed diagnostics, a lossless CST and first-class date-time values |
 | [@effected/package-json](packages/package-json) | integrated | package.json parsing, editing, validation and file IO as Effect schemas |
 | [@effected/npm](packages/npm) | pure | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers |
-| [@effected/config-file](packages/config-file) | boundary | Composable config file loading for Effect: pluggable codecs, resolution strategies and merge behaviors |
-| [@effected/config-file-jsonc](packages/config-file-jsonc) | pure | JSONC codec adapter plugging @effected/jsonc into @effected/config-file's `ConfigCodec` seam |
-| [@effected/config-file-yaml](packages/config-file-yaml) | pure | YAML codec adapter plugging @effected/yaml into @effected/config-file's `ConfigCodec` seam |
-| [@effected/config-file-toml](packages/config-file-toml) | pure | TOML codec adapter plugging @effected/toml into @effected/config-file's `ConfigCodec` seam |
+| [@effected/config-file](packages/config-file) | boundary | Composable config file loading for Effect: JSON, JSONC, YAML and TOML codecs, resolution strategies and merge behaviors |
 | [@effected/walker](packages/walker) | boundary | Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate |
 | [@effected/glob](packages/glob) | pure | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
 | [@effected/lockfiles](packages/lockfiles) | pure | Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
 | [@effected/store](packages/store) | integrated | Durable local state on SQLite: a schema-versioned migrated store and a TTL cache with eviction, over one shared migration ledger |
+| [@effected/xdg](packages/xdg) | boundary | XDG Base Directory resolution: environment paths, app-namespaced directories, native OS conventions and config-file resolvers |
+| [@effected/workspaces](packages/workspaces) | integrated | Monorepo tooling as Effect services: root discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
+| [@effected/runtime-resolver](packages/runtime-resolver) | boundary | Resolve semver-compatible Node.js, Bun and Deno runtime versions from live feeds, with an offline snapshot fallback |
+| [@effected/runtime-resolver-cli](packages/runtime-resolver-cli) | integrated | The command-line interface for @effected/runtime-resolver |
 | [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | infra | pnpm config dependency for centralized catalog management across the Effected ecosystem |
 
 Tier describes a package's runtime surface: **pure** packages peer on `effect` and take only `@effected/*` edges with no IO, **boundary** packages have the same dependency surface but do IO through Effect's core `FileSystem` and `Path` services and **integrated** packages import at least one runtime package outside `effect` core. `pnpm-plugin-effect` is repo infrastructure and sits outside the taxonomy.
@@ -30,7 +31,7 @@ Nothing here is published to npm yet. The whole kit ships together at 0.1.0 once
 
 ## Roadmap
 
-Five packages remain before the kit is complete, in order: `xdg`, `workspaces`, `app-kit`, `type-registry` and `runtime-resolver`.
+Two packages remain before the kit is complete, in order: `ts-vfs`, which fetches, caches and resolves TypeScript type definitions from npm so type-aware tooling can typecheck samples, and `app-kit`, a thin composition over `xdg`, `config-file` and `store` for wiring an application's control plane.
 
 ## Development
 

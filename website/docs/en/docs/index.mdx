@@ -16,6 +16,9 @@ place by being something one of those five actually needs.
 
 Nothing here is on npm. The whole kit ships together at `0.1.0`, once it can replace the business logic of
 the five applications that define its scope, and `1.0.0` waits for Effect v4 GA.
+[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) is the one package not bound to that release: it is repo
+infrastructure rather than part of the kit, so it will publish on its own schedule rather than waiting on the
+libraries. It has not published yet.
 
 No package is released on its own. That is what buys one internally consistent graph on day one: every
 package's peer range names the same Effect v4 beta, and no consumer ever installs a half-built kit. Until
@@ -48,24 +51,29 @@ ported matcher. A package's tier tells you what depending on it will cost you.
 | [@effected/toml](/toml) | pure | TOML 1.0.0 parsing, editing and formatting as Effect schemas, with typed diagnostics, a lossless CST and first-class date-time values |
 | [@effected/package-json](/package-json) | integrated | package.json parsing, editing, validation and file IO as Effect schemas |
 | [@effected/npm](/npm) | pure | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers |
-| [@effected/config-file](/config-file) | boundary | Composable config file loading: pluggable codecs, resolution strategies and merge behaviors |
-| [@effected/config-file-jsonc](/config-file-jsonc) | pure | JSONC codec adapter plugging `@effected/jsonc` into config-file's `ConfigCodec` seam |
-| [@effected/config-file-yaml](/config-file-yaml) | pure | YAML codec adapter plugging `@effected/yaml` into config-file's `ConfigCodec` seam |
-| [@effected/config-file-toml](/config-file-toml) | pure | TOML codec adapter plugging `@effected/toml` into config-file's `ConfigCodec` seam |
+| [@effected/config-file](/config-file) | boundary | Composable config file loading: JSON, JSONC, YAML and TOML codecs, resolution strategies and merge behaviors |
 | [@effected/walker](/walker) | boundary | Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate |
 | [@effected/glob](/glob) | pure | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
 | [@effected/lockfiles](/lockfiles) | pure | Lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
 | [@effected/store](/store) | integrated | Durable local state: a schema-versioned, migrated store, and a cache built on it |
+| [@effected/xdg](/xdg) | boundary | XDG Base Directory resolution: app directories, native directories and config-file resolvers |
+| [@effected/runtime-resolver](/runtime-resolver) | boundary | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
+| [@effected/runtime-resolver-cli](/runtime-resolver-cli) | integrated | The `runtime-resolver` binary, split out so the library's consumers never install a platform adapter |
+| [@effected/workspaces](/workspaces) | integrated | Monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
+| [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) | infrastructure | The pnpm config dependency publishing the two Effect catalogs every package here pins against |
 
-`@effected/pnpm-plugin-effect` sits outside the taxonomy. It is repo infrastructure — the pnpm config
-dependency publishing the catalogs every package pins against — and it is the one thing here that does
-publish, as an optional convenience for pinning `effect` the way this repo does.
+[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) sits outside the taxonomy. It is repo infrastructure —
+a pnpm config dependency shipping catalogs and a pnpmfile, not a library with an API — so pure, boundary
+and integrated do not describe it. It is also the one package here that already publishes, as an optional
+convenience for pinning `effect` the way this repo does.
 
 ## What is left
 
-Five packages remain before the kit is complete, in dependency order: `xdg`, `workspaces`, `app-kit`,
-`type-registry` and `runtime-resolver`. Two of those are also migration targets — applications that get
-absorbed into the repo rather than merely retargeted onto it.
+Two packages remain before the kit is complete, in order: `ts-vfs`, then `app-kit`. `ts-vfs` is the last
+package with real domain logic to port — it fetches, caches and resolves TypeScript type definitions from
+npm so Twoslash-style tooling can typecheck type-aware samples. `app-kit` goes last because it is a thin
+composition over `xdg`, `config-file` and `store`, and what belongs in it is decided by how consumers
+actually wire the kit.
 
 ## Source
 

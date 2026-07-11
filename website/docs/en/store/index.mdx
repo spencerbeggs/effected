@@ -1,6 +1,105 @@
 ---
 title: "@effected/store"
-description: Auto-generated API documentation for "@effected/store"
+description: "Durable local state for Effect: a schema-versioned, migrated SQLite store and a TTL cache with tag invalidation and eviction."
 ---
 
-# Documentation
+# @effected/store
+
+Durable local state for Effect: two services over one primitive. `Store` is a schema-versioned, migrated `SqlClient` — a managed database connection with a user-defined migration ledger. `Cache` is a `key → Uint8Array` cache with TTL, tags, an eviction policy and an event stream.
+
+## Why @effected/store
+
+The two services look like one service with a flag, and they are not. An evicted cache entry is correct behavior; a lost state row is a bug. Collapsing them into a single "storage" abstraction means every caller has to remember which mode they are in, and eventually one of them forgets.
+
+What they genuinely share is the migration-ledger engine underneath. `Store` exposes it with your migrations; `Cache` uses it privately to version its own fixed schema. The engine is parameterized by ledger table name, so a `Store` and a `Cache` can share one database file without colliding.
+
+## Install
+
+```bash
+npm install @effected/store effect
+```
+
+```bash
+pnpm add @effected/store effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. `@effect/sql-sqlite-node` is a runtime dependency, and it rides Node's built-in `node:sqlite` — so there is no native compile step and no `better-sqlite3`. This is the one package in the repo that carries a runtime dependency outside Effect core, which is exactly why the SQLite services were split out of [`@effected/xdg`](/xdg): so xdg's consumers do not pay for a database driver.
+
+## Quick start
+
+`Store` takes a migration list and applies every pending migration when its layer is built:
+
+```ts
+import { Store, type StoreMigration } from "@effected/store";
+import { Effect } from "effect";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+  {
+    id: 1,
+    name: "create-notes",
+    up: (sql) => Effect.asVoid(sql`CREATE TABLE notes (body TEXT)`),
+  },
+];
+
+// Bind the layer to a const: the statics are parameterized factories, so
+// calling one twice builds two layers and opens the database twice.
+const StoreLive = Store.layerSqlite({ filename: "/tmp/app/state.db", migrations });
+
+const program = Effect.gen(function* () {
+  const store = yield* Store;
+  yield* store.client`INSERT INTO notes (body) VALUES ('hello')`;
+  return yield* store.status;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(StoreLive)));
+// A StoreMigrationStatus per declared migration, recording which have been applied
+```
+
+`Cache` is the other half, with TTL and tags:
+
+```ts
+import { Cache } from "@effected/store";
+import { Duration, Effect } from "effect";
+
+const CacheLive = Cache.layerSqlite({ filename: "/tmp/app/cache.db", maxEntries: 500 });
+
+const program = Effect.gen(function* () {
+  const cache = yield* Cache;
+  yield* cache.set({
+    key: "npm:effect",
+    value: new TextEncoder().encode("{}"),
+    tags: ["registry"],
+    ttl: Duration.hours(1),
+  });
+  return yield* cache.get("npm:effect");
+  // Option.some(CacheEntry) inside the TTL, Option.none() once it expires
+});
+
+Effect.runPromise(program.pipe(Effect.provide(CacheLive)));
+```
+
+## Three layers, and the split is load-bearing
+
+Both services expose the same trio. `layer(options)` is driver-agnostic: it requires an abstract `SqlClient` in its requirements, so any Effect SQL driver satisfies it. That is the seam. `layerSqlite(options & { filename })` is batteries-included and provides the SQLite driver itself. `layerTest(options)` is `layerSqlite` at `:memory:`, which is what the test suites use — hermetic, no temp files.
+
+Migrations run at layer construction and failures surface on the layer's **typed** error channel. Nothing is laundered into a defect to make the signature tidier.
+
+## The line between a failure and a defect
+
+The package's sharpest rule. A typed `SqlError` becomes a domain error — `StoreError`, `StoreMigrationError`, `CacheError` — each wrapping the underlying cause structurally rather than as a string.
+
+Everything else stays a defect. A throwing `up`/`down` migration and a throwing `onRemoved` callback are programmer errors, not domain errors, and catching them into a domain error type would mean a caller's `catchTag` swallows their own bug. Wiring mistakes die at construction: duplicate or non-positive-integer migration ids, a `maxEntries` that is not a positive integer, a negative rollback target. Those guards are written `Number.isInteger(n) && n >= 1`, never a bare `n < 1`, because `NaN < 1` is `false` and a bare comparison lets `NaN` straight through.
+
+## Cache invariants worth knowing
+
+`onRemoved` runs **inside** the delete transaction. A typed failure in your callback rolls the delete back and suppresses the event, and your error type survives in the signature. Removal is not a fire-and-forget notification.
+
+Expiry is lazy: `get` and `has` delete an expired row on read, and `prune` sweeps in bulk. The clock is read through Effect's `Clock`, so `TestClock` drives expiry deterministically and no test ever sleeps.
+
+Eviction is least-recently-**written**, not read-touching LRU. `INSERT OR REPLACE` re-mints the rowid, so ascending rowid is exactly write order — deterministic, index-free, and not to be "improved" into a read-touching LRU without a design change.
+
+Keys, tags and values are data, never SQL and never paths. Everything reaches SQLite through the tagged-template `SqlClient`, so injection is structurally closed, and `invalidateByTag` escapes its pattern before interpolating it — a tag containing a backslash or a quote matches its own entries, which in the predecessor library it did not.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/store/api).

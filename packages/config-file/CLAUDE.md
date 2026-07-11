@@ -1,26 +1,28 @@
 # @effected/config-file
 
 Composable config file loading for Effect: pluggable codecs, resolution
-strategies and merge behaviors. Fifth migrated package and the **first
-boundary-tier port** (`@effected/package-json`, which also does file IO, is
-integrated tier for its lone external dependency).
+strategies and merge behaviors. The repo's **first boundary-tier port**.
 
 **Boundary tier:** it reads and writes files through `effect`-core platform
 abstractions — `FileSystem`/`Path` arrive from the consumer's platform layer —
-and depends on `effect` (its only peer) and `@effected/*` alone. That
-effect-only-plus-IO profile *is* boundary tier; it takes no external runtime
-dependency. Taking a format parser or a crypto library would make it
-**integrated**, which is exactly why those live in sibling packages.
+and depends on `effect` and `@effected/*` alone: **zero external runtime
+dependencies**. `@effected/*` peers do not change that (tier does not propagate,
+R3), but an *external* format parser or crypto library would make it
+**integrated** — hence the codecs wrap `@effected/{jsonc,yaml,toml}` and
+`internal/crypto.ts` is hand-rolled over `node:crypto`.
 
 **Design doc:** `@../../.claude/design/effected/packages/config-file.md` — load
-when changing the pipeline seams, the error set, or the package family
-boundaries.
+when changing the pipeline seams, the error set, or the codec boundaries.
 
 ## Public surface
 
 `src/index.ts` is the only re-exporting module. Its full export list:
 
-- `src/ConfigCodec.ts` — `ConfigCodec` (+ `.json`), `ConfigCodecError`
+- `src/ConfigCodec.ts` — `ConfigCodec` (**the interface, type-only**),
+  `ConfigCodecError`
+- `src/JsonCodec.ts`, `src/JsoncCodec.ts`, `src/YamlCodec.ts`,
+  `src/TomlCodec.ts` — one free-standing codec each: `JsonCodec`, `JsoncCodec`,
+  `YamlCodec`, `TomlCodec`
 - `src/ConfigResolver.ts` — `ConfigResolver` (+ `explicitPath`, `staticDir`,
   `upwardWalk`, `workspaceRoot`, `gitRoot`, `systemEtc`)
 - `src/MergeStrategy.ts` — `MergeStrategy` (`firstMatch`, `layeredMerge`),
@@ -108,27 +110,34 @@ Read the comments before touching these; each shape is load-bearing.
   so Biome's error-level `noImportCycles` stays satisfied. `EncryptedCodec` lifts
   it into `ConfigEncryptionError`.
 
-## Package family
+## The codecs: free-standing exports, never a namespace object
 
-The JSON codec lives in core because it is free. Format codecs live in siblings
-— `@effected/config-file-jsonc`, `@effected/config-file-yaml` and
-`@effected/config-file-toml` — because this monorepo **does not use subpath
-exports**, so each optional dependency becomes a package. Dependency direction is
-strictly acyclic: **config-file → format packages, never the reverse.**
+All four codecs live here; the `config-file-jsonc` / `-yaml` / `-toml` siblings
+are **gone**, dissolved into this package. The **format** packages
+`@effected/jsonc`, `@effected/yaml` and `@effected/toml` stay independent and
+untouched — the codecs are thin adapters over them. Direction is strictly
+acyclic: **config-file → format packages, never the reverse.**
+
+**Never collect the codecs into a namespace object.** The old
+`ConfigCodec = { json }` is deleted and must not return in any form — not
+`ConfigCodec.json`, not a `Codecs` record, not a `codecs` map. A namespace object
+is a barrel with different syntax: referencing it reaches *every* codec, each
+codec reaches its parsing engine, and a JSON-only consumer drags the JSONC, YAML
+and TOML engines into their bundle. **Tree-shaking dies silently** — no error, no
+warning, just a fat bundle. Free-standing named exports, one module each, are the
+whole reason the consolidation was safe to do.
+
+`@effected/{jsonc,toml,yaml,walker}` are each `workspace:*` in **both**
+`devDependencies` and `peerDependencies` (the `@effected/walker` precedent).
+Runtime `dependencies` stays empty.
 
 **`internal/walkUp.ts` is gone.** `@effected/walker` landed and the resolvers
 — `upwardWalk`, `rootAnchored` (and through it `gitRoot`/`workspaceRoot`) — are
 now expressed over `Walker.ascend`, `Walker.findUpward` and `Walker.findRoot`.
-`@effected/walker` is **boundary tier**; depending on it does not change
-config-file's own tier — tier 2 does not propagate (R3), so config-file stays
-boundary. The new edge is `"@effected/walker": "workspace:*"` in both
-`devDependencies` and `peerDependencies`, matching how
-`@effected/config-file-jsonc` declares its workspace deps. Runtime
-`dependencies` is still empty.
 
 ## Testing and building
 
-Tests live in `__test__/` (11 files, 124 passing), use `@effect/vitest`, and
+Tests live in `__test__/` (13 files, 146 passing), use `@effect/vitest`, and
 assert with `assert.*` — **never** `expect`.
 
 ```bash
@@ -138,8 +147,5 @@ pnpm build --filter @effected/config-file   # from the repo root
 
 - `it.effect` **always** installs a virtual `TestClock`, so `Effect.sleep`,
   `delay` and `timeout` hang silently until the vitest timeout.
-- Never run `node savvy.build.ts --target prod` directly. It skips `build:dev`,
-  emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a
-  clean gate.
 - `savvy.build.ts` carries a **narrow** suppression
   `{ messageId: "ae-forgotten-export", pattern: "_base" }`. Never widen it.

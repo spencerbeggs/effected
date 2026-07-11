@@ -39,15 +39,17 @@ The criterion is "the kit can replace the business logic of these five." They sp
 
 - `rspress-plugin-api-extractor` — the published package is `plugin/`, not the repo root. It carries 24 runtime dependencies including `type-registry-effect`, `semver-effect`, `@effect/sql` and `@effect/sql-sqlite-node`. It consumes `semver`, `ts-vfs` and `store`.
 - `vitest-agent` — an 11-package monorepo depending on `workspaces-effect`, `config-file-effect` and `xdg-effect`. It consumes `workspaces`, `config-file`, `xdg` and `store`, and transitively `walker` and `lockfiles`.
-- `soda3js/tools` — specifically `@soda3js/config` (`dependencies: effect, smol-toml`), an Effect package whose job is loading and writing a TOML config file. It consumes `config-file` and `toml`. It needs **only** TOML: under [the config-file consolidation](package-inventory.md#the-config-file-consolidation-2026-07-11) the `config-file-toml` adapter it would have taken ceases to exist, the `TomlCodec` arrives inside `@effected/config-file`, and this consumer gains dependency edges on `@effected/jsonc` and `@effected/yaml` that it never executes. That is acceptable because an explicitly-composed codec is tree-shaken when unreferenced and, unbundled, ESM never loads a module nobody imports. **If either of those facts is ever falsified, this decision must be revisited** — this consumer is the one that would pay.
+- `soda3js/tools` — specifically `@soda3js/config` (`dependencies: effect, smol-toml`), an Effect package whose job is loading and writing a TOML config file. It consumes `config-file` and `toml`. It needs **only** TOML: since [the config-file consolidation](package-inventory.md#the-config-file-consolidation-2026-07-11) the `config-file-toml` adapter it would have taken no longer exists, the `TomlCodec` arrives inside `@effected/config-file`, and this consumer carries dependency edges on `@effected/jsonc` and `@effected/yaml` that it never executes. It **provably pays nothing for them** — measured at 26.5 kB bundled, the TOML engine and neither of the others ([packages/config-file.md](packages/config-file.md#as-built-the-tree-shaking-property-is-measured-not-assumed)) — because an explicitly-composed codec is tree-shaken when unreferenced and, unbundled, ESM never loads a module nobody imports. **If either of those facts is ever falsified, this decision must be revisited** — this consumer is the one that would pay.
 
 `@effected/ts-vfs` is load-bearing for two of the five — it is a migration target in its own right and `rspress-plugin-api-extractor` depends on it — which is why it never sequenced at the end. With everything else merged it is now simply **next**, and the only package left behind it is `app-kit`, which **no consumer is blocked on** because nothing may depend on it (a library taking an application control plane would be an [R2](effect-standards.md#dependency-policy) tier-3 leak).
 
 ## The gate
 
-The union of what those consumers need. **Eighteen packages are merged today** (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `config-file-toml`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtime-resolver`, `runtime-resolver-cli`, `workspaces` — `pnpm-plugin-effect` is infrastructure and outside this count).
+The union of what those consumers need. **Fifteen packages are merged today** (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtime-resolver`, `runtime-resolver-cli`, `workspaces` — `pnpm-plugin-effect` is infrastructure and outside this count).
 
-Three pieces of work remain, in this order, per the [migration order](package-inventory.md#migration-order): **the config-file consolidation** first, then the **ts-vfs** port, then **app-kit**. The consolidation is not a migration — it dissolves three already-merged adapter packages into `@effected/config-file`, taking the merged count from eighteen to **fifteen** and the workspace from 19 packages to 16. It is sequenced first so the gate below, the two remaining ports and every consumer's install instructions are written once against the final package set. The kit therefore ships at `0.1.0` with **seventeen** library packages, not twenty.
+**The config-file consolidation is done** (2026-07-11): it dissolved three already-merged adapter packages into `@effected/config-file`, taking the merged count from eighteen to fifteen and the workspace from 19 packages to 16. It ran first, ahead of both ports, so the gate below, the remaining ports and every consumer's install instructions are written once against the final package set.
+
+**Two pieces of work remain**, in this order, per the [migration order](package-inventory.md#migration-order): the **ts-vfs** port, then **app-kit**. The kit ships at `0.1.0` with **seventeen** library packages, not twenty.
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
@@ -59,11 +61,8 @@ Three pieces of work remain, in this order, per the [migration order](package-in
 | `@effected/workspaces` | integrated | merged | `vitest-agent`; takes `@pnpm/catalogs.*`, and implements `@effected/npm`'s resolver contracts |
 | `@effected/runtime-resolver` | boundary | merged | a migration target; takes only `@effected/semver` and core `HttpClient` |
 | `@effected/runtime-resolver-cli` | integrated | merged | the binary, split out so the library's consumers do not pay for `@effect/platform-node` |
-| `@effected/toml` | pure | merged | `@soda3js/config`. Survives the consolidation — the format engine stays a package; only the adapter shim goes |
-| `@effected/config-file` | boundary | merged; **consolidation pending** | `vitest-agent`, and `@soda3js/config` once it absorbs the JSONC, YAML and TOML codecs. Stays boundary tier: `@effected/*` edges do not propagate tier, only [R2](effect-standards.md#dependency-policy) tier-3 does |
-| `@effected/config-file-jsonc` | pure | merged; **dissolves** | folded into `@effected/config-file` by the consolidation |
-| `@effected/config-file-yaml` | pure | merged; **dissolves** | folded into `@effected/config-file` by the consolidation |
-| `@effected/config-file-toml` | pure | merged; **dissolves** | folded into `@effected/config-file` by the consolidation; `@soda3js/config` then takes `config-file` directly |
+| `@effected/toml` | pure | merged | `@soda3js/config`. Survived the consolidation — the format engine stays a package; only the adapter shim went |
+| `@effected/config-file` | boundary | merged; **consolidated** | `vitest-agent` and `@soda3js/config`, which now takes it **alone** for TOML — it carries all four codecs (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`). Stays boundary tier: `@effected/*` edges do not propagate tier, only [R2](effect-standards.md#dependency-policy) tier-3 does |
 | `@effected/ts-vfs` | integrated | **not started — next** | `rspress-plugin-api-extractor`, and a migration target. Renamed from `@effected/type-registry` |
 | `@effected/app-kit` | integrated | **not started — last** | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`). No consumer is blocked on it — nothing may depend on it |
 
@@ -71,11 +70,13 @@ Three pieces of work remain, in this order, per the [migration order](package-in
 
 **Re-specced 2026-07-10, superseding the 2026-07-09 rescope this section previously recorded** (parse/stringify-only over a vendored smol-toml port). `@effected/toml` is a full-parity sibling to `@effected/jsonc` and `@effected/yaml` — parse, stringify, Schema, lossless CST, edit-in-place, formatter, visitor — on a **from-scratch Effect-native engine** targeting TOML 1.0.0, with `smol-toml` appearing only as a devDependency test oracle. The gate consumer `@soda3js/config` still needs only parse/stringify: the consumer contract defines the minimum the package must satisfy, no longer its bound — the same reversal glob made of this section's original scoping precedent. [packages/toml.md](packages/toml.md) is authoritative.
 
-### The config-file adapters dissolve before `0.1.0`
+### The config-file adapters dissolved before `0.1.0`
 
-**Approved 2026-07-11.** `@effected/config-file-jsonc`, `-yaml` and `-toml` fold back into `@effected/config-file`, which absorbs their three codecs; the `@effected/jsonc`, `@effected/yaml` and `@effected/toml` format packages are untouched. It is sequenced ahead of the two remaining ports because it changes the shape of what `0.1.0` publishes, and everything downstream — the gate table above, the install instructions each of the five applications will follow, the release changesets — is cheaper to write once against the final set than to write twice.
+**Executed 2026-07-11.** `@effected/config-file-jsonc`, `-yaml` and `-toml` are deleted; `@effected/config-file` absorbed their three codecs. The `@effected/jsonc`, `@effected/yaml` and `@effected/toml` format packages were untouched. It ran ahead of the two remaining ports because it changed the shape of what `0.1.0` publishes, and everything downstream — the gate table above, the install instructions each of the five applications will follow, the release changesets — is cheaper to write once against the final set than to write twice.
 
-Three adapter packages that exist only to hold a twenty-line object literal each are three packages to version, changeset, document and release for no gain a consumer can perceive. The install-weight argument that created them does not survive contact with how the codecs are actually composed (explicitly, by name, with no dispatch table) or with how pnpm actually installs (a content-addressed store with hardlinks). [package-inventory.md](package-inventory.md#the-config-file-consolidation-2026-07-11) records the evidence and [packages/config-file.md](packages/config-file.md#the-consolidation-approved-2026-07-11) records the constraint that makes it safe.
+Three adapter packages that existed only to hold a twenty-line object literal each were three packages to version, changeset, document and release for no gain a consumer could perceive. The install-weight argument that created them did not survive contact with how the codecs are actually composed (explicitly, by name, with no dispatch table) or with how pnpm actually installs (a content-addressed store with hardlinks). [package-inventory.md](package-inventory.md#the-config-file-consolidation-2026-07-11) records the evidence and [packages/config-file.md](packages/config-file.md#the-consolidation-2026-07-11) records the constraint that made it safe — the codecs are free-standing named exports with no namespace object, and the tree-shaking that rests on is now [measured](packages/config-file.md#as-built-the-tree-shaking-property-is-measured-not-assumed) rather than assumed.
+
+**What it costs a release manager:** `@effected/config-file` is the only config-file package `0.1.0` publishes. Its accurate dependency property is **zero external runtime dependencies** — it peers on `@effected/jsonc`, `@effected/yaml`, `@effected/toml` and `@effected/walker`, all `@effected/*`, all pure or boundary — not the "zero runtime dependencies" the earlier drafts of this doc could claim.
 
 ### Not on the gate
 
@@ -84,6 +85,8 @@ Three adapter packages that exist only to hold a twenty-line object literal each
 ## Versioning
 
 Every package stays below `1.0.0` until Effect v4 officially releases. Until then the `effect` peer range names the beta pinned in the `effect` catalog in `pnpm-workspace.yaml`, and a beta bump is a coordinated change across the whole kit rather than a per-package decision.
+
+**One package is not bound to the coordinated `0.1.0`: `@effected/pnpm-plugin-effect`.** It is infrastructure, not a library — no library here depends on it and it depends on none — so it *may* publish on its own schedule. It has not: like every package in this repo it is `0.0.0` and `private: true`, and `npm view @effected/pnpm-plugin-effect` 404s. Nothing in this repo is on npm today. See [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#publishing).
 
 ## Markdown
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-09
-last-synced: 2026-07-09
+updated: 2026-07-11
+last-synced: 2026-07-11
 completeness: 95
 related:
   - ../effect-standards.md
@@ -135,7 +135,7 @@ The [hardening-a-parser-port](../effect-standards.md#input-hardening-standards) 
 
 Extracting walker was a real change to the already-merged, previously zero-runtime-dependency `@effected/config-file`. Nothing was published, so the cost was a refactor commit, not a breaking release. The refactor landed as part of this migration.
 
-- **`internal/walkUp.ts` was deleted.** config-file gained `"@effected/walker": "workspace:*"` in both `devDependencies` and `peerDependencies` (matching how `config-file-jsonc` declares its workspace deps) and **stayed tier 2 by [R3](../effect-standards.md#dependency-policy)** — walker is boundary, and boundary does not propagate. Runtime `dependencies` is still empty.
+- **`internal/walkUp.ts` was deleted.** config-file gained `"@effected/walker": "workspace:*"` in both `devDependencies` and `peerDependencies` and **stayed tier 2 by [R3](../effect-standards.md#dependency-policy)** — walker is boundary, and boundary does not propagate. Runtime `dependencies` is still empty. That both-lists declaration became the repo's precedent: when the [config-file consolidation](config-file.md#the-consolidation-2026-07-11) absorbed the three codec adapters, its new `@effected/jsonc` / `yaml` / `toml` edges were declared the same way.
 - **`probeSubpaths` (ConfigResolver.ts) disappeared.** It was `findUpward([dir], …)` written longhand; the extracted `firstMatch`/`findUpward` cover it directly.
 - **`isGitRoot` / `isWorkspaceRoot` dropped their `(fs, path)` parameters** and `yield*` the services instead, because `findRoot` is generic in `R`. Their error channel tightened from `unknown` to typed: `(dir) => Effect<boolean, PlatformError.PlatformError, FileSystem | Path>`. `isWorkspaceRoot` kept its `try`/`catch` around `JSON.parse` — a parse throw is a defect, and `firstMatch`'s `Effect.catch` absorbs failures, not defects, so removing the `try`/`catch` would leak a defect through that now-typed channel.
 - **`absorb` survives only for `explicitPath` / `staticDir` / `systemEtc`**, the three resolvers that call `fs.exists` directly. The three *walking* resolvers no longer need `absorb` — walker's channel is already `never`.

@@ -1,9 +1,0 @@
-{
-	"$schema": "https://turborepo.com/schema.v2.json",
-	"extends": ["//"],
-	"tasks": {
-		"build:prod": {
-			"outputs": ["$TURBO_EXTENDS$", "../../website/lib/models/config-file-toml"]
-		}
-	}
-}

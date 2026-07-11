@@ -1,6 +1,85 @@
 ---
 title: "@effected/package-json"
-description: Auto-generated API documentation for "@effected/package-json"
+description: "package.json parsing, editing, validation and file IO as Effect schemas, with round-trip fidelity."
 ---
 
-# Documentation
+# @effected/package-json
+
+package.json parsing, editing, validation and file IO as Effect schemas. Decode a manifest into a typed `Package` class with computed getters and immutable mutation statics, classify dependency specifiers, validate against rules, resolve `catalog:` and `workspace:` specifiers, and read and write the file itself.
+
+## Why @effected/package-json
+
+A `package.json` is an open map with a well-known core, and most typed models of it lose the parts they do not know about. `Package` keeps a `rest` catch-all alongside its typed fields, so decoding a manifest, changing one value and writing it back preserves every key your model never heard of. Round-trip fidelity is the point: a tool that drops a field it does not understand is a tool nobody can safely run over their repo.
+
+Everything except one module is pure. All IO lives in `PackageJsonFile` — one service, two methods — so the rest of the surface is functions over values.
+
+## Install
+
+```bash
+npm install @effected/package-json effect
+```
+
+```bash
+pnpm add @effected/package-json effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. `PackageJsonFile` reads and writes over Effect core's `FileSystem` and `Path`, which you provide at the edge — from `@effect/platform-node` on Node.
+
+## Quick start
+
+`Package` is the schema, so decoding and mutation are both ordinary schema operations:
+
+```ts
+import { Package } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({ name: "my-pkg", version: "1.0.0" });
+  const next = yield* Package.setVersion(pkg, "1.1.0");
+  return next.toJsonString();
+});
+
+Effect.runPromise(program).then(console.log);
+// {
+//   "name": "my-pkg",
+//   "version": "1.1.0"
+// }
+```
+
+Reading a real file adds the one IO service, provided once at the edge:
+
+```ts
+import { PackageJsonFile } from "@effected/package-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const program = Effect.gen(function* () {
+  const file = yield* PackageJsonFile;
+  const pkg = yield* file.read("./package.json");
+  return { name: pkg.name, isESM: pkg.isESM, isScoped: pkg.isScoped };
+});
+
+const Live = PackageJsonFile.layer.pipe(
+  Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(Live)));
+```
+
+## Specifiers are classified, not string-matched
+
+`DependencySpecifier` carries one classifier, `protocolOf`, over the full taxonomy a dependency value can take: `range`, `tag`, `git`, `url`, `npm`, `file`, `link`, `portal`, `catalog`, `workspace` and `unknown`. Everything that needs to know what kind of specifier it is looking at asks that one function, rather than each caller writing its own `startsWith("workspace:")` check that drifts from every other one.
+
+## Resolution is a contract this package cannot fill
+
+`Package.resolve` expands `catalog:` and `workspace:` specifiers into concrete ranges — but this package has no view of the workspace, so it cannot resolve them itself. The service contracts live in [`@effected/npm`](/npm), and this package imports them. Provide `@effected/npm`'s `Default` layer and resolution is a no-op; provide `@effected/workspaces`'s `Workspaces.resolvers` and the same call resolves against a real workspace and its catalogs.
+
+`PackageJsonFile.write` never resolves on your behalf. If you want a manifest written with its specifiers expanded, compose `Package.resolve` explicitly — a write that silently rewrote `workspace:*` to a concrete version would be a surprising thing for a file-writing method to do.
+
+## Validation is rules over a decoded value
+
+`PackageValidator` runs rule-based validation against an already-decoded `Package`. `PackageValidator.layer` ships the default rules; `PackageValidator.layerRules` takes your own list. A rule is a function, and failures come back as structured `RuleFailure` values.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/package-json/api).

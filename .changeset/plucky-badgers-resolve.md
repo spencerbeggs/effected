@@ -8,7 +8,7 @@ Initial release of `@effected/xdg` — XDG Base Directory resolution for [Effect
 
 ```ts
 import { AppDirs, Xdg, XdgConfig } from "@effected/xdg";
-import { ConfigCodec, ConfigFile, MergeStrategy } from "@effected/config-file";
+import { ConfigFile, JsonCodec, MergeStrategy } from "@effected/config-file";
 import { Effect, Layer } from "effect";
 
 const XdgLayer = Layer.mergeAll(
@@ -18,7 +18,7 @@ const XdgLayer = Layer.mergeAll(
 
 const ConfigLayer = ConfigFile.layer(AppConfig, {
   schema: AppShape,
-  codec: ConfigCodec.json,
+  codec: JsonCodec,
   strategy: MergeStrategy.firstMatch<AppShape>(),
   resolvers: [
     XdgConfig.resolver({ filename: "config.json" }),

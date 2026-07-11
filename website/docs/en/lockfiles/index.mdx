@@ -1,6 +1,75 @@
 ---
 title: "@effected/lockfiles"
-description: Auto-generated API documentation for "@effected/lockfiles"
+description: "Lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, plus pure integrity checking."
 ---
 
-# Documentation
+# @effected/lockfiles
+
+Pure lockfile parsing for Effect: bun (`bun.lock`), npm (`package-lock.json` v2/v3), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) normalized into one unified `Lockfile` schema model, plus pure integrity checking of that model against workspace manifests.
+
+## Why @effected/lockfiles
+
+Every package manager writes its lockfile in a different dialect — JSONC for bun, JSON for npm, YAML for pnpm and yarn — and each encodes packages, workspace edges and integrity data differently. This package normalizes all four into one model, so tooling asks one set of questions regardless of which package manager produced the file.
+
+Every entrypoint takes content as a **string**. The package performs no IO: reading files, finding the workspace root and detecting the package manager belong to its consumers, which is why it stays pure tier and why `@effected/workspaces` is the one that touches the disk.
+
+## Install
+
+```bash
+npm install @effected/lockfiles @effected/jsonc @effected/semver @effected/yaml effect
+```
+
+```bash
+pnpm add @effected/lockfiles @effected/jsonc @effected/semver @effected/yaml effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4, `@effected/jsonc`, `@effected/semver` and `@effected/yaml` are peer dependencies — the text-parsing engines arrive through those sibling packages, so nothing else reaches your tree.
+
+## Quick start
+
+```ts
+import { Lockfile, LockfileIntegrity, WorkspaceManifest } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string; // lockfile text, read by the caller
+
+const program = Effect.gen(function* () {
+  // The only fallible boundary: malformed input fails with a typed
+  // LockfileParseError ({ format, stage: "syntax" | "validation", cause }).
+  const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+
+  // pnpm workspace packages come back keyed by importer path; rewrite them
+  // once you have read the manifests. Pure, total second stage.
+  const named = lockfile.withImporterNames(new Map([["packages/core", "@acme/core"]]));
+
+  // Total lookups over the model.
+  const versions = named.packagesNamed("typescript").map((p) => p.version);
+
+  // Pure integrity checking — no Effect, no error channel, no IO.
+  const report = LockfileIntegrity.compare(named, [
+    WorkspaceManifest.make({ name: "@acme/core", dependencies: { lodash: "^4.17.0" } }),
+  ]);
+
+  return { versions, valid: report.valid };
+});
+```
+
+## A lockfile is a YAML stream, not a YAML document
+
+The distinctive fact this package exists to get right. pnpm 11 writes `pnpm-lock.yaml` as **two YAML documents** when the workspace uses config dependencies: a config-dependency preamble, then the real lockfile. Both documents declare `lockfileVersion`, `importers` and `packages`, so the preamble *validates*. A single-document parse succeeds, returns a `Lockfile` with a handful of packages and no workspace importers, and looks exactly like a legitimate answer for an empty workspace. It is silent, and it is wrong.
+
+Framing is handled deterministically, never heuristically: pnpm's writer always emits the preamble as a **prefix**, so the lockfile is the **last** document. Position is the only discriminator — the keys do not tell the documents apart. Yarn defines no framing at all, so multi-document yarn content fails typed rather than being silently truncated to its first document; where the format states no rule, this package refuses to guess.
+
+The invariant behind all of it: **an unlocatable lockfile fails typed. It never returns an empty `Lockfile`.** An empty result is indistinguishable from "this workspace has no packages", which is precisely what kept the bug invisible.
+
+## Two seams the model makes explicit
+
+pnpm name resolution is a second stage. `Lockfile.parse` emits pnpm workspace packages named by importer *path*, because the names live in manifests the parser has not read. `lockfile.withImporterNames(map)` — total and pure — rewrites the names and both ends of every dependency edge once the consumer supplies them.
+
+Integrity checking is total. `LockfileIntegrity.compare(lockfile, manifests)` takes `WorkspaceManifest` values and returns a report with `valid`, `missingWorkspaces`, `extraWorkspaces` and `unsatisfiedConstraints` infallibly. There is no error channel because a mismatch is a finding, not a failure.
+
+Malformed input always exits through `LockfileParseError` (`stage: "syntax"` for text-level failures, `"validation"` for shape failures), never as a defect. Yarn support is Berry only: classic v1 content fails typed and is never mis-normalized.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/lockfiles/api).

@@ -1,0 +1,85 @@
+---
+title: "@effected/runtime-resolver"
+description: "Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot."
+---
+
+# @effected/runtime-resolver
+
+Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot as a fallback. Three resolver services — `NodeResolver`, `BunResolver`, `DenoResolver` — each available in three cache strategies, and every result carries honest provenance.
+
+## Why @effected/runtime-resolver
+
+"What is the newest Node.js version matching `>=20` that is still in active LTS?" is a question CI jobs, version managers and scaffolding tools all ask, and answering it means reading `nodejs.org`'s dist index, cross-referencing the release schedule, and applying semver. This package does that for Node, Bun and Deno behind one shape.
+
+It takes no external runtime dependency, and that is not incidental. The predecessor library's entire dependency weight was Octokit, funding exactly two REST GETs. Here the HTTP seam is `HttpClient` from Effect core, and the fetch implementation itself is a `Context.Reference` a test overrides with a fake. The binary that wraps this library lives next door in [`@effected/runtime-resolver-cli`](/runtime-resolver-cli), precisely so that a library consumer never installs a platform adapter.
+
+## Install
+
+```bash
+npm install @effected/runtime-resolver effect
+```
+
+```bash
+pnpm add @effected/runtime-resolver effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; `@effected/semver` is the only other edge. Live resolution needs an `HttpClient`, provided at the edge with `FetchHttpClient.layer`. Offline resolution needs nothing at all.
+
+## Quick start
+
+```ts
+import { NodeResolver } from "@effected/runtime-resolver";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const resolver = yield* NodeResolver;
+  const result = yield* resolver.resolve({ range: ">=20", phases: ["active-lts"] });
+  return { latest: result.latest, source: result.source };
+}).pipe(Effect.provide(NodeResolver.layerOffline));
+
+Effect.runPromise(program).then(console.log);
+// { latest: <newest active-LTS Node matching >=20>, source: "cache" }
+```
+
+Swap `layerOffline` for `layer` and provide an `HttpClient`, and the same program resolves against the live feeds:
+
+```ts
+import { BunResolver, GitHubClient, NodeResolver } from "@effected/runtime-resolver";
+import { Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+
+const Live = Layer.mergeAll(
+  NodeResolver.layer.pipe(Layer.provide(FetchHttpClient.layer)),
+  BunResolver.layer.pipe(Layer.provide(GitHubClient.layerDefault)),
+);
+```
+
+## Cache strategy is a layer, not a flag
+
+The package's signature idea. Each resolver exposes three layer constants, and each is typed exactly for what it can do:
+
+- `layer` — fetch live, fall back to the bundled snapshot **and say so**.
+- `layerFresh` — live data, or a typed `FreshnessError`.
+- `layerOffline` — the snapshot. No IO, no failure, no requirements.
+
+The precision is the point. A single function switching on a strategy kind would union all three error channels together and force `layerOffline` to advertise a failure it structurally cannot have. Choosing offline should make your error channel *smaller*.
+
+The requirements differ too, and that is also deliberate: **Node needs only an `HttpClient`**, because `nodejs.org`'s dist index and the release schedule are both unauthenticated. Bun and Deno resolve through GitHub's REST API and need a `GitHubClient`. So Node resolution works with zero GitHub credentials.
+
+## Provenance is honest
+
+`source` is state on the release index, set by whichever strategy actually populated it — `"api"` for a live answer, `"cache"` for the snapshot, including the automatic fallback, which additionally logs a warning.
+
+The predecessor advertised this field as a headline feature and hardcoded it to `"api"` in all three resolvers. A stale snapshot served after a silent network failure was indistinguishable from a live answer, which makes the field worse than useless: it lies with authority.
+
+## The distinctions the error channel keeps
+
+An invalid range is an `InvalidRangeError`, not "no versions found". The predecessor caught a filter failure into an empty array, so a typo in a range reached the user as a not-found.
+
+An unresolvable explicit default fails with `UnresolvableDefaultError`; an *absent* one falls back. Different questions deserve different answers — because Node alone falls back to the LTS pick when no default was requested, silently dropping an unmatched default would hand the caller LTS as though they had asked for it.
+
+A `403` from GitHub is classified, not assumed. GitHub returns it for an exhausted rate limit *and* for a permission failure, so classification reads `x-ratelimit-remaining` and `retry-after`; a `403` with neither stays a `NetworkError` and is not retried. A server-supplied `retry-after` is honored, which makes it untrusted input on a control path, so it is capped before it becomes a sleep and a negative value is discarded.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/runtime-resolver/api).

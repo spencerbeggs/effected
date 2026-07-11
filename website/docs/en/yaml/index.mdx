@@ -1,6 +1,67 @@
 ---
 title: "@effected/yaml"
-description: Auto-generated API documentation for "@effected/yaml"
+description: "Zero-dependency YAML 1.2 parsing, editing and formatting as Effect schemas and pure functions."
 ---
 
-# Documentation
+# @effected/yaml
+
+Zero-dependency YAML 1.2 parsing, editing and formatting expressed as Effect schemas and pure functions. Parse a single document or a multi-document stream into plain values or an offset-preserving AST, resolve anchors and aliases, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
+
+## Why @effected/yaml
+
+YAML is the format behind CI pipelines, Kubernetes manifests, `pnpm-lock.yaml` and much of the JavaScript toolchain — and this is the largest package in the repo, because YAML 1.2 is a large specification and the package implements it rather than a convenient subset of it. The engine is the full lex → CST → compose → stringify pipeline, vendored with attribution rather than taken as a runtime dependency, which is house policy for a pure-tier format package: a pure package owns its parser.
+
+Parsing recovers instead of failing on the first problem, aggregating every diagnostic into one `YamlParseError` with structured positions. Editing computes byte-minimal splices that preserve every comment you did not touch. The whole surface is pure — no IO, no services.
+
+## Install
+
+```bash
+npm install @effected/yaml effect
+```
+
+```bash
+pnpm add @effected/yaml effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies.
+
+## Quick start
+
+Decode YAML straight into a validated domain value by composing your schema with `Yaml.schema`:
+
+```ts
+import { Yaml } from "@effected/yaml";
+import { Effect, Schema } from "effect";
+
+const Config = Schema.Struct({ port: Schema.Number });
+const ConfigFromYaml = Yaml.schema(Config);
+
+const program = Effect.gen(function* () {
+  return yield* Schema.decodeUnknownEffect(ConfigFromYaml)("port: 3000 # dev server");
+});
+
+Effect.runPromise(program).then(console.log);
+// { port: 3000 }
+```
+
+`Yaml.parseAll` and `Yaml.allFromString` handle a `---`-separated multi-document stream, which is what a `pnpm-lock.yaml` written by a workspace with config dependencies actually is.
+
+## A YAML bomb is a typed error, not an OOM
+
+The distinctive hardening story is the alias-expansion budget, and it generalizes to any engine that expands references. A "billion laughs" bomb — a handful of anchors each aliasing the one below it — stays comfortably under a static alias-count cap and still exhausts the heap the moment the tree is materialized. Depth is not the only denial-of-service vector: what needs a budget is the **materialization**, not the input's static depth.
+
+`@effected/yaml` bounds materialized nodes, and an exceeded budget surfaces as a typed `YamlParseError` carrying an `AliasCountExceeded` diagnostic. The same discipline covers the composer, the CST parser and both stringify paths. Malformed and adversarial input always leaves through the typed error channel, never as a defect and never as a stack overflow.
+
+## Diagnostics carry warnings as data
+
+`YamlDiagnostic` is a structured record — `code`, `message`, `offset`, `length`, `line`, `character` — and a parsed `YamlDocument` carries recovered `errors` *and* `warnings` arrays. A warning is data you can render, not a `console.warn` the library performs on your behalf.
+
+## Edits and streaming
+
+`YamlEdit` and `YamlFormat` compute byte-minimal edit arrays for formatting and path-based modification, applied with `applyAll` in reverse-offset order. `YamlVisitor` walks a parsed document as a `Stream` of a tagged-enum event union, infallible at the type level: diagnostics arrive as `Error` events rather than failing the stream.
+
+The `YamlEdit`, `YamlRange`, `YamlPath` and `YamlSegment` vocabulary is deliberately parity-identical to `@effected/jsonc`'s and `@effected/toml`'s, so edit-applying code written against one format works against all three.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/yaml/api).
