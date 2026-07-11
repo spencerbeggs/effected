@@ -18,7 +18,11 @@ import { WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
 
-/** Options shared by the composite layers. */
+/**
+ * Options shared by the composite layers.
+ *
+ * @public
+ */
 export interface WorkspacesOptions {
 	/**
 	 * The directory every root-consuming service resolves the workspace root
@@ -31,8 +35,12 @@ export interface WorkspacesOptions {
 	readonly maxDepth?: number;
 }
 
-/** Everything the git-free composite provides. */
-type Core =
+/**
+ * Every service the git-free composite layer provides.
+ *
+ * @public
+ */
+export type WorkspacesServices =
 	| WorkspaceRoot
 	| PackageManagerDetector
 	| WorkspaceDiscovery
@@ -63,7 +71,9 @@ type Core =
  *
  * @public
  */
-const layer = (options?: WorkspacesOptions): Layer.Layer<Core, never, FileSystem.FileSystem | Path.Path> => {
+const layer = (
+	options?: WorkspacesOptions,
+): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> => {
 	const roots = WorkspaceRoot.layer;
 	const detector = PackageManagerDetector.layer;
 	const discovery = WorkspaceDiscovery.layer(options).pipe(Layer.provide(roots));
@@ -91,7 +101,7 @@ const layer = (options?: WorkspacesOptions): Layer.Layer<Core, never, FileSystem
  */
 const layerWithGit = (
 	options?: WorkspacesOptions,
-): Layer.Layer<Core | ChangeDetector | GitReader, never, FileSystem.FileSystem | Path.Path> => {
+): Layer.Layer<WorkspacesServices | ChangeDetector | GitReader, never, FileSystem.FileSystem | Path.Path> => {
 	const core = layer(options);
 	const git = GitReader.layerNode;
 	return Layer.mergeAll(core, git, ChangeDetector.layer.pipe(Layer.provide(git), Layer.provide(core)));

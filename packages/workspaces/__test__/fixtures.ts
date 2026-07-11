@@ -45,8 +45,7 @@ export const fileSystem = (tree: Tree): Layer.Layer<FileSystem.FileSystem> => {
 	return FileSystem.layerNoop({
 		exists: (path: string) => Effect.succeed(Object.hasOwn(tree, path) || dirs.has(path)),
 
-		readFileString: (path: string) =>
-			Object.hasOwn(tree, path) ? Effect.succeed(tree[path]) : notFound(path),
+		readFileString: (path: string) => (Object.hasOwn(tree, path) ? Effect.succeed(tree[path]) : notFound(path)),
 
 		readDirectory: (path: string) => {
 			if (!dirs.has(path)) return notFound(path);

@@ -18,7 +18,7 @@ import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect
 export const PackageManagerName = Schema.Literals(["npm", "pnpm", "yarn", "bun"]);
 
 /**
- * The decoded type of {@link PackageManagerName}: `"npm" | "pnpm" | "yarn" | "bun"`.
+ * The decoded type of {@link (PackageManagerName:variable)}: `"npm" | "pnpm" | "yarn" | "bun"`.
  *
  * @public
  */

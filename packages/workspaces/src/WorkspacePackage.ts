@@ -63,7 +63,7 @@ export interface DependencyDiff {
 
 /**
  * Raised when a workspace member's `package.json` cannot be read or decoded
- * into the strict `@effected/package-json` {@link Package} model.
+ * into the strict `@effected/package-json` `Package` model.
  *
  * @remarks
  * Discovery itself never raises this — it uses the tolerant projection. Only
@@ -274,7 +274,7 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 
 	/**
 	 * Read and decode this package's `package.json` into the strict
-	 * `@effected/package-json` {@link Package} model — the bridge from the
+	 * `@effected/package-json` `Package` model — the bridge from the
 	 * tolerant discovery projection to the fully typed manifest.
 	 */
 	static readonly manifest = Effect.fn("WorkspacePackage.manifest")(function* (self: WorkspacePackage) {

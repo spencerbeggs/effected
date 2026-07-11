@@ -104,8 +104,13 @@ export class WorkspaceInfo extends Schema.Class<WorkspaceInfo>("WorkspaceInfo")(
 	patterns: Schema.Array(Schema.String),
 }) {}
 
-/** Every failure `WorkspaceDiscovery`'s methods can surface. */
-type DiscoveryError =
+/**
+ * Every failure `WorkspaceDiscovery.getPackage` can surface: the discovery
+ * failures plus a name that matches no member.
+ *
+ * @public
+ */
+export type WorkspaceLookupFailure =
 	| WorkspaceRootNotFoundError
 	| WorkspaceDiscoveryError
 	| WorkspacePatternError
@@ -117,12 +122,16 @@ type DiscoveryError =
  *
  * @public
  */
-export type WorkspaceDiscoveryFailure = Exclude<DiscoveryError, PackageNotFoundError>;
+export type WorkspaceDiscoveryFailure = Exclude<WorkspaceLookupFailure, PackageNotFoundError>;
 
 /** The enumeration failure kinds map straight onto the pattern-error kinds. */
 const patternKindOf = (kind: EnumerationFailureKind): "missingBaseDir" | "depthExceeded" | "budgetExceeded" => kind;
 
-/** Options for the discovery layer. */
+/**
+ * Options for the {@link WorkspaceDiscovery} layer.
+ *
+ * @public
+ */
 export interface WorkspaceDiscoveryOptions {
 	/**
 	 * The directory the workspace root is resolved from.
@@ -136,7 +145,12 @@ export interface WorkspaceDiscoveryOptions {
 	readonly maxDepth?: number;
 }
 
-interface DiscoveryShape {
+/**
+ * The {@link WorkspaceDiscovery} service shape.
+ *
+ * @public
+ */
+export interface WorkspaceDiscoveryShape {
 	/** Facts about the resolved workspace. */
 	readonly info: () => Effect.Effect<WorkspaceInfo, WorkspaceDiscoveryFailure>;
 	/** Every workspace package, root first, then the rest sorted by relative path. */
@@ -144,7 +158,7 @@ interface DiscoveryShape {
 	/** The discovered packages keyed by their root-relative importer path. */
 	readonly importerMap: () => Effect.Effect<ReadonlyMap<string, WorkspacePackage>, WorkspaceDiscoveryFailure>;
 	/** A single package by name. */
-	readonly getPackage: (name: string) => Effect.Effect<WorkspacePackage, DiscoveryError>;
+	readonly getPackage: (name: string) => Effect.Effect<WorkspacePackage, WorkspaceLookupFailure>;
 	/** The package owning an absolute file path, by longest-prefix match. */
 	readonly resolveFile: (filePath: string) => Effect.Effect<Option.Option<WorkspacePackage>, WorkspaceDiscoveryFailure>;
 	/** The distinct packages owning any of `filePaths`. */
@@ -184,7 +198,7 @@ interface DiscoveryShape {
  *
  * @public
  */
-export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, DiscoveryShape>()(
+export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, WorkspaceDiscoveryShape>()(
 	"@effected/workspaces/WorkspaceDiscovery",
 ) {
 	/**
@@ -193,7 +207,7 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Disc
 	 */
 	static readonly make = (
 		options?: WorkspaceDiscoveryOptions,
-	): Effect.Effect<DiscoveryShape, never, WorkspaceRoot | FileSystem.FileSystem | Path.Path> =>
+	): Effect.Effect<WorkspaceDiscoveryShape, never, WorkspaceRoot | FileSystem.FileSystem | Path.Path> =>
 		Effect.gen(function* () {
 			const roots = yield* WorkspaceRoot;
 			const fs = yield* FileSystem.FileSystem;

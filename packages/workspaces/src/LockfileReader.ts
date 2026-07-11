@@ -10,6 +10,7 @@
 import type { Lockfile, LockfileFormat, LockfileParseError, ResolvedPackage } from "@effected/lockfiles";
 import { LockfileIntegrity, Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { documentsOf } from "./internal/documents.js";
 import type { PackageManagerDetectionError } from "./PackageManagerName.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
 import type { WorkspaceDiscoveryFailure } from "./WorkspaceDiscovery.js";
@@ -58,7 +59,12 @@ export type LockfileReadFailure =
 	| LockfileReadError
 	| LockfileParseError;
 
-interface LockfileReaderShape {
+/**
+ * The {@link LockfileReader} service shape.
+ *
+ * @public
+ */
+export interface LockfileReaderShape {
 	/** The parsed lockfile, with pnpm importer paths already resolved to real names. */
 	readonly read: () => Effect.Effect<Lockfile, LockfileReadFailure>;
 	/** The lockfile's record of a package, when it records one. */
@@ -72,7 +78,11 @@ interface LockfileReaderShape {
 	readonly refresh: () => Effect.Effect<void>;
 }
 
-/** Options for the lockfile-reader layer. */
+/**
+ * Options for the {@link LockfileReader} layer.
+ *
+ * @public
+ */
 export interface LockfileReaderOptions {
 	/**
 	 * The directory the workspace root is resolved from.
@@ -81,6 +91,42 @@ export interface LockfileReaderOptions {
 	 */
 	readonly cwd?: string;
 }
+
+/**
+ * Parse lockfile text, selecting the right YAML document first.
+ *
+ * pnpm 11 writes `pnpm-lock.yaml` as **two** documents when the workspace uses
+ * `configDependencies` — a lockfile for the config dependencies, then the real
+ * one — and a single-document parse silently returns the wrong one: a handful of
+ * packages, no workspace importers, and no catalogs. It looks like an empty
+ * workspace rather than a parse failure, which is the worst possible shape for a
+ * bug.
+ *
+ * Every document is parsed and the richest result wins: most workspace packages,
+ * then most packages overall. That is stable under document reordering, which
+ * relying on "the last one" would not be. A single-document lockfile takes the
+ * same path with one candidate and behaves identically.
+ */
+const parseLockfileText = (content: string, format: LockfileFormat): Effect.Effect<Lockfile, LockfileParseError> =>
+	Effect.gen(function* () {
+		if (format !== "pnpm") return yield* LockfileModel.parse(content, { format });
+
+		const documents = documentsOf(content);
+		if (documents.length === 1) return yield* LockfileModel.parse(documents[0], { format });
+
+		// A document that does not parse is not a failure while another does — only
+		// an all-documents failure is, and it surfaces as the LAST document's error.
+		const parsed = yield* Effect.forEach(documents, (document) =>
+			Effect.result(LockfileModel.parse(document, { format })),
+		);
+		const candidates = parsed.filter((result) => result._tag === "Success").map((result) => result.success);
+		if (candidates.length === 0) return yield* LockfileModel.parse(documents[documents.length - 1], { format });
+
+		const score = (lockfile: Lockfile): number =>
+			lockfile.packages.filter((pkg) => pkg.isWorkspace).length * 1_000_000 + lockfile.packages.length;
+
+		return candidates.reduce((best, candidate) => (score(candidate) > score(best) ? candidate : best));
+	});
 
 /**
  * Reads and parses the workspace's lockfile.
@@ -134,7 +180,7 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 					.readFileString(lockfilePath)
 					.pipe(Effect.mapError((cause) => new LockfileReadError({ lockfilePath, format, cause })));
 
-				const lockfile = yield* LockfileModel.parse(content, { format });
+				const lockfile = yield* parseLockfileText(content, format);
 				if (format !== "pnpm") return lockfile;
 
 				// The pure second stage. pnpm names workspace packages by IMPORTER PATH;

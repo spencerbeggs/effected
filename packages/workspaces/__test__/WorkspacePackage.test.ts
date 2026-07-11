@@ -1,0 +1,176 @@
+import { assert, describe, it } from "@effect/vitest";
+import { GlobPattern } from "@effected/glob";
+import { Option } from "effect";
+import { PublishConfig, WorkspacePackage } from "../src/index.js";
+
+const base = {
+	version: "1.0.0",
+	path: "/repo/packages/utils",
+	packageJsonPath: "/repo/packages/utils/package.json",
+	relativePath: "packages/utils",
+};
+
+const utils = WorkspacePackage.make({
+	name: "@my-org/utils",
+	...base,
+	dependencies: { effect: "^4.0.0" },
+	devDependencies: { vitest: "^3.0.0", "@types/node": "^24.0.0" },
+	peerDependencies: { typescript: "^6.0.0" },
+	optionalDependencies: { fsevents: "^2.0.0" },
+});
+
+describe("WorkspacePackage", () => {
+	it("defaults private to false and every dependency map to empty", () => {
+		const bare = WorkspacePackage.make({ name: "bare", ...base });
+		assert.isFalse(bare.private);
+		assert.deepStrictEqual(bare.dependencies, {});
+		assert.deepStrictEqual(bare.devDependencies, {});
+		assert.deepStrictEqual(bare.peerDependencies, {});
+		assert.deepStrictEqual(bare.optionalDependencies, {});
+	});
+
+	it("isRootWorkspace is true only at relativePath '.'", () => {
+		assert.isFalse(utils.isRootWorkspace);
+		assert.isTrue(WorkspacePackage.make({ name: "root", ...base, relativePath: "." }).isRootWorkspace);
+	});
+
+	it("isPublic is the negation of private", () => {
+		assert.isTrue(utils.isPublic);
+		assert.isFalse(WorkspacePackage.make({ name: "p", ...base, private: true }).isPublic);
+	});
+
+	it("scope extracts the npm scope, or none", () => {
+		assert.deepStrictEqual(utils.scope, Option.some("@my-org"));
+		assert.deepStrictEqual(WorkspacePackage.make({ name: "plain", ...base }).scope, Option.none());
+	});
+
+	it("unscopedName strips the scope and leaves an unscoped name alone", () => {
+		assert.strictEqual(utils.unscopedName, "utils");
+		assert.strictEqual(WorkspacePackage.make({ name: "plain", ...base }).unscopedName, "plain");
+	});
+
+	it("allDependencies merges all four kinds", () => {
+		assert.deepStrictEqual(Object.keys(utils.allDependencies).sort(), [
+			"@types/node",
+			"effect",
+			"fsevents",
+			"typescript",
+			"vitest",
+		]);
+	});
+
+	it("allDependencies gives dependencies precedence over the other kinds", () => {
+		const shadowed = WorkspacePackage.make({
+			name: "s",
+			...base,
+			dependencies: { x: "1.0.0" },
+			devDependencies: { x: "2.0.0" },
+			peerDependencies: { x: "3.0.0" },
+			optionalDependencies: { x: "4.0.0" },
+		});
+		assert.strictEqual(shadowed.allDependencies.x, "1.0.0");
+	});
+
+	it("the per-kind predicates each answer only for their own kind", () => {
+		assert.isTrue(utils.hasDependency("effect"));
+		assert.isFalse(utils.hasDependency("vitest"));
+		assert.isTrue(utils.hasDevDependency("vitest"));
+		assert.isTrue(utils.hasPeerDependency("typescript"));
+		assert.isTrue(utils.hasOptionalDependency("fsevents"));
+		assert.isFalse(utils.hasOptionalDependency("typescript"));
+	});
+
+	it("hasAnyDependencyOn covers every kind, including the LAST one checked", () => {
+		// `fsevents` is optional — the last kind in the chain. A short-circuit bug
+		// that forgets the final clause still passes on `effect`.
+		assert.isTrue(utils.hasAnyDependencyOn("effect"));
+		assert.isTrue(utils.hasAnyDependencyOn("fsevents"));
+		assert.isFalse(utils.hasAnyDependencyOn("react"));
+	});
+
+	it("dependencyVersion searches all four kinds", () => {
+		assert.deepStrictEqual(utils.dependencyVersion("effect"), Option.some("^4.0.0"));
+		assert.deepStrictEqual(utils.dependencyVersion("fsevents"), Option.some("^2.0.0"));
+		assert.deepStrictEqual(utils.dependencyVersion("react"), Option.none());
+	});
+
+	// ── matchesDependency: the minimatch call site, now over @effected/glob ────
+
+	it("matchesDependency accepts a compiled GlobPattern", () => {
+		const pattern = GlobPattern.make({ source: "@types/*" });
+		assert.isTrue(utils.matchesDependency(pattern));
+	});
+
+	it("matchesDependency accepts a source string", () => {
+		assert.isTrue(utils.matchesDependency("@types/*"));
+		assert.isFalse(utils.matchesDependency("@angular/*"));
+	});
+
+	it("matchesDependency honours the full minimatch dialect, not a regex approximation", () => {
+		// v3's hand-rolled glob had no brace expansion and no extglobs. These are
+		// exactly the patterns it would silently fail to match.
+		assert.isTrue(utils.matchesDependency("{effect,react}"));
+		assert.isTrue(utils.matchesDependency("+(vite|vitest)"));
+		assert.isTrue(utils.matchesDependency("v?test"));
+	});
+
+	it("matchesDependency searches every dependency KIND, not just dependencies", () => {
+		assert.isTrue(utils.matchesDependency("fseven*"));
+	});
+
+	// ── dependencyDiff ────────────────────────────────────────────────────────
+
+	it("dependencyDiff reports additions, removals and version changes", () => {
+		const before = WorkspacePackage.make({
+			name: "x",
+			...base,
+			dependencies: { keep: "1.0.0", bumped: "1.0.0", gone: "1.0.0" },
+		});
+		const after = WorkspacePackage.make({
+			name: "x",
+			...base,
+			dependencies: { keep: "1.0.0", bumped: "2.0.0", fresh: "1.0.0" },
+		});
+		const diff = after.dependencyDiff(before);
+		assert.deepStrictEqual(diff.added, { fresh: "1.0.0" });
+		assert.deepStrictEqual(diff.removed, { gone: "1.0.0" });
+		assert.deepStrictEqual(diff.changed, { bumped: { from: "1.0.0", to: "2.0.0" } });
+	});
+
+	it("dependencyDiff of a package against itself is empty", () => {
+		const diff = utils.dependencyDiff(utils);
+		assert.deepStrictEqual(diff.added, {});
+		assert.deepStrictEqual(diff.removed, {});
+		assert.deepStrictEqual(diff.changed, {});
+	});
+
+	it("dependencyDiff compares across kinds, so a move at one version is invisible", () => {
+		const asDep = WorkspacePackage.make({ name: "x", ...base, dependencies: { moved: "1.0.0" } });
+		const asPeer = WorkspacePackage.make({ name: "x", ...base, peerDependencies: { moved: "1.0.0" } });
+		const diff = asPeer.dependencyDiff(asDep);
+		assert.deepStrictEqual(diff.added, {});
+		assert.deepStrictEqual(diff.removed, {});
+		assert.deepStrictEqual(diff.changed, {});
+	});
+
+	// ── the lockfiles bridge ──────────────────────────────────────────────────
+
+	it("toWorkspaceManifest projects onto the lockfiles integrity input", () => {
+		const wm = utils.toWorkspaceManifest();
+		assert.strictEqual(wm.name, "@my-org/utils");
+		assert.deepStrictEqual(wm.dependencies, { effect: "^4.0.0" });
+		assert.deepStrictEqual(wm.peerDependencies, { typescript: "^6.0.0" });
+	});
+
+	it("publishConfig carries the typed subset", () => {
+		const scoped = WorkspacePackage.make({
+			name: "@my-org/private",
+			...base,
+			private: true,
+			publishConfig: PublishConfig.make({ access: "restricted", registry: "https://npm.internal/" }),
+		});
+		assert.strictEqual(scoped.publishConfig?.access, "restricted");
+		assert.strictEqual(scoped.publishConfig?.registry, "https://npm.internal/");
+		assert.isUndefined(scoped.publishConfig?.directory);
+	});
+});

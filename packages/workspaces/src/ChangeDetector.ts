@@ -80,10 +80,19 @@ export class ChangeDetectionError extends Schema.TaggedErrorClass<ChangeDetectio
 	}
 }
 
-/** Every failure the change-detection methods can surface. */
+/**
+ * Every failure the change-detection methods can surface.
+ *
+ * @public
+ */
 export type ChangeDetectionFailure = ChangeDetectionError | GitCommandError | WorkspaceDiscoveryFailure;
 
-interface ChangeDetectorShape {
+/**
+ * The {@link ChangeDetector} service shape.
+ *
+ * @public
+ */
+export interface ChangeDetectorShape {
 	/** The file paths (workspace-root-relative, as git reports them) changed in the range. */
 	readonly changedFiles: (
 		options?: ChangeDetectionOptions,

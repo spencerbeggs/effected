@@ -142,10 +142,19 @@ const catalogBlocksOf = (
 	};
 };
 
-/** Every failure catalog assembly can surface. */
+/**
+ * Every failure catalog assembly can surface.
+ *
+ * @public
+ */
 export type CatalogAssemblyFailure = CatalogAssemblyError | WorkspaceRootNotFoundError;
 
-interface WorkspaceCatalogsShape {
+/**
+ * The {@link WorkspaceCatalogs} service shape.
+ *
+ * @public
+ */
+export interface WorkspaceCatalogsShape {
 	/** The assembled catalog set for the workspace. Memoized after the first call. */
 	readonly set: () => Effect.Effect<CatalogSet, CatalogAssemblyFailure>;
 	/** Resolve one `catalog:` specifier; `Option.none()` when it names nothing. */
@@ -155,7 +164,11 @@ interface WorkspaceCatalogsShape {
 	) => Effect.Effect<Option.Option<string>, CatalogAssemblyFailure>;
 }
 
-/** Options for the catalogs layer. */
+/**
+ * Options for the {@link WorkspaceCatalogs} layer.
+ *
+ * @public
+ */
 export interface WorkspaceCatalogsOptions {
 	/**
 	 * The directory the workspace root is resolved from.

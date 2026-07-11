@@ -32,6 +32,7 @@ export {
 	type ChangeDetectionFailure,
 	ChangeDetectionOptions,
 	ChangeDetector,
+	type ChangeDetectorShape,
 } from "./ChangeDetector.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";
 export { GitCommandError, GitReader } from "./GitReader.js";
@@ -40,6 +41,7 @@ export {
 	type LockfileReadFailure,
 	LockfileReader,
 	type LockfileReaderOptions,
+	type LockfileReaderShape,
 } from "./LockfileReader.js";
 export {
 	DetectedPackageManager,
@@ -54,6 +56,7 @@ export {
 	CatalogSet,
 	WorkspaceCatalogs,
 	type WorkspaceCatalogsOptions,
+	type WorkspaceCatalogsShape,
 } from "./WorkspaceCatalogs.js";
 export {
 	PackageNotFoundError,
@@ -61,10 +64,12 @@ export {
 	WorkspaceDiscoveryError,
 	type WorkspaceDiscoveryFailure,
 	type WorkspaceDiscoveryOptions,
+	type WorkspaceDiscoveryShape,
 	WorkspaceInfo,
+	type WorkspaceLookupFailure,
 	WorkspacePatternError,
 } from "./WorkspaceDiscovery.js";
 export { type DependencyDiff, PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
 export { WORKSPACE_MARKERS, WorkspaceRoot, WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
-export { Workspaces, type WorkspacesOptions } from "./Workspaces.js";
+export { Workspaces, type WorkspacesOptions, type WorkspacesServices } from "./Workspaces.js";
 export { findWorkspaceRootSync, getWorkspacePackagesSync } from "./WorkspacesSync.js";
