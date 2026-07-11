@@ -11,7 +11,7 @@
  */
 
 import type { Schema } from "effect";
-import { Effect, Schedule } from "effect";
+import { Duration, Effect, Schedule } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import { DEFAULT_MAX_PAGES, DEFAULT_PER_PAGE, PAGE_CEILING } from "./limits.js";
@@ -34,11 +34,32 @@ const parseHeaderInt = (raw: string | undefined): number | undefined => {
 };
 
 /**
+ * A `retry-after` is a number a remote server chose, so it is bounded before it
+ * becomes a sleep. Without this a misconfigured — or hostile — server parks the
+ * caller's fiber for as long as it likes by sending one large header. A negative
+ * value is discarded outright.
+ */
+const MAX_RETRY_AFTER_SECONDS = 60;
+
+const parseRetryAfter = (raw: string | undefined): number | undefined => {
+	const seconds = parseHeaderInt(raw);
+	return seconds === undefined || seconds < 0 ? undefined : seconds;
+};
+
+/**
  * Map an HTTP status onto the failure ladder.
  *
- * 401 is an authentication problem, 403/429 a rate limit (GitHub reports
- * secondary rate limits as 403), everything else a network failure carrying
- * the status.
+ * 401 is an authentication problem and 429 is definitionally a rate limit. 403
+ * is the one that has to be classified rather than assumed: GitHub returns it
+ * for an exhausted rate limit, but *also* for permission and resource failures
+ * ("Resource not accessible by personal access token"), which no amount of
+ * backoff will fix. Treating every 403 as a rate limit retries those three times
+ * and then reports a `RateLimitError` naming a quota that was never the problem.
+ *
+ * The two signals GitHub documents for a rate limit are the primary limit's
+ * `x-ratelimit-remaining: 0` and the secondary limit's `retry-after`. A 403 with
+ * neither is a permission failure, and it leaves as a `NetworkError` carrying the
+ * status rather than being retried.
  */
 const failureForStatus = (
 	url: string,
@@ -46,15 +67,22 @@ const failureForStatus = (
 	headers: Readonly<Record<string, string | undefined>>,
 ): HttpFailure => {
 	if (status === 401) return { _kind: "auth" };
+
 	if (status === 403 || status === 429) {
-		const retryAfter = parseHeaderInt(headers["retry-after"]);
-		return {
-			_kind: "rateLimit",
-			...(retryAfter !== undefined ? { retryAfter } : {}),
-			limit: parseHeaderInt(headers["x-ratelimit-limit"]) ?? 0,
-			remaining: parseHeaderInt(headers["x-ratelimit-remaining"]) ?? 0,
-		};
+		const remaining = parseHeaderInt(headers["x-ratelimit-remaining"]);
+		const retryAfter = parseRetryAfter(headers["retry-after"]);
+		const rateLimited = status === 429 || remaining === 0 || retryAfter !== undefined;
+
+		if (rateLimited) {
+			return {
+				_kind: "rateLimit",
+				...(retryAfter !== undefined ? { retryAfter } : {}),
+				limit: parseHeaderInt(headers["x-ratelimit-limit"]) ?? 0,
+				remaining: remaining ?? 0,
+			};
+		}
 	}
+
 	return { _kind: "network", url, status, cause: `HTTP ${status}` };
 };
 
@@ -86,15 +114,38 @@ export const getJson = <A, I>(
 	});
 
 /**
- * Retry a rate-limited effect with exponential backoff.
+ * Exponential backoff, overridden by the server's own `retry-after` when it sent
+ * one.
  *
- * Only `rateLimit` failures are retried — an auth failure or a malformed body
- * will not fix itself, and retrying them just burns the caller's quota.
+ * GitHub tells you how long to wait for a secondary rate limit, and guessing
+ * `1s, 2s, 4s` against that is both ruder and less effective than doing as it
+ * asked. `Schedule.passthrough` re-types the schedule's output as its *input* —
+ * the failure — which is what lets `modifyDelay` see the `retryAfter` that the
+ * failure is carrying and replace the computed delay with it.
+ */
+const rateLimitBackoff: Schedule.Schedule<HttpFailure, HttpFailure> = Schedule.exponential("1 second").pipe(
+	Schedule.setInputType<HttpFailure>(),
+	Schedule.passthrough,
+	Schedule.modifyDelay((failure, delay) =>
+		Effect.succeed(
+			failure._kind === "rateLimit" && failure.retryAfter !== undefined
+				? Duration.seconds(Math.min(failure.retryAfter, MAX_RETRY_AFTER_SECONDS))
+				: delay,
+		),
+	),
+);
+
+/**
+ * Retry a rate-limited effect, honoring the server's backoff.
+ *
+ * Only `rateLimit` failures are retried — an auth failure, a permission failure
+ * or a malformed body will not fix itself, and retrying them just burns the
+ * caller's quota.
  */
 export const retryOnRateLimit = <A, R>(effect: Effect.Effect<A, HttpFailure, R>): Effect.Effect<A, HttpFailure, R> =>
 	effect.pipe(
 		Effect.retry({
-			schedule: Schedule.exponential("1 second"),
+			schedule: rateLimitBackoff,
 			times: 3,
 			while: (failure: HttpFailure) => failure._kind === "rateLimit",
 		}),

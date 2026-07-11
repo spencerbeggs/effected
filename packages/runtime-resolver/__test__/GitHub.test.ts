@@ -85,16 +85,38 @@ describe("GitHubClient", () => {
 		}),
 	);
 
-	it.effect("maps 401 to AuthenticationError", () =>
+	it.effect("maps 401 to AuthenticationError naming the auth mode actually used", () =>
 		Effect.gen(function* () {
 			const fake: typeof globalThis.fetch = async () => json({}, { status: 401 });
-			const error = yield* Effect.flip(
-				Effect.gen(function* () {
-					const client = yield* GitHubClient;
-					return yield* client.listTags("oven-sh", "bun");
-				}).pipe(Effect.provide(withFetch(fake))),
+			const listTags = Effect.gen(function* () {
+				const client = yield* GitHubClient;
+				return yield* client.listTags("oven-sh", "bun");
+			});
+
+			// `withFetch` wires GitHubAuth.anonymous, so no credential is sent. Reporting
+			// `method: "token"` here — as the hardcoded version did — makes the
+			// "anonymous" arm of the error unreachable and tells the operator to go check
+			// a token they never supplied.
+			const anonymous = yield* Effect.flip(listTags.pipe(Effect.provide(withFetch(fake))));
+			assert.instanceOf(anonymous, AuthenticationError);
+			assert.strictEqual(anonymous.method, "anonymous");
+
+			const authed = yield* Effect.flip(
+				listTags.pipe(
+					Effect.provide(
+						GitHubClient.layer.pipe(
+							Layer.provide(
+								Layer.mergeAll(
+									GitHubAuth.token(Redacted.make("a-token")),
+									FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fake))),
+								),
+							),
+						),
+					),
+				),
 			);
-			assert.instanceOf(error, AuthenticationError);
+			assert.instanceOf(authed, AuthenticationError);
+			assert.strictEqual(authed.method, "token");
 		}),
 	);
 
@@ -114,9 +136,12 @@ describe("GitHubClient", () => {
 					},
 				);
 
-			// A rate limit is retried with exponential backoff, and `it.effect` runs on
-			// a virtual clock that does not advance by itself — so the retries must be
-			// driven, or the test hangs to the vitest timeout rather than failing.
+			// A rate limit is retried, and `it.effect` runs on a virtual clock that does
+			// not advance by itself — so the retries must be driven, or the test hangs to
+			// the vitest timeout rather than failing.
+			//
+			// The budget is three retries at the server's own 42s, not the 1s/2s/4s
+			// exponential: honoring `retry-after` is what makes the total 126s.
 			const fiber = yield* Effect.forkChild(
 				Effect.flip(
 					Effect.gen(function* () {
@@ -125,7 +150,7 @@ describe("GitHubClient", () => {
 					}).pipe(Effect.provide(withFetch(fake))),
 				),
 			);
-			yield* TestClock.adjust("1 minute");
+			yield* TestClock.adjust("5 minutes");
 			const error = yield* Fiber.join(fiber);
 
 			assert.instanceOf(error, RateLimitError);
@@ -193,6 +218,207 @@ describe("GitHubClient", () => {
 			assert.lengthOf(releases, 1);
 		}),
 	);
+
+	describe("403 is classified, not assumed to be a rate limit", () => {
+		/** GitHub's shape for a permission failure: 403, quota intact, no retry hint. */
+		const forbidden = (): Response =>
+			json(
+				{ message: "Resource not accessible by personal access token" },
+				{
+					status: 403,
+					headers: {
+						"content-type": "application/json",
+						"x-ratelimit-limit": "5000",
+						"x-ratelimit-remaining": "4998",
+					},
+				},
+			);
+
+		it.effect("a 403 with quota remaining is a NetworkError, not a RateLimitError", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					Effect.gen(function* () {
+						const client = yield* GitHubClient;
+						return yield* client.listTags("oven-sh", "bun");
+					}).pipe(Effect.provide(withFetch(async () => forbidden()))),
+				);
+
+				// A permission failure reported as a rate limit sends the caller off to
+				// wait for a quota window that was never the problem.
+				assert.notInstanceOf(error, RateLimitError);
+				assert.instanceOf(error, NetworkError);
+				assert.strictEqual(error.status, 403);
+			}),
+		);
+
+		it.effect("a 403 with quota remaining is not retried", () =>
+			Effect.gen(function* () {
+				let calls = 0;
+				const fake: typeof globalThis.fetch = async () => {
+					calls++;
+					return forbidden();
+				};
+
+				const fiber = yield* Effect.forkChild(
+					Effect.flip(
+						Effect.gen(function* () {
+							const client = yield* GitHubClient;
+							return yield* client.listTags("oven-sh", "bun");
+						}).pipe(Effect.provide(withFetch(fake))),
+					),
+				);
+				yield* TestClock.adjust("1 minute");
+				yield* Fiber.join(fiber);
+
+				assert.strictEqual(calls, 1, "retrying a permission failure just burns the caller's quota");
+			}),
+		);
+
+		it.effect("a 403 with the quota exhausted is still a rate limit", () =>
+			Effect.gen(function* () {
+				// The primary-rate-limit signal GitHub documents.
+				const fake: typeof globalThis.fetch = async () =>
+					json(
+						{},
+						{
+							status: 403,
+							headers: {
+								"content-type": "application/json",
+								"x-ratelimit-limit": "60",
+								"x-ratelimit-remaining": "0",
+							},
+						},
+					);
+
+				const fiber = yield* Effect.forkChild(
+					Effect.flip(
+						Effect.gen(function* () {
+							const client = yield* GitHubClient;
+							return yield* client.listTags("oven-sh", "bun");
+						}).pipe(Effect.provide(withFetch(fake))),
+					),
+				);
+				yield* TestClock.adjust("1 minute");
+				const error = yield* Fiber.join(fiber);
+
+				assert.instanceOf(error, RateLimitError);
+				assert.strictEqual(error.remaining, 0);
+			}),
+		);
+
+		it.effect("a 403 carrying only a retry-after is a secondary rate limit", () =>
+			Effect.gen(function* () {
+				// The secondary-limit signal: quota intact, but GitHub asked us to wait.
+				const fake: typeof globalThis.fetch = async () =>
+					json(
+						{ message: "You have exceeded a secondary rate limit" },
+						{
+							status: 403,
+							headers: {
+								"content-type": "application/json",
+								"retry-after": "7",
+								"x-ratelimit-limit": "5000",
+								"x-ratelimit-remaining": "4998",
+							},
+						},
+					);
+
+				const fiber = yield* Effect.forkChild(
+					Effect.flip(
+						Effect.gen(function* () {
+							const client = yield* GitHubClient;
+							return yield* client.listTags("oven-sh", "bun");
+						}).pipe(Effect.provide(withFetch(fake))),
+					),
+				);
+				yield* TestClock.adjust("5 minutes");
+				const error = yield* Fiber.join(fiber);
+
+				assert.instanceOf(error, RateLimitError);
+				assert.strictEqual(error.retryAfter, 7);
+			}),
+		);
+	});
+
+	describe("the server's retry-after is honored", () => {
+		/** Fails once with a `retry-after`, then succeeds. */
+		const retryAfterOnce = (seconds: string) => {
+			let attempt = 0;
+			const fake: typeof globalThis.fetch = async () => {
+				attempt++;
+				if (attempt === 1) {
+					return json(
+						{},
+						{
+							status: 429,
+							headers: {
+								"content-type": "application/json",
+								"retry-after": seconds,
+								"x-ratelimit-limit": "60",
+								"x-ratelimit-remaining": "0",
+							},
+						},
+					);
+				}
+				return json([release("v1.0.0")]);
+			};
+			return { fake, attempts: () => attempt };
+		};
+
+		const listWith = (fake: typeof globalThis.fetch) =>
+			Effect.gen(function* () {
+				const client = yield* GitHubClient;
+				return yield* client.listReleases("oven-sh", "bun", { pages: 1 });
+			}).pipe(Effect.provide(withFetch(fake)));
+
+		it.effect("waits the full retry-after before retrying, not the 1s exponential base", () =>
+			Effect.gen(function* () {
+				const { fake, attempts } = retryAfterOnce("30");
+				const fiber = yield* Effect.forkChild(listWith(fake));
+
+				// The exponential schedule's first delay is 1s. If retry-after were being
+				// ignored, the retry would already have fired by now.
+				yield* TestClock.adjust("29 seconds");
+				assert.strictEqual(attempts(), 1, "must still be waiting out the server's 30s");
+
+				yield* TestClock.adjust("1 second");
+				yield* Fiber.join(fiber);
+				assert.strictEqual(attempts(), 2, "retries once the server's window has elapsed");
+			}),
+		);
+
+		it.effect("caps an absurd retry-after rather than parking the fiber for a day", () =>
+			Effect.gen(function* () {
+				// A number chosen by a remote server must not become an unbounded sleep.
+				const { fake, attempts } = retryAfterOnce("86400");
+				const fiber = yield* Effect.forkChild(listWith(fake));
+
+				yield* TestClock.adjust("60 seconds");
+				const releases = yield* Fiber.join(fiber);
+
+				assert.strictEqual(attempts(), 2, "the wait is bounded at the 60s cap, not the 24h the server asked for");
+				assert.lengthOf(releases, 1);
+			}),
+		);
+
+		it.effect("ignores a negative retry-after instead of collapsing the backoff to nothing", () =>
+			Effect.gen(function* () {
+				const { fake, attempts } = retryAfterOnce("-5");
+				const fiber = yield* Effect.forkChild(listWith(fake));
+
+				// The discriminating assertion. Asserting only that it eventually retries
+				// passes in BOTH worlds and proves nothing: a negative delay retries too —
+				// instantly. The guard's observable effect is that the exponential base
+				// (1s) is used instead, so at 500ms the retry must NOT have fired yet.
+				yield* TestClock.adjust("500 millis");
+				assert.strictEqual(attempts(), 1, "a negative retry-after must not become a zero-delay hot retry");
+
+				yield* TestClock.adjust("1 second");
+				yield* Fiber.join(fiber);
+				assert.strictEqual(attempts(), 2, "and it falls back to the exponential schedule");
+			}),
+		);
+	});
 });
 
 describe("GitHubAuth", () => {

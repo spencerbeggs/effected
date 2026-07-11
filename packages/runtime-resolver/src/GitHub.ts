@@ -85,12 +85,17 @@ export type GitHubError = AuthenticationError | RateLimitError | NetworkError | 
  * records and this is the single place they become errors. That is what keeps
  * the transport layer free of the facade and the import graph acyclic.
  *
+ * `method` is what the *caller* actually sent, not a guess. Hardcoding it to
+ * `"token"` made the `"anonymous"` arm of `AuthenticationError` unreachable and
+ * mislabelled every anonymous rejection — the same shape of lie as v3's
+ * hardcoded `source: "api"`.
+ *
  * @internal
  */
-export const mapHttpFailure = (failure: HttpFailure): GitHubError => {
+export const mapHttpFailure = (failure: HttpFailure, method: "token" | "anonymous"): GitHubError => {
 	switch (failure._kind) {
 		case "auth":
-			return new AuthenticationError({ method: "token" });
+			return new AuthenticationError({ method });
 		case "rateLimit":
 			return new RateLimitError({
 				...(failure.retryAfter !== undefined ? { retryAfter: failure.retryAfter } : {}),
@@ -153,8 +158,16 @@ const bearer = (token: Redacted.Redacted<string>): Readonly<Record<string, strin
 	authorization: `Bearer ${Redacted.value(token)}`,
 });
 
-const patConfig = Config.string("GITHUB_PERSONAL_ACCESS_TOKEN").pipe(Config.option);
-const tokenConfig = Config.string("GITHUB_TOKEN").pipe(Config.option);
+/**
+ * Read the credentials as `Redacted` from the start.
+ *
+ * `Config.string` would hand back a plain string that only becomes `Redacted` at
+ * the `bearer` call — a window in which the secret is an ordinary value that any
+ * log, span annotation or error rendering could pick up. `Config.redacted` closes
+ * the window: the token is never a bare string anywhere in this module.
+ */
+const patConfig = Config.redacted("GITHUB_PERSONAL_ACCESS_TOKEN").pipe(Config.option);
+const tokenConfig = Config.redacted("GITHUB_TOKEN").pipe(Config.option);
 
 /**
  * How GitHub requests are authenticated.
@@ -197,10 +210,10 @@ export class GitHubAuth extends Context.Service<GitHubAuth, GitHubAuthShape>()(
 				if (Option.isSome(token)) {
 					yield* Effect.logWarning("Both GITHUB_PERSONAL_ACCESS_TOKEN and GITHUB_TOKEN are set; using the former");
 				}
-				return { headers: Effect.succeed(bearer(Redacted.make(pat.value))) };
+				return { headers: Effect.succeed(bearer(pat.value)) };
 			}
 			if (Option.isSome(token)) {
-				return { headers: Effect.succeed(bearer(Redacted.make(token.value))) };
+				return { headers: Effect.succeed(bearer(token.value)) };
 			}
 			return { headers: Effect.succeed({}) };
 		}).pipe(
@@ -293,8 +306,12 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 			): Effect.Effect<ReadonlyArray<A>, GitHubError> =>
 				Effect.gen(function* () {
 					const headers = yield* auth.headers;
+					// The credential is whatever the `GitHubAuth` layer produced, so the
+					// only honest reading of "how was this request authenticated" is the
+					// header that actually went out.
+					const method = headers.authorization === undefined ? "anonymous" : "token";
 					return yield* paginate(listUrl(owner, repo, kind), schema, { ...GITHUB_HEADERS, ...headers }, options).pipe(
-						Effect.mapError(mapHttpFailure),
+						Effect.mapError((failure) => mapHttpFailure(failure, method)),
 					);
 				}).pipe(Effect.provideService(HttpClient.HttpClient, http));
 

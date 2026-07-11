@@ -76,7 +76,10 @@ export const stripTagPrefix = (tag: string): string => {
 /** Fetch nodejs.org's dist index. Unauthenticated — this is not a GitHub API. */
 export const fetchNodeReleases = (): Effect.Effect<ReadonlyArray<RawNodeRelease>, GitHubError, HttpClient.HttpClient> =>
 	getJson(NODE_DIST_URL, NodeDistIndex).pipe(
-		Effect.mapError(mapHttpFailure),
+		// No credential is ever sent to nodejs.org, so a rejection here is an
+		// anonymous one. This is the call the old hardcoded `method: "token"`
+		// mislabelled.
+		Effect.mapError((failure) => mapHttpFailure(failure, "anonymous")),
 		Effect.map((entries) =>
 			entries.map(
 				(entry): RawNodeRelease => ({
@@ -90,7 +93,7 @@ export const fetchNodeReleases = (): Effect.Effect<ReadonlyArray<RawNodeRelease>
 
 /** Fetch the `nodejs/Release` schedule. Also unauthenticated: raw.githubusercontent.com. */
 export const fetchNodeSchedule = (): Effect.Effect<NodeScheduleData, GitHubError, HttpClient.HttpClient> =>
-	getJson(NODE_SCHEDULE_URL, NodeScheduleFeed).pipe(Effect.mapError(mapHttpFailure));
+	getJson(NODE_SCHEDULE_URL, NodeScheduleFeed).pipe(Effect.mapError((failure) => mapHttpFailure(failure, "anonymous")));
 
 /** Build Node releases, skipping entries this package cannot parse. */
 export const buildNodeReleases = (
