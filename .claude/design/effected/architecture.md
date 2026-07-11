@@ -47,7 +47,7 @@ No npm releases until the whole kit ships together at `0.1.0`; `1.0.0` waits for
 ## Layout
 
 - `packages/*` — one directory per `@effected` library; see [package-setup.md](package-setup.md) for how a package is scaffolded.
-- `packages/pnpm-plugin-effect` — repo infrastructure (pnpm catalog/config plugin), not a library port.
+- `packages/pnpm-plugin-effect` — the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) (pnpm catalog/config plugin): published with the kit and installable by consumers, but not a library and not a library port, so it carries no tier.
 - `plugin/` — the "effective" Claude Code plugin; see [plugin.md](plugin.md).
 - `.claude/skills/improve` — the project-level self-improvement skill that maintains `plugin/skills/`; see [plugin.md](plugin.md).
 - `repos/effect-smol` — vendored Effect v4 source, read-only reference material; see [Vendored source](#vendored-source).
@@ -89,3 +89,39 @@ Re-pinning runs when the `effect` catalog bumps, so source and installed version
 The vendored tree is read-only and must stay outside every build and lint graph — turbo, biome, vitest and markdownlint each need it excluded. It exists for one consumer, the `improve` skill; the plugin's own skills never reference the path (see [plugin.md](plugin.md)).
 
 Build tooling is `@savvy-web/silk` (rslib/tsdown bundler, turbo, changesets, biome); see the root `CLAUDE.md` for commands and pipeline details.
+
+## Dependency resolution: holding the v4/v3 line
+
+The repo runs a v4 `effect` in its packages and a v3 `effect` in its toolchain (`@savvy-web/*`, rspress, api-extractor). Those two lines share one `node_modules` tree, and pnpm's `autoInstallPeers: true` is what makes them leak into each other: an unresolved `effect` peer anywhere in the graph binds to the *workspace-preferred* version, which is v4. Every mechanism below exists to stop a v3-wanting importer from being handed a v4 core. The root `CLAUDE.md` carries the rules; this section carries the reasons, so an agent tempted to delete a pin as redundant can find out first what it holds.
+
+### The catalogs pin exact betas
+
+The Effect catalogs pin **exact** beta versions (`4.0.0-beta.94`, no caret). A caret range on a prerelease floats freely across the beta line, which silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be the authority on what v4 exports — the failure described in [Vendored source](#vendored-source), arriving through the lockfile instead of through the subtree.
+
+### `@effect/tsgo` as the declared typechecker
+
+Each package declares `@effect/tsgo` (`catalog:effect`) as its typechecker devDependency rather than `@typescript/native-preview` (`catalog:silk`). What matters is the **declaration**, not the binary: it makes the typechecker's own `effect` peer ride the v4 catalog instead of the silk (v3-tooling) catalog. Under `autoInstallPeers: true` that stops the auto-installed `effect` peers in the tooling chain from resolving the workspace-preferred v4 into v3-wanting importers.
+
+Upstream patch pnpm/pnpm#12847 landed in **pnpm 11.11.0**, so this declaration may no longer be needed. It stays until someone verifies that removing it keeps `pnpm peers check` clean.
+
+Related history: `@savvy-web/bundler` used to live at the root only, resolved by Node's upward `node_modules` walk, because a per-package copy put a v3-wanting `@effect/platform-node` beside a v4 `effect` in every importer. That was fixed upstream in pnpm 11.11.0, and the bundler is now a normal devDependency of every package that builds.
+
+### Load-bearing pin 1: the `overrides` entry
+
+`overrides` in `pnpm-workspace.yaml` pins `@effect/platform-node@4.0.0-beta.94>@effect/platform-node-shared` to `4.0.0-beta.94`.
+
+Upstream, `@effect/platform-node@4.0.0-beta.94` declares its own sibling as `"@effect/platform-node-shared": "^4.0.0-beta.94"` — a caret on a prerelease — so it floats to a later beta whose `effect` peer the exact-pinned core no longer satisfies. Catalogs bind only *direct* workspace deps; this float is one level down, inside a dependency's manifest, and `overrides` is the only lever that reaches it.
+
+The override is **scoped to the v4 parent** on purpose. An unscoped `@effect/platform-node-shared` override also replaces the v3-era `0.60.0` that the v3 tooling chain needs, poisoning it in the opposite direction.
+
+### Load-bearing pin 2: `website` declares `effect: catalog:silk`
+
+The `website` package declares `effect: catalog:silk` (v3). It looks redundant — `rspress-plugin-api-extractor` resolves its own `effect` at v3 correctly — but its transitive `type-registry-effect` declares `effect` and `@effect/platform` as **peers**; under `autoInstallPeers: true` those bound to the workspace's v4 preference, yielding a v3 `@effect/platform` built against a v4 core whose `Context` no longer exports `GenericTag`. `rspress.config.ts` died on it and the docs site was broken on `main` with nothing in CI to catch it.
+
+The generalizable rule: a transitive dependency that *peers* on `effect` is the poisoning surface; one that merely depends on it is fine.
+
+### Peer-closure warnings
+
+Treat new `pnpm peers check` warnings as upstream closure defects to fix, not warnings to silence. One residual warning is **expected**: `@effect/platform`, `@effect/rpc`, `@effect/sql` and `@effect/cluster` want `effect@^3.21.x`, reaching the tree through the build/test tooling chain (`@savvy-web/bundler` → `@savvy-web/tsdown-plugins` → `@effect/platform-node`; `@savvy-web/silk` and `@vitest-agent/plugin` → `@effect/cli`). It is under investigation — do not chase it. A warning outside that set is a genuine defect. The peer-closure discipline itself is in [effect-standards.md](effect-standards.md).
+
+Finally: always check the lockfile diff after an install. A plain `pnpm install` once stripped the turbo, biome and tsgo platform binaries from it.

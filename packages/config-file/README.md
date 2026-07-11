@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Composable config file loading for Effect. Declare a resolver chain — an explicit path, an upward walk from the cwd, the workspace or git root, `/etc` — decode every discovered file through an Effect `Schema`, and combine the results with a merge strategy. Codecs, resolvers and merge strategies are all pluggable seams, and failures arrive as tagged errors carrying structured payloads rather than prose, so "no config anywhere" is routable separately from "the config I found is broken".
+Composable config file loading for Effect. Declare a resolver chain — an explicit path, an upward walk from the cwd, the workspace or git root, `/etc` — decode every discovered file through an Effect `Schema`, and combine the results with a merge strategy. JSON, JSONC, YAML and TOML all decode out of the box. Codecs, resolvers and merge strategies are pluggable seams, and failures arrive as tagged errors carrying structured payloads rather than prose, so "no config anywhere" is routable separately from "the config I found is broken".
 
 ## Why @effected/config-file
 
@@ -21,14 +21,18 @@ npm install @effected/config-file effect @effect/platform-node
 pnpm add @effected/config-file effect @effect/platform-node
 ```
 
-Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package itself adds no other runtime dependencies. Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.
+Requires Node.js >=24.11.0. Every format is covered by that one install; there is no separate package to add for YAML or TOML.
+
+`effect` v4 is a peer dependency, and so are `@effected/jsonc`, `@effected/toml`, `@effected/walker` and `@effected/yaml` — the first-party engines behind the JSONC, YAML and TOML codecs, plus the traversal primitive the `upwardWalk`, `workspaceRoot` and `gitRoot` resolvers are built on. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not. The package declares no runtime dependencies of its own, so nothing it drags into your tree comes from outside `effect` and `@effected/*`.
+
+Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.
 
 ## Quick start
 
 Declare a schema, mint a service class for it with `ConfigFile.Service`, and build its live layer with `ConfigFile.layer`. The platform layers are provided once, at the edge:
 
 ```ts
-import { ConfigCodec, ConfigFile, ConfigResolver, MergeStrategy } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 
@@ -41,7 +45,7 @@ class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("app/Config") 
 
 const AppConfigLive = ConfigFile.layer(AppConfig, {
   schema: AppShape,
-  codec: ConfigCodec.json,
+  codec: JsonCodec,
   resolvers: [ConfigResolver.upwardWalk({ filename: ".apprc" })],
   strategy: MergeStrategy.firstMatch<AppShape>(),
 });
@@ -62,7 +66,7 @@ Effect.runPromise(program.pipe(Effect.provide(AppConfigLive), Effect.provide(Pla
 Resolvers are consulted in priority order, highest first. `MergeStrategy.firstMatch` takes the winner; `MergeStrategy.layeredMerge` deep-merges every source that matched, with higher-priority keys overwriting lower ones:
 
 ```ts
-import { ConfigCodec, ConfigFile, ConfigResolver, MergeStrategy } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, MergeStrategy, YamlCodec } from "@effected/config-file";
 import { Schema } from "effect";
 
 class Settings extends Schema.Class<Settings>("Settings")({ port: Schema.Number }) {}
@@ -70,11 +74,11 @@ class SettingsConfig extends ConfigFile.Service<SettingsConfig, Settings>()("app
 
 export const SettingsLive = ConfigFile.layer(SettingsConfig, {
   schema: Settings,
-  codec: ConfigCodec.json,
+  codec: YamlCodec,
   resolvers: [
-    ConfigResolver.upwardWalk({ filename: ".apprc" }),
-    ConfigResolver.workspaceRoot({ filename: ".apprc" }),
-    ConfigResolver.systemEtc({ app: "myapp", filename: "config.json" }),
+    ConfigResolver.upwardWalk({ filename: ".apprc.yaml" }),
+    ConfigResolver.workspaceRoot({ filename: ".apprc.yaml" }),
+    ConfigResolver.systemEtc({ app: "myapp", filename: "config.yaml" }),
   ],
   strategy: MergeStrategy.layeredMerge<Settings>(),
 });
@@ -113,20 +117,25 @@ export const loadOrFallback = (config: ConfigFileShape<AppShape>) =>
 
 ## Codecs
 
-Only the zero-dependency `ConfigCodec.json` ships in core. Codecs for other formats live in sibling packages, so core stays dependency-free and you pay only for the parser you use:
+Four codecs ship in the package, each a free-standing named export:
 
-- `@effected/config-file-jsonc` — JSONC, built on `@effected/jsonc`.
-- `@effected/config-file-yaml` — YAML, built on `@effected/yaml`.
-- `@effected/config-file-toml` — TOML, built on `@effected/toml`.
+| Codec | Format | Engine |
+| ----- | ------ | ------ |
+| `JsonCodec` | JSON | the host `JSON` global, no parser at all |
+| `JsoncCodec` | JSONC | `@effected/jsonc` |
+| `YamlCodec` | YAML | `@effected/yaml` |
+| `TomlCodec` | TOML | `@effected/toml` |
+
+One install covers every format, and you still pay only for the parser you name. The codecs are free-standing exports rather than properties of a namespace object, so importing `TomlCodec` never references the YAML or JSONC bindings, their parsing engines are unreachable from your entrypoint and a bundler drops them. A JSON-only application ships no parser at all.
 
 Codecs compose. `EncryptedCodec` wraps any codec with AES-GCM, and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version. Each *widens* the error channel rather than flattening its failures into the inner codec's error:
 
 ```ts
-import { ConfigCodec, ConfigMigration, EncryptedCodec, EncryptedCodecKey } from "@effected/config-file";
+import { ConfigMigration, EncryptedCodec, EncryptedCodecKey, JsonCodec } from "@effected/config-file";
 import { Effect } from "effect";
 
 const migrating = ConfigMigration.make({
-  codec: ConfigCodec.json,
+  codec: JsonCodec,
   migrations: [
     {
       version: 2,
@@ -145,7 +154,8 @@ export const secret = EncryptedCodec(migrating, EncryptedCodecKey.fromPassphrase
 - `ConfigFile.Service` / `ConfigFile.layer` / `ConfigFile.testLayer` — a per-schema service class and its layers. `testLayer` seeds files into a temp directory and wires the *real* implementation over them, so tests exercise the actual pipeline rather than a stub that can drift from it.
 - `ConfigResolver` — `explicitPath`, `staticDir`, `upwardWalk`, `workspaceRoot`, `gitRoot` and `systemEtc`. A resolver's error channel is `never` by contract: every filesystem failure becomes `Option.none()`, so one unreadable tier never aborts the chain.
 - `MergeStrategy` — `firstMatch` and `layeredMerge`, combining discovered sources in priority order.
-- `ConfigCodec` / `EncryptedCodec` / `ConfigMigration` — a pluggable codec seam, generic in its error type so decorators widen rather than flatten.
+- `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec` — JSON, JSONC, YAML and TOML in the box, exported free-standing so an unused format's engine is tree-shaken away.
+- `ConfigCodec` / `EncryptedCodec` / `ConfigMigration` — a pluggable codec seam, generic in its error type so decorators widen rather than flatten. `ConfigCodec` is the interface: bring your own format by satisfying it.
 - `ConfigEvents` — an opt-in `PubSub` of `ConfigEvent`, honestly zero-cost when omitted: no `events` option means no context lookup at all. Failure events carry the structured typed error, never a `reason` string.
 - `asConfigProvider` / `layerConfigProvider` — expose a loaded, validated document as a v4 `ConfigProvider`, layered beneath the ambient one so an environment variable overrides the file it was deployed with.
 

@@ -1,6 +1,106 @@
 ---
 title: "@effected/config-file"
-description: Auto-generated API documentation for "@effected/config-file"
+description: "Composable config file loading for Effect: JSON, JSONC, YAML and TOML codecs, resolution strategies and merge behaviors."
 ---
 
-# Documentation
+# @effected/config-file
+
+Composable config file loading for Effect. Declare a resolver chain — an explicit path, an upward walk from the cwd, the workspace or git root, `/etc` — decode every discovered file through an Effect `Schema`, and combine the results with a merge strategy. JSON, JSONC, YAML and TOML all decode out of the box. Codecs, resolvers and merge strategies are pluggable seams, and failures arrive as tagged errors carrying structured payloads rather than prose, so "no config anywhere" is routable separately from "the config I found is broken".
+
+## Install
+
+```bash
+npm install @effected/config-file effect @effect/platform-node
+```
+
+```bash
+pnpm add @effected/config-file effect @effect/platform-node
+```
+
+Requires Node.js >=24.11.0. Every format is covered by that one install; there is no separate package to add for YAML or TOML.
+
+`effect` v4 is a peer dependency, and so are `@effected/jsonc`, `@effected/toml`, `@effected/walker` and `@effected/yaml` — the first-party engines behind the JSONC, YAML and TOML codecs, plus the traversal primitive the `upwardWalk`, `workspaceRoot` and `gitRoot` resolvers are built on. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not. The package declares no runtime dependencies of its own, so nothing it drags into your tree comes from outside `effect` and `@effected/*`.
+
+Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.
+
+## Quick start
+
+Declare a schema, mint a service class for it with `ConfigFile.Service`, and build its live layer with `ConfigFile.layer`. The platform layers are provided once, at the edge:
+
+```ts
+import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+class AppShape extends Schema.Class<AppShape>("AppShape")({
+  port: Schema.Number,
+  host: Schema.String,
+}) {}
+
+class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("app/Config") {}
+
+const AppConfigLive = ConfigFile.layer(AppConfig, {
+  schema: AppShape,
+  codec: JsonCodec,
+  resolvers: [ConfigResolver.upwardWalk({ filename: ".apprc" })],
+  strategy: MergeStrategy.firstMatch<AppShape>(),
+});
+
+const program = Effect.gen(function* () {
+  const config = yield* AppConfig;
+  return yield* config.load;
+});
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+Effect.runPromise(program.pipe(Effect.provide(AppConfigLive), Effect.provide(PlatformLive))).then(console.log);
+// AppShape { port: 3000, host: "localhost" }
+```
+
+`ConfigFile.layer` is a layer-returning *function*, not a layer: calling it twice builds two independent service instances. Bind its result to a const, as above, and provide that const.
+
+## Codecs
+
+Four codecs ship in the package, each a free-standing named export:
+
+| Codec | Format | Engine |
+| ----- | ------ | ------ |
+| `JsonCodec` | JSON | the host `JSON` global, no parser at all |
+| `JsoncCodec` | JSONC | `@effected/jsonc` |
+| `YamlCodec` | YAML | `@effected/yaml` |
+| `TomlCodec` | TOML | `@effected/toml` |
+
+One install covers every format, and you still pay only for the parser you name. The codecs are free-standing exports rather than properties of a namespace object, so importing `TomlCodec` never references the YAML or JSONC bindings, their parsing engines are unreachable from your entrypoint and a bundler drops them. A JSON-only application ships no parser at all.
+
+Swapping a format is a one-word change to the layer:
+
+```ts
+import { ConfigFile, ConfigResolver, MergeStrategy, TomlCodec } from "@effected/config-file";
+import { Schema } from "effect";
+
+class Settings extends Schema.Class<Settings>("Settings")({ port: Schema.Number }) {}
+class SettingsConfig extends ConfigFile.Service<SettingsConfig, Settings>()("app/Settings") {}
+
+export const SettingsLive = ConfigFile.layer(SettingsConfig, {
+  schema: Settings,
+  codec: TomlCodec,
+  resolvers: [ConfigResolver.upwardWalk({ filename: "myapp.toml" })],
+  strategy: MergeStrategy.layeredMerge<Settings>(),
+});
+```
+
+`ConfigCodec` itself is the interface, so a format not in the box is a value you supply rather than a fork you maintain. Codecs also compose: `EncryptedCodec` wraps any codec with AES-GCM and `ConfigMigration.make` wraps any codec so parsed content is brought up to the latest version, each widening the error channel rather than flattening it.
+
+## Resolvers and merge strategies
+
+Resolvers are consulted in priority order, highest first: `explicitPath`, `staticDir`, `upwardWalk`, `workspaceRoot`, `gitRoot` and `systemEtc`. A resolver's error channel is `never` by contract — every filesystem failure becomes `Option.none()`, so one unreadable tier never aborts the chain.
+
+The strategy then reduces what was discovered to one value. `MergeStrategy.firstMatch` takes the highest-priority winner; `MergeStrategy.layeredMerge` deep-merges every source that matched, with higher-priority keys overwriting lower ones and every contributing source reported.
+
+## Errors
+
+Every failure is a tagged error you route on with `Effect.catchTag`, carrying its cause structurally rather than as a string. `ConfigFileNotFoundError` means the resolver chain matched nothing, which is often not an error at all and is usually answered with defaults. `ConfigValidationError` carries the schema issue tree. `ConfigCodecError`, `ConfigFileReadError`, `ConfigFileWriteError`, `ConfigDefaultPathMissingError`, `ConfigMigrationError` and `ConfigEncryptionError` cover the rest, and each method's error channel names exactly the failures it can produce.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/config-file/api).

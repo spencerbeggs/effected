@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ConfigCodec, ConfigFile, MergeStrategy } from "@effected/config-file";
+import { ConfigFile, JsonCodec, MergeStrategy } from "@effected/config-file";
 import { Effect, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
 import type { XdgPlatform } from "../src/index.js";
 import { AppDirs, CurrentPlatform, Xdg, XdgConfig, XdgPaths } from "../src/index.js";
@@ -176,7 +176,7 @@ describe("XdgConfig.savePath", () => {
 
 			const configLayer = ConfigFile.layer(AppConfig, {
 				schema: AppShape,
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				strategy: MergeStrategy.firstMatch<typeof AppShape.Type>(),
 				resolvers: [XdgConfig.resolver({ filename: "rc.json" })],
 				defaultPath: XdgConfig.savePath("rc.json"),

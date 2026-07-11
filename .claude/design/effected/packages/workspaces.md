@@ -27,7 +27,7 @@ related:
 
 This document is the design as specified, with an [As built](#as-built-2026-07-11) section recording what the port landed. The sections below are accurate unless that section says otherwise.
 
-Design follows the [workspaces review](../../reviews/workspaces.md), which found the *semantics* strong and v4-shaped and the *packaging* — kind-based folders, `*ErrorBase` workarounds, a static-wiring hack, triplicated dual APIs, two over-granular services, an over-engineered `Request`/`RequestResolver` cache — as the thing the redesign sheds.
+Design follows the [workspaces review](../../../reviews/workspaces.md), which found the *semantics* strong and v4-shaped and the *packaging* — kind-based folders, `*ErrorBase` workarounds, a static-wiring hack, triplicated dual APIs, two over-granular services, an over-engineered `Request`/`RequestResolver` cache — as the thing the redesign sheds.
 
 Its gate consumer is `vitest-agent`, which uses `WorkspaceDiscovery`, `WorkspaceRoot`, their errors, and the two **synchronous** escape-hatch functions its Vitest config-time project discovery cannot avoid.
 

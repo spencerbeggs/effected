@@ -1,0 +1,11 @@
+[
+	{
+		"type": "section-header",
+		"label": "@effected/pnpm-plugin-effect"
+	},
+	{
+		"type": "file",
+		"name": "index.mdx",
+		"label": "Overview"
+	}
+]

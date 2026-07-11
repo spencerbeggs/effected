@@ -1,8 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Option } from "effect";
-import { ConfigCodec } from "../src/ConfigCodec.js";
 import type { VersionAccess } from "../src/ConfigMigration.js";
 import { ConfigMigration, ConfigMigrationError } from "../src/ConfigMigration.js";
+import { JsonCodec } from "../src/JsonCodec.js";
 
 const bump = (version: number, name: string, fn: (raw: Record<string, unknown>) => Record<string, unknown>) => ({
 	version,
@@ -14,7 +14,7 @@ describe("ConfigMigration.make", () => {
 	it.effect("applies pending migrations in ascending order and stamps the version", () =>
 		Effect.gen(function* () {
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [bump(3, "add-c", (r) => ({ ...r, c: 3 })), bump(2, "add-b", (r) => ({ ...r, b: 2 }))],
 			});
 			const parsed = yield* codec.parse(`{"version":1,"a":1}`);
@@ -25,7 +25,7 @@ describe("ConfigMigration.make", () => {
 	it.effect("skips migrations at or below the current version", () =>
 		Effect.gen(function* () {
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [bump(2, "add-b", (r) => ({ ...r, b: 2 }))],
 			});
 			const parsed = yield* codec.parse(`{"version":2,"a":1}`);
@@ -37,7 +37,7 @@ describe("ConfigMigration.make", () => {
 		Effect.gen(function* () {
 			const boom = new Error("upstream exploded");
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [{ version: 2, name: "add-b", up: () => Effect.fail(boom) }],
 			});
 			const error = yield* Effect.flip(codec.parse(`{"version":1}`));
@@ -54,7 +54,7 @@ describe("ConfigMigration.make", () => {
 	it.effect("fails with phase read-version when the version field is missing", () =>
 		Effect.gen(function* () {
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [bump(2, "add-b", (r) => r)],
 			});
 			const error = yield* Effect.flip(codec.parse(`{"a":1}`));
@@ -64,15 +64,19 @@ describe("ConfigMigration.make", () => {
 
 	it.effect("a codec failure surfaces as ConfigCodecError, not ConfigMigrationError", () =>
 		Effect.gen(function* () {
-			const codec = ConfigMigration.make({ codec: ConfigCodec.json, migrations: [bump(2, "x", (r) => r)] });
+			const codec = ConfigMigration.make({ codec: JsonCodec, migrations: [bump(2, "x", (r) => r)] });
 			const error = yield* Effect.flip(codec.parse("{ not json"));
 			assert.strictEqual(error._tag, "ConfigCodecError");
+			// The SyntaxError JSON.parse threw must survive structurally through the
+			// decorator. Asserting the tag alone would still pass if a regression
+			// stringified the cause, which is the one thing this error model forbids.
+			assert.instanceOf(error.cause, SyntaxError);
 		}),
 	);
 
 	it.effect("with no migrations, parse is the inner codec's parse", () =>
 		Effect.gen(function* () {
-			const codec = ConfigMigration.make({ codec: ConfigCodec.json, migrations: [] });
+			const codec = ConfigMigration.make({ codec: JsonCodec, migrations: [] });
 			assert.deepStrictEqual(yield* codec.parse(`{"a":1}`), { a: 1 });
 		}),
 	);
@@ -80,7 +84,7 @@ describe("ConfigMigration.make", () => {
 	it.effect("a migration that throws instead of failing its Effect is a defect, not a typed error", () =>
 		Effect.gen(function* () {
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [
 					{
 						version: 2,
@@ -107,7 +111,7 @@ describe("ConfigMigration.make", () => {
 	it.effect("a throw inside the returned Effect dies the same way", () =>
 		Effect.gen(function* () {
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [
 					{
 						version: 2,
@@ -149,7 +153,7 @@ describe("ConfigMigration.make with a custom versionAccess", () => {
 			// migrations would run and `b` would appear. The custom accessor reads 2 from
 			// meta.schemaVersion, so only the v3 step is pending.
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [bump(3, "add-c", (r) => ({ ...r, c: 3 })), bump(2, "add-b", (r) => ({ ...r, b: 2 }))],
 				versionAccess: metaAccess,
 			});
@@ -170,7 +174,7 @@ describe("ConfigMigration.make with a custom versionAccess", () => {
 				},
 			};
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [
 					bump(2, "add-b", (r) => ({ ...r, b: 2 })),
 					{
@@ -198,7 +202,7 @@ describe("ConfigMigration.make with a custom versionAccess", () => {
 	it.effect("a custom get failing surfaces phase read-version with the cause by identity", () =>
 		Effect.gen(function* () {
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [bump(2, "add-b", (r) => r)],
 				versionAccess: metaAccess,
 			});
@@ -220,7 +224,7 @@ describe("ConfigMigration.make with a custom versionAccess", () => {
 	it.effect("a custom get pointing at a wrong-typed field fails with phase read-version", () =>
 		Effect.gen(function* () {
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [bump(2, "add-b", (r) => r)],
 				versionAccess: metaAccess,
 			});
@@ -234,7 +238,7 @@ describe("ConfigMigration.make with a custom versionAccess", () => {
 		Effect.gen(function* () {
 			const boom = new Error("cannot stamp");
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [bump(2, "add-b", (r) => ({ ...r, b: 2 }))],
 				versionAccess: { get: metaAccess.get, set: () => Effect.fail(boom) },
 			});
@@ -250,7 +254,7 @@ describe("ConfigMigration.make with a custom versionAccess", () => {
 	it.effect("a custom get that throws instead of failing its Effect stays a defect", () =>
 		Effect.gen(function* () {
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [bump(2, "add-b", (r) => r)],
 				versionAccess: {
 					get: () => {
@@ -275,7 +279,7 @@ describe("ConfigMigration.make with a custom versionAccess", () => {
 	it.effect("a custom set throwing inside its returned Effect stays a defect", () =>
 		Effect.gen(function* () {
 			const codec = ConfigMigration.make({
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				migrations: [bump(2, "add-b", (r) => r)],
 				versionAccess: {
 					get: metaAccess.get,

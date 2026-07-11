@@ -1,6 +1,66 @@
 ---
 title: "@effected/walker"
-description: Auto-generated API documentation for "@effected/walker"
+description: "Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate."
 ---
 
-# Documentation
+# @effected/walker
+
+Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate. Each probe absorbs its own failure, so one unreadable ancestor never hides a valid match above it.
+
+## Why @effected/walker
+
+Nearly every JavaScript tool re-implements the same loop: start at the current directory, look for a marker file, and keep climbing until you find one or hit the root. It is how a config file, a workspace root, a `.git` directory and a `node_modules` folder are all located. The loop looks trivial and has one subtle failure mode that most implementations get wrong — see below.
+
+This package is that loop, written once, with the failure mode fixed. It is small on purpose: `@effected/xdg` and `@effected/workspaces` both build their discovery on it rather than each writing their own ascent.
+
+## Install
+
+```bash
+npm install @effected/walker effect
+```
+
+```bash
+pnpm add @effected/walker effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies. IO goes through `FileSystem` and `Path` from Effect core, which you provide once at the edge — from `@effect/platform-node` on Node.
+
+## Quick start
+
+```ts
+import { Walker } from "@effected/walker";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const findConfig = Effect.gen(function* () {
+  const dirs = yield* Walker.ascend(process.cwd());
+  return yield* Walker.findUpward(dirs, (dir) => [`${dir}/.apprc`]);
+});
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+Effect.runPromise(findConfig.pipe(Effect.provide(PlatformLive))).then(console.log);
+// Option.some(path) when a ".apprc" exists in the cwd or an ancestor, Option.none() otherwise
+```
+
+## Absorption is per candidate
+
+This is the whole point of the package. A failing probe means "this candidate did not match" — it never means "abort the scan". Wrap the entire ascent in a single `catchAll`, which is the obvious way to write it, and one `EACCES` on a directory you happened to walk through will hide a perfectly readable config file above it. That bug shipped in this repo's predecessor libraries and was found by porting the loop here.
+
+The corollary is a contract worth knowing: not-found and cannot-look are deliberately **indistinguishable** to the caller. Every public error channel is `never`, and an `Option.none()` may mean a directory was unreadable rather than empty. Discovery is best-effort by design.
+
+Defects still propagate. Absorption catches failures, not defects, so a genuine programmer error is never laundered into a silent miss.
+
+## The surface
+
+`Walker.ascend(start, options?)` returns the directory chain from `start` toward the filesystem root, nearest first. `stopAt` halts the ascent inclusively, and `maxDepth` (default 256) caps it. `start` is required — walker never reads `process.cwd()` on your behalf.
+
+`Walker.firstMatch(candidates, predicate)` is the absorbing loop itself, and it short-circuits: the scan stops at the first match and later candidates are never probed. That matters when a predicate is expensive, such as one that reads and parses a `package.json` to decide whether a directory is a workspace root.
+
+`Walker.findUpward(dirs, candidatesFor)` is **directory-major**: every candidate in the nearest directory is tried before ascending. A candidate-major interleave would let a distant ancestor's `.apprc` beat a nearer `config/.apprc`.
+
+`Walker.findRoot(dirs, isRoot)` returns the nearest directory a marker predicate accepts.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/walker/api).

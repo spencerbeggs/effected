@@ -1,6 +1,59 @@
 ---
 title: "@effected/semver"
-description: Auto-generated API documentation for "@effected/semver"
+description: "Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas."
 ---
 
-# Documentation
+# @effected/semver
+
+Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas. Parse a version, a comparator or a range from its canonical string, compare and order versions, test a version against a range, intersect ranges, and describe the difference between two versions as structured data. Every parse failure is a tagged error carrying the offending input, not a thrown string.
+
+## Why @effected/semver
+
+This was the first package migrated, and it is the repo's DX north star: when another package is unsure what shape an API should take, it copies this one. Three conventions started here and now run through the whole kit. The class *is* the schema — `SemVer`, `Comparator` and `Range` are each a `Schema.Class` with a `static readonly FromString` transformation, so a version embeds directly in a domain schema instead of being validated on the side. Instance methods are canonical and cross-cutting operations are dual statics on the owning class, so there are no floating helper functions. Construction goes through `make`, which validates, rather than `new`.
+
+## Install
+
+```bash
+npm install @effected/semver effect
+```
+
+```bash
+pnpm add @effected/semver effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own and does no IO.
+
+## Quick start
+
+```ts
+import { Range, SemVer } from "@effected/semver";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const version = yield* SemVer.parse("1.2.3");
+  const next = version.bump.minor();
+  const range = yield* Range.parse("^1.0.0");
+  return [next.toString(), range.test(version), version.gt(next)] as const;
+});
+
+console.log(Effect.runSync(program));
+// ["1.3.0", true, false]
+```
+
+## Ranges are more than a predicate
+
+`Range` parses the full node-semver grammar — carets, tildes, x-ranges, hyphen ranges and comparator sets — and desugars it to a normalized set of comparators you can reason about. `Range.test` implements node-semver's prerelease restriction, so `1.2.3-beta.1` matches `^1.0.0` only when some comparator in the set carries a prerelease on the same `major.minor.patch` tuple. `Range.intersect` computes the overlap of two ranges and fails with `UnsatisfiableConstraintError` when there is none, which is what turns "these two dependency constraints conflict" into a value rather than a guess.
+
+`VersionDiff.between(a, b)` reports the difference between two versions as a tagged class rather than a string, so a release tool can branch on the bump kind directly.
+
+## Equality has SemVer's semantics, not JavaScript's
+
+`SemVer` overrides both `Equal.symbol` and `Hash.symbol`, and they agree with the specification: build metadata is ignored (§10), prerelease identifiers are significant (§11). `1.2.3+build.1` and `1.2.3+build.2` are equal; `1.2.3-alpha` and `1.2.3` are not. Anything built on Effect's structural equality — a `HashSet` of versions, `VersionCache`'s dedupe — inherits those semantics for free.
+
+## Errors
+
+`InvalidVersionError`, `InvalidComparatorError`, `InvalidRangeError` and `UnsatisfiableConstraintError` are tagged error classes whose `message` is a getter derived from structured fields, never a preformatted string. Route on them with `Effect.catchTag` and read the fields you need.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/semver/api).

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-09
-last-synced: 2026-07-09
+updated: 2026-07-11
+last-synced: 2026-07-11
 completeness: 93
 related:
   - architecture.md
@@ -39,15 +39,31 @@ Rationale: file names ARE the API names, eliminating verbose disambiguation suff
 
 Only entrypoint files — `src/index.ts` and any published subpath entrypoints — may re-export. Every other module imports the values and types it uses explicitly from their defining module: no intermediate barrel files, no blanket `export * from` facades and no re-exporting a dependency's surface. This was a repeated footgun in the source repos (concrete evidence in the reviews in `.claude/reviews/`): xdg-effect's blanket re-export facade of json-schema-effect created a phantom dependency used by nothing in `src/`, and index.ts-based static wiring in semver-effect and workspaces-effect coupled module load order to the entrypoint, forcing `sideEffects` declarations and deep imports.
 
+**A namespace object is a barrel in different syntax, and a worse one.** `export const Codecs = { json, jsonc, yaml, toml }` collects independent implementations behind one binding exactly as `export *` collects independent modules behind one module. It is worse because a bundler can see through a re-export barrel — the named exports stay individually reachable — but a namespace object is a **single live binding**: reference it at all and every member is reachable, so every member's whole module graph is retained. The failure is **silent**. No error, no warning, just a bundle carrying engines the consumer never named.
+
+The [config-file consolidation](package-inventory.md#the-config-file-consolidation-2026-07-11) is where this was found and where it is now measured: with four codecs as free-standing named exports, a consumer importing only `JsonCodec` bundles **506 bytes**; collected into a namespace object it would have pulled the JSONC, YAML and TOML engines too, at **129.4 kB**. The rule that follows: **a set of alternative implementations that each reach a different dependency belongs in one module each, exported by name — never gathered into an object.**
+
+Grouped statics are not banned outright — `MergeStrategy.firstMatch` / `.layeredMerge` and `ConfigResolver`'s six resolvers stay grouped, because they are variants of one concept, live in one module and reach nothing heavier than each other. The hazard is proportional to **what sits behind each member**: group siblings that share a module, never siblings that each drag in a distinct engine. When in doubt, split — the cost of a separate module is a line in `index.ts`, and the cost of getting it wrong is invisible until someone measures a bundle.
+
 ## Three-tier library taxonomy
 
-Tier is a property of a package's own **runtime** surface — what it imports and whether it does IO. devDependencies never count toward tier: `@effect/vitest` and `@effect/tsgo` are test and build tooling, irrelevant to the classification.
+The three tiers classify **libraries by dependency surface**: they answer the one question a consumer asks before taking an edge — *what does depending on this cost me?* Tier is a property of a package's own **runtime** surface — what it imports and whether it does IO. devDependencies never count toward tier: `@effect/vitest` and `@effect/tsgo` are test and build tooling, irrelevant to the classification.
 
 - **Pure** — imports `effect` (as a peer) and `@effected/*` packages only. Performs no IO.
 - **Boundary** — the same dependency surface as pure, but performs IO through `effect`-core platform abstractions (`FileSystem`, `Path`, `PlatformError`). The consumer provides the platform layer at the edge.
 - **Integrated** — imports at least one runtime package outside `effect` **core**. Effect-org packages (`@effect/sql-sqlite-node`, `@effect/cli`, `@effect/platform-node`) count exactly the same as third-party ones (`spdx-expression-parse`, `@pnpm/catalogs.*`): the line is `effect` core versus everything else. It is drawn there because it is checkable from `package.json` alone, and because this repo's peer-closure pain (documented in the root CLAUDE.md) comes precisely from non-core `@effect/*` packages dragging v3-wanting closures into consumers.
 
-Tier assignments per package are provisional until confirmed at migration time; see [package-inventory.md](package-inventory.md).
+Tier assignments per package are provisional until confirmed at migration time; see [package-inventory.md](package-inventory.md). Not every published package is a library, and the packages that are not carry **no tier at all** — see [Companion packages](#companion-packages-published-but-not-a-library).
+
+### Companion packages: published, but not a library
+
+A **companion** package is published and installable but is **not a library**: it exposes no API, there is nothing to import and nothing to call. It ships with the kit in the coordinated `0.1.0` release ([releases.md](releases.md#versioning)), and installing it is optional for the consumer.
+
+**Companion is a category, not a fourth tier.** The three tiers above sit on one axis — dependency surface — and answer "what does depending on this cost you?". That question is *meaningless* for a package nothing can depend on, so a companion is not ranked against pure, boundary and integrated; it sits off the axis entirely. The three tiers continue to classify **libraries only**, and a companion has no tier rather than a fourth one.
+
+`@effected/pnpm-plugin-effect` is the only companion today: it ships two pnpm catalogs and a pnpmfile — configuration, not code — and installing it pins a consumer's `effect` versions and peer floors to the values the kit was built and tested against. See [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md).
+
+**Why `companion` and not `infrastructure`**, recorded because the wrong name did real damage on `feat/remerge-config-file`: "infrastructure" names the package's relationship to *this repo* and reads as internal-only tooling. That framing produced two successive documented errors about this very package — first that it does not publish at all, then that it is exempt from the coordinated release — both wrong, because "repo infrastructure" invites the inference that it is not a real shipped package. It is one: a public package consumers are meant to install and rely on. **`companion` names the relationship to the consumer** — ships alongside the kit, optional, no API — instead of the relationship to the repo, and makes the wrong reading harder.
 
 ### Dependency policy
 
@@ -59,9 +75,11 @@ R1 **replaces** the old inference chain "parsing has no IO, so a format package 
 
 **R2 — tier 3 propagates.** Depending on a tier-3 `@effected` package makes you tier 3, whatever your own imports say, because that package's external code lands in your consumer's tree transitively.
 
-**R3 — tier 2 does not propagate.** A boundary package's IO is discharged by the app's platform layer, provided once at the edge, so a consumer of a tier-2 package pays no external install for it. This is why `@effected/config-file-jsonc` is tier 1 (pure) even though it depends on tier-2 `@effected/config-file`. R3 is the justification the old doc lacked when it asserted that tier follows a package's own surface.
+**R3 — tier 2 does not propagate.** A boundary package's IO is discharged by the app's platform layer, provided once at the edge, so a consumer of a tier-2 package pays no external install for it. Live example: `@effected/config-file` (boundary) depends on `@effected/walker` (boundary) and stays boundary rather than being pushed up a tier. R3 is the justification the old doc lacked when it asserted that tier follows a package's own surface.
 
-**R4 — tier follows a package's own surface** (plus R2 for propagation), never its consumers'. A codec adapter that wraps `parse`/`stringify` and never touches `FileSystem` is pure even though its only consumer is a boundary library — `@effected/config-file-jsonc` and `-yaml` are pure for exactly this reason. Conversely a package is boundary the moment it performs IO itself, however thin.
+**R4 — tier follows a package's own surface** (plus R2 for propagation), never its consumers'. A package that wraps `parse`/`stringify` and never touches `FileSystem` is pure even when its only consumer is a boundary library — `@effected/lockfiles` is pure for exactly this reason: every entrypoint takes `content: string`, and the file reading lives in `@effected/workspaces`. Conversely a package is boundary the moment it performs IO itself, however thin.
+
+R3 and R4 together are also what kept `@effected/config-file` at boundary through the [config-file consolidation](package-inventory.md#the-config-file-consolidation-2026-07-11), when it absorbed three pure format-package edges. The consolidation deleted this section's original worked examples — the `config-file-jsonc` / `-yaml` / `-toml` codec adapters, which were pure despite depending on boundary `config-file`. The rules did not change; the packages that illustrated them did.
 
 The scheme buys two things worth stating. First, it explains the `runtime-resolver` CLI split that [package-inventory.md](package-inventory.md) currently justifies as "peers leak onto API consumers": `@effect/cli` is tier 3, the resolver core is tier 2, and a tier-2 package's consumers should not have to pay a tier-3 install — so the split is what R1 requires, not an ad-hoc fix. Second, `@effected/config-file`'s CLAUDE.md currently has to state in prose that it "carries zero runtime dependencies", because "boundary" alone could not distinguish it from `@effected/workspaces`; the tier label now carries that information directly.
 

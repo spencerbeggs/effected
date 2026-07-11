@@ -1,0 +1,204 @@
+# @effected/package-json
+
+[![npm](https://img.shields.io/npm/v/@effected%2Fpackage-json?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/package-json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
+[![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
+[![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
+
+package.json parsing, editing, validation and file IO as Effect schemas. `Package` is a `Schema.Class` with the manifest's known fields typed — `name` is a branded npm name, `version` is a real `SemVer`, `packageManager` decodes into `{ name, version, integrity }` — and a `rest` catch-all that carries every unknown top-level key through a read, edit and write cycle without losing it. Editing is immutable and dual-signature, validation is a rule set you can replace, and `catalog:` / `workspace:` specifiers expand through the `@effected/npm` resolver contracts as an explicit step you opt into.
+
+## Why @effected/package-json
+
+Tools that rewrite a package.json usually treat it as a `Record<string, unknown>`: read it, mutate a key, `JSON.stringify` it back. That works right up until it does not. Unknown keys survive by accident rather than by design, `version` is a string you compare with `<`, and the day someone's manifest has a field your types never modeled is the day you find out whether your write path preserved it. The alternative — a strict schema over the *known* fields — usually solves the typing by deleting everyone's data.
+
+This package refuses both. Known fields are typed and validated; everything else lands in `rest` and is flattened back to top-level keys on encode, so the on-disk shape never grows a literal `rest` key and never loses your `customTool` block. Serialization applies the canonical `sort-package-json` key order, alphabetizes dependency maps and strips empty ones, deterministically and locale-independently. `PackageJsonFile.write` does not silently resolve your `workspace:` specifiers on the way out, because a write that quietly rewrites your dependency values is not a write, it is a policy — so `Package.resolve` is a step you compose in deliberately. And every distinct failure has its own tag: a missing file, an unreadable file, invalid JSON and a document that does not satisfy the schema are four different problems with four different recoveries.
+
+## Install
+
+```bash
+npm install @effected/package-json effect @effect/platform-node
+```
+
+```bash
+pnpm add @effected/package-json effect @effect/platform-node
+```
+
+Requires Node.js >=24.11.0.
+
+`effect` v4 is the only peer dependency. `@effected/semver` and `@effected/npm` come along as ordinary dependencies — they back the `version` field and the resolver contracts — and `spdx-expression-parse` is the one external package in the tree, used to validate SPDX license expressions.
+
+Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge, from `@effect/platform-node` on Node. Everything except `PackageJsonFile` is pure and needs no platform layer at all.
+
+## Quick start
+
+Decode a manifest, edit it, read the computed properties back:
+
+```ts
+import { Package } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({ name: "@acme/widget", version: "1.0.0", private: true });
+  const next = yield* Package.setVersion(pkg, "1.1.0");
+  return [next.name, next.version.toString(), next.isScoped, next.isPrivate] as const;
+});
+
+console.log(Effect.runSync(program));
+// => ["@acme/widget", "1.1.0", true, true]
+```
+
+`next.version` is a `SemVer`, not a string, so you compare it with `SemVer.gt` and bump it with `version.bump.minor()` rather than reaching for a regex.
+
+## The Package model
+
+Editing returns a new `Package`. The mutation statics are dual, so `Package.addDependency(pkg, "effect", "^4.0.0")` and `pkg.pipe(Package.addDependency("effect", "^4.0.0"))` are the same call. The ones that can fail — `setVersion`, `setName`, `setLicense` — return an `Effect` with the corresponding typed error, and the rest are plain functions.
+
+Unknown keys round-trip. `toJsonString` encodes through the wire codec, flattens `rest` back to the top level, and applies the canonical key order:
+
+```ts
+import { Package } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({
+    name: "widget",
+    version: "1.0.0",
+    scripts: { build: "tsc" },
+    customTool: { flag: true },
+  });
+  return Package.addDevDependency(pkg, "typescript", "^6.0.0").toJsonString();
+});
+
+console.log(Effect.runSync(program));
+// {
+//   "name": "widget",
+//   "version": "1.0.0",
+//   "scripts": {
+//     "build": "tsc"
+//   },
+//   "devDependencies": {
+//     "typescript": "^6.0.0"
+//   },
+//   "customTool": {
+//     "flag": true
+//   }
+// }
+```
+
+`toJsonString` takes `PackageFormatOptions` — `indent`, `sort`, `stripEmpty`, `newline` — if you want the raw shape instead of the canonical one.
+
+Alongside `Package` the leaf concepts are usable on their own. `PackageName` classifies and validates npm names (`isValid`, `isScoped`, `scope`, `unscoped`) and brands them as `ScopedPackageName` or `UnscopedPackageName`. `DependencySpecifier` classifies any specifier string into one protocol — `range`, `tag`, `git`, `url`, `npm`, `file`, `link`, `portal`, `catalog`, `workspace` or `unknown` — and parses the range case into a `Range` from `@effected/semver`. `Dependency` pairs a name with a specifier and the `kind` of map it came from, exposing the same protocol predicates as getters.
+
+## Reading and writing
+
+`PackageJsonFile` is the only IO in the package: one service, two methods, over core `FileSystem` and `Path`.
+
+```ts
+import { Package, PackageJsonFile } from "@effected/package-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const bumpMinor = Effect.gen(function* () {
+  const files = yield* PackageJsonFile;
+  const pkg = yield* files.read("./package.json");
+  const next = pkg.copyWith({ version: pkg.version.bump.minor() });
+  yield* files.write("./package.json", next);
+});
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+Effect.runPromise(bumpMinor.pipe(Effect.provide(PackageJsonFile.layer), Effect.provide(PlatformLive)));
+```
+
+`read` fails four different ways and says which: `PackageJsonNotFoundError` when the file is not there, `PackageJsonReadError` for any other filesystem failure, `PackageJsonParseError` when the bytes are not JSON, and `PackageDecodeError` when the JSON is not a package.json. There is no `exists` pre-check, so a file deleted between the check and the read cannot be misreported as an IO error.
+
+## Validation
+
+`PackageValidator` runs a rule set over a decoded `Package` and aggregates *every* failure into one `PackageValidationError`, rather than stopping at the first.
+
+```ts
+import { Package, PackageValidator } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({ name: "widget", version: "1.0.0" });
+  const validator = yield* PackageValidator;
+  return yield* validator.validate(pkg);
+}).pipe(
+  Effect.provide(PackageValidator.layer),
+  Effect.catchTag("PackageValidationError", (error) => Effect.succeed(error.failures.map((failure) => failure.rule))),
+);
+
+console.log(Effect.runSync(program));
+// => ["has-license", "has-description", "has-repository"]
+```
+
+`PackageValidator.layer` carries the default rules (`has-license`, `has-description`, `has-repository`, `not-private`). `PackageValidator.layerRules({ rules })` takes your own set instead — a `ValidationRule` is a name plus a check that fails with a `RuleFailure`. Two extra rules ship for publish gates: `noUnresolvedDepsRule` fails on any `workspace:` or `catalog:` specifier still in the manifest, and `noLocalDepsRule` fails on `file:`, `link:` and `portal:`.
+
+## Resolving catalog: and workspace: specifiers
+
+`Package.resolve` expands `catalog:` and `workspace:` specifiers across all four dependency maps, using the `CatalogResolver` and `WorkspaceResolver` contracts from `@effected/npm`. This package deliberately cannot implement them — it has no view of the workspace — so the implementation arrives from context. `@effected/workspaces` provides the real ones; a fixed record does fine for a test.
+
+Specifiers the resolvers answer `None` for are left exactly as they were.
+
+```ts
+import { CatalogResolver, WorkspaceResolver } from "@effected/npm";
+import { Package } from "@effected/package-json";
+import { Effect, HashMap, Layer, Option } from "effect";
+
+const Resolvers = Layer.mergeAll(
+  Layer.succeed(CatalogResolver, { rangeOf: () => Effect.succeed(Option.some("^4.0.0")) }),
+  Layer.succeed(WorkspaceResolver, { versionOf: () => Effect.succeed(Option.some("1.4.0")) }),
+);
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({
+    name: "widget",
+    version: "1.0.0",
+    dependencies: { effect: "catalog:", "@acme/core": "workspace:^" },
+  });
+  const resolved = yield* Package.resolve(pkg);
+  return [
+    Option.getOrElse(HashMap.get(resolved.dependencies, "effect"), () => "unresolved"),
+    Option.getOrElse(HashMap.get(resolved.dependencies, "@acme/core"), () => "unresolved"),
+  ] as const;
+}).pipe(Effect.provide(Resolvers));
+
+console.log(Effect.runSync(program));
+// => ["^4.0.0", "^1.4.0"]
+```
+
+The `workspace:` range modifier is honored: `workspace:*` takes the bare version, `workspace:^` and `workspace:~` prefix it, and an explicit modifier is used as-is.
+
+## Errors
+
+Every failure is a `Schema.TaggedErrorClass` routed with `Effect.catchTag`. Causes are preserved structurally on a `Schema.Defect` field — a `PackageDecodeError` hands you the `SchemaError` issue tree, not `String(error)`.
+
+| Tag | Means |
+| --- | ----- |
+| `PackageJsonNotFoundError` | No file at the path. Often not an error at all: fall back, or walk up. |
+| `PackageJsonReadError` | The file is there and could not be read. Carries `path` and the structural `cause`. |
+| `PackageJsonParseError` | The bytes are not JSON. Carries `path` and the `SyntaxError`. |
+| `PackageDecodeError` | The JSON is not a package.json. Carries the `SchemaError` cause with its issue tree. |
+| `PackageJsonWriteError` | The write failed. Narrowed to the filesystem failure only, never an encode error. |
+| `PackageValidationError` | One or more validation rules failed. Carries every `failure`, each with its rule name, message and JSON path. |
+| `InvalidPackageNameError` | A string does not satisfy npm's naming rules. Raised by `Package.setName`. |
+| `InvalidSpdxLicenseError` | A string is not a valid SPDX license expression. Raised by `Package.setLicense`. |
+| `InvalidDependencySpecifierError` | A string is not a recognized dependency specifier. Raised by `DependencySpecifier.decode`. |
+
+`Package.setVersion` fails with `InvalidVersionError` from `@effected/semver`, which is where the version grammar lives.
+
+## Features
+
+- `Package` — the manifest model: typed known fields, the `rest` catch-all, computed getters (`isPrivate`, `isScoped`, `isESM`, `hasDependency`, the four `get*Dependencies`), dual mutation statics, `copyWith`, `Package.decode` and the pure `toJsonString` serializer.
+- `Package.schema` / `Package.wireFor` — the open-JSON ↔ class wire codec, and the factory that builds one for a `.extend()`ed subclass so its custom fields decode as typed members instead of falling into `rest`.
+- `PackageJsonFile` — the IO surface: `read` and `write` over core `FileSystem` / `Path`, with the platform implementation supplied at the edge.
+- `PackageValidator` — rule-based validation aggregating every failure, with the default rule set, a parameterized `layerRules` factory, and the publish-gate rules `noUnresolvedDepsRule` and `noLocalDepsRule`.
+- `Package.resolve` — `catalog:` and `workspace:` expansion over the `@effected/npm` contracts, as an explicit step that `write` never performs for you.
+- `PackageName`, `DependencySpecifier`, `Dependency`, `SpdxLicense`, `PackageManager`, `Person`, `DevEngine` — the leaf concepts, each owning its own statics, brand and error, usable independently of `Package`.
+- Field schemas (`DependencyMapField`, `BinField`, `ExportsField`, `RepositoryField`, `PublishConfigField`, `PeerDependenciesMetaField`, `StringMapField`) exported for subclasses that extend the model.
+
+## License
+
+[MIT](LICENSE)
+</content>

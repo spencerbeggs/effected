@@ -2,20 +2,29 @@
 
 [![npm](https://img.shields.io/npm/v/@effected%2Fpnpm-plugin-effect?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/pnpm-plugin-effect)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
+[![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-f69220.svg)](https://pnpm.io/)
 
-A pnpm config dependency that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to the latest [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effectPeers` catalog resolves the same packages down to a calculated shared floor — the lowest common version safe to declare as a peer range — so your libraries don't over-constrain the projects that depend on them. Every `@effected/*` package uses these catalogs.
+A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to one [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effectPeers` catalog carries the same package set at a computed shared floor — the lowest version safe to advertise as a peer range — so a library you publish does not over-constrain the applications that install it. Install it once and both catalogs are available to every package in your workspace.
+
+## Why @effected/pnpm-plugin-effect
+
+Effect ships as a couple of dozen packages that have to move together. Pin them by hand and the pins drift: one `@effect/*` package advances, its `effect` peer no longer matches the core you installed, and the failure surfaces as a type error in a file nobody touched. Keeping the pins in one place is the whole idea, and pnpm catalogs are the mechanism — `catalog:effect` in a manifest instead of a version string, and one place to edit when the beta advances.
+
+The second catalog is the part you cannot get from a catalog alone. A library's `peerDependencies` should be as *wide* as it can safely be, while its `devDependencies` should be as *specific* as possible; those are different numbers and computing the peer floor by hand across a whole ecosystem is grim. `effectPeers` is that computation, done once. This is a convenience, not a requirement — it packages the way [effected](https://github.com/spencerbeggs/effected) pins its own Effect dependencies, so a project that wants the same discipline can adopt it instead of rebuilding it. It ships catalogs and a pnpmfile, not a code API.
 
 ## Install
 
-Add as a config dependency using pnpm:
+Add it as a **config dependency** — not a regular dependency. Config dependencies are installed ahead of the rest of the tree, which is what lets them contribute catalogs and hooks to the install that follows:
 
 ```bash
 pnpm add --config @effected/pnpm-plugin-effect
 ```
 
-This adds the package to your `pnpm-workspace.yaml` with the required integrity hash (pnpm fills in the version and hash automatically):
+Requires pnpm 11 or newer, and Node.js >=24.11.0. There is no npm or yarn equivalent: config dependencies and catalogs are pnpm features.
+
+The command writes the package into your `pnpm-workspace.yaml`, filling in the version and the required integrity hash for you:
 
 ```yaml
 configDependencies:
@@ -24,22 +33,46 @@ configDependencies:
 
 ## Usage
 
-Installing the config dependency gives your workspace both catalogs. Reference them in `package.json` based on whether you are building an application or a library.
+Once installed, both catalogs are available to every package in the workspace. Reference them from `package.json` by name, in place of a version range. Which field they go in depends on whether you are building an application or a library.
 
-Applications reference the pinned versions directly in `dependencies`:
-
-```json
-{ "dependencies": { "effect": "catalog:effect", "@effect/ai-openai": "catalog:effect" } }
-```
-
-Libraries pin the same versions for development and declare the calculated floor as the peer range consumers must satisfy:
+Applications pin the versions directly, in `dependencies`:
 
 ```json
 {
-  "devDependencies": { "effect": "catalog:effect", "@effect/ai-openai": "catalog:effect" },
-  "peerDependencies": { "effect": "catalog:effectPeers", "@effect/ai-openai": "catalog:effectPeers" }
+  "dependencies": {
+    "effect": "catalog:effect",
+    "@effect/ai-openai": "catalog:effect"
+  }
 }
 ```
+
+Libraries want both catalogs: the pinned versions to develop and test against, and the computed floor as the peer range consumers must satisfy.
+
+```json
+{
+  "devDependencies": {
+    "effect": "catalog:effect",
+    "@effect/ai-openai": "catalog:effect"
+  },
+  "peerDependencies": {
+    "effect": "catalog:effectPeers",
+    "@effect/ai-openai": "catalog:effectPeers"
+  }
+}
+```
+
+pnpm rewrites `catalog:` specifiers to concrete ranges when it publishes, so what lands on the registry is an ordinary manifest. Nothing downstream needs this plugin, or pnpm.
+
+## What it ships
+
+| Catalog | Contents | Use it in |
+| ------- | -------- | --------- |
+| `catalog:effect` | Every `effect` and `@effect/*` package, pinned to one v4 release | `dependencies` for applications, `devDependencies` for libraries |
+| `catalog:effectPeers` | The same package set at the computed shared peer floor | `peerDependencies` for libraries |
+
+It also ships a pnpmfile, which pnpm loads from the config dependency automatically. There is nothing to import and nothing to call — the package has no code API, only configuration.
+
+While the whole ecosystem is pinned to a single beta of Effect v4, the two catalogs largely coincide. The floor computation earns its keep once the packages' releases desynchronize — and it earned it under Effect v3, where the floors genuinely diverged.
 
 ## License
 

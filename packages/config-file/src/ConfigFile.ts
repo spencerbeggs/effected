@@ -602,7 +602,7 @@ export interface ConfigFileTestOptions<A, I> {
  * ```ts
  * const TestConfig = ConfigFile.testLayer(AppConfig, {
  * 	schema: AppShape,
- * 	codec: ConfigCodec.json,
+ * 	codec: JsonCodec,
  * 	strategy: MergeStrategy.firstMatch<AppShape>(),
  * 	files: { ".apprc": `{"port":4242}` },
  * }).pipe(Layer.provide(NodeServices.layer));

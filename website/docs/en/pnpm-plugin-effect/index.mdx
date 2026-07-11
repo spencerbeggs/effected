@@ -1,0 +1,82 @@
+---
+title: "@effected/pnpm-plugin-effect"
+description: "A pnpm config dependency that centralizes Effect-ecosystem versioning through two pnpm catalogs."
+---
+
+# @effected/pnpm-plugin-effect
+
+A pnpm config dependency that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to the current [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effectPeers` catalog resolves the same packages down to a calculated shared floor — the lowest common version safe to declare as a peer range — so your libraries do not over-constrain the projects that depend on them.
+
+## Where it fits
+
+It is not an app-kit library. The three-tier taxonomy that classifies the other packages — pure, boundary, integrated — does not apply to it, because it is not a library at all: it ships catalogs and a pnpmfile, not an API. There is nothing to import and nothing to call.
+
+It is still a public package, and it [ships in the same `0.1.0` release](/docs) as the libraries. Nothing in this repo has published yet.
+
+Every `@effected/*` package pins its Effect versions through these catalogs, and the plugin exists so your workspace can do the same. Installing it is **optional**, and what it buys you is version agreement: your `effect` dependencies and peer floors sit at exactly the values this kit was built and tested against, rather than at whatever your own resolution produces. That pays off most when you adopt the kit itself — an application wiring up `@effected/*` packages takes their pinned Effect versions in one step instead of reconstructing them by hand.
+
+For consumers it is a **convenience, entirely optional**. It mattered most under Effect v3, where computing peer-dependency floors by hand was genuinely painful. Under v4 it is less necessary. Treat it as a nicety, not a requirement.
+
+## Install
+
+It is a pnpm **config dependency**, so it installs with `--config` rather than as a normal dependency:
+
+```bash
+pnpm add --config @effected/pnpm-plugin-effect
+```
+
+That adds it to your `pnpm-workspace.yaml` with the required integrity hash, which pnpm fills in for you:
+
+```yaml
+configDependencies:
+  "@effected/pnpm-plugin-effect": <version>+sha512-...
+```
+
+Requires pnpm >=11. There is no npm or yarn equivalent — config dependencies and catalogs are pnpm features.
+
+## Usage
+
+Installing the config dependency gives your workspace both catalogs. How you reference them depends on whether you are building an application or a library.
+
+An application pins the versions directly in `dependencies`:
+
+```json
+{
+  "dependencies": {
+    "effect": "catalog:effect",
+    "@effect/ai-openai": "catalog:effect"
+  }
+}
+```
+
+A library pins the same versions for development and declares the **calculated floor** as the peer range its consumers must satisfy:
+
+```json
+{
+  "devDependencies": {
+    "effect": "catalog:effect",
+    "@effect/ai-openai": "catalog:effect"
+  },
+  "peerDependencies": {
+    "effect": "catalog:effectPeers",
+    "@effect/ai-openai": "catalog:effectPeers"
+  }
+}
+```
+
+That split is the whole value proposition. Developing against a pinned version while advertising the widest peer range you can safely support are two different questions, and answering the second one by hand across a dozen `@effect/*` packages is the part nobody wants to do twice.
+
+## Advancing the pin
+
+Two commands, run in order, upgrade every package to its latest v4 release, recompute the `effectPeers` floor, and write the result into `pnpm-workspace.yaml`:
+
+```bash
+pnpm pnpm:up
+pnpm pnpm:export
+```
+
+`pnpm pnpm:preview` prints the generated catalogs without writing anything, which is the safe way to see what an upgrade would do. All three mutate or inspect real workspace state, so they are meant to be run by a person.
+
+## Source
+
+The package lives at [packages/pnpm-plugin-effect](https://github.com/spencerbeggs/effected/tree/main/packages/pnpm-plugin-effect).

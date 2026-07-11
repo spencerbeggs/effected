@@ -9,9 +9,13 @@ Full-fidelity glob matching as Effect schemas. The complete minimatch dialect �
 
 ## Why @effected/glob
 
-Glob matching is string → predicate compilation, and compilation can fail: a pattern can be too long, expand past a budget, or nest past a depth cap. `@effected/glob` makes that boundary typed — `GlobPattern.compile` fails with a structured `GlobPatternError` carrying the reason, limit and actual values, never a thrown surprise — while `matches` stays total: no hostile pattern produces a stack overflow, an OOM, or a hang. The engine is a ported-with-attribution vendoring of minimatch 10.2.5 (plus brace-expansion 5.0.7 and balanced-match 4.0.4), continuously property-tested against the real minimatch as an oracle, with every upstream DoS guard preserved and new depth guards on the recursion surfaces upstream left open.
+Glob matching is compilation: a pattern string becomes a predicate over candidate strings, and compilation is the step that can fail. A pattern can exceed the length cap, expand past the brace-expansion budget, or nest past the depth cap. Most glob libraries paper over that boundary by throwing, by silently truncating an over-budget expansion (which quietly changes what the pattern matches), or by overflowing the stack on input a user was allowed to supply.
 
-One deliberate deviation: no ambient environment detection. `platform` is an explicit option defaulting to `"posix"` — the caller who knows passes it in; all win32 path handling is kept behind the option.
+This package puts the failure where it belongs. `GlobPattern.compile` is the one fallible entry point: it returns `Effect<GlobPattern, GlobPatternError>`, and the error carries the `reason`, the `limit` and the `actual` value rather than a message you have to parse. Once a `GlobPattern` exists, `matches` is total — pure, synchronous, no error channel, and no hostile pattern can make it overflow, allocate unboundedly or hang, because every guard fired before the instance was constructed.
+
+The dialect is not a subset. The engine is a ported-with-attribution vendoring of minimatch, property-tested against the real minimatch as an oracle on every build, with every upstream DoS guard preserved and new depth guards added on the recursion surfaces upstream left open. Vendoring rather than depending is what keeps the package free of runtime dependencies: `effect` is the only peer, and the minimatch oracle is a devDependency confined to the test suite.
+
+One deliberate deviation from upstream: no ambient environment detection. `platform` is an explicit option defaulting to `"posix"`, and `process.platform` is never read, so a pattern behaves identically on every machine. All win32 path handling stays behind the option, for the caller who knows they need it.
 
 ## Install
 
@@ -27,24 +31,48 @@ Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package itself
 
 ## Quick start
 
+Compile once, then match as many candidates as you like:
+
 ```ts
 import { GlobPattern, GlobSet } from "@effected/glob";
 import { Effect } from "effect";
 
 const program = Effect.gen(function* () {
-  // Single patterns: compile once, match totally.
   const pattern = yield* GlobPattern.compile("packages/**");
-  pattern.matches("packages/a"); // true
-  pattern.matches("packages/a/b"); // true — ** really crosses levels
+  console.log(pattern.matches("packages/a"));
+  // true
+  console.log(pattern.matches("packages/a/b/c"));
+  // true — ** really crosses segment boundaries
+  console.log(pattern.matches("src/a"));
+  // false
 
   // Include/exclude sets: a leading ! is an exclusion filter.
   const set = yield* GlobSet.compile(["packages/*", "!packages/internal"]);
-  set.matches("packages/core"); // true
-  set.matches("packages/internal"); // false
+  console.log(set.matches("packages/core"));
+  // true
+  console.log(set.matches("packages/internal"));
+  // false
 });
+
+Effect.runPromise(program);
 ```
 
-Embed patterns in config schemas with the `FromString` codec:
+A compiled pattern also carries the metadata a directory enumerator needs, so you can skip walking trees that cannot match:
+
+```ts
+import { GlobPattern } from "@effected/glob";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pattern = yield* GlobPattern.compile("packages/**");
+  console.log(pattern.hasMagic, pattern.enumerationPrefix, pattern.crossesSegments);
+  // true "packages/" true
+});
+
+Effect.runPromise(program);
+```
+
+Embed patterns in config schemas with the `FromString` codec, which validates compilability at decode time:
 
 ```ts
 import { GlobPattern } from "@effected/glob";
@@ -53,19 +81,39 @@ import { Schema } from "effect";
 const Config = Schema.Struct({
   include: Schema.Array(GlobPattern.FromString),
 });
-// decoding validates compilability; uncompilable patterns fail as SchemaError
+// Decoding a config whose `include` holds an uncompilable pattern fails as a
+// schema issue, before your program ever sees a GlobPattern.
+```
+
+## Errors
+
+Compilation is the only thing that fails, and it fails with one tagged error whose `reason` tells you which guard fired:
+
+| `reason` | Fires when |
+| -------- | ---------- |
+| `PatternTooLong` | The pattern exceeds the 64KB length cap. |
+| `ExpansionBudgetExceeded` | Brace expansion would produce more alternatives than the budget allows. Upstream truncates here, silently changing match semantics; this package fails instead. |
+| `NestingDepthExceeded` | Braces, extglobs or the AST nest past the depth cap. |
+
+```ts
+import { GlobPattern } from "@effected/glob";
+import { Effect } from "effect";
+
+Effect.runPromise(Effect.result(GlobPattern.compile("a".repeat(70_000)))).then(console.log);
+// Failure with GlobPatternError:
+// { reason: "PatternTooLong", limit: 65536, actual: 70000, pattern: "aaaa…" }
 ```
 
 ## Features
 
-- `GlobPattern.compile(source, options?)` — `Effect<GlobPattern, GlobPatternError>`; the fallible boundary.
+- `GlobPattern.compile(source, options?)` — `Effect<GlobPattern, GlobPatternError>`; the fallible boundary, and the only one.
 - `GlobPattern#matches(candidate)` — total, pure, no error channel.
 - `GlobPattern#hasMagic` / `negated` / `enumerationPrefix` / `crossesSegments` — metadata for directory enumerators.
-- `GlobPattern.escape(literal)` / `unescape(pattern)` — build patterns from user-supplied literals.
-- `GlobPattern.FromString` — `Schema.Codec<GlobPattern, string>`.
-- `GlobPatternOptions` — the full minimatch options surface, schema-validated (invalid options throw at construction).
-- `GlobSet.compile(patterns)` — include/exclude sets with `literals`, `wildcards`, `excludes` accessors and `isExcluded`.
-- `GlobPatternError` — `_tag`-routable, with `pattern`, `reason` (`PatternTooLong` | `ExpansionBudgetExceeded` | `NestingDepthExceeded`), `limit` and `actual`.
+- `GlobPattern.escape(literal)` / `unescape(pattern)` — build patterns safely from user-supplied literals.
+- `GlobPattern.FromString` — a `Schema.Codec<GlobPattern, string>` for embedding patterns in config schemas.
+- `GlobPatternOptions` — the full minimatch options surface, schema-validated. Options refine matching; they never admit a pattern that the defaults reject.
+- `GlobSet.compile(patterns)` — include/exclude sets with `literals`, `wildcards` and `excludes` accessors plus `isExcluded`.
+- `GlobPatternError` — `_tag`-routable, carrying `pattern`, `reason`, `limit` and `actual`.
 
 ## Attribution
 
@@ -75,7 +123,7 @@ The engine in `src/internal/` is ported with attribution from:
 - [brace-expansion](https://github.com/juliangruber/brace-expansion) 5.0.7 — Julian Gruber, MIT
 - [balanced-match](https://github.com/juliangruber/balanced-match) 4.0.4 — Julian Gruber, MIT
 
-Each ported file carries its notice; the real minimatch is used as the test oracle in this package's suite.
+Each ported file carries its notice, and the real minimatch is used as the test oracle in this package's suite.
 
 ## License
 

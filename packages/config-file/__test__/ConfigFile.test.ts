@@ -1,9 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option, Path, Schema } from "effect";
-import { ConfigCodec, ConfigCodecError } from "../src/ConfigCodec.js";
+import { ConfigCodecError } from "../src/ConfigCodec.js";
 import type { ConfigLoadError, ConfigReadError } from "../src/ConfigFile.js";
 import { ConfigFile, ConfigFileNotFoundError, ConfigFileReadError, ConfigValidationError } from "../src/ConfigFile.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
+import { JsonCodec } from "../src/JsonCodec.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
 import { memoryFs } from "./helpers.js";
 
@@ -17,7 +18,7 @@ const layerFor = (
 ) =>
 	ConfigFile.layer(AppConfig, {
 		schema: AppShape,
-		codec: ConfigCodec.json,
+		codec: JsonCodec,
 		resolvers,
 		strategy: MergeStrategy.firstMatch<AppShape>(),
 		...(validate !== undefined && { validate }),
@@ -102,7 +103,7 @@ describe("ConfigFile.load", () => {
 });
 
 describe("ConfigFile bare non-object documents", () => {
-	// ConfigCodec.json.parse happily accepts `null`, `42` and `"str"` — a bare,
+	// JsonCodec.parse happily accepts `null`, `42` and `"str"` — a bare,
 	// non-object JSON document. The service is where that becomes a decision:
 	// the schema rejects it as a ConfigValidationError, never a defect.
 	for (const [label, raw] of [

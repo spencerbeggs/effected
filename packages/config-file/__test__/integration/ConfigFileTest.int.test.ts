@@ -3,8 +3,8 @@ import * as nodePath from "node:path";
 import { NodeFileSystem } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Path, Schema } from "effect";
-import { ConfigCodec } from "../../src/ConfigCodec.js";
 import { ConfigFile } from "../../src/ConfigFile.js";
+import { JsonCodec } from "../../src/JsonCodec.js";
 import { MergeStrategy } from "../../src/MergeStrategy.js";
 
 class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
@@ -44,7 +44,7 @@ describe("ConfigFile.testLayer", () => {
 				Effect.provide(
 					ConfigFile.testLayer(AppConfig, {
 						schema: AppShape,
-						codec: ConfigCodec.json,
+						codec: JsonCodec,
 						strategy: MergeStrategy.firstMatch<AppShape>(),
 						files: { ".apprc": `{"port":4242}` },
 					}).pipe(Layer.provide(Platform)),
@@ -68,7 +68,7 @@ describe("ConfigFile.testLayer", () => {
 				Effect.provide(
 					ConfigFile.testLayer(AppConfig, {
 						schema: AppShape,
-						codec: ConfigCodec.json,
+						codec: JsonCodec,
 						strategy: MergeStrategy.firstMatch<AppShape>(),
 						files: { ".apprc": `{"port":"not-a-number"}` },
 					}).pipe(Layer.provide(Platform)),

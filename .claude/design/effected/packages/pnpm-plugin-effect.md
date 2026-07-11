@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-09
-last-synced: 2026-07-09
+updated: 2026-07-11
+last-synced: 2026-07-11
 completeness: 85
 related:
   - ../architecture.md
@@ -16,7 +16,7 @@ related:
 
 ## Overview
 
-`@effected/pnpm-plugin-effect` is **repo infrastructure that is also a published package**, not a library migration (it has no `*-effect` source repo; see [package-inventory.md](../package-inventory.md)). It is a pnpm **config dependency** — installed with `pnpm add --config`, not as a normal dependency — that centralizes Effect-ecosystem versioning by publishing two pnpm [catalogs](https://pnpm.io/catalogs):
+`@effected/pnpm-plugin-effect` is the kit's **[companion](../effect-standards.md#companion-packages-published-but-not-a-library)** package — published and installable, but not a library and not a library migration (it has no `*-effect` source repo; see [package-inventory.md](../package-inventory.md)). It is a pnpm **config dependency** — installed with `pnpm add --config`, not as a normal dependency — that centralizes Effect-ecosystem versioning by publishing two pnpm [catalogs](https://pnpm.io/catalogs):
 
 - **`effect`** — every `effect` / `@effect/*` package pinned to the latest Effect v4 (beta) release.
 - **`effectPeers`** — the same package set resolved down to a **calculated shared floor**: the lowest common version safe to declare as a peer range, so libraries constrain their consumers as little as possible.
@@ -25,7 +25,7 @@ It is the single source of truth for what "the current Effect version" means acr
 
 ## How it generates the catalogs
 
-The catalog strategy is declared in [`savvy.build.ts`](../../../packages/pnpm-plugin-effect/savvy.build.ts) via `rolldown-pnpm-config`'s `PnpmConfigPlugin`. Each package entry carries three fields:
+The catalog strategy is declared in [`savvy.build.ts`](../../../../packages/pnpm-plugin-effect/savvy.build.ts) via `rolldown-pnpm-config`'s `PnpmConfigPlugin`. Each package entry carries three fields:
 
 - `range` — the pinned version for the `effect` catalog (e.g. `^4.0.0-beta.93`).
 - `peer` — the input to the `effectPeers` floor computation.
@@ -33,7 +33,7 @@ The catalog strategy is declared in [`savvy.build.ts`](../../../packages/pnpm-pl
 
 `rolldown-pnpm-config` reads this config and emits both catalogs. The build also uses `bundleNodeModules: true` and `looseFiles` to ship the `pnpmfile` (`pnpmfile.mjs`/`pnpmfile.cjs` from `src/pnpmfile.ts`) that pnpm loads as the config dependency's hook.
 
-Note the toolchain field: this package uses `@typescript/native-preview` at `catalog:silk` (not `@effect/tsgo` at `catalog:effect`) — it is infra riding the silk tooling catalog, deliberately outside the v4 toolchain split that the [package-setup.md](../package-setup.md) library packages observe.
+Note the toolchain field: this package uses `@typescript/native-preview` at `catalog:silk` (not `@effect/tsgo` at `catalog:effect`) — as a companion it ships no `effect`-importing code, so it rides the silk tooling catalog, deliberately outside the v4 toolchain split that the [package-setup.md](../package-setup.md) library packages observe.
 
 ## Maintainer workflows
 
@@ -50,7 +50,7 @@ Installing the config dependency gives a workspace both catalogs. The two consum
 - **Applications** reference the pinned versions directly in `dependencies` (`"effect": "catalog:effect"`), so the app always runs the current Effect.
 - **Libraries** pin the dev version and declare the calculated floor as the peer range consumers must satisfy: `catalog:effect` in `devDependencies`, `catalog:effectPeers` in `peerDependencies`. This keeps the library building against current Effect while advertising the widest compatible peer range.
 
-The end-user-facing half of this (install + the two patterns) is the package [README](../../../packages/pnpm-plugin-effect/README.md); the maintainer workflows above are intentionally kept out of the README.
+The end-user-facing half of this (install + the two patterns) is the package [README](../../../../packages/pnpm-plugin-effect/README.md); the maintainer workflows above are intentionally kept out of the README.
 
 ## Relationship to the workspace peer discipline
 
@@ -58,8 +58,18 @@ The `effect` / `effectPeers` catalogs this package defines are the mechanism beh
 
 **Corrected 2026-07-09:** this section previously listed `dedupePeerDependents: false` among the live settings. The key is not present in `pnpm-workspace.yaml`, in an `.npmrc` (there is none), or in this package's source; it was removed once the peer-poisoning was fixed. `dedupeDirectDeps: false` was also dropped once pnpm 11.11.0 landed the upstream peer-resolution fix (see [effect-standards.md](../effect-standards.md#the-upstream-pnpm-fix-landed-2026-07-09)); neither key is set, and pnpm's defaults apply.
 
-This package is **repo infrastructure that also ships.** It carries no pure/boundary tier — the library taxonomy does not apply — but it is a real, publishable npm package (`publishConfig.targets.npm` is `true`), offered as an optional convenience so consumers can pin their `effect` dependencies and peers the way this repo does. Its value is largest under Effect v3, where computing peer-dependency floors by hand was genuinely hard; v4 makes that easier, so the package is a convenience rather than a necessity.
+## Classification: companion
+
+This package is the kit's **[companion](../effect-standards.md#companion-packages-published-but-not-a-library)** — published and installable, exposing no API. It carries **no tier**, because tier answers "what does depending on this cost you?" and nothing can depend on it: there is nothing to import and nothing to call. What it ships is configuration — two pnpm catalogs and a pnpmfile — not code. The three-tier taxonomy classifies libraries, and this is not one; that is a statement about *what it is*, not about whether it ships.
+
+It ships. It is a real npm-targeted package (`publishConfig.targets.npm` is `true`) that releases with the kit so consumers can pin their `effect` dependencies and peer floors at the values this repo built and tested against rather than resolving their own. That payoff lands with `app-kit`: an application wiring up the kit adopts the same calculated versions in one step. Its value was largest under Effect v3, where computing peer floors by hand was genuinely hard; v4 makes that easier, so **installing it is optional for the consumer** — but it is a supported, shipped option, not an internal tool that happens to be publishable. The category is named `companion` rather than `infrastructure` precisely to keep that reading available: [effect-standards.md](../effect-standards.md#companion-packages-published-but-not-a-library) records why.
 
 ## Publishing
 
-`private: true` in source with `publishConfig` (`access: public`, `directory: dist/dev/pkg`, `linkDirectory: true`, npm target) — the same build-time-transform-to-publishable pattern as the library packages ([package-setup.md](../package-setup.md)). It publishes to npm so external Effect workspaces can adopt the same catalog strategy. The initial release is tracked by a changeset in `.changeset/`.
+**It publishes to npm with the kit, at `0.1.0`, on the release gate like every other package** ([releases.md](../releases.md#versioning)). Nothing here has published yet — it is at `0.0.0` and `npm view` 404s — but that is true of all sixteen packages and distinguishes this one from none of them.
+
+Being a companion rather than a library — no library here depends on it, it depends on none — makes it structurally free to release on its own schedule, and for a while this doc claimed it therefore *would*. It does not. **Being unblocked by the kit is not the same as being excluded from it**, and the release is coordinated by design so consumers get one internally consistent graph on day one — the companion included, since its entire purpose is to hand consumers the same pinned `effect` versions the kit was built against.
+
+The inference that produced the earlier error is worth naming so nobody repeats it: `npm view` 404s and the manifest says `"private": true` and `0.0.0`. **None of that is evidence about release intent.** Every source manifest in this repo is `"private": true`; the bundler's `publishConfig` transform emits the publishable one at build time. This package's `publishConfig.targets.npm` is `true`, byte-identical to `semver`'s and `config-file`'s.
+
+`private: true` in source with `publishConfig` (`access: public`, `directory: dist/dev/pkg`, `linkDirectory: true`, npm target) — the same build-time-transform-to-publishable pattern as the library packages ([package-setup.md](../package-setup.md)). Its purpose in publishing is to let external Effect workspaces adopt the same catalog strategy. The initial release is tracked by a changeset in `.changeset/`.

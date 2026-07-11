@@ -19,7 +19,7 @@ related:
 
 ## Overview
 
-**Merged** — migration #12, covering **two** packages. The v3 repo resolved semver-compatible versions of Node.js, Bun and Deno from live release feeds with a bundled offline snapshot, and shipped an `@effect/cli` binary from the same package. The port kept the domain concepts the [review](../../reviews/runtime-resolver.md) praised — cache-strategy-as-layer, the vertical dependency graph, the typed HTTP error ladder, the deterministic Node lifecycle model — and split the binary out.
+**Merged** — migration #12, covering **two** packages. The v3 repo resolved semver-compatible versions of Node.js, Bun and Deno from live release feeds with a bundled offline snapshot, and shipped an `@effect/cli` binary from the same package. The port kept the domain concepts the [review](../../../reviews/runtime-resolver.md) praised — cache-strategy-as-layer, the vertical dependency graph, the typed HTTP error ladder, the deterministic Node lifecycle model — and split the binary out.
 
 - **`@effected/runtime-resolver`** — the library. Three resolver services, three cache strategies each, over one parameterized internal engine. **Boundary tier.**
 - **`@effected/runtime-resolver-cli`** — the binary. **Integrated tier.**
@@ -34,7 +34,7 @@ This document is the design as specified, with an [As built](#as-built-2026-07-1
 
 The monorepo does not use subpath exports (the config-file family precedent), so an optional dependency becomes a package boundary. The CLI therefore becomes its own package.
 
-**Name: `@effected/runtime-resolver-cli`** (directory `packages/runtime-resolver-cli`). The repo's family-naming precedent is the config-file family — `@effected/config-file-jsonc`, `-yaml`, `-toml`: the parent package name, hyphen, the qualifier that distinguishes the member. `runtime-resolver-cli` follows it exactly, sorts adjacent to its parent in `packages/`, and reads correctly as the npm binary's home.
+**Name: `@effected/runtime-resolver-cli`** (directory `packages/runtime-resolver-cli`). The naming precedent was the config-file family — `@effected/config-file-jsonc`, `-yaml`, `-toml`: the parent package name, hyphen, the qualifier that distinguishes the member. `runtime-resolver-cli` follows it exactly, sorts adjacent to its parent in `packages/`, and reads correctly as the npm binary's home. (Those three were [dissolved back into config-file](config-file.md#the-consolidation-2026-07-11) on 2026-07-11, which retires the precedent's original examples but not the convention — and note the reasoning does not carry over: the codecs merged because they are tree-shakeable alternatives with no dispatch, whereas this split exists to keep `@effect/platform-node` out of the library's consumers.)
 
 ## The `@effect/cli` verdict: dead on v4, and not needed
 

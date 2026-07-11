@@ -8,28 +8,13 @@
 	{
 		"text": "Packages",
 		"link": "/packages",
-		"activeMatch": "^/(packages|config-file|config-file-jsonc|config-file-toml|config-file-yaml|glob|jsonc|lockfiles|npm|package-json|semver|store|toml|walker|yaml)(/(.*)?)?$",
+		"activeMatch": "^/(packages|config-file|glob|jsonc|lockfiles|npm|package-json|pnpm-plugin-effect|runtime-resolver|runtime-resolver-cli|semver|store|toml|walker|workspaces|xdg|yaml)(/(.*)?)?$",
 		"position": "right",
 		"items": [
 			{
 				"text": "@effected/config-file",
 				"link": "/config-file",
 				"activeMatch": "^/config-file/?$"
-			},
-			{
-				"text": "@effected/config-file-jsonc",
-				"link": "/config-file-jsonc",
-				"activeMatch": "^/config-file-jsonc/?$"
-			},
-			{
-				"text": "@effected/config-file-toml",
-				"link": "/config-file-toml",
-				"activeMatch": "^/config-file-toml/?$"
-			},
-			{
-				"text": "@effected/config-file-yaml",
-				"link": "/config-file-yaml",
-				"activeMatch": "^/config-file-yaml/?$"
 			},
 			{
 				"text": "@effected/glob",
@@ -57,6 +42,21 @@
 				"activeMatch": "^/package-json/?$"
 			},
 			{
+				"text": "@effected/pnpm-plugin-effect",
+				"link": "/pnpm-plugin-effect",
+				"activeMatch": "^/pnpm-plugin-effect/?$"
+			},
+			{
+				"text": "@effected/runtime-resolver",
+				"link": "/runtime-resolver",
+				"activeMatch": "^/runtime-resolver/?$"
+			},
+			{
+				"text": "@effected/runtime-resolver-cli",
+				"link": "/runtime-resolver-cli",
+				"activeMatch": "^/runtime-resolver-cli/?$"
+			},
+			{
 				"text": "@effected/semver",
 				"link": "/semver",
 				"activeMatch": "^/semver/?$"
@@ -75,6 +75,16 @@
 				"text": "@effected/walker",
 				"link": "/walker",
 				"activeMatch": "^/walker/?$"
+			},
+			{
+				"text": "@effected/workspaces",
+				"link": "/workspaces",
+				"activeMatch": "^/workspaces/?$"
+			},
+			{
+				"text": "@effected/xdg",
+				"link": "/xdg",
+				"activeMatch": "^/xdg/?$"
 			},
 			{
 				"text": "@effected/yaml",

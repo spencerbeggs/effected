@@ -1,6 +1,67 @@
 ---
 title: "@effected/jsonc"
-description: Auto-generated API documentation for "@effected/jsonc"
+description: "Zero-dependency JSONC parsing, editing and formatting as Effect schemas and pure functions."
 ---
 
-# Documentation
+# @effected/jsonc
+
+Zero-dependency JSONC parsing, editing and formatting expressed as Effect schemas and pure functions. Parse JSONC into plain values or an offset-preserving AST, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
+
+## Why @effected/jsonc
+
+JSONC — JSON with comments and trailing commas — is the format behind `tsconfig.json`, VS Code settings and much of the JavaScript toolchain. A `JSON.parse` / `JSON.stringify` round-trip throws away every comment and the original formatting, so a tool that writes a config file back out silently destroys the file it was asked to touch. This package parses with error recovery, computes byte-minimal edits that preserve every comment and every byte you did not modify, and decodes JSONC straight into a validated Effect `Schema` — all as pure functions with no IO.
+
+## Install
+
+```bash
+npm install @effected/jsonc effect
+```
+
+```bash
+pnpm add @effected/jsonc effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies.
+
+## Quick start
+
+Decode JSONC straight into a validated domain value by composing your schema with `Jsonc.schema`:
+
+```ts
+import { Jsonc } from "@effected/jsonc";
+import { Effect, Schema } from "effect";
+
+const Config = Schema.Struct({ port: Schema.Number });
+const ConfigFromJsonc = Jsonc.schema(Config);
+
+const program = Effect.gen(function* () {
+  return yield* Schema.decodeUnknownEffect(ConfigFromJsonc)(`{
+    "port": 3000 // dev server
+  }`);
+});
+
+Effect.runPromise(program).then(console.log);
+// { port: 3000 }
+```
+
+`Jsonc.schema` and `Jsonc.fromString` produce schemas, so bind their results to a const on a hot path rather than rebuilding them per call.
+
+## Edits, not re-serialization
+
+The distinctive capability is that editing never re-serializes the document. `JsoncFormatter` and `JsoncModifier` return arrays of `JsoncEdit` values — `{ offset, length, content }` splices against the original text — which you apply with `JsoncEdit.applyAll`. Setting one value in a long `tsconfig.json` produces one splice, and every comment, every blank line and every formatting choice you did not touch survives byte for byte.
+
+`Jsonc.parseTree` backs this with an offset-preserving `JsoncNode` AST, and `Jsonc.stripComments` is itself offset-preserving, so line and column positions stay stable across the transformation.
+
+## Errors aggregate, and hostile input stays typed
+
+Parsing recovers rather than failing on the first problem: every recovered error is collected into a single `JsoncParseError` carrying structured, positional detail, so a user sees all the problems in their config file at once. `JsoncModificationError` carries typed `path`, `expected`, `depth` and `offset` fields rather than a prose `reason`.
+
+Malformed and adversarial input always fails through the typed error channel. A nesting bomb trips a depth cap enforced independently at every recursive surface and returns a `NestingDepthExceeded` parse error — never a `RangeError: Maximum call stack size exceeded`.
+
+## Streaming a document
+
+`JsoncVisitor` walks a parsed document as a `Stream` of visitor events, so `Stream.take` short-circuits on a large input instead of materializing the whole tree.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/jsonc/api).

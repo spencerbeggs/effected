@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-10
-last-synced: 2026-07-10
+updated: 2026-07-11
+last-synced: 2026-07-11
 completeness: 95
 related:
   - ../effect-standards.md
@@ -24,7 +24,7 @@ related:
 
 Target design for `@effected/toml`, the **eighth** package migration (config-file family slot 5d in [package-inventory.md](../package-inventory.md#the-config-file-family)) and a **pure-tier** package. Approved 2026-07-10; this design **reverses the 2026-07-09 rescope** that cut the package to a parse/stringify wrapper over a vendored smol-toml port. `@effected/toml` is a full-parity format sibling to `@effected/jsonc` ([jsonc.md](jsonc.md)) and `@effected/yaml` ([yaml.md](yaml.md)): parse, stringify, Schema integration, lossless CST, edit-in-place, formatter and visitor — built on a **from-scratch Effect-native engine**, not a smol-toml port. smol-toml appears only as a devDependency test oracle. The dialect target is **TOML 1.0.0 exactly**; no 1.1 draft features. Target directory is `packages/toml`.
 
-The gate consumer is `@soda3js/config` ([releases.md](../releases.md#the-gate)), which uses parse/stringify only. The follow-on `@effected/config-file-toml` (family slot 5e) is a ~20-line `ConfigCodec` adapter over the stable seam in [config-file.md](config-file.md); it lives in its own package, and the dependency arrow points at toml, never from it.
+The gate consumer is `@soda3js/config` ([releases.md](../releases.md#the-gate)), which uses parse/stringify only. The `ConfigCodec` adapter over that seam shipped as `@effected/config-file-toml` (family slot 5e) and was **absorbed into `@effected/config-file` as `TomlCodec` by the [consolidation](config-file.md#the-consolidation-2026-07-11)**; this package was untouched by that, and the dependency arrow still points at toml, never from it.
 
 Scale estimate: roughly 3–5k source lines and a few hundred hand-written tests on top of the ~870 vendored corpus fixtures — between jsonc (1,245 lines) and yaml (9,973) in engine scale.
 
@@ -111,7 +111,9 @@ Per [package-setup.md](../package-setup.md): copy a pure sibling (yaml) into `pa
 
 ## Consumer seam
 
-`@effected/config-file-toml` (family slot 5e) implements `ConfigCodec` over `Toml.parse`/`Toml.stringify` in its own package — pure→pure `workspace:*`, following the `config-file-jsonc`/`config-file-yaml` shape. `@soda3js/config` then consumes `config-file`, `config-file-toml` and `toml` per [releases.md](../releases.md#the-five-applications). Nothing in toml knows about config-file.
+`TomlCodec` implements `ConfigCodec` over `Toml.parse`/`Toml.stringify`. It shipped as its own package (`@effected/config-file-toml`, family slot 5e) and now lives inside `@effected/config-file` as `src/TomlCodec.ts`, one of four free-standing codec exports — see [the consolidation](config-file.md#the-consolidation-2026-07-11). `@soda3js/config` therefore consumes `config-file` and `toml`, two packages rather than three, per [releases.md](../releases.md#the-five-applications).
+
+**Nothing in toml knows about config-file**, and the consolidation did not change that: the edge is config-file → toml, a `workspace:*` peer, and this package stays a pure, unaware format package. What moved was the adapter, not the engine.
 
 ## As built (2026-07-10)
 

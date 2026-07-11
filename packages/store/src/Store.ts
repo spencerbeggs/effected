@@ -238,7 +238,7 @@ const make = (
  * const migrations: ReadonlyArray<StoreMigration> = [
  * 	{ id: 1, name: "create-notes", up: (sql) => Effect.asVoid(sql`CREATE TABLE notes (body TEXT)`) },
  * ];
- * const StoreLayer = Store.layerSqlite({ filename: "/tmp/app/state.db", migrations });
+ * const StoreLayer = Store.layerSqlite({ filename: "state.db", migrations });
  * ```
  *
  * @public

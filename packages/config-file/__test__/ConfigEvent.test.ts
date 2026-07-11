@@ -1,10 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option, Path, PubSub, Schema } from "effect";
-import { ConfigCodec } from "../src/ConfigCodec.js";
 import type { ConfigEvent } from "../src/ConfigEvent.js";
 import { ConfigEventPayload, ConfigEvents } from "../src/ConfigEvent.js";
 import { ConfigFile } from "../src/ConfigFile.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
+import { JsonCodec } from "../src/JsonCodec.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
 import type { RecordingFs } from "./helpers.js";
 import { memoryFs, recordingFs } from "./helpers.js";
@@ -32,7 +32,7 @@ const readLayer = (files: Record<string, string>, resolvers = [ConfigResolver.ex
 		eventsLayer,
 		ConfigFile.layer(AppConfig, {
 			schema: AppShape,
-			codec: ConfigCodec.json,
+			codec: JsonCodec,
 			resolvers,
 			strategy: MergeStrategy.layeredMerge<AppShape>(),
 			events: ConfigEvents,
@@ -45,7 +45,7 @@ const writeLayer = (host: RecordingFs, defaultPath: string) =>
 		eventsLayer,
 		ConfigFile.layer(AppConfig, {
 			schema: AppShape,
-			codec: ConfigCodec.json,
+			codec: JsonCodec,
 			resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
 			strategy: MergeStrategy.firstMatch<AppShape>(),
 			defaultPath: Effect.succeed(defaultPath),
@@ -251,7 +251,7 @@ describe("ConfigEvents opt-in", () => {
 	/** The same service, built WITHOUT the `events` option. */
 	const noEventsLayer = ConfigFile.layer(AppConfig, {
 		schema: AppShape,
-		codec: ConfigCodec.json,
+		codec: JsonCodec,
 		resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
 		strategy: MergeStrategy.firstMatch<AppShape>(),
 	}).pipe(Layer.provide(Layer.mergeAll(memoryFs({ "/app/.apprc": `{"port":8080}` }), Path.layer)));
@@ -303,7 +303,7 @@ describe("ConfigEvents opt-in", () => {
 					}),
 					ConfigFile.layer(AppConfig, {
 						schema: AppShape,
-						codec: ConfigCodec.json,
+						codec: JsonCodec,
 						resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
 						strategy: MergeStrategy.firstMatch<AppShape>(),
 						events: ConfigEvents,

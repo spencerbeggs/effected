@@ -95,7 +95,7 @@ const nativeResolver = (options: {
  * ```ts
  * const layer = ConfigFile.layer(AppConfig, {
  * 	schema: AppShape,
- * 	codec: ConfigCodec.json,
+ * 	codec: JsonCodec,
  * 	strategy: MergeStrategy.firstMatch<AppShape>(),
  * 	resolvers: [XdgConfig.resolver({ filename: "config.json" })],
  * 	defaultPath: XdgConfig.savePath("config.json"),

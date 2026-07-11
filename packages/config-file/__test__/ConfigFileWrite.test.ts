@@ -1,10 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path, Schema } from "effect";
 import type { ConfigCodec as ConfigCodecShape } from "../src/ConfigCodec.js";
-import { ConfigCodec, ConfigCodecError } from "../src/ConfigCodec.js";
+import { ConfigCodecError } from "../src/ConfigCodec.js";
 import type { ConfigSaveError, ConfigUpdateError, ConfigWriteError } from "../src/ConfigFile.js";
 import { ConfigDefaultPathMissingError, ConfigFile, ConfigFileWriteError } from "../src/ConfigFile.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
+import { JsonCodec } from "../src/JsonCodec.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
 import type { RecordingFs } from "./helpers.js";
 import { hostileFs, recordingFs } from "./helpers.js";
@@ -12,7 +13,7 @@ import { hostileFs, recordingFs } from "./helpers.js";
 class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
 class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("test/WriteConfig") {}
 
-const layerFor = (host: RecordingFs, defaultPath?: string, codec: ConfigCodecShape = ConfigCodec.json) =>
+const layerFor = (host: RecordingFs, defaultPath?: string, codec: ConfigCodecShape = JsonCodec) =>
 	ConfigFile.layer(AppConfig, {
 		schema: AppShape,
 		codec,
@@ -55,7 +56,7 @@ describe("ConfigFile.write", () => {
 			const host = recordingFs({});
 			const brokenCodec: ConfigCodecShape = {
 				name: "broken",
-				parse: ConfigCodec.json.parse,
+				parse: JsonCodec.parse,
 				stringify: () =>
 					Effect.fail(new ConfigCodecError({ codec: "broken", operation: "stringify", cause: new Error("nope") })),
 			};
@@ -205,7 +206,7 @@ describe("ConfigFile.layer with an empty resolver chain", () => {
 			const host = recordingFs({});
 			const writeOnlyLayer = ConfigFile.layer(AppConfig, {
 				schema: AppShape,
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				resolvers: [],
 				strategy: MergeStrategy.firstMatch<AppShape>(),
 				defaultPath: Effect.succeed("/write-only/.apprc"),
@@ -258,7 +259,7 @@ describe("ConfigFile.update — concurrency", () => {
 			const host = yieldingFs({ "/app/.apprc": `{"port":0}` });
 			const layer = ConfigFile.layer(AppConfig, {
 				schema: AppShape,
-				codec: ConfigCodec.json,
+				codec: JsonCodec,
 				resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
 				strategy: MergeStrategy.firstMatch<AppShape>(),
 				defaultPath: Effect.succeed("/app/.apprc"),

@@ -19,7 +19,7 @@ related:
 
 ## Overview
 
-Design for `@effected/store`, the **tenth** package migration (step 2 of [migration-playbook.md](../migration-playbook.md)) and an **integrated-tier** package — the only one in the kit. Store is durable local state for Effect applications: two services over one primitive, extracted from `xdg-effect` (v2.1.0) per the [xdg review](../../reviews/xdg.md) §5 seam 1 and the 2026-07-09 split decision in [package-inventory.md](../package-inventory.md).
+Design for `@effected/store`, the **tenth** package migration (step 2 of [migration-playbook.md](../migration-playbook.md)) and an **integrated-tier** package — the only one in the kit. Store is durable local state for Effect applications: two services over one primitive, extracted from `xdg-effect` (v2.1.0) per the [xdg review](../../../reviews/xdg.md) §5 seam 1 and the 2026-07-09 split decision in [package-inventory.md](../package-inventory.md).
 
 Status: **merged** (playbook steps 2–6 complete). Per the semver/jsonc precedent this doc now records the *as-built* design, with deviations from the approved draft noted inline as "As-built:". The port broke the most new ground of any migration so far — it is the first package to take a runtime dependency, the first to touch SQL and the first to depend on the `effect/unstable/*` surface — so the two findings the next migration most needs are called out where it will look for them: the [`invalidateByTag` encoding bug](#cache) and the [layer-static memoization trap](#the-layer-trio).
 

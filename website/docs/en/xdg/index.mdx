@@ -1,0 +1,86 @@
+---
+title: "@effected/xdg"
+description: "XDG Base Directory resolution for Effect: app directories, native directories, and config-file resolvers."
+---
+
+# @effected/xdg
+
+XDG Base Directory resolution for Effect. Resolve the environment once, get an app's config, data, cache, state and runtime directories as plain strings, search the full XDG config path for a file, and drop the result straight into [`@effected/config-file`](/config-file) as a resolver.
+
+## Why @effected/xdg
+
+Every command-line tool has to answer the same question — where do I put this user's config, and where do I look for it — and the XDG Base Directory specification is the answer on Linux, with different conventions on macOS and Windows. Getting it right means a five-rung precedence ladder per directory kind, a search path rather than a single directory, and no string-interpolated paths that emit forward slashes on Windows.
+
+The package resolves all of it, and it is small because the SQLite half of its predecessor moved to [`@effected/store`](/store). That split is deliberate: xdg stays boundary tier and its consumers pay for no database driver.
+
+## Install
+
+```bash
+npm install @effected/xdg effect
+```
+
+```bash
+pnpm add @effected/xdg effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4, `@effected/walker` and `@effected/config-file` are peer dependencies; there are no runtime dependencies. IO goes through Effect core's `FileSystem` and `Path`, provided at the edge.
+
+## Quick start
+
+`AppDirs` resolves your app's directories at layer construction, so reading one is a plain property access rather than an effect:
+
+```ts
+import { AppDirs, Xdg } from "@effected/xdg";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const AppDirsLive = AppDirs.layer({ namespace: "myapp", native: true }).pipe(
+  Layer.provide(Xdg.layer),
+  Layer.provide(Platform),
+);
+
+const program = Effect.gen(function* () {
+  const app = yield* AppDirs;
+
+  // A value, not an Effect — reading a path cannot fail.
+  const configDir = app.dirs.config;
+
+  // The fallible members are the ones that touch the filesystem.
+  const created = yield* app.ensureConfig;
+
+  return { configDir, created, searchPath: app.dirs.configSearchPath };
+});
+
+Effect.runPromise(program.pipe(Effect.provide(AppDirsLive)));
+```
+
+## Resolve once, at layer construction
+
+The load-bearing design decision, and everything else follows from it. The environment is fixed when the layer is built, so that is where it is read. `Xdg`'s service shape *is* the resolved `XdgPaths` record, and `AppDirs.dirs` is a plain `ResolvedAppDirs` value.
+
+Three consequences. Reading a path cannot fail, so it is not an `Effect`. `AppDirs.layer`'s error channel is `never`, because the one resolution failure — `HOME` unset — surfaces on `Xdg.layer`, before an `AppDirs` exists. And `XdgConfig.savePath` gets a `never` channel, which is the only way it fits `@effected/config-file`'s `defaultPath` slot without an `orDie`.
+
+The predecessor library re-read all eight environment variables on every property access, which made every path downstream of it fallible and forced exactly that laundering.
+
+## The precedence ladder
+
+Five rungs per directory kind: an explicit override, then the namespaced XDG environment variable, then the OS-native directory (only when you opt in with `native: true`), then `$HOME/<fallbackDir>`, then `$HOME/.<namespace>`.
+
+The runtime directory has no ladder. An override, or `$XDG_RUNTIME_DIR` namespaced, or nothing — the key is simply absent. A runtime directory must be user-owned and mode 0700, so inventing a fallback would be a lie.
+
+`NativeDirs.resolve` returns `Option.none()` on Linux on purpose. XDG *is* the native convention there, so the rung is skipped rather than filled with a duplicate of the answer below it.
+
+The platform is a `Context.Reference`, not a global read, so the darwin/win32/linux matrix is testable with no platform IO. Every path join goes through `Path`, never string interpolation.
+
+## Config search is a real search
+
+`XdgConfig.resolver` probes the app's own config directory, then each `$XDG_CONFIG_DIRS` entry namespaced — `~/.config/myapp/rc`, then `/etc/xdg/myapp/rc`. The system search path is half the XDG spec and the predecessor library ignored it entirely.
+
+The scan runs through `Walker.firstMatch` from [`@effected/walker`](/walker), so absorption is **per candidate**: a failure on one candidate means that candidate did not match, and the search continues. The predecessor wrapped its whole resolver in one `catchAll`, so an unreadable `/etc/xdg` aborted the probe and hid a perfectly readable `~/.config` behind it. That is a bug fixed, not a refactor.
+
+`XdgConfig.nativeResolver` probes the OS-native config directory, and it belongs **after** the XDG resolver in a chain, so an existing `~/.config/<app>` still wins over the native directory.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/xdg/api).
