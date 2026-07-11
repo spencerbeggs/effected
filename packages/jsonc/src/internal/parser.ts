@@ -16,6 +16,8 @@ import { JsoncNode } from "../JsoncNode.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
 import type { ScanError, SyntaxKind } from "./scanner.js";
 import { createScanner } from "./scanner.js";
+import type { SkipCursor } from "./skip.js";
+import { skipBalancedValue } from "./skip.js";
 
 /**
  * The public parse-error code vocabulary. The facade builds its `@public`
@@ -168,28 +170,22 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 		}
 	}
 
-	// Iteratively consume a balanced container (the current token is its opener)
-	// by counting bracket depth over the token stream — never recursing. Used at
-	// the depth cap so an over-deep subtree is skipped without adding stack
-	// frames; recovery still makes progress past it.
-	function skipContainer(): void {
-		let level = 0;
-		for (;;) {
-			const t = token();
-			if (t === "EOF") {
-				return;
-			}
-			if (t === "OpenBrace" || t === "OpenBracket") {
-				level++;
-			} else if (t === "CloseBrace" || t === "CloseBracket") {
-				level--;
-				if (level === 0) {
-					scanNext();
-					return;
-				}
-			}
+	// Cursor adapter for the shared iterative bracket-balance skip (see
+	// internal/skip.ts), used at the depth cap so an over-deep subtree is
+	// consumed without adding stack frames; recovery still makes progress past
+	// it. `advance` is scanNext, so scan errors and comment diagnostics inside
+	// a skipped subtree are still collected.
+	const skipCursor: SkipCursor = {
+		getToken: token,
+		advance: () => {
 			scanNext();
-		}
+		},
+		tokenStart: () => scanner.getTokenOffset(),
+		tokenEnd,
+	};
+
+	function skipContainer(): void {
+		skipBalancedValue(skipCursor);
 	}
 
 	function pushError(code: ParseCode, skipUntilAfter: SyntaxKind[] = [], skipUntil: SyntaxKind[] = []): void {
