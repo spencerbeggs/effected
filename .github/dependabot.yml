@@ -7,12 +7,12 @@ updates:
   - package-ecosystem: "npm"
     directories:
       - "/"
-    # repos/effect-smol is a read-only git subtree of Effect-TS/effect-smol, pinned to the tag
-    # matching the `effect` catalog. It is not a pnpm workspace member and has no lockfile
+    # repos/effect-smol is a read-only git subtree of Effect-TS/effect-smol, pinned to the
+    # tag matching the `effect` catalog. It is not a pnpm workspace member and has no lockfile
     # importers, so nothing inside it is ever installed and its manifests carry no runtime risk.
-    # Left unexcluded, Dependabot opens PRs bumping dependencies in the vendored source: no
-    # security benefit, and it diverges the subtree from the upstream tag it exists to mirror,
-    # turning the next re-pin into a conflict resolution instead of a clean subtree pull.
+    # Left unexcluded, Dependabot opens PRs bumping dependencies in the vendored source, which
+    # buys no security and diverges the subtree from the upstream tag it is supposed to mirror,
+    # turning the next re-pin into a conflict resolution.
     exclude-paths:
       - "repos/**"
     schedule:
