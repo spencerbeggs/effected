@@ -8,13 +8,43 @@
 	{
 		"text": "Packages",
 		"link": "/packages",
-		"activeMatch": "^/(packages|semver)(/(.*)?)?$",
+		"activeMatch": "^/(packages|config-file|config-file-jsonc|config-file-toml|config-file-yaml|glob|jsonc|lockfiles|npm|package-json|semver|store|toml|walker|yaml)(/(.*)?)?$",
 		"position": "right",
 		"items": [
+			{
+				"text": "@effected/config-file",
+				"link": "/config-file",
+				"activeMatch": "^/config-file/?$"
+			},
+			{
+				"text": "@effected/config-file-jsonc",
+				"link": "/config-file-jsonc",
+				"activeMatch": "^/config-file-jsonc/?$"
+			},
+			{
+				"text": "@effected/config-file-toml",
+				"link": "/config-file-toml",
+				"activeMatch": "^/config-file-toml/?$"
+			},
+			{
+				"text": "@effected/config-file-yaml",
+				"link": "/config-file-yaml",
+				"activeMatch": "^/config-file-yaml/?$"
+			},
+			{
+				"text": "@effected/glob",
+				"link": "/glob",
+				"activeMatch": "^/glob/?$"
+			},
 			{
 				"text": "@effected/jsonc",
 				"link": "/jsonc",
 				"activeMatch": "^/jsonc/?$"
+			},
+			{
+				"text": "@effected/lockfiles",
+				"link": "/lockfiles",
+				"activeMatch": "^/lockfiles/?$"
 			},
 			{
 				"text": "@effected/npm",
@@ -30,6 +60,21 @@
 				"text": "@effected/semver",
 				"link": "/semver",
 				"activeMatch": "^/semver/?$"
+			},
+			{
+				"text": "@effected/store",
+				"link": "/store",
+				"activeMatch": "^/store/?$"
+			},
+			{
+				"text": "@effected/toml",
+				"link": "/toml",
+				"activeMatch": "^/toml/?$"
+			},
+			{
+				"text": "@effected/walker",
+				"link": "/walker",
+				"activeMatch": "^/walker/?$"
 			},
 			{
 				"text": "@effected/yaml",
