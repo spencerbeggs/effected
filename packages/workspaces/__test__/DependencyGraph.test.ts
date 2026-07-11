@@ -1,0 +1,178 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+import { CyclicDependencyError, DependencyGraph, PackageNotFoundError, WorkspacePackage } from "../src/index.js";
+
+/** A workspace member with the given dependency edges. */
+const pkg = (
+	name: string,
+	deps: Record<string, string> = {},
+	kind: "dependencies" | "devDependencies" = "dependencies",
+) =>
+	WorkspacePackage.make({
+		name,
+		version: "1.0.0",
+		path: `/repo/packages/${name}`,
+		packageJsonPath: `/repo/packages/${name}/package.json`,
+		relativePath: `packages/${name}`,
+		[kind]: deps,
+	});
+
+// a → b → c, and d standing alone. `a` depends on `b`, so `b` builds first.
+const chain = DependencyGraph.make({
+	packages: [pkg("a", { b: "1.0.0" }), pkg("b", { c: "1.0.0" }), pkg("c"), pkg("d")],
+});
+
+describe("DependencyGraph", () => {
+	it("only draws edges BETWEEN workspace packages, never to external deps", () => {
+		const graph = DependencyGraph.make({
+			packages: [pkg("a", { b: "1.0.0", react: "^19.0.0" }), pkg("b")],
+		});
+		assert.deepStrictEqual([...(graph.adjacency.get("a") ?? [])], ["b"]);
+	});
+
+	it("draws edges from devDependencies too", () => {
+		const graph = DependencyGraph.make({
+			packages: [pkg("a", { b: "1.0.0" }, "devDependencies"), pkg("b")],
+		});
+		assert.deepStrictEqual([...(graph.adjacency.get("a") ?? [])], ["b"]);
+	});
+
+	it("drops a self-edge", () => {
+		const graph = DependencyGraph.make({ packages: [pkg("a", { a: "1.0.0" })] });
+		assert.deepStrictEqual([...(graph.adjacency.get("a") ?? [])], []);
+		assert.isFalse(graph.hasCycle);
+	});
+
+	it("names lists every package sorted", () => {
+		assert.deepStrictEqual(chain.names, ["a", "b", "c", "d"]);
+	});
+
+	it("hasCycle is false for an acyclic graph", () => {
+		assert.isFalse(chain.hasCycle);
+	});
+
+	it("hasCycle is true for a two-node cycle", () => {
+		const graph = DependencyGraph.make({ packages: [pkg("a", { b: "1.0.0" }), pkg("b", { a: "1.0.0" })] });
+		assert.isTrue(graph.hasCycle);
+	});
+
+	it("hasCycle is true for a three-node cycle reached through a DAG prefix", () => {
+		// `root` is acyclic and visited first, so a detector that only inspects the
+		// first component — or that forgets to clear its on-stack set — misses this.
+		const graph = DependencyGraph.make({
+			packages: [
+				pkg("root", { a: "1.0.0" }),
+				pkg("a", { b: "1.0.0" }),
+				pkg("b", { c: "1.0.0" }),
+				pkg("c", { a: "1.0.0" }),
+			],
+		});
+		assert.isTrue(graph.hasCycle);
+	});
+
+	it("hasCycle is false for a diamond — a re-visited node is not a cycle", () => {
+		// The classic false positive: `d` is reachable from both `b` and `c`. A
+		// detector that treats "already visited" as "on the stack" reports a cycle.
+		const graph = DependencyGraph.make({
+			packages: [pkg("a", { b: "1.0.0", c: "1.0.0" }), pkg("b", { d: "1.0.0" }), pkg("c", { d: "1.0.0" }), pkg("d")],
+		});
+		assert.isFalse(graph.hasCycle);
+	});
+
+	it("cycle detection does not overflow on a long chain", () => {
+		// 20,000 links. A recursive DFS — which is what v3 shipped — throws
+		// RangeError here, and a RangeError is an unhandled defect.
+		const packages = Array.from({ length: 20_000 }, (_, i) =>
+			i === 19_999 ? pkg(`p${i}`) : pkg(`p${i}`, { [`p${i + 1}`]: "1.0.0" }),
+		);
+		assert.isFalse(DependencyGraph.make({ packages }).hasCycle);
+	});
+
+	it.effect("levels groups packages into parallel build tiers, leaves first", () =>
+		Effect.gen(function* () {
+			const levels = yield* chain.levels();
+			assert.deepStrictEqual(levels, [["c", "d"], ["b"], ["a"]]);
+		}),
+	);
+
+	it.effect("sort flattens the levels into one deterministic order", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* chain.sort(), ["c", "d", "b", "a"]);
+		}),
+	);
+
+	it.effect("sort fails typed on a cycle, naming the stalled set", () =>
+		Effect.gen(function* () {
+			const graph = DependencyGraph.make({
+				packages: [pkg("a", { b: "1.0.0" }), pkg("b", { a: "1.0.0" }), pkg("free")],
+			});
+			const error = yield* Effect.flip(graph.sort());
+			assert.instanceOf(error, CyclicDependencyError);
+			assert.deepStrictEqual(error.cycle, ["a", "b"]);
+		}),
+	);
+
+	it.effect("dependenciesOf returns the direct workspace dependencies", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* chain.dependenciesOf("a"), ["b"]);
+			assert.deepStrictEqual(yield* chain.dependenciesOf("c"), []);
+		}),
+	);
+
+	it.effect("dependentsOf returns the direct reverse edges", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* chain.dependentsOf("b"), ["a"]);
+			assert.deepStrictEqual(yield* chain.dependentsOf("a"), []);
+		}),
+	);
+
+	it.effect("dependenciesOf fails typed on an unknown package", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(chain.dependenciesOf("nope"));
+			assert.instanceOf(error, PackageNotFoundError);
+			assert.deepStrictEqual(error.available, ["a", "b", "c", "d"]);
+		}),
+	);
+
+	it.effect("affectedBy walks the reverse edges TRANSITIVELY", () =>
+		Effect.gen(function* () {
+			// `c` is at the far end of the chain: a→b→c. Changing it affects b AND a.
+			// A one-hop implementation returns ["b", "c"] and passes a lazier test.
+			assert.deepStrictEqual(yield* chain.affectedBy(["c"]), ["a", "b", "c"]);
+		}),
+	);
+
+	it.effect("affectedBy includes the seeds themselves and dedupes", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* chain.affectedBy(["b", "c"]), ["a", "b", "c"]);
+		}),
+	);
+
+	it.effect("affectedBy on an isolated package returns just it", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* chain.affectedBy(["d"]), ["d"]);
+		}),
+	);
+
+	it.effect("sortSubset pulls in transitive dependencies, not just the named packages", () =>
+		Effect.gen(function* () {
+			// Asking for `a` alone must still build `c` then `b` first.
+			assert.deepStrictEqual(yield* chain.sortSubset(["a"]), ["c", "b", "a"]);
+		}),
+	);
+
+	it.effect("sortSubset excludes packages outside the closure", () =>
+		Effect.gen(function* () {
+			const order = yield* chain.sortSubset(["b"]);
+			assert.deepStrictEqual(order, ["c", "b"]);
+			assert.notInclude(order, "d");
+		}),
+	);
+
+	it.effect("sortSubset fails typed on an unknown name", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(chain.sortSubset(["nope"]));
+			assert.instanceOf(error, PackageNotFoundError);
+		}),
+	);
+});

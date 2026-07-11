@@ -501,6 +501,62 @@ importers:
         version: 6.0.3
     publishDirectory: dist/dev/pkg
 
+  packages/workspaces:
+    dependencies:
+      '@effected/glob':
+        specifier: workspace:*
+        version: link:../glob/dist/dev/pkg
+      '@effected/lockfiles':
+        specifier: workspace:*
+        version: link:../lockfiles/dist/dev/pkg
+      '@effected/npm':
+        specifier: workspace:*
+        version: link:../npm/dist/dev/pkg
+      '@effected/package-json':
+        specifier: workspace:*
+        version: link:../package-json/dist/dev/pkg
+      '@effected/walker':
+        specifier: workspace:*
+        version: link:../walker/dist/dev/pkg
+      '@effected/yaml':
+        specifier: workspace:*
+        version: link:../yaml/dist/dev/pkg
+      '@pnpm/catalogs.config':
+        specifier: ^1100.0.0
+        version: 1100.0.2
+      '@pnpm/catalogs.protocol-parser':
+        specifier: ^1100.0.0
+        version: 1100.0.0
+      '@pnpm/catalogs.resolver':
+        specifier: ^1100.0.0
+        version: 1100.0.0
+      '@pnpm/catalogs.types':
+        specifier: ^1100.0.0
+        version: 1100.0.0
+    devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-beta.94(effect@4.0.0-beta.94)(ioredis@5.11.1)
+      '@effect/tsgo':
+        specifier: catalog:effect
+        version: 0.18.1
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-beta.94(effect@4.0.0-beta.94)(vitest@4.1.10)
+      '@savvy-web/bundler':
+        specifier: ^1.1.9
+        version: 1.1.9(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3)
+      '@types/node':
+        specifier: catalog:silk
+        version: 26.1.1
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.94
+      typescript:
+        specifier: catalog:silk
+        version: 6.0.3
+    publishDirectory: dist/dev/pkg
+
   packages/xdg:
     devDependencies:
       '@effect/tsgo':
