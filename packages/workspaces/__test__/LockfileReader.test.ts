@@ -1,40 +1,18 @@
-import { assert, describe, it, layer } from "@effect/vitest";
+import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
 import { LockfileReadError, LockfileReader, WorkspaceDiscovery, Workspaces } from "../src/index.js";
-import { documentsOf } from "../src/internal/documents.js";
 import type { Tree } from "./fixtures.js";
 import { manifest, platform } from "./fixtures.js";
 
 const workspacesOver = (tree: Tree) => Workspaces.layer({ cwd: "/repo" }).pipe(Layer.provideMerge(platform(tree)));
 
-describe("documentsOf", () => {
-	it("a single document with no marker is one chunk, verbatim", () => {
-		assert.deepStrictEqual(documentsOf("a: 1\nb: 2"), ["a: 1\nb: 2"]);
-	});
-
-	it("a leading marker does not manufacture an empty first document", () => {
-		assert.deepStrictEqual(documentsOf("---\na: 1\n"), ["a: 1\n"]);
-	});
-
-	it("splits two documents, keeping each one's source text", () => {
-		assert.deepStrictEqual(documentsOf("---\na: 1\n---\nb: 2\n"), ["a: 1", "b: 2\n"]);
-	});
-
-	it("a --- inside a scalar value is not a document marker", () => {
-		// The marker must be `---` ALONE on its line. A three-dash value would
-		// otherwise split a document in half.
-		assert.lengthOf(documentsOf("key: ---\nother: 1\n"), 1);
-	});
-
-	it("empty text yields the original text rather than nothing", () => {
-		assert.deepStrictEqual(documentsOf(""), [""]);
-	});
-});
-
 // The shape pnpm 11 actually writes when a workspace uses configDependencies:
-// a small config-dependency lockfile FIRST, then the real one. A single-document
-// parse takes the first and reports an empty workspace — the exact bug this
-// repo's own lockfile exposed.
+// a small config-dependency lockfile FIRST, then the real one. Framing is
+// `@effected/lockfiles`' job as of #58 — pnpm's writer always emits the
+// config-dependencies document as a PREFIX, so the real lockfile is
+// deterministically the LAST document. These tests pin that end-to-end through
+// the reader: a naive first-document parse reports an empty workspace rather
+// than a failure, which is the worst shape a bug can take.
 const multiDocument: Tree = {
 	"/repo/pnpm-workspace.yaml": "packages:\n  - 'packages/*'\ncatalog:\n  effect: ^4.0.0\n",
 	"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),

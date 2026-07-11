@@ -7,11 +7,16 @@
 // because building it requires reading every workspace `package.json`, which is
 // IO, which is precisely what a pure package cannot do.
 
-import type { Lockfile, LockfileFormat, LockfileParseError, ResolvedPackage } from "@effected/lockfiles";
+import type {
+	Lockfile,
+	LockfileFormat,
+	LockfileFramingError,
+	LockfileParseError,
+	ResolvedPackage,
+} from "@effected/lockfiles";
 import { LockfileIntegrity, Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
-import { documentsOf } from "./internal/documents.js";
-import type { PackageManagerDetectionError } from "./PackageManagerName.js";
+import type { PackageManagerDetectionFailure } from "./PackageManagerName.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
 import type { WorkspaceDiscoveryFailure } from "./WorkspaceDiscovery.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
@@ -46,18 +51,20 @@ export class LockfileReadError extends Schema.TaggedErrorClass<LockfileReadError
  * union the review named best-in-class DX.
  *
  * @remarks
- * Layer construction does no IO, so all four members surface from the *methods*
+ * Layer construction does no IO, so every member surfaces from the *methods*
  * rather than from `Layer.build`: the root cannot be found, no package manager
- * can be attributed to it, its lockfile cannot be read, or the lockfile is
- * malformed.
+ * can be attributed to it (or its manifest is corrupt), its lockfile cannot be
+ * read, the lockfile is malformed, or the lockfile's YAML stream carries no
+ * lockfile document.
  *
  * @public
  */
 export type LockfileReadFailure =
 	| WorkspaceRootNotFoundError
-	| PackageManagerDetectionError
+	| PackageManagerDetectionFailure
 	| LockfileReadError
-	| LockfileParseError;
+	| LockfileParseError
+	| LockfileFramingError;
 
 /**
  * The {@link LockfileReader} service shape.
@@ -67,7 +74,18 @@ export type LockfileReadFailure =
 export interface LockfileReaderShape {
 	/** The parsed lockfile, with pnpm importer paths already resolved to real names. */
 	readonly read: () => Effect.Effect<Lockfile, LockfileReadFailure>;
-	/** The lockfile's record of a package, when it records one. */
+	/**
+	 * The lockfile's record of a package, when it records one.
+	 *
+	 * @remarks
+	 * A name can resolve at **several versions** in one lockfile (two members
+	 * depending on different majors of the same package). This returns the
+	 * **first** entry in lockfile order and does not attempt to rank them — there
+	 * is no single "the" version to return, and picking the highest semver would
+	 * imply a resolution decision this reader is not entitled to make. Callers
+	 * that must see every resolution should read `lockfile.packagesNamed(name)`
+	 * off `read()` directly.
+	 */
 	readonly resolvedVersion: (packageName: string) => Effect.Effect<Option.Option<ResolvedPackage>, LockfileReadFailure>;
 	/**
 	 * Whether the lockfile agrees with the workspace manifests on disk — the
@@ -91,42 +109,6 @@ export interface LockfileReaderOptions {
 	 */
 	readonly cwd?: string;
 }
-
-/**
- * Parse lockfile text, selecting the right YAML document first.
- *
- * pnpm 11 writes `pnpm-lock.yaml` as **two** documents when the workspace uses
- * `configDependencies` — a lockfile for the config dependencies, then the real
- * one — and a single-document parse silently returns the wrong one: a handful of
- * packages, no workspace importers, and no catalogs. It looks like an empty
- * workspace rather than a parse failure, which is the worst possible shape for a
- * bug.
- *
- * Every document is parsed and the richest result wins: most workspace packages,
- * then most packages overall. That is stable under document reordering, which
- * relying on "the last one" would not be. A single-document lockfile takes the
- * same path with one candidate and behaves identically.
- */
-const parseLockfileText = (content: string, format: LockfileFormat): Effect.Effect<Lockfile, LockfileParseError> =>
-	Effect.gen(function* () {
-		if (format !== "pnpm") return yield* LockfileModel.parse(content, { format });
-
-		const documents = documentsOf(content);
-		if (documents.length === 1) return yield* LockfileModel.parse(documents[0], { format });
-
-		// A document that does not parse is not a failure while another does — only
-		// an all-documents failure is, and it surfaces as the LAST document's error.
-		const parsed = yield* Effect.forEach(documents, (document) =>
-			Effect.result(LockfileModel.parse(document, { format })),
-		);
-		const candidates = parsed.filter((result) => result._tag === "Success").map((result) => result.success);
-		if (candidates.length === 0) return yield* LockfileModel.parse(documents[documents.length - 1], { format });
-
-		const score = (lockfile: Lockfile): number =>
-			lockfile.packages.filter((pkg) => pkg.isWorkspace).length * 1_000_000 + lockfile.packages.length;
-
-		return candidates.reduce((best, candidate) => (score(candidate) > score(best) ? candidate : best));
-	});
 
 /**
  * Reads and parses the workspace's lockfile.
@@ -180,19 +162,37 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 					.readFileString(lockfilePath)
 					.pipe(Effect.mapError((cause) => new LockfileReadError({ lockfilePath, format, cause })));
 
-				const lockfile = yield* parseLockfileText(content, format);
+				// `Lockfile.parse` owns YAML-stream framing as of `@effected/lockfiles`
+				// #58: `pnpm-lock.yaml` is a stream, and pnpm's writer always emits the
+				// config-dependencies document as a PREFIX, so the real lockfile is
+				// deterministically the last one. This reader used to select the document
+				// itself; the pure package now does it correctly, and a stream carrying no
+				// lockfile document fails typed as a `LockfileFramingError`.
+				const lockfile = yield* LockfileModel.parse(content, { format });
 				if (format !== "pnpm") return lockfile;
 
 				// The pure second stage. pnpm names workspace packages by IMPORTER PATH;
 				// only reading each `package.json` turns those into real names, and that
 				// read is IO — which is exactly why the stage lives here and not in the
 				// pure package.
+				//
+				// Bounded at concurrency 10, matching `WorkspaceDiscovery`'s per-package
+				// read: a large workspace should not serialize one read per member.
+				const importers = lockfile.packages.filter(
+					(pkg): pkg is typeof pkg & { readonly relativePath: string } =>
+						pkg.isWorkspace && pkg.relativePath !== undefined,
+				);
+				const resolved = yield* Effect.forEach(
+					importers,
+					(pkg) =>
+						readName(path.join(root, pkg.relativePath, "package.json")).pipe(
+							Effect.map((name) => [pkg.relativePath, name] as const),
+						),
+					{ concurrency: 10 },
+				);
 				const names = new Map<string, string>();
-				for (const pkg of lockfile.packages) {
-					if (!pkg.isWorkspace || pkg.relativePath === undefined) continue;
-					const manifestPath = path.join(root, pkg.relativePath, "package.json");
-					const name = yield* readName(manifestPath);
-					if (Option.isSome(name)) names.set(pkg.relativePath, name.value);
+				for (const [relativePath, name] of resolved) {
+					if (Option.isSome(name)) names.set(relativePath, name.value);
 				}
 				return lockfile.withImporterNames(names);
 			});
@@ -202,11 +202,15 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 				Effect.gen(function* () {
 					const content = yield* fs.readFileString(manifestPath).pipe(Effect.orElseSucceed(() => ""));
 					if (content === "") return Option.none<string>();
+					// `JSON.parse` returns `undefined` for nothing: a manifest of `null`
+					// parses to `null`, and reading `.name` off it would throw a TypeError
+					// as an unhandled DEFECT. Narrow to a plain object before touching it.
 					const parsed = yield* Effect.try({
-						try: () => JSON.parse(content) as Record<string, unknown>,
+						try: () => JSON.parse(content) as unknown,
 						catch: () => undefined,
-					}).pipe(Effect.orElseSucceed(() => ({}) as Record<string, unknown>));
-					const name = parsed.name;
+					}).pipe(Effect.orElseSucceed(() => undefined as unknown));
+					if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return Option.none<string>();
+					const name = (parsed as Record<string, unknown>).name;
 					return typeof name === "string" && name.length > 0 ? Option.some(name) : Option.none<string>();
 				});
 
