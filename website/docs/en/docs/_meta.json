@@ -14,8 +14,38 @@
 	},
 	{
 		"type": "custom-link",
+		"link": "/config-file",
+		"label": "@effected/config-file"
+	},
+	{
+		"type": "custom-link",
+		"link": "/config-file-jsonc",
+		"label": "@effected/config-file-jsonc"
+	},
+	{
+		"type": "custom-link",
+		"link": "/config-file-toml",
+		"label": "@effected/config-file-toml"
+	},
+	{
+		"type": "custom-link",
+		"link": "/config-file-yaml",
+		"label": "@effected/config-file-yaml"
+	},
+	{
+		"type": "custom-link",
+		"link": "/glob",
+		"label": "@effected/glob"
+	},
+	{
+		"type": "custom-link",
 		"link": "/jsonc",
 		"label": "@effected/jsonc"
+	},
+	{
+		"type": "custom-link",
+		"link": "/lockfiles",
+		"label": "@effected/lockfiles"
 	},
 	{
 		"type": "custom-link",
@@ -31,6 +61,21 @@
 		"type": "custom-link",
 		"link": "/semver",
 		"label": "@effected/semver"
+	},
+	{
+		"type": "custom-link",
+		"link": "/store",
+		"label": "@effected/store"
+	},
+	{
+		"type": "custom-link",
+		"link": "/toml",
+		"label": "@effected/toml"
+	},
+	{
+		"type": "custom-link",
+		"link": "/walker",
+		"label": "@effected/walker"
 	},
 	{
 		"type": "custom-link",
