@@ -340,13 +340,21 @@ export function flattenFlowChildren(children: readonly CstNode[], state: Compose
 					continue;
 				}
 				// Not followed by ":" — try multi-line value merging
-				const { value, nextIdx } = collectMultilinePlainScalar(children, i, undefined, state.text);
+				const { value, nextIdx, partsCount, endOffset } = collectMultilinePlainScalar(
+					children,
+					i,
+					undefined,
+					state.text,
+				);
 				const resolved = resolveScalar(value, "plain", pendingMeta.tag, state);
 				const scalar = new YamlScalar({
 					value: resolved,
 					style: "plain" as ScalarStyle,
 					offset: child.offset,
-					length: child.length,
+					// Span the whole folded scalar, not just the first fragment,
+					// so findAtOffset covers continuation lines and the
+					// sourceMultiline decoration pass sees the real extent.
+					length: partsCount > 1 ? endOffset - child.offset : child.length,
 					...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
 					...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
 				});

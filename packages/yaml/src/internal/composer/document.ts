@@ -401,29 +401,22 @@ export function composeDocument(
 			}
 			// Standalone scalar — try multi-line plain scalar merging
 			if (child.type === "flow-scalar" && getScalarStyle(child) === "plain") {
-				const { value, nextIdx, partsCount } = collectMultilinePlainScalar(children, i, undefined, state.text);
+				const { value, nextIdx, partsCount, endOffset } = collectMultilinePlainScalar(
+					children,
+					i,
+					undefined,
+					state.text,
+				);
 				// Combine outer + inner meta — for a scalar root, both apply to it.
 				const combined: NodeMeta = { ...outerMeta };
 				if (meta.tag !== undefined) combined.tag = meta.tag;
 				if (meta.anchor !== undefined) combined.anchor = meta.anchor;
 				const resolved = resolveScalar(value, "plain", combined.tag, state);
 				// Span the full source range when multi-line plain folding merged
-				// multiple children. `nextIdx` is the index after the last
-				// consumed child; walk back to find the last child with a
-				// non-trivial offset (skip newline/whitespace) and extend the
-				// span to its end. Includes directives and other non-scalar
+				// multiple children — `endOffset` is the end of the last consumed
+				// fragment, including directives and other non-scalar
 				// continuations the lexer mis-tokenised on a folded line.
-				let scalarLength = child.length;
-				if (partsCount > 1) {
-					for (let li = nextIdx - 1; li > i; li--) {
-						const last = children[li];
-						if (!last) continue;
-						if (last.type === "newline") continue;
-						if (last.type === "whitespace" && last.source.trim() === "") continue;
-						scalarLength = last.offset + last.length - child.offset;
-						break;
-					}
-				}
+				const scalarLength = partsCount > 1 ? endOffset - child.offset : child.length;
 				contents = new YamlScalar({
 					value: resolved,
 					style: "plain",

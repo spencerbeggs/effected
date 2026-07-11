@@ -115,9 +115,6 @@ clean gate.
 
 ## Known issues
 
-- **#7** — folded multi-line plain scalars keep the first fragment's span and
-  drop `sourceMultiline`, so `YamlNode.findAtOffset` misses every character past
-  the scalar's first line.
 - Per-node comments are captured by the composer but never re-emitted by the
   stringifier; only a document-level leading comment round-trips. Carried over
   from v3, not a regression.
