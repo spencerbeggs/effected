@@ -127,6 +127,10 @@ __test__/
 
 `Command.runWith` takes an explicit `argv` array, so the CLI is testable without spawning a process — the v3 suite could not do this.
 
+**A usage error is a failure, not a printed complaint.** Selecting no runtime, or passing an unrecognized `--node-phases` value, fails with `CliError.UserError` (from `effect/unstable/cli`), which `Command.run` and `NodeRuntime.runMain` already understand as exit code 1. Printing the complaint and returning successfully — the first cut — exits `0`, and a CI job gating on the exit status reads a typo as a pass. Failing also removes the sentinel that made the phase parsing awkward: `parsePhases` fails through the error channel instead of returning `Option.some(undefined)` for the caller to test against.
+
+The distinction the tests must hold: a **usage** error fails the process, while a **resolution** that matches nothing is data — it exits `0` with `ok: false` in the envelope, because a caller asking "what Node versions match `>=999`?" got a real answer. Collapsing the two in either direction is the bug.
+
 ## What changes, concept by concept
 
 ### Provenance actually works
@@ -149,7 +153,9 @@ export class NodeRelease extends Schema.Class<NodeRelease>("NodeRelease")({
 }) {}
 ```
 
-`Schema.DateTimeUtcFromString` is the codec used to decode the raw feeds' date strings (verified: it decodes `"2024-03-01"` to `DateTime.Utc`). The `NodeSchedule.phaseFor(major, now)` reference-date parameter — the review's favourite piece of testability in the package — is preserved verbatim.
+`Schema.DateTimeUtcFromString` is the codec used to decode the raw feeds' date strings (verified: it decodes `"2024-03-01"` to `DateTime.Utc`). The `NodeSchedule.phaseFor(version, now)` reference-date parameter — the review's favourite piece of testability in the package — is preserved.
+
+**The schedule is keyed by release line, not by major.** The reference date survived the port; the key did not. `nodejs/Release` publishes `v0.8`, `v0.10` and `v0.12` as three distinct release lines with their own start and end dates, and `Number.parseInt` maps all three keys to the major `0`. Keying `NodeScheduleEntry` by major therefore collapsed them onto whichever `Object.entries` yielded first, so every `0.x` release was answered with `v0.8`'s schedule — `v0.8` was already end-of-life in June 2015 while `v0.12` was current, and both the bundled snapshot and the live feed carry all three. `NodeScheduleEntry` carries a `line` (`"20"`, or `"0.10"`), `phaseFor` / `entryFor` take a version rather than a bare major, and the public `nodeReleaseLine({ major, minor })` exposes the mapping. Asking for the bare major `0` now honestly returns `None` rather than some other `0.x` line's dates.
 
 ### Concurrency-safe index
 
@@ -164,13 +170,18 @@ Eight `Data.TaggedError` classes become six `Schema.TaggedErrorClass` classes. `
 | error | fields | audience |
 | --- | --- | --- |
 | `NoMatchingVersionError` | `runtime`, `constraint`, `phases?` | calling code (`_tag` branch) + end user |
+| `UnresolvableDefaultError` | `runtime`, `defaultVersion` | end user (you named a default that does not exist) |
 | `FreshnessError` | `runtime`, `cause: Schema.Defect()` | end user (the fresh strategy could not reach the network) |
 | `AuthenticationError` | `method` | end user (fix your credentials) |
 | `RateLimitError` | `retryAfter?`, `limit`, `remaining` | calling code (`retryAfter` drives the retry schedule) |
 | `NetworkError` | `url`, `status?`, `cause: Schema.Defect()` | operator (logged/spanned) |
 | `ResponseParseError` | `source`, `cause: Schema.Defect()` | operator — a feed changed shape |
 
-**`InvalidRangeError` is surfaced, not swallowed.** The v3 resolvers `catchAll` a `cache.filter(range)` failure into an empty array, so an *invalid* semver range reaches the user as `VersionNotFoundError` ("no versions found") rather than as the range error it is. The resolver error channel becomes `InvalidRangeError | NoMatchingVersionError`, where `InvalidRangeError` is `@effected/semver`'s (verified: `Range.parse` fails with exactly that one error). Consumers import it from `@effected/semver` — the no-barrel rule forbids re-exporting a dependency's surface.
+**`InvalidRangeError` is surfaced, not swallowed.** The v3 resolvers `catchAll` a `cache.filter(range)` failure into an empty array, so an *invalid* semver range reaches the user as `VersionNotFoundError` ("no versions found") rather than as the range error it is. The resolver error channel becomes `InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError`, where `InvalidRangeError` is `@effected/semver`'s (verified: `Range.parse` fails with exactly that one error). Consumers import it from `@effected/semver` — the no-barrel rule forbids re-exporting a dependency's surface.
+
+**An unresolvable `defaultVersion` fails; an absent one falls back.** These are different questions and the pipeline must not collapse them. `default` is an `optionalKey`, so a default range matching nothing could simply be omitted from the result — and because Node (alone) falls back to the LTS pick when no default was requested, omitting it hands the caller LTS as though they had asked for it. A caller who names a version that does not exist has made a mistake, and it reaches them as `UnresolvableDefaultError` rather than as a plausible-looking wrong answer. This is the same silent-degradation class as v3's hardcoded `source: "api"`; the fix is the same shape — carry the distinction instead of erasing it.
+
+**`AuthenticationError.method` is passed down, not assumed.** `mapHttpFailure` takes the auth mode the caller actually used. Hardcoding `"token"` made the `"anonymous"` arm of the literal union unreachable, and mislabelled the nodejs.org feeds — which are fetched with no credential at all — as token rejections.
 
 The "no versions matched" error is named **`NoMatchingVersionError`, not `VersionNotFoundError`**, because `@effected/semver` already exports a `VersionNotFoundError` with that `_tag`, for a different condition (a version absent from a cache). Two classes sharing a `_tag` in one error channel breaks `catchTag` routing — a real hazard, since both semver's errors and ours meet in the resolver's channel.
 
@@ -228,6 +239,8 @@ The engine consumes untrusted JSON from three network feeds. There is no recursi
 - **Pagination is bounded.** The v3 `listTags` / `listReleases` default `maxPages` to `Number.POSITIVE_INFINITY` — an unbounded loop driven by a remote server's paging behaviour. `internal/limits.ts` holds a default page cap.
 - **The numeric-bound guard.** `perPage` / `pages` are caller-supplied numbers; `if (n < 1)` admits both `NaN` and `2.5` (every relational comparison against `NaN` is `false`). They are guarded with `!Number.isInteger(n) || n < 1` and a **defect** — these are developer wiring errors, not data conditions, so they must not enter the typed channel (planning-pillar ruling, and the `hardening-a-parser-port` numeric-bound item).
 - **`Effect.die` on index inconsistency stays a defect.** The v3 lookup-map invariant check is correct as-is: a version present in the index but absent from its lookup is a programmer error, not a business failure.
+- **A server-supplied `retry-after` is bounded before it becomes a sleep.** The header is a number a remote server chose, and it is honored as the retry delay (guessing an exponential backoff against a `retry-after` GitHub actually sent is both ruder and less effective). That makes it untrusted input on a control path: it is capped at 60s, and a negative value is discarded in favour of the exponential schedule. Without the cap, one large header parks the caller's fiber for as long as the server likes; without the non-negative guard, a negative value collapses the backoff to a zero-delay hot retry.
+- **A `403` is classified, not assumed.** GitHub returns `403` for an exhausted rate limit *and* for permission and resource failures. Treating the status alone as a rate limit retried the latter three times and then reported a `RateLimitError` naming a quota that was never the problem. The classification uses the signals GitHub documents — `x-ratelimit-remaining: 0` for the primary limit, `retry-after` for the secondary — and a `403` with neither leaves as a `NetworkError` carrying the status, so it is not retried. A `429` is definitionally a rate limit and needs no classification. Body-message inspection (`"You have exceeded a secondary rate limit"`) is deliberately **not** used: the transport classifies from status and headers before it touches the body, and the two header signals already cover both limit kinds.
 
 ## Testing
 
@@ -238,11 +251,20 @@ The suite-boundary seams:
 - **`FetchHttpClient.Fetch`** — a `Context.Reference<typeof globalThis.fetch>`. A `layer(...)` group provides `Layer.provide(FetchHttpClient.layer, Layer.succeed(FetchHttpClient.Fetch)(fakeFetch))` and the whole HTTP stack runs against canned responses. This replaces the v3 `OctokitInstance` stub and is strictly better: it exercises the real request construction, status mapping and schema decoding, where the Octokit stub bypassed all three.
 - **`Layer.mock(GitHubClient, {...})`** for resolver tests that do not care about transport.
 - **`ConfigProvider`** swapped at the boundary for `GitHubAuth.layerConfig` precedence tests.
-- **`TestClock`** for the Node phase logic — plus the `NodeSchedule.phaseFor(major, now)` explicit reference date, which makes most of it clock-free.
+- **`TestClock`** for the Node phase logic — plus the `NodeSchedule.phaseFor(version, now)` explicit reference date, which makes most of it clock-free. `TestClock` is unavoidable for the rate-limit retries, whose delays are the thing under test.
 
 The v3 tests are plain vitest + `Effect.runPromise` + a repeated `Effect.provide` in every test body — the anti-pattern the testing standard names. Coverage is broad, so the conversion is mechanical.
 
 Edge cases the suite must actually pin (mutate-the-edges discipline): the Auto strategy's fallback sets `source: "cache"` **and** the live path sets `"api"`; an invalid range surfaces `InvalidRangeError` and not `NoMatchingVersionError`; `increments: "minor"` groups by minor and not by major; a phase filter that excludes every release yields `NoMatchingVersionError` rather than an empty success; and the rate-limit retry actually retries.
+
+Four more, each of which shipped green and unpinned in the first cut and was only caught by review:
+
+- **The dotted `0.x` lines.** A schedule fixture of `v20`/`v21`/`v22` *structurally cannot* catch a major-keyed collapse, because those majors are already distinct. The fixture must carry `v0.8`, `v0.10` and `v0.12` with their real dates, and assert at a reference date where the lines disagree (June 2015: `v0.8` dead, `v0.12` current). Pin it at the `NodeResolver` seam too, not just on `NodeSchedule` — the unit test says nothing about whether `NodeRelease.phase` asks the schedule the right question.
+- **An unresolvable `defaultVersion` fails**, and an absent one still falls back to LTS. Both halves, or the fix reads as "always fail".
+- **A `403` with quota remaining is a `NetworkError` and is not retried**, while a `403` with `x-ratelimit-remaining: 0` still is. Assert the call *count*, not just the error type.
+- **The `retry-after` is honored, capped, and non-negative.** The trap here is a test that asserts only "it eventually retried": that passes whether the delay is the server's 30s, the 1s exponential, or a negative value collapsed to zero. The assertion has to pin the *timing* — advance the clock to just short of the expected delay and assert the retry has **not** fired yet.
+
+An error-type assertion is not optional on the `layerFresh` tests. `assert.isTrue(exit._tag === "Failure")` stays green for a regression that fails with the wrong error entirely — including the raw `NetworkError` leaking through, which is exactly what `FreshnessError` exists to wrap.
 
 ## Deviations from the review, recorded
 

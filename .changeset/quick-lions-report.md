@@ -20,6 +20,8 @@ runtime-resolver --node ">=20" --node-phases active-lts --bun "^1.0.0" --pretty
 
 Invalid flag values are rejected at parse time instead of by hand-rolled string checks, and the error entries in the envelope carry the structured fields of the underlying error (a rate limit's `retryAfter`, a not-found's `constraint`) rather than a prose message a caller has to parse back apart.
 
+A bad invocation exits non-zero. Running the command with no runtime selected, or with an unrecognized `--node-phases` value, prints its complaint to stderr and then fails, so a CI job gating on the exit status no longer reads a typo as a pass. A resolution that simply matches nothing is not a usage error and still exits `0` with `ok: false` in the envelope, which is what keeps the two distinguishable.
+
 The command is exported, so it can be embedded or driven with an explicit argument vector via `Command.runWith`.
 
 Built on `effect/unstable/cli` — the CLI framework in `effect` core — with `@effect/platform-node` supplying the Node runtime. `@effect/cli` is not used; it has no Effect v4 release.
