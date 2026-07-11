@@ -583,8 +583,13 @@ const make = (options: CacheOptions): Effect.Effect<CacheShape, CacheError, SqlC
 			sql
 				.withTransaction(
 					Effect.gen(function* () {
-						const escaped = tag.replace(/[%_\\]/g, "\\$&");
-						const pattern = `%"${escaped}"%`;
+						// The tags column stores JSON text, so match the JSON encoding of
+						// the tag (quotes included — they anchor whole-tag matches), with
+						// LIKE metacharacters escaped. v3 matched the RAW tag against the
+						// JSON column, so a tag containing a backslash or quote never
+						// matched its own entry.
+						const escaped = JSON.stringify(tag).replace(/[%_\\]/g, "\\$&");
+						const pattern = `%${escaped}%`;
 						const removed = yield* sql<{ key: string }>`
 							DELETE FROM cache_entries WHERE tags LIKE ${pattern} ESCAPE '\\' RETURNING key
 						`;
