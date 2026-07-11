@@ -1,73 +1,53 @@
-# pnpm-module-template
+# effected
 
-A personal template repository by
-[C. Spencer Beggs](https://spencerbeg.gs) for developing and publishing Node.js
-modules to [npm](https://www.npmjs.com/) and
-[GitHub Packages](https://github.com/features/packages).
+A pnpm monorepo (npm org `@effected`) building an [Effect](https://effect.website/) v4 app kit: a set of libraries designed for Effect v4 from the start, not lifted from their v3 predecessors. The repo holds libraries only; the applications that consume them stay in their own repos.
 
-You're welcome to clone or fork this template for your own use.
+## Packages
 
-## What's Included
+| Package | Tier | Description |
+| ------- | ---- | ----------- |
+| [@effected/semver](packages/semver) | pure | Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas |
+| [@effected/jsonc](packages/jsonc) | pure | Zero-dependency JSONC parsing, editing and formatting as Effect schemas |
+| [@effected/yaml](packages/yaml) | pure | Zero-dependency YAML parsing, editing and formatting as Effect schemas |
+| [@effected/toml](packages/toml) | pure | TOML 1.0.0 parsing, editing and formatting as Effect schemas: typed diagnostics, a lossless CST and first-class date-time values |
+| [@effected/package-json](packages/package-json) | integrated | package.json parsing, editing, validation and file IO as Effect schemas |
+| [@effected/npm](packages/npm) | pure | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers |
+| [@effected/config-file](packages/config-file) | boundary | Composable config file loading for Effect: pluggable codecs, resolution strategies and merge behaviors |
+| [@effected/config-file-jsonc](packages/config-file-jsonc) | pure | JSONC codec adapter plugging @effected/jsonc into @effected/config-file's `ConfigCodec` seam |
+| [@effected/config-file-yaml](packages/config-file-yaml) | pure | YAML codec adapter plugging @effected/yaml into @effected/config-file's `ConfigCodec` seam |
+| [@effected/config-file-toml](packages/config-file-toml) | pure | TOML codec adapter plugging @effected/toml into @effected/config-file's `ConfigCodec` seam |
+| [@effected/walker](packages/walker) | boundary | Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate |
+| [@effected/glob](packages/glob) | pure | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
+| [@effected/lockfiles](packages/lockfiles) | pure | Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
+| [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | infra | pnpm config dependency for centralized catalog management across the Effected ecosystem |
 
-- **Build pipeline** — Dual-output builds (development + production) via
-  [Rslib](https://rslib.rs/) with automatic `package.json` transformation for
-  publishing
-- **Code quality** — [Biome](https://biomejs.dev/) for linting and formatting,
-  with git hooks for pre-commit checks and commit message validation
-- **Testing** — [Vitest](https://vitest.dev/) with v8 coverage
-- **Versioning** — [Changesets](https://github.com/changesets/changesets) for
-  version management and changelog generation
-- **CI/CD** — GitHub Actions for automated testing, building, and publishing
-  with provenance attestation
-- **TypeScript** — Strict mode, composite builds, ESM-first with `.js` import
-  extensions
+Tier describes a package's runtime surface: **pure** packages peer on `effect` and take only `@effected/*` edges with no IO, **boundary** packages have the same dependency surface but do IO through Effect's core `FileSystem` and `Path` services and **integrated** packages import at least one runtime package outside `effect` core. `pnpm-plugin-effect` is repo infrastructure and sits outside the taxonomy.
 
-## Quick Start
+## Releases
 
-1. Click **"Use this template"** on GitHub (or clone the repo directly)
-2. Update `package.json` with your package name, repository URL, and homepage
-3. Update the `repo` field in `.changeset/config.json`
-4. Replace the placeholder code in `src/` with your own
-5. Install dependencies:
+Nothing here is published to npm yet. The whole kit ships together at 0.1.0 once it can replace the business logic of the five applications that define its scope, and 1.0.0 waits for Effect v4 GA. No package is released on its own, so every peer range names the same Effect v4 beta on day one.
 
-   ```bash
-   pnpm install
-   ```
+## Roadmap
 
-6. Start developing:
+Six packages remain before the kit is complete, in order: `store`, `xdg`, `workspaces`, `app-kit`, `type-registry` and `runtime-resolver`.
 
-   ```bash
-   pnpm run test:watch    # Run tests in watch mode
-   pnpm run lint:fix      # Auto-fix lint issues
-   pnpm run build         # Build dev + prod outputs
-   ```
+## Development
 
-## Project Structure
-
-```text
-src/               Source code and tests
-lib/configs/       Shared tool configurations (commitlint, lint-staged, markdownlint)
-dist/dev/          Development build output
-dist/npm/          Production build output (published to registries)
-.github/workflows/ CI/CD workflows
-.changeset/        Changeset configuration
+```bash
+pnpm install     # install workspace dependencies
+pnpm build       # build dev + prod outputs via Turbo
+pnpm test        # run all tests with Vitest
+pnpm lint        # check code with Biome
+pnpm typecheck   # type-check each package
+pnpm dev         # run the docs site locally
 ```
 
-## Publishing
+Dependency versions are pinned through pnpm catalogs in `pnpm-workspace.yaml`, so every package builds against the same Effect v4 beta. [Turbo](https://turbo.build/) orchestrates the build graph and each package emits dual development and production outputs with [@savvy-web/bundler](https://github.com/savvy-web/bundler). The docs site in `website/` runs on [RSPress](https://rspress.dev/).
 
-Packages are published to both npm and GitHub Packages with provenance
-attestation. The build pipeline automatically transforms `package.json` for
-publishing — the source file stays `"private": true` and the builder handles the
-rest.
+## Requirements
 
-See the [Changesets documentation](https://github.com/changesets/changesets) for
-how versioning and releases work.
-
-## Claude Code
-
-This template includes configuration for
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code). See
-[CLAUDE.md](CLAUDE.md) for details on the design-first development workflow.
+- Node.js >=24.11.0
+- pnpm 11.x
 
 ## License
 
