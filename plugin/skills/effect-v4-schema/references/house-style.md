@@ -71,6 +71,64 @@ pipeably (`node.pipe(Node.move(2))`) — retain the manual `Pipeable` overload
 block on the class (the `pipe(...args) { return pipeArguments(this, args) }`
 member) so the instance type advertises it.
 
+### `disableChecks` skips checks, not validation — and buys no speed
+
+`MakeOptions.disableChecks` reads like an escape hatch from validation. Its own
+docstring says "skip validation when you trust the data" (`Schema.ts:107`) and
+"skips constructor validation" (`Schema.ts:12754`). Both are misleading, and the
+vendored cluster code leans on it as the trusted-construction idiom
+(`unstable/cluster/EntityAddress.ts:93`, `RunnerAddress.ts:112`, `Runner.ts:129`),
+so it looks blessed. What it actually does — probed against `effect@4.0.0-beta.97`:
+
+| Passing `{ disableChecks: true }` | Effect |
+| --- | --- |
+| a failing `.check(...)` filter | **skipped** — the value is accepted |
+| a *type* error (`n: "nope"` where `n` is `Schema.Number`) | **still throws** `Expected number, got "nope"` |
+| the structural re-parse | **still runs** — it is not a fast path |
+
+It gates exactly the check phase (`SchemaParser.ts:1056,1071`; `SchemaAST.ts:3527`)
+and nothing else. So it is a *semantic* switch for trusted data, never a
+*performance* one: a depth-20 recursive build measured 2671 ms with
+`disableChecks: true` against 2711 ms without it — inside the noise.
+
+### Recursive `Schema.Class` construction is exponential in depth
+
+Constructing a recursive `Schema.Class` tree node-by-node — the shape every parser
+AST takes — re-validates the whole subtree at each level, so the cost **doubles per
+level**. Measured on `effect@4.0.0-beta.97`, a left-spine tree:
+
+| Depth | `new Node(...)` |
+| --- | --- |
+| 10 | 9.6 ms |
+| 14 | 52.7 ms |
+| 16 | 171.3 ms |
+| 18 | 674.5 ms |
+| 20 | **2711.4 ms** |
+
+`X.make(...)` is no better, and `disableChecks` does not help (above). A parser that
+materializes a recursive `Schema.Class` AST is therefore quadratic-to-exponential in
+nesting depth on a document a user can hand you — this is what the `@effected/jsonc`
+parse-tree fix hit.
+
+**The fix: bypass the constructor on the internal build path only.** Validate once at
+the boundary, then materialize nodes against the prototype:
+
+```ts
+const Proto = Object.getPrototypeOf(new Node({ tag: "x", children: [] }));
+const node = (props: NodeProps): Node => Object.assign(Object.create(Proto), props);
+```
+
+This is faithful, not a hack: `Data.Class`'s constructor *is*
+`super(); Object.assign(this, props)` (`Data.ts:57`), so the bypass reproduces it
+exactly. The prototype carries the methods and the `Equal`/`Hash` implementations —
+a probe confirmed `Equal.equals(bypassBuilt, constructorBuilt) === true`. Depth 1000
+builds in 0.1 ms.
+
+Constraints on using it: the props must already be valid (you validated at the
+boundary, or you built them yourself), and it stays **internal** — public
+constructors keep validating. `yaml` and `toml` will meet this the moment either
+materializes a recursive `Schema.Class` AST.
+
 ## Fields & optionality
 
 - `Schema.optionalKey(schema)` → exact optional **property**; the key may be

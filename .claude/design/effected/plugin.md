@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-09
-last-synced: 2026-07-09
+updated: 2026-07-10
+last-synced: 2026-07-10
 completeness: 92
 related:
   - architecture.md
@@ -70,8 +70,10 @@ It closes the loop the plugin's ethos already implies: migrations falsify skill 
 The rungs are ordered by cost, and each answers a strictly different class of question. The ordering was established empirically on 2026-07-09 by testing the corpus against facts this repo had already won by probing.
 
 1. **Migration notes and skill guides** (`effect-smol/migration/*.md`, `Effect-TS/skills` references). Cheap, and authoritative for the **rename** class. `migration/forking.md` names `Effect.fork` → `Effect.forkChild` in a table; `migration/cause.md` gives `Cause.isFailure` → `Cause.hasFails`.
-2. **Vendored source** (`repos/effect-smol`, pinned to the catalog's beta tag; see [architecture.md](architecture.md#vendored-source)). Authoritative for **existence and signature**.
+2. **Source** — either the vendored `repos/effect-smol` subtree (see [architecture.md](architecture.md#vendored-source)) or the installed `node_modules/effect/src`. Authoritative for **existence and signature**.
 3. **A probe run from inside the package.** The only rung that settles **semantics**.
+
+Rung 2 has two roots and they drift, so the skill names a tiebreak: **the installed source wins.** The subtree is a `git subtree` pinned to an exact tag, while the catalog entry is a *caret* range (`^4.0.0-beta.94`), so pnpm floats forward to the newest beta and the tree does not follow until someone re-pins it. During the `store` migration the tree sat at beta.94 against an installed beta.97 — a stale rung-2 answer is delivered with total confidence and no error, which is exactly the failure mode the ladder exists to prevent. `node_modules` is what the code links against; the subtree is what someone vendored last, and it remains the only home of rung 1.
 
 The docs are prescriptive rather than exhaustive, which is why rung 1 cannot be the last rung. `migration/services.md` migrates `Context.Tag` → `Context.Service` and never mentions `Context.Key` at all — yet `Context.Key` is the primitive the port needed, and its `out Shape` covariance is what sank a design that had already been approved. `migration/forking.md` never mentions that `Effect.makeSemaphore` is gone and `Semaphore` is now a top-level module. `migration/cause.md` never mentions `Exit.causeOption` → `Exit.getCause`. Nothing short of source settles a removal; nothing short of a probe settles behaviour like `Effect.cached` memoizing an interrupt `Exit`.
 

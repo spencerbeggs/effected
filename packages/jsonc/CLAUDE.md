@@ -2,7 +2,7 @@
 
 Zero-dependency JSONC parse/edit/format schemas: parse into values or an AST, strip comments offset-preservingly, compute byte-minimal edits, format, modify by path, visit as a `Stream`.
 
-**Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO. Second migration; merged. 11 `src/` files, 6 test files, 87 tests.
+**Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO. Second migration; merged. Public facades in `src/`, the engine in `src/internal/`, tests in `__test__/`.
 
 **For the full design:** → `@../../.claude/design/effected/packages/jsonc.md`
 

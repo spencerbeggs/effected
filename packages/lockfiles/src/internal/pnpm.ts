@@ -1,9 +1,9 @@
-import { Yaml } from "@effected/yaml";
 import { Effect, Schema } from "effect";
 import { PnpmExtension } from "../PnpmExtension.js";
 import { ResolvedPackage } from "../ResolvedPackage.js";
+import { selectPnpmDocument } from "./documents.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
-import { extractWorkspaceDeps, syntaxFailure, validationFailure } from "./shared.js";
+import { extractWorkspaceDeps, framingFailure, validationFailure } from "./shared.js";
 
 // ── Raw schema (permissive validation scaffolding, not API) ────────────────
 
@@ -53,6 +53,13 @@ type PnpmImporterType = typeof PnpmImporter.Type;
 /**
  * Parse pnpm `pnpm-lock.yaml` content into the unified field bundle.
  *
+ * `pnpm-lock.yaml` is a YAML *stream*, not a single document: a workspace
+ * using `configDependencies` gets a config-dependencies preamble document
+ * ahead of the lockfile. {@link selectPnpmDocument} locates the lockfile
+ * deterministically (it is the last document); a stream carrying no lockfile
+ * document fails through the typed framing channel rather than silently
+ * reporting the preamble as an empty workspace.
+ *
  * Workspace packages are keyed by importer *path* with version `"0.0.0"`;
  * `Lockfile#withImporterNames` is the explicit second stage that rewrites
  * them to real names.
@@ -61,8 +68,18 @@ type PnpmImporterType = typeof PnpmImporter.Type;
  */
 export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
-		const raw = yield* Yaml.parse(content).pipe(Effect.mapError(syntaxFailure));
-		const validated = yield* Schema.decodeUnknownEffect(PnpmLockfileRaw)(raw).pipe(Effect.mapError(validationFailure));
+		const { document, documents } = yield* selectPnpmDocument(content);
+		const validated = yield* Schema.decodeUnknownEffect(PnpmLockfileRaw)(document).pipe(
+			Effect.mapError(validationFailure),
+		);
+		// pnpm always records at least the root importer ".", so a lockfile
+		// document declaring no importers at all describes no workspace. Fail
+		// typed rather than hand back an empty Lockfile — an empty result is
+		// indistinguishable from "this workspace has no packages", which is the
+		// shape that kept the multi-document bug invisible.
+		if (Object.keys(validated.importers).length === 0) {
+			return yield* Effect.fail(framingFailure("noImporters", documents));
+		}
 		return toFields(validated);
 	});
 
