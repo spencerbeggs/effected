@@ -26,7 +26,15 @@ Seven foundational design docs live in `.claude/design/effected/` (config: `.cla
 
 Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port.
 
-Eighteen packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `config-file-toml`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtime-resolver`, `runtime-resolver-cli`, `workspaces`. Two remain, in order: **type-registry → app-kit**. type-registry is next because it is the last package with real domain logic to port and is load-bearing for two of the five gate applications; app-kit is last because it is a thin composition over `xdg` + `config-file` + `store` whose content is decided by how consumers actually wire the kit, so it absorbs the type-registry port's wiring rather than guessing at it. `@effected/json-schema` is off the roadmap entirely. `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
+Eighteen packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `config-file-toml`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtime-resolver`, `runtime-resolver-cli`, `workspaces`.
+
+Three pieces of work remain, in this order: **config-file consolidation → ts-vfs → app-kit**.
+
+1. **The config-file consolidation** is not a migration. `config-file-jsonc`, `config-file-yaml` and `config-file-toml` dissolve back into `@effected/config-file`, which absorbs their three codecs; the `jsonc`, `yaml` and `toml` **format** packages stay independent and untouched. 19 packages become 16. It goes first so the remaining ports, the release gate and every consumer's install instructions are written once against the final package set. **The merged package must export the codecs as distinct named exports and must never collect them into a namespace object** — that would make it a dispatch table and silently kill the tree-shaking the whole decision rests on. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
+2. **`@effected/ts-vfs`** (renamed from `@effected/type-registry` on 2026-07-11) is the next migration: it is the last package with real domain logic to port and is load-bearing for two of the five gate applications. It fetches, caches and resolves TypeScript type definitions from npm so Twoslash-style tooling can typecheck type-aware samples, and it wraps `@typescript/vfs` — hence the name. The v3 source package keeps its own name, `type-registry-effect`.
+3. **app-kit** is last because it is a thin composition over `xdg` + `config-file` + `store` whose content is decided by how consumers actually wire the kit, so it absorbs the ts-vfs port's wiring rather than guessing at it. No consumer is blocked on it, because nothing may depend on it — a library taking an application control plane would be an R2 tier-3 leak.
+
+`@effected/json-schema` is off the roadmap entirely. `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
 
 ## Repository Layout
 
@@ -45,10 +53,10 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `yaml` — zero-dependency YAML 1.2 parse/edit/format schemas; largest package in the repo (pure).
 - `package-json` — package.json schemas, validation and file IO (integrated).
 - `npm` — dependency-resolution contracts for `catalog:` / `workspace:` specifiers (pure).
-- `config-file` — composable config file loading: codec × resolver × strategy (boundary).
-- `config-file-jsonc` — `ConfigCodec` adapter over `@effected/jsonc` (pure).
-- `config-file-yaml` — `ConfigCodec` adapter over `@effected/yaml` (pure).
-- `config-file-toml` — `ConfigCodec` adapter over `@effected/toml` (pure).
+- `config-file` — composable config file loading: codec × resolver × strategy (boundary). Absorbs the three codec adapters below in the approved consolidation.
+- `config-file-jsonc` — `ConfigCodec` adapter over `@effected/jsonc` (pure). **Dissolving into `config-file`.**
+- `config-file-yaml` — `ConfigCodec` adapter over `@effected/yaml` (pure). **Dissolving into `config-file`.**
+- `config-file-toml` — `ConfigCodec` adapter over `@effected/toml` (pure). **Dissolving into `config-file`.**
 - `walker` — upward path traversal; the one absorbing loop (boundary).
 - `glob` — the full minimatch dialect as pure string→predicate schemas; vendored, hardened engine (pure).
 - `toml` — TOML 1.0.0 parse/edit/format schemas on a from-scratch engine; first format package with no vendored code (pure).

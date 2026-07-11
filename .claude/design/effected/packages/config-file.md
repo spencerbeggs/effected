@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-10
-last-synced: 2026-07-10
+updated: 2026-07-11
+last-synced: 2026-07-11
 completeness: 90
 related:
   - ../architecture.md
@@ -33,9 +33,44 @@ The **headline migration work is the error-model redesign** (review §"Priority 
 
 Status: **implemented on `feat/config-file` (playbook steps 3–4 complete).** All three cycle-5a–5c packages landed and were reviewed: `@effected/config-file` (core, 111 tests, zero-warning API surface), `@effected/config-file-jsonc` (4 tests), `@effected/config-file-yaml` (5 tests). Whole-repo gate green: typecheck 15/15, build 28/28, tests 1830/1830. This doc records the *as-built* design; per the semver/jsonc/yaml/package-json precedent it is promoted to `current` with a raised completeness and inline "As-built:" notes woven into the sections below, each resolving a verify-at-port-time item the pre-port draft left open.
 
+## The consolidation (approved 2026-07-11)
+
+**Approved and not yet executed. It is sequenced FIRST, ahead of the two remaining migrations** ([migration order](../package-inventory.md#migration-order)). It supersedes the family described in [scope and the package set](#scope-and-the-package-set) below, which is kept as the record of how the family came to exist.
+
+`@effected/config-file-jsonc`, `@effected/config-file-yaml` and `@effected/config-file-toml` dissolve into this package, which absorbs their three codecs. **The three format packages — `@effected/jsonc`, `@effected/yaml`, `@effected/toml` — remain independent and are untouched.** Only the adapter shims go. The workspace goes from 19 packages to 16.
+
+### The load-bearing constraint: distinct named exports, never a namespace object
+
+**This is the whole decision. Get it wrong and the decision's own justification evaporates.**
+
+The merged package must export the codecs as **distinct named exports** — `JsoncCodec`, `YamlCodec`, `TomlCodec`, each its own binding, each importable in isolation. It must **not** collect them into a namespace object.
+
+`src/ConfigCodec.ts` today ends with `export const ConfigCodec = { json } as const` — a namespace object alongside the `ConfigCodec` interface. Growing that object to hold `json`, `jsonc`, `yaml` and `toml` would turn it into a **dispatch table**: referencing `ConfigCodec` at all would then reach every codec, every codec would reach its engine, and a consumer importing the type or the JSON codec would drag the jsonc, yaml and toml engines into its bundle. Tree-shaking would die **silently** — no error, no warning, just a bundle several hundred kilobytes larger than it should be — and with it the entire basis for merging these packages.
+
+This is the repo's [no-barrel-re-exports](../effect-standards.md#no-barrel-re-exports) rule biting in a place nobody had looked: a namespace *object* is a barrel with a different syntax, and unlike a re-export barrel it survives tree-shaking analysis as a single live binding. Either that namespace object goes entirely (the codecs become free-standing consts, `ConfigCodec` stays the interface only) or it stays **JSON-only** and the three format codecs are added beside it, never inside it. The executing agent picks one; it may not grow the object.
+
+### The evidence
+
+The family's original rationale — recorded below — was that this monorepo does not use subpath exports, so every optional dependency became a package boundary. That reads as a tooling workaround. The decision now rests on facts about this codebase, each verified against source on 2026-07-11:
+
+- **There is no runtime dispatch.** `ConfigCodec` is an interface (`src/ConfigCodec.ts`) plus a plain object literal, and each adapter exports a single named codec — see `packages/config-file-toml/src/TomlCodec.ts` — which the caller passes explicitly as `ConfigFile.layer`'s `codec` option. `ConfigFile.ts` only ever reads `options.codec`; nothing maps a file extension to a codec. `ConfigCodec.extensions` was pruned at port time precisely because nothing read it (see [pruning and naming fixes](#pruning-and-naming-fixes)).
+- **Explicit composition means a bundler tree-shakes what it does not reference.** A consumer that names only `TomlCodec` never references the yaml or jsonc bindings, so their entire module graphs — engines included — are unreachable and dropped.
+- **A non-bundling Node consumer pays nothing either.** ESM does not load a module nobody imports, so a TOML-only consumer never executes the yaml engine even unbundled.
+- **pnpm's content-addressed store hardlinks**, so the install cost of the extra dependency edges is negligible. Install weight was the original argument for splitting, and it does not survive contact with how pnpm actually works.
+- **The DX gain is the point**: one install, `TomlCodec` just works, and three fewer packages to version, release and document.
+
+### Consequences, recorded honestly
+
+- **This package stops being a zero-runtime-dependency package.** That property is recorded below — "zero runtime dependencies, `effect`-only peers", called "the cleanest boundary profile in the repo so far" in [tier and dependencies](#tier-and-dependencies) — and someone will cite it back. Absorbing the codecs means taking `@effected/jsonc`, `@effected/yaml` and `@effected/toml` as `workspace:*` edges (following the `@effected/walker` precedent: declared in both `devDependencies` and `peerDependencies`). What is lost is the *boast*, not [R1](../effect-standards.md#dependency-policy) compliance: R1 forbids **external** runtime dependencies and explicitly permits `@effected/*` edges, and all three format packages are pure-tier with zero runtime dependencies of their own. The accurate property after the merge is "zero external runtime dependencies".
+- **The tier stays boundary.** Confirmed against [effect-standards.md](../effect-standards.md#dependency-policy): [R2](../effect-standards.md#dependency-policy) is the only propagation rule and it names **tier 3** alone; [R3](../effect-standards.md#dependency-policy) records that tier 2 does not propagate; a **pure** `@effected/*` edge carries no external code into a consumer's tree at all, so a fortiori it propagates nothing. [R4](../effect-standards.md#dependency-policy) keeps tier on the package's own surface, and this package's surface still does file IO through core `FileSystem`/`Path`. Boundary, unchanged.
+- **`@soda3js/config` gains edges it never executes.** The one gate consumer that needs only TOML ([releases.md](../releases.md#the-five-applications)) takes `@effected/config-file` and, transitively, `jsonc` and `yaml` — engines it will never run. This is acceptable **precisely because** of the tree-shaking and lazy-ESM facts above. **If either of those facts is ever falsified, this decision must be revisited**, and that consumer is the one that would pay for it.
+- **The watcher is not a candidate.** `@effected/config-file-watcher` (5f, not started) stays its own package: it is a boundary-tier service, not a codec, and none of the reasoning above applies to it.
+
 ## Scope and the package set
 
-The maintainer ruled that **subpath exports are not used in this monorepo** — an optional dependency becomes a package boundary instead. That decision, plus the review's split analysis (§5), expands migration #5 from one package into a family. Only the first three ship in this cycle.
+**Superseded by [the consolidation](#the-consolidation-approved-2026-07-11) above. Kept as the record of why the family existed and what each member shipped.**
+
+The maintainer ruled that **subpath exports are not used in this monorepo** — an optional dependency becomes a package boundary instead. That decision, plus the review's split analysis (§5), expanded migration #5 from one package into a family. Only the first three shipped in that cycle.
 
 | Package | Tier | Cycle | Depends on |
 | --- | --- | --- | --- |
@@ -79,6 +114,8 @@ As-built, 2026-07-09: `@effected/walker` landed. This package's `internal/walkUp
 - `peerDependencies`: `effect`, `@effected/config-file` (`workspace:*`), and the format package (`@effected/jsonc` / `@effected/yaml`, `workspace:*`). The adapter is ~20 lines of glue between two APIs the consumer already has installed, so both edges are peers rather than regular deps — this keeps a single `ConfigCodec` interface identity and a single format-package instance in the consumer's graph.
 
 **Peer closure check.** `effect` has no peers. `@effected/jsonc` and `@effected/yaml` each declare only `effect` as a peer, which the adapters re-declare alongside `@effected/config-file` (whose peer is likewise `effect` only). The closure holds; no transitive peer escapes to consumers. This is the cleanest boundary profile in the repo so far: **zero runtime dependencies, `effect`-only peers.**
+
+**This profile changes with [the consolidation](#the-consolidation-approved-2026-07-11).** Absorbing the three codecs adds `@effected/jsonc`, `@effected/yaml` and `@effected/toml` as `workspace:*` edges, so "zero runtime dependencies" becomes "zero **external** runtime dependencies". The peer closure still holds — each format package peers on `effect` alone — and the tier stays boundary.
 
 As-built: `@effect/platform-node` exports **no `NodeContext`** — the v3-familiar aggregate layer is gone; the aggregate in v4 is `NodeServices`. Separately, `NodeFileSystem.layer` alone does **not** satisfy `FileSystem | Path` — integration tests (and any consumer wiring a real platform) compose `Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)`.
 
@@ -318,6 +355,8 @@ As-built: this sequencing landed as planned. `@effected/config-file` shipped wit
 As-built: the API-Extractor gate was **vacuous for eleven tasks** across this port before it was noticed — `index.ts` was `export {}` on those tasks, so the extractor walked nothing and reported `suppressed: 0`, which looked clean but proved nothing. Engaging it for real surfaced nine latent warnings and one `ciFatal` (`FsPath`, an internal type reachable from a `@public` signature, fixed by inlining the union at the call site rather than exporting the internal type). Final state: `errors: 0, warnings: 0, suppressed: 10` (one `_base` suppression per class factory, per the [API-Extractor house policy](../effect-standards.md#api-extractor--effect-class-factories)). The two adapter packages legitimately report `suppressed: 0` — they define no class factories, so there is nothing to suppress.
 
 ## Adapter packages (as-built)
+
+**All three adapters dissolve into this package — see [the consolidation](#the-consolidation-approved-2026-07-11).** What follows is what they shipped, and every finding in it survives the move: the codecs themselves are unchanged, only their home is. The jsonc comment-loss caveat and the open stringify-seam question below are inherited by the merged package as-is.
 
 `@effected/config-file-jsonc` and `@effected/config-file-yaml` are both thin `ConfigCodec` implementations over their respective format package, per the [module layout](#module-layout-module-per-concept) plan — each adapter knows about both `@effected/config-file` and its one format package; the format packages stay unaware of config-file.
 
