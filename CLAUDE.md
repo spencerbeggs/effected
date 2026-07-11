@@ -138,6 +138,13 @@ The `@savvy-web/*` packages are in active development — if behavior seems unex
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml` (`catalog:effect`, `catalog:effectPeers`, `catalog:silk`), managed via `packages/pnpm-plugin-effect`.
 
+The Effect catalogs pin **exact** beta versions (`4.0.0-beta.94`, no caret). A caret range on a prerelease floats freely across the beta line, which silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be the authority on what v4 exports.
+
+Two load-bearing pins exist because a catalog alone cannot hold the line:
+
+- **`overrides` in `pnpm-workspace.yaml`** pins `@effect/platform-node@4.0.0-beta.94>@effect/platform-node-shared` to `4.0.0-beta.94`. Upstream, `@effect/platform-node@4.0.0-beta.94` declares its own sibling as `"@effect/platform-node-shared": "^4.0.0-beta.94"` — a caret on a prerelease — so it floats to a later beta whose `effect` peer the exact-pinned core no longer satisfies. Catalogs bind only *direct* workspace deps; this float is one level down, inside a dependency's manifest, and `overrides` is the only lever that reaches it. The override is **scoped to the v4 parent** on purpose: an unscoped `@effect/platform-node-shared` override also replaces the v3-era `0.60.0` that the v3 tooling chain needs, poisoning it in the opposite direction.
+- **`website` declares `effect: catalog:silk`** (v3). `rspress-plugin-api-extractor` resolves its own `effect` at v3 correctly, but its transitive `type-registry-effect` declares `effect` and `@effect/platform` as **peers**; under `autoInstallPeers: true` those bound to the workspace's v4 preference, yielding a v3 `@effect/platform` built against v4 core whose `Context` no longer exports `GenericTag`. `rspress.config.ts` died on it and the docs site was broken on `main` with nothing to catch it. A transitive dependency that *peers* on `effect` is the poisoning surface; one that merely depends on it is fine.
+
 Treat new `pnpm peers check` warnings as upstream closure defects to fix, not warnings to silence. One residual warning is **expected**: `@effect/platform`, `@effect/rpc`, `@effect/sql` and `@effect/cluster` want `effect@^3.21.x`, reaching the tree through the build/test tooling chain (`@savvy-web/bundler` → `@savvy-web/tsdown-plugins` → `@effect/platform-node`; `@savvy-web/silk` and `@vitest-agent/plugin` → `@effect/cli`). It is under investigation — do not chase it. A warning outside that set is a genuine defect.
 
 Always check the lockfile diff after an install: a plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from it.

@@ -16,6 +16,7 @@
 		"@types/react": "catalog:silk",
 		"@types/react-dom": "catalog:silk",
 		"@typescript/native-preview": "catalog:silk",
+		"effect": "catalog:silk",
 		"react": "catalog:silk",
 		"react-dom": "catalog:silk",
 		"rspress-plugin-api-extractor": "^0.3.7",

@@ -1,0 +1,39 @@
+name: Website
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+concurrency:
+  group: website-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Docs Site
+    runs-on: ubuntu-latest
+    env:
+      TURBO_TELEMETRY_DISABLED: "1"
+      DO_NOT_TRACK: "1"
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup runtime
+        id: runtime
+        uses: savvy-web/silk-runtime-action@v1
+
+      # No paths filter: the site build reaches through the whole workspace.
+      # Its turbo task depends on the packages' build:prod api-extractor models,
+      # and rspress.config.ts loads plugins whose Effect peers are resolved from
+      # the lockfile, so a package change or a peer-resolution shift can break
+      # the site without website/ being touched. Turbo's task graph builds the
+      # upstream packages first; the turbo cache keeps the common case cheap.
+      - name: Build docs site
+        run: pnpm exec turbo run build --filter=docs --log-order=grouped --log-prefix=none --output-logs=full
