@@ -103,6 +103,31 @@ export class NoMatchingVersionError extends Schema.TaggedErrorClass<NoMatchingVe
 ) {}
 
 /**
+ * An explicit `defaultVersion` was asked for and nothing matched it.
+ *
+ * Distinct from {@link NoMatchingVersionError}, which says the *main* range
+ * matched nothing. Here the main range resolved fine and the caller's separate
+ * default range did not.
+ *
+ * It has to be its own failure rather than a silently dropped field. `default`
+ * is `optionalKey`, so an unresolvable default could simply be omitted — and for
+ * Node, whose default falls back to the LTS pick, the caller would then be handed
+ * the LTS version as though they had asked for it. Naming a default that does not
+ * exist is a mistake, and it reaches the caller as one.
+ *
+ * @public
+ */
+export class UnresolvableDefaultError extends Schema.TaggedErrorClass<UnresolvableDefaultError>()(
+	"UnresolvableDefaultError",
+	{
+		/** The runtime that was searched. */
+		runtime: Runtime,
+		/** The range the caller asked to treat as the default. */
+		defaultVersion: Schema.String,
+	},
+) {}
+
+/**
  * Fresh data was required and could not be obtained.
  *
  * Raised only by the `layerFresh` strategy, at layer construction: the caller

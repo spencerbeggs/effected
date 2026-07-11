@@ -14,7 +14,12 @@ import type { GitHubRuntimeShape } from "./internal/githubRuntime.js";
 import { build } from "./internal/githubRuntime.js";
 import type { ReleaseIndex } from "./internal/releaseIndex.js";
 import { populateAuto, populateFresh, populateOffline } from "./internal/strategy.js";
-import type { FreshnessError, NoMatchingVersionError, ResolvedVersions } from "./ResolvedVersions.js";
+import type {
+	FreshnessError,
+	NoMatchingVersionError,
+	ResolvedVersions,
+	UnresolvableDefaultError,
+} from "./ResolvedVersions.js";
 import { Increments } from "./ResolvedVersions.js";
 
 /**
@@ -71,7 +76,7 @@ export class BunResolver extends Context.Service<
 	{
 		readonly resolve: (
 			options?: BunResolverOptions,
-		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError>;
+		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
 	}
 >()("@effected/runtime-resolver/BunResolver") {
 	/** Try GitHub, fall back to the bundled snapshot. */

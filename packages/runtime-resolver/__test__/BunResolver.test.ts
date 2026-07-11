@@ -4,10 +4,12 @@ import { Effect, Layer } from "effect";
 import {
 	BunResolver,
 	DenoResolver,
+	FreshnessError,
 	GitHubClient,
 	GitHubRelease,
 	NetworkError,
 	NoMatchingVersionError,
+	UnresolvableDefaultError,
 } from "../src/index.js";
 
 const release = (tag: string, date = "2024-03-01T00:00:00Z") =>
@@ -61,13 +63,45 @@ describe("BunResolver", () => {
 
 	it.effect("the fresh strategy fails rather than serving a snapshot", () =>
 		Effect.gen(function* () {
-			const exit = yield* Effect.exit(
+			// `exit._tag === "Failure"` alone would stay green for a regression that
+			// failed with any error at all — including the NetworkError leaking straight
+			// through, which is precisely what `FreshnessError` exists to wrap.
+			const error = yield* Effect.flip(
 				Effect.gen(function* () {
 					const resolver = yield* BunResolver;
 					return yield* resolver.resolve({ range: "^1.0.0" });
 				}).pipe(Effect.provide(BunResolver.layerFresh.pipe(Layer.provide(deadClient)))),
 			);
-			assert.isTrue(exit._tag === "Failure");
+			assert.instanceOf(error, FreshnessError);
+			assert.strictEqual(error.runtime, "bun");
+		}),
+	);
+
+	it.effect("a default range that matches nothing fails rather than being dropped", () =>
+		Effect.gen(function* () {
+			// Bun has no LTS fallback, so an unresolvable default could only ever have
+			// been silently omitted from the response. Silently omitting a field the
+			// caller explicitly asked for is the same defect as node's silent LTS swap.
+			const error = yield* Effect.flip(
+				Effect.gen(function* () {
+					const resolver = yield* BunResolver;
+					return yield* resolver.resolve({ range: "^1.0.0", defaultVersion: ">=900" });
+				}).pipe(Effect.provide(BunResolver.layerOffline)),
+			);
+			assert.instanceOf(error, UnresolvableDefaultError);
+			assert.strictEqual(error.runtime, "bun");
+			assert.strictEqual(error.defaultVersion, ">=900");
+		}),
+	);
+
+	it.effect("a default range that does match is still resolved", () =>
+		Effect.gen(function* () {
+			const result = yield* Effect.gen(function* () {
+				const resolver = yield* BunResolver;
+				return yield* resolver.resolve({ range: "^1.0.0", defaultVersion: "^1.0.0" });
+			}).pipe(Effect.provide(BunResolver.layerOffline));
+			assert.isDefined(result.default);
+			assert.strictEqual(result.default, result.latest, "the newest match of the default range");
 		}),
 	);
 

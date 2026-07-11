@@ -16,7 +16,12 @@ import { populateAuto, populateFresh, populateOffline } from "./internal/strateg
 import type { NodeRelease } from "./NodeRelease.js";
 import type { InvalidScheduleDateError } from "./NodeSchedule.js";
 import { NodePhase, NodeSchedule } from "./NodeSchedule.js";
-import type { FreshnessError, NoMatchingVersionError, ResolvedVersions } from "./ResolvedVersions.js";
+import type {
+	FreshnessError,
+	NoMatchingVersionError,
+	ResolvedVersions,
+	UnresolvableDefaultError,
+} from "./ResolvedVersions.js";
 import { Increments } from "./ResolvedVersions.js";
 
 /**
@@ -68,7 +73,7 @@ export class NodeResolver extends Context.Service<
 	{
 		readonly resolve: (
 			options?: NodeResolverOptions,
-		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError>;
+		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
 	}
 >()("@effected/runtime-resolver/NodeResolver") {
 	/**
@@ -100,11 +105,29 @@ export class NodeResolver extends Context.Service<
 /** The live feed, and the snapshot. Both also refresh the schedule the resolver reads. */
 type Load = Effect.Effect<ReadonlyArray<NodeRelease>, InvalidScheduleDateError | GitHubError, HttpClient.HttpClient>;
 
-/** What `NodeResolver` puts in the context. */
+/**
+ * What `NodeResolver` puts in the context.
+ *
+ * This restates the shape written inline in the `Context.Service` generic above,
+ * and the duplication is load-bearing rather than an oversight. Referencing this
+ * interface from the heritage clause instead makes API Extractor emit
+ * `ae-forgotten-export` — *"The symbol NodeResolverShape needs to be exported by
+ * the entry point index.d.ts"*, `ciFatal: true` — because the synthesized
+ * `NodeResolver_base` then names a symbol no consumer can import. The `_base`
+ * suppression in `savvy.build.ts` deliberately does not cover that: it is scoped
+ * to the synthesized bases themselves, so a genuine surface leak still fails the
+ * gate. (Measured: deduping takes `dist/prod/issues.json` from 0 warnings to 1.)
+ *
+ * The alternatives are worse than the repetition: exporting the shape would put a
+ * second name for the service contract on the public API, and the two GitHub-hosted
+ * resolvers already make this same trade for the same reason. Nothing can drift —
+ * `build` takes a `Context.Key<NodeResolver, NodeResolverShape>`, so the two
+ * spellings must agree or the module does not compile.
+ */
 interface NodeResolverShape {
 	readonly resolve: (
 		options?: NodeResolverOptions,
-	) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError>;
+	) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
 }
 
 /**

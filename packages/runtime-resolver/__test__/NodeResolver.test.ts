@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { InvalidRangeError } from "@effected/semver";
 import { DateTime, Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { NoMatchingVersionError, NodeResolver } from "../src/index.js";
+import { FreshnessError, NoMatchingVersionError, NodeResolver, UnresolvableDefaultError } from "../src/index.js";
 
 /**
  * A date inside the bundled snapshot's coverage, so phase filtering has real
@@ -128,6 +128,60 @@ describe("NodeResolver", () => {
 		}),
 	);
 
+	it.effect("a default range that matches nothing fails rather than quietly becoming the LTS pick", () =>
+		Effect.gen(function* () {
+			// The range is well-formed and resolves to nothing. Because node falls back
+			// to LTS when no default was asked for, an unresolvable *explicit* default
+			// used to be indistinguishable from having asked for none — the caller named
+			// a version that does not exist and silently got LTS.
+			const error = yield* Effect.flip(resolve({ range: "*", defaultVersion: ">=900", date: NOW }));
+			assert.instanceOf(error, UnresolvableDefaultError);
+			assert.strictEqual(error.runtime, "node");
+			assert.strictEqual(error.defaultVersion, ">=900");
+		}),
+	);
+
+	it.effect("omitting the default still falls back to LTS", () =>
+		Effect.gen(function* () {
+			// The other side of the same seam: absent must keep falling back, so the fix
+			// cannot have been "always fail when the default does not resolve".
+			const result = yield* resolve({ range: "*", date: NOW });
+			assert.isDefined(result.default);
+			assert.strictEqual(result.default, result.lts);
+		}),
+	);
+
+	describe("the dotted 0.x release lines", () => {
+		// June 2015: v0.12 (start 2015-02-06) was current, while v0.8 (end 2014-07-31)
+		// was already dead. The bundled snapshot carries all three dotted lines and
+		// their 0.x releases, so this crosses the seam a consumer actually calls —
+		// `NodeSchedule` unit tests alone would not prove `NodeRelease.phase` asks the
+		// schedule the right question.
+		const JUNE_2015 = DateTime.makeUnsafe("2015-06-01");
+
+		it.effect("resolves 0.12 as current, not with v0.8's end-of-life dates", () =>
+			Effect.gen(function* () {
+				const result = yield* resolve({ range: "0.12.x", phases: ["current"], increments: "patch", date: JUNE_2015 });
+				assert.isAbove(result.versions.length, 0);
+				assert.isTrue(
+					result.versions.every((v) => v.startsWith("0.12.")),
+					"only 0.12 releases match the range",
+				);
+			}),
+		);
+
+		it.effect("still reports 0.8 as end-of-life at the same moment", () =>
+			Effect.gen(function* () {
+				// The discriminating half: if every 0.x line were keyed to v0.12 instead,
+				// this would wrongly succeed.
+				const error = yield* Effect.flip(
+					resolve({ range: "0.8.x", phases: ["current"], increments: "patch", date: JUNE_2015 }),
+				);
+				assert.instanceOf(error, NoMatchingVersionError);
+			}),
+		);
+	});
+
 	it.effect("phase is evaluated at the supplied date, not the wall clock", () =>
 		Effect.gen(function* () {
 			// Node 20 was in active LTS in 2024 and in maintenance by 2025. The same
@@ -162,13 +216,16 @@ describe("NodeResolver", () => {
 
 	it.effect("the fresh strategy fails rather than silently serving a snapshot", () =>
 		Effect.gen(function* () {
-			const exit = yield* Effect.exit(
+			// Asserting only that it failed would pass for a regression that failed with
+			// the wrong error entirely — the type IS the contract here.
+			const error = yield* Effect.flip(
 				Effect.gen(function* () {
 					const resolver = yield* NodeResolver;
 					return yield* resolver.resolve({ range: ">=20", date: NOW });
 				}).pipe(Effect.provide(NodeResolver.layerFresh.pipe(Layer.provide(deadNetwork)))),
 			);
-			assert.isTrue(exit._tag === "Failure");
+			assert.instanceOf(error, FreshnessError);
+			assert.strictEqual(error.runtime, "node");
 		}),
 	);
 });

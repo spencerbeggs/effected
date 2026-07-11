@@ -13,7 +13,7 @@ import { Range } from "@effected/semver";
 import { Effect, Option } from "effect";
 import type { NodePhase } from "../NodeSchedule.js";
 import type { Increments, Runtime } from "../ResolvedVersions.js";
-import { NoMatchingVersionError, ResolvedVersions } from "../ResolvedVersions.js";
+import { NoMatchingVersionError, ResolvedVersions, UnresolvableDefaultError } from "../ResolvedVersions.js";
 import type { ReleaseIndex, Versioned } from "./releaseIndex.js";
 import { groupByIncrements } from "./releaseIndex.js";
 
@@ -35,7 +35,7 @@ export const resolveWith = <R extends Versioned>(args: {
 	readonly defaultsToLts: boolean;
 	/** Recorded on the error, so a caller can see what the search was restricted to. */
 	readonly phases?: ReadonlyArray<NodePhase>;
-}): Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError> =>
+}): Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError> =>
 	Effect.gen(function* () {
 		const { index, runtime, constraint, increments, defaultVersion, refine, pickLts, defaultsToLts, phases } = args;
 
@@ -59,17 +59,24 @@ export const resolveWith = <R extends Versioned>(args: {
 		const versions = grouped.map((release) => release.version.toString());
 		const lts = pickLts(grouped).pipe(Option.map((release) => release.version.toString()));
 
-		const resolvedDefault = yield* Option.match(Option.fromUndefinedOr(defaultVersion), {
-			onNone: () => Effect.succeedNone,
+		// "No default was asked for" and "a default was asked for and does not
+		// exist" are different answers, and collapsing them is how a caller who
+		// names a version that is not there silently receives the LTS pick instead
+		// (`defaultsToLts` is Node's). The absent case falls back; the unresolvable
+		// case fails.
+		const chosenDefault = yield* Option.match(Option.fromUndefinedOr(defaultVersion), {
+			onNone: () => Effect.succeed(defaultsToLts ? lts : Option.none<string>()),
 			onSome: (raw) =>
 				Range.parse(raw).pipe(
 					Effect.flatMap((defaultRange) => index.resolve(defaultRange)),
-					Effect.map(Option.map((release) => release.version.toString())),
+					Effect.flatMap(
+						Option.match({
+							onNone: () => Effect.fail(new UnresolvableDefaultError({ runtime, defaultVersion: raw })),
+							onSome: (release) => Effect.succeed(Option.some(release.version.toString())),
+						}),
+					),
 				),
 		});
-
-		const fallback = defaultsToLts ? lts : Option.none<string>();
-		const chosenDefault = Option.orElse(resolvedDefault, () => fallback);
 
 		return ResolvedVersions.make({
 			source: yield* index.source,

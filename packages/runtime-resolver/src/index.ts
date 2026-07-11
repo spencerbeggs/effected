@@ -58,10 +58,12 @@ export { NodeResolver, NodeResolverOptions } from "./NodeResolver.js";
 export {
 	InvalidScheduleDateError,
 	NodePhase,
+	type NodeReleaseLine,
 	NodeSchedule,
 	NodeScheduleData,
 	NodeScheduleEntry,
 	isLtsPhase,
+	nodeReleaseLine,
 } from "./NodeSchedule.js";
 export {
 	FreshnessError,
@@ -70,4 +72,5 @@ export {
 	ResolvedVersions,
 	Runtime,
 	Source,
+	UnresolvableDefaultError,
 } from "./ResolvedVersions.js";

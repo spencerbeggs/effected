@@ -14,7 +14,12 @@ import type { Context, DateTime } from "effect";
 import { Effect, Layer, Option } from "effect";
 import type { GitHubError } from "../GitHub.js";
 import { GitHubClient } from "../GitHub.js";
-import type { Increments, NoMatchingVersionError, ResolvedVersions } from "../ResolvedVersions.js";
+import type {
+	Increments,
+	NoMatchingVersionError,
+	ResolvedVersions,
+	UnresolvableDefaultError,
+} from "../ResolvedVersions.js";
 import { buildReleases, fetchGitHubReleases } from "./feeds.js";
 import * as ReleaseIndex from "./releaseIndex.js";
 import { resolveWith } from "./resolve.js";
@@ -31,7 +36,7 @@ export interface GitHubRuntimeOptions {
 export interface GitHubRuntimeShape {
 	readonly resolve: (
 		options?: GitHubRuntimeOptions,
-	) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError>;
+	) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
 }
 
 /** What a resolver needs to know about its runtime, independent of strategy. */
