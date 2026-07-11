@@ -5,7 +5,6 @@
  */
 
 import { DateTime, Effect, Option, Order, Schema } from "effect";
-import type { RawSchedule } from "./internal/types.js";
 
 /**
  * Lifecycle phase of a Node.js major release line.
@@ -143,7 +142,7 @@ export class NodeSchedule extends Schema.Class<NodeSchedule>("NodeSchedule")({
 	 * fail the whole schedule. A key that *is* a version but whose dates do not
 	 * parse fails with {@link InvalidScheduleDateError}.
 	 */
-	static readonly fromData = Effect.fn("NodeSchedule.fromData")(function* (data: NodeScheduleData | RawSchedule) {
+	static readonly fromData = Effect.fn("NodeSchedule.fromData")(function* (data: NodeScheduleData) {
 		const entries: NodeScheduleEntry[] = [];
 
 		for (const [key, value] of Object.entries(data)) {

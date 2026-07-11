@@ -4,6 +4,7 @@
  * @packageDocumentation
  */
 
+import type { InvalidRangeError } from "@effected/semver";
 import { SemVer } from "@effected/semver";
 import type { Effect, Layer } from "effect";
 import { Context, Schema } from "effect";
@@ -13,7 +14,7 @@ import type { GitHubRuntimeShape } from "./internal/githubRuntime.js";
 import { build } from "./internal/githubRuntime.js";
 import type { ReleaseIndex } from "./internal/releaseIndex.js";
 import { populateAuto, populateFresh, populateOffline } from "./internal/strategy.js";
-import type { FreshnessError } from "./ResolvedVersions.js";
+import type { FreshnessError, NoMatchingVersionError, ResolvedVersions } from "./ResolvedVersions.js";
 import { Increments } from "./ResolvedVersions.js";
 
 /**
@@ -65,9 +66,14 @@ export type DenoResolverOptions = typeof DenoResolverOptions.Type;
  *
  * @public
  */
-export class DenoResolver extends Context.Service<DenoResolver, GitHubRuntimeShape>()(
-	"@effected/runtime-resolver/DenoResolver",
-) {
+export class DenoResolver extends Context.Service<
+	DenoResolver,
+	{
+		readonly resolve: (
+			options?: DenoResolverOptions,
+		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError>;
+	}
+>()("@effected/runtime-resolver/DenoResolver") {
 	/** Try GitHub, fall back to the bundled snapshot. */
 	static readonly layer: Layer.Layer<DenoResolver, never, GitHubClient> = mk(this, (index, live, offline) =>
 		populateAuto(index, "deno", live, offline),

@@ -11,7 +11,7 @@
 
 import { Config, Context, Effect, Layer, Option, Redacted, Schema } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
-import type { HttpFailure, PageOptions } from "./internal/http.js";
+import type { HttpFailure } from "./internal/http.js";
 import { paginate } from "./internal/http.js";
 
 // ── Errors ───────────────────────────────────────────────────────────────────
@@ -219,9 +219,18 @@ export class GitHubAuth extends Context.Service<GitHubAuth, GitHubAuthShape>()(
  * Both fields must be positive integers. A `NaN` or fractional value is a
  * wiring bug, not a data condition, and dies rather than failing typed.
  *
+ * The fields are declared here rather than inherited from the engine's
+ * `PageOptions`, which is internal: a `@public` signature may not name a type a
+ * consumer cannot import.
+ *
  * @public
  */
-export interface ListOptions extends PageOptions {}
+export interface ListOptions {
+	/** Items per page. Defaults to 100, GitHub's maximum. */
+	readonly perPage?: number;
+	/** Pages to fetch. Defaults to 5, and is capped regardless. */
+	readonly pages?: number;
+}
 
 /**
  * The GitHub REST operations this package needs.
