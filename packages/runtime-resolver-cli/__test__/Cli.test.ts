@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { TestClock, TestConsole } from "effect/testing";
 import { Command } from "effect/unstable/cli";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -58,8 +58,37 @@ const run = (argv: ReadonlyArray<string>) =>
 		return lines.slice(before);
 	}).pipe(Effect.provide(environment));
 
+/**
+ * Run the CLI and keep BOTH channels.
+ *
+ * `run` would swallow the stdout of an invocation that fails, and a usage error
+ * has to be observed as a failure — an assertion on stdout alone cannot tell a
+ * command that failed cleanly from one that printed nothing and exited 0.
+ */
+const runExit = (argv: ReadonlyArray<string>) =>
+	Effect.gen(function* () {
+		yield* TestClock.setTime(NOW);
+		const before = (yield* TestConsole.logLines).length;
+		const exit = yield* Effect.exit(Command.runWith(command, { version: "0.0.0-test" })([...argv]));
+		const lines = (yield* TestConsole.logLines).slice(before);
+		return { exit, lines };
+	}).pipe(Effect.provide(environment));
+
 const parseOutput = (lines: ReadonlyArray<unknown>): CliResponse & { readonly $schema: string } =>
 	JSON.parse(String(lines[0])) as CliResponse & { readonly $schema: string };
+
+/**
+ * The typed failure a run left behind, or `undefined` if it did not fail typed.
+ *
+ * Reading the `Fail` reason specifically is what distinguishes "failed through
+ * the error channel" from "died" — a usage error that escaped as a defect would
+ * also make `Exit.isFailure` true.
+ */
+const usageErrorOf = (exit: Exit.Exit<void, unknown>): { readonly _tag: string } | undefined => {
+	if (!Exit.isFailure(exit)) return undefined;
+	const fail = exit.cause.reasons.find(Cause.isFailReason);
+	return fail?.error as { readonly _tag: string } | undefined;
+};
 
 describe("runtime-resolver CLI", () => {
 	it.effect("resolves node and prints an ok envelope", () =>
@@ -140,17 +169,35 @@ describe("runtime-resolver CLI", () => {
 
 	it.effect("rejects an unknown lifecycle phase instead of silently using the defaults", () =>
 		Effect.gen(function* () {
-			const lines = yield* run(["--node", ">=20", "--node-phases", "nonsense", "--offline"]);
+			const { exit, lines } = yield* runExit(["--node", ">=20", "--node-phases", "nonsense", "--offline"]);
+
 			// Nothing is printed to stdout: the run stops rather than resolving with
 			// phases the user never asked for.
 			assert.lengthOf(lines, 0);
+
+			// And it FAILS. Printing a complaint and exiting 0 is how a CI job gating on
+			// the exit status reads a typo as a pass.
+			assert.isTrue(Exit.isFailure(exit));
+			assert.strictEqual(usageErrorOf(exit)?._tag, "UserError", "and it fails typed, not as a defect");
 		}),
 	);
 
-	it.effect("prints usage guidance when no runtime is requested", () =>
+	it.effect("exits non-zero when no runtime is requested", () =>
 		Effect.gen(function* () {
-			const lines = yield* run(["--offline"]);
+			const { exit, lines } = yield* runExit(["--offline"]);
 			assert.lengthOf(lines, 0, "the guidance goes to stderr, not the JSON channel");
+			assert.isTrue(Exit.isFailure(exit), "a bad invocation must not exit 0");
+		}),
+	);
+
+	it.effect("a resolution failure is still reported in the envelope, not as a usage error", () =>
+		Effect.gen(function* () {
+			// The other side of the seam: making usage errors fail must not turn an
+			// ordinary "nothing matched" into a failed run — that is data, and it belongs
+			// in the JSON envelope with ok:false.
+			const { exit, lines } = yield* runExit(["--node", ">=999", "--offline"]);
+			assert.isTrue(Exit.isSuccess(exit));
+			assert.isFalse(parseOutput(lines).ok);
 		}),
 	);
 

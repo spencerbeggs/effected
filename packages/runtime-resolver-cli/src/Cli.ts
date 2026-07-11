@@ -13,8 +13,8 @@ import {
 	NodePhase as NodePhaseSchema,
 	NodeResolver,
 } from "@effected/runtime-resolver";
-import { Console, DateTime, Effect, Layer, Option, Redacted, Schema } from "effect";
-import { Command, Flag } from "effect/unstable/cli";
+import { Console, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { CliError, Command, Flag } from "effect/unstable/cli";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { CliResponse, CliRuntimeResult } from "./CliResponse.js";
 import { CliResponse as CliResponseSchema, serializeError } from "./CliResponse.js";
@@ -29,10 +29,22 @@ const SCHEMA_URL =
  */
 const decodePhases = Schema.decodeUnknownEffect(Schema.Array(NodePhaseSchema));
 
-const parsePhases = (raw: string): Effect.Effect<ReadonlyArray<NodePhase>, string> =>
+/**
+ * Report a bad invocation and fail.
+ *
+ * A usage error has to leave through the error channel, not just print. Both of
+ * these branches used to log and return successfully, so `runtime-resolver`
+ * (no arguments) and `--node-phases nonsense` each exited **0** — a CI job
+ * gating on the exit status read a typo as a pass. `CliError.UserError` is what
+ * `Command.run` and `NodeRuntime.runMain` already understand: exit code 1.
+ */
+const usage = (message: string): Effect.Effect<never, CliError.UserError> =>
+	Console.error(message).pipe(Effect.andThen(Effect.fail(new CliError.UserError({ cause: message }))));
+
+const parsePhases = (raw: string): Effect.Effect<ReadonlyArray<NodePhase>, CliError.UserError> =>
 	decodePhases(raw.split(",").map((part) => part.trim())).pipe(
-		Effect.mapError(
-			() => `Invalid --node-phases value "${raw}". Valid phases: current, active-lts, maintenance-lts, end-of-life.`,
+		Effect.catch(() =>
+			usage(`Invalid --node-phases value "${raw}". Valid phases: current, active-lts, maintenance-lts, end-of-life.`),
 		),
 	);
 
@@ -122,23 +134,17 @@ export const command = Command.make("runtime-resolver", flags, (args: Flags) =>
 		const wantDeno = Option.isSome(args.deno);
 
 		if (!wantNode && !wantBun && !wantDeno) {
-			return yield* Console.error(
+			return yield* usage(
 				"No runtime specified. Use --node, --bun or --deno to resolve versions.\nRun with --help for usage.",
 			);
 		}
 
+		// `parsePhases` fails rather than returning a sentinel, so a bad value stops
+		// the run here instead of silently resolving with the default phases the user
+		// never asked for.
 		const phases = Option.isSome(args.nodePhases)
-			? Option.some(
-					yield* parsePhases(args.nodePhases.value).pipe(
-						Effect.tapError((message) => Console.error(message)),
-						Effect.catch(() => Effect.succeed(undefined)),
-					),
-				)
-			: Option.none<ReadonlyArray<NodePhase> | undefined>();
-
-		// A bad --node-phases already printed its own message; stop rather than
-		// silently resolving with the default phases the user did not ask for.
-		if (Option.isSome(phases) && phases.value === undefined) return;
+			? Option.some(yield* parsePhases(args.nodePhases.value))
+			: Option.none<ReadonlyArray<NodePhase>>();
 
 		// `Flag.choice` already narrowed this to the literal union, so it *is* an
 		// `Increments` — no cast, and an invalid value never reached the handler.
@@ -147,9 +153,12 @@ export const command = Command.make("runtime-resolver", flags, (args: Flags) =>
 
 		// Auth: an explicit --token beats the environment; otherwise the library's
 		// own precedence (PAT, then GITHUB_TOKEN, then anonymous) applies.
+		// `Flag.redacted` already yields the `Redacted<string>` that `GitHubAuth.token`
+		// takes, so the token is passed straight through — unwrapping and rewrapping it
+		// would materialize the secret as a plain string for no gain.
 		const auth = Option.match(args.token, {
 			onNone: () => GitHubAuth.layer,
-			onSome: (token) => GitHubAuth.token(Redacted.make(Redacted.value(token))),
+			onSome: (token) => GitHubAuth.token(token),
 		});
 		const github = GitHubClient.layer.pipe(Layer.provide(Layer.mergeAll(auth, FetchHttpClient.layer)));
 
@@ -170,7 +179,7 @@ export const command = Command.make("runtime-resolver", flags, (args: Flags) =>
 						return yield* resolver.resolve({
 							range,
 							increments,
-							...(Option.isSome(phases) && phases.value !== undefined ? { phases: phases.value } : {}),
+							...(Option.isSome(phases) ? { phases: phases.value } : {}),
 							...(Option.isSome(args.nodeDefault) ? { defaultVersion: args.nodeDefault.value } : {}),
 							...(Option.isSome(date) ? { date: date.value } : {}),
 						});
