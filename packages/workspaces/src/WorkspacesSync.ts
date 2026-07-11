@@ -23,13 +23,27 @@ import { MAX_ENUMERATION_DEPTH, MAX_ENUMERATION_ENTRIES, PRUNED_DIRECTORIES } fr
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import { PublishConfig, WorkspacePackage } from "./WorkspacePackage.js";
 
-/** Read and JSON-parse a file, or `undefined`. Never throws. */
+/**
+ * Read and JSON-parse a file into a plain object, or `undefined`. Never throws.
+ *
+ * The non-object check is load-bearing, not defensive noise. `JSON.parse`
+ * returns `undefined` for *nothing* — a `package.json` whose entire content is
+ * `null`, `42` or `"x"` parses successfully to that value, so a caller guarding
+ * only on `undefined` sails straight into `raw.name` and throws a `TypeError`.
+ * These functions are documented as total and are reached from a Vitest config,
+ * which has nowhere to put a crash: malformed input must be *skipped*, never a
+ * defect.
+ */
 const readJson = (file: string): Record<string, unknown> | undefined => {
+	let parsed: unknown;
 	try {
-		return JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+		parsed = JSON.parse(readFileSync(file, "utf8"));
 	} catch {
 		return undefined;
 	}
+	return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+		? (parsed as Record<string, unknown>)
+		: undefined;
 };
 
 /** Whether `dir` is a directory. Never throws. */

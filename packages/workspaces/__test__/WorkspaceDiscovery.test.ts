@@ -12,12 +12,16 @@ import type { Tree } from "./fixtures.js";
 import { manifest, platform, rootManifest } from "./fixtures.js";
 
 /** Discovery over a tree, rooted at `/repo`. */
-const discoveryOver = (tree: Tree, options?: { readonly maxDepth?: number }) => {
-	const base = platform(tree);
+const discoveryOver = (
+	tree: Tree,
+	options?: { readonly maxDepth?: number; readonly unreadable?: ReadonlySet<string> },
+) => {
+	const { unreadable, ...discoveryOptions } = options ?? {};
+	const base = platform(tree, unreadable === undefined ? {} : { unreadable });
 	const roots = WorkspaceRoot.layer.pipe(Layer.provide(base));
 	return Layer.mergeAll(
 		roots,
-		WorkspaceDiscovery.layer({ cwd: "/repo", ...options }).pipe(Layer.provide(roots), Layer.provide(base)),
+		WorkspaceDiscovery.layer({ cwd: "/repo", ...discoveryOptions }).pipe(Layer.provide(roots), Layer.provide(base)),
 	).pipe(Layer.provideMerge(base));
 };
 
@@ -365,6 +369,64 @@ describe("WorkspaceRoot — the NEAREST root wins", () => {
 			Effect.gen(function* () {
 				const roots = yield* WorkspaceRoot;
 				assert.strictEqual(yield* roots.find("/outer/inner/pkgs"), "/outer/inner");
+			}),
+		);
+	});
+});
+
+// ── a member manifest that is valid JSON but not an object ─────────────────
+
+const nonObjectManifest: Tree = {
+	"/repo/package.json": rootManifest(["packages/*"]),
+	"/repo/packages/good/package.json": manifest("@x/good"),
+	// `JSON.parse` returns `undefined` for NOTHING. A manifest of `null` parses
+	// happily to `null`, and reading `.name` off it throws a TypeError — malformed
+	// input escaping as an unhandled DEFECT rather than the typed channel.
+	"/repo/packages/nullish/package.json": "null",
+};
+
+describe("WorkspaceDiscovery — a member package.json that is `null`", () => {
+	layer(discoveryOver(nonObjectManifest))((it) => {
+		it.effect("fails TYPED, never as a defect", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const exit = yield* Effect.exit(discovery.listPackages());
+				assert.isTrue(Exit.isFailure(exit));
+				if (Exit.isFailure(exit)) {
+					// The discriminating assertion: no Die reason. An implementation that
+					// lets the TypeError escape still "fails", but it fails as a defect.
+					assert.isFalse(exit.cause.reasons.some(Cause.isDieReason));
+					assert.isTrue(exit.cause.reasons.some(Cause.isFailReason));
+				}
+
+				const error = yield* Effect.flip(discovery.listPackages());
+				assert.instanceOf(error, WorkspaceDiscoveryError);
+				assert.strictEqual(error.kind, "invalidJson");
+			}),
+		);
+	});
+});
+
+// ── an unreadable directory must not silently vanish ───────────────────────
+
+const permissionTree: Tree = {
+	"/repo/package.json": rootManifest(["packages/*"]),
+	"/repo/packages/visible/package.json": manifest("@x/visible"),
+	"/repo/packages/secret/package.json": manifest("@x/secret"),
+};
+
+describe("WorkspaceDiscovery — a directory that cannot be read", () => {
+	layer(discoveryOver(permissionTree, { unreadable: new Set(["/repo/packages"]) }))((it) => {
+		it.effect("surfaces a typed unreadableDirectory rather than reporting an empty workspace", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				// Absorbing every readDirectory failure as "no entries" would return the
+				// root package alone and look like a legitimately empty workspace — the
+				// same silent-degradation shape as the trailing-`/**` bug. A permission
+				// error is a WRONG ANSWER, not an empty one.
+				const error = yield* Effect.flip(discovery.listPackages());
+				assert.instanceOf(error, WorkspacePatternError);
+				assert.strictEqual(error.kind, "unreadableDirectory");
 			}),
 		);
 	});

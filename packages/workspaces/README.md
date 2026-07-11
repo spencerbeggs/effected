@@ -55,11 +55,13 @@ Effect.runPromise(program.pipe(Effect.provide(WorkspacesLayer)));
 `ChangeDetector` offers three depths of analysis on one service — raw files, the packages owning them, and the transitive blast radius through the dependency graph.
 
 ```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { ChangeDetectionOptions, ChangeDetector, Workspaces } from "@effected/workspaces";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
 // layerWithGit adds ChangeDetector over the Node GitReader.
-const WorkspacesLayer = Workspaces.layerWithGit();
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLayer = Workspaces.layerWithGit().pipe(Layer.provide(Platform));
 
 const program = Effect.gen(function* () {
   const detector = yield* ChangeDetector;
@@ -68,6 +70,8 @@ const program = Effect.gen(function* () {
   );
   return affected.map((pkg) => pkg.name);
 });
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLayer)));
 ```
 
 Git runs through a `GitReader` service, not a hard-coded subprocess call — so a test provides a fake and needs no repository on disk, and a Bun or Deno consumer swaps the layer.

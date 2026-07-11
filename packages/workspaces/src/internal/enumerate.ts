@@ -21,7 +21,7 @@ export interface EnumeratedDirectory {
 }
 
 /** Why an enumeration failed. Every member is a caller-visible condition, never a defect. */
-export type EnumerationFailureKind = "missingBaseDir" | "depthExceeded" | "budgetExceeded";
+export type EnumerationFailureKind = "missingBaseDir" | "depthExceeded" | "budgetExceeded" | "unreadableDirectory";
 
 /** The enumerator's raw failure record; the facade materializes the typed error. */
 export interface EnumerationFailure {
@@ -124,7 +124,29 @@ export const enumerate = (
 
 				yield* consumeBudget(wildcard.source);
 
-				const entries = yield* fs.readDirectory(current.absolute).pipe(Effect.orElseSucceed(() => [] as Array<string>));
+				// A directory that vanished between the parent's listing and this read
+				// is a benign race — treat it as empty. Anything else (permission
+				// denied, an IO error) means a subtree we were asked to enumerate is
+				// unreadable, and answering with "no packages there" would be a WRONG
+				// ANSWER dressed as an empty one.
+				//
+				// This is deliberately NOT `@effected/walker`'s per-probe absorption.
+				// Walker absorbs because one unreadable ANCESTOR must not hide a valid
+				// root above it — the walk continues upward and can still succeed. This
+				// is DOWNWARD enumeration: a swallowed subtree is silently missing
+				// membership, which is the same silent-degradation shape as the
+				// trailing-`/**` bug this module exists to fix.
+				const entries = yield* fs.readDirectory(current.absolute).pipe(
+					Effect.catch((error) =>
+						error.reason._tag === "NotFound"
+							? Effect.succeed<ReadonlyArray<string>>([])
+							: Effect.fail<EnumerationFailure>({
+									kind: "unreadableDirectory",
+									pattern: wildcard.source,
+									detail: current.relative === "" ? root : current.relative,
+								}),
+					),
+				);
 
 				for (const entry of entries) {
 					if (PRUNED_DIRECTORIES.has(entry)) continue;

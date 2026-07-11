@@ -23,12 +23,22 @@ const directoriesOf = (tree: Tree): Set<string> => {
 	return dirs;
 };
 
+/** Knobs for making a fixture tree misbehave in specific, realistic ways. */
+export interface FileSystemOptions {
+	/**
+	 * Directories whose `readDirectory` fails with `PermissionDenied` — the case
+	 * a "treat every failure as an empty directory" enumerator silently loses.
+	 */
+	readonly unreadable?: ReadonlySet<string>;
+}
+
 /**
  * A `FileSystem` over a virtual tree, implementing exactly the four operations
  * this package uses: `exists`, `readFileString`, `readDirectory`, `stat`.
  */
-export const fileSystem = (tree: Tree): Layer.Layer<FileSystem.FileSystem> => {
+export const fileSystem = (tree: Tree, options: FileSystemOptions = {}): Layer.Layer<FileSystem.FileSystem> => {
 	const dirs = directoriesOf(tree);
+	const unreadable = options.unreadable ?? new Set<string>();
 
 	// The v4 constructor is `PlatformError.systemError`, not a `new SystemError` —
 	// `SystemError` is the reason payload, `PlatformError` is the failure.
@@ -48,6 +58,16 @@ export const fileSystem = (tree: Tree): Layer.Layer<FileSystem.FileSystem> => {
 		readFileString: (path: string) => (Object.hasOwn(tree, path) ? Effect.succeed(tree[path]) : notFound(path)),
 
 		readDirectory: (path: string) => {
+			if (unreadable.has(path)) {
+				return Effect.fail(
+					PlatformError.systemError({
+						_tag: "PermissionDenied",
+						module: "FileSystem",
+						method: "readDirectory",
+						pathOrDescriptor: path,
+					}),
+				);
+			}
 			if (!dirs.has(path)) return notFound(path);
 			const prefix = path === "/" ? "/" : `${path}/`;
 			const entries = new Set<string>();
@@ -69,8 +89,8 @@ export const fileSystem = (tree: Tree): Layer.Layer<FileSystem.FileSystem> => {
 };
 
 /** A `FileSystem` + `Path` layer over a virtual tree — the platform half of every suite. */
-export const platform = (tree: Tree): Layer.Layer<FileSystem.FileSystem | Path.Path> =>
-	Layer.mergeAll(fileSystem(tree), Path.layer);
+export const platform = (tree: Tree, options: FileSystemOptions = {}): Layer.Layer<FileSystem.FileSystem | Path.Path> =>
+	Layer.mergeAll(fileSystem(tree, options), Path.layer);
 
 /** A root `package.json` declaring npm-style workspaces. */
 export const rootManifest = (patterns: ReadonlyArray<string>, extra: Record<string, unknown> = {}): string =>

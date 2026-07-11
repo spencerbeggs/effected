@@ -36,7 +36,7 @@ export class WorkspaceDiscoveryError extends Schema.TaggedErrorClass<WorkspaceDi
 		/** The file that failed. */
 		path: Schema.String,
 		/** What went wrong with it. */
-		kind: Schema.Literals(["read", "invalidJson", "invalidYaml", "missingName", "missingVersion"]),
+		kind: Schema.Literals(["read", "invalidJson", "invalidShape", "invalidYaml", "missingName", "missingVersion"]),
 		/** The originating failure, if there was one. */
 		cause: Schema.Defect(),
 	},
@@ -60,7 +60,7 @@ export class WorkspacePatternError extends Schema.TaggedErrorClass<WorkspacePatt
 	/** The offending pattern, verbatim. */
 	pattern: Schema.String,
 	/** Why it could not be enumerated. */
-	kind: Schema.Literals(["missingBaseDir", "uncompilable", "depthExceeded", "budgetExceeded"]),
+	kind: Schema.Literals(["missingBaseDir", "uncompilable", "depthExceeded", "budgetExceeded", "unreadableDirectory"]),
 	/** A short, structured detail — the missing directory, or the bound exceeded. */
 	detail: Schema.String,
 }) {
@@ -125,7 +125,9 @@ export type WorkspaceLookupFailure =
 export type WorkspaceDiscoveryFailure = Exclude<WorkspaceLookupFailure, PackageNotFoundError>;
 
 /** The enumeration failure kinds map straight onto the pattern-error kinds. */
-const patternKindOf = (kind: EnumerationFailureKind): "missingBaseDir" | "depthExceeded" | "budgetExceeded" => kind;
+const patternKindOf = (
+	kind: EnumerationFailureKind,
+): "missingBaseDir" | "depthExceeded" | "budgetExceeded" | "unreadableDirectory" => kind;
 
 /**
  * Options for the {@link WorkspaceDiscovery} layer.
@@ -228,10 +230,26 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 								(cause) => new WorkspaceDiscoveryError({ root, path: packageJsonPath, kind: "read", cause }),
 							),
 						);
-					const raw = yield* Effect.try({
-						try: () => JSON.parse(content) as Record<string, unknown>,
+					const parsed = yield* Effect.try({
+						try: () => JSON.parse(content) as unknown,
 						catch: (cause) => new WorkspaceDiscoveryError({ root, path: packageJsonPath, kind: "invalidJson", cause }),
 					});
+
+					// `JSON.parse` never returns `undefined`, so a guard on `undefined`
+					// alone does not cover a manifest whose entire content is `null`, `42`
+					// or `"x"` — all of which parse fine. Reading `.name` off `null` would
+					// throw a TypeError, i.e. malformed input escaping as a DEFECT.
+					if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+						return yield* Effect.fail(
+							new WorkspaceDiscoveryError({
+								root,
+								path: packageJsonPath,
+								kind: "invalidJson",
+								cause: new Error("package.json is not a JSON object"),
+							}),
+						);
+					}
+					const raw = parsed as Record<string, unknown>;
 
 					const name = raw.name;
 					if (typeof name !== "string" || name.length === 0) {
@@ -350,15 +368,33 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 			const packages = memo.pipe(Effect.map((state) => state.packages));
 
 			/** Longest-prefix path index, rebuilt per query from the memoized list. */
+			/**
+			 * The longest-prefix index, built once per package list.
+			 *
+			 * Keyed on the package array's identity: the memo hands back the *same*
+			 * array on every call, so this is a hit for the whole life of the memo, and
+			 * `refresh()` produces a fresh array — a cache miss — which is exactly the
+			 * invalidation we want. No staleness is representable.
+			 */
+			const ownerIndexes = new WeakMap<
+				ReadonlyArray<WorkspacePackage>,
+				ReadonlyArray<{ readonly prefix: string; readonly package: WorkspacePackage }>
+			>();
+
 			const owners = (
 				all: ReadonlyArray<WorkspacePackage>,
-			): ReadonlyArray<{ readonly prefix: string; readonly package: WorkspacePackage }> =>
-				all
+			): ReadonlyArray<{ readonly prefix: string; readonly package: WorkspacePackage }> => {
+				const cached = ownerIndexes.get(all);
+				if (cached !== undefined) return cached;
+				const index = all
 					.map((pkg) => ({
 						prefix: pkg.path.endsWith(path.sep) ? pkg.path : pkg.path + path.sep,
 						package: pkg,
 					}))
 					.sort((a, b) => b.prefix.length - a.prefix.length);
+				ownerIndexes.set(all, index);
+				return index;
+			};
 
 			const ownerOf = (
 				filePath: string,
