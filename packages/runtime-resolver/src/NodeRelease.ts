@@ -50,11 +50,15 @@ export class NodeRelease extends Schema.Class<NodeRelease>("NodeRelease")({
 	/**
 	 * This release's lifecycle phase at a point in time.
 	 *
-	 * `Option.none()` when the schedule does not cover this major, or when `now`
+	 * The release line, not the major, is what the schedule is keyed by: `0.10`
+	 * and `0.12` are separate lines with separate end dates, so asking by major
+	 * alone would answer `0.12` with `0.8`'s schedule.
+	 *
+	 * `Option.none()` when the schedule does not cover this line, or when `now`
 	 * predates the line's release.
 	 */
 	phase(schedule: NodeSchedule, now: DateTime.Utc): Option.Option<NodePhase> {
-		return schedule.phaseFor(this.version.major, now);
+		return schedule.phaseFor(this.version, now);
 	}
 
 	/**
