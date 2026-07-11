@@ -70,6 +70,7 @@ the release, and it goes out at `0.1.0` with the libraries.
 | [@effected/runtime-resolver](/runtime-resolver) | boundary | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
 | [@effected/runtime-resolver-cli](/runtime-resolver-cli) | integrated | The `runtime-resolver` binary, split out so the library's consumers never install a platform adapter |
 | [@effected/workspaces](/workspaces) | integrated | Monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
+| [@effected/ts-vfs](/ts-vfs) | integrated | TypeScript virtual file systems: fetch, cache and resolve type definitions from npm, and build `@typescript/vfs` environments for type-aware code samples |
 | [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) | companion — no tier | The pnpm config dependency publishing the two Effect catalogs every package here pins against |
 
 Installing [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) holds your `effect` versions and peer floors
@@ -77,11 +78,10 @@ at exactly the values this kit was built and tested against, rather than leaving
 
 ## What is left
 
-Two packages remain before the kit is complete, in order: `ts-vfs`, then `app-kit`. `ts-vfs` is the last
-package with real domain logic to port — it fetches, caches and resolves TypeScript type definitions from
-npm so Twoslash-style tooling can typecheck type-aware samples. `app-kit` goes last because it is a thin
-composition over `xdg`, `config-file` and `store`, and what belongs in it is decided by how consumers
-actually wire the kit.
+One package remains before the kit is complete: `app-kit`. [@effected/ts-vfs](/ts-vfs) has landed, and it was
+the last package with real domain logic to port. `app-kit` goes last because it is a thin composition over
+`xdg`, `config-file` and `store`, and what belongs in it is decided by how consumers actually wire the kit —
+which the ts-vfs port is the first real answer to.
 
 ## Source
 

@@ -4,13 +4,13 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/architecture.md",
-			"hash": "f609b8ba05b2a2473d08412868b0436ce1894524ac633760cf8b6a6d78ac1a19",
+			"hash": "0bcfd1273430ded98e7715d63fefdb66beb0e2d1639fc19ff4f2ba7106cb722a",
 			"recordedAt": "2026-07-11"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "15b173f46c83a12d251f6bbcc40ab39795cc875e3d203269bdde2c6e697850e9",
+			"hash": "4d8984412917a6706a5b31c3d3a5491a9f575197bc2640c59c00cc1be560e54d",
 			"recordedAt": "2026-07-11"
 		},
 		{
@@ -22,7 +22,7 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "8d2a65a670143c0820b691fcf2e1ee1a2f27f6dc59532946e3a5455e747793b7",
+			"hash": "a692f40ad3c7daf7241c2f126fc341eed7b4e5459f19e6770412a58c17e144be",
 			"recordedAt": "2026-07-11"
 		},
 		{
@@ -46,7 +46,7 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/releases.md",
-			"hash": "05769b8cfb6ded6da146fedfd498f086ea049fff755ff1f6223a506332f76d86",
+			"hash": "50676f1c65e656ced069035d4ac89ef1afb211df5f38c9e498c9c787d39c3cc1",
 			"recordedAt": "2026-07-11"
 		},
 		{
@@ -88,7 +88,7 @@
 		{
 			"source": "packages/pnpm-plugin-effect/CLAUDE.md",
 			"target": ".claude/design/effected/packages/pnpm-plugin-effect.md",
-			"hash": "caf5d41587167b70cc1ea87198067f11da273049676db03e009e6861f70227c0",
+			"hash": "7f18db8bce443f362b07d01a0282f7c5fd1a3fb3b16207e3b7ff0336db00607f",
 			"recordedAt": "2026-07-11"
 		},
 		{
@@ -119,6 +119,12 @@
 			"source": "packages/toml/CLAUDE.md",
 			"target": ".claude/design/effected/packages/toml.md",
 			"hash": "f7979bb64e9131ef770d3856a52d5d437e103c23460da057f92892b0c18e199a",
+			"recordedAt": "2026-07-11"
+		},
+		{
+			"source": "packages/ts-vfs/CLAUDE.md",
+			"target": ".claude/design/effected/packages/ts-vfs.md",
+			"hash": "e74dfa6a015230ce0e7eef1a266df6ee125fd03d26a173fb8c52b1808a76afca",
 			"recordedAt": "2026-07-11"
 		},
 		{

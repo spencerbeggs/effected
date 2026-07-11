@@ -21,6 +21,7 @@ A pnpm monorepo (npm org `@effected`) building an [Effect](https://effect.websit
 | [@effected/workspaces](packages/workspaces) | integrated | Monorepo tooling as Effect services: root discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
 | [@effected/runtime-resolver](packages/runtime-resolver) | boundary | Resolve semver-compatible Node.js, Bun and Deno runtime versions from live feeds, with an offline snapshot fallback |
 | [@effected/runtime-resolver-cli](packages/runtime-resolver-cli) | integrated | The command-line interface for @effected/runtime-resolver |
+| [@effected/ts-vfs](packages/ts-vfs) | integrated | TypeScript virtual file systems: fetch, cache and resolve type definitions from npm, and build @typescript/vfs environments for type-aware code samples |
 | [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | infra | pnpm config dependency for centralized catalog management across the Effected ecosystem |
 
 Tier describes a package's runtime surface: **pure** packages peer on `effect` and take only `@effected/*` edges with no IO, **boundary** packages have the same dependency surface but do IO through Effect's core `FileSystem` and `Path` services and **integrated** packages import at least one runtime package outside `effect` core. `pnpm-plugin-effect` is repo infrastructure and sits outside the taxonomy.
@@ -31,7 +32,7 @@ Nothing here is published to npm yet. The whole kit ships together at 0.1.0 once
 
 ## Roadmap
 
-Two packages remain before the kit is complete, in order: `ts-vfs`, which fetches, caches and resolves TypeScript type definitions from npm so type-aware tooling can typecheck samples, and `app-kit`, a thin composition over `xdg`, `config-file` and `store` for wiring an application's control plane.
+One package remains before the kit is complete: `app-kit`, a thin composition over `xdg`, `config-file` and `store` for wiring an application's control plane. It is last because its content is decided by how the consuming applications actually wire the kit.
 
 ## Development
 

@@ -16,6 +16,7 @@ related:
   - packages/xdg.md
   - packages/workspaces.md
   - packages/runtime-resolver.md
+  - packages/ts-vfs.md
 ---
 
 # Release criteria
@@ -32,7 +33,7 @@ The criterion is "the kit can replace the business logic of these five." They sp
 
 **Migration targets** — absorbed into this repo, so "replacing their business logic" means porting them:
 
-- `type-registry-effect` → **`@effected/ts-vfs`** (renamed from `@effected/type-registry` on 2026-07-11; see [the ts-vfs rename](package-inventory.md#the-ts-vfs-rename)). **Not started; the next migration.** The v3 source package keeps its own name — only the target renames.
+- `type-registry-effect` → **`@effected/ts-vfs`** (renamed from `@effected/type-registry` on 2026-07-11; see [the ts-vfs rename](package-inventory.md#the-ts-vfs-rename)). **Merged** (migration #14). The v3 source package keeps its own name — only the target renames.
 - `runtime-resolver` → `@effected/runtime-resolver` + `@effected/runtime-resolver-cli`. **Merged**: the v3 repo's library and CLI both live here now, as two packages so that the binary's `@effect/platform-node` dependency does not reach the library's consumers.
 
 **External consumers** — stay in their own repos, per the libraries-only scope in [architecture.md](architecture.md). Each must be able to swap its `*-effect` dependencies for `@effected/*`:
@@ -41,15 +42,15 @@ The criterion is "the kit can replace the business logic of these five." They sp
 - `vitest-agent` — an 11-package monorepo depending on `workspaces-effect`, `config-file-effect` and `xdg-effect`. It consumes `workspaces`, `config-file`, `xdg` and `store`, and transitively `walker` and `lockfiles`.
 - `soda3js/tools` — specifically `@soda3js/config` (`dependencies: effect, smol-toml`), an Effect package whose job is loading and writing a TOML config file. It consumes `config-file` and `toml`. It needs **only** TOML: since [the config-file consolidation](package-inventory.md#the-config-file-consolidation-2026-07-11) the `config-file-toml` adapter it would have taken no longer exists, the `TomlCodec` arrives inside `@effected/config-file`, and this consumer carries dependency edges on `@effected/jsonc` and `@effected/yaml` that it never executes. It **provably pays nothing for them** — measured at 26.5 kB bundled, the TOML engine and neither of the others ([packages/config-file.md](packages/config-file.md#as-built-the-tree-shaking-property-is-measured-not-assumed)) — because an explicitly-composed codec is tree-shaken when unreferenced and, unbundled, ESM never loads a module nobody imports. **If either of those facts is ever falsified, this decision must be revisited** — this consumer is the one that would pay.
 
-`@effected/ts-vfs` is load-bearing for two of the five — it is a migration target in its own right and `rspress-plugin-api-extractor` depends on it — which is why it never sequenced at the end. With everything else merged it is now simply **next**, and the only package left behind it is `app-kit`, which **no consumer is blocked on** because nothing may depend on it (a library taking an application control plane would be an [R2](effect-standards.md#dependency-policy) tier-3 leak).
+`@effected/ts-vfs` is load-bearing for two of the five — it is a migration target in its own right and `rspress-plugin-api-extractor` depends on it — which is why it never sequenced at the end. It is now **merged**, and the only package left is `app-kit`, which **no consumer is blocked on** because nothing may depend on it (a library taking an application control plane would be an [R2](effect-standards.md#dependency-policy) tier-3 leak). Every application-facing package the five consumers need therefore exists.
 
 ## The gate
 
-The union of what those consumers need. **Fifteen library packages are merged today** (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtime-resolver`, `runtime-resolver-cli`, `workspaces`). `pnpm-plugin-effect` is outside that count because it is not a library — it is the kit's [companion](package-inventory.md#internal-packages-no-source-repo), published and installable but exposing no API ([effect-standards.md](effect-standards.md#companion-packages-published-but-not-a-library)). **It is on the gate all the same**: it ships at `0.1.0` with everything else. Being outside a count of libraries is not an exemption from the release.
+The union of what those consumers need. **Sixteen library packages are merged today** (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtime-resolver`, `runtime-resolver-cli`, `workspaces`, `ts-vfs`). `pnpm-plugin-effect` is outside that count because it is not a library — it is the kit's [companion](package-inventory.md#internal-packages-no-source-repo), published and installable but exposing no API ([effect-standards.md](effect-standards.md#companion-packages-published-but-not-a-library)). **It is on the gate all the same**: it ships at `0.1.0` with everything else. Being outside a count of libraries is not an exemption from the release.
 
 **The config-file consolidation is done** (2026-07-11): it dissolved three already-merged adapter packages into `@effected/config-file`, taking the merged count from eighteen to fifteen and the workspace from 19 packages to 16. It ran first, ahead of both ports, so the gate below, the remaining ports and every consumer's install instructions are written once against the final package set.
 
-**Two pieces of work remain**, in this order, per the [migration order](package-inventory.md#migration-order): the **ts-vfs** port, then **app-kit**. The kit ships at `0.1.0` with **seventeen** library packages, not twenty.
+**One piece of work remains**, per the [migration order](package-inventory.md#migration-order): **app-kit**. The **ts-vfs** port merged on 2026-07-11 (migration #14), which was the last package with real domain logic to port; app-kit is a thin composition over `xdg` + `config-file` + `store` and was sequenced behind it deliberately, so that it absorbs the wiring the ts-vfs port exercised for real. The kit ships at `0.1.0` with **seventeen** library packages, not twenty.
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
@@ -63,8 +64,8 @@ The union of what those consumers need. **Fifteen library packages are merged to
 | `@effected/runtime-resolver-cli` | integrated | merged | the binary, split out so the library's consumers do not pay for `@effect/platform-node` |
 | `@effected/toml` | pure | merged | `@soda3js/config`. Survived the consolidation — the format engine stays a package; only the adapter shim went |
 | `@effected/config-file` | boundary | merged; **consolidated** | `vitest-agent` and `@soda3js/config`, which now takes it **alone** for TOML — it carries all four codecs (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`). Stays boundary tier: `@effected/*` edges do not propagate tier, only [R2](effect-standards.md#dependency-policy) tier-3 does |
-| `@effected/ts-vfs` | integrated | **not started — next** | `rspress-plugin-api-extractor`, and a migration target. Renamed from `@effected/type-registry` |
-| `@effected/app-kit` | integrated | **not started — last** | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`). No consumer is blocked on it — nothing may depend on it |
+| `@effected/ts-vfs` | integrated | merged | `rspress-plugin-api-extractor`, and a migration target. Renamed from `@effected/type-registry`. Integrated twice over: via [R2](effect-standards.md#dependency-policy) through `store`, and on its own surface through the optional `typescript` / `@typescript/vfs` peers ([packages/ts-vfs.md](packages/ts-vfs.md)) |
+| `@effected/app-kit` | integrated | **not started — the last package** | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`). No consumer is blocked on it — nothing may depend on it |
 | `@effected/pnpm-plugin-effect` | **companion — no tier** | merged | not a library and nothing depends on it, so it is on the gate for a different reason: it hands consumers the `effect` catalogs the kit was built against. Installing it is optional; publishing it is not ([Versioning](#versioning)) |
 
 ### `@effected/toml` is a full-parity format package
