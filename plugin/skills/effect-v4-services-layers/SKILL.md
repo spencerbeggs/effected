@@ -125,6 +125,41 @@ const DatabaseLayer = Layer.effect(Database)(
 `Layer.effect(Service, effect)` overload also works (handy for
 `Layer.effect(this, this.make)`). Both compile.
 
+### In a layer static, refer to the service as `this`
+
+A `layer` static that names its own class is fine **when the service is a class
+declaration** — `export class Db extends Context.Service...()` initializes the
+class's inner binding before static initializers run, so `Layer.succeed(Db, …)`
+inside `Db`'s own body resolves.
+
+It is a **temporal dead zone** when the service is a class **expression bound to
+a `const`**, because then there is no inner binding and the name resolves to the
+outer `const`, which is still uninitialized while the class body evaluates:
+
+```ts
+// THROWS at import time: "Cannot access 'BunResolver' before initialization"
+export const BunResolver = class extends Context.Service()("BunResolver", {}) {
+ static layer = mk(BunResolver, …);   // ← outer const, still in TDZ
+};
+
+// Fine — `this` is the class, always:
+export const BunResolver = class extends Context.Service()("BunResolver", {}) {
+ static layer = mk(this, …);
+};
+```
+
+Probed on beta.94: the class-expression form throws, the `this` form does not,
+and the class-*declaration* form does not either.
+
+**Write `this` unconditionally.** It is correct in both forms, so it costs
+nothing and removes the whole question — and the failure it prevents is a
+false green:
+
+> The module throws **at import time** while **typechecking completely clean**.
+> The only signal is vitest reporting **`0 tests passed` with exit 0** for every
+> file that imports it. A suite that collects zero tests is not a passing suite.
+> See `effect-v4-testing`.
+
 Name the primary layer **`layer`** (e.g. `Database.layer`), never v3's
 `Default` / `Live`. Use suffixes for variants (`layerTest`). The one exception
 is the `index.ts` composite convenience export that merges two concept modules'
@@ -194,6 +229,27 @@ const AppLayer = Layer.mergeAll(makeDatabaseLayer(), makeDatabaseLayer());
 const DatabaseLayer = makeDatabaseLayer();
 const AppLayer = Layer.mergeAll(DatabaseLayer, OtherLayer);
 ```
+
+Probed on beta.94, counting resource opens: an inline factory call at two
+provide sites opened the resource **twice**; the same factory called once and
+bound to a `const` opened it **once**. The two-provide dedup is real, but it can
+only dedup a reference it can recognize.
+
+**A parameterized layer static is exactly this shape.** `static readonly layer =
+(opts) => Layer.effect(...)` is a factory, and every `Svc.layer(opts)` at a
+provide site is a fresh reference — the "it's a static, so it must be a
+singleton" intuition is false.
+
+Learn the **symptoms**, because the type system reports nothing and the tests
+mostly pass:
+
+- two database connections opened against one file;
+- two ledgers / caches / counters, each holding half the writes;
+- **a `PubSub` where each subscriber sees only half the events** — the publisher
+  and the subscriber resolved *different* instances.
+
+Anything that looks like "state mysteriously split in two" is this bug until
+proven otherwise.
 
 Discipline — **bind layers to named constants**:
 

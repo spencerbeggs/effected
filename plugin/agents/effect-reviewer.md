@@ -41,6 +41,7 @@ skills:
   - effect-v4-idioms
   - effect-v4-schema
   - effect-v4-services-layers
+  - effect-v4-cli
   - effect-v4-observability
   - hardening-a-parser-port
   - effect-api-extractor-bases

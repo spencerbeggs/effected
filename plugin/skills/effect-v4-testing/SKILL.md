@@ -1,6 +1,6 @@
 ---
 name: effect-v4-testing
-description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result, providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, and the mutate-the-edges discipline for proving a suite can fail. Covers the sharp edges (no it.scoped, it.prop throws on a Schema) that only surface at test time.
+description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result, providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, and the mutate-the-edges discipline for proving a suite can fail. Covers the sharp edges (no it.scoped, it.prop throws on a Schema) and the FALSE GREENS that only surface at test time — a `0 tests passed` run that exits 0, TestClock starting at the epoch so clock reads return 1970, TestConsole.logLines accumulating across invocations, an eagerly-recording layerNoop stub, and Exit.isFailure failing to narrow inside assert.isTrue.
 ---
 
 # Effect v4 testing with `@effect/vitest`
@@ -109,7 +109,12 @@ verified against beta.94 `Cause.d.ts`/`Exit.d.ts`; working example:
 
 ```ts
 const exit = yield* Effect.exit(program);
-assert.isTrue(Exit.isFailure(exit));
+// `assert.isTrue(Exit.isFailure(exit))` does NOT narrow `exit` — assert helpers
+// are not type predicates, so `exit.cause` below would not compile under tsgo.
+// Narrow with a real `if`, and fail explicitly on the other branch.
+if (!Exit.isFailure(exit)) {
+ assert.fail("expected a defect, got a success");
+}
 assert.isFalse(exit.cause.reasons.some(Cause.isFailReason)); // NOT a typed Fail
 const die = exit.cause.reasons.find(Cause.isDieReason);
 assert.instanceOf(die?.defect, Error);          // the ORIGINAL error, unmasked
@@ -118,6 +123,12 @@ assert.notInstanceOf(die?.defect, MyTypedError); // not laundered into E
 
 The no-Fail-reason line is the discriminating assertion — without it, an
 implementation that wraps the defect in a typed error still passes.
+
+**`Exit.isFailure` inside `assert.isTrue(...)` does not narrow.** Verified under
+tsgo: `assert.isTrue(Exit.isFailure(exit))` leaves `exit` at the full union, so
+the next line's `exit.cause` is a type error. Use `if (Exit.isFailure(exit)) { … }`
+as above, or go through `Exit.getCause(exit)` → `Option<Cause<E>>` and branch on
+`Option.isSome`.
 
 ## Providing test / mock layers
 
@@ -254,6 +265,25 @@ advance on its own** — the test hangs until vitest's 5000ms timeout kills it,
 with no message pointing at the clock. If a test hangs for exactly five seconds,
 suspect wall-clock time before you suspect your code.
 
+### …and it starts at the EPOCH, so clock *reads* return 1970
+
+The hang is the loud half. The quiet half: **`it.effect` starts the `TestClock`
+at time zero**, so anything that *reads* the clock computes against
+**1970-01-01T00:00:00.000Z**. Probed on beta.94 — `DateTime.now` inside a bare
+`it.effect` is exactly the epoch.
+
+Nothing hangs. Nothing errors. The code just answers as if it were 1970:
+
+- a CLI resolved **zero** Node versions, because against a 1970 "now" every
+  release was still *unreleased*;
+- any "is this newer than N days" / TTL / cache-expiry check inverts;
+- a freshness filter silently keeps everything, or drops everything.
+
+If a time-dependent test passes but the *value* looks absurd — an empty result
+set, or nothing ever expiring — suspect the epoch before you suspect your logic.
+Set the clock explicitly (`TestClock.setTime(...)`) whenever the code under test
+*reads* time rather than merely sleeping.
+
 Either drive the clock with `TestClock.adjust`, or **restructure the test to
 need no time at all**. For an interrupt, prefer a failing sibling over a timeout:
 
@@ -297,6 +327,49 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
   when one lands; verify the exact signatures against the installed beta when
   you first reach for it.
 
+## `TestConsole.logLines` ACCUMULATES for the whole test
+
+`TestConsole.logLines` is cumulative and is **never drained by reading it**.
+Probed on beta.94: two reads across one test returned 2 lines then 4 lines, and
+the second read still contained the first run's output.
+
+That makes this a false green:
+
+```ts
+// BOTH assertions read the FIRST run's output. The second cannot fail.
+yield* runCli(["--target", "a"]);
+assert.include(JSON.stringify(yield* TestConsole.logLines), "a");
+yield* runCli(["--target", "b"]);
+assert.include(JSON.stringify(yield* TestConsole.logLines), "a"); // still passes!
+```
+
+Any test that invokes a CLI (or any logging subject) **twice** is asserting
+against a growing buffer. Either put each invocation in its **own `it.effect`**,
+or snapshot the length before the second call and assert only on the new tail.
+
+## A `layerNoop` stub records at effect CONSTRUCTION time
+
+A recorder that pushes eagerly logs calls **that never executed**:
+
+```ts
+// WRONG — pushes when the effect is BUILT, not when it runs.
+FileSystem.layerNoop({
+ readFileString: (p) => { calls.push(p); return Effect.succeed(""); },
+});
+
+// RIGHT — the push happens only if the effect actually runs.
+FileSystem.layerNoop({
+ readFileString: (p) => Effect.suspend(() => { calls.push(p); return Effect.succeed(""); }),
+});
+```
+
+Probed on beta.94: a service that builds its effects once (at layer construction,
+or anywhere the effect is constructed but not yielded) made the eager recorder
+log `/never-executed` for a read that never happened; the `Effect.suspend` version
+recorded nothing. **Wrap every recorder in `Effect.suspend`** — otherwise a test
+asserting "the file was read" passes against a code path that was only *described*,
+never run.
+
 ## Draining a `PubSub` under `it.effect`
 
 Three sharp edges, all clock-adjacent:
@@ -330,39 +403,40 @@ under `Layer.provide` beneath the service's own layer.
 
 ## A test that cannot fail is worse than no test — mutate the edges
 
-A green suite proves nothing about the properties no test can observe. Over
-one migration (`@effected/walker`), **eight** distinct mutants each survived a
-fully green suite — no short-circuit, dropped first match, last-instead-of-first
-directory, wrong iteration order, dropped error absorption, dropped `stopAt`,
-whole-chain probe instead of anchored root. Every one had the same shape: **the
-tests exercised the middle of a range and never its edges.** Two of the eight
-were real behavioral bugs waiting to be introduced, and two of the holes
-predated the migration — 120 inherited tests passed unmodified while unable to
-catch a regression in either property.
+A green suite proves nothing about the properties no test can observe. Over one
+migration (`@effected/walker`), **eight** distinct mutants each survived a fully
+green suite. In a later session, mutation turned up three more tests that were
+green, plausible, and **structurally incapable of failing**.
 
-For any test walking an ordered collection, check:
+The discipline: **capture a baseline** (`git status --porcelain > /tmp/baseline`),
+then break the implementation in the way the property forbids (with the editor —
+never `git checkout`/`git stash`, other work lives in the tree), watch that exact
+test go red, revert, and confirm the status matches the **baseline** — not that it
+is empty. Unrelated uncommitted work is normal; the check is that you left the
+tree exactly as you found it.
 
-- Does a winning case land on the **first** element? The **last**? A **middle**
-  one? (An implementation that probes everything and picks the first hit passes
-  every suite whose only order-observing test wins on the last candidate.)
-- Is there a case with **more than one** of every dimension the code iterates —
-  e.g. several directories × several candidates per directory? Interleaving
-  bugs are invisible until both dimensions are plural.
-- Is every **failure path** in a fixture actually exercised, or does every
-  fixture succeed?
-- Is the property pinned through the **public seam the consumer calls**, or
-  only through the primitive it delegates to? A property proven on `firstMatch`
-  says nothing about `findUpward` unless a test crosses that seam.
-- For an option like `stopAt`, does any test place the target **beyond** it, so
-  the option must actually do something to pass?
+Run the mutant to **find out**, not to watch it go red. Three rules carry most of
+the value:
 
-The discipline: before committing a test you believe pins a property, **break
-the implementation in the way the property forbids** (with the editor — never
-`git checkout`/`git stash`, other work lives in the tree), watch that exact
-test go red, revert the mutation, and confirm `git status --porcelain` is
-clean. Suite strength is not predictable by grepping `__test__/` — a mutation
-in one module may be caught by tests that never name it, because a shared test
-layer routes through it. Only the mutant tells you.
+- **The assertion must DISCRIMINATE** — confirm the test fails *for the right
+  reason*, not merely that it fails.
+- **Never verify a change by grepping for the text you just wrote.** Grep finds
+  the declaration; only a mutation finds the emit site.
+- **A semantics-preserving perf fix cannot be pinned** — report it as
+  fixed-but-unpinned rather than inventing a test that proves nothing.
+
+Full discipline, the edge-case checklist, and the worked failures →
+**[references/mutation-testing.md](./references/mutation-testing.md)**.
+
+## `0 tests passed` is a FAILED run, not an empty one
+
+A module-level throw — most commonly the `Context.Service` TDZ (see
+`effect-v4-services-layers`) — is swallowed by the agent reporter, which prints
+`0 tests passed` and **exits 0**. It typechecks clean, so nothing else warns you.
+
+**Zero collected tests is never a pass.** Read the Tests line, not the exit code.
+If a file you just touched reports no tests, it did not run: import it directly
+and look at the throw before you believe anything else the suite says.
 
 ## House conventions
 

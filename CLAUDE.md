@@ -31,7 +31,7 @@ Eighteen packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, 
 ## Repository Layout
 
 - `packages/` — the workspace packages (see below).
-- `plugin/` — "effective", a Claude Code plugin (10 skills, 3 agents: `effect-developer`, `effect-reviewer`, `effect-migrator`) dogfooded during migrations; in development.
+- `plugin/` — "effective", a Claude Code plugin (11 skills, 3 agents: `effect-developer`, `effect-reviewer`, `effect-migrator`) dogfooded during migrations; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
 - `repos/effect-smol` — read-only vendored Effect v4 source (see below).
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.

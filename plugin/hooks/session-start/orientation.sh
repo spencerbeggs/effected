@@ -46,9 +46,13 @@ Available via the Skill tool (several also auto-load on trigger):
   the memoization discipline (build-once-by-reference; the layer-function trap).
 - effect-v4-idioms — core Effect: typed errors, Result (Either is gone),
   generators, scope/resources, forking, structural equality.
+- effect-v4-cli — @effect/cli is DEAD on the v4 line; the CLI framework is
+  effect/unstable/cli in core. Command.Environment, tier impact, exit codes.
 - effect-v4-observability — spans/logging/metrics; OTel composed at the edge,
   libraries telemetry-agnostic, named spans on public fallible boundaries only.
-- effect-v4-testing — @effect/vitest, it.effect, test layers, property tests.
+- effect-v4-testing — @effect/vitest, it.effect, test layers, property tests,
+  and the false greens (a "0 tests passed" run that exits 0, TestClock at the
+  epoch, an accumulating TestConsole).
 - effect-v4-construct-map — the comprehensive v3→v4 migration reference.
 - effect-api-extractor-bases — the @public X_base idiom for a zero-warning API.
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the

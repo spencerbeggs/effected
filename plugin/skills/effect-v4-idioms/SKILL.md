@@ -56,6 +56,24 @@ const loadUser = Effect.fn("loadUser")(function* (id: string) {
 Split rule: reusable parameterized operation → `Effect.fn`; one-off inline
 workflow → `Effect.gen`.
 
+**`Effect.fn` is not generator-only.** A plain function that *returns* an Effect
+both runs and typechecks (probed beta.94):
+
+```ts
+const double = Effect.fn("double")((n: number) => Effect.succeed(n * 2))
+```
+
+Reach for it when the body has nothing to `yield*` — you still get the named span
+and the stack frames, without a generator wrapping a single expression. The
+generator is the common case, not a requirement.
+
+## `Effect.async` is `Effect.callback`
+
+Wrapping a callback API is **`Effect.callback`**. `Effect.async` is `undefined`
+in v4 — the rename is not guessable from the v3 name, and reaching for the v3
+spelling fails at the call site with a "not a function" that points nowhere near
+the cause. See `effect-v4-construct-map`.
+
 ## Error handling — `catch*` recovery
 
 The recovery family lost its `All` and gained `Filter`/`Reason` variants. The
@@ -163,6 +181,27 @@ To hand a Yieldable to a data-first combinator, materialize it with
 ```ts
 Effect.map(Option.some(42).asEffect(), (n) => n + 1)
 ```
+
+**`Config` is the exception — it already IS an `Effect`, and has no
+`.asEffect()`.** `Config<T>` is an `Effect<T, ConfigError>`, so it pipes straight
+into the combinators:
+
+```ts
+Config.string("PORT").pipe(Effect.catchTag("ConfigError", () => Effect.succeed("8080")))
+```
+
+`Config.string("PORT").asEffect()` **throws** (`typeof` is `undefined`) *and*
+fails tsgo. The `.asEffect()` habit generalizes from `Option`, and `Config` sits
+in the same "yieldable" list above — which is exactly what makes it a trap. Two
+more `Config` facts worth carrying, both probed on beta.94:
+
+- **`ConfigError` is not on the `effect` root.** It is `Config.ConfigError`;
+  importing it from `"effect"` yields `undefined`, and a `catchTag` against that
+  silently never matches.
+- **`Config.option` still carries a `ConfigError`.** It turns a *missing key*
+  into `Option.none()`, but a **provider-source failure survives** — a present,
+  unparseable value still fails. It is not `Effect<Option<A>, never>`, and a test
+  that only exercises the absent-key path will "prove" that it is.
 
 ## Yieldable errors — schema-backed error classes
 
