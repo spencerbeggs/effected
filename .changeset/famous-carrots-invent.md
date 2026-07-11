@@ -30,13 +30,15 @@ Effect.runPromise(program.pipe(Effect.provide(WorkspacesLayer)));
 
 `findWorkspaceRootSync` and `getWorkspacePackagesSync` are a Node-only synchronous escape hatch for callers that cannot run an Effect, such as a Vitest config building its project list. They share the enumerator with the Effect surface, so the two never disagree about what a pattern means.
 
+`PackageManagerDetector` reads both fields that declare a package manager, and treats them the way corepack does. `devEngines.packageManager.name` is authoritative for the manager's name, because corepack errors when a top-level `packageManager` contradicts it. The top-level `packageManager` is authoritative for the exact version, because it is the field that carries the integrity hash. A repository declaring only `devEngines` is therefore no longer invisible to the version half of detection, and a manager named only by `devEngines` now disambiguates a bun or yarn lockfile. A version is reported only when the field it came from names the manager that was actually detected.
+
 ## Bug Fixes
 
 A `packages/**` pattern now discovers packages nested more than one level deep. The predecessor library silently rewrote a trailing `/**` to `/*` during pattern compilation, so anything below the first level went undiscovered with no diagnostic. The enumerator instead does a bounded iterative descent, guarded by a depth cap, a visit budget and an unconditional `node_modules` and `.git` prune.
 
-pnpm 11 writes `pnpm-lock.yaml` as two YAML documents when a workspace uses `configDependencies`. `LockfileReader` selects the real lockfile document rather than the config-dependency preamble, which a single-document parse would otherwise return as an apparently empty workspace.
-
 Cycle detection no longer recurses, so a long dependency chain cannot overflow the stack.
+
+A root `package.json` that exists but cannot be read or parsed now fails package-manager detection with a typed `WorkspaceManifestError` instead of being silently treated as a manifest that declares no manager. A malformed `devEngines` hint is still ignored rather than fatal, matching corepack: a bad hint must never turn a detectable workspace into a detection failure.
 
 ## Other
 

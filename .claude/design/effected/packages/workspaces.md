@@ -94,6 +94,8 @@ Module-per-concept. Twelve source modules plus `internal/`.
 | `src/GitReader.ts` | `GitReader` service contract, `GitReader.layerNode`, `GitCommandError` |
 | `src/WorkspaceCatalogs.ts` | `CatalogSet` class, `WorkspaceCatalogs` service + layer, the `catalogResolver` layer, `CatalogAssemblyError` |
 | `src/LockfileReader.ts` | `LockfileReader` service + layer (the IO half of `@effected/lockfiles`), `LockfileReadError` |
+
+YAML-**stream** framing is *not* this package's job. `pnpm-lock.yaml` carries a config-dependencies preamble document ahead of the real lockfile whenever the workspace uses `configDependencies` (this repo's own lockfile is that shape), and a first-document parse silently returns the preamble: a few packages, no importers, no catalogs — an apparently empty workspace rather than a failure. `@effected/lockfiles` owns it as of its #58, on a deterministic rule (pnpm's writer always emits the preamble as a *prefix*, so the lockfile is the **last** document), and surfaces a typed `LockfileFramingError` when a stream carries no lockfile document at all. `LockfileReader` therefore calls `Lockfile.parse` directly; an earlier richest-document-wins workaround here was deleted when #58 landed.
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetector` service + default layer |
 | `src/Workspaces.ts` | The composite layers |
 | `src/WorkspacesSync.ts` | The synchronous escape hatch (Node-only) |
@@ -136,7 +138,21 @@ Three `Context.Service` classes, each with its layer in the same file.
 
 `WorkspaceDiscovery` reads the `packages:` list (from `pnpm-workspace.yaml` via `@effected/yaml` — the v3 hand-rolled line-scanner is deleted — or the `workspaces` field of the root `package.json`), enumerates it through `internal/enumerate.ts`, and reads each `package.json`. It absorbs `PackageResolver`'s `resolveFile` / `resolveFiles` longest-prefix lookup.
 
-`PackageManagerDetector` keeps the v3 priority chain (pnpm-workspace.yaml, then bun.lock plus a `bun@` corepack field, then yarn.lock plus `yarn@`, then a `workspaces` field for npm), now parsing the `packageManager` field through `@effected/package-json`'s `PackageManager.FromString` instead of a private `indexOf("@")` split.
+`PackageManagerDetector` keeps the v3 priority chain — **lockfile evidence is the primary signal**, because it is what says which manager actually ran: `pnpm-workspace.yaml`, then `bun.lock`/`bun.lockb` plus a manifest field naming bun, then `yarn.lock` plus a manifest field naming yarn, then a `workspaces` field for npm. The manifest conjunction on bun and yarn is deliberate: a stray `yarn.lock` in an npm repo is common, and only a declared manager name disambiguates it.
+
+#### The two fields that declare a manager
+
+Corepack reads **both** the top-level `packageManager` and `devEngines.packageManager`, and they are not interchangeable. `packageManager` is **not** deprecated; `devEngines` (npm 10.9+, and broader — it also covers `runtime`, `cpu`, `os`, `libc`) is a validation and fallback layer *over* it, not a replacement. Corepack validates the two against each other when both are present, warning or throwing per `devEngines.packageManager.onFail` (`ignore` | `warn` | `error`, default error); when the top-level field is absent it falls back to `devEngines.packageManager`, which must then carry an explicit version.
+
+The rule that falls out, and what the detector implements:
+
+- **`devEngines.packageManager.name` is authoritative for the NAME.** Corepack *errors* when `packageManager` disagrees with it, so where both are present and disagree, `devEngines` is the one to believe. When `devEngines` names a manager, the top-level field's name is not consulted as a disambiguator at all.
+- **The top-level `packageManager` is authoritative for the exact VERSION** — it is the field that carries the integrity hash. Where both name the same manager its version wins; where it is absent, `devEngines.packageManager.version` supplies the version.
+- A version is reported **only when the field it came from names the manager actually detected**. A `packageManager: "yarn@4"` in a pnpm workspace says nothing about pnpm's version — the discipline v3 already had for `packageManager`, now extended to `devEngines`.
+
+Both fields' versions are normalized through `@effected/package-json`'s `PackageManager.FromString` (the corepack `name@version+integrity` grammar) rather than a second parser, so a `devEngines` version carrying a hash — `11.11.0+sha512.…`, which **this repository's own root manifest does** — reports the same `11.11.0` the top-level field reports. A version that is not an exact version (a range like `^11`) yields none: a range is not a version, and corepack will not run one either.
+
+**A malformed manifest hint is ignored, never fatal.** A non-object `devEngines`, a non-object or **array** `devEngines.packageManager` (corepack does not support arrays in that slot and falls back), a `name` containing `@`, or an unusable version cannot turn a detectable workspace into a detection failure. A manifest that is *present but unreadable or unparseable* is a different thing entirely and fails with a typed `WorkspaceManifestError` — a corrupt root manifest is a real problem, not a missing hint, and reporting "no manager declared" for it would be the same silent degradation the enumerator bug taught us to distrust. `detect`'s error channel is therefore `PackageManagerDetectionFailure = PackageManagerDetectionError | WorkspaceManifestError`.
 
 `PackageManagerName` is this package's own literal (`"npm" | "pnpm" | "yarn" | "bun"`). It is structurally identical to `@effected/lockfiles`' `LockfileFormat` and assigns freely to it — which is what `LockfileReader` relies on — but they are different concepts (which package manager drives this workspace vs. which lockfile grammar to parse) that happen to share a carrier, and the name avoids colliding with `@effected/package-json`'s `PackageManager` (the corepack spec class) in a consumer's import list.
 
@@ -174,6 +190,7 @@ Fifteen v3 error types with `reason: string` fields become nine `Schema.TaggedEr
 | --- | --- | --- |
 | `WorkspaceRootNotFoundError` | `WorkspaceRoot` | `searchPath`, `markers` |
 | `PackageManagerDetectionError` | `PackageManagerDetector` | `root`, `checked` |
+| `WorkspaceManifestError` | `WorkspacePackage`, `PackageManagerDetector` | `packageJsonPath`, `kind`, `cause` |
 | `WorkspaceDiscoveryError` | `WorkspaceDiscovery` | `root`, `path`, `kind`, `cause` |
 | `WorkspacePatternError` | the enumerator | `root`, `pattern`, `kind` |
 | `PackageNotFoundError` | discovery / graph | `name`, `available` |

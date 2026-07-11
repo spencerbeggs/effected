@@ -46,6 +46,7 @@ export {
 export {
 	DetectedPackageManager,
 	PackageManagerDetectionError,
+	type PackageManagerDetectionFailure,
 	PackageManagerDetector,
 	PackageManagerName,
 } from "./PackageManagerName.js";
