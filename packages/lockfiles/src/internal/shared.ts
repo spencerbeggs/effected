@@ -7,22 +7,58 @@ import { WorkspaceDependency } from "../WorkspaceDependency.js";
 export const DEP_TYPES = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
 
 /**
- * The raw failure record a per-format transform fails with. `Lockfile.parse`
- * materializes it into the public `LockfileParseError` (which lives in
- * `Lockfile.ts`, a module the internals must not import — `noImportCycles`).
+ * Why the lockfile document could not be located in a YAML stream.
  *
  * @internal
  */
-export interface ParseFailure {
+export type FramingReason = "noLockfileDocument" | "noImporters" | "unexpectedDocuments";
+
+/**
+ * A text- or shape-level failure: the content is not well-formed, or it does
+ * not have the format's expected shape. Carries the delegated engine's error.
+ *
+ * @internal
+ */
+export interface ContentFailure {
 	readonly stage: "syntax" | "validation";
 	readonly cause: unknown;
 }
+
+/**
+ * A framing failure: the text parsed, but the stream does not carry exactly
+ * one locatable lockfile document. Purely synthetic — there is no foreign
+ * throwable to wrap, so it carries typed fields instead of a `cause`.
+ *
+ * @internal
+ */
+export interface FramingFailure {
+	readonly stage: "framing";
+	readonly reason: FramingReason;
+	readonly documents: number;
+}
+
+/**
+ * The raw failure record a per-format transform fails with. `Lockfile.parse`
+ * materializes it into the public `LockfileParseError` / `LockfileFramingError`
+ * (which live in `Lockfile.ts`, a module the internals must not import —
+ * `noImportCycles`).
+ *
+ * @internal
+ */
+export type ParseFailure = ContentFailure | FramingFailure;
 
 /** @internal */
 export const syntaxFailure = (cause: unknown): ParseFailure => ({ stage: "syntax", cause });
 
 /** @internal */
 export const validationFailure = (cause: unknown): ParseFailure => ({ stage: "validation", cause });
+
+/** @internal */
+export const framingFailure = (reason: FramingReason, documents: number): ParseFailure => ({
+	stage: "framing",
+	reason,
+	documents,
+});
 
 /**
  * The field bundle a per-format transform produces and `Lockfile.parse`
