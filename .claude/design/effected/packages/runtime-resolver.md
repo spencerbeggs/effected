@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-10
-last-synced: 2026-07-10
-completeness: 90
+updated: 2026-07-11
+last-synced: 2026-07-11
+completeness: 95
 related:
   - ../effect-standards.md
   - ../migration-playbook.md
@@ -19,12 +19,14 @@ related:
 
 ## Overview
 
-Target design for the `runtime-resolver` migration (step 2 of [migration-playbook.md](../migration-playbook.md)), covering **two** packages. The v3 repo resolves semver-compatible versions of Node.js, Bun and Deno from live release feeds with a bundled offline snapshot, and ships an `@effect/cli` binary from the same package. The migration keeps the domain concepts the [review](../../reviews/runtime-resolver.md) praised — cache-strategy-as-layer, the vertical dependency graph, the typed HTTP error ladder, the deterministic Node lifecycle model — and splits the binary out.
+**Merged** — migration #12, covering **two** packages. The v3 repo resolved semver-compatible versions of Node.js, Bun and Deno from live release feeds with a bundled offline snapshot, and shipped an `@effect/cli` binary from the same package. The port kept the domain concepts the [review](../../reviews/runtime-resolver.md) praised — cache-strategy-as-layer, the vertical dependency graph, the typed HTTP error ladder, the deterministic Node lifecycle model — and split the binary out.
 
 - **`@effected/runtime-resolver`** — the library. Three resolver services, three cache strategies each, over one parameterized internal engine. **Boundary tier.**
 - **`@effected/runtime-resolver-cli`** — the binary. **Integrated tier.**
 
-runtime-resolver is one of the five consuming applications that define the release gate ([releases.md](../releases.md)), so "replacing its business logic" means porting it: after this migration the v3 repo's library and CLI both live here.
+runtime-resolver is one of the five consuming applications that define the release gate ([releases.md](../releases.md)), so "replacing its business logic" meant porting it: the v3 repo's library and CLI both live here now.
+
+This document is the design as specified, with an [As built](#as-built-2026-07-11) section recording what the port actually landed. The sections below are accurate unless that section says otherwise.
 
 ## The split, and why it is forced
 
@@ -38,18 +40,17 @@ The monorepo does not use subpath exports (the config-file family precedent), so
 
 **`@effect/cli` has no v4 story and never will.** Verified against the registry: `@effect/cli@latest` is `0.75.2`, its dist-tags are `latest` and `snapshot` only (no `beta`), and its peer set is `effect@^3.21.2` + `@effect/platform@^0.96.1` + `@effect/printer{,-ansi}` — the v3 line. Nothing on the v4 train.
 
-That is not a blocker, because **the CLI framework moved into `effect` core**. `effect@4.0.0-beta.97` publishes `effect/unstable/cli`, exporting `Command`, `Flag`, `Argument`, `Param`, `Primitive`, `Prompt`, `HelpDoc`, `CliError`, `CliOutput` and `Completions`. `Command.run(command, { version })` returns `Effect<void, E | CliError, R | Command.Environment>`. The same merge happened to platform: `effect/unstable/http` ships `HttpClient`, `HttpClientRequest`, `HttpClientResponse`, `HttpClientError` and `FetchHttpClient`.
+That is not a blocker, because **the CLI framework moved into `effect` core**. Core publishes `effect/unstable/cli`, exporting `Command`, `Flag`, `Argument`, `Param`, `Primitive`, `Prompt`, `HelpDoc`, `CliError`, `CliOutput` and `Completions`. `Command.run(command, { version })` returns `Effect<void, E | CliError, R | Command.Environment>`. The same merge happened to platform: `effect/unstable/http` ships `HttpClient`, `HttpClientRequest`, `HttpClientResponse`, `HttpClientError` and `FetchHttpClient`.
 
-So the port drops `@effect/cli` entirely and builds the binary on core. What keeps the CLI at tier 3 is the *runtime*, not the framework:
+So the port drops `@effect/cli` entirely and builds the binary on core. What keeps the CLI at tier 3 is the *runtime*, not the framework — `Command.Environment` (see `repos/effect-smol/packages/effect/src/unstable/cli/Command.ts`) is the union of `FileSystem`, `Path`, `Terminal`, `ChildProcessSpawner` and `Stdio`.
 
-```ts
-// effect/unstable/cli/Command.d.ts:308
-export type Environment = FileSystem.FileSystem | Path.Path | Terminal.Terminal | ChildProcessSpawner | Stdio.Stdio;
-```
+Core declares all five abstractions but implements **none of them for Node** — it ships `Path.layer`, `FileSystem.layerNoop` and `Stdio.layerTest`, and no more. The Node implementations (`NodeServices`, `NodeRuntime`, `NodeStdio`, `NodeTerminal`, `NodeFileSystem`, `NodeChildProcessSpawner`) live in `@effect/platform-node`, which is on the v4 train and peers on `effect` alone. That single non-core `@effect/*` runtime dependency is what makes the CLI integrated tier — and what the library must not pay for.
 
-Core declares all five abstractions but implements **none of them for Node** — it ships `Path.layer`, `FileSystem.layerNoop` and `Stdio.layerTest`, and no more. The Node implementations (`NodeServices`, `NodeRuntime`, `NodeStdio`, `NodeTerminal`, `NodeFileSystem`, `NodeChildProcessSpawner`) live in `@effect/platform-node@4.0.0-beta.97`, which is on the v4 train and peers on `effect` alone. That single non-core `@effect/*` runtime dependency is what makes the CLI integrated tier — and what the library must not pay for.
+Both claims are re-verified against the **pinned** catalog beta and its matching `repos/effect-smol` subtree, not against whatever beta npm's `latest` points at. The original spec cited `4.0.0-beta.97`, which was the *floating* installed version back when the catalog carried a caret range; the catalogs now pin exact betas, so the installed version and the vendored subtree are the same thing and are the only version worth citing.
 
-**The split therefore survives the disappearance of its original cause.** It was justified by `@effect/cli` leaking onto library consumers; `@effect/cli` is gone, and `@effect/platform-node` leaks in precisely the same way. Same rule, different package.
+**The split therefore survives the disappearance of its original cause.** It was justified by `@effect/cli` leaking onto library consumers; `@effect/cli` is gone, and `@effect/platform-node` leaks in precisely the same way. **Same R1 rule, different package.** [package-inventory.md](../package-inventory.md) predicted an `@effect/cli`-driven split; that prediction is falsified and the row is corrected — but the split it mandated was right for a reason it had not seen yet.
+
+This is the most reusable thing the migration learned, and it generalizes past this package: **core declares service abstractions it does not implement for any runtime.** Anything reaching for one of the five — a CLI, a subprocess, a terminal — needs a platform package, and a library that reaches for one has just become tier 3 for its consumers. `@effected/workspaces` hit the identical wall from the other side and drew the identical conclusion: core ships a `ChildProcessSpawner` *contract* in `effect/unstable/process` and no Node implementation, so workspaces owns a `GitReader` seam rather than depending on `@effect/platform-node` ([workspaces.md](workspaces.md#gitreader--the-subprocess-seam)).
 
 ## Dropping Octokit
 
@@ -273,3 +274,16 @@ An error-type assertion is not optional on the `layerFresh` tests. `assert.isTru
 3. **`VersionNotFoundError` is renamed `NoMatchingVersionError`** to avoid a `_tag` collision with `@effected/semver`.
 4. **`VersionCache` from `@effected/semver` is not used** — it is a singleton `Context.Service` and the resolver needs three independent indices. `SemVer` and `Range` are used directly.
 5. **`@effect/cli` is not used** — it has no v4 release. `effect/unstable/cli` replaces it.
+
+## As built (2026-07-11)
+
+Merged as two packages with **74 tests** across them, a clean typecheck and biome run, and both cold prod builds reporting zero warnings and zero errors with all 20 suppressed entries being synthesized class-factory `_base` symbols. Adding `@effect/platform-node` v4 to the CLI introduced **no new `pnpm peers check` warning** — only the known platform/rpc/sql/cluster tooling warning remains.
+
+Everything above landed as designed. What differs is the internal decomposition, which went further than the sketch:
+
+1. **`internal/` carries four modules the design did not name**, because the strategy collapse pulled more with it than expected. `feeds.ts` holds the upstream feeds and the raw-record→domain-release transforms (v3's four fetcher services with four `*Live` layers, which differ only in a URL and how a tag name is stripped). `githubRuntime.ts` is the layer builder Bun and Deno share — they are the same resolver pointed at a different repository, which v3 expressed as two release caches, two fetchers, two resolvers and six strategy layers whose only textual difference was `"oven-sh"` versus `"denoland"`. `resolve.ts` is the filter/group/rank/package pipeline, written **once** rather than v3's three drifted copies — only Node grouped by minor correctly and all three collapsed an invalid range into "no versions found", which is how that bug survived. `types.ts` holds shared types. The design's planned `internal/semver.ts` did not materialize; the `Option`-returning parse folded into the modules that needed it.
+2. **The test files are organized by seam, not one-per-source-module.** `NodeResolver.test.ts`, `BunResolver.test.ts`, `GitHub.test.ts`, `NodeSchedule.test.ts` and `hostile.test.ts`. `DenoResolver` has no file of its own — it and `BunResolver` are the same `githubRuntime.ts` builder, so a separate suite would have re-tested one code path twice rather than pinning a second one. `ResolvedVersions`, `NodeRelease` and the release index are exercised through the resolver suites that own them.
+3. **`NodeSchedule` grew a public surface the design did not sketch**: `NodeScheduleData`, `NodeReleaseLine`, `isLtsPhase`, `nodeReleaseLine` and an `InvalidScheduleDateError`. The release-line keying (the dotted-`0.x` fix) is what forced it — once a line is a first-class key rather than a parsed integer, the mapping from a version to its line has to be public, and a schedule feed carrying an undecodable date has to fail typed rather than die.
+4. **The CLI's `--increments` uses `Flag.choice`**, which validates at parse time, so an invalid value never reaches the handler. `--node-phases` takes a comma-separated list, which `Flag.choice` cannot express, so it decodes through the same schema the library uses — the usage-error-is-a-failure rule above is what that buys.
+
+The finding worth carrying forward is the [`@effect/cli` verdict](#the-effectcli-verdict-dead-on-v4-and-not-needed) and its generalization: core declares service abstractions it implements for no runtime, so reaching for one is what makes a package tier 3. Check `Command.Environment` before assuming a CLI is free.

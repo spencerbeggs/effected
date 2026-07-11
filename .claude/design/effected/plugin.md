@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-10
-last-synced: 2026-07-10
+updated: 2026-07-11
+last-synced: 2026-07-11
 completeness: 92
 related:
   - architecture.md
@@ -74,7 +74,9 @@ The rungs are ordered by cost, and each answers a strictly different class of qu
 2. **Source** — either the vendored `repos/effect-smol` subtree (see [architecture.md](architecture.md#vendored-source)) or the installed `node_modules/effect/src`. Authoritative for **existence and signature**.
 3. **A probe run from inside the package.** The only rung that settles **semantics**.
 
-Rung 2 has two roots and they drift, so the skill names a tiebreak: **the installed source wins.** The subtree is a `git subtree` pinned to an exact tag, while the catalog entry is a *caret* range (`^4.0.0-beta.94`), so pnpm floats forward to the newest beta and the tree does not follow until someone re-pins it. During the `store` migration the tree sat at beta.94 against an installed beta.97 — a stale rung-2 answer is delivered with total confidence and no error, which is exactly the failure mode the ladder exists to prevent. `node_modules` is what the code links against; the subtree is what someone vendored last, and it remains the only home of rung 1.
+Rung 2 has two roots that **can** drift, so the skill names a tiebreak: **the installed source wins.** `node_modules` is what the code links against; the subtree is what someone vendored last, and it remains the only home of rung 1.
+
+The drift was real and it had a cause. The subtree is a `git subtree` pinned to an exact tag, while the catalog entry used to be a *caret* range, so pnpm floated forward to the newest beta and the tree did not follow until someone re-pinned it — during the `store` migration the tree sat at beta.94 against an installed beta.97, and a stale rung-2 answer is delivered with total confidence and no error, which is exactly the failure mode the ladder exists to prevent. **The Effect catalogs now pin exact betas** (no caret), so the installed version and the subtree agree by construction and re-pinning them is one coordinated step. The tiebreak stays: it costs nothing, and it is what catches the next divergence rather than assuming there will not be one.
 
 The docs are prescriptive rather than exhaustive, which is why rung 1 cannot be the last rung. `migration/services.md` migrates `Context.Tag` → `Context.Service` and never mentions `Context.Key` at all — yet `Context.Key` is the primitive the port needed, and its `out Shape` covariance is what sank a design that had already been approved. `migration/forking.md` never mentions that `Effect.makeSemaphore` is gone and `Semaphore` is now a top-level module. `migration/cause.md` never mentions `Exit.causeOption` → `Exit.getCause`. Nothing short of source settles a removal; nothing short of a probe settles behaviour like `Effect.cached` memoizing an interrupt `Exit`.
 

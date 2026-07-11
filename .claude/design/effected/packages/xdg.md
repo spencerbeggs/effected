@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-10
-last-synced: 2026-07-10
-completeness: 90
+updated: 2026-07-11
+last-synced: 2026-07-11
+completeness: 95
 related:
   - ../effect-standards.md
   - ../migration-playbook.md
@@ -21,7 +21,9 @@ related:
 
 ## Overview
 
-Target design for `@effected/xdg`, the **eleventh** package migration (step 2 of [migration-playbook.md](../migration-playbook.md)) and a **boundary-tier** package. It is the XDG half of the `xdg-effect` split decided 2026-07-09 in [package-inventory.md](../package-inventory.md); the SQLite half already shipped as [@effected/store](store.md), and `@effected/xdg` **does not depend on it**. The split is what keeps xdg at tier 2: store is integrated tier, and depending on it would propagate ([R2](../effect-standards.md#dependency-policy)).
+**Merged** — the **eleventh** package migration and a **boundary-tier** package. It is the XDG half of the `xdg-effect` split decided 2026-07-09 in [package-inventory.md](../package-inventory.md); the SQLite half shipped as [@effected/store](store.md), and `@effected/xdg` **does not depend on it**. The split is what keeps xdg at tier 2: store is integrated tier, and depending on it would propagate ([R2](../effect-standards.md#dependency-policy)).
+
+This document is the design as specified, with an [As built](#as-built-2026-07-11) section recording what the port landed. The sections below are accurate unless that section says otherwise.
 
 What remains is one job, stated precisely: **turn the environment into paths.** Read the XDG Base Directory environment, map it onto a platform, namespace it for an application, create the directories on demand, and expose that as a config-file resolver chain. No database, no cache, no format parsing.
 
@@ -293,3 +295,13 @@ Not a parser. There is no recursion, no untrusted text, no `MAX_NESTING_DEPTH`, 
 `savvy.build.ts` carries the standard narrow suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }` for the synthesized bases: `XdgPaths`, `NativeDirs`, `ResolvedAppDirs`, the two error classes and the two `Context.Service` classes. Gate: zero-warning `dist/prod/issues.json` from a cold `pnpm build --filter @effected/xdg`, never the raw script.
 
 Both workspace peers mean xdg needs the **`prepare` script** (`turbo run build:dev`), per [package-setup.md](../package-setup.md#cross-package-build-dependencies): `publishConfig.linkDirectory` links `@effected/walker` and `@effected/config-file` at their `dist/dev/pkg`, so they must be built before xdg's tests can resolve them in a fresh checkout.
+
+## As built (2026-07-11)
+
+Merged with **51 tests**, the whole repo green at 3594/3594, and a cold build whose zero-warning `issues.json` suppresses exactly seven synthesized class-factory `_base` symbols. The four-module layout, the boundary tier, the zero runtime dependencies and the no-platform-package-even-in-tests posture all landed as designed, and the json-schema facade was cut as predicted.
+
+The port landed the design without structural deviation. Three things are worth recording because they were only learned by doing it:
+
+1. **The per-candidate absorption bug and the search-path ordering were both watched *failing* against the v3 shape before the fix was committed.** They are the two tests that justify the walker edge, and a test that has not been seen red proves nothing about a bug it claims to pin. `XdgConfig.resolver` must keep going through `Walker.firstMatch` — a local loop with a trailing `catch` reintroduces exactly the whole-resolver absorption granularity that let one unreadable `/etc/xdg` hide a perfectly readable `~/.config`.
+2. **A `FileSystem.layerNoop` stub must record inside `Effect.suspend`.** The `AppDirs` shape builds its `ensure*` effects once, at layer *construction*, which is the design's central decision — so a stub whose `makeDirectory` pushes eagerly in its body records four directories that were never created, and every assertion then measures construction instead of execution. This bit during the port and is the direct cost of resolving once; it is worth paying, but the test-shape consequence has to be known up front.
+3. **The `never` error channel is what makes the config-file composition typecheck at all.** `XdgConfig.savePath` fits `ConfigFileOptions.defaultPath?: Effect<string, never, RR>` only because resolution moved to layer-construction time. There is an end-to-end test through the real `ConfigFile.layer` proving the slot accepts it without an `orDie` — that test *is* the justification for the resolve-once shape, and it should not be reduced to a unit test of `savePath` in isolation.

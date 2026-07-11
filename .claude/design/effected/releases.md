@@ -13,6 +13,9 @@ related:
   - packages/toml.md
   - packages/store.md
   - packages/lockfiles.md
+  - packages/xdg.md
+  - packages/workspaces.md
+  - packages/runtime-resolver.md
 ---
 
 # Release criteria
@@ -29,8 +32,8 @@ The criterion is "the kit can replace the business logic of these five." They sp
 
 **Migration targets** — absorbed into this repo, so "replacing their business logic" means porting them:
 
-- `type-registry-effect` → `@effected/type-registry`
-- `runtime-resolver` → `@effected/runtime-resolver`
+- `type-registry-effect` → `@effected/type-registry`. **Not started; the next migration.**
+- `runtime-resolver` → `@effected/runtime-resolver` + `@effected/runtime-resolver-cli`. **Merged**: the v3 repo's library and CLI both live here now, as two packages so that the binary's `@effect/platform-node` dependency does not reach the library's consumers.
 
 **External consumers** — stay in their own repos, per the libraries-only scope in [architecture.md](architecture.md). Each must be able to swap its `*-effect` dependencies for `@effected/*`:
 
@@ -38,11 +41,11 @@ The criterion is "the kit can replace the business logic of these five." They sp
 - `vitest-agent` — an 11-package monorepo depending on `workspaces-effect`, `config-file-effect` and `xdg-effect`. It consumes `workspaces`, `config-file`, `xdg` and `store`, and transitively `walker` and `lockfiles`.
 - `soda3js/tools` — specifically `@soda3js/config` (`dependencies: effect, smol-toml`), an Effect package whose job is loading and writing a TOML config file. It consumes `config-file`, `config-file-toml` and `toml`.
 
-`@effected/type-registry` is load-bearing for two of the five, so it sequences near the middle of the roadmap rather than at the end.
+`@effected/type-registry` is load-bearing for two of the five — it is a migration target in its own right and `rspress-plugin-api-extractor` depends on it — which is why it never sequenced at the end. With everything else merged it is now simply **next**, and the only package left behind it is `app-kit`, which no consumer is blocked on because nothing may depend on it (a library taking an application control plane would be an R2 tier-3 leak).
 
 ## The gate
 
-The union of what those consumers need. Fourteen packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker`, `glob`, `toml`, `config-file-toml`, `lockfiles`, `store` — `pnpm-plugin-effect` is infrastructure and outside this count); five remain:
+The union of what those consumers need. **Eighteen packages are already merged** (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `config-file-toml`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtime-resolver`, `runtime-resolver-cli`, `workspaces` — `pnpm-plugin-effect` is infrastructure and outside this count); **two remain**, `type-registry` then `app-kit`, per the [migration order](package-inventory.md#migration-order):
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
@@ -50,13 +53,14 @@ The union of what those consumers need. Fourteen packages are already merged (`s
 | `@effected/glob` | pure | merged | `workspaces` drops its `minimatch` runtime dep for it |
 | `@effected/lockfiles` | pure | merged | `workspaces` reads lockfiles |
 | `@effected/store` | integrated | merged | SQLite cache + migrated state (`@effect/sql-sqlite-node`); `rspress-plugin-api-extractor` and `vitest-agent` both consume it |
-| `@effected/xdg` | boundary | in progress on `feat/xdg` | `vitest-agent`, `type-registry` |
-| `@effected/workspaces` | integrated | not started | `vitest-agent`; takes `@pnpm/catalogs.*` |
-| `@effected/app-kit` | integrated | not started | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`) |
-| `@effected/type-registry` | integrated | not started | `rspress-plugin-api-extractor`, and a migration target |
-| `@effected/runtime-resolver` | boundary | not started | a migration target; its `@effect/cli` binary splits into a separate integrated CLI package |
+| `@effected/xdg` | boundary | merged | `vitest-agent`, `type-registry`; zero runtime deps, and it does not depend on `store` |
+| `@effected/workspaces` | integrated | merged | `vitest-agent`; takes `@pnpm/catalogs.*`, and implements `@effected/npm`'s resolver contracts |
+| `@effected/runtime-resolver` | boundary | merged | a migration target; takes only `@effected/semver` and core `HttpClient` |
+| `@effected/runtime-resolver-cli` | integrated | merged | the binary, split out so the library's consumers do not pay for `@effect/platform-node` |
 | `@effected/toml` | pure | merged | `@soda3js/config` |
 | `@effected/config-file-toml` | pure | merged | `@soda3js/config` |
+| `@effected/type-registry` | integrated | **not started — next** | `rspress-plugin-api-extractor`, and a migration target |
+| `@effected/app-kit` | integrated | **not started — last** | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`) |
 
 ### `@effected/toml` is a full-parity format package
 
@@ -64,7 +68,7 @@ The union of what those consumers need. Fourteen packages are already merged (`s
 
 ### Not on the gate
 
-- `@effected/json-schema` — its core value was superseded by v4's `Schema.toJsonSchemaDocument`, and `xdg`'s dependency on it is a dead facade that gets cut at migration time.
+- `@effected/json-schema` — its core value was superseded by v4's `Schema.toJsonSchemaDocument`, and `xdg`'s dependency on it was a dead facade. The xdg migration **cut it**, as predicted: nothing in the v3 `src/` used it, and it existed only to power a re-export facade the [no-barrel rule](effect-standards.md#no-barrel-re-exports) forbids anyway. The package is off the roadmap with no loose ends.
 
 ## Versioning
 
