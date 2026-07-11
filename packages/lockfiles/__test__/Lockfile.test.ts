@@ -95,7 +95,11 @@ describe("Lockfile.parse", () => {
 				assert.strictEqual(lockfile.packagesNamed("fdir")[0]?.version, "6.5.0");
 				assert.strictEqual(lockfile.packagesNamed("@effect/platform")[0]?.version, "0.96.0");
 				assert.strictEqual(lockfile.packagesNamed("@vitest/mocker")[0]?.version, "3.2.4");
-				assert.isFalse(lockfile.packages.some((p) => p.name.includes("(") || p.version.includes(")")));
+				assert.isFalse(
+					lockfile.packages.some(
+						(p) => p.name.includes("(") || p.name.includes(")") || p.version.includes("(") || p.version.includes(")"),
+					),
+				);
 			}),
 		);
 

@@ -57,10 +57,13 @@ const toFields = (raw: NpmLockfileRawType): LockfileFields => {
 	const workspaceNames = new Set<string>();
 	const workspaceEntries = new Map<string, WorkspaceEntry>();
 
-	// First pass: identify workspace link entries.
+	// First pass: identify workspace link entries. Name resolution must match
+	// the second pass (wsEntry first) or a link stub disagreeing with its
+	// resolved entry drops inter-workspace edges.
 	for (const [key, entry] of Object.entries(raw.packages)) {
 		if (key.startsWith(NODE_MODULES_PREFIX) && entry.link === true) {
-			const name = entry.name ?? key.slice(NODE_MODULES_PREFIX.length);
+			const wsEntry = entry.resolved !== undefined ? raw.packages[entry.resolved] : undefined;
+			const name = wsEntry?.name ?? entry.name ?? key.slice(NODE_MODULES_PREFIX.length);
 			if (name !== "") workspaceNames.add(name);
 		}
 	}

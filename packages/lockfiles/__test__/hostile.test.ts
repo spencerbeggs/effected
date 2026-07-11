@@ -163,15 +163,25 @@ describe("hostile input", () => {
 						"": { name: "root" },
 						"node_modules/__proto__": {
 							version: "1.0.0",
-							dependencies: { __proto__: "1.0.0", constructor: "2.0.0" },
+							// A literal `__proto__:` key is special syntax the literal would
+							// swallow — build the own property for real so the hostile key
+							// actually reaches the serialized lockfile.
+							dependencies: Object.fromEntries([
+								["__proto__", "1.0.0"],
+								["constructor", "2.0.0"],
+							]),
 						},
 						"node_modules/constructor": { version: "1.0.0" },
 					},
 				});
+				assert.include(content, '"__proto__":"1.0.0"'); // the hostile key survived serialization
 				const lockfile = yield* Lockfile.parse(content, { format: "npm" });
 				assertPrototypeUnpolluted();
 				assert.strictEqual(lockfile.packagesNamed("__proto__").length, 1);
 				assert.strictEqual(lockfile.packagesNamed("constructor").length, 1);
+				const evil = lockfile.packagesNamed("__proto__")[0];
+				const protoEntry = Object.entries(evil?.dependencies ?? {}).find(([k]) => k === "__proto__");
+				assert.deepStrictEqual(protoEntry, ["__proto__", "1.0.0"]); // own enumerable property, not dropped
 			}),
 		);
 

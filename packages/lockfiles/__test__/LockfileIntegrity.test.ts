@@ -95,6 +95,45 @@ describe("LockfileIntegrity.compare", () => {
 		]);
 	});
 
+	it("satisfies a constraint when any of several resolved versions matches, regardless of order", () => {
+		const oneFirst = lockfileWith([
+			workspace("@acme/core", "packages/core"),
+			registry("foo", "1.5.0"),
+			registry("foo", "2.0.0"),
+		]);
+		const twoFirst = lockfileWith([
+			workspace("@acme/core", "packages/core"),
+			registry("foo", "2.0.0"),
+			registry("foo", "1.5.0"),
+		]);
+		const manifests = [WorkspaceManifest.make({ name: "@acme/core", dependencies: { foo: "^1.0.0" } })];
+
+		assert.isTrue(LockfileIntegrity.compare(oneFirst, manifests).valid);
+		assert.isTrue(LockfileIntegrity.compare(twoFirst, manifests).valid);
+	});
+
+	it("reports every resolved version when none of them satisfies", () => {
+		const lockfile = lockfileWith([
+			workspace("@acme/core", "packages/core"),
+			registry("foo", "1.5.0"),
+			registry("foo", "2.0.0"),
+		]);
+		const manifests = [WorkspaceManifest.make({ name: "@acme/core", dependencies: { foo: "^3.0.0" } })];
+
+		const report = LockfileIntegrity.compare(lockfile, manifests);
+
+		assert.isFalse(report.valid);
+		assert.deepStrictEqual(report.unsatisfiedConstraints, [
+			{
+				workspace: "@acme/core",
+				dependency: "foo",
+				constraint: "^3.0.0",
+				resolved: "1.5.0, 2.0.0",
+				depType: "dependencies",
+			},
+		]);
+	});
+
 	it("checks all four dependency maps and tags rows with their depType", () => {
 		const lockfile = lockfileWith([
 			workspace("@acme/core", "packages/core"),

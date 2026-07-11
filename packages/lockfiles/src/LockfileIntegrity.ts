@@ -64,8 +64,11 @@ export class LockfileIntegrity extends Schema.Class<LockfileIntegrity>("Lockfile
 	 *
 	 * @remarks
 	 * Constraint checking is best-effort by design: `workspace:` / `link:` /
-	 * `file:` specifiers and rows whose range or resolved version does not
-	 * parse as SemVer are skipped, exactly as in the v3 implementation. The
+	 * `file:` specifiers and rows whose range (or every resolved version) does
+	 * not parse as SemVer are skipped, exactly as in the v3 implementation.
+	 * A lockfile may resolve the same package at several versions; a
+	 * constraint is satisfied when *any* resolved version matches, and an
+	 * unsatisfied row reports every candidate in `resolved`. The
 	 * caller reads the manifests (this package does no IO). For pnpm, apply
 	 * `Lockfile#withImporterNames` first so workspace names align with
 	 * manifest names.
@@ -86,7 +89,14 @@ export class LockfileIntegrity extends Schema.Class<LockfileIntegrity>("Lockfile
 		const missingWorkspaces = [...manifestNames].filter((n) => !lockfileWsNames.has(n));
 		const extraWorkspaces = [...lockfileWsNames].filter((n) => !manifestNames.has(n));
 
-		const resolvedIndex = new Map(lockfile.packages.map((p) => [p.name, p.version] as const));
+		// A lockfile can resolve the same name at several versions; keep them all
+		// so the verdict never depends on entry order.
+		const resolvedIndex = new Map<string, Array<string>>();
+		for (const p of lockfile.packages) {
+			const versions = resolvedIndex.get(p.name);
+			if (versions === undefined) resolvedIndex.set(p.name, [p.version]);
+			else versions.push(p.version);
+		}
 
 		const unsatisfiedConstraints: Array<{
 			workspace: string;
@@ -104,15 +114,23 @@ export class LockfileIntegrity extends Schema.Class<LockfileIntegrity>("Lockfile
 				for (const [dependency, constraint] of Object.entries(depMap)) {
 					if (isWorkspaceSpecifier(constraint)) continue;
 
-					const resolved = resolvedIndex.get(dependency);
-					if (resolved === undefined) continue;
+					const candidates = resolvedIndex.get(dependency);
+					if (candidates === undefined) continue;
 
 					const rangeExit = decodeRange(constraint);
-					const versionExit = decodeSemVer(resolved);
-					if (Exit.isFailure(rangeExit) || Exit.isFailure(versionExit)) continue; // unparseable rows are skipped
+					if (Exit.isFailure(rangeExit)) continue; // unparseable rows are skipped
 
-					if (!rangeExit.value.test(versionExit.value)) {
-						unsatisfiedConstraints.push({ workspace: manifest.name, dependency, constraint, resolved, depType });
+					const versions = candidates.map((candidate) => decodeSemVer(candidate)).filter(Exit.isSuccess);
+					if (versions.length === 0) continue; // unparseable rows are skipped
+
+					if (!versions.some((v) => rangeExit.value.test(v.value))) {
+						unsatisfiedConstraints.push({
+							workspace: manifest.name,
+							dependency,
+							constraint,
+							resolved: candidates.join(", "),
+							depType,
+						});
 					}
 				}
 			}
