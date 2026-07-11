@@ -981,7 +981,9 @@ export function createScanner(text: string): YamlScanner {
 		if (name.length === 0) {
 			return makeToken("error", text.slice(start, pos), start, sLine, sCol);
 		}
-		return makeToken("anchor", name, start, sLine, sCol);
+		// The token value is the bare name, but the span covers the '&' sigil
+		// too — pass the raw length so the span is not one character short.
+		return makeToken("anchor", name, start, sLine, sCol, pos - start);
 	}
 
 	function scanAlias(): YamlToken {
@@ -999,7 +1001,9 @@ export function createScanner(text: string): YamlScanner {
 		if (name.length === 0) {
 			return makeToken("error", text.slice(start, pos), start, sLine, sCol);
 		}
-		return makeToken("alias", name, start, sLine, sCol);
+		// The token value is the bare name, but the span covers the '*' sigil
+		// too — pass the raw length so the span is not one character short.
+		return makeToken("alias", name, start, sLine, sCol, pos - start);
 	}
 
 	function scanTag(): YamlToken {

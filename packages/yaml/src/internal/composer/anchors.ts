@@ -68,18 +68,12 @@ export function registerAnchor(node: YamlNode, anchor: string, state: ComposerSt
 }
 
 export function getAnchorName(cst: CstNode, text: string): string {
-	// The CST anchor node has offset and length from the lexer token.
-	// The lexer's anchor token has value = name (without &), and the CST's
-	// makeLeafNode uses token.offset and token.length. But token.length
-	// equals the value length (without &), so CST source = text.slice(offset, offset+length)
-	// which starts with "&" but is one char short. We read from original text
-	// starting after the "&" for the correct name.
-	// The raw text at offset starts with "&", so the name is text[offset+1 .. offset+length+1]
+	// The CST anchor node carries the lexer token's span, which covers the
+	// "&" sigil plus the name. Scan the name from the original text starting
+	// after the sigil rather than slicing by length, keeping this independent
+	// of the span arithmetic.
 	const rawStart = text[cst.offset];
 	if (rawStart === "&") {
-		// Length in the token is the name length, but the offset includes the "&"
-		// So the name goes from offset+1 to offset+1+length, but we can also
-		// scan forward from offset+1 until we hit whitespace/flowIndicator/etc
 		return scanName(text, cst.offset + 1);
 	}
 	return cst.source;

@@ -1,6 +1,14 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Result, Schema } from "effect";
-import { YamlDocument, YamlMap, YamlParseError, YamlScalar, YamlSeq, YamlStringifyError } from "../src/index.js";
+import { Effect, Option, Result, Schema } from "effect";
+import {
+	YamlAlias,
+	YamlDocument,
+	YamlMap,
+	YamlParseError,
+	YamlScalar,
+	YamlSeq,
+	YamlStringifyError,
+} from "../src/index.js";
 
 describe("YamlDocument", () => {
 	describe("parse", () => {
@@ -124,6 +132,30 @@ describe("YamlDocument", () => {
 				const error = yield* Effect.flip(Schema.decodeUnknownEffect(YamlDocument.schema())("a: *missing"));
 				assert.strictEqual(error._tag, "SchemaError");
 				assert.include(String(error), "YAML parse failed");
+			}),
+		);
+	});
+
+	describe("source spans", () => {
+		it.effect("alias node spans include the * sigil so findAtOffset resolves the last name character", () =>
+			Effect.gen(function* () {
+				const text = "a: &anc 1\nb: *anc\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlMap)) {
+					return assert.fail("expected a mapping root");
+				}
+				const alias = root.items[1]?.value;
+				if (!(alias instanceof YamlAlias)) {
+					return assert.fail("expected an alias value");
+				}
+				assert.strictEqual(text.slice(alias.offset, alias.offset + alias.length), "*anc");
+				const lastNameChar = text.indexOf("*anc") + "*anc".length - 1;
+				const found = root.findAtOffset(lastNameChar);
+				if (Option.isNone(found)) {
+					return assert.fail("findAtOffset missed the last character of the alias");
+				}
+				assert.strictEqual(found.value, alias);
 			}),
 		);
 	});
