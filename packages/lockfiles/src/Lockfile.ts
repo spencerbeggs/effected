@@ -40,6 +40,54 @@ export class LockfileParseError extends Schema.TaggedErrorClass<LockfileParseErr
 	}
 }
 
+/**
+ * Failure of `Lockfile.parse`: the content parsed as text, but no single
+ * lockfile document could be located in it.
+ *
+ * @remarks
+ * `pnpm-lock.yaml` is a YAML **stream**. pnpm 11 writes a
+ * config-dependencies preamble document ahead of the lockfile whenever the
+ * workspace uses `configDependencies`, so the file holds two documents. The
+ * lockfile is the last one — pnpm composes the preamble as a prefix — and a
+ * parser that reads only the first document gets the preamble: a document
+ * that *validates*, and yields a lockfile with an empty workspace. This error
+ * exists so that case can never again succeed quietly.
+ *
+ * - `format` — which format was being parsed.
+ * - `documents` — how many YAML documents the stream carried.
+ * - `reason`:
+ *   - `"noLockfileDocument"` — the stream carries no lockfile document. An
+ *     env-only `pnpm-lock.yaml` (a config-dependencies preamble and nothing
+ *     after it) reads this way, as does empty content. pnpm itself treats
+ *     such a file as having no lockfile.
+ *   - `"noImporters"` — the located document declares no importers, so it
+ *     describes no workspace. pnpm always records at least the root importer.
+ *   - `"unexpectedDocuments"` — the stream carries several documents in a
+ *     format that defines no document framing (yarn). Rather than silently
+ *     taking the first, parsing refuses to guess.
+ *
+ * It carries typed fields rather than a `cause`: unlike
+ * {@link LockfileParseError}, there is no underlying engine failure to wrap —
+ * the text parsed fine.
+ *
+ * @public
+ */
+export class LockfileFramingError extends Schema.TaggedErrorClass<LockfileFramingError>()("LockfileFramingError", {
+	format: LockfileFormat,
+	reason: Schema.Literals(["noLockfileDocument", "noImporters", "unexpectedDocuments"]),
+	documents: Schema.Int,
+}) {
+	override get message(): string {
+		const detail =
+			this.reason === "noImporters"
+				? "the lockfile document declares no importers, so it describes no workspace"
+				: this.reason === "unexpectedDocuments"
+					? `expected a single YAML document but the content carries ${this.documents}`
+					: `the content carries no lockfile document (${this.documents} YAML document(s) found)`;
+		return `Failed to parse ${this.format} lockfile: ${detail}`;
+	}
+}
+
 const dispatch = (format: LockfileFormat, content: string): Effect.Effect<LockfileFields, ParseFailure> => {
 	switch (format) {
 		case "bun":
@@ -91,15 +139,24 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 	 *   reads the file).
 	 * @param options - The lockfile format to parse as.
 	 * @returns An `Effect` succeeding with the {@link Lockfile}, or failing
-	 *   with {@link LockfileParseError}.
+	 *   with {@link LockfileParseError} (malformed text or the wrong shape) or
+	 *   {@link LockfileFramingError} (the text parsed, but no lockfile document
+	 *   could be located in the stream — see that error for why a
+	 *   multi-document `pnpm-lock.yaml` needs it).
 	 */
 	static readonly parse = Effect.fn("Lockfile.parse")(function* (
 		content: string,
 		options: { readonly format: LockfileFormat },
 	) {
 		const fields = yield* dispatch(options.format, content).pipe(
-			Effect.mapError(
-				(failure) => new LockfileParseError({ format: options.format, stage: failure.stage, cause: failure.cause }),
+			Effect.mapError((failure) =>
+				failure.stage === "framing"
+					? new LockfileFramingError({
+							format: options.format,
+							reason: failure.reason,
+							documents: failure.documents,
+						})
+					: new LockfileParseError({ format: options.format, stage: failure.stage, cause: failure.cause }),
 			),
 		);
 		return Lockfile.make({
