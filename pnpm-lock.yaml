@@ -30,6 +30,9 @@ catalogs:
     '@effect/platform-node':
       specifier: ^4.0.0-beta.94
       version: 4.0.0-beta.97
+    '@effect/sql-sqlite-node':
+      specifier: ^4.0.0-beta.94
+      version: 4.0.0-beta.97
     '@effect/tsgo':
       specifier: ^0.18.1
       version: 0.18.1
@@ -345,6 +348,32 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/semver:
+    devDependencies:
+      '@effect/tsgo':
+        specifier: catalog:effect
+        version: 0.18.1
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
+      '@savvy-web/bundler':
+        specifier: ^1.1.9
+        version: 1.1.9(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3)
+      '@types/node':
+        specifier: catalog:silk
+        version: 26.1.1
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.97
+      typescript:
+        specifier: catalog:silk
+        version: 6.0.3
+    publishDirectory: dist/dev/pkg
+
+  packages/store:
+    dependencies:
+      '@effect/sql-sqlite-node':
+        specifier: catalog:effect
+        version: 4.0.0-beta.97(effect@4.0.0-beta.97)
     devDependencies:
       '@effect/tsgo':
         specifier: catalog:effect
@@ -801,6 +830,11 @@ packages:
       '@effect/platform': ^0.96.0
       '@effect/sql': ^0.51.0
       effect: ^3.21.0
+
+  '@effect/sql-sqlite-node@4.0.0-beta.97':
+    resolution: {integrity: sha512-mzP67KmXK2vGU3GrlOdM0TWST7mWI8kMNqPu7Gl2I30eSv+DmBes1qYVIQWUnE3b5ka2LCP7iFzjxNjtIfqn8g==}
+    peerDependencies:
+      effect: ^4.0.0-beta.97
 
   '@effect/sql@0.51.1':
     resolution: {integrity: sha512-iPDAefrJcI0HcTk9keP9Gq8Pg08K1HmpnmZZt85AqyTcvorhoNsXDFiKBbPldfV2CortwVkacX8KjO9GPpSYCA==}
@@ -5833,6 +5867,10 @@ snapshots:
       '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@4.0.0-beta.97))(effect@3.21.4)(ioredis@5.11.1))(@effect/platform@0.96.2(effect@4.0.0-beta.97))(effect@4.0.0-beta.97)
       better-sqlite3: 12.11.1
       effect: 3.21.4
+
+  '@effect/sql-sqlite-node@4.0.0-beta.97(effect@4.0.0-beta.97)':
+    dependencies:
+      effect: 4.0.0-beta.97
 
   '@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4)(ioredis@5.11.1))(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4)':
     dependencies:
