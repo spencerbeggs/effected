@@ -12,7 +12,7 @@ Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` J
 
 `src/index.ts` is the only re-exporting module. Its full export list:
 
-- `Lockfile`, `LockfileParseError` — from `src/Lockfile.ts`
+- `Lockfile`, `LockfileParseError`, `LockfileFramingError` — from `src/Lockfile.ts`
 - `LockfileFormat`, `filenameFor`, `fromFilename` — from `src/LockfileFormat.ts`
 - `LockfileIntegrity`, `WorkspaceManifest` — from `src/LockfileIntegrity.ts`
 - `ResolvedPackage` — from `src/ResolvedPackage.ts`
@@ -28,6 +28,20 @@ Note: the integrity check is `LockfileIntegrity.compare`, not `.check` — every
 
 1. **pnpm name resolution is an explicit second stage.** `Lockfile.parse` emits pnpm workspace packages named by importer *path* with version `"0.0.0"`; `lockfile.withImporterNames(map)` — total, pure — rewrites names and both dependency-edge ends. Manifest IO that builds the map belongs to the consumer.
 2. **Integrity checking is total and pure.** `LockfileIntegrity.compare(lockfile, manifests)` takes `WorkspaceManifest` values (name + four optional dep records) and returns the report infallibly. v3's `LockfileIntegrityError` was deleted, not ported. `workspace:`/`link:`/`file:` specifiers and unparseable semver rows are skipped by design.
+
+## Document framing (a lockfile is a YAML *stream*)
+
+pnpm 11 writes `pnpm-lock.yaml` as **two YAML documents** when the workspace uses `configDependencies`: a config-dependencies ("env") preamble, then the lockfile. This repo's own lockfile is that shape. Both documents declare `lockfileVersion`, `importers` and `packages`, so the preamble *validates* — a single-document parse succeeded and returned a `Lockfile` with 1 package and an empty workspace. Silent, and shaped exactly like a legitimate answer.
+
+`src/internal/documents.ts` owns framing. The rule is **deterministic, not a heuristic**: the lockfile is the **last** document, because pnpm's writer composes the preamble as a *prefix* (`writeEnvLockfile` emits `${env}---${main}`; `extractMainDocument` reads back everything after the first separator). Position is the only discriminator — keys do not tell the documents apart.
+
+- `selectPnpmDocument` — last document wins. An env-only lockfile (preamble, empty trailing document) fails typed; pnpm itself reads such a file as having no lockfile, and we never fall back to the preamble.
+- `selectSoleDocument` — yarn. yarn defines no document framing, so a multi-document `yarn.lock` fails typed rather than being silently truncated to its first document. We refuse to guess where the format states no rule.
+- npm (`JSON.parse`) and bun (`Jsonc.parse`) never shared the assumption: a second top-level value is a syntax error in both. `__test__/documents.test.ts` pins that rather than assuming it.
+
+`LockfileFramingError` carries typed fields (`format`, `documents`, `reason`), not a `cause` — there is no foreign throwable to wrap, because the text parsed fine. `reason` is `"noLockfileDocument"` (no lockfile document in the stream, incl. empty content), `"noImporters"` (the located document declares no importers, so it describes no workspace — pnpm always records at least `.`) or `"unexpectedDocuments"` (multi-document input to a format with no framing).
+
+The invariant: **an unlocatable lockfile fails typed; it never returns an empty `Lockfile`.** An empty result is indistinguishable from "this workspace has no packages", which is what kept the bug invisible.
 
 ## Internal layout
 

@@ -22,7 +22,7 @@
  */
 
 export { BunExtension } from "./BunExtension.js";
-export { Lockfile, LockfileParseError } from "./Lockfile.js";
+export { Lockfile, LockfileFramingError, LockfileParseError } from "./Lockfile.js";
 export { LockfileFormat, filenameFor, fromFilename } from "./LockfileFormat.js";
 export { LockfileIntegrity, WorkspaceManifest } from "./LockfileIntegrity.js";
 export { type PnpmCatalogs, PnpmExtension } from "./PnpmExtension.js";

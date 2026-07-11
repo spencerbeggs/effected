@@ -1,8 +1,8 @@
-import { Yaml } from "@effected/yaml";
 import { Effect, Schema } from "effect";
 import { ResolvedPackage } from "../ResolvedPackage.js";
+import { selectSoleDocument } from "./documents.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
-import { extractWorkspaceDeps, syntaxFailure, validationFailure } from "./shared.js";
+import { extractWorkspaceDeps, validationFailure } from "./shared.js";
 
 // ── Raw schemas (permissive validation scaffolding, not API) ───────────────
 
@@ -43,8 +43,10 @@ const YarnMetadata = Schema.Struct({
  */
 export const parseYarn = (content: string): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
-		const parsed = yield* Yaml.parse(content).pipe(Effect.mapError(syntaxFailure));
-		const raw = yield* Schema.decodeUnknownEffect(YarnLockfileRaw)(parsed).pipe(Effect.mapError(validationFailure));
+		// yarn defines no document framing, so a multi-document yarn.lock fails
+		// typed rather than being silently truncated to its first document.
+		const { document } = yield* selectSoleDocument(content);
+		const raw = yield* Schema.decodeUnknownEffect(YarnLockfileRaw)(document).pipe(Effect.mapError(validationFailure));
 
 		// Extract the lockfile version from __metadata; skip it during iteration.
 		const metadata =
