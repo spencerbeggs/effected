@@ -12,10 +12,13 @@
 //
 // Reference: Microsoft's jsonc-parser parser design (MIT).
 
-import { JsoncNode } from "../JsoncNode.js";
+import type { JsoncNode } from "../JsoncNode.js";
+import { makeNodeUnsafe } from "../JsoncNode.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
 import type { ScanError, SyntaxKind } from "./scanner.js";
 import { createScanner } from "./scanner.js";
+import type { SkipCursor } from "./skip.js";
+import { skipBalancedValue } from "./skip.js";
 
 /**
  * The public parse-error code vocabulary. The facade builds its `@public`
@@ -114,12 +117,6 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 	// (parseArray/parseObject and their tree-mode twins) against stack overflow
 	// on hostile deeply-nested input — see MAX_NESTING_DEPTH.
 	let depth = 0;
-	// Set once tree-mode nesting exceeds the cap. From then on, container nodes
-	// are built with EMPTY children: the tree is discarded by the facade whenever
-	// errors exist (and a depth overflow always records one), and `JsoncNode.make`
-	// re-validates the recursive `children` field per level, so building the full
-	// capped-depth tree would be pathologically slow. Fail fast instead.
-	let treeOverflow = false;
 
 	// Defeats TS control-flow narrowing — scanNext() mutates currentToken via closure.
 	function token(): SyntaxKind {
@@ -168,28 +165,22 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 		}
 	}
 
-	// Iteratively consume a balanced container (the current token is its opener)
-	// by counting bracket depth over the token stream — never recursing. Used at
-	// the depth cap so an over-deep subtree is skipped without adding stack
-	// frames; recovery still makes progress past it.
-	function skipContainer(): void {
-		let level = 0;
-		for (;;) {
-			const t = token();
-			if (t === "EOF") {
-				return;
-			}
-			if (t === "OpenBrace" || t === "OpenBracket") {
-				level++;
-			} else if (t === "CloseBrace" || t === "CloseBracket") {
-				level--;
-				if (level === 0) {
-					scanNext();
-					return;
-				}
-			}
+	// Cursor adapter for the shared iterative bracket-balance skip (see
+	// internal/skip.ts), used at the depth cap so an over-deep subtree is
+	// consumed without adding stack frames; recovery still makes progress past
+	// it. `advance` is scanNext, so scan errors and comment diagnostics inside
+	// a skipped subtree are still collected.
+	const skipCursor: SkipCursor = {
+		getToken: token,
+		advance: () => {
 			scanNext();
-		}
+		},
+		tokenStart: () => scanner.getTokenOffset(),
+		tokenEnd,
+	};
+
+	function skipContainer(): void {
+		skipBalancedValue(skipCursor);
 	}
 
 	function pushError(code: ParseCode, skipUntilAfter: SyntaxKind[] = [], skipUntil: SyntaxKind[] = []): void {
@@ -387,16 +378,15 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 		const offset = scanner.getTokenOffset();
 		const end = tokenEnd();
 		scanNext();
-		return JsoncNode.make({ type, offset, length: end - offset, value });
+		return makeNodeUnsafe({ type, offset, length: end - offset, value });
 	}
 
 	function parseArrayTree(): JsoncNode {
 		const offset = scanner.getTokenOffset();
 		if (depth >= MAX_NESTING_DEPTH) {
 			pushDepthError();
-			treeOverflow = true;
 			skipContainer();
-			return JsoncNode.make({ type: "array", offset, length: scanner.getTokenOffset() - offset, children: [] });
+			return makeNodeUnsafe({ type: "array", offset, length: scanner.getTokenOffset() - offset, children: [] });
 		}
 		depth++;
 		try {
@@ -440,16 +430,15 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 			end = tokenEnd();
 			scanNext();
 		}
-		return JsoncNode.make({ type: "array", offset, length: end - offset, children: treeOverflow ? [] : children });
+		return makeNodeUnsafe({ type: "array", offset, length: end - offset, children });
 	}
 
 	function parseObjectTree(): JsoncNode {
 		const offset = scanner.getTokenOffset();
 		if (depth >= MAX_NESTING_DEPTH) {
 			pushDepthError();
-			treeOverflow = true;
 			skipContainer();
-			return JsoncNode.make({ type: "object", offset, length: scanner.getTokenOffset() - offset, children: [] });
+			return makeNodeUnsafe({ type: "object", offset, length: scanner.getTokenOffset() - offset, children: [] });
 		}
 		depth++;
 		try {
@@ -486,7 +475,7 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 			const keyValue = scanner.getTokenValue();
 			const keyEnd = tokenEnd();
 			scanNext();
-			const keyNode = JsoncNode.make({
+			const keyNode = makeNodeUnsafe({
 				type: "string",
 				offset: keyOffset,
 				length: keyEnd - keyOffset,
@@ -496,7 +485,7 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 			if (token() !== "Colon") {
 				pushError("ColonExpected", [], ["CloseBrace", "Comma"]);
 				children.push(
-					JsoncNode.make({
+					makeNodeUnsafe({
 						type: "property",
 						offset: propOffset,
 						length: scanner.getTokenOffset() - propOffset,
@@ -511,7 +500,7 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 			const valueNode = parseValueTree();
 			if (valueNode !== undefined) {
 				children.push(
-					JsoncNode.make({
+					makeNodeUnsafe({
 						type: "property",
 						offset: propOffset,
 						length: valueNode.offset + valueNode.length - propOffset,
@@ -522,7 +511,7 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 			} else {
 				pushError("ValueExpected", [], ["CloseBrace", "Comma"]);
 				children.push(
-					JsoncNode.make({
+					makeNodeUnsafe({
 						type: "property",
 						offset: propOffset,
 						length: scanner.getTokenOffset() - propOffset,
@@ -542,7 +531,7 @@ function run(text: string, flags: ParseFlags, buildTree: boolean): Internal {
 			end = tokenEnd();
 			scanNext();
 		}
-		return JsoncNode.make({ type: "object", offset, length: end - offset, children: treeOverflow ? [] : children });
+		return makeNodeUnsafe({ type: "object", offset, length: end - offset, children });
 	}
 
 	// ── Drive ───────────────────────────────────────────────────────────────
