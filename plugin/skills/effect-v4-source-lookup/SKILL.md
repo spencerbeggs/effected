@@ -42,6 +42,30 @@ Resolve both before you trust any lookup. The bottom of the ladder is a hard fai
 never a fallback to memory — a wrong answer from v3 memory is indistinguishable from
 a right one.
 
+#### When they disagree, the installed source wins
+
+**Do not assume the subtree matches what you compile against.** It drifts, and it is
+drifting right now: the vendored tree is pinned to `effect@4.0.0-beta.94` while the
+lockfile resolves **`4.0.0-beta.97`**. The mechanism is a caret — the catalog entry is
+`^4.0.0-beta.94`, so pnpm floats forward to the newest beta while the `git subtree` sits
+at the exact tag it was pulled at, until someone re-pins it.
+
+So a rung-2 answer from `$SRC` can be a *stale* answer, delivered with total confidence
+and no error. The rule:
+
+> **`$EFFECT_SRC` is the authority on existence and signature. `$SRC` is a convenience
+> and the only home of rung 1.** When they disagree, `node_modules` wins — it is what
+> your code links against; the subtree is what someone vendored last.
+
+Two agents were saved by this during the store migration. Check the drift in one line
+before you trust the tree — the versions match, or they do not:
+
+```bash
+diff <(node -p 'require("'"$SRC"'/packages/effect/package.json").version') \
+     <(node -p 'require("effect/package.json").version') \
+  || echo "SUBTREE IS STALE — settle rung 2 against \$EFFECT_SRC, not \$SRC."
+```
+
 ```bash
 # Rungs 1+2 — the vendored subtree, if this project has one.
 SRC="${EFFECT_SMOL_SRC:-${CLAUDE_PROJECT_DIR}/repos/effect-smol}"
@@ -125,25 +149,40 @@ A probe that cannot fail is worse than no probe. Every precondition below exists
 
 1. **Run from inside the package, never the repo root.** The workspace root resolves `effect@3` and will describe the v3 surface with total confidence.
 2. **Print the resolved version inside every probe.** If it does not say `4.0.0-beta.<n>`, the probe measured v3 and every conclusion from it is void.
-3. **Probe files live at the package root.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories. A probe in a subdirectory silently drops out of the compilation program, and its control error never fires — it false-passes.
-4. **Run the control first.** Write a line you *know* must fail. Watch it fail. Only then write the real assertion.
+3. **Probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
+   - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
+   - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
+
+   The safe spelling is `packages/<pkg>/probe.ts` — package root, top level, deleted by absolute path afterwards.
+4. **Run the control first.** Write a line you *know* must fail. Watch it fail. Only then write the real assertion. For a **behavioural** probe, "must fail" is the wrong control — invert it and prove the probe can *observe the effect at all*. A probe asking "does a defect roll the transaction back?" reads success as *zero rows*, and zero rows is also what a broken harness prints; the control that rescues it is a **committing** transaction that must leave its row behind. Ask what a silently-dead probe would print, and make the control the thing that distinguishes it.
 5. **A probe of any multi-value API must exercise a NON-first member.** A probe that constructs with the first literal of a union, the first element of a list, or the first overload succeeds under both the correct reading and a silently-degraded one — it cannot fail, so it settles nothing. The `@effected/glob` planning probe for `Schema.Literal("a", "b", "c")` passed precisely because it constructed with `"a"`; only a `"b"` construction exposed that v4's runtime keeps the first literal and drops the rest.
 6. **Delete the probe by absolute path** when done.
 
 ```bash
 cd packages/<pkg>
 node -e 'console.log("resolved effect:", require("effect/package.json").version)'
-# write packages/<pkg>/probe.ts, then:
-pnpm exec tsgo --noEmit
+# write packages/<pkg>/probe.ts (NOT a temp dir — see precondition 3), then either:
+pnpm exec tsgo --noEmit   # type-level probe
+node probe.ts             # behavioural probe; Node runs TS directly
 rm -f "$PWD/probe.ts"
 ```
 
-A control that works, verified against `effect@4.0.0-beta.94`:
+A type-level control that works, verified against `effect@4.0.0-beta.94`:
 
 ```ts
 import { Effect } from "effect";
 const control = Effect.catchAll; // v3 name; must fail
 // probe.ts(3,24): error TS2339: Property 'catchAll' does not exist on type 'typeof Effect'
+```
+
+Inside a probe **file**, print the version with an import, not `require` — a `require`
+alongside a top-level `await` makes the module format ambiguous and Node refuses to run
+it (`ERR_AMBIGUOUS_MODULE_SYNTAX`). The `require` one-liner above is fine because `-e`
+has no `await`.
+
+```ts
+import pkg from "effect/package.json" with { type: "json" };
+console.log("resolved effect:", pkg.version); // must print 4.0.0-beta.<n>
 ```
 
 ## Portability
