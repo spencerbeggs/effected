@@ -1,0 +1,72 @@
+---
+title: Overview
+description: effected is a pnpm monorepo building an Effect v4 app kit — a set of libraries designed for Effect v4 from the start.
+---
+
+# effected
+
+A pnpm monorepo (npm org `@effected`) building an [Effect](https://effect.website/) v4 app kit: a set of
+libraries designed for Effect v4 from the start, not lifted from their v3 predecessors. The repo holds
+libraries only — the applications that consume them stay in their own repos.
+
+Scope is closed by five consuming applications, not by how many source repos remain. A library earns its
+place by being something one of those five actually needs.
+
+## Nothing is published yet
+
+Nothing here is on npm. The whole kit ships together at `0.1.0`, once it can replace the business logic of
+the five applications that define its scope, and `1.0.0` waits for Effect v4 GA.
+
+No package is released on its own. That is what buys one internally consistent graph on day one: every
+package's peer range names the same Effect v4 beta, and no consumer ever installs a half-built kit. Until
+then the packages are developed against the beta pinned in the `effect` catalog, and a beta bump is a
+coordinated change across the whole kit rather than a per-package decision.
+
+The API reference in these pages therefore describes packages you cannot yet install. It is generated from
+the source that will ship.
+
+## Tiers
+
+Every package declares a tier, which describes its runtime surface:
+
+* **pure** — peers on `effect` and takes only `@effected/*` edges, with no IO.
+* **boundary** — the same dependency surface, but does IO through Effect's core `FileSystem` and `Path`
+  services.
+* **integrated** — imports at least one runtime package outside `effect` core.
+
+The tier is a dependency statement rather than an IO one. A package with no IO at all still vendors its
+engine rather than take a runtime dependency, which is why `@effected/glob` is pure despite carrying a
+ported matcher. A package's tier tells you what depending on it will cost you.
+
+## Packages
+
+| Package | Tier | Description |
+| ------- | ---- | ----------- |
+| [@effected/semver](/semver) | pure | Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas |
+| [@effected/jsonc](/jsonc) | pure | Zero-dependency JSONC parsing, editing and formatting as Effect schemas |
+| [@effected/yaml](/yaml) | pure | Zero-dependency YAML parsing, editing and formatting as Effect schemas |
+| [@effected/toml](/toml) | pure | TOML 1.0.0 parsing, editing and formatting as Effect schemas, with typed diagnostics, a lossless CST and first-class date-time values |
+| [@effected/package-json](/package-json) | integrated | package.json parsing, editing, validation and file IO as Effect schemas |
+| [@effected/npm](/npm) | pure | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers |
+| [@effected/config-file](/config-file) | boundary | Composable config file loading: pluggable codecs, resolution strategies and merge behaviors |
+| [@effected/config-file-jsonc](/config-file-jsonc) | pure | JSONC codec adapter plugging `@effected/jsonc` into config-file's `ConfigCodec` seam |
+| [@effected/config-file-yaml](/config-file-yaml) | pure | YAML codec adapter plugging `@effected/yaml` into config-file's `ConfigCodec` seam |
+| [@effected/config-file-toml](/config-file-toml) | pure | TOML codec adapter plugging `@effected/toml` into config-file's `ConfigCodec` seam |
+| [@effected/walker](/walker) | boundary | Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate |
+| [@effected/glob](/glob) | pure | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
+| [@effected/lockfiles](/lockfiles) | pure | Lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
+| [@effected/store](/store) | integrated | Durable local state: a schema-versioned, migrated store, and a cache built on it |
+
+`@effected/pnpm-plugin-effect` sits outside the taxonomy. It is repo infrastructure — the pnpm config
+dependency publishing the catalogs every package pins against — and it is the one thing here that does
+publish, as an optional convenience for pinning `effect` the way this repo does.
+
+## What is left
+
+Five packages remain before the kit is complete, in dependency order: `xdg`, `workspaces`, `app-kit`,
+`type-registry` and `runtime-resolver`. Two of those are also migration targets — applications that get
+absorbed into the repo rather than merely retargeted onto it.
+
+## Source
+
+The repo lives at [spencerbeggs/effected](https://github.com/spencerbeggs/effected).
