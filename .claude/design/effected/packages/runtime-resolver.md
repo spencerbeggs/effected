@@ -1,0 +1,253 @@
+---
+status: current
+module: effected
+category: architecture
+created: 2026-07-10
+updated: 2026-07-10
+last-synced: 2026-07-10
+completeness: 90
+related:
+  - ../effect-standards.md
+  - ../migration-playbook.md
+  - ../package-inventory.md
+  - ../releases.md
+  - ../package-setup.md
+  - semver.md
+---
+
+# @effected/runtime-resolver design
+
+## Overview
+
+Target design for the `runtime-resolver` migration (step 2 of [migration-playbook.md](../migration-playbook.md)), covering **two** packages. The v3 repo resolves semver-compatible versions of Node.js, Bun and Deno from live release feeds with a bundled offline snapshot, and ships an `@effect/cli` binary from the same package. The migration keeps the domain concepts the [review](../../reviews/runtime-resolver.md) praised — cache-strategy-as-layer, the vertical dependency graph, the typed HTTP error ladder, the deterministic Node lifecycle model — and splits the binary out.
+
+- **`@effected/runtime-resolver`** — the library. Three resolver services, three cache strategies each, over one parameterized internal engine. **Boundary tier.**
+- **`@effected/runtime-resolver-cli`** — the binary. **Integrated tier.**
+
+runtime-resolver is one of the five consuming applications that define the release gate ([releases.md](../releases.md)), so "replacing its business logic" means porting it: after this migration the v3 repo's library and CLI both live here.
+
+## The split, and why it is forced
+
+[R1](../effect-standards.md#dependency-policy) says a tier-2 package takes no external runtime dependencies, and [R2](../effect-standards.md#dependency-policy) says tier-3 propagates. In v3, `@effect/cli` and `@effect/platform-node` are peers of the *whole* package while being used only by the `bin` entry — so every API-only consumer inherits them. That is exactly the shape R1 exists to forbid, and [package-inventory.md](../package-inventory.md) records the split as required rather than discretionary.
+
+The monorepo does not use subpath exports (the config-file family precedent), so an optional dependency becomes a package boundary. The CLI therefore becomes its own package.
+
+**Name: `@effected/runtime-resolver-cli`** (directory `packages/runtime-resolver-cli`). The repo's family-naming precedent is the config-file family — `@effected/config-file-jsonc`, `-yaml`, `-toml`: the parent package name, hyphen, the qualifier that distinguishes the member. `runtime-resolver-cli` follows it exactly, sorts adjacent to its parent in `packages/`, and reads correctly as the npm binary's home.
+
+## The `@effect/cli` verdict: dead on v4, and not needed
+
+**`@effect/cli` has no v4 story and never will.** Verified against the registry: `@effect/cli@latest` is `0.75.2`, its dist-tags are `latest` and `snapshot` only (no `beta`), and its peer set is `effect@^3.21.2` + `@effect/platform@^0.96.1` + `@effect/printer{,-ansi}` — the v3 line. Nothing on the v4 train.
+
+That is not a blocker, because **the CLI framework moved into `effect` core**. `effect@4.0.0-beta.97` publishes `effect/unstable/cli`, exporting `Command`, `Flag`, `Argument`, `Param`, `Primitive`, `Prompt`, `HelpDoc`, `CliError`, `CliOutput` and `Completions`. `Command.run(command, { version })` returns `Effect<void, E | CliError, R | Command.Environment>`. The same merge happened to platform: `effect/unstable/http` ships `HttpClient`, `HttpClientRequest`, `HttpClientResponse`, `HttpClientError` and `FetchHttpClient`.
+
+So the port drops `@effect/cli` entirely and builds the binary on core. What keeps the CLI at tier 3 is the *runtime*, not the framework:
+
+```ts
+// effect/unstable/cli/Command.d.ts:308
+export type Environment = FileSystem.FileSystem | Path.Path | Terminal.Terminal | ChildProcessSpawner | Stdio.Stdio;
+```
+
+Core declares all five abstractions but implements **none of them for Node** — it ships `Path.layer`, `FileSystem.layerNoop` and `Stdio.layerTest`, and no more. The Node implementations (`NodeServices`, `NodeRuntime`, `NodeStdio`, `NodeTerminal`, `NodeFileSystem`, `NodeChildProcessSpawner`) live in `@effect/platform-node@4.0.0-beta.97`, which is on the v4 train and peers on `effect` alone. That single non-core `@effect/*` runtime dependency is what makes the CLI integrated tier — and what the library must not pay for.
+
+**The split therefore survives the disappearance of its original cause.** It was justified by `@effect/cli` leaking onto library consumers; `@effect/cli` is gone, and `@effect/platform-node` leaks in precisely the same way. Same rule, different package.
+
+## Dropping Octokit
+
+The v3 library's entire regular-dependency weight is `octokit` + `@octokit/auth-app`, funding exactly two REST GETs (`/repos/{o}/{r}/tags`, `/repos/{o}/{r}/releases`). R1 forbids them in a tier-2 package outright, and the review recommends dropping them. Both go.
+
+The replacement is `HttpClient` from `effect/unstable/http` — core, so tier-2-legal — with the consumer providing `FetchHttpClient.layer` at the edge. `FetchHttpClient.layer` is `Layer<HttpClient>` with **no** requirements of its own (verified), so "provide the platform layer at the edge" costs a consumer one import from `effect`. The `OctokitInstance` structural port disappears with the dependency it abstracted; the seam it protected is now `FetchHttpClient.Fetch`, a `Context.Reference<typeof globalThis.fetch>` that a test overrides with a fake `fetch` (verified: a `Layer.succeed(FetchHttpClient.Fetch)(fake)` under `FetchHttpClient.layer` drives the whole client).
+
+**GitHub App auth is deferred, not ported.** JWT signing plus installation-token exchange is what `@octokit/auth-app` buys, and keeping it would put a runtime dependency in a tier-2 package — the thing R1 forbids. Instead `GitHubAuth` becomes a **pluggable service** whose shape is "produce request headers", with three layers in-package (`anonymous`, `token`, `layerConfig`) and App auth reachable by a consumer supplying their own `Layer<GitHubAuth>`. This is the review's recommended option 1 and it is the first recorded deviation: the v3 CLI's `--app-id` / `--app-private-key` / `--app-installation-id` flags do not survive the port. They are re-addable behind a future `@effected/github` package or directly in the CLI (which is tier 3 and may take the dependency) if a consumer asks; nothing in the five consuming applications does today.
+
+## Tier and dependencies
+
+### `@effected/runtime-resolver` — boundary
+
+IO through `effect`-core abstractions only (`HttpClient`), consumer provides the platform layer at the edge. No external runtime dependency.
+
+- `peerDependencies`: `effect` (`catalog:effect`).
+- `dependencies`: `@effected/semver` (`workspace:*`) — all version math.
+- `prepare`: `turbo run build:dev` (required by the `workspace:*` edge — see [package-setup.md](../package-setup.md#cross-package-build-dependencies)).
+
+### `@effected/runtime-resolver-cli` — integrated
+
+- `dependencies`: `effect` (`catalog:effect`), `@effect/platform-node` (`catalog:effect`), `@effected/runtime-resolver` (`workspace:*`). A tool declares the full stack as regular dependencies (effect-standards, peer-dependency discipline).
+- `bin`: `{ "runtime-resolver": "./src/bin.ts" }`.
+- Tier 3 by R1; nothing depends on it, so R2 propagation is moot.
+
+## Module layout
+
+### `packages/runtime-resolver`
+
+```text
+src/
+  index.ts              # public surface, re-exports only
+  ResolvedVersions.ts   # Runtime / Source / Increments literals; ResolvedVersions class;
+                        #   NoMatchingVersionError; FreshnessError
+  GitHub.ts             # AuthenticationError, RateLimitError, NetworkError, ResponseParseError;
+                        #   GitHubAuth service + layers (anonymous / token / layerConfig);
+                        #   GitHubTag, GitHubRelease schemas; GitHubClient service + layers
+  NodeSchedule.ts       # NodePhase literal; NodeScheduleEntry; NodeSchedule class + phaseFor
+  NodeRelease.ts        # NodeRelease class (version / npm / date)
+  NodeResolver.ts       # NodeResolverOptions schema; NodeResolver service + 3 strategy layers
+  BunResolver.ts        # BunRelease class; BunResolverOptions; BunResolver + 3 strategy layers
+  DenoResolver.ts       # DenoRelease class; DenoResolverOptions; DenoResolver + 3 strategy layers
+  internal/
+    http.ts             # getJson over HttpClient; status -> typed error ladder; retryOnRateLimit
+    releaseIndex.ts     # generic Ref-backed index over releases + provenance
+    strategy.ts         # auto / fresh / offline construction, parameterized once
+    semver.ts           # tryParseSemVer (Option-returning)
+    limits.ts           # pagination and payload bounds
+    defaults/
+      node.ts bun.ts deno.ts   # generated snapshots (~6.8k lines)
+__test__/
+  ResolvedVersions.test.ts  GitHub.test.ts  NodeSchedule.test.ts  NodeRelease.test.ts
+  NodeResolver.test.ts  BunResolver.test.ts  DenoResolver.test.ts  ReleaseIndex.test.ts
+  hostile.test.ts
+```
+
+The v3 `layers/` directory held 23 files: strategy × runtime (9), release caches (3), resolvers (3), fetchers (4), auth (3), plus the generic cache. The Fresh layers for Bun and Deno differed by a repo name. All of it collapses into `internal/strategy.ts` parameterized once, with the three public resolver files exposing the strategies as named layer constants.
+
+Two review open questions, decided:
+
+- **`*Release.ts` files fold into their `*Resolver.ts` files for Bun and Deno**, whose releases are just `{ version, date }`. Node keeps `NodeRelease.ts` and `NodeSchedule.ts` split — the schedule is a genuinely separate concept with its own lifecycle model, and Node's release carries the extra `npm` field.
+- **The Promise facade (`resolveNode` / `resolveBun` / `resolveDeno`) is dropped.** This is an Effect-first monorepo, and the non-Effect consumer that facade existed for is the CLI, which now has its own package and stays inside Effect end to end. What it embodied — a prebuilt default layer composition — survives as `GitHubClient.layerDefault` plus the resolvers' named strategy layers. Deviation recorded; re-addable as statics if a consumer asks.
+
+### `packages/runtime-resolver-cli`
+
+```text
+src/
+  index.ts        # re-exports the command for embedding/testing
+  Cli.ts          # Command definition (flags + handler) on effect/unstable/cli
+  CliResponse.ts  # the JSON envelope schemas (ok / results / per-runtime success|error)
+  bin.ts          # #!/usr/bin/env node — NodeRuntime.runMain over Command.run
+__test__/
+  Cli.test.ts     # Command.runWith(argv) against stubbed resolver layers
+```
+
+`Command.runWith` takes an explicit `argv` array, so the CLI is testable without spawning a process — the v3 suite could not do this.
+
+## What changes, concept by concept
+
+### Provenance actually works
+
+The v3 `source: "api" | "cache"` field is advertised as a headline feature and **hardcoded to `"api"` by all three resolvers**. The Auto layer knows whether it fell back, but that knowledge dies at the layer boundary.
+
+The fix moves provenance into the engine's state. `internal/releaseIndex.ts` holds a `Ref<{ releases, source }>`; whichever strategy populates it sets `source` at load time (`"api"` for a live fetch, `"cache"` for the bundled snapshot, including the Auto strategy's fallback path). Resolvers read it. The Auto strategy additionally `Effect.logWarning`s on fallback — silently serving a stale snapshot labelled `"api"` is the current worst case, and a fallback a caller cannot see is the second worst.
+
+### The `Ref<NodeSchedule>` leaves the domain model
+
+`NodeRelease` in v3 is a plain class (not `Data.TaggedClass`, because the `Ref` breaks equality — the file apologizes for this) carrying a shared mutable `Ref<NodeSchedule>` so that `release.phase(now)` can consult the schedule. Mutable service state threaded through immutable domain values.
+
+Phase becomes a function of `(release, schedule, now)`, with the schedule owned by the release index, not the model. `NodeRelease` becomes a clean `Schema.Class`:
+
+```ts
+export class NodeRelease extends Schema.Class<NodeRelease>("NodeRelease")({
+  version: SemVer,
+  npm: SemVer,
+  date: Schema.DateTimeUtc,
+}) {}
+```
+
+`Schema.DateTimeUtcFromString` is the codec used to decode the raw feeds' date strings (verified: it decodes `"2024-03-01"` to `DateTime.Utc`). The `NodeSchedule.phaseFor(major, now)` reference-date parameter — the review's favourite piece of testability in the package — is preserved verbatim.
+
+### Concurrency-safe index
+
+`createRuntimeCache` in v3 uses a bare closure `Map` with a documented "load is not concurrency-safe" caveat. A comment is not a concurrency strategy: the index becomes `Ref`-backed, and `load` a single atomic `Ref.set`.
+
+The index does **not** build on `@effected/semver`'s `VersionCache`, despite the v3 code doing so. `VersionCache` is a `Context.Service` — a singleton in the context — and the resolver needs three independent indices (Node, Bun, Deno) live at once, which a singleton service cannot provide without three tags. The index instead uses `SemVer` and `Range` directly (`Range.test`, `SemVer.compare`), which is all the version math it ever needed; `@effected/semver` stays a dependency for exactly those.
+
+### Error ladder
+
+Eight `Data.TaggedError` classes become six `Schema.TaggedErrorClass` classes. `InvalidInputError` and `CacheError` are **deleted** — both are exported from the v3 `index.ts` and constructed nowhere in `src/`. The free-text `message: string` field is dropped from every error: it duplicated what the structured fields already encode, which is the error-handling standard's "never collapse errors to strings" applied to the error's own payload.
+
+| error | fields | audience |
+| --- | --- | --- |
+| `NoMatchingVersionError` | `runtime`, `constraint`, `phases?` | calling code (`_tag` branch) + end user |
+| `FreshnessError` | `runtime`, `cause: Schema.Defect()` | end user (the fresh strategy could not reach the network) |
+| `AuthenticationError` | `method` | end user (fix your credentials) |
+| `RateLimitError` | `retryAfter?`, `limit`, `remaining` | calling code (`retryAfter` drives the retry schedule) |
+| `NetworkError` | `url`, `status?`, `cause: Schema.Defect()` | operator (logged/spanned) |
+| `ResponseParseError` | `source`, `cause: Schema.Defect()` | operator — a feed changed shape |
+
+**`InvalidRangeError` is surfaced, not swallowed.** The v3 resolvers `catchAll` a `cache.filter(range)` failure into an empty array, so an *invalid* semver range reaches the user as `VersionNotFoundError` ("no versions found") rather than as the range error it is. The resolver error channel becomes `InvalidRangeError | NoMatchingVersionError`, where `InvalidRangeError` is `@effected/semver`'s (verified: `Range.parse` fails with exactly that one error). Consumers import it from `@effected/semver` — the no-barrel rule forbids re-exporting a dependency's surface.
+
+The "no versions matched" error is named **`NoMatchingVersionError`, not `VersionNotFoundError`**, because `@effected/semver` already exports a `VersionNotFoundError` with that `_tag`, for a different condition (a version absent from a cache). Two classes sharing a `_tag` in one error channel breaks `catchTag` routing — a real hazard, since both semver's errors and ours meet in the resolver's channel.
+
+### Config, not `process.env`
+
+`GitHubAutoAuth` reads `process.env` directly at layer construction, and constructs-then-provides another layer inside a layer to delegate to App auth. Both go. `GitHubAuth.layerConfig` uses `Config` with the same precedence policy (`GITHUB_PERSONAL_ACCESS_TOKEN` > `GITHUB_TOKEN` > unauthenticated) and the same ambiguity warning, and is testable by swapping a `ConfigProvider`. The token is held `Redacted`.
+
+### `GitHubClient` is honestly scoped
+
+The v3 `GitHubClient.getJson` uses raw global `fetch` with an ad-hoc `{ decode }` pseudo-schema parameter, and `NodeVersionFetcherLive` fetches *nodejs.org* through the "GitHub" client. The JSON-over-HTTP machinery moves to `internal/http.ts`, where the Node dist-index and schedule fetchers use it **without** auth headers, and `GitHubClient` keeps only the two authenticated REST list operations. `GitHub.ts` still owns the four HTTP errors: they are one concept (typed HTTP transport failure) and the nodejs.org fetchers reuse that ladder rather than minting a parallel one — the module is named for its dominant user, and the alternative (a public `Http.ts` whose only surface is four error classes) is the central-`errors/`-directory smell the module-per-concept layout exists to kill.
+
+### Wall-clock time via `Clock`
+
+`DateTime.unsafeMake(new Date())` is scattered through the v3 resolver and model code. Every default reference time becomes `DateTime.now` (Clock-derived), so `TestClock` drives phase logic without stubbing a `Date`.
+
+### Options are schemas
+
+`NodeResolverOptions` / `BunResolverOptions` / `DenoResolverOptions` become `Schema.Struct`s with `Schema.optionalKey` fields and `Schema.Literals` for `phases` / `increments`. The CLI decodes once instead of hand-validating phases and increments against string arrays and throwing bare `Error`s.
+
+## Service and layer shapes
+
+```ts
+class NodeResolver extends Context.Service<NodeResolver, {
+  readonly resolve: (options?: NodeResolverOptions) =>
+    Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError>;
+}>()("@effected/runtime-resolver/NodeResolver") {
+  static readonly layer: Layer.Layer<NodeResolver, never, HttpClient>;        // auto
+  static readonly layerFresh: Layer.Layer<NodeResolver, FreshnessError, HttpClient>;
+  static readonly layerOffline: Layer.Layer<NodeResolver>;                    // no requirements
+}
+```
+
+Cache-strategy-as-layer — the package's signature DX idea — survives as three named layer **constants** per resolver (bound to constants, per the memoization discipline). `layer` is the Auto strategy, because that is the default a caller wants.
+
+The requirement channels fall out of the data sources and are worth stating: **Node needs only `HttpClient`** (nodejs.org's dist index and `raw.githubusercontent.com`'s `schedule.json` are both unauthenticated), while **Bun and Deno need `GitHubClient`** (authenticated REST). So `NodeResolver` works with zero GitHub credentials, and `GitHubAuth` is a dependency only of the two resolvers that actually talk to the GitHub API. `layerOffline` requires nothing at all in every case.
+
+`GitHub.ts` exports a batteries-included `GitHubClient.layerDefault` = `GitHubClient.layer` provided with `GitHubAuth.layerConfig` + `FetchHttpClient.layer`, so the common wiring is one import; the un-provided `GitHubClient.layer` stays exported for consumers who want to supply their own auth or HTTP client.
+
+## Observability
+
+Pure boundary-only instrumentation, uniform across each service's public fallible methods:
+
+- `Effect.fn("NodeResolver.resolve")`, `"BunResolver.resolve"`, `"DenoResolver.resolve"`, `"GitHubClient.listTags"`, `"GitHubClient.listReleases"`. Every public fallible method of a service is named, or none is.
+- `Effect.annotateCurrentSpan({ runtime, range })` — stable identifiers, no payloads, no tokens.
+- `Effect.logWarning` on the Auto strategy's fallback to the bundled snapshot, and on ambiguous GitHub credentials. No other logging.
+- **No metrics.** A library meters nothing; the app meters its call. No OTel import anywhere — telemetry-agnostic per the observability standard.
+
+The v3 package has zero `Effect.fn` and one `logWarning` in its entirety.
+
+## Hardening
+
+The engine consumes untrusted JSON from three network feeds. There is no recursion over that input — no parser, no tree walk — so the depth-guard family does not apply. What does:
+
+- **Malformed feed payloads fail typed** (`ResponseParseError`), never as a defect. `internal/http.ts` decodes with `Schema.decodeUnknownEffect` and maps `SchemaError` to the domain error at the boundary.
+- **Pagination is bounded.** The v3 `listTags` / `listReleases` default `maxPages` to `Number.POSITIVE_INFINITY` — an unbounded loop driven by a remote server's paging behaviour. `internal/limits.ts` holds a default page cap.
+- **The numeric-bound guard.** `perPage` / `pages` are caller-supplied numbers; `if (n < 1)` admits both `NaN` and `2.5` (every relational comparison against `NaN` is `false`). They are guarded with `!Number.isInteger(n) || n < 1` and a **defect** — these are developer wiring errors, not data conditions, so they must not enter the typed channel (planning-pillar ruling, and the `hardening-a-parser-port` numeric-bound item).
+- **`Effect.die` on index inconsistency stays a defect.** The v3 lookup-map invariant check is correct as-is: a version present in the index but absent from its lookup is a programmer error, not a business failure.
+
+## Testing
+
+`@effect/vitest` throughout; `it.effect` the default; `assert.*` never `expect`; tests in `__test__/`.
+
+The suite-boundary seams:
+
+- **`FetchHttpClient.Fetch`** — a `Context.Reference<typeof globalThis.fetch>`. A `layer(...)` group provides `Layer.provide(FetchHttpClient.layer, Layer.succeed(FetchHttpClient.Fetch)(fakeFetch))` and the whole HTTP stack runs against canned responses. This replaces the v3 `OctokitInstance` stub and is strictly better: it exercises the real request construction, status mapping and schema decoding, where the Octokit stub bypassed all three.
+- **`Layer.mock(GitHubClient, {...})`** for resolver tests that do not care about transport.
+- **`ConfigProvider`** swapped at the boundary for `GitHubAuth.layerConfig` precedence tests.
+- **`TestClock`** for the Node phase logic — plus the `NodeSchedule.phaseFor(major, now)` explicit reference date, which makes most of it clock-free.
+
+The v3 tests are plain vitest + `Effect.runPromise` + a repeated `Effect.provide` in every test body — the anti-pattern the testing standard names. Coverage is broad, so the conversion is mechanical.
+
+Edge cases the suite must actually pin (mutate-the-edges discipline): the Auto strategy's fallback sets `source: "cache"` **and** the live path sets `"api"`; an invalid range surfaces `InvalidRangeError` and not `NoMatchingVersionError`; `increments: "minor"` groups by minor and not by major; a phase filter that excludes every release yields `NoMatchingVersionError` rather than an empty success; and the rate-limit retry actually retries.
+
+## Deviations from the review, recorded
+
+1. **GitHub App auth is dropped**, not made pluggable-with-an-optional-peer. An optional peer is still an external runtime dependency in a tier-2 package. `GitHubAuth` is a service a consumer can implement; the App-auth recipe is documented, not shipped. The CLI's three `--app-*` flags go with it.
+2. **The Promise facade is dropped** (the review left this open).
+3. **`VersionNotFoundError` is renamed `NoMatchingVersionError`** to avoid a `_tag` collision with `@effected/semver`.
+4. **`VersionCache` from `@effected/semver` is not used** — it is a singleton `Context.Service` and the resolver needs three independent indices. `SemVer` and `Range` are used directly.
+5. **`@effect/cli` is not used** — it has no v4 release. `effect/unstable/cli` replaces it.
