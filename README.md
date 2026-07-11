@@ -19,6 +19,7 @@ A pnpm monorepo (npm org `@effected`) building an [Effect](https://effect.websit
 | [@effected/walker](packages/walker) | boundary | Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate |
 | [@effected/glob](packages/glob) | pure | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
 | [@effected/lockfiles](packages/lockfiles) | pure | Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
+| [@effected/store](packages/store) | integrated | Durable local state on SQLite: a schema-versioned migrated store and a TTL cache with eviction, over one shared migration ledger |
 | [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | infra | pnpm config dependency for centralized catalog management across the Effected ecosystem |
 
 Tier describes a package's runtime surface: **pure** packages peer on `effect` and take only `@effected/*` edges with no IO, **boundary** packages have the same dependency surface but do IO through Effect's core `FileSystem` and `Path` services and **integrated** packages import at least one runtime package outside `effect` core. `pnpm-plugin-effect` is repo infrastructure and sits outside the taxonomy.
@@ -29,7 +30,7 @@ Nothing here is published to npm yet. The whole kit ships together at 0.1.0 once
 
 ## Roadmap
 
-Six packages remain before the kit is complete, in order: `store`, `xdg`, `workspaces`, `app-kit`, `type-registry` and `runtime-resolver`.
+Five packages remain before the kit is complete, in order: `xdg`, `workspaces`, `app-kit`, `type-registry` and `runtime-resolver`.
 
 ## Development
 

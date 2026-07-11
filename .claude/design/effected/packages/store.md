@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-10
-last-synced: 2026-07-10
-completeness: 90
+updated: 2026-07-11
+last-synced: 2026-07-11
+completeness: 95
 related:
   - ../effect-standards.md
   - ../migration-playbook.md
@@ -19,7 +19,9 @@ related:
 
 ## Overview
 
-Target design for `@effected/store`, the **tenth** package migration (step 2 of [migration-playbook.md](../migration-playbook.md)) and an **integrated-tier** package. Store is durable local state for Effect applications: two services over one primitive, extracted from `xdg-effect` (v2.1.0) per the [xdg review](../../reviews/xdg.md) §5 seam 1 and the 2026-07-09 split decision in [package-inventory.md](../package-inventory.md).
+Design for `@effected/store`, the **tenth** package migration (step 2 of [migration-playbook.md](../migration-playbook.md)) and an **integrated-tier** package — the only one in the kit. Store is durable local state for Effect applications: two services over one primitive, extracted from `xdg-effect` (v2.1.0) per the [xdg review](../../reviews/xdg.md) §5 seam 1 and the 2026-07-09 split decision in [package-inventory.md](../package-inventory.md).
+
+Status: **merged** (playbook steps 2–6 complete). Per the semver/jsonc precedent this doc now records the *as-built* design, with deviations from the approved draft noted inline as "As-built:". The port broke the most new ground of any migration so far — it is the first package to take a runtime dependency, the first to touch SQL and the first to depend on the `effect/unstable/*` surface — so the two findings the next migration most needs are called out where it will look for them: the [`invalidateByTag` encoding bug](#cache) and the [layer-static memoization trap](#the-layer-trio).
 
 - **`Store`** — a schema-versioned, migrated `SqlClient`: a managed database connection with a user-defined migration ledger (v3 `SqliteState`, renamed for what it is rather than how it is backed).
 - **`Cache`** — a key → `Uint8Array` cache with TTL, tags, an eviction policy and a `CacheEvent` PubSub (v3 `SqliteCache`).
@@ -38,6 +40,8 @@ The v3 code used `@effect/sql` + `@effect/sql-sqlite-node` from the v3 line, wit
 So the "is there a viable v4 path" question answers itself: **use `SqlClient` from `effect/unstable/sql` as the abstract seam and `@effect/sql-sqlite-node` as the concrete driver.** Both are already pinned in the `effect` catalogs. Hand-rolling a `node:sqlite` service was considered and rejected: `@effect/sql-sqlite-node` *is* the thin Effect service over `node:sqlite` (statement serialization, prepared-statement cache, WAL, tracing attributes), and re-implementing it would duplicate upstream code to save a dependency that costs nothing transitively.
 
 One risk is accepted and recorded: `effect/unstable/sql` is an **unstable** namespace upstream, so its surface may shift between betas. The whole repo pins one catalog version and nothing publishes before `0.1.0`, so drift is caught at catalog bumps, not by consumers.
+
+As-built: the decision held with one fact worth carrying forward — **`SqliteClient.layer` has no error channel**. Driver construction failures, chiefly a `filename` whose parent directory does not exist, arrive as **defects**, not typed failures, which is why `layerSqlite`/`layerTest` publish only the domain error in `E` (see [Error handling](#error-handling)). A package wiring a database path is therefore responsible for ensuring the directory exists *before* the layer is built; nothing downstream can catch it typed.
 
 `effect/unstable/sql/Migrator` (core's own migrator) was evaluated and **not** used: it is forward-only — no `down` migrations, no rollback, no status projection — and Store's contract carries all three. The internal engine is ~100 lines and owns its ledger table shape.
 
@@ -113,6 +117,12 @@ Layer construction ensures the ledger table and **runs all pending migrations** 
 
 The v3 `up: Effect<void, unknown>` + `orDie` + `catchAllDefect` round-trip (review §2) is replaced by an honest channel: migrations do SQL, so their error is `SqlError`, wrapped by the engine into `StoreMigrationError`. A migration callback that **throws** is a programmer bug and stays a defect, per the [hardening callback rule](../effect-standards.md#error-handling-standards).
 
+### The layer trio
+
+Both services publish the same three statics, and the split is the seam: `layer` is driver-agnostic (it requires an abstract `SqlClient` in `R`, so any Effect SQL driver satisfies it), `layerSqlite` provides the sqlite driver itself and `layerTest` is `layerSqlite` at `:memory:`. Only the two `*Sqlite` layers name the driver, which is what keeps `@effect/sql-sqlite-node` out of every store type signature.
+
+**As-built — the memoization trap.** The statics are *parameterized factories*, not layer values: each call builds a new `Layer`, and Effect memoizes layers **by reference**. Calling `Store.layerSqlite({...})` inline at two provide sites therefore opens the database **twice** — two connections onto one file, two ledger setups, and (for `Cache`) two independent PubSubs whose subscribers each see half the events. Bind the result to a `const` once and reuse that binding. This is not specific to store, but store is the first package in the kit where the cost of getting it wrong is a duplicated *resource* rather than a duplicated computation, so it is recorded here for the packages that follow (`xdg`, `app-kit`, `type-registry` all wire layers over a path).
+
 ### Cache
 
 ```ts
@@ -181,6 +191,10 @@ Changes from v3, each deliberate:
 - **Lazy expiry is kept**: `get`/`has` delete an expired row on read (`Expired` then `Miss` events); `prune` sweeps in bulk. Expiry reads the clock via `DateTime.now`, so `TestClock` drives it deterministically.
 - **Eviction policy is new surface** (the inventory scope names it): with `maxEntries` set, `set` evicts the oldest-*written* entries (lowest `rowid` — `INSERT OR REPLACE` re-mints the rowid, so rowid order is write order) until the count is back at the bound, emitting one `Evicted` event. Least-recently-**set**, not LRU-read: deterministic, index-free and honest about what it is. A byte-budget policy (`maxSizeBytes`) is deferred until a consumer asks.
 
+**As-built — the `invalidateByTag` encoding bug (inherited from v3, fixed here).** Tags are stored as one `JSON.stringify`'d array in a TEXT column, and v3 matched a tag by `LIKE`-ing the **raw** tag against that column. The column holds *encoded* text, so any tag whose JSON encoding differs from itself — one containing a backslash or a double quote — could never match its own entry: the cache silently kept entries the caller had asked it to drop. The port builds the pattern from the **JSON-encoded** tag instead, escapes the `LIKE` metacharacters (`%`, `_`, `\`) in it and passes an explicit `ESCAPE` clause, with a hostile-tag test pinning it. The escaped pattern still reaches SQLite as a *parameter*, so nothing is hand-concatenated into SQL.
+
+The general lesson, for any package that stores structured data in a text column: **compare in the encoded domain, or decode before comparing — never mix the two.** A predicate written against the decoded value but evaluated against the encoded column is wrong for exactly the inputs a test suite built from friendly fixtures will not contain. This is the same class of defect as a path predicate that forgets separators are escaped.
+
 ### Events
 
 `events` stays on the cache shape (v3 posture) rather than a separate opt-in service (`ConfigEvents` posture): cache events are intrinsic per-instance observability for an eviction-bearing store, and the PubSub is created with the service, unbounded so a slow subscriber never backpressures a cache write. `emit` is infallible (`DateTime.now` + `PubSub.publish`), so v3's swallow-own-failures wrapper has nothing left to swallow. Events are a consumer hook, not the package's telemetry — spans are (see [Observability](#observability)).
@@ -221,7 +235,7 @@ Required coverage, including the mutation-prone edges:
 Not a parser; no untrusted-text recursion surfaces, no `MAX_NESTING_DEPTH`. What applies from the [input-hardening standards](../effect-standards.md#input-hardening-standards):
 
 - **Numeric wiring guards** (`maxEntries`, migration `id`s, `toId`) reject `NaN` and non-integers explicitly — see [Error handling](#error-handling).
-- **SQL injection is structurally closed**: every value reaches SQLite through the tagged-template `SqlClient` (parameterized statements). The one string built by hand — the tag `LIKE` pattern — escapes `%`, `_` and `\` before interpolation *as a parameter* (v3 already did; kept, with a hostile-tag test).
+- **SQL injection is structurally closed**: every value reaches SQLite through the tagged-template `SqlClient` (parameterized statements). The one string built by hand — the tag `LIKE` pattern — escapes `%`, `_` and `\` and is passed *as a parameter* with an `ESCAPE` clause, with a hostile-tag test. As-built correction: v3 escaped the metacharacters but built the pattern from the **raw** tag rather than the JSON-encoded one, which is the [encoding bug](#cache) this port fixed. Injection was never the hole; correctness was.
 - **Keys, tags and values are data, never SQL or paths**: a `__proto__` key is an ordinary TEXT primary key; tags round-trip through `JSON.stringify`/`parse` into a plain array, and the row-to-entry mapping builds `CacheEntry` via the schema constructor, not bare object assembly.
 
 ## Build

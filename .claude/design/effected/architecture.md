@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-09
-last-synced: 2026-07-09
+updated: 2026-07-11
+last-synced: 2026-07-11
 completeness: 85
 related:
   - effect-standards.md
@@ -28,7 +28,7 @@ This is not a port of a collection of `*-effect` libraries that happen to share 
 Two consequences follow, and they are why the reframe is recorded rather than assumed:
 
 - **The unit of design is the kit, not the package.** Packages get carved along the seams the applications actually press on, not along the boundaries the source repos happened to inherit. `xdg-effect` shipped app-directory resolution and a SQLite store in one package; those are two things, and the kit splits them. Conversely, a split is not automatically right: `@pnpm/catalogs.*` stays inside `@effected/workspaces` because nothing yet asks for it separately.
-- **The kit is finished, and finishing is defined.** The scope is closed by the five applications named in [releases.md](releases.md), not by the number of `*-effect` repos remaining. One source repo (`json-schema-effect`) falls off the roadmap under that test, `@effected/toml` is rescoped by it from a full-parity format package down to `parse`/`stringify`/Schema, and the remaining work is the closed migration list in [package-inventory.md](package-inventory.md#migration-order-provisional) rather than an open horizon.
+- **The kit is finished, and finishing is defined.** The scope is closed by the five applications named in [releases.md](releases.md), not by the number of `*-effect` repos remaining. One source repo (`json-schema-effect`) falls off the roadmap under that test, and the remaining work is the closed migration list in [package-inventory.md](package-inventory.md#migration-order-provisional) rather than an open horizon. The test names a package's minimum, not its bound: `@effected/toml` was rescoped down to `parse`/`stringify`/Schema by it on 2026-07-09 and then re-specced back to a full-parity format package on 2026-07-10 — see [releases.md](releases.md#effectedtoml-is-a-full-parity-format-package).
 
 ## Scope: libraries only
 

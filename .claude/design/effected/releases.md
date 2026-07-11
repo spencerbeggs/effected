@@ -3,14 +3,16 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-10
-last-synced: 2026-07-10
+updated: 2026-07-11
+last-synced: 2026-07-11
 completeness: 85
 related:
   - architecture.md
   - package-inventory.md
   - effect-standards.md
   - packages/toml.md
+  - packages/store.md
+  - packages/lockfiles.md
 ---
 
 # Release criteria
@@ -40,15 +42,15 @@ The criterion is "the kit can replace the business logic of these five." They sp
 
 ## The gate
 
-The union of what those consumers need. Twelve packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker`, `glob`, `toml`, `config-file-toml` — `pnpm-plugin-effect` is infrastructure and outside this count); seven remain:
+The union of what those consumers need. Fourteen packages are already merged (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `config-file-jsonc`, `config-file-yaml`, `walker`, `glob`, `toml`, `config-file-toml`, `lockfiles`, `store` — `pnpm-plugin-effect` is infrastructure and outside this count); five remain:
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
 | `@effected/walker` | boundary | merged | `config-file`, `xdg` and `workspaces` all traverse paths |
 | `@effected/glob` | pure | merged | `workspaces` drops its `minimatch` runtime dep for it |
-| `@effected/lockfiles` | pure | implemented on `feat/lockfiles` | `workspaces` reads lockfiles |
-| `@effected/store` | integrated | not started | SQLite cache + migrated state (`@effect/sql-sqlite-node`); both remaining consumers use it |
-| `@effected/xdg` | boundary | not started | `vitest-agent`, `type-registry` |
+| `@effected/lockfiles` | pure | merged | `workspaces` reads lockfiles |
+| `@effected/store` | integrated | merged | SQLite cache + migrated state (`@effect/sql-sqlite-node`); `rspress-plugin-api-extractor` and `vitest-agent` both consume it |
+| `@effected/xdg` | boundary | in progress on `feat/xdg` | `vitest-agent`, `type-registry` |
 | `@effected/workspaces` | integrated | not started | `vitest-agent`; takes `@pnpm/catalogs.*` |
 | `@effected/app-kit` | integrated | not started | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`) |
 | `@effected/type-registry` | integrated | not started | `rspress-plugin-api-extractor`, and a migration target |
