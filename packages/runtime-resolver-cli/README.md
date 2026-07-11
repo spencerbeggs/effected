@@ -108,7 +108,7 @@ A failed entry carries `ok: false` and an `error` object whose `_tag` is the sta
 | Code | When |
 | ---- | ---- |
 | `0` | The command ran. Every runtime may have resolved (`ok: true`), or some may not have (`ok: false`) — either way the question was answered. |
-| `1` | A usage error: no runtime selected, or an unrecognized `--node-phases` value. Nothing is printed on stdout. |
+| `1` | A usage error: no runtime selected, an unrecognized `--node-phases` value, or an `--increments` value outside `latest`, `minor` and `patch`. Nothing is printed on stdout. |
 
 Gate on the exit status for "did I invoke this correctly", and on `.ok` for "did it find anything".
 

@@ -680,7 +680,7 @@ const make = (options: CacheOptions): Effect.Effect<CacheShape, CacheError, SqlC
  *
  * @example
  * ```ts
- * const CacheLayer = Cache.layerSqlite({ filename: "/tmp/app/cache.db", maxEntries: 1000 });
+ * const CacheLayer = Cache.layerSqlite({ filename: "cache.db", maxEntries: 1000 });
  * ```
  *
  * @public

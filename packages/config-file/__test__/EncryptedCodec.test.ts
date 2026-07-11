@@ -129,6 +129,10 @@ describe("EncryptedCodec", () => {
 			// The inner codec's error, widened not flattened.
 			assert.strictEqual(error._tag, "ConfigCodecError");
 			assert.notInstanceOf(error, ConfigEncryptionError);
+			// Decryption succeeded and JSON.parse then failed, so the SyntaxError it
+			// threw must reach the caller intact. Without this, a regression that
+			// replaced `cause` with its string form would still pass.
+			assert.instanceOf(error.cause, SyntaxError);
 		}),
 	);
 

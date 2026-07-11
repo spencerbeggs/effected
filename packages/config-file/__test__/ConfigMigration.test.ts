@@ -67,6 +67,10 @@ describe("ConfigMigration.make", () => {
 			const codec = ConfigMigration.make({ codec: JsonCodec, migrations: [bump(2, "x", (r) => r)] });
 			const error = yield* Effect.flip(codec.parse("{ not json"));
 			assert.strictEqual(error._tag, "ConfigCodecError");
+			// The SyntaxError JSON.parse threw must survive structurally through the
+			// decorator. Asserting the tag alone would still pass if a regression
+			// stringified the cause, which is the one thing this error model forbids.
+			assert.instanceOf(error.cause, SyntaxError);
 		}),
 	);
 

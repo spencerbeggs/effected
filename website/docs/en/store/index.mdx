@@ -43,7 +43,8 @@ const migrations: ReadonlyArray<StoreMigration> = [
 
 // Bind the layer to a const: the statics are parameterized factories, so
 // calling one twice builds two layers and opens the database twice.
-const StoreLive = Store.layerSqlite({ filename: "/tmp/app/state.db", migrations });
+// The filename reaches SQLite as given, so its parent directory must already exist.
+const StoreLive = Store.layerSqlite({ filename: "state.db", migrations });
 
 const program = Effect.gen(function* () {
   const store = yield* Store;
@@ -61,7 +62,7 @@ Effect.runPromise(program.pipe(Effect.provide(StoreLive)));
 import { Cache } from "@effected/store";
 import { Duration, Effect } from "effect";
 
-const CacheLive = Cache.layerSqlite({ filename: "/tmp/app/cache.db", maxEntries: 500 });
+const CacheLive = Cache.layerSqlite({ filename: "cache.db", maxEntries: 500 });
 
 const program = Effect.gen(function* () {
   const cache = yield* Cache;

@@ -47,7 +47,7 @@ Two pieces of work remain, in this order: **ts-vfs → app-kit**.
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. Parenthetical tags mark each package's tier in the three-tier taxonomy (pure / boundary / integrated) defined in `effect-standards.md`.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. Parenthetical tags mark each **library's** tier (pure / boundary / integrated) per `effect-standards.md`; the lone companion package has none.
 
 - `semver` — strict SemVer 2.0.0 schemas; the repo's DX north star (pure).
 - `jsonc` — zero-dependency JSONC parse/edit/format schemas (pure).
@@ -64,7 +64,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `workspaces` — monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection; implements `@effected/npm`'s resolver contracts (integrated).
 - `runtime-resolver` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot (boundary).
 - `runtime-resolver-cli` — the `runtime-resolver` binary; separate so the library's consumers never install `@effect/platform-node` (integrated).
-- `pnpm-plugin-effect` — pnpm catalog/config plugin. Not a library migration, so the tier taxonomy does not apply — but it **is a public package and publishes with the kit at `0.1.0`**, on the release gate, not an exception. Consumers optionally install it to pin their `effect` versions and peer floors at the values the kit was built against; that is the payoff once `app-kit` lands. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
+- `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier** (companion is a category, not a fourth tier — see `effect-standards.md`). It **publishes with the kit at `0.1.0`**, on the release gate, not an exception. Installing it is optional for the consumer; shipping it is not optional for the release. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
 
 ### repos/effect-smol
 

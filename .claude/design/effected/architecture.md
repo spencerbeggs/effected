@@ -47,7 +47,7 @@ No npm releases until the whole kit ships together at `0.1.0`; `1.0.0` waits for
 ## Layout
 
 - `packages/*` — one directory per `@effected` library; see [package-setup.md](package-setup.md) for how a package is scaffolded.
-- `packages/pnpm-plugin-effect` — repo infrastructure (pnpm catalog/config plugin), not a library port.
+- `packages/pnpm-plugin-effect` — the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) (pnpm catalog/config plugin): published with the kit and installable by consumers, but not a library and not a library port, so it carries no tier.
 - `plugin/` — the "effective" Claude Code plugin; see [plugin.md](plugin.md).
 - `.claude/skills/improve` — the project-level self-improvement skill that maintains `plugin/skills/`; see [plugin.md](plugin.md).
 - `repos/effect-smol` — vendored Effect v4 source, read-only reference material; see [Vendored source](#vendored-source).

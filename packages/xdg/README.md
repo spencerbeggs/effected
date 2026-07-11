@@ -11,7 +11,7 @@ XDG Base Directory resolution for Effect. `Xdg` reads the environment — `$HOME
 
 Path resolution is not IO, and modeling it as IO poisons everything downstream. The environment is fixed for the life of a process, so this package reads it exactly once — when the layer is built — and the service's shape *is* the resolved value. `appDirs.dirs.config` is a `string`, not an `Effect<string, XdgEnvError>`. Reading a path cannot fail, cannot be observed to do IO, and drops straight into config-file's `defaultPath` slot, which is typed `Effect<string, never, R>` and would otherwise need an `orDie` to satisfy.
 
-Two more things follow from taking the spec seriously. The system search paths are half of XDG and are usually skipped: a config lookup here probes `~/.config/<app>` *and then* each `$XDG_CONFIG_DIRS` entry, and it absorbs failure per candidate — an unreadable `/etc/xdg` means "this candidate did not match", never "abort the search and hide the perfectly readable file below it". And the runtime directory has no fallback ladder, because there is no defensible one: it must be user-owned and mode 0700, so when `$XDG_RUNTIME_DIR` is unset the key is simply absent rather than pointing somewhere invented.
+Two more things follow from taking the spec seriously. The system search paths are half of XDG and are usually skipped: a config lookup here probes the app's own config directory — whichever rung of the precedence below resolved it — *and then* each `$XDG_CONFIG_DIRS` entry, namespaced, and it absorbs failure per candidate — an unreadable `/etc/xdg` means "this candidate did not match", never "abort the search and hide the perfectly readable file below it". And the runtime directory has no fallback ladder, because there is no defensible one: it must be user-owned and mode 0700, so when `$XDG_RUNTIME_DIR` is unset the key is simply absent rather than pointing somewhere invented.
 
 ## Install
 
@@ -112,7 +112,7 @@ Order matters: put `resolver` before `nativeResolver` so an existing `~/.config/
 | `XdgEnvError` | `$HOME` is not set. Carries `variable` and the structural `cause` — the underlying `ConfigError`. | The one environment failure there is. Every other XDG variable is optional by construction, and its absence is a resolved default rather than an error. |
 | `AppDirsError` | A directory could not be created. Carries `directory` (which kind), `path` and the structural `cause`. | The only way `AppDirs` fails, because resolution already happened. Check permissions. |
 
-A namespace that is empty, or contains a path separator, or is `..`, is a **defect** at layer construction rather than a typed error. It can only come from code, and `namespace: "../.."` would resolve the application's directories outside `$HOME` entirely.
+A namespace that is empty, or contains a path separator, or is exactly `.` or `..`, is a **defect** at layer construction rather than a typed error. It can only come from code, and `namespace: "../.."` would resolve the application's directories outside `$HOME` entirely.
 
 ## Features
 

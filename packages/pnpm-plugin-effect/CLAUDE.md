@@ -1,6 +1,8 @@
 # @effected/pnpm-plugin-effect
 
-Repo infrastructure. It is **not** a library migration and not an `@effected` library — the three-tier taxonomy (pure / boundary / integrated) does not apply, and it has no tests and no source repo it was ported from.
+The kit's **companion** package: published and installable, but **not a library** — it exposes no API, so there is nothing to import and nothing to call. It has **no tier**. Companion is a *category, not a fourth tier*: the three tiers (pure / boundary / integrated) sit on one axis, dependency surface, and that axis is meaningless for a package nothing can depend on. See [effect-standards.md](../../.claude/design/effected/effect-standards.md#companion-packages-published-but-not-a-library).
+
+It is not a library migration either — it has no tests and no source repo it was ported from. **Do not call it "repo infrastructure"**: that phrase names its relationship to this repo, reads as internal-only tooling, and twice produced documented errors claiming it does not publish or is exempt from the release. It is neither.
 
 It **is a public package and it publishes to npm with the rest of the kit at `0.1.0`** — it sits on the release gate like every other package, not outside it. Nothing here has published yet, but that is true of all sixteen packages and says nothing special about this one. **Do not infer from `"private": true` that it will not publish**: every source manifest in this repo is `"private": true` and the bundler's `publishConfig` transform emits the publishable one at build time (see below).
 

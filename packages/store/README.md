@@ -44,7 +44,9 @@ const migrations: ReadonlyArray<StoreMigration> = [
   },
 ];
 
-const StoreLive = Store.layerSqlite({ filename: "/tmp/myapp/state.db", migrations });
+// The filename reaches SQLite as given, so its parent directory must already
+// exist. Use `@effected/xdg` to resolve (and create) a real application data dir.
+const StoreLive = Store.layerSqlite({ filename: "state.db", migrations });
 
 const program = Effect.gen(function* () {
   const store = yield* Store;
@@ -99,7 +101,7 @@ Duplicate ids, non-positive-integer ids and a non-integer `toId` are wiring erro
 import { Cache } from "@effected/store";
 import { Duration, Effect } from "effect";
 
-const CacheLive = Cache.layerSqlite({ filename: "/tmp/myapp/cache.db", maxEntries: 1000 });
+const CacheLive = Cache.layerSqlite({ filename: "cache.db", maxEntries: 1000 });
 
 const program = Effect.gen(function* () {
   const cache = yield* Cache;
