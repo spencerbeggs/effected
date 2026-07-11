@@ -2,9 +2,9 @@
 
 Repo infrastructure. It is **not** a library migration and not an `@effected` library — the three-tier taxonomy (pure / boundary / integrated) does not apply, and it has no tests and no source repo it was ported from.
 
-It is the one package **not** bound to the kit's coordinated `0.1.0` release: it may publish on its own schedule. It is **not published yet** — like everything here it is `0.0.0` and `"private": true`. Never describe it as available on npm.
+It **is a public package and it publishes to npm with the rest of the kit at `0.1.0`** — it sits on the release gate like every other package, not outside it. Nothing here has published yet, but that is true of all sixteen packages and says nothing special about this one. **Do not infer from `"private": true` that it will not publish**: every source manifest in this repo is `"private": true` and the bundler's `publishConfig` transform emits the publishable one at build time (see below).
 
-For consumers it is a **convenience, entirely optional**: it lets a workspace pin its `effect` dependencies and peer floors the same way this repo does. That mattered most under Effect v3, where computing peer-dependency floors by hand was painful. Under v4 it is less necessary — treat it as a nicety, not a requirement.
+For consumers it is **optional but real**: installing it holds their `effect` versions and peer floors at exactly the values this kit was built and tested against, rather than leaving them to resolve their own. That is the payoff once `app-kit` ships — an application wiring up the kit can adopt the same calculated versions in one step. It mattered most under Effect v3, where computing peer floors by hand was painful; under v4 it is a convenience rather than a necessity, but it is a shipped, supported one.
 
 **For full design rationale:**
 → `@../../.claude/design/effected/packages/pnpm-plugin-effect.md`

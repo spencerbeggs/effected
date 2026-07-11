@@ -15,10 +15,9 @@ place by being something one of those five actually needs.
 ## Nothing is published yet
 
 Nothing here is on npm. The whole kit ships together at `0.1.0`, once it can replace the business logic of
-the five applications that define its scope, and `1.0.0` waits for Effect v4 GA.
-[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) is the one package not bound to that release: it is repo
-infrastructure rather than part of the kit, so it will publish on its own schedule rather than waiting on the
-libraries. It has not published yet.
+the five applications that define its scope, and `1.0.0` waits for Effect v4 GA. That includes
+[@effected/pnpm-plugin-effect](/pnpm-plugin-effect): it is not a library, so the tier taxonomy does not
+describe it, but it is a public package and it ships in the same release.
 
 No package is released on its own. That is what buys one internally consistent graph on day one: every
 package's peer range names the same Effect v4 beta, and no consumer ever installs a half-built kit. Until
@@ -62,10 +61,11 @@ ported matcher. A package's tier tells you what depending on it will cost you.
 | [@effected/workspaces](/workspaces) | integrated | Monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
 | [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) | infrastructure | The pnpm config dependency publishing the two Effect catalogs every package here pins against |
 
-[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) sits outside the taxonomy. It is repo infrastructure —
-a pnpm config dependency shipping catalogs and a pnpmfile, not a library with an API — so pure, boundary
-and integrated do not describe it. It is also the one package here that already publishes, as an optional
-convenience for pinning `effect` the way this repo does.
+[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) sits outside the taxonomy. It is a pnpm config
+dependency shipping catalogs and a pnpmfile, not a library with an API, so pure, boundary and integrated do
+not describe it. It ships in the same `0.1.0` release as the libraries. Installing it is optional, and it
+holds your `effect` versions and peer floors at exactly the values this kit was built and tested against
+rather than leaving you to resolve your own.
 
 ## What is left
 

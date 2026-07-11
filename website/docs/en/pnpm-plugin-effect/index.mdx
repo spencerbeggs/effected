@@ -7,13 +7,13 @@ description: "A pnpm config dependency that centralizes Effect-ecosystem version
 
 A pnpm config dependency that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to the current [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effectPeers` catalog resolves the same packages down to a calculated shared floor — the lowest common version safe to declare as a peer range — so your libraries do not over-constrain the projects that depend on them.
 
-## It ships on its own schedule
+## Where it fits
 
-The fifteen libraries documented on this site [ship together at `0.1.0`](/docs), one coordinated release. This package is not one of them: it is repo infrastructure that happens to be useful outside the repo, so it is free to publish independently rather than waiting on the kit. It is not published yet either — nothing in this repo is — but when it does ship, it will not be gated on the libraries.
+It is not an app-kit library. The three-tier taxonomy that classifies the other packages — pure, boundary, integrated — does not apply to it, because it is not a library at all: it ships catalogs and a pnpmfile, not an API. There is nothing to import and nothing to call.
 
-Every `@effected/*` package pins its Effect versions through these catalogs, and the plugin exists so your workspace can do the same.
+It is still a public package, and it [ships in the same `0.1.0` release](/docs) as the libraries. Nothing in this repo has published yet.
 
-It is not an app-kit library. The three-tier taxonomy that classifies the other packages — pure, boundary, integrated — does not apply to it, because it is not a library at all: it ships catalogs and a pnpmfile, not an API.
+Every `@effected/*` package pins its Effect versions through these catalogs, and the plugin exists so your workspace can do the same. Installing it is **optional**, and what it buys you is version agreement: your `effect` dependencies and peer floors sit at exactly the values this kit was built and tested against, rather than at whatever your own resolution produces. That pays off most when you adopt the kit itself — an application wiring up `@effected/*` packages takes their pinned Effect versions in one step instead of reconstructing them by hand.
 
 For consumers it is a **convenience, entirely optional**. It mattered most under Effect v3, where computing peer-dependency floors by hand was genuinely painful. Under v4 it is less necessary. Treat it as a nicety, not a requirement.
 

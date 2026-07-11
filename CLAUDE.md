@@ -64,7 +64,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `workspaces` — monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection; implements `@effected/npm`'s resolver contracts (integrated).
 - `runtime-resolver` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot (boundary).
 - `runtime-resolver-cli` — the `runtime-resolver` binary; separate so the library's consumers never install `@effect/platform-node` (integrated).
-- `pnpm-plugin-effect` — pnpm catalog/config plugin; repo infrastructure, not a library migration, so the tier taxonomy does not apply. It is the one package **not** bound to the kit's coordinated `0.1.0` release: it may publish on its own schedule, as an optional convenience letting users pin their `effect` dependencies and peer floors the way this repo does. It is **not published yet** — like everything here it is `0.0.0` and `"private": true`. Never describe it as available on npm.
+- `pnpm-plugin-effect` — pnpm catalog/config plugin. Not a library migration, so the tier taxonomy does not apply — but it **is a public package and publishes with the kit at `0.1.0`**, on the release gate, not an exception. Consumers optionally install it to pin their `effect` versions and peer floors at the values the kit was built against; that is the payoff once `app-kit` lands. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
 
 ### repos/effect-smol
 
