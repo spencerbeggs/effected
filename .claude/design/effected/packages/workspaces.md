@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-10
-last-synced: 2026-07-10
-completeness: 90
+updated: 2026-07-11
+last-synced: 2026-07-11
+completeness: 95
 related:
   - ../effect-standards.md
   - ../migration-playbook.md
@@ -23,7 +23,9 @@ related:
 
 ## Overview
 
-Target design for `@effected/workspaces`, an **integrated-tier** package and the last of the workspaces-effect family to land. It is what remains of `workspaces-effect` (v2.0.3, ~8,200 lines) after two extractions that already merged: [`@effected/lockfiles`](lockfiles.md) took the four lockfile parsers and integrity checking, and [`@effected/glob`](glob.md) took glob matching. What is left is the part that only makes sense with a filesystem and a package manager under it: **workspace root discovery, package enumeration, the dependency graph, package-manager detection, catalog resolution, lockfile IO and git-based change detection.**
+**Merged** — migration #13, an **integrated-tier** package and the last of the workspaces-effect family to land. It is what remains of `workspaces-effect` (v2.0.3, ~8,200 lines) after two extractions that merged before it: [`@effected/lockfiles`](lockfiles.md) took the four lockfile parsers and integrity checking, and [`@effected/glob`](glob.md) took glob matching. What is left is the part that only makes sense with a filesystem and a package manager under it: **workspace root discovery, package enumeration, the dependency graph, package-manager detection, catalog resolution, lockfile IO and git-based change detection.**
+
+This document is the design as specified, with an [As built](#as-built-2026-07-11) section recording what the port landed. The sections below are accurate unless that section says otherwise.
 
 Design follows the [workspaces review](../../reviews/workspaces.md), which found the *semantics* strong and v4-shaped and the *packaging* — kind-based folders, `*ErrorBase` workarounds, a static-wiring hack, triplicated dual APIs, two over-granular services, an over-engineered `Request`/`RequestResolver` cache — as the thing the redesign sheds.
 
@@ -80,7 +82,7 @@ A wildcard whose `enumerationPrefix` names a directory that does not exist fails
 
 ## Module layout
 
-Module-per-concept. Twelve source modules plus `internal/`.
+Module-per-concept. Thirteen source modules (counting the re-export-only `index.ts`) plus `internal/`, replacing fifteen kind-based folders.
 
 | File | Owns |
 | --- | --- |
@@ -94,12 +96,12 @@ Module-per-concept. Twelve source modules plus `internal/`.
 | `src/GitReader.ts` | `GitReader` service contract, `GitReader.layerNode`, `GitCommandError` |
 | `src/WorkspaceCatalogs.ts` | `CatalogSet` class, `WorkspaceCatalogs` service + layer, the `catalogResolver` layer, `CatalogAssemblyError` |
 | `src/LockfileReader.ts` | `LockfileReader` service + layer (the IO half of `@effected/lockfiles`), `LockfileReadError` |
-
-YAML-**stream** framing is *not* this package's job. `pnpm-lock.yaml` carries a config-dependencies preamble document ahead of the real lockfile whenever the workspace uses `configDependencies` (this repo's own lockfile is that shape), and a first-document parse silently returns the preamble: a few packages, no importers, no catalogs — an apparently empty workspace rather than a failure. `@effected/lockfiles` owns it as of its #58, on a deterministic rule (pnpm's writer always emits the preamble as a *prefix*, so the lockfile is the **last** document), and surfaces a typed `LockfileFramingError` when a stream carries no lockfile document at all. `LockfileReader` therefore calls `Lockfile.parse` directly; an earlier richest-document-wins workaround here was deleted when #58 landed.
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetector` service + default layer |
 | `src/Workspaces.ts` | The composite layers |
 | `src/WorkspacesSync.ts` | The synchronous escape hatch (Node-only) |
 | `src/internal/` | `traverse.ts` (**the** traversal state machine), `enumerate.ts` (the Effect enumerator over it), `patterns.ts` (`packages:` pattern reading), `catalogs.ts` (the `@pnpm/catalogs.*` boundary), `limits.ts` |
+
+YAML-**stream** framing is *not* this package's job. `pnpm-lock.yaml` carries a config-dependencies preamble document ahead of the real lockfile whenever the workspace uses `configDependencies` (this repo's own lockfile is that shape), and a first-document parse silently returns the preamble: a few packages, no importers, no catalogs — an apparently empty workspace rather than a failure. [`@effected/lockfiles`](lockfiles.md#document-framing-a-lockfile-is-a-yaml-stream) owns it as of its #58, on a deterministic rule (pnpm's writer always emits the preamble as a *prefix*, so the lockfile is the **last** document), and surfaces a typed `LockfileFramingError` when a stream carries no lockfile document at all. `LockfileReader` therefore calls `Lockfile.parse` directly; an earlier richest-document-wins workaround here was deleted when #58 landed.
 
 **One traversal, two entry points.** `internal/traverse.ts` owns the worklist, the dequeue discipline (a head index, never `Array.shift()` — `shift()` re-indexes the array on every dequeue, so draining a worklist near the 100,000-entry budget is quadratic), the depth rule, the visit budget and the prune list. Both `internal/enumerate.ts` (Effect) and `WorkspacesSync.ts` (sync) drive it; neither re-decides any of those. Two hand-written copies is not a style problem, it is how the two APIs came to **disagree**: the sync copy accepted a child *before* checking its depth, so it returned a package one level beyond the cap that the Effect enumerator rejected with `depthExceeded` on the identical tree. The depth cap bounds what is *enumerated*, not merely what is *descended into*. The single deliberate divergence that remains is what happens at a bound — the Effect path fails typed, the sync path truncates, because it has no error channel — and a test drives **both** entry points against one real tree at the boundary, since a test that exercises only one cannot catch this class of drift.
 
@@ -130,7 +132,7 @@ Cycle detection is **iterative** (an explicit stack). v3's was a recursive DFS c
 
 Kahn's algorithm is retained for level output (deterministic, lexicographically sorted within a level) but the v3 inner loop rescanned the whole adjacency map per processed node; the reverse-edge index this class already builds makes it linear.
 
-> `effect@4.0.0-beta.97` ships a core `Graph` module with `Graph.topo` (Kahn) and `Graph.isAcyclic`. It was evaluated and **not** adopted: `Graph.topo` *throws* on a cycle rather than failing typed, and the node-index indirection would have to be maintained alongside the name-keyed API this package's consumers already use. Revisit if `Graph` grows a typed cycle result.
+> Core ships a `Graph` module (`effect/Graph`) with `Graph.topo` (Kahn) and `Graph.isAcyclic`. It was evaluated and **not** adopted: `Graph.topo` *throws* rather than failing typed, and the node-index indirection would have to be maintained alongside the name-keyed API this package's consumers already use. Revisit if `Graph` grows a typed cycle result.
 
 ### `WorkspaceRoot`, `WorkspaceDiscovery`, `PackageManagerDetector`
 
@@ -166,7 +168,9 @@ Here root resolution is **one concern, applied uniformly**: every root-consuming
 
 ### `GitReader` — the subprocess seam
 
-Effect v4 core has **no** `Command` / `CommandExecutor`; the v3 `@effect/platform` `CommandExecutor` dependency has no core successor (verified against `effect@4.0.0-beta.97`: `Stdio` is the *current process's* streams, not process spawning). Taking `@effect/platform-node` as a runtime dependency would force a platform adapter into every consumer's tree — exactly the escape the peer discipline exists to prevent.
+Effect v4 core has **no** `CommandExecutor` — the v3 `@effect/platform` dependency has no drop-in core successor, and `Stdio` is the *current process's* streams, not process spawning. What core does ship, in `effect/unstable/process`, is a `ChildProcessSpawner` **contract** (a `Context.Service` plus a `make` taking a spawn function) with **no Node implementation**; the Node one lives in `@effect/platform-node`. That is the same "core declares, platform implements" shape that decided the [runtime-resolver CLI split](runtime-resolver.md#the-effectcli-verdict-dead-on-v4-and-not-needed), reached independently from the other end, and it forces the same conclusion here: taking `@effect/platform-node` as a runtime dependency would push a platform adapter into every consumer's tree — exactly the escape the peer discipline exists to prevent.
+
+(Verified against the pinned catalog beta and its matching `repos/effect-smol` subtree. An earlier draft of this section cited `4.0.0-beta.97`, the floating installed version from when the catalog carried a caret range; the catalogs now pin exactly, so the installed version and the subtree agree.)
 
 So workspaces owns the seam: `GitReader` is a small `Context.Service` contract (`run(cwd, args)` returning `Effect<string, GitCommandError>`, plus `available(cwd)`), with `GitReader.layerNode` as the shipped default over `node:child_process.execFile` — locale-pinned `LC_ALL=C`, per-command timeout, both v3 hard-won details preserved. Consumers on Bun or Deno swap the layer; tests mock it with `Layer.succeed`. This is what makes `ChangeDetector` testable without a git repository, which v3 was not.
 
@@ -249,3 +253,14 @@ Three v3 capabilities are **not** in v1, each with a reason and none of them on 
 ## Build and scaffold
 
 Standard per [package-setup.md](../package-setup.md). `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized class-factory bases; the gate is a zero-warning `dist/prod/issues.json` with only `*_base` symbols suppressed.
+
+## As built (2026-07-11)
+
+Merged with **133 tests**, a clean repo typecheck, biome and markdownlint, and a cold prod build whose zero-warning `issues.json` carries 27 suppressions, all synthesized class-factory `_base` symbols. The whole suite runs on a virtual filesystem built from core `FileSystem` and `Path`, with **one integration test that discovers this repository for real** — and that test is what earned its keep (below). Everything above landed as designed; `minimatch` is gone from both call sites, the `@pnpm/catalogs.*` quartet is confined to `internal/catalogs.ts`, and the two npm resolver contracts are implemented.
+
+Four things the port established that the design could only assert:
+
+1. **The `@effected/npm` hypothesis is confirmed.** When `npm` was spun out of the package-json port it was a bet that workspaces would be the package able to implement `CatalogResolver` and `WorkspaceResolver`. It is. Both ship as layers over this package's own services (`WorkspaceCatalogs.catalogResolver`, `WorkspaceDiscovery.workspaceResolver`, and the merged `Workspaces.resolvers`), and a manifest's `catalog:` / `workspace:` specifiers now resolve for real through `Package.resolve` instead of yielding `Option.none()`. The contracts' unmatched-name-is-`None` convention held without amendment.
+2. **The self-discovery integration test found the lockfile bug.** Running discovery against this monorepo — rather than only against synthetic fixtures — is what surfaced that pnpm 11 writes `pnpm-lock.yaml` as two YAML documents under `configDependencies`, so a single-document parse silently returned the preamble and reported an empty workspace. The fix landed in `@effected/lockfiles` ([#58](lockfiles.md#document-framing-a-lockfile-is-a-yaml-stream)), where document framing belongs, on the deterministic last-document rule rather than the richest-document heuristic the first cut here reached for. A package that reads real-world files owes itself at least one test against a real-world file.
+3. **The subprocess finding is the runtime-resolver finding.** Core declares a `ChildProcessSpawner` and implements it for no runtime, exactly as `Command.Environment` declares five services core implements for no runtime. Both packages independently concluded that a library must own a seam rather than take `@effect/platform-node`. That is now a rule, not a coincidence — see [GitReader](#gitreader--the-subprocess-seam).
+4. **The two-entry-point traversal drift was real, not theoretical.** The sync copy accepted a child *before* checking its depth, so it returned a package one level beyond the cap that the Effect enumerator rejected. `internal/traverse.ts` owning the worklist, the dequeue discipline, the depth rule, the visit budget and the prune list is what closes it, and the test that drives **both** entry points against one real tree at the boundary is what proves it stays closed. A suite exercising only one entry point cannot catch this class of bug by construction.
