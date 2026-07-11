@@ -167,6 +167,16 @@ if (key === "__proto__") {
 Do this at the single value-extraction choke point (`Node.toValue`), so both
 the value path and any tree-walker share it.
 
+The guidance above is for objects **you** build. When untrusted records flow
+through v4 `Schema.Record` instead, decode is already pollution-safe: a
+`__proto__` key survives decoding as an ordinary **own data property** of the
+output — it is neither dropped nor written to the prototype (probed beta.94 in
+the `@effected/lockfiles` hostility suite: a `__proto__` pnpm importer decodes
+into an entry literally named `__proto__` with `Object.prototype` unpolluted).
+Two consequences: don't pre-filter such keys expecting decode to choke on
+them, and if you later copy a decoded record by hand, that copy loop is a new
+`obj[key] = value` surface needing the `defineProperty` route above.
+
 ## Reject unescaped C0 control characters
 
 Raw control characters below `0x20` (except tab `0x09`, LF `0x0a`, CR `0x0d`)

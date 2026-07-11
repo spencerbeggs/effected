@@ -185,6 +185,12 @@ Manual / case-by-case:
   `{ exact, default }` → `withDecodingDefaultTypeKey`; `{ nullable }` → wrap in
   `NullOr` + `decodeTo` + `Option.filter(Predicate.isNotNull)`
   (+ `Option.orElseSome` when `default`).
+  **`{ default }` needs a second half:** the `withDecodingDefault*` family covers
+  decode only, but v3 `optionalWith(S, { default })` also defaulted at class
+  construction — for parity compose `Schema.withConstructorDefault(...)` on the
+  same field, or `X.make({})` throws `Missing key` where v3 filled the default
+  (probed beta.94: decode-only → `make({})` throws; composed pair → `{"deps":{}}`.
+  Worked example: `@effected/lockfiles` `ResolvedPackage.dependencies`).
 - `optionalToOptional` / `optionalToRequired` / `requiredToOptional` →
   `decodeTo` + `SchemaGetter.transformOptional`.
 - `filterEffect` →
