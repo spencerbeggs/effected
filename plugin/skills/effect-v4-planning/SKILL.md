@@ -30,6 +30,8 @@ Observability row blank.
    design template; brownfield fills the gap table.
 4. **Get buy-in, then build.** Present the summary and wait for the user before
    writing implementation code. The summary is cheap to correct; code is not.
+   Two carve-outs, both below: a **delegated subagent** has no user to wait on, and a
+   **small pure-tier bugfix** collapses the summary to one line. Neither waives step 3.
 
 > Step 3 is not optional and not a formality. If you find yourself writing
 > `Schema.Struct`, `Context.Service`, or a `Layer` and no summary has been
@@ -159,6 +161,51 @@ the change focused; do not scope-creep a refactor the user did not ask for.
 - Every service dependency has a Test layer, and time is read via `Clock`.
 - No `Effect.runSync`/`runPromise` in the API surface or in a fixture.
 - Brownfield: every gap has a recommended disposition.
+
+## Two carve-outs from step 4 (buy-in)
+
+The summary in step 3 is **never** waived. What bends is step 4 — *who* you wait for,
+and how heavy the summary has to be.
+
+### You are a delegated subagent — emit the summary, then proceed
+
+If you are running as a headless subagent, **you have no user to wait on.** A
+delegating parent dispatched you with instructions and is not watching the channel;
+"present the summary and wait for buy-in" would deadlock, and the usual failure is an
+agent that resolves the deadlock by quietly skipping step 3 altogether — losing the
+audit *and* the buy-in.
+
+So: **emit the design summary, treat the parent's instructions as the buy-in, and
+proceed.** The summary is not wasted — it goes in your report, where it is exactly
+what lets the parent (and the reviewer on the PR) check the pillars were walked. Two
+things you still owe: if the summary surfaces a decision that **contradicts or exceeds
+the parent's instructions** — a scope change, a public API change nobody asked for, a
+design risk you cannot resolve — do not proceed on your own authority; report back and
+ask. And put any unresolved item in the Open risks row rather than deciding it silently.
+
+An interactive session has a real user: wait for them, as step 4 says.
+
+### Small pure-tier bugfix — a one-line summary is the whole recipe
+
+A bounded fix to an **existing pure-tier engine** (a perf fix, an off-by-one, a bad
+span offset) does not need the brownfield gap table. It has no service, no layer, no
+observability posture, and its testability is already settled by the existing suite;
+the table's rows would all read "n/a — unchanged".
+
+Qualifying is narrow. **All four** must hold: pure-tier; the fix is behaviour-
+preserving except for the bug itself; **no public API change**; and no new error case.
+Miss any one and you run the full brownfield audit — a bugfix that changes a signature
+or adds an error *is* a design change wearing a bugfix's clothes.
+
+When it qualifies, the summary collapses to one line, and you still emit it:
+
+```text
+## Fix: <bug> — pure-tier, no API change, no new error. Test: <the test that now fails>.
+```
+
+That last clause is the load-bearing one. The test that reproduces the bug *is* the
+design review for a fix this size: if you cannot name it, you do not understand the
+bug yet, and the fast path is not available to you.
 
 ## Migration / port context
 
