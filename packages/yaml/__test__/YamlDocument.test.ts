@@ -1,6 +1,14 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Result, Schema } from "effect";
-import { YamlDocument, YamlMap, YamlParseError, YamlScalar, YamlSeq, YamlStringifyError } from "../src/index.js";
+import { Effect, Option, Result, Schema } from "effect";
+import {
+	YamlAlias,
+	YamlDocument,
+	YamlMap,
+	YamlParseError,
+	YamlScalar,
+	YamlSeq,
+	YamlStringifyError,
+} from "../src/index.js";
 
 describe("YamlDocument", () => {
 	describe("parse", () => {
@@ -124,6 +132,130 @@ describe("YamlDocument", () => {
 				const error = yield* Effect.flip(Schema.decodeUnknownEffect(YamlDocument.schema())("a: *missing"));
 				assert.strictEqual(error._tag, "SchemaError");
 				assert.include(String(error), "YAML parse failed");
+			}),
+		);
+	});
+
+	describe("source spans", () => {
+		it.effect("alias node spans include the * sigil so findAtOffset resolves the last name character", () =>
+			Effect.gen(function* () {
+				const text = "a: &anc 1\nb: *anc\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlMap)) {
+					return assert.fail("expected a mapping root");
+				}
+				const alias = root.items[1]?.value;
+				if (!(alias instanceof YamlAlias)) {
+					return assert.fail("expected an alias value");
+				}
+				assert.strictEqual(text.slice(alias.offset, alias.offset + alias.length), "*anc");
+				const lastNameChar = text.indexOf("*anc") + "*anc".length - 1;
+				const found = root.findAtOffset(lastNameChar);
+				if (Option.isNone(found)) {
+					return assert.fail("findAtOffset missed the last character of the alias");
+				}
+				assert.strictEqual(found.value, alias);
+			}),
+		);
+
+		it.effect("a folded plain scalar in block-map value position spans the full scalar and keeps sourceMultiline", () =>
+			Effect.gen(function* () {
+				const text = "key: first line\n  second line\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlMap)) {
+					return assert.fail("expected a mapping root");
+				}
+				const scalar = root.items[0]?.value;
+				if (!(scalar instanceof YamlScalar)) {
+					return assert.fail("expected a scalar value");
+				}
+				assert.strictEqual(scalar.value, "first line second line");
+				assert.strictEqual(scalar.offset, text.indexOf("first"));
+				assert.strictEqual(scalar.offset + scalar.length, text.indexOf("second line") + "second line".length);
+				assert.strictEqual(scalar.sourceMultiline, true);
+				const found = root.findAtOffset(text.indexOf("second"));
+				if (Option.isNone(found)) {
+					return assert.fail("findAtOffset missed the second line of the folded scalar");
+				}
+				assert.strictEqual(found.value, scalar);
+			}),
+		);
+
+		it.effect("a folded plain scalar in a block-seq entry spans the full scalar and keeps sourceMultiline", () =>
+			Effect.gen(function* () {
+				const text = "- first\n  second\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlSeq)) {
+					return assert.fail("expected a sequence root");
+				}
+				const scalar = root.items[0];
+				if (!(scalar instanceof YamlScalar)) {
+					return assert.fail("expected a scalar item");
+				}
+				assert.strictEqual(scalar.value, "first second");
+				assert.strictEqual(scalar.offset, text.indexOf("first"));
+				assert.strictEqual(scalar.offset + scalar.length, text.indexOf("second") + "second".length);
+				assert.strictEqual(scalar.sourceMultiline, true);
+				const found = root.findAtOffset(text.indexOf("second"));
+				if (Option.isNone(found)) {
+					return assert.fail("findAtOffset missed the second line of the folded scalar");
+				}
+				assert.strictEqual(found.value, scalar);
+			}),
+		);
+
+		it.effect("a folded plain scalar inside a flow collection spans the full scalar and keeps sourceMultiline", () =>
+			Effect.gen(function* () {
+				const text = "[ first\n  second ]\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlSeq)) {
+					return assert.fail("expected a flow sequence root");
+				}
+				const scalar = root.items[0];
+				if (!(scalar instanceof YamlScalar)) {
+					return assert.fail("expected a scalar item");
+				}
+				assert.strictEqual(scalar.value, "first second");
+				assert.strictEqual(scalar.offset, text.indexOf("first"));
+				assert.strictEqual(scalar.offset + scalar.length, text.indexOf("second") + "second".length);
+				assert.strictEqual(scalar.sourceMultiline, true);
+				const found = root.findAtOffset(text.indexOf("second"));
+				if (Option.isNone(found)) {
+					return assert.fail("findAtOffset missed the second line of the folded scalar");
+				}
+				assert.strictEqual(found.value, scalar);
+			}),
+		);
+
+		it.effect("a single-line plain scalar keeps its exact span and no sourceMultiline", () =>
+			Effect.gen(function* () {
+				const text = "key: value\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlMap)) {
+					return assert.fail("expected a mapping root");
+				}
+				const scalar = root.items[0]?.value;
+				if (!(scalar instanceof YamlScalar)) {
+					return assert.fail("expected a scalar value");
+				}
+				assert.strictEqual(scalar.offset, text.indexOf("value"));
+				assert.strictEqual(scalar.length, "value".length);
+				assert.strictEqual(scalar.sourceMultiline, undefined);
+			}),
+		);
+
+		it.effect("round-trip of a folded multi-line plain scalar keeps the folded plain style", () =>
+			Effect.gen(function* () {
+				const doc = yield* YamlDocument.parse("key: first line\n  second line\n");
+				const out = yield* doc.stringify();
+				assert.strictEqual(out, "key: first line second line\n");
+				const again = yield* YamlDocument.parse(out);
+				assert.deepStrictEqual(again.toValue(), { key: "first line second line" });
 			}),
 		);
 	});

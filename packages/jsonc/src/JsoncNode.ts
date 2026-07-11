@@ -138,6 +138,39 @@ export class JsoncNode extends Schema.Class<JsoncNode>("JsoncNode")({
 	}
 }
 
+/**
+ * Validation-free construction path for the trusted tree builder in
+ * `internal/parser.ts` — NOT part of the public surface (not re-exported from
+ * `index.ts`); external callers construct via the fully validating
+ * `JsoncNode.make`.
+ *
+ * Constructing a `JsoncNode` through `make`/`new` re-parses the recursive
+ * `children` field, and each element parse re-runs the class transformation,
+ * which re-parses ITS children — construction cost doubles per nesting level
+ * (issue #13; measured ~4s at depth 20, effectively hanging past 25). The
+ * parser guarantees validity by construction — every field comes straight off
+ * a scanner token — so it skips schema construction entirely.
+ *
+ * A `Schema.Class` instance is its props assigned onto the class prototype:
+ * the base `Data.Class` constructor is exactly `Object.assign(this, props)`,
+ * and the prototype chain carries the methods, the class brand getter and
+ * structural equality (verified against effect@4.0.0-beta.97). Mirroring that
+ * with `Object.create` + `Object.assign` yields an instance identical to a
+ * `make`-built one, minus the validating parse.
+ *
+ * Contract: absent optional fields must be OMITTED, never passed as an
+ * explicit `undefined` (a present `undefined` would create an own property
+ * that `make` would have rejected).
+ */
+export const makeNodeUnsafe = (props: {
+	readonly type: JsoncNodeType;
+	readonly offset: number;
+	readonly length: number;
+	readonly value?: unknown;
+	readonly colonOffset?: number;
+	readonly children?: ReadonlyArray<JsoncNode>;
+}): JsoncNode => Object.assign(Object.create(JsoncNode.prototype) as JsoncNode, props);
+
 // Recursive walkers below cap their descent at MAX_NESTING_DEPTH. A tree built
 // by the parser is already bounded (the parser caps at the same depth), but a
 // tree assembled by hand via `JsoncNode.make` can nest arbitrarily deep, so each

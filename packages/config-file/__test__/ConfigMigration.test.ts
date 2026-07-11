@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Option } from "effect";
 import { ConfigCodec } from "../src/ConfigCodec.js";
+import type { VersionAccess } from "../src/ConfigMigration.js";
 import { ConfigMigration, ConfigMigrationError } from "../src/ConfigMigration.js";
 
 const bump = (version: number, name: string, fn: (raw: Record<string, unknown>) => Record<string, unknown>) => ({
@@ -123,6 +124,175 @@ describe("ConfigMigration.make", () => {
 			const cause = Exit.getCause(exit);
 			assert.isTrue(Option.isSome(cause));
 			if (Option.isSome(cause)) assert.isTrue(Cause.hasDies(cause.value));
+		}),
+	);
+});
+
+/** Reads and writes the version at `meta.schemaVersion` instead of the default top-level `version`. */
+const metaAccess: VersionAccess = {
+	get: (raw) => {
+		const meta = (raw as { readonly meta?: { readonly schemaVersion?: unknown } }).meta;
+		return typeof meta?.schemaVersion === "number"
+			? Effect.succeed(meta.schemaVersion)
+			: Effect.fail(new Error("meta.schemaVersion is missing or not a number"));
+	},
+	set: (raw, version) => {
+		const doc = raw as Record<string, unknown>;
+		return Effect.succeed({ ...doc, meta: { ...(doc.meta as Record<string, unknown>), schemaVersion: version } });
+	},
+};
+
+describe("ConfigMigration.make with a custom versionAccess", () => {
+	it.effect("reads the version through the custom get, not the default field", () =>
+		Effect.gen(function* () {
+			// The top-level `version` is 0: if the default accessor were consulted, BOTH
+			// migrations would run and `b` would appear. The custom accessor reads 2 from
+			// meta.schemaVersion, so only the v3 step is pending.
+			const codec = ConfigMigration.make({
+				codec: ConfigCodec.json,
+				migrations: [bump(3, "add-c", (r) => ({ ...r, c: 3 })), bump(2, "add-b", (r) => ({ ...r, b: 2 }))],
+				versionAccess: metaAccess,
+			});
+			const parsed = yield* codec.parse(`{"version":0,"meta":{"schemaVersion":2},"a":1}`);
+			assert.deepStrictEqual(parsed, { version: 0, meta: { schemaVersion: 3 }, a: 1, c: 3 });
+		}),
+	);
+
+	it.effect("stamps the version through the custom set after every applied step", () =>
+		Effect.gen(function* () {
+			const setVersions: Array<number> = [];
+			const seenByUp: Array<unknown> = [];
+			const recordingAccess: VersionAccess = {
+				get: metaAccess.get,
+				set: (raw, version) => {
+					setVersions.push(version);
+					return metaAccess.set(raw, version);
+				},
+			};
+			const codec = ConfigMigration.make({
+				codec: ConfigCodec.json,
+				migrations: [
+					bump(2, "add-b", (r) => ({ ...r, b: 2 })),
+					{
+						version: 3,
+						name: "add-c",
+						up: (raw) => {
+							seenByUp.push(raw);
+							return Effect.succeed({ ...(raw as Record<string, unknown>), c: 3 });
+						},
+					},
+				],
+				versionAccess: recordingAccess,
+			});
+			const parsed = yield* codec.parse(`{"meta":{"schemaVersion":1},"a":1}`);
+			// set ran once per applied migration, in ascending order.
+			assert.deepStrictEqual(setVersions, [2, 3]);
+			// The v3 step saw the document AS STAMPED by the v2 write-version phase —
+			// the chain is keyed through the custom accessor, not around it.
+			assert.deepStrictEqual(seenByUp, [{ meta: { schemaVersion: 2 }, a: 1, b: 2 }]);
+			// No default top-level `version` field appears anywhere.
+			assert.deepStrictEqual(parsed, { meta: { schemaVersion: 3 }, a: 1, b: 2, c: 3 });
+		}),
+	);
+
+	it.effect("a custom get failing surfaces phase read-version with the cause by identity", () =>
+		Effect.gen(function* () {
+			const codec = ConfigMigration.make({
+				codec: ConfigCodec.json,
+				migrations: [bump(2, "add-b", (r) => r)],
+				versionAccess: metaAccess,
+			});
+			// The document satisfies the DEFAULT accessor (top-level version) but not the
+			// custom one — the failure proves the custom get was the one consulted.
+			const error = yield* Effect.flip(codec.parse(`{"version":1,"a":1}`));
+			assert.instanceOf(error, ConfigMigrationError);
+			assert.strictEqual((error as ConfigMigrationError).phase, "read-version");
+			assert.strictEqual((error as ConfigMigrationError).version, 0);
+			assert.strictEqual((error as ConfigMigrationError).name, "");
+			assert.instanceOf((error as ConfigMigrationError).cause, Error);
+			assert.strictEqual(
+				((error as ConfigMigrationError).cause as Error).message,
+				"meta.schemaVersion is missing or not a number",
+			);
+		}),
+	);
+
+	it.effect("a custom get pointing at a wrong-typed field fails with phase read-version", () =>
+		Effect.gen(function* () {
+			const codec = ConfigMigration.make({
+				codec: ConfigCodec.json,
+				migrations: [bump(2, "add-b", (r) => r)],
+				versionAccess: metaAccess,
+			});
+			const error = yield* Effect.flip(codec.parse(`{"meta":{"schemaVersion":"two"}}`));
+			assert.instanceOf(error, ConfigMigrationError);
+			assert.strictEqual((error as ConfigMigrationError).phase, "read-version");
+		}),
+	);
+
+	it.effect("a custom set failing surfaces phase write-version naming the step, cause by identity", () =>
+		Effect.gen(function* () {
+			const boom = new Error("cannot stamp");
+			const codec = ConfigMigration.make({
+				codec: ConfigCodec.json,
+				migrations: [bump(2, "add-b", (r) => ({ ...r, b: 2 }))],
+				versionAccess: { get: metaAccess.get, set: () => Effect.fail(boom) },
+			});
+			const error = yield* Effect.flip(codec.parse(`{"meta":{"schemaVersion":1}}`));
+			assert.instanceOf(error, ConfigMigrationError);
+			assert.strictEqual((error as ConfigMigrationError).phase, "write-version");
+			assert.strictEqual((error as ConfigMigrationError).version, 2);
+			assert.strictEqual((error as ConfigMigrationError).name, "add-b");
+			assert.strictEqual((error as ConfigMigrationError).cause, boom);
+		}),
+	);
+
+	it.effect("a custom get that throws instead of failing its Effect stays a defect", () =>
+		Effect.gen(function* () {
+			const codec = ConfigMigration.make({
+				codec: ConfigCodec.json,
+				migrations: [bump(2, "add-b", (r) => r)],
+				versionAccess: {
+					get: () => {
+						throw new Error("bug in get");
+					},
+					set: metaAccess.set,
+				},
+			});
+			const exit = yield* Effect.exit(codec.parse(`{"meta":{"schemaVersion":1}}`));
+			assert.isTrue(Exit.isFailure(exit));
+			const cause = Exit.getCause(exit);
+			assert.isTrue(Option.isSome(cause));
+			if (Option.isSome(cause)) {
+				// A throw from a caller-supplied VersionAccess is a contract violation — it
+				// must NOT be laundered into ConfigMigrationError.
+				assert.isTrue(Cause.hasDies(cause.value));
+				assert.isFalse(Cause.hasFails(cause.value));
+			}
+		}),
+	);
+
+	it.effect("a custom set throwing inside its returned Effect stays a defect", () =>
+		Effect.gen(function* () {
+			const codec = ConfigMigration.make({
+				codec: ConfigCodec.json,
+				migrations: [bump(2, "add-b", (r) => r)],
+				versionAccess: {
+					get: metaAccess.get,
+					set: () =>
+						Effect.sync(() => {
+							throw new Error("bug in set");
+						}),
+				},
+			});
+			const exit = yield* Effect.exit(codec.parse(`{"meta":{"schemaVersion":1}}`));
+			assert.isTrue(Exit.isFailure(exit));
+			const cause = Exit.getCause(exit);
+			assert.isTrue(Option.isSome(cause));
+			if (Option.isSome(cause)) {
+				assert.isTrue(Cause.hasDies(cause.value));
+				assert.isFalse(Cause.hasFails(cause.value));
+			}
 		}),
 	);
 });

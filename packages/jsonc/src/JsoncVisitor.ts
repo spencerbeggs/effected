@@ -15,6 +15,8 @@ import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { scanErrorToCode } from "./internal/parser.js";
 import type { SyntaxKind } from "./internal/scanner.js";
 import { createScanner } from "./internal/scanner.js";
+import type { SkipCursor } from "./internal/skip.js";
+import { skipBalancedValue } from "./internal/skip.js";
 import type { JsoncParseErrorCode, JsoncParseOptions } from "./Jsonc.js";
 import type { JsoncPath, JsoncSegment } from "./JsoncNode.js";
 
@@ -95,26 +97,23 @@ function* visitGen(text: string, disallowComments: boolean): Generator<JsoncVisi
 	// skips the over-deep subtree iteratively (see MAX_NESTING_DEPTH).
 	let depth = 0;
 
-	// Consume a balanced container (current token is its opener) by counting
-	// bracket depth over the token stream — never recursing, never emitting.
-	function skipDeepContainer(): void {
-		let level = 0;
-		for (;;) {
-			const t = scanner.getToken();
-			if (t === "EOF") {
-				return;
-			}
-			if (t === "OpenBrace" || t === "OpenBracket") {
-				level++;
-			} else if (t === "CloseBrace" || t === "CloseBracket") {
-				level--;
-				if (level === 0) {
-					scanner.scan();
-					return;
-				}
-			}
+	// Cursor adapter for the shared iterative bracket-balance skip (see
+	// internal/skip.ts). `advance` is the raw scanner.scan — not the
+	// event-emitting scanNext — so nothing is emitted while a too-deep
+	// container is consumed.
+	const skipCursor: SkipCursor = {
+		getToken: () => scanner.getToken(),
+		advance: () => {
 			scanner.scan();
-		}
+		},
+		tokenStart: () => scanner.getTokenOffset(),
+		tokenEnd: () => scanner.getTokenOffset() + scanner.getTokenLength(),
+	};
+
+	// Consume a balanced container (current token is its opener) — never
+	// recursing, never emitting.
+	function skipDeepContainer(): void {
+		skipBalancedValue(skipCursor);
 	}
 
 	function* scanNext(): Generator<JsoncVisitorEvent, SyntaxKind> {

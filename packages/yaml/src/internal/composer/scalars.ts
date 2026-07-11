@@ -448,25 +448,40 @@ function skipChildrenOnLine(children: readonly CstNode[], startIdx: number, line
  * aliases, directives, or block-seq entries, this function detects such
  * lines and extracts the raw source text as continuation parts (3MYT, FBC9,
  * XLQ9, AB8U).
+ *
+ * `endOffset` is the source end of the last consumed fragment, so callers
+ * can span the composed scalar node across the whole folded value (the
+ * sourceMultiline decoration pass then stamps it from the span).
  */
 export function collectMultilinePlainScalar(
 	children: readonly CstNode[],
 	startIdx: number,
 	minContinuationColumn?: number,
 	sourceText?: string,
-): { value: string; nextIdx: number; partsCount: number } {
+): { value: string; nextIdx: number; partsCount: number; endOffset: number } {
 	const first = children[startIdx];
 	if (first?.type !== "flow-scalar") {
-		return { value: first?.source.trim() ?? "", nextIdx: startIdx + 1, partsCount: 1 };
+		return {
+			value: first?.source.trim() ?? "",
+			nextIdx: startIdx + 1,
+			partsCount: 1,
+			endOffset: first === undefined ? 0 : first.offset + first.length,
+		};
 	}
 
 	// Only merge plain scalars (not quoted)
 	const style = getScalarStyle(first);
 	if (style !== "plain") {
-		return { value: getScalarValue(first), nextIdx: startIdx + 1, partsCount: 1 };
+		return {
+			value: getScalarValue(first),
+			nextIdx: startIdx + 1,
+			partsCount: 1,
+			endOffset: first.offset + first.length,
+		};
 	}
 
 	const parts: string[] = [first.source.trim()];
+	let endOffset = first.offset + first.length;
 	let emptyLines = 0;
 	let idx = startIdx + 1;
 	// Track whether we've seen a newline since the last content (for continuation detection)
@@ -517,6 +532,7 @@ export function collectMultilinePlainScalar(
 				}
 			}
 			parts.push(child.source.trim());
+			endOffset = child.offset + child.length;
 			emptyLines = 0;
 			sawNewline = false;
 			idx++;
@@ -553,6 +569,13 @@ export function collectMultilinePlainScalar(
 						}
 					}
 					parts.push(lineText);
+					// The span end is the last non-whitespace character of the
+					// absorbed line, not the raw line end.
+					let contentEnd = lineEndOffset;
+					while (contentEnd > 0 && (sourceText[contentEnd - 1] === " " || sourceText[contentEnd - 1] === "\t")) {
+						contentEnd--;
+					}
+					endOffset = contentEnd;
 					emptyLines = 0;
 					sawNewline = false;
 					// Skip all children on this line
@@ -567,11 +590,11 @@ export function collectMultilinePlainScalar(
 	}
 
 	if (parts.length === 1) {
-		return { value: parts[0] ?? "", nextIdx: idx, partsCount: 1 };
+		return { value: parts[0] ?? "", nextIdx: idx, partsCount: 1, endOffset };
 	}
 
 	// Apply flow folding to the collected parts
-	return { value: foldFlowLines(parts.join("\n")), nextIdx: idx, partsCount: parts.length };
+	return { value: foldFlowLines(parts.join("\n")), nextIdx: idx, partsCount: parts.length, endOffset };
 }
 
 // ---------------------------------------------------------------------------

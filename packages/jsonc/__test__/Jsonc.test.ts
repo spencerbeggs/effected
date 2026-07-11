@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Result, Schema } from "effect";
+import { Effect, Equal, Option, Result, Schema } from "effect";
 import { Jsonc, JsoncNode, JsoncParseError, JsoncParseOptions } from "../src/index.js";
 
 const deeplyNested = `${"[".repeat(20000)}1${"]".repeat(20000)}`;
@@ -77,6 +77,67 @@ describe("Jsonc", () => {
 			Effect.gen(function* () {
 				const maybe = yield* Jsonc.parseTree("", JsoncParseOptions.make({ allowEmptyContent: true }));
 				assert.isTrue(Option.isNone(maybe));
+			}),
+		);
+
+		// Regression guard for #13: tree construction used to double in cost per
+		// nesting level (~4s at depth 20, effectively hanging past 25), so merely
+		// COMPLETING inside the test timeout at depth 250 proves the internal
+		// builder is no longer re-validating every subtree per node.
+		it.effect("parses deep nesting under the depth cap in linear time (#13)", () =>
+			Effect.gen(function* () {
+				const depth = 250; // below MAX_NESTING_DEPTH (256)
+				const maybe = yield* Jsonc.parseTree(`${"[".repeat(depth)}1${"]".repeat(depth)}`);
+				let node = Option.getOrThrow(maybe);
+				let levels = 0;
+				while (node.type === "array" && node.children?.length === 1) {
+					node = node.children[0];
+					levels++;
+				}
+				assert.strictEqual(levels, depth);
+				assert.strictEqual(node.type, "number");
+				assert.strictEqual(node.value, 1);
+			}),
+		);
+
+		it.effect("parses wide documents in time linear in node count (#13)", () =>
+			Effect.gen(function* () {
+				const maybe = yield* Jsonc.parseTree(`[${Array.from({ length: 10_000 }, (_, i) => i).join(",")}]`);
+				const root = Option.getOrThrow(maybe);
+				assert.strictEqual(root.children?.length, 10_000);
+				assert.strictEqual(root.children?.[9_999]?.value, 9_999);
+			}),
+		);
+
+		it.effect("parser-built nodes are structurally equal to JsoncNode.make-built ones (#13)", () =>
+			Effect.gen(function* () {
+				const maybe = yield* Jsonc.parseTree('{"a": [1]}');
+				const parsed = Option.getOrThrow(maybe);
+				const handBuilt = JsoncNode.make({
+					type: "object",
+					offset: 0,
+					length: 10,
+					children: [
+						JsoncNode.make({
+							type: "property",
+							offset: 1,
+							length: 8,
+							colonOffset: 4,
+							children: [
+								JsoncNode.make({ type: "string", offset: 1, length: 3, value: "a" }),
+								JsoncNode.make({
+									type: "array",
+									offset: 6,
+									length: 3,
+									children: [JsoncNode.make({ type: "number", offset: 7, length: 1, value: 1 })],
+								}),
+							],
+						}),
+					],
+				});
+				assert.instanceOf(parsed, JsoncNode);
+				assert.isTrue(Equal.equals(parsed, handBuilt));
+				assert.deepStrictEqual(parsed.toValue(), handBuilt.toValue());
 			}),
 		);
 	});

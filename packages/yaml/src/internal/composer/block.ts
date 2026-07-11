@@ -569,7 +569,7 @@ export function flattenBlockMapChildren(
 					lastValueSepOffset >= 0 &&
 					sameLine(state.text, lastKeyOffset, lastValueSepOffset);
 				const minContCol = isImplicitMapping ? lastKeyColumn + 1 : undefined;
-				const { value, nextIdx, partsCount } = collectMultilinePlainScalar(
+				const { value, nextIdx, partsCount, endOffset } = collectMultilinePlainScalar(
 					children,
 					i,
 					minContCol,
@@ -582,7 +582,10 @@ export function flattenBlockMapChildren(
 					value: resolved,
 					style: "plain" as ScalarStyle,
 					offset: child.offset,
-					length: child.length,
+					// Span the whole folded scalar, not just the first fragment,
+					// so findAtOffset covers continuation lines and the
+					// sourceMultiline decoration pass sees the real extent.
+					length: partsCount > 1 ? endOffset - child.offset : child.length,
 					...(plainMeta.tag !== undefined ? { tag: plainMeta.tag } : {}),
 					...(plainMeta.anchor !== undefined ? { anchor: plainMeta.anchor } : {}),
 					...(needsRaw ? { raw: value } : {}),
@@ -1440,6 +1443,7 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 					value: merged,
 					nextIdx: mergeEnd,
 					partsCount,
+					endOffset,
 				} = collectMultilinePlainScalar(children, ci, undefined, state.text);
 				if (partsCount > 1) {
 					const resolved = resolveScalar(merged, "plain", pendingMeta.tag, state);
@@ -1447,7 +1451,9 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 						value: resolved,
 						style: "plain" as ScalarStyle,
 						offset: child.offset,
-						length: child.length,
+						// Span the whole folded scalar — see the value-position
+						// site above.
+						length: endOffset - child.offset,
 						...(pendingMeta.tag !== undefined ? { tag: pendingMeta.tag } : {}),
 						...(pendingMeta.anchor !== undefined ? { anchor: pendingMeta.anchor } : {}),
 					});

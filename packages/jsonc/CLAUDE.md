@@ -26,7 +26,9 @@ Malformed or hostile input must fail through the typed `E` channel — never as 
 4. `Jsonc.ts` `deepEqual` (backs `equals`/`equalsValue`) → returns `false`
 5. `JsoncVisitor.ts` `visitValue` → in-band `Error` event, then an iterative `skipDeepContainer()`
 
-`internal/navigate.ts` needs no cap: `skipValue()` is an iterative balanced-bracket skip, so it cannot overflow.
+`internal/navigate.ts` needs no cap: `skipValue()` is an iterative balanced-bracket skip, so it cannot overflow. The skip algorithm itself (bracket counting over the flat token stream, plus the malformed-closer guard) has a single copy in `internal/skip.ts` (`skipBalancedValue`), parameterized over a token cursor; the parser, navigator and visitor each adapt their own advance discipline to it.
+
+The parser's tree mode constructs nodes via `makeNodeUnsafe` in `JsoncNode.ts` — a validation-free internal path (not re-exported from `index.ts`) that exists because schema construction re-validates the recursive `children` field per node, doubling cost per nesting level (#13). The parser guarantees validity by construction; public `JsoncNode.make`/`new` remain fully validating.
 
 Errors preserve structure. `JsoncModificationError` carries typed `path`/`expected`/`depth`/`offset?` fields — never a `reason: string`.
 
@@ -55,8 +57,3 @@ Never run `node savvy.build.ts --target prod` directly. It skips `build:dev`, em
 Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`.
 
 `savvy.build.ts` carries one narrow API Extractor suppression: `{ messageId: "ae-forgotten-export", pattern: "_base" }`, covering the heritage symbols synthesized by inline class factories. Never widen it. `package.json` stays `"private": true` — the bundler emits the publishable manifest.
-
-## Open issues
-
-- **#13** — `Jsonc.parseTree` is exponential in nesting depth: each `JsoncNode.make` re-validates its subtree via `Schema.suspend`. The depth guard exposed this, not introduced it. Fix: a validation-free internal tree-builder path.
-- **#15** — three bracket-balancing skip implementations (`skipValue` in `navigate.ts`, `skipContainer` in `parser.ts`, `skipDeepContainer` in `JsoncVisitor.ts`) should consolidate into one helper.
