@@ -174,3 +174,37 @@ describe("WorkspacePackage", () => {
 		assert.isUndefined(scoped.publishConfig?.directory);
 	});
 });
+
+describe("WorkspacePackage.dependencyVersion — inherited names are not dependencies", () => {
+	const pkg = WorkspacePackage.make({
+		name: "@x/a",
+		version: "1.0.0",
+		path: "/repo/packages/a",
+		packageJsonPath: "/repo/packages/a/package.json",
+		relativePath: "packages/a",
+		private: false,
+		dependencies: { effect: "^4.0.0" },
+		devDependencies: {},
+		peerDependencies: {},
+		optionalDependencies: {},
+	});
+
+	// A plain-object dependency map inherits from Object.prototype, so a bare
+	// `this.dependencies[name]` lookup answers for names nobody declared. The
+	// sibling predicates (hasDependency and friends) already used Object.hasOwn;
+	// dependencyVersion did not, and it is typed Option<string> — so it would hand
+	// back Option.some(<Function>) and lie about its own type.
+	for (const inherited of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+		it(`dependencyVersion(${JSON.stringify(inherited)}) is none`, () => {
+			assert.isTrue(Option.isNone(pkg.dependencyVersion(inherited)));
+		});
+
+		it(`hasAnyDependencyOn(${JSON.stringify(inherited)}) is false`, () => {
+			assert.isFalse(pkg.hasAnyDependencyOn(inherited));
+		});
+	}
+
+	it("a real declared dependency still resolves", () => {
+		assert.deepStrictEqual(pkg.dependencyVersion("effect"), Option.some("^4.0.0"));
+	});
+});

@@ -251,3 +251,58 @@ describe("PublishabilityDetector — the default npm semantics", () => {
 		);
 	});
 });
+
+// ── a workspace NESTED inside a larger git repository ──────────────────────
+//
+// The path-bridging bug this pins: `git diff` reports paths relative to the git
+// REPOSITORY TOP-LEVEL, while `git ls-files` reports them relative to `cwd`.
+// The detector joins whatever it gets onto the WORKSPACE root. When the two
+// roots coincide — every other test in this file — both conventions agree and a
+// missing `--relative` is invisible. When the workspace is nested, every path is
+// wrong.
+//
+// This stub is faithful to the real git behaviour (verified against git): it
+// emits REPO-relative paths unless `--relative` is passed, in which case it
+// emits CWD-relative ones and drops anything outside the workspace.
+
+/** The workspace `/repo` sits at `repo/` inside a git repository rooted one level up. */
+const nestedGit = gitStub((args) => {
+	if (args[0] === "ls-files") return ""; // already cwd-relative in real git
+	if (args[0] !== "diff") return "";
+	// A change inside the workspace, plus one OUTSIDE it (a sibling of the
+	// workspace root) that git would report for the whole repository.
+	return args.includes("--relative")
+		? "packages/alpha/src/index.ts\n"
+		: "repo/packages/alpha/src/index.ts\noutside/tooling.ts\n";
+});
+
+describe("ChangeDetector — a workspace nested inside a larger git repository", () => {
+	layer(detectorOver(nestedGit))((it) => {
+		it.effect("changedFiles are workspace-relative, not repository-relative", () =>
+			Effect.gen(function* () {
+				const detector = yield* ChangeDetector;
+				// Without `--relative` this is ["outside/tooling.ts", "repo/packages/alpha/src/index.ts"].
+				assert.deepStrictEqual(yield* detector.changedFiles(), ["packages/alpha/src/index.ts"]);
+			}),
+		);
+
+		it.effect("changedPackages still resolves the owning package", () =>
+			Effect.gen(function* () {
+				const detector = yield* ChangeDetector;
+				const names = (yield* detector.changedPackages()).map((pkg) => pkg.name);
+				// A repo-relative path joined onto the workspace root yields
+				// /repo/repo/packages/alpha/... — which owns nothing, so the detector
+				// would report NO changed packages at all. Silent, and completely wrong.
+				assert.deepStrictEqual(names, ["@x/alpha"]);
+			}),
+		);
+
+		it.effect("affectedPackages walks the reverse graph from the correctly-resolved package", () =>
+			Effect.gen(function* () {
+				const detector = yield* ChangeDetector;
+				const names = (yield* detector.affectedPackages()).map((pkg) => pkg.name).sort();
+				assert.deepStrictEqual(names, ["@x/alpha", "@x/beta", "@x/web"]);
+			}),
+		);
+	});
+});

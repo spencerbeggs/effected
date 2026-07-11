@@ -19,8 +19,9 @@ import type { GlobPattern } from "@effected/glob";
 import { GlobSet } from "@effected/glob";
 import { Yaml } from "@effected/yaml";
 import { Effect, Exit, Schema } from "effect";
-import { MAX_ENUMERATION_DEPTH, MAX_ENUMERATION_ENTRIES, PRUNED_DIRECTORIES } from "./internal/limits.js";
+import { MAX_ENUMERATION_DEPTH } from "./internal/limits.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
+import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative } from "./internal/traverse.js";
 import { PublishConfig, WorkspacePackage } from "./WorkspacePackage.js";
 
 /**
@@ -158,21 +159,42 @@ const readPackageSync = (directory: string, relativePath: string): WorkspacePack
 };
 
 /**
+ * Options for {@link getWorkspacePackagesSync}.
+ *
+ * @public
+ */
+export interface GetWorkspacePackagesSyncOptions {
+	/**
+	 * Descent cap below a wildcard's enumeration prefix, mirroring
+	 * `WorkspaceDiscovery.layer({ maxDepth })`.
+	 *
+	 * @defaultValue 32
+	 */
+	readonly maxDepth?: number;
+}
+
+/**
  * Every workspace package under `root`, root package first.
  *
  * @remarks
  * **Synchronous and Node-only.** The Effect surface is `WorkspaceDiscovery`.
  *
- * Pattern semantics are shared with the async enumerator, right down to the
- * bounded descent for segment-crossing patterns — a `packages/**` finds a
- * package two levels down here exactly as it does there.
+ * Pattern semantics are not merely "shared" with the Effect enumerator — both
+ * drive the **same traversal state machine** (`internal/traverse.ts`), so the
+ * dequeue order, the depth rule, the visit budget and the prune list cannot
+ * drift apart. A `packages/**` finds exactly the same packages here as there,
+ * including at the depth boundary.
  *
- * Unlike the Effect surface, this one is **total**: an unenumerable pattern or
- * an unreadable manifest is skipped, not raised. A function that cannot return
- * an error channel should not pretend to have one, and a Vitest config has
- * nowhere to put a failure anyway.
+ * The one deliberate difference is what happens at a bound: the Effect surface
+ * fails typed (`depthExceeded` / `budgetExceeded`), while this one is **total**
+ * and truncates. An unenumerable pattern or an unreadable manifest is skipped,
+ * not raised — a function with no error channel should not pretend to have one,
+ * and a Vitest config has nowhere to put a failure. Totality covers *data*, not
+ * caller mistakes: a `maxDepth` that is not a positive integer throws, matching
+ * the enumerator's defect.
  *
  * @param root - The workspace root, from {@link findWorkspaceRootSync}.
+ * @param options - Traversal bounds; see {@link GetWorkspacePackagesSyncOptions}.
  *
  * @example
  * ```ts
@@ -184,7 +206,18 @@ const readPackageSync = (directory: string, relativePath: string): WorkspacePack
  *
  * @public
  */
-export const getWorkspacePackagesSync = (root: string): ReadonlyArray<WorkspacePackage> => {
+export const getWorkspacePackagesSync = (
+	root: string,
+	options?: GetWorkspacePackagesSyncOptions,
+): ReadonlyArray<WorkspacePackage> => {
+	const maxDepth = options?.maxDepth ?? MAX_ENUMERATION_DEPTH;
+	// A bad bound is a PROGRAMMER error, not a data condition. This function is
+	// total over *data*, not over caller mistakes — so it throws here, mirroring
+	// the enumerator's `Effect.die`. Same predicate, same message, one rule.
+	if (!isValidMaxDepth(maxDepth)) {
+		throw new RangeError(`getWorkspacePackagesSync: ${badMaxDepthMessage(maxDepth)}`);
+	}
+
 	const patterns = readPatternsSync(root);
 
 	// The same GlobSet the async enumerator compiles. An uncompilable set yields
@@ -194,7 +227,6 @@ export const getWorkspacePackagesSync = (root: string): ReadonlyArray<WorkspaceP
 	const globs = compiled.value;
 
 	const included = new Map<string, string>();
-	let visited = 0;
 
 	for (const literal of globs.literals) {
 		const absolute = join(root, literal);
@@ -206,15 +238,16 @@ export const getWorkspacePackagesSync = (root: string): ReadonlyArray<WorkspaceP
 		const absoluteBase = join(root, base);
 		if (!isDirectory(absoluteBase)) continue;
 
-		const queue: Array<{ readonly relative: string; readonly absolute: string; readonly depth: number }> = [
-			{ relative: base, absolute: absoluteBase, depth: 0 },
-		];
+		// THE shared traversal — the same state machine `internal/enumerate.ts`
+		// drives. The ONLY difference between the two entry points is what happens
+		// to a `TraversalStop`: the Effect path fails typed, this one truncates,
+		// because a Vitest config has nowhere to put an error. Depth, budget,
+		// prune and dequeue are not re-decided here.
+		const traversal = new Traversal(base, absoluteBase, maxDepth);
 
-		while (queue.length > 0) {
-			const current = queue.shift();
-			/* v8 ignore next */
-			if (current === undefined) break;
-			if (++visited > MAX_ENUMERATION_ENTRIES) break;
+		let stopped = false;
+		for (let current = traversal.next(); current !== undefined && !stopped; current = traversal.next()) {
+			if (traversal.charge() !== undefined) break;
 
 			let entries: Array<string> = [];
 			try {
@@ -224,15 +257,24 @@ export const getWorkspacePackagesSync = (root: string): ReadonlyArray<WorkspaceP
 			}
 
 			for (const entry of entries) {
-				if (PRUNED_DIRECTORIES.has(entry)) continue;
-				const relative = current.relative === "" ? entry : `${current.relative}/${entry}`;
+				if (isPruned(entry)) continue;
+				const relative = joinRelative(current.relative, entry);
 				const absolute = join(current.absolute, entry);
 				if (!isDirectory(absolute)) continue;
+
+				// Depth BEFORE acceptance, exactly as the Effect enumerator does it.
+				// Gating only the descent is what made this function return a package
+				// one level beyond the cap that the Effect API rejected on the same
+				// tree — the drift that motivated the shared traversal.
+				if (wildcard.crossesSegments && !traversal.admits(current)) {
+					stopped = true;
+					break;
+				}
+
 				if (wildcard.matches(relative) && isPackage(absolute)) included.set(relative, absolute);
 				if (!wildcard.crossesSegments) continue;
-				const depth = current.depth + 1;
-				if (depth > MAX_ENUMERATION_DEPTH) continue;
-				queue.push({ relative, absolute, depth });
+
+				traversal.push(current, relative, absolute);
 			}
 		}
 	}

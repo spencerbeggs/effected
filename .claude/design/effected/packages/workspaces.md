@@ -99,7 +99,9 @@ YAML-**stream** framing is *not* this package's job. `pnpm-lock.yaml` carries a 
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetector` service + default layer |
 | `src/Workspaces.ts` | The composite layers |
 | `src/WorkspacesSync.ts` | The synchronous escape hatch (Node-only) |
-| `src/internal/` | `enumerate.ts` (the bounded enumerator), `patterns.ts` (`packages:` pattern reading), `catalogs.ts` (the `@pnpm/catalogs.*` boundary), `limits.ts` |
+| `src/internal/` | `traverse.ts` (**the** traversal state machine), `enumerate.ts` (the Effect enumerator over it), `patterns.ts` (`packages:` pattern reading), `catalogs.ts` (the `@pnpm/catalogs.*` boundary), `limits.ts` |
+
+**One traversal, two entry points.** `internal/traverse.ts` owns the worklist, the dequeue discipline (a head index, never `Array.shift()` — `shift()` re-indexes the array on every dequeue, so draining a worklist near the 100,000-entry budget is quadratic), the depth rule, the visit budget and the prune list. Both `internal/enumerate.ts` (Effect) and `WorkspacesSync.ts` (sync) drive it; neither re-decides any of those. Two hand-written copies is not a style problem, it is how the two APIs came to **disagree**: the sync copy accepted a child *before* checking its depth, so it returned a package one level beyond the cap that the Effect enumerator rejected with `depthExceeded` on the identical tree. The depth cap bounds what is *enumerated*, not merely what is *descended into*. The single deliberate divergence that remains is what happens at a bound — the Effect path fails typed, the sync path truncates, because it has no error channel — and a test drives **both** entry points against one real tree at the boundary, since a test that exercises only one cannot catch this class of drift.
 
 Two services from v3 are **deleted, not ported**:
 

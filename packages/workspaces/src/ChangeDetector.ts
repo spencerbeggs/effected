@@ -167,20 +167,40 @@ export class ChangeDetector extends Context.Service<ChangeDetector, ChangeDetect
 						);
 					}
 
-					const committed = yield* lines(root, ["diff", "--name-only", `${options.base}...${options.head}`]);
+					// `--relative` is load-bearing, and its absence was a real bug.
+					//
+					// `git diff` reports paths relative to the REPOSITORY top-level, not to
+					// `cwd`. `git ls-files` reports them relative to `cwd`. Mixing the two
+					// into one set therefore mixes two different path bases — invisible
+					// while the workspace root and the git root coincide (the common case,
+					// and the only one a naive test covers), and wrong for every path the
+					// moment a workspace is nested inside a larger repository.
+					//
+					// `--relative` makes `diff` agree with `ls-files`: paths come back
+					// relative to `cwd` (the workspace root), and changes outside the
+					// workspace are excluded rather than being reported with a path that
+					// resolves to nothing. `ls-files` is already cwd-relative and needs no
+					// flag.
+					const committed = yield* lines(root, [
+						"diff",
+						"--name-only",
+						"--relative",
+						`${options.base}...${options.head}`,
+					]);
 					if (!options.includeUncommitted) return [...committed].sort();
 
-					const unstaged = yield* lines(root, ["diff", "--name-only"]);
-					const staged = yield* lines(root, ["diff", "--name-only", "--cached"]);
+					const unstaged = yield* lines(root, ["diff", "--name-only", "--relative"]);
+					const staged = yield* lines(root, ["diff", "--name-only", "--relative", "--cached"]);
 					const untracked = yield* lines(root, ["ls-files", "--others", "--exclude-standard"]);
 					return [...new Set([...committed, ...unstaged, ...staged, ...untracked])].sort();
 				});
 
 			/**
-			 * git reports paths relative to the repository root; discovery indexes
-			 * packages by absolute path. The workspace root is the bridge — and it is
-			 * the workspace root, not the git root, because a workspace nested inside
-			 * a larger repository is legitimate.
+			 * Every git command above reports paths relative to `cwd` — the workspace
+			 * root — so the workspace root is the correct bridge to the absolute paths
+			 * discovery indexes by. That holds whether or not the workspace root and
+			 * the git root coincide, which is the point: a workspace nested inside a
+			 * larger repository is legitimate.
 			 */
 			const rootOf = (): Effect.Effect<string, WorkspaceDiscoveryFailure> =>
 				discovery.info().pipe(Effect.map((info) => info.root));

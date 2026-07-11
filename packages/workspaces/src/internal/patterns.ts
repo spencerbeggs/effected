@@ -12,7 +12,7 @@ import { Effect, FileSystem, Path } from "effect";
 /** The reason a pattern read failed, with the file it failed on. */
 export interface PatternReadFailure {
 	readonly path: string;
-	readonly kind: "invalidYaml" | "invalidJson";
+	readonly kind: "read" | "invalidYaml" | "invalidJson";
 	readonly cause: unknown;
 }
 
@@ -49,10 +49,18 @@ export const readPatterns = (
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 
+		// A config file that EXISTS but cannot be read is not a config file that
+		// declares no patterns. Substituting "" / "{}" made those two outcomes
+		// literally identical, so the failure was invisible by construction — the
+		// same silent-degradation family as absorbing a `readDirectory` error into
+		// an empty directory listing. An ABSENT file is still fine: that is a real,
+		// distinguishable condition meaning "no config here".
 		const pnpmWorkspacePath = path.join(root, "pnpm-workspace.yaml");
 		const hasPnpmWorkspace = yield* fs.exists(pnpmWorkspacePath).pipe(Effect.orElseSucceed(() => false));
 		if (hasPnpmWorkspace) {
-			const content = yield* fs.readFileString(pnpmWorkspacePath).pipe(Effect.orElseSucceed(() => ""));
+			const content = yield* fs
+				.readFileString(pnpmWorkspacePath)
+				.pipe(Effect.mapError((cause): PatternReadFailure => ({ path: pnpmWorkspacePath, kind: "read", cause })));
 			const document = yield* Yaml.parse(content).pipe(
 				Effect.mapError((cause): PatternReadFailure => ({ path: pnpmWorkspacePath, kind: "invalidYaml", cause })),
 			);
@@ -64,7 +72,9 @@ export const readPatterns = (
 		const hasManifest = yield* fs.exists(manifestPath).pipe(Effect.orElseSucceed(() => false));
 		if (!hasManifest) return [];
 
-		const content = yield* fs.readFileString(manifestPath).pipe(Effect.orElseSucceed(() => "{}"));
+		const content = yield* fs
+			.readFileString(manifestPath)
+			.pipe(Effect.mapError((cause): PatternReadFailure => ({ path: manifestPath, kind: "read", cause })));
 		const manifest = yield* Effect.try({
 			try: () => JSON.parse(content) as unknown,
 			catch: (cause): PatternReadFailure => ({ path: manifestPath, kind: "invalidJson", cause }),

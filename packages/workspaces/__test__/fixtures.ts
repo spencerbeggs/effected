@@ -30,6 +30,12 @@ export interface FileSystemOptions {
 	 * a "treat every failure as an empty directory" enumerator silently loses.
 	 */
 	readonly unreadable?: ReadonlySet<string>;
+	/**
+	 * Files that EXIST but whose `readFileString` fails with `PermissionDenied` —
+	 * the case a `orElseSucceed(() => "")` fallback makes indistinguishable from
+	 * an empty file.
+	 */
+	readonly unreadableFiles?: ReadonlySet<string>;
 }
 
 /**
@@ -39,6 +45,7 @@ export interface FileSystemOptions {
 export const fileSystem = (tree: Tree, options: FileSystemOptions = {}): Layer.Layer<FileSystem.FileSystem> => {
 	const dirs = directoriesOf(tree);
 	const unreadable = options.unreadable ?? new Set<string>();
+	const unreadableFiles = options.unreadableFiles ?? new Set<string>();
 
 	// The v4 constructor is `PlatformError.systemError`, not a `new SystemError` —
 	// `SystemError` is the reason payload, `PlatformError` is the failure.
@@ -55,7 +62,19 @@ export const fileSystem = (tree: Tree, options: FileSystemOptions = {}): Layer.L
 	return FileSystem.layerNoop({
 		exists: (path: string) => Effect.succeed(Object.hasOwn(tree, path) || dirs.has(path)),
 
-		readFileString: (path: string) => (Object.hasOwn(tree, path) ? Effect.succeed(tree[path]) : notFound(path)),
+		readFileString: (path: string) => {
+			if (unreadableFiles.has(path)) {
+				return Effect.fail(
+					PlatformError.systemError({
+						_tag: "PermissionDenied",
+						module: "FileSystem",
+						method: "readFileString",
+						pathOrDescriptor: path,
+					}),
+				);
+			}
+			return Object.hasOwn(tree, path) ? Effect.succeed(tree[path]) : notFound(path);
+		},
 
 		readDirectory: (path: string) => {
 			if (unreadable.has(path)) {

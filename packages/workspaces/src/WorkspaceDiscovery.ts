@@ -239,12 +239,15 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 					// alone does not cover a manifest whose entire content is `null`, `42`
 					// or `"x"` — all of which parse fine. Reading `.name` off `null` would
 					// throw a TypeError, i.e. malformed input escaping as a DEFECT.
+					//
+					// This is `invalidShape`, NOT `invalidJson`: the text is perfectly valid
+					// JSON. What is wrong is that it does not denote an object.
 					if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
 						return yield* Effect.fail(
 							new WorkspaceDiscoveryError({
 								root,
 								path: packageJsonPath,
-								kind: "invalidJson",
+								kind: "invalidShape",
 								cause: new Error("package.json is not a JSON object"),
 							}),
 						);
@@ -295,7 +298,10 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 					}).pipe(
 						Effect.catchTag(
 							"SchemaError",
-							(cause) => new WorkspaceDiscoveryError({ root, path: packageJsonPath, kind: "invalidJson", cause }),
+							// A well-formed JSON document whose SHAPE the schema rejects — not a
+							// syntax error. A consumer branching on `kind` must be able to tell
+							// "this file is not JSON" from "this file is JSON I cannot use".
+							(cause) => new WorkspaceDiscoveryError({ root, path: packageJsonPath, kind: "invalidShape", cause }),
 						),
 					);
 				});
@@ -367,7 +373,6 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 
 			const packages = memo.pipe(Effect.map((state) => state.packages));
 
-			/** Longest-prefix path index, rebuilt per query from the memoized list. */
 			/**
 			 * The longest-prefix index, built once per package list.
 			 *

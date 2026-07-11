@@ -7,14 +7,8 @@
 // because building it requires reading every workspace `package.json`, which is
 // IO, which is precisely what a pure package cannot do.
 
-import type {
-	Lockfile,
-	LockfileFormat,
-	LockfileFramingError,
-	LockfileParseError,
-	ResolvedPackage,
-} from "@effected/lockfiles";
-import { LockfileIntegrity, Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
+import type { Lockfile, LockfileFramingError, LockfileParseError, ResolvedPackage } from "@effected/lockfiles";
+import { LockfileFormat, LockfileIntegrity, Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
 import type { PackageManagerDetectionFailure } from "./PackageManagerName.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
@@ -35,8 +29,11 @@ import { WorkspaceRoot } from "./WorkspaceRoot.js";
 export class LockfileReadError extends Schema.TaggedErrorClass<LockfileReadError>()("LockfileReadError", {
 	/** Absolute path to the lockfile that could not be read. */
 	lockfilePath: Schema.String,
+	// `LockfileFormat` is @effected/lockfiles' own schema, not a re-spelling of it.
+	// Hand-rolling `Schema.Literals([...])` here duplicates the source of truth and
+	// would silently disagree the day upstream adds a format.
 	/** The format the detected package manager implies. */
-	format: Schema.Literals(["bun", "npm", "pnpm", "yarn"]),
+	format: LockfileFormat,
 	/** The originating failure. */
 	cause: Schema.Defect(),
 }) {

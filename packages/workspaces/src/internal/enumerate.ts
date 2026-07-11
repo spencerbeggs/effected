@@ -12,7 +12,8 @@
 
 import type { GlobPattern, GlobSet } from "@effected/glob";
 import { Effect, FileSystem, Path } from "effect";
-import { MAX_ENUMERATION_DEPTH, MAX_ENUMERATION_ENTRIES, PRUNED_DIRECTORIES } from "./limits.js";
+import { MAX_ENUMERATION_DEPTH } from "./limits.js";
+import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative } from "./traverse.js";
 
 /** A directory the enumerator accepted: its root-relative POSIX path and its absolute path. */
 export interface EnumeratedDirectory {
@@ -36,9 +37,6 @@ export interface EnumerateOptions {
 	readonly maxDepth?: number;
 }
 
-/** Join root-relative POSIX segments; `""` is the root itself. */
-const joinRelative = (base: string, entry: string): string => (base === "" ? entry : `${base}/${entry}`);
-
 /** Strip a trailing slash from `GlobPattern.enumerationPrefix` to get a relative directory. */
 const baseOf = (pattern: GlobPattern): string => pattern.enumerationPrefix.replace(/\/$/, "");
 
@@ -59,13 +57,11 @@ export const enumerate = (
 		const path = yield* Path.Path;
 
 		const maxDepth = options?.maxDepth ?? MAX_ENUMERATION_DEPTH;
-		// `NaN < 1` is false and so is `2.5 < 1` — a bare relational guard admits
-		// both, and a NaN depth then runs the loop zero times and returns an empty
-		// result indistinguishable from a legitimate one. Integrality first.
-		if (!Number.isInteger(maxDepth) || maxDepth < 1) {
-			return yield* Effect.die(
-				new Error(`enumerate: maxDepth must be a positive integer, received ${String(maxDepth)}`),
-			);
+		// A bad bound is a PROGRAMMER error, not a data condition — a defect, not a
+		// typed failure. The predicate is shared with the sync hatch so the two
+		// entry points cannot disagree about what a valid bound is.
+		if (!isValidMaxDepth(maxDepth)) {
+			return yield* Effect.die(new Error(`enumerate: ${badMaxDepthMessage(maxDepth)}`));
 		}
 
 		const isPackage = (absolute: string): Effect.Effect<boolean> =>
@@ -78,18 +74,10 @@ export const enumerate = (
 			);
 
 		const included = new Map<string, string>();
-		let visited = 0;
 
-		const consumeBudget = (pattern: string): Effect.Effect<void, EnumerationFailure> => {
-			visited += 1;
-			return visited > MAX_ENUMERATION_ENTRIES
-				? Effect.fail({
-						kind: "budgetExceeded" as const,
-						pattern,
-						detail: `visited more than ${MAX_ENUMERATION_ENTRIES} directories`,
-					})
-				: Effect.void;
-		};
+		/** A shared-traversal stop, materialized as this module's failure record. */
+		const failureOf = (stop: { readonly kind: string; readonly detail: string }, pattern: string): EnumerationFailure =>
+			({ kind: stop.kind, pattern, detail: stop.detail }) as EnumerationFailure;
 
 		// Literals: an exact lookup, no directory read at all.
 		for (const literal of globs.literals) {
@@ -112,17 +100,12 @@ export const enumerate = (
 				});
 			}
 
-			// A worklist, not a recursion. `depth` counts levels BELOW the base.
-			const queue: Array<{ readonly relative: string; readonly absolute: string; readonly depth: number }> = [
-				{ relative: base, absolute: absoluteBase, depth: 0 },
-			];
+			// THE shared traversal — the same state machine `WorkspacesSync` drives.
+			const traversal = new Traversal(base, absoluteBase, maxDepth);
 
-			while (queue.length > 0) {
-				const current = queue.shift();
-				/* v8 ignore next */
-				if (current === undefined) break;
-
-				yield* consumeBudget(wildcard.source);
+			for (let current = traversal.next(); current !== undefined; current = traversal.next()) {
+				const spent = traversal.charge();
+				if (spent !== undefined) return yield* Effect.fail(failureOf(spent, wildcard.source));
 
 				// A directory that vanished between the parent's listing and this read
 				// is a benign race — treat it as empty. Anything else (permission
@@ -136,24 +119,33 @@ export const enumerate = (
 				// is DOWNWARD enumeration: a swallowed subtree is silently missing
 				// membership, which is the same silent-degradation shape as the
 				// trailing-`/**` bug this module exists to fix.
-				const entries = yield* fs.readDirectory(current.absolute).pipe(
+				const frame = current;
+				const entries = yield* fs.readDirectory(frame.absolute).pipe(
 					Effect.catch((error) =>
 						error.reason._tag === "NotFound"
 							? Effect.succeed<ReadonlyArray<string>>([])
 							: Effect.fail<EnumerationFailure>({
 									kind: "unreadableDirectory",
 									pattern: wildcard.source,
-									detail: current.relative === "" ? root : current.relative,
+									detail: frame.relative === "" ? root : frame.relative,
 								}),
 					),
 				);
 
 				for (const entry of entries) {
-					if (PRUNED_DIRECTORIES.has(entry)) continue;
+					if (isPruned(entry)) continue;
 
-					const relative = joinRelative(current.relative, entry);
-					const absolute = path.join(current.absolute, entry);
+					const relative = joinRelative(frame.relative, entry);
+					const absolute = path.join(frame.absolute, entry);
 					if (!(yield* isDirectory(absolute))) continue;
+
+					// Depth is checked BEFORE acceptance, not merely before descent. The
+					// cap bounds what the traversal ENUMERATES; a directory past it is out
+					// of scope entirely. Gating only the descent is what let the sync copy
+					// return a package one level beyond the cap that this path rejected.
+					if (wildcard.crossesSegments && !traversal.admits(frame)) {
+						return yield* Effect.fail(failureOf(traversal.depthStop(), wildcard.source));
+					}
 
 					if (wildcard.matches(relative) && (yield* isPackage(absolute))) included.set(relative, absolute);
 
@@ -161,15 +153,7 @@ export const enumerate = (
 					// reads one level, exactly as v3 did — correctly, for that pattern.
 					if (!wildcard.crossesSegments) continue;
 
-					const depth = current.depth + 1;
-					if (depth > maxDepth) {
-						return yield* Effect.fail<EnumerationFailure>({
-							kind: "depthExceeded",
-							pattern: wildcard.source,
-							detail: `descended past ${maxDepth} levels below "${base}"`,
-						});
-					}
-					queue.push({ relative, absolute, depth });
+					traversal.push(frame, relative, absolute);
 				}
 			}
 		}

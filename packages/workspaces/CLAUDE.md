@@ -37,13 +37,13 @@ v3's `glob-core.ts` silently rewrote a trailing `/**` to `/*`, so `packages/**` 
 
 The descent is a **worklist, not a recursion** — it cannot overflow, so there is no stack cap to get wrong. It is bounded by `maxDepth` (integer-guarded: `NaN` and `2.5` are **defects**, because a bare `depth < maxDepth` admits both and then enumerates nothing, which is indistinguishable from a legitimate empty result), a visit budget, and an unconditional `node_modules` / `.git` prune.
 
-`WorkspacesSync` shares the same `GlobSet` and the same worklist. **Do not let it grow a private pattern semantic** — that is exactly what v3 did, in defiance of glob-core's own anti-drift mandate. The integration suite pins the two against each other.
+`WorkspacesSync` does not merely "share the same worklist" — both entry points drive **one traversal state machine**, `internal/traverse.ts`, which owns the dequeue order (a head index, never `Array.shift()`), the depth rule, the visit budget and the prune list. **Do not let either entry point re-decide any of them.** Two hand-written copies is exactly how they drifted: the sync copy accepted a child before checking its depth and returned a package one level past the cap that the Effect enumerator rejected on the same tree. The only deliberate difference is at a bound — Effect fails typed, sync truncates — and `__test__/WorkspacesSync.test.ts` drives both against one real tree at the boundary, because a test that exercises one entry point cannot catch this class of drift.
 
-### pnpm writes MULTI-DOCUMENT lockfiles
+### pnpm writes MULTI-DOCUMENT lockfiles — and framing is NOT this package's job
 
-pnpm 11 emits `pnpm-lock.yaml` as **two YAML documents** when the workspace uses `configDependencies` — a config-dependency lockfile, then the real one. This repo's own lockfile is that shape. `@effected/lockfiles` is pure and parses one document, so a single-document parse silently returns the *preamble*: a handful of packages, no workspace importers, no catalogs. It looks like an empty workspace, not a failure.
+pnpm 11 emits `pnpm-lock.yaml` as **two YAML documents** when the workspace uses `configDependencies` — a config-dependency preamble, then the real one. This repo's own lockfile is that shape, and a first-document parse silently returns the *preamble*: a handful of packages, no workspace importers, no catalogs. It looks like an empty workspace, not a failure.
 
-`internal/documents.ts` + `parseLockfileText` in `LockfileReader.ts` select the richest document. **Framing is the file-reader's job**, which is why the fix lives here and not in the pure package — but the underlying single-document assumption in `@effected/lockfiles` is worth revisiting upstream.
+`@effected/lockfiles` owns this as of its #58, on a deterministic rule: pnpm's writer always emits the preamble as a **prefix**, so the real lockfile is the **last** document. A stream carrying no lockfile document fails typed as a `LockfileFramingError`. `LockfileReader` therefore just calls `Lockfile.parse`. An earlier richest-document-wins workaround here (`internal/documents.ts` + a local `parseLockfileText`) was **deleted** when #58 landed — do not reintroduce it.
 
 ### `Effect.cached` would brick every layer
 

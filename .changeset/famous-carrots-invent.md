@@ -40,6 +40,16 @@ Cycle detection no longer recurses, so a long dependency chain cannot overflow t
 
 A root `package.json` that exists but cannot be read or parsed now fails package-manager detection with a typed `WorkspaceManifestError` instead of being silently treated as a manifest that declares no manager. A malformed `devEngines` hint is still ignored rather than fatal, matching corepack: a bad hint must never turn a detectable workspace into a detection failure.
 
+Change detection works for a workspace nested inside a larger git repository. `git diff` reports paths relative to the repository top level while `git ls-files` reports them relative to the working directory, so mixing the two produced paths that only resolved when the workspace root and the git root happened to coincide. Every git query now runs with `--relative`, so all of them report workspace-relative paths, and changes outside the workspace are excluded rather than resolving to nothing.
+
+`WorkspaceDiscoveryError` distinguishes `invalidShape` from `invalidJson`. A manifest that is well-formed JSON but the wrong shape — a bare `null`, or a document the schema rejects — is no longer reported as a syntax error, so a consumer branching on `kind` can tell "this file is not JSON" from "this file is JSON I cannot use".
+
+`getWorkspacePackagesSync` and the Effect enumerator drive one traversal state machine, so they cannot disagree about what a pattern selects. They previously each carried their own worklist and had already diverged: the synchronous one accepted a directory before checking its depth, so it returned a package one level beyond the cap that the Effect API rejected on the same tree. The depth cap now bounds what is enumerated rather than only what is descended into, and `getWorkspacePackagesSync` takes an optional `maxDepth` to match `WorkspaceDiscovery`.
+
+A `pnpm-workspace.yaml` or root `package.json` that exists but cannot be read now fails typed instead of being treated as a file that declares no patterns. An unreadable config and an empty config previously produced identical results, so the failure was invisible by construction.
+
+`WorkspacePackage.dependencyVersion` no longer answers for names inherited from `Object.prototype`. It read the dependency maps with plain bracket access while every sibling predicate used `Object.hasOwn`, so `dependencyVersion("constructor")` returned a function from a method typed to return an optional string.
+
 ## Other
 
 Every error is a `Schema.TaggedErrorClass` with structured fields to branch on rather than a prose `reason` string. Malformed input always fails through the typed channel; a developer wiring mistake, such as an uncompilable glob literal or a fractional depth bound, stays a defect so the typed channel remains the domain errors a caller actually handles.

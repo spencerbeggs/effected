@@ -213,11 +213,20 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 
 	/** The declared specifier for `name`, searched across all four kinds. */
 	dependencyVersion(name: string): Option.Option<string> {
+		// `Object.hasOwn`, not bracket access — and every sibling predicate above
+		// already gets this right, which is what makes the inconsistency the tell.
+		// A plain-object dependency map inherits from `Object.prototype`, so a bare
+		// `this.dependencies["constructor"]` returns a FUNCTION, and this method —
+		// typed `Option<string>` — would hand back `Option.some(<Function>)`. Same
+		// for `toString`, `valueOf`, `__proto__` and friends.
+		const own = (map: Readonly<Record<string, string>>): string | undefined =>
+			Object.hasOwn(map, name) ? map[name] : undefined;
+
 		const version =
-			this.dependencies[name] ??
-			this.devDependencies[name] ??
-			this.peerDependencies[name] ??
-			this.optionalDependencies[name];
+			own(this.dependencies) ??
+			own(this.devDependencies) ??
+			own(this.peerDependencies) ??
+			own(this.optionalDependencies);
 		return version === undefined ? Option.none() : Option.some(version);
 	}
 

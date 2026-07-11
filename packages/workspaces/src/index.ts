@@ -73,4 +73,8 @@ export {
 export { type DependencyDiff, PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
 export { WORKSPACE_MARKERS, WorkspaceRoot, WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
 export { Workspaces, type WorkspacesOptions, type WorkspacesServices } from "./Workspaces.js";
-export { findWorkspaceRootSync, getWorkspacePackagesSync } from "./WorkspacesSync.js";
+export {
+	type GetWorkspacePackagesSyncOptions,
+	findWorkspaceRootSync,
+	getWorkspacePackagesSync,
+} from "./WorkspacesSync.js";

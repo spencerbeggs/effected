@@ -14,10 +14,17 @@ import { manifest, platform, rootManifest } from "./fixtures.js";
 /** Discovery over a tree, rooted at `/repo`. */
 const discoveryOver = (
 	tree: Tree,
-	options?: { readonly maxDepth?: number; readonly unreadable?: ReadonlySet<string> },
+	options?: {
+		readonly maxDepth?: number;
+		readonly unreadable?: ReadonlySet<string>;
+		readonly unreadableFiles?: ReadonlySet<string>;
+	},
 ) => {
-	const { unreadable, ...discoveryOptions } = options ?? {};
-	const base = platform(tree, unreadable === undefined ? {} : { unreadable });
+	const { unreadable, unreadableFiles, ...discoveryOptions } = options ?? {};
+	const base = platform(tree, {
+		...(unreadable === undefined ? {} : { unreadable }),
+		...(unreadableFiles === undefined ? {} : { unreadableFiles }),
+	});
 	const roots = WorkspaceRoot.layer.pipe(Layer.provide(base));
 	return Layer.mergeAll(
 		roots,
@@ -401,7 +408,39 @@ describe("WorkspaceDiscovery — a member package.json that is `null`", () => {
 
 				const error = yield* Effect.flip(discovery.listPackages());
 				assert.instanceOf(error, WorkspaceDiscoveryError);
-				assert.strictEqual(error.kind, "invalidJson");
+				// `null` is VALID JSON — the text parses. What is wrong is its shape, so
+				// this is invalidShape, not invalidJson. Asserting invalidJson here is
+				// what let a never-constructed invalidShape kind ship unnoticed.
+				assert.strictEqual(error.kind, "invalidShape");
+			}),
+		);
+	});
+});
+
+// ── a well-formed manifest the schema rejects ──────────────────────────────
+
+const wrongShape: Tree = {
+	"/repo/package.json": rootManifest(["packages/*"]),
+	// Valid JSON, valid name and version, but `dependencies` is not a string map:
+	// the tolerant decode's schema rejects it and raises a SchemaError.
+	"/repo/packages/bad/package.json": JSON.stringify({
+		name: "@x/bad",
+		version: "1.0.0",
+		publishConfig: { access: 42 },
+	}),
+};
+
+describe("WorkspaceDiscovery — a manifest whose shape the schema rejects", () => {
+	layer(discoveryOver(wrongShape))((it) => {
+		it.effect("is invalidShape, distinct from a JSON syntax error", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const error = yield* Effect.flip(discovery.listPackages());
+				assert.instanceOf(error, WorkspaceDiscoveryError);
+				// The SchemaError path. Previously reported as invalidJson, which told a
+				// consumer the file was not JSON when in fact it parsed perfectly.
+				assert.strictEqual(error.kind, "invalidShape");
+				assert.strictEqual(error.path, "/repo/packages/bad/package.json");
 			}),
 		);
 	});
@@ -427,6 +466,32 @@ describe("WorkspaceDiscovery — a directory that cannot be read", () => {
 				const error = yield* Effect.flip(discovery.listPackages());
 				assert.instanceOf(error, WorkspacePatternError);
 				assert.strictEqual(error.kind, "unreadableDirectory");
+			}),
+		);
+	});
+});
+
+// ── an unreadable workspace CONFIG must not read as "no patterns declared" ──
+
+const unreadablePnpmWorkspace: Tree = {
+	"/repo/pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n",
+	"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),
+	"/repo/packages/a/package.json": manifest("@x/a"),
+};
+
+describe("WorkspaceDiscovery — an unreadable pnpm-workspace.yaml", () => {
+	layer(discoveryOver(unreadablePnpmWorkspace, { unreadableFiles: new Set(["/repo/pnpm-workspace.yaml"]) }))((it) => {
+		it.effect("fails typed rather than reading as a workspace with no patterns", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				// Substituting "" for an unreadable config made an UNREADABLE file and an
+				// EMPTY file produce identical results — the failure was invisible by
+				// construction. A permission error here would silently yield a workspace
+				// with zero members and look exactly like a legitimately empty one.
+				const error = yield* Effect.flip(discovery.listPackages());
+				assert.instanceOf(error, WorkspaceDiscoveryError);
+				assert.strictEqual(error.kind, "read");
+				assert.strictEqual(error.path, "/repo/pnpm-workspace.yaml");
 			}),
 		);
 	});
