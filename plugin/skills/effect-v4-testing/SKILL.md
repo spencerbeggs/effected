@@ -408,10 +408,12 @@ migration (`@effected/walker`), **eight** distinct mutants each survived a fully
 green suite. In a later session, mutation turned up three more tests that were
 green, plausible, and **structurally incapable of failing**.
 
-The discipline: before committing a test you believe pins a property, **break the
-implementation in the way the property forbids** (with the editor — never
-`git checkout`/`git stash`, other work lives in the tree), watch that exact test
-go red, revert, and confirm `git status --porcelain` is clean.
+The discipline: **capture a baseline** (`git status --porcelain > /tmp/baseline`),
+then break the implementation in the way the property forbids (with the editor —
+never `git checkout`/`git stash`, other work lives in the tree), watch that exact
+test go red, revert, and confirm the status matches the **baseline** — not that it
+is empty. Unrelated uncommitted work is normal; the check is that you left the
+tree exactly as you found it.
 
 Run the mutant to **find out**, not to watch it go red. Three rules carry most of
 the value:

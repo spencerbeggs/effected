@@ -241,19 +241,50 @@ plausible guard (`typeof parsed !== "object"`) insufficient on its own.
 
 ## Path bases: `git diff --name-only` is REPO-relative, `git ls-files` is CWD-relative
 
-Verified from a subdirectory: `git ls-files` printed `config-file-jsonc/CLAUDE.md`
-(relative to the cwd) while `git diff --name-only` printed `.github/dependabot.yml`
-(relative to the repo root). Mixing the two in one `Set` produces silent
-mismatches.
+Probed in a scratch repo, both commands run from the subdirectory `pkgs/alpha`,
+with the **same file** modified:
 
-It is **silently correct only when the workspace root and the git root coincide**
-— which is the common case, and the only one the tests covered. Note what that
-means for testing: **a fixture where both roots coincide cannot distinguish the
-correct implementation from the broken one.** Any test for path-base handling
-must place the workspace root *below* the git root, or it proves nothing.
+| command | printed |
+| --- | --- |
+| `git ls-files` | `nested.txt` — relative to the **cwd** |
+| `git diff --name-only` | `pkgs/alpha/nested.txt` — relative to the **repo top-level** |
 
-Normalize to one base explicitly (resolve everything against the repo root) rather
-than trusting that two git commands agree.
+One file, two spellings. Put both in a `Set` and it holds two entries; compare
+them and nothing matches.
+
+**Normalize each result from its OWN base — never from a single assumed one.**
+
+```ts
+// WRONG — resolving ls-files against the repo root yields <root>/nested.txt,
+// a path that does not exist. This IS the bug.
+resolve(repoRoot, p);
+
+// RIGHT — each command's output resolved against the base it actually used:
+const fromLsFiles = resolve(cwdTheCommandRanIn, p);   // cwd-relative
+const fromDiff    = resolve(repoTopLevel, p);         // repo-relative
+```
+
+`git rev-parse --show-toplevel` gives the repo base; `--show-prefix` gives the
+cwd's offset from it. Simplest of all, make `ls-files` agree with `diff` at the
+source: **`git ls-files --full-name`** prints repo-relative paths (verified — it
+returned `pkgs/alpha/nested.txt`).
+
+Two further asymmetries the probe exposed, both easy to miss: `ls-files` is also
+**scoped** to the cwd (it listed only files under `pkgs/alpha`), while
+`diff --name-only` reports the **whole repo** — so the two commands do not even
+cover the same set of files.
+
+The generalizable rule, which is the reusable part:
+
+> **When combining the output of two commands, never assume they share a path
+> base. Verify each one's base independently.** Mixing bases is *silently
+> correct* whenever the two happen to coincide — which is the common case, and
+> the one your tests will cover.
+
+That last clause is the testing consequence: **a fixture where the workspace root
+and the git root coincide cannot distinguish the correct implementation from the
+broken one.** Any test for path-base handling must place the workspace root
+*below* the git root, or it proves nothing.
 
 ## Structurally indistinguishable parses: position is the only sound discriminator
 

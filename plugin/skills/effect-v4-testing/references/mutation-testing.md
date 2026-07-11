@@ -32,13 +32,30 @@ For any test walking an ordered collection, check:
 - For an option like `stopAt`, does any test place the target **beyond** it, so
   the option must actually do something to pass?
 
-The discipline: before committing a test you believe pins a property, **break
-the implementation in the way the property forbids** (with the editor — never
-`git checkout`/`git stash`, other work lives in the tree), watch that exact
-test go red, revert the mutation, and confirm `git status --porcelain` is
-clean. Suite strength is not predictable by grepping `__test__/` — a mutation
-in one module may be caught by tests that never name it, because a shared test
-layer routes through it. Only the mutant tells you.
+The discipline, before committing a test you believe pins a property:
+
+1. **Capture a baseline** — `git status --porcelain > /tmp/mutation-baseline`.
+2. **Break the implementation** in the way the property forbids, **with the
+   editor**. Never `git checkout` / `git restore` / `git stash`: other people's
+   uncommitted work lives in this tree, and those commands destroy it.
+3. Watch **that exact test** go red — and check *why* it went red (see below).
+4. **Revert the mutation**, again with the editor.
+5. Confirm the status now **matches the baseline**.
+
+Step 5 is a comparison, **not** a check for an empty tree. Legitimate
+uncommitted work is normal and expected; a clean-tree assertion would fail for
+anyone who has any, and would tempt them to "clean" it. What you are proving is
+that you left the tree exactly as you found it:
+
+```bash
+git status --porcelain > /tmp/mutation-baseline   # before
+# … mutate, run, revert …
+diff <(git status --porcelain) /tmp/mutation-baseline && echo "tree restored"
+```
+
+Suite strength is not predictable by grepping `__test__/` — a mutation in one
+module may be caught by tests that never name it, because a shared test layer
+routes through it. Only the mutant tells you.
 
 ### Mutation is DISCOVERY, not confirmation
 
