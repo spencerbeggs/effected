@@ -130,6 +130,42 @@ this on `X.fromRaw` / `X.of` / codec-adapter statics that bridge the internal
 engine to the public classes — exactly where an internal record type sneaks
 onto a `@public` signature.
 
+### …nor does it cover a type in the class factory's GENERIC
+
+The same gap bites one step earlier, in the **heritage clause itself**. An
+unexported interface passed as a *type argument* to the factory —
+
+```ts
+interface VersionCacheShape { … }   // NOT exported from index.ts
+
+export class VersionCache extends Context.Service<VersionCache, VersionCacheShape>()(
+ "@effected/semver/VersionCache",
+) {}
+```
+
+— leaks as a plain `ae-forgotten-export` on **`VersionCacheShape`**, whose symbol
+name has no `_base` suffix, so `pattern: "_base"` does not match it.
+
+**Measured** on `@effected/semver` by un-exporting exactly that interface and
+rebuilding:
+
+| | warnings | suppressed | code | `ciFatal` |
+| --- | --- | --- | --- | --- |
+| baseline | 0 | 12 | — | — |
+| interface un-exported | **1** | 12 (unchanged) | `ae-forgotten-export` | **`true`** |
+
+> `The symbol "VersionCacheShape" needs to be exported by the entry point index.d.ts`
+
+The suppressed bucket stayed at 12 and every entry in it ends in `_base` — the
+narrow suppression does exactly what it says and nothing more.
+
+The fix is to **export the shape type** from the entrypoint (it is genuinely part
+of the API — it is the service's contract), not to widen the suppression. This is
+the case a reviewer walks you into: nitting "dedupe this shape into a named
+interface" is right on the merits, but the moment the name exists it must also be
+exported, or the gate goes red. Applies equally to `Schema.Class<Self, Fields>`
+and every other class factory that takes a type argument.
+
 ## TSDoc `{@link}` traps
 
 **Merged value + type names: use a member-reference selector, not a backtick.**

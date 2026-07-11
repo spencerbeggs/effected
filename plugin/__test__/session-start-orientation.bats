@@ -38,7 +38,7 @@ _run_hook() {
 	echo "$output" | jq -e '.hookSpecificOutput.additionalContext | length > 0'
 }
 
-@test "happy path: additionalContext names all ten skills" {
+@test "happy path: additionalContext names all eleven skills" {
 	run _run_hook "$FIXTURES/sessionstart.startup.json"
 	[ "$status" -eq 0 ]
 
@@ -50,6 +50,7 @@ _run_hook() {
 		effect-v4-schema \
 		effect-v4-services-layers \
 		effect-v4-idioms \
+		effect-v4-cli \
 		effect-v4-observability \
 		effect-v4-testing \
 		effect-v4-construct-map \

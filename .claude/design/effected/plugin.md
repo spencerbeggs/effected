@@ -34,12 +34,13 @@ Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `descrip
 - `effect-v4-schema` — the flagship Schema skill: house "do this, not this" rules + worked patterns (Class-vs-Struct, optionality, checks/refine/makeFilter, codecs, `FromString` statics, make-vs-new, brand/Opaque, custom Equal/Hash) in `references/house-style.md`, over Effect's canonical guide split into `references/`.
 - `effect-v4-services-layers` — `Context.Service` class form, Layer composition and the build-once memoization discipline.
 - `effect-v4-idioms` — core Effect: typed errors and Result, generators, scope, forking, structural equality.
+- `effect-v4-cli` — the v4 CLI story. `@effect/cli` is **dead on the v4 line** (its latest peers on `effect@^3.21.x`, no beta dist-tag); the framework moved into core as `effect/unstable/cli`, with HTTP as `effect/unstable/http`. Carries the structural fact that decides a CLI package's tier: `Command.Environment` needs five services, and core *declares* all five while implementing almost none for Node (only `Path.layer` is real; `FileSystem.layerNoop` is a stub and `Stdio.layerTest` is test-only; `Terminal` and `ChildProcessSpawner` have no layer at all) — so a runnable CLI needs `@effect/platform-node` and is therefore **integrated tier**, never pure. Also the exit-code contract: the CLI module never calls `process.exit`, so a non-zero status comes only from a *failed* effect — a usage error must fail (`CliError.UserError`), and a no-match result must not.
 - `effect-v4-observability` — spans/logging/metrics, OTel composed at the app edge, the house rule that pure-tier libraries instrument public fallible boundaries only.
-- `effect-v4-testing` — `@effect/vitest`, `it.effect`, test layers, property tests.
+- `effect-v4-testing` — `@effect/vitest`, `it.effect`, test layers, property tests, and the false-green catalogue (a `0 tests passed` run that exits 0, `TestClock` starting at the epoch so clock reads return 1970, an accumulating `TestConsole.logLines`, an eagerly-recording `layerNoop` stub). Its mutation discipline lives in `references/mutation-testing.md`.
 
 **The migration reference:**
 
-- `effect-v4-construct-map` — the comprehensive v3→v4 lookup, per-domain rename/restructure tables. Consulted before reaching for any v3 API name.
+- `effect-v4-construct-map` — the comprehensive v3→v4 lookup. Split into a lean index plus per-domain tables in `references/` (`schema`, `core-idioms`, `services-layers`, `platform`, `sql`, `observability`, `verifying`) once the single file hit the 500-line skill-body cap. Consulted before reaching for any v3 API name.
 - `effect-v4-source-lookup` — what to do when the construct-map is silent or the question is behavioural: the evidence ladder and the probe preconditions. Loaded by all three agents. See [the recorded coupling](#recorded-coupling-the-vendored-path).
 
 **API-surface and hardening discipline:**

@@ -44,7 +44,40 @@ Each row is a hard house default; reasoning and worked code in
 | derive variants via `mapFields(Struct.pick/omit/map(...))` | duplicate a schema to re-encode the same data |
 | attach brand statics with `Object.assign`; export the type as `string & Brand.Brand<"N">` | try to merge a `namespace` into the brand `const` (impossible) |
 | override BOTH `[Equal.symbol]` AND `[Hash.symbol]` when equality ignores fields | override `[Equal.symbol]` alone — the hash fast-path silently defeats it |
-| `Schema.toJsonSchemaDocument(S)` | `Schema.toJsonSchema(S)` — that export does not exist |
+| `Schema.toJsonSchemaDocument(S)` | `Schema.toJsonSchema(S)` — that export does not exist. It returns `{ dialect, schema, definitions }`, **not** `$defs` / `properties` |
+| a single-return **ternary chain** in an error's `message` getter | an exhaustive `switch` with no terminal return — tsgo accepts it, but Biome's `useGetterReturn` rejects it (see below) |
+
+## The `message` getter: ternary chain, not an exhaustive switch
+
+Every `TaggedErrorClass` with a multi-reason `message` hits this. A `switch` over
+a `Schema.Literals`-typed `reason` in which **every case returns** is exhaustive,
+and tsgo is happy — but Biome's `lint/suspicious/useGetterReturn` sees a getter
+with no terminal return and fails the lint gate:
+
+> `× This getter should return a value.`
+
+```ts
+// REJECTED by `pnpm lint` (useGetterReturn), accepted by tsgo:
+get message(): string {
+ switch (this.reason) {
+  case "missing":  return `missing ${this.key}`;
+  case "invalid":  return `invalid ${this.key}`;
+  case "conflict": return `conflict on ${this.key}`;
+ }
+}
+
+// The house pattern — one return, a ternary chain:
+get message(): string {
+ return this.reason === "missing"
+  ? `missing ${this.key}`
+  : this.reason === "invalid"
+    ? `invalid ${this.key}`
+    : `conflict on ${this.key}`;
+}
+```
+
+Verified through `pnpm lint` (a bare `npx biome check <file>` from inside a
+package exits 0 without reading the repo config — it is not a check).
 
 ## Verify against the installed beta, not the references
 

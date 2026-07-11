@@ -177,6 +177,31 @@ Two consequences: don't pre-filter such keys expecting decode to choke on
 them, and if you later copy a decoded record by hand, that copy loop is a new
 `obj[key] = value` surface needing the `defineProperty` route above.
 
+## Test membership with `Object.hasOwn`, never bracket notation
+
+The write path is only half of it. **Reading** a key off a parsed record with
+bracket notation inherits from `Object.prototype`:
+
+```ts
+// UNSOUND — returns Option.some(<Function>) for a manifest with no deps at all.
+const dep = deps["constructor"];        // → a Function, off Object.prototype
+if (dep !== undefined) return Option.some(dep);
+
+// SOUND:
+if (Object.hasOwn(deps, name)) return Option.some(deps[name]);
+```
+
+Verified: `({})["constructor"]` is a `Function`, while
+`Object.hasOwn({}, "constructor")` is `false`. A method declared to return
+`Option<string>` therefore handed back an `Option.some(<Function>)` — **unsound,
+not merely untidy**, and it type-checks perfectly because the index signature
+promises a `string`.
+
+Every key an attacker names (`constructor`, `toString`, `valueOf`, `hasOwnProperty`)
+is a live hit. The tell in the real case: **every sibling predicate already used
+`Object.hasOwn`** — an inconsistency across a family of guards is a defect, not a
+style preference. Grep the family, not the line.
+
 ## Reject unescaped C0 control characters
 
 Raw control characters below `0x20` (except tab `0x09`, LF `0x0a`, CR `0x0d`)
@@ -184,6 +209,70 @@ are not printable per most text-format specs (YAML 1.2 §5.1, JSON §7). Scan th
 document's raw span once and emit a fatal diagnostic; escaped forms in
 quoted scalars never appear raw in the source, so scanning source text is
 sufficient.
+
+## `JSON.parse` returns `null`, a number, or a string — for VALID JSON
+
+A `=== undefined` guard after `JSON.parse` **never fires**. The four characters
+`null` are a perfectly valid `package.json`, and they parse to `null`, not
+`undefined`:
+
+| input | `JSON.parse` → | caught by `=== undefined`? |
+| --- | --- | --- |
+| `null` | `null` (`typeof` `"object"`!) | **no** |
+| `42` | `42` | **no** |
+| `"hi"` | `"hi"` | **no** |
+| `true` | `true` | **no** |
+
+```ts
+// WRONG — `parsed.name` throws a TypeError on `null`, escaping as a DEFECT.
+const parsed = JSON.parse(text);
+if (parsed === undefined) return yield* Effect.fail(new InvalidJson({ path }));
+
+// RIGHT — reject anything that is not a non-null object.
+if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+ return yield* Effect.fail(new InvalidShape({ path }));
+}
+```
+
+This was live in **three** places in one package, each throwing a `TypeError` on
+a property read — malformed input escaping as an **unhandled defect**, which is
+precisely the invariant below. `typeof null === "object"` is what makes the
+plausible guard (`typeof parsed !== "object"`) insufficient on its own.
+
+## Path bases: `git diff --name-only` is REPO-relative, `git ls-files` is CWD-relative
+
+Verified from a subdirectory: `git ls-files` printed `config-file-jsonc/CLAUDE.md`
+(relative to the cwd) while `git diff --name-only` printed `.github/dependabot.yml`
+(relative to the repo root). Mixing the two in one `Set` produces silent
+mismatches.
+
+It is **silently correct only when the workspace root and the git root coincide**
+— which is the common case, and the only one the tests covered. Note what that
+means for testing: **a fixture where both roots coincide cannot distinguish the
+correct implementation from the broken one.** Any test for path-base handling
+must place the workspace root *below* the git root, or it proves nothing.
+
+Normalize to one base explicitly (resolve everything against the repo root) rather
+than trusting that two git commands agree.
+
+## Structurally indistinguishable parses: position is the only sound discriminator
+
+pnpm 11 writes a **two-document** `pnpm-lock.yaml` under `configDependencies`.
+No *structural* rule can pick the right document: both carry `lockfileVersion`,
+`importers` and `packages`, and the preamble validates cleanly against the same
+schema. A "pick the document that looks like a lockfile" heuristic selects the
+wrong one and reports success.
+
+**POSITION is the only sound discriminator** — the real lockfile is the last (or
+the nth) document, by the format's own framing rule. Which is exactly why the bug
+was silent: a structural heuristic *did* find a valid-looking answer.
+
+Generalize it:
+
+> When two candidate parses are structurally indistinguishable, a structural
+> heuristic is not a rule — it is a coin flip that happens to land right on your
+> fixtures. Discriminate on the framing (position, document index, an explicit
+> marker), and make the choice explicit in the code.
 
 ## The invariant that ties it together
 
