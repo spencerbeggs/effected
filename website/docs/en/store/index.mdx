@@ -37,7 +37,7 @@ const migrations: ReadonlyArray<StoreMigration> = [
   {
     id: 1,
     name: "create-notes",
-    up: (sql) => Effect.asVoid(sql`CREATE TABLE notes (body TEXT)`),
+    up: (sql) => sql`CREATE TABLE notes (body TEXT)`,
   },
 ];
 

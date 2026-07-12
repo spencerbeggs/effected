@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-11
+updated: 2026-07-12
 last-synced: 2026-07-11
 completeness: 95
 related:
@@ -15,6 +15,7 @@ related:
   - walker.md
   - config-file.md
   - store.md
+  - app.md
 ---
 
 # @effected/xdg design
@@ -220,7 +221,7 @@ Both resolvers honour config-file's contract that `resolve`'s error channel is `
 
 ### What is deliberately NOT ported
 
-- **`XdgLive`, `XdgConfigLive`, `XdgFullLive`, the `.toml`/`.json`/`.multi`/`.layered` presets.** The review's naming-fog finding, taken at its word. With layers co-located and memoized by reference, `Layer.mergeAll(Xdg.layer, AppDirs.layer(opts).pipe(Layer.provide(Xdg.layer)))` is two lines at the consumer's edge and says what it does; `XdgFullLive` never did. The preset factories additionally hard-coded a *format* choice, which after the config-file family split is not xdg's decision to make. The composition they encoded is documentation, and it belongs in `@effected/app-kit`, which the [inventory](../package-inventory.md#internal-packages-no-source-repo) already scopes as exactly this glue.
+- **`XdgLive`, `XdgConfigLive`, `XdgFullLive`, the `.toml`/`.json`/`.multi`/`.layered` presets.** The review's naming-fog finding, taken at its word. With layers co-located and memoized by reference, `Layer.mergeAll(Xdg.layer, AppDirs.layer(opts).pipe(Layer.provide(Xdg.layer)))` is two lines at the consumer's edge and says what it does; `XdgFullLive` never did. The preset factories additionally hard-coded a *format* choice, which after the config-file family split is not xdg's decision to make. The composition they encoded is documentation, and it belongs in `@effected/app`, which the [inventory](../package-inventory.md#internal-packages-no-source-repo) already scopes as exactly this glue.
 - **`XdgResolverTest`'s `node:fs` temp directory.** It reached past the platform abstraction for `mkdtempSync`. `Xdg.layerFrom` needs no filesystem at all — it takes the paths — and a test that wants real directories uses `FileSystem.makeTempDirectory`.
 - **`*ErrorBase` exports and `errors/types.ts`.** `Schema.TaggedErrorClass` needs no intermediate, and the central `XdgEffectError` union is a registry smell; each error lives with the concept that raises it.
 
@@ -249,7 +250,7 @@ Rulings, per the [error-handling standards](../effect-standards.md#error-handlin
 
 - **`PlatformError` is wrapped, never leaked**; the `ConfigError` from a missing `HOME` likewise lands in `cause` rather than being stringified.
 - **`directory` is a literal union, not a `string`.** v3's `directory: "all"` sentinel — used for the "resolution failed" case that no longer exists — is gone with it.
-- **Nothing is `orDie`d.** v3's `SqliteCacheXdgLive` laundered `AppDirsError` into a defect to advertise a `never` channel; that whole family moved to store and app-kit, and the discipline holds here: "the cache directory could not be created" is an expected, recoverable boundary failure.
+- **Nothing is `orDie`d.** v3's `SqliteCacheXdgLive` laundered `AppDirsError` into a defect to advertise a `never` channel; that whole family moved to store and app, and the discipline holds here: "the cache directory could not be created" is an expected, recoverable boundary failure.
 - **Wiring errors are construction defects.** An empty `namespace`, or one containing a path separator, dies at `AppDirs.layer` construction: it can only come from code, and a namespace with a `/` in it would silently escape the app's directory. This is the [input-vs-wiring ruling](../effect-standards.md#error-handling-standards) — there is no numeric option here, so the `NaN` guard has no surface to apply to.
 
 ## Observability

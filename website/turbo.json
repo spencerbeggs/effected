@@ -4,6 +4,7 @@
 		"build": {
 			"cache": false,
 			"dependsOn": [
+				"@effected/app#build:prod",
 				"@effected/config-file#build:prod",
 				"@effected/glob#build:prod",
 				"@effected/jsonc#build:prod",

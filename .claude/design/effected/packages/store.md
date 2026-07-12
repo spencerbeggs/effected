@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-11
+updated: 2026-07-12
 last-synced: 2026-07-11
 completeness: 95
 related:
@@ -13,6 +13,7 @@ related:
   - ../releases.md
   - ../package-setup.md
   - config-file.md
+  - app.md
 ---
 
 # @effected/store design
@@ -28,7 +29,7 @@ Status: **merged** (playbook steps 2–6 complete). Per the semver/jsonc precede
 
 The two are genuinely different services, not one with a flag: an evicted cache entry is correct behaviour; a lost state row is a bug. The shared primitive is the migration-ledger engine in `src/internal/migrator.ts` — `Store` exposes it with user-supplied migrations; `Cache` uses it privately to version its own fixed schema.
 
-The XDG concepts (`AppDirs`, resolvers, `nativeDirs`) are **out of scope** — they stay for the later `@effected/xdg` migration, which will supply the database *path*. Nothing here depends on xdg: every layer takes a `filename` (or an abstract `SqlClient`), so xdg/app-kit later wire `AppDirs → filename` without store knowing. The v3 `SqliteCacheXdgLive`/`SqliteStateXdgLive` layers are therefore not ported; they reappear as glue in `@effected/app-kit`.
+The XDG concepts (`AppDirs`, resolvers, `nativeDirs`) are **out of scope** — they stay for the later `@effected/xdg` migration, which will supply the database *path*. Nothing here depends on xdg: every layer takes a `filename` (or an abstract `SqlClient`), so xdg/app later wire `AppDirs → filename` without store knowing. The v3 `SqliteCacheXdgLive`/`SqliteStateXdgLive` layers are therefore not ported; they reappear as glue in `@effected/app`.
 
 ## The v4 SQLite decision
 
@@ -85,8 +86,8 @@ packages/store/
 interface StoreMigration {
   readonly id: number;      // positive integer, unique across the list
   readonly name: string;
-  readonly up: (sql: SqlClient.SqlClient) => Effect.Effect<void, SqlError>;
-  readonly down?: (sql: SqlClient.SqlClient) => Effect.Effect<void, SqlError>;
+  readonly up: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError>;
+  readonly down?: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError>;
 }
 
 interface StoreMigrationResult {
@@ -113,6 +114,8 @@ class Store extends Context.Service<Store, StoreShape>()("@effected/store/Store"
 }
 ```
 
+As-built DX, 2026-07-12: `up`/`down` return `Effect<unknown, SqlError>`, not `Effect<void, SqlError>`. A `SqlClient` tagged template resolves to the statement's *rows*, so a `void` return type forced every consumer to pipe an `Effect.asVoid` onto an otherwise self-describing ``sql`CREATE TABLE …` ``. The engine discards the value either way; widening the return type to `unknown` lets a migration be the statement itself. Surfaced while writing the [@effected/app](app.md) glue, and landing on the same branch.
+
 Layer construction ensures the ledger table and **runs all pending migrations** (v3 semantics), but the v3 `Effect.orDie` laundering is gone: construction failures surface on the layer's typed error channel. `migrate` re-applies after a `rollback`; `status` projects the full list with per-migration `appliedAt`. `rollback(toId)` rolls back applied migrations with `id > toId` in descending order, invoking `down` where defined (a migration without `down` is skipped over, ledger row still removed — v3 behaviour, now documented).
 
 The v3 `up: Effect<void, unknown>` + `orDie` + `catchAllDefect` round-trip (review §2) is replaced by an honest channel: migrations do SQL, so their error is `SqlError`, wrapped by the engine into `StoreMigrationError`. A migration callback that **throws** is a programmer bug and stays a defect, per the [hardening callback rule](../effect-standards.md#error-handling-standards).
@@ -121,7 +124,7 @@ The v3 `up: Effect<void, unknown>` + `orDie` + `catchAllDefect` round-trip (revi
 
 Both services publish the same three statics, and the split is the seam: `layer` is driver-agnostic (it requires an abstract `SqlClient` in `R`, so any Effect SQL driver satisfies it), `layerSqlite` provides the sqlite driver itself and `layerTest` is `layerSqlite` at `:memory:`. Only the two `*Sqlite` layers name the driver, which is what keeps `@effect/sql-sqlite-node` out of every store type signature.
 
-**As-built — the memoization trap.** The statics are *parameterized factories*, not layer values: each call builds a new `Layer`, and Effect memoizes layers **by reference**. Calling `Store.layerSqlite({...})` inline at two provide sites therefore opens the database **twice** — two connections onto one file, two ledger setups, and (for `Cache`) two independent PubSubs whose subscribers each see half the events. Bind the result to a `const` once and reuse that binding. This is not specific to store, but store is the first package in the kit where the cost of getting it wrong is a duplicated *resource* rather than a duplicated computation, so it is recorded here for the packages that follow (`xdg`, `app-kit`, `ts-vfs` all wire layers over a path).
+**As-built — the memoization trap.** The statics are *parameterized factories*, not layer values: each call builds a new `Layer`, and Effect memoizes layers **by reference**. Calling `Store.layerSqlite({...})` inline at two provide sites therefore opens the database **twice** — two connections onto one file, two ledger setups, and (for `Cache`) two independent PubSubs whose subscribers each see half the events. Bind the result to a `const` once and reuse that binding. This is not specific to store, but store is the first package in the kit where the cost of getting it wrong is a duplicated *resource* rather than a duplicated computation, so it is recorded here for the packages that follow (`xdg`, `app`, `ts-vfs` all wire layers over a path).
 
 ### Cache
 

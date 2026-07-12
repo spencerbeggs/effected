@@ -13,7 +13,7 @@ import { Duration, Effect, Layer } from "effect";
 const StoreLayer = Store.layerSqlite({
   filename: "/var/lib/app/state.db",
   migrations: [
-    { id: 1, name: "create-notes", up: (sql) => Effect.asVoid(sql`CREATE TABLE notes (body TEXT)`) },
+    { id: 1, name: "create-notes", up: (sql) => sql`CREATE TABLE notes (body TEXT)` },
   ],
 });
 
@@ -34,7 +34,7 @@ const program = Effect.gen(function* () {
 
 ### Store — a schema-versioned, migrated SqlClient
 
-`Store` is a managed database connection with a user-defined migration ledger: layer construction ensures the `_store_migrations` table and applies every pending migration, surfacing failures on the layer's typed error channel instead of the v3 `orDie` laundering. The service exposes `client` for the consumer's own queries plus `migrate`, `rollback(toId)` (running `down` migrations newest first) and `status`. A failing migration raises `StoreMigrationError` carrying `direction`, `id`, `name` and the structural `SqlError` cause; a migration callback that throws stays a defect.
+`Store` is a managed database connection with a user-defined migration ledger: layer construction ensures the `_store_migrations` table and applies every pending migration, surfacing failures on the layer's typed error channel instead of the v3 `orDie` laundering. The service exposes `client` for the consumer's own queries plus `migrate`, `rollback(toId)` (running `down` migrations newest first) and `status`. A failing migration raises `StoreMigrationError` carrying `direction`, `id`, `name` and the structural `SqlError` cause; a migration callback that throws stays a defect. `up` and `down` return `Effect<unknown, SqlError>` — the engine always discards the success value, so a callback can hand back a raw `sql`...`` statement effect directly with no `Effect.asVoid` ceremony.
 
 ### Cache — TTL, tags, eviction and an event stream
 

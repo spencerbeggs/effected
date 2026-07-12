@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-11
-last-synced: 2026-07-11
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 93
 related:
   - architecture.md
@@ -155,7 +155,7 @@ The consumer-side configuration that lets the effect v4 beta and the v3 build to
 
 1. Every published tool in the dependency chain declares its complete `@effect/*` peer closure as regular dependencies. Fixed in `@savvy-web/tsdown-plugins@1.1.6`, `@savvy-web/bundler@1.1.7`, `@savvy-web/silk@2.1.2`, `@savvy-web/cli@1.5.2`, `@savvy-web/mcp@1.6.7`, `rolldown-pnpm-config@0.2.1` and the July 2026 `@vitest-agent/*` releases. Outstanding: rspress-plugin-api-extractor ([spencerbeggs/rspress-plugin-api-extractor#69](https://github.com/spencerbeggs/rspress-plugin-api-extractor/issues/69)).
 2. `pnpm-workspace.yaml` sets `autoInstallPeers: true`. The tool peers of `@savvy-web/silk` (biome, changesets, commitlint, husky, lint-staged, markdownlint, turbo, typescript, etc.) and `@vitest-agent/plugin` (vitest, coverage providers, cli, mcp) are auto-installed rather than declared explicitly.
-3. Each package uses `@effect/tsgo: catalog:effect` for the `tsgo` typechecker instead of `@typescript/native-preview: catalog:silk`, keeping the typechecker's own `effect` peer on the v4 catalog rather than the `silk` (v3-tooling) catalog. This began as a workaround for the pnpm peer-resolution bug (now fixed upstream) and is retained unverified — see below.
+3. **Settled 2026-07-12 (commit `d0599438`): `@effect/tsgo` is gone from all seventeen packages.** Each package now typechecks with `tsc --noEmit` against `typescript: catalog:silk`. The tsgo pin began as a workaround for the pnpm peer-resolution bug — keeping the typechecker's own `effect` peer on the v4 catalog rather than the `silk` (v3-tooling) catalog — and survived on inertia after the [upstream fix](#the-upstream-pnpm-fix-is-complete-2026-07-11) landed. Removing it was the verification this item had been waiting for.
 4. `pnpm-workspace.yaml` pins neither `dedupeDirectDeps` nor `dedupePeerDependents`; pnpm's defaults apply. Both were interim workarounds and both are now gone. Read `pnpm-workspace.yaml` rather than trusting a doc for this — there is no `.npmrc` either.
 5. The root `package.json` `devDependencies` are just `@savvy-web/silk` and `@vitest-agent/plugin`; everything else is an auto-installed peer. **`@savvy-web/bundler` is a `devDependency` of every package that builds**, which is what `savvy.build.ts` imports. It must never be a `dependency`, or the publishable manifest ships a build tool at runtime.
 
@@ -168,7 +168,13 @@ The consumer-side configuration that lets the effect v4 beta and the v3 build to
 - **`website` no longer declares `effect: catalog:silk`.** That pin anchored the docs site's `effect` to v3 so a transitively-peered `@effect/platform` could not be built against a v4 core. The anchor is removed and the site builds. Do not reintroduce it.
 - **The expected-residual warning set is gone.** `@effect/platform`, `@effect/rpc`, `@effect/sql` and `@effect/cluster` used to warn for `effect@^3.21.x` through the build/test tooling chain, and the standing instruction was not to chase them. There is now nothing to ignore: **any** `pnpm peers check` warning is a genuine closure defect to fix upstream.
 
-One thing survives on inertia rather than need: whether each package still requires `@effect/tsgo` over `@typescript/native-preview` (item 3) is **untested**. It is retained until someone confirms removal keeps `pnpm peers check` clean.
+The one item that survived on inertia — whether each package still needed `@effect/tsgo` (item 3) — is **settled**: commit `d0599438` dropped it from all seventeen packages in favour of `tsc --noEmit` against `typescript: catalog:silk`, and nothing broke.
+
+### Open defect: one peers-check issue (2026-07-12)
+
+**`pnpm peers check` currently reports exactly one issue.** `@savvy-web/bundler@1.1.11` peers on `typescript@^7`, while `@effected/ts-vfs` pins `typescript@^6.0.3` — its compiler contract, since it wraps `@typescript/vfs` and typechecks user code against a specific compiler. Introduced by `d0599438` (the tsgo removal above) and **pre-existing to the `feat/app` branch**, which merely surfaced it.
+
+**The zero-issues invariant stands and is not being rewritten to accommodate this.** Per [the upstream fix](#the-upstream-pnpm-fix-is-complete-2026-07-11), there is no expected-residual set: any warning is a genuine closure defect to fix, and this is one. It is recorded here as **open, awaiting a ruling on `@effected/ts-vfs`'s compiler contract** — whether the package can move to `typescript@^7`, or the bundler's peer range must widen. Routed to Spencer; do not silence it, and do not treat its presence as license to tolerate a second.
 
 ## Cross-@effected dependencies
 

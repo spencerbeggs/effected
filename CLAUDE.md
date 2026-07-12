@@ -30,7 +30,7 @@ Sixteen packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `
 
 **The config-file consolidation is done.** `config-file-jsonc`, `config-file-yaml` and `config-file-toml` are deleted; `@effected/config-file` absorbed their three codecs. The `jsonc`, `yaml` and `toml` **format** packages stay independent and untouched. It cut the workspace from 19 packages to 16; with `ts-vfs`, 17. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — and `ConfigCodec` is the interface only. **Never collect them into a namespace object**: referencing one reaches every codec, every codec reaches its parsing engine, and a JSON-only consumer drags the JSONC/YAML/TOML engines into their bundle. Tree-shaking dies silently. A namespace object is a barrel with different syntax; do not reintroduce one. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
-**`ts-vfs` was the last package with real domain logic to port.** One piece of work remains: **app-kit**. It is last because it is a thin composition over `xdg` + `config-file` + `store` whose content is decided by how consumers actually wire the kit, so it absorbs the ts-vfs port's wiring rather than guessing at it. No consumer is blocked on it, because nothing may depend on it — a library taking an application control plane would be an R2 tier-3 leak.
+**`ts-vfs` was the last package with real domain logic to port.** The final package, **`@effected/app`**, is implemented on this branch — design doc written, port complete, gates green — and merges with it, making seventeen. It was sequenced last because it is a thin composition over `xdg` + `config-file` + `store` whose content is decided by how consumers actually wire the kit, so it absorbed the ts-vfs port's wiring rather than guessing at it. No consumer was blocked on it, because nothing may depend on it — a library taking an application control plane would be an R2 tier-3 leak.
 
 `@effected/json-schema` is off the roadmap entirely. `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
 
@@ -61,6 +61,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `workspaces` — monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection; implements `@effected/npm`'s resolver contracts (integrated).
 - `runtime-resolver` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot (boundary).
 - `runtime-resolver-cli` — the `runtime-resolver` binary; separate so the library's consumers never install `@effect/platform-node` (integrated).
+- `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place; a thin composition over `xdg` + `store` + `config-file` with no domain logic, no service and no schema of its own (integrated, by R2 over store alone). Nothing may depend on it.
 - `ts-vfs` — fetch, cache and resolve TypeScript type definitions from npm (jsDelivr) for Twoslash-style tooling; wraps `@typescript/vfs`; two-plane cache over `@effected/store` + `FileSystem`; `typescript` / `@typescript/vfs` optional peers (integrated). Renamed from `@effected/type-registry` (2026-07-11); the v3 source keeps the name `type-registry-effect`.
 - `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier** (companion is a category, not a fourth tier — see `effect-standards.md`). It **publishes with the kit at `0.1.0`**, on the release gate, not an exception. Installing it is optional for the consumer; shipping it is not optional for the release. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
 
@@ -92,7 +93,7 @@ The trailers are load-bearing: `git subtree pull` locates the vendored tree by g
 
 `@savvy-web/bundler` is a **`devDependency` of every package that builds** — it is what `savvy.build.ts` imports. **Never put it in `dependencies`**, or the publishable manifest ships a build tool at runtime. The workspace sets `autoInstallPeers: true`, so root `devDependencies` are just `@savvy-web/silk` and `@vitest-agent/plugin`, with the rest auto-installed as peers.
 
-**Keep `@effect/tsgo` (`catalog:effect`) as each package's typechecker devDependency** — never swap it for `@typescript/native-preview` (`catalog:silk`). The convention stays until someone verifies that dropping it keeps `pnpm peers check` clean.
+**Every package typechecks with `tsc --noEmit`** — that is the `types:check` script, and `typescript` (`catalog:silk`) is the devDependency behind it. `@effect/tsgo` was removed from all packages in `chore: fix typescript versions` (d0599438); it survives only as a `pnpm-workspace.yaml` catalog entry with no consumer. Do not reintroduce it as a package's typechecker.
 
 Source `package.json` files are `"private": true` — this is intentional. The bundler's `publishConfig`-driven transform produces the publishable manifest at build time; never set `"private": false` in source.
 
@@ -101,7 +102,7 @@ Source `package.json` files are `"private": true` — this is intentional. The b
 ```bash
 pnpm lint                  # Check code with Biome (lint:fix, lint:fix:unsafe)
 pnpm lint:md               # Check markdown with markdownlint (lint:md:fix)
-pnpm typecheck             # Type-check via Turbo (runs tsgo per package)
+pnpm typecheck             # Type-check via Turbo (runs tsc --noEmit per package)
 pnpm test                  # Run all tests (test:watch, test:coverage)
 pnpm build                 # Build dev + prod outputs via Turbo
 pnpm dev                   # Run the docs website locally (preview to serve build)
