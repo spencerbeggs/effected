@@ -126,11 +126,11 @@ export const getJson = <A, I>(
 const rateLimitBackoff: Schedule.Schedule<HttpFailure, HttpFailure> = Schedule.exponential("1 second").pipe(
 	Schedule.setInputType<HttpFailure>(),
 	Schedule.passthrough,
-	Schedule.modifyDelay((failure, delay) =>
+	Schedule.modifyDelay(({ duration, output: failure }) =>
 		Effect.succeed(
 			failure._kind === "rateLimit" && failure.retryAfter !== undefined
 				? Duration.seconds(Math.min(failure.retryAfter, MAX_RETRY_AFTER_SECONDS))
-				: delay,
+				: duration,
 		),
 	),
 );
