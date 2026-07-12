@@ -40,7 +40,7 @@
 		"build:dev": "node savvy.build.ts --target dev",
 		"build:prod": "node savvy.build.ts --target prod",
 		"prepare": "turbo run build:dev",
-		"types:check": "tsgo --noEmit"
+		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@effected/glob": "workspace:*",
@@ -56,7 +56,6 @@
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
-		"@effect/tsgo": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
 		"@savvy-web/bundler": "^1.1.11",
 		"@types/node": "catalog:silk",

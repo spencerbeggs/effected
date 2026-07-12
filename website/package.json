@@ -7,15 +7,14 @@
 		"build": "rspress build",
 		"dev": "node lib/scripts/dev.mts",
 		"preview": "node lib/scripts/preview.mts",
-		"types:check": "tsgo --noEmit"
+		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@rspress/core": "^2.0.17",
+		"@rspress/core": "catalog:silk",
 		"@rspress/plugin-sitemap": "^2.0.17",
 		"@types/node": "catalog:silk",
 		"@types/react": "catalog:silk",
 		"@types/react-dom": "catalog:silk",
-		"@typescript/native-preview": "catalog:silk",
 		"react": "catalog:silk",
 		"react-dom": "catalog:silk",
 		"rspress-plugin-api-extractor": "^0.3.7",

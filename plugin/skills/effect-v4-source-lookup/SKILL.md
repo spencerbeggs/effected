@@ -162,7 +162,7 @@ A probe that cannot fail is worse than no probe. Every precondition below exists
 cd packages/<pkg>
 node -e 'console.log("resolved effect:", require("effect/package.json").version)'
 # write packages/<pkg>/probe.ts (NOT a temp dir — see precondition 3), then either:
-pnpm exec tsgo --noEmit   # type-level probe
+pnpm exec tsc   # type-level probe
 node probe.ts             # behavioural probe; Node runs TS directly
 rm -f "$PWD/probe.ts"
 ```

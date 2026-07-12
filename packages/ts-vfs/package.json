@@ -29,11 +29,10 @@
 		"build:dev": "node savvy.build.ts --target dev",
 		"build:prod": "node savvy.build.ts --target prod",
 		"prepare": "turbo run build:dev",
-		"types:check": "tsgo --noEmit"
+		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
-		"@effect/tsgo": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
 		"@effected/semver": "workspace:*",
 		"@effected/store": "workspace:*",
@@ -42,7 +41,7 @@
 		"@types/node": "catalog:silk",
 		"@typescript/vfs": "^1.6.4",
 		"effect": "catalog:effect",
-		"typescript": "catalog:silk"
+		"typescript": "^6.0.3"
 	},
 	"peerDependencies": {
 		"@effected/semver": "workspace:*",
@@ -50,7 +49,7 @@
 		"@effected/xdg": "workspace:*",
 		"@typescript/vfs": "^1.6.4",
 		"effect": "catalog:effect",
-		"typescript": ">=5.5"
+		"typescript": "^6.0.3"
 	},
 	"peerDependenciesMeta": {
 		"@typescript/vfs": {

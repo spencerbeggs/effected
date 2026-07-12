@@ -33,9 +33,6 @@ catalogs:
     '@effect/sql-sqlite-node':
       specifier: 4.0.0-beta.97
       version: 4.0.0-beta.97
-    '@effect/tsgo':
-      specifier: ^0.19.0
-      version: 0.19.0
     '@effect/vitest':
       specifier: 4.0.0-beta.97
       version: 4.0.0-beta.97
@@ -43,6 +40,9 @@ catalogs:
       specifier: 4.0.0-beta.97
       version: 4.0.0-beta.97
   silk:
+    '@rspress/core':
+      specifier: ^2.0.17
+      version: 2.0.17
     '@types/node':
       specifier: ^26.1.1
       version: 26.1.1
@@ -52,9 +52,6 @@ catalogs:
     '@types/react-dom':
       specifier: ^19.2.3
       version: 19.2.3
-    '@typescript/native-preview':
-      specifier: ^7.0.0-dev.20260630.1
-      version: 7.0.0-dev.20260707.2
     react:
       specifier: ^19.2.7
       version: 19.2.7
@@ -67,7 +64,6 @@ catalogs:
 
 overrides:
   '@microsoft/api-extractor>typescript': ^6.0.3
-  '@effect/platform-node@4.0.0-beta.97>@effect/platform-node-shared': 4.0.0-beta.97
 
 pnpmfileChecksum: sha256-uYxK5IpbX5KNn+Ib3DnKjhPxxOIqKL+rGz70TwCoYZk=
 
@@ -87,9 +83,6 @@ importers:
       '@effect/platform-node':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(ioredis@5.11.1)
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -121,9 +114,6 @@ importers:
 
   packages/glob:
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -146,9 +136,6 @@ importers:
 
   packages/jsonc:
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -168,9 +155,6 @@ importers:
 
   packages/lockfiles:
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -199,9 +183,6 @@ importers:
 
   packages/npm:
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -234,9 +215,6 @@ importers:
       '@effect/platform-node':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(ioredis@5.11.1)
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -262,9 +240,6 @@ importers:
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
-      '@typescript/native-preview':
-        specifier: catalog:silk
-        version: 7.0.0-dev.20260707.2
       rolldown-pnpm-config:
         specifier: ^0.2.1
         version: 0.2.1(@types/react@19.2.17)(ioredis@5.11.1)(rolldown@1.1.5)
@@ -279,9 +254,6 @@ importers:
         specifier: workspace:*
         version: link:../semver/dist/dev/pkg
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -311,9 +283,6 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-beta.97
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -330,9 +299,6 @@ importers:
 
   packages/semver:
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -356,9 +322,6 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -378,9 +341,6 @@ importers:
 
   packages/toml:
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -406,9 +366,6 @@ importers:
       '@effect/platform-node':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(ioredis@5.11.1)
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -423,26 +380,23 @@ importers:
         version: link:../xdg/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^1.1.11
-        version: 1.1.11(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
+        version: 1.1.11(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       '@typescript/vfs':
         specifier: ^1.6.4
-        version: 1.6.4(typescript@7.0.2)
+        version: 1.6.4(typescript@6.0.3)
       effect:
         specifier: catalog:effect
         version: 4.0.0-beta.97
       typescript:
-        specifier: catalog:silk
-        version: 7.0.2
+        specifier: ^6.0.3
+        version: 6.0.3
     publishDirectory: dist/dev/pkg
 
   packages/walker:
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -496,9 +450,6 @@ importers:
       '@effect/platform-node':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(ioredis@5.11.1)
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -518,9 +469,6 @@ importers:
 
   packages/xdg:
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -546,9 +494,6 @@ importers:
 
   packages/yaml:
     devDependencies:
-      '@effect/tsgo':
-        specifier: catalog:effect
-        version: 0.19.0
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
@@ -569,7 +514,7 @@ importers:
   website:
     devDependencies:
       '@rspress/core':
-        specifier: ^2.0.17
+        specifier: catalog:silk
         version: 2.0.17(@rspack/core@2.1.3(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2)
       '@rspress/plugin-sitemap':
         specifier: ^2.0.17
@@ -583,9 +528,6 @@ importers:
       '@types/react-dom':
         specifier: catalog:silk
         version: 19.2.3(@types/react@19.2.17)
-      '@typescript/native-preview':
-        specifier: catalog:silk
-        version: 7.0.0-dev.20260707.2
       react:
         specifier: catalog:silk
         version: 19.2.7
@@ -944,45 +886,6 @@ packages:
       '@effect/experimental': ^0.60.0
       '@effect/platform': ^0.96.1
       effect: ^3.21.2
-
-  '@effect/tsgo-darwin-arm64@0.19.0':
-    resolution: {integrity: sha512-tieZTHXZlqOtm3YbGxclXNsyxILFtZqMC1fZEy2PAoEGKBHfwNc+r0gR3k3SU9dsSNj3KV8wLsXxfQr/VH1pAA==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@effect/tsgo-darwin-x64@0.19.0':
-    resolution: {integrity: sha512-gTxeWR5xkL+UIdrTDcnGDj0dFPnk2AxvHzrA8j3U9OQZ5yHaFK4DA8W2hVxbu2lvGoHeRlyrArBf8YomKnNRdQ==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@effect/tsgo-linux-arm64@0.19.0':
-    resolution: {integrity: sha512-XEMv3PA8hNkSXAwAXYA5/FPYqV7eVrZS032P/3AuZTHr1jJTcesTK2ANfBHwwEKekmb7y3yBC7f73yhpXah4sg==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@effect/tsgo-linux-arm@0.19.0':
-    resolution: {integrity: sha512-SZlUqv74YZkBDd2czXmeOTPtWPOppWNFmwCN4k11s1K4Y/BfIpHmmv0TUHU5DcPe3IoHIJV1kxXrxhfxO1nQsQ==}
-    cpu: [arm]
-    os: [linux]
-
-  '@effect/tsgo-linux-x64@0.19.0':
-    resolution: {integrity: sha512-T3KDEWgWuS3XAuJ5eUkEgeOVgC7pYK/8/hxASEtHJR1NDGPPk6gjg+jfcc0Y5O9P6mG4GL9LQmBIw/G1+GFRHA==}
-    cpu: [x64]
-    os: [linux]
-
-  '@effect/tsgo-win32-arm64@0.19.0':
-    resolution: {integrity: sha512-raoGQr2lNm0qO8sH3v4TlyUlTePm6c6y2FBIZQrUw8B4N/srHS5aVOUgWqnJ/WjuQKl1xCM5SoehuhRkGnoFzw==}
-    cpu: [arm64]
-    os: [win32]
-
-  '@effect/tsgo-win32-x64@0.19.0':
-    resolution: {integrity: sha512-KRWaWLXWIEm5mR/qPi9UJIRQdNs7uPfstiEv3bNR3qMVhgwndL2e5XYUoQOOYEK4MTjLM0GO+uknlHHRfI5K8A==}
-    cpu: [x64]
-    os: [win32]
-
-  '@effect/tsgo@0.19.0':
-    resolution: {integrity: sha512-NDyG/RufHigI0bdvyggbr53J6c1GWcnNkm7rUwQbBDuRI1KRThFh2WtugMLL+i6wrRiMXJtgLHzh9lIMqy9gGA==}
-    hasBin: true
 
   '@effect/typeclass@0.40.0':
     resolution: {integrity: sha512-L/2o2ImeqbemFlqH0b3y2PqQTFc+E0/DUnffCU8bkJUGh0yUZmh2RXuXhR8QOpfNCe718JQjI+mLnpVF2MMmaQ==}
@@ -5757,37 +5660,6 @@ snapshots:
       effect: 3.21.4
       uuid: 11.1.1
 
-  '@effect/tsgo-darwin-arm64@0.19.0':
-    optional: true
-
-  '@effect/tsgo-darwin-x64@0.19.0':
-    optional: true
-
-  '@effect/tsgo-linux-arm64@0.19.0':
-    optional: true
-
-  '@effect/tsgo-linux-arm@0.19.0':
-    optional: true
-
-  '@effect/tsgo-linux-x64@0.19.0':
-    optional: true
-
-  '@effect/tsgo-win32-arm64@0.19.0':
-    optional: true
-
-  '@effect/tsgo-win32-x64@0.19.0':
-    optional: true
-
-  '@effect/tsgo@0.19.0':
-    optionalDependencies:
-      '@effect/tsgo-darwin-arm64': 0.19.0
-      '@effect/tsgo-darwin-x64': 0.19.0
-      '@effect/tsgo-linux-arm': 0.19.0
-      '@effect/tsgo-linux-arm64': 0.19.0
-      '@effect/tsgo-linux-x64': 0.19.0
-      '@effect/tsgo-win32-arm64': 0.19.0
-      '@effect/tsgo-win32-x64': 0.19.0
-
   '@effect/typeclass@0.40.0(effect@3.21.4)':
     dependencies:
       effect: 3.21.4
@@ -6381,6 +6253,37 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
 
+  '@savvy-web/bundler@1.1.11(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3)':
+    dependencies:
+      '@savvy-web/tsdown-plugins': 1.1.10(@tsdown/exe@0.22.4)(@types/node@26.1.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)
+      '@tsdown/exe': 0.22.4(tsdown@0.22.4)
+      '@types/node': 26.1.1
+      effect: 3.21.4
+      rolldown: 1.1.5
+      tsdown: 0.22.4(@tsdown/exe@0.22.4)(@typescript/native-preview@7.0.0-dev.20260707.2)(typescript@6.0.3)
+      typescript: 6.0.3
+    optionalDependencies:
+      '@types/react': 19.2.17
+      '@types/react-dom': 19.2.3(@types/react@19.2.17)
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+    transitivePeerDependencies:
+      - '@arethetypeswrong/core'
+      - '@ts-macro/tsc'
+      - '@tsdown/css'
+      - '@typescript/native-preview'
+      - '@vitejs/devtools'
+      - bufferutil
+      - ioredis
+      - lmdb
+      - oxc-resolver
+      - publint
+      - tsx
+      - unplugin-unused
+      - unrun
+      - utf-8-validate
+      - vue-tsc
+
   '@savvy-web/bundler@1.1.11(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)':
     dependencies:
       '@savvy-web/tsdown-plugins': 1.1.10(@tsdown/exe@0.22.4)(@types/node@26.1.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)
@@ -6847,13 +6750,6 @@ snapshots:
     dependencies:
       debug: 4.4.3
       typescript: 6.0.3
-    transitivePeerDependencies:
-      - supports-color
-
-  '@typescript/vfs@1.6.4(typescript@7.0.2)':
-    dependencies:
-      debug: 4.4.3
-      typescript: 7.0.2
     transitivePeerDependencies:
       - supports-color
 

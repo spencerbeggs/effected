@@ -64,7 +64,3 @@ catalogs:
 configDependencies:
   "@savvy-web/pnpm-plugin-silk": 0.22.1+sha512-BCYsx9ezKBWsGGHPlE4WcEjgDX+5pNEnWsCa8Ud8VEiDKbpcjP8XeO8Iap1r3wmiHaQos5xQEKvDF3jblk4mWQ==
 loglevel: info
-minimumReleaseAgeExclude:
-  - "@effect/tsgo-*"
-overrides:
-  "@effect/platform-node@4.0.0-beta.97>@effect/platform-node-shared": 4.0.0-beta.97

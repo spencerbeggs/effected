@@ -29,10 +29,9 @@
 		"build:dev": "node savvy.build.ts --target dev",
 		"build:prod": "node savvy.build.ts --target prod",
 		"prepare": "turbo run build:dev",
-		"types:check": "tsgo --noEmit"
+		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@effect/tsgo": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
 		"@effected/jsonc": "workspace:*",
 		"@effected/semver": "workspace:*",

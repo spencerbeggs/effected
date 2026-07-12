@@ -57,7 +57,7 @@ A probe that cannot fail is worse than no probe. Each precondition below was lea
 cd packages/<pkg>
 node -e 'console.log("resolved effect:", require("effect/package.json").version)'
 # type-level probe: write packages/<pkg>/probe.ts, then
-pnpm exec tsgo --noEmit          # the package's own types:check script
+pnpm exec tsc          # the package's own types:check script
 rm -f "$PWD/probe.ts"
 ```
 

@@ -37,7 +37,7 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest --watch",
     "typecheck": "turbo run types:check --log-prefix=none --log-order=grouped",
-    "types:check": "tsgo --noEmit"
+    "types:check": "tsc --noEmit"
   },
   "devDependencies": {
     "@savvy-web/changesets": "^0.8.0",
