@@ -118,7 +118,7 @@ The package fetches, caches and resolves TypeScript type definitions from npm pa
 
 The reasoning, recorded so it is not re-litigated: `type-registry` describes the v3 implementation's central facade rather than what the package is for. A bare `vfs` would over-generalize in the other direction — it would signal a general-purpose in-memory filesystem, when this package makes network calls to npm and caches to a SQLite store. **`ts-vfs`** scopes the name to TypeScript, matches the `@typescript/vfs` package it wraps and does not overclaim. The rename changes nothing about the migration: it is still a target in its own right, still integrated tier, still load-bearing for two of the five gate applications.
 
-The **v3 source repo and its published package keep the name `type-registry-effect`** — that name appears in `rspress-plugin-api-extractor`'s dependency list and in the v3/v4 peer-poisoning note in the root `CLAUDE.md`, and those references are about the old package, not the new one.
+The **v3 source repo and its published package keep the name `type-registry-effect`** — that name still appears in `rspress-plugin-api-extractor`'s dependency list, and that reference is about the old package, not the new one. (It also used to appear in a v3/v4 peer-poisoning note in the root `CLAUDE.md`: `type-registry-effect` peered on `effect`, which under the old pnpm resolver bound the website's transitive `@effect/platform` to a v4 core. That bug is fixed upstream in pnpm 11.12.0 and the note is gone.)
 
 ### The config-file family
 

@@ -35,7 +35,7 @@ The XDG concepts (`AppDirs`, resolvers, `nativeDirs`) are **out of scope** — t
 The v3 code used `@effect/sql` + `@effect/sql-sqlite-node` from the v3 line, with a messy peer closure (`@effect/experimental` undeclared, cluster/rpc leakage — review §6). The v4 beta dissolves the whole problem:
 
 - The SQL **core** (`SqlClient`, `Statement`, `SqlError`, transactions) moved into `effect` itself under `effect/unstable/sql/*` — no `@effect/sql` package exists on the v4 line.
-- `@effect/sql-sqlite-node@4.0.0-beta.94` is published on the same version train as `effect`, peers on **`effect` alone**, and is implemented over Node's built-in `node:sqlite` — no native compile step, no `better-sqlite3`, no transitive peers.
+- `@effect/sql-sqlite-node` (declared `catalog:effect`, currently `4.0.0-beta.97`) is published on the same version train as `effect`, peers on **`effect` alone**, and is implemented over Node's built-in `node:sqlite` — no native compile step, no `better-sqlite3`, no transitive peers.
 
 So the "is there a viable v4 path" question answers itself: **use `SqlClient` from `effect/unstable/sql` as the abstract seam and `@effect/sql-sqlite-node` as the concrete driver.** Both are already pinned in the `effect` catalogs. Hand-rolling a `node:sqlite` service was considered and rejected: `@effect/sql-sqlite-node` *is* the thin Effect service over `node:sqlite` (statement serialization, prepared-statement cache, WAL, tracing attributes), and re-implementing it would duplicate upstream code to save a dependency that costs nothing transitively.
 

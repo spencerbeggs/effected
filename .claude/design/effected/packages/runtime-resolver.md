@@ -46,7 +46,7 @@ So the port drops `@effect/cli` entirely and builds the binary on core. What kee
 
 Core declares all five abstractions but implements **none of them for Node** — it ships `Path.layer`, `FileSystem.layerNoop` and `Stdio.layerTest`, and no more. The Node implementations (`NodeServices`, `NodeRuntime`, `NodeStdio`, `NodeTerminal`, `NodeFileSystem`, `NodeChildProcessSpawner`) live in `@effect/platform-node`, which is on the v4 train and peers on `effect` alone. That single non-core `@effect/*` runtime dependency is what makes the CLI integrated tier — and what the library must not pay for.
 
-Both claims are re-verified against the **pinned** catalog beta and its matching `repos/effect-smol` subtree, not against whatever beta npm's `latest` points at. The original spec cited `4.0.0-beta.97`, which was the *floating* installed version back when the catalog carried a caret range; the catalogs now pin exact betas, so the installed version and the vendored subtree are the same thing and are the only version worth citing.
+Both claims are re-verified against the **pinned** catalog beta and its matching `repos/effect-smol` subtree, not against whatever beta npm's `latest` points at. The original spec cited a *floating* `4.0.0-beta.97` back when the catalog carried a caret range; the catalogs now pin exact betas — and have since advanced to `4.0.0-beta.97` deliberately — so the installed version and the vendored subtree are the same thing by construction. The number is the same; how it is arrived at is the whole difference, and it is the only version worth citing.
 
 **The split therefore survives the disappearance of its original cause.** It was justified by `@effect/cli` leaking onto library consumers; `@effect/cli` is gone, and `@effect/platform-node` leaks in precisely the same way. **Same R1 rule, different package.** [package-inventory.md](../package-inventory.md) predicted an `@effect/cli`-driven split; that prediction is falsified and the row is corrected — but the split it mandated was right for a reason it had not seen yet.
 
@@ -277,7 +277,21 @@ An error-type assertion is not optional on the `layerFresh` tests. `assert.isTru
 
 ## As built (2026-07-11)
 
-Merged as two packages with **74 tests** across them, a clean typecheck and biome run, and both cold prod builds reporting zero warnings and zero errors with all 20 suppressed entries being synthesized class-factory `_base` symbols. Adding `@effect/platform-node` v4 to the CLI introduced **no new `pnpm peers check` warning** — only the known platform/rpc/sql/cluster tooling warning remains.
+Merged as two packages with **74 tests** across them, a clean typecheck and biome run, and both cold prod builds reporting zero warnings and zero errors with all 20 suppressed entries being synthesized class-factory `_base` symbols. Adding `@effect/platform-node` v4 to the CLI introduced **no new `pnpm peers check` warning** — and as of the pnpm 11.12.0 upgrade that check is clean outright, with no residual tooling warnings to discount it against.
+
+### Beta.97 adaptation: `Schedule.modifyDelay` takes one metadata object
+
+The `retryAfter`-honoring backoff in `internal/http.ts` (`rateLimitBackoff`) is the one place upstream churn reached this package. Beta.97 consolidated `Schedule`'s callback shape: **`modifyDelay` now receives a single metadata object `{ duration, output }`** rather than the old positional `(failure, delay)`. Under `Schedule.passthrough` the schedule's output *is* its input, so `output` is the `HttpFailure` — which is what lets the callback read the failure's `retryAfter` and substitute it for the computed `duration`:
+
+```ts
+Schedule.exponential("1 second").pipe(
+  Schedule.setInputType<HttpFailure>(),
+  Schedule.passthrough,
+  Schedule.modifyDelay(({ duration, output: failure }) => /* retryAfter ?? duration */),
+)
+```
+
+The *semantics* are unchanged — the header is still honored, still capped at 60s, still discarded when negative (see [Hardening](#hardening)). Only the destructuring moved. Worth recording because the `passthrough`/`output` relationship is non-obvious: nothing in the name `output` suggests "the failure", and reconstructing why it is one costs more than a sentence.
 
 Everything above landed as designed. What differs is the internal decomposition, which went further than the sketch:
 

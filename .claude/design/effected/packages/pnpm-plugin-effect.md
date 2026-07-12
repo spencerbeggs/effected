@@ -27,9 +27,11 @@ It is the single source of truth for what "the current Effect version" means acr
 
 The catalog strategy is declared in [`savvy.build.ts`](../../../../packages/pnpm-plugin-effect/savvy.build.ts) via `rolldown-pnpm-config`'s `PnpmConfigPlugin`. Each package entry carries three fields:
 
-- `range` — the pinned version for the `effect` catalog (e.g. `^4.0.0-beta.93`).
-- `peer` — the input to the `effectPeers` floor computation.
+- `range` — the pinned version for the `effect` catalog. **Exact, never a caret** (currently `4.0.0-beta.97`): a caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be authoritative on what v4 exports.
+- `peer` — the input to the `effectPeers` floor computation. **Caret** (currently `^4.0.0-beta.97`). The floor widened from exact to caret ranges on the beta.97 bump.
 - `strategy: "interop"` — how the peer floor is derived (the shared-floor interop strategy across the package's own peer declarations).
+
+The exact/caret asymmetry is the point, not an inconsistency: `range` is the version *this repo installs and tests against*, while `peer` is the range *libraries advertise to consumers*. Pinning the first hard keeps the subtree honest; widening the second constrains downstream as little as possible.
 
 `rolldown-pnpm-config` reads this config and emits both catalogs. The build also uses `bundleNodeModules: true` and `looseFiles` to ship the `pnpmfile` (`pnpmfile.mjs`/`pnpmfile.cjs` from `src/pnpmfile.ts`) that pnpm loads as the config dependency's hook.
 
@@ -54,9 +56,11 @@ The end-user-facing half of this (install + the two patterns) is the package [RE
 
 ## Relationship to the workspace peer discipline
 
-The `effect` / `effectPeers` catalogs this package defines are the mechanism behind the [peer-dependency discipline](../effect-standards.md#peer-dependency-discipline) in the standards: `@effected/*` libraries keep `effect` as a `catalog:effect` peer, and the interim pnpm-resolver configuration (`autoInstallPeers`, the `@effect/tsgo`-as-typechecker choice) that keeps the v4 beta from poisoning the v3 silk toolchain operates over the catalogs generated here. Advancing the beta is a single `pnpm pnpm:up` + `pnpm pnpm:export` — **user-run commands; agents must not invoke them.**
+The `effect` / `effectPeers` catalogs this package defines are the mechanism behind the [peer-dependency discipline](../effect-standards.md#peer-dependency-discipline) in the standards: `@effected/*` libraries keep `effect` as a `catalog:effect` peer and declare `catalog:effectPeers` as their advertised floor, both resolved from the catalogs generated here. Advancing the beta is a single `pnpm pnpm:up` + `pnpm pnpm:export` — **user-run commands; agents must not invoke them.**
 
-**Corrected 2026-07-09:** this section previously listed `dedupePeerDependents: false` among the live settings. The key is not present in `pnpm-workspace.yaml`, in an `.npmrc` (there is none), or in this package's source; it was removed once the peer-poisoning was fixed. `dedupeDirectDeps: false` was also dropped once pnpm 11.11.0 landed the upstream peer-resolution fix (see [effect-standards.md](../effect-standards.md#the-upstream-pnpm-fix-landed-2026-07-09)); neither key is set, and pnpm's defaults apply.
+The pnpm-resolver workarounds that used to surround these catalogs are **gone**: the v3/v4 peer-resolution bug is fixed upstream (pnpm 11.11.0, completed in 11.12.0) and `pnpm peers check` is clean. Neither `dedupePeerDependents: false` nor `dedupeDirectDeps: false` is set anywhere — not in `pnpm-workspace.yaml`, not in an `.npmrc` (there is none), not in this package's source — and pnpm's defaults apply. See [effect-standards.md](../effect-standards.md#the-upstream-pnpm-fix-is-complete-2026-07-11).
+
+One thing a catalog bump does **not** update automatically: the `overrides` entry in `pnpm-workspace.yaml` is keyed by an exact parent version (`@effect/platform-node@4.0.0-beta.97>@effect/platform-node-shared`). `pnpm:up` / `pnpm:export` do not re-scope it, so it must be edited by hand alongside the bump or it goes silently inert — see [architecture.md](../architecture.md#the-overrides-entry--re-scope-it-on-every-catalog-bump).
 
 ## Classification: companion
 

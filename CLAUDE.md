@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 This is **effected**, a pnpm monorepo (npm org `@effected`) building an **Effect v4 app kit**: a coherent set of libraries designed v4-first, not a lift-and-shift of Spencer's older `*-effect` repos. Scope is closed by five consuming applications, not by how many source repos remain.
 
-The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.94`. The monorepo holds libraries only — applications stay in external repos.
+The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.97`. The monorepo holds libraries only — applications stay in external repos.
 
 **Nothing publishes to npm until the whole kit ships together at `0.1.0`.** `1.0.0` waits for Effect v4 GA. Do not release a package on its own.
 
@@ -66,18 +66,20 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 
 ### repos/effect-smol
 
-A `git subtree` of Effect-TS/effect-smol, pinned to the tag matching the `effect` catalog (`effect@4.0.0-beta.94`). It is vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
+A `git subtree` of Effect-TS/effect-smol, pinned to the tag matching the `effect` catalog (`effect@4.0.0-beta.97`). It is vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
 
 It is excluded from pnpm (not a workspace package), turbo, vitest, Biome (`"includes": ["!repos"]`) and markdownlint (`"ignores": ["**/repos/**"]`).
 
 **Never point a writing tool at it.** Never write to `repos/effect-smol` by any means.
 
-Re-pin when the catalog bumps. This repo allows no merge commits and `git subtree pull` creates one, so the pull is followed by a squash:
+Re-pin when the catalog bumps. `git subtree pull` makes a merge commit, which commitlint **rejects mid-pull** — expected, not an error. The merge is left staged; finish it by hand and flatten it:
 
 ```bash
-git subtree pull --prefix=repos/effect-smol <url> effect@<tag> --squash
-git reset --soft HEAD~2   # drop the merge commit and the squashed-content commit
-git commit --no-verify    # carry the git-subtree-dir / git-subtree-split trailers forward
+git subtree pull --prefix=repos/effect-smol <url> effect@<tag> --squash  # hook rejects; merge staged
+git log -1 --format=%B MERGE_HEAD   # copy the git-subtree-dir / git-subtree-split trailers verbatim
+git commit --no-verify -m temp      # complete the merge
+git reset --soft HEAD~1             # NOT HEAD~2 — reset follows first parents past the pre-pull head
+git commit --no-verify -F <msg>     # conventional message + the two trailers
 ```
 
 The trailers are load-bearing: `git subtree pull` locates the vendored tree by grepping ancestor commit messages for `git-subtree-dir`, so dropping them leaves the *next* re-pin with no split point. `--no-verify` because lint-staged would otherwise process ~2,000 vendored files. Full recipe: [architecture.md](.claude/design/effected/architecture.md#re-pinning-when-the-effect-catalog-bumps).
@@ -90,7 +92,7 @@ The trailers are load-bearing: `git subtree pull` locates the vendored tree by g
 
 `@savvy-web/bundler` is a **`devDependency` of every package that builds** — it is what `savvy.build.ts` imports. **Never put it in `dependencies`**, or the publishable manifest ships a build tool at runtime. The workspace sets `autoInstallPeers: true`, so root `devDependencies` are just `@savvy-web/silk` and `@vitest-agent/plugin`, with the rest auto-installed as peers.
 
-**Keep `@effect/tsgo` (`catalog:effect`) as each package's typechecker devDependency** — never swap it for `@typescript/native-preview` (`catalog:silk`). The declaration, not the binary, is what holds the v4/v3 toolchain split.
+**Keep `@effect/tsgo` (`catalog:effect`) as each package's typechecker devDependency** — never swap it for `@typescript/native-preview` (`catalog:silk`). The convention stays until someone verifies that dropping it keeps `pnpm peers check` clean.
 
 Source `package.json` files are `"private": true` — this is intentional. The bundler's `publishConfig`-driven transform produces the publishable manifest at build time; never set `"private": false` in source.
 
@@ -144,18 +146,15 @@ The `@savvy-web/*` packages are in active development — if behavior seems unex
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml` (`catalog:effect`, `catalog:effectPeers`, `catalog:silk`), managed via `packages/pnpm-plugin-effect`.
 
-**Pin Effect catalogs to exact beta versions** (`4.0.0-beta.94`, never a caret). A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be the authority on what v4 exports.
+**Pin `catalog:effect` to exact beta versions** (`4.0.0-beta.97`, never a caret). A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be the authority on what v4 exports. `catalog:effectPeers` is the computed floor and *does* carry carets (`^4.0.0-beta.97`) — that is the peer range libraries advertise, not the version installed here.
 
-**Two pins look redundant and are not. Never delete either:**
+**Re-scope the `overrides` entry on every catalog bump.** `pnpm-workspace.yaml` pins `@effect/platform-node@4.0.0-beta.97>@effect/platform-node-shared` to `4.0.0-beta.97`. The key names the current v4 parent: leave it at the old beta and it goes silently inert. Keep it **scoped to that parent** — never unscoped.
 
-- The **`overrides`** entry in `pnpm-workspace.yaml` pinning `@effect/platform-node@4.0.0-beta.94>@effect/platform-node-shared` to `4.0.0-beta.94`. Keep it **scoped to the v4 parent**; an unscoped override poisons the v3 tooling chain in the opposite direction.
-- **`website` declares `effect: catalog:silk`** (v3). Removing it re-breaks the docs site (`Context.GenericTag` disappears under a v4 core).
-
-**Treat new `pnpm peers check` warnings as upstream closure defects to fix, not warnings to silence.** One residual is **expected and must not be chased**: `@effect/platform`, `@effect/rpc`, `@effect/sql` and `@effect/cluster` wanting `effect@^3.21.x` through the build/test tooling chain. Any warning outside that set is a genuine defect.
+**`pnpm peers check` reports zero issues. Treat any warning as a genuine closure defect to fix upstream, not one to silence.** There is no expected-residual set to ignore.
 
 **Always check the lockfile diff after an install** — a plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from it.
 
-Why each of these holds (the `autoInstallPeers` mechanics, the caret-on-a-prerelease float one level down, the `type-registry-effect` peer that poisoned the website) → `@./.claude/design/effected/architecture.md`. Load when: editing catalogs, `overrides`, peer declarations, or the website's dependencies.
+Why these hold (the `autoInstallPeers` mechanics, the caret-on-a-prerelease float one level down) → `@./.claude/design/effected/architecture.md`. Load when: editing catalogs, `overrides`, or peer declarations.
 
 ### Commits
 

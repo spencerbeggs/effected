@@ -151,24 +151,24 @@ Hard-won lesson from savvy-web/systems#228 and spencerbeggs/vitest-agent#127: ev
 
 ### Verified workspace configuration
 
-The consumer-side configuration that keeps the effect v4 beta from poisoning the v3 build toolchain. The live settings are in `pnpm-workspace.yaml` and the root `package.json`; this records why each exists and how a package plugs in (see [package-setup.md](package-setup.md) for the per-package file manifest).
+The consumer-side configuration that lets the effect v4 beta and the v3 build toolchain share one `node_modules` tree. The live settings are in `pnpm-workspace.yaml` and the root `package.json`; this records why each exists and how a package plugs in (see [package-setup.md](package-setup.md) for the per-package file manifest).
 
 1. Every published tool in the dependency chain declares its complete `@effect/*` peer closure as regular dependencies. Fixed in `@savvy-web/tsdown-plugins@1.1.6`, `@savvy-web/bundler@1.1.7`, `@savvy-web/silk@2.1.2`, `@savvy-web/cli@1.5.2`, `@savvy-web/mcp@1.6.7`, `rolldown-pnpm-config@0.2.1` and the July 2026 `@vitest-agent/*` releases. Outstanding: rspress-plugin-api-extractor ([spencerbeggs/rspress-plugin-api-extractor#69](https://github.com/spencerbeggs/rspress-plugin-api-extractor/issues/69)).
 2. `pnpm-workspace.yaml` sets `autoInstallPeers: true`. The tool peers of `@savvy-web/silk` (biome, changesets, commitlint, husky, lint-staged, markdownlint, turbo, typescript, etc.) and `@vitest-agent/plugin` (vitest, coverage providers, cli, mcp) are auto-installed rather than declared explicitly.
-3. Each package uses `@effect/tsgo: catalog:effect` for the `tsgo` typechecker instead of `@typescript/native-preview: catalog:silk`. This is the change that keeps the v4 beta from poisoning the v3 toolchain under `autoInstallPeers: true` — the typechecker rides the `effect` (v4) catalog rather than the `silk` (v3-tooling) catalog, so auto-installed `effect` peers in the tooling chain no longer resolve the workspace-preferred v4 into v3-wanting importers.
+3. Each package uses `@effect/tsgo: catalog:effect` for the `tsgo` typechecker instead of `@typescript/native-preview: catalog:silk`, keeping the typechecker's own `effect` peer on the v4 catalog rather than the `silk` (v3-tooling) catalog. This began as a workaround for the pnpm peer-resolution bug (now fixed upstream) and is retained unverified — see below.
 4. `pnpm-workspace.yaml` pins neither `dedupeDirectDeps` nor `dedupePeerDependents`; pnpm's defaults apply. Both were interim workarounds and both are now gone. Read `pnpm-workspace.yaml` rather than trusting a doc for this — there is no `.npmrc` either.
 5. The root `package.json` `devDependencies` are just `@savvy-web/silk` and `@vitest-agent/plugin`; everything else is an auto-installed peer. **`@savvy-web/bundler` is a `devDependency` of every package that builds**, which is what `savvy.build.ts` imports. It must never be a `dependency`, or the publishable manifest ships a build tool at runtime.
 
-### The upstream pnpm fix landed (2026-07-09)
+### The upstream pnpm fix is complete (2026-07-11)
 
-[pnpm/pnpm#12847](https://github.com/pnpm/pnpm/pull/12847) shipped in **pnpm 11.11.0**, so the interim setup is no longer load-bearing in the way it was. Two things changed with it, and both are now the recorded configuration rather than a workaround:
+[pnpm/pnpm#12847](https://github.com/pnpm/pnpm/pull/12847) shipped in **pnpm 11.11.0** and the remainder landed in **pnpm 11.12.0**, which this repo now runs. The v3/v4 peer-resolution problem is **solved at the resolver, not worked around here** — `pnpm peers check` reports **zero issues**. Every interim accommodation is retired:
 
 - `@savvy-web/bundler` moved from the root `devDependencies` to each package's. The old root-only placement existed because a per-package `devDependency` put a v3-wanting `@effect/platform-node` (via `@savvy-web/tsdown-plugins`) beside a v4 `effect` in every importer, which the old resolver could not keep apart. The per-package layout is the correct one and is now viable.
-- `dedupeDirectDeps: false` was dropped.
+- `dedupeDirectDeps: false` and `dedupePeerDependents: false` were dropped; pnpm's defaults apply.
+- **`website` no longer declares `effect: catalog:silk`.** That pin anchored the docs site's `effect` to v3 so a transitively-peered `@effect/platform` could not be built against a v4 core. The anchor is removed and the site builds. Do not reintroduce it.
+- **The expected-residual warning set is gone.** `@effect/platform`, `@effect/rpc`, `@effect/sql` and `@effect/cluster` used to warn for `effect@^3.21.x` through the build/test tooling chain, and the standing instruction was not to chase them. There is now nothing to ignore: **any** `pnpm peers check` warning is a genuine closure defect to fix upstream.
 
-Whether each package still needs `@effect/tsgo` over `@typescript/native-preview` (item 3) is **untested** — it is retained until someone confirms removal keeps `pnpm peers check` clean.
-
-One unmet peer remains. `@effect/platform@0.96.2`, `@effect/rpc@0.75.1`, `@effect/sql@0.51.1` and `@effect/cluster@0.59.0` want `effect@^3.21.x` against the installed v4 beta. `pnpm why -r "@effect/platform"` traces every one of them to the **build/test tooling chain** — `@savvy-web/bundler` → `@savvy-web/tsdown-plugins` → `@effect/platform-node`, and `@savvy-web/silk` / `@vitest-agent/plugin` → `@savvy-web/cli` / `@vitest-agent/cli` → `@effect/cli`. It is **not** `rspress-plugin-api-extractor`, whose lock entry declares no `@effect/*` dependency at all; the `effect: catalog:silk` pin in `website/package.json` is a separate accommodation. Under investigation — treat a peer warning outside this known set as a closure defect to fix upstream.
+One thing survives on inertia rather than need: whether each package still requires `@effect/tsgo` over `@typescript/native-preview` (item 3) is **untested**. It is retained until someone confirms removal keeps `pnpm peers check` clean.
 
 ## Cross-@effected dependencies
 

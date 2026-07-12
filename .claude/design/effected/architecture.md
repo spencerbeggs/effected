@@ -65,24 +65,35 @@ git subtree add --prefix=repos/effect-smol https://github.com/Effect-TS/effect-s
 
 ### Re-pinning when the `effect` catalog bumps
 
-This repo **does not allow merge commits**, and `git subtree pull` is a merge — it creates one every time. So a re-pin is a pull followed by a squash:
+This repo **does not allow merge commits**, and `git subtree pull` is a merge — it creates one every time. It also runs into the repo's own hooks: the `commit-msg` hook (commitlint) **rejects the merge commit `git subtree pull` generates for itself**, mid-pull. The pull therefore *always* fails partway through, leaving `MERGE_HEAD` set and the fully merged tree staged. That is the expected path, not a fault to recover from — the recipe below finishes the job by hand.
+
+Verified end to end on the beta.94 → beta.97 re-pin (2026-07-11):
 
 ~~~bash
+# 1. Fails at the merge-commit step. Expected: MERGE_HEAD is set, merged tree staged.
 git subtree pull --prefix=repos/effect-smol https://github.com/Effect-TS/effect-smol.git effect@<new-tag> --squash
-git reset --soft HEAD~2   # drop the merge commit and the squashed-content commit
-git commit                # one commit — see the trailer requirement below
+
+# 2. Copy BOTH trailers verbatim out of the rejected merge commit's message.
+git log -1 --format=%B MERGE_HEAD
+
+# 3. Complete the merge, then collapse it to one linear commit carrying the trailers.
+git commit --no-verify -m "temp"
+git reset --soft HEAD~1
+git commit --no-verify -F <message-file>
 ~~~
 
-**The new commit message must carry both subtree trailers forward**, verbatim from the commit being collapsed:
+**`git reset --soft HEAD~1`, never `HEAD~2`.** The temp commit is a *merge* commit, and `HEAD~1` follows its **first parent** — the pre-pull head. `HEAD~2` walks one commit *past* that and silently rewinds real repo history into the staging area. (The older two-step `HEAD~2` recipe assumed `subtree pull` had produced two commits of its own; under the hooks it never gets that far.)
+
+**The final commit message must carry both subtree trailers forward**, verbatim:
 
 ~~~text
 git-subtree-dir: repos/effect-smol
 git-subtree-split: <the upstream commit sha for the new tag>
 ~~~
 
-This is load-bearing, not cosmetic. `git subtree pull` finds where the vendored tree came from by grepping ancestor commit messages for `git-subtree-dir`. Squash the trailers away and the *next* re-pin has no split point to work from. Verified 2026-07-09 after squashing the initial `subtree add`: with the trailers preserved, `git subtree pull` at the pinned tag reports `Subtree is already at commit …` and exits 0.
+This is load-bearing, not cosmetic. `git subtree pull` finds where the vendored tree came from by grepping ancestor commit messages for `git-subtree-dir`. Squash the trailers away and the *next* re-pin has no split point to work from. Confirmed after the beta.97 re-pin: with the trailers preserved, `git subtree pull` at the pinned tag reports `Subtree is already at commit f643dbb2…` and exits 0.
 
-Commit with `--no-verify`. lint-staged would otherwise try to process the tree's ~2,000 vendored files.
+Commit with `--no-verify` at both steps. lint-staged would otherwise try to process the tree's ~2,000 vendored files, and commitlint rejects the merge message that `--no-verify` is there to let through.
 
 Re-pinning runs when the `effect` catalog bumps, so source and installed version move together by construction. Note that the [upstream blog post](https://effect.website/blog/the-one-weird-git-trick-that-makes-coding-agents-more-effect-ive/) recommending this technique vendors `Effect-TS/effect` — the **v3** repo. Following it verbatim would install the v3 source as agent-authoritative reference, which is precisely the confusion this repo has been fighting: the workspace root resolves `effect@3.21.4` and will describe the v3 surface with total confidence.
 
@@ -90,38 +101,34 @@ The vendored tree is read-only and must stay outside every build and lint graph 
 
 Build tooling is `@savvy-web/silk` (rslib/tsdown bundler, turbo, changesets, biome); see the root `CLAUDE.md` for commands and pipeline details.
 
-## Dependency resolution: holding the v4/v3 line
+## Dependency resolution
 
-The repo runs a v4 `effect` in its packages and a v3 `effect` in its toolchain (`@savvy-web/*`, rspress, api-extractor). Those two lines share one `node_modules` tree, and pnpm's `autoInstallPeers: true` is what makes them leak into each other: an unresolved `effect` peer anywhere in the graph binds to the *workspace-preferred* version, which is v4. Every mechanism below exists to stop a v3-wanting importer from being handed a v4 core. The root `CLAUDE.md` carries the rules; this section carries the reasons, so an agent tempted to delete a pin as redundant can find out first what it holds.
+The repo runs a v4 `effect` in its packages and a v3 `effect` in its toolchain (`@savvy-web/*`, rspress, api-extractor), sharing one `node_modules` tree. Under pnpm's `autoInstallPeers: true` an unresolved `effect` peer used to bind to the *workspace-preferred* version — v4 — and leak into v3-wanting importers. **That resolver bug is fixed upstream** ([pnpm/pnpm#12847](https://github.com/pnpm/pnpm/pull/12847), shipped in pnpm 11.11.0, with the remainder in **11.12.0**, which this repo now runs). The workarounds it forced are gone; what survives below is ordinary configuration, and it is documented so nobody re-derives a workaround for a solved problem.
 
-### The catalogs pin exact betas
+### The catalogs pin exact betas — but `effectPeers` carries carets
 
-The Effect catalogs pin **exact** beta versions (`4.0.0-beta.94`, no caret). A caret range on a prerelease floats freely across the beta line, which silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be the authority on what v4 exports — the failure described in [Vendored source](#vendored-source), arriving through the lockfile instead of through the subtree.
+`catalog:effect` pins **exact** beta versions (`4.0.0-beta.97`, no caret). A caret range on a prerelease floats freely across the beta line, which silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be the authority on what v4 exports — the failure described in [Vendored source](#vendored-source), arriving through the lockfile instead of through the subtree.
+
+`catalog:effectPeers` is a different thing and correctly carries carets (`^4.0.0-beta.97`). It is the **computed peer floor** — the range `@effected/*` libraries advertise to their consumers, not the version installed here. It widened from exact to caret pins on the beta.97 bump. Both catalogs are generated by [`packages/pnpm-plugin-effect`](packages/pnpm-plugin-effect.md); the exact/caret split lives in its `savvy.build.ts` as a `range` / `peer` pair per package.
 
 ### `@effect/tsgo` as the declared typechecker
 
-Each package declares `@effect/tsgo` (`catalog:effect`) as its typechecker devDependency rather than `@typescript/native-preview` (`catalog:silk`). What matters is the **declaration**, not the binary: it makes the typechecker's own `effect` peer ride the v4 catalog instead of the silk (v3-tooling) catalog. Under `autoInstallPeers: true` that stops the auto-installed `effect` peers in the tooling chain from resolving the workspace-preferred v4 into v3-wanting importers.
+Each package declares `@effect/tsgo` (`catalog:effect`) as its typechecker devDependency rather than `@typescript/native-preview` (`catalog:silk`). What matters is the **declaration**, not the binary: it keeps the typechecker's own `effect` peer on the v4 catalog rather than the silk (v3-tooling) catalog.
 
-Upstream patch pnpm/pnpm#12847 landed in **pnpm 11.11.0**, so this declaration may no longer be needed. It stays until someone verifies that removing it keeps `pnpm peers check` clean.
+The peer-resolution failure this was originally standing in for is fixed upstream, so the declaration is **probably no longer load-bearing** — but nobody has verified that removing it keeps `pnpm peers check` clean, so it **stays until verified removable**. It is cheap to keep and the verification is a five-minute experiment nobody has run.
 
-Related history: `@savvy-web/bundler` used to live at the root only, resolved by Node's upward `node_modules` walk, because a per-package copy put a v3-wanting `@effect/platform-node` beside a v4 `effect` in every importer. That was fixed upstream in pnpm 11.11.0, and the bundler is now a normal devDependency of every package that builds.
+Related history: `@savvy-web/bundler` used to live at the root only, resolved by Node's upward `node_modules` walk, because a per-package copy put a v3-wanting `@effect/platform-node` beside a v4 `effect` in every importer. Fixed upstream; the bundler is now a normal devDependency of every package that builds.
 
-### Load-bearing pin 1: the `overrides` entry
+### The `overrides` entry — re-scope it on every catalog bump
 
-`overrides` in `pnpm-workspace.yaml` pins `@effect/platform-node@4.0.0-beta.94>@effect/platform-node-shared` to `4.0.0-beta.94`.
+`overrides` in `pnpm-workspace.yaml` pins `@effect/platform-node@4.0.0-beta.97>@effect/platform-node-shared` to `4.0.0-beta.97`.
 
-Upstream, `@effect/platform-node@4.0.0-beta.94` declares its own sibling as `"@effect/platform-node-shared": "^4.0.0-beta.94"` — a caret on a prerelease — so it floats to a later beta whose `effect` peer the exact-pinned core no longer satisfies. Catalogs bind only *direct* workspace deps; this float is one level down, inside a dependency's manifest, and `overrides` is the only lever that reaches it.
+Upstream, `@effect/platform-node` declares its own sibling as `"@effect/platform-node-shared": "^4.0.0-beta.97"` — a caret on a prerelease — so it floats to a later beta whose `effect` peer the exact-pinned core no longer satisfies. Catalogs bind only *direct* workspace deps; this float is one level down, inside a dependency's manifest, and `overrides` is the only lever that reaches it. Keep it **scoped to the v4 parent**; an unscoped `@effect/platform-node-shared` override would also replace the v3-era `0.60.0` the tooling chain resolves.
 
-The override is **scoped to the v4 parent** on purpose. An unscoped `@effect/platform-node-shared` override also replaces the v3-era `0.60.0` that the v3 tooling chain needs, poisoning it in the opposite direction.
-
-### Load-bearing pin 2: `website` declares `effect: catalog:silk`
-
-The `website` package declares `effect: catalog:silk` (v3). It looks redundant — `rspress-plugin-api-extractor` resolves its own `effect` at v3 correctly — but its transitive `type-registry-effect` declares `effect` and `@effect/platform` as **peers**; under `autoInstallPeers: true` those bound to the workspace's v4 preference, yielding a v3 `@effect/platform` built against a v4 core whose `Context` no longer exports `GenericTag`. `rspress.config.ts` died on it and the docs site was broken on `main` with nothing in CI to catch it.
-
-The generalizable rule: a transitive dependency that *peers* on `effect` is the poisoning surface; one that merely depends on it is fine.
+**The scope key names a specific version, so it must be re-scoped on every catalog bump.** This is the live failure mode, not a hypothetical: through the beta.97 upgrade the override still read `@effect/platform-node@4.0.0-beta.94>…` and therefore matched no parent in the tree and sat **inert** — present in the file, doing nothing, and looking exactly like a working pin. Bump the catalogs and the override key together.
 
 ### Peer-closure warnings
 
-Treat new `pnpm peers check` warnings as upstream closure defects to fix, not warnings to silence. One residual warning is **expected**: `@effect/platform`, `@effect/rpc`, `@effect/sql` and `@effect/cluster` want `effect@^3.21.x`, reaching the tree through the build/test tooling chain (`@savvy-web/bundler` → `@savvy-web/tsdown-plugins` → `@effect/platform-node`; `@savvy-web/silk` and `@vitest-agent/plugin` → `@effect/cli`). It is under investigation — do not chase it. A warning outside that set is a genuine defect. The peer-closure discipline itself is in [effect-standards.md](effect-standards.md).
+`pnpm peers check` is **clean — zero issues**. There is no expected-residual set and nothing to ignore: **any** warning is a genuine closure defect to fix upstream. (Historically a set of `@effect/platform` / `@effect/rpc` / `@effect/sql` / `@effect/cluster` warnings wanting `effect@^3.21.x` was expected and explicitly not to be chased. It is gone — do not reintroduce that allowance.) The peer-closure discipline itself is in [effect-standards.md](effect-standards.md).
 
 Finally: always check the lockfile diff after an install. A plain `pnpm install` once stripped the turbo, biome and tsgo platform binaries from it.

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-07
-last-synced: 2026-07-07
+updated: 2026-07-11
+last-synced: 2026-07-11
 completeness: 90
 related:
   - architecture.md
@@ -59,9 +59,9 @@ pnpm runs the workspace package's `prepare` on install (verified: a fresh/forced
 
 ## The load-bearing toolchain choice: @effect/tsgo
 
-Each package declares `@effect/tsgo: catalog:effect` (which provides the `tsgo` binary used by `types:check`) INSTEAD OF the older `@typescript/native-preview: catalog:silk`. Keeping the typechecker in the `effect` (v4) catalog rather than the `silk` (v3-tooling) catalog kept the v4 `effect` beta from poisoning the v3 build toolchain under `autoInstallPeers: true`.
+Each package declares `@effect/tsgo: catalog:effect` (which provides the `tsgo` binary used by `types:check`) INSTEAD OF the older `@typescript/native-preview: catalog:silk`. This keeps the typechecker's own `effect` peer on the v4 catalog rather than the `silk` (v3-tooling) catalog.
 
-The upstream pnpm fix this was standing in for has now landed (pnpm 11.11.0), so the declaration may no longer be load-bearing. It is retained until someone verifies removal keeps `pnpm peers check` clean. See the peer-discipline section in [effect-standards.md](effect-standards.md#verified-workspace-configuration).
+The pnpm peer-resolution bug this was standing in for is **fixed upstream** (pnpm 11.11.0, completed in 11.12.0), so the declaration is probably no longer load-bearing — but removal is **unverified**, so it stays until someone confirms `pnpm peers check` remains clean without it. See the peer-discipline section in [effect-standards.md](effect-standards.md#verified-workspace-configuration).
 
 ## Workspace wiring
 

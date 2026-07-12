@@ -29,7 +29,9 @@ Two catalogs, consumed by every `@effected/*` package:
 - **`catalog:effect`** — pinned current Effect v4 beta. Used in `devDependencies` (and `peerDependencies` for `effect` itself).
 - **`catalog:effectPeers`** — the same package set at a computed shared floor, the widest peer range libraries can safely advertise.
 
-Currently `effect` pins `4.0.0-beta.94` — **exact, never a caret**. A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is meant to be the authority on what v4 exports. `@effect/tsgo` is the one asymmetric entry, and the only one carrying carets: `range ^0.18.1` in `effect`, `peer ^0.16.2` in `effectPeers`.
+Currently `effect` pins `4.0.0-beta.97` — **exact, never a caret**. A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is meant to be the authority on what v4 exports. `effectPeers` carries the computed floor as caret ranges (`^4.0.0-beta.97`); the exact-pin rule governs `catalog:effect` only. `@effect/tsgo` is the one asymmetric entry, caret on both sides: `range ^0.19.0` in `effect`, `peer ^0.16.2` in `effectPeers`.
+
+The root `overrides` entry pins `@effect/platform-node@<beta>>@effect/platform-node-shared` to the same beta. Its key names the current v4 parent, so **`pnpm pnpm:export` does not re-scope it — do that by hand on every bump** or it goes silently inert.
 
 ## Maintenance scripts (human-run only)
 
@@ -45,17 +47,17 @@ Advancing the beta is `pnpm pnpm:up` then `pnpm pnpm:export`.
 
 ## Peer discipline this package exists to hold
 
-Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key: `autoInstallPeers: true`. There is no `dedupeDirectDeps` key, no `dedupePeerDependents` key and no `.npmrc` in this repo — `dedupeDirectDeps: false` was dropped once pnpm 11.11.0 landed the upstream peer-resolution fix. Do not reintroduce either key.
+Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key: `autoInstallPeers: true`. There is no `dedupeDirectDeps` key, no `dedupePeerDependents` key and no `.npmrc` in this repo. Do not reintroduce any of them.
 
 - **`autoInstallPeers: true`** — lets root `devDependencies` collapse to a small set, with the rest auto-installed as peers.
-- **Libraries declare `@effect/tsgo` (`catalog:effect`) as their typechecker devDependency, not `@typescript/native-preview` (`catalog:silk`).** What matters is the *declaration*, not the binary: `@effect/tsgo` ships `effect-tsgo`, while the `tsgo` each package's `types:check` script runs resolves from the root `.bin` (supplied by `@typescript/native-preview`). Declaring the v4-aligned package makes the typechecker's own `effect` peer ride the v4 catalog rather than the silk (v3-tooling) catalog, so under `autoInstallPeers: true` the auto-installed `effect` peers in the tooling chain no longer resolve the workspace-preferred v4 into v3-wanting importers. Upstream patch pnpm/pnpm#12847 **landed in pnpm 11.11.0**, so this declaration may no longer be load-bearing. It stays until someone verifies that removing it keeps `pnpm peers check` clean.
+- **Libraries declare `@effect/tsgo` (`catalog:effect`) as their typechecker devDependency, not `@typescript/native-preview` (`catalog:silk`).** What matters is the *declaration*, not the binary: `@effect/tsgo` ships `effect-tsgo`, while the `tsgo` each package's `types:check` script runs resolves from the root `.bin` (supplied by `@typescript/native-preview`). The declaration keeps the typechecker's own `effect` peer on the v4 catalog rather than the silk (v3-tooling) one. It may no longer be load-bearing now that pnpm 11.12.0 resolves peers correctly; it stays until someone verifies that removing it keeps `pnpm peers check` clean.
 - **This package is the exception**: it depends on `@typescript/native-preview` at `catalog:silk`. It is infra riding the silk toolchain and sits deliberately outside the v4 split. Do not "fix" it to use `@effect/tsgo`.
 
-## Expected vs. real warnings
+## Peer warnings
 
-`pnpm peers check` reports residual unmet `effect` peer warnings from transitive v3-wanting dependencies (e.g. `@effect/platform-node`, `@effect/sql-sqlite-node`). Those are **expected** under the interim setup — do not chase them.
+`pnpm peers check` reports **zero issues** — the v3/v4 peer-resolution defect is fixed in pnpm 11.12.0. There is no expected-residual set.
 
-A peer warning **outside that known set** is a genuine closure defect. Fix it upstream rather than silencing it.
+Any peer warning is therefore a genuine closure defect. Fix it upstream rather than silencing it.
 
 ## Hazards
 
