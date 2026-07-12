@@ -124,7 +124,7 @@
 		{
 			"source": "packages/ts-vfs/CLAUDE.md",
 			"target": ".claude/design/effected/packages/ts-vfs.md",
-			"hash": "e74dfa6a015230ce0e7eef1a266df6ee125fd03d26a173fb8c52b1808a76afca",
+			"hash": "db8bbe98aa45aa2c71661346c69179f3dceac067d0c5884aabfeb90ad3855529",
 			"recordedAt": "2026-07-11"
 		},
 		{

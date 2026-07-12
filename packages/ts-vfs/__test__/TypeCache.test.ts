@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { NodeFileSystem } from "@effect/platform-node";
 import { assert, describe, it, layer } from "@effect/vitest";
 import { Cache } from "@effected/store";
-import { DateTime, Duration, Effect, Exit, FileSystem, Layer, Option, Path } from "effect";
+import { DateTime, Duration, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError } from "effect";
 import { TestClock } from "effect/testing";
 import { PackageSpec, TypeCache, TypeCacheError, TypeCacheMetadata } from "../src/index.js";
 
@@ -15,6 +15,14 @@ const TestLayer = TypeCache.layer({ cacheDir }).pipe(
 );
 
 const epoch = DateTime.makeUnsafe(0);
+
+const undeletableError = (target: string) =>
+	PlatformError.systemError({
+		_tag: "PermissionDenied",
+		module: "FileSystem",
+		method: "remove",
+		pathOrDescriptor: target,
+	});
 
 describe("TypeCache", () => {
 	layer(TestLayer)((it) => {
@@ -168,6 +176,35 @@ describe("TypeCache", () => {
 			}),
 		);
 	});
+
+	it.effect("prune reports only directories that were actually deleted", () =>
+		Effect.gen(function* () {
+			// A stub FileSystem whose remove fails for one package: the metadata
+			// eviction stays best-effort, but the failed directory must not be
+			// claimed in `removed`.
+			const stubFs = FileSystem.layerNoop({
+				remove: (target) => (target.includes("undeletable") ? Effect.fail(undeletableError(target)) : Effect.void),
+			});
+			const StubbedLayer = TypeCache.layer({ cacheDir: "/stub-cache" }).pipe(
+				Layer.provide(Layer.mergeAll(Cache.layerTest(), stubFs, Path.layer)),
+			);
+			yield* Effect.gen(function* () {
+				const cache = yield* TypeCache;
+				const now = yield* DateTime.now;
+				for (const name of ["undeletable", "deletable"]) {
+					yield* cache.writeMetadata(
+						PackageSpec.make({ name, version: "1.0.0" }),
+						TypeCacheMetadata.make({ version: "1.0.0", cachedAt: now, ttl: Duration.minutes(1) }),
+					);
+				}
+				yield* TestClock.adjust(Duration.minutes(2));
+				const result = yield* cache.prune;
+				// Both metadata rows were evicted; only one directory went away.
+				assert.strictEqual(result.count, 2);
+				assert.deepStrictEqual(result.removed, [{ name: "deletable", version: "1.0.0" }]);
+			}).pipe(Effect.provide(StubbedLayer));
+		}),
+	);
 
 	it.effect("layer dies on a relative cacheDir (wiring defect)", () =>
 		Effect.gen(function* () {

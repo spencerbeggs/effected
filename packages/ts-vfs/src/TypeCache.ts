@@ -2,6 +2,7 @@ import { Cache } from "@effected/store";
 import { AppDirs, AppDirsError } from "@effected/xdg";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
+import { isSafeRelativePath } from "./internal/resolution.js";
 import { PackageSpec } from "./PackageSpec.js";
 import type { Vfs } from "./Vfs.js";
 
@@ -142,15 +143,6 @@ export interface TypeCacheShape {
 	readonly prune: Effect.Effect<CachePruneResult, TypeCacheError>;
 }
 
-/** Reject cache-relative paths that are absolute or contain `..` segments. */
-const isSafeRelativePath = (filePath: string): boolean => {
-	if (filePath.length === 0) return false;
-	if (filePath.startsWith("/") || filePath.startsWith("\\")) return false;
-	// Windows drive letters and UNC prefixes are absolute too.
-	if (/^[A-Za-z]:/.test(filePath)) return false;
-	return !filePath.split(/[/\\]+/).some((segment) => segment === "..");
-};
-
 const make = (cacheDir: string): Effect.Effect<TypeCacheShape, never, Cache | FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
@@ -276,8 +268,14 @@ const make = (cacheDir: string): Effect.Effect<TypeCacheShape, never, Cache | Fi
 				const parsed = PackageSpec.parseCacheKey(key);
 				if (Option.isNone(parsed)) continue;
 				const dir = pkgDir(parsed.value);
-				yield* fs.remove(dir, { recursive: true, force: true }).pipe(Effect.ignore);
-				removed.push({ name: parsed.value.name, version: parsed.value.version });
+				// Best-effort per directory, but `removed` reports only the
+				// directories that were actually deleted — a failed removal is
+				// still swallowed (the orphan is harmless), just not claimed.
+				const deleted = yield* fs.remove(dir, { recursive: true, force: true }).pipe(
+					Effect.as(true),
+					Effect.orElseSucceed(() => false),
+				);
+				if (deleted) removed.push({ name: parsed.value.name, version: parsed.value.version });
 			}
 			return { count: result.count, removed } satisfies CachePruneResult;
 		}).pipe(Effect.withSpan("TypeCache.prune"));

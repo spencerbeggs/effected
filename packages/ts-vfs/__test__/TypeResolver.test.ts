@@ -82,6 +82,44 @@ describe("TypeResolver", () => {
 			assert.isTrue(Option.isNone(TypeResolver.resolveImport("pkg/unknown/deep", manifest({}), pkg)));
 			assert.isTrue(Option.isNone(TypeResolver.resolveImport("pkg", manifest({}), pkg)));
 		});
+
+		it("only strips the package-name prefix on a path boundary (pkg2 is not pkg/2)", () => {
+			const pkg = PackageSpec.make({ name: "pkg", version: "1.0.0" });
+			const fixture = manifest({
+				exports: { "./2": { types: "./two.d.ts" }, "./pkg2": { types: "./other.d.ts" } },
+			});
+			// "pkg2" must NOT resolve as pkg's "./2" subpath…
+			const asForeign = TypeResolver.resolveImport("pkg2", fixture, pkg);
+			assert.isTrue(Option.isSome(asForeign));
+			if (Option.isSome(asForeign)) assert.strictEqual(asForeign.value.filePath, "other.d.ts");
+			// …while the real boundary-separated subpath still does.
+			const asSubpath = TypeResolver.resolveImport("pkg/2", fixture, pkg);
+			assert.isTrue(Option.isSome(asSubpath));
+			if (Option.isSome(asSubpath)) assert.strictEqual(asSubpath.value.filePath, "two.d.ts");
+		});
+
+		it("walks Node fallback arrays in order, first types-bearing entry wins", () => {
+			const pkg = PackageSpec.make({ name: "pkg", version: "1.0.0" });
+			const nested = manifest({
+				exports: { ".": [{ "not-types": "./skip.js" }, { types: "./from-array.d.ts" }, { types: "./late.d.ts" }] },
+			});
+			const result = TypeResolver.resolveImport("pkg", nested, pkg);
+			assert.isTrue(Option.isSome(result));
+			if (Option.isSome(result)) assert.strictEqual(result.value.filePath, "from-array.d.ts");
+
+			// Top-level array: Node's sugar for the root target.
+			const topLevel = manifest({ exports: [{ types: "./root.d.ts" }] });
+			const rootResult = TypeResolver.resolveImport("pkg", topLevel, pkg);
+			assert.isTrue(Option.isSome(rootResult));
+			if (Option.isSome(rootResult)) assert.strictEqual(rootResult.value.filePath, "root.d.ts");
+			assert.isTrue(Option.isNone(TypeResolver.resolveImport("pkg/sub", topLevel, pkg)));
+
+			// Wildcard substitution reaches inside array entries.
+			const wildArray = manifest({ exports: { "./*": [{ types: "./dist/*.d.ts" }] } });
+			const substituted = TypeResolver.resolveImport("pkg/deep", wildArray, pkg);
+			assert.isTrue(Option.isSome(substituted));
+			if (Option.isSome(substituted)) assert.strictEqual(substituted.value.filePath, "dist/deep.d.ts");
+		});
 	});
 
 	describe("hostile input", () => {
@@ -132,6 +170,45 @@ describe("TypeResolver", () => {
 			assert.isBelow(elapsed, 1_000);
 		});
 
+		it("manifest paths that escape the package fail closed", () => {
+			// Resolved paths reach the CDN download URL and the cache join, so
+			// absolute and ..-bearing targets must never survive resolution.
+			for (const evil of ["/etc/passwd", "../../outside.d.ts", "./ok/../../outside.d.ts", "C:\\evil.d.ts"]) {
+				assert.isTrue(
+					Option.isNone(TypeResolver.resolveImport("evil", manifest({ exports: { ".": { types: evil } } }), pkg)),
+					`exports target "${evil}" must not resolve`,
+				);
+				assert.isTrue(
+					Option.isNone(TypeResolver.resolveImport("evil", manifest({ types: evil }), pkg)),
+					`types field "${evil}" must not resolve`,
+				);
+			}
+			// typesVersions targets too.
+			assert.isTrue(
+				Option.isNone(
+					TypeResolver.resolveImport(
+						"evil/deep",
+						manifest({ typesVersions: { "*": { deep: ["../../up.d.ts"] } } }),
+						pkg,
+					),
+				),
+			);
+			// resolveMainEntry stays total: a hostile main path falls to the floor.
+			const floor = TypeResolver.resolveMainEntry(manifest({ types: "../../up.d.ts" }), pkg);
+			assert.strictEqual(floor.filePath, "index.d.ts");
+			// resolveTypeEntries skips hostile subpath entries.
+			const entries = TypeResolver.resolveTypeEntries(
+				manifest({
+					exports: { ".": { types: "./index.d.ts" }, "./bad": { types: "/etc/passwd" } },
+				}),
+				pkg,
+			);
+			assert.deepStrictEqual(
+				entries.map((entry) => entry.filePath),
+				["index.d.ts"],
+			);
+		});
+
 		it("typesVersions dunder keys are skipped", () => {
 			const hostile = manifest({
 				typesVersions: JSON.parse('{"*": {"__proto__": ["./pwned.d.ts"]}}') as Record<
@@ -167,6 +244,21 @@ describe("TypeResolver", () => {
 			);
 		});
 
+		it("skips wildcard export keys — enumeration has no capture to substitute", () => {
+			const pkg = PackageSpec.make({ name: "pkg", version: "1.0.0" });
+			const wild = manifest({
+				exports: {
+					".": { types: "./index.d.ts" },
+					"./*": { types: "./dist/*.d.ts" },
+				},
+			});
+			// Without the skip this would emit a literal "dist/*.d.ts" entry.
+			assert.deepStrictEqual(
+				TypeResolver.resolveTypeEntries(wild, pkg).map((entry) => entry.filePath),
+				["index.d.ts"],
+			);
+		});
+
 		it("collects distinct subpath entries", () => {
 			const pkg = PackageSpec.make({ name: "pkg", version: "1.0.0" });
 			const multi = manifest({
@@ -183,12 +275,25 @@ describe("TypeResolver", () => {
 	});
 
 	describe("findTypeDefinition", () => {
+		const swap = (jsFilePath: string, pkg: PackageSpec): string => {
+			const result = TypeResolver.findTypeDefinition(jsFilePath, pkg);
+			assert.isTrue(Option.isSome(result), `expected "${jsFilePath}" to swap`);
+			return Option.isSome(result) ? result.value.filePath : "";
+		};
+
 		it("swaps javascript extensions for declaration extensions", () => {
 			const pkg = PackageSpec.make({ name: "pkg", version: "1.0.0" });
-			assert.strictEqual(TypeResolver.findTypeDefinition("lib/index.js", pkg).filePath, "lib/index.d.ts");
-			assert.strictEqual(TypeResolver.findTypeDefinition("lib/index.mjs", pkg).filePath, "lib/index.d.mts");
-			assert.strictEqual(TypeResolver.findTypeDefinition("lib/index.cjs", pkg).filePath, "lib/index.d.cts");
-			assert.strictEqual(TypeResolver.findTypeDefinition("lib/plain", pkg).filePath, "lib/plain.d.ts");
+			assert.strictEqual(swap("lib/index.js", pkg), "lib/index.d.ts");
+			assert.strictEqual(swap("lib/index.mjs", pkg), "lib/index.d.mts");
+			assert.strictEqual(swap("lib/index.cjs", pkg), "lib/index.d.cts");
+			assert.strictEqual(swap("lib/plain", pkg), "lib/plain.d.ts");
+		});
+
+		it("rejects tree paths that escape the package", () => {
+			const pkg = PackageSpec.make({ name: "pkg", version: "1.0.0" });
+			assert.isTrue(Option.isNone(TypeResolver.findTypeDefinition("/etc/evil.js", pkg)));
+			assert.isTrue(Option.isNone(TypeResolver.findTypeDefinition("../outside/index.js", pkg)));
+			assert.isTrue(Option.isNone(TypeResolver.findTypeDefinition("lib/../../up.js", pkg)));
 		});
 	});
 });

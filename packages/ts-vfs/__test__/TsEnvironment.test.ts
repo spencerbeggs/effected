@@ -46,7 +46,11 @@ describe("TsEnvironment", () => {
 				'import { answer } from "my-types";\nconst wrong: string = answer;\nexport { wrong };\n',
 			);
 			const diagnostics = environment.languageService.getSemanticDiagnostics("/twoslash/broken.ts");
-			assert.isAbove(diagnostics.length, 0);
+			// TS2322: Type 'number' is not assignable to type 'string'.
+			assert.isTrue(
+				diagnostics.some((diagnostic) => diagnostic.code === 2322),
+				`expected TS2322 among: ${diagnostics.map((diagnostic) => diagnostic.code).join(", ")}`,
+			);
 		}),
 	);
 

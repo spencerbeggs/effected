@@ -39,6 +39,31 @@ describe("VirtualPackage", () => {
 		});
 	});
 
+	it("an empty createMultiEntry is a construction defect", () => {
+		// A package with no entries would ship a types field pointing at a
+		// file that does not exist — developer wiring, so it throws.
+		assert.throws(() => VirtualPackage.createMultiEntry("hollow", "1.0.0", new Map()), /at least one entry file/);
+		// Direct construction paths hit the backstop at Vfs generation.
+		assert.throws(
+			() => VirtualPackage.make({ name: "hollow", version: "1.0.0", entries: new Map() }).toVfs(),
+			/no entry files/,
+		);
+	});
+
+	it("entries whose names collide after extension normalization are a defect", () => {
+		const pkg = VirtualPackage.createMultiEntry(
+			"colliding",
+			"1.0.0",
+			new Map([
+				["index.d.ts", "export {};"],
+				["index.d.mts", "export {};"],
+			]),
+		);
+		// Both normalize to the "." export key — silently keeping the last one
+		// would drop an entry, so it throws naming the colliding files.
+		assert.throws(() => pkg.toVfs(), /index\.d\.ts.*index\.d\.mts.*"\."/);
+	});
+
 	it("a single non-index entry keeps its own file name as the types field", () => {
 		const pkg = VirtualPackage.createMultiEntry("solo", "1.0.0", new Map([["main.d.ts", "export {};"]]));
 		const manifest = JSON.parse(pkg.toVfs().get("node_modules/solo/package.json") ?? "{}") as Record<string, unknown>;

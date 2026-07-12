@@ -120,7 +120,12 @@ export const PackageManifest = Schema.Struct({
 	typings: Schema.optionalKey(Schema.String),
 	main: Schema.optionalKey(Schema.String),
 	module: Schema.optionalKey(Schema.String),
-	exports: Schema.optionalKey(Schema.Union([Schema.String, Schema.Record(Schema.String, Schema.Unknown)])),
+	// A string, a conditions/subpath record, or a Node fallback ARRAY — arrays
+	// are legal at the top level and nested (nested ones arrive through the
+	// Unknown record values).
+	exports: Schema.optionalKey(
+		Schema.Union([Schema.String, Schema.Record(Schema.String, Schema.Unknown), Schema.Array(Schema.Unknown)]),
+	),
 	typesVersions: Schema.optionalKey(
 		Schema.Record(
 			Schema.String,
@@ -190,15 +195,21 @@ const make: Effect.Effect<PackageFetcherShape, never, HttpClient.HttpClient> = E
 				response.status >= 200 && response.status < 300
 					? Effect.succeed(response)
 					: response.text.pipe(
-							Effect.orElseSucceed(() => ""),
-							Effect.flatMap((body) => {
-								const bodySnippet = body.slice(0, 200);
-								return emit({ _tag: "FetchFailed", url, status: response.status, bodySnippet }).pipe(
-									Effect.andThen(
-										Effect.fail(new FetchError({ url, status: response.status, kind: "status", cause: bodySnippet })),
-									),
-								);
+							// The status IS the failure (kind stays "status"); the body is
+							// diagnostic. When even reading it fails, carry that read
+							// failure as the cause instead of pretending the body was empty.
+							Effect.match({
+								onFailure: (readFailure) => ({ bodySnippet: "", cause: readFailure as unknown }),
+								onSuccess: (body) => {
+									const bodySnippet = body.slice(0, 200);
+									return { bodySnippet, cause: bodySnippet as unknown };
+								},
 							}),
+							Effect.flatMap(({ bodySnippet, cause }) =>
+								emit({ _tag: "FetchFailed", url, status: response.status, bodySnippet }).pipe(
+									Effect.andThen(Effect.fail(new FetchError({ url, status: response.status, kind: "status", cause }))),
+								),
+							),
 						),
 			),
 		);
@@ -233,9 +244,21 @@ const make: Effect.Effect<PackageFetcherShape, never, HttpClient.HttpClient> = E
 		(error: FetchError): FetchError | PackageNotFoundError =>
 			error.status === 404 ? new PackageNotFoundError({ name: pkg.name, version: pkg.version }) : error;
 
+	/** The decoded flat tree, with names normalized and per-file sizes kept. */
+	const fetchTree = (pkg: PackageSpec) =>
+		fetchJson(fileTreeUrl(pkg), FileTreeResponse).pipe(
+			Effect.mapError(promote404(pkg)),
+			Effect.map((tree) =>
+				tree.files.map((file) => ({
+					name: file.name.replace(/^\/+/, ""),
+					size: file.size,
+				})),
+			),
+		);
+
 	const getFileTree = Effect.fn("PackageFetcher.getFileTree")(function* (pkg: PackageSpec) {
-		const tree = yield* fetchJson(fileTreeUrl(pkg), FileTreeResponse).pipe(Effect.mapError(promote404(pkg)));
-		return tree.files.map((file) => file.name.replace(/^\/+/, ""));
+		const tree = yield* fetchTree(pkg);
+		return tree.map((file) => file.name);
 	});
 
 	const downloadFile = Effect.fn("PackageFetcher.downloadFile")(function* (pkg: PackageSpec, filePath: string) {
@@ -250,41 +273,52 @@ const make: Effect.Effect<PackageFetcherShape, never, HttpClient.HttpClient> = E
 		return yield* fetchJson(versionsUrl(name), VersionsResponse);
 	});
 
+	const overBudget = (pkg: PackageSpec, detail: string): FetchError =>
+		new FetchError({ url: fileTreeUrl(pkg), kind: "body", cause: new Error(detail) });
+
 	const getTypeFiles = Effect.fn("PackageFetcher.getTypeFiles")(function* (pkg: PackageSpec) {
-		const tree = yield* getFileTree(pkg);
-		const typeFiles = tree.filter((file) => TYPE_FILE_PATTERN.test(file));
+		const tree = yield* fetchTree(pkg);
+		const typeFiles = tree.filter((file) => TYPE_FILE_PATTERN.test(file.name));
 		if (typeFiles.length > MAX_TYPE_FILES_PER_PACKAGE) {
 			return yield* Effect.fail(
-				new FetchError({
-					url: fileTreeUrl(pkg),
-					kind: "body",
-					cause: new Error(
-						`package publishes ${typeFiles.length} declaration files, over the ${MAX_TYPE_FILES_PER_PACKAGE}-file budget`,
-					),
-				}),
+				overBudget(
+					pkg,
+					`package publishes ${typeFiles.length} declaration files, over the ${MAX_TYPE_FILES_PER_PACKAGE}-file budget`,
+				),
 			);
 		}
+		// Pre-check: the tree carries per-file sizes, so a package whose
+		// declared declaration bytes already exceed the budget is rejected
+		// before a single download starts.
+		const declaredBytes = typeFiles.reduce((total, file) => total + (file.size ?? 0), 0);
+		if (declaredBytes > MAX_TYPE_BYTES_PER_PACKAGE) {
+			return yield* Effect.fail(
+				overBudget(pkg, `declared declaration files total ${declaredBytes} bytes, over the byte budget`),
+			);
+		}
+		// Backstop: cumulative accounting of ACTUAL bytes (UTF-8, not UTF-16
+		// code units) as downloads land, in case the declared sizes lie. The
+		// check runs after each body is read, so the budget can transiently
+		// overshoot by at most concurrency × one body before the batch fails —
+		// full streaming enforcement is deliberately out of scope.
+		const encoder = new TextEncoder();
 		const budget = yield* Ref.make(0);
 		const entries = yield* Effect.forEach(
 			typeFiles,
 			(file) =>
-				downloadFile(pkg, file).pipe(
+				downloadFile(pkg, file.name).pipe(
 					Effect.tap((content) =>
-						Ref.updateAndGet(budget, (total) => total + content.length).pipe(
+						Ref.updateAndGet(budget, (total) => total + encoder.encode(content).length).pipe(
 							Effect.flatMap((total) =>
 								total > MAX_TYPE_BYTES_PER_PACKAGE
 									? Effect.fail(
-											new FetchError({
-												url: fileTreeUrl(pkg),
-												kind: "body",
-												cause: new Error(`declaration files exceed the ${MAX_TYPE_BYTES_PER_PACKAGE}-byte budget`),
-											}),
+											overBudget(pkg, `declaration files exceed the ${MAX_TYPE_BYTES_PER_PACKAGE}-byte budget`),
 										)
 									: Effect.void,
 							),
 						),
 					),
-					Effect.map((content) => [file, content] as const),
+					Effect.map((content) => [file.name, content] as const),
 				),
 			{ concurrency: 10 },
 		);

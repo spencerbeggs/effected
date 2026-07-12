@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect } from "effect";
+import { Cause, Duration, Effect } from "effect";
 import type { RegistryEvent } from "../src/index.js";
 import { RegistryObserver } from "../src/index.js";
 import { emit } from "../src/RegistryEvent.js";
@@ -55,6 +55,11 @@ describe("RegistryEvent", () => {
 				),
 			);
 			assert.isTrue(exit._tag === "Failure");
+			// A typed failure would also satisfy the tag check — assert the
+			// cause actually carries a die.
+			if (exit._tag === "Failure") {
+				assert.isTrue(Cause.hasDies(exit.cause));
+			}
 		}),
 	);
 });

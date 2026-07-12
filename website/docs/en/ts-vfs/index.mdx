@@ -18,11 +18,11 @@ Everything else follows from that: a version reference resolves locally rather t
 ## Install
 
 ```bash
-npm install @effected/ts-vfs effect
+npm install @effected/ts-vfs effect @effected/store @effected/xdg @effected/semver
 ```
 
 ```bash
-pnpm add @effected/ts-vfs effect
+pnpm add @effected/ts-vfs effect @effected/store @effected/xdg @effected/semver
 ```
 
 Requires Node.js >=24.11.0. `dependencies` is empty: `effect` v4, [`@effected/store`](/store), [`@effected/xdg`](/xdg) and [`@effected/semver`](/semver) are peer dependencies, and `typescript` plus `@typescript/vfs` are **optional** peers. Install the optional pair only if you call `TsEnvironment.make` — every other module works without a compiler on disk.
@@ -57,6 +57,10 @@ import { Cache } from "@effected/store";
 import { AppDirs, Xdg } from "@effected/xdg";
 import { NodeContext, NodeHttpClient } from "@effect/platform-node";
 import { Layer } from "effect";
+
+// The metadata database. Its parent directory must exist before the layer
+// builds — TypeCache.layerXdg() creates the XDG cache directory it shares.
+const cacheDbPath = "/absolute/path/to/cache/metadata.db";
 
 // Bind it once. Calling the factories again builds a second, separate cache.
 const RegistryLive = TypeRegistry.layer.pipe(

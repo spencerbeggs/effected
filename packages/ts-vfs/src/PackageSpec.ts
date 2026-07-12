@@ -1,9 +1,11 @@
 import { Option, Schema } from "effect";
 
 /**
- * Node.js built-in module names (including sub-paths like `fs/promises`),
- * used by {@link PackageSpec.normalizeSpecifier} to map built-in specifiers
- * to the `node` types package.
+ * Node.js built-in base module names, used by
+ * {@link PackageSpec.normalizeSpecifier} to map built-in specifiers to the
+ * `node` types package. Matched against the specifier's FIRST path segment,
+ * so every built-in subpath (`fs/promises`, `readline/promises`,
+ * `util/types`, …) normalizes without enumerating them.
  */
 const NODE_BUILTINS: ReadonlySet<string> = new Set([
 	"assert",
@@ -47,24 +49,21 @@ const NODE_BUILTINS: ReadonlySet<string> = new Set([
 	"wasi",
 	"worker_threads",
 	"zlib",
-	"fs/promises",
-	"stream/web",
-	"stream/consumers",
-	"timers/promises",
-	"dns/promises",
 ]);
 
 /**
- * A single name segment: no separators, no `@`, no whitespace, and not a
+ * A single name segment: no separators, no `@`, no whitespace, no cache-key
+ * or URL delimiters (`:` is the cacheKey delimiter — a version containing it
+ * would defeat `parseCacheKey`; `?`/`#` would truncate CDN URLs), and not a
  * relative path component. Deliberately lenient beyond that — the CDN serves
  * every historical malformation npm ever published — but strict enough that a
  * name or version can never escape its cache directory when joined into a
  * path.
  */
-const SAFE_SEGMENT = /^(?!\.{1,2}$)[^/\\@\s]+$/;
+const SAFE_SEGMENT = /^(?!\.{1,2}$)[^/\\@\s:?#]+$/;
 
 /** `name` or `@scope/name`, each segment {@link SAFE_SEGMENT}-shaped. */
-const NAME_PATTERN = /^(@(?!\.{1,2}\/)[^/\\@\s]+\/)?(?!\.{1,2}$)[^/\\@\s]+$/;
+const NAME_PATTERN = /^(@(?!\.{1,2}\/)[^/\\@\s:?#]+\/)?(?!\.{1,2}$)[^/\\@\s:?#]+$/;
 
 /**
  * Identifies a package at a version reference.
@@ -131,15 +130,17 @@ export class PackageSpec extends Schema.Class<PackageSpec>("PackageSpec")({
 	 */
 	static normalizeSpecifier(specifier: string): string {
 		if (specifier.startsWith("node:")) return "node";
-		if (NODE_BUILTINS.has(specifier)) return "node";
 		if (specifier.startsWith("@")) {
 			const parts = specifier.split("/");
 			if (parts.length >= 2) return `${parts[0]}/${parts[1]}`;
 			return specifier;
 		}
 		const firstSlash = specifier.indexOf("/");
-		if (firstSlash === -1) return specifier;
-		return specifier.slice(0, firstSlash);
+		const base = firstSlash === -1 ? specifier : specifier.slice(0, firstSlash);
+		// Base-segment match so built-in subpaths (`readline/promises`,
+		// `util/types`, …) normalize without enumerating each one.
+		if (NODE_BUILTINS.has(base)) return "node";
+		return base;
 	}
 
 	/**

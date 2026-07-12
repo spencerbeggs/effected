@@ -6,7 +6,7 @@ import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import type { RegistryEvent } from "../src/index.js";
 import { FetchError, PackageFetcher, PackageNotFoundError, PackageSpec, RegistryObserver } from "../src/index.js";
-import { MAX_TYPE_FILES_PER_PACKAGE } from "../src/internal/limits.js";
+import { MAX_TYPE_BYTES_PER_PACKAGE, MAX_TYPE_FILES_PER_PACKAGE } from "../src/internal/limits.js";
 
 const zod = PackageSpec.make({ name: "zod", version: "3.23.8" });
 
@@ -217,12 +217,68 @@ describe("PackageFetcher", () => {
 			Effect.provide(
 				fetcherLayer((url) => {
 					if (url.includes("/flat")) {
+						// No declared size, so the pre-check passes and the
+						// post-download backstop must catch it.
 						return json({ default: null, files: [{ name: "/huge.d.ts" }] });
 					}
 					// One declaration file over the 64 MiB budget.
-					return text("x".repeat(64 * 1024 * 1024 + 1));
+					return text("x".repeat(MAX_TYPE_BYTES_PER_PACKAGE + 1));
 				}),
 			),
 		),
+	);
+
+	it.effect("the byte budget is cumulative: individually-valid files whose sum exceeds it fail", () =>
+		Effect.gen(function* () {
+			const fetcher = yield* PackageFetcher;
+			const error = yield* Effect.flip(fetcher.getTypeFiles(zod));
+			assert.instanceOf(error, FetchError);
+			if (error instanceof FetchError) assert.strictEqual(error.kind, "body");
+		}).pipe(
+			Effect.provide(
+				fetcherLayer((url) => {
+					if (url.includes("/flat")) {
+						// Three files, each well under the budget, summing past it —
+						// exercises the Ref accounting under concurrency, not the
+						// single-file case. Sizes deliberately undeclared so the
+						// pre-check cannot short-circuit.
+						return json({
+							default: null,
+							files: [{ name: "/a.d.ts" }, { name: "/b.d.ts" }, { name: "/c.d.ts" }],
+						});
+					}
+					return text("x".repeat(Math.floor(MAX_TYPE_BYTES_PER_PACKAGE / 2) + 1));
+				}),
+			),
+		),
+	);
+
+	it.effect("declared tree sizes over the budget are rejected before any download", () =>
+		Effect.gen(function* () {
+			let downloads = 0;
+			const error = yield* Effect.gen(function* () {
+				const fetcher = yield* PackageFetcher;
+				return yield* Effect.flip(fetcher.getTypeFiles(zod));
+			}).pipe(
+				Effect.provide(
+					fetcherLayer((url) => {
+						if (url.includes("/flat")) {
+							return json({
+								default: null,
+								files: [
+									{ name: "/a.d.ts", size: MAX_TYPE_BYTES_PER_PACKAGE },
+									{ name: "/b.d.ts", size: 2 },
+								],
+							});
+						}
+						downloads += 1;
+						return text("tiny");
+					}),
+				),
+			);
+			assert.instanceOf(error, FetchError);
+			if (error instanceof FetchError) assert.strictEqual(error.kind, "body");
+			assert.strictEqual(downloads, 0);
+		}),
 	);
 });

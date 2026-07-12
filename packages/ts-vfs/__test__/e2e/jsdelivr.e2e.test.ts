@@ -21,7 +21,7 @@ const LiveLayer = TypeRegistry.layer.pipe(
 	Layer.provide(Layer.mergeAll(Cache.layerTest(), NodeFileSystem.layer, Path.layer, FetchHttpClient.layer)),
 );
 
-describe.skipIf(process.env.TS_VFS_E2E === undefined)("jsdelivr e2e", () => {
+describe.skipIf(process.env.TS_VFS_E2E !== "1")("jsdelivr e2e", () => {
 	it.live(
 		"resolves, fetches and rebuilds zod from the live CDN",
 		() =>

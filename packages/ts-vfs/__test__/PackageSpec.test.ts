@@ -39,6 +39,29 @@ describe("PackageSpec", () => {
 		assert.strictEqual(PackageSpec.normalizeSpecifier("zod"), "zod");
 	});
 
+	it("normalizeSpecifier matches built-in SUBPATHS by base segment", () => {
+		assert.strictEqual(PackageSpec.normalizeSpecifier("readline/promises"), "node");
+		assert.strictEqual(PackageSpec.normalizeSpecifier("stream/promises"), "node");
+		assert.strictEqual(PackageSpec.normalizeSpecifier("stream/web"), "node");
+		assert.strictEqual(PackageSpec.normalizeSpecifier("util/types"), "node");
+		assert.strictEqual(PackageSpec.normalizeSpecifier("dns/promises"), "node");
+		assert.strictEqual(PackageSpec.normalizeSpecifier("node:readline/promises"), "node");
+		// A non-builtin whose base merely resembles one stays itself.
+		assert.strictEqual(PackageSpec.normalizeSpecifier("streamx"), "streamx");
+	});
+
+	it("make rejects cache-key and URL delimiters in name and version", () => {
+		// ":" is the cacheKey delimiter — "1:2" would defeat parseCacheKey.
+		assert.throws(() => PackageSpec.make({ name: "zod", version: "1:2" }));
+		assert.throws(() => PackageSpec.make({ name: "a:b", version: "1.0.0" }));
+		// "?" and "#" would truncate CDN URLs.
+		assert.throws(() => PackageSpec.make({ name: "zod", version: "1.0.0?x=1" }));
+		assert.throws(() => PackageSpec.make({ name: "zod", version: "1.0.0#frag" }));
+		assert.throws(() => PackageSpec.make({ name: "a?b", version: "1.0.0" }));
+		assert.throws(() => PackageSpec.make({ name: "a#b", version: "1.0.0" }));
+		assert.throws(() => PackageSpec.make({ name: "@sc:ope/pkg", version: "1.0.0" }));
+	});
+
 	it("cacheKey round-trips through parseCacheKey for scoped and unscoped names", () => {
 		for (const spec of [
 			PackageSpec.make({ name: "zod", version: "3.23.8" }),

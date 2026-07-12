@@ -19,6 +19,19 @@ export const isTypeDefinition = (filePath: string): boolean =>
 /** Normalize backslashes to forward slashes. */
 export const normalizePath = (path: string): string => path.replace(/\\/g, "/");
 
+/**
+ * Reject paths that are absolute or contain `..` segments. Shared by the
+ * cache (paths from CDN file trees joined under the cache root) and the
+ * resolver (paths from untrusted manifests that reach the CDN download URL).
+ */
+export const isSafeRelativePath = (filePath: string): boolean => {
+	if (filePath.length === 0) return false;
+	if (filePath.startsWith("/") || filePath.startsWith("\\")) return false;
+	// Windows drive letters and UNC prefixes are absolute too.
+	if (/^[A-Za-z]:/.test(filePath)) return false;
+	return !filePath.split(/[/\\]+/).some((segment) => segment === "..");
+};
+
 const escapeRegex = (value: string): string => value.replace(/[.+^${}()|[\]\\]/g, "\\$&");
 
 /**
@@ -50,10 +63,14 @@ export const compileWildcard = (pattern: string): RegExp | null => {
 export const substituteWildcard = (value: unknown, captured: string, depth = 0): unknown => {
 	if (depth > MAX_NESTING_DEPTH) return null;
 	if (typeof value === "string") return value.replace(/\*/g, captured);
-	if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+	if (Array.isArray(value)) {
+		return value.map((entry) => substituteWildcard(entry, captured, depth + 1));
+	}
+	if (typeof value === "object" && value !== null) {
 		const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
 		for (const key of Object.keys(value)) {
 			if (DUNDER_KEYS.has(key)) continue;
+			if (!Object.hasOwn(value, key)) continue;
 			const entry = (value as Record<string, unknown>)[key];
 			result[key] =
 				typeof entry === "string" || (typeof entry === "object" && entry !== null)
@@ -73,7 +90,9 @@ export const substituteWildcard = (value: unknown, captured: string, depth = 0):
 export const getExportValue = (exports: unknown, subpath: string): unknown => {
 	if (exports === undefined || exports === null) return null;
 	if (typeof exports === "string") return subpath === "." ? exports : null;
-	if (typeof exports !== "object" || Array.isArray(exports)) return null;
+	// A top-level array is Node's fallback-array sugar for the root target.
+	if (Array.isArray(exports)) return subpath === "." ? exports : null;
+	if (typeof exports !== "object") return null;
 	const exportsObj = exports as Record<string, unknown>;
 	const withoutDot = subpath.replace(/^\.\//, "");
 	for (const key of [subpath, withoutDot]) {
@@ -83,6 +102,7 @@ export const getExportValue = (exports: unknown, subpath: string): unknown => {
 	}
 	for (const pattern of Object.keys(exportsObj)) {
 		if (DUNDER_KEYS.has(pattern) || !pattern.includes("*")) continue;
+		if (!Object.hasOwn(exportsObj, pattern)) continue;
 		const regex = compileWildcard(pattern);
 		if (regex === null) continue;
 		const match = regex.exec(subpath) ?? regex.exec(withoutDot);
@@ -96,13 +116,21 @@ export const getExportValue = (exports: unknown, subpath: string): unknown => {
 /**
  * Extract a types-bearing path from an export value: `types` first, then
  * `import` / `default`, recursing into nested condition objects under the
- * depth guard.
+ * depth guard. A fallback array (Node semantics) is walked in order and the
+ * first entry yielding a types path wins.
  */
 export const extractTypesFromExport = (exportValue: unknown, depth = 0): string | null => {
 	if (depth > MAX_NESTING_DEPTH) return null;
 	if (exportValue === undefined || exportValue === null) return null;
 	if (typeof exportValue === "string") return exportValue;
-	if (typeof exportValue !== "object" || Array.isArray(exportValue)) return null;
+	if (Array.isArray(exportValue)) {
+		for (const entry of exportValue) {
+			const found = extractTypesFromExport(entry, depth + 1);
+			if (found !== null) return found;
+		}
+		return null;
+	}
+	if (typeof exportValue !== "object") return null;
 	const conditions = exportValue as Record<string, unknown>;
 	for (const condition of ["types", "import", "default"]) {
 		if (!Object.hasOwn(conditions, condition)) continue;

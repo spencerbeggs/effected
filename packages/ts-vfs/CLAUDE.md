@@ -13,13 +13,14 @@ Twice over: by R2 through the `@effected/store` edge (store is tier 3 via `@effe
 `TypeCache` keeps fetched `.d.ts` files on disk under `<cacheDir>/<name>/<version>/` and per-package metadata in store's `Cache` (native TTL, evict-on-read, bulk prune). The invariants worth not breaking:
 
 - **Crash-ordering:** `remove` deletes metadata before files — a crash leaves harmless orphaned files, never a phantom hit. `prune` is best-effort/non-transactional on purpose (file removals cannot ride the SQL transaction).
-- **Stale-vs-miss:** live metadata → hit; files on disk with no live metadata → stale (refetch when `autoFetch`, serve stale otherwise); nothing → miss. The distinction rides store's evict-on-read TTL — pinned by `TestClock` tests.
-- **Paths from the CDN are data:** `write`/`read` reject absolute paths and `..` segments as typed `TypeCacheError`s before any join; `PackageSpec`'s schema checks make a name/version that could escape the cache directory unconstructable.
+- **Stale-vs-miss:** a hit requires **both planes** — live metadata *and* files on disk. Live metadata whose files are gone (an external deletion) is a miss, or `getVfs` serves an empty plane. Files with no live metadata → stale (refetch when `autoFetch`, serve stale otherwise); neither → miss. The TTL distinction rides store's evict-on-read — pinned by `TestClock` tests.
+- **Serialized mutations:** `fetchAndCache` / `clearCache` / `pruneCache` run under a `Semaphore.make(1)` in the `TypeRegistry` layer, so a clear cannot land between a fetch's file writes and its metadata write. In-process only — cross-process races on a shared cache dir are out of scope, with the both-planes check as the backstop.
+- **Paths from the CDN are data:** `write`/`read` reject absolute paths and `..` segments as typed `TypeCacheError`s before any join; `PackageSpec`'s schema checks (rejecting `:`, `?` and `#`, not just separators) make a name/version that could escape the cache directory unconstructable.
 - The layer statics are **parameterized factories** — bind the built layer to a `const` or two provide sites mint two caches. `layerXdg` roots at `<AppDirs cache>/<namespace>` via `ensureCache`, which also discharges store's database-directory-must-exist constraint. This package never builds the store layer itself.
 
 ## Module map
 
-One concept per module: `PackageSpec` (spec + cache-key codec + specifier normalization), `Vfs` (the currency type + `mergeVfs`/`prefixVfs`), `TypeCache`, `PackageFetcher` (jsDelivr client; owns `FetchError`/`PackageNotFoundError`/`VersionNotFoundError` and the lenient `PackageManifest`), `TypeResolver` (pure statics — no service, no layer), `TypeRegistry` (the facade service; owns `BatchLoadError`), `RegistryEvent` (schema-backed event union + `RegistryObserver`), `VirtualPackage`, `TsEnvironment`. Internals: `internal/jsdelivr.ts` (URLs, response structs), `internal/resolution.ts` (exports-map machinery), `internal/limits.ts` (the hardening constants).
+One concept per module: `PackageSpec` (spec + cache-key codec + specifier normalization), `Vfs` (the currency type + `mergeVfs`/`prefixVfs`), `TypeCache`, `PackageFetcher` (jsDelivr client; owns `FetchError`/`PackageNotFoundError`/`VersionNotFoundError` and the lenient `PackageManifest`), `TypeResolver` (pure statics — no service, no layer), `TypeRegistry` (the facade service; owns `BatchLoadError`), `RegistryEvent` (schema-backed event union + `RegistryObserver`), `VirtualPackage`, `TsEnvironment`. Internals: `internal/jsdelivr.ts` (URLs, response structs), `internal/resolution.ts` (exports-map machinery — conditions, wildcards, and Node fallback arrays walked in order), `internal/limits.ts` (the hardening constants).
 
 ## Hardening (do not relax)
 
@@ -27,8 +28,9 @@ The resolution machinery's input is JSON off a CDN — untrusted. `internal/limi
 
 - `MAX_NESTING_DEPTH = 256` on every recursive surface (`substituteWildcard`, `extractTypesFromExport`, the cache-tree walk); past the guard resolution returns `Option.none()`, the walk fails typed.
 - Wildcard patterns are bounded (`MAX_WILDCARDS_PER_PATTERN = 1`, npm semantics) before regex compilation — a pattern over the bound simply does not match (ReDoS guard).
-- **Prototype pollution:** v3's `substituteWildcard` assigned `__proto__` from untrusted exports maps; the port builds substituted maps with `Object.create(null)`, skips dunder keys everywhere, and only reads untrusted objects through `Object.hasOwn`.
-- `getTypeFiles` has a materialization budget (5 000 files / 64 MiB per package) failing typed as `FetchError` `kind: "body"`.
+- **Prototype pollution:** v3's `substituteWildcard` assigned `__proto__` from untrusted exports maps; the port builds substituted maps with `Object.create(null)`, skips dunder keys everywhere, and reads *every* untrusted map through `Object.hasOwn` — including `resolveVersion`'s dist-tag lookup, where an unguarded index resolves `"constructor"` to an inherited function.
+- `getTypeFiles` has a materialization budget (5 000 files / 64 MiB per package) failing typed as `FetchError` `kind: "body"`. It **pre-checks the per-file sizes the jsDelivr tree declares** before downloading, then counts **actual UTF-8 bytes** (not UTF-16 code units) as bodies land, in case the declared sizes lie.
+- **Manifest-derived declaration paths are safe-relative-validated before a `ResolvedModule` exists** — so `findTypeDefinition` returns `Option` instead of fabricating a guessed path (the v3 defect).
 
 Each guard has a hostile-input test in `__test__/TypeResolver.test.ts` / `TypeCache.test.ts` / `PackageFetcher.test.ts`.
 
@@ -53,4 +55,4 @@ pnpm vitest run packages/ts-vfs          # from the repo root
 pnpm build --filter @effected/ts-vfs     # from the repo root
 ```
 
-`savvy.build.ts` carries the standard narrow `ae-forgotten-export` / `_base` suppression. Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.
+`savvy.build.ts` carries the standard narrow `ae-forgotten-export` / `_base` suppression.

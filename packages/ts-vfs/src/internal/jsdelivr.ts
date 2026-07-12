@@ -35,9 +35,15 @@ export const VersionsResponse = Schema.Struct({
 /**
  * The `/package/npm/:pkg@:version/flat` response. `default` is metadata only
  * (`null` for packages that declare none, e.g. `ink`); the loader consumes
- * `files`, never `default`.
+ * `files`, never `default`. `size` (bytes) is used to pre-check the
+ * type-file download budget before any request is made.
  */
 export const FileTreeResponse = Schema.Struct({
 	default: Schema.NullOr(Schema.String),
-	files: Schema.Array(Schema.Struct({ name: Schema.String })),
+	files: Schema.Array(
+		Schema.Struct({
+			name: Schema.String,
+			size: Schema.optionalKey(Schema.Number),
+		}),
+	),
 });

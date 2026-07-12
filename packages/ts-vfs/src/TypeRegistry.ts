@@ -1,6 +1,6 @@
 import { Range, SemVer } from "@effected/semver";
 import type { Duration } from "effect";
-import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { packageJsonUrl } from "./internal/jsdelivr.js";
 import {
 	FetchError,
@@ -158,31 +158,41 @@ const make: Effect.Effect<TypeRegistryShape, never, TypeCache | PackageFetcher> 
 	const cache = yield* TypeCache;
 	const fetcher = yield* PackageFetcher;
 
+	// Serializes cache mutations (fetchAndCache, clearCache, pruneCache) so an
+	// interleaving like "clearCache lands between a fetch's file writes and
+	// its metadata write" cannot strand live metadata with no files. This
+	// guards fibers within THIS runtime only — cross-process races on a shared
+	// cache directory are out of scope (the both-planes check below is the
+	// backstop for anything external).
+	const mutations = yield* Semaphore.make(1);
+
 	const fetchAndCacheImpl = (
 		pkg: PackageSpec,
 		options?: { readonly ttl?: Duration.Duration },
 	): Effect.Effect<void, FetchError | PackageNotFoundError | TypeCacheError> =>
-		Effect.gen(function* () {
-			yield* emit({ _tag: "FetchStart", package: pkg.name, version: pkg.version });
-			const manifest = yield* fetcher.getPackageJson(pkg);
-			const typeFiles = yield* fetcher.getTypeFiles(pkg);
-			yield* cache.write(pkg, "package.json", JSON.stringify(manifest, null, 2));
-			for (const [filePath, content] of typeFiles) {
-				const normalized = filePath.replace(/^\/+/, "");
-				if (normalized !== "package.json") {
-					yield* cache.write(pkg, normalized, content);
+		mutations.withPermits(1)(
+			Effect.gen(function* () {
+				yield* emit({ _tag: "FetchStart", package: pkg.name, version: pkg.version });
+				const manifest = yield* fetcher.getPackageJson(pkg);
+				const typeFiles = yield* fetcher.getTypeFiles(pkg);
+				yield* cache.write(pkg, "package.json", JSON.stringify(manifest, null, 2));
+				for (const [filePath, content] of typeFiles) {
+					const normalized = filePath.replace(/^\/+/, "");
+					if (normalized !== "package.json") {
+						yield* cache.write(pkg, normalized, content);
+					}
 				}
-			}
-			const now = yield* DateTime.now;
-			yield* cache.writeMetadata(
-				pkg,
-				TypeCacheMetadata.make({
-					version: pkg.version,
-					cachedAt: now,
-					...(options?.ttl !== undefined ? { ttl: options.ttl } : {}),
-				}),
-			);
-		});
+				const now = yield* DateTime.now;
+				yield* cache.writeMetadata(
+					pkg,
+					TypeCacheMetadata.make({
+						version: pkg.version,
+						cachedAt: now,
+						...(options?.ttl !== undefined ? { ttl: options.ttl } : {}),
+					}),
+				);
+			}),
+		);
 
 	const getPackageVfsImpl = (
 		pkg: PackageSpec,
@@ -195,12 +205,15 @@ const make: Effect.Effect<TypeRegistryShape, never, TypeCache | PackageFetcher> 
 					// Metadata lives in the store; `readMetadata` returns `None` when the
 					// entry is absent or its TTL has expired (expiry evicts on read).
 					// Disk presence then distinguishes stale (files present, metadata
-					// gone) from an outright miss.
+					// gone) from an outright miss. A hit requires BOTH planes: live
+					// metadata whose files are gone (an external deletion — in-process
+					// interleavings are serialized by the mutation semaphore) is a
+					// miss, or getVfs would fail on the empty plane.
 					const metadata = yield* cache.readMetadata(pkg);
 					const diskExists = yield* cache.exists(pkg);
 					let source: "cache" | "network" = "cache";
 
-					if (Option.isSome(metadata)) {
+					if (Option.isSome(metadata) && diskExists) {
 						const now = yield* DateTime.now;
 						yield* emit({
 							_tag: "CacheHit",
@@ -208,7 +221,7 @@ const make: Effect.Effect<TypeRegistryShape, never, TypeCache | PackageFetcher> 
 							version: pkg.version,
 							age: DateTime.distance(metadata.value.cachedAt, now),
 						});
-					} else if (diskExists) {
+					} else if (Option.isNone(metadata) && diskExists) {
 						yield* emit({ _tag: "CacheStale", package: pkg.name, version: pkg.version });
 						if (autoFetch) {
 							yield* fetchAndCacheImpl(pkg, options);
@@ -333,8 +346,13 @@ const make: Effect.Effect<TypeRegistryShape, never, TypeCache | PackageFetcher> 
 	const resolveVersion = Effect.fn("TypeRegistry.resolveVersion")(function* (name: string, ref: string) {
 		const resolved = yield* Effect.gen(function* () {
 			const meta = yield* fetcher.getVersions(name);
-			const tagged = meta.tags[ref];
-			if (tagged !== undefined) return tagged;
+			// `ref` is caller-controlled and `tags` decodes to a plain object
+			// inheriting Object.prototype — an unguarded index would resolve
+			// "constructor" or "toString" to inherited functions.
+			if (Object.hasOwn(meta.tags, ref)) {
+				const tagged = meta.tags[ref];
+				if (typeof tagged === "string") return tagged;
+			}
 			if (meta.versions.includes(ref)) return ref;
 			const range = yield* Range.parse(ref).pipe(
 				Effect.mapError(() => new VersionNotFoundError({ name, ref, available: meta.versions.slice(0, 20) })),
@@ -363,10 +381,10 @@ const make: Effect.Effect<TypeRegistryShape, never, TypeCache | PackageFetcher> 
 	});
 
 	const clearCache = Effect.fn("TypeRegistry.clearCache")(function* (pkg: PackageSpec) {
-		return yield* cache.remove(pkg);
+		return yield* mutations.withPermits(1)(cache.remove(pkg));
 	});
 
-	const pruneCache = cache.prune.pipe(Effect.withSpan("TypeRegistry.pruneCache"));
+	const pruneCache = mutations.withPermits(1)(cache.prune).pipe(Effect.withSpan("TypeRegistry.pruneCache"));
 
 	return {
 		hasCached,

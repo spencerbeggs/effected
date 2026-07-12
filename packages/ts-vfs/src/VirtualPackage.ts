@@ -46,8 +46,18 @@ export class VirtualPackage extends Schema.Class<VirtualPackage>("VirtualPackage
 	/**
 	 * Multi-entry factory: one `.d.ts` per entry point, exposed through a
 	 * synthetic `exports` map.
+	 *
+	 * @remarks
+	 * An empty entries map is developer wiring, not input — it would produce a
+	 * package whose `types` points at a file that does not exist — so it
+	 * throws at construction (defect posture), as does an entry set whose
+	 * names collide after extension normalization (see
+	 * {@link VirtualPackage.toVfs}).
 	 */
 	static createMultiEntry(name: string, version: string, entries: ReadonlyMap<string, string>): VirtualPackage {
+		if (entries.size === 0) {
+			throw new Error(`VirtualPackage.createMultiEntry: "${name}" needs at least one entry file`);
+		}
 		return VirtualPackage.make({ name, version, entries });
 	}
 
@@ -91,6 +101,12 @@ export class VirtualPackage extends Schema.Class<VirtualPackage>("VirtualPackage
 	}
 
 	private toPackageJson(): string {
+		// Both throws below are wiring defects, checked here so every
+		// construction path (factories, `make`, subclass constructors) hits
+		// them the moment a Vfs is produced.
+		if (this.entries.size === 0) {
+			throw new Error(`VirtualPackage: "${this.name}" has no entry files — nothing to point types at`);
+		}
 		const manifest: {
 			name: string;
 			version: string;
@@ -98,14 +114,22 @@ export class VirtualPackage extends Schema.Class<VirtualPackage>("VirtualPackage
 			exports?: Record<string, { types: string }>;
 		} = { name: this.name, version: this.version };
 
-		if (this.entries.size <= 1) {
+		if (this.entries.size === 1) {
 			const [only] = this.entries.keys();
 			manifest.types = only ?? "index.d.ts";
 		} else {
 			manifest.exports = {};
+			const sources = new Map<string, string>();
 			for (const fileName of this.entries.keys()) {
 				const baseName = fileName.replace(/\.d\.(m|c)?ts$/, "");
 				const key = baseName === "index" ? "." : `./${baseName}`;
+				const previous = sources.get(key);
+				if (previous !== undefined) {
+					throw new Error(
+						`VirtualPackage: "${this.name}" entries "${previous}" and "${fileName}" both normalize to the export key "${key}"`,
+					);
+				}
+				sources.set(key, fileName);
 				manifest.exports[key] = { types: `./${fileName}` };
 			}
 		}

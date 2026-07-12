@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem } from "@effect/platform-node";
@@ -56,16 +56,19 @@ const mockFetcher = (known: ReadonlySet<string>): PackageFetcherShape => {
 	};
 };
 
-const registryLayer = (known: ReadonlySet<string>) =>
+const registryLayer = (
+	known: ReadonlySet<string>,
+	cacheDir: string = mkdtempSync(join(tmpdir(), "ts-vfs-registry-")),
+) =>
 	TypeRegistry.layer.pipe(
 		Layer.provideMerge(
-			Layer.mergeAll(
-				TypeCache.layer({ cacheDir: mkdtempSync(join(tmpdir(), "ts-vfs-registry-")) }),
-				Layer.succeed(PackageFetcher, mockFetcher(known)),
-			),
+			Layer.mergeAll(TypeCache.layer({ cacheDir }), Layer.succeed(PackageFetcher, mockFetcher(known))),
 		),
 		Layer.provide(Layer.mergeAll(Cache.layerTest(), NodeFileSystem.layer, Path.layer)),
 	);
+
+/** The single-package group's cache root, so tests can reach under the layer. */
+const singleGroupDir = mkdtempSync(join(tmpdir(), "ts-vfs-registry-single-"));
 
 const recording = (events: Array<RegistryEvent>): Layer.Layer<RegistryObserver> =>
 	RegistryObserver.layerCallback((event) => events.push(event));
@@ -74,7 +77,7 @@ const tags = (events: ReadonlyArray<RegistryEvent>): ReadonlyArray<string> => ev
 
 describe("TypeRegistry", () => {
 	describe("single-package ladder", () => {
-		layer(registryLayer(new Set(["zod"])))((it) => {
+		layer(registryLayer(new Set(["zod"]), singleGroupDir))((it) => {
 			it.effect("miss → fetch → hit, with the event sequence per path", () =>
 				Effect.gen(function* () {
 					const registry = yield* TypeRegistry;
@@ -175,6 +178,30 @@ describe("TypeRegistry", () => {
 					assert.strictEqual(result.count, 1);
 					assert.deepStrictEqual(result.removed, [{ name: "zod", version: "2.0.0" }]);
 					assert.isFalse(yield* registry.hasCached(pkg));
+				}),
+			);
+
+			it.effect("a hit requires BOTH planes: live metadata with no files is a miss", () =>
+				Effect.gen(function* () {
+					const registry = yield* TypeRegistry;
+					const cache = yield* TypeCache;
+					const pkg = PackageSpec.make({ name: "zod", version: "4.4.4" });
+					yield* registry.fetchAndCache(pkg);
+					// Simulate the file plane vanishing under live metadata (an
+					// external deletion — in-process interleavings are serialized).
+					rmSync(join(singleGroupDir, "zod", "4.4.4"), { recursive: true, force: true });
+					assert.isTrue(Option.isSome(yield* cache.readMetadata(pkg)));
+					assert.isFalse(yield* cache.exists(pkg));
+
+					// autoFetch: false — no hit is fabricated; typed not-found.
+					const error = yield* Effect.flip(registry.getPackageVfs(pkg, { autoFetch: false }));
+					assert.instanceOf(error, PackageNotFoundError);
+
+					// autoFetch: true — treated as a miss and refetched.
+					const events: Array<RegistryEvent> = [];
+					const vfs = yield* registry.getPackageVfs(pkg).pipe(Effect.provide(recording(events)));
+					assert.isTrue(vfs.has("node_modules/zod/index.d.ts"));
+					assert.deepStrictEqual(tags(events), ["CacheMiss", "FetchStart", "PackageLoaded"]);
 				}),
 			);
 		});
@@ -293,6 +320,18 @@ describe("TypeRegistry", () => {
 					const registry = yield* TypeRegistry;
 					const error = yield* Effect.flip(registry.resolveVersion("zod", "not a version at all"));
 					assert.instanceOf(error, VersionNotFoundError);
+				}),
+			);
+
+			it.effect("hostile refs never resolve through Object.prototype", () =>
+				Effect.gen(function* () {
+					const registry = yield* TypeRegistry;
+					// `tags` decodes to a plain object; an unguarded `tags[ref]` would
+					// find inherited members for these refs and "resolve" them.
+					for (const ref of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+						const error = yield* Effect.flip(registry.resolveVersion("zod", ref));
+						assert.instanceOf(error, VersionNotFoundError, `ref "${ref}" must not resolve`);
+					}
 				}),
 			);
 
