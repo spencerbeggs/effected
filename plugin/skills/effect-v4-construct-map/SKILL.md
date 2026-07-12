@@ -40,6 +40,8 @@ mis-guess silently survives. Full context in the reference files.
 | `Effect.catchAll` | `Effect.catch` | the whole `catchAll*` → `catch*` family |
 | `Effect.either` | `Effect.result` (→ `Result`, not `Either`) | the `Either` module is gone |
 | `Effect.fork` / `forkDaemon` | `Effect.forkChild` / `forkDetach` | |
+| `Effect.makeSemaphore` | **Gone.** `Semaphore` is a top-level module: `Semaphore.make(n)` (Effect) / `makeUnsafe(n)`, then `sem.withPermits(1)(effect)` | `migration/forking.md` never mentions the removal (`Semaphore.ts:329,190,80`) |
+| `RequestError` / `ResponseError` (`@effect/platform` http) | one **`HttpClientError`** wrapper class carrying a `reason` union (`TransportError \| EncodeError \| InvalidUrlError \| ResponseError`) | branch on `error.reason._tag === "TransportError"`, never the top-level `_tag` — it is always `"HttpClientError"`; timeouts are separate (`Cause.isTimeoutError`). Proven in the ts-vfs fetcher's retry-only-transient policy (`HttpClientError.ts:34,293`) |
 | `Exit.causeOption` | `Exit.getCause` → `Option<Cause<E>>` | |
 | `Schedule.compose` | **Gone.** `Effect.retry(fx, { schedule, times, while })` | the limit is a key, not a composed schedule |
 | `Context.Tag` / `Effect.Service` | `Context.Service<Self, Shape>()("id")` | type params FIRST, then the id |

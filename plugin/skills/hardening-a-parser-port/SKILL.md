@@ -177,6 +177,26 @@ Two consequences: don't pre-filter such keys expecting decode to choke on
 them, and if you later copy a decoded record by hand, that copy loop is a new
 `obj[key] = value` surface needing the `defineProperty` route above.
 
+**The read side is a separate hazard, and it needs no hostile key at all.**
+`Schema.Record` decodes into a plain `{}` inheriting `Object.prototype`, so an
+unguarded `obj[key]` read with an untrusted or caller-controlled `key` resolves
+*inherited* members: `tags["constructor"]` returns a function, `"toString"`,
+`"hasOwnProperty"` likewise — handed onward typed as your value type. Read
+untrusted maps only through an ownership check:
+
+```ts
+const value = Object.hasOwn(map, key) ? map[key] : undefined;
+```
+
+Apply it at **every** indexed read of a decoded record, and sweep for the one
+call site that skipped it — the ts-vfs port guarded its whole resolution
+machinery and still shipped one unguarded read (`resolveVersion`'s dist-tag
+lookup), where `resolveVersion(name, "constructor")` genuinely returned an
+inherited function as a "version" until the PR #67 review caught it. Keys
+enumerated by `Object.keys`/`Object.entries` are own-only and safe; it is the
+*lookup by external key* that must be guarded. Pin it with a hostile-ref test
+(`"constructor"`, `"__proto__"`, `"toString"`).
+
 ## Test membership with `Object.hasOwn`, never bracket notation
 
 The write path is only half of it. **Reading** a key off a parsed record with
