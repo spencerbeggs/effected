@@ -65,7 +65,7 @@ const layer = (
 			const appDirs = yield* AppDirs;
 			const path = yield* Path.Path;
 			const stateDir = yield* appDirs.ensureState;
-			return Store.layerSqlite({ migrations: options.migrations, filename: path.join(stateDir, filename) });
+			return Store.layerSqlite({ ...options, filename: path.join(stateDir, filename) });
 		}),
 	);
 

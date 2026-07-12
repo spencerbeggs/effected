@@ -23,7 +23,7 @@ related:
 ## Overview
 
 **Implemented on `feat/app`, 2026-07-12 — all gates green, pending merge.** Typecheck 32/32, package
-tests 28/28, whole-repo suite 3985 passed (one pre-existing skip), `dist/prod/issues.json` at
+tests 31/31, whole-repo suite 3988 passed (one pre-existing skip), `dist/prod/issues.json` at
 `0/0/0`, biome clean. Per the semver/jsonc precedent this doc now records the *as-built* design, with
 deviations from the approved draft noted inline as "As-built:". The port landed the design **without
 structural deviation** — which is what a composition package should do, since it had three merged
@@ -423,11 +423,17 @@ const AppLive = App.layer({ namespace: "myapp", store: { migrations } });  // on
 integration tests, following the [config-file precedent](config-file.md#testing-strategy) and the
 ts-vfs finding that core ships no working in-memory `FileSystem`.
 
-**As-built: 28 tests — 23 unit, 5 integration.** Every item on the list below shipped, including the
+**As-built: 31 tests — 26 unit, 5 integration.** Every item on the list below shipped, including the
 two that carry the design's weight: the **anti-`orDie` test** (an unwritable ancestor surfaces a
 typed `AppDirsError` and never a die — the regression test aimed at v3's `SqliteStateXdgLive`) and
 the **fresh-namespace control** (no pre-existing directories, no defect — the ensure-before-open
 proof).
+
+The filename guard is exercised through a shared **five-case matrix** (`__test__/filenameGuard.ts`),
+registered once per suite against each of the three filename options. It grew a case in PR review:
+the bare `"."` — which, like `".."`, contains no path separator and still resolves outside the
+intended file. A guard written as "reject separators" passes a `"."` straight through, so the matrix
+is what keeps the [wiring-defect ruling](#errors) honest rather than approximately honest.
 
 Required coverage, the ordering proofs first — because the ensure-before-open ordering is this
 package's only real claim, and a test that does not watch it fail proves nothing:

@@ -1,9 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigFile, JsonCodec } from "@effected/config-file";
 import { AppDirs, CurrentPlatform, Xdg, XdgPaths } from "@effected/xdg";
-import { Cause, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { Effect, Exit, FileSystem, Layer, Path, Schema } from "effect";
 import type { AppConfigOptions } from "../src/index.js";
 import { AppConfig } from "../src/index.js";
+import { filenameGuardCases } from "./filenameGuard.js";
 
 class Shape extends Schema.Class<Shape>("Shape")({ port: Schema.Number }) {}
 class TestConfig extends ConfigFile.Service<TestConfig, Shape>()("app-test/Config") {}
@@ -36,35 +37,16 @@ const harnessWith = (fs: Layer.Layer<FileSystem.FileSystem>, platform: "linux" |
 const configLayer = (options: AppConfigOptions<Shape, { readonly port: number }>) =>
 	AppConfig.layer(TestConfig, options);
 
-/** The guard's own words — what discriminates a filename die from any other die. */
-const guardMessage = /`filename` must/;
-
-const assertGuardDefect = (name: string, filename: string) =>
-	it.effect(name, () =>
-		Effect.gen(function* () {
-			const exit = yield* Effect.exit(
+describe("AppConfig.layer", () => {
+	describe("the filename guard", () => {
+		filenameGuardCases((filename) =>
+			Effect.exit(
 				Effect.provide(
 					Effect.void,
 					configLayer({ filename, schema: Shape, codec: JsonCodec }).pipe(Layer.provide(harnessWith(fakeFs()))),
 				),
-			);
-			const cause = Exit.getCause(exit);
-			assert.isTrue(Option.isSome(cause));
-			const reasons = Option.getOrThrow(cause).reasons;
-			// A DEFECT, never a typed failure: a bad filename is wiring, not input.
-			assert.isFalse(reasons.some(Cause.isFailReason));
-			const die = reasons.find(Cause.isDieReason);
-			assert.instanceOf(die?.defect, Error);
-			assert.match((die?.defect as Error).message, guardMessage);
-		}),
-	);
-
-describe("AppConfig.layer", () => {
-	describe("the filename guard", () => {
-		assertGuardDefect("an empty filename dies at construction", "");
-		assertGuardDefect("a filename with a forward slash dies at construction", "conf/rc.json");
-		assertGuardDefect("a filename with a backslash dies at construction", "conf\\rc.json");
-		assertGuardDefect("a traversal filename dies at construction", "..");
+			),
+		);
 
 		it.effect("a plain filename builds the layer cleanly", () =>
 			Effect.gen(function* () {

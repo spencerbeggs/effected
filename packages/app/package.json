@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "The application control plane for Effect: one layer wiring XDG-namespaced directories, a migrated SQLite store, a TTL cache and a config file to the same place.",
 	"keywords": ["app", "xdg", "sqlite", "store", "cache", "config", "effect", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/app#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/app#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

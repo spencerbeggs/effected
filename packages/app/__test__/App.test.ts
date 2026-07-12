@@ -57,7 +57,7 @@ describe("App.layerTest", () => {
 			Effect.gen(function* () {
 				const appDirs = yield* AppDirs;
 				assert.strictEqual(appDirs.dirs.state, "/pinned/state/other");
-				// No stateHome ladder below the pinned set: config falls back to $HOME/.<ns>.
+				// No configHome in the pinned set: config falls back to $HOME/.<ns>.
 				assert.strictEqual(appDirs.dirs.config, "/pinned/.other");
 				const store = yield* Store;
 				const status = yield* store.status;
