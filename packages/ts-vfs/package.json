@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "TypeScript virtual file systems for Effect: fetch, cache and resolve type definitions from npm via the jsDelivr CDN, and build @typescript/vfs environments for Twoslash-style documentation tooling.",
 	"keywords": ["typescript", "vfs", "twoslash", "types", "jsdelivr", "cache", "effect", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/ts-vfs#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/ts-vfs#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

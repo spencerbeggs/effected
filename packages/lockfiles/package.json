@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests.",
 	"keywords": ["lockfile", "pnpm", "npm", "yarn", "bun", "workspaces", "effect", "schema", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/lockfiles#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/lockfiles#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

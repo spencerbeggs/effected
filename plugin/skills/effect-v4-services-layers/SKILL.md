@@ -205,6 +205,38 @@ wiring, blocks test substitution, and spawns many small runtimes. For
 several entry points (HTTP handlers, consumers, cron), build one
 `ManagedRuntime.make(AppLayer)` and run each entry against it.
 
+### Heterogeneous requirement unions: annotate the collection up front
+
+When a wrapper collects several values that are generic in a requirements
+union — an array of resolvers, a list of layers feeding one generic
+parameter — TypeScript pins the type parameter from the **first** element and
+rejects the later, wider elements instead of widening the union:
+
+```ts
+declare const takeChain: <RR>(rs: ReadonlyArray<ConfigResolver<RR>>) => RR;
+takeChain([
+  XdgConfig.resolver({ filename }),       // RR pinned: AppDirs | FileSystem | Path
+  XdgConfig.nativeResolver({ ... }),      // ERROR — Xdg not assignable; the union never widens
+]);
+
+// Fix: state the full union where the collection is BUILT:
+const chain: ReadonlyArray<ConfigResolver<AppDirs | Xdg | FileSystem.FileSystem | Path.Path>> = [ ... ];
+takeChain(chain);                         // compiles
+```
+
+The annotation looks redundant — each element is individually assignable to
+it — but deleting it re-breaks inference at the call site; leave a comment
+saying so. Probed 2026-07-12 from inside `packages/app` against
+`effect@4.0.0-beta.97` (control `Effect.catchAll` failed to compile; the bare
+two-element chain failed on its second element; the annotated chain compiled
+clean). Surfaced by `AppConfig.layer` wrapping `ConfigFile.layer` in the
+`@effected/app` port.
+
+> **Type helpers are top-level.** `Layer.Success<typeof L>` and
+> `Layer.Error<typeof L>` are module-level type exports (v4 source
+> `Layer.ts:180` / `:165` — resolve the tree via `effect-v4-source-lookup`).
+> There is no nested `Layer.Layer.Success` spelling to reach for.
+
 ## Memoization: layers build once, by reference
 
 v4 shares one `MemoMap` **across `Effect.provide` calls**, so the same

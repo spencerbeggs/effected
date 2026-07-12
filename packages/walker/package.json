@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate.",
 	"keywords": ["path", "traversal", "walk", "find-up", "effect", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/walker#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/walker#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

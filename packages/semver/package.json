@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas.",
 	"keywords": ["semver", "semantic-versioning", "effect", "schema", "range", "version", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/semver#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/semver#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

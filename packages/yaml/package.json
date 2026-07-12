@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Zero-dependency YAML parsing, editing and formatting as Effect schemas.",
 	"keywords": ["yaml", "parser", "effect", "schema", "ast", "cst", "editing", "formatting", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/yaml#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/yaml#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Durable local state for Effect: a schema-versioned, migrated SQLite store and a TTL cache with tag invalidation, eviction, and a cache event stream.",
 	"keywords": ["sqlite", "store", "cache", "ttl", "migrations", "effect", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/store#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/store#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

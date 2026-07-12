@@ -1,6 +1,6 @@
 ---
 name: effect-api-extractor-bases
-description: Use when API Extractor reports ae-forgotten-export for the anonymous base of an Effect class factory (Schema.Class, TaggedClass, TaggedErrorClass, Opaque, Context.Service) under the silk bundler. The house policy is to write the factory INLINE and suppress the synthesized X_base warning narrowly via savvy.build.ts meta.tsdoc.suppressWarnings [{ messageId ae-forgotten-export, pattern _base }] — no @public base const, no hand-written annotation. Yields a zero-warning issues.json with the base warnings in the suppressed bucket.
+description: Use when API Extractor reports ae-forgotten-export for the anonymous base of an Effect class factory (Schema.Class, TaggedClass, TaggedErrorClass, Opaque, Context.Service) under the silk bundler — and for the OTHER ae-*/tsdoc-* diagnostics a package build surfaces, ae-unresolved-link above all ({@link} selector rules for merged value+type names, namespace-object members, inherited members, and cross-package symbols, where backticks are the only correct form), plus how to read issues.json without being fooled. The house policy for bases is to write the factory INLINE and suppress the synthesized X_base warning narrowly via savvy.build.ts meta.tsdoc.suppressWarnings [{ messageId ae-forgotten-export, pattern _base }] — no @public base const, no hand-written annotation. Yields a zero-warning issues.json with the base warnings in the suppressed bucket.
 ---
 
 # API Extractor × Effect class factories

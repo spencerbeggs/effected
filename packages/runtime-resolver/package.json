@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Resolve semver-compatible Node.js, Bun and Deno runtime versions with offline fallback.",
 	"keywords": ["node", "bun", "deno", "runtime", "version", "semver", "resolver", "effect", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/runtime-resolver#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/runtime-resolver#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

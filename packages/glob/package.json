@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates.",
 	"keywords": ["glob", "minimatch", "pattern", "wildcard", "matcher", "effect", "schema", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/glob#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/glob#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

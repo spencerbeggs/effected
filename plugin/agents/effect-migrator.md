@@ -97,9 +97,11 @@ though you write and run tests as part of the port.
    own property, C0 rejection, and the invariant that malformed input fails as a
    typed error, never a defect. Ship each guard with its hostile-input test. See
    `hardening-a-parser-port`.
-6. **Verify the gates.** `run_tests` (compliance + unit), `pnpm typecheck`,
-   `biome_check`, and `turbo run build:prod` with a zero-warning
-   `dist/prod/issues.json`.
+6. **Verify the gates.** `run_tests` (compliance + unit; if the vitest-agent
+   MCP tools are not exposed in your session, fall back to
+   `pnpm vitest run <path>` and read the `Tests:` line, never the exit code),
+   `pnpm typecheck`, `biome_check`, and `turbo run build:prod` with a
+   zero-warning `dist/prod/issues.json`.
 
 ## Cycle-firewall discipline
 

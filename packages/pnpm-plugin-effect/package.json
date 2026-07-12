@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "pnpm config dependency for centralized catalog management across the Effected ecosystem.",
 	"keywords": ["pnpm", "pnpm-plugin", "config-dependency", "catalog", "monorepo", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/pnpm-plugin-effect#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/pnpm-plugin-effect#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

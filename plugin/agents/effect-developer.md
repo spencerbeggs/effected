@@ -89,8 +89,11 @@ beats nothing at all — write the control first and watch it fail.
    + `Layer`; keep the error channel typed (`Schema.TaggedErrorClass`, never a
    `reason: string`).
 4. **Write, then verify.** Typecheck (`pnpm --filter <pkg> run types:check`),
-   lint (`biome_check`), and run the relevant tests (`run_tests`). Do not
-   report done on unverified code.
+   lint (`biome_check`), and run the relevant tests (`run_tests`; if the
+   vitest-agent MCP tools are not exposed in your session — ToolSearch finds
+   nothing — fall back to `pnpm vitest run <path>` and read the `Tests:` line,
+   never the exit code: a 0-tests run can exit 0). Do not report done on
+   unverified code.
 
 ## Non-negotiables (from the skills — invoke them for the detail)
 

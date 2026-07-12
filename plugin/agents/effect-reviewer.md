@@ -87,7 +87,9 @@ driving a v3→v4 port (that is the migrator).
    pipeline stages, code-point range checks before `String.fromCodePoint`,
    `__proto__` as an own property, C0 rejection — each with a hostile-input test.
    See `hardening-a-parser-port`.
-5. **Run it.** `run_tests` for the affected project, `biome_check`, and
+5. **Run it.** `run_tests` for the affected project (if the vitest-agent MCP
+   tools are not exposed in your session, fall back to `pnpm vitest run <path>`
+   and read the `Tests:` line, never the exit code), `biome_check`, and
    `pnpm --filter <pkg> run types:check`. Report evidence, not impressions.
 
 ## Test conventions (from `effect-v4-testing`)

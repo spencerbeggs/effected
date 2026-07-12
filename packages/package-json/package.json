@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "package.json parsing, editing, validation and file IO as Effect schemas.",
 	"keywords": ["package.json", "npm", "manifest", "effect", "schema", "validation", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/package-json#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/package-json#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

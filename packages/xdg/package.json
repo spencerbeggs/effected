@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "XDG Base Directory resolution for Effect: environment paths, app-namespaced directories, native OS conventions and config-file resolvers.",
 	"keywords": ["xdg", "basedir", "appdirs", "config", "paths", "effect", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/xdg#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/xdg#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},

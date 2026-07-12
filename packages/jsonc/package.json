@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Zero-dependency JSONC parsing, editing and formatting as Effect schemas.",
 	"keywords": ["jsonc", "json", "comments", "parser", "effect", "schema", "ast", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/packages/jsonc#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/jsonc#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},
