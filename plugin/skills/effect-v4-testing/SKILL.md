@@ -173,6 +173,16 @@ describe("foo", () => {
   `Live` → `Test` at this boundary, not inside test bodies.
 - `layer(L, { excludeTestServices: true })` runs the group **without** the
   `TestClock`/`TestConsole` overrides (keep live behavior for that group).
+- **Build-once means shared-state-across-tests — the whole group, not just
+  `TestConsole`.** Because the layer is built once per group, every stateful
+  resource in it is cumulative across the group's tests: `TestClock.adjust`
+  advances a clock the *next* test inherits, an in-memory store (`:memory:`
+  SQLite, a `Ref`, a `PubSub`) keeps its rows and subscribers, and a TTL that
+  expired in test 3 is still expired in test 4. The `TestConsole.logLines`
+  accumulation this skill already lists is one instance of this rule, not the
+  rule. Write group tests against **distinct keys/specs per test**, or flush
+  explicitly before asserting counts (the ts-vfs `TypeCache` suite pre-flushes
+  its prune test for exactly this reason — it was bitten first).
 
 **Testing a boundary-tier package that does real IO needs no platform
 package.** `Path.layer` and `FileSystem.layerNoop(partial)` both come from
