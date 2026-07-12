@@ -12,6 +12,7 @@ import type { Xdg } from "@effected/xdg";
 import { AppDirs, XdgConfig } from "@effected/xdg";
 import type { Context, FileSystem, Path, Schema } from "effect";
 import { Effect, Layer } from "effect";
+import { badFilename } from "./internal/filename.js";
 
 /**
  * Options for {@link (AppConfig:variable).layer}.
@@ -57,21 +58,6 @@ export interface AppConfigOptions<A, I> {
 	 */
 	readonly native?: boolean;
 }
-
-/**
- * A filename is one path component. Anything else escapes the app's own
- * directory, so it dies rather than resolving somewhere surprising — the same
- * wiring-defect rule xdg applies to `namespace`.
- */
-const badFilename = (context: string, filename: string): Error | undefined => {
-	if (filename.length === 0) {
-		return new Error(`${context}: \`filename\` must not be empty`);
-	}
-	if (/[/\\]/.test(filename) || filename === "." || filename === "..") {
-		return new Error(`${context}: \`filename\` must be a single path component, received ${JSON.stringify(filename)}`);
-	}
-	return undefined;
-};
 
 /**
  * Build the xdg-flavored config layer for a `ConfigFile.Service` class.

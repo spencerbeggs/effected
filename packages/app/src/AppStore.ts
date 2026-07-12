@@ -3,6 +3,7 @@ import { Store } from "@effected/store";
 import type { AppDirsError } from "@effected/xdg";
 import { AppDirs } from "@effected/xdg";
 import { Effect, Layer, Path } from "effect";
+import { badFilename } from "./internal/filename.js";
 
 /**
  * Options for {@link (AppStore:variable).layer}.
@@ -20,21 +21,6 @@ export interface AppStoreOptions extends StoreOptions {
 	 */
 	readonly filename?: string;
 }
-
-/**
- * A filename is one path component. Anything else escapes the app's own
- * directory, so it dies rather than resolving somewhere surprising — the same
- * wiring-defect rule xdg applies to `namespace`.
- */
-const badFilename = (context: string, filename: string): Error | undefined => {
-	if (filename.length === 0) {
-		return new Error(`${context}: \`filename\` must not be empty`);
-	}
-	if (/[/\\]/.test(filename) || filename === "." || filename === "..") {
-		return new Error(`${context}: \`filename\` must be a single path component, received ${JSON.stringify(filename)}`);
-	}
-	return undefined;
-};
 
 /**
  * Build the state-directory database layer: `AppDirs.ensureState`, then
