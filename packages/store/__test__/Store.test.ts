@@ -6,11 +6,13 @@ import { Cause, Effect, Exit, Layer } from "effect";
 import type { StoreMigration } from "../src/index.js";
 import { Cache, Store, StoreError, StoreMigrationError } from "../src/index.js";
 
+// The callbacks return the raw statement effects (whose values are rows, not
+// void): the engine discards them, so no Effect.asVoid ceremony is needed.
 const createNotes: StoreMigration = {
 	id: 1,
 	name: "create-notes",
-	up: (sql) => Effect.asVoid(sql`CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)`),
-	down: (sql) => Effect.asVoid(sql`DROP TABLE notes`),
+	up: (sql) => sql`CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)`,
+	down: (sql) => sql`DROP TABLE notes`,
 };
 
 // Order-observable: inserting requires the table migration 1 creates, so a
@@ -18,15 +20,15 @@ const createNotes: StoreMigration = {
 const seedNotes: StoreMigration = {
 	id: 2,
 	name: "seed-notes",
-	up: (sql) => Effect.asVoid(sql`INSERT INTO notes (body) VALUES ('seeded')`),
-	down: (sql) => Effect.asVoid(sql`DELETE FROM notes`),
+	up: (sql) => sql`INSERT INTO notes (body) VALUES ('seeded')`,
+	down: (sql) => sql`DELETE FROM notes`,
 };
 
 // No `down` on purpose: rollback must skip it but still remove its ledger row.
 const addIndex: StoreMigration = {
 	id: 3,
 	name: "add-index",
-	up: (sql) => Effect.asVoid(sql`CREATE INDEX idx_notes_body ON notes (body)`),
+	up: (sql) => sql`CREATE INDEX idx_notes_body ON notes (body)`,
 };
 
 const acquireStore = Effect.gen(function* () {
@@ -133,11 +135,43 @@ describe("Store", () => {
 		);
 	});
 
+	it.effect("an up returning a non-void value (the raw statement effect) applies cleanly", () =>
+		Effect.gen(function* () {
+			// A SELECT resolves to rows — the least-void value a statement can
+			// produce. The engine must discard it and record the migration applied.
+			const raw: StoreMigration = {
+				id: 1,
+				name: "raw-statement",
+				up: (sql) =>
+					sql`CREATE TABLE raw_notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)`.pipe(
+						Effect.andThen(sql`INSERT INTO raw_notes (body) VALUES ('raw')`),
+						Effect.andThen(sql<{ body: string }>`SELECT body FROM raw_notes`),
+					),
+			};
+			const status = yield* Effect.provide(
+				Effect.gen(function* () {
+					const store = yield* Store;
+					const rows = yield* store.client<{ body: string }>`SELECT body FROM raw_notes`;
+					assert.deepStrictEqual(
+						rows.map((row) => row.body),
+						["raw"],
+					);
+					return yield* store.status;
+				}),
+				Store.layerTest({ migrations: [raw] }),
+			);
+			assert.deepStrictEqual(
+				status.map((entry) => [entry.id, entry.name, entry.appliedAt !== undefined]),
+				[[1, "raw-statement", true]],
+			);
+		}),
+	);
+
 	describe("construction failures", () => {
 		const failing: StoreMigration = {
 			id: 2,
 			name: "explodes",
-			up: (sql) => Effect.asVoid(sql`INSERT INTO does_not_exist (x) VALUES (1)`),
+			up: (sql) => sql`INSERT INTO does_not_exist (x) VALUES (1)`,
 		};
 
 		it.effect("a failing up surfaces StoreMigrationError on the layer channel", () =>

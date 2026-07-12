@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-11
+updated: 2026-07-12
 last-synced: 2026-07-11
 completeness: 85
 related:
@@ -66,7 +66,7 @@ One thing a catalog bump does **not** update automatically: the `overrides` entr
 
 This package is the kit's **[companion](../effect-standards.md#companion-packages-published-but-not-a-library)** — published and installable, exposing no API. It carries **no tier**, because tier answers "what does depending on this cost you?" and nothing can depend on it: there is nothing to import and nothing to call. What it ships is configuration — two pnpm catalogs and a pnpmfile — not code. The three-tier taxonomy classifies libraries, and this is not one; that is a statement about *what it is*, not about whether it ships.
 
-It ships. It is a real npm-targeted package (`publishConfig.targets.npm` is `true`) that releases with the kit so consumers can pin their `effect` dependencies and peer floors at the values this repo built and tested against rather than resolving their own. That payoff lands with `app-kit`: an application wiring up the kit adopts the same calculated versions in one step. Its value was largest under Effect v3, where computing peer floors by hand was genuinely hard; v4 makes that easier, so **installing it is optional for the consumer** — but it is a supported, shipped option, not an internal tool that happens to be publishable. The category is named `companion` rather than `infrastructure` precisely to keep that reading available: [effect-standards.md](../effect-standards.md#companion-packages-published-but-not-a-library) records why.
+It ships. It is a real npm-targeted package (`publishConfig.targets.npm` is `true`) that releases with the kit so consumers can pin their `effect` dependencies and peer floors at the values this repo built and tested against rather than resolving their own. That payoff lands with `@effected/app`: an application wiring up the kit adopts the same calculated versions in one step. Its value was largest under Effect v3, where computing peer floors by hand was genuinely hard; v4 makes that easier, so **installing it is optional for the consumer** — but it is a supported, shipped option, not an internal tool that happens to be publishable. The category is named `companion` rather than `infrastructure` precisely to keep that reading available: [effect-standards.md](../effect-standards.md#companion-packages-published-but-not-a-library) records why.
 
 ## Publishing
 

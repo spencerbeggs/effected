@@ -11,12 +11,12 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
  * materialize the public error classes. It never imports a facade module.
  */
 
-/** A single migration as the engine sees it. */
+/** A single migration as the engine sees it; callback values are discarded. */
 export interface MigratorMigration {
 	readonly id: number;
 	readonly name: string;
-	readonly up: (sql: SqlClient) => Effect.Effect<void, SqlError>;
-	readonly down?: (sql: SqlClient) => Effect.Effect<void, SqlError>;
+	readonly up: (sql: SqlClient) => Effect.Effect<unknown, SqlError>;
+	readonly down?: (sql: SqlClient) => Effect.Effect<unknown, SqlError>;
 }
 
 /** An applied or rolled-back migration reference. */

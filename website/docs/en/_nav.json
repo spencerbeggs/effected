@@ -8,9 +8,14 @@
 	{
 		"text": "Packages",
 		"link": "/packages",
-		"activeMatch": "^/(packages|config-file|glob|jsonc|lockfiles|npm|package-json|pnpm-plugin-effect|runtime-resolver|runtime-resolver-cli|semver|store|toml|ts-vfs|walker|workspaces|xdg|yaml)(/(.*)?)?$",
+		"activeMatch": "^/(packages|app|config-file|glob|jsonc|lockfiles|npm|package-json|pnpm-plugin-effect|runtime-resolver|runtime-resolver-cli|semver|store|toml|ts-vfs|walker|workspaces|xdg|yaml)(/(.*)?)?$",
 		"position": "right",
 		"items": [
+			{
+				"text": "@effected/app",
+				"link": "/app",
+				"activeMatch": "^/app/?$"
+			},
 			{
 				"text": "@effected/config-file",
 				"link": "/config-file",

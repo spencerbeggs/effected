@@ -22,9 +22,10 @@ A pnpm monorepo (npm org `@effected`) building an [Effect](https://effect.websit
 | [@effected/runtime-resolver](packages/runtime-resolver) | boundary | Resolve semver-compatible Node.js, Bun and Deno runtime versions from live feeds, with an offline snapshot fallback |
 | [@effected/runtime-resolver-cli](packages/runtime-resolver-cli) | integrated | The command-line interface for @effected/runtime-resolver |
 | [@effected/ts-vfs](packages/ts-vfs) | integrated | TypeScript virtual file systems: fetch, cache and resolve type definitions from npm, and build @typescript/vfs environments for type-aware code samples |
-| [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | infra | pnpm config dependency for centralized catalog management across the Effected ecosystem |
+| [@effected/app](packages/app) | integrated | The application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite store, a TTL cache and a config file to the same place |
+| [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | companion | pnpm config dependency for centralized catalog management across the Effected ecosystem |
 
-Tier describes a package's runtime surface: **pure** packages peer on `effect` and take only `@effected/*` edges with no IO, **boundary** packages have the same dependency surface but do IO through Effect's core `FileSystem` and `Path` services and **integrated** packages import at least one runtime package outside `effect` core. `pnpm-plugin-effect` is repo infrastructure and sits outside the taxonomy.
+Tier describes a package's runtime surface: **pure** packages peer on `effect` and take only `@effected/*` edges with no IO, **boundary** packages have the same dependency surface but do IO through Effect's core `FileSystem` and `Path` services and **integrated** packages import at least one runtime package outside `effect` core. Tiers classify libraries, so `pnpm-plugin-effect` has none: it is a **companion**, published and installable but exposing no API — it ships two pnpm catalogs and a pnpmfile, and installing it pins your `effect` versions and peer floors to the ones the kit was built against.
 
 ## Releases
 
@@ -32,7 +33,9 @@ Nothing here is published to npm yet. The whole kit ships together at 0.1.0 once
 
 ## Roadmap
 
-One package remains before the kit is complete: `app-kit`, a thin composition over `xdg`, `config-file` and `store` for wiring an application's control plane. It is last because its content is decided by how the consuming applications actually wire the kit.
+The package set is complete. `app` was the last one to land — a thin composition over `xdg`, `config-file` and `store` for wiring an application's control plane — and it came last because the content of a control plane is decided by how the consuming applications actually wire the kit, not guessed at ahead of them.
+
+What stands between here and 0.1.0 is no longer a missing package but the proof: moving each of the five applications onto `@effected/*` and fixing whatever that surfaces.
 
 ## Development
 

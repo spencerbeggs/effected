@@ -14,7 +14,9 @@ import { ensureLedger, rollbackTo, runPending, statusOf, validateMigrations } fr
  * construction. `up` runs when the migration is applied; the optional `down`
  * runs when {@link StoreShape.rollback} unwinds past it. Both do SQL work, so
  * their typed channel is `SqlError`; a callback that throws instead is a
- * programmer bug and stays a defect.
+ * programmer bug and stays a defect. The engine discards each callback's
+ * success value — the success type is `unknown`, so a callback can return the
+ * raw statement effect directly with no `Effect.asVoid` ceremony.
  *
  * @public
  */
@@ -23,10 +25,10 @@ export interface StoreMigration {
 	readonly id: number;
 	/** Human-readable label, recorded in the ledger. */
 	readonly name: string;
-	/** Apply the migration. */
-	readonly up: (sql: SqlClient.SqlClient) => Effect.Effect<void, SqlError.SqlError>;
-	/** Unwind the migration; omit when the migration is irreversible. */
-	readonly down?: (sql: SqlClient.SqlClient) => Effect.Effect<void, SqlError.SqlError>;
+	/** Apply the migration; the success value is discarded. */
+	readonly up: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError.SqlError>;
+	/** Unwind the migration (value discarded); omit when irreversible. */
+	readonly down?: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError.SqlError>;
 }
 
 /**
@@ -236,7 +238,7 @@ const make = (
  * @example
  * ```ts
  * const migrations: ReadonlyArray<StoreMigration> = [
- * 	{ id: 1, name: "create-notes", up: (sql) => Effect.asVoid(sql`CREATE TABLE notes (body TEXT)`) },
+ * 	{ id: 1, name: "create-notes", up: (sql) => sql`CREATE TABLE notes (body TEXT)` },
  * ];
  * const StoreLayer = Store.layerSqlite({ filename: "state.db", migrations });
  * ```

@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-11
+updated: 2026-07-12
 last-synced: 2026-07-11
 completeness: 92
 related:
@@ -18,6 +18,7 @@ related:
   - package-json.md
   - walker.md
   - xdg.md
+  - app.md
 ---
 
 # @effected/config-file design
@@ -247,6 +248,24 @@ As-built: re-confirmed at port time that **`Context.Tag` does not exist in v4** 
 Options are supplied to `ConfigFile.layer`, **not baked into the factory**. Two reasons: resolver requirements must flow into the layer's `R` (see below), and the scoped `Test` layer needs to vary options freely against the same service identity — baking them into the class-definition site would freeze them.
 
 The service surface is otherwise preserved (review §1 calls it "a well-scoped set"): `load` / `loadFrom` / `loadOrDefault` / `discover` / `save` / `write` / `update` / `validate`, keeping the documented `save` (default path + `mkdir -p`) versus `write` (explicit path, no mkdir) distinction, and `update` = load → transform → save.
+
+### Deferred DX candidate: schema-on-the-class Service inference
+
+**Recorded 2026-07-12, not scheduled — its own small cycle if it happens.** Surfaced while writing
+the [@effected/app](app.md) design, whose `AppConfig` preset has to thread the same schema twice.
+
+Today the schema is named twice and its type once: `ConfigFile.Service<Self, A>()(id)` at the class
+definition, then `schema` again in the `ConfigFile.layer` options, with `typeof X.Type` ceremony
+where a consumer wants the decoded type. A `ConfigFile.Service<Self>()(id, schema)` form would take
+the schema **on the class** and infer `A` from it, deleting both the duplicate option and the
+ceremony.
+
+Two things make this a cycle rather than a patch, and they are the reasons it is not folded into the
+app port: the schema would move to the class-definition site while the *rest* of the options stay on
+`layer` (deliberately — see the paragraph above on why options are not baked into the factory), so
+the split has to be justified rather than assumed; and the inference has to be probed against the
+covariant `Context.Key<Self, Shape>` shape that already made [one type-level idea here
+unsound](#error-redesign). Worth doing, cheap to defer, and nothing depends on it.
 
 ## Type-safety debt paid
 

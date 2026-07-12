@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-11
+updated: 2026-07-12
 last-synced: 2026-07-11
 completeness: 85
 related:
@@ -17,6 +17,7 @@ related:
   - packages/workspaces.md
   - packages/runtime-resolver.md
   - packages/ts-vfs.md
+  - packages/app.md
 ---
 
 # Release criteria
@@ -42,7 +43,7 @@ The criterion is "the kit can replace the business logic of these five." They sp
 - `vitest-agent` — an 11-package monorepo depending on `workspaces-effect`, `config-file-effect` and `xdg-effect`. It consumes `workspaces`, `config-file`, `xdg` and `store`, and transitively `walker` and `lockfiles`.
 - `soda3js/tools` — specifically `@soda3js/config` (`dependencies: effect, smol-toml`), an Effect package whose job is loading and writing a TOML config file. It consumes `config-file` and `toml`. It needs **only** TOML: since [the config-file consolidation](package-inventory.md#the-config-file-consolidation-2026-07-11) the `config-file-toml` adapter it would have taken no longer exists, the `TomlCodec` arrives inside `@effected/config-file`, and this consumer carries dependency edges on `@effected/jsonc` and `@effected/yaml` that it never executes. It **provably pays nothing for them** — measured at 26.5 kB bundled, the TOML engine and neither of the others ([packages/config-file.md](packages/config-file.md#as-built-the-tree-shaking-property-is-measured-not-assumed)) — because an explicitly-composed codec is tree-shaken when unreferenced and, unbundled, ESM never loads a module nobody imports. **If either of those facts is ever falsified, this decision must be revisited** — this consumer is the one that would pay.
 
-`@effected/ts-vfs` is load-bearing for two of the five — it is a migration target in its own right and `rspress-plugin-api-extractor` depends on it — which is why it never sequenced at the end. It is now **merged**, and the only package left is `app-kit`, which **no consumer is blocked on** because nothing may depend on it (a library taking an application control plane would be an [R2](effect-standards.md#dependency-policy) tier-3 leak). Every application-facing package the five consumers need therefore exists.
+`@effected/ts-vfs` is load-bearing for two of the five — it is a migration target in its own right and `rspress-plugin-api-extractor` depends on it — which is why it never sequenced at the end. It is now **merged**, and the last package, `app`, is **implemented and pending merge** — no consumer was ever blocked on it, because nothing may depend on it (a library taking an application control plane would be an [R2](effect-standards.md#dependency-policy) tier-3 leak). Every application-facing package the five consumers need therefore exists.
 
 ## The gate
 
@@ -50,7 +51,7 @@ The union of what those consumers need. **Sixteen library packages are merged to
 
 **The config-file consolidation is done** (2026-07-11): it dissolved three already-merged adapter packages into `@effected/config-file`, taking the merged count from eighteen to fifteen and the workspace from 19 packages to 16. It ran first, ahead of both ports, so the gate below, the remaining ports and every consumer's install instructions are written once against the final package set.
 
-**One piece of work remains**, per the [migration order](package-inventory.md#migration-order): **app-kit**. The **ts-vfs** port merged on 2026-07-11 (migration #14), which was the last package with real domain logic to port; app-kit is a thin composition over `xdg` + `config-file` + `store` and was sequenced behind it deliberately, so that it absorbs the wiring the ts-vfs port exercised for real. The kit ships at `0.1.0` with **seventeen** library packages, not twenty.
+**The last piece of work is done and awaiting merge**, per the [migration order](package-inventory.md#migration-order): **app** — **implemented on `feat/app` 2026-07-12, all gates green** ([packages/app.md](packages/app.md)). The **ts-vfs** port merged on 2026-07-11 (migration #14), which was the last package with real domain logic to port; `@effected/app` is a thin composition over `xdg` + `config-file` + `store` and was sequenced behind it deliberately, so that it absorbed the wiring the ts-vfs port exercised for real. With it merged, every package the gate names exists. The kit ships at `0.1.0` with **seventeen** library packages, not twenty.
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
@@ -65,7 +66,7 @@ The union of what those consumers need. **Sixteen library packages are merged to
 | `@effected/toml` | pure | merged | `@soda3js/config`. Survived the consolidation — the format engine stays a package; only the adapter shim went |
 | `@effected/config-file` | boundary | merged; **consolidated** | `vitest-agent` and `@soda3js/config`, which now takes it **alone** for TOML — it carries all four codecs (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`). Stays boundary tier: `@effected/*` edges do not propagate tier, only [R2](effect-standards.md#dependency-policy) tier-3 does |
 | `@effected/ts-vfs` | integrated | merged | `rspress-plugin-api-extractor`, and a migration target. Renamed from `@effected/type-registry`. Integrated twice over: via [R2](effect-standards.md#dependency-policy) through `store`, and on its own surface through the optional `typescript` / `@typescript/vfs` peers ([packages/ts-vfs.md](packages/ts-vfs.md)) |
-| `@effected/app-kit` | integrated | **not started — the last package** | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`). No consumer is blocked on it — nothing may depend on it |
+| `@effected/app` | integrated | **implemented on `feat/app` 2026-07-12 — all gates green, pending merge** | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`). 31 tests, `issues.json` 0/0/0. Design: [packages/app.md](packages/app.md). No consumer is blocked on it — nothing may depend on it |
 | `@effected/pnpm-plugin-effect` | **companion — no tier** | merged | not a library and nothing depends on it, so it is on the gate for a different reason: it hands consumers the `effect` catalogs the kit was built against. Installing it is optional; publishing it is not ([Versioning](#versioning)) |
 
 ### `@effected/toml` is a full-parity format package
@@ -88,7 +89,7 @@ Three adapter packages that existed only to hold a twenty-line object literal ea
 
 Every package stays below `1.0.0` until Effect v4 officially releases. Until then the `effect` peer range names the beta pinned in the `effect` catalog in `pnpm-workspace.yaml`, and a beta bump is a coordinated change across the whole kit rather than a per-package decision.
 
-**`@effected/pnpm-plugin-effect` publishes with the kit, not apart from it.** It is the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library): published and installable but not a library — it exposes no API, nothing depends on it and it depends on nothing, so it carries no tier rather than a fourth one. It is nonetheless a **public package on the release gate**, shipping at `0.1.0` alongside the seventeen library packages. Its whole reason to exist is consumer-facing: it carries the two Effect catalogs this repo pins against, so a consumer can install it and hold their own `effect` versions and peer floors at exactly the values the kit was built and tested against instead of resolving their own. That payoff arrives with `app-kit` — an application wiring up the kit adopts the same calculated versions in one step. **Installing it is optional for the consumer; shipping it is not optional for the release.**
+**`@effected/pnpm-plugin-effect` publishes with the kit, not apart from it.** It is the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library): published and installable but not a library — it exposes no API, nothing depends on it and it depends on nothing, so it carries no tier rather than a fourth one. It is nonetheless a **public package on the release gate**, shipping at `0.1.0` alongside the seventeen library packages. Its whole reason to exist is consumer-facing: it carries the two Effect catalogs this repo pins against, so a consumer can install it and hold their own `effect` versions and peer floors at exactly the values the kit was built and tested against instead of resolving their own. That payoff arrives with `@effected/app` — an application wiring up the kit adopts the same calculated versions in one step. **Installing it is optional for the consumer; shipping it is not optional for the release.**
 
 A correction worth recording, because the reasoning that produced it is a trap. It was briefly documented as *exempt* from the coordinated release, on the evidence that `npm view` 404s and its manifest is `0.0.0` / `"private": true`. Neither fact supports that conclusion. **Every source manifest in this repo is `"private": true`** — the bundler's `publishConfig` transform emits the publishable manifest at build time ([architecture.md](architecture.md)) — and *nothing* here has published yet, so a 404 distinguishes this package from none of its siblings. Its `publishConfig.targets.npm` is `true`, byte-identical to `semver`'s and `config-file`'s. **Do not read `"private": true` in a source manifest as evidence about release intent.** The word "infrastructure" is what kept inviting that inference, and it is why the package is now classified as a **companion** — a name that describes its relationship to the consumer rather than to this repo. See [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#publishing) and the [naming rationale](effect-standards.md#companion-packages-published-but-not-a-library).
 

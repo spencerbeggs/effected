@@ -39,8 +39,8 @@ const migrations: ReadonlyArray<StoreMigration> = [
   {
     id: 1,
     name: "create-notes",
-    up: (sql) => Effect.asVoid(sql`CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)`),
-    down: (sql) => Effect.asVoid(sql`DROP TABLE notes`),
+    up: (sql) => sql`CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)`,
+    down: (sql) => sql`DROP TABLE notes`,
   },
 ];
 
@@ -77,7 +77,7 @@ The SQL core lives in `effect` itself, under `effect/unstable/sql` — there is 
 
 ## Migrations
 
-Migrations are a list you own: a positive-integer `id`, a `name` recorded in the ledger, an `up`, and an optional `down`. Layer construction ensures the ledger table and applies everything pending, so a freshly built `Store` is already migrated. `migrate` re-runs pending migrations, `rollback(toId)` unwinds everything with `id > toId` newest-first (`rollback(0)` unwinds all of it), and `status` projects the full list with each migration's `appliedAt`:
+Migrations are a list you own: a positive-integer `id`, a `name` recorded in the ledger, an `up`, and an optional `down`. Both return `Effect<unknown, SqlError>`, so a tagged SQL template goes back as-is — the engine discards the value, and a `CREATE TABLE` that already describes itself needs no `Effect.asVoid` wrapped around it. Layer construction ensures the ledger table and applies everything pending, so a freshly built `Store` is already migrated. `migrate` re-runs pending migrations, `rollback(toId)` unwinds everything with `id > toId` newest-first (`rollback(0)` unwinds all of it), and `status` projects the full list with each migration's `appliedAt`:
 
 ```ts
 import { Store } from "@effected/store";

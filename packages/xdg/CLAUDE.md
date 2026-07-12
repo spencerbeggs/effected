@@ -15,7 +15,7 @@ and tier 2 does not propagate (R3), so xdg's consumers pay nothing for them.
 **xdg does NOT depend on `@effected/store`, and must not.** Store is integrated
 tier; depending on it would propagate (R2) and drag `@effect/sql-sqlite-node`
 into every consumer. That split is the whole reason this package is small. The
-glue that wires an `AppDirs` path into a `Store` belongs in `@effected/app-kit`.
+glue that wires an `AppDirs` path into a `Store` belongs in `@effected/app`.
 
 Needs **no platform package, even in tests** — `Path.layer` and
 `FileSystem.layerNoop` come from core.

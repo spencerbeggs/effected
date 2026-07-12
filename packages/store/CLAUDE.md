@@ -31,6 +31,8 @@ The statics are **parameterized factories**, so calling one twice builds two lay
 
 `Store.layer` construction ensures the ledger and runs all pending migrations, surfacing failures on the layer's **typed** error channel — the v3 `Effect.orDie` laundering is not ported.
 
+A migration's `up`/`down` return `Effect<unknown, SqlError>`, **not `Effect<void, SqlError>`**. A `SqlClient` tagged template resolves to the statement's rows, so a `void` return forced every consumer to pipe an `Effect.asVoid` onto an otherwise self-describing ``sql`CREATE TABLE …` ``. The engine discards the value either way. Do not re-narrow it to `void`.
+
 ## Error model and what stays a defect
 
 Three `Schema.TaggedErrorClass` types (`StoreError`, `StoreMigrationError`, `CacheError`), each carrying the underlying `SqlError` structurally in a `cause: Schema.Defect()` field. `SqlError` is **wrapped, never leaked**.

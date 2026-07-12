@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-11
-updated: 2026-07-11
+updated: 2026-07-12
 last-synced: 2026-07-11
 completeness: 90
 related:
@@ -16,6 +16,7 @@ related:
   - xdg.md
   - semver.md
   - config-file.md
+  - app.md
 ---
 
 # @effected/ts-vfs design
@@ -30,7 +31,7 @@ Gates: typecheck green across all 31 turbo tasks; a cold `pnpm build --filter @e
 
 The PR #67 review added a further round of as-built hardening — a shared safe-relative-path invariant enforced *before* a `ResolvedModule` exists, per-package mutation serialization, a both-planes cache-hit rule, Node fallback arrays in `exports`, and a pre-download size budget. Each is recorded inline below, in the section that owns it.
 
-Three findings are worth carrying into `app-kit`, because that is the package that will do this wiring for real: the [lazy compiler import](#tsenvironment--the-typescriptvfs-seam) that is the only thing making the `typescript` peers genuinely optional, the [`createFSBackedSystem` rooting rule](#tsenvironment--the-typescriptvfs-seam) that v3 was accidentally shielded from, and the [`DateTimeUtc`/`Duration` JSON-encoding gap](#typecache--the-two-plane-cache) on beta.94.
+Three findings are worth carrying into `@effected/app`, because that is the package that does this wiring for real (it took all three; it took **no dependency** on this package — see [app.md](app.md#no-effectedts-vfs-edge)): the [lazy compiler import](#tsenvironment--the-typescriptvfs-seam) that is the only thing making the `typescript` peers genuinely optional, the [`createFSBackedSystem` rooting rule](#tsenvironment--the-typescriptvfs-seam) that v3 was accidentally shielded from, and the [`DateTimeUtc`/`Duration` JSON-encoding gap](#typecache--the-two-plane-cache) on beta.94.
 
 The v3 package got four things right that survive as concepts (review §1): the opt-in typed **observer channel** resolved via `Effect.serviceOption`; the **two-plane cache** (files on disk, metadata in SQLite with native TTL) with reasoned crash-ordering; the **best-effort batch semantics** (per-package failure accumulation, fail only when all fail); and `VirtualPackage`, which the rspress consumer builds on directly. Everything else — the kind-based folder sprawl, the `*Base` export doubling, the stringly error ladder and its `classifyLoadError` substring matching, the per-call layer rebuild in the Promise API — is redesigned.
 
@@ -368,11 +369,11 @@ class TsEnvironment {
 
 `@typescript/vfs@1.6.4` against `typescript@6.0.3` works, and the three functions the design commits to still exist and behave. But `createFSBackedSystem` **does not resolve bare `node_modules/…` map keys**: a `Vfs` is keyed by `node_modules/<name>/…` by construction (that is the whole point of `prefixVfs`), and those keys are simply not found unless they are rooted under `projectRoot`. **v3 never saw this because its real-filesystem fallback shadowed it** — the lookup missed the virtual entry, fell through to the actual `node_modules` on disk, found the package there, and typechecked against *that* instead. It looked correct precisely when the machine happened to have the package installed, which is the failure mode a virtual filesystem exists to eliminate.
 
-So `TsEnvironment.make` **re-roots relative `Vfs` keys under `projectRoot`** (absolute keys pass through untouched) before handing the map to `createFSBackedSystem`, and `projectRoot` defaults to `process.cwd()` — v3 hardcoded it, and it is now the option the draft promised. A test pins the re-rooting directly. This is the finding most likely to bite `app-kit` and the rspress consumer, because the broken shape *passes* on a developer machine.
+So `TsEnvironment.make` **re-roots relative `Vfs` keys under `projectRoot`** (absolute keys pass through untouched) before handing the map to `createFSBackedSystem`, and `projectRoot` defaults to `process.cwd()` — v3 hardcoded it, and it is now the option the draft promised. A test pins the re-rooting directly. This is the finding most likely to bite `app` and the rspress consumer, because the broken shape *passes* on a developer machine.
 
 ### What is deliberately NOT ported
 
-- **The `/node` entry and its Promise API.** This monorepo publishes no subpath exports, `runWithNodeLayer` rebuilt the entire layer stack (SQLite open included) on every call, and the standards-preferred posture — consumers compose layers at their edge — is what the rspress plugin already does. The `NodeLayer` composition becomes documentation (and later `@effected/app-kit` glue): platform layers + `Store`/`Cache` layers + `TypeCache.layerXdg` + `PackageFetcher.layer` + `TypeRegistry.layer`.
+- **The `/node` entry and its Promise API.** This monorepo publishes no subpath exports, `runWithNodeLayer` rebuilt the entire layer stack (SQLite open included) on every call, and the standards-preferred posture — consumers compose layers at their edge — is what the rspress plugin already does. The `NodeLayer` composition becomes **documentation**: platform layers + `Store`/`Cache` layers + `TypeCache.layerXdg` + `PackageFetcher.layer` + `TypeRegistry.layer`. **Correcting this row's original guess that it would later become `@effected/app` glue: it did not, and must not.** [@effected/app](app.md#no-effectedts-vfs-edge) shipped with **no `ts-vfs` edge** — taking one would make the composition layer an umbrella over a domain package, the one thing it exists not to be, and ts-vfs consumers compose this stack at their own edge already. What app took from this port is its three wiring *findings*, not its layers.
 - **The `Metric` surface** (7 public counters/timers). Store precedent: the app meters its calls; the event channel already carries the counts and durations consumers actually used. Spans replace the manual `Date.now()` bookkeeping.
 - **`TimeoutError`** (never constructed), **`ParseError`** (collides with effect's own; `SchemaError` normalization replaces it), **`ResolutionError`** (fictional channel), the **`*Base` export doubling** (12 exports; the inline-factory + `_base` suppression policy replaces it), **`events.ts`** (`@deprecated` in v3), **`PackageSpec.registry`** (read by nothing).
 - **`exists()` laundering** — v3 `catchAll`'d cache-existence failures to `false`; the port lets `TypeCacheError` surface.
