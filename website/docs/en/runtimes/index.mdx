@@ -1,13 +1,13 @@
 ---
-title: "@effected/runtime-resolver"
+title: "@effected/runtimes"
 description: "Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot."
 ---
 
-# @effected/runtime-resolver
+# @effected/runtimes
 
 Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot as a fallback. Three resolver services — `NodeResolver`, `BunResolver`, `DenoResolver` — each available in three cache strategies, and every result carries honest provenance.
 
-## Why @effected/runtime-resolver
+## Why @effected/runtimes
 
 "What is the newest Node.js version matching `>=20` that is still in active LTS?" is a question CI jobs, version managers and scaffolding tools all ask, and answering it means reading `nodejs.org`'s dist index, cross-referencing the release schedule, and applying semver. This package does that for Node, Bun and Deno behind one shape.
 
@@ -16,11 +16,11 @@ It takes no external runtime dependency, and that is not incidental. The predece
 ## Install
 
 ```bash
-npm install @effected/runtime-resolver effect
+npm install @effected/runtimes effect
 ```
 
 ```bash
-pnpm add @effected/runtime-resolver effect
+pnpm add @effected/runtimes effect
 ```
 
 Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; `@effected/semver` is the only other edge. Live resolution needs an `HttpClient`, provided at the edge with `FetchHttpClient.layer`. Offline resolution needs nothing at all.
@@ -28,7 +28,7 @@ Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; `@effected/semver`
 ## Quick start
 
 ```ts
-import { NodeResolver } from "@effected/runtime-resolver";
+import { NodeResolver } from "@effected/runtimes";
 import { Effect } from "effect";
 
 const program = Effect.gen(function* () {
@@ -44,7 +44,7 @@ Effect.runPromise(program).then(console.log);
 Swap `layerOffline` for `layer` and provide an `HttpClient`, and the same program resolves against the live feeds:
 
 ```ts
-import { BunResolver, GitHubClient, NodeResolver } from "@effected/runtime-resolver";
+import { BunResolver, GitHubClient, NodeResolver } from "@effected/runtimes";
 import { Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 
@@ -82,4 +82,4 @@ A `403` from GitHub is classified, not assumed. GitHub returns it for an exhaust
 
 ## API reference
 
-Every export, with full signatures, lives in the [API reference](/runtime-resolver/api).
+Every export, with full signatures, lives in the [API reference](/runtimes/api).

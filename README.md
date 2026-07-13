@@ -19,8 +19,8 @@ A pnpm monorepo (npm org `@effected`) building an [Effect](https://effect.websit
 | [@effected/store](packages/store) | integrated | Durable local state on SQLite: a schema-versioned migrated store and a TTL cache with eviction, over one shared migration ledger |
 | [@effected/xdg](packages/xdg) | boundary | XDG Base Directory resolution: environment paths, app-namespaced directories, native OS conventions and config-file resolvers |
 | [@effected/workspaces](packages/workspaces) | integrated | Monorepo tooling as Effect services: root discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
-| [@effected/runtime-resolver](packages/runtime-resolver) | boundary | Resolve semver-compatible Node.js, Bun and Deno runtime versions from live feeds, with an offline snapshot fallback |
-| [@effected/runtime-resolver-cli](packages/runtime-resolver-cli) | integrated | The command-line interface for @effected/runtime-resolver |
+| [@effected/runtimes](packages/runtimes) | boundary | Resolve semver-compatible Node.js, Bun and Deno runtime versions from live feeds, with an offline snapshot fallback |
+| [@effected/runtime-resolver-cli](packages/runtime-resolver-cli) | integrated | The command-line interface for @effected/runtimes |
 | [@effected/ts-vfs](packages/ts-vfs) | integrated | TypeScript virtual file systems: fetch, cache and resolve type definitions from npm, and build @typescript/vfs environments for type-aware code samples |
 | [@effected/app](packages/app) | integrated | The application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite store, a TTL cache and a config file to the same place |
 | [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | companion | pnpm config dependency for centralized catalog management across the Effected ecosystem |

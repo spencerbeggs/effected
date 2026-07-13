@@ -12,7 +12,7 @@ related:
   - architecture.md
   - effect-standards.md
   - migration-playbook.md
-  - packages/runtime-resolver.md
+  - packages/runtimes.md
   - packages/app.md
 ---
 
@@ -36,9 +36,11 @@ Done pending merge. See [releases.md](releases.md#the-gate) and [packages/app.md
 
 Rename `@effected/runtime-resolver` → `@effected/runtimes` and delete `@effected/runtime-resolver-cli` from the workspace entirely.
 
+**The rename half landed 2026-07-12.** `packages/runtime-resolver` → `packages/runtimes`, the package name, service tag ids and every design/website reference moved with it — see [packages/runtimes.md](packages/runtimes.md#the-runtimes-rename). **The CLI removal half is still pending**: `@effected/runtime-resolver-cli` was deliberately kept in the workspace for now, with only its imports repointed at `@effected/runtimes`. The dogfood trial and the workspace deletion below have not happened yet.
+
 The rename passes the same anti-overclaim naming test as the ts-vfs and app renames: "runtime-resolver" bakes resolution semantics into the library's name when resolution is one thing the library does, and AI-adjacent applications oddly need runtime awareness generally — which version of Node, Bun or Deno is available and compatible — not just a resolver. Renames and deletions are free only while nothing is published, the same reasoning that timed the ts-vfs and app renames, which is why this precedes `0.1.0` rather than following it.
 
-The CLI does not die; it moves home. Dogfood trial: link `@effected/runtimes` locally into the external `runtime-resolver` repo (`/Users/spencer/workspaces/spencerbeggs/runtime-resolver`), copy the CLI code back there and get its suite green against the linked package. The CLI re-ships from that external repo after `0.1.0` with new semantics, against the published package. This dissolves the two-package split the CLI forced on the workspace ([packages/runtime-resolver.md](packages/runtime-resolver.md)) — the `@effect/platform-node` isolation the split existed for is now handled by the CLI living in a different repo.
+The CLI does not die; it moves home. Dogfood trial: link `@effected/runtimes` locally into the external `runtime-resolver` repo (`/Users/spencer/workspaces/spencerbeggs/runtime-resolver`), copy the CLI code back there and get its suite green against the linked package. The CLI re-ships from that external repo after `0.1.0` with new semantics, against the published package. This dissolves the two-package split the CLI forced on the workspace ([packages/runtimes.md](packages/runtimes.md)) — the `@effect/platform-node` isolation the split existed for is now handled by the CLI living in a different repo.
 
 ### 3. `@effected/tsconfig-json`
 

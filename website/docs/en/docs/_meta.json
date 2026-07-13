@@ -49,8 +49,8 @@
 	},
 	{
 		"type": "custom-link",
-		"link": "/runtime-resolver",
-		"label": "@effected/runtime-resolver"
+		"link": "/runtimes",
+		"label": "@effected/runtimes"
 	},
 	{
 		"type": "custom-link",

@@ -1,15 +1,15 @@
 ---
-"@effected/runtime-resolver": minor
+"@effected/runtimes": minor
 ---
 
 ## Features
 
-Initial release of `@effected/runtime-resolver` — resolve semver-compatible Node.js, Bun and Deno versions from the upstream release feeds, with a bundled offline snapshot. A boundary-tier port of the v3 `runtime-resolver` library, redesigned rather than lifted.
+Initial release of `@effected/runtimes` — resolve semver-compatible Node.js, Bun and Deno versions from the upstream release feeds, with a bundled offline snapshot. A boundary-tier port of the v3 `runtime-resolver` library, redesigned rather than lifted.
 
 Three resolver services, each available in three cache strategies as named layer constants:
 
 ```ts
-import { NodeResolver, GitHubClient, BunResolver } from "@effected/runtime-resolver";
+import { NodeResolver, GitHubClient, BunResolver } from "@effected/runtimes";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 

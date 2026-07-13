@@ -70,7 +70,7 @@ export interface NodeReleaseLine {
  *
  * @example
  * ```ts
- * import { nodeReleaseLine } from "@effected/runtime-resolver";
+ * import { nodeReleaseLine } from "@effected/runtimes";
  *
  * nodeReleaseLine({ major: 20, minor: 11 }); // "20"
  * nodeReleaseLine({ major: 0, minor: 12 });  // "0.12"
@@ -160,7 +160,7 @@ const SCHEDULE_KEY = /^v?(\d+)(?:\.(\d+))?$/;
  *
  * @example
  * ```ts
- * import { NodeSchedule } from "@effected/runtime-resolver";
+ * import { NodeSchedule } from "@effected/runtimes";
  * import { DateTime, Effect, Option } from "effect";
  *
  * const program = Effect.gen(function* () {

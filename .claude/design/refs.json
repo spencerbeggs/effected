@@ -93,15 +93,15 @@
 		},
 		{
 			"source": "packages/runtime-resolver-cli/CLAUDE.md",
-			"target": ".claude/design/effected/packages/runtime-resolver.md",
-			"hash": "7bec00c285fd19db80df17edd41c445aeafcd22f4d9c4d98006e1cdf6b92c913",
-			"recordedAt": "2026-07-11"
+			"target": ".claude/design/effected/packages/runtimes.md",
+			"hash": "a55ca236e155d667b39217f8caf425a64cd3cf43fdea2c4ce83df281d8a66e20",
+			"recordedAt": "2026-07-12"
 		},
 		{
-			"source": "packages/runtime-resolver/CLAUDE.md",
-			"target": ".claude/design/effected/packages/runtime-resolver.md",
-			"hash": "7bec00c285fd19db80df17edd41c445aeafcd22f4d9c4d98006e1cdf6b92c913",
-			"recordedAt": "2026-07-11"
+			"source": "packages/runtimes/CLAUDE.md",
+			"target": ".claude/design/effected/packages/runtimes.md",
+			"hash": "a55ca236e155d667b39217f8caf425a64cd3cf43fdea2c4ce83df281d8a66e20",
+			"recordedAt": "2026-07-12"
 		},
 		{
 			"source": "packages/semver/CLAUDE.md",

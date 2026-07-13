@@ -56,7 +56,7 @@ const DEFAULT_PHASES: ReadonlyArray<NodePhase> = ["current", "active-lts"];
  *
  * @example
  * ```ts
- * import { NodeResolver } from "@effected/runtime-resolver";
+ * import { NodeResolver } from "@effected/runtimes";
  * import { Effect } from "effect";
  *
  * const program = Effect.gen(function* () {
@@ -75,7 +75,7 @@ export class NodeResolver extends Context.Service<
 			options?: NodeResolverOptions,
 		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
 	}
->()("@effected/runtime-resolver/NodeResolver") {
+>()("@effected/runtimes/NodeResolver") {
 	/**
 	 * Try the live feeds, fall back to the bundled snapshot.
 	 *

@@ -21,7 +21,7 @@ Target design for `@effected/semver`, the first package migration (step 2 of [mi
 
 ## Tier and dependencies
 
-Pure tier — no IO anywhere. `peerDependencies`: `effect` only (`catalog:effect`). `devDependencies`: `effect` and `@effect/vitest` (both `catalog:effect`). No cross-@effected edges; runtime-resolver and package-json will later depend on this package, not the reverse. `"sideEffects": false` (the v3 `"sideEffects": ["**/index.js"]` existed only for the index.ts static-wiring hack, which does not survive). Target directory is `packages/semver` (placeholder exists).
+Pure tier — no IO anywhere. `peerDependencies`: `effect` only (`catalog:effect`). `devDependencies`: `effect` and `@effect/vitest` (both `catalog:effect`). No cross-@effected edges; runtimes and package-json will later depend on this package, not the reverse. `"sideEffects": false` (the v3 `"sideEffects": ["**/index.js"]` existed only for the index.ts static-wiring hack, which does not survive). Target directory is `packages/semver` (placeholder exists).
 
 ## Module layout (module-per-concept)
 

@@ -1,10 +1,10 @@
 # @effected/runtime-resolver-cli
 
-The `runtime-resolver` binary. Resolves Node.js, Bun and Deno versions through [`@effected/runtime-resolver`](../runtime-resolver/CLAUDE.md) and prints a JSON envelope, so a CI job can pipe it into `jq` and pick out a version to install.
+The `runtime-resolver` binary. Resolves Node.js, Bun and Deno versions through [`@effected/runtimes`](../runtimes/CLAUDE.md) and prints a JSON envelope, so a CI job can pipe it into `jq` and pick out a version to install.
 
 Four files: `Cli.ts` (the command), `CliResponse.ts` (the envelope schemas), `bin.ts` (the entry point) and `index.ts` (re-exports the command for embedding and testing).
 
-**Design doc:** `@../../.claude/design/effected/packages/runtime-resolver.md` — one doc covers both packages; the split and its rationale are in it.
+**Design doc:** `@../../.claude/design/effected/packages/runtimes.md` — one doc covers both packages; the split and its rationale are in it.
 
 ## Tier: integrated — and this package exists *to be* tier 3
 

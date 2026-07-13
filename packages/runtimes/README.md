@@ -1,13 +1,13 @@
-# @effected/runtime-resolver
+# @effected/runtimes
 
-[![npm](https://img.shields.io/npm/v/@effected%2Fruntime-resolver?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/runtime-resolver)
+[![npm](https://img.shields.io/npm/v/@effected%2Fruntimes?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/runtimes)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
 
 Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot as a fallback. Ask for `>=20` in the `active-lts` phase and get back every match, newest first, plus the LTS pick and whatever you nominated as the default. Node's lifecycle phases come from the real `nodejs/Release` schedule and are evaluated against the clock, so `current`, `active-lts`, `maintenance-lts` and `end-of-life` mean what they mean today rather than on the day the package was published.
 
-## Why @effected/runtime-resolver
+## Why @effected/runtimes
 
 Every answer carries an honest `source`. A resolver that fetches live data, silently fails, serves a snapshot and reports `source: "api"` is worse than one that never had a snapshot — you cannot tell a fresh answer from a stale one, and a CI job pinning its toolchain will happily install a version that was current last quarter. Here the field is set by whichever strategy actually populated the index: `"api"` when the feed answered, `"cache"` when the snapshot did, including when the automatic strategy fell back to it, and the fallback logs a warning on the way through.
 
@@ -18,11 +18,11 @@ There is no HTTP client in the dependency tree either. The v3 library carried Oc
 ## Install
 
 ```bash
-npm install @effected/runtime-resolver effect
+npm install @effected/runtimes effect
 ```
 
 ```bash
-pnpm add @effected/runtime-resolver effect
+pnpm add @effected/runtimes effect
 ```
 
 Requires Node.js >=24.11.0.
@@ -36,7 +36,7 @@ For the command-line interface, install [`@effected/runtime-resolver-cli`](../ru
 ## Quick start
 
 ```ts
-import { NodeResolver } from "@effected/runtime-resolver";
+import { NodeResolver } from "@effected/runtimes";
 import { Effect } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 
@@ -79,7 +79,7 @@ The transport differs by runtime, and that is not an accident:
 `GitHubClient.layerDefault` is the batteries-included wiring: environment-detected credentials over `fetch`. Credential precedence is `GITHUB_PERSONAL_ACCESS_TOKEN`, then `GITHUB_TOKEN`, then anonymous — GitHub allows anonymous requests at a much lower rate limit. Supply your own with `GitHubAuth.token(redactedToken)`, or use `GitHubClient.layer` directly to bring both a credential and a transport:
 
 ```ts
-import { BunResolver, DenoResolver, GitHubClient, NodeResolver } from "@effected/runtime-resolver";
+import { BunResolver, DenoResolver, GitHubClient, NodeResolver } from "@effected/runtimes";
 import { Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 
@@ -97,7 +97,7 @@ export const ResolversLive = Layer.mergeAll(
 `resolve` takes a semver range, a grouping granularity and an optional default range. Node additionally takes the lifecycle phases to accept and the date to evaluate them at:
 
 ```ts
-import { NodeResolver } from "@effected/runtime-resolver";
+import { NodeResolver } from "@effected/runtimes";
 import { Effect } from "effect";
 
 const program = Effect.gen(function* () {

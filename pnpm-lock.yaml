@@ -279,7 +279,33 @@ importers:
         version: 7.0.2
     publishDirectory: dist/dev/pkg
 
-  packages/runtime-resolver:
+  packages/runtime-resolver-cli:
+    dependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-beta.97(effect@4.0.0-beta.97)(ioredis@5.11.1)
+      '@effected/runtimes':
+        specifier: workspace:*
+        version: link:../runtimes/dist/dev/pkg
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.97
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
+      '@savvy-web/bundler':
+        specifier: ^1.1.11
+        version: 1.1.11(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
+      '@types/node':
+        specifier: catalog:silk
+        version: 26.1.1
+      typescript:
+        specifier: catalog:silk
+        version: 7.0.2
+    publishDirectory: dist/dev/pkg
+
+  packages/runtimes:
     dependencies:
       '@effected/semver':
         specifier: workspace:*
@@ -297,32 +323,6 @@ importers:
       effect:
         specifier: catalog:effect
         version: 4.0.0-beta.97
-      typescript:
-        specifier: catalog:silk
-        version: 7.0.2
-    publishDirectory: dist/dev/pkg
-
-  packages/runtime-resolver-cli:
-    dependencies:
-      '@effect/platform-node':
-        specifier: catalog:effect
-        version: 4.0.0-beta.97(effect@4.0.0-beta.97)(ioredis@5.11.1)
-      '@effected/runtime-resolver':
-        specifier: workspace:*
-        version: link:../runtime-resolver/dist/dev/pkg
-      effect:
-        specifier: catalog:effect
-        version: 4.0.0-beta.97
-    devDependencies:
-      '@effect/vitest':
-        specifier: catalog:effect
-        version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
-      '@savvy-web/bundler':
-        specifier: ^1.1.11
-        version: 1.1.11(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
-      '@types/node':
-        specifier: catalog:silk
-        version: 26.1.1
       typescript:
         specifier: catalog:silk
         version: 7.0.2

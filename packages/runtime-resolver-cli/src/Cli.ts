@@ -4,7 +4,7 @@
  * @packageDocumentation
  */
 
-import type { NodePhase, ResolvedVersions } from "@effected/runtime-resolver";
+import type { NodePhase, ResolvedVersions } from "@effected/runtimes";
 import {
 	BunResolver,
 	DenoResolver,
@@ -12,7 +12,7 @@ import {
 	GitHubClient,
 	NodePhase as NodePhaseSchema,
 	NodeResolver,
-} from "@effected/runtime-resolver";
+} from "@effected/runtimes";
 import { Console, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { CliError, Command, Flag } from "effect/unstable/cli";
 import { FetchHttpClient } from "effect/unstable/http";

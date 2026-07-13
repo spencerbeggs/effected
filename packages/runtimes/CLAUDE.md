@@ -1,10 +1,10 @@
-# @effected/runtime-resolver
+# @effected/runtimes
 
 Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot as a fallback. Twelfth migration, ported from the v3 `runtime-resolver` repo — which is also one of the five applications that define the release gate, so this package *is* that repo's business logic.
 
 Three resolver services (`NodeResolver`, `BunResolver`, `DenoResolver`), each in three cache strategies, over one parameterized internal engine. The binary lives next door in `@effected/runtime-resolver-cli` and is not this package's problem.
 
-**Design doc:** `@../../.claude/design/effected/packages/runtime-resolver.md` — load before changing the strategies, the error ladder or the release index.
+**Design doc:** `@../../.claude/design/effected/packages/runtimes.md` — load before changing the strategies, the error ladder or the release index.
 
 ## Tier: boundary
 
@@ -58,8 +58,8 @@ The seams: `FetchHttpClient.Fetch` for canned HTTP responses (this exercises the
 Two assertions that look fine and are not: `assert.isTrue(exit._tag === "Failure")` on a `layerFresh` test stays green when a raw `NetworkError` leaks through, which is precisely what `FreshnessError` exists to wrap — assert the error *type*. And a retry test that asserts only "it eventually retried" passes whether the delay was the server's, the exponential one, or a negative value collapsed to zero — advance the clock to just short of the expected delay and assert the retry has **not** fired yet.
 
 ```bash
-pnpm vitest run packages/runtime-resolver     # from the repo root
-pnpm build --filter @effected/runtime-resolver
+pnpm vitest run packages/runtimes     # from the repo root
+pnpm build --filter @effected/runtimes
 ```
 
 Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.

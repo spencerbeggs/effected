@@ -26,7 +26,7 @@ Seven foundational design docs live in `.claude/design/effected/` (config: `.cla
 
 Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port.
 
-Sixteen packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtime-resolver`, `runtime-resolver-cli`, `workspaces`, `ts-vfs`.
+Sixteen packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtimes` (renamed from `runtime-resolver`), `runtime-resolver-cli`, `workspaces`, `ts-vfs`.
 
 **The config-file consolidation is done.** `config-file-jsonc`, `config-file-yaml` and `config-file-toml` are deleted; `@effected/config-file` absorbed their three codecs. The `jsonc`, `yaml` and `toml` **format** packages stay independent and untouched. It cut the workspace from 19 packages to 16; with `ts-vfs`, 17. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — and `ConfigCodec` is the interface only. **Never collect them into a namespace object**: referencing one reaches every codec, every codec reaches its parsing engine, and a JSON-only consumer drags the JSONC/YAML/TOML engines into their bundle. Tree-shaking dies silently. A namespace object is a barrel with different syntax; do not reintroduce one. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
@@ -59,7 +59,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `store` — durable local state: a migrated, schema-versioned SQLite `Store` and a TTL `Cache` with tag invalidation and eviction (integrated).
 - `xdg` — XDG Base Directory resolution: `AppDirs`, `NativeDirs`, `XdgPaths` and the config-file resolvers, over `@effected/walker` (boundary).
 - `workspaces` — monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection; implements `@effected/npm`'s resolver contracts (integrated).
-- `runtime-resolver` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot (boundary).
+- `runtimes` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot (boundary).
 - `runtime-resolver-cli` — the `runtime-resolver` binary; separate so the library's consumers never install `@effect/platform-node` (integrated).
 - `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place; a thin composition over `xdg` + `store` + `config-file` with no domain logic, no service and no schema of its own (integrated, by R2 over store alone). Nothing may depend on it.
 - `ts-vfs` — fetch, cache and resolve TypeScript type definitions from npm (jsDelivr) for Twoslash-style tooling; wraps `@typescript/vfs`; two-plane cache over `@effected/store` + `FileSystem`; `typescript` / `@typescript/vfs` optional peers (integrated). Renamed from `@effected/type-registry` (2026-07-11); the v3 source keeps the name `type-registry-effect`.

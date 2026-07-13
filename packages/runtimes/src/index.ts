@@ -11,7 +11,7 @@
  *
  * @example
  * ```ts
- * import { GitHubClient, BunResolver, NodeResolver } from "@effected/runtime-resolver";
+ * import { GitHubClient, BunResolver, NodeResolver } from "@effected/runtimes";
  * import { Effect, Layer } from "effect";
  * import { FetchHttpClient } from "effect/unstable/http";
  *

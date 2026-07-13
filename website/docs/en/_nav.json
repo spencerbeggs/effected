@@ -8,7 +8,7 @@
 	{
 		"text": "Packages",
 		"link": "/packages",
-		"activeMatch": "^/(packages|app|config-file|glob|jsonc|lockfiles|npm|package-json|pnpm-plugin-effect|runtime-resolver|runtime-resolver-cli|semver|store|toml|ts-vfs|walker|workspaces|xdg|yaml)(/(.*)?)?$",
+		"activeMatch": "^/(packages|app|config-file|glob|jsonc|lockfiles|npm|package-json|pnpm-plugin-effect|runtimes|runtime-resolver-cli|semver|store|toml|ts-vfs|walker|workspaces|xdg|yaml)(/(.*)?)?$",
 		"position": "right",
 		"items": [
 			{
@@ -52,9 +52,9 @@
 				"activeMatch": "^/pnpm-plugin-effect/?$"
 			},
 			{
-				"text": "@effected/runtime-resolver",
-				"link": "/runtime-resolver",
-				"activeMatch": "^/runtime-resolver/?$"
+				"text": "@effected/runtimes",
+				"link": "/runtimes",
+				"activeMatch": "^/runtimes/?$"
 			},
 			{
 				"text": "@effected/runtime-resolver-cli",

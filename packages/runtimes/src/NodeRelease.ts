@@ -21,7 +21,7 @@ import { isLtsPhase } from "./NodeSchedule.js";
  *
  * @example
  * ```ts
- * import { NodeRelease, NodeSchedule } from "@effected/runtime-resolver";
+ * import { NodeRelease, NodeSchedule } from "@effected/runtimes";
  * import { DateTime, Effect } from "effect";
  *
  * const program = Effect.gen(function* () {

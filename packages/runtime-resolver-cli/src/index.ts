@@ -1,5 +1,5 @@
 /**
- * The command-line interface for `@effected/runtime-resolver`.
+ * The command-line interface for `@effected/runtimes`.
  *
  * Resolves Node.js, Bun and Deno versions and prints a JSON envelope, so a CI
  * job can pipe it into `jq` and pick out a version to install.

@@ -174,9 +174,7 @@ const tokenConfig = Config.redacted("GITHUB_TOKEN").pipe(Config.option);
  *
  * @public
  */
-export class GitHubAuth extends Context.Service<GitHubAuth, GitHubAuthShape>()(
-	"@effected/runtime-resolver/GitHubAuth",
-) {
+export class GitHubAuth extends Context.Service<GitHubAuth, GitHubAuthShape>()("@effected/runtimes/GitHubAuth") {
 	/**
 	 * Send no credentials. GitHub allows this, at a much lower rate limit.
 	 */
@@ -286,7 +284,7 @@ const GITHUB_HEADERS = {
  * @public
  */
 export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShape>()(
-	"@effected/runtime-resolver/GitHubClient",
+	"@effected/runtimes/GitHubClient",
 ) {
 	/**
 	 * The client, requiring an `HttpClient` and a `GitHubAuth` from the context.

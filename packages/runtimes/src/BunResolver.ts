@@ -60,7 +60,7 @@ export type BunResolverOptions = typeof BunResolverOptions.Type;
  *
  * @example
  * ```ts
- * import { BunResolver } from "@effected/runtime-resolver";
+ * import { BunResolver } from "@effected/runtimes";
  * import { Effect } from "effect";
  *
  * const program = Effect.gen(function* () {
@@ -78,7 +78,7 @@ export class BunResolver extends Context.Service<
 			options?: BunResolverOptions,
 		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
 	}
->()("@effected/runtime-resolver/BunResolver") {
+>()("@effected/runtimes/BunResolver") {
 	/** Try GitHub, fall back to the bundled snapshot. */
 	static readonly layer: Layer.Layer<BunResolver, never, GitHubClient> = mk(this, (index, live, offline) =>
 		populateAuto(index, "bun", live, offline),

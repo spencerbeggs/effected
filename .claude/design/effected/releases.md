@@ -15,7 +15,7 @@ related:
   - packages/lockfiles.md
   - packages/xdg.md
   - packages/workspaces.md
-  - packages/runtime-resolver.md
+  - packages/runtimes.md
   - packages/ts-vfs.md
   - packages/app.md
 ---
@@ -35,7 +35,7 @@ The criterion is "the kit can replace the business logic of these five." They sp
 **Migration targets** — absorbed into this repo, so "replacing their business logic" means porting them:
 
 - `type-registry-effect` → **`@effected/ts-vfs`** (renamed from `@effected/type-registry` on 2026-07-11; see [the ts-vfs rename](package-inventory.md#the-ts-vfs-rename)). **Merged** (migration #14). The v3 source package keeps its own name — only the target renames.
-- `runtime-resolver` → `@effected/runtime-resolver` + `@effected/runtime-resolver-cli`. **Merged**: the v3 repo's library and CLI both live here now, as two packages so that the binary's `@effect/platform-node` dependency does not reach the library's consumers.
+- `runtime-resolver` → `@effected/runtimes` + `@effected/runtime-resolver-cli`. **Merged**: the v3 repo's library and CLI both live here now, as two packages so that the binary's `@effect/platform-node` dependency does not reach the library's consumers. The library renamed from `@effected/runtime-resolver` to `@effected/runtimes` on 2026-07-12, the first half of [the runtimes reshape](roadmap.md#2-the-runtimes-reshape) — the CLI removal half is deferred, so the CLI package stays and now depends on `@effected/runtimes`.
 
 **External consumers** — stay in their own repos, per the libraries-only scope in [architecture.md](architecture.md). Each must be able to swap its `*-effect` dependencies for `@effected/*`:
 
@@ -47,7 +47,7 @@ The criterion is "the kit can replace the business logic of these five." They sp
 
 ## The gate
 
-The union of what those consumers need. **Sixteen library packages are merged today** (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtime-resolver`, `runtime-resolver-cli`, `workspaces`, `ts-vfs`). `pnpm-plugin-effect` is outside that count because it is not a library — it is the kit's [companion](package-inventory.md#internal-packages-no-source-repo), published and installable but exposing no API ([effect-standards.md](effect-standards.md#companion-packages-published-but-not-a-library)). **It is on the gate all the same**: it ships at `0.1.0` with everything else. Being outside a count of libraries is not an exemption from the release.
+The union of what those consumers need. **Sixteen library packages are merged today** (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtimes`, `runtime-resolver-cli`, `workspaces`, `ts-vfs`). `pnpm-plugin-effect` is outside that count because it is not a library — it is the kit's [companion](package-inventory.md#internal-packages-no-source-repo), published and installable but exposing no API ([effect-standards.md](effect-standards.md#companion-packages-published-but-not-a-library)). **It is on the gate all the same**: it ships at `0.1.0` with everything else. Being outside a count of libraries is not an exemption from the release.
 
 **The config-file consolidation is done** (2026-07-11): it dissolved three already-merged adapter packages into `@effected/config-file`, taking the merged count from eighteen to fifteen and the workspace from 19 packages to 16. It ran first, ahead of both ports, so the gate below, the remaining ports and every consumer's install instructions are written once against the final package set.
 
@@ -61,7 +61,7 @@ The union of what those consumers need. **Sixteen library packages are merged to
 | `@effected/store` | integrated | merged | SQLite cache + migrated state (`@effect/sql-sqlite-node`); `rspress-plugin-api-extractor` and `vitest-agent` both consume it |
 | `@effected/xdg` | boundary | merged | `vitest-agent`, `ts-vfs`; zero runtime deps, and it does not depend on `store` |
 | `@effected/workspaces` | integrated | merged | `vitest-agent`; takes `@pnpm/catalogs.*`, and implements `@effected/npm`'s resolver contracts |
-| `@effected/runtime-resolver` | boundary | merged | a migration target; takes only `@effected/semver` and core `HttpClient` |
+| `@effected/runtimes` | boundary | merged | a migration target; takes only `@effected/semver` and core `HttpClient` |
 | `@effected/runtime-resolver-cli` | integrated | merged | the binary, split out so the library's consumers do not pay for `@effect/platform-node` |
 | `@effected/toml` | pure | merged | `@soda3js/config`. Survived the consolidation — the format engine stays a package; only the adapter shim went |
 | `@effected/config-file` | boundary | merged; **consolidated** | `vitest-agent` and `@soda3js/config`, which now takes it **alone** for TOML — it carries all four codecs (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`). Stays boundary tier: `@effected/*` edges do not propagate tier, only [R2](effect-standards.md#dependency-policy) tier-3 does |

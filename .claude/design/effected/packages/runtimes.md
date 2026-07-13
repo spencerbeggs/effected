@@ -12,21 +12,26 @@ related:
   - ../package-inventory.md
   - ../releases.md
   - ../package-setup.md
+  - ../roadmap.md
   - semver.md
 ---
 
-# @effected/runtime-resolver design
+# @effected/runtimes design
 
 ## Overview
 
 **Merged** — migration #12, covering **two** packages. The v3 repo resolved semver-compatible versions of Node.js, Bun and Deno from live release feeds with a bundled offline snapshot, and shipped an `@effect/cli` binary from the same package. The port kept the domain concepts the [review](../../../reviews/runtime-resolver.md) praised — cache-strategy-as-layer, the vertical dependency graph, the typed HTTP error ladder, the deterministic Node lifecycle model — and split the binary out.
 
-- **`@effected/runtime-resolver`** — the library. Three resolver services, three cache strategies each, over one parameterized internal engine. **Boundary tier.**
+- **`@effected/runtimes`** — the library. Three resolver services, three cache strategies each, over one parameterized internal engine. **Boundary tier.**
 - **`@effected/runtime-resolver-cli`** — the binary. **Integrated tier.**
 
 runtime-resolver is one of the five consuming applications that define the release gate ([releases.md](../releases.md)), so "replacing its business logic" meant porting it: the v3 repo's library and CLI both live here now.
 
 This document is the design as specified, with an [As built](#as-built-2026-07-11) section recording what the port actually landed. The sections below are accurate unless that section says otherwise.
+
+## The runtimes rename
+
+Renamed `@effected/runtime-resolver` → `@effected/runtimes` on 2026-07-12, the first half of the runtimes reshape recorded in [roadmap.md](../roadmap.md#2-the-runtimes-reshape). The rename happened before anything published, so it was free — the same reasoning that timed the ts-vfs and app renames. Service tag ids renamed with it (`@effected/runtime-resolver/NodeResolver` → `@effected/runtimes/NodeResolver`, and likewise for `BunResolver` and `DenoResolver`). The v3 source repo keeps the name `runtime-resolver` — only the merged package renamed. The CLI half of the reshape — deleting `@effected/runtime-resolver-cli` from the workspace — is deferred; the CLI package still exists under its original name and now depends on `@effected/runtimes` (`workspace:*`).
 
 ## The split, and why it is forced
 
@@ -62,7 +67,7 @@ The replacement is `HttpClient` from `effect/unstable/http` — core, so tier-2-
 
 ## Tier and dependencies
 
-### `@effected/runtime-resolver` — boundary
+### `@effected/runtimes` — boundary
 
 IO through `effect`-core abstractions only (`HttpClient`), consumer provides the platform layer at the edge. No external runtime dependency.
 
@@ -72,13 +77,13 @@ IO through `effect`-core abstractions only (`HttpClient`), consumer provides the
 
 ### `@effected/runtime-resolver-cli` — integrated
 
-- `dependencies`: `effect` (`catalog:effect`), `@effect/platform-node` (`catalog:effect`), `@effected/runtime-resolver` (`workspace:*`). A tool declares the full stack as regular dependencies (effect-standards, peer-dependency discipline).
+- `dependencies`: `effect` (`catalog:effect`), `@effect/platform-node` (`catalog:effect`), `@effected/runtimes` (`workspace:*`). A tool declares the full stack as regular dependencies (effect-standards, peer-dependency discipline).
 - `bin`: `{ "runtime-resolver": "./src/bin.ts" }`.
 - Tier 3 by R1; nothing depends on it, so R2 propagation is moot.
 
 ## Module layout
 
-### `packages/runtime-resolver`
+### `packages/runtimes`
 
 ```text
 src/
@@ -208,7 +213,7 @@ The v3 `GitHubClient.getJson` uses raw global `fetch` with an ad-hoc `{ decode }
 class NodeResolver extends Context.Service<NodeResolver, {
   readonly resolve: (options?: NodeResolverOptions) =>
     Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError>;
-}>()("@effected/runtime-resolver/NodeResolver") {
+}>()("@effected/runtimes/NodeResolver") {
   static readonly layer: Layer.Layer<NodeResolver, never, HttpClient>;        // auto
   static readonly layerFresh: Layer.Layer<NodeResolver, FreshnessError, HttpClient>;
   static readonly layerOffline: Layer.Layer<NodeResolver>;                    // no requirements

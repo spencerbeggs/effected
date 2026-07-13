@@ -60,7 +60,7 @@ export type DenoResolverOptions = typeof DenoResolverOptions.Type;
  *
  * @example
  * ```ts
- * import { DenoResolver } from "@effected/runtime-resolver";
+ * import { DenoResolver } from "@effected/runtimes";
  * import { Effect } from "effect";
  *
  * const program = Effect.gen(function* () {
@@ -78,7 +78,7 @@ export class DenoResolver extends Context.Service<
 			options?: DenoResolverOptions,
 		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
 	}
->()("@effected/runtime-resolver/DenoResolver") {
+>()("@effected/runtimes/DenoResolver") {
 	/** Try GitHub, fall back to the bundled snapshot. */
 	static readonly layer: Layer.Layer<DenoResolver, never, GitHubClient> = mk(this, (index, live, offline) =>
 		populateAuto(index, "deno", live, offline),

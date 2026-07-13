@@ -4,7 +4,7 @@
 
 ## Features
 
-Initial release of `@effected/runtime-resolver-cli` — the `runtime-resolver` binary, split out of `@effected/runtime-resolver` so that API consumers of the library do not inherit the CLI's runtime dependencies.
+Initial release of `@effected/runtime-resolver-cli` — the `runtime-resolver` binary, split out of `@effected/runtimes` so that API consumers of the library do not inherit the CLI's runtime dependencies.
 
 Resolves one or more runtimes and prints a JSON envelope, so a CI job can pipe it into `jq`:
 
