@@ -33,7 +33,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
-		"@savvy-web/bundler": "^1.1.11",
+		"@savvy-web/bundler": "^1.1.12",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
 		"minimatch": "10.2.5",
