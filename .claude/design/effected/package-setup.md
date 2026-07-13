@@ -41,7 +41,7 @@ So the scaffold order is load-bearing:
 2. The first `pnpm install`.
 3. The real modules.
 
-Learned on the `@effected/app` port (2026-07-12). **The rule is unconditional** — it is not limited to packages with sibling `@effected/*` dependencies. Every library package's manifest carries `prepare: turbo run build:dev` (17 of the 18 packages; `pnpm-plugin-effect`, the companion, is the lone exception, and nobody scaffolds a library from it), including pure leaves like `semver` and `jsonc` that have no `workspace:*` edge at all. So a scaffold copied from ANY library sibling inherits the script, and `prepare` is what install runs. Stub the entrypoint first regardless of what the new package depends on.
+Learned on the `@effected/app` port (2026-07-12). **The rule is unconditional** — it is not limited to packages with sibling `@effected/*` dependencies. Every library package's manifest carries `prepare: turbo run build:dev` (`pnpm-plugin-effect`, the companion, is the lone exception, and nobody scaffolds a library from it), including pure leaves like `semver` and `jsonc` that have no `workspace:*` edge at all. So a scaffold copied from ANY library sibling inherits the script, and `prepare` is what install runs. Stub the entrypoint first regardless of what the new package depends on.
 
 ## package.json shape
 
@@ -68,7 +68,7 @@ The fix is the **`prepare` pattern**: any package with a `workspace:*` edge to a
 { "scripts": { "prepare": "turbo run build:dev" } }
 ```
 
-pnpm runs the workspace package's `prepare` on install (verified: a fresh/forced `pnpm install` fires `packages/X prepare$ turbo run build:dev`), and `turbo run build:dev` — scoped to that package — builds it **and its dependencies** in topological order via the `^build:dev` task edge, so every `dist/dev/pkg` the consumer links to exists before tests run. Strictly, only the **consumer** *needs* the script — a pure leaf's dependencies are built by the consumer's `turbo run build:dev` and it requires no `prepare` of its own. `@effected/package-json` is the first package to require it (it depends on `@effected/npm` and `@effected/semver`). In practice, though, **every library package carries it anyway** (17 of 18; all but `pnpm-plugin-effect`), leaves included. Do not read the necessity claim as a description of the tree — a copied scaffold inherits `prepare` whatever it depends on, which is why the [scaffold-order rule](#scaffold-order-stub-srcindexts-before-the-first-install) is unconditional.
+pnpm runs the workspace package's `prepare` on install (verified: a fresh/forced `pnpm install` fires `packages/X prepare$ turbo run build:dev`), and `turbo run build:dev` — scoped to that package — builds it **and its dependencies** in topological order via the `^build:dev` task edge, so every `dist/dev/pkg` the consumer links to exists before tests run. Strictly, only the **consumer** *needs* the script — a pure leaf's dependencies are built by the consumer's `turbo run build:dev` and it requires no `prepare` of its own. `@effected/package-json` is the first package to require it (it depends on `@effected/npm` and `@effected/semver`). In practice, though, **every library package carries it anyway** (all but the companion `pnpm-plugin-effect`), leaves included. Do not read the necessity claim as a description of the tree — a copied scaffold inherits `prepare` whatever it depends on, which is why the [scaffold-order rule](#scaffold-order-stub-srcindexts-before-the-first-install) is unconditional.
 
 ## The typechecker: tsc, not tsgo
 

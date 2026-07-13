@@ -20,7 +20,7 @@ related:
 
 ## Overview
 
-The migration program is complete: seventeen library packages plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library), with `@effected/app` implemented and pending merge ([packages/app.md](packages/app.md)). This doc records what comes after it — the decisions came out of a brainstorming session on 2026-07-12, grounded in surveys of the v3 extraction sources (silk-effects' ManagedSection and ToolDiscovery, @savvy-web/bundler's tsdown-plugins `dts/` helpers, rspress-plugin-api-extractor's tsconfig-parser). These are settled decisions, not proposals, recorded with their reasoning so they are not re-litigated.
+The migration program is complete: seventeen library packages plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library), ending with `@effected/app` (merged 2026-07-12, [packages/app.md](packages/app.md)). This doc records what comes after it — the decisions came out of a brainstorming session on 2026-07-12, grounded in surveys of the v3 extraction sources (silk-effects' ManagedSection and ToolDiscovery, @savvy-web/bundler's tsdown-plugins `dts/` helpers, rspress-plugin-api-extractor's tsconfig-parser). These are settled decisions, not proposals, recorded with their reasoning so they are not re-litigated.
 
 The sequencing decision is **unblock-first**: the `0.1.0` gate deliberately expands by exactly one new package (`@effected/tsconfig-json`) plus a package reshape, so that `0.1.0` publishes the final near-term package set and the gate-proving consumer port lands on final packages. [releases.md](releases.md)'s gate table stays authoritative; it and [package-inventory.md](package-inventory.md) are updated as each item below lands, per [migration playbook](migration-playbook.md) step 7 — this doc does not replace them.
 
@@ -30,7 +30,7 @@ Four workstreams. The release still ships seventeen library packages plus the co
 
 ### 1. Merge `app`
 
-Done pending merge. See [releases.md](releases.md#the-gate) and [packages/app.md](packages/app.md).
+Done — merged 2026-07-12 (PR #73). See [releases.md](releases.md#the-gate) and [packages/app.md](packages/app.md).
 
 ### 2. The runtimes reshape
 

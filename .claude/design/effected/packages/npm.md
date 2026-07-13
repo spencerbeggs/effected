@@ -3,14 +3,15 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-08
-last-synced: 2026-07-08
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 90
 related:
   - ../architecture.md
   - ../effect-standards.md
   - ../package-inventory.md
   - package-json.md
+  - workspaces.md
 ---
 
 # @effected/npm design
@@ -21,9 +22,9 @@ related:
 
 Why it exists as its own package rather than living in package-json: resolution fundamentally requires workspace/catalog context that package-json cannot have, and the maintainer has downstream uses for these contracts beyond package-json queued (making the second consumer real, not speculative). The full rationale — and the alternatives weighed — is [resolution belongs to @effected/npm](package-json.md#resolution-belongs-to-effectednpm) in the package-json design.
 
-**Scope discipline: minimal to start.** The initial surface is exactly what package-json's port needs — the two resolver contracts, their no-op default layers, and the shared error. It is **not** a general "npm/pnpm vocabulary" package yet: `DependencySpecifier` (the specifier taxonomy) and `PackageName` (npm naming) deliberately stay in [@effected/package-json](package-json.md) for now. `@effected/npm` **expands and refactors when `@effected/workspaces` / `@effected/lockfiles` and pnpm use cases land** — those packages carry their own richer resolution machinery (a `CatalogSet` value object, a live catalog resolver, the `@pnpm/catalogs.*` footprint; see the workspaces review) and will reconcile it against these contracts at their migration, growing `@effected/npm` in the process. Extracting the vocabulary concepts is a later, evidence-driven decision, not a day-one one.
+**Scope discipline: minimal to start.** The initial surface is exactly what package-json's port needs — the two resolver contracts, their no-op default layers, and the shared error. It is **not** a general "npm/pnpm vocabulary" package yet: `DependencySpecifier` (the specifier taxonomy) and `PackageName` (npm naming) deliberately stay in [@effected/package-json](package-json.md) for now. `@effected/npm` was scoped to expand when `@effected/workspaces` landed — and when it did, **the contracts held without amendment**: workspaces implements both directly as layers over its own services (see [workspaces.md](workspaces.md#implementing-effectednpms-resolver-contracts)). Extracting the vocabulary concepts remains a later, evidence-driven decision.
 
-Status: **implemented on `feat/package-json` (landed alongside the package-json port).** The verify-at-port-time notes below resolve to inline "As-built:" notes; the package shipped GREEN with all gates passing — **11/11 tests**, `pnpm typecheck` clean, biome clean and a zero-warning `dist/prod/issues.json`. The public surface is exactly `CatalogResolver`, `WorkspaceResolver`, `DependencyResolutionError` and the composite `Default` layer. (As-built (realignment, 2026-07-08): the transitional `@public X_base` consts are gone — the three factories are written inline with the synthesized `_base` symbols suppressed in `savvy.build.ts`; see [API Extractor bases](#api-extractor-bases-house-policy).)
+Status: **merged** (landed alongside the package-json port). The verify-at-port-time notes below resolve to inline "As-built:" notes; the package shipped with all gates passing — tests, typecheck, biome and a zero-warning `dist/prod/issues.json`. The public surface is exactly `CatalogResolver`, `WorkspaceResolver`, `DependencyResolutionError` and the composite `Default` layer. (As-built (realignment, 2026-07-08): the transitional `@public X_base` consts are gone — the three factories are written inline with the synthesized `_base` symbols suppressed in `savvy.build.ts`; see [API Extractor bases](#api-extractor-bases-house-policy).)
 
 ## Tier and dependencies
 
@@ -31,7 +32,7 @@ Status: **implemented on `feat/package-json` (landed alongside the package-json 
 
 - `peerDependencies`: `effect` only (`catalog:effect`). Trivially complete closure — `effect` has no peers.
 - `dependencies`: none. (No `@effected/semver` edge — the contracts traffic in plain `string` versions/ranges, not `SemVer`/`Range` instances; range *parsing* stays in package-json's `DependencySpecifier`.)
-- `devDependencies`: `effect`, `@effect/vitest`, `@effect/tsgo` (`catalog:effect`); `@types/node`, `typescript` (`catalog:silk`).
+- `devDependencies`: `effect` and `@effect/vitest` (`catalog:effect`); `@types/node`, `typescript` (`catalog:silk`).
 - Target directory: `packages/npm`. `"sideEffects": false`.
 
 This is the cleanest possible profile: `effect`-only peers, zero regular dependencies, no workspace edges outbound. The dependency arrows point **at** it: `@effected/package-json` → `@effected/npm` (`workspace:*`), and later `@effected/workspaces` → `@effected/npm`.
@@ -97,12 +98,12 @@ The original port landed on the transitional `@public X_base` idiom; the realign
 
 Tests live in `packages/npm/__test__/` per repo convention (`CatalogResolver`, `WorkspaceResolver`).
 
-As-built: **11/11 tests passing**, zero-warning `dist/prod/issues.json`. Stub-implementation test layers build their `Option` results with `Option.fromUndefinedOr` (`Option.fromNullable` is gone in v4).
+As-built: all tests green with a zero-warning `dist/prod/issues.json`. Stub-implementation test layers build their `Option` results with `Option.fromUndefinedOr` (`Option.fromNullable` is gone in v4).
 
 ## Future expansion (deferred, evidence-driven)
 
-Recorded so the seam is explicit, none acted on now:
+Recorded so the seam is explicit:
 
-- **`@effected/workspaces` reconciliation** — workspaces owns real catalog/workspace resolution (`CatalogSet`, a live resolver, `@pnpm/catalogs.*`). At its migration it either implements these contracts directly or the contracts grow to fit its richer shape; that is an expand/refactor of `@effected/npm` decided *there*, with the real implementer in hand.
+- **`@effected/workspaces` reconciliation — resolved.** Workspaces implements both contracts directly as layers over its own services (`WorkspaceCatalogs.catalogResolver`, `WorkspaceDiscovery.workspaceResolver`), and the contracts' unmatched-name-is-`None` convention held without amendment. See [workspaces.md](workspaces.md#implementing-effectednpms-resolver-contracts).
 - **Vocabulary tenants** — `DependencySpecifier` and `PackageName` are the natural next residents if a second consumer beyond package-json materializes for them; they stay in package-json until then.
 - **The pnpm `catalogs:` record shape** — the workspaces review routes this toward `@effected/lockfiles`, not here; do not pre-claim it.

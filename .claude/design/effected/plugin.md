@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-11
-last-synced: 2026-07-11
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 92
 related:
   - architecture.md
@@ -36,7 +36,7 @@ Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `descrip
 - `effect-v4-idioms` — core Effect: typed errors and Result, generators, scope, forking, structural equality.
 - `effect-v4-cli` — the v4 CLI story. `@effect/cli` is **dead on the v4 line** (its latest peers on `effect@^3.21.x`, no beta dist-tag); the framework moved into core as `effect/unstable/cli`, with HTTP as `effect/unstable/http`. Carries the structural fact that decides a CLI package's tier: `Command.Environment` needs five services, and core *declares* all five while implementing almost none for Node (only `Path.layer` is real; `FileSystem.layerNoop` is a stub and `Stdio.layerTest` is test-only; `Terminal` and `ChildProcessSpawner` have no layer at all) — so a runnable CLI needs `@effect/platform-node` and is therefore **integrated tier**, never pure. Also the exit-code contract: the CLI module never calls `process.exit`, so a non-zero status comes only from a *failed* effect — a usage error must fail (`CliError.UserError`), and a no-match result must not.
 - `effect-v4-observability` — spans/logging/metrics, OTel composed at the app edge, the house rule that pure-tier libraries instrument public fallible boundaries only.
-- `effect-v4-testing` — `@effect/vitest`, `it.effect`, test layers, property tests, and the false-green catalogue (a `0 tests passed` run that exits 0, `TestClock` starting at the epoch so clock reads return 1970, an accumulating `TestConsole.logLines`, an eagerly-recording `layerNoop` stub). Its mutation discipline lives in `references/mutation-testing.md`.
+- `effect-v4-testing` — `@effect/vitest`, `it.effect`, test layers, property tests and the false-green catalogue (a `0 tests passed` run that exits 0, `TestClock` starting at the epoch so clock reads return 1970, an accumulating `TestConsole.logLines`, an eagerly-recording `layerNoop` stub). Its mutation discipline lives in `references/mutation-testing.md`.
 
 **The migration reference:**
 
@@ -104,7 +104,7 @@ And the path is written `${CLAUDE_PROJECT_DIR}/repos/effect-smol`, using [skill 
 
 ### `effect-v4-source-lookup`
 
-The rung-2/rung-3 skill, loaded by all three agents. It carries the ladder, the probe preconditions, and the worked example that shows the rungs disagreeing: `migration/services.md` never mentions `Context.Key`; a runtime `typeof Context.Key` reports `undefined` because it is type-only; and `Context.ts:65` declares `export interface Key<out Identifier, out Shape>`, giving existence, type-only-ness and the covariance that sank an approved design — all three facts available only at rung 2.
+The rung-2/rung-3 skill, loaded by all three agents. It carries the ladder, the probe preconditions and the worked example that shows the rungs disagreeing: `migration/services.md` never mentions `Context.Key`; a runtime `typeof Context.Key` reports `undefined` because it is type-only; and `Context.ts:65` declares `export interface Key<out Identifier, out Shape>`, giving existence, type-only-ness and the covariance that sank an approved design — all three facts available only at rung 2.
 
 Its addition corrected a live trap in `effect-developer`, whose "prime directive" prescribed `node -e "console.log(typeof S.TheThing)"` as the existence probe. That check reports `undefined` for every type-only symbol in v4, so the agent's own verification ritual was a false-negative generator.
 

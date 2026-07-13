@@ -4,7 +4,7 @@ module: effected
 category: architecture
 created: 2026-07-08
 updated: 2026-07-12
-last-synced: 2026-07-11
+last-synced: 2026-07-12
 completeness: 85
 related:
   - ../architecture.md
@@ -35,7 +35,7 @@ The exact/caret asymmetry is the point, not an inconsistency: `range` is the ver
 
 `rolldown-pnpm-config` reads this config and emits both catalogs. The build also uses `bundleNodeModules: true` and `looseFiles` to ship the `pnpmfile` (`pnpmfile.mjs`/`pnpmfile.cjs` from `src/pnpmfile.ts`) that pnpm loads as the config dependency's hook.
 
-Note the toolchain field: this package uses `@typescript/native-preview` at `catalog:silk` (not `@effect/tsgo` at `catalog:effect`) — as a companion it ships no `effect`-importing code, so it rides the silk tooling catalog, deliberately outside the v4 toolchain split that the [package-setup.md](../package-setup.md) library packages observe.
+Toolchain note: like every package it typechecks with `tsc --noEmit` against `typescript` at `catalog:silk` ([package-setup.md](../package-setup.md#the-typechecker-tsc-not-tsgo)); as a companion it ships no `effect`-importing code.
 
 ## Maintainer workflows
 
@@ -70,7 +70,7 @@ It ships. It is a real npm-targeted package (`publishConfig.targets.npm` is `tru
 
 ## Publishing
 
-**It publishes to npm with the kit, at `0.1.0`, on the release gate like every other package** ([releases.md](../releases.md#versioning)). Nothing here has published yet — it is at `0.0.0` and `npm view` 404s — but that is true of all sixteen packages and distinguishes this one from none of them.
+**It publishes to npm with the kit, at `0.1.0`, on the release gate like every other package** ([releases.md](../releases.md#versioning)). Nothing here has published yet — it is at `0.0.0` and `npm view` 404s — but that is true of every package here and distinguishes this one from none of them.
 
 Being a companion rather than a library — no library here depends on it, it depends on none — makes it structurally free to release on its own schedule, and for a while this doc claimed it therefore *would*. It does not. **Being unblocked by the kit is not the same as being excluded from it**, and the release is coordinated by design so consumers get one internally consistent graph on day one — the companion included, since its entire purpose is to hand consumers the same pinned `effect` versions the kit was built against.
 

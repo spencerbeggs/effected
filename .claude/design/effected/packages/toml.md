@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-11
-last-synced: 2026-07-11
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -99,7 +99,7 @@ Pure-tier house rule: named `Effect.fn` spans on the public fallible boundaries 
 
 `@effect/vitest`, `assert.*` — never `expect` — with tests in `__test__/` per repo convention. Three families:
 
-1. **Compliance gate**: the BurntSushi toml-test 1.0.0 corpus (~500 valid + ~370 invalid cases), vendored as committed plain files pinned to a recorded upstream ref (the [yaml fixture-corpus precedent](yaml.md#fixture-corpus-and-compliance-harness)). Every valid case decodes to its expected typed value; every invalid case fails with a typed error.
+1. **Compliance gate**: the BurntSushi toml-test corpus (the files-toml-1.0.0 subset), vendored as committed plain files pinned to a recorded upstream ref (the [yaml fixture-corpus precedent](yaml.md#fixture-corpus-and-compliance-harness)). Every valid case decodes to its expected typed value; every invalid case fails with a typed error.
 2. **Differential property tests** against `smol-toml` pinned exact as the devDependency oracle (the [glob/minimatch playbook](glob.md#testing)), asserting parse agreement on generated documents modulo the documented value-model divergence.
 3. **Hand-written suites** for what the corpus cannot see: CST fidelity (byte-exact round-trip), edit/format/visitor behavior, the datetime Schema classes and a hostile-input suite exercising every hardening guard above.
 
@@ -119,7 +119,7 @@ Per [package-setup.md](../package-setup.md): copy a pure sibling (yaml) into `pa
 
 The from-scratch engine merged on `feat/toml` with every gate green, promoting this doc to `current`. As-built notes against the design above:
 
-**Gate results.** The BurntSushi toml-test v2.2.0 corpus (the files-toml-1.0.0 subset — 205 valid plus 474 invalid cases) passes 679/679 with no skip list; the design's ~500-valid/~370-invalid estimate was the full-corpus number, not the 1.0.0 subset. Byte-exact round-trip is proven over all 205 valid files. The `smol-toml` 1.7.0 differential oracle found zero divergences. The suite runs 1415 tests total, and `dist/prod/issues.json` reports zero errors, zero warnings, and a suppressed bucket holding only the 26 synthesized `_base` entries.
+**Gate results.** The BurntSushi toml-test v2.2.0 corpus (the files-toml-1.0.0 subset) passes in full with no skip list, byte-exact round-trip is proven over every valid corpus file and the `smol-toml` differential oracle found zero divergences. `dist/prod/issues.json` reports zero errors, zero warnings and a suppressed bucket holding only synthesized `_base` entries.
 
 **G8 correction (corpus-driven).** The semantic pass was corrected against the corpus: headers pass **through** dotted-created intermediate tables (the spec's `fruit.apple.texture` example, where `[fruit.apple.texture]` is legal after `fruit.apple` was created by a dotted key). Only a header **landing** on a dotted-created table is illegal. The original redefinition-rule sketch conflated the two.
 

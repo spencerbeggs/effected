@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-11
-last-synced: 2026-07-11
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -30,7 +30,7 @@ This makes walker a concrete proof that the tier-2 boundary is drawn where the t
 
 ## Origin, and a correction: three things, not two
 
-[package-inventory.md](../package-inventory.md) currently claims walker's two sources — `config-file`'s `walkUp.ts` and workspaces-effect's `discovery/glob-core.ts` — are "the same algorithm pointed in opposite directions." **That is false, and this doc corrects it.**
+An early draft of [package-inventory.md](../package-inventory.md) claimed walker's two sources — `config-file`'s `walkUp.ts` and workspaces-effect's `discovery/glob-core.ts` — are "the same algorithm pointed in opposite directions." **That was false, and the correction is recorded here.**
 
 `glob-core.ts` is pure glob **compilation** with no IO — it turns a glob pattern into an anchored matcher and matches strings against it. The downward **enumeration** is a separate loop entirely, living in `WorkspaceDiscoveryLive.resolvePatterns`, which calls `fs.exists` / `fs.readDirectory` inline and raises a workspaces-specific `WorkspaceDiscoveryError`. So there are three distinct things, not two:
 
@@ -140,11 +140,11 @@ Extracting walker was a real change to the already-merged, previously zero-runti
 - **`isGitRoot` / `isWorkspaceRoot` dropped their `(fs, path)` parameters** and `yield*` the services instead, because `findRoot` is generic in `R`. Their error channel tightened from `unknown` to typed: `(dir) => Effect<boolean, PlatformError.PlatformError, FileSystem | Path>`. `isWorkspaceRoot` kept its `try`/`catch` around `JSON.parse` — a parse throw is a defect, and `firstMatch`'s `Effect.catch` absorbs failures, not defects, so removing the `try`/`catch` would leak a defect through that now-typed channel.
 - **`absorb` survives only for `explicitPath` / `staticDir` / `systemEtc`**, the three resolvers that call `fs.exists` directly. The three *walking* resolvers no longer need `absorb` — walker's channel is already `never`.
 - **Net: exactly one absorbing loop remains in the repo.** The walking resolvers inherit the best-effort guarantee from `firstMatch`'s type rather than from prose scattered across resolver bodies.
-- **Migration gate held.** config-file's suite grew from 120 to 124 tests — the pre-existing 120 stayed green unmodified through the refactor, and four new tests closed mutation-proven coverage gaps in `ConfigResolver.int.test.ts` (`stopAt` actually halting an ascent, `rootAnchored` probing only under the anchor, `gitRoot` anchoring on the nearest of nested repos, `systemEtc`'s success path) discovered while validating the extraction, not caused by it.
+- **Migration gate held.** config-file's pre-existing suite stayed green unmodified through the refactor, and new tests closed mutation-proven coverage gaps in `ConfigResolver.int.test.ts` (`stopAt` actually halting an ascent, `rootAnchored` probing only under the anchor, `gitRoot` anchoring on the nearest of nested repos, `systemEtc`'s success path) discovered while validating the extraction, not caused by it.
 
 ## Testing
 
-`@effect/vitest`, `it.effect`, `assert.*` — never `expect`. Tests live in `packages/walker/__test__/Walker.test.ts` per repo convention. The landed suite is **25 tests**, covering five mutation-proven invariants: per-candidate absorption, defect propagation, `firstMatch` short-circuiting, `findUpward`'s directory-major ordering and the positive-integer `maxDepth` guard.
+`@effect/vitest`, `it.effect`, `assert.*` — never `expect`. Tests live in `packages/walker/__test__/Walker.test.ts` per repo convention. The landed suite covers five mutation-proven invariants: per-candidate absorption, defect propagation, `firstMatch` short-circuiting, `findUpward`'s directory-major ordering and the positive-integer `maxDepth` guard.
 
 Walker needs **no platform package**. Tests provide `Path.layer` (POSIX) and `FileSystem.layerNoop({ exists, readFileString })`, both from `effect` core — so there is **no `@effect/platform-node` devDependency**, unlike config-file. This is the concrete proof that the tier-2 boundary is drawn where the taxonomy claims: a boundary package that does real IO can still be tested with core-only layers when the IO surface is small enough.
 
@@ -158,7 +158,7 @@ Required tests:
 - **`maxDepth` truncates** a chain longer than the cap.
 - **Nearer directories win** — the first match in ascending order is returned.
 
-**Migration gate held:** config-file's existing 120 tests stayed green **unmodified** through the refactor. The extraction changed internals, not behaviour.
+**Migration gate held:** config-file's existing tests stayed green **unmodified** through the refactor. The extraction changed internals, not behaviour.
 
 ## Build
 

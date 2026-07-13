@@ -4,7 +4,7 @@ module: effected
 category: architecture
 created: 2026-07-08
 updated: 2026-07-12
-last-synced: 2026-07-11
+last-synced: 2026-07-12
 completeness: 92
 related:
   - ../architecture.md
@@ -35,7 +35,7 @@ What does not: the one stringly-typed mega-error, the nine kind-based `src/` fol
 
 The **headline migration work is the error-model redesign** (review §"Priority recommendations", item 2) — the single biggest quality lift in this port.
 
-Status: **merged, and consolidated.** The core landed on `feat/config-file` with the three codec adapters as separate packages; on 2026-07-11 those three adapters were dissolved back into this package on `feat/remerge-config-file` (see [the consolidation](#the-consolidation-2026-07-11)). The package now carries all four codecs and **146 tests**. This doc records the *as-built* design; per the semver/jsonc/yaml/package-json precedent it is `current`, with inline "As-built:" notes woven into the sections below, each resolving a verify-at-port-time item the pre-port draft left open.
+Status: **merged, and consolidated.** The core landed on `feat/config-file` with the three codec adapters as separate packages; on 2026-07-11 those three adapters were dissolved back into this package on `feat/remerge-config-file` (see [the consolidation](#the-consolidation-2026-07-11)). The package now carries all four codecs. This doc records the *as-built* design; per the semver/jsonc/yaml/package-json precedent it is `current`, with inline "As-built:" notes woven into the sections below, each resolving a verify-at-port-time item the pre-port draft left open.
 
 ## The consolidation (2026-07-11)
 
@@ -121,7 +121,7 @@ The **codec adapters were pure tier**, not boundary: tier follows a package's ow
 
 As-built: 5a–5c shipped together on `feat/config-file`; 5d (`@effected/toml`) and 5e (`@effected/config-file-toml`) followed. On 2026-07-11 the consolidation deleted 5b, 5c and 5e. Only 5f (`@effected/config-file-watcher`) remains not started, per [package-inventory.md](../package-inventory.md#the-config-file-family). `@effected/toml` (5d) survives as a format package and stays on the [release gate](../releases.md#the-gate); 5f is not on it.
 
-As-built, 2026-07-09: `@effected/walker` landed. This package's `internal/walkUp.ts` was deleted and the `ConfigResolver` strategies — `upwardWalk` and `rootAnchored` (and through it `gitRoot`/`workspaceRoot`) — are now expressed over walker's primitives: `Walker.ascend`, `Walker.findUpward`, `Walker.findRoot`. Walker is **boundary tier** — it does the IO itself through core `FileSystem`/`Path`, arriving via the `R` channel rather than an injected `exists` parameter — but config-file **stayed tier 2 by [R3](../effect-standards.md#dependency-policy)**, since a boundary dependency does not propagate; the extraction was a move, not a redesign. The core gained `@effected/walker` as a `workspace:*` edge in both `devDependencies` and `peerDependencies`, and kept its zero-external-runtime-dependency property. The suite grew from 120 to 124 tests. See [packages/walker.md](walker.md#consumer-impact-the-config-file-refactor).
+As-built, 2026-07-09: `@effected/walker` landed. This package's `internal/walkUp.ts` was deleted and the `ConfigResolver` strategies — `upwardWalk` and `rootAnchored` (and through it `gitRoot`/`workspaceRoot`) — are now expressed over walker's primitives: `Walker.ascend`, `Walker.findUpward`, `Walker.findRoot`. Walker is **boundary tier** — it does the IO itself through core `FileSystem`/`Path`, arriving via the `R` channel rather than an injected `exists` parameter — but config-file **stayed tier 2 by [R3](../effect-standards.md#dependency-policy)**, since a boundary dependency does not propagate; the extraction was a move, not a redesign. The core gained `@effected/walker` as a `workspace:*` edge in both `devDependencies` and `peerDependencies`, and kept its zero-external-runtime-dependency property. See [packages/walker.md](walker.md#consumer-impact-the-config-file-refactor).
 
 ## Tier and dependencies
 
@@ -129,7 +129,7 @@ As-built, 2026-07-09: `@effected/walker` landed. This package's `internal/walkUp
 
 - `peerDependencies` (as-built): `effect` (`catalog:effect`) plus four `workspace:*` edges — `@effected/jsonc`, `@effected/yaml`, `@effected/toml` (the absorbed codecs) and `@effected/walker` (the upward-traversal primitives). Each is mirrored in `devDependencies`, per the `@effected/walker` precedent. **The v3 `@effect/platform` peer disappears entirely** — `FileSystem` and `Path` are core in v4 (verified against `effect@4.0.0-beta.93`; `packages/package-json/src/PackageJsonFile.ts` sets the precedent with `import { FileSystem, Path } from "effect"`). The v3 optional `@effect/platform-node` peer also goes: the library programs against core abstractions and never needs a platform *implementation*, even optionally. Consumers provide one at the edge.
 - `dependencies`: **none.** The three format engines arrive through `@effected/*` peers, never as external runtime deps; `smol-toml` never enters the tree at all (`@effected/toml` is a from-scratch engine).
-- `devDependencies`: the four `workspace:*` peers mirrored, plus `effect`, `@effect/vitest`, `@effect/tsgo` (`catalog:effect`); `@effect/platform-node` (`catalog:effect` — for `it.effect` integration tests that provide a real `FileSystem`); `@types/node`, `typescript` (`catalog:silk`).
+- `devDependencies`: the four `workspace:*` peers mirrored, plus `effect` and `@effect/vitest` (`catalog:effect`); `@effect/platform-node` (`catalog:effect` — for `it.effect` integration tests that provide a real `FileSystem`); `@types/node`, `typescript` (`catalog:silk`).
 
 **Peer closure check.** `effect` has no peers. `@effected/jsonc`, `@effected/yaml` and `@effected/toml` each declare only `effect` as a peer, and `@effected/walker` likewise. The closure holds; no transitive peer escapes to consumers.
 
@@ -207,7 +207,7 @@ As-built: **`save`-without-`defaultPath` is NOT a compile error**, and the desig
 
 **Codec seam error channel.** `ConfigCodec.parse`/`stringify` fail with `ConfigCodecError`. The decorator codecs widen it: `EncryptedCodec` fails with `ConfigCodecError | ConfigEncryptionError`, `ConfigMigration` with `ConfigCodecError | ConfigMigrationError`. The v3 forcing-function — every decorator must flatten into the base codec's single error type — disappears because the seam is generic in its error channel.
 
-As-built: the generic error channel composes cleanly through the decorator stack under `tsgo` exactly as designed — the widened unions above ship unchanged, with no variance friction.
+As-built: the generic error channel composes cleanly through the decorator stack exactly as designed — the widened unions above ship unchanged, with no variance friction.
 
 **Structure-preserving discipline.** `SchemaError` is normalized to `ConfigValidationError` at the decode boundary via `Effect.catchTag("SchemaError", …)`, never leaked deep into logic and never stringified.
 
@@ -241,7 +241,7 @@ const layer = ConfigFile.layer(AppConfig, {
 });
 ~~~
 
-**Verified against `effect@4.0.0-beta.93`** before adoption: `Context.Service<Self, Shape>()(id)` composes under a generic factory, `A` flows through the service methods, two independently-keyed config services coexist in one layer graph, and a deliberate `number`→`string` negative check errors as it should. The probe typechecked under the package's real tsconfig with `tsgo`.
+**Verified against `effect@4.0.0-beta.93`** before adoption: `Context.Service<Self, Shape>()(id)` composes under a generic factory, `A` flows through the service methods, two independently-keyed config services coexist in one layer graph, and a deliberate `number`→`string` negative check errors as it should. The probe typechecked under the package's real tsconfig.
 
 As-built: re-confirmed at port time that **`Context.Tag` does not exist in v4** — the tag *parameter* type is `Context.Key<Self, Shape>` (type-only; `typeof` on it returns `undefined`). `Key<out Identifier, out Shape>` has a **covariant** `Shape`; `Service`/`ServiceClass` are declared `in out` but both still extend `Key`, so that invariance does not change the covariance conclusion below (see [Error redesign](#error-redesign) for where this bit — the `save`-without-`defaultPath` soundness finding).
 
@@ -251,21 +251,11 @@ The service surface is otherwise preserved (review §1 calls it "a well-scoped s
 
 ### Deferred DX candidate: schema-on-the-class Service inference
 
-**Recorded 2026-07-12, not scheduled — its own small cycle if it happens.** Surfaced while writing
-the [@effected/app](app.md) design, whose `AppConfig` preset has to thread the same schema twice.
+**Recorded 2026-07-12, not scheduled — its own small cycle if it happens.** Surfaced while writing the [@effected/app](app.md) design, whose `AppConfig` preset has to thread the same schema twice.
 
-Today the schema is named twice and its type once: `ConfigFile.Service<Self, A>()(id)` at the class
-definition, then `schema` again in the `ConfigFile.layer` options, with `typeof X.Type` ceremony
-where a consumer wants the decoded type. A `ConfigFile.Service<Self>()(id, schema)` form would take
-the schema **on the class** and infer `A` from it, deleting both the duplicate option and the
-ceremony.
+Today the schema is named twice and its type once: `ConfigFile.Service<Self, A>()(id)` at the class definition, then `schema` again in the `ConfigFile.layer` options, with `typeof X.Type` ceremony where a consumer wants the decoded type. A `ConfigFile.Service<Self>()(id, schema)` form would take the schema **on the class** and infer `A` from it, deleting both the duplicate option and the ceremony.
 
-Two things make this a cycle rather than a patch, and they are the reasons it is not folded into the
-app port: the schema would move to the class-definition site while the *rest* of the options stay on
-`layer` (deliberately — see the paragraph above on why options are not baked into the factory), so
-the split has to be justified rather than assumed; and the inference has to be probed against the
-covariant `Context.Key<Self, Shape>` shape that already made [one type-level idea here
-unsound](#error-redesign). Worth doing, cheap to defer, and nothing depends on it.
+Two things make this a cycle rather than a patch, and they are the reasons it is not folded into the app port: the schema would move to the class-definition site while the *rest* of the options stay on `layer` (deliberately — see the paragraph above on why options are not baked into the factory), so the split has to be justified rather than assumed; and the inference has to be probed against the covariant `Context.Key<Self, Shape>` shape that already made [one type-level idea here unsound](#error-redesign). Worth doing, cheap to defer, and nothing depends on it.
 
 ## Type-safety debt paid
 
@@ -349,7 +339,7 @@ All v3 tests are `it()` + `Effect.runPromise` / `runPromiseExit` with layers re-
 
 Tests live in `packages/config-file/__test__/` split per concept, integration under `__test__/integration/`, per repo convention. Integration tests are the only ones that provide a platform layer — the boundary discipline made explicit.
 
-As-built: **146 tests, all green**, alongside a zero-warning `dist/prod/issues.json`. The count grew in two steps: 111 at port time, 131 by the time walker and the toml work had rippled through, and 146 after the consolidation folded in the 15 codec tests the adapters owned (5 jsonc, 5 yaml, 5 toml — the jsonc adapter's original 4 grew to 5 in the move). See [the codecs](#the-codecs-as-built) and [port strategy](#port-strategy) for the whole-repo gate.
+As-built: the suite is green alongside a zero-warning `dist/prod/issues.json`; the consolidation folded the adapters' codec tests into this package's suite. See [the codecs](#the-codecs-as-built).
 
 ## v4 API drift to verify early
 
@@ -357,7 +347,7 @@ The discipline (semver was burned mid-port by v4 removing `SortedSet`): verify t
 
 - **`FileSystem` / `Path` are in `effect` core** — confirmed by runtime probe and by `packages/package-json/src/PackageJsonFile.ts` importing them from `effect`. The `@effect/platform` peer is genuinely gone.
 - **`ConfigProvider` surface** — `fromUnknown`, `orElse`, `layerAdd`, `fromEnv`, `fromDir`, `fromDotEnv` all present.
-- **The generic `Context.Service` class factory** typechecks under `tsgo`, with `A` flowing through and independent keying holding.
+- **The generic `Context.Service` class factory** typechecks, with `A` flowing through and independent keying holding.
 
 Also verified at port time, each against `effect@4.0.0-beta.93`, each a durable fact for the next port:
 
@@ -389,11 +379,9 @@ Remaining-to-verify items from the pre-port draft, each now resolved:
 8. **Then the adapters** — `@effected/config-file-jsonc` and `@effected/config-file-yaml`, once the `ConfigCodec` seam is stable.
 9. **Build gate:** `pnpm --filter @effected/config-file typecheck`, `turbo build:prod` with a zero-warning `dist/prod/issues.json`, biome clean, tests green.
 
-As-built: this sequencing landed as planned. `@effected/config-file` shipped with **111 tests** and a zero-warning `dist/prod/issues.json`; the two adapters shipped with **4** (`-jsonc`) and **5** (`-yaml`) tests respectively. Whole-repo gate on `feat/config-file`: typecheck **15/15**, build **28/28**, tests **1830/1830**.
+As-built: this sequencing landed as planned, with every gate green at port time and again after the consolidation. The consolidation left `dist/prod/issues.json` **unchanged** — every suppressed entry is a `_base` symbol, per the [API-Extractor house policy](../effect-standards.md#api-extractor--effect-class-factories) — because absorbing three packages' worth of public surface added no new suppression: the codecs are plain objects rather than class factories.
 
-As-built, the consolidation on `feat/remerge-config-file`: the merged package carries **146 tests** and its `dist/prod/issues.json` is **unchanged by the merge** — `errors: 0, warnings: 0, suppressed: 10`, all `_base`, per the [API-Extractor house policy](../effect-standards.md#api-extractor--effect-class-factories). Absorbing three packages' worth of public surface added no new suppression, because the codecs are plain objects rather than class factories. Whole-repo gate: typecheck **28/28**, build **49/49**, tests **3874/3874**.
-
-As-built: the API-Extractor gate was **vacuous for eleven tasks** across this port before it was noticed — `index.ts` was `export {}` on those tasks, so the extractor walked nothing and reported `suppressed: 0`, which looked clean but proved nothing. Engaging it for real surfaced nine latent warnings and one `ciFatal` (`FsPath`, an internal type reachable from a `@public` signature, fixed by inlining the union at the call site rather than exporting the internal type). Final state: `errors: 0, warnings: 0, suppressed: 10` (one `_base` suppression per class factory, per the [API-Extractor house policy](../effect-standards.md#api-extractor--effect-class-factories)). The two adapter packages legitimately report `suppressed: 0` — they define no class factories, so there is nothing to suppress.
+As-built: the API-Extractor gate was **vacuous for eleven tasks** across this port before it was noticed — `index.ts` was `export {}` on those tasks, so the extractor walked nothing and reported `suppressed: 0`, which looked clean but proved nothing. Engaging it for real surfaced latent warnings and one `ciFatal` (`FsPath`, an internal type reachable from a `@public` signature, fixed by inlining the union at the call site rather than exporting the internal type). Final state: a zero-warning `issues.json` with one `_base` suppression per class factory, per the [API-Extractor house policy](../effect-standards.md#api-extractor--effect-class-factories).
 
 ## The codecs (as-built)
 
@@ -402,9 +390,9 @@ The four codecs are free-standing named exports, one module each, per [the conso
 Each is a thin `ConfigCodec` implementation over one format package, per the [module layout](#module-layout-module-per-concept) plan. The format packages remain unaware of config-file; the arrow points one way.
 
 - **`JsonCodec`** (`src/JsonCodec.ts`) — the zero-dependency built-in, over `JSON.parse`/`JSON.stringify`. Renamed from `ConfigCodec.json` by the consolidation, which deleted the namespace object that held it.
-- **`JsoncCodec`** (`src/JsoncCodec.ts`) — 5 tests. `@effected/jsonc` has **no `stringify`** — its schema layer's encode is `Effect.succeed(JSON.stringify(value, null, 2))`, so JSONC comments never survive a decode/encode round-trip *by design* of the underlying package. Consequently `JsoncCodec.stringify` is **byte-identical** to `JsonCodec.stringify`; `JsoncEdit`/`JsoncModifier` from `@effected/jsonc` cannot help, because they are edit-based and require the *original* source text, while `ConfigCodec.stringify`'s seam is stateless — `(value) => Effect<string, E>`, with no "prior text" input to edit against. **Open seam question, recorded rather than resolved:** a comment-preserving write would require `ConfigCodec.stringify` itself to accept the prior raw text as an input. That was a change to the `@effected/config-file` seam an adapter could not retrofit on its own; **the consolidation does not resolve it, it merely moves it inside the package that owns the seam** — which makes it cheaper to attempt, not any more decided. Still not pursued.
-- **`YamlCodec`** (`src/YamlCodec.ts`) — 5 tests. `@effected/yaml` has a **real** `stringify` — a class with static `parse`/`stringify`, both `Effect.fn`, failing `YamlParseError` / `YamlStringifyError` respectively. No fallback and no comment-loss caveat; the straightforward case the design anticipated.
-- **`TomlCodec`** (`src/TomlCodec.ts`) — 5 tests. Like yaml, `@effected/toml` has a **real** `stringify` (`Toml.parse`/`Toml.stringify`, both `Effect.fn`, failing `TomlParseError`/`TomlStringifyError`), so it is the straightforward one-file `Effect.mapError` case — each direction wraps into `ConfigCodecError({ codec: "toml", operation, cause })` with the cause preserved structurally. Unlike either sibling, stringify has a **cheap genuine failure case** — TOML has no null — so this is the one codec whose tests pin `operation: "stringify"` with a structural `TomlStringifyError` cause (`UnsupportedValue` diagnostic). The hostile-input test trips `@effected/toml`'s parse-side nesting-depth cap (`MAX_NESTING_DEPTH = 256`; 1000 nested arrays) and asserts typed failure (`Cause.hasFails`, not `hasDies`) with a `NestingDepthExceeded` diagnostic. Value-model note: TOML date-times decode to the four `TomlDateTime` classes and integers past ±(2^53 − 1) decode to `bigint`; the seam is `unknown`, so no codec-side handling was needed — the consumer's schema decides.
+- **`JsoncCodec`** (`src/JsoncCodec.ts`) — `@effected/jsonc` has **no `stringify`** — its schema layer's encode is `Effect.succeed(JSON.stringify(value, null, 2))`, so JSONC comments never survive a decode/encode round-trip *by design* of the underlying package. Consequently `JsoncCodec.stringify` is **byte-identical** to `JsonCodec.stringify`; `JsoncEdit`/`JsoncModifier` from `@effected/jsonc` cannot help, because they are edit-based and require the *original* source text, while `ConfigCodec.stringify`'s seam is stateless — `(value) => Effect<string, E>`, with no "prior text" input to edit against. **Open seam question, recorded rather than resolved:** a comment-preserving write would require `ConfigCodec.stringify` itself to accept the prior raw text as an input. That was a change to the `@effected/config-file` seam an adapter could not retrofit on its own; **the consolidation does not resolve it, it merely moves it inside the package that owns the seam** — which makes it cheaper to attempt, not any more decided. Still not pursued.
+- **`YamlCodec`** (`src/YamlCodec.ts`) — `@effected/yaml` has a **real** `stringify` — a class with static `parse`/`stringify`, both `Effect.fn`, failing `YamlParseError` / `YamlStringifyError` respectively. No fallback and no comment-loss caveat; the straightforward case the design anticipated.
+- **`TomlCodec`** (`src/TomlCodec.ts`) — like yaml, `@effected/toml` has a **real** `stringify` (`Toml.parse`/`Toml.stringify`, both `Effect.fn`, failing `TomlParseError`/`TomlStringifyError`), so it is the straightforward one-file `Effect.mapError` case — each direction wraps into `ConfigCodecError({ codec: "toml", operation, cause })` with the cause preserved structurally. Unlike either sibling, stringify has a **cheap genuine failure case** — TOML has no null — so this is the one codec whose tests pin `operation: "stringify"` with a structural `TomlStringifyError` cause (`UnsupportedValue` diagnostic). The hostile-input test trips `@effected/toml`'s parse-side nesting-depth cap (`MAX_NESTING_DEPTH = 256`; 1000 nested arrays) and asserts typed failure (`Cause.hasFails`, not `hasDies`) with a `NestingDepthExceeded` diagnostic. Value-model note: TOML date-times decode to the four `TomlDateTime` classes and integers past ±(2^53 − 1) decode to `bigint`; the seam is `unknown`, so no codec-side handling was needed — the consumer's schema decides.
 
 ## Watcher redesign (deferred cycle)
 
@@ -431,13 +419,7 @@ Note also that each source is decoded **individually** before the strategy sees 
 
 ### As-built: the prototype-preserving merge reopened prototype pollution
 
-The first fix above used `Object.assign(Object.create(proto), target)`. That was wrong, and the
-review caught it. `Object.assign` copies with `[[Set]]` semantics, so an own `__proto__` key on
-`target` — which `JSON.parse` happily produces — resolves to `Object.prototype`'s inherited
-accessor and **reassigns the result's prototype to attacker-controlled data**. The `FORBIDDEN` set
-only filtered `source`, and `deepMerge(higher, merged)` passes the *highest-priority* document as
-`target`. The spread it replaced (`{ ...target }`) was safe by accident: object spread uses
-`CreateDataProperty` and never invokes a setter.
+The first fix above used `Object.assign(Object.create(proto), target)`. That was wrong, and the review caught it. `Object.assign` copies with `[[Set]]` semantics, so an own `__proto__` key on `target` — which `JSON.parse` happily produces — resolves to `Object.prototype`'s inherited accessor and **reassigns the result's prototype to attacker-controlled data**. The `FORBIDDEN` set only filtered `source`, and `deepMerge(higher, merged)` passes the *highest-priority* document as `target`. The spread it replaced (`{ ...target }`) was safe by accident: object spread uses `CreateDataProperty` and never invokes a setter.
 
 Verified before and after:
 
@@ -447,49 +429,27 @@ Object.assign : result prototype polluted -> true
 spread        : result prototype polluted -> false
 ~~~
 
-`deepMerge` now filters **both** sides through `FORBIDDEN` and copies every key with
-`Object.defineProperty`, which creates an own data property and never consults the prototype chain.
-Two tests pin it: a hostile `__proto__` on the higher-priority document, and a hostile `__proto__`
-nested under a key absent from the target (the wholesale-copy branch, which stays inert).
+`deepMerge` now filters **both** sides through `FORBIDDEN` and copies every key with `Object.defineProperty`, which creates an own data property and never consults the prototype chain. Two tests pin it: a hostile `__proto__` on the higher-priority document, and a hostile `__proto__` nested under a key absent from the target (the wholesale-copy branch, which stays inert).
 
-The lesson worth keeping: a prototype-preserving merge and a prototype-pollution guard interact.
-Preserving the prototype means `result` inherits `Object.prototype`'s `__proto__` accessor, so any
-write that goes through `[[Set]]` can move the prototype. Only `defineProperty` is safe.
+The lesson worth keeping: a prototype-preserving merge and a prototype-pollution guard interact. Preserving the prototype means `result` inherits `Object.prototype`'s `__proto__` accessor, so any write that goes through `[[Set]]` can move the prototype. Only `defineProperty` is safe.
 
 ### As-built: one unreadable ancestor no longer aborts root discovery
 
-`rootAnchored` absorbed failures at the resolver boundary, so a single `EACCES` on an ancestor
-turned the whole ascent into `Option.none()` — hiding a valid `.git` or `pnpm-workspace.yaml` above
-it. `findUpward` now absorbs each probe individually, so an unreadable directory is skipped and the
-walk continues. Its error channel is `never` as a result, which makes the resolver-absorption
-contract a property of the walk rather than of the wrapper. Pinned by a test with an unreadable
-`/a/b` and a real root at `/a`.
+`rootAnchored` absorbed failures at the resolver boundary, so a single `EACCES` on an ancestor turned the whole ascent into `Option.none()` — hiding a valid `.git` or `pnpm-workspace.yaml` above it. `findUpward` now absorbs each probe individually, so an unreadable directory is skipped and the walk continues. Its error channel is `never` as a result, which makes the resolver-absorption contract a property of the walk rather than of the wrapper. Pinned by a test with an unreadable `/a/b` and a real root at `/a`.
 
 ### As-built: `update` serializes its read-modify-write
 
-`update` is load → transform → save. Two concurrent calls both read the old document across the
-read's async boundary and both write their own transform of it, so one caller's change was silently
-lost. It now holds a one-permit `Semaphore` (`Semaphore.makeUnsafe(1)`, one per service instance)
-across the whole critical section.
+`update` is load → transform → save. Two concurrent calls both read the old document across the read's async boundary and both write their own transform of it, so one caller's change was silently lost. It now holds a one-permit `Semaphore` (`Semaphore.makeUnsafe(1)`, one per service instance) across the whole critical section.
 
-Note `Effect.makeSemaphore` does not exist in v4 — `Semaphore` is a top-level module
-(`Semaphore.make` / `makeUnsafe`, then `withPermits(1)(effect)`).
+Note `Effect.makeSemaphore` does not exist in v4 — `Semaphore` is a top-level module (`Semaphore.make` / `makeUnsafe`, then `withPermits(1)(effect)`).
 
-This guards one service instance in one process. It is **not** a file lock: another process writing
-the same path can still clobber.
+This guards one service instance in one process. It is **not** a file lock: another process writing the same path can still clobber.
 
-The first version of the test passed against a synchronous in-memory `FileSystem` and proved
-nothing — with no async boundary the fibers never interleave. The second version leaked the race
-the other way: it logged the value before yielding but returned `files[p]` *after*, so the second
-fiber read the first fiber's write. A read must snapshot at read time. Only then does the
-unserialized implementation fail, `expected 1 to equal 2`.
+The first version of the test passed against a synchronous in-memory `FileSystem` and proved nothing — with no async boundary the fibers never interleave. The second version leaked the race the other way: it logged the value before yielding but returned `files[p]` *after*, so the second fiber read the first fiber's write. A read must snapshot at read time. Only then does the unserialized implementation fail, `expected 1 to equal 2`.
 
 ### As-built: PBKDF2 raised to 600,000 iterations
 
-The crypto was ported verbatim from v3, which used 100,000. OWASP's current guidance for
-PBKDF2-HMAC-SHA256 is 600,000. Nothing is published, so raising it costs no ciphertext
-compatibility, and derivation is memoized per codec instance so the cost is paid once. This is the
-one deliberate divergence from the verbatim-port policy, and it is recorded in the changeset.
+The crypto was ported verbatim from v3, which used 100,000. OWASP's current guidance for PBKDF2-HMAC-SHA256 is 600,000. Nothing is published, so raising it costs no ciphertext compatibility, and derivation is memoized per codec instance so the cost is paid once. This is the one deliberate divergence from the verbatim-port policy, and it is recorded in the changeset.
 
 ## Deliberately not ported
 

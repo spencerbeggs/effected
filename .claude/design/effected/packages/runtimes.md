@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-11
-last-synced: 2026-07-11
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -282,7 +282,7 @@ An error-type assertion is not optional on the `layerFresh` tests. `assert.isTru
 
 ## As built (2026-07-11)
 
-Merged as two packages with **74 tests** across them, a clean typecheck and biome run, and both cold prod builds reporting zero warnings and zero errors with all 20 suppressed entries being synthesized class-factory `_base` symbols. Adding `@effect/platform-node` v4 to the CLI introduced **no new `pnpm peers check` warning** — and as of the pnpm 11.12.0 upgrade that check is clean outright, with no residual tooling warnings to discount it against.
+Merged as two packages with a clean typecheck and biome run, and both cold prod builds reporting zero warnings and zero errors with every suppressed entry a synthesized class-factory `_base` symbol. Adding `@effect/platform-node` v4 to the CLI introduced no new `pnpm peers check` warning.
 
 ### Beta.97 adaptation: `Schedule.modifyDelay` takes one metadata object
 

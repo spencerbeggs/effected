@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-08
-last-synced: 2026-07-08
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../architecture.md
@@ -17,7 +17,7 @@ related:
 
 ## Overview
 
-Target design for `@effected/semver`, the first package migration (step 2 of [migration-playbook.md](../migration-playbook.md)). Source is semver-effect (`/Users/spencer/workspaces/spencerbeggs/semver-effect`, Effect v3); the step-1 analysis lives in `.claude/reviews/semver.md` and this design implements its §3 v4-mapping and §4 layout decisions against [effect-standards.md](../effect-standards.md). This is a redesign, not a lift-and-shift: the class-based DX survives, the kind-based folder layout, static-wiring hack, floating-function layer and dead surface do not. Status: implemented on `feat/semver-migration` (playbook steps 2-6 complete); this doc records the as-built design, with deviations from the approved draft noted inline.
+Target design for `@effected/semver`, the first package migration (step 2 of [migration-playbook.md](../migration-playbook.md)). Source is semver-effect (`/Users/spencer/workspaces/spencerbeggs/semver-effect`, Effect v3); the step-1 analysis lives in `.claude/reviews/semver.md` and this design implements its §3 v4-mapping and §4 layout decisions against [effect-standards.md](../effect-standards.md). This is a redesign, not a lift-and-shift: the class-based DX survives, the kind-based folder layout, static-wiring hack, floating-function layer and dead surface do not. Status: **merged**; this doc records the as-built design, with deviations from the approved draft noted inline.
 
 ## Tier and dependencies
 
@@ -70,7 +70,7 @@ Plain `Schema.Class` holding `sets` (array of comparator sets; `ComparatorSet` t
 
 `Context.Service` class — identifier and shape in one place (v3's `Context.Tag` does not exist in v4). The layer is a static (`VersionCache.layer`) bound once (`Layer.effect` — Ref construction is effectful); the v3 layer's `SemVerParser` dependency disappears because `resolveString` calls `Range.parse` directly, so the layer requires nothing. As-built implementation note: v4 removed `SortedSet`, so the state is a `Ref<ReadonlyArray<SemVer>>` kept sorted and deduplicated by SemVer precedence (binary search; membership and dedupe ignore build metadata, matching the v3 SortedSet-with-SemVerOrder semantics).
 
-Slimmed interface (v3's 14 methods minus the grouping trio, with the review-§2 inconsistencies resolved):
+Slimmed interface (v3's surface minus the grouping trio, with the review-§2 inconsistencies resolved):
 
 - Mutation: `load`, `add`, `remove`.
 - Query: `versions()`, `latest()`, `oldest()` — all thunks, resolving the v3 getter-vs-thunk mix. `latest`/`oldest` fail `EmptyCacheError` (asking for an extremum of nothing is a real failure); `versions()` never fails and returns a possibly-empty array.
@@ -107,7 +107,7 @@ The custom `[Equal.symbol]`/`[Hash.symbol]` implementation survives: structural 
 
 ## Observability plan
 
-v3 has zero instrumentation. Per the observability standard, `Effect.fn("name")` at public operation boundaries only — the effectful, failure-carrying operations: `SemVer.parse`, `Range.parse`, `Comparator.parse`, `Range.intersect`, and every fallible `VersionCache` boundary (`resolve`, `resolveString`, `diff`, `next`, `prev`). Pure synchronous comparisons, bumps and matching are not instrumented; internal grammar helpers get no spans. The library stays telemetry-agnostic — no OTel configuration anywhere.
+v3 has zero instrumentation. Per the observability standard, `Effect.fn("name")` at public operation boundaries only — the effectful, failure-carrying operations: `SemVer.parse`, `Range.parse`, `Comparator.parse`, `Range.intersect` and every fallible `VersionCache` boundary (`resolve`, `resolveString`, `diff`, `next`, `prev`). Pure synchronous comparisons, bumps and matching are not instrumented; internal grammar helpers get no spans. The library stays telemetry-agnostic — no OTel configuration anywhere.
 
 As-built (v4 best-practice review, `7d1704d`): `VersionCache.diff`/`next`/`prev` were converted from anonymous `Effect.gen` to named `Effect.fn` spans, so every public fallible boundary of the service is instrumented uniformly rather than only `resolve`/`resolveString`. The same review removed unreachable `operator === ""` branches in `internal/desugar.ts`'s x-range desugaring (dead since the grammar never emits an empty operator).
 

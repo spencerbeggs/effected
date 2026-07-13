@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-11
-last-synced: 2026-07-11
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../architecture.md
@@ -33,7 +33,7 @@ Pure tier — no IO anywhere, confirmed by review §6. All inputs are strings; a
 Per the module-per-concept standard, ~9 source files replacing the v3 repo's kind-based layout and its single 2,037-line co-located test file (review §4):
 
 - `src/index.ts` — public surface, re-exports only, zero side effects.
-- `src/Jsonc.ts` — the facade concept. Statics `parse`, `parseTree`, `stripComments`, `equals`, `equalsValue`, and the flagship schema factories `schema(Target, options?)` / `fromString(options?)` plus the `JsoncFromString` default-options schema. Owns `JsoncParseOptions`, `JsoncParseError`, `JsoncParseErrorDetail` and the `JsoncParseErrorCode` literal set.
+- `src/Jsonc.ts` — the facade concept. Statics `parse`, `parseTree`, `stripComments`, `equals`, `equalsValue` and the flagship schema factories `schema(Target, options?)` / `fromString(options?)` plus the `JsoncFromString` default-options schema. Owns `JsoncParseOptions`, `JsoncParseError`, `JsoncParseErrorDetail` and the `JsoncParseErrorCode` literal set.
 - `src/JsoncNode.ts` — the recursive AST node (`Schema.Class` + `Schema.suspend`), no parent pointers. Instance methods `find(path)`, `findAtOffset(offset)`, `pathAt(offset)`, `toValue()`. Owns the `JsoncNodeType` literal set and the co-located `JsoncPath` / `JsoncSegment` type aliases. Absence stays `Option` — no `NotFound` error.
 - `src/JsoncEdit.ts` — the `Schema.Class` edit plus static `applyAll(text, edits)`. Owns the shared edit vocabulary: `JsoncRange` and `JsoncFormattingOptions` (both consumed by the formatter and modifier).
 - `src/JsoncFormatter.ts` — `format(text, range?, options?) -> ReadonlyArray<JsoncEdit>` and the `formatToString` convenience (`applyAll ∘ format`). References `JsoncFormattingOptions`/`JsoncRange` from `JsoncEdit.ts`.
@@ -53,7 +53,7 @@ A judgement call beyond the review: **`JsoncFormatter` is kept as its own module
 
 > **Pure synchronous methods where nothing can fail; `Effect` only where the error channel is real.**
 
-- **Pure synchronous** (no `Effect`, no `Option` wrapping of the whole result unless absence is the value): node value extraction (`JsoncNode.toValue`), edit application (`JsoncEdit.applyAll`, `JsoncFormatter.formatToString`), formatting (`JsoncFormatter.format` — computing edits never fails), comment stripping (`Jsonc.stripComments`), and semantic equality (`Jsonc.equals` / `equalsValue`). These are total functions over their inputs; an `Effect<_, never>` wrapper is pure ceremony that forces callers into `runSync` for no benefit.
+- **Pure synchronous** (no `Effect`, no `Option` wrapping of the whole result unless absence is the value): node value extraction (`JsoncNode.toValue`), edit application (`JsoncEdit.applyAll`, `JsoncFormatter.formatToString`), formatting (`JsoncFormatter.format` — computing edits never fails), comment stripping (`Jsonc.stripComments`) and semantic equality (`Jsonc.equals` / `equalsValue`). These are total functions over their inputs; an `Effect<_, never>` wrapper is pure ceremony that forces callers into `runSync` for no benefit.
 - **`Effect`** (real typed `E` channel): `Jsonc.parse` (`Effect<unknown, JsoncParseError>`), `Jsonc.parseTree` (`Effect<Option<JsoncNode>, JsoncParseError>`), `JsoncModifier.modify` (`Effect<ReadonlyArray<JsoncEdit>, JsoncModificationError>`), and the schema decode path (`Jsonc.schema` / `Jsonc.fromString` decoding, whose failures normalize into `JsoncParseError`).
 - **`Stream`** for the visitor: `JsoncVisitor.visit` returns `Stream<JsoncVisitorEvent>`. Malformed input surfaces as error events *in the union* (mirroring v3's `onError` callback), keeping the stream demand-driven and infallible at the type level; `Stream.take` early-termination on large documents is preserved.
 
@@ -172,7 +172,7 @@ As-built (recorded once the yaml port landed): `Edit`/`Range`/`Path`/`Segment` a
 
 ## Observability plan
 
-v3 has zero instrumentation. Per the observability standard, `Effect.fn("name")` at public *fallible* operation boundaries only: `Jsonc.parse`, `Jsonc.parseTree`, `JsoncModifier.modify`, and the schema decode entry (`Jsonc.schema` / `fromString` decoding) — ~4 named spans. `JsoncVisitor.visit` gets a named stream constructor span. Pure synchronous operations (`stripComments`, `equals`/`equalsValue`, `JsoncFormatter.format`, `JsoncEdit.applyAll`, `JsoncNode.toValue`) are *not* instrumented — consistent with the wrapping policy: no `Effect`, no span. Internal scanner/parser/navigate helpers get no spans. The library stays telemetry-agnostic — no OTel configuration anywhere; applications compose `@effect/opentelemetry` at the edge.
+v3 has zero instrumentation. Per the observability standard, `Effect.fn("name")` at public *fallible* operation boundaries only: `Jsonc.parse`, `Jsonc.parseTree`, `JsoncModifier.modify` and the schema decode entry (`Jsonc.schema` / `fromString` decoding) — ~4 named spans. `JsoncVisitor.visit` gets a named stream constructor span. Pure synchronous operations (`stripComments`, `equals`/`equalsValue`, `JsoncFormatter.format`, `JsoncEdit.applyAll`, `JsoncNode.toValue`) are *not* instrumented — consistent with the wrapping policy: no `Effect`, no span. Internal scanner/parser/navigate helpers get no spans. The library stays telemetry-agnostic — no OTel configuration anywhere; applications compose `@effect/opentelemetry` at the edge.
 
 As-built: `parse`, `parseTree` and `modify` are instrumented as designed, but `JsoncVisitor.visit` is **not** span-wrapped — the named stream constructor span is **deferred**. Stream construction is lazy and pure (`Stream.fromIterable` over the generator), with no clean `Effect.fn` boundary to attach the span to without forcing the stream into an effect it does not otherwise need. Instrumenting the visitor waits for a design that names the span without eagerly evaluating the stream.
 
@@ -210,6 +210,6 @@ As-built (verified against the installed beta): `Stream.runCollect` returns `Eff
 - **Round-trip / behavior-contract tests**: edits-not-mutations byte-minimality (comments/whitespace preserved), `equals`/`equalsValue` key-order and array-order semantics, `modify` delete-via-`undefined` and append-after-last insertion, `stripComments` offset preservation.
 - **Schema-pipeline tests**: `Jsonc.schema(Target)` decode/encode over commented input, and the boundary guarantee that decode failures surface as `JsoncParseError` (never `SchemaError`).
 
-Verify-during-implementation items (v4 `Stream`/`Chunk`/`ParseResult` drift, `Schema.Class` equality semantics, the `JsoncNode`↔`Jsonc.ts` cycle check, and any `Equal`/`Hash` customization) are called out inline in the sections above and resolve to as-built notes when the port lands.
+Verify-during-implementation items (v4 `Stream`/`Chunk`/`ParseResult` drift, `Schema.Class` equality semantics, the `JsoncNode`↔`Jsonc.ts` cycle check and any `Equal`/`Hash` customization) are called out inline in the sections above and resolve to as-built notes when the port lands.
 
-As-built: the suite covers every designed behavior contract — offset discipline (issue #62 spans), edits-not-mutations byte-minimality, `equals`/`equalsValue` equality semantics, the `modify` delete/insert contracts, `stripComments` offset preservation, the `Jsonc.schema` decode/encode pipeline, quote-containing-key navigation through `internal/navigate.ts`, and both property tests (`applyAll ∘ format` idempotence, `parse ∘ stripComments` agreement with `JSON.parse`). The #13 fix added regression tests pinning deep and wide documents plus structural equality between parser-built and `make`-built nodes. Known depth gaps versus the v3 271-test suite, flagged for backfill only if parity *depth* is wanted: per-error-code assertion breadth, `keepLines` formatting permutations, deep/wide document fixtures, and a dedicated multi-line block-comment `stripComments` offset fixture. The as-built suite proves the contracts; the gaps are additional coverage of the same contracts, not undocumented behavior.
+As-built: the suite covers every designed behavior contract — offset discipline (issue #62 spans), edits-not-mutations byte-minimality, `equals`/`equalsValue` equality semantics, the `modify` delete/insert contracts, `stripComments` offset preservation, the `Jsonc.schema` decode/encode pipeline, quote-containing-key navigation through `internal/navigate.ts`, and both property tests (`applyAll ∘ format` idempotence, `parse ∘ stripComments` agreement with `JSON.parse`). The #13 fix added regression tests pinning deep and wide documents plus structural equality between parser-built and `make`-built nodes. Known depth gaps versus the v3 suite, flagged for backfill only if parity *depth* is wanted: per-error-code assertion breadth, `keepLines` formatting permutations, deep/wide document fixtures and a dedicated multi-line block-comment `stripComments` offset fixture. The as-built suite proves the contracts; the gaps are additional coverage of the same contracts, not undocumented behavior.

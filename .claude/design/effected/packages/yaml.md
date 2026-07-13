@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-07
-last-synced: 2026-07-07
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../architecture.md
@@ -25,7 +25,7 @@ Target design for `@effected/yaml`, the third package migration (step 2 of [migr
 
 `@effected/jsonc` ([jsonc.md](jsonc.md)) is the primary template for this port — yaml-effect is a near-isomorph of jsonc-effect (review §5), so the [jsonc/yaml parity convention](jsonc.md#jsoncyaml-parity-convention) is a **binding migration requirement** here, not a nicety. Every shared-vocabulary concept (`Edit`, `Range`, `Path`, `Segment`, `FormattingOptions`, the parse-error-detail-with-position shape) MUST be structurally identical to its `Jsonc*` counterpart; the reconciliation of the two error-detail shapes is worked through in [jsonc/yaml parity reconciliation](#jsoncyaml-parity-reconciliation) below.
 
-Status: **implemented on `feat/yaml-migration` (playbook steps 3–6 complete).** The open decisions the review left standing were resolved as recorded below, and the carry-forward learnings from the semver and jsonc migrations were adopted as house policy from the start. The port landed with all gates green: **1,331 tests passing** (the 1,226-assertion compliance harness intact at 100% with EMPTY skip maps, plus 105 per-concept unit tests), `pnpm typecheck` clean, biome clean, and a zero-warning `dist/prod/issues.json` from `turbo build:prod`, with the api-extractor model wired at `website/lib/models/yaml`. This doc records the *as-built* design; per the semver/jsonc precedent it is promoted to `current` with a raised completeness and inline "As-built:" deviation notes woven into the sections below. The scale of the port (~14,200 lines of source, `composer.ts` alone 4,967 lines, 25 test files) made the [port strategy](#port-strategy) — engine-first, compliance-verified, construction-sites-migrated-incrementally — load-bearing, and it held.
+Status: **merged.** The open decisions the review left standing were resolved as recorded below, and the carry-forward learnings from the semver and jsonc migrations were adopted as house policy from the start. The port landed with all gates green — the vendored compliance harness intact at 100% with EMPTY skip maps, per-concept unit suites, a clean typecheck and biome run, and a zero-warning `dist/prod/issues.json` with the api-extractor model wired at `website/lib/models/yaml`. This doc records the *as-built* design, with inline "As-built:" deviation notes woven into the sections below. The scale of the port (~14,200 lines of source, `composer.ts` alone nearly 5,000 lines) made the [port strategy](#port-strategy) — engine-first, compliance-verified, construction-sites-migrated-incrementally — load-bearing, and it held.
 
 ## Tier and dependencies
 
@@ -273,7 +273,7 @@ As-built, verified at port time: **no `Either` export from the effect root** —
 **Engine-first, compliance-verified, construction-sites-migrated-incrementally** (review §3 effort note — the load-bearing sequencing for a 12k-line engine). The mechanical surface (schemas, errors, options, tests) is a few days; the risk is the engine internals, which build AST nodes with `new` constructors and plain-object state everywhere across `composer.ts` / `lexer.ts` / `stringify.ts`.
 
 1. **Port the engine as-is into `src/internal/`** first — lexer, CST parser, composer (split along seams), stringifier, fold/diff/equal, scanner, CST visitor — with construction sites left as `new` for the moment.
-2. **Verify against the compliance suite** (the 1,226-assertion harness — the safety net, see [fixture corpus](#fixture-corpus-and-compliance-harness)) before touching the public surface. Green compliance is the gate that makes the aggressive redesign feasible.
+2. **Verify against the compliance suite** (the safety net, see [fixture corpus](#fixture-corpus-and-compliance-harness)) before touching the public surface. Green compliance is the gate that makes the aggressive redesign feasible.
 3. **Migrate construction sites to `X.make` incrementally**, and build the public schema classes / errors / options / facade on top of the verified engine.
 
 ### Internal construction: new vs make
@@ -306,14 +306,14 @@ As-built, the recorded v4 discovery: **`new X()` on a v4 tagged/schema class VAL
 
 **Decision, resolved: committed plain files.** The v3 repo vendors the yaml-test-suite as a git checkout *with its own nested `.git`*, which is hostile to a monorepo (Turbo cache inputs, repo size, submodule/subtree friction — review §6 flags it as a pre-port decision). Resolution: **strip the nested `.git` and commit the corpus as plain files** under `packages/yaml/__test__/fixtures/yaml-test-suite/`, pinned to a specific upstream ref recorded in a `README`/metadata file alongside the fixtures. This is deterministic, offline, and Turbo-cacheable — no fetch-on-test network dependency, no submodule ceremony.
 
-The **1,226-assertion compliance harness is the crown jewel** (review §1) — the regression safety net that makes the aggressive redesign feasible. It ports **intact** as an e2e suite at `packages/yaml/__test__/e2e/*.e2e.test.ts` (repo convention for e2e tests), covering the four assertion families: parse success/failure, JSON-equivalence, canonical-output byte-equality, and roundtrip. Green compliance is the gate in the [port strategy](#port-strategy).
+The **vendored yaml-test-suite compliance harness is the crown jewel** (review §1) — the regression safety net that makes the aggressive redesign feasible. It ports **intact** as an e2e suite at `packages/yaml/__test__/e2e/*.e2e.test.ts` (repo convention for e2e tests), covering the four assertion families: parse success/failure, JSON-equivalence, canonical-output byte-equality, and roundtrip. Green compliance is the gate in the [port strategy](#port-strategy).
 
 ## Testing strategy
 
-`@effect/vitest` with `it.effect` as the default mode; never plain `it()` + `Effect.runSync`/`runPromise` (all 25 v3 test files are plain `describe`/`it` + `Effect.runSync` and convert wholesale, the compliance harness especially — review §2). Tests live in `packages/yaml/__test__/` split per concept (`Yaml`, `YamlNode`, `YamlDocument`, `YamlEdit`, `YamlFormat`, `YamlVisitor`, `YamlDiagnostic`) with the compliance harness under `__test__/e2e/`, per repo convention. Construct instances via `X.make(...)`, never `new X(...)` in tests and public examples (the engine's internal `new` sites are the recorded exception — see [internal construction](#internal-construction-new-vs-make)).
+`@effect/vitest` with `it.effect` as the default mode; never plain `it()` + `Effect.runSync`/`runPromise` (the v3 test files are plain `describe`/`it` + `Effect.runSync` and convert wholesale, the compliance harness especially — review §2). Tests live in `packages/yaml/__test__/` split per concept (`Yaml`, `YamlNode`, `YamlDocument`, `YamlEdit`, `YamlFormat`, `YamlVisitor`, `YamlDiagnostic`) with the compliance harness under `__test__/e2e/`, per repo convention. Construct instances via `X.make(...)`, never `new X(...)` in tests and public examples (the engine's internal `new` sites are the recorded exception — see [internal construction](#internal-construction-new-vs-make)).
 
 - **Property tests via `it.effect.prop`** with `Schema.toArbitrary` on the AST classes (review §3): parse/stringify roundtrip properties (`stringify ∘ parse` agreement, `parse ∘ stringify` idempotence on canonical form), and `applyAll ∘ format` idempotence. Any pattern-field checks introduced use **lookahead-free** regexes so `Schema.toArbitrary` derivation works (the fast-check `stringMatching` constraint the standards call out).
-- **The compliance e2e suite** (1,226 assertions) — the safety net; ports intact and is the port-strategy gate.
+- **The compliance e2e suite** — the safety net; ports intact and is the port-strategy gate.
 - **Diagnostic/position tests** pinning `YamlDiagnostic`'s `line`/`character` computation and the single fatal-code predicate (proving the thrice-duplicated v3 lists collapse to one without behavior change).
 - **Structure-preserving-error tests**: `format`/`modify`/`stringify` failures carry `YamlDiagnostic` arrays, never `reason` strings.
 - **Round-trip / behavior-contract tests**: edits-not-mutations byte-minimality (comments/whitespace preserved), `equals`/`equalsValue` semantic equality, `modify` delete-via-`undefined` and append-after-last insertion, `stripComments` offset preservation, multi-document `parseAll` ordering, alias-resolving `YamlNode.toValue(anchors?)`, and `maxAliasCount` DoS protection.
@@ -321,6 +321,6 @@ The **1,226-assertion compliance harness is the crown jewel** (review §1) — t
 
 Verify-during-implementation items (v4 `Stream` drift the engine touches, tagged-class equality semantics, tagged-class `new` safety for internal construction, the `YamlNode`↔`Yaml.ts` cycle check, whether `YamlFormat.format` retains any fallible path, and any `Equal`/`Hash` customization) are called out inline in the sections above and resolve to as-built notes when the port lands.
 
-As-built: **1,331 tests passing** — the 1,226-assertion compliance harness intact at 100% with EMPTY skip maps (proving the redesign preserved every assertion family without exception carve-outs), plus 105 per-concept unit tests covering the behavior contracts above. `pnpm typecheck` is clean, biome is clean, and `turbo build:prod` produces a zero-warning `dist/prod/issues.json` with the api-extractor model wired at `website/lib/models/yaml`.
+As-built: the compliance harness landed intact at 100% with EMPTY skip maps (proving the redesign preserved every assertion family without exception carve-outs), alongside per-concept unit suites covering the behavior contracts above.
 
 Known limitation, carried over from v3 and verified not a regression: per-node comments (`pair.comment` etc.) are captured by the composer but never re-emitted by the stringifier — only a document-level leading comment round-trips. This is the same limitation v3 shipped with; the redesign did not regress it, and closing it is future work if a consumer needs full comment round-tripping.

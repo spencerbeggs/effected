@@ -4,7 +4,7 @@ module: effected
 category: architecture
 created: 2026-07-11
 updated: 2026-07-12
-last-synced: 2026-07-11
+last-synced: 2026-07-12
 completeness: 90
 related:
   - ../effect-standards.md
@@ -27,9 +27,9 @@ Design for `@effected/ts-vfs`, the **fourteenth** package migration ([migration-
 
 Status: **merged** (playbook steps 2–4 complete). Per the [store](store.md) and [xdg](xdg.md) precedent this doc now records the *as-built* design, with deviations from the approved draft marked inline as "As-built:". It was written from the [v3 review](../../../reviews/type-registry.md) and a fresh read of the v3 source and the rspress consumer, then reconciled against the port.
 
-Gates: typecheck green across all 31 turbo tasks; a cold `pnpm build --filter @effected/ts-vfs` produces a zero-warning `dist/prod/issues.json` (0 warnings, 0 errors, 14 suppressed — every one an `ae-forgotten-export` on a synthesized `*_base`); **82 package tests pass plus one opt-in e2e suite** that is skipped by default and was verified live once against jsDelivr; the whole repo is green with that one skip and no regressions; lint clean; `pnpm peers check` clean (it showed only the known tooling-chain residual at the time; since the pnpm 11.12.0 upgrade there is no residual and the check is clean outright).
+Gates: typecheck, lint and the whole-repo suite green; a cold `pnpm build --filter @effected/ts-vfs` produces a zero-warning `dist/prod/issues.json` whose suppressed bucket holds only `ae-forgotten-export` entries on synthesized `*_base` symbols; the one opt-in e2e suite is skipped by default and was verified live once against jsDelivr. One `pnpm peers check` issue is open and involves this package: `@savvy-web/bundler` peers on `typescript@^7` while this package pins `typescript@^6.0.3` as its compiler contract — see [effect-standards.md](../effect-standards.md#open-defect-one-peers-check-issue-2026-07-12).
 
-The PR #67 review added a further round of as-built hardening — a shared safe-relative-path invariant enforced *before* a `ResolvedModule` exists, per-package mutation serialization, a both-planes cache-hit rule, Node fallback arrays in `exports`, and a pre-download size budget. Each is recorded inline below, in the section that owns it.
+The PR #67 review added a further round of as-built hardening — a shared safe-relative-path invariant enforced *before* a `ResolvedModule` exists, per-package mutation serialization, a both-planes cache-hit rule, Node fallback arrays in `exports` and a pre-download size budget. Each is recorded inline below, in the section that owns it.
 
 Three findings are worth carrying into `@effected/app`, because that is the package that does this wiring for real (it took all three; it took **no dependency** on this package — see [app.md](app.md#no-effectedts-vfs-edge)): the [lazy compiler import](#tsenvironment--the-typescriptvfs-seam) that is the only thing making the `typescript` peers genuinely optional, the [`createFSBackedSystem` rooting rule](#tsenvironment--the-typescriptvfs-seam) that v3 was accidentally shielded from, and the [`DateTimeUtc`/`Duration` JSON-encoding gap](#typecache--the-two-plane-cache) on beta.94.
 
@@ -50,7 +50,7 @@ The v3 package got four things right that survive as concepts (review §1): the 
 
   The doc's claim that a consumer "never loads (or bundles) the TypeScript compiler" therefore **holds — but on the lazy import, not on module isolation alone.** Module isolation is what lets a bundler tree-shake `TsEnvironment` out; the dynamic import is what keeps the unbundled Node consumer alive. Both are load-bearing; neither substitutes for the other.
 - `dependencies`: none — as built, the manifest has no `dependencies` key at all.
-- `devDependencies`: mirror the peers, plus the standard build/test set (`@savvy-web/bundler`, `@effect/tsgo` at `catalog:effect`, `@effect/vitest`). As-built it also carries **`@effect/platform-node`**, for the reason recorded under [Testing](#testing): effect core ships no in-memory `FileSystem`, so the disk plane is tested against real temp directories. It is a devDependency and reaches no consumer.
+- `devDependencies`: mirror the peers, plus the standard build/test set (`@savvy-web/bundler`, `@effect/vitest`, `typescript`). As-built it also carries **`@effect/platform-node`**, for the reason recorded under [Testing](#testing): effect core ships no in-memory `FileSystem`, so the disk plane is tested against real temp directories. It is a devDependency and reaches no consumer.
 
 **Deleted dependencies, each with its reason recorded** (review §6):
 
@@ -119,7 +119,7 @@ As-built: the layout landed exactly as drawn, with **no `Vfs.test.ts`** — the 
 ```ts
 class PackageSpec extends Schema.Class<PackageSpec>("PackageSpec")({
   name: Schema.String,      // non-empty; npm-name-shaped check, lenient (CDN reality)
-  version: Schema.String,   // as requested: exact, range, or dist-tag — pinned later
+  version: Schema.String,   // as requested: exact, range or dist-tag — pinned later
 }) {
   static fromString(spec: string): PackageSpec;        // "zod@3.23.8", "@scope/pkg@^1.0.0"
   static normalizeSpecifier(specifier: string): string; // absorbs normalizeModuleName + NODE_BUILTINS
@@ -406,7 +406,7 @@ Named `Effect.fn` spans on every public fallible `TypeRegistry`, `TypeCache` and
 
 `@effect/vitest`, `it.effect`, `assert.*` — never `expect`; the v3 suites (plain `it` + `Effect.runPromise`) are rewritten, not ported. The real-package fixtures (`zod`, `ts-pattern`, `@effect/schema` manifests and file trees) carry over as data.
 
-**As-built: 82 unit tests across eight suites, plus the one opt-in e2e.** The `Cache.layerTest` seam held — the metadata plane is `:memory:` in every unit test and no real database file is written. The PR #67 review round added the hostile-path suites for the `safeResolved` invariant, the both-planes hit rule, the fallback-array manifests, the declared-size pre-check and the `VirtualPackage` construction defects; every refinement recorded above is pinned by a test.
+**As-built: eight unit suites plus the one opt-in e2e.** The `Cache.layerTest` seam held — the metadata plane is `:memory:` in every unit test and no real database file is written. The PR #67 review round added the hostile-path suites for the `safeResolved` invariant, the both-planes hit rule, the fallback-array manifests, the declared-size pre-check and the `VirtualPackage` construction defects; every refinement recorded above is pinned by a test.
 
 **The `FileSystem` probe came back negative, and it costs a devDependency.** Effect core on beta.94 ships **no in-memory `FileSystem`** — `FileSystem.layerNoop` is a stub layer, not a working filesystem, so it cannot back a disk plane that actually reads what it wrote. The disk half of the two-plane cache is therefore tested against **real temp directories** with `NodeFileSystem` from **`@effect/platform-node`, taken as a devDependency**. That is a genuine (if small) deviation from the xdg posture of no platform package even in tests, and it is unavoidable rather than a shortcut: xdg's tests could stub `FileSystem` because they assert on *calls*, while these assert on *contents*.
 
@@ -432,7 +432,7 @@ The [input-hardening standards](../effect-standards.md#input-hardening-standards
 
 `savvy.build.ts` carries the standard narrow suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }` for the synthesized bases (the Schema classes, the six error classes, the service classes). Gate: zero-warning `dist/prod/issues.json` via `pnpm build --filter @effected/ts-vfs`, never the raw script. The v3 `*Base` doubling must not reappear — inline factories per the [ratified policy](../effect-standards.md#api-extractor--effect-class-factories).
 
-As-built: the gate is met — **0 warnings, 0 errors, 14 suppressed**, and all 14 are `ae-forgotten-export` on a `*_base` symbol, which is exactly what the one suppression entry is scoped to admit. The v3 `*Base` doubling did not reappear: nothing named `*Base` is exported.
+As-built: the gate is met — zero warnings, zero errors, and every suppressed entry is an `ae-forgotten-export` on a `*_base` symbol, which is exactly what the one suppression entry is scoped to admit. The v3 `*Base` doubling did not reappear: nothing named `*Base` is exported.
 
 ## Consumer migration notes (rspress-plugin-api-extractor)
 

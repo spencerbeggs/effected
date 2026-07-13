@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-11
-last-synced: 2026-07-11
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -256,7 +256,7 @@ Standard per [package-setup.md](../package-setup.md). `savvy.build.ts` carries t
 
 ## As built (2026-07-11)
 
-Merged with **133 tests**, a clean repo typecheck, biome and markdownlint, and a cold prod build whose zero-warning `issues.json` carries 27 suppressions, all synthesized class-factory `_base` symbols. The whole suite runs on a virtual filesystem built from core `FileSystem` and `Path`, with **one integration test that discovers this repository for real** — and that test is what earned its keep (below). Everything above landed as designed; `minimatch` is gone from both call sites, the `@pnpm/catalogs.*` quartet is confined to `internal/catalogs.ts`, and the two npm resolver contracts are implemented.
+Merged with a clean repo typecheck, biome and markdownlint, and a cold prod build whose zero-warning `issues.json` carries only synthesized class-factory `_base` suppressions. The whole suite runs on a virtual filesystem built from core `FileSystem` and `Path`, with **one integration test that discovers this repository for real** — and that test is what earned its keep (below). Everything above landed as designed; `minimatch` is gone from both call sites, the `@pnpm/catalogs.*` quartet is confined to `internal/catalogs.ts`, and the two npm resolver contracts are implemented.
 
 Four things the port established that the design could only assert:
 

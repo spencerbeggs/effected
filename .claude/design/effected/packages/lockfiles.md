@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-11
-last-synced: 2026-07-11
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -165,7 +165,7 @@ The one open question resolved differently than either option offered: workspace
 
 ## As built (2026-07-10)
 
-The port landed with 59 tests (per-format fixture family 12, seam repairs 13, hostility 24, codec round-trips 5, LockfileFormat 5) and a zero-warning `dist/prod/issues.json` whose suppressed bucket holds exactly the eight synthesized `_base` symbols. Deviations from the design above:
+The port landed with the per-format fixture, seam-repair, hostility and codec-round-trip families all green and a zero-warning `dist/prod/issues.json` whose suppressed bucket holds only synthesized `_base` symbols. Deviations from the design above:
 
 1. **`LockfileIntegrity.check` shipped as `LockfileIntegrity.compare`.** Every v4 `Schema.Class` factory already carries a `static check(...checks)` for attaching schema checks; declaring an incompatible domain static is a TS2417 error. The reserved factory statics (`check`, `make`, `makeOption`, `makeEffect`, `extend`, `annotate`, `annotateKey`, `rebuild`, `pipe`, `fields`, `identifier`, `ast`) are a naming constraint future designs must dodge up front.
 2. **Internal transforms fail with a raw `ParseFailure { stage, cause }` record**, not `LockfileParseError` — the design's internal signature contradicted its own noImportCycles layout (the error class lives in `Lockfile.ts`, which imports the internals). The facade materializes the public error with `format` attached; the public contract is as designed.
@@ -182,8 +182,8 @@ Port-time probes worth keeping: v4 `Schema.Record` decode preserves a `__proto__
 
 The one change to the shipped design, found by the `@effected/workspaces` migration and detailed in [Document framing](#document-framing-a-lockfile-is-a-yaml-stream) above. `src/internal/documents.ts` is new, `LockfileFramingError` is new, and `Lockfile.parse`'s error channel widens to `LockfileParseError | LockfileFramingError`.
 
-**74 tests, up from 59** — 13 new, plus the two that arrived with the #38 review round. They cover the two-document case (asserting the preamble's config-dependency package is *absent* from the model, where it had previously been the only package present), single-document no-regression, the env-only / empty / no-importers typed failures, the yarn multi-document refusal, and the npm/bun framing posture.
+The fix arrived with its own suite growth. The new tests cover the two-document case (asserting the preamble's config-dependency package is *absent* from the model, where it had previously been the only package present), single-document no-regression, the env-only / empty / no-importers typed failures, the yarn multi-document refusal, and the npm/bun framing posture.
 
-**Mutation-checked twice**, which is the part worth imitating: reverting the framing rule to take the first document turns 5 tests red, and separately disabling the `noImporters` guard and the yarn guard turns their 2 tests red. A test for a silent-degradation bug that has not been watched failing is not evidence of anything — the original bug's whole nature was that it returned a plausible, successfully-parsed answer.
+**Mutation-checked twice**, which is the part worth imitating: reverting the framing rule to take the first document turns its tests red, and separately disabling the `noImporters` guard and the yarn guard turns theirs red. A test for a silent-degradation bug that has not been watched failing is not evidence of anything — the original bug's whole nature was that it returned a plausible, successfully-parsed answer.
 
 The transferable lesson: **a parser that succeeds on the wrong input is worse than one that fails**, and "empty result" is the most dangerous success shape there is, because it is indistinguishable from a legitimate empty answer. When a format's own writer defines an invariant (here, preamble-is-a-prefix), take the invariant; when it defines none (yarn), fail rather than guess.

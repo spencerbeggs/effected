@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-10
-last-synced: 2026-07-10
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 98
 related:
   - ../effect-standards.md
@@ -21,7 +21,7 @@ related:
 
 Target design for `@effected/glob`, the **seventh** package migration (step 2 of [migration-playbook.md](../migration-playbook.md)) and a **pure-tier** package. Glob is glob matching as pure string→predicate compilation — a sibling to `@effected/jsonc` and `@effected/yaml`. It is an **internal package** with no v3 source repo: its engine sources are minimatch 10.2.5 (BlueOak-1.0.0, Isaac Z. Schlueter), brace-expansion 5.0.7 (MIT, Julian Gruber) and balanced-match 4.0.4 (MIT, Julian Gruber) — the exact versions resolved in both this repo's and workspaces-effect's lockfiles. The port sizes at roughly 2,450 lines across three attributions, between jsonc and yaml in scale.
 
-Its only consumer today is the future `@effected/workspaces`, at two call sites: `WorkspacePackage.matchesDependency` (which drops its `minimatch: ">=10.2.3"` runtime dep with its hazardous open-ended range) and the `packages:` pattern enumerator. Until workspaces lands, glob has no consumer — that is exactly why it runs now, while the minimatch dialect and CVE analysis from the 2026-07-09 surveys are fresh.
+Its consumer is [`@effected/workspaces`](workspaces.md) — now merged — at two call sites: `WorkspacePackage.matchesDependency` (which dropped its `minimatch: ">=10.2.3"` runtime dep with its hazardous open-ended range) and the `packages:` pattern enumerator. Glob was built ahead of its consumer deliberately, while the minimatch dialect and CVE analysis from the 2026-07-09 surveys were fresh.
 
 ## Tier and dependencies
 
@@ -84,7 +84,7 @@ Every ported file in `src/internal/` carries an attribution header comment namin
 
 **Options.** `compile` takes a schema-validated options type exposing minimatch's surface: `nobrace`, `nocomment`, `nonegate`, `noglobstar`, `noext`, `dot`, `nocase`, `nocaseMagicOnly`, `magicalBraces`, `matchBase`, `flipNegate`, `partial`, `preserveMultipleSlashes`, `optimizationLevel`, `platform`, `windowsPathsNoEscape`, `windowsNoMagicRoot`, `braceExpandMax`, `maxGlobstarRecursion`, `maxExtglobRecursion`. The deprecated `allowWindowsEscape` is dropped. Invalid options are a developer wiring error and raise a **defect** at construction; the typed channel stays reserved for malformed **patterns**. `platform` defaults to `"posix"` per the no-ambient-detection deviation above.
 
-`enumerationPrefix` and `crossesSegments` are **new API with no upstream analogue**, designed for the enumerator contract — glob-core's `prefix` was substring-to-last-`/`, which is wrong once `**` is real. They are computed under default options. **OPEN:** their exact shape gets validated against the real enumerator when workspaces ports, and how they interact with `matchBase`/windows modes is unresolved — likely defined only for default-options patterns, which is all `GlobSet` uses.
+`enumerationPrefix` and `crossesSegments` are **new API with no upstream analogue**, designed for the enumerator contract — glob-core's `prefix` was substring-to-last-`/`, which is wrong once `**` is real. They are computed under default options, and the workspaces enumerator now consumes exactly this shape ([workspaces.md](workspaces.md#the-packages-enumerator-and-workspaces-issue-62)). Their interaction with `matchBase`/windows modes stays defined only for default-options patterns, which is all `GlobSet` uses.
 
 `GlobPatternError` lives in this module per the errors-near-domain rule: a `Schema.TaggedErrorClass` with `pattern: string` (truncated for safety in messages), `reason: Schema.Literal("PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded")` and structured `limit`/`actual` number fields. Kind: recoverable typed failure — malformed input is **never** a defect (the hardening invariant). Audience: calling code (stable `_tag` plus `reason` to branch on) and the end user (the message names the cap). Extglob over-nesting does not add a reason: it degrades to literal matching rather than erroring, matching upstream (see [Hardening](#hardening)).
 
@@ -99,7 +99,7 @@ Every ported file in `src/internal/` carries an attribution header comment namin
 
 The single-pattern vs set negation semantics distinction is deliberate and worth stating: minimatch's `!` negates the whole match, while the set treats `!` as exclusion filters applied after positive matching. Both exist, at different levels, on purpose.
 
-**OPEN:** expansion/classification order. A braced pattern that expands to both a literal and a wildcard (e.g. `{tools/cli,packages/*}`) can be classified per expanded alternative (recommended) or per source pattern. Pin at implementation with a test.
+Expansion/classification order is pinned **per expanded alternative**: a braced pattern that expands to both a literal and a wildcard (e.g. `{tools/cli,packages/*}`) contributes each alternative to its own bucket. See `src/GlobSet.ts`.
 
 ## Hardening
 
@@ -140,24 +140,24 @@ Pure-tier house rule: named `Effect.fn` spans on the public fallible boundaries 
 
 Per [package-setup.md](../package-setup.md): copy a pure sibling (jsonc) into `packages/glob`, with model paths `../../website/lib/models/glob` in `turbo.json` outputs and `savvy.build.ts` `localPaths`, and `repository.directory: packages/glob`. `GlobPattern`, `GlobSet` and `GlobPatternError` are class factories, so unlike walker this package **does** need the narrow `_base` suppression in `savvy.build.ts` per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories). devDependencies add `minimatch` (the oracle). No `prepare` script needed — glob has no `workspace:*` deps; it is a pure leaf.
 
-## Consumer impact: the workspaces port (forward-looking)
+## Consumer impact: the workspaces port (landed)
 
-When `@effected/workspaces` lands:
+[`@effected/workspaces`](workspaces.md) merged, and the contract held:
 
-- `WorkspacePackage.matchesDependency` re-expresses over `GlobPattern`, dropping the `minimatch` runtime dep.
-- The `packages:` enumerator re-expresses over `GlobSet`: `literals` fast-path, `wildcards` drive `readDirectory` from `enumerationPrefix` and `crossesSegments` triggers the bounded recursive descent — fixing #62 end to end.
-- `sync.ts`'s hand-rolled third semantic is deleted in favour of the same `GlobSet`.
-- At-ref discovery (`PointInTimeWorkspaceLive`) uses the same compiled set against `git ls-tree` entries.
+- `WorkspacePackage.matchesDependency` re-expressed over `GlobPattern`, dropping the `minimatch` runtime dep.
+- The `packages:` enumerator re-expressed over `GlobSet`: `literals` fast-path, `wildcards` drive `readDirectory` from `enumerationPrefix` and `crossesSegments` triggers the bounded descent — fixing #62 end to end.
+- `sync.ts`'s hand-rolled third semantic was deleted in favour of the same `GlobSet`.
+- At-ref discovery (`PointInTimeWorkspace`) is deferred in workspaces v1; when it lands it uses the same compiled set against `git ls-tree` entries.
 
 Glob itself does **no** enumeration — pure string→predicate only. That boundary is load-bearing.
 
 ## As built (2026-07-09)
 
-The port merged with 139 tests (a 130-row compliance table asserting expected outcome AND oracle agreement per row, four oracle property tests against the exact-pinned minimatch 10.2.5 devDependency, a hostile-input suite) and a zero-warning `issues.json` whose suppressed bucket holds only the four synthesized `_base` symbols. Four as-built notes against the design above:
+The port merged with a compliance table asserting expected outcome AND oracle agreement per row, oracle property tests against the exact-pinned minimatch 10.2.5 devDependency and a hostile-input suite, plus a zero-warning `issues.json` whose suppressed bucket holds only synthesized `_base` symbols. Four as-built notes against the design above:
 
 1. **Budget exhaustion is a typed error, not upstream's silent truncation — a second behavioral deviation.** Upstream `expand_` silently truncates the expansion list at `max` and matches against the truncated set; silent truncation silently changes match semantics, and the `ExpansionBudgetExceeded` reason this design mandates is unreachable under it. The port throws the guard signal instead. The "only one deviation" claim in the headline section is qualified accordingly.
 2. **`braceExpandMax` is schema-bounded `[1, 100_000]`**, tighter than the "positive integers" this design specified. Rationale: a `GlobPattern` value is pinned as *always defaults-compilable* (the schema check), and `compile` first validates under the effective options; bounding the one cap that can produce a compile-time typed failure above by the stock budget means permissive options can never admit a pattern the defaults check would reject, so `compile` never faces a make-time throw it cannot type. `maxGlobstarRecursion`/`maxExtglobRecursion` stay bare positive integers (neither produces a compile-time typed failure: globstar is a match-time false negative, extglob over-nesting degrades).
 3. **Upstream security finding, and why the `#parseAST` backstop exists.** Stock minimatch 10.2.5 **stack-overflows with `RangeError` at default options** on `"@(".repeat(20000) + "a" + ")".repeat(20000)` — roughly 60KB, under its own 64KB pattern cap (verified against the real package, 2026-07-09). Upstream's `extDepth` counter adds `depthAdd = 0` when a nested extglob is coalescible (adoption), so adoption chains recurse unboundedly. The vendored `ast.ts` adds a structural depth backstop counting **every** descent, capped at `MAX_NESTING_DEPTH`, failing typed. This is design-relevant provenance: the engine survey's "eight recursion surfaces" list treated `#parseAST` as guarded by `maxExtglobRecursion`; it is not, on the adoption path.
 4. **Test layout**: four engine-level test files (`braceExpansion`, `engine`, `compliance`, `hostility`) exist beyond the two public-surface files sketched in [Testing](#testing) — the jsonc/yaml multi-file precedent, required so the compliance gate could run against the raw engine before the facade existed. A `types.ts` engine leaf also exists beyond the module sketch: upstream let `ast.ts` and `index.ts` import each other's types circularly, which `noImportCycles` forbids.
 
-The two OPEN items above (enumerator metadata validation; `matchBase`/win32 metadata interaction) remain open for the workspaces port.
+The enumerator-metadata shape was validated when workspaces landed; the `matchBase`/win32 metadata interaction stays defined only for default-options patterns.

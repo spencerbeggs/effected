@@ -4,7 +4,7 @@ module: effected
 category: architecture
 created: 2026-07-10
 updated: 2026-07-12
-last-synced: 2026-07-11
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -114,7 +114,7 @@ class Store extends Context.Service<Store, StoreShape>()("@effected/store/Store"
 }
 ```
 
-As-built DX, 2026-07-12: `up`/`down` return `Effect<unknown, SqlError>`, not `Effect<void, SqlError>`. A `SqlClient` tagged template resolves to the statement's *rows*, so a `void` return type forced every consumer to pipe an `Effect.asVoid` onto an otherwise self-describing ``sql`CREATE TABLE …` ``. The engine discards the value either way; widening the return type to `unknown` lets a migration be the statement itself. Surfaced while writing the [@effected/app](app.md) glue, and landing on the same branch.
+As-built DX, 2026-07-12: `up`/`down` return `Effect<unknown, SqlError>`, not `Effect<void, SqlError>`. A `SqlClient` tagged template resolves to the statement's *rows*, so a `void` return type forced every consumer to pipe an `Effect.asVoid` onto an otherwise self-describing ``sql`CREATE TABLE …` ``. The engine discards the value either way; widening the return type to `unknown` lets a migration be the statement itself. Surfaced while writing the [@effected/app](app.md) glue, and landed with that port.
 
 Layer construction ensures the ledger table and **runs all pending migrations** (v3 semantics), but the v3 `Effect.orDie` laundering is gone: construction failures surface on the layer's typed error channel. `migrate` re-applies after a `rollback`; `status` projects the full list with per-migration `appliedAt`. `rollback(toId)` rolls back applied migrations with `id > toId` in descending order, invoking `down` where defined (a migration without `down` is skipped over, ledger row still removed — v3 behaviour, now documented).
 

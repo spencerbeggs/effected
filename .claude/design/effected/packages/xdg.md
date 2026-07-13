@@ -4,7 +4,7 @@ module: effected
 category: architecture
 created: 2026-07-10
 updated: 2026-07-12
-last-synced: 2026-07-11
+last-synced: 2026-07-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -301,7 +301,7 @@ Both workspace peers mean xdg needs the **`prepare` script** (`turbo run build:d
 
 ## As built (2026-07-11)
 
-Merged with **51 tests**, the whole repo green at 3594/3594, and a cold build whose zero-warning `issues.json` suppresses exactly seven synthesized class-factory `_base` symbols. The four-module layout, the boundary tier, the zero runtime dependencies and the no-platform-package-even-in-tests posture all landed as designed, and the json-schema facade was cut as predicted.
+Merged with the whole repo green and a cold build whose zero-warning `issues.json` suppresses only synthesized class-factory `_base` symbols. The four-module layout, the boundary tier, the zero runtime dependencies and the no-platform-package-even-in-tests posture all landed as designed, and the json-schema facade was cut as predicted.
 
 The port landed the design without structural deviation. Three things are worth recording because they were only learned by doing it:
 

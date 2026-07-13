@@ -12,32 +12,29 @@ The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.97`. The m
 
 ## Design Documentation
 
-Seven foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
+Eight foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
 
 - Architecture → `@./.claude/design/effected/architecture.md` — Load when: changing repo structure, build pipeline, tooling, or workspace/catalog setup.
 - Effect standards → `@./.claude/design/effected/effect-standards.md` — Load when: designing or porting a library API, or making dependency/peer-closure decisions.
 - Package inventory → `@./.claude/design/effected/package-inventory.md` — Load when: picking the next migration target or updating a package's migration status.
 - Releases → `@./.claude/design/effected/releases.md` — Load when: deciding whether work is on the release gate, scoping a package against its consumers, or reasoning about versioning.
+- Roadmap → `@./.claude/design/effected/roadmap.md` — Load when: planning post-migration work, sequencing the `0.1.0` gate, or picking the next workstream.
 - Migration playbook → `@./.claude/design/effected/migration-playbook.md` — Load when: starting or continuing a package migration.
 - Package setup → `@./.claude/design/effected/package-setup.md` — Load when: scaffolding or adding a new workspace package.
 - Plugin → `@./.claude/design/effected/plugin.md` — Load when: working in `plugin/` on the "effective" Claude Code plugin.
 
-### Migration Workflow
+### Migration Status
 
-Migrations happen one package at a time per the migration playbook: write the package's design doc first, then port.
+**The migration program is complete (2026-07-12).** All seventeen library packages are merged, ending with `@effected/app` (PR #73); the full set is listed below and in `package-inventory.md`. `@effected/runtime-resolver` was renamed `@effected/runtimes` (b3490cf7); `runtime-resolver-cli` keeps its name and now depends on it. `@effected/json-schema` is off the roadmap entirely. New packages follow the migration playbook: design doc first, then port.
 
-Sixteen packages are merged: `semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtimes` (renamed from `runtime-resolver`), `runtime-resolver-cli`, `workspaces`, `ts-vfs`.
+**The config-file consolidation is done.** `@effected/config-file` absorbed the three codec packages; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — and `ConfigCodec` is the interface only. **Never collect them into a namespace object**: referencing one reaches every codec and drags every parsing engine into a JSON-only consumer's bundle; tree-shaking dies silently. A namespace object is a barrel with different syntax; do not reintroduce one. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
-**The config-file consolidation is done.** `config-file-jsonc`, `config-file-yaml` and `config-file-toml` are deleted; `@effected/config-file` absorbed their three codecs. The `jsonc`, `yaml` and `toml` **format** packages stay independent and untouched. It cut the workspace from 19 packages to 16; with `ts-vfs`, 17. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — and `ConfigCodec` is the interface only. **Never collect them into a namespace object**: referencing one reaches every codec, every codec reaches its parsing engine, and a JSON-only consumer drags the JSONC/YAML/TOML engines into their bundle. Tree-shaking dies silently. A namespace object is a barrel with different syntax; do not reintroduce one. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
-
-**`ts-vfs` was the last package with real domain logic to port.** The final package, **`@effected/app`**, is implemented on this branch — design doc written, port complete, gates green — and merges with it, making seventeen. It was sequenced last because it is a thin composition over `xdg` + `config-file` + `store` whose content is decided by how consumers actually wire the kit, so it absorbed the ts-vfs port's wiring rather than guessing at it. No consumer was blocked on it, because nothing may depend on it — a library taking an application control plane would be an R2 tier-3 leak.
-
-`@effected/json-schema` is off the roadmap entirely. `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
+Remaining `0.1.0` work is sequenced in `roadmap.md`; `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
 
 ## Repository Layout
 
 - `packages/` — the workspace packages (see below).
-- `plugin/` — "effective", a Claude Code plugin (11 skills, 3 agents: `effect-developer`, `effect-reviewer`, `effect-migrator`) dogfooded during migrations; in development.
+- `plugin/` — "effective", a Claude Code plugin (11 skills, 3 agents) dogfooded during migrations; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
 - `repos/effect-smol` — read-only vendored Effect v4 source (see below).
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
@@ -60,10 +57,10 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `xdg` — XDG Base Directory resolution: `AppDirs`, `NativeDirs`, `XdgPaths` and the config-file resolvers, over `@effected/walker` (boundary).
 - `workspaces` — monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection; implements `@effected/npm`'s resolver contracts (integrated).
 - `runtimes` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot (boundary).
-- `runtime-resolver-cli` — the `runtime-resolver` binary; separate so the library's consumers never install `@effect/platform-node` (integrated).
-- `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place; a thin composition over `xdg` + `store` + `config-file` with no domain logic, no service and no schema of its own (integrated, by R2 over store alone). Nothing may depend on it.
-- `ts-vfs` — fetch, cache and resolve TypeScript type definitions from npm (jsDelivr) for Twoslash-style tooling; wraps `@typescript/vfs`; two-plane cache over `@effected/store` + `FileSystem`; `typescript` / `@typescript/vfs` optional peers (integrated). Renamed from `@effected/type-registry` (2026-07-11); the v3 source keeps the name `type-registry-effect`.
-- `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier** (companion is a category, not a fourth tier — see `effect-standards.md`). It **publishes with the kit at `0.1.0`**, on the release gate, not an exception. Installing it is optional for the consumer; shipping it is not optional for the release. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
+- `runtime-resolver-cli` — the `runtime-resolver` binary over `@effected/runtimes`; separate so the library's consumers never install `@effect/platform-node`; slated for workspace removal per the roadmap (integrated).
+- `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place; a thin composition over `xdg` + `store` + `config-file` with no domain logic of its own (integrated, by R2 over store alone). Nothing may depend on it.
+- `ts-vfs` — fetch, cache and resolve TypeScript type definitions from npm (jsDelivr) for Twoslash-style tooling; wraps `@typescript/vfs`; two-plane cache over `@effected/store` + `FileSystem`; `typescript` / `@typescript/vfs` optional peers (integrated). Renamed from `@effected/type-registry`; the v3 source keeps the name `type-registry-effect`.
+- `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier** (a category, not a fourth tier — see `effect-standards.md`). It **publishes with the kit at `0.1.0`** — on the release gate, not an exception. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
 
 ### repos/effect-smol
 
@@ -71,7 +68,7 @@ A `git subtree` of Effect-TS/effect-smol, pinned to the tag matching the `effect
 
 It is excluded from pnpm (not a workspace package), turbo, vitest, Biome (`"includes": ["!repos"]`) and markdownlint (`"ignores": ["**/repos/**"]`).
 
-**Never point a writing tool at it.** Never write to `repos/effect-smol` by any means.
+**Never write to `repos/effect-smol` by any means, with any tool.**
 
 Re-pin when the catalog bumps. `git subtree pull` makes a merge commit, which commitlint **rejects mid-pull** — expected, not an error. The merge is left staged; finish it by hand and flatten it:
 
@@ -93,7 +90,7 @@ The trailers are load-bearing: `git subtree pull` locates the vendored tree by g
 
 `@savvy-web/bundler` is a **`devDependency` of every package that builds** — it is what `savvy.build.ts` imports. **Never put it in `dependencies`**, or the publishable manifest ships a build tool at runtime. The workspace sets `autoInstallPeers: true`, so root `devDependencies` are just `@savvy-web/silk` and `@vitest-agent/plugin`, with the rest auto-installed as peers.
 
-**Every package typechecks with `tsc --noEmit`** — that is the `types:check` script, and `typescript` (`catalog:silk`) is the devDependency behind it. `@effect/tsgo` was removed from all packages in `chore: fix typescript versions` (d0599438); it survives only as a `pnpm-workspace.yaml` catalog entry with no consumer. Do not reintroduce it as a package's typechecker.
+**Every package typechecks with `tsc --noEmit`** (the `types:check` script), with `typescript` (`catalog:silk`) as the devDependency behind it. `@effect/tsgo` was removed from all packages (d0599438) and survives only as a catalog entry with no consumer — do not reintroduce it as a package's typechecker.
 
 Source `package.json` files are `"private": true` — this is intentional. The bundler's `publishConfig`-driven transform produces the publishable manifest at build time; never set `"private": false` in source.
 
@@ -131,7 +128,7 @@ The `@savvy-web/*` packages are in active development — if behavior seems unex
 - **Markdownlint**: config at `lib/configs/.markdownlint-cli2.jsonc`. Check with `pnpm lint:md`, fix with `pnpm lint:md:fix`.
 - **Husky hooks**: `pre-commit` runs lint-staged; `commit-msg` runs commitlint; `post-checkout` / `post-commit` / `post-merge` maintain file modes and script exec bits.
 
-**Never invoke `markdownlint-cli2` directly — run `pnpm lint:md` or `pnpm lint:md:fix`.** The tool *merges* explicit path arguments with the config's repo-wide `globs` rather than narrowing to them, so "lint just my file" lints every markdown file in the repo. The config therefore omits `fix` entirely: present, it overrides the `--fix` flag in both directions; absent, the flag decides.
+**Never invoke `markdownlint-cli2` directly — run `pnpm lint:md` or `pnpm lint:md:fix`.** The tool *merges* explicit path arguments with the config's repo-wide `globs` rather than narrowing to them, so "lint just my file" lints every markdown file in the repo. The config deliberately omits `fix` (present, it overrides the `--fix` flag in both directions) so the flag decides.
 
 **Never run `git checkout` / `git restore` / `git stash` to undo unexpected working-tree changes.** Other agents and earlier steps hold uncommitted work there. Inspect the diff and repair what is actually wrong.
 
@@ -147,11 +144,11 @@ The `@savvy-web/*` packages are in active development — if behavior seems unex
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml` (`catalog:effect`, `catalog:effectPeers`, `catalog:silk`), managed via `packages/pnpm-plugin-effect`.
 
-**Pin `catalog:effect` to exact beta versions** (`4.0.0-beta.97`, never a caret). A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be the authority on what v4 exports. `catalog:effectPeers` is the computed floor and *does* carry carets (`^4.0.0-beta.97`) — that is the peer range libraries advertise, not the version installed here.
+**Pin `catalog:effect` to exact beta versions** (`4.0.0-beta.97`, never a caret). A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree, the authority on what v4 exports. `catalog:effectPeers` is the computed floor and *does* carry carets (`^4.0.0-beta.97`) — that is the peer range libraries advertise, not the version installed here.
 
 **Re-scope the `overrides` entry on every catalog bump.** `pnpm-workspace.yaml` pins `@effect/platform-node@4.0.0-beta.97>@effect/platform-node-shared` to `4.0.0-beta.97`. The key names the current v4 parent: leave it at the old beta and it goes silently inert. Keep it **scoped to that parent** — never unscoped.
 
-**`pnpm peers check` reports zero issues. Treat any warning as a genuine closure defect to fix upstream, not one to silence.** There is no expected-residual set to ignore.
+**`pnpm peers check` reports exactly one known issue**: `@savvy-web/bundler@1.1.11` peers on `typescript@^7` while the workspace installs TypeScript 6 — the TypeScript 7 transition, recorded as the open defect in `effect-standards.md`. Do not silence it or tolerate a second: **any other warning is a genuine closure defect to fix upstream.**
 
 **Always check the lockfile diff after an install** — a plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from it.
 

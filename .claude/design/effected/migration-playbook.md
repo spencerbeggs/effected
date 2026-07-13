@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-07-10
-last-synced: 2026-07-10
+updated: 2026-07-12
+last-synced: 2026-07-12
 completeness: 80
 related:
   - architecture.md
@@ -32,4 +32,4 @@ The per-package flywheel for moving a v3 `*-effect` repo into this monorepo. Eac
 
 ## Ordering
 
-semver first. Subsequent order is decided as lessons land, likely the pure tier before the boundary tier. The `packages/effect4` v4-pattern testbed has retired now that the pipeline is proven across the semver, jsonc and yaml ports; [package-setup.md](package-setup.md) is the durable scaffold reference in its place.
+The v3 migration sequence is complete — the record is [package-inventory.md](package-inventory.md#migration-order). The playbook itself remains live: every new package (see [roadmap.md](roadmap.md)) gets the same spec → plan → implement cycle, design doc first. [package-setup.md](package-setup.md) is the durable scaffold reference.
