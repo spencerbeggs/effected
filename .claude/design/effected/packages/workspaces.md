@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-13
+last-synced: 2026-07-13
 completeness: 95
 related:
   - ../effect-standards.md
@@ -170,7 +170,7 @@ Here root resolution is **one concern, applied uniformly**: every root-consuming
 
 Effect v4 core has **no** `CommandExecutor` — the v3 `@effect/platform` dependency has no drop-in core successor, and `Stdio` is the *current process's* streams, not process spawning. What core does ship, in `effect/unstable/process`, is a `ChildProcessSpawner` **contract** (a `Context.Service` plus a `make` taking a spawn function) with **no Node implementation**; the Node one lives in `@effect/platform-node`. That is the same "core declares, platform implements" shape that decided the [runtime-resolver CLI split](runtimes.md#the-effectcli-verdict-dead-on-v4-and-not-needed), reached independently from the other end, and it forces the same conclusion here: taking `@effect/platform-node` as a runtime dependency would push a platform adapter into every consumer's tree — exactly the escape the peer discipline exists to prevent.
 
-(Verified against the pinned catalog beta and its matching `repos/effect-smol` subtree. An earlier draft of this section cited `4.0.0-beta.97`, the floating installed version from when the catalog carried a caret range; the catalogs now pin exactly, so the installed version and the subtree agree.)
+(Verified against the pinned catalog beta and its matching `.repos/effect-smol` vendored tree. An earlier draft of this section cited `4.0.0-beta.97`, the floating installed version from when the catalog carried a caret range; the catalogs now pin exactly, so the installed version and the vendored tree agree.)
 
 So workspaces owns the seam: `GitReader` is a small `Context.Service` contract (`run(cwd, args)` returning `Effect<string, GitCommandError>`, plus `available(cwd)`), with `GitReader.layerNode` as the shipped default over `node:child_process.execFile` — locale-pinned `LC_ALL=C`, per-command timeout, both v3 hard-won details preserved. Consumers on Bun or Deno swap the layer; tests mock it with `Layer.succeed`. This is what makes `ChangeDetector` testable without a git repository, which v3 was not.
 

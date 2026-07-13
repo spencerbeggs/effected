@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-13
+last-synced: 2026-07-13
 completeness: 85
 related:
   - ../architecture.md
@@ -27,11 +27,11 @@ It is the single source of truth for what "the current Effect version" means acr
 
 The catalog strategy is declared in [`savvy.build.ts`](../../../../packages/pnpm-plugin-effect/savvy.build.ts) via `rolldown-pnpm-config`'s `PnpmConfigPlugin`. Each package entry carries three fields:
 
-- `range` — the pinned version for the `effect` catalog. **Exact, never a caret** (currently `4.0.0-beta.97`): a caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be authoritative on what v4 exports.
+- `range` — the pinned version for the `effect` catalog. **Exact, never a caret** (currently `4.0.0-beta.97`): a caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `.repos/effect-smol` submodule that is supposed to be authoritative on what v4 exports.
 - `peer` — the input to the `effectPeers` floor computation. **Caret** (currently `^4.0.0-beta.97`). The floor widened from exact to caret ranges on the beta.97 bump.
 - `strategy: "interop"` — how the peer floor is derived (the shared-floor interop strategy across the package's own peer declarations).
 
-The exact/caret asymmetry is the point, not an inconsistency: `range` is the version *this repo installs and tests against*, while `peer` is the range *libraries advertise to consumers*. Pinning the first hard keeps the subtree honest; widening the second constrains downstream as little as possible.
+The exact/caret asymmetry is the point, not an inconsistency: `range` is the version *this repo installs and tests against*, while `peer` is the range *libraries advertise to consumers*. Pinning the first hard keeps the vendored tree honest; widening the second constrains downstream as little as possible.
 
 `rolldown-pnpm-config` reads this config and emits both catalogs. The build also uses `bundleNodeModules: true` and `looseFiles` to ship the `pnpmfile` (`pnpmfile.mjs`/`pnpmfile.cjs` from `src/pnpmfile.ts`) that pnpm loads as the config dependency's hook.
 

@@ -25,18 +25,19 @@ Two source roots, and they do not settle the same rungs. **Always use the absolu
 form** — the probe protocol below has you `cd` into a package, and every relative
 path breaks the moment you do.
 
-- **`$SRC`** — a vendored `effect-smol` checkout, a `git subtree` pinned to the exact
-  `effect` release tag the workspace compiles against. Serves rungs **1 and 2**.
-  Present when this plugin runs from the `effected` monorepo; absent elsewhere.
+- **`$SRC`** — a vendored `effect-smol` checkout, a `git submodule` under `.repos/`
+  pinned to the exact `effect` release tag the workspace compiles against. Serves
+  rungs **1 and 2**. Present when this plugin runs from the `effected` monorepo
+  (after `savvy repos sync` on a fresh clone or worktree); absent elsewhere.
 - **`$EFFECT_SRC`** — `node_modules/effect/src`. Serves rung **2 only**, and does so
   at full fidelity: `effect` publishes `src/**/*.ts` in its `files` array, so every
   consumer already has the complete v4 TypeScript source, `internal/` implementations
   included. The lockfile pins it to exactly the version you compile against — so on
-  the existence-and-signature question it is at least as trustworthy as the subtree,
-  which can drift from the catalog between re-pins. Every `@effect/*` package ships
-  the same way (`@effect/platform-node`, `@effect/vitest`, …), so resolve whichever
-  one your claim is about — the subtree's `packages/*/src` has a `node_modules`
-  counterpart in each case.
+  the existence-and-signature question it is at least as trustworthy as the vendored
+  tree, which can drift from the catalog between re-pins. Every `@effect/*` package
+  ships the same way (`@effect/platform-node`, `@effect/vitest`, …), so resolve
+  whichever one your claim is about — the vendored tree's `packages/*/src` has a
+  `node_modules` counterpart in each case.
 
 Resolve both before you trust any lookup. The bottom of the ladder is a hard failure,
 never a fallback to memory — a wrong answer from v3 memory is indistinguishable from
@@ -44,18 +45,18 @@ a right one.
 
 #### When they disagree, the installed source wins
 
-**Do not assume the subtree matches what you compile against.** It drifts, and it is
-drifting right now: the vendored tree is pinned to `effect@4.0.0-beta.94` while the
-lockfile resolves **`4.0.0-beta.97`**. The mechanism is a caret — the catalog entry is
-`^4.0.0-beta.94`, so pnpm floats forward to the newest beta while the `git subtree` sits
-at the exact tag it was pulled at, until someone re-pins it.
+**Do not assume the vendored tree matches what you compile against.** The submodule
+sits at the exact tag it was last pinned to, and a catalog bump that lands without its
+matching `savvy repos pin` leaves the two silently disagreeing — exactly this drift
+happened under the old subtree pattern (vendored `beta.94` against an installed
+`beta.97`) and version-checking is still the reader's job, not the tooling's.
 
 So a rung-2 answer from `$SRC` can be a *stale* answer, delivered with total confidence
 and no error. The rule:
 
 > **`$EFFECT_SRC` is the authority on existence and signature. `$SRC` is a convenience
 > and the only home of rung 1.** When they disagree, `node_modules` wins — it is what
-> your code links against; the subtree is what someone vendored last.
+> your code links against; the vendored tree is what someone pinned last.
 
 Two agents were saved by this during the store migration. Check the drift in one line
 before you trust the tree — the versions match, or they do not:
@@ -63,12 +64,12 @@ before you trust the tree — the versions match, or they do not:
 ```bash
 diff <(node -p 'require("'"$SRC"'/packages/effect/package.json").version') \
      <(node -p 'require("effect/package.json").version') \
-  || echo "SUBTREE IS STALE — settle rung 2 against \$EFFECT_SRC, not \$SRC."
+  || echo "VENDORED TREE IS STALE — settle rung 2 against \$EFFECT_SRC, not \$SRC."
 ```
 
 ```bash
-# Rungs 1+2 — the vendored subtree, if this project has one.
-SRC="${EFFECT_SMOL_SRC:-${CLAUDE_PROJECT_DIR}/repos/effect-smol}"
+# Rungs 1+2 — the vendored tree, if this project has one.
+SRC="${EFFECT_SMOL_SRC:-${CLAUDE_PROJECT_DIR}/.repos/effect-smol}"
 test -d "$SRC/packages/effect/src" || SRC=""
 
 # Rung 2 — the installed source. Resolve it, then GATE ON THE VERSION.
@@ -192,7 +193,7 @@ repo. Today those coincide, because the plugin is dogfooded only from the `effec
 monorepo — so `$SRC` finds the vendored tree. Published into someone else's project, it
 will not, and the resolver above is what keeps that from mattering.
 
-What a consumer without the subtree actually loses is **rung 1 alone**. Rung 2 arrives
+What a consumer without the vendored tree actually loses is **rung 1 alone**. Rung 2 arrives
 intact via `$EFFECT_SRC`, and rung 3 never needed a tree — a probe compiles against the
 package the consumer already installed. So the ladder degrades by exactly one rung, and
 by its weakest.
@@ -206,5 +207,5 @@ This is the **only file in `plugin/` that names the path** — the agents refere
 skill, never the directory. Keep it that way:
 
 ```bash
-test "$(grep -rl 'repos/effect-smol' plugin/ | wc -l)" -eq 1
+test "$(grep -rl '\.repos/effect-smol' plugin/ | wc -l)" -eq 1
 ```

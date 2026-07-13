@@ -29,7 +29,7 @@ Two catalogs, consumed by every `@effected/*` package:
 - **`catalog:effect`** — pinned current Effect v4 beta. Used in `devDependencies` (and `peerDependencies` for `effect` itself).
 - **`catalog:effectPeers`** — the same package set at a computed shared floor, the widest peer range libraries can safely advertise.
 
-Currently `effect` pins `4.0.0-beta.97` — **exact, never a caret**. A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is meant to be the authority on what v4 exports. `effectPeers` carries the computed floor as caret ranges (`^4.0.0-beta.97`); the exact-pin rule governs `catalog:effect` only. `@effect/tsgo` is the one asymmetric entry, caret on both sides: `range ^0.19.0` in `effect`, `peer ^0.16.2` in `effectPeers`. No workspace package consumes it anymore — d0599438 moved every package to `tsc --noEmit` with `typescript` (`catalog:silk`) — but the catalog entries remain; do not reintroduce it as a typechecker devDependency.
+Currently `effect` pins `4.0.0-beta.97` — **exact, never a caret**. A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `.repos/effect-smol` submodule that is meant to be the authority on what v4 exports. `effectPeers` carries the computed floor as caret ranges (`^4.0.0-beta.97`); the exact-pin rule governs `catalog:effect` only. `@effect/tsgo` is the one asymmetric entry, caret on both sides: `range ^0.19.0` in `effect`, `peer ^0.16.2` in `effectPeers`. No workspace package consumes it anymore — d0599438 moved every package to `tsc --noEmit` with `typescript` (`catalog:silk`) — but the catalog entries remain; do not reintroduce it as a typechecker devDependency.
 
 The root `overrides` entry pins `@effect/platform-node@<beta>>@effect/platform-node-shared` to the same beta. Its key names the current v4 parent, so **`pnpm pnpm:export` does not re-scope it — do that by hand on every bump** or it goes silently inert.
 
@@ -61,4 +61,4 @@ Any other peer warning is a genuine closure defect. Fix it upstream rather than 
 
 - A plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from the lockfile. **Always check the lockfile diff after an install.**
 - Source `package.json` is `"private": true`. Never set it false — `publishConfig` (`directory: dist/dev/pkg`, `linkDirectory: true`) produces the publishable manifest at build time.
-- Never write to `repos/effect-smol` (read-only vendored Effect source).
+- Never write to `.repos/effect-smol` (read-only vendored Effect source).

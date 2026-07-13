@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-13
+last-synced: 2026-07-13
 completeness: 85
 related:
   - effect-standards.md
@@ -50,56 +50,36 @@ No npm releases until the whole kit ships together at `0.1.0`; `1.0.0` waits for
 - `packages/pnpm-plugin-effect` — the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) (pnpm catalog/config plugin): published with the kit and installable by consumers, but not a library and not a library port, so it carries no tier.
 - `plugin/` — the "effective" Claude Code plugin; see [plugin.md](plugin.md).
 - `.claude/skills/improve` — the project-level self-improvement skill that maintains `plugin/skills/`; see [plugin.md](plugin.md).
-- `repos/effect-smol` — vendored Effect v4 source, read-only reference material; see [Vendored source](#vendored-source).
+- `.repos/effect-smol` — vendored Effect v4 source, a sparse git submodule, read-only reference material; see [Vendored source](#vendored-source).
 - `website/` — RSPress docs site with per-package api-extractor models under `website/lib/models/`.
+
+Build tooling is `@savvy-web/silk` (rslib/tsdown bundler, turbo, changesets, biome); see the root `CLAUDE.md` for commands and pipeline details.
 
 ## Vendored source
 
-`repos/effect-smol` is a `git subtree` of [Effect-TS/effect-smol](https://github.com/Effect-TS/effect-smol), pinned to the release tag matching the `effect` catalog pin in `pnpm-workspace.yaml` — **not** tracking `main`. Pinning is the whole point: a subtree at `main` drifts ahead of the beta we compile against, letting an agent assert, with source in hand, a surface that does not exist in the installed version. That is a worse failure than guessing, because the evidence looks conclusive.
+`.repos/effect-smol` is a git submodule of [Effect-TS/effect-smol](https://github.com/Effect-TS/effect-smol), declared in `.gitmodules` and managed by the silk plugin's repos tooling through the `.repos/config.json` manifest (url, ref, purpose, sparse paths, orientation notes). It is pinned to the release tag matching the `effect` catalog pin in `pnpm-workspace.yaml` — **not** tracking `main`. Pinning is the whole point: a vendored tree at `main` drifts ahead of the beta we compile against, letting an agent assert, with source in hand, a surface that does not exist in the installed version. That is a worse failure than guessing, because the evidence looks conclusive.
 
-The tree was added once, at the tag matching the catalog:
+The checkout is **sparse** — only the trees agents actually read are materialized: `packages/effect` (the v4 export authority), `packages/vitest` (the `@effect/vitest` reference implementation) and `migration`, `ai-docs`, `LLMS.md`, `MIGRATION.md` (the rename evidence for the plugin's evidence ladder). The sparse set is recorded in `.repos/config.json`.
 
-~~~bash
-git subtree add --prefix=repos/effect-smol https://github.com/Effect-TS/effect-smol.git effect@4.0.0-beta.94 --squash
-~~~
+**The vendored content is not always present.** Submodule content is not stored in the parent tree, so fresh clones, CI runners and new git worktrees start with an empty `.repos/` checkout — run `savvy repos sync` (or the `repos_manage` MCP tool with `action:"sync"`) once before relying on it. GitHub tarball downloads never contain submodule content at all.
 
 ### Re-pinning when the `effect` catalog bumps
 
-This repo **does not allow merge commits**, and `git subtree pull` is a merge — it creates one every time. It also runs into the repo's own hooks: the `commit-msg` hook (commitlint) **rejects the merge commit `git subtree pull` generates for itself**, mid-pull. The pull therefore *always* fails partway through, leaving `MERGE_HEAD` set and the fully merged tree staged. That is the expected path, not a fault to recover from — the recipe below finishes the job by hand.
-
-Verified end to end on the beta.94 → beta.97 re-pin (2026-07-11):
+Re-pinning is one operation:
 
 ~~~bash
-# 1. Fails at the merge-commit step. Expected: MERGE_HEAD is set, merged tree staged.
-git subtree pull --prefix=repos/effect-smol https://github.com/Effect-TS/effect-smol.git effect@<new-tag> --squash
-
-# 2. Copy BOTH trailers verbatim out of the rejected merge commit's message.
-git log -1 --format=%B MERGE_HEAD
-
-# 3. Complete the merge, then collapse it to one linear commit carrying the trailers.
-git commit --no-verify -m "temp"
-git reset --soft HEAD~1
-git commit --no-verify -F <message-file>
+savvy repos pin effect-smol --ref effect@<new-tag>   # or the repos_manage MCP tool, action:"pin"
 ~~~
 
-**`git reset --soft HEAD~1`, never `HEAD~2`.** The temp commit is a *merge* commit, and `HEAD~1` follows its **first parent** — the pre-pull head. `HEAD~2` walks one commit *past* that and silently rewinds real repo history into the staging area. (The older two-step `HEAD~2` recipe assumed `subtree pull` had produced two commits of its own; under the hooks it never gets that far.)
+The pin stages the gitlink and the `.repos/config.json` manifest and returns a ready-made conventional commit message. **Fold that staged change into the same commit as the catalog bump** — source and installed version move together by construction. The pin also flags `staleNoteIds` — manifest notes stamped against an older ref — for review.
 
-**The final commit message must carry both subtree trailers forward**, verbatim:
+Note that the [upstream blog post](https://effect.website/blog/the-one-weird-git-trick-that-makes-coding-agents-more-effect-ive/) recommending vendored Effect source vendors `Effect-TS/effect` — the **v3** repo. Following it verbatim would install the v3 source as agent-authoritative reference, which is precisely the confusion this repo has been fighting: the workspace root resolves `effect@3.21.4` and will describe the v3 surface with total confidence.
 
-~~~text
-git-subtree-dir: repos/effect-smol
-git-subtree-split: <the upstream commit sha for the new tag>
-~~~
+### Read-only, enforced
 
-This is load-bearing, not cosmetic. `git subtree pull` finds where the vendored tree came from by grepping ancestor commit messages for `git-subtree-dir`. Squash the trailers away and the *next* re-pin has no split point to work from. Confirmed after the beta.97 re-pin: with the trailers preserved, `git subtree pull` at the pinned tag reports `Subtree is already at commit f643dbb2…` and exits 0.
+The vendored tree is read-only, and the silk plugin enforces it rather than trusting convention: its PreToolUse guards deny Write, Edit, Bash and MCP-git mutations under `.repos/**`. Check dirtiness with `savvy repos status` (or `repos_inspect` with `mode:"status"`).
 
-Commit with `--no-verify` at both steps. lint-staged would otherwise try to process the tree's ~2,000 vendored files, and commitlint rejects the merge message that `--no-verify` is there to let through.
-
-Re-pinning runs when the `effect` catalog bumps, so source and installed version move together by construction. Note that the [upstream blog post](https://effect.website/blog/the-one-weird-git-trick-that-makes-coding-agents-more-effect-ive/) recommending this technique vendors `Effect-TS/effect` — the **v3** repo. Following it verbatim would install the v3 source as agent-authoritative reference, which is precisely the confusion this repo has been fighting: the workspace root resolves `effect@3.21.4` and will describe the v3 surface with total confidence.
-
-The vendored tree is read-only and must stay outside every build and lint graph — turbo, biome, vitest and markdownlint each need it excluded. It exists for one consumer, the `improve` skill; the plugin's own skills never reference the path (see [plugin.md](plugin.md)).
-
-Build tooling is `@savvy-web/silk` (rslib/tsdown bundler, turbo, changesets, biome); see the root `CLAUDE.md` for commands and pipeline details.
+The tree also stays outside every build and lint graph: the silk Biome preset centrally excludes `**/.repos` (the root `biome.jsonc` no longer carries a local override for it), markdownlint's config keeps `**/.repos` in its ignores, dependabot excludes `.repos/**`, and pnpm, turbo and vitest never matched the directory by glob in the first place. Its consumers are the `improve` skill and the plugin's `effect-v4-source-lookup` skill — the one file in `plugin/` that names the path (see [plugin.md](plugin.md)).
 
 ## Dependency resolution
 
@@ -107,7 +87,7 @@ The repo runs a v4 `effect` in its packages and a v3 `effect` in its toolchain (
 
 ### The catalogs pin exact betas — but `effectPeers` carries carets
 
-`catalog:effect` pins **exact** beta versions (`4.0.0-beta.97`, no caret). A caret range on a prerelease floats freely across the beta line, which silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree that is supposed to be the authority on what v4 exports — the failure described in [Vendored source](#vendored-source), arriving through the lockfile instead of through the subtree.
+`catalog:effect` pins **exact** beta versions (`4.0.0-beta.97`, no caret). A caret range on a prerelease floats freely across the beta line, which silently desynchronizes the installed `effect` from the `.repos/effect-smol` submodule that is supposed to be the authority on what v4 exports — the failure described in [Vendored source](#vendored-source), arriving through the lockfile instead of through the vendored tree.
 
 `catalog:effectPeers` is a different thing and correctly carries carets (`^4.0.0-beta.97`). It is the **computed peer floor** — the range `@effected/*` libraries advertise to their consumers, not the version installed here. It widened from exact to caret pins on the beta.97 bump. Both catalogs are generated by [`packages/pnpm-plugin-effect`](packages/pnpm-plugin-effect.md); the exact/caret split lives in its `savvy.build.ts` as a `range` / `peer` pair per package.
 

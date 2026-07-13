@@ -4,8 +4,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/architecture.md",
-			"hash": "4d132fd91731c33a8b8edb0538e20c155acb8561ee185901c347548ad33577a1",
-			"recordedAt": "2026-07-12"
+			"hash": "b26bae43e83120b7319a63d32945b25ad9a9bd81efdf5261a518643d7117147f",
+			"recordedAt": "2026-07-13"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -40,8 +40,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/plugin.md",
-			"hash": "e7f7f089acb288093a3a419d63b8ecb8bea047a92967dfc6acbfb7e751ee47c5",
-			"recordedAt": "2026-07-12"
+			"hash": "e21ec541b684aa26ca212192397ffbbee25db26c92ac642c07781d2f1c9bd04f",
+			"recordedAt": "2026-07-13"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -100,8 +100,8 @@
 		{
 			"source": "packages/pnpm-plugin-effect/CLAUDE.md",
 			"target": ".claude/design/effected/packages/pnpm-plugin-effect.md",
-			"hash": "262ca25577b2af767b424945b1c3ff1c6c2fcc64ae0c0f62a5b75ad2b64022d0",
-			"recordedAt": "2026-07-12"
+			"hash": "e14bc7d9c145db9d6d43eb88c0f60327765850e804f37e4fa0e1938475a472a7",
+			"recordedAt": "2026-07-13"
 		},
 		{
 			"source": "packages/runtime-resolver-cli/CLAUDE.md",

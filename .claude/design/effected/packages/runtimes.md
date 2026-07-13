@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-13
+last-synced: 2026-07-13
 completeness: 95
 related:
   - ../effect-standards.md
@@ -47,11 +47,11 @@ The monorepo does not use subpath exports (the config-file family precedent), so
 
 That is not a blocker, because **the CLI framework moved into `effect` core**. Core publishes `effect/unstable/cli`, exporting `Command`, `Flag`, `Argument`, `Param`, `Primitive`, `Prompt`, `HelpDoc`, `CliError`, `CliOutput` and `Completions`. `Command.run(command, { version })` returns `Effect<void, E | CliError, R | Command.Environment>`. The same merge happened to platform: `effect/unstable/http` ships `HttpClient`, `HttpClientRequest`, `HttpClientResponse`, `HttpClientError` and `FetchHttpClient`.
 
-So the port drops `@effect/cli` entirely and builds the binary on core. What keeps the CLI at tier 3 is the *runtime*, not the framework — `Command.Environment` (see `repos/effect-smol/packages/effect/src/unstable/cli/Command.ts`) is the union of `FileSystem`, `Path`, `Terminal`, `ChildProcessSpawner` and `Stdio`.
+So the port drops `@effect/cli` entirely and builds the binary on core. What keeps the CLI at tier 3 is the *runtime*, not the framework — `Command.Environment` (see `.repos/effect-smol/packages/effect/src/unstable/cli/Command.ts`) is the union of `FileSystem`, `Path`, `Terminal`, `ChildProcessSpawner` and `Stdio`.
 
 Core declares all five abstractions but implements **none of them for Node** — it ships `Path.layer`, `FileSystem.layerNoop` and `Stdio.layerTest`, and no more. The Node implementations (`NodeServices`, `NodeRuntime`, `NodeStdio`, `NodeTerminal`, `NodeFileSystem`, `NodeChildProcessSpawner`) live in `@effect/platform-node`, which is on the v4 train and peers on `effect` alone. That single non-core `@effect/*` runtime dependency is what makes the CLI integrated tier — and what the library must not pay for.
 
-Both claims are re-verified against the **pinned** catalog beta and its matching `repos/effect-smol` subtree, not against whatever beta npm's `latest` points at. The original spec cited a *floating* `4.0.0-beta.97` back when the catalog carried a caret range; the catalogs now pin exact betas — and have since advanced to `4.0.0-beta.97` deliberately — so the installed version and the vendored subtree are the same thing by construction. The number is the same; how it is arrived at is the whole difference, and it is the only version worth citing.
+Both claims are re-verified against the **pinned** catalog beta and its matching `.repos/effect-smol` vendored tree, not against whatever beta npm's `latest` points at. The original spec cited a *floating* `4.0.0-beta.97` back when the catalog carried a caret range; the catalogs now pin exact betas — and have since advanced to `4.0.0-beta.97` deliberately — so the installed version and the vendored tree are the same thing by construction. The number is the same; how it is arrived at is the whole difference, and it is the only version worth citing.
 
 **The split therefore survives the disappearance of its original cause.** It was justified by `@effect/cli` leaking onto library consumers; `@effect/cli` is gone, and `@effect/platform-node` leaks in precisely the same way. **Same R1 rule, different package.** [package-inventory.md](../package-inventory.md) predicted an `@effect/cli`-driven split; that prediction is falsified and the row is corrected — but the split it mandated was right for a reason it had not seen yet.
 

@@ -76,6 +76,7 @@
 		"**/.rslib": true,
 		"**/.turbo": true,
 		"**/.vitest": true,
+		"**/.repos": true,
 		"**/*.tsbuildinfo": true,
 		"**/dist": true,
 		"**/node_modules": true,

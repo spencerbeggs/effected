@@ -36,7 +36,7 @@ Remaining `0.1.0` work is sequenced in `roadmap.md`; `package-inventory.md` and 
 - `packages/` — the workspace packages (see below).
 - `plugin/` — "effective", a Claude Code plugin (11 skills, 3 agents) dogfooded during migrations; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
-- `repos/effect-smol` — read-only vendored Effect v4 source (see below).
+- `.repos/effect-smol` — read-only vendored Effect v4 source (see below).
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
 
 ### Package context files
@@ -62,25 +62,19 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `ts-vfs` — fetch, cache and resolve TypeScript type definitions from npm (jsDelivr) for Twoslash-style tooling; wraps `@typescript/vfs`; two-plane cache over `@effected/store` + `FileSystem`; `typescript` / `@typescript/vfs` optional peers (integrated). Renamed from `@effected/type-registry`; the v3 source keeps the name `type-registry-effect`.
 - `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier** (a category, not a fourth tier — see `effect-standards.md`). It **publishes with the kit at `0.1.0`** — on the release gate, not an exception. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
 
-### repos/effect-smol
+### .repos/effect-smol
 
-A `git subtree` of Effect-TS/effect-smol, pinned to the tag matching the `effect` catalog (`effect@4.0.0-beta.97`). It is vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
+A git submodule of Effect-TS/effect-smol, pinned to the tag matching the `effect` catalog (`effect@4.0.0-beta.97`) and managed by silk's repos tooling. Declared in `.gitmodules`; described by the manifest `.repos/config.json` (url / ref / purpose / sparse / orientation / notes). Vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
 
-It is excluded from pnpm (not a workspace package), turbo, vitest, Biome (`"includes": ["!repos"]`) and markdownlint (`"ignores": ["**/repos/**"]`).
+Sparse checkout: only `packages/effect`, `packages/vitest`, `migration`, `ai-docs`, `LLMS.md` and `MIGRATION.md` are materialized.
 
-**Never write to `repos/effect-smol` by any means, with any tool.**
+**Never write to `.repos/effect-smol` by any means, with any tool** — the silk plugin's PreToolUse guards deny writes under `.repos/**`. Only the manifest `.repos/config.json` is legitimately editable (notes / orientation / sparse).
 
-Re-pin when the catalog bumps. `git subtree pull` makes a merge commit, which commitlint **rejects mid-pull** — expected, not an error. The merge is left staged; finish it by hand and flatten it:
+Re-pin when the catalog bumps, **in the same commit**: `savvy repos pin effect-smol --ref effect@<new-tag>` (or the `repos_manage` MCP tool, action `pin`). It stages the gitlink and manifest and returns a ready-made commit message; review any `staleNoteIds` it flags. Full recipe: [architecture.md](.claude/design/effected/architecture.md)'s re-pin section.
 
-```bash
-git subtree pull --prefix=repos/effect-smol <url> effect@<tag> --squash  # hook rejects; merge staged
-git log -1 --format=%B MERGE_HEAD   # copy the git-subtree-dir / git-subtree-split trailers verbatim
-git commit --no-verify -m temp      # complete the merge
-git reset --soft HEAD~1             # NOT HEAD~2 — reset follows first parents past the pre-pull head
-git commit --no-verify -F <msg>     # conventional message + the two trailers
-```
+Fresh clones, CI runners and new worktrees start with an **empty** `.repos/` checkout — run `savvy repos sync` (or `repos_manage` action `sync`) once before relying on vendored content.
 
-The trailers are load-bearing: `git subtree pull` locates the vendored tree by grepping ancestor commit messages for `git-subtree-dir`, so dropping them leaves the *next* re-pin with no split point. `--no-verify` because lint-staged would otherwise process ~2,000 vendored files. Full recipe: [architecture.md](.claude/design/effected/architecture.md#re-pinning-when-the-effect-catalog-bumps).
+Exclusions: the silk Biome preset excludes `**/.repos` centrally; markdownlint ignores it via `lib/configs/.markdownlint-cli2.jsonc`; dependabot excludes `.repos/**`; it was never a pnpm workspace, turbo or vitest target and still is not.
 
 ## Build Pipeline
 
@@ -144,7 +138,7 @@ The `@savvy-web/*` packages are in active development — if behavior seems unex
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml` (`catalog:effect`, `catalog:effectPeers`, `catalog:silk`), managed via `packages/pnpm-plugin-effect`.
 
-**Pin `catalog:effect` to exact beta versions** (`4.0.0-beta.97`, never a caret). A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `repos/effect-smol` subtree, the authority on what v4 exports. `catalog:effectPeers` is the computed floor and *does* carry carets (`^4.0.0-beta.97`) — that is the peer range libraries advertise, not the version installed here.
+**Pin `catalog:effect` to exact beta versions** (`4.0.0-beta.97`, never a caret). A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect-smol` submodule, the authority on what v4 exports. `catalog:effectPeers` is the computed floor and *does* carry carets (`^4.0.0-beta.97`) — that is the peer range libraries advertise, not the version installed here.
 
 **Re-scope the `overrides` entry on every catalog bump.** `pnpm-workspace.yaml` pins `@effect/platform-node@4.0.0-beta.97>@effect/platform-node-shared` to `4.0.0-beta.97`. The key names the current v4 parent: leave it at the old beta and it goes silently inert. Keep it **scoped to that parent** — never unscoped.
 

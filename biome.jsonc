@@ -2,9 +2,6 @@
 	"$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
 	"extends": ["@savvy-web/silk/biome"],
 	"root": true,
-	"files": {
-		"includes": ["!repos"]
-	},
 	"overrides": [
 		{
 			// savvy.build.ts scripts resolve @savvy-web/bundler from the workspace
