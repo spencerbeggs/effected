@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-13
+last-synced: 2026-07-13
 completeness: 90
 related:
   - releases.md
@@ -14,6 +14,7 @@ related:
   - migration-playbook.md
   - packages/runtimes.md
   - packages/app.md
+  - packages/tsconfig-json.md
 ---
 
 # Roadmap
@@ -43,6 +44,8 @@ The rename passes the same anti-overclaim naming test as the ts-vfs and app rena
 The CLI does not die; it moves home. Dogfood trial: link `@effected/runtimes` locally into the external `runtime-resolver` repo (`/Users/spencer/workspaces/spencerbeggs/runtime-resolver`), copy the CLI code back there and get its suite green against the linked package. The CLI re-ships from that external repo after `0.1.0` with new semantics, against the published package. This dissolves the two-package split the CLI forced on the workspace ([packages/runtimes.md](packages/runtimes.md)) — the `@effect/platform-node` isolation the split existed for is now handled by the CLI living in a different repo.
 
 ### 3. `@effected/tsconfig-json`
+
+**Done — implemented 2026-07-13 on `feat/tsconfig-json`**, every gate green with a zero-warning `dist/prod/issues.json`. [packages/tsconfig-json.md](packages/tsconfig-json.md) is the as-built record, including where implementation refined this scope (the internal extends-target engine, the two-error taxonomy, the tsc-parity enrichments). Boundary tier held exactly as predicted below.
 
 The one new gate package, and a full playbook cycle: design doc first, then port/build.
 
