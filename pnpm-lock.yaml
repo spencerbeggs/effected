@@ -566,8 +566,8 @@ importers:
         specifier: catalog:silk
         version: 19.2.7(react@19.2.7)
       rspress-plugin-api-extractor:
-        specifier: ^0.3.7
-        version: 0.3.8(@rspress/core@2.0.17(@rspack/core@2.1.3(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2))(@types/node@26.1.1)(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(@typescript/vfs@1.6.4(typescript@6.0.3))(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: ^0.4.0
+        version: 0.4.0(@rspress/core@2.0.17(@rspack/core@2.1.3(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2))(@types/node@26.1.1)(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(@typescript/vfs@1.6.4(typescript@6.0.3))(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       rspress-plugin-mermaid:
         specifier: ^1.0.1
         version: 1.0.1(@rspress/core@2.0.17(@rspack/core@2.1.3(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2))
@@ -4447,8 +4447,8 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
-  rspress-plugin-api-extractor@0.3.8:
-    resolution: {integrity: sha512-mbameMGNzNouoGCvMpCAOIoyh6XHCo0uWBn/xLWOiB29iBdja/YuMUIlpxXKUOYZ/KpmBrHDw90T20bt2+8U4A==}
+  rspress-plugin-api-extractor@0.4.0:
+    resolution: {integrity: sha512-axfafAfhE+sKDgvUvULWjfi3blgGfqI+8xi3RYgQuaPqu/UN55Xqsdm3j7qOshBunJwhT83NhDkAYXBmxeX94g==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@rspress/core': ^2.0.0
@@ -9840,7 +9840,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  rspress-plugin-api-extractor@0.3.8(@rspress/core@2.0.17(@rspack/core@2.1.3(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2))(@types/node@26.1.1)(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(@typescript/vfs@1.6.4(typescript@6.0.3))(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  rspress-plugin-api-extractor@0.4.0(@rspress/core@2.0.17(@rspack/core@2.1.3(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2))(@types/node@26.1.1)(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(@typescript/vfs@1.6.4(typescript@6.0.3))(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
       '@effect/cluster': 0.59.0(@effect/platform@0.96.2(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4)(ioredis@5.11.1))(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4)(ioredis@5.11.1))(@effect/platform@0.96.2(effect@3.21.4))(@effect/rpc@0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4))(effect@3.21.4))(effect@3.21.4)
       '@effect/experimental': 0.60.0(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4)(ioredis@5.11.1)
