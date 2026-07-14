@@ -119,6 +119,67 @@ It ships with a `FromString` codec (the house `FromString` static pattern), and 
 
 What does **not** change: the resolver contracts and their unmatched-specifier-is-`Option.none()` convention are untouched; `DependencyResolutionError` remains reserved for mechanism failure. `PackageName` **stays in package-json** — a brand with one consumer has no reason to move. The export count grows beyond the original four; this section is the documented evidence-driven expansion the scope-discipline paragraph promised.
 
+## Two more scalars move in (designed 2026-07-14)
+
+The same round consolidates two further pieces of vocabulary whose duplication is measured, not predicted — surveyed across the installed packages on 2026-07-14:
+
+- **The dependency-section vocabulary.** One concept, three spellings today: lockfiles exports `DependencyType` (the four manifest field names, `WorkspaceDependency.ts`), package-json has `DependencyKind` (`"prod" | "dev" | "peer" | "optional"`, `Dependency.ts`), and workspaces hand-rolls the four field names across `WorkspacePackage` and `DependencyDiff` — with the [lockfiles importers design](lockfiles.md#importers-v2-addition-designed-2026-07-14) about to add a fourth use. This package becomes the owner: one schema carrying both views — the manifest **field names** (`dependencies` … `optionalDependencies`) and the short **kinds** (`prod` … `optional`) — with the bidirectional mapping written once. lockfiles' `DependencyType` relocates here (the same free-before-`0.1.0` logic as `DependencySpecifier`); package-json's `Dependency.kind` types against it; workspaces consumes it. Exact spellings settle at the effect-v4-planning gate.
+- **`IntegrityHash`.** The same SRI idea is a plain string twice today: lockfiles' `ResolvedPackage.integrity` (`sha512-` base64 SRI, also what package-lock records) and package-json's `PackageManager.integrity` (the `name@version+sha512.hex` pin form). A brand covering both textual forms, with parse/validation, lands here; both consumers re-point. Exact grammar (which algorithms, both delimiters) settles at implementation.
+
+Both moves are pure-to-pure edges that already exist or arrive with this workstream; no tier changes anywhere.
+
+## Vocabulary registry (npm v12 parity map, recorded 2026-07-14)
+
+The kit has hit the shared-vocabulary seam repeatedly — `DependencySpecifier`, the dependency-section vocabulary, `IntegrityHash` — because four packages (npm, package-json, lockfiles, workspaces) operate around overlapping npm concepts without a recorded map of where each concept lives. This registry is that map, surveyed against the npm v12 documentation for [`package.json`](https://docs.npmjs.com/cli/v12/configuring-npm/package-json) and [`package-lock.json`](https://docs.npmjs.com/cli/v12/configuring-npm/package-lock-json). The rule is unchanged — **API ships on evidence, the registry ships the map**: an unmodeled concept stays unmodeled until a consumer materializes, but nobody rebuilds an idiom because they did not know its home.
+
+Standing assignments: versions and ranges → `@effected/semver`; manifest shapes → `@effected/package-json`; lockfile shapes → `@effected/lockfiles`; workspace/monorepo semantics → `@effected/workspaces`; cross-cutting scalars that flow between those concerns → **here**.
+
+### package.json (npm v12)
+
+| Field | Status | Home / notes |
+| --- | --- | --- |
+| `name` | modeled | package-json `PackageName` (brand + statics) |
+| `version` | modeled | package-json via `@effected/semver` `SemVer.FromString` |
+| `description`, `private`, `type`, `main` | modeled | package-json `Package` first-class fields |
+| `license` | modeled | package-json `SpdxLicense` (real SPDX validation) |
+| `author` / `contributors` | modeled | package-json `Person.FromValue` (string and object forms) |
+| `repository` | modeled | package-json `RepositoryField` |
+| `dependencies` / `devDependencies` / `peerDependencies` / `optionalDependencies` | modeled | package-json `DependencyMapField`; specifiers classify via `DependencySpecifier` (here); section vocabulary consolidates here (above) |
+| `peerDependenciesMeta` | modeled | package-json `PeerDependenciesMetaField` |
+| `scripts` | modeled | package-json (string map) |
+| `bin` | modeled | package-json `BinField` |
+| `engines` | modeled | package-json (string map) |
+| `exports` | modeled | package-json `ExportsField` |
+| `publishConfig` | modeled **twice, deliberately** | package-json `PublishConfigField` and workspaces `PublishConfig` — an accepted duplication: `WorkspacePackage` is deliberately tolerant and takes no package-json edge (recorded in workspaces' design). Revisit only if the tolerance decision itself is revisited |
+| `packageManager` | modeled | package-json `PackageManager` (`name@version+integrity` codec); integrity half re-points to `IntegrityHash` (above) |
+| `devEngines` | modeled | package-json `DevEnginesSchema`; workspaces separately *reads* the field as a detection hint (`PackageManagerName.ts`) without modeling it — reading, not a second model |
+| `workspaces` | read, not modeled | workspaces reads globs (`internal/patterns.ts`) and — per [the v2 design](workspaces.md#v2-additions-designed-2026-07-14) — bun-style `catalog`/`catalogs`; package-json preserves the field via `rest`. Trigger for modeling: a consumer needing to *write* the field |
+| `keywords`, `homepage`, `bugs`, `funding` | preserved, not modeled | package-json `rest` (round-trips untouched). Trigger: a consumer that reads or validates them |
+| `files`, `browser`, `man`, `directories` | preserved, not modeled | package-json `rest`. Simple text stays simple text (`files` is an array of globs — a consumer wanting *matching* would route through `@effected/glob`) |
+| `config`, `gypfile` | preserved, not modeled | package-json `rest`. No plausible kit consumer |
+| `bundleDependencies` | preserved, not modeled | package-json `rest`. Trigger: pack/publish tooling |
+| `overrides`, `packageExtensions` | preserved, not modeled | package-json `rest`. The repo *uses* pnpm `overrides` operationally (root workspace file), but no package models the field. Trigger: dependency-rewrite tooling |
+| `os`, `cpu`, `libc` | preserved, not modeled | package-json `rest`. Trigger: install-planning tooling |
+
+### package-lock.json (npm v12)
+
+The lockfiles npm parser normalizes `package-lock.json` into the one `Lockfile` model rather than modeling the format field-for-field; this table records what survives normalization and what is deliberately discarded.
+
+| Concept | Status | Home / notes |
+| --- | --- | --- |
+| `lockfileVersion` | kept | `Lockfile.lockfileVersion` (string-normalized) |
+| `packages` map (v2/v3) | parsed | the entry source for `ResolvedPackage`; root `""` and workspace-path entries → workspace packages, `node_modules/*` → resolved packages |
+| legacy v1 `dependencies` section | not parsed | the parser requires the `packages` map; a v1-only lockfile fails typed. Trigger: none expected — npm v5/v6 is out of scope |
+| entry `version` | kept | `ResolvedPackage.version` |
+| entry `integrity` | kept | `ResolvedPackage.integrity` — re-points to `IntegrityHash` (above) |
+| entry `dependencies` / `optionalDependencies` | kept | workspace-entry sections feed `WorkspaceDependency` edges and — per [the importers design](lockfiles.md#importers-v2-addition-designed-2026-07-14) — `Lockfile.importers` |
+| root/workspace declared deps | kept (new) | `Lockfile.importers` (`LockfileImporter` / `ImporterDependency`), the c594ff1 port |
+| entry `resolved` (registry/git/link URL) | discarded | Trigger: provenance tooling (audit, mirror verification) |
+| entry `link`, `dev`, `optional`, `devOptional`, `inBundle` | discarded | tree-membership flags. Trigger: a consumer reasoning about install trees rather than declared graphs |
+| entry `hasInstallScript` | discarded | Trigger: a security/audit consumer — plausible, none declared |
+| entry `bin`, `license`, `engines`, `os`, `cpu`, `funding` | discarded | manifest mirrors; the manifest is the source of truth and package-json models it |
+| hidden lockfile (`node_modules/.package-lock.json`) | out of scope | a performance artifact of npm itself, same v3 format; `Lockfile.parse` takes content and does not care where it came from |
+
 ## Future expansion (deferred, evidence-driven)
 
 Recorded so the seam is explicit:

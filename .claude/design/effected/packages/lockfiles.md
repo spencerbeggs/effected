@@ -140,6 +140,8 @@ Rules the field inherits from the existing design:
 
 **A new `workspace:*` edge: `@effected/npm`.** Pure-to-pure, so the tier holds. The specifier taxonomy cannot come from `@effected/package-json`, whose current home it is — that package is integrated tier, and R2 would propagate integration into this pure package. The importers design is precisely the "second consumer" trigger npm.md recorded for moving `DependencySpecifier` there; see [npm.md](npm.md).
 
+The same round moves two more scalars along the new edge ([npm.md](npm.md#two-more-scalars-move-in-designed-2026-07-14)): the `DependencyType` literal this package exports today relocates to `@effected/npm` as the kit-wide dependency-section vocabulary (this package consumes it; same free-before-`0.1.0` logic), and `ResolvedPackage.integrity` re-types from a plain string to npm's `IntegrityHash` brand. What this package keeps and what it deliberately discards from `package-lock.json` is recorded in [npm.md's vocabulary registry](npm.md#vocabulary-registry-npm-v12-parity-map-recorded-2026-07-14).
+
 ## Hardening
 
 [hardening-a-parser-port](../effect-standards.md#input-hardening-standards) applies, and this package's position is unusually good: **it adds no new text-parsing engine and no new recursion surface.** Text parsing is delegated — bun to `@effected/jsonc`, pnpm/yarn to `@effected/yaml`, both already hardened (depth caps, alias budgets, typed failures); npm to native `JSON.parse` inside `Effect.try` (native parser, no JS stack surface; its throw on hostile input — including V8's `RangeError` on pathological depth — lands in the typed channel as `stage: "syntax"`). The transforms themselves are single-pass iterations over flat records.
