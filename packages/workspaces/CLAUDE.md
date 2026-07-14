@@ -49,9 +49,9 @@ pnpm 11 emits `pnpm-lock.yaml` as **two YAML documents** when the workspace uses
 
 Every lazy init uses `Effect.cachedInvalidateWithTTL` + `Effect.onExit`-invalidate-on-non-success, **not** `Effect.cached`. `Effect.cached` memoizes the first `Exit` *including an interrupt*, so an init interrupted by an unrelated timeout permanently poisons the layer with a cause outside its declared error channel. Success is memoized; failures and interrupts are retried.
 
-### No subprocess API in Effect v4 core
+### GitReader predates core's subprocess API and is dissolving
 
-There is no `Command` / `CommandExecutor` (`Stdio` is the current process's streams, not spawning). `GitReader` is our own contract; `GitReader.layerNode` is the `node:child_process` default. Tests mock it with `Layer.succeed`, which is why change detection tests need no git repository.
+`GitReader` was built when this package believed v4 core had no subprocess API. That premise is now false — core ships `effect/unstable/process` (`ChildProcess` + `ChildProcessSpawner`), and `@effected/git` builds on it — so `GitReader` is a legacy seam: still the module `ChangeDetector` runs on **today**, but scheduled to dissolve when the workspaces point-in-time piece retargets `ChangeDetector` onto `@effected/git`'s `Git` service (see the Deferred section below). Until then: `GitReader.layerNode` is the `node:child_process` default, tests mock it with `Layer.succeed` (change detection tests need no git repository), and nothing NEW may be built on it — new subprocess needs go through core's contract.
 
 ### `WorkspacePackage` is deliberately tolerant
 

@@ -324,7 +324,12 @@ do **not**.
 run, so scoped resources clean up: a timed-out subprocess spawn closes its
 scope and kills the child, a timed-out acquire releases. A per-operation
 ceiling is therefore `op.pipe(Effect.timeout("30 seconds"))` composed by the
-*caller* — never a bespoke timeout parameter threaded through a service.
+*caller* — never a bespoke timeout parameter threaded through a service. The
+one sanctioned exception is a **package-owned ceiling that is part of the
+service's error contract**: `@effected/git`'s `runClassified` owns a fixed
+30s ceiling internally and maps expiry to its own `GitCommandError`, so
+`Cause.TimeoutError` never escapes its methods — the ceiling is absorbed
+into the taxonomy, not exposed as a parameter.
 
 ## `Predicate` helpers — never hand-write `isRecord` / `isString`
 

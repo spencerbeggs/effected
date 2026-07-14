@@ -35,7 +35,7 @@ Nothing here is published to npm yet. The whole kit ships together at 0.1.0 once
 
 ## Roadmap
 
-The package set is complete. `app` was the last of the ported libraries to land — a thin composition over `xdg`, `config-file` and `store` for wiring an application's control plane — and it came last among them because the content of a control plane is decided by how the consuming applications actually wire the kit, not guessed at ahead of them. `tsconfig-json` followed as the first package designed in-repo from scratch rather than ported, and `git` as the second — the first piece of the point-in-time port that returns workspace snapshots at a git ref to the kit.
+The package set is complete. `app` was the last of the ported libraries to land — a thin composition over `xdg`, `config-file` and `store` for wiring an application's control plane — and it came last among them because the content of a control plane is decided by how the consuming applications actually wire the kit, not guessed at ahead of them. `tsconfig-json` followed as the first package designed in-repo from scratch rather than ported, and `git` as the second — the first piece of the point-in-time port, providing the Git primitives the future at-ref workspace snapshots build on.
 
 What stands between here and 0.1.0 is no longer a missing package but the proof: moving each of the five applications onto `@effected/*` and fixing whatever that surfaces.
 

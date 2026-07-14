@@ -81,6 +81,8 @@ The design rule: **no consumer of this package ever string-matches stderr.** Git
 - **`NotARepositoryError`** — the cwd is not inside a git work tree. Every consumer wants to branch on this (systems degrades, workspaces fails discovery), so it is a distinct tag, not a `GitCommandError` the caller regex-matches.
 - **`UnknownRefError`** — the ref does not resolve. Distinct because "diff against a base branch that does not exist locally" is an actionable, user-facing condition, not mechanics.
 
+As-built (2026-07-14, PR review): every caller-supplied ref/range is validated before any spawn — a leading-dash value fails typed as `GitCommandError` rather than reaching git's argv parser, where it would read as a flag (`checkout -b` being the dangerous case; a blanket `--` is not a safe alternative because it switches `checkout` into pathspec mode). The pure `GitCommand` constructors deliberately do not validate; the service is the fallible boundary.
+
 And one **non-error**: a path absent at a valid ref is `Option.none` from `show` (and simply missing from `lsTree` output). The v3 point-in-time reader's correctness leaned on this — absent paths degrade, never raise — and the snapshot diffing built on top inherits it from the type rather than from prose.
 
 The classification uses git's documented exit codes plus the locale-pinned stderr shapes, which is exactly why `LC_ALL=C` is pinned in `GitCommand`'s env: classification against localized stderr is a latent bug, and the pin makes the recognized shapes stable.

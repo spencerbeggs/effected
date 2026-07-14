@@ -208,6 +208,31 @@ const parseLsTree = (output: string): ReadonlyArray<LsTreeEntry> =>
 		});
 	});
 
+/**
+ * Refuse a caller-supplied ref or range that git would parse as an option.
+ *
+ * Refs are caller-controlled and land in git's argv as positional entries; a
+ * value beginning with `-` is read as a flag instead — `checkout("-b")` would
+ * CREATE a branch. A bare `--` separator is not a safe fix for every command
+ * (it switches `checkout` into pathspec mode), so option-like values are
+ * refused outright, before any spawn, as a typed {@link GitCommandError}.
+ * `show`'s `path` needs no guard: it is fused after the ref into one
+ * `ref:path` token, which cannot begin with `-` unless the ref does.
+ */
+const rejectOptionLikeRefs = (cwd: string, refs: ReadonlyArray<string>): Effect.Effect<void, GitCommandError> => {
+	const offending = refs.find((ref) => ref.startsWith("-"));
+	return offending === undefined
+		? Effect.void
+		: Effect.fail(
+				new GitCommandError({
+					args: [offending],
+					cwd,
+					stderr: "",
+					detail: `refused a ref argument git would parse as an option: ${JSON.stringify(offending)}`,
+				}),
+			);
+};
+
 /** Builds the `Git.Service` shape over an already-resolved `ChildProcessSpawner`. */
 const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 	const runFor = (command: ChildProcess.Command, cwd: string, kind: ClassifyKind) =>
@@ -215,6 +240,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 
 	const show = Effect.fn("Git.show")(function* (cwd: string, ref: string, path: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, ref, path });
+		yield* rejectOptionLikeRefs(cwd, [ref]);
 		const command = ChildProcess.setCwd(GitCommand.show(ref, path), cwd);
 		const classified = yield* runFor(command, cwd, "show");
 		switch (classified._tag) {
@@ -235,6 +261,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 
 	const lsTree = Effect.fn("Git.lsTree")(function* (cwd: string, ref: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, ref });
+		yield* rejectOptionLikeRefs(cwd, [ref]);
 		const command = ChildProcess.setCwd(GitCommand.lsTree(ref), cwd);
 		const classified = yield* runFor(command, cwd, "generic");
 		switch (classified._tag) {
@@ -253,6 +280,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 
 	const refExists = Effect.fn("Git.refExists")(function* (cwd: string, ref: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, ref });
+		yield* rejectOptionLikeRefs(cwd, [ref]);
 		const command = ChildProcess.setCwd(GitCommand.refExists(ref), cwd);
 		const classified = yield* runFor(command, cwd, "refExists");
 		switch (classified._tag) {
@@ -275,6 +303,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 
 	const mergeBase = Effect.fn("Git.mergeBase")(function* (cwd: string, a: string, b: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, a, b });
+		yield* rejectOptionLikeRefs(cwd, [a, b]);
 		const command = ChildProcess.setCwd(GitCommand.mergeBase(a, b), cwd);
 		const classified = yield* runFor(command, cwd, "generic");
 		switch (classified._tag) {
@@ -296,6 +325,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		options: { readonly base: string; readonly head: string },
 	) {
 		yield* Effect.annotateCurrentSpan({ cwd, base: options.base, head: options.head });
+		yield* rejectOptionLikeRefs(cwd, [options.base, options.head]);
 		const command = ChildProcess.setCwd(GitCommand.changedFiles(options.base, options.head), cwd);
 		const classified = yield* runFor(command, cwd, "generic");
 		switch (classified._tag) {
@@ -314,6 +344,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 
 	const revParse = Effect.fn("Git.revParse")(function* (cwd: string, ref: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, ref });
+		yield* rejectOptionLikeRefs(cwd, [ref]);
 		const command = ChildProcess.setCwd(GitCommand.revParse(ref), cwd);
 		const classified = yield* runFor(command, cwd, "generic");
 		switch (classified._tag) {
@@ -332,6 +363,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 
 	const checkout = Effect.fn("Git.checkout")(function* (cwd: string, ref: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, ref });
+		yield* rejectOptionLikeRefs(cwd, [ref]);
 		const command = ChildProcess.setCwd(GitCommand.checkout(ref), cwd);
 		const classified = yield* runFor(command, cwd, "generic");
 		switch (classified._tag) {

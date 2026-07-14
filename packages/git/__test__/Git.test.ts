@@ -308,4 +308,78 @@ describe("Git", () => {
 			}),
 		);
 	});
+
+	describe("option-injection guard", () => {
+		// A spawner that fails the test if it is ever reached: the guard must
+		// refuse option-like refs BEFORE any spawn. A throw here would surface as
+		// a defect, and Effect.flip on a defect fails the test.
+		const neverSpawn = (): ScriptResult => {
+			throw new Error("spawned — the option-injection guard did not fire");
+		};
+
+		it.effect("checkout refuses a ref git would parse as an option, before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.checkout(cwd, "-b");
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.include(failure.detail ?? "", "parse as an option");
+					assert.deepStrictEqual([...failure.args], ["-b"]);
+				}
+			}),
+		);
+
+		it.effect("show refuses an option-like ref before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.show(cwd, "--help", "package.json");
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.include(failure.detail ?? "", "parse as an option");
+				}
+			}),
+		);
+
+		it.effect("mergeBase guards BOTH refs — the second alone is refused too", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.mergeBase(cwd, "main", "--fork-point");
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.deepStrictEqual([...failure.args], ["--fork-point"]);
+				}
+			}),
+		);
+
+		it.effect("changedFiles guards base and head", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.changedFiles(cwd, { base: "-Otrust", head: "HEAD" });
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
+		it.effect("a dash INSIDE a ref is fine — only a leading dash is refused", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.revParse(cwd, "feat/point-in-time");
+				});
+				const sha = yield* run(program, () => ({ stdout: "a".repeat(40), exit: 0 }));
+				assert.strictEqual(sha, "a".repeat(40));
+			}),
+		);
+	});
 });

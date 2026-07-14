@@ -97,6 +97,17 @@ with `ref` set to the `"a...b"` range label, not either individual ref. This
 is a deliberate deviation from the single-ref methods' plain `ref` value,
 recorded here rather than re-derived by a future reader.
 
+## The option-injection guard
+
+Every ref/range argument (`show`/`lsTree`/`refExists`/`revParse`/`checkout`
+refs, both sides of `mergeBase` and `changedFiles`) is validated BEFORE any
+spawn: a value beginning with `-` fails typed as `GitCommandError` — git
+would parse it as a flag, and `checkout("-b")` would create a branch. A
+blanket `--` separator is deliberately NOT used (it flips `checkout` into
+pathspec mode). `GitCommand`'s pure constructors do not validate; the `Git`
+service is the guard's home. Pinned by the option-injection-guard test block,
+including a never-spawn mock proving rejection happens pre-spawn.
+
 ## The `-z` rule
 
 `lsTree` and `changedFiles` **always** use `-z` (NUL-terminated output) and
@@ -116,13 +127,13 @@ caller: it is not safe to run concurrently with other work against the same
 
 ## Testing and building
 
-44 tests in `__test__/`: 8 `GitCommand` (pure constructor shape + the
-`setCwd` non-mutation guarantee), 6 `internal/run` (including defect
-passthrough through `available`), 18 `Git` (the full classification matrix,
-mocked spawner), 12 integration (`__test__/integration/Git.int.test.ts`,
-real git + `@effect/platform-node`, including a real nonexistent-ref case and
-the dual-stream backpressure test below). `@effect/vitest`, `assert.*` —
-never `expect`.
+50 tests in `__test__/`: 8 `GitCommand` (pure constructor shape + the
+`setCwd` non-mutation guarantee), 7 `internal/run` (including defect
+passthrough through `available`), 24 `Git` (the full classification matrix
+plus the option-injection guard block, mocked spawner), 11 integration
+(`__test__/integration/Git.int.test.ts`, real git + `@effect/platform-node`,
+including a real nonexistent-ref case and the dual-stream backpressure test
+below). `@effect/vitest`, `assert.*` — never `expect`.
 
 ```bash
 pnpm vitest run packages/git
