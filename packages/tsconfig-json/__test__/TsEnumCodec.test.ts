@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
+import type { CompilerOptions } from "../src/CompilerOptions.js";
 import { TsEnumCodec } from "../src/TsEnumCodec.js";
 
 // Exact R1.6 table rows, transcribed verbatim. `canonical: false` marks a
@@ -161,6 +162,14 @@ describe("TsEnumCodec", () => {
 		it("is idempotent on an already-short name", () => {
 			assert.strictEqual(TsEnumCodec.normalizeLibReference("esnext"), "esnext");
 		});
+
+		it("lowercases a mixed-case short name — tsc lowercases enum values before lookup", () => {
+			assert.strictEqual(TsEnumCodec.normalizeLibReference("ESNext"), "esnext");
+		});
+
+		it("lowercases before stripping the lib./.d.ts wrapper, regardless of the wrapper's own case", () => {
+			assert.strictEqual(TsEnumCodec.normalizeLibReference("LIB.DOM.Iterable.D.TS"), "dom.iterable");
+		});
 	});
 
 	describe("encodeCompilerOptions", () => {
@@ -176,6 +185,16 @@ describe("TsEnumCodec", () => {
 				types: ["node"],
 			});
 			assert.deepStrictEqual(encoded, { strict: true, outDir: "./dist", types: ["node"] });
+		});
+
+		it("normalizes a mixed-case lib entry before re-encoding to file-name form", () => {
+			// `lib`'s decoded type is the canonical-lowercase literal union, so a
+			// mixed-case entry can only reach this function by bypassing the
+			// schema decode (e.g. hand-assembled options) — exactly the input
+			// `normalizeLibReference` must tolerate. Cast past the narrower type
+			// to construct that input directly.
+			const encoded = TsEnumCodec.encodeCompilerOptions({ lib: ["ESNext"] } as unknown as CompilerOptions.Type);
+			assert.deepStrictEqual(encoded, { lib: ["lib.esnext.d.ts"] });
 		});
 
 		it("encodes every enum family present in compilerOptions", () => {

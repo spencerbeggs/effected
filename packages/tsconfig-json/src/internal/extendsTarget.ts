@@ -225,9 +225,12 @@ const tryCandidate = (
 		// (c) bare package: the "tsconfig" field (resolved against the package
 		// dir) is tried first; on a miss tsc falls through to the
 		// `<pkg>/tsconfig.json` probe (typescript.js:45943-45945 — a falsy
-		// packageFileResult falls to loadModuleFromFile(indexPath)).
+		// packageFileResult falls to loadModuleFromFile(indexPath)). tsc treats
+		// `""` as falsy too (`packageFile && loader(...)`), so an empty-string
+		// field must also fall through rather than resolve to `path.resolve(pkgDir, "")`,
+		// which is the package directory itself.
 		const tsField = ownProp(record, "tsconfig");
-		if (typeof tsField === "string") {
+		if (typeof tsField === "string" && tsField !== "") {
 			const abs = path.resolve(pkgDir, tsField);
 			if (yield* fs.exists(abs)) return Option.some(abs);
 		}

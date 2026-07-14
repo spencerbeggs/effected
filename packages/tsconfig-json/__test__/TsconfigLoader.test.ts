@@ -233,6 +233,38 @@ layer(
 });
 
 layer(
+	fixtureLayer(
+		tree(
+			["/proj/node_modules/emptyfield/package.json", '{"tsconfig":""}'],
+			["/proj/node_modules/emptyfield/tsconfig.json", EMPTY],
+			// The fixture map's `exists` is plain membership (see fixtures.ts), so
+			// this key is the trick: it puts the PACKAGE DIRECTORY itself in the
+			// tree, simulating a real filesystem's `fs.exists`, which is true for
+			// a directory too. `path.resolve(pkgDir, "")` resolves to exactly this
+			// path, so under the old `typeof tsField === "string"` guard this
+			// entry existing is what let the empty field "resolve" — to the
+			// directory, not a config file. Under the fixed guard the field is
+			// treated as falsy and the code never probes this path at all; the
+			// entry is dead weight then, which is the discriminating behavior
+			// this test is checking for.
+			["/proj/node_modules/emptyfield", EMPTY],
+		),
+	),
+)("resolveExtendsTarget, empty-string tsconfig field falls through", (it) => {
+	it.effect("treats an empty tsconfig field as falsy, per tsc's packageFile && loader(...) parity", () =>
+		Effect.gen(function* () {
+			// tsc parity: `path.resolve(pkgDir, "")` resolves to the package
+			// directory, which a directory-true `exists` would accept — but tsc
+			// treats a falsy packageFile as no-match and falls through to the
+			// `<pkg>/tsconfig.json` probe (typescript.js:45943-45945, same
+			// citation as the "field pointing at a missing file" case above).
+			const result = yield* resolveExtendsTarget("emptyfield", "/proj/tsconfig.json");
+			assert.deepStrictEqual(result, Option.some("/proj/node_modules/emptyfield/tsconfig.json"));
+		}),
+	);
+});
+
+layer(
 	fixtureLayer(tree(["/proj/node_modules/arr/package.json", "[]"], ["/proj/node_modules/arr/tsconfig.json", EMPTY])),
 )("resolveExtendsTarget, non-object manifest coerced to empty", (it) => {
 	it.effect("a non-object package.json falls through to the tsconfig.json probe", () =>

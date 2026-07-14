@@ -45,7 +45,7 @@ Target probing uses `fs.exists`, which is true for a directory, where tsc's `hos
 
 ## Testing and building
 
-Tests live in `__test__/` (134 passing), use `@effect/vitest`, and assert with `assert.*` — **never** `expect`.
+Tests live in `__test__/` (138 passing), use `@effect/vitest`, and assert with `assert.*` — **never** `expect`.
 
 ```bash
 pnpm vitest run packages/tsconfig-json

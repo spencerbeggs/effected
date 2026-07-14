@@ -222,7 +222,7 @@ const decode = (family: EnumFamily, value: number): Option.Option<string> =>
  * @public
  */
 const normalizeLibReference = (lib: string): string => {
-	const base = lib.split("/").pop() ?? lib;
+	const base = (lib.split("/").pop() ?? lib).toLowerCase();
 	const withoutPrefix = base.startsWith("lib.") ? base.slice(4) : base;
 	return withoutPrefix.endsWith(".d.ts") ? withoutPrefix.slice(0, -5) : withoutPrefix;
 };
