@@ -202,6 +202,10 @@ The general lesson, for any package that stores structured data in a text column
 
 `events` stays on the cache shape (v3 posture) rather than a separate opt-in service (`ConfigEvents` posture): cache events are intrinsic per-instance observability for an eviction-bearing store, and the PubSub is created with the service, unbounded so a slow subscriber never backpressures a cache write. `emit` is infallible (`DateTime.now` + `PubSub.publish`), so v3's swallow-own-failures wrapper has nothing left to swallow. Events are a consumer hook, not the package's telemetry — spans are (see [Observability](#observability)).
 
+## Relationship to core persistence (recorded 2026-07-14)
+
+The 2026-07-14 core audit flagged `effect/unstable/persistence/KeyValueStore` — a durable string-keyed store with `layerMemory`, `layerFileSystem`, a SQLite-backed `layerSql`, `SchemaStore` and `prefix` — as the plain-KV subset of this package's noun. The overlap is real but partial: `KeyValueStore` has no TTL, no tag invalidation, no eviction policy, no event stream, and no reversible migration ledger — the value-add that justifies `Cache` and `Store`. Two consequences are binding. First, any future surface proposed here that drops that value-add (a plain durable KV) is a reinvention — point the consumer at core's `KeyValueStore` instead. Second, if this package ever grows request-level durable caching, core's `PersistedCache`/`Persistence` own that shape — build on them, not beside them.
+
 ## Error handling
 
 Three `Schema.TaggedErrorClass` types, replacing the v3 `reason: string` pattern (the review's "stringly-typed payloads destroy cause structure") with a structural `cause: Schema.Defect()`:

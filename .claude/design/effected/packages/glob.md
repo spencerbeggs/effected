@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-12
+updated: 2026-07-14
 last-synced: 2026-07-12
 completeness: 98
 related:
@@ -86,6 +86,8 @@ Every ported file in `src/internal/` carries an attribution header comment namin
 
 `enumerationPrefix` and `crossesSegments` are **new API with no upstream analogue**, designed for the enumerator contract — glob-core's `prefix` was substring-to-last-`/`, which is wrong once `**` is real. They are computed under default options, and the workspaces enumerator now consumes exactly this shape ([workspaces.md](workspaces.md#the-packages-enumerator-and-workspaces-issue-62)). Their interaction with `matchBase`/windows modes stays defined only for default-options patterns, which is all `GlobSet` uses.
 
+**Not a duplication of core (adjudicated 2026-07-14):** `effect@4.0.0-beta.97` introduced `FileSystem.glob(pattern, { root, exclude })` — a filesystem-*scanning* glob. This package is deliberately a **pure string→predicate matcher** with no IO, which is exactly why the kit can point it at non-file candidates: `git ls-tree` entries in the at-ref snapshot design and package names in `WorkspacePackage.matchesDependency`. Same noun, different concern; core still has no minimatch-dialect string predicate. Consumers who want scan-plus-match against a real filesystem should reach for core's `FileSystem.glob`, not wrap this package around a directory walk.
+
 `GlobPatternError` lives in this module per the errors-near-domain rule: a `Schema.TaggedErrorClass` with `pattern: string` (truncated for safety in messages), `reason: Schema.Literal("PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded")` and structured `limit`/`actual` number fields. Kind: recoverable typed failure — malformed input is **never** a defect (the hardening invariant). Audience: calling code (stable `_tag` plus `reason` to branch on) and the end user (the message names the cap). Extglob over-nesting does not add a reason: it degrades to literal matching rather than erroring, matching upstream (see [Hardening](#hardening)).
 
 ### GlobSet
@@ -147,7 +149,7 @@ Per [package-setup.md](../package-setup.md): copy a pure sibling (jsonc) into `p
 - `WorkspacePackage.matchesDependency` re-expressed over `GlobPattern`, dropping the `minimatch` runtime dep.
 - The `packages:` enumerator re-expressed over `GlobSet`: `literals` fast-path, `wildcards` drive `readDirectory` from `enumerationPrefix` and `crossesSegments` triggers the bounded descent — fixing #62 end to end.
 - `sync.ts`'s hand-rolled third semantic was deleted in favour of the same `GlobSet`.
-- At-ref discovery (`PointInTimeWorkspace`) is deferred in workspaces v1; when it lands it uses the same compiled set against `git ls-tree` entries.
+- At-ref discovery is designed and on the gate as of 2026-07-14 — workspaces' `WorkspaceSnapshots` service ([workspaces.md](workspaces.md)) matches the same compiled set against `git ls-tree` entries from `@effected/git`, exactly as this bullet promised when the capability was deferred.
 
 Glob itself does **no** enumeration — pure string→predicate only. That boundary is load-bearing.
 

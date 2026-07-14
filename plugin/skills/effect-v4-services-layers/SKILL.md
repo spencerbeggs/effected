@@ -237,6 +237,41 @@ clean). Surfaced by `AppConfig.layer` wrapping `ConfigFile.layer` in the
 > `Layer.ts:180` / `:165` — resolve the tree via `effect-v4-source-lookup`).
 > There is no nested `Layer.Layer.Success` spelling to reach for.
 
+## Platform capabilities: require in R, never own a backend
+
+Effect v4's consolidated core **declares** the platform service contracts —
+`FileSystem`, `Path`, `Terminal`, `Stdio` as stable `effect/*` modules, and
+`ChildProcessSpawner` (subprocesses) under `effect/unstable/process` — while the
+**implementations** live in `@effect/platform-*` (Node's `NodeServices.layer`
+provides `ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal`
+in one layer). That split fixes the house default:
+
+- **A library that needs a platform capability requires the core-declared
+  service in its `R` channel** and the application provides the platform layer
+  once at the edge. Requiring-in-R is free — it adds no dependency edge and no
+  tier cost. This is how `walker`, `xdg` and `config-file` consume
+  `FileSystem`, and how anything subprocess-shaped consumes
+  `ChildProcessSpawner`.
+- **Taking `@effect/platform-*` as a dependency edge is categorically
+  different** — it drags the platform package into every consumer's tree
+  (integrated tier). Do not conflate the two: "platform-node is tier 3" is a
+  statement about dependency edges, never about `R`.
+- Platform packages are legitimate **devDependencies for integration tests**,
+  and legitimate **dependencies only in applications and app-edge packages**
+  (a CLI binary, a server entrypoint).
+- **A direct `node:` import in library code is a code smell**, most of the
+  time. The sanctioned exceptions are documented Node-only overlays — a
+  default layer or a sync escape hatch — never a contract or a
+  business-logic path.
+
+Before designing any service or seam, grep the vendored core
+(`.repos/effect-smol/packages/effect/src`, including `unstable/`) for an
+existing contract. The cautionary tale is one day old: a parallel
+subprocess vocabulary (`Command`/`CommandRunner` plus a hand-rolled
+`node:child_process` layer) survived four review gates in this repo before a
+source check found `effect/unstable/process` already declared all of it — the
+package was deleted the same day it was built.
+
 ## Memoization: layers build once, by reference
 
 v4 shares one `MemoMap` **across `Effect.provide` calls**, so the same

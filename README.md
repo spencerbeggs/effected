@@ -24,6 +24,7 @@ A pnpm monorepo (npm org `@effected`) building an [Effect](https://effect.websit
 | [@effected/ts-vfs](packages/ts-vfs) | integrated | TypeScript virtual file systems: fetch, cache and resolve type definitions from npm, and build @typescript/vfs environments for type-aware code samples |
 | [@effected/app](packages/app) | integrated | The application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite store, a TTL cache and a config file to the same place |
 | [@effected/tsconfig-json](packages/tsconfig-json) | boundary | tsconfig.json handling as Effect schemas: JSONC document and compiler-option schemas, tsc-parity extends-chain resolution, nearest-config discovery and a portable subset for virtual TypeScript environments |
+| [@effected/git](packages/git) | boundary | Typed git introspection over Effect core's ChildProcessSpawner: file content and trees at any ref, ref probes, merge bases and changed files — plus checkout, the one mutation |
 | [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | companion | pnpm config dependency for centralized catalog management across the Effected ecosystem |
 
 Tier describes a package's runtime surface: **pure** packages peer on `effect` and take only `@effected/*` edges with no IO, **boundary** packages have the same dependency surface but do IO through Effect's core `FileSystem` and `Path` services and **integrated** packages import at least one runtime package outside `effect` core. Tiers classify libraries, so `pnpm-plugin-effect` has none: it is a **companion**, published and installable but exposing no API — it ships two pnpm catalogs and a pnpmfile, and installing it pins your `effect` versions and peer floors to the ones the kit was built against.
@@ -34,7 +35,7 @@ Nothing here is published to npm yet. The whole kit ships together at 0.1.0 once
 
 ## Roadmap
 
-The package set is complete. `app` was the last of the ported libraries to land — a thin composition over `xdg`, `config-file` and `store` for wiring an application's control plane — and it came last among them because the content of a control plane is decided by how the consuming applications actually wire the kit, not guessed at ahead of them. `tsconfig-json` followed as the first package designed in-repo from scratch rather than ported.
+The package set is complete. `app` was the last of the ported libraries to land — a thin composition over `xdg`, `config-file` and `store` for wiring an application's control plane — and it came last among them because the content of a control plane is decided by how the consuming applications actually wire the kit, not guessed at ahead of them. `tsconfig-json` followed as the first package designed in-repo from scratch rather than ported, and `git` as the second — the first piece of the point-in-time port, providing the Git primitives the future at-ref workspace snapshots build on.
 
 What stands between here and 0.1.0 is no longer a missing package but the proof: moving each of the five applications onto `@effected/*` and fixing whatever that surfaces.
 

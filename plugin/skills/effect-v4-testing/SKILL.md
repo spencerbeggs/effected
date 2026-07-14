@@ -165,6 +165,13 @@ describe("foo", () => {
 
 - The `layer` block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`); use
   its `it.effect` normally — the service is already in the environment.
+- **`MethodsNonLive` has no `.live`** — `it.live` does not exist inside a
+  `layer(...)` block (verified against the beta.97 vitest source: `layer`'s
+  callback is typed `MethodsNonLive<R>`; only the top-level `Methods` adds
+  `live`). A wall-clock test that also needs the group's layer goes **outside**
+  the block as a top-level `it.live(...)` with the layer provided directly via
+  `.pipe(Effect.provide(TheLayer))`. Discovered live when a real-sleep
+  interruption test could not be written inside the group.
 - Nest extra deps with `it.layer(BarLayer)("nested", (it) => { … })`. The nested
   form takes **`timeout` only** (no `memoMap`, no `excludeTestServices`) and
   reuses the parent's memo map.

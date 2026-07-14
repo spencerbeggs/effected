@@ -143,6 +143,28 @@ importers:
         version: 7.0.2
     publishDirectory: dist/dev/pkg
 
+  packages/git:
+    devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-beta.97(effect@4.0.0-beta.97)(ioredis@5.11.1)
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
+      '@savvy-web/bundler':
+        specifier: ^1.1.13
+        version: 1.1.13(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@7.0.2)
+      '@types/node':
+        specifier: catalog:silk
+        version: 26.1.1
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.97
+      typescript:
+        specifier: catalog:silk
+        version: 7.0.2
+    publishDirectory: dist/dev/pkg
+
   packages/glob:
     devDependencies:
       '@effect/vitest':

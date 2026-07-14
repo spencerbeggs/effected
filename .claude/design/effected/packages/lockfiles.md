@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-12
+updated: 2026-07-14
 last-synced: 2026-07-12
 completeness: 95
 related:
@@ -14,6 +14,7 @@ related:
   - ../package-setup.md
   - glob.md
   - workspaces.md
+  - npm.md
 ---
 
 # @effected/lockfiles design
@@ -28,7 +29,7 @@ Its consumer is [`@effected/workspaces`](workspaces.md) — **now merged** — w
 
 **Pure tier.** No services, no layers, no IO, no `R` anywhere. A lockfile parser that reached for the filesystem would be boundary tier — the inventory's standing caveat — so the IO stays out by construction: every entrypoint takes `content: string`, and the one operation that used to do IO (integrity's manifest reads) now takes manifests as input.
 
-Peer closure per the repo's `workspace:*` precedent — each edge declared in both `peerDependencies` and `devDependencies`: `peerDependencies` are `effect` (`catalog:effect`) plus the three pure-to-pure `workspace:*` edges — `@effected/jsonc` (bun's JSONC), `@effected/yaml` (pnpm and yarn Berry are YAML) and `@effected/semver` (integrity's range satisfaction) — each mirrored in `devDependencies`. Zero external runtime dependencies; the text-parsing engines arrive through the sibling packages, so unlike glob and toml there is nothing to vendor.
+Peer closure per the repo's `workspace:*` precedent — each edge declared in both `peerDependencies` and `devDependencies`: `peerDependencies` are `effect` (`catalog:effect`) plus the three pure-to-pure `workspace:*` edges — `@effected/jsonc` (bun's JSONC), `@effected/yaml` (pnpm and yarn Berry are YAML) and `@effected/semver` (integrity's range satisfaction) — each mirrored in `devDependencies`. Zero external runtime dependencies; the text-parsing engines arrive through the sibling packages, so unlike glob and toml there is nothing to vendor. (The [importers design](#importers-v2-addition-designed-2026-07-14) adds a fourth pure edge, `@effected/npm`, when it lands.)
 
 ## The two seam repairs (the headline work)
 
@@ -119,6 +120,27 @@ The other three parsers were **checked, not assumed**. yarn shared the assumptio
 ### LockfileIntegrity
 
 `class LockfileIntegrity extends Schema.Class<...>("LockfileIntegrity")` — `valid`, `missingWorkspaces`, `extraWorkspaces`, `unsatisfiedConstraints` (struct rows carrying `DependencyType`), ported shape-for-shape — plus `static check(lockfile: Lockfile, manifests: ReadonlyArray<WorkspaceManifest>): LockfileIntegrity`, the total pure function of seam repair 2. Range satisfaction goes through `@effected/semver` (`Range.parse`, `SemVer.parse`, `range.test`); parse failures on either side skip the row, as in v3.
+
+## Importers (v2 addition, designed 2026-07-14)
+
+Design-first, implementation to follow; exact API names are design-level and are settled at the effect-v4-planning gate at implementation time. The driving consumer is `savvy-web/silk-update-action`, which diffs a before/after lockfile pair in one process — it parses both texts through the pure boundary and compares each workspace importer's *declared* dependencies, data the v1 model discards. The design ports `workspaces-effect` commit `c594ff1`'s `importers` field, reshaped to this package's idioms.
+
+The `Lockfile` model gains one field and two leaf value classes:
+
+- **`ImporterDependency`** — one declared dependency of one importer: `name`; `specifier` as [`@effected/npm`'s `DependencySpecifier`](npm.md) via its `FromString` codec, so a decoded value is tag-matchable (`catalog:` / `workspace:` / range / dist-tag / raw) while **encoding round-trips the exact original string** — the brownfield guarantee that lets consumers reimplement v3 diffing byte-for-byte; `version`, optional and **pnpm-only** (pnpm records `{ specifier, version }` per importer dependency; bun and npm record resolved versions on their package entries instead, so consumers join by `name` against `packages`); `depType`, reusing the existing `DependencyType`.
+- **`LockfileImporter`** — `path` (root-relative importer path, `"."` for the root — the same keys as `WorkspaceDiscovery.importerMap()` in workspaces) plus `dependencies`.
+- **`Lockfile.importers`** — defaulted to `[]`, populated by the pnpm, bun and npm internal transforms off a shared dependency-sections table (the v3 `DEP_SECTIONS` shape, in `internal/shared.ts`). **yarn never records importers**, so a yarn lockfile always yields an empty array — documented behavior, not an error.
+
+Rules the field inherits from the existing design:
+
+- **`withImporterNames` does not touch importers.** They stay keyed by importer path, matching `importerMap` — the same decision c594ff1 made, kept deliberately: the path is the join key.
+- **Keyed access**: `lockfile.importer(path)` returns an `Option<LockfileImporter>` backed by a lazily-built `#private` index outside the schema — the `packagesNamed` precedent. The array field remains for serialization and iteration.
+- **`Lockfile.parse` stays the only fallible boundary.** Importer extraction is total once parse succeeds; a malformed importer row is skipped per the existing total-string-surgery discipline, never thrown.
+- **Construction uses conditional spreads** for the optional `version` — under v4's validating constructors an explicit `undefined` on an `optionalKey` field throws, the trap the repo's porting notes already record.
+
+**A new `workspace:*` edge: `@effected/npm`.** Pure-to-pure, so the tier holds. The specifier taxonomy cannot come from `@effected/package-json`, whose current home it is — that package is integrated tier, and R2 would propagate integration into this pure package. The importers design is precisely the "second consumer" trigger npm.md recorded for moving `DependencySpecifier` there; see [npm.md](npm.md).
+
+The same round moves two more scalars along the new edge ([npm.md](npm.md#two-more-scalars-move-in-designed-2026-07-14)): the `DependencyType` literal this package exports today relocates to `@effected/npm` as the kit-wide dependency-section vocabulary (this package consumes it; same free-before-`0.1.0` logic), and `ResolvedPackage.integrity` re-types from a plain string to npm's `IntegrityHash` brand. What this package keeps and what it deliberately discards from `package-lock.json` is recorded in [npm.md's vocabulary registry](npm.md#vocabulary-registry-npm-v12-parity-map-recorded-2026-07-14).
 
 ## Hardening
 

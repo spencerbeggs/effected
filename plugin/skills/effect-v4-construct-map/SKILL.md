@@ -17,6 +17,44 @@ signature before writing code. Never trust v3 muscle memory. One runtime probe
 beats an hour of type-error archaeology — see
 [references/verifying.md](./references/verifying.md).
 
+## The consolidated core — check here before inventing anything
+
+The official orientation (`MIGRATION.md` in the vendored effect-smol source):
+functionality from `@effect/platform`, `@effect/rpc`, `@effect/cluster` and
+others now lives **directly in `effect`**. The packages that remain separate
+are platform-, provider-, or technology-specific implementations only —
+`@effect/platform-*`, `@effect/sql-*`, `@effect/ai-*`, `@effect/opentelemetry`,
+`@effect/atom-*`, `@effect/vitest` — and every ecosystem package shares one
+version number with `effect`.
+
+The consolidation splits **stable vs unstable**:
+
+- **Stable top-level `effect/*` modules** (strict semver): the former platform
+  contracts `FileSystem`, `Path`, `PlatformError`, `Terminal`, `Stdio` — plus
+  `Config`/`ConfigProvider`, `Cache`, `Crypto`, `Cron`, `Encoding`, and the rest
+  of core.
+- **`effect/unstable/*`** (breaking changes allowed in minors; modules graduate
+  to top level as they stabilize): `ai`, `cli`, `cluster`, `devtools`,
+  `encoding`, `eventlog`, `http`, `httpapi`, `jsonschema`, `observability`,
+  `persistence`, `process`, `reactivity`, `rpc`, `schema`, `socket`, `sql`,
+  `workflow`, `workers`.
+
+The mappings this split makes non-guessable:
+
+| v3 | v4 | note |
+| --- | --- | --- |
+| `@effect/platform/Command` | `effect/unstable/process` **`ChildProcess`** | `Command` values are pure data AND yieldable Effects |
+| `@effect/platform/CommandExecutor` | `effect/unstable/process` **`ChildProcessSpawner`** | the service contract; platform packages implement it |
+| `@effect/platform/KeyValueStore` | `effect/unstable/persistence/KeyValueStore` | with `layerMemory`/`layerFileSystem`/`layerSql` |
+| `NodeContext.layer` | **`NodeServices.layer`** (`@effect/platform-node`) | provides `ChildProcessSpawner \| Crypto \| FileSystem \| Path \| Stdio \| Terminal` |
+
+**The rule this section exists for:** before designing any service, seam, or
+vocabulary, grep the vendored core (`.repos/effect-smol/packages/effect/src`,
+including `unstable/`) for an existing contract. If core declares it, require
+it in `R` and let the app provide the platform layer — do not re-declare or
+re-implement it. A parallel subprocess vocabulary survived four review gates
+in this repo before a source check deleted it.
+
 ## Reference map
 
 | Reference | Load when |
