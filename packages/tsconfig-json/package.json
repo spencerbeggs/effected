@@ -35,7 +35,7 @@
 		"@effect/vitest": "catalog:effect",
 		"@effected/jsonc": "workspace:*",
 		"@effected/walker": "workspace:*",
-		"@savvy-web/bundler": "^1.1.13",
+		"@savvy-web/bundler": "^1.1.14",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
 		"typescript": "catalog:silk"
