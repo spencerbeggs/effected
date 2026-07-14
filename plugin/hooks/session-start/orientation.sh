@@ -35,6 +35,10 @@ Available via the Skill tool (several also auto-load on trigger):
   implementation code. Walks four design pillars (data types, errors,
   services/layers, observability, testing) and requires a compact design
   summary before Schema.Struct/Context.Service gets touched.
+- effect-v4-module-index — the routing map: every core module (plus the
+  unstable namespaces) in one what-it-is / when-to-reach-for-it table, with
+  the source-path convention. Consult FIRST when deciding which module a
+  task needs, and during planning's contract-inventory gate.
 - effect-v4-source-lookup — the evidence ladder for confirming a v4 API before
   relying on it: migration notes settle renames, vendored source settles
   existence and signature, only a probe settles semantics.

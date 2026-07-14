@@ -9,7 +9,9 @@ description: Use when writing tests for Effect v4 code with @effect/vitest — i
 APIs. Effect programs run through `it.effect`, never through a bare `it()` that
 calls `Effect.runSync`/`runPromise`. Our house test files
 (`packages/jsonc/__test__/Jsonc.test.ts`, `packages/yaml/__test__/Yaml.test.ts`)
-are the canonical shapes; this skill is why they look the way they do.
+are the canonical shapes; this skill is why they look the way they do. (The
+`effect/testing/*` modules — TestClock, TestConsole, TestSchema, FastCheck —
+are indexed in `effect-v4-module-index`; this skill owns how to use them.)
 
 ## The default runner: `it.effect` + `Effect.gen`
 
@@ -120,6 +122,13 @@ const die = exit.cause.reasons.find(Cause.isDieReason);
 assert.instanceOf(die?.defect, Error);          // the ORIGINAL error, unmasked
 assert.notInstanceOf(die?.defect, MyTypedError); // not laundered into E
 ```
+
+When you only need the coarse verdict — "the cause carries a Die and no Fail" —
+`Cause.hasDies(exit.cause)` / `Cause.hasFails(exit.cause)` are the one-line
+spellings (both verified at beta.97; the `@effected/git` `available`
+defect-passthrough test is the working example). Reach for the full
+`reasons.find(Cause.isDieReason)` form above only when the assertion must also
+inspect the ORIGINAL defect value.
 
 The no-Fail-reason line is the discriminating assertion — without it, an
 implementation that wraps the defect in a typed error still passes.

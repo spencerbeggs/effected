@@ -6,7 +6,9 @@ description: Use when writing core Effect v4 code — generators (Effect.gen/Eff
 # Effect v4 core idioms
 
 The idiomatic way to write core v4 code — generators, errors, resources, fibers,
-runtime, equality. This is the *how to write it well* companion to
+runtime, equality. For *which module* to reach for in the first place (what is
+`Sink`, `RcMap`, `Latch`…), consult `effect-v4-module-index` — this skill owns
+patterns, not the map. This is the *how to write it well* companion to
 `effect-v4-construct-map` (which owns the flat v3→v4 rename tables and the
 `Context.Service` / `Schema.TaggedErrorClass` migration rows — cross-reference it
 rather than duplicate). Every identifier below was probed against

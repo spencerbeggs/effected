@@ -8,7 +8,8 @@ description: Comprehensive Effect v3→v4 migration reference — the single loo
 The single place to look up what a v3 construct became in v4. The per-domain
 tables live in [`references/`](./references/) — load the one domain you need.
 The idiomatic *v4 way* to write the code lives in the best-practice skills
-cross-referenced below; this skill is the lookup, not the tutorial.
+cross-referenced below; this skill is the lookup, not the tutorial. For what a
+v4 module *is* regardless of its v3 history, see `effect-v4-module-index`.
 
 **Ethos — verify against the installed package, not memory.** Everything here is
 verified against `effect@4.0.0-beta.94`. v4 betas move fast: when an API is not

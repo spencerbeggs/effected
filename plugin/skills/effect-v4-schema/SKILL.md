@@ -5,7 +5,9 @@ description: Use when designing, reading, reviewing, or debugging any Effect v4 
 
 # Effect v4 Schema
 
-The single skill for Effect v4 `Schema`. It carries three layers:
+The single skill for Effect v4 `Schema`. (For which of the `Schema*` satellite
+modules is consumer-facing vs machinery, see `effect-v4-module-index`.) It
+carries three layers:
 
 1. **The house rules** — the [Do this, not this](#do-this-not-this) table below,
    our opinionated defaults distilled from the `@effected` migrations.

@@ -7,7 +7,9 @@ description: Use when you need to confirm an Effect v4 API before relying on it 
 
 Never port, review, or write against a v4 API you have not confirmed. v3 memory is confidently wrong, and so is the v3 source that the workspace root happily resolves.
 
-This skill tells you where to look and how far to go.
+This skill tells you where to look and how far to go. (If the question is
+merely "which module does X" — start at `effect-v4-module-index`, then verify
+here.)
 
 ## The evidence ladder
 
@@ -59,7 +61,8 @@ and no error. The rule:
 > your code links against; the vendored tree is what someone pinned last.
 
 Two agents were saved by this during the store migration. Check the drift in one line
-before you trust the tree — the versions match, or they do not:
+before you trust the tree — the versions match, or they do not (the snippet uses the
+`$SRC` shell variable that the resolution block *below* defines — set it first):
 
 ```bash
 diff <(node -p 'require("'"$SRC"'/packages/effect/package.json").version') \

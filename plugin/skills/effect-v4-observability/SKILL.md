@@ -9,7 +9,8 @@ Effect-core APIs below are verified against `effect@4.0.0-beta.94`.
 `@effect/opentelemetry` is **not installed** in this monorepo — every
 `@effect/opentelemetry` example is *shape per the official guide; verify against
 the installed package when first adopted*. v4 betas move fast; when an API is not
-listed here, probe it (`typeof`) before writing code.
+listed here, probe it (`typeof`) before writing code. Module routing (what
+`Tracer`, `Logger`, `References` are) lives in `effect-v4-module-index`.
 
 ## The house rule (this is the whole point)
 

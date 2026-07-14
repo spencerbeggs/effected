@@ -9,7 +9,8 @@ Verified against `effect@4.0.0-beta.94`. A service is a typed key into the
 runtime's context; a layer is the recipe that builds it. Get three things
 right — the one service form, provide-once composition, and memoization by
 reference — and the wiring stays honest and cheap. For the v3→v4 name
-lookup (what a construct *was* called), see `effect-v4-construct-map`.
+lookup (what a construct *was* called), see `effect-v4-construct-map`; for
+what any core module *is* and when to reach for it, `effect-v4-module-index`.
 
 ## One service form: `Context.Service`
 

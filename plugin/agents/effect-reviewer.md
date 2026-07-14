@@ -72,6 +72,15 @@ driving a v3→v4 port (that is the migrator).
    would have. Read the vendored Effect source for existence and signature;
    probe from inside the package for behaviour. The migration notes are
    prescriptive and silent on most removals — their silence is not evidence.
+
+   **Review the brief against core, not just the code against the brief.** When
+   the change introduces a service, seam, or vocabulary, check the vendored
+   source (including `effect/unstable/*`) for an existing core contract before
+   approving the design premise. A package once survived four review gates
+   because every reviewer verified the code faithfully implemented a brief
+   whose entire surface core already declared — it was deleted the same day a
+   source check finally ran. A faithful implementation of a redundant design
+   is still a defect; flag it as one.
 2. **Check the v4 idiom, not just the logic.** Walk the change against the
    skills: typed error channel (no `reason: string`, no defect escaping as a
    crash — malformed input must fail through `Effect<_, DomainError>`); `Result`
