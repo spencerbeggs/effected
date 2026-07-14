@@ -131,10 +131,13 @@ const classify = (
 	kind: ClassifyKind,
 ): Classified => {
 	if (outcome instanceof PlatformError.PlatformError) {
+		// The non-NotFound arms keep the underlying diagnostic: flattening the
+		// PlatformError to its reason tag alone drops module/method/cause detail
+		// a caller debugging a PermissionDenied or TimedOut spawn genuinely needs.
 		const detail =
 			outcome.reason._tag === "NotFound"
 				? "git is not installed (or the working directory does not exist)"
-				: `spawn failed: ${outcome.reason._tag}`;
+				: `spawn failed: ${outcome.reason._tag}: ${outcome.message}`;
 		return { _tag: "failure", error: GitCommandError.make({ args, cwd, stderr: "", detail }) };
 	}
 	const { stdout, stderr, exitCode } = outcome;

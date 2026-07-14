@@ -264,6 +264,31 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("a non-NotFound spawn failure keeps the underlying diagnostic in detail", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.revParse(cwd, "HEAD");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () =>
+						PlatformError.systemError({
+							_tag: "PermissionDenied",
+							module: "ChildProcess",
+							method: "spawn",
+							description: "EACCES on git binary",
+						}),
+					),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.isDefined(failure.detail);
+					assert.isTrue(failure.detail?.startsWith("spawn failed: PermissionDenied:"));
+					assert.include(failure.detail ?? "", "EACCES on git binary");
+				}
+			}),
+		);
+
 		it.effect("a run that never completes fails with GitCommandError after the 30s ceiling", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {

@@ -37,8 +37,10 @@ backend.
   untouched.
 - `internal/run.ts` — `runCollected` (scoped `spawner.spawn` + `Effect.all`
   over `[stdout, stderr, exitCode]` with `{ concurrency: "unbounded" }`) and
-  `available`. **Not exported** from the package; `Git.ts` is the only
-  consumer.
+  `available`. **Not exported** from the package. `Git.ts` consumes
+  `runCollected` only; `available` currently has no production consumer — it
+  is staged for the workspaces piece (GitReader's `available(cwd)` parity),
+  kept deliberately with its tests rather than deleted-and-reintroduced.
 - `Git.ts` — the `Context.Service` (tag id `"@effected/git/Git"`), the error
   taxonomy (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`), and
   the private `classify`/`runClassified` pair where git's stderr/exit-code
