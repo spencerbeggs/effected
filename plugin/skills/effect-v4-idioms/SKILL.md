@@ -309,6 +309,31 @@ wrapping the *inner* effect. Reach for bare `Effect.cached` only when you
 genuinely want a terminal failure — and say so in the TSDoc, including the
 interrupt behavior, because no consumer will guess it.
 
+## The `Effect.timeout` family — three forms, and timing out interrupts
+
+Verified against beta.97: exactly three exist — `timeoutFail` and `timeoutTo`
+do **not**.
+
+| Form | On timeout | Signature shape |
+| --- | --- | --- |
+| `Effect.timeout(duration)` | fails with **`Cause.TimeoutError`** (added to `E`) | `Effect<A, E \| Cause.TimeoutError, R>` |
+| `Effect.timeoutOption(duration)` | succeeds with `Option.none()` — no added error | `Effect<Option<A>, E, R>` |
+| `Effect.timeoutOrElse({ duration, orElse })` | runs the fallback (the old `timeoutTo`/`timeoutFail` shape) | `Effect<A \| A2, E \| E2, R \| R2>` |
+
+**When the timeout wins, the source effect is interrupted** — its finalizers
+run, so scoped resources clean up: a timed-out subprocess spawn closes its
+scope and kills the child, a timed-out acquire releases. A per-operation
+ceiling is therefore `op.pipe(Effect.timeout("30 seconds"))` composed by the
+*caller* — never a bespoke timeout parameter threaded through a service.
+
+## `Predicate` helpers — never hand-write `isRecord` / `isString`
+
+The official LLMS guidance, adopted as a house rule: **never** write your own
+type-guard helpers like `isRecord`, `isString`, `isPlainObject` — the
+`Predicate` module ships them (`Predicate.isRecord`, `Predicate.isString`,
+`Predicate.hasProperty`, …). A hand-rolled guard is both a duplication and a
+subtle-drift risk (v3 ports carry several; retire them on contact).
+
 ## Scope and resource management
 
 Resource idioms are unchanged — tie cleanup to a scope:

@@ -18,7 +18,6 @@ related:
   - npm.md
   - package-json.md
   - git.md
-  - commands.md
 ---
 
 # @effected/workspaces design
@@ -81,6 +80,8 @@ v3's `glob-core.ts` compiled `packages:` patterns with a hand-rolled regex and c
 The descent is a **worklist, not a recursion** — so it cannot overflow the stack, per the hardening skill's "remove the recursion" preference over "cap the recursion". It is bounded three ways: a `maxDepth` (default 32, guarded with `Number.isInteger` so `NaN` and fractions die rather than silently enumerating nothing), a visited-directory budget, and unconditional pruning of `node_modules` and `.git` (pnpm ignores `node_modules` in workspace globs; without the prune a `packages/**` in a repo with installed dependencies would walk the entire store).
 
 A wildcard whose `enumerationPrefix` names a directory that does not exist fails typed (`WorkspacePatternError`), preserving v3's typo-catching behaviour with a structured error instead of a `reason` string.
+
+**Core-overlap evaluation ticket (recorded 2026-07-14, unresolved):** beta.97 core ships `FileSystem.glob(pattern, { root, exclude })` — scan-plus-match over a real filesystem — which overlaps this enumerator's traversal half (the matcher half stays `@effected/glob`, which core does not duplicate). Whether `FileSystem.glob` honours the semantics this enumerator exists to guarantee — the issue-#62 `packages/**` bounded descent, the `node_modules`/`.git` prune, the integer-guarded depth cap, the typed failure at a bound, and the one-state-machine discipline shared with `WorkspacesSync` — needs a behavioral probe before any replacement is considered. Until that probe runs and passes, the enumerator stays. Core also ships `FileSystem.watch(path): Stream<WatchEvent>` — if a watch-mode discovery surface is ever proposed, it builds on that, never on a hand-rolled watcher.
 
 ## Module layout
 
@@ -178,7 +179,7 @@ So workspaces owns the seam: `GitReader` is a small `Context.Service` contract (
 
 `GitNotAvailableError` and `GitReadError` — the review called their overlap out — collapse into one `GitCommandError` with a typed `kind` field.
 
-> **Relocation (designed 2026-07-14):** the seam generalizes and moves out. The v2 round dissolves `GitReader` into [`@effected/commands`](commands.md)' `CommandRunner` (the kit's one subprocess seam) with [`@effected/git`](git.md)'s `Git` service layered on top; `ChangeDetector` re-targets `Git`. See [GitReader relocates](#gitreader-relocates-to-effectedgit).
+> **Relocation (designed 2026-07-14, revised same day, twice):** the seam dissolves outward. The v2 round retires `GitReader` in favour of **core's** `ChildProcessSpawner` contract (`effect/unstable/process`) — provided by the consumer's platform layer, required in `R` — with [`@effected/git`](git.md)'s `Git` service layered on top; `ChangeDetector` re-targets `Git`. This module's opening comment ("Effect v4 core ships NO `Command` / `CommandExecutor`") is **false at beta.97** and dies with the module. See [GitReader relocates](#gitreader-relocates-to-effectedgit).
 
 ### `WorkspaceCatalogs` and `CatalogSet`
 
@@ -292,7 +293,7 @@ Worktree lockfile catalogs also become PM-aware: `LockfileReader` already detect
 
 ### `ConfigDependencyHooks` — the opt-in replay seam
 
-A contract service (final name settled at implementation) that, given the workspace root and the manifest's `configDependencies`, produces the hook-injected catalogs. Its live layer dynamically imports each config dependency's `pnpmfile.cjs` and replays its `updateConfig` hooks over the inline-catalog seed — **in-process code loading**, so it does not ride on `@effected/commands`; it gets its own Node-coupled layer, the same shape as every other seam here.
+A contract service (final name settled at implementation) that, given the workspace root and the manifest's `configDependencies`, produces the hook-injected catalogs. Its live layer dynamically imports each config dependency's `pnpmfile.cjs` and replays its `updateConfig` hooks over the inline-catalog seed — **in-process code loading**, so no subprocess is involved; it gets its own Node-coupled layer, the same shape as every other seam here.
 
 - **Opt-in by layer choice.** The default `WorkspaceCatalogs.layer` never executes config-dependency code. A second composition (working name `layerWithConfigDependencies`) adds the replay overlay. A `Layer.succeed` no-op serves tests and consumers who want the topology without the execution.
 - **Assembly precedence preserved exactly**: lockfile < inline < hook-injected, merged per-dependency within a catalog, with the hooks seeded by the inline catalogs — matching pnpm's own behavior and v3's `assembleCatalogs`.
@@ -300,7 +301,7 @@ A contract service (final name settled at implementation) that, given the worksp
 
 ### `GitReader` relocates to `@effected/git`
 
-The v1 seam generalizes and moves out: [`@effected/commands`](commands.md) owns the kit's one subprocess seam (`CommandRunner`), and [`@effected/git`](git.md)'s `Git` service builds the typed git operations (`show`, `lsTree`, `refExists`, `mergeBase`, `changedFiles`, `revParse`, `checkout`) on top of it. `GitReader` dissolves into that pair; `ChangeDetector` re-targets `Git`, and `WorkspaceSnapshots` consumes `Git` directly. Now is the only cheap time — nothing has published, so relocating the seam is free today and a breaking rework after `0.1.0`. The hard-won layer details (locale pin, per-command timeout, `Layer.succeed` mockability) transfer with it.
+The v1 seam dissolves outward — and a correction rides with it. `GitReader.ts` opens by claiming "Effect v4 core ships NO `Command` / `CommandExecutor`"; at the pinned beta.97 that is **false**: core publishes the full subprocess contract in `effect/unstable/process` (`Command` values, `ChildProcessSpawner`, a `ChildProcessHandle` with streams and a success-typed `ExitCode`). Nor does the kit need to ship the Node backend — `@effect/platform-node`'s `NodeServices.layer` provides `ChildProcessSpawner` exactly as it provides `FileSystem` and `Path`, and requiring a core-declared service in `R` costs a consumer nothing (R3; GitReader's "taking platform-node = tier 3" rationale conflated a dependency edge with an R-channel requirement). So [`@effected/git`](git.md)'s `Git` service builds the typed git operations (`show`, `lsTree`, `refExists`, `mergeBase`, `changedFiles`, `revParse`, `checkout`) over core's `Command` values with `ChildProcessSpawner` in `R`. `GitReader` dissolves into that stack; `ChangeDetector` re-targets `Git`, and `WorkspaceSnapshots` consumes `Git` directly. Now is the only cheap time — nothing has published, so relocating the seam is free today and a breaking rework after `0.1.0`. The hard-won layer details survive as configuration rather than mechanism: the locale pin rides on core's `env` + `extendEnv` command options, the per-run ceiling composes as `Effect.timeout` in git, and `Layer.succeed` mockability is native to core's service.
 
 ### Testing additions
 

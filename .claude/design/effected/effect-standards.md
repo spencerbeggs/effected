@@ -83,6 +83,24 @@ R3 and R4 together are also what kept `@effected/config-file` at boundary throug
 
 The scheme buys two things worth stating. First, it explains the runtimes CLI split ([packages/runtimes.md](packages/runtimes.md#the-split-and-why-it-is-forced)): `@effect/platform-node` is tier 3, the resolver core is tier 2, and a tier-2 package's consumers should not have to pay a tier-3 install — so the split is what R1 requires, not an ad-hoc fix. Second, without the scheme `@effected/config-file` had to state in prose that it carries zero external runtime dependencies, because "boundary" alone could not distinguish it from `@effected/workspaces`; the tier label now carries that information directly.
 
+## The consolidated core, and the require-in-R default
+
+Effect v4 consolidated what were separate packages into core: functionality that lived in `@effect/platform`, `@effect/rpc`, `@effect/cluster` and others now lives directly inside `effect` — including the service **contracts** for platform concerns (`FileSystem`, `Path`, `Terminal`, `Stdio`, and `effect/unstable/process`'s `ChildProcess` + `ChildProcessSpawner`). The packages that remain separate are platform-specific, provider-specific, or technology-specific **implementations**: `@effect/platform-*` (e.g. platform-node's `NodeServices.layer` provides `ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal` in one layer), `@effect/sql-*`, `@effect/ai-*`, `@effect/opentelemetry`, `@effect/atom-*`, `@effect/vitest`.
+
+The consequence for this kit is a standing rule: **we are in the business of business logic — schemas for data, services for behaviour, layers that compose. We never re-implement platform specifics.** A library that needs a platform capability requires the core-declared service in its `R` channel and the application provides the platform layer once at the edge. This is free under [R3](#dependency-policy) — it is how `walker`, `xdg` and `config-file` consume `FileSystem` — and it is categorically different from taking `@effect/platform-*` as a dependency edge (which is what R2 taxes). Do not conflate the two.
+
+Three operating rules fall out:
+
+1. **Before designing any seam or contract, grep `.repos/effect-smol` for the core contract first.** If core declares the service, require it in `R`; the seam already exists.
+2. **A direct `node:` import in library code is a code smell, most of the time.** The sanctioned exceptions are documented Node-only overlays — a default layer or a sync escape hatch (`WorkspacesSync`) — never a contract or a business-logic path.
+3. **Platform packages are legitimate devDependencies for integration tests** (the `workspaces` `self.int.test.ts` precedent) and legitimate dependencies only in applications and app-edge packages (the runtimes CLI split).
+
+Recorded because it was learned the expensive way: on 2026-07-14 the point-in-time design invented a `Command`/`CommandRunner` vocabulary, corrected same-day to a zero-dep backend for core's `ChildProcessSpawner`, and corrected again to nothing at all — `@effected/git` simply requires the core service. The first design survived four review gates because every reviewer checked the code against the brief instead of the brief against core. The full arc: [roadmap.md's commands entry](roadmap.md#effectedcommands).
+
+### The vendored source is the style oracle, not just the API authority
+
+`.repos/effect-smol` settles more than existence and signatures: **it is the paradigm reference.** The core source is written with unusual care — one concept per module with a `@since`-annotated public surface, contracts as `Context.Service` classes with a `make` that derives the rich surface from one primitive (`ChildProcessSpawner.make(spawn)`), branded scalars for domain numbers (`ExitCode`, `ProcessId`), `dual` data-first/data-last combinators, values that are themselves `Effect`s where yielding is the natural verb, and doc comments whose examples compile. When designing a kit module, read how core writes the *analogous* module and match its paradigms — naming, factoring, where options objects go, how errors are shaped. The more the kit's constructs read like core's, the cheaper every consumer's mental model gets, and the easier our pieces compose with the ecosystem's. Divergence is allowed but must be a recorded decision with a reason, not a habit.
+
 ## Schema standards
 
 - Named domain models are `Schema.Class` / `Schema.TaggedClass`; the schema IS the class with methods. `Schema.Struct` only for small anonymous local shapes.

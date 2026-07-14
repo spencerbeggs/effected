@@ -61,6 +61,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place; a thin composition over `xdg` + `store` + `config-file` with no domain logic of its own (integrated, by R2 over store alone). Nothing may depend on it.
 - `ts-vfs` — fetch, cache and resolve TypeScript type definitions from npm (jsDelivr) for Twoslash-style tooling; wraps `@typescript/vfs`; two-plane cache over `@effected/store` + `FileSystem`; `typescript` / `@typescript/vfs` optional peers (integrated). Renamed from `@effected/type-registry`; the v3 source keeps the name `type-registry-effect`.
 - `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier** (a category, not a fourth tier — see `effect-standards.md`). It **publishes with the kit at `0.1.0`** — on the release gate, not an exception. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
+- `git` — typed git introspection (show/ls-tree/ref probes/merge-base/diff/rev-parse) plus checkout, over core's ChildProcessSpawner required in R (boundary).
 
 ### .repos/effect-smol
 

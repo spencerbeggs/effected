@@ -75,6 +75,25 @@ The baseline failure this fixes: agents produce a good error by instinct but nev
 
 ### Pillar 2 — Services & Layers → `effect-v4-services-layers`
 
+**Contract inventory — the gate that runs before any service is modeled.**
+Before designing any service, seam, or vocabulary, grep the vendored core
+(`.repos/effect-smol/packages/effect/src`, **including `effect/unstable/*`**)
+for an existing contract. If core declares it, **require it in `R`** — do not
+re-declare it, re-implement it, or wrap it in a parallel vocabulary; the app
+provides the platform layer at the edge. Evidence for why this is a hard gate:
+the `@effected/commands` package survived four review gates before a source
+check found `effect/unstable/process` already declared its entire surface —
+it was deleted the same day it was built. State the inventory result in the
+design summary ("core declares X → required in R" or "no core contract found
+for X").
+
+The same grep doubles as a **style consult**: the vendored source is the
+paradigm reference, not just the API authority. Read how core writes the
+analogous module — one concept per module, `Context.Service` contracts with a
+`make` that derives the surface from one primitive, branded scalars, `dual`
+combinators, compiling doc examples — and match those paradigms in the design.
+Divergence is allowed but is a recorded decision with a reason, never a habit.
+
 What is the dependency closure? Model services with the v4 `Context.Service<Self,
 Shape>()("id")` form. **Design the Live/Test layer split now** — it is pillar 4's
 raw material, not an afterthought. Composition posture (`mergeAll` vs `provide` vs
