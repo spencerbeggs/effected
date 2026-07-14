@@ -140,6 +140,12 @@
 			"recordedAt": "2026-07-12"
 		},
 		{
+			"source": "packages/tsconfig-json/CLAUDE.md",
+			"target": ".claude/design/effected/packages/tsconfig-json.md",
+			"hash": "1cecab1df9f6ff7949c17694d8e8cbdaaf513a2fe4392cbc3642baffc792c1a4",
+			"recordedAt": "2026-07-13"
+		},
+		{
 			"source": "packages/walker/CLAUDE.md",
 			"target": ".claude/design/effected/packages/walker.md",
 			"hash": "e0c5b98df3526ba67e7c41180b83f24a1c623d566ff1fbbef293339b92cd1c22",

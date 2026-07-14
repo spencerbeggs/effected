@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-13
+last-synced: 2026-07-13
 completeness: 85
 related:
   - architecture.md
@@ -18,6 +18,7 @@ related:
   - packages/runtimes.md
   - packages/ts-vfs.md
   - packages/app.md
+  - packages/tsconfig-json.md
 ---
 
 # Release criteria
@@ -51,7 +52,7 @@ The union of what those consumers need. **All seventeen library packages are mer
 
 **The config-file consolidation is done** (2026-07-11): it dissolved three already-merged adapter packages into `@effected/config-file`, taking the merged count from eighteen to fifteen and the workspace from 19 packages to 16. It ran first, ahead of both ports, so the gate below, the remaining ports and every consumer's install instructions are written once against the final package set.
 
-**The migration work is complete**, per the [migration order](package-inventory.md#migration-order). The **ts-vfs** port merged on 2026-07-11 (migration #14) as the last package with real domain logic; **app** — a thin composition over `xdg` + `config-file` + `store`, sequenced behind it deliberately so it absorbed the wiring the ts-vfs port exercised for real — merged on 2026-07-12 (PR #73, [packages/app.md](packages/app.md)). Every package the gate names exists. The kit ships at `0.1.0` with **seventeen** library packages, not twenty. What remains before `0.1.0` is the [revised gate](roadmap.md#the-revised-010-gate) in roadmap.md: the runtimes reshape, `@effected/tsconfig-json` and the gate-proving consumer port.
+**The migration work is complete**, per the [migration order](package-inventory.md#migration-order). The **ts-vfs** port merged on 2026-07-11 (migration #14) as the last package with real domain logic; **app** — a thin composition over `xdg` + `config-file` + `store`, sequenced behind it deliberately so it absorbed the wiring the ts-vfs port exercised for real — merged on 2026-07-12 (PR #73, [packages/app.md](packages/app.md)). Every package the gate names exists. The kit ships at `0.1.0` with **seventeen** library packages, not twenty — `@effected/tsconfig-json` (implemented 2026-07-13 on `feat/tsconfig-json`, the [roadmap's](roadmap.md#3-effectedtsconfig-json) one new gate package) is net plus one and the pending CLI removal is net minus one, per the [revised gate](roadmap.md#the-revised-010-gate). What remains before `0.1.0` is the CLI-removal half of the runtimes reshape and the gate-proving consumer port.
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
@@ -67,6 +68,7 @@ The union of what those consumers need. **All seventeen library packages are mer
 | `@effected/config-file` | boundary | merged; **consolidated** | `vitest-agent` and `@soda3js/config`, which now takes it **alone** for TOML — it carries all four codecs (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`). Stays boundary tier: `@effected/*` edges do not propagate tier, only [R2](effect-standards.md#dependency-policy) tier-3 does |
 | `@effected/ts-vfs` | integrated | merged | `rspress-plugin-api-extractor`, and a migration target. Renamed from `@effected/type-registry`. Integrated twice over: via [R2](effect-standards.md#dependency-policy) through `store`, and on its own surface through the optional `typescript` / `@typescript/vfs` peers ([packages/ts-vfs.md](packages/ts-vfs.md)) |
 | `@effected/app` | integrated | merged | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`). Design: [packages/app.md](packages/app.md). Nothing may depend on it |
+| `@effected/tsconfig-json` | boundary | implemented on `feat/tsconfig-json` (2026-07-13) | the [roadmap's](roadmap.md#3-effectedtsconfig-json) one new gate package: the [gate proof](roadmap.md#4-the-gate-proof) (`rspress-plugin-api-extractor`'s tsconfig-parser) consumes it and it unblocks the @savvy-web/bundler port. Peers on `jsonc` and `walker` only; zero `typescript` imports — it owns the version-coupled enum mappings as data. Design: [packages/tsconfig-json.md](packages/tsconfig-json.md) |
 | `@effected/pnpm-plugin-effect` | **companion — no tier** | merged | not a library and nothing depends on it, so it is on the gate for a different reason: it hands consumers the `effect` catalogs the kit was built against. Installing it is optional; publishing it is not ([Versioning](#versioning)) |
 
 ### `@effected/toml` is a full-parity format package
