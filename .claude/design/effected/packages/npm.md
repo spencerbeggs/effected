@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-12
+updated: 2026-07-14
 last-synced: 2026-07-12
 completeness: 90
 related:
@@ -12,6 +12,7 @@ related:
   - ../package-inventory.md
   - package-json.md
   - workspaces.md
+  - lockfiles.md
 ---
 
 # @effected/npm design
@@ -22,7 +23,7 @@ related:
 
 Why it exists as its own package rather than living in package-json: resolution fundamentally requires workspace/catalog context that package-json cannot have, and the maintainer has downstream uses for these contracts beyond package-json queued (making the second consumer real, not speculative). The full rationale — and the alternatives weighed — is [resolution belongs to @effected/npm](package-json.md#resolution-belongs-to-effectednpm) in the package-json design.
 
-**Scope discipline: minimal to start.** The initial surface is exactly what package-json's port needs — the two resolver contracts, their no-op default layers, and the shared error. It is **not** a general "npm/pnpm vocabulary" package yet: `DependencySpecifier` (the specifier taxonomy) and `PackageName` (npm naming) deliberately stay in [@effected/package-json](package-json.md) for now. `@effected/npm` was scoped to expand when `@effected/workspaces` landed — and when it did, **the contracts held without amendment**: workspaces implements both directly as layers over its own services (see [workspaces.md](workspaces.md#implementing-effectednpms-resolver-contracts)). Extracting the vocabulary concepts remains a later, evidence-driven decision.
+**Scope discipline: minimal to start.** The initial surface is exactly what package-json's port needs — the two resolver contracts, their no-op default layers, and the shared error. It is **not** a general "npm/pnpm vocabulary" package yet: `DependencySpecifier` (the specifier taxonomy) and `PackageName` (npm naming) deliberately stay in [@effected/package-json](package-json.md) for now. `@effected/npm` was scoped to expand when `@effected/workspaces` landed — and when it did, **the contracts held without amendment**: workspaces implements both directly as layers over its own services (see [workspaces.md](workspaces.md#implementing-effectednpms-resolver-contracts)). Extracting the vocabulary concepts remains a later, evidence-driven decision — and for `DependencySpecifier`, the evidence arrived: see [the v2 expansion](#dependencyspecifier-v2-expansion-designed-2026-07-14).
 
 Status: **merged** (landed alongside the package-json port). The verify-at-port-time notes below resolve to inline "As-built:" notes; the package shipped with all gates passing — tests, typecheck, biome and a zero-warning `dist/prod/issues.json`. The public surface is exactly `CatalogResolver`, `WorkspaceResolver`, `DependencyResolutionError` and the composite `Default` layer. (As-built (realignment, 2026-07-08): the transitional `@public X_base` consts are gone — the three factories are written inline with the synthesized `_base` symbols suppressed in `savvy.build.ts`; see [API Extractor bases](#api-extractor-bases-house-policy).)
 
@@ -100,10 +101,28 @@ Tests live in `packages/npm/__test__/` per repo convention (`CatalogResolver`, `
 
 As-built: all tests green with a zero-warning `dist/prod/issues.json`. Stub-implementation test layers build their `Option` results with `Option.fromUndefinedOr` (`Option.fromNullable` is gone in v4).
 
+## DependencySpecifier (v2 expansion, designed 2026-07-14)
+
+The vocabulary trigger fired: the [lockfiles importers design](lockfiles.md#importers-v2-addition-designed-2026-07-14) is the second consumer (`ImporterDependency.specifier`), and the [workspaces snapshots design](workspaces.md#v2-additions-designed-2026-07-14) is a third (`WorkspaceStateSnapshot.resolve` and the snapshot-scoped resolver layers). **`DependencySpecifier` moves here.** One specifier grammar then spans the kit — lockfiles, workspaces and package-json all classify a specifier the same way, instead of three prefix-sniffing reimplementations. Design-first; exact spellings are settled at the effect-v4-planning gate at implementation time.
+
+This is a **relocation, not a green-field design**: package-json already ships an as-built `DependencySpecifier` — a brand plus taxonomy statics whose `protocolOf` classifies eleven protocols (`range | tag | git | url | npm | file | link | portal | catalog | workspace | unknown`; see [package-json.md](package-json.md#dependencyspecifier)). That taxonomy moves here intact, and package-json imports it back (the pure edge already exists via `DependencyResolutionError`). The tagged-union DX below layers on top of it; how the brand-plus-statics form and the union form reconcile — one schema with derived predicates, or a union decoded from the brand — is settled at the effect-v4-planning gate. The union's cases deliberately group the protocols the *resolvers* distinguish; the finer eleven-way classification survives as the statics.
+
+The shape is a tagged union over what a manifest or lockfile can declare:
+
+- **catalog** — a `catalog:` reference, distinguishing the default catalog from a named one.
+- **workspace** — a `workspace:` reference, carrying its range or alias form.
+- **range** — a plain semver range. The case carries the raw string; whether it additionally validates through `@effected/semver` (a legal pure-to-pure edge, but not pre-claimed) is an implementation-gate decision.
+- **dist-tag** — a bare tag (`latest`, `next`).
+- **raw** — the honest fallback for `file:` / `link:` / git / URL forms this package does not further interpret.
+
+It ships with a `FromString` codec (the house `FromString` static pattern), and the codec's contract is the **exact-string round-trip guarantee**: decoding classifies, encoding returns the original specifier string byte-for-byte. That guarantee is what lets brownfield consumers (silk-update-action's lockfile diffing, systems' `DepsRegen`) reimplement their v3 logic on the new model without ever losing the raw specifier. An `it.effect.prop` round-trip suite states it as a property.
+
+What does **not** change: the resolver contracts and their unmatched-specifier-is-`Option.none()` convention are untouched; `DependencyResolutionError` remains reserved for mechanism failure. `PackageName` **stays in package-json** — a brand with one consumer has no reason to move. The export count grows beyond the original four; this section is the documented evidence-driven expansion the scope-discipline paragraph promised.
+
 ## Future expansion (deferred, evidence-driven)
 
 Recorded so the seam is explicit:
 
 - **`@effected/workspaces` reconciliation — resolved.** Workspaces implements both contracts directly as layers over its own services (`WorkspaceCatalogs.catalogResolver`, `WorkspaceDiscovery.workspaceResolver`), and the contracts' unmatched-name-is-`None` convention held without amendment. See [workspaces.md](workspaces.md#implementing-effectednpms-resolver-contracts).
-- **Vocabulary tenants** — `DependencySpecifier` and `PackageName` are the natural next residents if a second consumer beyond package-json materializes for them; they stay in package-json until then.
+- **Vocabulary tenants — partly resolved.** `DependencySpecifier` moved here when its second consumer materialized (see [the v2 expansion](#dependencyspecifier-v2-expansion-designed-2026-07-14)); `PackageName` stays in package-json until a second consumer for the brand exists.
 - **The pnpm `catalogs:` record shape** — the workspaces review routes this toward `@effected/lockfiles`, not here; do not pre-claim it.

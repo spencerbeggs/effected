@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-13
+updated: 2026-07-14
 last-synced: 2026-07-13
 completeness: 85
 related:
@@ -19,6 +19,8 @@ related:
   - packages/ts-vfs.md
   - packages/app.md
   - packages/tsconfig-json.md
+  - packages/commands.md
+  - packages/git.md
 ---
 
 # Release criteria
@@ -44,24 +46,29 @@ The criterion is "the kit can replace the business logic of these five." They sp
 - `vitest-agent` — an 11-package monorepo depending on `workspaces-effect`, `config-file-effect` and `xdg-effect`. It consumes `workspaces`, `config-file`, `xdg` and `store`, and transitively `walker` and `lockfiles`.
 - `soda3js/tools` — specifically `@soda3js/config` (`dependencies: effect, smol-toml`), an Effect package whose job is loading and writing a TOML config file. It consumes `config-file` and `toml`. It needs **only** TOML: since [the config-file consolidation](package-inventory.md#the-config-file-consolidation-2026-07-11) the `config-file-toml` adapter it would have taken no longer exists, the `TomlCodec` arrives inside `@effected/config-file`, and this consumer carries dependency edges on `@effected/jsonc` and `@effected/yaml` that it never executes. It **provably pays nothing for them** — measured at 26.5 kB bundled, the TOML engine and neither of the others ([packages/config-file.md](packages/config-file.md#as-built-the-tree-shaking-property-is-measured-not-assumed)) — because an explicitly-composed codec is tree-shaken when unreferenced and, unbundled, ESM never loads a module nobody imports. **If either of those facts is ever falsified, this decision must be revisited** — this consumer is the one that would pay.
 
+**Two further downstream consumers were declared on 2026-07-14**, alongside the five above rather than among them — they do not change the five-application criterion; they scope [the point-in-time port](roadmap.md#5-the-point-in-time-port), the gate's fifth workstream:
+
+- `silk-update-action` (savvy-web) — consumes `workspaces` (root discovery, package-manager detection, discovery/importer maps, the lockfile reader) and `lockfiles` (`Lockfile.parse` + the new `Lockfile.importers` for before/after lockfile diffing).
+- `savvy-web/systems` — via `@savvy-web/silk-effects`' DepsRegen dependency-regeneration engine (with the `savvy` CLI and MCP as thin adapters): consumes `workspaces`' new `WorkspaceSnapshots` (git at-ref and worktree snapshots), the opt-in config-dependency hook replay, and `@effected/git` directly for merge-base/ls-tree reads it currently hand-rolls.
+
 `@effected/ts-vfs` is load-bearing for two of the five — it is a migration target in its own right and `rspress-plugin-api-extractor` depends on it — which is why it never sequenced at the end. It is now **merged**, as is the last package, `app` — no consumer was ever blocked on it, because nothing may depend on it (a library taking an application control plane would be an [R2](effect-standards.md#dependency-policy) tier-3 leak). Every application-facing package the five consumers need therefore exists.
 
 ## The gate
 
-The union of what those consumers need. **All seventeen library packages are merged** (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtimes`, `runtime-resolver-cli`, `workspaces`, `ts-vfs`, `app`). `pnpm-plugin-effect` is outside that count because it is not a library — it is the kit's [companion](package-inventory.md#internal-packages-no-source-repo), published and installable but exposing no API ([effect-standards.md](effect-standards.md#companion-packages-published-but-not-a-library)). **It is on the gate all the same**: it ships at `0.1.0` with everything else. Being outside a count of libraries is not an exemption from the release.
+The union of what those consumers need. Since 2026-07-14 the gate also names two designed-but-not-yet-scaffolded packages — `@effected/commands` (runner core) and `@effected/git`, [the point-in-time port](roadmap.md#5-the-point-in-time-port)'s new packages. **All seventeen migrated library packages are merged** (`semver`, `jsonc`, `yaml`, `package-json`, `npm`, `config-file`, `walker`, `glob`, `toml`, `lockfiles`, `store`, `xdg`, `runtimes`, `runtime-resolver-cli`, `workspaces`, `ts-vfs`, `app`). `pnpm-plugin-effect` is outside that count because it is not a library — it is the kit's [companion](package-inventory.md#internal-packages-no-source-repo), published and installable but exposing no API ([effect-standards.md](effect-standards.md#companion-packages-published-but-not-a-library)). **It is on the gate all the same**: it ships at `0.1.0` with everything else. Being outside a count of libraries is not an exemption from the release.
 
 **The config-file consolidation is done** (2026-07-11): it dissolved three already-merged adapter packages into `@effected/config-file`, taking the merged count from eighteen to fifteen and the workspace from 19 packages to 16. It ran first, ahead of both ports, so the gate below, the remaining ports and every consumer's install instructions are written once against the final package set.
 
-**The migration work is complete**, per the [migration order](package-inventory.md#migration-order). The **ts-vfs** port merged on 2026-07-11 (migration #14) as the last package with real domain logic; **app** — a thin composition over `xdg` + `config-file` + `store`, sequenced behind it deliberately so it absorbed the wiring the ts-vfs port exercised for real — merged on 2026-07-12 (PR #73, [packages/app.md](packages/app.md)). Every package the gate names exists. The kit ships at `0.1.0` with **seventeen** library packages, not twenty — `@effected/tsconfig-json` (implemented 2026-07-13 on `feat/tsconfig-json`, the [roadmap's](roadmap.md#3-effectedtsconfig-json) one new gate package) is net plus one and the pending CLI removal is net minus one, per the [revised gate](roadmap.md#the-revised-010-gate). What remains before `0.1.0` is the CLI-removal half of the runtimes reshape and the gate-proving consumer port.
+**The migration work is complete**, per the [migration order](package-inventory.md#migration-order). The **ts-vfs** port merged on 2026-07-11 (migration #14) as the last package with real domain logic; **app** — a thin composition over `xdg` + `config-file` + `store`, sequenced behind it deliberately so it absorbed the wiring the ts-vfs port exercised for real — merged on 2026-07-12 (PR #73, [packages/app.md](packages/app.md)). Every package the migration named exists. The kit ships at `0.1.0` with **nineteen** library packages, not twenty — `@effected/tsconfig-json` (implemented 2026-07-13 on `feat/tsconfig-json`) is net plus one, the pending CLI removal is net minus one, and [the point-in-time port](roadmap.md#5-the-point-in-time-port) (added 2026-07-14) is net plus two: `@effected/commands` (runner core) and `@effected/git`, both designed but not yet scaffolded, per the [revised gate](roadmap.md#the-revised-010-gate). What remains before `0.1.0` is the CLI-removal half of the runtimes reshape, the gate-proving consumer port, and the point-in-time port's four pieces.
 
 | Package | Tier | Status | Why it is on the gate |
 | --- | --- | --- | --- |
 | `@effected/walker` | boundary | merged | `config-file`, `xdg` and `workspaces` all traverse paths |
 | `@effected/glob` | pure | merged | `workspaces` drops its `minimatch` runtime dep for it |
-| `@effected/lockfiles` | pure | merged | `workspaces` reads lockfiles |
+| `@effected/lockfiles` | pure | merged | `workspaces` reads lockfiles. [The point-in-time port](roadmap.md#5-the-point-in-time-port) adds `Lockfile.importers` (per-importer declared dependencies, keyed access) for `silk-update-action`'s before/after diffing, and a pure `workspace:*` edge on `@effected/npm` for `DependencySpecifier` — still pure tier |
 | `@effected/store` | integrated | merged | SQLite cache + migrated state (`@effect/sql-sqlite-node`); `rspress-plugin-api-extractor` and `vitest-agent` both consume it |
 | `@effected/xdg` | boundary | merged | `vitest-agent`, `ts-vfs`; zero runtime deps, and it does not depend on `store` |
-| `@effected/workspaces` | integrated | merged | `vitest-agent`; takes `@pnpm/catalogs.*`, and implements `@effected/npm`'s resolver contracts |
+| `@effected/workspaces` | integrated | merged | `vitest-agent`; takes `@pnpm/catalogs.*`, and implements `@effected/npm`'s resolver contracts. [The point-in-time port](roadmap.md#5-the-point-in-time-port) adds `silk-update-action` and `savvy-web/systems` (DepsRegen) as consumers, PM-aware catalog reads, the `WorkspaceSnapshots` service and the opt-in config-dependency hook replay; `GitReader` relocates to `@effected/git`, giving workspaces edges on `git` (+ `commands` transitively, both boundary) — stays integrated |
 | `@effected/runtimes` | boundary | merged | a migration target; takes only `@effected/semver` and core `HttpClient` |
 | `@effected/runtime-resolver-cli` | integrated | merged | the binary, split out so the library's consumers do not pay for `@effect/platform-node` |
 | `@effected/toml` | pure | merged | `@soda3js/config`. Survived the consolidation — the format engine stays a package; only the adapter shim went |
@@ -69,6 +76,8 @@ The union of what those consumers need. **All seventeen library packages are mer
 | `@effected/ts-vfs` | integrated | merged | `rspress-plugin-api-extractor`, and a migration target. Renamed from `@effected/type-registry`. Integrated twice over: via [R2](effect-standards.md#dependency-policy) through `store`, and on its own surface through the optional `typescript` / `@typescript/vfs` peers ([packages/ts-vfs.md](packages/ts-vfs.md)) |
 | `@effected/app` | integrated | merged | the composition layer over `xdg` + `config-file` + `store` (integrated via R2 over `store`). Design: [packages/app.md](packages/app.md). Nothing may depend on it |
 | `@effected/tsconfig-json` | boundary | implemented on `feat/tsconfig-json` (2026-07-13) | the [roadmap's](roadmap.md#3-effectedtsconfig-json) one new gate package: the [gate proof](roadmap.md#4-the-gate-proof) (`rspress-plugin-api-extractor`'s tsconfig-parser) consumes it and it unblocks the @savvy-web/bundler port. Peers on `jsonc` and `walker` only; zero `typescript` imports — it owns the version-coupled enum mappings as data. Design: [packages/tsconfig-json.md](packages/tsconfig-json.md) |
+| `@effected/commands` | boundary | design complete (2026-07-14), port pending | [the point-in-time port](roadmap.md#5-the-point-in-time-port): only the **runner core** — the structured `Command` model and the `CommandRunner` subprocess seam (`layerNode`/`layerBun`) — is on the gate, because `@effected/git` builds on it; the ToolDiscovery half stays [post-`0.1.0`](roadmap.md#effectedcommands). Takes no `@effected/*` edges. Design: [packages/commands.md](packages/commands.md) |
+| `@effected/git` | boundary | design complete (2026-07-14), port pending | `GitCommand` values + the `Git` service over `CommandRunner`: typed read-only introspection (show, ls-tree, cat-file probe, merge-base, diff, rev-parse) plus `checkout`. `workspaces`' `GitReader` relocates here and dissolves — free only while nothing is published. Consumers: `workspaces` (`ChangeDetector`, `WorkspaceSnapshots`) and `savvy-web/systems`' DepsRegen directly. Design: [packages/git.md](packages/git.md) |
 | `@effected/pnpm-plugin-effect` | **companion — no tier** | merged | not a library and nothing depends on it, so it is on the gate for a different reason: it hands consumers the `effect` catalogs the kit was built against. Installing it is optional; publishing it is not ([Versioning](#versioning)) |
 
 ### `@effected/toml` is a full-parity format package

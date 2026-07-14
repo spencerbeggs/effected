@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-07-13
+updated: 2026-07-14
 last-synced: 2026-07-13
 completeness: 90
 related:
@@ -15,6 +15,8 @@ related:
   - packages/runtimes.md
   - packages/app.md
   - packages/tsconfig-json.md
+  - packages/commands.md
+  - packages/git.md
 ---
 
 # Roadmap
@@ -23,11 +25,11 @@ related:
 
 The migration program is complete: seventeen library packages plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library), ending with `@effected/app` (merged 2026-07-12, [packages/app.md](packages/app.md)). This doc records what comes after it — the decisions came out of a brainstorming session on 2026-07-12, grounded in surveys of the v3 extraction sources (silk-effects' ManagedSection and ToolDiscovery, @savvy-web/bundler's tsdown-plugins `dts/` helpers, rspress-plugin-api-extractor's tsconfig-parser). These are settled decisions, not proposals, recorded with their reasoning so they are not re-litigated.
 
-The sequencing decision is **unblock-first**: the `0.1.0` gate deliberately expands by exactly one new package (`@effected/tsconfig-json`) plus a package reshape, so that `0.1.0` publishes the final near-term package set and the gate-proving consumer port lands on final packages. [releases.md](releases.md)'s gate table stays authoritative; it and [package-inventory.md](package-inventory.md) are updated as each item below lands, per [migration playbook](migration-playbook.md) step 7 — this doc does not replace them.
+The sequencing decision is **unblock-first**: the `0.1.0` gate deliberately expands by exactly one new package (`@effected/tsconfig-json`) plus a package reshape, so that `0.1.0` publishes the final near-term package set and the gate-proving consumer port lands on final packages. **Revised 2026-07-14**: [the point-in-time port](#5-the-point-in-time-port) expands the gate by two further packages — `@effected/commands`' runner core and `@effected/git` — because two consumers declared for workspaces' deferred point-in-time functionality; the unblock-first logic is unchanged, the consumer evidence is new. [releases.md](releases.md)'s gate table stays authoritative; it and [package-inventory.md](package-inventory.md) are updated as each item below lands, per [migration playbook](migration-playbook.md) step 7 — this doc does not replace them.
 
 ## The revised 0.1.0 gate
 
-Four workstreams. The release still ships seventeen library packages plus the companion — same count as today, different composition: the runtimes reshape is net minus one (the rename keeps the package under a new name; the CLI removal drops one) and `tsconfig-json` is net plus one, back to seventeen.
+Five workstreams. The release ships **nineteen** library packages plus the companion: the runtimes reshape is net minus one (the rename keeps the package under a new name; the CLI removal drops one), `tsconfig-json` is net plus one — back to seventeen — and [the point-in-time port](#5-the-point-in-time-port) (added 2026-07-14) is net plus two, `@effected/commands` and `@effected/git`.
 
 ### 1. Merge `app`
 
@@ -66,6 +68,19 @@ Port `rspress-plugin-api-extractor` to Effect v4 against link-swapped `@effected
 
 Recorded honestly: this is a full application port, not a dependency swap — the plugin's v3 `*-effect` dependencies cannot coexist with the v4 kit. It does not block on anything else: Twoslash type-checking keeps `typescript@6` as a direct dependency, the sanctioned island until the TypeScript 7.1 JS API exists.
 
+### 5. The point-in-time port
+
+**Added 2026-07-14.** Two consumers declared for workspaces' deferred point-in-time functionality — **silk-update-action** (before/after lockfile diffing against `Lockfile.importers`) and **savvy-web/systems' DepsRegen** dependency-regeneration engine in `@savvy-web/silk-effects` (git at-ref workspace snapshots) — moving two of the three v1 deferrals recorded in [packages/workspaces.md](packages/workspaces.md) onto the gate. The target is full functional parity with `workspaces-effect@2.1.0`'s point-in-time surface (through commit `c594ff1`, "package-manager-aware workspace, catalog and lockfile reads"), reshaped to the kit's API rather than lift-and-shifted; the third deferral — the decorative `PackageName`/`WorkspacePath` brands — stays dropped.
+
+Four pieces, in dependency order (`commands` → `git` → `lockfiles`/`npm` → `workspaces`):
+
+1. **`@effected/commands` runner core** (new package, boundary) — the structured `Command` model and the `CommandRunner` subprocess seam, pulled forward from the [post-`0.1.0` entry below](#effectedcommands). Design: [packages/commands.md](packages/commands.md).
+2. **`@effected/git`** (new package, boundary) — `GitCommand` values and the `Git` service over `CommandRunner`; workspaces' `GitReader` relocates here and dissolves. Relocation is free only while nothing is published — the same reasoning that timed the renames. Design: [packages/git.md](packages/git.md).
+3. **`@effected/lockfiles` importers + `@effected/npm` `DependencySpecifier`** — per-importer declared dependencies on the `Lockfile` model with keyed access, and the tagged specifier model landing in `npm` as its documented evidence-driven expansion; `lockfiles` takes a pure `workspace:*` edge on `npm`.
+4. **`@effected/workspaces`** — PM-aware catalog reads (the root `package.json` `workspaces` field), the `WorkspaceSnapshots` service (at-ref + worktree snapshots with snapshot-scoped resolution), and the opt-in `ConfigDependencyHooks` pnpmfile-replay seam.
+
+Sequencing relative to the rest of the gate: independent of the runtimes CLI removal and the gate proof (`rspress-plugin-api-extractor` consumes none of these packages), so it can proceed in parallel with both; `0.1.0` waits for all five workstreams.
+
 Then publish everything at `0.1.0`.
 
 ## Post-0.1.0 packages
@@ -74,7 +89,9 @@ In priority order. Each gets its own spec → plan → implement cycle per the [
 
 ### `@effected/commands`
 
-A generalization of silk-effects' ToolDiscovery service (surveyed 2026-07-12: 381 lines, already nearly generic): resolve CLI tools globally on PATH vs locally via the detected package manager's exec (pnpm/npm/yarn/bun), configurable version extraction (flag- or JSON-path-based), source constraints (OnlyLocal/OnlyGlobal/Both/Any) and version-mismatch policies (Report/PreferLocal/PreferGlobal/RequireMatch), plus structured command running with Node and Bun. This pattern has been reinvented repeatedly across Spencer's repos; it earns a package. Peers on `@effected/workspaces` for PackageManagerDetector/WorkspaceRoot. Port note: the v3 code calls `process.cwd()` directly; the v4 design must parameterize that.
+**Split 2026-07-14 by [the point-in-time port](#5-the-point-in-time-port):** the **runner core** — the structured `Command` model and the `CommandRunner` subprocess seam with `layerNode`/`layerBun` (the "structured command running with Node and Bun" below) — is **on the `0.1.0` gate**, because `@effected/git` builds on it. What stays post-`0.1.0` is this entry's original substance: a generalization of silk-effects' ToolDiscovery service (surveyed 2026-07-12: 381 lines, already nearly generic) — resolve CLI tools globally on PATH vs locally via the detected package manager's exec (pnpm/npm/yarn/bun), configurable version extraction (flag- or JSON-path-based), source constraints (OnlyLocal/OnlyGlobal/Both/Any) and version-mismatch policies (Report/PreferLocal/PreferGlobal/RequireMatch). This pattern has been reinvented repeatedly across Spencer's repos; it earns a package. Design: [packages/commands.md](packages/commands.md).
+
+**The dependency note is retired.** This entry used to say commands "peers on `@effected/workspaces` for PackageManagerDetector/WorkspaceRoot" — that edge would now close a cycle, `workspaces → git → commands → workspaces`. When tool discovery lands, `commands` owns the **contract** for package-manager-aware tool resolution and `workspaces` implements it — the `@effected/npm` pattern; the runner core takes no `@effected/*` edges at all. Port note unchanged: the v3 code calls `process.cwd()` directly; the v4 design must parameterize that.
 
 ### `@effected/templates`
 
@@ -103,6 +120,7 @@ External repos. These are **pull, not push** — they proceed whenever their inp
 - **rspress-plugin-api-extractor** — on the gate ([the gate proof](#4-the-gate-proof)).
 - **@savvy-web/bundler** (savvy-web/systems) — unblocked today: its TS usage is syntactic parser + config API only, no type checker. `tsconfig-json` replaces meta/tsconfig-resolver.ts; the `dts/` AST walkers wrap plain `typescript` calls in Effect. Clean business logic; agents can carry most of the port.
 - **vitest-agent**, **@soda3js/config** and the **runtime-resolver CLI re-ship** — post-`0.1.0`, against real published packages.
+- **silk-update-action** (savvy-web) and **savvy-web/systems** (`@savvy-web/silk-effects`' DepsRegen, plus the `savvy` CLI and MCP adapters over it) — the two consumers that scoped [the point-in-time port](#5-the-point-in-time-port); they migrate off `workspaces-effect@2.1.0` post-`0.1.0`, against real published packages.
 
 ## Cross-cutting: the TypeScript 5→6→7 posture
 

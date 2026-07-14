@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-12
+updated: 2026-07-14
 last-synced: 2026-07-12
 completeness: 98
 related:
@@ -147,7 +147,7 @@ Per [package-setup.md](../package-setup.md): copy a pure sibling (jsonc) into `p
 - `WorkspacePackage.matchesDependency` re-expressed over `GlobPattern`, dropping the `minimatch` runtime dep.
 - The `packages:` enumerator re-expressed over `GlobSet`: `literals` fast-path, `wildcards` drive `readDirectory` from `enumerationPrefix` and `crossesSegments` triggers the bounded descent — fixing #62 end to end.
 - `sync.ts`'s hand-rolled third semantic was deleted in favour of the same `GlobSet`.
-- At-ref discovery (`PointInTimeWorkspace`) is deferred in workspaces v1; when it lands it uses the same compiled set against `git ls-tree` entries.
+- At-ref discovery is designed and on the gate as of 2026-07-14 — workspaces' `WorkspaceSnapshots` service ([workspaces.md](workspaces.md)) matches the same compiled set against `git ls-tree` entries from `@effected/git`, exactly as this bullet promised when the capability was deferred.
 
 Glob itself does **no** enumeration — pure string→predicate only. That boundary is load-bearing.
 

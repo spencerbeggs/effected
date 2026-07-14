@@ -67,6 +67,6 @@ Root resolution is **one concern**: every root-consuming layer takes `{ cwd }`, 
 
 The one exception is `__test__/integration/self.int.test.ts`, which discovers **this repository** through `@effect/platform-node` (a devDependency). It is the only test that proves the whole stack composes against a real pnpm workspace — and it is what caught the multi-document lockfile bug.
 
-## Deferred from v3
+## Deferred from v3 — revised 2026-07-14
 
-`PointInTimeWorkspace` / `WorkspaceStateSnapshot` (git at-ref snapshots), the pnpmfile `configDependencies` hook replay, and the decorative unused `PackageName` / `WorkspacePath` brands. Reasons in the design doc; none are on the release gate.
+Two of the three v1 deferrals are revoked and **on the `0.1.0` gate**, with `silk-update-action` and `savvy-web/systems` as the declared consumers: git at-ref snapshots return as `WorkspaceSnapshots` (designed, not yet implemented), and the pnpmfile `configDependencies` hook replay returns behind an opt-in seam — the default `WorkspaceCatalogs` layer still never executes config-dependency code. The decorative `PackageName` / `WorkspacePath` brands stay dropped. The same design round relocates `GitReader` into `@effected/commands` (`CommandRunner`) + `@effected/git` (`Git`); `ChangeDetector` re-targets `Git`. Design in the design doc's "v2 additions" section — load it before touching any of this.
