@@ -13,13 +13,7 @@ on:
         description: Branch name for dependency update PR
         type: string
         default: pnpm/config-deps
-      log-level:
-        description: Logging verbosity
-        type: choice
-        options:
-          - info
-          - debug
-        default: debug
+
 concurrency:
   group: pnpm-update-${{ github.ref }}
   cancel-in-progress: true
@@ -42,13 +36,12 @@ jobs:
         uses: savvy-web/silk-runtime-action@v1
       - name: Update Config Dependencies
         id: update
-        uses: savvy-web/silk-update-action@v3
+        uses: savvy-web/silk-update-action@v4
         with:
           app-client-id: ${{ vars.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
           branch: ${{ inputs.branch || 'pnpm/config-deps' }}
           dry-run: ${{ inputs.dry-run || false }}
-          log-level: ${{ inputs.log-level || 'info' }}
           changesets: false
           auto-merge: "squash"
           upgrade-package-manager: "^11.0.0"
