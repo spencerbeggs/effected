@@ -54,11 +54,6 @@
 	},
 	{
 		"type": "custom-link",
-		"link": "/runtime-resolver-cli",
-		"label": "@effected/runtime-resolver-cli"
-	},
-	{
-		"type": "custom-link",
 		"link": "/semver",
 		"label": "@effected/semver"
 	},

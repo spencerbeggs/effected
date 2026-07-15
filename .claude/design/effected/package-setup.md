@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-15
+last-synced: 2026-07-15
 completeness: 92
 related:
   - architecture.md
@@ -16,7 +16,7 @@ related:
 
 ## Overview
 
-How to scaffold a new workspace package in the monorepo. This is the durable scaffold reference — it inherits the role the now-removed `packages/effect4` testbed played as the living "how to add a package" example. A new package `packages/X` (npm name `@effected/X`) mirrors the existing pure-tier libraries: [`packages/semver`](../../../packages/semver), [`packages/jsonc`](../../../packages/jsonc) and [`packages/yaml`](../../../packages/yaml). Copy a sibling and rename rather than build from scratch. This doc records the file manifest and the load-bearing choices; the sibling packages are authoritative about exact file contents.
+How to scaffold a new workspace package in the monorepo. This is the durable scaffold reference. A new package `packages/X` (npm name `@effected/X`) mirrors the existing pure-tier libraries: [`packages/semver`](../../../packages/semver), [`packages/jsonc`](../../../packages/jsonc) and [`packages/yaml`](../../../packages/yaml). Copy a sibling and rename rather than build from scratch. This doc records the file manifest and the load-bearing choices; the sibling packages are authoritative about exact file contents.
 
 ## File manifest
 
@@ -24,7 +24,7 @@ A pure-tier package is these files under `packages/X/`. Where a file is byte-ide
 
 - `package.json` — library manifest; see [package.json shape](#packagejson-shape).
 - `tsconfig.json` — `{ "$schema": "https://json.schemastore.org/tsconfig.json", "extends": "@savvy-web/bundler/tsconfig/ecma.json" }`. Identical across packages.
-- `turbo.json` — `{ "$schema": "https://turborepo.com/schema.v2.json", "extends": ["//"], "tasks": { "build:prod": { "outputs": ["$TURBO_EXTENDS$", "../../website/lib/models/X"] } } }`. The `outputs` model path must be the package's OWN name (`.../models/X`). effect4's copy carried a copy-paste bug pointing at `models/semver` — do not propagate it; every model path is per-package.
+- `turbo.json` — `{ "$schema": "https://turborepo.com/schema.v2.json", "extends": ["//"], "tasks": { "build:prod": { "outputs": ["$TURBO_EXTENDS$", "../../website/lib/models/X"] } } }`. The `outputs` model path must be the package's OWN name (`.../models/X`) — a copy-paste sibling name here is an easy mistake, and every model path is per-package.
 - `tsdoc.json` — copy verbatim from a sibling ([`packages/jsonc/tsdoc.json`](../../../packages/jsonc/tsdoc.json)); it is the standard `supportForTags` allow-list and does not vary per package.
 - `savvy.build.ts` — `import { build } from "@savvy-web/bundler"; await build({ meta: { localPaths: ["../../website/lib/models/X"] } });`. The `localPaths` entry is per-package, same rename rule as `turbo.json`.
 - `LICENSE` — copy from a sibling.
@@ -41,7 +41,7 @@ So the scaffold order is load-bearing:
 2. The first `pnpm install`.
 3. The real modules.
 
-Learned on the `@effected/app` port (2026-07-12). **The rule is unconditional** — it is not limited to packages with sibling `@effected/*` dependencies. Every library package's manifest carries `prepare: turbo run build:dev` (`pnpm-plugin-effect`, the companion, is the lone exception, and nobody scaffolds a library from it), including pure leaves like `semver` and `jsonc` that have no `workspace:*` edge at all. So a scaffold copied from ANY library sibling inherits the script, and `prepare` is what install runs. Stub the entrypoint first regardless of what the new package depends on.
+**The rule is unconditional** — it is not limited to packages with sibling `@effected/*` dependencies. Every library package's manifest carries `prepare: turbo run build:dev` (`pnpm-plugin-effect`, the companion, is the lone exception, and nobody scaffolds a library from it), including pure leaves like `semver` and `jsonc` that have no `workspace:*` edge at all. So a scaffold copied from ANY library sibling inherits the script, and `prepare` is what install runs. Stub the entrypoint first regardless of what the new package depends on.
 
 ## package.json shape
 
@@ -50,10 +50,10 @@ Mirror [`packages/yaml/package.json`](../../../packages/yaml/package.json) as th
 - `name` `@effected/X`, `version` `0.0.0`, `type` `module`, `sideEffects` `false` for pure libraries.
 - `private: true` is deliberate — the bundler's `publishConfig`-driven transform produces the publishable manifest at build time. NEVER set `private: false` in source (see the Build Pipeline note in the root `CLAUDE.md`).
 - `repository.directory` must be `packages/X` — a per-package field that is easy to leave pointing at the copied sibling.
-- `homepage` must be `https://github.com/spencerbeggs/effected/tree/main/packages/X#readme`. The `/tree/main/` segment is **load-bearing**: the shorter `https://github.com/spencerbeggs/effected/packages/X#readme` form 404s (GitHub reads `/packages/` as a repo route, not a path), and it was swept repo-wide on 2026-07-12 (PR #73 review finding). Per-package field — easy to leave pointing at the copied sibling.
+- `homepage` must be `https://github.com/spencerbeggs/effected/tree/main/packages/X#readme`. The `/tree/main/` segment is **load-bearing**: the shorter `https://github.com/spencerbeggs/effected/packages/X#readme` form 404s (GitHub reads `/packages/` as a repo route, not a path). Per-package field — easy to leave pointing at the copied sibling.
 - `exports`: `{ ".": "./src/index.ts", "./package.json": "./package.json" }`.
 - `scripts`: `build:dev` = `node savvy.build.ts --target dev`, `build:prod` = `node savvy.build.ts --target prod`, `types:check` = `tsc --noEmit`. A package that depends on a sibling `@effected/*` package via `workspace:*` ALSO needs `prepare` = `turbo run build:dev` — see [cross-package build dependencies](#cross-package-build-dependencies).
-- `devDependencies`: `@savvy-web/bundler` (a plain semver range, currently `^1.1.11` — it is not catalogued); `@effect/vitest` and `effect` at `catalog:effect`; `@types/node` and `typescript` at `catalog:silk`. The bundler is what `savvy.build.ts` imports, so every package that builds declares it. It is a **`devDependency`** — never a `dependency`, even in a package that has a `dependencies` block, or the publishable manifest ships a build tool at runtime. `typescript` is the typechecker behind `types:check`; do **not** add `@effect/tsgo` (see [the typechecker](#the-typechecker-tsc-not-tsgo)).
+- `devDependencies`: `@savvy-web/bundler` (a plain semver range, not catalogued); `@effect/vitest` and `effect` at `catalog:effect`; `@types/node` and `typescript` at `catalog:silk`. The bundler is what `savvy.build.ts` imports, so every package that builds declares it. It is a **`devDependency`** — never a `dependency`, even in a package that has a `dependencies` block, or the publishable manifest ships a build tool at runtime. `typescript` is the typechecker behind `types:check`; do **not** add `@effect/tsgo` (see [the typechecker](#the-typechecker-tsc-not-tsgo)).
 - `peerDependencies`: `effect` at `catalog:effect` — libraries keep `effect` as a peer.
 - `engines`: `node >=24.11.0`.
 - `publishConfig`: `{ access: public, directory: dist/dev/pkg, linkDirectory: true, targets: { npm: true } }`.
@@ -72,9 +72,7 @@ pnpm runs the workspace package's `prepare` on install (verified: a fresh/forced
 
 ## The typechecker: tsc, not tsgo
 
-Every package typechecks with `tsc --noEmit`, backed by `typescript: catalog:silk`. **Do not add `@effect/tsgo` to a new package.**
-
-This reverses earlier guidance. Each package once declared `@effect/tsgo: catalog:effect` (providing the `tsgo` binary) instead of `@typescript/native-preview: catalog:silk`, to keep the typechecker's own `effect` peer on the v4 catalog rather than the `silk` (v3-tooling) catalog. The pnpm peer-resolution bug that stood behind that choice was fixed upstream (pnpm 11.11.0, completed in 11.12.0), and `@effect/tsgo` was then removed from all packages in `chore: fix typescript versions` (d0599438). It survives only as a `pnpm-workspace.yaml` catalog entry with no consumer. Copying a sibling gets this right automatically; the note exists so nobody reintroduces it from memory. See the peer-discipline section in [effect-standards.md](effect-standards.md#verified-workspace-configuration).
+Every package typechecks with `tsc --noEmit`, backed by `typescript: catalog:silk`. **Do not add `@effect/tsgo` to a new package.** It survives only as a `pnpm-workspace.yaml` catalog entry with no consumer. Copying a sibling gets this right automatically; the note exists so nobody reintroduces it from memory. See the peer-discipline section in [effect-standards.md](effect-standards.md#verified-workspace-configuration).
 
 ## Workspace wiring
 

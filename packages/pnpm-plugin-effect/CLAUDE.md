@@ -20,18 +20,17 @@ A pnpm **config dependency** (installed with `pnpm add --config`, not as a norma
 - `src/index.ts` → `catalogs`
 - `src/pnpmfile.ts` → `hooks`
 
-All real configuration lives in `savvy.build.ts`, where `PnpmConfigPlugin` declares each `effect` / `@effect/*` package with a `range` (pinned version), a `peer` (input to the floor computation), and usually `strategy: "interop"`. The build uses `bundleNodeModules: true` and `looseFiles` to emit `pnpmfile.mjs` / `pnpmfile.cjs`.
+All real configuration lives in `savvy.build.ts`, where `PnpmConfigPlugin` declares each `effect` / `@effect/*` package with a `range` (pinned version), a `peer` (input to the floor computation), and a `strategy` — `lock` for the v4 `effect` catalog, `interop` for the v3 `effect3` catalog. The build uses `bundleNodeModules: true` and `looseFiles` to emit `pnpmfile.mjs` / `pnpmfile.cjs`.
 
 ## What it publishes
 
-Two catalogs, consumed by every `@effected/*` package:
+Four catalogs, consumed by every `@effected/*` package:
 
-- **`catalog:effect`** — pinned current Effect v4 beta. Used in `devDependencies` (and `peerDependencies` for `effect` itself).
-- **`catalog:effectPeers`** — the same package set at a computed shared floor, the widest peer range libraries can safely advertise.
+- **`catalog:effect`** — pinned current Effect v4 beta, under the `lock` strategy. Used in `devDependencies` (and `peerDependencies` for `effect` itself).
+- **`catalog:effectPeers`** — the same v4 package set as the advertised peer range. Under `lock` its `peer` inputs equal the pinned versions, so it holds the same exact beta, not a caret floor.
+- **`catalog:effect3` / `catalog:effect3Peers`** — the latest Effect **v3** releases, under the `interop` strategy (caret-ranged, downlevelled to the widest safe floor), for testing a package against both v3 and v4 in one workspace. Transitional: removed at this plugin's `1.0.0` once Effect `4.0.0` ships.
 
-Currently `effect` pins `4.0.0-beta.97` — **exact, never a caret**. A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `.repos/effect-smol` submodule that is meant to be the authority on what v4 exports. `effectPeers` carries the computed floor as caret ranges (`^4.0.0-beta.97`); the exact-pin rule governs `catalog:effect` only. `@effect/tsgo` is the one asymmetric entry, caret on both sides: `range ^0.19.0` in `effect`, `peer ^0.16.2` in `effectPeers`. No workspace package consumes it anymore — d0599438 moved every package to `tsc --noEmit` with `typescript` (`catalog:silk`) — but the catalog entries remain; do not reintroduce it as a typechecker devDependency.
-
-The root `overrides` entry pins `@effect/platform-node@<beta>>@effect/platform-node-shared` to the same beta. Its key names the current v4 parent, so **`pnpm pnpm:export` does not re-scope it — do that by hand on every bump** or it goes silently inert.
+Currently `effect` pins `4.0.0-beta.98` — **exact, never a caret**. A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `.repos/effect-smol` submodule that is meant to be the authority on what v4 exports. `@effect/tsgo` is the one asymmetric entry in the v4 catalog, caret on both sides: `range ^0.19.0` in `effect`, `peer ^0.16.2` in `effectPeers`. No workspace package consumes it anymore — d0599438 moved every package to `tsc --noEmit` with `typescript` (`catalog:silk`) — but the catalog entries remain; do not reintroduce it as a typechecker devDependency.
 
 ## Maintenance scripts (human-run only)
 
@@ -53,7 +52,7 @@ Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key: `autoInstallP
 
 ## Peer warnings
 
-The v3/v4 peer-resolution defect is fixed in pnpm 11.12.0; there is no expected-residual set to ignore. `pnpm peers check` currently reports **exactly one issue**: `@savvy-web/bundler@1.1.11` peers on `typescript@^7` while the workspace installs TypeScript 6 (`@effected/ts-vfs` pins `typescript@^6.0.3` as its compiler contract). It is recorded as the open defect in [effect-standards.md](../../.claude/design/effected/effect-standards.md#open-defect-one-peers-check-issue-2026-07-12) — do not silence it, and do not treat its presence as license to tolerate a second.
+The v3/v4 peer-resolution defect is fixed in pnpm 11.12.0; there is no expected-residual set to ignore. `pnpm peers check` currently reports **exactly one issue**: `@savvy-web/bundler@1.1.14` peers on `typescript@^7` while the workspace installs TypeScript 6 (from `catalog:silk`, the version every package typechecks against). It is recorded as the open defect in [effect-standards.md](../../.claude/design/effected/effect-standards.md#open-defect-one-peers-check-issue-2026-07-12) — do not silence it, and do not treat its presence as license to tolerate a second.
 
 Any other peer warning is a genuine closure defect. Fix it upstream rather than silencing it.
 

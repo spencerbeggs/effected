@@ -2,13 +2,13 @@
 
 Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot as a fallback. Twelfth migration, ported from the v3 `runtime-resolver` repo — which is also one of the five applications that define the release gate, so this package *is* that repo's business logic.
 
-Three resolver services (`NodeResolver`, `BunResolver`, `DenoResolver`), each in three cache strategies, over one parameterized internal engine. The binary lives next door in `@effected/runtime-resolver-cli` and is not this package's problem.
+Three resolver services (`NodeResolver`, `BunResolver`, `DenoResolver`), each in three cache strategies, over one parameterized internal engine. The `runtime-resolver` binary lives in its own external repo, not this workspace, and is not this package's problem.
 
 **Design doc:** `@../../.claude/design/effected/packages/runtimes.md` — load before changing the strategies, the error ladder or the release index.
 
 ## Tier: boundary
 
-`peerDependencies` is `effect` alone; `dependencies` is `@effected/semver` (`workspace:*`) and nothing else. **No external runtime dependency, and it must stay that way** — that is the whole reason the CLI is a separate package.
+`peerDependencies` is `effect` alone; `dependencies` is `@effected/semver` (`workspace:*`) and nothing else. **No external runtime dependency, and it must stay that way** — that is the whole reason the `runtime-resolver` binary ships from a separate external repo rather than living here, so this library's consumers never pull in `@effect/platform-node`.
 
 IO goes through `HttpClient` from `effect/unstable/http`, which arrives via the `R` channel; the consumer provides `FetchHttpClient.layer` at the edge, and that layer has no requirements of its own. `layerOffline` requires nothing at all.
 

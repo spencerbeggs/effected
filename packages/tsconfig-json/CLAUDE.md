@@ -15,7 +15,7 @@ tsconfig.json schemas, `extends`-chain resolution and config discovery. The one 
 - `CompilerOptions` — string-level literal-union schemas: case-insensitive decode, canonical-lowercase encode; typed live option set plus passthrough so unknown **and** dead options survive.
 - `TsconfigJson` — the document schema, the `TsconfigJsonFromString` JSONC codec (bound once at module top level) and `TsconfigParseError`. **Every parse is JSONC** via `@effected/jsonc`; there is no JSON-strict path.
 - `ResolvedTsconfig` — the pure merge engine: E4 per-field semantics, path-option absolutization, final-phase `${configDir}` substitution, `pathsBase` provenance. No `FileSystem`, no `Path` service.
-- `TsEnumCodec` — string↔numeric data maps (including the `node18`=101 / `node20`=102 gaps) and the `lib` normalizer. `encodeCompilerOptions` feeds `@effected/ts-vfs`'s `TsEnvironment` and emits `lib` in the **file-name form** (`lib.esnext.d.ts`) — verified against typescript 6.0.3's `pathForLibFile`, which joins the entry verbatim onto the lib directory.
+- `TsEnumCodec` — string↔numeric data maps (including the `node18`=101 / `node20`=102 gaps) and the `lib` normalizer. `encodeCompilerOptions` feeds the external `type-registry-effect` package's `TsEnvironment` (the former `@effected/ts-vfs`, now outside this kit) and emits `lib` in the **file-name form** (`lib.esnext.d.ts`) — verified against typescript 6.0.3's `pathForLibFile`, which joins the entry verbatim onto the lib directory.
 - `PortableTsconfig` — an **allow-list** filter (never a deny-list), forced `composite: false` / `noEmit: true`, and a `$schema` stamp.
 - `TsconfigLoader` — `load` / `resolve`: depth-first `extends` with **per-branch** cycle stacks (diamonds are legal), `MAX_EXTENDS_DEPTH = 32`, and `TsconfigExtendsError` with reasons `not-found` / `cycle` / `depth` / `empty`.
 - `TsconfigDiscovery` — `findNearest` over `Walker.ascend` + `Walker.findUpward`; absence is `Option.none()`, never an error; `stopAt` is inclusive.
@@ -59,4 +59,4 @@ pnpm build --filter @effected/tsconfig-json   # from the repo root
 
 - `rspress-plugin-api-extractor`'s tsconfig-parser — the `0.1.0` gate proof.
 - `@savvy-web/bundler`'s tsconfig-resolver.
-- `@effected/ts-vfs` — `TsEnumCodec.encodeCompilerOptions` produces the shape its `TsEnvironment` hands to `@typescript/vfs`.
+- `type-registry-effect` (external; the former `@effected/ts-vfs`) — `TsEnumCodec.encodeCompilerOptions` produces the shape its `TsEnvironment` hands to `@typescript/vfs`.

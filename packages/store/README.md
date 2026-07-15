@@ -7,6 +7,18 @@
 
 Durable local state for Effect: two services over one primitive. `Store` is a schema-versioned, migrated `SqlClient` — a managed database connection with a user-defined migration ledger that supports `up`, `down`, rollback and a status projection. `Cache` is a `key → Uint8Array` cache with TTL, tags, bulk invalidation, an eviction policy and a `PubSub` of lifecycle events. Both run on SQLite through Node's built-in `node:sqlite`, so there is no native compile step, and both surface their failures as tagged errors that carry the underlying `SqlError` structurally.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/store
 
 A store and a cache look like the same thing with a flag on it, and treating them that way is how caches end up holding data nobody can afford to lose. An evicted cache entry is correct behaviour; a lost state row is a bug. So they are two services here, with different contracts — only `Cache` has TTL, tags and eviction, and only `Store` has a migration ledger you own. They do share the ledger engine underneath, keyed by table name, so a `Store` and a `Cache` can live in the same database file without colliding.

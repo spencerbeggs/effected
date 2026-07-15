@@ -5,15 +5,27 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Zero-dependency YAML 1.2 parsing, editing and formatting expressed as Effect schemas and pure functions. Parse a single document or a multi-document stream into plain values or an offset-preserving AST, resolve anchors and aliases, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
+Zero-dependency YAML 1.2 parsing, editing and formatting expressed as Effect schemas and pure functions. Parse a single document or a multi-document stream into plain values or an offset-preserving AST, resolve anchors and aliases, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream` and decode straight into a validated domain schema.
+
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
 
 ## Why @effected/yaml
 
-YAML is where untrusted text meets production systems: CI pipeline definitions, Kubernetes manifests, and config files that arrive from a pull request, an API payload or a user's home directory. The format is also large enough that a parser has real attack surface. An anchor that references an anchor that references an anchor — the "billion laughs" bomb — is a few hundred bytes of YAML that expands into gigabytes of nodes, and a deeply nested flow collection is a few kilobytes that overflows a recursive-descent parser's stack.
+YAML is where untrusted text meets production systems: CI pipeline definitions, Kubernetes manifests and config files that arrive from a pull request, an API payload or a user's home directory. The format is also large enough that a parser has real attack surface. An anchor that references an anchor that references an anchor — the "billion laughs" bomb — is a few hundred bytes of YAML that expands into gigabytes of nodes, and a deeply nested flow collection is a few kilobytes that overflows a recursive-descent parser's stack.
 
 This package treats that as a first-class requirement rather than a footnote. An alias-expansion budget bounds the number of materialized nodes, a depth cap bounds collection nesting on both the parse and the stringify side, and both fire into the typed error channel. Hostile input produces a `YamlParseError` carrying structured `YamlDiagnostic` values with codes and positions; it never produces a `RangeError`, an unhandled defect or an exhausted heap.
 
-The rest follows from the same discipline. Parsing recovers from errors and aggregates every diagnostic into one failure rather than throwing on the first. Modifications are computed as edits against the original bytes, so comments and layout survive a change. Everything is a pure function or a schema: no IO, no services, and no runtime dependency other than `effect` — the lexer, CST parser, composer and stringifier are vendored into the package with attribution rather than taken as a dependency. It is the largest package in the repo, and it earns that by owning its engine.
+The rest follows from the same discipline. Parsing recovers from errors and aggregates every diagnostic into one failure rather than throwing on the first. Modifications are computed as edits against the original bytes, so comments and layout survive a change. Everything is a pure function or a schema: no IO, no services and no runtime dependency other than `effect` — the lexer, CST parser, composer and stringifier are vendored into the package with attribution rather than taken as a dependency. It is the largest package in the repo, and it earns that by owning its engine.
 
 ## Install
 
@@ -79,7 +91,7 @@ Effect.runPromise(Effect.result(Yaml.parse(bomb))).then(console.log);
 // { code: "AliasCountExceeded", message: "Alias expansion exceeded budget of ... nodes" }
 ```
 
-Collection nesting past the depth cap behaves the same way, yielding a `NestingDepthExceeded` diagnostic instead of a stack overflow, and `Yaml.stringify` caps the mirror-image recursion when encoding a value back to text. The property that matters is uniform: every fallible entry point carries a real error channel, and nothing reaches your process as a defect.
+Collection nesting past the depth cap behaves the same way, yielding a `NestingDepthExceeded` diagnostic instead of a stack overflow, and `Yaml.stringify` caps the mirror-image recursion when encoding a value back to text. The guarantee is the same everywhere: every fallible entry point carries a real error channel, and nothing reaches your process as a defect.
 
 ## Features
 
