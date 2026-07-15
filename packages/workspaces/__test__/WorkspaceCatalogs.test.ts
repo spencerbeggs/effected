@@ -4,6 +4,7 @@ import { Effect, Layer, Option } from "effect";
 import {
 	CatalogAssemblyError,
 	CatalogSet,
+	LockfileReadError,
 	LockfileReader,
 	PackageManagerDetector,
 	WorkspaceCatalogs,
@@ -315,6 +316,55 @@ describe("WorkspaceCatalogs — a presence-probe failure is not silent absence",
 				const error = yield* Effect.flip(catalogs.set());
 				assert.instanceOf(error, CatalogAssemblyError);
 				assert.strictEqual(error.source, "manifest");
+			}),
+		);
+	});
+});
+
+// ── the SAME probe-failure guard on the bun/package.json branch (Fix 4) ─────
+
+// The bun branch's manifest probe and root discovery's marker are the same
+// `package.json`, so a `package.json` `exists` poison would also break discovery
+// (a WorkspaceRootNotFoundError, not the failure under test). To isolate the
+// assembly-side manifest probe, this stubs `WorkspaceRoot` to a fixed root and
+// `LockfileReader` to a failing read (⇒ empty lockfile catalogs), then poisons
+// only the `package.json` presence probe. With the old
+// `orElseSucceed(() => false)` the probe would collapse to "absent" and return
+// lockfile-only (empty) catalogs; with `probeExists` it fails typed.
+const bunProbeFailTree: Tree = {
+	// The file EXISTS but its `exists` probe is denied — the locked-down case.
+	"/repo/package.json": JSON.stringify({
+		name: "root",
+		version: "0.0.0",
+		workspaces: { catalog: { effect: "^4.0.0" } },
+	}),
+};
+
+describe("WorkspaceCatalogs — a bun/package.json presence-probe failure is not silent absence", () => {
+	const bunProbeFailLayer = WorkspaceCatalogs.layer({ cwd: "/repo" }).pipe(
+		Layer.provide(Layer.succeed(WorkspaceRoot, { find: () => Effect.succeed("/repo") })),
+		Layer.provide(
+			Layer.mock(LockfileReader, {
+				read: () =>
+					Effect.fail(
+						new LockfileReadError({
+							lockfilePath: "/repo/pnpm-lock.yaml",
+							format: "pnpm",
+							cause: new Error("no lockfile"),
+						}),
+					),
+			}),
+		),
+		Layer.provideMerge(platform(bunProbeFailTree, { unreadableExists: new Set(["/repo/package.json"]) })),
+	);
+	layer(bunProbeFailLayer)((it) => {
+		it.effect("a PermissionDenied on the package.json presence probe fails typed as CatalogAssemblyError", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const error = yield* Effect.flip(catalogs.set());
+				assert.instanceOf(error, CatalogAssemblyError);
+				assert.strictEqual(error.source, "manifest");
+				assert.strictEqual(error.path, "/repo/package.json");
 			}),
 		);
 	});

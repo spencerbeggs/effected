@@ -65,13 +65,23 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
- * Whether a dynamic-`import()` failure is Node's "module not found"
- * (`ERR_MODULE_NOT_FOUND`) — the case of a config dependency that ships no
- * `pnpmfile.cjs`, the one legitimate skip. Any other load failure (a syntax
- * error, a throwing top-level, a permission error on a present file) has no such
- * code and must surface typed.
+ * The file URL a Node ESM `ERR_MODULE_NOT_FOUND` reports as unresolvable, or
+ * `undefined` when the failure is anything else.
+ *
+ * @remarks
+ * Node sets `err.url` (an own string property) to the offending module's URL.
+ * For an absent *entry* module it is that entry's own URL; for a module the entry
+ * `import`s that fails to resolve it is the **nested** module's URL. That
+ * distinction is exactly what separates "this pnpmfile does not exist" (a
+ * legitimate skip, `err.url` equal to the candidate) from "the pnpmfile's own
+ * import failed to resolve" (a real error, `err.url` pointing elsewhere) — a
+ * discrimination `err.code` alone cannot make, since both raise
+ * `ERR_MODULE_NOT_FOUND`. Verified against Node's ESM loader: the entry-absent
+ * case yields `err.url === pathToFileURL(candidate).href`; the nested case yields
+ * the nested module's URL.
  */
-const isModuleNotFound = (cause: unknown): boolean => isObject(cause) && cause.code === "ERR_MODULE_NOT_FOUND";
+const moduleNotFoundUrl = (cause: unknown): string | undefined =>
+	isObject(cause) && cause.code === "ERR_MODULE_NOT_FOUND" && typeof cause.url === "string" ? cause.url : undefined;
 
 /**
  * Whether a config-dependency `name` carries a `..` path segment. A scoped name
@@ -183,22 +193,42 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 							}),
 						);
 					}
-					const pnpmfilePath = join(root, "node_modules", ".pnpm-config", name, "pnpmfile.cjs");
-					// Attempt the dynamic import directly — NO existsSync precheck, which
+					// Load the pnpmfile via a dynamic `import()`, trying `pnpmfile.mjs`
+					// FIRST (pnpm 11 ships the config-dependency pnpmfile as an ES module —
+					// a pnpm-11-native config dep may carry ONLY `.mjs`) and falling back to
+					// `pnpmfile.cjs` (legacy). `import()` loads both, and preferring `.mjs`
+					// matches the file pnpm 11 itself loads. NO existsSync precheck — it
 					// returns false for an existing-but-inaccessible file and would silently
-					// skip its hook. A genuine ERR_MODULE_NOT_FOUND means the dependency ships
-					// no pnpmfile (the legitimate skip); any OTHER load failure IS a failure.
-					const loaded = yield* Effect.result(
-						Effect.tryPromise({
-							try: () => import(pathToFileURL(pnpmfilePath).href) as Promise<unknown>,
-							catch: (cause) => cause,
-						}),
-					);
-					if (Result.isFailure(loaded)) {
-						if (isModuleNotFound(loaded.failure)) continue;
-						return yield* Effect.fail(new CatalogAssemblyError({ source: "hooks", path: name, cause: loaded.failure }));
+					// skip a real hook.
+					let loaded: unknown;
+					let found = false;
+					for (const filename of ["pnpmfile.mjs", "pnpmfile.cjs"] as const) {
+						const candidatePath = join(root, "node_modules", ".pnpm-config", name, filename);
+						const candidateUrl = pathToFileURL(candidatePath).href;
+						const result = yield* Effect.result(
+							Effect.tryPromise({
+								try: () => import(candidateUrl) as Promise<unknown>,
+								catch: (cause) => cause,
+							}),
+						);
+						if (Result.isSuccess(result)) {
+							loaded = result.success;
+							found = true;
+							break;
+						}
+						// An ERR_MODULE_NOT_FOUND whose missing module IS this candidate means
+						// the file simply is not there — try the next candidate. Any OTHER
+						// failure (a syntax error, a throwing top-level, or an
+						// ERR_MODULE_NOT_FOUND for a module the pnpmfile itself imports) is a
+						// real error and must surface typed, never a silent skip.
+						if (moduleNotFoundUrl(result.failure) === candidateUrl) continue;
+						return yield* Effect.fail(new CatalogAssemblyError({ source: "hooks", path: name, cause: result.failure }));
 					}
-					const updateConfig = updateConfigOf(loaded.success);
+					// Neither `pnpmfile.mjs` nor `pnpmfile.cjs` exists — a config dependency
+					// that ships no pnpmfile, the one legitimate skip.
+					if (!found) continue;
+
+					const updateConfig = updateConfigOf(loaded);
 					if (updateConfig === undefined) continue;
 
 					const currentConfig = config;

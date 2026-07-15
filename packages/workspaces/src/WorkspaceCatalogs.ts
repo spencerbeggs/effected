@@ -8,7 +8,7 @@
 import type { Lockfile } from "@effected/lockfiles";
 import { CatalogResolver, DependencyResolutionError } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
-import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
 import { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
@@ -422,16 +422,22 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 			// selecting the package.json reader (a silently-empty catalog is the "every
 			// dependency looks newly added" bug). The explicit NotFound arm is
 			// belt-and-suspenders for a backend whose `exists` surfaces NotFound.
+			//
+			// A `PlatformError` wraps one of two variants: `SystemError` (a normalized
+			// `reason._tag` such as `NotFound` / `PermissionDenied`) or `BadArgument`
+			// (`reason._tag === "BadArgument"`, no system reason). Only a `SystemError`
+			// whose reason is `NotFound` is genuine absence; every other reason — a
+			// `BadArgument`, or a `SystemError` with any other tag — is a real probe
+			// failure and surfaces typed.
 			const probeExists = (target: string): Effect.Effect<boolean, CatalogAssemblyError> =>
-				fs
-					.exists(target)
-					.pipe(
-						Effect.catchTag("PlatformError", (error) =>
-							error.reason._tag === "NotFound"
-								? Effect.succeed(false)
-								: Effect.fail(new CatalogAssemblyError({ source: "manifest", path: target, cause: error })),
-						),
-					);
+				fs.exists(target).pipe(
+					Effect.catchTag("PlatformError", (error) => {
+						const reason = error.reason;
+						return reason instanceof PlatformError.SystemError && reason._tag === "NotFound"
+							? Effect.succeed(false)
+							: Effect.fail(new CatalogAssemblyError({ source: "manifest", path: target, cause: error }));
+					}),
+				);
 
 			const assemble: Effect.Effect<CatalogSet, CatalogAssemblyFailure> = Effect.gen(function* () {
 				const root = yield* Effect.suspend(() => roots.find(options?.cwd ?? process.cwd()));
@@ -476,7 +482,12 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					injected = CatalogSet.fromCatalogs(injectedEntries);
 				} else {
 					const manifestPath = path.join(root, "package.json");
-					const hasManifest = yield* fs.exists(manifestPath).pipe(Effect.orElseSucceed(() => false));
+					// The presence probe must distinguish genuine absence from a probe
+					// FAILURE here too: a non-NotFound PlatformError (a permission/IO error)
+					// on `package.json` must fail typed rather than collapse to "absent" and
+					// return lockfile-only catalogs — the "every dependency looks newly
+					// added" bug on the bun branch. `probeExists` already does this.
+					const hasManifest = yield* probeExists(manifestPath);
 					if (!hasManifest) return fromLockfile;
 					const text = yield* fs
 						.readFileString(manifestPath)

@@ -15,17 +15,41 @@ import { manifest, platform } from "../fixtures.js";
 // (node_modules is gitignored, so it cannot be committed) by copying the
 // committed fixture module, and points the config-dependency resolution at it.
 
-const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "hook-pnpmfile.cjs");
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
+const CJS_FIXTURE = join(FIXTURES, "hook-pnpmfile.cjs");
+const MJS_FIXTURE = join(FIXTURES, "hook-pnpmfile.mjs");
+const NESTED_MISSING_FIXTURE = join(FIXTURES, "hook-pnpmfile-nested-missing.mjs");
+
 const DEP_NAME = "cfg-fixture";
+// A config dependency shipping ONLY `pnpmfile.mjs` — the pnpm-11-native shape.
+const MJS_DEP_NAME = "cfg-fixture-mjs";
+// A config dependency directory that exists but ships NEITHER pnpmfile.
+const NEITHER_DEP_NAME = "cfg-fixture-neither";
+// A config dependency whose `pnpmfile.mjs` has a missing nested import.
+const NESTED_DEP_NAME = "cfg-fixture-nested-missing";
 const SEED = { default: { effect: "^4.0.0" } } as const;
 
 let root: string;
 
+/** The `.pnpm-config/<name>` directory under the temp root. */
+const configDepDir = (name: string): string => join(root, "node_modules", ".pnpm-config", name);
+
 beforeAll(() => {
 	root = mkdtempSync(join(tmpdir(), "effected-hooks-"));
-	const depDir = join(root, "node_modules", ".pnpm-config", DEP_NAME);
-	mkdirSync(depDir, { recursive: true });
-	copyFileSync(FIXTURE, join(depDir, "pnpmfile.cjs"));
+	// The legacy `.cjs`-only config dependency.
+	const cjsDir = configDepDir(DEP_NAME);
+	mkdirSync(cjsDir, { recursive: true });
+	copyFileSync(CJS_FIXTURE, join(cjsDir, "pnpmfile.cjs"));
+	// A pnpm-11-native config dependency shipping ONLY `pnpmfile.mjs`.
+	const mjsDir = configDepDir(MJS_DEP_NAME);
+	mkdirSync(mjsDir, { recursive: true });
+	copyFileSync(MJS_FIXTURE, join(mjsDir, "pnpmfile.mjs"));
+	// A config-dependency directory that exists but carries neither pnpmfile.
+	mkdirSync(configDepDir(NEITHER_DEP_NAME), { recursive: true });
+	// A config dependency whose `pnpmfile.mjs` imports a module that does not resolve.
+	const nestedDir = configDepDir(NESTED_DEP_NAME);
+	mkdirSync(nestedDir, { recursive: true });
+	copyFileSync(NESTED_MISSING_FIXTURE, join(nestedDir, "pnpmfile.mjs"));
 });
 
 afterAll(() => {
@@ -59,10 +83,61 @@ describe("ConfigDependencyHooks.layerLive — replays the pnpmfile", () => {
 	it.effect("a config dependency with no pnpmfile contributes nothing, not a failure", () =>
 		Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			// `absent-dep` has no `.pnpm-config/absent-dep/pnpmfile.cjs`, so the import
-			// fails ERR_MODULE_NOT_FOUND and it is skipped; the seed passes through unchanged.
+			// `absent-dep` has no `.pnpm-config/absent-dep/` directory at all, so both
+			// the `.mjs` and `.cjs` candidate imports fail ERR_MODULE_NOT_FOUND for the
+			// candidate itself and it is skipped; the seed passes through unchanged.
 			const result = yield* hooks.inject(root, { "absent-dep": "1.0.0" }, SEED);
 			assert.deepStrictEqual(result, SEED);
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
+	);
+});
+
+describe("ConfigDependencyHooks.layerLive — pnpm 11 .mjs pnpmfile and load discrimination", () => {
+	it.effect("an .mjs-only config dependency replays its hook — proving .mjs is loaded", () => {
+		const markerPath = join(root, "mjs-marker.txt");
+		process.env.HOOK_MARKER = markerPath;
+		return Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			// The dep ships ONLY `pnpmfile.mjs`. The seam tries `.mjs` first, loads it,
+			// and replays it — the DISTINCT `mjs-dep` / `mjsExtra` entries prove it was
+			// the `.mjs` (there is no `.cjs` to have loaded), and the seed survived.
+			const result = yield* hooks.inject(root, { [MJS_DEP_NAME]: "1.0.0" }, SEED);
+			assert.strictEqual(result.default?.["mjs-dep"], "^2.0.0");
+			assert.strictEqual(result.default?.effect, "^4.0.0");
+			assert.strictEqual(result.mjsExtra?.["mjs-extra-dep"], "^3.4.5");
+			// The side-effect marker proves the `.mjs` fixture actually executed.
+			assert.isTrue(existsSync(markerPath));
+		}).pipe(
+			Effect.provide(ConfigDependencyHooks.layerLive),
+			Effect.ensuring(
+				Effect.sync(() => {
+					delete process.env.HOOK_MARKER;
+				}),
+			),
+		);
+	});
+
+	it.effect("a config-dependency directory with neither pnpmfile.mjs nor pnpmfile.cjs is skipped, not a failure", () =>
+		Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			// The directory exists but carries neither candidate, so both imports fail
+			// ERR_MODULE_NOT_FOUND for the candidate itself — the legitimate skip.
+			const result = yield* hooks.inject(root, { [NEITHER_DEP_NAME]: "1.0.0" }, SEED);
+			assert.deepStrictEqual(result, SEED);
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
+	);
+
+	it.effect("a pnpmfile whose OWN nested import is missing fails typed, never silently skipped", () =>
+		Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			// `pnpmfile.mjs` exists but statically imports a module that does not
+			// resolve. That raises ERR_MODULE_NOT_FOUND for the NESTED module (err.url
+			// differs from the candidate pnpmfile URL), so it must surface typed — the
+			// exact case a broad "ERR_MODULE_NOT_FOUND ⇒ no pnpmfile" skip would swallow.
+			const error = yield* Effect.flip(hooks.inject(root, { [NESTED_DEP_NAME]: "1.0.0" }, SEED));
+			assert.instanceOf(error, CatalogAssemblyError);
+			assert.strictEqual(error.source, "hooks");
+			assert.strictEqual(error.path, NESTED_DEP_NAME);
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
 });
