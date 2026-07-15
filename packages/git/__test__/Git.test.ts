@@ -146,6 +146,78 @@ describe("Git", () => {
 		);
 	});
 
+	describe("workingChanges", () => {
+		// Routes the scripted spawner by argv: `--cached` is the staged query,
+		// `ls-files` the untracked one, any other `diff` the unstaged one.
+		const scriptWorkingTree = (byKind: {
+			unstaged: string;
+			staged: string;
+			untracked: string;
+		}): ((args: ReadonlyArray<string>) => ScriptResult) => {
+			return (args) => {
+				if (args[0] === "ls-files") return { stdout: byKind.untracked, exit: 0 };
+				if (args.includes("--cached")) return { stdout: byKind.staged, exit: 0 };
+				return { stdout: byKind.unstaged, exit: 0 };
+			};
+		};
+
+		it.effect("unions unstaged, staged and untracked paths, deduplicated", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.workingChanges(cwd, { relative: true });
+				});
+				const result = yield* run(
+					program,
+					scriptWorkingTree({
+						unstaged: "shared.ts\0unstaged.ts\0",
+						staged: "shared.ts\0staged.ts\0",
+						untracked: "untracked.ts\0",
+					}),
+				);
+				// `shared.ts` appears in both the unstaged and staged runs — the union
+				// must dedupe it to a single entry.
+				assert.deepStrictEqual([...result].sort(), ["shared.ts", "staged.ts", "unstaged.ts", "untracked.ts"]);
+			}),
+		);
+
+		it.effect("passes --relative to BOTH diff queries when relative is true, but not to ls-files", () =>
+			Effect.gen(function* () {
+				const seen: Array<ReadonlyArray<string>> = [];
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.workingChanges(cwd, { relative: true });
+				});
+				yield* run(program, (args) => {
+					seen.push([...args]);
+					return { stdout: "", exit: 0 };
+				});
+				const diffs = seen.filter((args) => args[0] === "diff");
+				const lsFiles = seen.filter((args) => args[0] === "ls-files");
+				assert.strictEqual(diffs.length, 2);
+				assert.isTrue(diffs.every((args) => args.includes("--relative")));
+				assert.strictEqual(lsFiles.length, 1);
+				assert.isFalse(lsFiles[0]?.includes("--relative"));
+			}),
+		);
+
+		it.effect("surfaces NotARepositoryError when cwd is not a repository", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.workingChanges(cwd, {});
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr: "fatal: not a git repository (or any of the parent directories): .git\n",
+						exit: 128,
+					})),
+				);
+				assert.instanceOf(failure, NotARepositoryError);
+			}),
+		);
+	});
+
 	describe("checkout", () => {
 		it.effect("returns void on a successful run", () =>
 			Effect.gen(function* () {

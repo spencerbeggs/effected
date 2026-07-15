@@ -292,6 +292,46 @@ describe("Git — real repository integration", () => {
 		15_000,
 	);
 
+	describe("workingChanges, in its own dirty repository", () => {
+		let dirtyDir: string;
+
+		beforeAll(async () => {
+			dirtyDir = await mkdtemp(join(tmpdir(), "effected-git-int-dirty-"));
+			await Effect.runPromise(
+				run(
+					Effect.gen(function* () {
+						const raw = (args: ReadonlyArray<string>) => runFixtureGit(dirtyDir, args);
+						yield* raw(["-c", "init.defaultBranch=main", "init"]);
+						yield* raw(["config", "user.email", "git-integration@example.com"]);
+						yield* raw(["config", "user.name", "Git Integration"]);
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "tracked.txt"), "one\n"));
+						yield* raw(["add", "-A"]);
+						yield* raw(["-c", "commit.gpgsign=false", "commit", "-m", "base"]);
+						// Dirty the tree three distinct ways so the union covers each source.
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "tracked.txt"), "two\n")); // unstaged
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "staged.txt"), "new\n"));
+						yield* raw(["add", "staged.txt"]); // staged
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "untracked.txt"), "loose\n")); // untracked
+					}),
+				),
+			);
+		}, 30_000);
+
+		afterAll(async () => {
+			if (dirtyDir) await rm(dirtyDir, { recursive: true, force: true });
+		});
+
+		it.effect("names the unstaged, staged and untracked paths in one deduplicated union", () =>
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					const changed = yield* git.workingChanges(dirtyDir, { relative: true });
+					assert.deepStrictEqual([...changed].sort(), ["staged.txt", "tracked.txt", "untracked.txt"]);
+				}),
+			),
+		);
+	});
+
 	describe("checkout, in its own clone", () => {
 		let cloneDir: string;
 

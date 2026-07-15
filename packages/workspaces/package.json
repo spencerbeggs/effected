@@ -43,6 +43,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/git": "workspace:*",
 		"@effected/glob": "workspace:*",
 		"@effected/lockfiles": "workspace:*",
 		"@effected/npm": "workspace:*",

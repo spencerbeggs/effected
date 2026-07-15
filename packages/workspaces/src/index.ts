@@ -35,7 +35,6 @@ export {
 	type ChangeDetectorShape,
 } from "./ChangeDetector.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";
-export { GitCommandError, GitReader } from "./GitReader.js";
 export {
 	LockfileReadError,
 	type LockfileReadFailure,

@@ -322,11 +322,12 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 
 	const changedFiles = Effect.fn("Git.changedFiles")(function* (
 		cwd: string,
-		options: { readonly base: string; readonly head: string },
+		options: { readonly base: string; readonly head: string; readonly relative?: boolean },
 	) {
-		yield* Effect.annotateCurrentSpan({ cwd, base: options.base, head: options.head });
+		const relative = options.relative ?? false;
+		yield* Effect.annotateCurrentSpan({ cwd, base: options.base, head: options.head, relative });
 		yield* rejectOptionLikeRefs(cwd, [options.base, options.head]);
-		const command = ChildProcess.setCwd(GitCommand.changedFiles(options.base, options.head), cwd);
+		const command = ChildProcess.setCwd(GitCommand.changedFiles(options.base, options.head, relative), cwd);
 		const classified = yield* runFor(command, cwd, "generic");
 		switch (classified._tag) {
 			case "success":
@@ -340,6 +341,39 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 			default:
 				return yield* Effect.die(`Git.changedFiles: unexpected classification "${classified._tag}"`);
 		}
+	});
+
+	// Runs a NUL-separated, ref-free path listing (the working-tree queries) and
+	// classifies through the shared path. No ref is involved, so `unknownRef`
+	// cannot arise in practice — it is handled defensively to keep the switch
+	// exhaustive and the error channel uniform with the ref-taking methods.
+	const collectPaths = (command: ChildProcess.Command, cwd: string) =>
+		Effect.gen(function* () {
+			const classified = yield* runFor(command, cwd, "generic");
+			switch (classified._tag) {
+				case "success":
+					return parseNulSeparated(classified.output);
+				case "notARepository":
+					return yield* Effect.fail(new NotARepositoryError({ cwd }));
+				case "unknownRef":
+					return yield* Effect.fail(new UnknownRefError({ ref: "working tree", cwd }));
+				case "failure":
+					return yield* Effect.fail(classified.error);
+				default:
+					return yield* Effect.die(`Git.workingChanges: unexpected classification "${classified._tag}"`);
+			}
+		});
+
+	const workingChanges = Effect.fn("Git.workingChanges")(function* (
+		cwd: string,
+		options: { readonly relative?: boolean },
+	) {
+		const relative = options.relative ?? false;
+		yield* Effect.annotateCurrentSpan({ cwd, relative });
+		const unstaged = yield* collectPaths(ChildProcess.setCwd(GitCommand.unstagedChanges(relative), cwd), cwd);
+		const staged = yield* collectPaths(ChildProcess.setCwd(GitCommand.stagedChanges(relative), cwd), cwd);
+		const untracked = yield* collectPaths(ChildProcess.setCwd(GitCommand.untrackedFiles(), cwd), cwd);
+		return [...new Set([...unstaged, ...staged, ...untracked])];
 	});
 
 	const revParse = Effect.fn("Git.revParse")(function* (cwd: string, ref: string) {
@@ -380,7 +414,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		}
 	});
 
-	return { show, lsTree, refExists, mergeBase, changedFiles, revParse, checkout };
+	return { show, lsTree, refExists, mergeBase, changedFiles, workingChanges, revParse, checkout };
 };
 
 /**
@@ -420,10 +454,25 @@ export class Git extends Context.Service<
 			a: string,
 			b: string,
 		) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git diff --name-only -z <base>...<head>` — the paths that differ. */
+		/**
+		 * `git diff --name-only -z [--relative] <base>...<head>` — the paths that
+		 * differ. Pass `relative: true` to report paths relative to `cwd` and
+		 * exclude changes outside it (a workspace nested in a larger repository).
+		 */
 		readonly changedFiles: (
 			cwd: string,
-			options: { readonly base: string; readonly head: string },
+			options: { readonly base: string; readonly head: string; readonly relative?: boolean },
+		) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+		/**
+		 * The union of unstaged, staged and untracked working-tree paths —
+		 * `git diff --name-only -z [--relative]`, `--cached`, and
+		 * `git ls-files --others --exclude-standard -z`, deduplicated. Pass
+		 * `relative: true` for `cwd`-relative diff paths (`ls-files` is always
+		 * `cwd`-relative). No ref is involved, so it never fails `UnknownRefError`.
+		 */
+		readonly workingChanges: (
+			cwd: string,
+			options: { readonly relative?: boolean },
 		) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
 		/** `git rev-parse --verify <ref>` — resolves `ref` to its full object id, trimmed. */
 		readonly revParse: (

@@ -40,6 +40,30 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.changedFiles("main", "feat/git"), ["diff", "--name-only", "-z", "main...feat/git"]);
 	});
 
+	it("changedFiles with relative adds --relative before the range", () => {
+		assertGitCommand(GitCommand.changedFiles("main", "feat/git", true), [
+			"diff",
+			"--name-only",
+			"-z",
+			"--relative",
+			"main...feat/git",
+		]);
+	});
+
+	it("unstagedChanges builds `git diff --name-only -z`, adding --relative when asked", () => {
+		assertGitCommand(GitCommand.unstagedChanges(), ["diff", "--name-only", "-z"]);
+		assertGitCommand(GitCommand.unstagedChanges(true), ["diff", "--name-only", "-z", "--relative"]);
+	});
+
+	it("stagedChanges builds `git diff --name-only -z --cached`, adding --relative when asked", () => {
+		assertGitCommand(GitCommand.stagedChanges(), ["diff", "--name-only", "-z", "--cached"]);
+		assertGitCommand(GitCommand.stagedChanges(true), ["diff", "--name-only", "-z", "--relative", "--cached"]);
+	});
+
+	it("untrackedFiles builds `git ls-files --others --exclude-standard -z`", () => {
+		assertGitCommand(GitCommand.untrackedFiles(), ["ls-files", "--others", "--exclude-standard", "-z"]);
+	});
+
 	it("revParse builds `git rev-parse --verify <ref>`", () => {
 		assertGitCommand(GitCommand.revParse("HEAD"), ["rev-parse", "--verify", "HEAD"]);
 	});

@@ -1,16 +1,18 @@
 // The composite layers.
 //
 // v3 split its two composites on PLATFORM REQUIREMENTS — `WorkspacesLive`
-// (FileSystem + Path) versus `WorkspacesFullLive` (+ CommandExecutor) — and the
-// review called that a great consumer story because the requirement set, not a
-// feature flag, is the split axis. The axis survives: `layer` needs a
-// filesystem, `layerWithGit` additionally needs something that can run git.
+// (FileSystem + Path) versus `WorkspacesFullLive` (+ a subprocess runner) — and
+// the review called that a great consumer story because the requirement set,
+// not a feature flag, is the split axis. The axis survives: `layer` needs a
+// filesystem, `layerWithGit` additionally needs core's `ChildProcessSpawner`
+// (behind `@effected/git`'s `Git` service) to run git.
 
+import { Git } from "@effected/git";
 import type { CatalogResolver, WorkspaceResolver } from "@effected/npm";
 import type { FileSystem, Path } from "effect";
 import { Layer } from "effect";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChangeDetector } from "./ChangeDetector.js";
-import { GitReader } from "./GitReader.js";
 import { LockfileReader } from "./LockfileReader.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
 import { PublishabilityDetector } from "./Publishability.js";
@@ -88,22 +90,28 @@ const layer = (
 };
 
 /**
- * The git-free composite plus {@link ChangeDetector}, over the Node
- * {@link GitReader}.
+ * The git-free composite plus {@link ChangeDetector}, over `@effected/git`'s
+ * `Git` service.
  *
  * @remarks
- * The extra requirement is a subprocess, which is why it is a separate layer
- * rather than a flag: a consumer that never detects changes should not have to
- * be able to spawn one. Swap `GitReader.layerNode` for a fake to drive change
- * detection in a test with no repository on disk.
+ * The extra requirement is core's `ChildProcessSpawner` (behind `Git`), which
+ * is why it is a separate layer rather than a flag: a consumer that never
+ * detects changes should not have to be able to spawn a subprocess. The
+ * consumer provides `ChildProcessSpawner` once at the edge
+ * (`@effect/platform-node`'s `NodeServices.layer`); a test provides
+ * `Layer.succeed(Git, …)` and needs no repository on disk.
  *
  * @public
  */
 const layerWithGit = (
 	options?: WorkspacesOptions,
-): Layer.Layer<WorkspacesServices | ChangeDetector | GitReader, never, FileSystem.FileSystem | Path.Path> => {
+): Layer.Layer<
+	WorkspacesServices | ChangeDetector | Git,
+	never,
+	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+> => {
 	const core = layer(options);
-	const git = GitReader.layerNode;
+	const git = Git.layer;
 	return Layer.mergeAll(core, git, ChangeDetector.layer.pipe(Layer.provide(git), Layer.provide(core)));
 };
 

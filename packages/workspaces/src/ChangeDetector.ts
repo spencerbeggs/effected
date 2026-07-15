@@ -2,13 +2,15 @@
 // intact: changedFiles → changedPackages → affectedPackages, three depths of
 // analysis on one service.
 //
-// It runs git through the `GitReader` contract rather than a platform
-// `CommandExecutor`, so a test provides a deterministic fake and needs no
-// repository on disk.
+// It runs git through `@effected/git`'s `Git` service rather than a raw
+// subprocess seam, so a test provides `Layer.succeed(Git, …)` and needs no
+// repository on disk. `Git` requires core's `ChildProcessSpawner` in `R`, which
+// the consumer's platform layer discharges at the edge.
 
+import type { GitCommandError, NotARepositoryError, UnknownRefError } from "@effected/git";
+import { Git } from "@effected/git";
 import { Context, Effect, Layer, Schema } from "effect";
 import { DependencyGraph } from "./DependencyGraph.js";
-import { GitCommandError, GitReader } from "./GitReader.js";
 import type { WorkspaceDiscoveryFailure } from "./WorkspaceDiscovery.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
 import type { WorkspacePackage } from "./WorkspacePackage.js";
@@ -58,13 +60,15 @@ export class ChangeDetectionOptions extends Schema.Class<ChangeDetectionOptions>
 }) {}
 
 /**
- * Raised when change detection cannot proceed: git is unavailable, or the
- * workspace it should run against cannot be discovered.
+ * Raised when change detection cannot proceed for a reason that is not one of
+ * git's own typed failures — the wrapper for "detection has no ground to stand
+ * on".
  *
  * @remarks
- * A git command that merely *fails* surfaces as {@link GitCommandError}
- * directly. This error is the wrapper for the case where detection has no
- * ground to stand on.
+ * A git command that merely *fails* surfaces as one of `@effected/git`'s typed
+ * errors ({@link ChangeDetectionFailure} carries `GitCommandError`,
+ * `NotARepositoryError` and `UnknownRefError`) rather than being flattened into
+ * this wrapper — a caller branches on git's taxonomy directly.
  *
  * @public
  */
@@ -83,9 +87,21 @@ export class ChangeDetectionError extends Schema.TaggedErrorClass<ChangeDetectio
 /**
  * Every failure the change-detection methods can surface.
  *
+ * @remarks
+ * `@effected/git`'s typed errors surface directly alongside
+ * {@link ChangeDetectionError} and the discovery failures — a git command that
+ * fails is reported as git classified it (`NotARepositoryError` for a
+ * non-repository, `UnknownRefError` for a bad ref, `GitCommandError`
+ * otherwise), not re-wrapped.
+ *
  * @public
  */
-export type ChangeDetectionFailure = ChangeDetectionError | GitCommandError | WorkspaceDiscoveryFailure;
+export type ChangeDetectionFailure =
+	| ChangeDetectionError
+	| GitCommandError
+	| NotARepositoryError
+	| UnknownRefError
+	| WorkspaceDiscoveryFailure;
 
 /**
  * The {@link ChangeDetector} service shape.
@@ -133,126 +149,94 @@ export interface ChangeDetectorShape {
 export class ChangeDetector extends Context.Service<ChangeDetector, ChangeDetectorShape>()(
 	"@effected/workspaces/ChangeDetector",
 ) {
-	/** Builds the service over {@link GitReader} and {@link WorkspaceDiscovery}. */
-	static readonly make: Effect.Effect<ChangeDetectorShape, never, GitReader | WorkspaceDiscovery> = Effect.gen(
-		function* () {
-			const git = yield* GitReader;
-			const discovery = yield* WorkspaceDiscovery;
+	/** Builds the service over `Git` and {@link WorkspaceDiscovery}. */
+	static readonly make: Effect.Effect<ChangeDetectorShape, never, Git | WorkspaceDiscovery> = Effect.gen(function* () {
+		const git = yield* Git;
+		const discovery = yield* WorkspaceDiscovery;
 
-			const lines = (cwd: string, args: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>, GitCommandError> =>
-				git.run(cwd, args).pipe(
-					Effect.map((output) =>
-						output
-							.split("\n")
-							.map((line) => line.trim())
-							.filter((line) => line.length > 0),
-					),
+		/**
+		 * The changed files of the range, plus the working tree when asked.
+		 *
+		 * Every query runs with `relative: true`, so `Git` reports paths relative
+		 * to `cwd` — the workspace root — and excludes changes outside it. That is
+		 * what makes a workspace nested inside a larger git repository correct:
+		 * without it, `git diff` reports repository-top-level paths that resolve to
+		 * nothing under the workspace root. `Git` owns the `--relative` mechanics;
+		 * this detector only asks for the relative mode.
+		 */
+		const filesOf = (
+			root: string,
+			options: ChangeDetectionOptions,
+		): Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError> =>
+			Effect.gen(function* () {
+				const committed = yield* git.changedFiles(root, {
+					base: options.base,
+					head: options.head,
+					relative: true,
+				});
+				if (!options.includeUncommitted) return [...committed].sort();
+
+				const working = yield* git.workingChanges(root, { relative: true });
+				return [...new Set([...committed, ...working])].sort();
+			});
+
+		/**
+		 * Every git query above reports paths relative to `cwd` — the workspace
+		 * root — so the workspace root is the correct bridge to the absolute paths
+		 * discovery indexes by. That holds whether or not the workspace root and
+		 * the git root coincide, which is the point: a workspace nested inside a
+		 * larger repository is legitimate.
+		 */
+		const rootOf = (): Effect.Effect<string, WorkspaceDiscoveryFailure> =>
+			discovery.info().pipe(Effect.map((info) => info.root));
+
+		const packagesOf = (
+			options: ChangeDetectionOptions,
+		): Effect.Effect<ReadonlyArray<WorkspacePackage>, ChangeDetectionFailure> =>
+			Effect.gen(function* () {
+				const root = yield* rootOf();
+				const files = yield* filesOf(root, options);
+				const absolute = files.map((file) => (file.startsWith("/") ? file : `${root}/${file}`));
+				return yield* discovery.resolveFiles(absolute);
+			});
+
+		return {
+			changedFiles: Effect.fn("ChangeDetector.changedFiles")(function* (options?: ChangeDetectionOptions) {
+				const root = yield* rootOf();
+				const files = yield* filesOf(root, options ?? ChangeDetectionOptions.make({}));
+				yield* Effect.logDebug("Changed files detected").pipe(
+					Effect.annotateLogs("workspace.files.count", files.length),
 				);
+				return files;
+			}),
 
-			/** The changed files of the range, plus the working tree when asked. */
-			const filesOf = (
-				root: string,
-				options: ChangeDetectionOptions,
-			): Effect.Effect<ReadonlyArray<string>, ChangeDetectionFailure> =>
-				Effect.gen(function* () {
-					const available = yield* git.available(root);
-					if (!available) {
-						return yield* Effect.fail(
-							new GitCommandError({
-								kind: "unavailable",
-								args: ["rev-parse", "--git-dir"],
-								cwd: root,
-								stderr: "",
-							}),
-						);
-					}
+			changedPackages: Effect.fn("ChangeDetector.changedPackages")(function* (options?: ChangeDetectionOptions) {
+				const packages = yield* packagesOf(options ?? ChangeDetectionOptions.make({}));
+				yield* Effect.logDebug("Changed packages detected").pipe(
+					Effect.annotateLogs("workspace.packages.count", packages.length),
+				);
+				return packages;
+			}),
 
-					// `--relative` is load-bearing, and its absence was a real bug.
-					//
-					// `git diff` reports paths relative to the REPOSITORY top-level, not to
-					// `cwd`. `git ls-files` reports them relative to `cwd`. Mixing the two
-					// into one set therefore mixes two different path bases — invisible
-					// while the workspace root and the git root coincide (the common case,
-					// and the only one a naive test covers), and wrong for every path the
-					// moment a workspace is nested inside a larger repository.
-					//
-					// `--relative` makes `diff` agree with `ls-files`: paths come back
-					// relative to `cwd` (the workspace root), and changes outside the
-					// workspace are excluded rather than being reported with a path that
-					// resolves to nothing. `ls-files` is already cwd-relative and needs no
-					// flag.
-					const committed = yield* lines(root, [
-						"diff",
-						"--name-only",
-						"--relative",
-						`${options.base}...${options.head}`,
-					]);
-					if (!options.includeUncommitted) return [...committed].sort();
-
-					const unstaged = yield* lines(root, ["diff", "--name-only", "--relative"]);
-					const staged = yield* lines(root, ["diff", "--name-only", "--relative", "--cached"]);
-					const untracked = yield* lines(root, ["ls-files", "--others", "--exclude-standard"]);
-					return [...new Set([...committed, ...unstaged, ...staged, ...untracked])].sort();
-				});
-
-			/**
-			 * Every git command above reports paths relative to `cwd` — the workspace
-			 * root — so the workspace root is the correct bridge to the absolute paths
-			 * discovery indexes by. That holds whether or not the workspace root and
-			 * the git root coincide, which is the point: a workspace nested inside a
-			 * larger repository is legitimate.
-			 */
-			const rootOf = (): Effect.Effect<string, WorkspaceDiscoveryFailure> =>
-				discovery.info().pipe(Effect.map((info) => info.root));
-
-			const packagesOf = (
-				options: ChangeDetectionOptions,
-			): Effect.Effect<ReadonlyArray<WorkspacePackage>, ChangeDetectionFailure> =>
-				Effect.gen(function* () {
-					const root = yield* rootOf();
-					const files = yield* filesOf(root, options);
-					const absolute = files.map((file) => (file.startsWith("/") ? file : `${root}/${file}`));
-					return yield* discovery.resolveFiles(absolute);
-				});
-
-			return {
-				changedFiles: Effect.fn("ChangeDetector.changedFiles")(function* (options?: ChangeDetectionOptions) {
-					const root = yield* rootOf();
-					const files = yield* filesOf(root, options ?? ChangeDetectionOptions.make({}));
-					yield* Effect.logDebug("Changed files detected").pipe(
-						Effect.annotateLogs("workspace.files.count", files.length),
-					);
-					return files;
-				}),
-
-				changedPackages: Effect.fn("ChangeDetector.changedPackages")(function* (options?: ChangeDetectionOptions) {
-					const packages = yield* packagesOf(options ?? ChangeDetectionOptions.make({}));
-					yield* Effect.logDebug("Changed packages detected").pipe(
-						Effect.annotateLogs("workspace.packages.count", packages.length),
-					);
-					return packages;
-				}),
-
-				affectedPackages: Effect.fn("ChangeDetector.affectedPackages")(function* (options?: ChangeDetectionOptions) {
-					const changed = yield* packagesOf(options ?? ChangeDetectionOptions.make({}));
-					const all = yield* discovery.listPackages();
-					const graph = DependencyGraph.make({ packages: all });
-					const names = yield* graph.affectedBy(changed.map((pkg) => pkg.name));
-					const byName = new Map(all.map((pkg) => [pkg.name, pkg]));
-					const affected = names
-						.map((name) => byName.get(name))
-						.filter((pkg): pkg is WorkspacePackage => pkg !== undefined);
-					yield* Effect.logDebug("Affected packages detected").pipe(
-						Effect.annotateLogs("workspace.packages.count", affected.length),
-					);
-					return affected;
-				}),
-			};
-		},
-	);
+			affectedPackages: Effect.fn("ChangeDetector.affectedPackages")(function* (options?: ChangeDetectionOptions) {
+				const changed = yield* packagesOf(options ?? ChangeDetectionOptions.make({}));
+				const all = yield* discovery.listPackages();
+				const graph = DependencyGraph.make({ packages: all });
+				const names = yield* graph.affectedBy(changed.map((pkg) => pkg.name));
+				const byName = new Map(all.map((pkg) => [pkg.name, pkg]));
+				const affected = names
+					.map((name) => byName.get(name))
+					.filter((pkg): pkg is WorkspacePackage => pkg !== undefined);
+				yield* Effect.logDebug("Affected packages detected").pipe(
+					Effect.annotateLogs("workspace.packages.count", affected.length),
+				);
+				return affected;
+			}),
+		};
+	});
 
 	/** The live layer. */
-	static readonly layer: Layer.Layer<ChangeDetector, never, GitReader | WorkspaceDiscovery> = Layer.effect(
+	static readonly layer: Layer.Layer<ChangeDetector, never, Git | WorkspaceDiscovery> = Layer.effect(
 		ChangeDetector,
 		ChangeDetector.make,
 	);
