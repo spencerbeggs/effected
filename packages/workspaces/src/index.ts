@@ -27,6 +27,7 @@
  * @packageDocumentation
  */
 
+export { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 export {
 	ChangeDetectionError,
 	type ChangeDetectionFailure,
@@ -34,6 +35,7 @@ export {
 	ChangeDetector,
 	type ChangeDetectorShape,
 } from "./ChangeDetector.js";
+export { ConfigDependencyHooks, type ConfigDependencyHooksShape } from "./ConfigDependencyHooks.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";
 export {
 	LockfileReadError,
@@ -51,7 +53,6 @@ export {
 } from "./PackageManagerName.js";
 export { PublishTarget, PublishabilityDetector } from "./Publishability.js";
 export {
-	CatalogAssemblyError,
 	type CatalogAssemblyFailure,
 	CatalogSet,
 	WorkspaceCatalogs,

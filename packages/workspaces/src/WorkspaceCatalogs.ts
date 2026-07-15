@@ -5,40 +5,18 @@
 // Assembly precedence follows pnpm: lockfile-recorded catalogs first, then the
 // inline `pnpm-workspace.yaml` catalogs, which win.
 
+import type { Lockfile } from "@effected/lockfiles";
 import { CatalogResolver, DependencyResolutionError } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { CatalogAssemblyError } from "./CatalogAssemblyError.js";
+import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
 import type { LockfileReadFailure } from "./LockfileReader.js";
 import { LockfileReader } from "./LockfileReader.js";
 import type { WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
-
-/**
- * Raised when a workspace's catalogs cannot be assembled — the
- * `pnpm-workspace.yaml` is unreadable or is not valid YAML, or a catalog it
- * declares is malformed in a way pnpm itself rejects.
- *
- * @remarks
- * A missing `pnpm-workspace.yaml` is not an error: a non-pnpm workspace simply
- * has no catalogs, and assembly yields the empty set.
- *
- * @public
- */
-export class CatalogAssemblyError extends Schema.TaggedErrorClass<CatalogAssemblyError>()("CatalogAssemblyError", {
-	/** Which input failed. */
-	source: Schema.Literals(["manifest", "catalog"]),
-	/** The file, or the catalog name. */
-	path: Schema.String,
-	/** The originating failure. */
-	cause: Schema.Defect(),
-}) {
-	/** Renders the failing source into a one-line message. */
-	override get message(): string {
-		return `Failed to assemble catalogs from ${this.source} ${this.path}`;
-	}
-}
 
 /**
  * An immutable, fully-normalized catalog collection — the one catalog
@@ -87,6 +65,79 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 		return CatalogSet.make({ entries: normalize(raw) });
 	}
 
+	/**
+	 * The catalog set a parsed lockfile records, PM-aware.
+	 *
+	 * @remarks
+	 * Both pnpm and bun record catalogs in the lockfile, in different shapes:
+	 * pnpm under `extension.catalogs`, bun under `extension.catalog` /
+	 * `extension.catalogs`. Assembly reads whichever the parsed lockfile carries
+	 * rather than assuming the pnpm extension. A lockfile with no extension, or a
+	 * pnpm one with no catalogs, yields the empty set.
+	 *
+	 * @param lockfile - A parsed lockfile from `@effected/lockfiles`.
+	 */
+	static fromLockfile(lockfile: Lockfile): CatalogSet {
+		const ext = lockfile.extension;
+		if (ext === undefined) return CatalogSet.empty();
+		if (ext._tag === "pnpm") {
+			return ext.catalogs !== undefined ? CatalogSet.fromLockfileCatalogs(ext.catalogs) : CatalogSet.empty();
+		}
+		return CatalogSet.fromBunBlocks({ catalog: ext.catalog, catalogs: ext.catalogs });
+	}
+
+	/**
+	 * A catalog set from bun's `{ catalog, catalogs }` blocks — used for the
+	 * `bun.lock` extension and for the root `package.json` `workspaces` block. The
+	 * unnamed default catalog normalizes under `"default"`. Tolerant: unusable
+	 * values are dropped, never fatal.
+	 *
+	 * @param blocks - The `catalog` (default) and `catalogs` (named) blocks.
+	 */
+	static fromBunBlocks(blocks: { readonly catalog?: unknown; readonly catalogs?: unknown }): CatalogSet {
+		const raw: Record<string, unknown> = {};
+		if (isObject(blocks.catalogs)) Object.assign(raw, blocks.catalogs);
+		if (isObject(blocks.catalog)) {
+			raw.default = { ...(isObject(raw.default) ? raw.default : {}), ...blocks.catalog };
+		}
+		return CatalogSet.fromCatalogs(raw);
+	}
+
+	/**
+	 * The `catalog` / `catalogs` blocks of a root `package.json` `workspaces` field
+	 * — bun's package.json analogue of pnpm's `pnpm-workspace.yaml` blocks.
+	 *
+	 * @remarks
+	 * **Hard-fail by design**, preserving the semantics catalog output is
+	 * load-bearing for: a present-but-malformed `workspaces` shape (a number, a
+	 * string, an object with a malformed `packages` / `catalog` / `catalogs`), or
+	 * the default catalog declared twice — once as `workspaces.catalog` and again
+	 * as `workspaces.catalogs.default` — fails with {@link CatalogAssemblyError}
+	 * naming what was wrong. An absent `workspaces` field, one explicitly `null`,
+	 * or the plain array form (npm/yarn patterns, which carry no catalogs) yields
+	 * the empty set. Presence is checked structurally, so an explicitly-declared
+	 * empty `catalog: {}` still counts as a declaration.
+	 *
+	 * @param text - The raw root `package.json` text.
+	 */
+	static readonly fromManifestWorkspaces = Effect.fn("CatalogSet.fromManifestWorkspaces")(function* (text: string) {
+		const manifest = yield* Effect.try({
+			try: () => JSON.parse(text) as unknown,
+			catch: (cause) => new CatalogAssemblyError({ source: "manifest", path: "package.json", cause }),
+		});
+		if (!isObject(manifest)) {
+			return yield* Effect.fail(
+				new CatalogAssemblyError({
+					source: "manifest",
+					path: "package.json",
+					cause: new Error("package.json is not a JSON object"),
+				}),
+			);
+		}
+		const blocks = yield* manifestCatalogBlocks(manifest.workspaces);
+		return CatalogSet.fromBunBlocks(blocks);
+	});
+
 	/** Merge sets. Later sets win per dependency within a catalog. */
 	static merge(...sets: ReadonlyArray<CatalogSet>): CatalogSet {
 		return CatalogSet.fromCatalogs(merge(...sets.map((set) => set.entries as Catalogs)));
@@ -127,6 +178,14 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 	}
 }
 
+/** Whether `value` is a non-null, non-array object. */
+const isObject = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Whether every value in an object is a string — a usable `dependency → range` catalog. */
+const isStringRecord = (value: unknown): value is Record<string, string> =>
+	isObject(value) && Object.values(value).every((entry) => typeof entry === "string");
+
 /** The `catalog` / `catalogs` blocks of a parsed pnpm-workspace document. */
 const catalogBlocksOf = (
 	document: unknown,
@@ -140,6 +199,94 @@ const catalogBlocksOf = (
 		catalog: raw.catalog as Record<string, string> | undefined,
 		catalogs: raw.catalogs as Record<string, Record<string, string>> | undefined,
 	};
+};
+
+/** The `configDependencies` map (name → version+integrity) of a parsed pnpm-workspace document. */
+const configDependenciesOf = (document: unknown): Record<string, string> => {
+	if (!isObject(document) || !isObject(document.configDependencies)) return {};
+	const out: Record<string, string> = {};
+	for (const [name, spec] of Object.entries(document.configDependencies)) {
+		if (typeof spec === "string") out[name] = spec;
+	}
+	return out;
+};
+
+/** A hard-fail catalog-assembly failure naming the malformed part of a `workspaces` field. */
+const malformed = (source: "manifest" | "catalog", path: string, detail: string): CatalogAssemblyError =>
+	new CatalogAssemblyError({ source, path, cause: new Error(detail) });
+
+/**
+ * The `catalog` / `catalogs` blocks of a root `package.json` `workspaces` field,
+ * hard-failing on a malformed shape or the default catalog declared twice.
+ */
+const manifestCatalogBlocks = (
+	workspaces: unknown,
+): Effect.Effect<
+	{ readonly catalog?: Record<string, string>; readonly catalogs?: Record<string, Record<string, string>> },
+	CatalogAssemblyError
+> => {
+	// Absent, explicitly null, or the npm/yarn array form: nothing to misread.
+	if (workspaces === undefined || workspaces === null || Array.isArray(workspaces)) return Effect.succeed({});
+	if (!isObject(workspaces)) {
+		return Effect.fail(
+			malformed("manifest", "package.json", `"workspaces" must be an array or object, got ${typeof workspaces}`),
+		);
+	}
+
+	if (workspaces.packages !== undefined && workspaces.packages !== null) {
+		const packages = workspaces.packages;
+		if (!Array.isArray(packages) || !packages.every((entry) => typeof entry === "string")) {
+			return Effect.fail(malformed("manifest", "package.json", `"workspaces.packages" must be an array of strings`));
+		}
+	}
+
+	let catalog: Record<string, string> | undefined;
+	if (workspaces.catalog !== undefined && workspaces.catalog !== null) {
+		if (!isStringRecord(workspaces.catalog)) {
+			return Effect.fail(
+				malformed("catalog", "workspaces.catalog", `"workspaces.catalog" must map dependency names to version strings`),
+			);
+		}
+		catalog = workspaces.catalog;
+	}
+
+	let catalogs: Record<string, Record<string, string>> | undefined;
+	if (workspaces.catalogs !== undefined && workspaces.catalogs !== null) {
+		if (!isObject(workspaces.catalogs)) {
+			return Effect.fail(
+				malformed("catalog", "workspaces.catalogs", `"workspaces.catalogs" must map catalog names to catalogs`),
+			);
+		}
+		for (const [name, entries] of Object.entries(workspaces.catalogs)) {
+			if (!isStringRecord(entries)) {
+				return Effect.fail(
+					malformed(
+						"catalog",
+						`workspaces.catalogs.${name}`,
+						`"workspaces.catalogs.${name}" must map dependency names to version strings`,
+					),
+				);
+			}
+		}
+		catalogs = workspaces.catalogs as Record<string, Record<string, string>>;
+	}
+
+	// The default catalog declared twice — pnpm rejects the equivalent
+	// duplication. Structural presence: an explicit `catalog: {}` still counts.
+	if (catalog !== undefined && catalogs !== undefined && "default" in catalogs) {
+		return Effect.fail(
+			malformed(
+				"catalog",
+				"default",
+				`The default catalog is declared twice: as "workspaces.catalog" and as "workspaces.catalogs.default"`,
+			),
+		);
+	}
+
+	return Effect.succeed({
+		...(catalog !== undefined ? { catalog } : {}),
+		...(catalogs !== undefined ? { catalogs } : {}),
+	});
 };
 
 /**
@@ -179,14 +326,24 @@ export interface WorkspaceCatalogsOptions {
 }
 
 /**
- * Assembles a workspace's pnpm catalogs.
+ * Assembles a workspace's catalogs, package-manager-aware.
  *
  * @remarks
+ * The inline source is picked by **file presence**, the same rule
+ * `internal/patterns.ts` uses for globs: a `pnpm-workspace.yaml` selects the pnpm
+ * path (its `catalog:` / `catalogs:` blocks); its absence selects the root
+ * `package.json` `workspaces.catalog` / `workspaces.catalogs` (bun's analogue).
+ * The lockfile source is PM-aware too — whichever extension the parsed lockfile
+ * carries (pnpm or bun) contributes its recorded catalogs.
+ *
  * Precedence, lowest first: catalogs recorded in the lockfile, then the inline
- * `catalog:` / `catalogs:` blocks of `pnpm-workspace.yaml`, which win. An
- * unreadable or absent lockfile degrades to no lockfile catalogs rather than
- * failing — the inline declaration is the source of truth, the lockfile is a
- * record of what was installed.
+ * declaration, then — only under {@link WorkspaceCatalogs.layerWithConfigDependencies}
+ * — the config-dependency `pnpmfile.cjs` hooks, each layer winning per dependency
+ * within a catalog. An unreadable or absent lockfile degrades to no lockfile
+ * catalogs rather than failing (the inline declaration is the source of truth, the
+ * lockfile a record of what was installed); a malformed inline source **fails
+ * typed** with {@link CatalogAssemblyError}, because a silently-empty catalog read
+ * is the "every dependency looks newly added" bug.
  *
  * Assembly is deferred to the first call and memoized success-only, matching
  * {@link WorkspaceDiscovery}.
@@ -199,10 +356,15 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	/** Builds the service. */
 	static readonly make = (
 		options?: WorkspaceCatalogsOptions,
-	): Effect.Effect<WorkspaceCatalogsShape, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path> =>
+	): Effect.Effect<
+		WorkspaceCatalogsShape,
+		never,
+		WorkspaceRoot | LockfileReader | ConfigDependencyHooks | FileSystem.FileSystem | Path.Path
+	> =>
 		Effect.gen(function* () {
 			const roots = yield* WorkspaceRoot;
 			const lockfiles = yield* LockfileReader;
+			const hooks = yield* ConfigDependencyHooks;
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
 
@@ -211,27 +373,52 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 
 				// The lockfile is a RECORD of what was installed; an absent or
 				// unreadable one is not a catalog failure, it just contributes nothing.
+				// PM-aware: whichever extension (pnpm or bun) the lockfile carries.
 				const fromLockfile = yield* lockfiles.read().pipe(
-					Effect.map((lockfile) =>
-						lockfile.extension !== undefined && lockfile.extension._tag === "pnpm"
-							? CatalogSet.fromLockfileCatalogs(lockfile.extension.catalogs)
-							: CatalogSet.empty(),
-					),
+					Effect.map(CatalogSet.fromLockfile),
 					Effect.catch((_failure: LockfileReadFailure) => Effect.succeed(CatalogSet.empty())),
 				);
 
+				// File presence picks the inline reader, the same rule the glob
+				// enumerator uses: pnpm-workspace.yaml → the pnpm path (config
+				// dependencies live only here); absent → the package.json path.
 				const workspaceYaml = path.join(root, "pnpm-workspace.yaml");
-				const exists = yield* fs.exists(workspaceYaml).pipe(Effect.orElseSucceed(() => false));
-				if (!exists) return fromLockfile;
+				const hasPnpmWorkspace = yield* fs.exists(workspaceYaml).pipe(Effect.orElseSucceed(() => false));
 
-				const text = yield* fs
-					.readFileString(workspaceYaml)
-					.pipe(
-						Effect.mapError((cause) => new CatalogAssemblyError({ source: "manifest", path: workspaceYaml, cause })),
+				let inline: CatalogSet;
+				let injected: CatalogSet;
+				if (hasPnpmWorkspace) {
+					const text = yield* fs
+						.readFileString(workspaceYaml)
+						.pipe(
+							Effect.mapError((cause) => new CatalogAssemblyError({ source: "manifest", path: workspaceYaml, cause })),
+						);
+					const document = yield* Yaml.parse(text).pipe(
+						Effect.mapError(
+							(cause) => new CatalogAssemblyError({ source: "manifest", path: "pnpm-workspace.yaml", cause }),
+						),
 					);
-				const inline = yield* CatalogSet.fromWorkspaceYaml(text);
+					inline = CatalogSet.fromCatalogs(inlineCatalogs(catalogBlocksOf(document)));
+					// The opt-in hook replay, seeded by the inline catalogs and merged on
+					// top. The default layer's no-op hooks return the seed untouched, so
+					// this executes no config-dependency code.
+					const injectedEntries = yield* hooks.inject(root, configDependenciesOf(document), inline.entries);
+					injected = CatalogSet.fromCatalogs(injectedEntries);
+				} else {
+					const manifestPath = path.join(root, "package.json");
+					const hasManifest = yield* fs.exists(manifestPath).pipe(Effect.orElseSucceed(() => false));
+					if (!hasManifest) return fromLockfile;
+					const text = yield* fs
+						.readFileString(manifestPath)
+						.pipe(
+							Effect.mapError((cause) => new CatalogAssemblyError({ source: "manifest", path: manifestPath, cause })),
+						);
+					inline = yield* CatalogSet.fromManifestWorkspaces(text);
+					// Config dependencies are a pnpm feature; there are none on this path.
+					injected = CatalogSet.empty();
+				}
 
-				const assembled = CatalogSet.merge(fromLockfile, inline);
+				const assembled = CatalogSet.merge(fromLockfile, inline, injected);
 				yield* Effect.logDebug("Catalogs assembled").pipe(
 					Effect.annotateLogs({
 						"workspace.root": root,
@@ -259,7 +446,9 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 		});
 
 	/**
-	 * The live layer.
+	 * The live layer — the default, which **never executes config-dependency
+	 * code**: it wires {@link ConfigDependencyHooks.layerNoop}, whose hooks return
+	 * the inline-catalog seed untouched.
 	 *
 	 * @remarks
 	 * Parameterized, so it mints a fresh reference per call — bind it to a
@@ -268,7 +457,27 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	static readonly layer = (
 		options?: WorkspaceCatalogsOptions,
 	): Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path> =>
-		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options));
+		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options)).pipe(
+			Layer.provide(ConfigDependencyHooks.layerNoop),
+		);
+
+	/**
+	 * The opt-in live layer that **does** replay config-dependency `pnpmfile.cjs`
+	 * hooks: it wires {@link ConfigDependencyHooks.layerLive}, which dynamically
+	 * imports and runs each config dependency's `updateConfig` in process.
+	 *
+	 * @remarks
+	 * Same output and requirement set as {@link WorkspaceCatalogs.layer} — the only
+	 * difference is that config-dependency code is executed. Use it deliberately;
+	 * the default catalog path stays free of any config-dependency execution.
+	 * Parameterized, so bind it to a `const` and reuse it.
+	 */
+	static readonly layerWithConfigDependencies = (
+		options?: WorkspaceCatalogsOptions,
+	): Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path> =>
+		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options)).pipe(
+			Layer.provide(ConfigDependencyHooks.layerLive),
+		);
 
 	/**
 	 * The real implementation of `@effected/npm`'s `CatalogResolver` contract —

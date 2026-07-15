@@ -74,8 +74,11 @@ export type WorkspacesServices =
  *
  * @public
  */
-const layer = (
-	options?: WorkspacesOptions,
+const compose = (
+	options: WorkspacesOptions | undefined,
+	catalogsFactory: (
+		options?: WorkspacesOptions,
+	) => Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path>,
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> => {
 	const roots = WorkspaceRoot.layer;
 	const detector = PackageManagerDetector.layer;
@@ -85,10 +88,15 @@ const layer = (
 		Layer.provide(detector),
 		Layer.provide(discovery),
 	);
-	const catalogs = WorkspaceCatalogs.layer(options).pipe(Layer.provide(roots), Layer.provide(lockfiles));
+	const catalogs = catalogsFactory(options).pipe(Layer.provide(roots), Layer.provide(lockfiles));
 
 	return Layer.mergeAll(roots, detector, discovery, lockfiles, catalogs, PublishabilityDetector.layer);
 };
+
+const layer = (
+	options?: WorkspacesOptions,
+): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
+	compose(options, WorkspaceCatalogs.layer);
 
 /**
  * The git-free composite plus {@link ChangeDetector} and
@@ -145,8 +153,27 @@ const resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver, never, Workspa
 	Layer.mergeAll(WorkspaceCatalogs.catalogResolver, WorkspaceDiscovery.workspaceResolver);
 
 /**
+ * The git-free composite, but with catalog assembly that **replays config
+ * dependency `pnpmfile.cjs` hooks** — {@link WorkspaceCatalogs.layerWithConfigDependencies}
+ * in place of the default no-op catalogs layer.
+ *
+ * @remarks
+ * Identical requirement set to {@link Workspaces.layer}; the only difference is
+ * that config-dependency code is executed in process. Opt in deliberately — the
+ * default {@link Workspaces.layer} never executes config-dependency code.
+ *
+ * **Bind the result to a `const`.**
+ *
+ * @public
+ */
+const layerWithConfigDependencies = (
+	options?: WorkspacesOptions,
+): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
+	compose(options, WorkspaceCatalogs.layerWithConfigDependencies);
+
+/**
  * The composite layers.
  *
  * @public
  */
-export const Workspaces = { layer, layerWithGit, resolvers } as const;
+export const Workspaces = { layer, layerWithConfigDependencies, layerWithGit, resolvers } as const;

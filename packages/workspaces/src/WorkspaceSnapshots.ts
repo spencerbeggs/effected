@@ -16,12 +16,12 @@
 import type { GitCommandError, NotARepositoryError, UnknownRefError } from "@effected/git";
 import { Git } from "@effected/git";
 import { GlobSet } from "@effected/glob";
-import type { Lockfile } from "@effected/lockfiles";
 import { Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, Layer, Option } from "effect";
+import { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
-import { CatalogAssemblyError, CatalogSet, WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
+import { CatalogSet, WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
 import type { WorkspaceDiscoveryFailure } from "./WorkspaceDiscovery.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
 import type { WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
@@ -137,34 +137,16 @@ const snapshotOf = (content: Option.Option<string>, relativePath: string): Optio
 };
 
 /**
- * A catalog set from bun's `{ catalog, catalogs }` blocks — used for both the
- * `bun.lock` extension and the root `package.json` `workspaces` block. The
- * unnamed default catalog normalizes under `"default"`.
+ * bun's inline catalogs from the root manifest's `workspaces.catalog` /
+ * `.catalogs`, read **tolerantly** — at-ref content is not ours to fix, so a
+ * malformed block degrades rather than failing the snapshot. (The live
+ * {@link WorkspaceCatalogs} reader hard-fails the same shape; the difference is
+ * deliberate.) Normalization is the shared {@link CatalogSet.fromBunBlocks}.
  */
-const bunCatalogSet = (blocks: { readonly catalog?: unknown; readonly catalogs?: unknown }): CatalogSet => {
-	const raw: Record<string, unknown> = {};
-	if (isObject(blocks.catalogs)) Object.assign(raw, blocks.catalogs);
-	if (isObject(blocks.catalog)) {
-		raw.default = { ...(isObject(raw.default) ? raw.default : {}), ...blocks.catalog };
-	}
-	return CatalogSet.fromCatalogs(raw);
-};
-
-/** bun's inline catalogs from the root manifest's `workspaces.catalog` / `.catalogs`. */
 const bunInlineCatalogs = (manifest: Record<string, unknown>): CatalogSet => {
 	const workspaces = manifest.workspaces;
 	if (!isObject(workspaces)) return CatalogSet.empty();
-	return bunCatalogSet({ catalog: workspaces.catalog, catalogs: workspaces.catalogs });
-};
-
-/** The catalog set a parsed lockfile records — PM-aware: both pnpm and bun carry catalogs. */
-const lockfileCatalogsOf = (lockfile: Lockfile): CatalogSet => {
-	const ext = lockfile.extension;
-	if (ext === undefined) return CatalogSet.empty();
-	if (ext._tag === "pnpm") {
-		return ext.catalogs !== undefined ? CatalogSet.fromLockfileCatalogs(ext.catalogs) : CatalogSet.empty();
-	}
-	return bunCatalogSet({ catalog: ext.catalog, catalogs: ext.catalogs });
+	return CatalogSet.fromBunBlocks({ catalog: workspaces.catalog, catalogs: workspaces.catalogs });
 };
 
 /**
@@ -217,7 +199,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 							onNone: () => Effect.succeed(CatalogSet.empty()),
 							onSome: (text) =>
 								LockfileModel.parse(text, { format }).pipe(
-									Effect.map(lockfileCatalogsOf),
+									Effect.map(CatalogSet.fromLockfile),
 									// A malformed lockfile at the ref is a broken RECORD, not a
 									// broken source of truth — degrade to no catalogs, exactly as
 									// the live WorkspaceCatalogs does for an unreadable lockfile.
