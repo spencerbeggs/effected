@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-15
+last-synced: 2026-07-15
 completeness: 93
 related:
   - architecture.md
@@ -23,7 +23,7 @@ Design standards every `@effected/*` library must follow. These are enforced at 
 
 ## DX north star
 
-The developer-experience exemplar is semver-effect (`/Users/spencer/workspaces/spencerbeggs/semver-effect`) for its class-based API: static and instance methods on domain classes, no floating functions. In Effect v4 the domain model class and the schema are the same artifact (`Schema.Class`), so the class-based DX is the ecosystem norm, not a house deviation. However, semver-effect's kind-based folder layout (`errors/`, `schemas/`, `services/`, `layers/`, `utils/`) is explicitly superseded by the module-per-concept layout below.
+The developer-experience exemplar is [`@effected/semver`](../../../packages/semver) for its class-based API: static and instance methods on domain classes, no floating functions. In Effect v4 the domain model class and the schema are the same artifact (`Schema.Class`), so the class-based DX is the ecosystem norm, not a house deviation. The kind-based folder layout its v3 source used (`errors/`, `schemas/`, `services/`, `layers/`, `utils/`) is superseded by the module-per-concept layout below.
 
 ## Module layout (module-per-concept)
 
@@ -41,7 +41,7 @@ Only entrypoint files — `src/index.ts` and any published subpath entrypoints �
 
 **A namespace object is a barrel in different syntax, and a worse one.** `export const Codecs = { json, jsonc, yaml, toml }` collects independent implementations behind one binding exactly as `export *` collects independent modules behind one module. It is worse because a bundler can see through a re-export barrel — the named exports stay individually reachable — but a namespace object is a **single live binding**: reference it at all and every member is reachable, so every member's whole module graph is retained. The failure is **silent**. No error, no warning, just a bundle carrying engines the consumer never named.
 
-The [config-file consolidation](package-inventory.md#the-config-file-consolidation-2026-07-11) is where this was found and where it is now measured: with four codecs as free-standing named exports, a consumer importing only `JsonCodec` bundles **506 bytes**; collected into a namespace object it would have pulled the JSONC, YAML and TOML engines too, at **129.4 kB**. The rule that follows: **a set of alternative implementations that each reach a different dependency belongs in one module each, exported by name — never gathered into an object.**
+`@effected/config-file`'s [four codecs](package-inventory.md#the-four-codecs-live-in-config-file) are where this was found and where it is measured: with the codecs as free-standing named exports, a consumer importing only `JsonCodec` bundles a few hundred bytes; collected into a namespace object it would pull the JSONC, YAML and TOML engines too, into six figures of bytes. The rule that follows: **a set of alternative implementations that each reach a different dependency belongs in one module each, exported by name — never gathered into an object.**
 
 Grouped statics are not banned outright — `MergeStrategy.firstMatch` / `.layeredMerge` and `ConfigResolver`'s six resolvers stay grouped, because they are variants of one concept, live in one module and reach nothing heavier than each other. The hazard is proportional to **what sits behind each member**: group siblings that share a module, never siblings that each drag in a distinct engine. When in doubt, split — the cost of a separate module is a line in `index.ts`, and the cost of getting it wrong is invisible until someone measures a bundle.
 
@@ -63,7 +63,7 @@ A **companion** package is published and installable but is **not a library**: i
 
 `@effected/pnpm-plugin-effect` is the only companion today: it ships two pnpm catalogs and a pnpmfile — configuration, not code — and installing it pins a consumer's `effect` versions and peer floors to the values the kit was built and tested against. See [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md).
 
-**Why `companion` and not `infrastructure`**, recorded because the wrong name did real damage on `feat/remerge-config-file`: "infrastructure" names the package's relationship to *this repo* and reads as internal-only tooling. That framing produced two successive documented errors about this very package — first that it does not publish at all, then that it is exempt from the coordinated release — both wrong, because "repo infrastructure" invites the inference that it is not a real shipped package. It is one: a public package consumers are meant to install and rely on. **`companion` names the relationship to the consumer** — ships alongside the kit, optional, no API — instead of the relationship to the repo, and makes the wrong reading harder.
+**Why `companion` and not `infrastructure`.** "Infrastructure" names the package's relationship to *this repo* and reads as internal-only tooling, which invites the inference that it is not a real shipped package — but it is one, a public package consumers install and rely on. `companion` names the relationship to the consumer instead — ships alongside the kit, optional, no API — and makes that wrong reading harder.
 
 ### Dependency policy
 
@@ -71,7 +71,7 @@ Four rules govern how tier and dependencies relate. The framing default is to st
 
 **R1 — tiers 1 and 2 take no external runtime dependencies.** Pure and boundary packages peer-depend on `effect` and may take `@effected/*` (`workspace:*`) edges, nothing else. Moving a package to tier 3 (integrated) is a decision recorded in that package's design doc, never a default.
 
-R1 **replaces** the old inference chain "parsing has no IO, so a format package is pure, so it may not take a runtime dependency." That chain is broken by the three-tier scheme: tier 3 is now defined by *dependencies alone*, so a package that does no IO can still legally be tier 3. `@effected/toml` and `@effected/glob` vendor their engines **because of R1**, not because they happen to lack IO. The supporting economics are unchanged: `smol-toml` is BSD-3-Clause, zero-dependency and 211KB unpacked, and `@effected/jsonc` (1,245 lines) and `@effected/yaml` (9,973 lines) already vendor ported-with-attribution engines into `src/internal/` the same way — so vendoring *is* the wrapper, on the same schedule, hardened per the input-hardening standards below. R1 is the reason; the low cost is why R1 rarely bites. The rule bites only where the third-party code is large, encumbered or itself dependency-laden, and in that case a tier-1/2 shape was wrong to begin with.
+R1 **replaces** the old inference chain "parsing has no IO, so a format package is pure, so it may not take a runtime dependency." That chain is broken by the three-tier scheme: tier 3 is now defined by *dependencies alone*, so a package that does no IO can still legally be tier 3. `@effected/toml` and `@effected/glob` vendor their engines **because of R1**, not because they happen to lack IO. The supporting economics are unchanged: `smol-toml` is BSD-3-Clause and zero-dependency, and `@effected/jsonc` and `@effected/yaml` already vendor ported-with-attribution engines into `src/internal/` the same way — so vendoring *is* the wrapper, hardened per the input-hardening standards below. R1 is the reason; the low cost is why R1 rarely bites. The rule bites only where the third-party code is large, encumbered or itself dependency-laden, and in that case a tier-1/2 shape was wrong to begin with.
 
 **R2 — tier 3 propagates.** Depending on a tier-3 `@effected` package makes you tier 3, whatever your own imports say, because that package's external code lands in your consumer's tree transitively.
 
@@ -79,9 +79,9 @@ R1 **replaces** the old inference chain "parsing has no IO, so a format package 
 
 **R4 — tier follows a package's own surface** (plus R2 for propagation), never its consumers'. A package that wraps `parse`/`stringify` and never touches `FileSystem` is pure even when its only consumer is a boundary library — `@effected/lockfiles` is pure for exactly this reason: every entrypoint takes `content: string`, and the file reading lives in `@effected/workspaces`. Conversely a package is boundary the moment it performs IO itself, however thin.
 
-R3 and R4 together are also what kept `@effected/config-file` at boundary through the [config-file consolidation](package-inventory.md#the-config-file-consolidation-2026-07-11), when it absorbed three pure format-package edges. The consolidation deleted this section's original worked examples — the `config-file-jsonc` / `-yaml` / `-toml` codec adapters, which were pure despite depending on boundary `config-file`. The rules did not change; the packages that illustrated them did.
+R3 and R4 together are what keep `@effected/config-file` at boundary even though it absorbs the four codecs and peers on the pure `jsonc`, `yaml` and `toml` format packages ([package-inventory.md](package-inventory.md#the-four-codecs-live-in-config-file)): `@effected/*` edges do not propagate tier, only [R2](#dependency-policy) tier-3 does.
 
-The scheme buys two things worth stating. First, it explains the runtimes CLI split ([packages/runtimes.md](packages/runtimes.md#the-split-and-why-it-is-forced)): `@effect/platform-node` is tier 3, the resolver core is tier 2, and a tier-2 package's consumers should not have to pay a tier-3 install — so the split is what R1 requires, not an ad-hoc fix. Second, without the scheme `@effected/config-file` had to state in prose that it carries zero external runtime dependencies, because "boundary" alone could not distinguish it from `@effected/workspaces`; the tier label now carries that information directly.
+The scheme buys two things worth stating. First, it explains the runtimes CLI split ([packages/runtimes.md](packages/runtimes.md#tier-and-dependencies)): `@effect/platform-node` is tier 3, the resolver core is tier 2, and a tier-2 package's consumers should not have to pay a tier-3 install — so the split is what R1 requires, not an ad-hoc fix. Second, without the scheme `@effected/config-file` had to state in prose that it carries zero external runtime dependencies, because "boundary" alone could not distinguish it from `@effected/workspaces`; the tier label now carries that information directly.
 
 ## The consolidated core, and the require-in-R default
 
@@ -95,7 +95,7 @@ Three operating rules fall out:
 2. **A direct `node:` import in library code is a code smell, most of the time.** The sanctioned exceptions are documented Node-only overlays — a default layer or a sync escape hatch (`WorkspacesSync`) — never a contract or a business-logic path.
 3. **Platform packages are legitimate devDependencies for integration tests** (the `workspaces` `self.int.test.ts` precedent) and legitimate dependencies only in applications and app-edge packages (the runtimes CLI split).
 
-Recorded because it was learned the expensive way: on 2026-07-14 the point-in-time design invented a `Command`/`CommandRunner` vocabulary, corrected same-day to a zero-dep backend for core's `ChildProcessSpawner`, and corrected again to nothing at all — `@effected/git` simply requires the core service. The first design survived four review gates because every reviewer checked the code against the brief instead of the brief against core. The full arc: [roadmap.md's commands entry](roadmap.md#effectedcommands).
+Learned the expensive way: a design once invented a `Command`/`CommandRunner` vocabulary and a backend seam for what core already declares, and it survived several review gates because reviewers checked the code against the brief instead of the brief against core. `@effected/git` simply requires the core `ChildProcessSpawner` in `R`. See [roadmap.md's commands entry](roadmap.md#effectedcommands).
 
 ### The vendored source is the style oracle, not just the API authority
 
@@ -149,7 +149,7 @@ Parsers and any recursive walk over untrusted input must fail through the typed 
 
 Apply the guard at **every independent recursive surface**, not just the main parse entry — enumerate them during the port, because the topology differs per engine. yaml has a two-stage CST-parser/composer shape (two caps, the CST cap set above the composer's so the composer's user-facing diagnostic fires first); jsonc spreads recursion across five independent surfaces (parser value+tree modes, the AST value-extractor, the semantic-equality walker, the SAX visitor and the navigator), each needing its own guard. Hold the cap in a shared zero-dependency leaf `internal/limits.ts` so every surface imports one constant without an import cycle.
 
-**Recursive surfaces on the output/serialization side count too, and depth is not the only DoS vector.** The `chore/realignment` yaml pass proved both: (1) `stringify` recursion — the plain-value emitter and the AST-node emitter — overflowed the stack on deep acyclic input exactly like the parser did, so both were capped at `MAX_NESTING_DEPTH` and surface a typed `NestingDepthExceeded` (an internal depth-exceeded throw caught at the facade and materialized into the surface's typed error); (2) an **alias/reference-expansion "billion laughs" bomb** stayed under a per-node count guard yet exhausted the heap during value materialization — an amplification vector orthogonal to nesting depth, bounded by a **materialized-node budget** derived from the count limit and failing typed (`AliasCountExceeded`) rather than dying as an OOM defect. When an engine expands references (aliases, includes, `$ref`) during materialization, budget the materialization, not just the input's static depth.
+**Recursive surfaces on the output/serialization side count too, and depth is not the only DoS vector.** Two failure modes in `@effected/yaml` make the point: (1) `stringify` recursion — the plain-value emitter and the AST-node emitter — overflows the stack on deep acyclic input exactly like the parser does, so both are capped at `MAX_NESTING_DEPTH` and surface a typed `NestingDepthExceeded` (an internal depth-exceeded throw caught at the facade and materialized into the surface's typed error); (2) an **alias/reference-expansion "billion laughs" bomb** stays under a per-node count guard yet exhausts the heap during value materialization — an amplification vector orthogonal to nesting depth, bounded by a **materialized-node budget** derived from the count limit and failing typed (`AliasCountExceeded`) rather than dying as an OOM defect. When an engine expands references (aliases, includes, `$ref`) during materialization, budget the materialization, not just the input's static depth.
 
 ## Testing standards
 
@@ -169,30 +169,18 @@ Hard-won lesson from savvy-web/systems#228 and spencerbeggs/vitest-agent#127: ev
 
 ### Verified workspace configuration
 
-The consumer-side configuration that lets the effect v4 beta and the v3 build toolchain share one `node_modules` tree. The live settings are in `pnpm-workspace.yaml` and the root `package.json`; this records why each exists and how a package plugs in (see [package-setup.md](package-setup.md) for the per-package file manifest).
+The consumer-side configuration that lets the effect v4 beta and the v3 build toolchain share one `node_modules` tree. The live settings are in `pnpm-workspace.yaml` and the root `package.json` — read those for exact values — and [package-setup.md](package-setup.md) has the per-package file manifest.
 
-1. Every published tool in the dependency chain declares its complete `@effect/*` peer closure as regular dependencies. Fixed in `@savvy-web/tsdown-plugins@1.1.6`, `@savvy-web/bundler@1.1.7`, `@savvy-web/silk@2.1.2`, `@savvy-web/cli@1.5.2`, `@savvy-web/mcp@1.6.7`, `rolldown-pnpm-config@0.2.1` and the July 2026 `@vitest-agent/*` releases. Outstanding: rspress-plugin-api-extractor ([spencerbeggs/rspress-plugin-api-extractor#69](https://github.com/spencerbeggs/rspress-plugin-api-extractor/issues/69)).
-2. `pnpm-workspace.yaml` sets `autoInstallPeers: true`. The tool peers of `@savvy-web/silk` (biome, changesets, commitlint, husky, lint-staged, markdownlint, turbo, typescript, etc.) and `@vitest-agent/plugin` (vitest, coverage providers, cli, mcp) are auto-installed rather than declared explicitly.
-3. **Settled 2026-07-12 (commit `d0599438`): `@effect/tsgo` is gone from all seventeen packages.** Each package now typechecks with `tsc --noEmit` against `typescript: catalog:silk`. The tsgo pin began as a workaround for the pnpm peer-resolution bug — keeping the typechecker's own `effect` peer on the v4 catalog rather than the `silk` (v3-tooling) catalog — and survived on inertia after the [upstream fix](#the-upstream-pnpm-fix-is-complete-2026-07-11) landed. Removing it was the verification this item had been waiting for.
-4. `pnpm-workspace.yaml` pins neither `dedupeDirectDeps` nor `dedupePeerDependents`; pnpm's defaults apply. Both were interim workarounds and both are now gone. Read `pnpm-workspace.yaml` rather than trusting a doc for this — there is no `.npmrc` either.
-5. The root `package.json` `devDependencies` are just `@savvy-web/silk` and `@vitest-agent/plugin`; everything else is an auto-installed peer. **`@savvy-web/bundler` is a `devDependency` of every package that builds**, which is what `savvy.build.ts` imports. It must never be a `dependency`, or the publishable manifest ships a build tool at runtime.
+- Every published tool in the dependency chain declares its complete `@effect/*` peer closure as regular dependencies, so no transitive peer escapes to a consumer's importer where `autoInstallPeers` could bind an incompatible `effect`. The one library that still does not is rspress-plugin-api-extractor, tracked upstream at [issue #69](https://github.com/spencerbeggs/rspress-plugin-api-extractor/issues/69).
+- `pnpm-workspace.yaml` sets `autoInstallPeers: true`, so the tool peers of `@savvy-web/silk` and `@vitest-agent/plugin` are auto-installed rather than declared explicitly. It pins neither `dedupeDirectDeps` nor `dedupePeerDependents` — pnpm's defaults apply — and there is no `.npmrc`.
+- Every package typechecks with `tsc --noEmit` against `typescript: catalog:silk`; `@effect/tsgo` is not a package dependency (see [the typechecker](package-setup.md#the-typechecker-tsc-not-tsgo)).
+- The root `package.json` `devDependencies` are just `@savvy-web/silk` and `@vitest-agent/plugin`; everything else is an auto-installed peer. `@savvy-web/bundler` is a `devDependency` of every package that builds (it is what `savvy.build.ts` imports) and must never be a `dependency`, or the publishable manifest ships a build tool at runtime.
 
-### The upstream pnpm fix is complete (2026-07-11)
+The pnpm resolver bug that once forced workarounds here — a v4 `effect` peer binding into v3-wanting importers — is fixed upstream in pnpm ≥ 11.12.0; the mechanics are in [architecture.md](architecture.md#dependency-resolution).
 
-[pnpm/pnpm#12847](https://github.com/pnpm/pnpm/pull/12847) shipped in **pnpm 11.11.0** and the remainder landed in **pnpm 11.12.0**, which this repo now runs. The v3/v4 peer-resolution problem is **solved at the resolver, not worked around here** — `pnpm peers check` reports **zero issues**. Every interim accommodation is retired:
+### Open defect: one peers-check issue
 
-- `@savvy-web/bundler` moved from the root `devDependencies` to each package's. The old root-only placement existed because a per-package `devDependency` put a v3-wanting `@effect/platform-node` (via `@savvy-web/tsdown-plugins`) beside a v4 `effect` in every importer, which the old resolver could not keep apart. The per-package layout is the correct one and is now viable.
-- `dedupeDirectDeps: false` and `dedupePeerDependents: false` were dropped; pnpm's defaults apply.
-- **`website` no longer declares `effect: catalog:silk`.** That pin anchored the docs site's `effect` to v3 so a transitively-peered `@effect/platform` could not be built against a v4 core. The anchor is removed and the site builds. Do not reintroduce it.
-- **The expected-residual warning set is gone.** `@effect/platform`, `@effect/rpc`, `@effect/sql` and `@effect/cluster` used to warn for `effect@^3.21.x` through the build/test tooling chain, and the standing instruction was not to chase them. There is now nothing to ignore: **any** `pnpm peers check` warning is a genuine closure defect to fix upstream.
-
-The one item that survived on inertia — whether each package still needed `@effect/tsgo` (item 3) — is **settled**: commit `d0599438` dropped it from all seventeen packages in favour of `tsc --noEmit` against `typescript: catalog:silk`, and nothing broke.
-
-### Open defect: one peers-check issue (2026-07-12)
-
-**`pnpm peers check` currently reports exactly one issue.** `@savvy-web/bundler@1.1.11` peers on `typescript@^7`, while `@effected/ts-vfs` pins `typescript@^6.0.3` — its compiler contract, since it wraps `@typescript/vfs` and typechecks user code against a specific compiler. Introduced by `d0599438` (the tsgo removal above); the app port merely surfaced it.
-
-**The zero-issues invariant stands and is not being rewritten to accommodate this.** Per [the upstream fix](#the-upstream-pnpm-fix-is-complete-2026-07-11), there is no expected-residual set: any warning is a genuine closure defect to fix, and this is one. It is recorded here as **open, awaiting a ruling on `@effected/ts-vfs`'s compiler contract** — whether the package can move to `typescript@^7`, or the bundler's peer range must widen. Routed to Spencer; do not silence it, and do not treat its presence as license to tolerate a second.
+`pnpm peers check` reports exactly one issue: `@savvy-web/bundler` peers on `typescript@^7` while the workspace installs TypeScript 6 (`catalog:silk`, the version every package typechecks against). It is part of the TypeScript 5→6→7 transition — either the workspace moves `catalog:silk` to `typescript@^7`, or the bundler's peer range widens. Routed to the maintainer; do not silence it, and do not treat its presence as license to tolerate a second. There is no expected-residual set, so any other warning is a genuine closure defect to fix upstream.
 
 ## Cross-@effected dependencies
 

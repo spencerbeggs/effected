@@ -7,13 +7,25 @@
 
 Zero-dependency JSONC parsing, editing and formatting expressed as Effect schemas and pure functions. Parse JSONC into plain values or an offset-preserving AST, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/jsonc
 
 JSONC is JSON with comments and trailing commas: the format behind `tsconfig.json`, VS Code settings and much of the JavaScript toolchain. Those files are written by humans, and humans leave comments in them. A `JSON.parse` then `JSON.stringify` round-trip destroys every one of them, so any tool that rewrites a `tsconfig.json` that way hands the user back a file they did not recognize.
 
 This package treats the source text as the document. Modifications are computed as edits against the original bytes rather than re-serialized from a parsed object, so a change to one key leaves every comment, blank line and indentation choice untouched. Parsing recovers from errors and aggregates every diagnostic into one `JsoncParseError` carrying `code`, `offset`, `length`, `line` and `character` per error, instead of throwing on the first. And `Jsonc.schema` composes with a domain schema so a JSONC string decodes into a validated value in a single step.
 
-Everything is a pure function or a schema. No IO, no services, and no runtime dependency other than `effect` itself: the scanner, parser and navigator are vendored into the package with attribution rather than pulled in as a dependency.
+Everything is a pure function or a schema. No IO, no services and no runtime dependency other than `effect` itself: the scanner, parser and navigator are vendored into the package with attribution rather than pulled in as a dependency.
 
 ## Install
 

@@ -7,6 +7,18 @@
 
 Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers. `CatalogResolver.rangeOf` turns a package name plus an optional catalog name into the configured range; `WorkspaceResolver.versionOf` turns a workspace package name into its concrete version. Both are `Context.Service` contracts, both ship a no-op default layer that resolves nothing, and neither one reads a file. The package is the seam: a library that needs to *expand* a specifier depends on this, and something that can actually see the workspace supplies the implementation.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/npm
 
 `catalog:` and `workspace:` are specifiers whose meaning lives somewhere other than the manifest they appear in. A package.json document library can parse `"effect": "catalog:"` perfectly well and still have no way to say what it resolves to, because the answer is in a workspace file it has no business reading. The usual escape hatches are both bad: take a dependency on a workspace crawler and drag a filesystem into a pure document library, or accept a resolver as an untyped callback and lose the failure channel. Neither is a contract. This package is the contract — shape only, so `@effected/package-json` can express `Package.resolve` against services in `R` and let the application decide where resolution actually comes from.
@@ -103,4 +115,3 @@ Four exports, and that is the whole surface. It grows when a second consumer pro
 ## License
 
 [MIT](LICENSE)
-</content>

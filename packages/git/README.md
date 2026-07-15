@@ -7,6 +7,18 @@
 
 Typed git introspection as an Effect service. `Git.show` reads a file's content at any ref without checking it out, `Git.lsTree` lists a ref's tree, `Git.refExists` probes a ref, `Git.mergeBase`, `Git.changedFiles` and `Git.revParse` answer the questions monorepo tooling actually asks — and `Git.checkout` is the one deliberately-marked mutation. Subprocesses run through Effect core's `ChildProcessSpawner` contract, required in `R` and provided once at your application's edge, so this package has zero runtime dependencies and zero `node:` imports.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/git
 
 Shelling out to git looks easy until you have to interpret the answers. git speaks through exit codes and stderr prose, and the prose changes with the question: an unknown ref, a directory that is not a repository, a path absent at a ref, and a genuinely failed command all come back as "non-zero exit plus a sentence". Code that string-matches stderr at every call site gets this wrong somewhere, eventually, in a different way each time.

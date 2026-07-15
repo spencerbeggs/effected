@@ -8,6 +8,18 @@
 
 A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to one [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effectPeers` catalog carries the same package set at a computed shared floor — the lowest version safe to advertise as a peer range — so a library you publish does not over-constrain the applications that install it. Install it once and both catalogs are available to every package in your workspace.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/pnpm-plugin-effect
 
 Effect ships as a couple of dozen packages that have to move together. Pin them by hand and the pins drift: one `@effect/*` package advances, its `effect` peer no longer matches the core you installed, and the failure surfaces as a type error in a file nobody touched. Keeping the pins in one place is the whole idea, and pnpm catalogs are the mechanism — `catalog:effect` in a manifest instead of a version string, and one place to edit when the beta advances.
@@ -63,12 +75,28 @@ Libraries want both catalogs: the pinned versions to develop and test against, a
 
 pnpm rewrites `catalog:` specifiers to concrete ranges when it publishes, so what lands on the registry is an ordinary manifest. Nothing downstream needs this plugin, or pnpm.
 
+### Testing against both Effect versions
+
+During the Effect v3 → v4 transition the plugin also ships an `effect3` catalog — and its `effect3Peers` floor — tracking the latest Effect **v3** releases, so you can verify code against both Effect majors in a single monorepo. A package or test workspace that should build against v3 references `catalog:effect3` where another references `catalog:effect`:
+
+```json
+{
+  "devDependencies": {
+    "effect": "catalog:effect3"
+  }
+}
+```
+
+A handful of packages are excluded where their v3 line has known issues. The `effect3` catalogs are removed at this plugin's own `1.0.0`, once Effect `4.0.0` has shipped and there is nothing left to interoperate with.
+
 ## What it ships
 
 | Catalog | Contents | Use it in |
 | ------- | -------- | --------- |
 | `catalog:effect` | Every `effect` and `@effect/*` package, pinned to one v4 release | `dependencies` for applications, `devDependencies` for libraries |
 | `catalog:effectPeers` | The same package set at the computed shared peer floor | `peerDependencies` for libraries |
+| `catalog:effect3` | The same package set tracking the latest Effect **v3** releases, a few excluded | testing against Effect v3 alongside v4 |
+| `catalog:effect3Peers` | The v3 package set at its computed peer floor | `peerDependencies` when advertising v3 support |
 
 It also ships a pnpmfile, which pnpm loads from the config dependency automatically. There is nothing to import and nothing to call — the package has no code API, only configuration.
 

@@ -7,6 +7,18 @@
 
 Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas. `SemVer`, `Comparator` and `Range` are `Schema.Class`es, so a version is a validated value with methods on it rather than a string you re-parse at every call site, and each one carries a `FromString` codec that decodes the canonical form and encodes back to it. Parsing is strict: no `v` prefix, no `=` prefix, no leading zeros on numeric identifiers, no partially consumed input. Every failure is a tagged error carrying the offending string and the character position where the grammar gave up. Zero runtime dependencies, no IO.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/semver
 
 The version parsers most projects reach for are lenient by default. They coerce `v1.2.3` and `=1.2.3` into a version, then hand back `null` — or throw — when they finally decide something is wrong, leaving you to reconstruct what failed and where. Once parsed, the result is a bag of numbers you stringify to store and re-parse to compare. This package inverts that. The class *is* the schema, so a version field anywhere in your own schemas decodes to a real `SemVer` and re-encodes to its canonical string with no glue code, and the operations you want live on the value you already have.
@@ -184,4 +196,3 @@ console.log(Effect.runSync(program));
 ## License
 
 [MIT](LICENSE)
-</content>

@@ -1,13 +1,6 @@
 {
 	"permissions": {
-		"allow": [
-			"Write(./**)",
-			"Edit(./**)",
-			"Write(.claude/design/**)",
-			"Write(.claude/plans/**)",
-			"Edit(.claude/design/**)",
-			"Edit(.claude/plans/**)"
-		]
+		"allow": ["Edit(.claude/design/**)", "Edit(.claude/plans/**)", "Edit(.claude/design/**)", "Edit(.claude/plans/**)"]
 	},
 	"enableAllProjectMcpServers": true,
 	"enabledPlugins": {

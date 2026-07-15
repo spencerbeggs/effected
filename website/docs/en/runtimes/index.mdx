@@ -11,7 +11,7 @@ Resolve semver-compatible Node.js, Bun and Deno versions from the live release f
 
 "What is the newest Node.js version matching `>=20` that is still in active LTS?" is a question CI jobs, version managers and scaffolding tools all ask, and answering it means reading `nodejs.org`'s dist index, cross-referencing the release schedule, and applying semver. This package does that for Node, Bun and Deno behind one shape.
 
-It takes no external runtime dependency, and that is not incidental. The predecessor library's entire dependency weight was Octokit, funding exactly two REST GETs. Here the HTTP seam is `HttpClient` from Effect core, and the fetch implementation itself is a `Context.Reference` a test overrides with a fake. The binary that wraps this library lives next door in [`@effected/runtime-resolver-cli`](/runtime-resolver-cli), precisely so that a library consumer never installs a platform adapter.
+It takes no external runtime dependency, and that is not incidental. The predecessor library's entire dependency weight was Octokit, funding exactly two REST GETs. Here the HTTP seam is `HttpClient` from Effect core, and the fetch implementation itself is a `Context.Reference` a test overrides with a fake. A binary that wraps this library ships separately, precisely so that a library consumer never installs a platform adapter.
 
 ## Install
 

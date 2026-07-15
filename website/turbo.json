@@ -12,7 +12,6 @@
 				"@effected/npm#build:prod",
 				"@effected/package-json#build:prod",
 				"@effected/runtimes#build:prod",
-				"@effected/runtime-resolver-cli#build:prod",
 				"@effected/semver#build:prod",
 				"@effected/store#build:prod",
 				"@effected/toml#build:prod",

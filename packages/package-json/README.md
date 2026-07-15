@@ -7,6 +7,18 @@
 
 package.json parsing, editing, validation and file IO as Effect schemas. `Package` is a `Schema.Class` with the manifest's known fields typed — `name` is a branded npm name, `version` is a real `SemVer`, `packageManager` decodes into `{ name, version, integrity }` — and a `rest` catch-all that carries every unknown top-level key through a read, edit and write cycle without losing it. Editing is immutable and dual-signature, validation is a rule set you can replace, and `catalog:` / `workspace:` specifiers expand through the `@effected/npm` resolver contracts as an explicit step you opt into.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/package-json
 
 Tools that rewrite a package.json usually treat it as a `Record<string, unknown>`: read it, mutate a key, `JSON.stringify` it back. That works right up until it does not. Unknown keys survive by accident rather than by design, `version` is a string you compare with `<`, and the day someone's manifest has a field your types never modeled is the day you find out whether your write path preserved it. The alternative — a strict schema over the *known* fields — usually solves the typing by deleting everyone's data.
@@ -201,4 +213,3 @@ Every failure is a `Schema.TaggedErrorClass` routed with `Effect.catchTag`. Caus
 ## License
 
 [MIT](LICENSE)
-</content>

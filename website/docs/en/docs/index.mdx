@@ -68,9 +68,7 @@ the release, and it goes out at `0.1.0` with the libraries.
 | [@effected/store](/store) | integrated | Durable local state: a schema-versioned, migrated store, and a cache built on it |
 | [@effected/xdg](/xdg) | boundary | XDG Base Directory resolution: app directories, native directories and config-file resolvers |
 | [@effected/runtime-resolver](/runtime-resolver) | boundary | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
-| [@effected/runtime-resolver-cli](/runtime-resolver-cli) | integrated | The `runtime-resolver` binary, split out so the library's consumers never install a platform adapter |
 | [@effected/workspaces](/workspaces) | integrated | Monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
-| [@effected/ts-vfs](/ts-vfs) | integrated | TypeScript virtual file systems: fetch, cache and resolve type definitions from npm, and build `@typescript/vfs` environments for type-aware code samples |
 | [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) | companion — no tier | The pnpm config dependency publishing the two Effect catalogs every package here pins against |
 
 Installing [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) holds your `effect` versions and peer floors

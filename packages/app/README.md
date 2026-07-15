@@ -7,6 +7,18 @@
 
 The application control plane for Effect. `App.layer` gives an application its XDG-namespaced directories, a migrated SQLite state database, a TTL cache and — through `AppConfig.layer` — a config file, all pointed at the same place, with the namespace typed exactly once. It is a composition over [`@effected/xdg`](../xdg), [`@effected/store`](../store) and [`@effected/config-file`](../config-file), and nothing else.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/app
 
 Every application built on this kit writes the same forty lines of wiring, and it is the kind of wiring that looks right and is wrong. `@effected/xdg` resolves where a namespace's directories are. `@effected/store` opens a database at a path. Between them sits an ordering nobody thinks about until it bites: `SqliteClient.layer` has no error channel and **defects** on a missing parent directory, so the directory must be ensured *before* the store layer is built, or the failure arrives as a defect that nothing downstream can catch typed.

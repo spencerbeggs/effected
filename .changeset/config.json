@@ -3,7 +3,18 @@
 	"changelog": [
 		"@savvy-web/changelog",
 		{
-			"repo": "spencerbeggs/effected"
+			"repo": "spencerbeggs/effected",
+			"packages": {
+				"@effected/app": {
+					"additionalScopes": ["plugin/**"],
+					"versionFiles": [
+						{
+							"glob": "plugin/.claude-plugin/plugin.json",
+							"paths": ["$.version"]
+						}
+					]
+				}
+			}
 		}
 	],
 	"commit": false,

@@ -7,6 +7,18 @@
 
 Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot as a fallback. Ask for `>=20` in the `active-lts` phase and get back every match, newest first, plus the LTS pick and whatever you nominated as the default. Node's lifecycle phases come from the real `nodejs/Release` schedule and are evaluated against the clock, so `current`, `active-lts`, `maintenance-lts` and `end-of-life` mean what they mean today rather than on the day the package was published.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/runtimes
 
 Every answer carries an honest `source`. A resolver that fetches live data, silently fails, serves a snapshot and reports `source: "api"` is worse than one that never had a snapshot — you cannot tell a fresh answer from a stale one, and a CI job pinning its toolchain will happily install a version that was current last quarter. Here the field is set by whichever strategy actually populated the index: `"api"` when the feed answered, `"cache"` when the snapshot did, including when the automatic strategy fell back to it, and the fallback logs a warning on the way through.
@@ -31,7 +43,7 @@ Requires Node.js >=24.11.0.
 
 Live resolution needs an `HttpClient`, provided at the edge with `FetchHttpClient.layer` from `effect/unstable/http` — that layer has no requirements of its own, so it works anywhere `fetch` does. If you only ever use `layerOffline`, you need no HTTP client at all.
 
-For the command-line interface, install [`@effected/runtime-resolver-cli`](../runtime-resolver-cli) instead — it is a separate package precisely so that consumers of this one never install `@effect/platform-node`.
+The command-line interface ships as a separate package, so this package's consumers never install `@effect/platform-node`.
 
 ## Quick start
 

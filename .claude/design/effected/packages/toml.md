@@ -3,12 +3,11 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-15
+last-synced: 2026-07-15
 completeness: 95
 related:
   - ../effect-standards.md
-  - ../migration-playbook.md
   - ../package-inventory.md
   - ../releases.md
   - ../package-setup.md
@@ -22,111 +21,100 @@ related:
 
 ## Overview
 
-Target design for `@effected/toml`, the **eighth** package migration (config-file family slot 5d in [package-inventory.md](../package-inventory.md#the-config-file-family)) and a **pure-tier** package. Approved 2026-07-10; this design **reverses the 2026-07-09 rescope** that cut the package to a parse/stringify wrapper over a vendored smol-toml port. `@effected/toml` is a full-parity format sibling to `@effected/jsonc` ([jsonc.md](jsonc.md)) and `@effected/yaml` ([yaml.md](yaml.md)): parse, stringify, Schema integration, lossless CST, edit-in-place, formatter and visitor — built on a **from-scratch Effect-native engine**, not a smol-toml port. smol-toml appears only as a devDependency test oracle. The dialect target is **TOML 1.0.0 exactly**; no 1.1 draft features. Target directory is `packages/toml`.
-
-The gate consumer is `@soda3js/config` ([releases.md](../releases.md#the-gate)), which uses parse/stringify only. The `ConfigCodec` adapter over that seam shipped as `@effected/config-file-toml` (family slot 5e) and was **absorbed into `@effected/config-file` as `TomlCodec` by the [consolidation](config-file.md#the-consolidation-2026-07-11)**; this package was untouched by that, and the dependency arrow still points at toml, never from it.
-
-Scale estimate: roughly 3–5k source lines and a few hundred hand-written tests on top of the ~870 vendored corpus fixtures — between jsonc (1,245 lines) and yaml (9,973) in engine scale.
+`@effected/toml` is TOML 1.0.0 (no 1.1 draft features) as pure Effect Schema schemas on a **from-scratch, Effect-native engine**: parse, stringify, Schema integration, a lossless CST, edit-in-place, formatter and visitor. It is a full-parity format sibling of [@effected/jsonc](jsonc.md) and [@effected/yaml](yaml.md), sharing their surface contract (parse, stringify, Schema, lossless CST, edit, format, visitor). `smol-toml` appears only as a devDependency differential-test oracle.
 
 ## The headline decision: full parity, from-scratch
 
-Two decisions from the 2026-07-09 rescope are reversed together, decided 2026-07-10:
+Two coupled decisions define the package:
 
-- **Full parity, not parse/stringify-only.** The consumer contract (`@soda3js/config` imports exactly `parse` and `stringify`) still defines the **minimum** the package must satisfy — it just no longer bounds the surface. This is the same reasoning that made [glob](glob.md#the-headline-decision-a-full-fidelity-port) a full-fidelity port over the consumer-scoped alternative: a format package has predictable broader use across the five consuming applications, and the three format siblings (jsonc, yaml, toml) sharing the same surface contract — parse, stringify, Schema, lossless CST, edit, format, visitor — is itself load-bearing for codec-generic consumer code.
-- **From-scratch Effect-native engine, not a smol-toml port.** smol-toml's design fights the house model in ways a port would have to fight back out: throw-based errors instead of typed diagnostics, a `TomlDate extends Date` hack for the four TOML datetime types (rejected — see [value model](#value-model)) and a lossy value-only parse with no CST. Writing the engine Effect-native from the start is cheaper than porting-then-rewriting, and TOML 1.0.0 is a small, stable, precisely specified grammar with a first-class compliance corpus — the conditions under which a from-scratch engine is a bounded bet rather than an open one. smol-toml survives as the differential-test oracle, the [glob/minimatch playbook](glob.md#testing).
+- **Full parity, not parse/stringify-only.** The gate consumer (`@soda3js/config`, which imports exactly `parse` and `stringify`) defines the **minimum** the package must satisfy, not the maximum. This is the same reasoning that made [glob](glob.md#full-fidelity-port) a full-fidelity port: a format package has predictable broad use across the consuming applications, and the three format siblings sharing one surface contract is itself load-bearing for codec-generic consumer code.
+- **From-scratch Effect-native engine, not a smol-toml port.** smol-toml fights the house model — throw-based errors instead of typed diagnostics, a `TomlDate extends Date` hack for the four datetime types (see [value model](#value-model)), and a lossy value-only parse with no CST. TOML 1.0.0 is a small, stable, precisely specified grammar with a first-class compliance corpus, which makes a from-scratch engine a bounded bet. smol-toml survives as the differential-test oracle.
 
 ## Tier and dependencies
 
-Pure tier under the [three-tier taxonomy](../effect-standards.md#three-tier-library-taxonomy): `peerDependencies: { effect: "catalog:effect" }` and **zero runtime dependencies**. No IO, no services, no layers, no `R` anywhere — all inputs are strings, all outputs are values, documents, edits, streams or typed errors. Unlike jsonc, yaml and glob there is no vendored engine and no attribution burden: the engine is original work in `src/internal/`. `smol-toml` is pinned exact as a **devDependency only** (the test oracle). `"sideEffects": false`.
+Pure tier under the [three-tier taxonomy](../effect-standards.md#three-tier-library-taxonomy): `peerDependencies: { effect }` and **zero runtime dependencies**. No IO, no services, no layers, no `R` — all inputs are strings, all outputs are values, documents, edits, streams or typed errors. There is no vendored engine and no attribution burden; the engine is original work in `src/internal/`. `smol-toml` is pinned exact as a devDependency only. `"sideEffects": false`.
 
-## Architecture: linear CST + semantic pass
+## Architecture: linear CST plus semantic pass
 
-TOML's syntax is flat — a linear sequence of key-value lines and `[table]` / `[[array-of-table]]` headers — while its semantics are a tree derived from those headers. The engine honors that split instead of forcing one shape onto both:
+TOML's syntax is flat — a linear sequence of key-value lines and `[table]` / `[[array-of-table]]` headers — while its semantics are a tree derived from those headers. The engine honors the split:
 
-- **scanner → recursive-descent parser → lossless linear CST**: a flat list of expression nodes, each with source ranges and attached trivia (comments, whitespace, newlines).
-- **A separate semantic pass** walks the expression list to build the logical table tree, enforcing TOML's redefinition rules — table redefinition, dotted-key collision, appending to inline tables, array-of-tables interleaving — and emitting typed diagnostics with line/column/range.
-- **parse** = CST → semantic pass → plain values. **edit/format** operate on the linear CST: edits are text splices, naturally line-shaped. The **visitor** streams events from the semantic walk.
+- **scanner → recursive-descent parser → lossless linear CST**: a flat list of expression nodes, each with source ranges and attached trivia.
+- **A separate semantic pass** walks the expression list to build the logical table tree, enforcing TOML's redefinition rules (table redefinition, dotted-key collision, appending to inline tables, array-of-tables interleaving) and emitting typed diagnostics with line/column/range.
+- **parse** = CST → semantic pass → plain values. **edit/format** operate on the linear CST as text splices. The **visitor** streams events from the semantic walk.
 
-Two alternatives were considered and **rejected**:
-
-- **Tree-shaped CST like jsonc's.** TOML's dotted keys, out-of-order headers and array-of-table headers scatter one logical node across non-contiguous source spans, so a tree CST makes edit and format fight the format instead of riding it.
-- **Two engines** — a fast lossy value parser plus a separate CST layer. That is two grammar implementations to harden and keep in sync, and no throughput requirement justifies it.
+A tree-shaped CST (like jsonc's) is rejected: TOML's dotted keys, out-of-order headers and array-of-table headers scatter one logical node across non-contiguous source spans, so a tree CST would make edit and format fight the format. Two separate engines (a fast lossy value parser plus a CST layer) are rejected too: two grammars to keep in sync with no throughput requirement justifying it.
 
 ## Module layout
 
-One concern per file, mirroring [yaml's layout](yaml.md#module-layout-module-per-concept), per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept):
+One concern per file, mirroring [yaml's layout](yaml.md#module-layout):
 
-- `src/Toml.ts` — the value facade: `Toml.parse` (string → plain values), `Toml.stringify` (plain values → canonical TOML) and the schema factories — a `TomlFromString`-style codec for decoding config schemas straight from TOML text, the same DX as yaml. Owns the typed errors `TomlParseError` / `TomlStringifyError` and options classes for both directions.
-- `src/TomlDateTime.ts` — four Effect Schema classes: `TomlOffsetDateTime`, `TomlLocalDateTime`, `TomlLocalDate`, `TomlLocalTime`. Structural equality, validation in `make` and arbitraries for free.
-- `src/TomlDocument.ts` — the lossless document: linear expression CST plus the derived semantic table view plus recovered diagnostics.
-- `src/TomlNode.ts` — the CST node classes. Expression level: `TomlKeyValue`, `TomlTableHeader`, `TomlArrayTableHeader` and comment/blank trivia. Value level: strings (all four TOML string forms, style preserved), scalars, `TomlArray`, `TomlInlineTable`.
+- `src/Toml.ts` — the value facade: `Toml.parse` (string → plain values), `Toml.stringify` (plain values → canonical TOML) and the schema factories (a `TomlFromString`-style codec for decoding config schemas straight from TOML text). Owns the typed errors `TomlParseError` / `TomlStringifyError` and the stringify options.
+- `src/TomlDateTime.ts` — four Effect Schema classes: `TomlOffsetDateTime`, `TomlLocalDateTime`, `TomlLocalDate`, `TomlLocalTime`, with structural equality, `make` validation and arbitraries.
+- `src/TomlDocument.ts` — the lossless document: linear expression CST, derived semantic table view and recovered diagnostics.
+- `src/TomlNode.ts` — the CST node classes: `TomlKeyValue`, `TomlTableHeader`, `TomlArrayTableHeader`, comment/blank trivia, and the value nodes (all four TOML string forms style-preserved, scalars, `TomlArray`, `TomlInlineTable`).
 - `src/TomlEdit.ts` — path-addressed edits (`TomlPath` / `TomlRange`) computed as text splices against the linear CST.
-- `src/TomlFormat.ts` — non-mutating format/modify operations preserving comments and whitespace (the `YamlFormat` contract).
+- `src/TomlFormat.ts` — non-mutating format/modify operations preserving comments and whitespace.
 - `src/TomlVisitor.ts` — SAX-style event stream over the semantic walk.
-- `src/TomlDiagnostic.ts` — the diagnostic class plus per-stage error-code enums: `TomlLexErrorCode`, `TomlParseErrorCode`, `TomlSemanticErrorCode`, `TomlStringifyErrorCode`.
-- `src/index.ts` — the only barrel, re-exports only (the [no-barrel-re-exports rule](../effect-standards.md#no-barrel-re-exports)).
+- `src/TomlDiagnostic.ts` — the diagnostic class plus per-stage error-code enums (`TomlLexErrorCode`, `TomlParseErrorCode`, `TomlSemanticErrorCode`, `TomlStringifyErrorCode`).
+- `src/index.ts` — the only barrel, re-exports only.
 - `src/internal/` — scanner, parser, semantic pass, stringify engine and the hardening guards.
 
 ## Value model
 
-Effect Schema classes throughout, decided against smol-toml's shapes:
+Effect Schema classes throughout:
 
-- **Datetimes**: the four Schema classes in `TomlDateTime.ts`. Effect's `DateTime` module covers none of TOML's local-only types (local date-time, local date, local time), and smol-toml's `TomlDate extends Date` hack is **rejected** — a `Date` subclass cannot faithfully carry a timezone-free value.
+- **Datetimes**: the four Schema classes in `TomlDateTime.ts`. Effect's `DateTime` module covers none of TOML's local-only types, and a `Date` subclass cannot faithfully carry a timezone-free value.
 - **Integers**: `number` within ±(2^53−1), `bigint` outside; 64-bit signed bounds are enforced per spec, and out-of-range fails typed.
 - **Floats**: `number`, honoring TOML's `inf` / `nan` spellings.
 
-The divergence from smol-toml's Date-subclass API is accepted: the `@soda3js/config` migration is a small mapping at its call sites, not a drop-in swap.
+The divergence from smol-toml's Date-subclass API is deliberate: the `@soda3js/config` call sites map at their boundary rather than drop-in swapping.
 
-## Stringify: two distinct jobs, kept distinct
+## Stringify: two distinct jobs
 
 - **Value stringify**: plain JS values → canonical TOML. This is what `@soda3js/config` uses.
 - **Document stringify**: CST → source text, **byte-exact round-trip** — parse then stringify of an untouched document returns the input verbatim.
 
+Two floor limits of a JS-number-backed emitter are shared with every JS emitter: an integral JS float emits as an integer (`1.0` becomes `1`), and an integral number past int64 emits as a TOML float so the output re-parses.
+
 ## Hardening
 
-The [input-hardening standards](../effect-standards.md#input-hardening-standards) (the hardening-a-parser-port skill) apply in full and are **designed in, not retrofitted** — the from-scratch engine has no upstream guard inventory to inherit, so every guard is specified here:
+The [input-hardening standards](../effect-standards.md#input-hardening-standards) apply in full — the from-scratch engine has no upstream guard inventory to inherit, so every guard is specified here:
 
-- **Depth guards on every recursion surface**: value parse (inline tables and arrays nest arbitrarily), value stringify, document stringify, the visitor walk and edit-path resolution.
-- **Prototype-pollution guards** on `__proto__` / `constructor` / `prototype` keys — TOML keys are attacker-controlled (the [yaml `__proto__` precedent](yaml.md#yamlnode-ast)).
+- **Depth guards on every recursion surface**: value parse, value stringify, document stringify, the visitor walk and edit-path resolution. Value nesting recurses under a 256-depth guard; header and dotted-key depth is data walked iteratively on both the parse and stringify sides, so a 5000-segment header is fine.
+- **Prototype-pollution guards** on `__proto__` / `constructor` / `prototype` keys — TOML keys are attacker-controlled.
 - **Control-character rejection** in strings and comments per spec; `\u`/`\U` escape code-point validation (surrogate range, above U+10FFFF).
+- **U+FFFD is rejected** as lossy-decode evidence via an `InvalidUtf8` lex code. The accepted spec-edge cost: a genuine U+FFFD scalar present in string input also rejects.
+- **Fractional seconds truncate** beyond nine digits (nanosecond precision).
 - Malformed input **always fails through the typed error channel** — never a defect, never a hang.
+
+The semantic pass distinguishes two cases the redefinition rules can conflate: a header **passes through** dotted-created intermediate tables (`[fruit.apple.texture]` is legal after `fruit.apple` was created by a dotted key), while a header **landing** on a dotted-created table is illegal.
 
 ## Observability
 
-Pure-tier house rule: named `Effect.fn` spans on the public fallible boundaries only. No per-node instrumentation inside the scanner, parser or semantic pass — hot recursive paths stay span-free, the yaml composer precedent. No metrics; telemetry-agnostic.
+Pure-tier rule: named `Effect.fn` spans on the public fallible boundaries only. No per-node instrumentation inside the scanner, parser or semantic pass. No metrics; telemetry-agnostic.
 
 ## Testing
 
-`@effect/vitest`, `assert.*` — never `expect` — with tests in `__test__/` per repo convention. Three families:
+`@effect/vitest`, `assert.*` — never `expect` — with tests in `__test__/`. Three families:
 
-1. **Compliance gate**: the BurntSushi toml-test corpus (the files-toml-1.0.0 subset), vendored as committed plain files pinned to a recorded upstream ref (the [yaml fixture-corpus precedent](yaml.md#fixture-corpus-and-compliance-harness)). Every valid case decodes to its expected typed value; every invalid case fails with a typed error.
-2. **Differential property tests** against `smol-toml` pinned exact as the devDependency oracle (the [glob/minimatch playbook](glob.md#testing)), asserting parse agreement on generated documents modulo the documented value-model divergence.
-3. **Hand-written suites** for what the corpus cannot see: CST fidelity (byte-exact round-trip), edit/format/visitor behavior, the datetime Schema classes and a hostile-input suite exercising every hardening guard above.
+1. **Compliance gate**: the BurntSushi toml-test corpus (the files-toml-1.0.0 subset), vendored as committed plain files pinned to a recorded upstream ref. It passes in full with no skip list; byte-exact round-trip is proven over every valid corpus file.
+2. **Differential property tests** against the `smol-toml` oracle, asserting parse agreement modulo the documented value-model divergence.
+3. **Hand-written suites** for what the corpus cannot see: CST fidelity, edit/format/visitor behavior, the datetime Schema classes and a hostile-input suite exercising every hardening guard.
 
-Resolved: the toml-test tagged-JSON mapping (`{"type": "datetime-local", "value": …}`) is compared **structurally** rather than through a hand-written tag table. Expected datetime strings are re-parsed through the scanner's own `classifyValueToken` and compared via `Equal.equals`; integers are BigInt-compared, accepting `number | bigint` on either side; no instant-equality fallback was needed. Resolved: `TomlEdit` insertion placement is pinned by test — root inserts go before the first header, after the last root expression; explicit `[t]` / `[[t]]`-element inserts go after that section's last expression, before the blank trivia separating sections; a dotted-created table gets a dotted key rendered **relative** to its defining section (`x.z = 2`, not `t.x.z = 2`); inline tables and header-implicit tables are not addressable for insertion and raise a typed `TomlModificationError`.
-
-## Build and scaffold
-
-Per [package-setup.md](../package-setup.md): copy a pure sibling (yaml) into `packages/toml`, with model paths `../../website/lib/models/toml` in `turbo.json` outputs and `savvy.build.ts` `localPaths`, and `repository.directory: packages/toml`. The Schema class factories need the narrow `_base` suppression in `savvy.build.ts` per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories). devDependencies add `smol-toml` (the oracle), pinned exact. No `prepare` script — toml has no `workspace:*` deps; like glob it is a pure leaf.
+The toml-test tagged-JSON mapping (`{"type": "datetime-local", "value": …}`) is compared **structurally**: expected datetime strings are re-parsed through the scanner's own `classifyValueToken` and compared via `Equal.equals`; integers are BigInt-compared. `TomlEdit` insertion placement is pinned by test: root inserts go before the first header / after the last root expression; explicit `[t]` / `[[t]]`-element inserts go after that section's last expression; a dotted-created table gets a dotted key rendered relative to its defining section; inline tables and header-implicit tables are not addressable for insertion and raise `TomlModificationError`.
 
 ## Consumer seam
 
-`TomlCodec` implements `ConfigCodec` over `Toml.parse`/`Toml.stringify`. It shipped as its own package (`@effected/config-file-toml`, family slot 5e) and now lives inside `@effected/config-file` as `src/TomlCodec.ts`, one of four free-standing codec exports — see [the consolidation](config-file.md#the-consolidation-2026-07-11). `@soda3js/config` therefore consumes `config-file` and `toml`, two packages rather than three, per [releases.md](../releases.md#the-five-applications).
+`TomlCodec` implements `@effected/config-file`'s `ConfigCodec` over `Toml.parse`/`Toml.stringify`. It lives inside `@effected/config-file` as one of four free-standing codec exports — see [the config-file codecs](config-file.md). `@soda3js/config` therefore consumes `config-file` and `toml`. **Nothing in toml knows about config-file**: the edge is config-file → toml, a `workspace:*` peer, and this package stays a pure, unaware format package.
 
-**Nothing in toml knows about config-file**, and the consolidation did not change that: the edge is config-file → toml, a `workspace:*` peer, and this package stays a pure, unaware format package. What moved was the adapter, not the engine.
+## Parity and implementation notes
 
-## As built (2026-07-10)
+- `TomlEdit` and `TomlRange` are field-identical to `JsoncEdit`/`YamlEdit` (`{ offset, length, content }`, the parity convention). Two deliberate divergences from yaml: `TomlFormat.format`'s range filter uses owning-expression intersection (toml edits are line-shaped against the linear CST), and `TomlEdit.applyAll` rejects overlapping edits as a defect (overlapping splices against a linear CST are a caller wiring error, not recoverable input).
+- Parse has **no options class** — TOML 1.0.0 parse has no knobs, so only the stringify direction carries an options surface.
+- Recursive `Schema.suspend` references are typed `Schema.Codec<T>`; `Schema.Schema<T>` leaves services `unknown` and breaks decode.
+- `TomlVisitor` construction is eager (full parse plus semantic walk plus sort); only enumeration is streamed.
+- `TomlDiagnostic.fromRaw` takes an inline public-shaped record so no internal type leaks onto the API surface.
 
-The from-scratch engine merged on `feat/toml` with every gate green, promoting this doc to `current`. As-built notes against the design above:
+## Build and scaffold
 
-**Gate results.** The BurntSushi toml-test v2.2.0 corpus (the files-toml-1.0.0 subset) passes in full with no skip list, byte-exact round-trip is proven over every valid corpus file and the `smol-toml` differential oracle found zero divergences. `dist/prod/issues.json` reports zero errors, zero warnings and a suppressed bucket holding only synthesized `_base` entries.
-
-**G8 correction (corpus-driven).** The semantic pass was corrected against the corpus: headers pass **through** dotted-created intermediate tables (the spec's `fruit.apple.texture` example, where `[fruit.apple.texture]` is legal after `fruit.apple` was created by a dotted key). Only a header **landing** on a dotted-created table is illegal. The original redefinition-rule sketch conflated the two.
-
-**Deviations from this design.** There is no `TomlParseOptions` class — TOML 1.0.0 parse has no knobs, so the options-class-per-direction sketch collapsed to a stringify-only options surface. U+FFFD is rejected as lossy-decode evidence via a new `InvalidUtf8` lex code (corpus-compliant); the documented trade-off is that a genuine U+FFFD scalar present in string input also rejects — a spec-edge cost accepted for corpus conformance. Fractional seconds truncate beyond nine digits (nanosecond precision).
-
-**Emitter limits shared with every JS emitter.** An integral JS float emits as an integer (`1.0` becomes `1`), and an integral number past int64 emits as a TOML float so the output re-parses. These are floor limits of a JS-number-backed emitter, not toml-specific choices, and match what the oracle does.
-
-**Parity notes.** `TomlEdit` and `TomlRange` are field-identical to `JsoncEdit`/`YamlEdit` (`{ offset, length, content }`, the parity convention). Two deliberate divergences from yaml are recorded so nobody "corrects" them: `TomlFormat.format`'s range filter uses owning-expression intersection (yaml uses edit-fully-within-range), because toml edits are line-shaped against the linear CST; and `TomlEdit.applyAll` rejects overlapping edits as a defect (yaml applies them), because overlapping splices against a linear CST are a caller wiring error, not recoverable input.
-
-**Implementation notes.** Recursive `Schema.suspend` references are typed `Schema.Codec<T>` — the beta.94 documented idiom; `Schema.Schema<T>` leaves services `unknown` and breaks decode. `TomlVisitor` construction is eager (full parse plus semantic walk plus sort); only enumeration is streamed. Header and dotted-key depth is data, walked iteratively on both the parse and stringify sides — 5000-segment headers are fine; only value nesting recurses, under the 256-depth guard. `TomlDiagnostic.fromRaw` takes an inline public-shaped record (the yaml precedent) so no internal type leaks onto the API surface.
+Per [package-setup.md](../package-setup.md): copied from a pure sibling (yaml), with model paths `../../website/lib/models/toml` in `turbo.json` outputs and `savvy.build.ts` `localPaths`, and `repository.directory: packages/toml`. The Schema class factories need the narrow `_base` suppression in `savvy.build.ts` per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories). devDependencies add `smol-toml` (the oracle), pinned exact. No `prepare` script — toml is a pure leaf with no `workspace:*` deps.

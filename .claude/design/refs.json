@@ -104,12 +104,6 @@
 			"recordedAt": "2026-07-13"
 		},
 		{
-			"source": "packages/runtime-resolver-cli/CLAUDE.md",
-			"target": ".claude/design/effected/packages/runtimes.md",
-			"hash": "692baa62f343ce1d55962d0b6e5518a32eeb10a43f6935857f5afd7c129ecc0e",
-			"recordedAt": "2026-07-12"
-		},
-		{
 			"source": "packages/runtimes/CLAUDE.md",
 			"target": ".claude/design/effected/packages/runtimes.md",
 			"hash": "692baa62f343ce1d55962d0b6e5518a32eeb10a43f6935857f5afd7c129ecc0e",
@@ -131,12 +125,6 @@
 			"source": "packages/toml/CLAUDE.md",
 			"target": ".claude/design/effected/packages/toml.md",
 			"hash": "93194581a32f4c390a0e9bcb273f912fd39e0aca2ef3a8ba44788445e7933955",
-			"recordedAt": "2026-07-12"
-		},
-		{
-			"source": "packages/ts-vfs/CLAUDE.md",
-			"target": ".claude/design/effected/packages/ts-vfs.md",
-			"hash": "129356997a77d46c276821d25b0c3857512d73c450fc0ff78691b80d722c1613",
 			"recordedAt": "2026-07-12"
 		},
 		{

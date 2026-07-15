@@ -7,6 +7,18 @@
 
 Upward path traversal as Effect primitives. `Walker.ascend` gives you the directory chain from a starting path to the filesystem root; `Walker.findUpward` returns the nearest existing file among per-directory candidates; `Walker.findRoot` returns the nearest directory a marker predicate accepts. Every probe absorbs its own failure, so a single unreadable ancestor cannot hide a valid `.git` or `pnpm-workspace.yaml` above it. `FileSystem` and `Path` arrive from `effect` core, so no platform package is pulled in — not even in tests.
 
+> **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
+> development against a single pinned Effect v4 beta. Packages graduate to
+> `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
+> exactly the ones the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
 ## Why @effected/walker
 
 Walking up a directory tree looks like four lines of code until you meet the edges, and the edges are where the hand-rolled version quietly gets it wrong. If a probe on one ancestor fails — an `EACCES` on a directory you had no business reading anyway — the naive loop propagates that error and the whole search fails, so an unreadable directory hides the workspace root sitting one level above it. Walker absorbs each probe individually: a failed probe means "this candidate did not match", never "abort the scan". Every public error channel is `never` as a result, and the trade is stated up front rather than discovered later — not-found and cannot-look are deliberately indistinguishable, because discovery is best-effort.
