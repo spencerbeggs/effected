@@ -1,3 +1,4 @@
+import { IntegrityHash } from "@effected/npm";
 import { Effect, Schema } from "effect";
 
 const EMPTY_DEPENDENCIES: { readonly [name: string]: string } = {};
@@ -13,8 +14,10 @@ const EMPTY_DEPENDENCIES: { readonly [name: string]: string } = {};
  *   `Lockfile#withImporterNames` rewrites it.
  * - `version` — the resolved version string (pnpm workspace packages carry
  *   `"0.0.0"`; the lockfile does not record their real versions).
- * - `integrity` — optional SRI integrity hash (npm/pnpm `sha512-...`, yarn
- *   Berry checksum).
+ * - `integrity` — optional `@effected/npm` `IntegrityHash`, covering npm/pnpm
+ *   `sha512-...` SRI and yarn Berry's `10c0/...` cache checksums (the yarn
+ *   textual form). An unparseable checksum is dropped rather than failing the
+ *   parse, so a `ResolvedPackage` may carry no `integrity`.
  * - `isWorkspace` — `true` for workspace-local packages.
  * - `relativePath` — the workspace-relative directory for workspace
  *   packages, when the lockfile records one.
@@ -26,7 +29,7 @@ const EMPTY_DEPENDENCIES: { readonly [name: string]: string } = {};
 export class ResolvedPackage extends Schema.Class<ResolvedPackage>("ResolvedPackage")({
 	name: Schema.NonEmptyString,
 	version: Schema.String,
-	integrity: Schema.optionalKey(Schema.String),
+	integrity: Schema.optionalKey(IntegrityHash),
 	isWorkspace: Schema.Boolean,
 	relativePath: Schema.optionalKey(Schema.String),
 	dependencies: Schema.Record(Schema.String, Schema.String).pipe(

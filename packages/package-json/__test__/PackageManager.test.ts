@@ -36,4 +36,14 @@ describe("PackageManager.FromString", () => {
 			assert.strictEqual(error._tag, "SchemaError");
 		}),
 	);
+
+	// A well-formed `name@version+<integrity>` whose integrity is not a valid
+	// `IntegrityHash` must fail typed through the decode, never construct the
+	// branded field and escape as an unhandled defect.
+	it.effect("rejects a malformed integrity as a typed failure, not a defect", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(Schema.decodeUnknownEffect(PackageManager.FromString)("pnpm@10.33.0+GARBAGE!!"));
+			assert.strictEqual(error._tag, "SchemaError");
+		}),
+	);
 });

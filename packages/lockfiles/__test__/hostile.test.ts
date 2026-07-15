@@ -5,7 +5,7 @@
 // the delegated typed failures actually surface through Lockfile.parse.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { Lockfile, LockfileParseError } from "../src/Lockfile.js";
 import type { LockfileFormat } from "../src/LockfileFormat.js";
 
@@ -182,6 +182,33 @@ describe("hostile input", () => {
 				const evil = lockfile.packagesNamed("__proto__")[0];
 				const protoEntry = Object.entries(evil?.dependencies ?? {}).find(([k]) => k === "__proto__");
 				assert.deepStrictEqual(protoEntry, ["__proto__", "1.0.0"]); // own enumerable property, not dropped
+			}),
+		);
+
+		it.effect("a __proto__ importer path and dependency name populate importers without polluting", () =>
+			Effect.gen(function* () {
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  __proto__:",
+					"    dependencies:",
+					"      __proto__:",
+					"        specifier: '1.0.0'",
+					"        version: 1.0.0",
+					"  .: {}",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				assertPrototypeUnpolluted();
+
+				// The importer index is Map-backed, so a hostile path is honest data,
+				// not a prototype write.
+				const evil = Option.getOrThrow(lockfile.importer("__proto__"));
+				assert.strictEqual(evil.path, "__proto__");
+				const dep = evil.dependencies.find((d) => d.name === "__proto__");
+				assert.strictEqual(dep?.specifier.raw, "1.0.0");
+				assert.strictEqual(dep?.specifier._tag, "range");
+
+				assert.isTrue(Option.isSome(lockfile.importer(".")));
 			}),
 		);
 

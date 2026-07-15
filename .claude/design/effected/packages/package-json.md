@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-12
-last-synced: 2026-07-12
+updated: 2026-07-14
+last-synced: 2026-07-14
 completeness: 92
 related:
   - ../architecture.md
@@ -95,7 +95,7 @@ src/
 
 Consolidation: 34 src files → ~12 (the two resolver modules move to [@effected/npm](npm.md)); 10 error files → errors co-located with their concepts; 7 services → **2 defined here** (`PackageJsonFile`, `PackageValidator`) plus **2 consumed from `@effected/npm`** (`CatalogResolver`, `WorkspaceResolver`); `Formatter`/`Transformer` become pure internal functions surfaced as options. Every non-entrypoint module imports explicitly from defining modules — no barrels, no re-export facades, no suppressed import cycles (the v3 co-location tax disappears because concepts own their errors and layers).
 
-As-built: the tree landed at **13 src files**. The `internal/fields.ts` module is gone — the field codecs became `@public` consts in `Package.ts` (see the [field-codec as-built note](#optional-field-representation)); only `internal/format.ts` survives in `internal/`.
+As-built: the tree landed at **13 src files**. The `internal/fields.ts` module is gone — the field codecs became `@public` consts in `Package.ts` (see the [field-codec as-built note](#optional-field-representation)); only `internal/format.ts` survives in `internal/`. As-built (2026-07-14): the [`DependencySpecifier` relocation](#dependencyspecifier) later removed `DependencySpecifier.ts` too — the taxonomy now lives in `@effected/npm` and `index.ts` re-exports it — trimming the tree by one more concept module.
 
 ### Single entry point
 
@@ -143,9 +143,11 @@ The **single** classification concept, merging v3's two drifting sources of trut
 
 As-built: statics are attached via **`Object.assign`** (same `const`-plus-`namespace` limitation as `PackageName`). `DependencySpecifierBrand` is typed as `string & Brand.Brand<"DependencySpecifier">` so the `@public` type does not leak the private brand const. **`isRange` is pure via `Schema.decodeUnknownExit(Range.FromString)` + `Exit.isSuccess`** — the `Effect.runSync`-in-getter is gone, and **no `@effected/semver` follow-up was needed** (the design's contingency `Range.parseOption` addition was unnecessary), resolving that verify item.
 
-Relocation (designed 2026-07-14, port pending): the vocabulary trigger recorded in [npm.md](npm.md#dependencyspecifier-v2-expansion-designed-2026-07-14) fired — the lockfiles importers model and the workspaces snapshots are the second and third consumers, and neither may take a package-json edge (integrated tier; R2 would propagate). **`DependencySpecifier` moves to `@effected/npm`**, carrying this as-built taxonomy with it; package-json imports it from there afterward (the pure edge already exists via `DependencyResolutionError`). `PackageName` stays here. Until the port lands, the module layout above remains the as-built reality.
+Relocation (**as-built 2026-07-14, branch `feat/lockfiles-importers`**): the vocabulary trigger recorded in [npm.md](npm.md#dependencyspecifier-v2-expansion-as-built-2026-07-14) fired — the lockfiles importers model and the workspaces snapshots are the second and third consumers, and neither may take a package-json edge (integrated tier; R2 would propagate). **`DependencySpecifier` moved to `@effected/npm`**, carrying the as-built taxonomy (brand + eleven-protocol statics) with it. **As-built: package-json re-exports the specifier vocabulary from `@effected/npm`**, so the relocation is source-transparent to package-json's own consumers — a name that used to resolve here still resolves, now via the re-export (the pure edge already existed via `DependencyResolutionError`). The `DependencySpecifier.ts` concept module above therefore no longer defines the taxonomy; it is gone in favour of the re-export. `PackageName` stays here.
 
-The same round re-points two more spellings at npm's consolidated vocabulary ([npm.md](npm.md#two-more-scalars-move-in-designed-2026-07-14)): `Dependency.kind`'s `DependencyKind` literal types against npm's dependency-section vocabulary (the `prod`/`dev`/`peer`/`optional` view of the one schema lockfiles' field-name view shares), and `PackageManager.integrity` re-types from a plain string to npm's `IntegrityHash` brand (the `name@version+sha512.hex` pin form is one of its two textual forms). Where every npm v12 manifest concept lives — modeled here, preserved via `rest`, or read elsewhere — is recorded in [npm.md's vocabulary registry](npm.md#vocabulary-registry-npm-v12-parity-map-recorded-2026-07-14).
+The same round (as-built 2026-07-14) re-points two package-json fields at npm's consolidated vocabulary ([npm.md](npm.md#two-more-scalars-move-in-as-built-2026-07-14)): `Dependency.kind` now types against npm's `DependencyKind` (the `prod`/`dev`/`peer`/`optional` view of the one schema whose field-name view lockfiles consumes), and `PackageManager.integrity` re-types from a plain string to npm's `IntegrityHash` brand (the corepack `name@version+sha512.hex` pin form is one of its now-three textual forms).
+
+**As-built behavior change: `PackageManager.FromString` is now stricter.** Against the old plain-string integrity a malformed integrity segment round-tripped untouched; against the `IntegrityHash` brand a malformed integrity now **fails typed** — it surfaces as a `SchemaError` through the codec rather than being accepted as a raw string. This is an observable, defensible tightening: real corepack `sha512.<hex>` values are unaffected, and only genuinely malformed integrity (which the old code silently preserved) now fails. The relocation and both re-points landed with package-json's suite at 64/64, biome and typecheck clean. Where every npm v12 manifest concept lives — modeled here, preserved via `rest`, or read elsewhere — is recorded in [npm.md's vocabulary registry](npm.md#vocabulary-registry-npm-v12-parity-map-recorded-2026-07-14).
 
 ### Dependency
 

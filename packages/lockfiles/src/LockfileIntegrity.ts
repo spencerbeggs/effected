@@ -1,8 +1,8 @@
+import { DependencyField } from "@effected/npm";
 import { Range, SemVer } from "@effected/semver";
 import { Exit, Schema } from "effect";
 import { DEP_TYPES, isWorkspaceSpecifier } from "./internal/shared.js";
 import type { Lockfile } from "./Lockfile.js";
-import { DependencyType } from "./WorkspaceDependency.js";
 
 /**
  * The minimal manifest shape {@link LockfileIntegrity.compare} checks a
@@ -54,7 +54,7 @@ export class LockfileIntegrity extends Schema.Class<LockfileIntegrity>("Lockfile
 			dependency: Schema.String,
 			constraint: Schema.String,
 			resolved: Schema.String,
-			depType: DependencyType,
+			depType: DependencyField,
 		}),
 	),
 }) {
@@ -103,7 +103,7 @@ export class LockfileIntegrity extends Schema.Class<LockfileIntegrity>("Lockfile
 			dependency: string;
 			constraint: string;
 			resolved: string;
-			depType: DependencyType;
+			depType: DependencyField;
 		}> = [];
 
 		for (const manifest of manifests) {

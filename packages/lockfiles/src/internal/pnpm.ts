@@ -1,9 +1,16 @@
 import { Effect, Schema } from "effect";
+import { LockfileImporter } from "../LockfileImporter.js";
 import { PnpmExtension } from "../PnpmExtension.js";
 import { ResolvedPackage } from "../ResolvedPackage.js";
 import { selectPnpmDocument } from "./documents.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
-import { extractWorkspaceDeps, framingFailure, validationFailure } from "./shared.js";
+import {
+	extractWorkspaceDeps,
+	framingFailure,
+	importerDependencies,
+	toIntegrityHash,
+	validationFailure,
+} from "./shared.js";
 
 // ── Raw schema (permissive validation scaffolding, not API) ────────────────
 
@@ -100,9 +107,23 @@ const importerDepGroups = (importer: PnpmImporterType) =>
 const toFields = (raw: PnpmLockfileRawType): LockfileFields => {
 	const workspaceEntries = new Map<string, WorkspaceEntry>();
 	const workspaceNames = new Set<string>();
+	const importers: Array<LockfileImporter> = [];
 
 	for (const [importerPath, importer] of Object.entries(raw.importers)) {
 		if (importerPath === "") continue; // a nameless importer cannot be modeled; skip, never throw
+
+		// pnpm records `{ specifier, version }` per importer dependency; a blank
+		// version means the section carries only a specifier.
+		importers.push(
+			LockfileImporter.make({
+				path: importerPath,
+				dependencies: importerDependencies(importer, (info) => ({
+					specifier: info.specifier,
+					version: info.version,
+				})),
+			}),
+		);
+
 		const deps = toVersionMap(importer.dependencies);
 		const devDeps = toVersionMap(importer.devDependencies);
 		const peerDeps = toVersionMap(importer.peerDependencies);
@@ -155,7 +176,7 @@ const toFields = (raw: PnpmLockfileRawType): LockfileFields => {
 			if (atIndex <= 0) continue; // malformed "name@version" keys are skipped, never thrown on
 			const name = bare.slice(0, atIndex);
 			const version = bare.slice(atIndex + 1);
-			const integrity = pkg.resolution?.integrity;
+			const integrity = toIntegrityHash(pkg.resolution?.integrity);
 			packages.push(
 				ResolvedPackage.make({
 					name,
@@ -179,6 +200,7 @@ const toFields = (raw: PnpmLockfileRawType): LockfileFields => {
 		lockfileVersion: String(raw.lockfileVersion),
 		packages,
 		workspaceDependencies,
+		importers,
 		extension,
 	};
 };

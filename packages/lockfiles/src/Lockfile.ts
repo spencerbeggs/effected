@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { BunExtension } from "./BunExtension.js";
 import { parseBun } from "./internal/bun.js";
 import { parseNpm } from "./internal/npm.js";
@@ -6,9 +6,12 @@ import { parsePnpm } from "./internal/pnpm.js";
 import type { LockfileFields, ParseFailure } from "./internal/shared.js";
 import { parseYarn } from "./internal/yarn.js";
 import { LockfileFormat } from "./LockfileFormat.js";
+import { LockfileImporter } from "./LockfileImporter.js";
 import { PnpmExtension } from "./PnpmExtension.js";
 import { ResolvedPackage } from "./ResolvedPackage.js";
 import { WorkspaceDependency } from "./WorkspaceDependency.js";
+
+const EMPTY_IMPORTERS: ReadonlyArray<LockfileImporter> = [];
 
 /**
  * Failure of `Lockfile.parse`: the given content is not a valid lockfile of
@@ -109,6 +112,9 @@ const dispatch = (format: LockfileFormat, content: string): Effect.Effect<Lockfi
  * - `lockfileVersion` — the lockfile format version string.
  * - `packages` — every resolved package.
  * - `workspaceDependencies` — inter-workspace dependency edges.
+ * - `importers` — each workspace importer's declared dependencies
+ *   ({@link LockfileImporter}), keyed by importer path. Populated by the pnpm,
+ *   bun and npm parsers; always empty for yarn, which records no importers.
  * - `extension` — format-specific residue (`PnpmExtension` or
  *   `BunExtension`) when the format records any.
  *
@@ -126,10 +132,20 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 	lockfileVersion: Schema.String,
 	packages: Schema.Array(ResolvedPackage),
 	workspaceDependencies: Schema.Array(WorkspaceDependency),
+	importers: Schema.Array(LockfileImporter).pipe(
+		// The decoding default is the *encoded* empty array (a fresh `[]` literal,
+		// which is assignable to the encoded side); the constructor default is the
+		// decoded empty array. Both are empty, so the runtime value is identical.
+		Schema.withDecodingDefaultKey(Effect.succeed([])),
+		Schema.withConstructorDefault(Effect.succeed(EMPTY_IMPORTERS)),
+	),
 	extension: Schema.optionalKey(Schema.Union([PnpmExtension, BunExtension])),
 }) {
 	/** Lazily built name → packages index; deliberately outside the schema, never encodes. */
 	#nameIndex: ReadonlyMap<string, ReadonlyArray<ResolvedPackage>> | undefined;
+
+	/** Lazily built importer-path → importer index; deliberately outside the schema, never encodes. */
+	#importerIndex: ReadonlyMap<string, LockfileImporter> | undefined;
 
 	/**
 	 * Parse lockfile content of a known format into the unified model — the
@@ -164,6 +180,7 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 			lockfileVersion: fields.lockfileVersion,
 			packages: fields.packages,
 			workspaceDependencies: fields.workspaceDependencies,
+			importers: fields.importers,
 			...(fields.extension !== undefined ? { extension: fields.extension } : {}),
 		});
 	});
@@ -204,11 +221,14 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 			if (from === dep.from && to === dep.to) return dep;
 			return WorkspaceDependency.make({ from, to, depType: dep.depType, constraint: dep.constraint });
 		});
+		// Importers stay untouched: they are keyed by importer path, not by
+		// package name, so a name-rewrite does not apply to them.
 		return Lockfile.make({
 			format: this.format,
 			lockfileVersion: this.lockfileVersion,
 			packages,
 			workspaceDependencies,
+			importers: this.importers,
 			...(this.extension !== undefined ? { extension: this.extension } : {}),
 		});
 	}
@@ -235,6 +255,25 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 			this.#nameIndex = index;
 		}
 		return this.#nameIndex.get(name) ?? [];
+	}
+
+	/**
+	 * The importer at the given path — `"."` for the workspace root — or
+	 * `Option.none()` when the lockfile records no importer there. Backed by a
+	 * lazily built index, so repeated lookups are O(1). The index is a `Map`,
+	 * so an attacker-adjacent path (`__proto__`, `constructor`) neither pollutes
+	 * nor collides.
+	 *
+	 * @param path - The importer path to look up.
+	 * @returns The matching {@link LockfileImporter}, or `Option.none()`.
+	 */
+	importer(path: string): Option.Option<LockfileImporter> {
+		if (this.#importerIndex === undefined) {
+			const index = new Map<string, LockfileImporter>();
+			for (const imp of this.importers) index.set(imp.path, imp);
+			this.#importerIndex = index;
+		}
+		return Option.fromUndefinedOr(this.#importerIndex.get(path));
 	}
 
 	/** The workspace-local packages. */

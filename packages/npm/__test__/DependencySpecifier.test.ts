@@ -1,7 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
 import { FastCheck } from "effect/testing";
-import { DependencySpecifier, InvalidDependencySpecifierError } from "../src/DependencySpecifier.js";
+import {
+	CatalogSpecifier,
+	DependencySpecifier,
+	DistTagSpecifier,
+	InvalidDependencySpecifierError,
+	RangeSpecifier,
+	RawSpecifier,
+	WorkspaceSpecifier,
+} from "../src/index.js";
 
 describe("DependencySpecifier schema", () => {
 	const valid = [
@@ -75,8 +83,6 @@ describe("DependencySpecifier.protocolOf", () => {
 	});
 
 	it("isValid agrees with protocolOf, including bare paths", () => {
-		// Regression: isValid delegates to protocolOf, so a bare absolute/relative
-		// path (classified "file") is valid — the two no longer drift.
 		assert.isTrue(DependencySpecifier.isValid("/absolute/path"));
 		assert.strictEqual(DependencySpecifier.protocolOf("/absolute/path"), "file");
 		assert.isTrue(DependencySpecifier.isValid("./local"));
@@ -111,22 +117,79 @@ describe("DependencySpecifier.decode", () => {
 	);
 });
 
-describe("DependencySpecifier taxonomy (property)", () => {
-	it.prop(
-		"caret ranges over valid version triples always classify as range",
-		[FastCheck.tuple(FastCheck.nat(50), FastCheck.nat(50), FastCheck.nat(50))],
-		([[major, minor, patch]]) => {
-			const specifier = `^${major}.${minor}.${patch}`;
-			return DependencySpecifier.protocolOf(specifier) === "range" && DependencySpecifier.isRange(specifier);
-		},
+describe("DependencySpecifier.FromString", () => {
+	it.effect("classifies each case and preserves the raw string", () =>
+		Effect.gen(function* () {
+			const decode = Schema.decodeUnknownEffect(DependencySpecifier.FromString);
+
+			const defaultCatalog = yield* decode("catalog:");
+			assert.instanceOf(defaultCatalog, CatalogSpecifier);
+			assert.strictEqual(defaultCatalog._tag, "catalog");
+			assert.isTrue(Option.isNone((defaultCatalog as CatalogSpecifier).name));
+			assert.strictEqual(defaultCatalog.raw, "catalog:");
+
+			const namedCatalog = yield* decode("catalog:react18");
+			assert.deepStrictEqual((namedCatalog as CatalogSpecifier).name, Option.some("react18"));
+
+			const ws = yield* decode("workspace:^1.2.3");
+			assert.instanceOf(ws, WorkspaceSpecifier);
+			assert.strictEqual((ws as WorkspaceSpecifier).range, "^1.2.3");
+
+			const range = yield* decode("^1.0.0");
+			assert.instanceOf(range, RangeSpecifier);
+
+			const bareVersion = yield* decode("1.2.3");
+			assert.instanceOf(bareVersion, RangeSpecifier);
+
+			const tag = yield* decode("latest");
+			assert.instanceOf(tag, DistTagSpecifier);
+
+			for (const rawForm of ["file:../x", "link:../x", "git+https://github.com/u/r.git", "https://x.com/a.tgz"]) {
+				const raw = yield* decode(rawForm);
+				assert.instanceOf(raw, RawSpecifier, rawForm);
+				assert.strictEqual(raw.raw, rawForm);
+			}
+		}),
 	);
 
-	it.prop(
-		"workspace: specifiers always classify as workspace and validate",
-		[FastCheck.constantFrom("*", "~", "^", "1.0.0", "^2.0.0")],
-		([modifier]) => {
-			const specifier = `workspace:${modifier}`;
-			return DependencySpecifier.protocolOf(specifier) === "workspace" && DependencySpecifier.isValid(specifier);
-		},
+	it.effect("fails decoding an invalid specifier", () =>
+		Effect.gen(function* () {
+			for (const bad of ["", "!!garbage", "patch:lodash"]) {
+				const error = yield* Effect.flip(Schema.decodeUnknownEffect(DependencySpecifier.FromString)(bad));
+				assert.strictEqual(error._tag, "SchemaError", bad);
+			}
+		}),
+	);
+
+	it.effect.prop(
+		"encode(decode(s)) === s for every recognized specifier (byte-for-byte round-trip)",
+		[
+			FastCheck.constantFrom(
+				"catalog:",
+				"catalog:react18",
+				"workspace:*",
+				"workspace:^1.2.3",
+				"workspace:foo@*",
+				"^1.0.0",
+				"1.2.3",
+				">=1.0.0 <2.0.0",
+				"1.x",
+				"latest",
+				"next",
+				"file:../local-pkg",
+				"link:../x",
+				"portal:../x",
+				"npm:lodash@^4.0.0",
+				"git+https://github.com/user/repo.git",
+				"github:u/r",
+				"https://example.com/pkg.tgz",
+			),
+		],
+		([specifier]) =>
+			Effect.gen(function* () {
+				const decoded = yield* Schema.decodeUnknownEffect(DependencySpecifier.FromString)(specifier);
+				const encoded = yield* Schema.encodeUnknownEffect(DependencySpecifier.FromString)(decoded);
+				assert.strictEqual(encoded, specifier);
+			}),
 	);
 });

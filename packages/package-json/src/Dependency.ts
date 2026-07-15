@@ -1,24 +1,18 @@
 // The single `Dependency` model — one class carrying a `kind` field
 // (`prod` / `dev` / `peer` / `optional`) rather than v3's four copy-pasted
 // `Schema.TaggedClass`es. The protocol getters are written once, delegating to
-// `DependencySpecifier`.
+// `@effected/npm`'s `DependencySpecifier`; `kind` types against `@effected/npm`'s
+// `DependencyKind`, the kit-wide dependency-section vocabulary.
 
+import type { DependencyProtocol } from "@effected/npm";
+import { DependencyKind, DependencySpecifier } from "@effected/npm";
 import type { Range } from "@effected/semver";
 import { Option, Schema } from "effect";
-import type { DependencyProtocol } from "./DependencySpecifier.js";
-import { DependencySpecifier } from "./DependencySpecifier.js";
-
-/**
- * Which dependency map an entry came from.
- *
- * @public
- */
-export type DependencyKind = "prod" | "dev" | "peer" | "optional";
 
 /**
  * A resolved dependency entry pairing a package name with its version
- * specifier and the {@link DependencyKind | kind} of map it came from. The
- * protocol predicates delegate to `DependencySpecifier`.
+ * specifier and the `kind` of map it came from (`@effected/npm`'s
+ * `DependencyKind`). The protocol predicates delegate to `DependencySpecifier`.
  *
  * @public
  */
@@ -28,7 +22,7 @@ export class Dependency extends Schema.Class<Dependency>("Dependency")({
 	/** The raw version specifier. */
 	specifier: Schema.String,
 	/** Which dependency map this entry came from. */
-	kind: Schema.Literals(["prod", "dev", "peer", "optional"]),
+	kind: DependencyKind,
 	/** For `peer` dependencies, whether the peer is optional (from `peerDependenciesMeta`). */
 	isOptional: Schema.optionalKey(Schema.Boolean),
 }) {

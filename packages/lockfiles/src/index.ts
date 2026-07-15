@@ -22,9 +22,11 @@
  */
 
 export { BunExtension } from "./BunExtension.js";
+export { ImporterDependency } from "./ImporterDependency.js";
 export { Lockfile, LockfileFramingError, LockfileParseError } from "./Lockfile.js";
 export { LockfileFormat, filenameFor, fromFilename } from "./LockfileFormat.js";
+export { LockfileImporter } from "./LockfileImporter.js";
 export { LockfileIntegrity, WorkspaceManifest } from "./LockfileIntegrity.js";
 export { type PnpmCatalogs, PnpmExtension } from "./PnpmExtension.js";
 export { ResolvedPackage } from "./ResolvedPackage.js";
-export { DependencyType, WorkspaceDependency } from "./WorkspaceDependency.js";
+export { WorkspaceDependency } from "./WorkspaceDependency.js";

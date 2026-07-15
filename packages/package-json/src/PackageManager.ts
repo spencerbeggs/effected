@@ -1,9 +1,11 @@
 // The `packageManager` field model: a `PackageManager` class parsing
 // `"pnpm@10.33.0+sha512.abc"` into `name` / `version` / `integrity` (a genuine
 // `Option` — absence is computed on by `PackageManager.hasIntegrity`), with a
-// `PackageManager.FromString` string codec.
+// `PackageManager.FromString` string codec. The integrity half types against
+// `@effected/npm`'s `IntegrityHash` brand (the corepack `<algo>.<hex>` form).
 
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { IntegrityHash } from "@effected/npm";
+import { Effect, Exit, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 const PACKAGE_MANAGER_RE = /^([a-z]+)@(\d+\.\d+\.\d+(?:-[a-zA-Z0-9._-]+)?)(?:\+(.+))?$/;
 
@@ -18,8 +20,8 @@ export class PackageManager extends Schema.Class<PackageManager>("PackageManager
 	name: Schema.String,
 	/** The version (e.g. `10.33.0`). */
 	version: Schema.String,
-	/** The optional integrity hash (e.g. `sha512.abc`). */
-	integrity: Schema.Option(Schema.String),
+	/** The optional integrity hash (e.g. `sha512.abc`), an `@effected/npm` `IntegrityHash`. */
+	integrity: Schema.Option(IntegrityHash),
 }) {
 	/**
 	 * Schema transformation between the `"name@version+integrity"` string and a
@@ -38,12 +40,22 @@ export class PackageManager extends Schema.Class<PackageManager>("PackageManager
 							}),
 						);
 					}
+					const rawIntegrity = match[3];
+					if (rawIntegrity === undefined) {
+						return Effect.succeed(PackageManager.make({ name: match[1], version: match[2], integrity: Option.none() }));
+					}
+					// Validate the integrity through the brand so a malformed hash is a typed
+					// failure, not the defect `make` would throw on an unbranded value.
+					const decoded = Schema.decodeUnknownExit(IntegrityHash)(rawIntegrity);
+					if (Exit.isFailure(decoded)) {
+						return Effect.fail(
+							new SchemaIssue.InvalidValue(Option.some(input), {
+								message: `Invalid packageManager integrity: "${rawIntegrity}"`,
+							}),
+						);
+					}
 					return Effect.succeed(
-						PackageManager.make({
-							name: match[1],
-							version: match[2],
-							integrity: match[3] !== undefined ? Option.some(match[3]) : Option.none(),
-						}),
+						PackageManager.make({ name: match[1], version: match[2], integrity: Option.some(decoded.value) }),
 					);
 				},
 				encode: (pm: PackageManager) =>

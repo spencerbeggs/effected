@@ -1,9 +1,16 @@
 import { Jsonc } from "@effected/jsonc";
 import { Effect, Schema } from "effect";
 import { BunExtension } from "../BunExtension.js";
+import { LockfileImporter } from "../LockfileImporter.js";
 import { ResolvedPackage } from "../ResolvedPackage.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
-import { extractWorkspaceDeps, syntaxFailure, validationFailure } from "./shared.js";
+import {
+	extractWorkspaceDeps,
+	importerDependencies,
+	syntaxFailure,
+	toIntegrityHash,
+	validationFailure,
+} from "./shared.js";
 
 // ── Raw schema (permissive validation scaffolding, not API) ────────────────
 
@@ -53,8 +60,21 @@ const toFields = (raw: BunLockfileRawType): LockfileFields => {
 	const packages: Array<ResolvedPackage> = [];
 	const workspaceNames = new Set<string>();
 	const workspaceEntries = new Map<string, WorkspaceEntry>();
+	const importers: Array<LockfileImporter> = [];
 
 	if (raw.workspaces) {
+		// Bun records concrete versions on the package tuples, not per importer,
+		// so every importer dependency carries a specifier and no version. The
+		// root workspace is the `""` entry — the `"."` importer.
+		for (const [wsPath, wsEntry] of Object.entries(raw.workspaces)) {
+			importers.push(
+				LockfileImporter.make({
+					path: wsPath === "" ? "." : wsPath,
+					dependencies: importerDependencies(wsEntry, (specifier) => ({ specifier })),
+				}),
+			);
+		}
+
 		for (const [wsPath, wsEntry] of Object.entries(raw.workspaces)) {
 			if (wsPath === "") continue; // root entry
 			const name = wsEntry.name === undefined || wsEntry.name === "" ? wsPath : wsEntry.name;
@@ -89,7 +109,7 @@ const toFields = (raw: BunLockfileRawType): LockfileFields => {
 			// Workspace packages were already added from the workspaces map.
 			if (workspaceNames.has(name)) continue;
 
-			const integrity = tuple.length >= 4 && typeof tuple[3] === "string" ? tuple[3] : undefined;
+			const integrity = toIntegrityHash(tuple.length >= 4 && typeof tuple[3] === "string" ? tuple[3] : undefined);
 			packages.push(
 				ResolvedPackage.make({
 					name,
@@ -114,6 +134,7 @@ const toFields = (raw: BunLockfileRawType): LockfileFields => {
 		lockfileVersion: String(raw.lockfileVersion),
 		packages,
 		workspaceDependencies,
+		importers,
 		extension,
 	};
 };

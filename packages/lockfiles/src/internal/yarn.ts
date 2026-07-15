@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { ResolvedPackage } from "../ResolvedPackage.js";
 import { selectSoleDocument } from "./documents.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
-import { extractWorkspaceDeps, validationFailure } from "./shared.js";
+import { extractWorkspaceDeps, toIntegrityHash, validationFailure } from "./shared.js";
 
 // ── Raw schemas (permissive validation scaffolding, not API) ───────────────
 
@@ -88,12 +88,16 @@ const toFields = (lockfileVersion: string, decoded: ReadonlyMap<string, YarnEntr
 
 		const isWorkspace = entry.linkType === "soft";
 		const relativePath = isWorkspace ? extractYarnWorkspacePath(key) : undefined;
+		// Yarn Berry's `10c0/<hex>` cache checksums validate as an `IntegrityHash`
+		// (the yarn textual form), so they are preserved; an unparseable checksum
+		// is dropped rather than failing the parse.
+		const integrity = toIntegrityHash(entry.checksum);
 
 		packages.push(
 			ResolvedPackage.make({
 				name,
 				version: entry.version ?? "0.0.0",
-				...(entry.checksum !== undefined ? { integrity: entry.checksum } : {}),
+				...(integrity !== undefined ? { integrity } : {}),
 				isWorkspace,
 				...(relativePath !== undefined ? { relativePath } : {}),
 			}),
@@ -115,7 +119,8 @@ const toFields = (lockfileVersion: string, decoded: ReadonlyMap<string, YarnEntr
 
 	const workspaceDependencies = extractWorkspaceDeps(workspaceEntries, workspaceNames);
 
-	return { lockfileVersion, packages, workspaceDependencies };
+	// yarn does not record importers; the field is always empty.
+	return { lockfileVersion, packages, workspaceDependencies, importers: [] };
 };
 
 /**

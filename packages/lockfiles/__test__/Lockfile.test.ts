@@ -191,7 +191,8 @@ describe("Lockfile.parse", () => {
 				const utils = lockfile.packagesNamed("@test-monorepo/utils")[0];
 				assert.strictEqual(utils?.relativePath, "packages/utils");
 
-				// Berry checksums land as integrity.
+				// Yarn Berry's `10c0/<hex>` cache checksums validate as an
+				// `IntegrityHash` (the yarn textual form), so they are preserved.
 				const chalk = lockfile.packagesNamed("chalk")[0];
 				assert.strictEqual(chalk?.version, "5.6.2");
 				assert.isTrue(chalk?.integrity?.startsWith("10c0/"));
@@ -363,6 +364,12 @@ describe("Lockfile#withImporterNames (seam repair 1)", () => {
 
 			// The original instance is untouched (pure, not in-place).
 			assert.strictEqual(parsed.workspacePackages[0]?.name, "packages/core");
+
+			// Importers are path-keyed, so the rename deliberately leaves them
+			// untouched — pinning the design's "withImporterNames does not touch
+			// importers" invariant (importers are the join key, not renamed).
+			assert.isTrue(parsed.importers.length > 0);
+			assert.deepStrictEqual(lockfile.importers, parsed.importers);
 		}),
 	);
 

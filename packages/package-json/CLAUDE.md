@@ -1,8 +1,6 @@
 # @effected/package-json
 
-package.json parsing, editing, validation and file IO as Effect schemas. Fourth
-migration; merged. 13 `src/` modules (down from 34 v3 files), 11 test files,
-72 tests.
+package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged. 12 `src/` modules (down from 34 v3 files), 10 test files, 64 tests.
 
 **Design doc:** `@../../.claude/design/effected/packages/package-json.md` — load when
 changing the public surface, the `rest` wire transform, or the error taxonomy.
@@ -57,15 +55,13 @@ re-exports below it).
   (`DependencyMapField`, `StringMapField`, `BinField`, `ExportsField`,
   `PublishConfigField`, `PeerDependenciesMetaField`, `RepositoryField`) — these
   are genuine reusable API on their own merit, not scaffolding.
-- **`DependencySpecifier.ts`** — the specifier taxonomy: one `protocolOf`
-  classifier (`range` | `tag` | `git` | `url` | `npm` | `file` | `link` |
-  `portal` | `catalog` | `workspace` | `unknown`) and its predicate statics,
-  merging v3's two drifting classifiers.
-- **`Dependency.ts`** — one class with a `kind` field, replacing v3's four
-  copy-pasted tagged classes.
+- **`DependencySpecifier`** — the specifier taxonomy (one `protocolOf` classifier over eleven protocols, `range` | `tag` | `git` | `url` | `npm` | `file` | `link` | `portal` | `catalog` | `workspace` | `unknown`, plus predicate statics). **Relocated to `@effected/npm`** when lockfiles became its second consumer; `src/DependencySpecifier.ts` was deleted and `index.ts` **re-exports** it (with `DependencyKind`, `DependencyProtocol`, `DependencySpecifierBrand`, `InvalidDependencySpecifierError`, `isValidDependencySpecifier`) from there. This package no longer owns the file.
+- **`Dependency.ts`** — one class with a `kind` field (typed against `@effected/npm`'s kit-wide `DependencyKind`), replacing v3's four copy-pasted tagged classes; the protocol getters delegate to npm's `DependencySpecifier`.
 - **`PackageName.ts`**, **`License.ts`**, **`PackageManager.ts`**,
   **`Person.ts`**, **`DevEngines.ts`** — leaf concepts, each owning its own
-  statics and its own error.
+  statics and its own error. `PackageManager.integrity` is `@effected/npm`'s
+  `IntegrityHash` (the corepack `<algo>.<hex>` form) and `PackageManager.FromString`
+  now fails typed on a malformed integrity.
 - **`PackageValidator.ts`** — rule-based validation over a decoded `Package`;
   `layer` (default rules) and the parameterized `layerRules` factory.
 - **`PackageJsonFile.ts`** — the IO surface.
@@ -75,8 +71,9 @@ re-exports below it).
 ## Conventions and gotchas
 
 - **Branded types** export as `string & Brand.Brand<"…">`, never
-  `typeof X.Type`. Applies to `ScopedPackageName`, `UnscopedPackageName`,
-  `SpdxLicense`, `DependencySpecifierBrand`.
+  `typeof X.Type`. Applies to the locally owned `ScopedPackageName`,
+  `UnscopedPackageName` and `SpdxLicense`. `DependencySpecifierBrand` follows the
+  same convention but is now defined in `@effected/npm` and re-exported here.
 - **No `*_base` exports.** Class factories are written inline. `savvy.build.ts`
   carries a **narrow** suppression: `{ messageId: "ae-forgotten-export",
   pattern: "_base" }`. **Never widen it.** An internal type named on a `@public`

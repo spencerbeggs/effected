@@ -34,6 +34,7 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@effected/jsonc": "workspace:*",
+		"@effected/npm": "workspace:*",
 		"@effected/semver": "workspace:*",
 		"@effected/yaml": "workspace:*",
 		"@savvy-web/bundler": "^1.1.14",
@@ -43,6 +44,7 @@
 	},
 	"peerDependencies": {
 		"@effected/jsonc": "workspace:*",
+		"@effected/npm": "workspace:*",
 		"@effected/semver": "workspace:*",
 		"@effected/yaml": "workspace:*",
 		"effect": "catalog:effect"

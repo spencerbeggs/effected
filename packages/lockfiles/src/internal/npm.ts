@@ -1,7 +1,14 @@
 import { Effect, Schema } from "effect";
+import { LockfileImporter } from "../LockfileImporter.js";
 import { ResolvedPackage } from "../ResolvedPackage.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
-import { extractWorkspaceDeps, syntaxFailure, validationFailure } from "./shared.js";
+import {
+	extractWorkspaceDeps,
+	importerDependencies,
+	syntaxFailure,
+	toIntegrityHash,
+	validationFailure,
+} from "./shared.js";
 
 // ── Raw schema (permissive validation scaffolding, not API) ────────────────
 
@@ -56,6 +63,17 @@ const toFields = (raw: NpmLockfileRawType): LockfileFields => {
 	const packages: Array<ResolvedPackage> = [];
 	const workspaceNames = new Set<string>();
 	const workspaceEntries = new Map<string, WorkspaceEntry>();
+	const importers: Array<LockfileImporter> = [];
+
+	// npm records concrete versions on the `node_modules/*` entries, not per
+	// importer, so every importer dependency carries a specifier and no version.
+	// The root manifest is the `""` entry — the `"."` importer.
+	const rootEntry = raw.packages[""];
+	if (rootEntry) {
+		importers.push(
+			LockfileImporter.make({ path: ".", dependencies: importerDependencies(rootEntry, (s) => ({ specifier: s })) }),
+		);
+	}
 
 	// First pass: identify workspace link entries. Name resolution must match
 	// the second pass (wsEntry first) or a link stub disagreeing with its
@@ -94,15 +112,24 @@ const toFields = (raw: NpmLockfileRawType): LockfileFields => {
 					...(wsEntry.optionalDependencies ? { optionalDependencies: wsEntry.optionalDependencies } : {}),
 				});
 			}
+			if (resolved !== undefined) {
+				importers.push(
+					LockfileImporter.make({
+						path: resolved,
+						dependencies: wsEntry ? importerDependencies(wsEntry, (s) => ({ specifier: s })) : [],
+					}),
+				);
+			}
 		} else if (key.startsWith(NODE_MODULES_PREFIX)) {
 			// Regular resolved package.
 			const name = key.slice(NODE_MODULES_PREFIX.length);
 			if (name !== "" && entry.version !== undefined) {
+				const integrity = toIntegrityHash(entry.integrity);
 				packages.push(
 					ResolvedPackage.make({
 						name,
 						version: entry.version,
-						...(entry.integrity !== undefined ? { integrity: entry.integrity } : {}),
+						...(integrity !== undefined ? { integrity } : {}),
 						isWorkspace: false,
 						dependencies: entry.dependencies ?? {},
 					}),
@@ -118,5 +145,6 @@ const toFields = (raw: NpmLockfileRawType): LockfileFields => {
 		lockfileVersion: String(raw.lockfileVersion),
 		packages,
 		workspaceDependencies,
+		importers,
 	};
 };
