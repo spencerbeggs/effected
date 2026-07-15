@@ -51,90 +51,93 @@ export const parseBun = (content: string): Effect.Effect<LockfileFields, ParseFa
 		const validated = yield* Schema.decodeUnknownEffect(BunLockfileRaw)(parsed).pipe(
 			Effect.mapError(validationFailure),
 		);
-		return toFields(validated);
+		return yield* toFields(validated);
 	});
 
 // ── Transform ──────────────────────────────────────────────────────────────
 
-const toFields = (raw: BunLockfileRawType): LockfileFields => {
-	const packages: Array<ResolvedPackage> = [];
-	const workspaceNames = new Set<string>();
-	const workspaceEntries = new Map<string, WorkspaceEntry>();
-	const importers: Array<LockfileImporter> = [];
+const toFields = (raw: BunLockfileRawType): Effect.Effect<LockfileFields, ParseFailure> =>
+	Effect.gen(function* () {
+		const packages: Array<ResolvedPackage> = [];
+		const workspaceNames = new Set<string>();
+		const workspaceEntries = new Map<string, WorkspaceEntry>();
+		const importers: Array<LockfileImporter> = [];
 
-	if (raw.workspaces) {
-		// Bun records concrete versions on the package tuples, not per importer,
-		// so every importer dependency carries a specifier and no version. The
-		// root workspace is the `""` entry — the `"."` importer.
-		for (const [wsPath, wsEntry] of Object.entries(raw.workspaces)) {
-			importers.push(
-				LockfileImporter.make({
-					path: wsPath === "" ? "." : wsPath,
-					dependencies: importerDependencies(wsEntry, (specifier) => ({ specifier })),
-				}),
-			);
+		if (raw.workspaces) {
+			// Bun records concrete versions on the package tuples, not per importer,
+			// so every importer dependency carries a specifier and no version. The
+			// root workspace is the `""` entry — the `"."` importer.
+			for (const [wsPath, wsEntry] of Object.entries(raw.workspaces)) {
+				importers.push(
+					LockfileImporter.make({
+						path: wsPath === "" ? "." : wsPath,
+						dependencies: importerDependencies(wsEntry, (specifier) => ({ specifier })),
+					}),
+				);
+			}
+
+			for (const [wsPath, wsEntry] of Object.entries(raw.workspaces)) {
+				if (wsPath === "") continue; // root entry
+				const name = wsEntry.name === undefined || wsEntry.name === "" ? wsPath : wsEntry.name;
+				workspaceNames.add(name);
+				packages.push(
+					ResolvedPackage.make({
+						name,
+						version: wsEntry.version ?? "0.0.0",
+						isWorkspace: true,
+						relativePath: wsPath,
+					}),
+				);
+				workspaceEntries.set(name, {
+					...(wsEntry.dependencies ? { dependencies: wsEntry.dependencies } : {}),
+					...(wsEntry.devDependencies ? { devDependencies: wsEntry.devDependencies } : {}),
+					...(wsEntry.peerDependencies ? { peerDependencies: wsEntry.peerDependencies } : {}),
+					...(wsEntry.optionalDependencies ? { optionalDependencies: wsEntry.optionalDependencies } : {}),
+				});
+			}
 		}
 
-		for (const [wsPath, wsEntry] of Object.entries(raw.workspaces)) {
-			if (wsPath === "") continue; // root entry
-			const name = wsEntry.name === undefined || wsEntry.name === "" ? wsPath : wsEntry.name;
-			workspaceNames.add(name);
-			packages.push(
-				ResolvedPackage.make({
-					name,
-					version: wsEntry.version ?? "0.0.0",
-					isWorkspace: true,
-					relativePath: wsPath,
-				}),
-			);
-			workspaceEntries.set(name, {
-				...(wsEntry.dependencies ? { dependencies: wsEntry.dependencies } : {}),
-				...(wsEntry.devDependencies ? { devDependencies: wsEntry.devDependencies } : {}),
-				...(wsEntry.peerDependencies ? { peerDependencies: wsEntry.peerDependencies } : {}),
-				...(wsEntry.optionalDependencies ? { optionalDependencies: wsEntry.optionalDependencies } : {}),
-			});
+		if (raw.packages) {
+			for (const tuple of Object.values(raw.packages)) {
+				if (tuple.length < 1) continue;
+				const first = tuple[0];
+				if (typeof first !== "string") continue; // malformed tuples are skipped, never thrown on
+				const atIdx = first.lastIndexOf("@");
+				if (atIdx <= 0) continue; // handles "@", "@scope/", bare names
+				const name = first.slice(0, atIdx);
+				const version = first.slice(atIdx + 1);
+
+				// Workspace packages were already added from the workspaces map.
+				if (workspaceNames.has(name)) continue;
+
+				const integrity = yield* toIntegrityHash(
+					tuple.length >= 4 && typeof tuple[3] === "string" ? tuple[3] : undefined,
+				);
+				packages.push(
+					ResolvedPackage.make({
+						name,
+						version,
+						...(integrity !== undefined ? { integrity } : {}),
+						isWorkspace: false,
+					}),
+				);
+			}
 		}
-	}
 
-	if (raw.packages) {
-		for (const tuple of Object.values(raw.packages)) {
-			if (tuple.length < 1) continue;
-			const first = tuple[0];
-			if (typeof first !== "string") continue; // malformed tuples are skipped, never thrown on
-			const atIdx = first.lastIndexOf("@");
-			if (atIdx <= 0) continue; // handles "@", "@scope/", bare names
-			const name = first.slice(0, atIdx);
-			const version = first.slice(atIdx + 1);
+		const workspaceDependencies = extractWorkspaceDeps(workspaceEntries, workspaceNames);
 
-			// Workspace packages were already added from the workspaces map.
-			if (workspaceNames.has(name)) continue;
+		const extension = BunExtension.make({
+			...(raw.catalog !== undefined ? { catalog: raw.catalog } : {}),
+			...(raw.catalogs !== undefined ? { catalogs: raw.catalogs } : {}),
+			...(raw.overrides !== undefined ? { overrides: raw.overrides } : {}),
+			...(raw.trustedDependencies !== undefined ? { trustedDependencies: raw.trustedDependencies } : {}),
+		});
 
-			const integrity = toIntegrityHash(tuple.length >= 4 && typeof tuple[3] === "string" ? tuple[3] : undefined);
-			packages.push(
-				ResolvedPackage.make({
-					name,
-					version,
-					...(integrity !== undefined ? { integrity } : {}),
-					isWorkspace: false,
-				}),
-			);
-		}
-	}
-
-	const workspaceDependencies = extractWorkspaceDeps(workspaceEntries, workspaceNames);
-
-	const extension = BunExtension.make({
-		...(raw.catalog !== undefined ? { catalog: raw.catalog } : {}),
-		...(raw.catalogs !== undefined ? { catalogs: raw.catalogs } : {}),
-		...(raw.overrides !== undefined ? { overrides: raw.overrides } : {}),
-		...(raw.trustedDependencies !== undefined ? { trustedDependencies: raw.trustedDependencies } : {}),
+		return {
+			lockfileVersion: String(raw.lockfileVersion),
+			packages,
+			workspaceDependencies,
+			importers,
+			extension,
+		};
 	});
-
-	return {
-		lockfileVersion: String(raw.lockfileVersion),
-		packages,
-		workspaceDependencies,
-		importers,
-		extension,
-	};
-};

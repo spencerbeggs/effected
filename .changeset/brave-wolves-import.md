@@ -23,5 +23,5 @@ const program = Effect.gen(function* () {
 
 ## Refactoring
 
-* `ResolvedPackage.integrity` and `WorkspaceDependency.depType` now type against `@effected/npm`'s consolidated `IntegrityHash` and `DependencyField` vocabulary instead of this package's own copies. `ResolvedPackage.integrity` now preserves yarn Berry checksums that were previously dropped.
+* `ResolvedPackage.integrity` and `WorkspaceDependency.depType` now type against `@effected/npm`'s consolidated `IntegrityHash` and `DependencyField` vocabulary instead of this package's own copies. `ResolvedPackage.integrity` now preserves yarn Berry checksums that were previously dropped; an absent integrity is omitted, but a present but unparseable integrity now fails the parse typed at validation rather than being silently dropped.
 * Removed the local `DependencyType` export. Import `DependencyField` from `@effected/npm` instead — the two vocabularies are equivalent.

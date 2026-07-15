@@ -144,7 +144,14 @@ describe("DependencySpecifier.FromString", () => {
 			const tag = yield* decode("latest");
 			assert.instanceOf(tag, DistTagSpecifier);
 
-			for (const rawForm of ["file:../x", "link:../x", "git+https://github.com/u/r.git", "https://x.com/a.tgz"]) {
+			for (const rawForm of [
+				"file:../x",
+				"link:../x",
+				"portal:../pkg",
+				"npm:lodash@^4",
+				"git+https://github.com/u/r.git",
+				"https://x.com/a.tgz",
+			]) {
 				const raw = yield* decode(rawForm);
 				assert.instanceOf(raw, RawSpecifier, rawForm);
 				assert.strictEqual(raw.raw, rawForm);

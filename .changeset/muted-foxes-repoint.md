@@ -4,7 +4,7 @@
 
 ## Bug Fixes
 
-* `PackageManager.FromString` now fails typed, instead of silently accepting a malformed value as a raw string, when the trailing integrity segment cannot be validated as an `@effected/npm` `IntegrityHash`.
+* `PackageManager.FromString` now fails typed, instead of silently accepting a malformed value as a raw string, when the trailing integrity segment is not a corepack `@effected/npm` `IntegrityHash` — the only form the `packageManager` field carries, so SRI and yarn hashes are rejected there.
 
 ## Refactoring
 

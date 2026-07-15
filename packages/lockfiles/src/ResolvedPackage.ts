@@ -16,8 +16,9 @@ const EMPTY_DEPENDENCIES: { readonly [name: string]: string } = {};
  *   `"0.0.0"`; the lockfile does not record their real versions).
  * - `integrity` — optional `@effected/npm` `IntegrityHash`, covering npm/pnpm
  *   `sha512-...` SRI and yarn Berry's `10c0/...` cache checksums (the yarn
- *   textual form). An unparseable checksum is dropped rather than failing the
- *   parse, so a `ResolvedPackage` may carry no `integrity`.
+ *   textual form). An *absent* integrity is omitted, so a `ResolvedPackage` may
+ *   carry none; a *present but unparseable* integrity fails the parse typed at
+ *   validation rather than being silently dropped.
  * - `isWorkspace` — `true` for workspace-local packages.
  * - `relativePath` — the workspace-relative directory for workspace
  *   packages, when the lockfile records one.

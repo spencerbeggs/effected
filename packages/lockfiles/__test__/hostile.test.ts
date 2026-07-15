@@ -290,6 +290,114 @@ describe("hostile input", () => {
 		);
 	});
 
+	describe("a present but unparseable integrity fails typed at stage 'validation'", () => {
+		// yarn's `10c0/<hex>`, npm/pnpm SRI and corepack forms all validate as an
+		// `IntegrityHash`, so real fixtures parse green (proved by the fixture
+		// corpus). Only a genuinely-corrupt *present* integrity fails here; an
+		// *absent* integrity is still omitted and the parse succeeds.
+		const CORRUPT = "not-a-valid-integrity";
+
+		it.effect("npm: a corrupt package integrity", () =>
+			Effect.gen(function* () {
+				const content = JSON.stringify({
+					lockfileVersion: 3,
+					packages: {
+						"": { name: "root" },
+						"node_modules/foo": { version: "1.0.0", integrity: CORRUPT },
+					},
+				});
+				const error = yield* parseError(content, "npm");
+				assert.strictEqual(error.stage, "validation");
+			}),
+		);
+
+		it.effect("pnpm: a corrupt package resolution integrity", () =>
+			Effect.gen(function* () {
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .: {}",
+					"packages:",
+					"  'foo@1.0.0':",
+					"    resolution:",
+					`      integrity: ${CORRUPT}`,
+				].join("\n");
+				const error = yield* parseError(content, "pnpm");
+				assert.strictEqual(error.stage, "validation");
+			}),
+		);
+
+		it.effect("yarn: a corrupt entry checksum", () =>
+			Effect.gen(function* () {
+				const content = [
+					"__metadata:",
+					"  version: 8",
+					'"ok@npm:^1.0.0":',
+					'  version: "1.2.3"',
+					`  checksum: ${CORRUPT}`,
+				].join("\n");
+				const error = yield* parseError(content, "yarn");
+				assert.strictEqual(error.stage, "validation");
+			}),
+		);
+
+		it.effect("bun: a corrupt package-tuple integrity", () =>
+			Effect.gen(function* () {
+				const content = JSON.stringify({
+					lockfileVersion: 1,
+					packages: { foo: ["foo@1.0.0", "", {}, CORRUPT] },
+				});
+				const error = yield* parseError(content, "bun");
+				assert.strictEqual(error.stage, "validation");
+			}),
+		);
+
+		it.effect("an absent integrity is omitted and the parse succeeds", () =>
+			Effect.gen(function* () {
+				const content = JSON.stringify({
+					lockfileVersion: 3,
+					packages: {
+						"": { name: "root" },
+						"node_modules/foo": { version: "1.0.0" },
+					},
+				});
+				const lockfile = yield* Lockfile.parse(content, { format: "npm" });
+				const foo = lockfile.packagesNamed("foo")[0];
+				assert.strictEqual(foo?.integrity, undefined);
+			}),
+		);
+	});
+
+	describe("empty importer paths are skipped, never thrown on", () => {
+		// `LockfileImporter.path` is a `NonEmptyString`, so an empty importer path
+		// would die as a defect at construction. The parsers skip such rows before
+		// construction — the same total-skip discipline as malformed name keys.
+		it.effect("npm: a link entry with an empty resolved path is skipped, parse succeeds", () =>
+			Effect.gen(function* () {
+				const content = JSON.stringify({
+					lockfileVersion: 3,
+					packages: {
+						"": { name: "root" },
+						"node_modules/pkg": { link: true, resolved: "" },
+					},
+				});
+				const lockfile = yield* Lockfile.parse(content, { format: "npm" });
+				// The empty-path importer is not represented; the "." root importer is.
+				assert.isTrue(Option.isNone(lockfile.importer("")));
+				assert.isTrue(Option.isSome(lockfile.importer(".")));
+			}),
+		);
+
+		it.effect("pnpm: an empty importer key is skipped, parse succeeds", () =>
+			Effect.gen(function* () {
+				const content = ["lockfileVersion: '9.0'", "importers:", "  '': {}", "  .: {}"].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				assert.isTrue(Option.isNone(lockfile.importer("")));
+				assert.isTrue(Option.isSome(lockfile.importer(".")));
+			}),
+		);
+	});
+
 	describe("deep-nesting bombs surface the delegated engines' typed failures", () => {
 		it.effect("npm: a deeply nested JSON document fails typed, never a defect", () =>
 			Effect.gen(function* () {

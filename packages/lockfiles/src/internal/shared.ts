@@ -1,6 +1,6 @@
 import type { DependencyField, IntegrityHashBrand } from "@effected/npm";
 import { DependencySpecifier, IntegrityHash } from "@effected/npm";
-import { Exit, Schema } from "effect";
+import { Effect, Exit, Schema } from "effect";
 import type { BunExtension } from "../BunExtension.js";
 import { ImporterDependency } from "../ImporterDependency.js";
 import type { LockfileImporter } from "../LockfileImporter.js";
@@ -22,17 +22,25 @@ export const DEP_TYPES = ["dependencies", "devDependencies", "peerDependencies",
 /**
  * Coerce a raw lockfile integrity string to the `@effected/npm` `IntegrityHash`
  * brand, which recognizes the SRI (`<algo>-<base64>`), corepack (`<algo>.<hex>`)
- * and yarn (`<cachekey>/<hex>`) textual forms. Anything the brand does not
- * recognize is dropped here — a deliberate, total skip that keeps
- * `Lockfile.parse` from failing an otherwise-valid lockfile on a metadata
- * value the brand does not recognize (never a defect, never a parse failure).
+ * and yarn (`<cachekey>/<hex>`) textual forms.
+ *
+ * Absence and corruption are treated differently, and the distinction is the
+ * point. An *absent* integrity (input `undefined`) succeeds with `undefined`,
+ * so the caller omits the field — a lockfile that records no integrity is
+ * legitimate. A *present but unparseable* integrity fails through the same
+ * validation channel the shape checks use ({@link validationFailure}), so
+ * `Lockfile.parse` surfaces it as a `LockfileParseError` with
+ * `stage: "validation"` rather than silently dropping a corrupt value. Never a
+ * defect. yarn's `10c0/<hex>` cache checksums are a recognized form, so real
+ * yarn/npm/pnpm/bun integrity all still parses; only genuine corruption fails.
  *
  * @internal
  */
-export const toIntegrityHash = (raw: string | undefined): IntegrityHashBrand | undefined => {
-	if (raw === undefined) return undefined;
-	const exit = Schema.decodeUnknownExit(IntegrityHash)(raw);
-	return Exit.isSuccess(exit) ? exit.value : undefined;
+export const toIntegrityHash = (
+	raw: string | undefined,
+): Effect.Effect<IntegrityHashBrand | undefined, ParseFailure> => {
+	if (raw === undefined) return Effect.succeed(undefined);
+	return Schema.decodeUnknownEffect(IntegrityHash)(raw).pipe(Effect.mapError(validationFailure));
 };
 
 const decodeSpecifier = Schema.decodeUnknownExit(DependencySpecifier.FromString);

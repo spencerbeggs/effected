@@ -22,7 +22,7 @@ Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` J
 - `PnpmExtension`, `PnpmCatalogs` (type) — from `src/PnpmExtension.ts`
 - `BunExtension` — from `src/BunExtension.ts`
 
-`WorkspaceDependency.DependencyType` was **removed**; `WorkspaceDependency.depType` and `ImporterDependency.depType` now type against `@effected/npm`'s kit-wide `DependencyField`, and `ResolvedPackage.integrity` against its `IntegrityHash` (SRI/corepack/yarn `10c0/` forms; an unparseable checksum is skipped).
+`WorkspaceDependency.DependencyType` was **removed**; `WorkspaceDependency.depType` and `ImporterDependency.depType` now type against `@effected/npm`'s kit-wide `DependencyField`, and `ResolvedPackage.integrity` against its `IntegrityHash` (SRI/corepack/yarn `10c0/` forms; an *absent* integrity is omitted, a *present but unparseable* one fails the parse typed at `stage: "validation"`).
 
 `LockfileImporter` (one importer's declared deps, keyed by path) and `ImporterDependency` (`name`, a `DependencySpecifier.FromString` `specifier`, optional pnpm-only `version`, `DependencyField` `depType`) are new leaf classes. `Lockfile.importers` defaults to `[]`; `lockfile.importer(path): Option<LockfileImporter>` resolves one through a lazy `#private` path index — the `packagesNamed` precedent. yarn records no importers (always `[]`); `withImporterNames` leaves them untouched (keyed on path, not name).
 

@@ -87,7 +87,7 @@ export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseF
 		if (Object.keys(validated.importers).length === 0) {
 			return yield* Effect.fail(framingFailure("noImporters", documents));
 		}
-		return toFields(validated);
+		return yield* toFields(validated);
 	});
 
 // ── Transform ──────────────────────────────────────────────────────────────
@@ -104,103 +104,104 @@ const toVersionMap = (
 const importerDepGroups = (importer: PnpmImporterType) =>
 	[importer.dependencies, importer.devDependencies, importer.peerDependencies, importer.optionalDependencies] as const;
 
-const toFields = (raw: PnpmLockfileRawType): LockfileFields => {
-	const workspaceEntries = new Map<string, WorkspaceEntry>();
-	const workspaceNames = new Set<string>();
-	const importers: Array<LockfileImporter> = [];
+const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, ParseFailure> =>
+	Effect.gen(function* () {
+		const workspaceEntries = new Map<string, WorkspaceEntry>();
+		const workspaceNames = new Set<string>();
+		const importers: Array<LockfileImporter> = [];
 
-	for (const [importerPath, importer] of Object.entries(raw.importers)) {
-		if (importerPath === "") continue; // a nameless importer cannot be modeled; skip, never throw
+		for (const [importerPath, importer] of Object.entries(raw.importers)) {
+			if (importerPath === "") continue; // a nameless importer cannot be modeled; skip, never throw
 
-		// pnpm records `{ specifier, version }` per importer dependency; a blank
-		// version means the section carries only a specifier.
-		importers.push(
-			LockfileImporter.make({
-				path: importerPath,
-				dependencies: importerDependencies(importer, (info) => ({
-					specifier: info.specifier,
-					version: info.version,
-				})),
-			}),
-		);
+			// pnpm records `{ specifier, version }` per importer dependency; a blank
+			// version means the section carries only a specifier.
+			importers.push(
+				LockfileImporter.make({
+					path: importerPath,
+					dependencies: importerDependencies(importer, (info) => ({
+						specifier: info.specifier,
+						version: info.version,
+					})),
+				}),
+			);
 
-		const deps = toVersionMap(importer.dependencies);
-		const devDeps = toVersionMap(importer.devDependencies);
-		const peerDeps = toVersionMap(importer.peerDependencies);
-		const optDeps = toVersionMap(importer.optionalDependencies);
-		workspaceEntries.set(importerPath, {
-			...(deps ? { dependencies: deps } : {}),
-			...(devDeps ? { devDependencies: devDeps } : {}),
-			...(peerDeps ? { peerDependencies: peerDeps } : {}),
-			...(optDeps ? { optionalDependencies: optDeps } : {}),
-		});
+			const deps = toVersionMap(importer.dependencies);
+			const devDeps = toVersionMap(importer.devDependencies);
+			const peerDeps = toVersionMap(importer.peerDependencies);
+			const optDeps = toVersionMap(importer.optionalDependencies);
+			workspaceEntries.set(importerPath, {
+				...(deps ? { dependencies: deps } : {}),
+				...(devDeps ? { devDependencies: devDeps } : {}),
+				...(peerDeps ? { peerDependencies: peerDeps } : {}),
+				...(optDeps ? { optionalDependencies: optDeps } : {}),
+			});
 
-		for (const group of importerDepGroups(importer)) {
-			if (!group) continue;
-			for (const [name, info] of Object.entries(group)) {
-				if (name !== "" && info.version.startsWith("link:")) {
-					workspaceNames.add(name);
+			for (const group of importerDepGroups(importer)) {
+				if (!group) continue;
+				for (const [name, info] of Object.entries(group)) {
+					if (name !== "" && info.version.startsWith("link:")) {
+						workspaceNames.add(name);
+					}
 				}
 			}
 		}
-	}
 
-	for (const path of Object.keys(raw.importers)) {
-		if (path !== "." && path !== "") {
-			workspaceNames.add(path);
+		for (const path of Object.keys(raw.importers)) {
+			if (path !== "." && path !== "") {
+				workspaceNames.add(path);
+			}
 		}
-	}
 
-	const packages: Array<ResolvedPackage> = [];
+		const packages: Array<ResolvedPackage> = [];
 
-	for (const importerPath of Object.keys(raw.importers)) {
-		if (importerPath === "." || importerPath === "") continue;
-		packages.push(
-			ResolvedPackage.make({
-				name: importerPath,
-				version: "0.0.0",
-				isWorkspace: true,
-				relativePath: importerPath,
-			}),
-		);
-	}
-
-	if (raw.packages) {
-		for (const [key, pkg] of Object.entries(raw.packages)) {
-			// Keys may carry a peer-resolution suffix — "fdir@6.5.0(picomatch@4.0.4)" —
-			// whose inner "@" would corrupt the split; names never contain "(", so
-			// everything from the first "(" is suffix.
-			const parenIndex = key.indexOf("(");
-			const bare = parenIndex === -1 ? key : key.slice(0, parenIndex);
-			const atIndex = bare.lastIndexOf("@");
-			if (atIndex <= 0) continue; // malformed "name@version" keys are skipped, never thrown on
-			const name = bare.slice(0, atIndex);
-			const version = bare.slice(atIndex + 1);
-			const integrity = toIntegrityHash(pkg.resolution?.integrity);
+		for (const importerPath of Object.keys(raw.importers)) {
+			if (importerPath === "." || importerPath === "") continue;
 			packages.push(
 				ResolvedPackage.make({
-					name,
-					version,
-					...(integrity !== undefined ? { integrity } : {}),
-					isWorkspace: false,
+					name: importerPath,
+					version: "0.0.0",
+					isWorkspace: true,
+					relativePath: importerPath,
 				}),
 			);
 		}
-	}
 
-	const workspaceDependencies = extractWorkspaceDeps(workspaceEntries, workspaceNames);
+		if (raw.packages) {
+			for (const [key, pkg] of Object.entries(raw.packages)) {
+				// Keys may carry a peer-resolution suffix — "fdir@6.5.0(picomatch@4.0.4)" —
+				// whose inner "@" would corrupt the split; names never contain "(", so
+				// everything from the first "(" is suffix.
+				const parenIndex = key.indexOf("(");
+				const bare = parenIndex === -1 ? key : key.slice(0, parenIndex);
+				const atIndex = bare.lastIndexOf("@");
+				if (atIndex <= 0) continue; // malformed "name@version" keys are skipped, never thrown on
+				const name = bare.slice(0, atIndex);
+				const version = bare.slice(atIndex + 1);
+				const integrity = yield* toIntegrityHash(pkg.resolution?.integrity);
+				packages.push(
+					ResolvedPackage.make({
+						name,
+						version,
+						...(integrity !== undefined ? { integrity } : {}),
+						isWorkspace: false,
+					}),
+				);
+			}
+		}
 
-	const extension = PnpmExtension.make({
-		...(raw.catalogs !== undefined ? { catalogs: raw.catalogs } : {}),
-		...(raw.overrides !== undefined ? { overrides: raw.overrides } : {}),
-		...(raw.settings !== undefined ? { settings: raw.settings } : {}),
+		const workspaceDependencies = extractWorkspaceDeps(workspaceEntries, workspaceNames);
+
+		const extension = PnpmExtension.make({
+			...(raw.catalogs !== undefined ? { catalogs: raw.catalogs } : {}),
+			...(raw.overrides !== undefined ? { overrides: raw.overrides } : {}),
+			...(raw.settings !== undefined ? { settings: raw.settings } : {}),
+		});
+
+		return {
+			lockfileVersion: String(raw.lockfileVersion),
+			packages,
+			workspaceDependencies,
+			importers,
+			extension,
+		};
 	});
-
-	return {
-		lockfileVersion: String(raw.lockfileVersion),
-		packages,
-		workspaceDependencies,
-		importers,
-		extension,
-	};
-};
