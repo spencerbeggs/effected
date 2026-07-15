@@ -27,7 +27,11 @@ const scriptGit = (
 ): Layer.Layer<Git> =>
 	Layer.succeed(Git, {
 		show: (_cwd: string, ref: string, path: string) => {
-			const content = trees[ref]?.[path];
+			// The reader passes `<ref>:./<path>` to make git resolve relative to cwd;
+			// with the fixture map keyed root-relative and cwd == root, that is exactly
+			// the bare-path lookup — so strip a leading `./`, as real git does.
+			const relative = path.startsWith("./") ? path.slice(2) : path;
+			const content = trees[ref]?.[relative];
 			return Effect.succeed(content === undefined ? Option.none() : Option.some(content));
 		},
 		lsTree:

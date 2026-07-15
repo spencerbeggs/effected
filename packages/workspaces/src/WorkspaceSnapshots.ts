@@ -193,7 +193,9 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 				ref: string,
 				format: "pnpm" | "bun",
 			): Effect.Effect<CatalogSet, GitCommandError | NotARepositoryError | UnknownRefError> =>
-				git.show(root, ref, filenameFor(format)).pipe(
+				// `./`-prefixed so git resolves the lockfile relative to `cwd` (the
+				// workspace root), NOT the git repo top-level — see `computeAt`.
+				git.show(root, ref, `./${filenameFor(format)}`).pipe(
 					Effect.flatMap((content) =>
 						Option.match(content, {
 							onNone: () => Effect.succeed(CatalogSet.empty()),
@@ -214,8 +216,15 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 				ref: string,
 			): Effect.Effect<WorkspaceStateSnapshot, WorkspaceSnapshotAtFailure> =>
 				Effect.gen(function* () {
-					const pnpmWorkspaceText = yield* git.show(root, ref, "pnpm-workspace.yaml");
-					const rootManifestText = yield* git.show(root, ref, "package.json");
+					// Every workspace-relative path here is `./`-prefixed so git resolves
+					// it relative to `cwd` (the resolved workspace root), aligning with
+					// `git.lsTree`, which already emits cwd-relative paths. A bare path
+					// (`package.json`) resolves relative to the git repo TOP-LEVEL, so a
+					// workspace root nested inside a larger repo would read the OUTER
+					// manifest and drop or misread its members. `Git.show`'s contract is
+					// unchanged — the `./` is this consumer's explicit choice.
+					const pnpmWorkspaceText = yield* git.show(root, ref, "./pnpm-workspace.yaml");
+					const rootManifestText = yield* git.show(root, ref, "./package.json");
 					const rootManifest = Option.match(rootManifestText, {
 						onNone: () => ({}) as Record<string, unknown>,
 						onSome: parseJsonObject,
@@ -286,7 +295,8 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 
 					const members = yield* Effect.forEach(
 						memberDirs,
-						(dir) => git.show(root, ref, `${dir}/package.json`).pipe(Effect.map((content) => snapshotOf(content, dir))),
+						(dir) =>
+							git.show(root, ref, `./${dir}/package.json`).pipe(Effect.map((content) => snapshotOf(content, dir))),
 						{ concurrency: 10 },
 					);
 
