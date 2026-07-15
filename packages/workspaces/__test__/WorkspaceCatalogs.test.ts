@@ -4,6 +4,7 @@ import { Effect, Layer, Option } from "effect";
 import {
 	CatalogAssemblyError,
 	CatalogSet,
+	LockfileReadError,
 	LockfileReader,
 	PackageManagerDetector,
 	WorkspaceCatalogs,
@@ -283,6 +284,136 @@ describe("WorkspaceCatalogs — a workspace with no pnpm-workspace.yaml", () => 
 					packages.map((pkg) => pkg.name),
 					["root", "@x/a"],
 				);
+			}),
+		);
+	});
+});
+
+// ── a probe FAILURE is not silent absence (Fix 4) ──────────────────────────
+
+const probeFailTree: Tree = {
+	"/repo/pnpm-workspace.yaml": "catalog:\n  effect: ^4.0.0\n",
+	// The workspaces field makes package.json a root marker, so root discovery
+	// succeeds even when the pnpm-workspace.yaml presence probe fails — isolating
+	// the failure to catalog assembly's probe, which is what this exercises.
+	"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0", workspaces: ["packages/*"] }),
+};
+
+describe("WorkspaceCatalogs — a presence-probe failure is not silent absence", () => {
+	layer(
+		Workspaces.layer({ cwd: "/repo" }).pipe(
+			// The pnpm-workspace.yaml presence probe fails with PermissionDenied (a
+			// non-NotFound PlatformError, exactly what core's `exists` re-raises). Root
+			// discovery finds /repo via its package.json marker, so assembly runs and
+			// its probe must FAIL typed rather than silently selecting the package.json
+			// reader — the "every dependency looks newly added" bug.
+			Layer.provideMerge(platform(probeFailTree, { unreadableExists: new Set(["/repo/pnpm-workspace.yaml"]) })),
+		),
+	)((it) => {
+		it.effect("a PermissionDenied on the presence probe fails typed as CatalogAssemblyError", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const error = yield* Effect.flip(catalogs.set());
+				assert.instanceOf(error, CatalogAssemblyError);
+				assert.strictEqual(error.source, "manifest");
+			}),
+		);
+	});
+});
+
+// ── the SAME probe-failure guard on the bun/package.json branch (Fix 4) ─────
+
+// The bun branch's manifest probe and root discovery's marker are the same
+// `package.json`, so a `package.json` `exists` poison would also break discovery
+// (a WorkspaceRootNotFoundError, not the failure under test). To isolate the
+// assembly-side manifest probe, this stubs `WorkspaceRoot` to a fixed root and
+// `LockfileReader` to a failing read (⇒ empty lockfile catalogs), then poisons
+// only the `package.json` presence probe. With the old
+// `orElseSucceed(() => false)` the probe would collapse to "absent" and return
+// lockfile-only (empty) catalogs; with `probeExists` it fails typed.
+const bunProbeFailTree: Tree = {
+	// The file EXISTS but its `exists` probe is denied — the locked-down case.
+	"/repo/package.json": JSON.stringify({
+		name: "root",
+		version: "0.0.0",
+		workspaces: { catalog: { effect: "^4.0.0" } },
+	}),
+};
+
+describe("WorkspaceCatalogs — a bun/package.json presence-probe failure is not silent absence", () => {
+	const bunProbeFailLayer = WorkspaceCatalogs.layer({ cwd: "/repo" }).pipe(
+		Layer.provide(Layer.succeed(WorkspaceRoot, { find: () => Effect.succeed("/repo") })),
+		Layer.provide(
+			Layer.mock(LockfileReader, {
+				read: () =>
+					Effect.fail(
+						new LockfileReadError({
+							lockfilePath: "/repo/pnpm-lock.yaml",
+							format: "pnpm",
+							cause: new Error("no lockfile"),
+						}),
+					),
+			}),
+		),
+		Layer.provideMerge(platform(bunProbeFailTree, { unreadableExists: new Set(["/repo/package.json"]) })),
+	);
+	layer(bunProbeFailLayer)((it) => {
+		it.effect("a PermissionDenied on the package.json presence probe fails typed as CatalogAssemblyError", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const error = yield* Effect.flip(catalogs.set());
+				assert.instanceOf(error, CatalogAssemblyError);
+				assert.strictEqual(error.source, "manifest");
+				assert.strictEqual(error.path, "/repo/package.json");
+			}),
+		);
+	});
+});
+
+// ── the pnpm inline path hard-fails on malformed / duplicate-default (Fix 5) ─
+
+const duplicateDefaultTree: Tree = {
+	"/repo/pnpm-workspace.yaml": [
+		"packages:",
+		"  - 'packages/*'",
+		"catalog:",
+		"  effect: ^4.0.0",
+		"catalogs:",
+		"  default:",
+		"    react: ^18.0.0",
+		"",
+	].join("\n"),
+	"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),
+};
+
+const malformedCatalogTree: Tree = {
+	"/repo/pnpm-workspace.yaml": ["packages:", "  - 'packages/*'", "catalog:", "  effect:", "    nested: bad", ""].join(
+		"\n",
+	),
+	"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),
+};
+
+describe("WorkspaceCatalogs — the pnpm inline path hard-fails, like the bun path", () => {
+	layer(workspacesOver(duplicateDefaultTree))((it) => {
+		it.effect("the default catalog declared twice (top-level catalog + catalogs.default) fails typed", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const error = yield* Effect.flip(catalogs.set());
+				assert.instanceOf(error, CatalogAssemblyError);
+				assert.strictEqual(error.source, "catalog");
+				assert.strictEqual(error.path, "default");
+			}),
+		);
+	});
+
+	layer(workspacesOver(malformedCatalogTree))((it) => {
+		it.effect("a malformed catalog block (a non-string entry) fails typed rather than reading as empty", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const error = yield* Effect.flip(catalogs.set());
+				assert.instanceOf(error, CatalogAssemblyError);
+				assert.strictEqual(error.source, "catalog");
+				assert.strictEqual(error.path, "catalog");
 			}),
 		);
 	});

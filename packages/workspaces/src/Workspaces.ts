@@ -1,22 +1,25 @@
 // The composite layers.
 //
 // v3 split its two composites on PLATFORM REQUIREMENTS — `WorkspacesLive`
-// (FileSystem + Path) versus `WorkspacesFullLive` (+ CommandExecutor) — and the
-// review called that a great consumer story because the requirement set, not a
-// feature flag, is the split axis. The axis survives: `layer` needs a
-// filesystem, `layerWithGit` additionally needs something that can run git.
+// (FileSystem + Path) versus `WorkspacesFullLive` (+ a subprocess runner) — and
+// the review called that a great consumer story because the requirement set,
+// not a feature flag, is the split axis. The axis survives: `layer` needs a
+// filesystem, `layerWithGit` additionally needs core's `ChildProcessSpawner`
+// (behind `@effected/git`'s `Git` service) to run git.
 
+import { Git } from "@effected/git";
 import type { CatalogResolver, WorkspaceResolver } from "@effected/npm";
 import type { FileSystem, Path } from "effect";
 import { Layer } from "effect";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChangeDetector } from "./ChangeDetector.js";
-import { GitReader } from "./GitReader.js";
 import { LockfileReader } from "./LockfileReader.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
 import { PublishabilityDetector } from "./Publishability.js";
 import { WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
+import { WorkspaceSnapshots } from "./WorkspaceSnapshots.js";
 
 /**
  * Options shared by the composite layers.
@@ -71,8 +74,11 @@ export type WorkspacesServices =
  *
  * @public
  */
-const layer = (
-	options?: WorkspacesOptions,
+const compose = (
+	options: WorkspacesOptions | undefined,
+	catalogsFactory: (
+		options?: WorkspacesOptions,
+	) => Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path>,
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> => {
 	const roots = WorkspaceRoot.layer;
 	const detector = PackageManagerDetector.layer;
@@ -82,29 +88,45 @@ const layer = (
 		Layer.provide(detector),
 		Layer.provide(discovery),
 	);
-	const catalogs = WorkspaceCatalogs.layer(options).pipe(Layer.provide(roots), Layer.provide(lockfiles));
+	const catalogs = catalogsFactory(options).pipe(Layer.provide(roots), Layer.provide(lockfiles));
 
 	return Layer.mergeAll(roots, detector, discovery, lockfiles, catalogs, PublishabilityDetector.layer);
 };
 
+const layer = (
+	options?: WorkspacesOptions,
+): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
+	compose(options, WorkspaceCatalogs.layer);
+
 /**
- * The git-free composite plus {@link ChangeDetector}, over the Node
- * {@link GitReader}.
+ * The git-free composite plus {@link ChangeDetector} and
+ * {@link WorkspaceSnapshots}, over `@effected/git`'s `Git` service.
  *
  * @remarks
- * The extra requirement is a subprocess, which is why it is a separate layer
- * rather than a flag: a consumer that never detects changes should not have to
- * be able to spawn one. Swap `GitReader.layerNode` for a fake to drive change
- * detection in a test with no repository on disk.
+ * The extra requirement is core's `ChildProcessSpawner` (behind `Git`), which
+ * is why it is a separate layer rather than a flag: a consumer that never
+ * detects changes or reads at a ref should not have to be able to spawn a
+ * subprocess. The consumer provides `ChildProcessSpawner` once at the edge
+ * (`@effect/platform-node`'s `NodeServices.layer`); a test provides
+ * `Layer.succeed(Git, …)` and needs no repository on disk.
  *
  * @public
  */
 const layerWithGit = (
 	options?: WorkspacesOptions,
-): Layer.Layer<WorkspacesServices | ChangeDetector | GitReader, never, FileSystem.FileSystem | Path.Path> => {
+): Layer.Layer<
+	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
+	never,
+	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+> => {
 	const core = layer(options);
-	const git = GitReader.layerNode;
-	return Layer.mergeAll(core, git, ChangeDetector.layer.pipe(Layer.provide(git), Layer.provide(core)));
+	const git = Git.layer;
+	return Layer.mergeAll(
+		core,
+		git,
+		ChangeDetector.layer.pipe(Layer.provide(git), Layer.provide(core)),
+		WorkspaceSnapshots.layer(options).pipe(Layer.provide(git), Layer.provide(core)),
+	);
 };
 
 /**
@@ -131,8 +153,27 @@ const resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver, never, Workspa
 	Layer.mergeAll(WorkspaceCatalogs.catalogResolver, WorkspaceDiscovery.workspaceResolver);
 
 /**
+ * The git-free composite, but with catalog assembly that **replays config
+ * dependency `pnpmfile.cjs` hooks** — {@link WorkspaceCatalogs.layerWithConfigDependencies}
+ * in place of the default no-op catalogs layer.
+ *
+ * @remarks
+ * Identical requirement set to {@link Workspaces.layer}; the only difference is
+ * that config-dependency code is executed in process. Opt in deliberately — the
+ * default {@link Workspaces.layer} never executes config-dependency code.
+ *
+ * **Bind the result to a `const`.**
+ *
+ * @public
+ */
+const layerWithConfigDependencies = (
+	options?: WorkspacesOptions,
+): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
+	compose(options, WorkspaceCatalogs.layerWithConfigDependencies);
+
+/**
  * The composite layers.
  *
  * @public
  */
-export const Workspaces = { layer, layerWithGit, resolvers } as const;
+export const Workspaces = { layer, layerWithConfigDependencies, layerWithGit, resolvers } as const;

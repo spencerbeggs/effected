@@ -1,10 +1,9 @@
 import { assert, describe, layer } from "@effect/vitest";
+import { Git, GitCommandError, NotARepositoryError } from "@effected/git";
 import { Effect, Layer } from "effect";
 import {
 	ChangeDetectionOptions,
 	ChangeDetector,
-	GitCommandError,
-	GitReader,
 	PublishabilityDetector,
 	WorkspaceDiscovery,
 	WorkspacePackage,
@@ -22,20 +21,38 @@ const tree: Tree = {
 	"/repo/apps/web/package.json": manifest("@x/web", { dependencies: { "@x/beta": "1.0.0" } }),
 };
 
-/** A GitReader that replays a scripted `git diff --name-only` result. */
-const gitStub = (
-	byArgs: (args: ReadonlyArray<string>) => string | GitCommandError,
-	available = true,
-): Layer.Layer<GitReader> =>
-	Layer.succeed(GitReader, {
-		run: (_cwd, args) => {
-			const result = byArgs(args);
-			return result instanceof GitCommandError ? Effect.fail(result) : Effect.succeed(result);
-		},
-		available: () => Effect.succeed(available),
+type ChangedFiles = (
+	cwd: string,
+	options: { readonly base: string; readonly head: string; readonly relative?: boolean },
+) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError>;
+
+type WorkingChanges = (
+	cwd: string,
+	options: { readonly relative?: boolean },
+) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError>;
+
+/**
+ * A `Git` stub with only the two methods `ChangeDetector` exercises supplied;
+ * every other method fails loudly as a defect if the detector ever reaches it,
+ * so the test proves no repository is touched. `Layer.succeed(Git, …)` — the
+ * seam git.md documents for change-detection consumers.
+ */
+const stubGit = (impl: {
+	readonly changedFiles?: ChangedFiles;
+	readonly workingChanges?: WorkingChanges;
+}): Layer.Layer<Git> =>
+	Layer.succeed(Git, {
+		changedFiles: impl.changedFiles ?? (() => Effect.succeed([])),
+		workingChanges: impl.workingChanges ?? (() => Effect.succeed([])),
+		show: () => Effect.die("Git.show not stubbed"),
+		lsTree: () => Effect.die("Git.lsTree not stubbed"),
+		refExists: () => Effect.die("Git.refExists not stubbed"),
+		mergeBase: () => Effect.die("Git.mergeBase not stubbed"),
+		revParse: () => Effect.die("Git.revParse not stubbed"),
+		checkout: () => Effect.die("Git.checkout not stubbed"),
 	});
 
-const detectorOver = (git: Layer.Layer<GitReader>) => {
+const detectorOver = (git: Layer.Layer<Git>) => {
 	const base = platform(tree);
 	const roots = WorkspaceRoot.layer.pipe(Layer.provide(base));
 	const discovery = WorkspaceDiscovery.layer({ cwd: "/repo" }).pipe(Layer.provide(roots), Layer.provide(base));
@@ -44,13 +61,14 @@ const detectorOver = (git: Layer.Layer<GitReader>) => {
 	);
 };
 
-const committedOnly = gitStub((args) =>
-	args[0] === "diff" && args.includes("HEAD~1...HEAD") ? "packages/alpha/src/index.ts\n" : "",
-);
+const committedOnly = stubGit({
+	changedFiles: (_cwd, { base, head }) =>
+		base === "HEAD~1" && head === "HEAD" ? Effect.succeed(["packages/alpha/src/index.ts"]) : Effect.succeed([]),
+});
 
 describe("ChangeDetector — committed changes", () => {
 	layer(detectorOver(committedOnly))((it) => {
-		it.effect("changedFiles returns the diff output, trimmed and sorted", () =>
+		it.effect("changedFiles returns the diff output, sorted", () =>
 			Effect.gen(function* () {
 				const detector = yield* ChangeDetector;
 				assert.deepStrictEqual(yield* detector.changedFiles(), ["packages/alpha/src/index.ts"]);
@@ -83,20 +101,19 @@ describe("ChangeDetector — committed changes", () => {
 	});
 });
 
-// `includeUncommitted` must fold in three MORE git invocations. A stub that only
-// answers the committed range proves nothing about them, so each returns a
-// distinct file and all four must appear.
-const withWorkingTree = gitStub((args) => {
-	if (args[0] === "diff" && args.includes("HEAD~1...HEAD")) return "packages/alpha/committed.ts\n";
-	if (args[0] === "diff" && args.includes("--cached")) return "packages/beta/staged.ts\n";
-	if (args[0] === "diff") return "packages/beta/unstaged.ts\n";
-	if (args[0] === "ls-files") return "apps/web/untracked.ts\n";
-	return "";
+// `includeUncommitted` must fold in the working tree via `Git.workingChanges`.
+// A stub whose `workingChanges` returns three distinct files proves all three
+// sources (unstaged, staged, untracked) are unioned into the result.
+const withWorkingTree = stubGit({
+	changedFiles: (_cwd, { base }) =>
+		base === "HEAD~1" ? Effect.succeed(["packages/alpha/committed.ts"]) : Effect.succeed([]),
+	workingChanges: () =>
+		Effect.succeed(["packages/beta/staged.ts", "packages/beta/unstaged.ts", "apps/web/untracked.ts"]),
 });
 
 describe("ChangeDetector — includeUncommitted", () => {
 	layer(detectorOver(withWorkingTree))((it) => {
-		it.effect("folds in unstaged, staged and untracked files", () =>
+		it.effect("folds the working tree in on top of the committed range", () =>
 			Effect.gen(function* () {
 				const detector = yield* ChangeDetector;
 				const files = yield* detector.changedFiles(ChangeDetectionOptions.make({ includeUncommitted: true }));
@@ -130,9 +147,12 @@ describe("ChangeDetector — includeUncommitted", () => {
 });
 
 describe("ChangeDetector — a custom base ref reaches git", () => {
-	// The stub answers ONLY `origin/main...HEAD`; a detector that ignored the
-	// option and used the default range would see an empty diff.
-	const custom = gitStub((args) => (args.includes("origin/main...HEAD") ? "packages/beta/x.ts\n" : ""));
+	// The stub answers ONLY `origin/main`; a detector that ignored the option and
+	// used the default range would see an empty diff.
+	const custom = stubGit({
+		changedFiles: (_cwd, { base }) =>
+			base === "origin/main" ? Effect.succeed(["packages/beta/x.ts"]) : Effect.succeed([]),
+	});
 	layer(detectorOver(custom))((it) => {
 		it.effect("the base option is threaded into the git range", () =>
 			Effect.gen(function* () {
@@ -147,40 +167,45 @@ describe("ChangeDetector — a custom base ref reaches git", () => {
 	});
 });
 
-describe("ChangeDetector — git unavailable", () => {
-	layer(detectorOver(gitStub(() => "", false)))((it) => {
-		it.effect("fails typed with the unavailable discriminant, not a defect", () =>
+describe("ChangeDetector — the working tree is not a git repository", () => {
+	// `Git` surfaces a non-repository directly as NotARepositoryError — the
+	// v1 `available()` pre-check that synthesized a `GitCommandError` is gone.
+	const notARepo = stubGit({
+		changedFiles: (cwd) => Effect.fail(new NotARepositoryError({ cwd })),
+	});
+	layer(detectorOver(notARepo))((it) => {
+		it.effect("fails typed with NotARepositoryError, not a defect", () =>
 			Effect.gen(function* () {
 				const detector = yield* ChangeDetector;
 				const result = yield* Effect.result(detector.changedFiles());
 				assert.strictEqual(result._tag, "Failure");
 				const error = yield* Effect.flip(detector.changedFiles());
-				assert.instanceOf(error, GitCommandError);
-				assert.strictEqual(error.kind, "unavailable");
+				assert.instanceOf(error, NotARepositoryError);
 			}),
 		);
 	});
 });
 
 describe("ChangeDetector — a git command that fails", () => {
-	const badRef = gitStub((args) =>
-		args.includes("nope...HEAD")
-			? new GitCommandError({
-					kind: "failed",
-					args,
-					cwd: "/repo",
-					exitCode: 128,
-					stderr: "fatal: bad revision 'nope'",
-				})
-			: "",
-	);
+	const badRef = stubGit({
+		changedFiles: (cwd, { base, head }) =>
+			base === "nope"
+				? Effect.fail(
+						new GitCommandError({
+							args: ["diff", "--name-only", "-z", "--relative", `${base}...${head}`],
+							cwd,
+							exitCode: 128,
+							stderr: "fatal: bad revision 'nope'",
+						}),
+					)
+				: Effect.succeed([]),
+	});
 	layer(detectorOver(badRef))((it) => {
-		it.effect("surfaces git's own diagnostic on a typed field", () =>
+		it.effect("surfaces git's own diagnostic on a typed field, unwrapped", () =>
 			Effect.gen(function* () {
 				const detector = yield* ChangeDetector;
 				const error = yield* Effect.flip(detector.changedFiles(ChangeDetectionOptions.make({ base: "nope" })));
 				assert.instanceOf(error, GitCommandError);
-				assert.strictEqual(error.kind, "failed");
 				assert.strictEqual(error.exitCode, 128);
 				assert.include(error.stderr, "bad revision");
 			}),
@@ -254,45 +279,38 @@ describe("PublishabilityDetector — the default npm semantics", () => {
 
 // ── a workspace NESTED inside a larger git repository ──────────────────────
 //
-// The path-bridging bug this pins: `git diff` reports paths relative to the git
-// REPOSITORY TOP-LEVEL, while `git ls-files` reports them relative to `cwd`.
-// The detector joins whatever it gets onto the WORKSPACE root. When the two
-// roots coincide — every other test in this file — both conventions agree and a
-// missing `--relative` is invisible. When the workspace is nested, every path is
-// wrong.
-//
-// This stub is faithful to the real git behaviour (verified against git): it
-// emits REPO-relative paths unless `--relative` is passed, in which case it
-// emits CWD-relative ones and drops anything outside the workspace.
+// The `--relative` correctness now lives inside `@effected/git`: `Git` runs
+// `git diff --relative` and returns workspace-root-relative paths. What the
+// detector owns is REQUESTING that mode. This stub proves the detector passes
+// `relative: true` — it returns workspace-relative paths for `relative: true`
+// and the (wrong, repository-relative) paths otherwise, so a detector that
+// forgot to ask for relative mode resolves the wrong package (or none). Real
+// `--relative` behavior against a real nested tree is git's own integration test.
 
-/** The workspace `/repo` sits at `repo/` inside a git repository rooted one level up. */
-const nestedGit = gitStub((args) => {
-	if (args[0] === "ls-files") return ""; // already cwd-relative in real git
-	if (args[0] !== "diff") return "";
-	// A change inside the workspace, plus one OUTSIDE it (a sibling of the
-	// workspace root) that git would report for the whole repository.
-	return args.includes("--relative")
-		? "packages/alpha/src/index.ts\n"
-		: "repo/packages/alpha/src/index.ts\noutside/tooling.ts\n";
+const nestedGit = stubGit({
+	changedFiles: (_cwd, { relative }) =>
+		relative === true
+			? Effect.succeed(["packages/alpha/src/index.ts"])
+			: Effect.succeed(["repo/packages/alpha/src/index.ts", "outside/tooling.ts"]),
 });
 
 describe("ChangeDetector — a workspace nested inside a larger git repository", () => {
 	layer(detectorOver(nestedGit))((it) => {
-		it.effect("changedFiles are workspace-relative, not repository-relative", () =>
+		it.effect("requests relative mode, so paths are workspace-relative", () =>
 			Effect.gen(function* () {
 				const detector = yield* ChangeDetector;
-				// Without `--relative` this is ["outside/tooling.ts", "repo/packages/alpha/src/index.ts"].
+				// If the detector forgot `relative: true`, this would be
+				// ["outside/tooling.ts", "repo/packages/alpha/src/index.ts"].
 				assert.deepStrictEqual(yield* detector.changedFiles(), ["packages/alpha/src/index.ts"]);
 			}),
 		);
 
-		it.effect("changedPackages still resolves the owning package", () =>
+		it.effect("changedPackages resolves the owning package from the relative path", () =>
 			Effect.gen(function* () {
 				const detector = yield* ChangeDetector;
 				const names = (yield* detector.changedPackages()).map((pkg) => pkg.name);
-				// A repo-relative path joined onto the workspace root yields
-				// /repo/repo/packages/alpha/... — which owns nothing, so the detector
-				// would report NO changed packages at all. Silent, and completely wrong.
+				// A repository-relative path joined onto the workspace root yields
+				// /repo/repo/packages/alpha/... — which owns nothing. Silent and wrong.
 				assert.deepStrictEqual(names, ["@x/alpha"]);
 			}),
 		);

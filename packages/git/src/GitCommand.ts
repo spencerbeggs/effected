@@ -57,17 +57,73 @@ const refExists = (ref: string): ChildProcess.StandardCommand => git(["cat-file"
 const mergeBase = (a: string, b: string): ChildProcess.StandardCommand => git(["merge-base", a, b]);
 
 /**
- * `git diff --name-only -z <base>...<head>` — the paths that differ between
- * the merge base of `base` and `head`, and `head` itself, NUL-terminated.
+ * `git diff --name-only -z [--relative] <base>...<head>` — the paths that
+ * differ between the merge base of `base` and `head`, and `head` itself,
+ * NUL-terminated.
  *
  * @remarks
  * `-z` is load-bearing here too, for the same reason as {@link GitCommand.lsTree}: split
  * the output on `"\0"`, never on `"\n"`.
  *
+ * The relative flag is **explicit in both branches** — `--relative` when
+ * `relative` is true, `--no-relative` when false — never omitted. git honors a
+ * configured `diff.relative=true` when no flag is passed, so an omitted flag
+ * would silently yield cwd-relative paths on such a machine even for
+ * `relative: false`, misaligning with {@link GitCommand.untrackedFiles}'s
+ * repo-root base and breaking `Git.workingChanges`' dedup in a nested workspace.
+ * `--relative` scopes the report to `cwd` (a workspace nested inside a larger
+ * repository); `--no-relative` overrides any `diff.relative` config and reports
+ * paths from the repository top-level.
+ *
  * @public
  */
-const changedFiles = (base: string, head: string): ChildProcess.StandardCommand =>
-	git(["diff", "--name-only", "-z", `${base}...${head}`]);
+const changedFiles = (base: string, head: string, relative = false): ChildProcess.StandardCommand =>
+	git(["diff", "--name-only", "-z", relative ? "--relative" : "--no-relative", `${base}...${head}`]);
+
+/**
+ * `git diff --name-only -z (--relative | --no-relative)` — the paths with
+ * unstaged working-tree changes (the working tree against the index),
+ * NUL-terminated.
+ *
+ * @remarks
+ * `relative` behaves as it does for {@link GitCommand.changedFiles}, including the
+ * explicit-flag-in-both-branches rule: `--no-relative` is passed for
+ * `relative: false` so a configured `diff.relative=true` cannot silently make the
+ * output cwd-relative.
+ *
+ * @public
+ */
+const unstagedChanges = (relative = false): ChildProcess.StandardCommand =>
+	git(["diff", "--name-only", "-z", relative ? "--relative" : "--no-relative"]);
+
+/**
+ * `git diff --name-only -z (--relative | --no-relative) --cached` — the paths
+ * staged for the next commit (the index against `HEAD`), NUL-terminated.
+ *
+ * @remarks
+ * `relative` behaves as it does for {@link GitCommand.changedFiles}, including the
+ * explicit `--no-relative` on the `relative: false` branch.
+ *
+ * @public
+ */
+const stagedChanges = (relative = false): ChildProcess.StandardCommand =>
+	git(["diff", "--name-only", "-z", relative ? "--relative" : "--no-relative", "--cached"]);
+
+/**
+ * `git ls-files --others --exclude-standard -z [--full-name]` — the untracked
+ * paths git is not ignoring, NUL-terminated.
+ *
+ * @remarks
+ * `ls-files` reports paths relative to `cwd` by default, matching the
+ * `--relative` diffs. When `relative` is `false`, `--full-name` makes it emit
+ * repo-root-relative paths instead, so the untracked half shares a base with the
+ * un-`--relative` diffs — otherwise `Git.workingChanges`'s union would dedup two
+ * spellings of one file from a nested `cwd`.
+ *
+ * @public
+ */
+const untrackedFiles = (relative = false): ChildProcess.StandardCommand =>
+	git(["ls-files", "--others", "--exclude-standard", "-z", ...(relative ? [] : ["--full-name"])]);
 
 /**
  * `git rev-parse --verify <ref>` — resolves `ref` to its full object id, or
@@ -97,4 +153,15 @@ const checkout = (ref: string): ChildProcess.StandardCommand => git(["checkout",
  *
  * @public
  */
-export const GitCommand = { show, lsTree, refExists, mergeBase, changedFiles, revParse, checkout } as const;
+export const GitCommand = {
+	show,
+	lsTree,
+	refExists,
+	mergeBase,
+	changedFiles,
+	unstagedChanges,
+	stagedChanges,
+	untrackedFiles,
+	revParse,
+	checkout,
+} as const;

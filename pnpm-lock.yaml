@@ -500,6 +500,9 @@ importers:
 
   packages/workspaces:
     dependencies:
+      '@effected/git':
+        specifier: workspace:*
+        version: link:../git/dist/dev/pkg
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg

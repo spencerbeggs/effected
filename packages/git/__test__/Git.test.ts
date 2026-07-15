@@ -146,6 +146,109 @@ describe("Git", () => {
 		);
 	});
 
+	describe("workingChanges", () => {
+		// Routes the scripted spawner by argv: `--cached` is the staged query,
+		// `ls-files` the untracked one, any other `diff` the unstaged one.
+		const scriptWorkingTree = (byKind: {
+			unstaged: string;
+			staged: string;
+			untracked: string;
+		}): ((args: ReadonlyArray<string>) => ScriptResult) => {
+			return (args) => {
+				if (args[0] === "ls-files") return { stdout: byKind.untracked, exit: 0 };
+				if (args.includes("--cached")) return { stdout: byKind.staged, exit: 0 };
+				return { stdout: byKind.unstaged, exit: 0 };
+			};
+		};
+
+		it.effect("unions unstaged, staged and untracked paths, deduplicated", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.workingChanges(cwd, { relative: true });
+				});
+				const result = yield* run(
+					program,
+					scriptWorkingTree({
+						unstaged: "shared.ts\0unstaged.ts\0",
+						staged: "shared.ts\0staged.ts\0",
+						untracked: "untracked.ts\0",
+					}),
+				);
+				// `shared.ts` appears in both the unstaged and staged runs — the union
+				// must dedupe it to a single entry.
+				assert.deepStrictEqual([...result].sort(), ["shared.ts", "staged.ts", "unstaged.ts", "untracked.ts"]);
+			}),
+		);
+
+		// Captures the argv of every spawned command for one workingChanges run.
+		const argvOf = (options: { readonly relative?: boolean }) =>
+			Effect.gen(function* () {
+				const seen: Array<ReadonlyArray<string>> = [];
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.workingChanges(cwd, options);
+				});
+				yield* run(program, (args) => {
+					seen.push([...args]);
+					return { stdout: "", exit: 0 };
+				});
+				return {
+					diffs: seen.filter((args) => args[0] === "diff"),
+					lsFiles: seen.filter((args) => args[0] === "ls-files"),
+				};
+			});
+
+		it.effect(
+			"relative:true — BOTH diffs carry --relative and ls-files is cwd-relative (no --relative, no --full-name)",
+			() =>
+				Effect.gen(function* () {
+					const { diffs, lsFiles } = yield* argvOf({ relative: true });
+					assert.strictEqual(diffs.length, 2);
+					// All three sources share the cwd-relative base: --relative on the diffs
+					// (and never --no-relative), plain ls-files (which is cwd-relative by default).
+					assert.isTrue(diffs.every((args) => args.includes("--relative")));
+					assert.isTrue(diffs.every((args) => !args.includes("--no-relative")));
+					assert.strictEqual(lsFiles.length, 1);
+					assert.isFalse(lsFiles[0]?.includes("--relative"));
+					assert.isFalse(lsFiles[0]?.includes("--full-name"));
+				}),
+		);
+
+		it.effect(
+			"relative:false — BOTH diffs carry an explicit --no-relative and ls-files gets --full-name (all three repo-root-relative)",
+			() =>
+				Effect.gen(function* () {
+					const { diffs, lsFiles } = yield* argvOf({ relative: false });
+					assert.strictEqual(diffs.length, 2);
+					// All three sources share the repo-root base: an EXPLICIT --no-relative on
+					// the diffs (so an inherited diff.relative=true cannot make them
+					// cwd-relative), and --full-name on ls-files (which would otherwise be
+					// cwd-relative).
+					assert.isTrue(diffs.every((args) => args.includes("--no-relative")));
+					assert.isTrue(diffs.every((args) => !args.includes("--relative")));
+					assert.strictEqual(lsFiles.length, 1);
+					assert.isTrue(lsFiles[0]?.includes("--full-name"));
+				}),
+		);
+
+		it.effect("surfaces NotARepositoryError when cwd is not a repository", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.workingChanges(cwd, {});
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr: "fatal: not a git repository (or any of the parent directories): .git\n",
+						exit: 128,
+					})),
+				);
+				assert.instanceOf(failure, NotARepositoryError);
+			}),
+		);
+	});
+
 	describe("checkout", () => {
 		it.effect("returns void on a successful run", () =>
 			Effect.gen(function* () {

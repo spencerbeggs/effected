@@ -23,7 +23,7 @@
 // surface) and the real Git service itself for checkout, which IS part of
 // the surface this package owns.
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
@@ -291,6 +291,78 @@ describe("Git — real repository integration", () => {
 			),
 		15_000,
 	);
+
+	describe("workingChanges, in its own dirty repository", () => {
+		let dirtyDir: string;
+
+		beforeAll(async () => {
+			dirtyDir = await mkdtemp(join(tmpdir(), "effected-git-int-dirty-"));
+			await Effect.runPromise(
+				run(
+					Effect.gen(function* () {
+						const raw = (args: ReadonlyArray<string>) => runFixtureGit(dirtyDir, args);
+						yield* raw(["-c", "init.defaultBranch=main", "init"]);
+						yield* raw(["config", "user.email", "git-integration@example.com"]);
+						yield* raw(["config", "user.name", "Git Integration"]);
+						// Pin diff.relative=true on this repo: this is the adverse config Fix 1
+						// guards against. Without the explicit --relative/--no-relative flags the
+						// diffs would silently follow this config and desync from ls-files'
+						// repo-root base — proven by the nested-cwd case below.
+						yield* raw(["config", "diff.relative", "true"]);
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "tracked.txt"), "one\n"));
+						// A tracked file in a NESTED subdirectory, so a cwd nested under the
+						// repo root discriminates repo-root-relative from cwd-relative output.
+						yield* Effect.promise(() => mkdir(join(dirtyDir, "pkg"), { recursive: true }));
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "pkg", "mod.txt"), "one\n"));
+						yield* raw(["add", "-A"]);
+						yield* raw(["-c", "commit.gpgsign=false", "commit", "-m", "base"]);
+						// Dirty the tree three distinct ways so the union covers each source.
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "tracked.txt"), "two\n")); // unstaged
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "pkg", "mod.txt"), "two\n")); // unstaged, nested
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "staged.txt"), "new\n"));
+						yield* raw(["add", "staged.txt"]); // staged
+						yield* Effect.promise(() => writeFile(join(dirtyDir, "untracked.txt"), "loose\n")); // untracked
+					}),
+				),
+			);
+		}, 30_000);
+
+		afterAll(async () => {
+			if (dirtyDir) await rm(dirtyDir, { recursive: true, force: true });
+		});
+
+		it.effect("relative:true reports cwd-relative paths from the repo root (--relative honored)", () =>
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					const changed = yield* git.workingChanges(dirtyDir, { relative: true });
+					assert.deepStrictEqual([...changed].sort(), ["pkg/mod.txt", "staged.txt", "tracked.txt", "untracked.txt"]);
+				}),
+			),
+		);
+
+		it.effect(
+			"relative:false from a NESTED cwd stays repo-root-relative despite diff.relative=true (--no-relative overrides the config)",
+			() =>
+				run(
+					Effect.gen(function* () {
+						const git = yield* Git;
+						// Run from the nested `pkg/` directory with the repo's diff.relative=true
+						// in force. The explicit --no-relative keeps the DIFFS repo-root-relative
+						// AND repo-wide, so `tracked.txt` and `staged.txt` (root files) appear
+						// alongside the nested `pkg/mod.txt`, all with their repo-root spelling.
+						// Without --no-relative, the inherited diff.relative would scope the diff
+						// to `pkg/` and emit a lone cwd-relative `mod.txt`, dropping the root
+						// files — the exact desync Fix 1 prevents. (The root `untracked.txt` is
+						// absent by design: `git ls-files` is cwd-scoped, so from `pkg/` it lists
+						// no untracked files above the subtree — a property of ls-files, not the
+						// --relative flag.)
+						const changed = yield* git.workingChanges(join(dirtyDir, "pkg"), { relative: false });
+						assert.deepStrictEqual([...changed].sort(), ["pkg/mod.txt", "staged.txt", "tracked.txt"]);
+					}),
+				),
+		);
+	});
 
 	describe("checkout, in its own clone", () => {
 		let cloneDir: string;

@@ -36,6 +36,14 @@ export interface FileSystemOptions {
 	 * an empty file.
 	 */
 	readonly unreadableFiles?: ReadonlySet<string>;
+	/**
+	 * Paths whose `exists` PROBE fails with a non-NotFound `PlatformError`
+	 * (`PermissionDenied`) — the case a `orElseSucceed(() => false)` fallback makes
+	 * indistinguishable from genuine absence. Faithful to core's default `exists`,
+	 * which maps NotFound to `false` internally but re-fails any other
+	 * `PlatformError`.
+	 */
+	readonly unreadableExists?: ReadonlySet<string>;
 }
 
 /**
@@ -46,6 +54,7 @@ export const fileSystem = (tree: Tree, options: FileSystemOptions = {}): Layer.L
 	const dirs = directoriesOf(tree);
 	const unreadable = options.unreadable ?? new Set<string>();
 	const unreadableFiles = options.unreadableFiles ?? new Set<string>();
+	const unreadableExists = options.unreadableExists ?? new Set<string>();
 
 	// The v4 constructor is `PlatformError.systemError`, not a `new SystemError` —
 	// `SystemError` is the reason payload, `PlatformError` is the failure.
@@ -60,7 +69,19 @@ export const fileSystem = (tree: Tree, options: FileSystemOptions = {}): Layer.L
 		);
 
 	return FileSystem.layerNoop({
-		exists: (path: string) => Effect.succeed(Object.hasOwn(tree, path) || dirs.has(path)),
+		exists: (path: string) => {
+			if (unreadableExists.has(path)) {
+				return Effect.fail(
+					PlatformError.systemError({
+						_tag: "PermissionDenied",
+						module: "FileSystem",
+						method: "access",
+						pathOrDescriptor: path,
+					}),
+				);
+			}
+			return Effect.succeed(Object.hasOwn(tree, path) || dirs.has(path));
+		},
 
 		readFileString: (path: string) => {
 			if (unreadableFiles.has(path)) {

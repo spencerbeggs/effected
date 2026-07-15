@@ -27,6 +27,7 @@
  * @packageDocumentation
  */
 
+export { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 export {
 	ChangeDetectionError,
 	type ChangeDetectionFailure,
@@ -34,8 +35,8 @@ export {
 	ChangeDetector,
 	type ChangeDetectorShape,
 } from "./ChangeDetector.js";
+export { ConfigDependencyHooks, type ConfigDependencyHooksShape } from "./ConfigDependencyHooks.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";
-export { GitCommandError, GitReader } from "./GitReader.js";
 export {
 	LockfileReadError,
 	type LockfileReadFailure,
@@ -52,7 +53,6 @@ export {
 } from "./PackageManagerName.js";
 export { PublishTarget, PublishabilityDetector } from "./Publishability.js";
 export {
-	CatalogAssemblyError,
 	type CatalogAssemblyFailure,
 	CatalogSet,
 	WorkspaceCatalogs,
@@ -72,6 +72,14 @@ export {
 } from "./WorkspaceDiscovery.js";
 export { type DependencyDiff, PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
 export { WORKSPACE_MARKERS, WorkspaceRoot, WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
+export {
+	type WorkspaceSnapshotAtFailure,
+	type WorkspaceSnapshotWorktreeFailure,
+	WorkspaceSnapshots,
+	type WorkspaceSnapshotsOptions,
+	type WorkspaceSnapshotsShape,
+} from "./WorkspaceSnapshots.js";
+export { PackageStateSnapshot, WorkspaceStateSnapshot } from "./WorkspaceStateSnapshot.js";
 export { Workspaces, type WorkspacesOptions, type WorkspacesServices } from "./Workspaces.js";
 export {
 	type GetWorkspacePackagesSyncOptions,
