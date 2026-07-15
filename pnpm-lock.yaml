@@ -214,6 +214,9 @@ importers:
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
+      '@effected/npm':
+        specifier: workspace:*
+        version: link:../npm/dist/dev/pkg
       '@effected/semver':
         specifier: workspace:*
         version: link:../semver/dist/dev/pkg
@@ -239,6 +242,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.97(effect@4.0.0-beta.97)(vitest@4.1.10)
+      '@effected/semver':
+        specifier: workspace:*
+        version: link:../semver/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^1.1.14
         version: 1.1.14(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)

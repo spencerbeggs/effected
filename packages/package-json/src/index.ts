@@ -15,18 +15,14 @@
  */
 
 export {
-	Dependency,
 	type DependencyKind,
-	type UnresolvedDependency,
-	isUnresolvedDependency,
-} from "./Dependency.js";
-export {
 	type DependencyProtocol,
 	DependencySpecifier,
 	type DependencySpecifierBrand,
 	InvalidDependencySpecifierError,
 	isValidDependencySpecifier,
-} from "./DependencySpecifier.js";
+} from "@effected/npm";
+export { Dependency, type UnresolvedDependency, isUnresolvedDependency } from "./Dependency.js";
 export { DevEngine, DevEngineOrArray, type DevEngines, DevEnginesSchema } from "./DevEngines.js";
 export { InvalidSpdxLicenseError, SpdxLicense, isValidSpdx } from "./License.js";
 export {

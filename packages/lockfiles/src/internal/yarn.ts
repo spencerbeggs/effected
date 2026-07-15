@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { ResolvedPackage } from "../ResolvedPackage.js";
 import { selectSoleDocument } from "./documents.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
-import { extractWorkspaceDeps, validationFailure } from "./shared.js";
+import { extractWorkspaceDeps, toIntegrityHash, validationFailure } from "./shared.js";
 
 // ── Raw schemas (permissive validation scaffolding, not API) ───────────────
 
@@ -63,60 +63,69 @@ export const parseYarn = (content: string): Effect.Effect<LockfileFields, ParseF
 			decoded.set(key, entry);
 		}
 
-		return toFields(lockfileVersion, decoded);
+		return yield* toFields(lockfileVersion, decoded);
 	});
 
 // ── Transform ──────────────────────────────────────────────────────────────
 
-const toFields = (lockfileVersion: string, decoded: ReadonlyMap<string, YarnEntryType>): LockfileFields => {
-	const packages: Array<ResolvedPackage> = [];
-	const workspaceNames = new Set<string>();
-	const workspaceEntries = new Map<string, WorkspaceEntry>();
+const toFields = (
+	lockfileVersion: string,
+	decoded: ReadonlyMap<string, YarnEntryType>,
+): Effect.Effect<LockfileFields, ParseFailure> =>
+	Effect.gen(function* () {
+		const packages: Array<ResolvedPackage> = [];
+		const workspaceNames = new Set<string>();
+		const workspaceEntries = new Map<string, WorkspaceEntry>();
 
-	// First pass: identify workspace names.
-	for (const [key, entry] of decoded) {
-		if (entry.linkType === "soft") {
+		// First pass: identify workspace names.
+		for (const [key, entry] of decoded) {
+			if (entry.linkType === "soft") {
+				const name = extractYarnPackageName(key);
+				if (name !== undefined) workspaceNames.add(name);
+			}
+		}
+
+		// Second pass: build packages.
+		for (const [key, entry] of decoded) {
 			const name = extractYarnPackageName(key);
-			if (name !== undefined) workspaceNames.add(name);
+			if (name === undefined) continue; // malformed descriptors are skipped, never thrown on
+
+			const isWorkspace = entry.linkType === "soft";
+			const relativePath = isWorkspace ? extractYarnWorkspacePath(key) : undefined;
+			// Yarn Berry's `10c0/<hex>` cache checksums validate as an `IntegrityHash`
+			// (the yarn textual form), so they are preserved; a present but unparseable
+			// checksum fails typed at validation rather than being dropped.
+			const integrity = yield* toIntegrityHash(entry.checksum);
+
+			packages.push(
+				ResolvedPackage.make({
+					name,
+					version: entry.version ?? "0.0.0",
+					...(integrity !== undefined ? { integrity } : {}),
+					isWorkspace,
+					...(relativePath !== undefined ? { relativePath } : {}),
+				}),
+			);
+
+			if (isWorkspace) {
+				const deps = cleanYarnDeps(entry.dependencies);
+				const devDeps = cleanYarnDeps(entry.devDependencies);
+				const peerDeps = cleanYarnDeps(entry.peerDependencies);
+				const optDeps = cleanYarnDeps(entry.optionalDependencies);
+				workspaceEntries.set(name, {
+					...(deps ? { dependencies: deps } : {}),
+					...(devDeps ? { devDependencies: devDeps } : {}),
+					...(peerDeps ? { peerDependencies: peerDeps } : {}),
+					...(optDeps ? { optionalDependencies: optDeps } : {}),
+				});
+			}
 		}
-	}
 
-	// Second pass: build packages.
-	for (const [key, entry] of decoded) {
-		const name = extractYarnPackageName(key);
-		if (name === undefined) continue; // malformed descriptors are skipped, never thrown on
+		const workspaceDependencies = extractWorkspaceDeps(workspaceEntries, workspaceNames);
 
-		const isWorkspace = entry.linkType === "soft";
-		const relativePath = isWorkspace ? extractYarnWorkspacePath(key) : undefined;
-
-		packages.push(
-			ResolvedPackage.make({
-				name,
-				version: entry.version ?? "0.0.0",
-				...(entry.checksum !== undefined ? { integrity: entry.checksum } : {}),
-				isWorkspace,
-				...(relativePath !== undefined ? { relativePath } : {}),
-			}),
-		);
-
-		if (isWorkspace) {
-			const deps = cleanYarnDeps(entry.dependencies);
-			const devDeps = cleanYarnDeps(entry.devDependencies);
-			const peerDeps = cleanYarnDeps(entry.peerDependencies);
-			const optDeps = cleanYarnDeps(entry.optionalDependencies);
-			workspaceEntries.set(name, {
-				...(deps ? { dependencies: deps } : {}),
-				...(devDeps ? { devDependencies: devDeps } : {}),
-				...(peerDeps ? { peerDependencies: peerDeps } : {}),
-				...(optDeps ? { optionalDependencies: optDeps } : {}),
-			});
-		}
-	}
-
-	const workspaceDependencies = extractWorkspaceDeps(workspaceEntries, workspaceNames);
-
-	return { lockfileVersion, packages, workspaceDependencies };
-};
+		// yarn does not record importers; the field is always empty.
+		return { lockfileVersion, packages, workspaceDependencies, importers: [] };
+	});
 
 /**
  * Extract the package name from a yarn lockfile key. Handles compound keys

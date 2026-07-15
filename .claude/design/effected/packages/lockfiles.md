@@ -4,8 +4,8 @@ module: effected
 category: architecture
 created: 2026-07-10
 updated: 2026-07-14
-last-synced: 2026-07-12
-completeness: 95
+last-synced: 2026-07-14
+completeness: 96
 related:
   - ../effect-standards.md
   - ../migration-playbook.md
@@ -29,7 +29,7 @@ Its consumer is [`@effected/workspaces`](workspaces.md) — **now merged** — w
 
 **Pure tier.** No services, no layers, no IO, no `R` anywhere. A lockfile parser that reached for the filesystem would be boundary tier — the inventory's standing caveat — so the IO stays out by construction: every entrypoint takes `content: string`, and the one operation that used to do IO (integrity's manifest reads) now takes manifests as input.
 
-Peer closure per the repo's `workspace:*` precedent — each edge declared in both `peerDependencies` and `devDependencies`: `peerDependencies` are `effect` (`catalog:effect`) plus the three pure-to-pure `workspace:*` edges — `@effected/jsonc` (bun's JSONC), `@effected/yaml` (pnpm and yarn Berry are YAML) and `@effected/semver` (integrity's range satisfaction) — each mirrored in `devDependencies`. Zero external runtime dependencies; the text-parsing engines arrive through the sibling packages, so unlike glob and toml there is nothing to vendor. (The [importers design](#importers-v2-addition-designed-2026-07-14) adds a fourth pure edge, `@effected/npm`, when it lands.)
+Peer closure per the repo's `workspace:*` precedent — each edge declared in both `peerDependencies` and `devDependencies`: `peerDependencies` are `effect` (`catalog:effect`) plus the three pure-to-pure `workspace:*` edges — `@effected/jsonc` (bun's JSONC), `@effected/yaml` (pnpm and yarn Berry are YAML) and `@effected/semver` (integrity's range satisfaction) — each mirrored in `devDependencies`. Zero external runtime dependencies; the text-parsing engines arrive through the sibling packages, so unlike glob and toml there is nothing to vendor. **As-built (2026-07-14):** the [importers work](#importers-v2-addition-as-built-2026-07-14) added a fourth pure `workspace:*` edge, `@effected/npm` (peer + dev), for the relocated `DependencySpecifier` and the `DependencyField` / `IntegrityHash` vocabulary — pure-to-pure, so the tier holds.
 
 ## The two seam repairs (the headline work)
 
@@ -59,7 +59,8 @@ packages/lockfiles/
   src/
     LockfileFormat.ts       # Literals("bun","npm","pnpm","yarn"), filenameFor, fromFilename
     ResolvedPackage.ts      # ResolvedPackage class
-    WorkspaceDependency.ts  # WorkspaceDependency class + DependencyType literal
+    WorkspaceDependency.ts  # WorkspaceDependency class (depType: @effected/npm's DependencyField;
+                            #   the local DependencyType literal was removed 2026-07-14)
     PnpmExtension.ts        # PnpmExtension class + PnpmCatalogs type
     BunExtension.ts         # BunExtension class
     Lockfile.ts             # Lockfile class, static parse dispatcher, withImporterNames,
@@ -91,7 +92,7 @@ The per-format **raw schemas stay private** in `internal/` — the review's opti
 
 `LockfileFormat` owns the filename knowledge both directions: `filenameFor(format)` (v3's `lockfileNameFor`, moved here — it is lockfile domain, not detection) and `fromFilename(name): Option<LockfileFormat>`.
 
-`ResolvedPackage` and `WorkspaceDependency` port shape-for-shape (v4 spellings: `optionalKey` for `integrity`/`relativePath`, the v4 default mechanism for `dependencies` defaulting to `{}`). `DependencyType` (v3's private `DepType`) is exported — both `WorkspaceDependency.depType` and integrity's `unsatisfiedConstraints[].depType` use it, and consumers branch on it. `PnpmExtension`/`BunExtension` keep their `_tag` discriminants and fields; `PnpmExtension.ts` also exports the `PnpmCatalogs` record type (`Record<string, Record<string, string | { specifier; version }>>`) so `CatalogSet.fromLockfileCatalogs` in workspaces types against it instead of re-declaring the shape ([review §5](../../../reviews/workspaces.md)).
+`ResolvedPackage` and `WorkspaceDependency` port shape-for-shape (v4 spellings: `optionalKey` for `integrity`/`relativePath`, the v4 default mechanism for `dependencies` defaulting to `{}`). **As-built (2026-07-14):** `ResolvedPackage.integrity` is now [`@effected/npm`'s `IntegrityHash`](npm.md#two-more-scalars-move-in-as-built-2026-07-14) brand, not a plain string (an unparseable checksum is dropped, never thrown), and `WorkspaceDependency.depType` / integrity's `unsatisfiedConstraints[].depType` are now npm's `DependencyField` — the local `DependencyType` literal (v3's private `DepType`) **was removed, not re-exported**, because it had zero in-repo consumers. `PnpmExtension`/`BunExtension` keep their `_tag` discriminants and fields; `PnpmExtension.ts` also exports the `PnpmCatalogs` record type (`Record<string, Record<string, string | { specifier; version }>>`) so `CatalogSet.fromLockfileCatalogs` in workspaces types against it instead of re-declaring the shape ([review §5](../../../reviews/workspaces.md)).
 
 ### LockfileParseError
 
@@ -119,28 +120,30 @@ The other three parsers were **checked, not assumed**. yarn shared the assumptio
 
 ### LockfileIntegrity
 
-`class LockfileIntegrity extends Schema.Class<...>("LockfileIntegrity")` — `valid`, `missingWorkspaces`, `extraWorkspaces`, `unsatisfiedConstraints` (struct rows carrying `DependencyType`), ported shape-for-shape — plus `static check(lockfile: Lockfile, manifests: ReadonlyArray<WorkspaceManifest>): LockfileIntegrity`, the total pure function of seam repair 2. Range satisfaction goes through `@effected/semver` (`Range.parse`, `SemVer.parse`, `range.test`); parse failures on either side skip the row, as in v3.
+`class LockfileIntegrity extends Schema.Class<...>("LockfileIntegrity")` — `valid`, `missingWorkspaces`, `extraWorkspaces`, `unsatisfiedConstraints` (struct rows carrying `depType`, as-built now npm's `DependencyField`), ported shape-for-shape — plus `static check(lockfile: Lockfile, manifests: ReadonlyArray<WorkspaceManifest>): LockfileIntegrity`, the total pure function of seam repair 2. Range satisfaction goes through `@effected/semver` (`Range.parse`, `SemVer.parse`, `range.test`); parse failures on either side skip the row, as in v3.
 
-## Importers (v2 addition, designed 2026-07-14)
+## Importers (v2 addition, as-built 2026-07-14)
 
-Design-first, implementation to follow; exact API names are design-level and are settled at the effect-v4-planning gate at implementation time. The driving consumer is `savvy-web/silk-update-action`, which diffs a before/after lockfile pair in one process — it parses both texts through the pure boundary and compares each workspace importer's *declared* dependencies, data the v1 model discards. The design ports `workspaces-effect` commit `c594ff1`'s `importers` field, reshaped to this package's idioms.
+**Shipped on branch `feat/lockfiles-importers`** (piece 2 of the point-in-time port). The driving consumer is `savvy-web/silk-update-action`, which diffs a before/after lockfile pair in one process — it parses both texts through the pure boundary and compares each workspace importer's *declared* dependencies, data the v1 model discards. The work ports `workspaces-effect` commit `c594ff1`'s `importers` field, reshaped to this package's idioms.
 
-The `Lockfile` model gains one field and two leaf value classes:
+The `Lockfile` model gained one field and two leaf value classes:
 
-- **`ImporterDependency`** — one declared dependency of one importer: `name`; `specifier` as [`@effected/npm`'s `DependencySpecifier`](npm.md) via its `FromString` codec, so a decoded value is tag-matchable (`catalog:` / `workspace:` / range / dist-tag / raw) while **encoding round-trips the exact original string** — the brownfield guarantee that lets consumers reimplement v3 diffing byte-for-byte; `version`, optional and **pnpm-only** (pnpm records `{ specifier, version }` per importer dependency; bun and npm record resolved versions on their package entries instead, so consumers join by `name` against `packages`); `depType`, reusing the existing `DependencyType`.
+- **`ImporterDependency`** — one declared dependency of one importer: `name`; `specifier` as [`@effected/npm`'s `DependencySpecifier`](npm.md#dependencyspecifier-v2-expansion-as-built-2026-07-14) via its `FromString` codec, so a decoded value is tag-matchable (`catalog:` / `workspace:` / range / dist-tag / raw) while **encoding round-trips the exact original string** — the brownfield guarantee that lets consumers reimplement v3 diffing byte-for-byte; `version`, optional and **pnpm-only** (pnpm records `{ specifier, version }` per importer dependency; bun and npm record resolved versions on their package entries instead, so consumers join by `name` against `packages`); `depType`, **as-built now npm's `DependencyField`** (the local `DependencyType` was removed this round).
 - **`LockfileImporter`** — `path` (root-relative importer path, `"."` for the root — the same keys as `WorkspaceDiscovery.importerMap()` in workspaces) plus `dependencies`.
-- **`Lockfile.importers`** — defaulted to `[]`, populated by the pnpm, bun and npm internal transforms off a shared dependency-sections table (the v3 `DEP_SECTIONS` shape, in `internal/shared.ts`). **yarn never records importers**, so a yarn lockfile always yields an empty array — documented behavior, not an error.
+- **`Lockfile.importers`** — defaulted to `[]`, populated by the pnpm, bun and npm internal transforms off a shared dependency-sections table (the v3 `DEP_SECTIONS` shape, in `internal/shared.ts`). **yarn always yields `[]`** — yarn never records importers, so a yarn lockfile's empty array is documented behavior, not an error.
 
-Rules the field inherits from the existing design:
+Rules the field kept from the design, all as-built:
 
-- **`withImporterNames` does not touch importers.** They stay keyed by importer path, matching `importerMap` — the same decision c594ff1 made, kept deliberately: the path is the join key.
+- **`withImporterNames` does not touch importers.** They stay keyed by importer path, matching `importerMap` — the same decision c594ff1 made, kept deliberately: the path is the join key. **As-built: this is now test-pinned** (a `withImporterNames` case asserts the importers array is untouched).
 - **Keyed access**: `lockfile.importer(path)` returns an `Option<LockfileImporter>` backed by a lazily-built `#private` index outside the schema — the `packagesNamed` precedent. The array field remains for serialization and iteration.
 - **`Lockfile.parse` stays the only fallible boundary.** Importer extraction is total once parse succeeds; a malformed importer row is skipped per the existing total-string-surgery discipline, never thrown.
 - **Construction uses conditional spreads** for the optional `version` — under v4's validating constructors an explicit `undefined` on an `optionalKey` field throws, the trap the repo's porting notes already record.
 
-**A new `workspace:*` edge: `@effected/npm`.** Pure-to-pure, so the tier holds. The specifier taxonomy cannot come from `@effected/package-json`, whose current home it is — that package is integrated tier, and R2 would propagate integration into this pure package. The importers design is precisely the "second consumer" trigger npm.md recorded for moving `DependencySpecifier` there; see [npm.md](npm.md).
+**A new `workspace:*` edge: `@effected/npm`** (peer + dev), pure-to-pure, so the tier holds. The specifier taxonomy could not come from `@effected/package-json` — that package is integrated tier, and R2 would propagate integration into this pure package. The importers work was precisely the "second consumer" trigger npm.md recorded for moving `DependencySpecifier` there; see [npm.md](npm.md#dependencyspecifier-v2-expansion-as-built-2026-07-14).
 
-The same round moves two more scalars along the new edge ([npm.md](npm.md#two-more-scalars-move-in-designed-2026-07-14)): the `DependencyType` literal this package exports today relocates to `@effected/npm` as the kit-wide dependency-section vocabulary (this package consumes it; same free-before-`0.1.0` logic), and `ResolvedPackage.integrity` re-types from a plain string to npm's `IntegrityHash` brand. What this package keeps and what it deliberately discards from `package-lock.json` is recorded in [npm.md's vocabulary registry](npm.md#vocabulary-registry-npm-v12-parity-map-recorded-2026-07-14).
+The same round moved two more scalars along the new edge ([npm.md](npm.md#two-more-scalars-move-in-as-built-2026-07-14)): the `DependencyType` literal this package used to export **was removed** (zero in-repo consumers) and `WorkspaceDependency.depType` now consumes `@effected/npm`'s `DependencyField`, and `ResolvedPackage.integrity` re-typed from a plain string to npm's `IntegrityHash` brand — an unparseable checksum is dropped, not thrown, and the brand's yarn `<cachekey>/<hex>` form is what keeps yarn Berry's 102 v2-fixture checksums from silently vanishing. What this package keeps and what it deliberately discards from `package-lock.json` is recorded in [npm.md's vocabulary registry](npm.md#vocabulary-registry-npm-v12-parity-map-recorded-2026-07-14).
+
+**Gate (branch `feat/lockfiles-importers`):** lockfiles' suite at 83/83, `dist/prod/issues.json` `0/0/11` (all eleven in the `_base` suppressed bucket), biome and typecheck clean; downstream `@effected/workspaces` unchanged at 174/174.
 
 ## Hardening
 

@@ -15,6 +15,31 @@ import { CatalogResolver } from "./CatalogResolver.js";
 import { WorkspaceResolver } from "./WorkspaceResolver.js";
 
 export { CatalogResolver } from "./CatalogResolver.js";
+export {
+	DependencyField,
+	DependencyKind,
+	DependencySection,
+} from "./DependencySection.js";
+export {
+	CatalogSpecifier,
+	type ClassifiedSpecifier,
+	type DependencyProtocol,
+	DependencySpecifier,
+	type DependencySpecifierBrand,
+	DistTagSpecifier,
+	InvalidDependencySpecifierError,
+	RangeSpecifier,
+	RawSpecifier,
+	WorkspaceSpecifier,
+	isValidDependencySpecifier,
+} from "./DependencySpecifier.js";
+export {
+	type IntegrityAlgorithm,
+	IntegrityHash,
+	type IntegrityHashBrand,
+	InvalidIntegrityHashError,
+	isValidIntegrityHash,
+} from "./IntegrityHash.js";
 export { DependencyResolutionError, WorkspaceResolver } from "./WorkspaceResolver.js";
 
 /**
