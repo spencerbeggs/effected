@@ -19,6 +19,7 @@ import { PublishabilityDetector } from "./Publishability.js";
 import { WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
+import { WorkspaceSnapshots } from "./WorkspaceSnapshots.js";
 
 /**
  * Options shared by the composite layers.
@@ -90,14 +91,14 @@ const layer = (
 };
 
 /**
- * The git-free composite plus {@link ChangeDetector}, over `@effected/git`'s
- * `Git` service.
+ * The git-free composite plus {@link ChangeDetector} and
+ * {@link WorkspaceSnapshots}, over `@effected/git`'s `Git` service.
  *
  * @remarks
  * The extra requirement is core's `ChildProcessSpawner` (behind `Git`), which
  * is why it is a separate layer rather than a flag: a consumer that never
- * detects changes should not have to be able to spawn a subprocess. The
- * consumer provides `ChildProcessSpawner` once at the edge
+ * detects changes or reads at a ref should not have to be able to spawn a
+ * subprocess. The consumer provides `ChildProcessSpawner` once at the edge
  * (`@effect/platform-node`'s `NodeServices.layer`); a test provides
  * `Layer.succeed(Git, …)` and needs no repository on disk.
  *
@@ -106,13 +107,18 @@ const layer = (
 const layerWithGit = (
 	options?: WorkspacesOptions,
 ): Layer.Layer<
-	WorkspacesServices | ChangeDetector | Git,
+	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
 	never,
 	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
 > => {
 	const core = layer(options);
 	const git = Git.layer;
-	return Layer.mergeAll(core, git, ChangeDetector.layer.pipe(Layer.provide(git), Layer.provide(core)));
+	return Layer.mergeAll(
+		core,
+		git,
+		ChangeDetector.layer.pipe(Layer.provide(git), Layer.provide(core)),
+		WorkspaceSnapshots.layer(options).pipe(Layer.provide(git), Layer.provide(core)),
+	);
 };
 
 /**

@@ -71,6 +71,14 @@ export {
 } from "./WorkspaceDiscovery.js";
 export { type DependencyDiff, PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
 export { WORKSPACE_MARKERS, WorkspaceRoot, WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
+export {
+	type WorkspaceSnapshotAtFailure,
+	type WorkspaceSnapshotWorktreeFailure,
+	WorkspaceSnapshots,
+	type WorkspaceSnapshotsOptions,
+	type WorkspaceSnapshotsShape,
+} from "./WorkspaceSnapshots.js";
+export { PackageStateSnapshot, WorkspaceStateSnapshot } from "./WorkspaceStateSnapshot.js";
 export { Workspaces, type WorkspacesOptions, type WorkspacesServices } from "./Workspaces.js";
 export {
 	type GetWorkspacePackagesSyncOptions,
