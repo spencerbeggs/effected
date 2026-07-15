@@ -181,24 +181,51 @@ describe("Git", () => {
 			}),
 		);
 
-		it.effect("passes --relative to BOTH diff queries when relative is true, but not to ls-files", () =>
+		// Captures the argv of every spawned command for one workingChanges run.
+		const argvOf = (options: { readonly relative?: boolean }) =>
 			Effect.gen(function* () {
 				const seen: Array<ReadonlyArray<string>> = [];
 				const program = Effect.gen(function* () {
 					const git = yield* Git;
-					return yield* git.workingChanges(cwd, { relative: true });
+					return yield* git.workingChanges(cwd, options);
 				});
 				yield* run(program, (args) => {
 					seen.push([...args]);
 					return { stdout: "", exit: 0 };
 				});
-				const diffs = seen.filter((args) => args[0] === "diff");
-				const lsFiles = seen.filter((args) => args[0] === "ls-files");
-				assert.strictEqual(diffs.length, 2);
-				assert.isTrue(diffs.every((args) => args.includes("--relative")));
-				assert.strictEqual(lsFiles.length, 1);
-				assert.isFalse(lsFiles[0]?.includes("--relative"));
-			}),
+				return {
+					diffs: seen.filter((args) => args[0] === "diff"),
+					lsFiles: seen.filter((args) => args[0] === "ls-files"),
+				};
+			});
+
+		it.effect(
+			"relative:true — BOTH diffs carry --relative and ls-files is cwd-relative (no --relative, no --full-name)",
+			() =>
+				Effect.gen(function* () {
+					const { diffs, lsFiles } = yield* argvOf({ relative: true });
+					assert.strictEqual(diffs.length, 2);
+					// All three sources share the cwd-relative base: --relative on the diffs,
+					// plain ls-files (which is cwd-relative by default).
+					assert.isTrue(diffs.every((args) => args.includes("--relative")));
+					assert.strictEqual(lsFiles.length, 1);
+					assert.isFalse(lsFiles[0]?.includes("--relative"));
+					assert.isFalse(lsFiles[0]?.includes("--full-name"));
+				}),
+		);
+
+		it.effect(
+			"relative:false — NEITHER diff carries --relative and ls-files gets --full-name (all three repo-root-relative)",
+			() =>
+				Effect.gen(function* () {
+					const { diffs, lsFiles } = yield* argvOf({ relative: false });
+					assert.strictEqual(diffs.length, 2);
+					// All three sources share the repo-root base: no --relative on the diffs,
+					// --full-name on ls-files (which would otherwise be cwd-relative).
+					assert.isTrue(diffs.every((args) => !args.includes("--relative")));
+					assert.strictEqual(lsFiles.length, 1);
+					assert.isTrue(lsFiles[0]?.includes("--full-name"));
+				}),
 		);
 
 		it.effect("surfaces NotARepositoryError when cwd is not a repository", () =>

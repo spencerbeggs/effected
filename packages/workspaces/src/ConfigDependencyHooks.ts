@@ -65,6 +65,14 @@ export interface ConfigDependencyHooksShape {
 const isObject = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
+/**
+ * Whether a config-dependency `name` carries a `..` path segment. A scoped name
+ * legitimately contains `/` (`@scope/pkg`), so only a `..` *segment* is rejected —
+ * it would traverse out of `.pnpm-config` and feed an attacker-chosen path to the
+ * dynamic `import()` below.
+ */
+const hasTraversalSegment = (name: string): boolean => name.split(/[/\\]/).includes("..");
+
 /** Turn the seed record into the pnpm hook config, with the default catalog split out under `catalog`. */
 const seedToConfig = (seed: Readonly<Record<string, Readonly<Record<string, string>>>>): HookConfig => {
 	const catalogs: Record<string, Record<string, string>> = {};
@@ -155,6 +163,18 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 
 				let config = seedToConfig(seed);
 				for (const name of names) {
+					// Validate the name BEFORE building the path it feeds to `import()`: a
+					// `..` segment would escape `.pnpm-config`. Fails typed, on the same
+					// `hooks`-source path as a load/replay failure — never a silent skip.
+					if (hasTraversalSegment(name)) {
+						return yield* Effect.fail(
+							new CatalogAssemblyError({
+								source: "hooks",
+								path: name,
+								cause: new Error(`config dependency name has a '..' path segment: ${name}`),
+							}),
+						);
+					}
 					const pnpmfilePath = join(root, "node_modules", ".pnpm-config", name, "pnpmfile.cjs");
 					// An absent pnpmfile is not a failure — not every config dependency
 					// ships one. A present one that fails to load or replay IS a failure.

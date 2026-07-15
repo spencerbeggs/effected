@@ -180,6 +180,44 @@ describe("WorkspaceSnapshots — at('HEAD') and worktree() parity on a clean tre
 	});
 });
 
+// ── bun inline catalogs at a ref with NO bun.lock: at('HEAD') vs worktree() ──
+//
+// A bun-style workspace declares its catalogs in the root `package.json`
+// `workspaces.catalog` block and has NO committed `bun.lock` at the ref.
+// `worktree()` reads the inline block unconditionally (via `fromManifestWorkspaces`);
+// gating the at-ref inline read on `bun.lock` presence reintroduced c594ff1 one
+// layer up — the two snapshots disagreed, and a consumer diffing them saw every
+// catalog dependency as newly added. Against the pre-fix (gated) code the inline
+// read returns empty, so this parity assertion fails.
+
+const bunNoLockTree: Tree = {
+	"/repo/package.json": JSON.stringify({
+		name: "root",
+		version: "0.0.0",
+		private: true,
+		packageManager: "bun@1.2.0",
+		workspaces: { packages: ["packages/*"], catalog: { effect: "^4.0.0" } },
+	}),
+	"/repo/packages/alpha/package.json": manifest("@x/alpha", { dependencies: { effect: "catalog:" } }),
+};
+
+describe("WorkspaceSnapshots — bun inline catalogs at a ref with NO bun.lock (parity)", () => {
+	layer(snapshotsLayer(scriptGit(refFromTree(bunNoLockTree)), bunNoLockTree))((it) => {
+		it.effect("at('HEAD') reads inline bun catalogs without a lockfile, matching worktree()", () =>
+			Effect.gen(function* () {
+				const snapshots = yield* WorkspaceSnapshots;
+				const atHead = yield* snapshots.at("HEAD");
+				const worktree = yield* snapshots.worktree();
+				// The two catalog sets must agree — the gated code returned an EMPTY set
+				// from at('HEAD') while worktree() carried `effect: ^4.0.0`.
+				assert.deepStrictEqual(atHead.catalogs.entries, worktree.catalogs.entries);
+				assert.deepStrictEqual(atHead.resolve("effect", "catalog:"), Option.some("^4.0.0"));
+				assert.deepStrictEqual(worktree.resolve("effect", "catalog:"), Option.some("^4.0.0"));
+			}),
+		);
+	});
+});
+
 // ── TTL-cache discipline: a failed at(ref) init is RETRIED, not memoized ─────
 
 describe("WorkspaceSnapshots.at — a failed init is retried", () => {

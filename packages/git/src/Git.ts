@@ -372,7 +372,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		yield* Effect.annotateCurrentSpan({ cwd, relative });
 		const unstaged = yield* collectPaths(ChildProcess.setCwd(GitCommand.unstagedChanges(relative), cwd), cwd);
 		const staged = yield* collectPaths(ChildProcess.setCwd(GitCommand.stagedChanges(relative), cwd), cwd);
-		const untracked = yield* collectPaths(ChildProcess.setCwd(GitCommand.untrackedFiles(), cwd), cwd);
+		const untracked = yield* collectPaths(ChildProcess.setCwd(GitCommand.untrackedFiles(relative), cwd), cwd);
 		return [...new Set([...unstaged, ...staged, ...untracked])];
 	});
 

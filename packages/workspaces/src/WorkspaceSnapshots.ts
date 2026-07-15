@@ -244,14 +244,16 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						// and a consumer diffing two snapshots sees every declared dependency
 						// as newly added.
 						patterns = manifestPatternsOf(rootManifest);
-						const bunLockText = yield* git.show(root, ref, "bun.lock");
-						if (Option.isSome(bunLockText)) {
-							inline = bunInlineCatalogs(rootManifest);
-							fromLockfile = yield* lockfileCatalogs(root, ref, "bun");
-						} else {
-							inline = CatalogSet.empty();
-							fromLockfile = CatalogSet.empty();
-						}
+						// Inline catalogs come from the root manifest UNCONDITIONALLY: a bun
+						// workspace declaring `workspaces.catalog`/`.catalogs` with no committed
+						// `bun.lock` at the ref still has catalogs, and gating them on the
+						// lockfile reintroduced c594ff1 one layer up — `at(ref)` and
+						// `worktree()` (which reads inline via `fromManifestWorkspaces`
+						// regardless of any lockfile) would disagree. `bunInlineCatalogs` is
+						// tolerant: an npm/yarn array-form `workspaces` yields empty. The
+						// lockfile half degrades the absent `bun.lock` to empty on `Option.none`.
+						inline = bunInlineCatalogs(rootManifest);
+						fromLockfile = yield* lockfileCatalogs(root, ref, "bun");
 					}
 
 					// Precedence follows the live assembler: lockfile record first, inline

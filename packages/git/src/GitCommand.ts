@@ -102,16 +102,20 @@ const stagedChanges = (relative = false): ChildProcess.StandardCommand =>
 	git(["diff", "--name-only", "-z", ...(relative ? ["--relative"] : []), "--cached"]);
 
 /**
- * `git ls-files --others --exclude-standard -z` — the untracked paths git is
- * not ignoring, NUL-terminated.
+ * `git ls-files --others --exclude-standard -z [--full-name]` — the untracked
+ * paths git is not ignoring, NUL-terminated.
  *
  * @remarks
- * `ls-files` already reports paths relative to `cwd`, so there is no
- * `--relative` toggle to apply here.
+ * `ls-files` reports paths relative to `cwd` by default, matching the
+ * `--relative` diffs. When `relative` is `false`, `--full-name` makes it emit
+ * repo-root-relative paths instead, so the untracked half shares a base with the
+ * un-`--relative` diffs — otherwise `Git.workingChanges`'s union would dedup two
+ * spellings of one file from a nested `cwd`.
  *
  * @public
  */
-const untrackedFiles = (): ChildProcess.StandardCommand => git(["ls-files", "--others", "--exclude-standard", "-z"]);
+const untrackedFiles = (relative = false): ChildProcess.StandardCommand =>
+	git(["ls-files", "--others", "--exclude-standard", "-z", ...(relative ? [] : ["--full-name"])]);
 
 /**
  * `git rev-parse --verify <ref>` — resolves `ref` to its full object id, or

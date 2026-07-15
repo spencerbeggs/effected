@@ -60,8 +60,11 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.stagedChanges(true), ["diff", "--name-only", "-z", "--relative", "--cached"]);
 	});
 
-	it("untrackedFiles builds `git ls-files --others --exclude-standard -z`", () => {
-		assertGitCommand(GitCommand.untrackedFiles(), ["ls-files", "--others", "--exclude-standard", "-z"]);
+	it("untrackedFiles builds `git ls-files --others --exclude-standard -z`, adding --full-name when NOT relative", () => {
+		// Default (repo-root-relative, matching the un-`--relative` diffs) carries
+		// --full-name; the cwd-relative form (matching the --relative diffs) omits it.
+		assertGitCommand(GitCommand.untrackedFiles(), ["ls-files", "--others", "--exclude-standard", "-z", "--full-name"]);
+		assertGitCommand(GitCommand.untrackedFiles(true), ["ls-files", "--others", "--exclude-standard", "-z"]);
 	});
 
 	it("revParse builds `git rev-parse --verify <ref>`", () => {
