@@ -33,10 +33,15 @@ backend.
   `mergeBase`, `changedFiles`, `unstagedChanges`, `stagedChanges`,
   `untrackedFiles`, `revParse`, `checkout`) returning core
   `ChildProcess.StandardCommand` values. `changedFiles` and the three
-  working-tree constructors take a `relative` flag: `true` adds `--relative`
-  to the diffs; `untrackedFiles` inverts it — `false` adds `--full-name` so
-  its `ls-files` output shares the un-`--relative` diffs' repo-root base (see
-  `workingChanges`). Every one is cwd-less: the private
+  working-tree diff constructors take a `relative` flag whose diff flag is
+  **explicit in both branches** — `true` passes `--relative`, `false` passes
+  `--no-relative`. The `--no-relative` is load-bearing: git honors a configured
+  `diff.relative=true` when no flag is passed, so an omitted flag would yield
+  cwd-relative paths on such a machine even for `relative: false`, breaking the
+  repo-root alignment `workingChanges` dedups on. `untrackedFiles` inverts the
+  flag — `false` adds `--full-name` so its `ls-files` output shares the
+  `--no-relative` diffs' repo-root base (see `workingChanges`). Every one is
+  cwd-less: the private
   `git` helper pins `{ env: { LC_ALL: "C" }, extendEnv: true }` and nothing
   else. `Git` applies `cwd` per call via `ChildProcess.setCwd`, which is dual
   and returns a **new** command, leaving the pure constructor's value

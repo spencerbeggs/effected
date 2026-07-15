@@ -205,9 +205,10 @@ describe("Git", () => {
 				Effect.gen(function* () {
 					const { diffs, lsFiles } = yield* argvOf({ relative: true });
 					assert.strictEqual(diffs.length, 2);
-					// All three sources share the cwd-relative base: --relative on the diffs,
-					// plain ls-files (which is cwd-relative by default).
+					// All three sources share the cwd-relative base: --relative on the diffs
+					// (and never --no-relative), plain ls-files (which is cwd-relative by default).
 					assert.isTrue(diffs.every((args) => args.includes("--relative")));
+					assert.isTrue(diffs.every((args) => !args.includes("--no-relative")));
 					assert.strictEqual(lsFiles.length, 1);
 					assert.isFalse(lsFiles[0]?.includes("--relative"));
 					assert.isFalse(lsFiles[0]?.includes("--full-name"));
@@ -215,13 +216,16 @@ describe("Git", () => {
 		);
 
 		it.effect(
-			"relative:false — NEITHER diff carries --relative and ls-files gets --full-name (all three repo-root-relative)",
+			"relative:false — BOTH diffs carry an explicit --no-relative and ls-files gets --full-name (all three repo-root-relative)",
 			() =>
 				Effect.gen(function* () {
 					const { diffs, lsFiles } = yield* argvOf({ relative: false });
 					assert.strictEqual(diffs.length, 2);
-					// All three sources share the repo-root base: no --relative on the diffs,
-					// --full-name on ls-files (which would otherwise be cwd-relative).
+					// All three sources share the repo-root base: an EXPLICIT --no-relative on
+					// the diffs (so an inherited diff.relative=true cannot make them
+					// cwd-relative), and --full-name on ls-files (which would otherwise be
+					// cwd-relative).
+					assert.isTrue(diffs.every((args) => args.includes("--no-relative")));
 					assert.isTrue(diffs.every((args) => !args.includes("--relative")));
 					assert.strictEqual(lsFiles.length, 1);
 					assert.isTrue(lsFiles[0]?.includes("--full-name"));

@@ -17,10 +17,9 @@
 // hooks operate on is the plain `catalog name → dependency → range` record, and
 // the only normalization borrowed here is the prototype-safe `normalize`.
 
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Context, Effect, Layer, Predicate } from "effect";
+import { Context, Effect, Layer, Predicate, Result } from "effect";
 import { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 import type { CatalogEntries } from "./internal/catalogs.js";
 import { normalize } from "./internal/catalogs.js";
@@ -64,6 +63,15 @@ export interface ConfigDependencyHooksShape {
 /** Whether `value` is a non-null, non-array object. */
 const isObject = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Whether a dynamic-`import()` failure is Node's "module not found"
+ * (`ERR_MODULE_NOT_FOUND`) — the case of a config dependency that ships no
+ * `pnpmfile.cjs`, the one legitimate skip. Any other load failure (a syntax
+ * error, a throwing top-level, a permission error on a present file) has no such
+ * code and must surface typed.
+ */
+const isModuleNotFound = (cause: unknown): boolean => isObject(cause) && cause.code === "ERR_MODULE_NOT_FOUND";
 
 /**
  * Whether a config-dependency `name` carries a `..` path segment. A scoped name
@@ -176,15 +184,21 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 						);
 					}
 					const pnpmfilePath = join(root, "node_modules", ".pnpm-config", name, "pnpmfile.cjs");
-					// An absent pnpmfile is not a failure — not every config dependency
-					// ships one. A present one that fails to load or replay IS a failure.
-					if (!existsSync(pnpmfilePath)) continue;
-
-					const mod = yield* Effect.tryPromise({
-						try: () => import(pathToFileURL(pnpmfilePath).href) as Promise<unknown>,
-						catch: (cause) => new CatalogAssemblyError({ source: "hooks", path: name, cause }),
-					});
-					const updateConfig = updateConfigOf(mod);
+					// Attempt the dynamic import directly — NO existsSync precheck, which
+					// returns false for an existing-but-inaccessible file and would silently
+					// skip its hook. A genuine ERR_MODULE_NOT_FOUND means the dependency ships
+					// no pnpmfile (the legitimate skip); any OTHER load failure IS a failure.
+					const loaded = yield* Effect.result(
+						Effect.tryPromise({
+							try: () => import(pathToFileURL(pnpmfilePath).href) as Promise<unknown>,
+							catch: (cause) => cause,
+						}),
+					);
+					if (Result.isFailure(loaded)) {
+						if (isModuleNotFound(loaded.failure)) continue;
+						return yield* Effect.fail(new CatalogAssemblyError({ source: "hooks", path: name, cause: loaded.failure }));
+					}
+					const updateConfig = updateConfigOf(loaded.success);
 					if (updateConfig === undefined) continue;
 
 					const currentConfig = config;

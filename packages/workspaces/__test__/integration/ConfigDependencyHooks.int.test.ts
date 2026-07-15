@@ -4,17 +4,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
-import { CatalogAssemblyError, ConfigDependencyHooks, WorkspaceCatalogs, Workspaces } from "../src/index.js";
-import type { Tree } from "./fixtures.js";
-import { manifest, platform } from "./fixtures.js";
+import { CatalogAssemblyError, ConfigDependencyHooks, WorkspaceCatalogs, Workspaces } from "../../src/index.js";
+import type { Tree } from "../fixtures.js";
+import { manifest, platform } from "../fixtures.js";
 
 // The hook-replay seam is inherently real-filesystem: the live layer dynamically
-// `import()`s a `pnpmfile.cjs`. So this suite builds a temp workspace root with a
-// real `node_modules/.pnpm-config/<name>/pnpmfile.cjs` (node_modules is
-// gitignored, so it cannot be committed) by copying the committed fixture module,
-// and points the config-dependency resolution at it.
+// `import()`s a `pnpmfile.cjs`, driving Node's module loader over disk fixtures.
+// That makes this an INTEGRATION suite, not a virtual-FS unit test. It builds a
+// temp workspace root with a real `node_modules/.pnpm-config/<name>/pnpmfile.cjs`
+// (node_modules is gitignored, so it cannot be committed) by copying the
+// committed fixture module, and points the config-dependency resolution at it.
 
-const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "hook-pnpmfile.cjs");
+const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "hook-pnpmfile.cjs");
 const DEP_NAME = "cfg-fixture";
 const SEED = { default: { effect: "^4.0.0" } } as const;
 
@@ -58,8 +59,8 @@ describe("ConfigDependencyHooks.layerLive — replays the pnpmfile", () => {
 	it.effect("a config dependency with no pnpmfile contributes nothing, not a failure", () =>
 		Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			// `absent-dep` has no `.pnpm-config/absent-dep/pnpmfile.cjs`, so it is
-			// skipped; the seed passes through unchanged.
+			// `absent-dep` has no `.pnpm-config/absent-dep/pnpmfile.cjs`, so the import
+			// fails ERR_MODULE_NOT_FOUND and it is skipped; the seed passes through unchanged.
 			const result = yield* hooks.inject(root, { "absent-dep": "1.0.0" }, SEED);
 			assert.deepStrictEqual(result, SEED);
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),

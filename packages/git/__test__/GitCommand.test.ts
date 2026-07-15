@@ -36,11 +36,19 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.mergeBase("main", "feat/git"), ["merge-base", "main", "feat/git"]);
 	});
 
-	it("changedFiles builds `git diff --name-only -z <base>...<head>`", () => {
-		assertGitCommand(GitCommand.changedFiles("main", "feat/git"), ["diff", "--name-only", "-z", "main...feat/git"]);
+	it("changedFiles builds `git diff --name-only -z --no-relative <base>...<head>`", () => {
+		// --no-relative is explicit on the default branch so an inherited
+		// diff.relative=true config cannot silently make the output cwd-relative.
+		assertGitCommand(GitCommand.changedFiles("main", "feat/git"), [
+			"diff",
+			"--name-only",
+			"-z",
+			"--no-relative",
+			"main...feat/git",
+		]);
 	});
 
-	it("changedFiles with relative adds --relative before the range", () => {
+	it("changedFiles with relative passes --relative before the range", () => {
 		assertGitCommand(GitCommand.changedFiles("main", "feat/git", true), [
 			"diff",
 			"--name-only",
@@ -50,13 +58,13 @@ describe("GitCommand", () => {
 		]);
 	});
 
-	it("unstagedChanges builds `git diff --name-only -z`, adding --relative when asked", () => {
-		assertGitCommand(GitCommand.unstagedChanges(), ["diff", "--name-only", "-z"]);
+	it("unstagedChanges builds `git diff --name-only -z`, with an explicit --no-relative/--relative", () => {
+		assertGitCommand(GitCommand.unstagedChanges(), ["diff", "--name-only", "-z", "--no-relative"]);
 		assertGitCommand(GitCommand.unstagedChanges(true), ["diff", "--name-only", "-z", "--relative"]);
 	});
 
-	it("stagedChanges builds `git diff --name-only -z --cached`, adding --relative when asked", () => {
-		assertGitCommand(GitCommand.stagedChanges(), ["diff", "--name-only", "-z", "--cached"]);
+	it("stagedChanges builds `git diff --name-only -z --cached`, with an explicit --no-relative/--relative", () => {
+		assertGitCommand(GitCommand.stagedChanges(), ["diff", "--name-only", "-z", "--no-relative", "--cached"]);
 		assertGitCommand(GitCommand.stagedChanges(true), ["diff", "--name-only", "-z", "--relative", "--cached"]);
 	});
 

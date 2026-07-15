@@ -216,6 +216,75 @@ const malformed = (source: "manifest" | "catalog", path: string, detail: string)
 	new CatalogAssemblyError({ source, path, cause: new Error(detail) });
 
 /**
+ * Validate a `catalog` (default) / `catalogs` (named) block pair, hard-failing on
+ * a malformed shape or the default catalog declared twice.
+ *
+ * @remarks
+ * Shared by the bun `package.json` `workspaces` reader
+ * ({@link CatalogSet.fromManifestWorkspaces}) and the pnpm `pnpm-workspace.yaml`
+ * reader, so both fail typed on exactly the same conditions rather than one
+ * hard-failing and the other silently normalizing to `{}` — the "every dependency
+ * looks newly added" bug. `labels` names the two blocks in the diagnostics so the
+ * error reads in the caller's vocabulary (`workspaces.catalog` vs. `catalog`).
+ */
+const validatedCatalogBlocks = (
+	catalog: unknown,
+	catalogs: unknown,
+	labels: { readonly catalog: string; readonly catalogs: string },
+): Effect.Effect<
+	{ readonly catalog?: Record<string, string>; readonly catalogs?: Record<string, Record<string, string>> },
+	CatalogAssemblyError
+> => {
+	let validCatalog: Record<string, string> | undefined;
+	if (catalog !== undefined && catalog !== null) {
+		if (!isStringRecord(catalog)) {
+			return Effect.fail(
+				malformed("catalog", labels.catalog, `"${labels.catalog}" must map dependency names to version strings`),
+			);
+		}
+		validCatalog = catalog;
+	}
+
+	let validCatalogs: Record<string, Record<string, string>> | undefined;
+	if (catalogs !== undefined && catalogs !== null) {
+		if (!isObject(catalogs)) {
+			return Effect.fail(
+				malformed("catalog", labels.catalogs, `"${labels.catalogs}" must map catalog names to catalogs`),
+			);
+		}
+		for (const [name, entries] of Object.entries(catalogs)) {
+			if (!isStringRecord(entries)) {
+				return Effect.fail(
+					malformed(
+						"catalog",
+						`${labels.catalogs}.${name}`,
+						`"${labels.catalogs}.${name}" must map dependency names to version strings`,
+					),
+				);
+			}
+		}
+		validCatalogs = catalogs as Record<string, Record<string, string>>;
+	}
+
+	// The default catalog declared twice — pnpm rejects the equivalent
+	// duplication. Structural presence: an explicit `catalog: {}` still counts.
+	if (validCatalog !== undefined && validCatalogs !== undefined && "default" in validCatalogs) {
+		return Effect.fail(
+			malformed(
+				"catalog",
+				"default",
+				`The default catalog is declared twice: as "${labels.catalog}" and as "${labels.catalogs}.default"`,
+			),
+		);
+	}
+
+	return Effect.succeed({
+		...(validCatalog !== undefined ? { catalog: validCatalog } : {}),
+		...(validCatalogs !== undefined ? { catalogs: validCatalogs } : {}),
+	});
+};
+
+/**
  * The `catalog` / `catalogs` blocks of a root `package.json` `workspaces` field,
  * hard-failing on a malformed shape or the default catalog declared twice.
  */
@@ -240,53 +309,30 @@ const manifestCatalogBlocks = (
 		}
 	}
 
-	let catalog: Record<string, string> | undefined;
-	if (workspaces.catalog !== undefined && workspaces.catalog !== null) {
-		if (!isStringRecord(workspaces.catalog)) {
-			return Effect.fail(
-				malformed("catalog", "workspaces.catalog", `"workspaces.catalog" must map dependency names to version strings`),
-			);
-		}
-		catalog = workspaces.catalog;
-	}
-
-	let catalogs: Record<string, Record<string, string>> | undefined;
-	if (workspaces.catalogs !== undefined && workspaces.catalogs !== null) {
-		if (!isObject(workspaces.catalogs)) {
-			return Effect.fail(
-				malformed("catalog", "workspaces.catalogs", `"workspaces.catalogs" must map catalog names to catalogs`),
-			);
-		}
-		for (const [name, entries] of Object.entries(workspaces.catalogs)) {
-			if (!isStringRecord(entries)) {
-				return Effect.fail(
-					malformed(
-						"catalog",
-						`workspaces.catalogs.${name}`,
-						`"workspaces.catalogs.${name}" must map dependency names to version strings`,
-					),
-				);
-			}
-		}
-		catalogs = workspaces.catalogs as Record<string, Record<string, string>>;
-	}
-
-	// The default catalog declared twice — pnpm rejects the equivalent
-	// duplication. Structural presence: an explicit `catalog: {}` still counts.
-	if (catalog !== undefined && catalogs !== undefined && "default" in catalogs) {
-		return Effect.fail(
-			malformed(
-				"catalog",
-				"default",
-				`The default catalog is declared twice: as "workspaces.catalog" and as "workspaces.catalogs.default"`,
-			),
-		);
-	}
-
-	return Effect.succeed({
-		...(catalog !== undefined ? { catalog } : {}),
-		...(catalogs !== undefined ? { catalogs } : {}),
+	return validatedCatalogBlocks(workspaces.catalog, workspaces.catalogs, {
+		catalog: "workspaces.catalog",
+		catalogs: "workspaces.catalogs",
 	});
+};
+
+/**
+ * Validate the inline `catalog` / `catalogs` blocks of a parsed
+ * `pnpm-workspace.yaml` document, hard-failing on the same malformed-shape and
+ * duplicate-default conditions as the bun `package.json` path.
+ *
+ * @remarks
+ * The live pnpm reader in {@link WorkspaceCatalogs.make} runs this BEFORE
+ * normalizing with `inlineCatalogs`, so an invalid inline catalog fails typed
+ * rather than normalizing to `{}` and reading as ABSENT. A non-object document,
+ * or one with no catalog blocks, validates to `{}` — absent/empty still yields
+ * empty. The return is discarded; normalization stays on the shared
+ * `inlineCatalogs` path.
+ */
+const validatePnpmWorkspaceCatalogs = (document: unknown): Effect.Effect<void, CatalogAssemblyError> => {
+	if (!isObject(document)) return Effect.void;
+	return Effect.asVoid(
+		validatedCatalogBlocks(document.catalog, document.catalogs, { catalog: "catalog", catalogs: "catalogs" }),
+	);
 };
 
 /**
@@ -368,6 +414,25 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
 
+			// A file-presence probe that distinguishes genuine absence from a probe
+			// FAILURE. `fs.exists` already normalizes a NotFound PlatformError to
+			// `false`, so any error that escapes it (a permission or IO failure) is a
+			// genuine probe failure — surfacing it typed rather than collapsing it to
+			// "absent" is what keeps a locked-down `pnpm-workspace.yaml` from silently
+			// selecting the package.json reader (a silently-empty catalog is the "every
+			// dependency looks newly added" bug). The explicit NotFound arm is
+			// belt-and-suspenders for a backend whose `exists` surfaces NotFound.
+			const probeExists = (target: string): Effect.Effect<boolean, CatalogAssemblyError> =>
+				fs
+					.exists(target)
+					.pipe(
+						Effect.catchTag("PlatformError", (error) =>
+							error.reason._tag === "NotFound"
+								? Effect.succeed(false)
+								: Effect.fail(new CatalogAssemblyError({ source: "manifest", path: target, cause: error })),
+						),
+					);
+
 			const assemble: Effect.Effect<CatalogSet, CatalogAssemblyFailure> = Effect.gen(function* () {
 				const root = yield* Effect.suspend(() => roots.find(options?.cwd ?? process.cwd()));
 
@@ -383,7 +448,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				// enumerator uses: pnpm-workspace.yaml → the pnpm path (config
 				// dependencies live only here); absent → the package.json path.
 				const workspaceYaml = path.join(root, "pnpm-workspace.yaml");
-				const hasPnpmWorkspace = yield* fs.exists(workspaceYaml).pipe(Effect.orElseSucceed(() => false));
+				const hasPnpmWorkspace = yield* probeExists(workspaceYaml);
 
 				let inline: CatalogSet;
 				let injected: CatalogSet;
@@ -398,6 +463,11 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 							(cause) => new CatalogAssemblyError({ source: "manifest", path: "pnpm-workspace.yaml", cause }),
 						),
 					);
+					// Validate the inline shape BEFORE normalizing: a malformed catalog block
+					// or the default catalog declared twice must fail typed here, exactly as
+					// the bun package.json path does — normalization would otherwise swallow
+					// it and read as an ABSENT catalog. Absent/empty catalogs still yield empty.
+					yield* validatePnpmWorkspaceCatalogs(document);
 					inline = CatalogSet.fromCatalogs(inlineCatalogs(catalogBlocksOf(document)));
 					// The opt-in hook replay, seeded by the inline catalogs and merged on
 					// top. The default layer's no-op hooks return the seed untouched, so
