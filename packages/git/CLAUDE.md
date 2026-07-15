@@ -3,8 +3,9 @@
 Typed git introspection over core's `ChildProcessSpawner`: read a repository's
 state at any ref without checking it out, plus `checkout`, the one mutating
 operation. The nineteenth library package, created inside the monorepo for the
-point-in-time port rather than migrated from a v3 source repo; it absorbs the
-git half of workspaces' `GitReader`, which dissolves in the workspaces piece.
+point-in-time port rather than migrated from a v3 source repo; it absorbed the
+git half of workspaces' `GitReader`, which is now gone — `@effected/workspaces`
+runs `ChangeDetector` and `WorkspaceSnapshots` on this package's `Git`.
 
 **Design doc:** `@../../.claude/design/effected/packages/git.md`
 
@@ -28,9 +29,14 @@ backend.
 
 ## Three source modules
 
-- `GitCommand.ts` — seven pure constructors (`show`, `lsTree`, `refExists`,
-  `mergeBase`, `changedFiles`, `revParse`, `checkout`) returning core
-  `ChildProcess.StandardCommand` values. Every one is cwd-less: the private
+- `GitCommand.ts` — ten pure constructors (`show`, `lsTree`, `refExists`,
+  `mergeBase`, `changedFiles`, `unstagedChanges`, `stagedChanges`,
+  `untrackedFiles`, `revParse`, `checkout`) returning core
+  `ChildProcess.StandardCommand` values. `changedFiles` and the three
+  working-tree constructors take a `relative` flag: `true` adds `--relative`
+  to the diffs; `untrackedFiles` inverts it — `false` adds `--full-name` so
+  its `ls-files` output shares the un-`--relative` diffs' repo-root base (see
+  `workingChanges`). Every one is cwd-less: the private
   `git` helper pins `{ env: { LC_ALL: "C" }, extendEnv: true }` and nothing
   else. `Git` applies `cwd` per call via `ChildProcess.setCwd`, which is dual
   and returns a **new** command, leaving the pure constructor's value
@@ -38,9 +44,9 @@ backend.
 - `internal/run.ts` — `runCollected` (scoped `spawner.spawn` + `Effect.all`
   over `[stdout, stderr, exitCode]` with `{ concurrency: "unbounded" }`) and
   `available`. **Not exported** from the package. `Git.ts` consumes
-  `runCollected` only; `available` currently has no production consumer — it
-  is staged for the workspaces piece (GitReader's `available(cwd)` parity),
-  kept deliberately with its tests rather than deleted-and-reintroduced.
+  `runCollected` only; `available` has no production consumer — its intended
+  caller `GitReader` dissolved without needing it, and it is kept deliberately
+  with its tests rather than deleted-and-reintroduced.
 - `Git.ts` — the `Context.Service` (tag id `"@effected/git/Git"`), the error
   taxonomy (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`), and
   the private `classify`/`runClassified` pair where git's stderr/exit-code
@@ -110,12 +116,25 @@ including a never-spawn mock proving rejection happens pre-spawn.
 
 ## The `-z` rule
 
-`lsTree` and `changedFiles` **always** use `-z` (NUL-terminated output) and
-split on `"\0"` via the shared `parseNulSeparated` helper — never on `"\n"`.
-git paths may themselves contain newlines; a newline-split parse would
-silently corrupt any path containing one. Both `GitCommand.lsTree` and
-`GitCommand.changedFiles` bake `-z` into the argv unconditionally — there is
-no non-`-z` code path to regress into.
+`lsTree`, `changedFiles` and the three working-tree constructors
+(`unstagedChanges`/`stagedChanges`/`untrackedFiles`) **always** use `-z`
+(NUL-terminated output) and split on `"\0"` via the shared `parseNulSeparated`
+helper — never on `"\n"`. git paths may themselves contain newlines; a
+newline-split parse would silently corrupt any path containing one. Every one
+bakes `-z` into the argv unconditionally — there is no non-`-z` code path to
+regress into.
+
+## workingChanges is the deduplicated union
+
+`Git.workingChanges(cwd, { relative? })` runs `unstagedChanges`,
+`stagedChanges` and `untrackedFiles` and returns `[...new Set(...)]` of their
+paths — the full working-tree delta against `HEAD`. It takes no ref, so
+`UnknownRefError` cannot arise (the arm stays declared for switch
+exhaustiveness). The `relative`/`--full-name` inversion on `untrackedFiles`
+exists precisely so the `Set` dedups: from a nested `cwd` the diffs and
+`ls-files` must share one path base, or one file appears under two spellings.
+`ChangeDetector`'s `includeUncommitted` path consumes this with
+`relative: true`.
 
 ## checkout is the one mutation
 
@@ -127,13 +146,14 @@ caller: it is not safe to run concurrently with other work against the same
 
 ## Testing and building
 
-50 tests in `__test__/`: 8 `GitCommand` (pure constructor shape + the
-`setCwd` non-mutation guarantee), 7 `internal/run` (including defect
-passthrough through `available`), 24 `Git` (the full classification matrix
-plus the option-injection guard block, mocked spawner), 11 integration
-(`__test__/integration/Git.int.test.ts`, real git + `@effect/platform-node`,
-including a real nonexistent-ref case and the dual-stream backpressure test
-below). `@effect/vitest`, `assert.*` — never `expect`.
+59 tests in `__test__/`: 12 `GitCommand` (pure constructor shape + the
+`setCwd` non-mutation guarantee), 6 `internal/run` (including defect
+passthrough through `available`), 28 `Git` (the full classification matrix,
+the option-injection guard block, and `workingChanges`' union/dedup, mocked
+spawner), 13 integration (`__test__/integration/Git.int.test.ts`, real git +
+`@effect/platform-node`, including a real nonexistent-ref case and the
+dual-stream backpressure test below). `@effect/vitest`, `assert.*` — never
+`expect`.
 
 ```bash
 pnpm vitest run packages/git

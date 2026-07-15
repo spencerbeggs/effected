@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-14
-updated: 2026-07-14
-last-synced: 2026-07-14
+updated: 2026-07-15
+last-synced: 2026-07-15
 completeness: 95
 related:
   - ../effect-standards.md
@@ -20,7 +20,9 @@ related:
 
 ## Overview
 
-**Implemented 2026-07-14** on `feat/git` (G1–G6), with every gate green: 44/44 tests, a `dist/prod/issues.json` at 0 errors / 0 warnings / 5 suppressed `_base` symbols. This doc records the *as-built* design; per the semver/jsonc/app precedent it stays `current`, with deviations from the pre-port draft noted inline as "As-built:".
+**Implemented 2026-07-14** on `feat/git` (G1–G6), with every gate green: a `dist/prod/issues.json` at 0 errors / 0 warnings / 5 suppressed `_base` symbols. This doc records the *as-built* design; per the semver/jsonc/app precedent it stays `current`, with deviations from the pre-port draft noted inline as "As-built:".
+
+**Extended 2026-07-15** on `feat/workspaces-snapshots` (point-in-time port, sub-step 3a): the working-tree surface `@effected/workspaces`' `ChangeDetector` needs — a `relative` mode on `changedFiles` and a new `workingChanges` method, with three new `GitCommand` constructors behind them. Consumer-driven scope again: these earned their place because a real consumer needs them typed, the same rule this doc already states. Green: 59/59 tests, `issues.json` still 0/0/5 `_base`, biome and typecheck clean.
 
 Target design for `@effected/git`, a **boundary-tier** package created by the point-in-time workstream (2026-07-14) and on the `0.1.0` gate. It is typed git introspection for the kit: read a repository's state — file contents at a ref, tree listings, merge bases, changed paths — without checking anything out, plus exactly one mutating operation, `checkout`. It programs against **core's** subprocess contract — `ChildProcessSpawner` and `Command` values from `effect/unstable/process` — requiring the spawner in its `R` channel exactly as the kit's boundary packages require core `FileSystem`: the consumer's platform layer (`@effect/platform-node`'s `NodeServices.layer` provides `ChildProcessSpawner` among its services) discharges it once at the edge. It is the foundation `@effected/workspaces`' `ChangeDetector` and new `WorkspaceSnapshots` service stand on.
 
@@ -51,6 +53,8 @@ So `GitReader` dissolves: the mechanism was never the kit's to own — core decl
 
 Git-flavored constructors producing **core `Command` values** (`ChildProcess.make` under the hood): they know the `git` executable, the argument conventions of each operation, and the environment git needs pinned (`LC_ALL=C` via the command's `env` + `extendEnv: true`, so stderr classification is locale-stable without replacing the inherited environment). `GitCommand.show(ref, path)`, `GitCommand.lsTree(ref)`, `GitCommand.mergeBase(a, b)` and the rest produce values — a test can assert the exact `command`/`args`/`options` an operation will run without spawning anything, and a consumer can log or display an invocation before executing it.
 
+**As-built (3a) — three working-tree constructors** joined the set: `unstagedChanges`, `stagedChanges` and `untrackedFiles`, feeding `workingChanges`. `untrackedFiles` takes a `relative` flag and is the load-bearing one: with it `false` the invocation carries `--full-name`, so its output shares the diffs' repo-root base and the three path sources compose on one base; with it `true` it emits cwd-relative paths, matching the `--relative` diffs. That flag is why `workingChanges` can union unstaged, staged and untracked paths without mixing coordinate systems.
+
 ### `Git` — the service
 
 A `Context.Service` whose layer requires **`ChildProcessSpawner`** (core's contract, arriving in `R`). Two small **internal** helpers over the spawner — a collected-run (`spawn` scoped, stdout and stderr gathered concurrently, exit awaited: the stdout/stderr/exit-code triple every classification consumes) and an `available` probe (`git --version` through the spawner; a non-zero exit still proves existence, only a spawn-level failure means absent) — live in `internal/`, not on the public surface. Every method takes `cwd` explicitly — the same "never read `process.cwd()` silently" rule walker set; the caller who knows where "here" is passes it in. The per-operation ceiling is git's own policy — 30 seconds via `Effect.timeout`, owned here, not a spawner option.
@@ -61,11 +65,14 @@ A `Context.Service` whose layer requires **`ChildProcessSpawner`** (core's contr
 | `lsTree(cwd, ref)` | `git ls-tree -r` | parsed entries: path + object type | The input the compiled [`@effected/glob`](glob.md) set filters — glob.md recorded this exact use when at-ref discovery was deferred |
 | `refExists(cwd, ref)` | `git cat-file -e` | `boolean` | The probe the v3 point-in-time reader used |
 | `mergeBase(cwd, a, b)` | `git merge-base` | SHA | Replaces systems' hand-rolled `execFileSync` call |
-| `changedFiles(cwd, { base, head })` | `git diff --name-only` | paths | What `ChangeDetector` runs on today via raw `GitReader` args |
+| `changedFiles(cwd, { base, head, relative? })` | `git diff --name-only -z` (`--relative` when `relative`) | paths | The committed-range diff `ChangeDetector` runs on; `relative` gives cwd-relative output filtered to the subtree |
+| `workingChanges(cwd, { relative? })` | `unstagedChanges` + `stagedChanges` + `untrackedFiles` | paths | **As-built (3a):** the deduplicated union of unstaged, staged and untracked paths — the `includeUncommitted` source `ChangeDetector` needs |
 | `revParse(cwd, ref)` | `git rev-parse` | SHA | Ref normalization for snapshot cache keys |
 | `checkout(cwd, ref)` | `git checkout` | — | **The one mutating operation in the package**, documented as such; everything else is read-only |
 
 `checkout` is deliberately alone. The read-only surface is what the two consumers need; `checkout` is the single mutation with a named consumer story (tooling that moves a worktree to a resolved ref). Further mutations (stash, worktree add/remove, commit) were considered and **rejected** — no current consumer, and a read-mostly package whose mutations are one clearly-marked method is easier to reason about than a porcelain grab-bag.
+
+**As-built (3a) — `changedFiles` and `workingChanges` exist because `ChangeDetector` needs them typed.** The committed range flows through `changedFiles(relative: true)`; `includeUncommitted` flows through `workingChanges(relative: true)`. Both route through the same `classify` path as every other method — the absorbed spawner `PlatformError` never leaks raw. A review-caught property worth pinning: `workingChanges` keeps its three path sources on one base via the `untrackedFiles` `relative`/`--full-name` handling, so the union never mixes cwd-relative and repo-root paths.
 
 **As-built — `refExists` answering `false` for an unknown ref was a review-caught Critical fix (`bd5e0101`).** The first pass let an unrecognized-ref-syntax failure fall through to a die; the method's contract is "does `ref` resolve", so both a syntactically-valid-but-missing ref and an outright-unrecognized one now answer `false` — never an error, never a defect.
 
@@ -125,9 +132,9 @@ Named spans on the public fallible boundaries — each `Git` method — annotate
 - **Integration: a fixture repository** built in test setup (`git init`, commits, refs, a file deleted between two commits), driven through `@effect/platform-node`'s real `ChildProcessSpawner` layer (a devDependency, the workspaces `self.int.test.ts` precedent): `show` at two refs, `lsTree` filtered by a compiled glob set, `mergeBase` on a branched history, `changedFiles` across a known range, `refExists` both ways, and `checkout` — isolated in its own temp-dir fixture, since it mutates.
 - Consumers mock at whichever seam fits: `Layer.succeed(Git, …)` for domain tests (workspaces' change-detection tests keep needing no repository), or a mocked `ChildProcessSpawner` to exercise git's own classification.
 
-**As-built: 44 tests** — 8 `GitCommand` (pure constructor argv/env + the `setCwd` non-mutation guarantee), 6 `internal/run` (including defect passthrough through `available`), 18 `Git` (the full classification matrix over a mocked spawner), 12 integration (`__test__/integration/Git.int.test.ts`, real git via `@effect/platform-node`, including a real nonexistent-ref case). The integration suite's lifecycle is **plain `beforeAll`/`afterAll` + `Effect.runPromise`** — the first of its kind among this repo's `@effect/vitest` suites. Triage is done: this is SANCTIONED as a second integration-suite pattern for shared, expensive real-world fixtures, alongside (not replacing) `app`'s `Effect.ensuring` per-test pattern, which remains the default for cheap per-test fixtures. The concurrency option on `internal/run.ts`'s `runCollected` (`{ concurrency: "unbounded" }` over `[stdout, stderr, exitCode]`) is proven by a dedicated **dual-stream backpressure** integration test that pressures both stdout and stderr simultaneously — no mock spawner over in-memory streams can regress this, since it needs a real OS pipe to deadlock; do not delete that test.
+**As-built: 59 tests** — the G1–G6 baseline of 44 (8 `GitCommand` pure constructor argv/env plus the `setCwd` non-mutation guarantee, 6 `internal/run` including defect passthrough through `available`, 18 `Git` for the full classification matrix over a mocked spawner, 12 integration in `__test__/integration/Git.int.test.ts` against real git via `@effect/platform-node`), plus the 3a working-tree round covering the `unstaged`/`staged`/`untracked` constructors, `changedFiles`' `relative` mode and `workingChanges`' one-base deduplicated union. The integration suite's lifecycle is **plain `beforeAll`/`afterAll` + `Effect.runPromise`** — the first of its kind among this repo's `@effect/vitest` suites. Triage is done: this is SANCTIONED as a second integration-suite pattern for shared, expensive real-world fixtures, alongside (not replacing) `app`'s `Effect.ensuring` per-test pattern, which remains the default for cheap per-test fixtures. The concurrency option on `internal/run.ts`'s `runCollected` (`{ concurrency: "unbounded" }` over `[stdout, stderr, exitCode]`) is proven by a dedicated **dual-stream backpressure** integration test that pressures both stdout and stderr simultaneously — no mock spawner over in-memory streams can regress this, since it needs a real OS pipe to deadlock; do not delete that test.
 
 ## Consumers
 
-- **`@effected/workspaces`** — `ChangeDetector` re-targets `Git.changedFiles`; the new `WorkspaceSnapshots` service reads refs through `show`/`lsTree`/`refExists` ([workspaces.md](workspaces.md)). The `GitReader` contract, its `layerNode` and `GitCommandError` leave workspaces in the same commit this package lands.
+- **`@effected/workspaces`** — **As-built (3a):** `ChangeDetector` runs on `Git` — the committed range via `changedFiles(relative: true)`, `includeUncommitted` via `workingChanges(relative: true)`; the `WorkspaceSnapshots` service reads refs through `show`/`lsTree` ([workspaces.md](workspaces.md)). Workspaces' `GitReader.ts` (the contract, its `layerNode` and its own `GitCommandError`) was deleted in the same round, and a non-repository now surfaces as this package's typed `NotARepositoryError` rather than an `available()` pre-check.
 - **savvy-web/systems `DepsRegen`** — replaces its hand-rolled synchronous `execFileSync` helpers (`gitMergeBase`, `gitListChangesetFilesAtRef`) with `mergeBase` and `lsTree`, gaining typed errors and testability without a real repository.

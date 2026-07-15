@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-14
-last-synced: 2026-07-13
-completeness: 95
+updated: 2026-07-15
+last-synced: 2026-07-15
+completeness: 96
 related:
   - ../effect-standards.md
   - ../migration-playbook.md
@@ -26,7 +26,7 @@ related:
 
 **Merged** — migration #13, an **integrated-tier** package and the last of the workspaces-effect family to land. It is what remains of `workspaces-effect` (v2.0.3, ~8,200 lines) after two extractions that merged before it: [`@effected/lockfiles`](lockfiles.md) took the four lockfile parsers and integrity checking, and [`@effected/glob`](glob.md) took glob matching. What is left is the part that only makes sense with a filesystem and a package manager under it: **workspace root discovery, package enumeration, the dependency graph, package-manager detection, catalog resolution, lockfile IO and git-based change detection.**
 
-This document is the design as specified, with an [As built](#as-built-2026-07-11) section recording what the port landed. The sections below are accurate unless that section says otherwise.
+This document records two landed rounds: the v1 port ([As built 2026-07-11](#as-built-2026-07-11)) and the v2-additions round — point-in-time snapshots, PM-aware catalogs and the config-dependency hook seam — which landed green on `feat/workspaces-snapshots` (as-built 2026-07-15, see [v2 additions](#v2-additions-as-built-2026-07-15)). Deviations from the design are noted inline as "As-built:". The sections below are accurate unless an as-built note says otherwise.
 
 Design follows the [workspaces review](../../../reviews/workspaces.md), which found the *semantics* strong and v4-shaped and the *packaging* — kind-based folders, `*ErrorBase` workarounds, a static-wiring hack, triplicated dual APIs, two over-granular services, an over-engineered `Request`/`RequestResolver` cache — as the thing the redesign sheds.
 
@@ -47,11 +47,12 @@ Runtime dependencies:
 | `@effected/yaml` (`workspace:*`) | `pnpm-workspace.yaml` |
 | `@effected/package-json` (`workspace:*`) | the full-manifest bridge and the corepack `packageManager` codec |
 | `@effected/npm` (`workspace:*`) | the resolver **contracts** this package implements |
+| `@effected/git` (`workspace:*`) | **As-built (3a):** typed git introspection — `ChangeDetector` and `WorkspaceSnapshots` run on its `Git` service (replaces the deleted `GitReader`) |
 | `effect` (peer) | core |
 
 **`minimatch` is gone.** It was a runtime dependency for exactly one method (`WorkspacePackage.matchesDependency`) plus a hand-rolled regex mini-glob in `glob-core.ts`; both retarget onto `@effected/glob`'s vendored engine. Neither call site keeps a private pattern semantic.
 
-Node built-ins (`node:child_process`, `node:fs`, `node:path`) appear in exactly two places, both documented as Node-only overlays: the default `GitReader` layer and the `WorkspacesSync` escape hatch. They are built-ins, not dependencies, so they do not affect tier — but they are honest facts the v3 README denied ("no `node:` imports leak into your code") while `sync.ts` imported `node:fs` from the main entry.
+**As-built (3a):** with `GitReader` deleted, spawning left this package entirely — it now lives behind `@effected/git`'s `ChildProcessSpawner` contract, no `node:child_process` anywhere here. The remaining Node-only overlays are the `WorkspacesSync` escape hatch (`node:fs`, `node:path`) and `ConfigDependencyHooks.layerLive`, which does an in-process dynamic `import()` of a config dependency's `pnpmfile.cjs` (no subprocess). Both are built-ins/dynamic-imports, not dependencies, so they do not affect tier — but they are honest facts the v3 README denied ("no `node:` imports leak into your code") while `sync.ts` imported `node:fs` from the main entry.
 
 ## Implementing `@effected/npm`'s resolver contracts
 
@@ -85,7 +86,7 @@ A wildcard whose `enumerationPrefix` names a directory that does not exist fails
 
 ## Module layout
 
-Module-per-concept. Thirteen source modules (counting the re-export-only `index.ts`) plus `internal/`, replacing fifteen kind-based folders.
+Module-per-concept. Thirteen source modules at v1 (counting the re-export-only `index.ts`) plus `internal/`, replacing fifteen kind-based folders. **As-built (3a): fifteen** — `GitReader.ts` deleted, and `WorkspaceSnapshots.ts`, `CatalogAssemblyError.ts` and `ConfigDependencyHooks.ts` added.
 
 | File | Owns |
 | --- | --- |
@@ -95,14 +96,18 @@ Module-per-concept. Thirteen source modules (counting the re-export-only `index.
 | `src/PackageManagerName.ts` | The `PackageManagerName` literal, `DetectedPackageManager`, `PackageManagerDetector` service + layer, `PackageManagerDetectionError` |
 | `src/WorkspaceDiscovery.ts` | `WorkspaceInfo`, `WorkspaceDiscovery` service + layer, the `workspaceResolver` layer, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError` |
 | `src/DependencyGraph.ts` | `DependencyGraph` **value class** (graph + topological sort + cycles), `CyclicDependencyError` |
-| `src/ChangeDetector.ts` | `ChangeDetectionOptions`, `ChangeDetector` service + layer, `ChangeDetectionError` |
-| `src/GitReader.ts` | `GitReader` service contract, `GitReader.layerNode`, `GitCommandError` |
-| `src/WorkspaceCatalogs.ts` | `CatalogSet` class, `WorkspaceCatalogs` service + layer, the `catalogResolver` layer, `CatalogAssemblyError` |
+| `src/ChangeDetector.ts` | `ChangeDetectionOptions`, `ChangeDetector` service + layer (over `@effected/git`'s `Git`), `ChangeDetectionError` |
+| `src/WorkspaceCatalogs.ts` | `CatalogSet` class, `WorkspaceCatalogs` service + layer, the `catalogResolver` layer |
+| `src/WorkspaceSnapshots.ts` | **As-built (3a):** `WorkspaceSnapshots` service + layers, `WorkspaceStateSnapshot` and `PackageStateSnapshot` value classes, the snapshot error unions |
+| `src/CatalogAssemblyError.ts` | **As-built (3a):** `CatalogAssemblyError` — extracted here as a leaf module (see the deviation note below) |
+| `src/ConfigDependencyHooks.ts` | **As-built (3a):** `ConfigDependencyHooks` contract service, `layerLive`, `layerNoop` |
 | `src/LockfileReader.ts` | `LockfileReader` service + layer (the IO half of `@effected/lockfiles`), `LockfileReadError` |
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetector` service + default layer |
 | `src/Workspaces.ts` | The composite layers |
 | `src/WorkspacesSync.ts` | The synchronous escape hatch (Node-only) |
 | `src/internal/` | `traverse.ts` (**the** traversal state machine), `enumerate.ts` (the Effect enumerator over it), `patterns.ts` (`packages:` pattern reading), `catalogs.ts` (the `@pnpm/catalogs.*` boundary), `limits.ts` |
+
+**As-built deviation (3a) — `CatalogAssemblyError` moved to its own module.** The design placed it under `WorkspaceCatalogs.ts`, but `WorkspaceCatalogs` now depends on `ConfigDependencyHooks` (which itself raises the error), so keeping the error in `WorkspaceCatalogs.ts` created an import cycle. Extracting it to a leaf module `src/CatalogAssemblyError.ts` satisfies `noImportCycles`. The `index.ts` export is unchanged, and its `source` literal gained a `"hooks"` arm.
 
 YAML-**stream** framing is *not* this package's job. `pnpm-lock.yaml` carries a config-dependencies preamble document ahead of the real lockfile whenever the workspace uses `configDependencies` (this repo's own lockfile is that shape), and a first-document parse silently returns the preamble: a few packages, no importers, no catalogs — an apparently empty workspace rather than a failure. [`@effected/lockfiles`](lockfiles.md#document-framing-a-lockfile-is-a-yaml-stream) owns it as of its #58, on a deterministic rule (pnpm's writer always emits the preamble as a *prefix*, so the lockfile is the **last** document), and surfaces a typed `LockfileFramingError` when a stream carries no lockfile document at all. `LockfileReader` therefore calls `Lockfile.parse` directly; an earlier richest-document-wins workaround here was deleted when #58 landed.
 
@@ -171,19 +176,11 @@ Here root resolution is **one concern, applied uniformly**: every root-consuming
 
 ### `GitReader` — the subprocess seam
 
-Effect v4 core has **no** `CommandExecutor` — the v3 `@effect/platform` dependency has no drop-in core successor, and `Stdio` is the *current process's* streams, not process spawning. What core does ship, in `effect/unstable/process`, is a `ChildProcessSpawner` **contract** (a `Context.Service` plus a `make` taking a spawn function) with **no Node implementation**; the Node one lives in `@effect/platform-node`. That is the same "core declares, platform implements" shape that decided the [runtime-resolver CLI split](runtimes.md#the-effectcli-verdict-dead-on-v4-and-not-needed), reached independently from the other end, and it forces the same conclusion here: taking `@effect/platform-node` as a runtime dependency would push a platform adapter into every consumer's tree — exactly the escape the peer discipline exists to prevent.
-
-(Verified against the pinned catalog beta and its matching `.repos/effect-smol` vendored tree. An earlier draft of this section cited `4.0.0-beta.97`, the floating installed version from when the catalog carried a caret range; the catalogs now pin exactly, so the installed version and the vendored tree agree.)
-
-So workspaces owns the seam: `GitReader` is a small `Context.Service` contract (`run(cwd, args)` returning `Effect<string, GitCommandError>`, plus `available(cwd)`), with `GitReader.layerNode` as the shipped default over `node:child_process.execFile` — locale-pinned `LC_ALL=C`, per-command timeout, both v3 hard-won details preserved. Consumers on Bun or Deno swap the layer; tests mock it with `Layer.succeed`. This is what makes `ChangeDetector` testable without a git repository, which v3 was not.
-
-`GitNotAvailableError` and `GitReadError` — the review called their overlap out — collapse into one `GitCommandError` with a typed `kind` field.
-
-> **Relocation (designed 2026-07-14, revised same day, twice):** the seam dissolves outward. The v2 round retires `GitReader` in favour of **core's** `ChildProcessSpawner` contract (`effect/unstable/process`) — provided by the consumer's platform layer, required in `R` — with [`@effected/git`](git.md)'s `Git` service layered on top; `ChangeDetector` re-targets `Git`. This module's opening comment ("Effect v4 core ships NO `Command` / `CommandExecutor`") is **false at beta.97** and dies with the module. See [GitReader relocates](#gitreader-relocates-to-effectedgit).
+**As-built (3a): superseded — `GitReader.ts` is deleted.** v1 shipped `GitReader` as a workspaces-owned subprocess seam — a `Context.Service` contract (`run(cwd, args)`, `available(cwd)`) with a `layerNode` default over `node:child_process.execFile` — on the belief that core had no subprocess API and that taking `@effect/platform-node` would push a platform adapter into every consumer. Both halves were false at beta.97: core publishes the `ChildProcessSpawner` contract in `effect/unstable/process`, and requiring a core-declared service in `R` costs a consumer nothing. The seam therefore dissolved outward into [`@effected/git`](git.md)'s `Git` service, which owns the typed git surface over `ChildProcessSpawner`; `ChangeDetector` re-targets `Git`, and `WorkspaceSnapshots` consumes it directly. The v3 `GitNotAvailableError`/`GitReadError` overlap that v1 collapsed into workspaces' own `GitCommandError` now lives in git's taxonomy (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`). See [GitReader relocates](#gitreader-relocates-to-effectedgit-as-built-3a) for the full reconciliation.
 
 ### `WorkspaceCatalogs` and `CatalogSet`
 
-`CatalogSet` is the immutable, fully-normalized catalog collection with the one resolution semantic (`empty` / `fromCatalogs` / `fromWorkspaceYaml` / `fromLockfileCatalogs` / `merge`, and `rangeOf`). `WorkspaceCatalogs` assembles it with pnpm's precedence — lockfile catalogs, then inline `pnpm-workspace.yaml` catalogs — and memoizes.
+`CatalogSet` is the immutable, fully-normalized catalog collection with the one resolution semantic (constructors plus `merge` and `rangeOf`). `WorkspaceCatalogs` assembles it with pnpm's precedence — lockfile catalogs, then inline `pnpm-workspace.yaml` catalogs — and memoizes. (As-built, the constructor set and the assembly sources grew PM-aware in the v2 round — see [PM-aware catalogs](#pm-aware-catalogs) and [ConfigDependencyHooks](#configdependencyhooks--the-opt-in-replay-seam).)
 
 **`internal/catalogs.ts` is the only module that imports `@pnpm/catalogs.*`.** The tier-3 blast radius is one file: if the quartet ever has to be replaced or vendored, that is the file that changes.
 
@@ -195,7 +192,7 @@ What it does **not** do is keep a third pattern semantic. v3's `sync.ts` hand-ro
 
 ## Error handling
 
-Fifteen v3 error types with `reason: string` fields become nine `Schema.TaggedErrorClass` types with **structured** fields, per the house rule that a `reason` string flattens exactly the data a caller would branch on.
+Fifteen v3 error types with `reason: string` fields become nine `Schema.TaggedErrorClass` types with **structured** fields, per the house rule that a `reason` string flattens exactly the data a caller would branch on. **As-built (3a):** `GitCommandError` left the package with `GitReader` — git's own taxonomy (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`) now surfaces from `@effected/git`. `ChangeDetectionError` is preserved, and git's typed errors surface alongside it in `ChangeDetector`'s channel.
 
 | Error | Raised by | Structure |
 | --- | --- | --- |
@@ -206,9 +203,8 @@ Fifteen v3 error types with `reason: string` fields become nine `Schema.TaggedEr
 | `WorkspacePatternError` | the enumerator | `root`, `pattern`, `kind` |
 | `PackageNotFoundError` | discovery / graph | `name`, `available` |
 | `CyclicDependencyError` | `DependencyGraph` | `cycle` |
-| `GitCommandError` | `GitReader` | `kind`, `args`, `cwd`, `exitCode`, `stderr` |
 | `ChangeDetectionError` | `ChangeDetector` | `operation`, `cause` |
-| `CatalogAssemblyError` | `WorkspaceCatalogs` | `source`, `path`, `cause` |
+| `CatalogAssemblyError` | `WorkspaceCatalogs`, `ConfigDependencyHooks` | `source` (now incl. `"hooks"`), `path`, `cause` |
 | `LockfileReadError` | `LockfileReader` | `lockfilePath`, `format`, `cause` |
 
 Every `kind` is a `Schema.Literals` discriminant, and every `cause` is a `Schema.Defect()`. `LockfileParseError` and `DependencyResolutionError` are **not** redefined — they arrive from `@effected/lockfiles` and `@effected/npm` respectively.
@@ -243,25 +239,25 @@ Workspaces reads a filesystem, not a hostile string — but a filesystem is stil
 
 `@effect/vitest`, `it.effect`, `assert.*`, suite-boundary `layer(...)` — never per-test `Effect.provide`.
 
-The whole package tests without `@effect/platform-node`: `Path.layer` and `FileSystem.layerNoop(partial)` both come from `effect` core, so a stubbed filesystem drives discovery, enumeration and PM detection with no platform dependency. One `layer(...)` block per distinct filesystem fixture (a suite-boundary layer cannot vary per test). `GitReader` mocks with `Layer.succeed`, so change-detection tests need no git repository — a capability v3 did not have.
+The whole package tests without `@effect/platform-node`: `Path.layer` and `FileSystem.layerNoop(partial)` both come from `effect` core, so a stubbed filesystem drives discovery, enumeration and PM detection with no platform dependency. One `layer(...)` block per distinct filesystem fixture (a suite-boundary layer cannot vary per test). **As-built (3a):** change-detection and snapshot tests mock `@effected/git`'s `Git` service with `Layer.succeed`, so they need no git repository — the capability v3 lacked, now inherited through git's service rather than workspaces' own seam.
 
 The enumerator gets the mutation treatment the walker migration earned: fixtures where a match lands on the **first** and the **last** candidate, several directories with several candidates each, a `packages/**` case whose target is **two** levels down (the issue-#62 regression — it fails against the v3 `/**`-to-`/*` rewrite), a depth-cap case, a `node_modules`-prune case, and an exclusion that must actually exclude.
 
-## Deferred (recorded, not forgotten) — revisited 2026-07-14
+## Deferred (recorded, not forgotten) — shipped 2026-07-15
 
-Three v3 capabilities were **not** in v1, each with a reason and — at the time — none of them on the gate. As of 2026-07-14 two of the three deferrals are **revoked**: both capabilities move onto the `0.1.0` gate, driven by two declared consumers — `savvy-web/silk-update-action` (before/after lockfile diffing in one process) and `savvy-web/systems`' `DepsRegen` dependency-regeneration engine in `@savvy-web/silk-effects` (merge-base-vs-worktree snapshot diffs that write changesets). The design is in [v2 additions](#v2-additions-designed-2026-07-14) below; the historical reasoning stays here because it shaped what comes back and how.
+Three v3 capabilities were **not** in v1, each with a reason and — at the time — none of them on the gate. Two of the three deferrals were revoked on 2026-07-14 and **both shipped on `feat/workspaces-snapshots` (as-built 2026-07-15)**, driven by two declared consumers — `savvy-web/silk-update-action` (before/after lockfile diffing in one process) and `savvy-web/systems`' `DepsRegen` dependency-regeneration engine in `@savvy-web/silk-effects` (merge-base-vs-worktree snapshot diffs that write changesets). The as-built design is in [v2 additions](#v2-additions-as-built-2026-07-15) below; the historical reasoning stays here because it shaped what came back and how.
 
-- **`PointInTimeWorkspace` / `WorkspaceStateSnapshot` — deferral revoked.** Git at-ref workspace snapshots (`git cat-file -e` probe, `git show`, worktree catalog state). Deferred as substantial with no gate consumer; v1 landed the `GitReader` contract it needs, predicting "a purely additive follow-up rather than a rework." Both halves of that prediction now cash out: the consumers exist, and the capability returns as [`WorkspaceSnapshots`](#workspacesnapshots) — redesigned onto the new seams, not lift-and-shifted.
-- **pnpmfile `configDependencies` hook replay — deferral revoked, behind an opt-in seam.** v3 dynamically imports a config dependency's `pnpmfile.cjs` through `node:module` and replays its `updateConfig` hooks to inject catalogs. The deferral reasons — it executes arbitrary code from a config dependency, and its correctness tracks pnpm internals — were real and **remain true**; they become documented properties of one clearly-marked opt-in layer rather than a reason not to ship. The default catalog assembly still never executes config-dependency code, and the `pnpm pnpm:export` inline path keeps working. See [ConfigDependencyHooks](#configdependencyhooks--the-opt-in-replay-seam).
+- **`PointInTimeWorkspace` / `WorkspaceStateSnapshot` — shipped.** Git at-ref workspace snapshots. Deferred as substantial with no gate consumer; v1 landed the seam it needs, predicting "a purely additive follow-up rather than a rework." Both halves of that prediction cashed out: the consumers exist, and the capability shipped as [`WorkspaceSnapshots`](#workspacesnapshots) — redesigned onto the new seams (`@effected/git`'s `Git`, `@effected/npm`'s `DependencySpecifier`), not lift-and-shifted.
+- **pnpmfile `configDependencies` hook replay — shipped behind an opt-in seam.** v3 dynamically imports a config dependency's `pnpmfile.cjs` and replays its `updateConfig` hooks to inject catalogs. The deferral reasons — it executes arbitrary code from a config dependency, and its correctness tracks pnpm internals — were real and **remain true**; they became documented properties of one clearly-marked opt-in layer rather than a reason not to ship. The default catalog assembly still never executes config-dependency code, and the `pnpm pnpm:export` inline path keeps working. See [ConfigDependencyHooks](#configdependencyhooks--the-opt-in-replay-seam).
 - **Decorative brands — deferral upheld.** v3 defined, exported and documented `PackageName` and `WorkspacePath` branded schemas and applied them to nothing. They stay dropped rather than shipped as API noise; `@effected/package-json` already owns a real `PackageName` brand for anyone who wants one.
 
-## v2 additions (designed 2026-07-14)
+## v2 additions (as-built 2026-07-15)
 
-Design-first, implementation to follow; exact API names and signatures are design-level here and are settled at the effect-v4-planning gate at implementation time. The driving evidence is `workspaces-effect` commit `c594ff1` ("package-manager-aware workspace, catalog and lockfile reads", #169), landed in the v3 repo after this package merged — its bug fixes are design inputs, not code to copy.
+**Landed green on `feat/workspaces-snapshots`**: workspaces 205/205 tests, a cold prod `dist/prod/issues.json` at 0 errors / 0 warnings / 29 suppressed `_base` symbols, biome and typecheck clean. This section records the *as-built* result of the round, with deviations from the design noted inline as "As-built:". The driving evidence was `workspaces-effect` commit `c594ff1` ("package-manager-aware workspace, catalog and lockfile reads", #169), landed in the v3 repo after this package merged — its bug fixes were design inputs, not code to copy, and the ones that mattered are now test-pinned here.
 
 ### `WorkspaceSnapshots`
 
-A new service answering "what did this workspace look like at that moment": `at(ref)` and `worktree()`, both returning a `WorkspaceStateSnapshot`.
+**As-built:** the service answering "what did this workspace look like at that moment" shipped — `at(ref)` and `worktree()`, both returning a `WorkspaceStateSnapshot`. The `WorkspaceStateSnapshot` and `PackageStateSnapshot` value classes shipped with it.
 
 **`WorkspaceStateSnapshot`** is a value class — `packages: ReadonlyArray<PackageStateSnapshot>` (name, version, relative path, the four dependency records) plus `catalogs: CatalogSet` — with lazily-built, instance-cached private indexes outside the schema (the same precedent [`DependencyGraph`](#dependencygraph) and lockfiles' `packagesNamed` already cite) backing `versions`, `package(name)` and `resolve(dependency, specifier)`. `resolve` answers "what did this specifier mean HERE": `workspace:` against this snapshot's package versions, `catalog:` against this snapshot's catalog set. Specifier classification goes through [`@effected/npm`'s `DependencySpecifier`](npm.md) rather than prefix-sniffing, and the dependency-section vocabulary (`DependencyDiff`, the snapshot's four dep records, `ImporterDependency.depType`) comes from npm's consolidated schema rather than this package's hand-rolled field names ([npm.md](npm.md#two-more-scalars-move-in-as-built-2026-07-14)). The snapshot is serializable by construction — lockfiles' codec round-trips were kept contract-grade for exactly this consumer.
 
@@ -273,10 +269,13 @@ A new service answering "what did this workspace look like at that moment": `at(
 - Package directories come from the compiled `@effected/glob` set matched against `lsTree` entries — fulfilling the promise recorded in [glob.md](glob.md) that at-ref discovery reuses the compiled glob set against `git ls-tree`.
 - Each package's `package.json` is read with `show`; a path absent at the ref is skipped (`Option.none` from `Git.show`, never an error).
 - Catalogs assemble from the inline source at the ref plus **the detected package manager's own lockfile at the ref** — an improvement over v3, which read only `pnpm-lock.yaml` at refs even after c594ff1, leaving a bun repo's `bun.lock` catalogs invisible. `Lockfile.parse` is format-aware and both `PnpmExtension` and `BunExtension` carry catalogs, so this costs nothing.
+- **As-built review-caught fix:** `at(ref)` reads the root manifest's inline bun catalogs **unconditionally**. An earlier cut gated them on `bun.lock` presence, which reintroduced the c594ff1 "every dep looks added" bug at the snapshot layer — a bun repo with inline catalogs but a not-yet-committed lockfile lost them at the ref. Now parity-tested against `worktree()`.
 
 **`worktree()`** reads the live tree over `WorkspaceDiscovery` and `WorkspaceCatalogs`, uncached. There is **one** shared read path between worktree snapshots and catalog assembly — v3's "the ONE code path" rule carries over; do not add a second manifest/lockfile read for the worktree.
 
-Mechanics follow the house rules already in this document: caching per `(resolved root, ref)` via `Effect.cachedInvalidateWithTTL` with invalidate-on-non-success (never `Effect.cached`); a `{ cwd }` option resolving the root by walking up, defaulting to `process.cwd()` read lazily inside `Effect.suspend`; two named error unions kept narrow — `at` fails with git errors ∪ `CatalogAssemblyError` ∪ `WorkspaceRootNotFoundError` (it never enumerates the live filesystem), `worktree` with discovery errors ∪ `CatalogAssemblyError` ∪ `WorkspaceRootNotFoundError` (it never invokes git).
+Mechanics follow the house rules already in this document: caching per `(root, ref)` via `Effect.cachedInvalidateWithTTL(Duration.infinity)` with invalidate-on-non-success (never bare `Effect.cached`); a `{ cwd }` option resolving the root by walking up, defaulting to `process.cwd()` read lazily inside `Effect.suspend`; two named error unions kept narrow — **`WorkspaceSnapshotAtFailure`** (git errors ∪ `CatalogAssemblyError` ∪ `WorkspaceRootNotFoundError`; `at` never enumerates the live filesystem) and **`WorkspaceSnapshotWorktreeFailure`** (discovery errors ∪ `CatalogAssemblyError` ∪ `WorkspaceRootNotFoundError`; `worktree` never invokes git).
+
+**As-built documented property — `at`/`worktree` hook-catalog asymmetry.** `WorkspaceSnapshots.at` never replays config-dependency hooks: it reads inline catalogs plus the lockfile at the ref only. So under `layerWithConfigDependencies`, an `at("HEAD")` snapshot and a `worktree()` snapshot can disagree on hook-injected catalogs. This is deliberate — an at-ref read must not execute historical `pnpmfile.cjs` code — but a consumer relying on at/worktree catalog parity should know the two paths diverge exactly on the hook-injected set.
 
 ### PM-aware catalogs
 
@@ -289,25 +288,30 @@ The reader is **hard-fail by design**, preserving c594ff1's semantics exactly:
 
 The policy contrast is deliberate and recorded: `PackageManagerDetector` **degrades gracefully** on malformed hints (it is a heuristic with a fallback chain), while the catalog readers **hard-fail** (their output is load-bearing for diffing — a silently-empty read *is* the "every dep looks added" bug c594ff1 fixed).
 
-Worktree lockfile catalogs also become PM-aware: `LockfileReader` already detects the manager and parses the right file, and `BunExtension` carries catalogs too — assembly stops assuming the pnpm extension only.
+Worktree lockfile catalogs also become PM-aware: `LockfileReader` already detects the manager and parses the right file, and `BunExtension` carries catalogs too — assembly assembles from whichever extension the parsed lockfile carries (pnpm and bun), not pnpm-only.
+
+**As-built:** the shipped `CatalogSet` gained three statics carrying these sources — `fromLockfile`, `fromBunBlocks` and `fromManifestWorkspaces`.
 
 ### `ConfigDependencyHooks` — the opt-in replay seam
 
-A contract service (final name settled at implementation) that, given the workspace root and the manifest's `configDependencies`, produces the hook-injected catalogs. Its live layer dynamically imports each config dependency's `pnpmfile.cjs` and replays its `updateConfig` hooks over the inline-catalog seed — **in-process code loading**, so no subprocess is involved; it gets its own Node-coupled layer, the same shape as every other seam here.
+**As-built:** `ConfigDependencyHooks` shipped as a contract service with two layers. `layerLive` does an in-process dynamic `import()` of each config dependency's `pnpmfile.cjs` and replays its `updateConfig` hooks over the inline-catalog seed — **in-process code loading**, no subprocess. `layerNoop` is the no-execution stand-in.
 
-- **Opt-in by layer choice.** The default `WorkspaceCatalogs.layer` never executes config-dependency code. A second composition (working name `layerWithConfigDependencies`) adds the replay overlay. A `Layer.succeed` no-op serves tests and consumers who want the topology without the execution.
+- **Opt-in by layer choice.** The default `WorkspaceCatalogs.layer` and `Workspaces.layer` wire `layerNoop` — they **never** execute config-dependency code. `layerWithConfigDependencies` is the composition that opts into `layerLive`. `layerNoop` also serves tests and consumers who want the topology without the execution.
 - **Assembly precedence preserved exactly**: lockfile < inline < hook-injected, merged per-dependency within a catalog, with the hooks seeded by the inline catalogs — matching pnpm's own behavior and v3's `assembleCatalogs`.
-- **Failure is typed, never silent.** A config dependency that fails to load or replay fails with `CatalogAssemblyError` (a hooks source), not a silent skip — the same load-bearing-output reasoning as the manifest readers.
+- **Failure is typed, never silent.** A config dependency that fails to load or replay fails with a `"hooks"`-source `CatalogAssemblyError`, not a silent skip — the same load-bearing-output reasoning as the manifest readers.
+- **As-built security fix:** `layerLive` rejects a config-dependency name containing a `..` path segment **before** building the `import()` target, so a malicious `configDependencies` entry cannot escape the intended directory.
 
-### `GitReader` relocates to `@effected/git`
+### `GitReader` relocates to `@effected/git` (as-built 3a)
 
-The v1 seam dissolves outward — and a correction rides with it. `GitReader.ts` opens by claiming "Effect v4 core ships NO `Command` / `CommandExecutor`"; at the pinned beta.97 that is **false**: core publishes the full subprocess contract in `effect/unstable/process` (`Command` values, `ChildProcessSpawner`, a `ChildProcessHandle` with streams and a success-typed `ExitCode`). Nor does the kit need to ship the Node backend — `@effect/platform-node`'s `NodeServices.layer` provides `ChildProcessSpawner` exactly as it provides `FileSystem` and `Path`, and requiring a core-declared service in `R` costs a consumer nothing (R3; GitReader's "taking platform-node = tier 3" rationale conflated a dependency edge with an R-channel requirement). So [`@effected/git`](git.md)'s `Git` service builds the typed git operations (`show`, `lsTree`, `refExists`, `mergeBase`, `changedFiles`, `revParse`, `checkout`) over core's `Command` values with `ChildProcessSpawner` in `R`. `GitReader` dissolves into that stack; `ChangeDetector` re-targets `Git`, and `WorkspaceSnapshots` consumes `Git` directly. Now is the only cheap time — nothing has published, so relocating the seam is free today and a breaking rework after `0.1.0`. The hard-won layer details survive as configuration rather than mechanism: the locale pin rides on core's `env` + `extendEnv` command options, the per-run ceiling composes as `Effect.timeout` in git, and `Layer.succeed` mockability is native to core's service.
+**As-built: the v1 seam dissolved outward, and the correction landed with it.** `GitReader.ts` opened by claiming "Effect v4 core ships NO `Command` / `CommandExecutor`"; at the pinned beta.97 that is **false** — core publishes the full subprocess contract in `effect/unstable/process` (`Command` values, `ChildProcessSpawner`, a `ChildProcessHandle` with streams and a success-typed `ExitCode`). Nor does the kit ship the Node backend — `@effect/platform-node`'s `NodeServices.layer` provides `ChildProcessSpawner` exactly as it provides `FileSystem` and `Path`, and requiring a core-declared service in `R` costs a consumer nothing (R3; GitReader's "taking platform-node = tier 3" rationale conflated a dependency edge with an R-channel requirement). So [`@effected/git`](git.md)'s `Git` service now owns the typed git operations (`show`, `lsTree`, `refExists`, `mergeBase`, `changedFiles`, `workingChanges`, `revParse`, `checkout`) over core's `Command` values with `ChildProcessSpawner` in `R`. `GitReader.ts` — the contract, its `layerNode` and workspaces' own `GitCommandError` — was deleted; `ChangeDetector` runs on `Git` (committed range via `changedFiles(relative: true)`, `includeUncommitted` via `workingChanges(relative: true)`), and `WorkspaceSnapshots` consumes `Git` directly. The `available()` pre-check is gone: a non-repository now surfaces as git's typed `NotARepositoryError`, which surfaces alongside the preserved `ChangeDetectionError`. Now was the only cheap time — nothing has published, so relocating the seam was free today and would have been a breaking rework after `0.1.0`. The hard-won layer details survive as configuration rather than mechanism: the locale pin rides on core's `env` + `extendEnv` command options, the per-run ceiling composes as `Effect.timeout` in git, and `Layer.succeed` mockability is native to core's service.
 
 ### Testing additions
 
-- **The c594ff1 regression, as a named integration test**: a bun or npm workspace read at a ref must not collapse to the root package alone.
-- At-ref vs worktree **parity on a clean tree**: `at("HEAD")` and `worktree()` agree when nothing is dirty.
-- The **double-default rejection**: `workspaces.catalog` plus `workspaces.catalogs.default` fails typed.
+**As-built:** all of these landed; the suite is 205/205.
+
+- **The c594ff1 regression, as a named test**: a bun or npm workspace read at a ref must not collapse to the root package alone.
+- At-ref vs worktree **parity on a clean tree**: `at("HEAD")` and `worktree()` agree when nothing is dirty — this is also what pins the review-caught fix that `at(ref)` reads inline bun catalogs unconditionally.
+- The **double-default rejection**: `workspaces.catalog` plus `workspaces.catalogs.default` fails typed, checked structurally so an empty `catalog: {}` still counts.
 - **Hook replay through the opt-in layer** against a fixture pnpmfile; the default layer provably never loads it.
 - **TTL-cache discipline**: a failed `at(ref)` init is retried, not memoized.
 
