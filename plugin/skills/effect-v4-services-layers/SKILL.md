@@ -5,7 +5,7 @@ description: Use when defining Effect v4 services or wiring Layers — the `Cont
 
 # Services & Layers (Effect v4)
 
-Verified against `effect@4.0.0-beta.94`. A service is a typed key into the
+Verified against `effect@4.0.0-beta.94+`. A service is a typed key into the
 runtime's context; a layer is the recipe that builds it. Get three things
 right — the one service form, provide-once composition, and memoization by
 reference — and the wiring stays honest and cheap. For the v3→v4 name
@@ -29,6 +29,14 @@ class Database extends Context.Service<Database, {
 Argument order differs from v3: **type params first** via
 `Context.Service<Self, Shape>()`, **then** the id string via `("Database")`.
 (v3 was `Context.Tag("Database")<Self, Shape>()` — the id moved to the end.)
+
+**What did NOT change: tags are still Effects.** A service key remains a
+first-class Effect — `Context.Key<Identifier, Shape> extends
+Effect<Shape, never, Identifier>` (`Context.ts:65` at beta.98) — so
+`yield* Database` works, and combinator-style consumer code like
+`Effect.flatMap(Database, (db) => …)` composes directly with no `.asEffect()`
+or unwrap step. Related gotcha when hunting the source: the module is
+`Context.ts`; there is no `ServiceMap.ts`.
 
 The `Database` form above — `Context.Service<Self, Shape>()("id")` with **no
 `make` option** — is the **contract-only** service: it declares a shape but

@@ -1,8 +1,7 @@
 import { assert, describe, it, layer } from "@effect/vitest";
-import { CatalogResolver, WorkspaceResolver } from "@effected/npm";
+import { CatalogAssemblyError, CatalogResolver, WorkspaceResolver } from "@effected/npm";
 import { Effect, Layer, Option } from "effect";
 import {
-	CatalogAssemblyError,
 	CatalogSet,
 	LockfileReadError,
 	LockfileReader,
@@ -232,6 +231,27 @@ describe("the @effected/npm resolver contracts", () => {
 			Effect.gen(function* () {
 				const resolver = yield* WorkspaceResolver;
 				assert.deepStrictEqual(yield* resolver.versionOf("react"), Option.none());
+			}),
+		);
+	});
+
+	// A malformed inline catalog source must reach the CONTRACT's caller as the
+	// typed CatalogAssemblyError the contract names — not folded into a
+	// DependencyResolutionError's defect `cause`, which forced consumers to
+	// _tag-sniff `unknown` to tell assembly from resolution failures.
+	const withMalformedInline: Tree = {
+		"/repo/pnpm-workspace.yaml": ["packages:", "  - 'packages/*'", "catalog:", "\t- [", ""].join("\n"),
+		"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),
+	};
+
+	layer(resolversOver(withMalformedInline))((it) => {
+		it.effect("CatalogResolver.rangeOf surfaces a failed assembly typed as CatalogAssemblyError", () =>
+			Effect.gen(function* () {
+				const resolver = yield* CatalogResolver;
+				const error = yield* Effect.flip(resolver.rangeOf("effect", Option.none()));
+				assert.instanceOf(error, CatalogAssemblyError);
+				assert.strictEqual(error._tag, "CatalogAssemblyError");
+				assert.strictEqual(error.source, "manifest");
 			}),
 		);
 	});

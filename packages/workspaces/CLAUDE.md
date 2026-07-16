@@ -14,7 +14,7 @@ Other runtime deps are `workspace:*` edges: `@effected/git`, `@effected/glob`, `
 
 ## Public surface
 
-`src/index.ts` is the only re-exporting module. Fifteen concept modules:
+`src/index.ts` is the only re-exporting module. Fourteen concept modules:
 
 - `WorkspacePackage.ts` — `WorkspacePackage`, `PublishConfig`, `DependencyDiff`, `WorkspaceManifestError`
 - `WorkspaceRoot.ts` — `WorkspaceRoot` service + layer, `WORKSPACE_MARKERS`, `WorkspaceRootNotFoundError`
@@ -24,13 +24,14 @@ Other runtime deps are `workspace:*` edges: `@effected/git`, `@effected/glob`, `
 - `ChangeDetector.ts` — `ChangeDetector`, `ChangeDetectionOptions`, `ChangeDetectionError`, `ChangeDetectionFailure`
 - `WorkspaceSnapshots.ts` — `WorkspaceSnapshots` (`at(ref)` / `worktree()`), plus the `WorkspaceSnapshotAtFailure` / `WorkspaceSnapshotWorktreeFailure` unions
 - `WorkspaceStateSnapshot.ts` — `WorkspaceStateSnapshot`, `PackageStateSnapshot`
-- `WorkspaceCatalogs.ts` — `CatalogSet`, `WorkspaceCatalogs`, the `catalogResolver` layer
-- `CatalogAssemblyError.ts` — `CatalogAssemblyError`, extracted to its own module (a `noImportCycles` break; index export unchanged)
+- `WorkspaceCatalogs.ts` — `CatalogSet`, `WorkspaceCatalogs`, the `catalogResolver` layer, the `CatalogAssemblyFailure` type union
 - `ConfigDependencyHooks.ts` — `ConfigDependencyHooks` contract, `layerNoop` / `layerLive`
 - `LockfileReader.ts` — `LockfileReader`, `LockfileReadError`
 - `Publishability.ts` — `PublishabilityDetector`, `PublishTarget`
-- `Workspaces.ts` — the composite layers (`layer`, `layerWithConfigDependencies`, `layerWithGit`, `resolvers`)
-- `WorkspacesSync.ts` — `findWorkspaceRootSync`, `getWorkspacePackagesSync`
+- `Workspaces.ts` — the composite layers (`layer`, `layerWithConfigDependencies`, `layerWithGit`, `resolvers`) plus the one-call manifest path (`resolverLayer`, `resolveManifest`)
+- `WorkspacesSync.ts` — `findWorkspaceRootSync`, `getWorkspacePackagesSync` over consumer-supplied `SyncFileSystem` / `SyncPath` ops
+
+**`CatalogAssemblyError` moved to `@effected/npm`** (beside the contract that names it in its channel) and is deliberately **not re-exported** here — import it from `@effected/npm`. `catalogResolver` passes assembly failures through **typed** as that error, no longer folded into a `DependencyResolutionError` defect `cause`; only an unfindable workspace root still wraps as `DependencyResolutionError`.
 
 ## The things that will bite you
 
@@ -38,7 +39,7 @@ Other runtime deps are `workspace:*` edges: `@effected/git`, `@effected/glob`, `
 
 v3's `glob-core.ts` silently rewrote a trailing `/**` to `/*`, so `packages/**` matched one level and a nested package went undiscovered with **no diagnostic**. `internal/enumerate.ts` is the fix: `GlobSet` classifies the pattern set, `GlobPattern.crossesSegments` picks a single-level read vs. a **bounded iterative descent**, `enumerationPrefix` says where to start. The descent is a **worklist, not a recursion** (cannot overflow), bounded by `maxDepth` (integer-guarded: `NaN` and `2.5` are **defects** — a bare `depth < maxDepth` admits both, then enumerates nothing, indistinguishable from a legitimate empty result), a visit budget, and an unconditional `node_modules` / `.git` prune.
 
-`WorkspacesSync` shares that logic properly: both entry points drive **one traversal state machine**, `internal/traverse.ts`, which owns the dequeue order (a head index, never `Array.shift()`), the depth rule, the visit budget and the prune list. **Do not let either entry point re-decide any of them** — two hand-written copies is exactly how they drifted (the sync copy once returned a package one level past the cap the Effect enumerator rejected). The only deliberate difference is at the bound: Effect fails typed, sync truncates; `__test__/WorkspacesSync.test.ts` drives both against one tree at the boundary.
+`WorkspacesSync` shares that logic properly: both entry points drive **one traversal state machine**, `internal/traverse.ts`, which owns the dequeue order (a head index, never `Array.shift()`), the depth rule, the visit budget and the prune list. **Do not let either entry point re-decide any of them** — two hand-written copies is exactly how they drifted (the sync copy once returned a package one level past the cap the Effect enumerator rejected). The only deliberate difference is at the bound: Effect fails typed, sync truncates; `__test__/WorkspacesSync.test.ts` drives both against one tree at the boundary. The sync module itself imports **nothing platform-shaped**: each entry point takes a single options bag carrying consumer-supplied `fileSystem` + `path` ops (a breaking signature change; `findWorkspaceRootSync`'s optional `cwd` rides on the bag, no positional argument; `node:fs` / `node:path` satisfy the ops one-liner each), so Windows correctness is the consumer passing a win32-appropriate `path` — the `TsconfigLoaderSync` convention.
 
 ### pnpm writes MULTI-DOCUMENT lockfiles — and framing is NOT this package's job
 
@@ -54,11 +55,13 @@ Every lazy init uses `Effect.cachedInvalidateWithTTL` + `Effect.onExit`-invalida
 
 ### `WorkspacePackage` is deliberately tolerant
 
-It does **not** embed `@effected/package-json`'s `Package`: that model requires a strict `SemVer`, so one member with an odd version would fail discovery for the whole repo. `WorkspacePackage.manifest(pkg)` is the opt-in bridge to the strict model — a **static**, not an instance method (`static readonly manifest = Effect.fn(...)(function* (self: WorkspacePackage))`), so `pkg.manifest()` does not exist.
+It does **not** embed `@effected/package-json`'s `Package`: that model requires a strict `SemVer`, so one member with an odd version would fail discovery for the whole repo. `WorkspacePackage.manifest` is the opt-in bridge to the strict model — an `Effect.fn` **static** carrying the named span, with a thin instance wrapper (`pkg.manifest()`) that just delegates to it. It deliberately **re-reads** the file, a point-in-time refresh; for tolerant access to fields outside the typed discovery slice (`scripts`, `exports`, …) without a second read, `manifestRecord` captures the as-read `package.json` record (values `unknown`; defaults to `{}` for values serialized before the field existed).
 
 ## Ambient cwd
 
 Root resolution is **one concern**: every root-consuming layer takes `{ cwd }`, defaulting to `process.cwd()` read lazily inside `Effect.suspend`. No service method reaches for the ambient cwd. The layer factories are parameterized, so **bind them to a `const`** — layers memoize by reference.
+
+The deliberate exception is `Workspaces.resolverLayer(options?)`: a **fresh, unmemoized layer per call is the feature** — each call re-runs root discovery (including a per-call `process.cwd()` read), so a build tool that changes directory between manifests stays correct. It wires the pnpmfile-replay path (`layerWithConfigDependencies`); compose `Workspaces.resolvers` with `Workspaces.layer` yourself if config-dependency code must not run. `Workspaces.resolveManifest(manifest, options?)` runs `@effected/npm`'s `Manifest.resolve()` over a fresh `resolverLayer` — decode with `Manifest.decode` at the edge, and check the pure `manifest.needsResolution` first to skip catalog assembly entirely.
 
 ## Testing
 
@@ -66,7 +69,7 @@ Root resolution is **one concern**: every root-consuming layer takes `{ cwd }`, 
 
 The one exception is `__test__/integration/self.int.test.ts`, which discovers **this repository** through `@effect/platform-node` (a devDependency). It is the only test that proves the whole stack composes against a real pnpm workspace — and it is what caught the multi-document lockfile bug.
 
-205 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 29 synthesized error/schema-class bases in the prod `issues.json`; never widen it. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
+230 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 28 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it); never widen it. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
 
 ## Point-in-time surface (as built)
 

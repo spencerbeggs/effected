@@ -110,20 +110,52 @@ const Resolvers = Workspaces.resolvers.pipe(Layer.provide(WorkspacesLayer));
 // Layer<CatalogResolver | WorkspaceResolver, never, FileSystem | Path>
 ```
 
-## The synchronous escape hatch
+`Workspaces.resolverLayer(options?)` is that wiring in one call: the two contracts over a full workspace stack, needing only `FileSystem` and `Path` from you. A fresh layer per call is the point — root discovery re-runs each time, including the `process.cwd()` read when `options.cwd` is omitted, so a build tool that changes directory between manifests stays correct. It wires the config-dependency replay path; compose `Workspaces.resolvers` with `Workspaces.layer` yourself if config-dependency code must not run.
 
-Vitest's config-time project discovery cannot await. Two functions exist for exactly that case, and they are **Node-only and synchronous**:
+For whole manifests, `Workspaces.resolveManifest` is the one-shot path over `@effected/npm`'s tolerant `Manifest` model:
 
 ```ts
+import { Manifest } from "@effected/npm";
+import { Workspaces } from "@effected/workspaces";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const manifest = yield* Manifest.decode({ dependencies: { effect: "catalog:" } });
+  const resolved = manifest.needsResolution ? yield* Workspaces.resolveManifest(manifest) : manifest;
+  return resolved.toRecord();
+});
+// needsResolution is pure — checking it first skips catalog assembly entirely
+// when no dependency field carries a catalog: or workspace: specifier
+```
+
+A specifier the workspace cannot answer fails typed as `UnresolvedDependencyError`: at the manifest level "no catalog entry" means the manifest cannot be projected to concrete ranges.
+
+## The synchronous escape hatch
+
+Vitest's config-time project discovery cannot await. Two functions exist for exactly that case, and they run synchronously over file and path operations you supply — the module itself imports nothing platform-shaped, and Node's built-ins satisfy the operations one-liner each:
+
+```ts
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import * as path from "node:path";
 import { findWorkspaceRootSync, getWorkspacePackagesSync } from "@effected/workspaces";
 
-const root = findWorkspaceRootSync();
-const packages = root === null ? [] : getWorkspacePackagesSync(root);
+const options = {
+  fileSystem: {
+    exists: existsSync,
+    readFile: (p: string) => readFileSync(p, "utf8"),
+    readDirectory: (p: string) => readdirSync(p),
+    isDirectory: (p: string) => statSync(p).isDirectory(),
+  },
+  path, // node:path satisfies SyncPath verbatim
+};
+
+const root = findWorkspaceRootSync(options);
+const packages = root === null ? [] : getWorkspacePackagesSync(root, options);
 // root: the workspace root path, or null when none is found above the cwd
 // packages: the discovered workspace packages, empty when there is no root
 ```
 
-Both entry points drive one traversal state machine — the same dequeue order, depth rule, visit budget and `node_modules` prune — so the sync and Effect surfaces can never disagree about what a pattern means. The one deliberate difference is at a bound: the Effect enumerator fails typed, the sync one truncates. Prefer the Effect API everywhere you can run one.
+Windows correctness is the operations you pass — `node:path` on Windows is already win32-appropriate. Both entry points drive one traversal state machine (the same dequeue order, depth rule, visit budget and `node_modules` prune), so the sync and Effect surfaces can never disagree about what a pattern means. The one deliberate difference is at a bound: the Effect enumerator fails typed, the sync one truncates. Prefer the Effect API everywhere you can run one.
 
 ## Error handling
 
@@ -144,21 +176,22 @@ const program = Effect.gen(function* () {
 );
 ```
 
-`WorkspaceRootNotFoundError`, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError`, `WorkspaceManifestError`, `PackageManagerDetectionError`, `CatalogAssemblyError`, `LockfileReadError`, `CyclicDependencyError` and `ChangeDetectionError` each name one thing that can actually go wrong, and each method's error channel is narrowed to the ones it can produce. Change detection additionally surfaces `@effected/git`'s typed git errors, such as `NotARepositoryError`.
+`WorkspaceRootNotFoundError`, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError`, `WorkspaceManifestError`, `PackageManagerDetectionError`, `CatalogAssemblyError`, `LockfileReadError`, `CyclicDependencyError` and `ChangeDetectionError` each name one thing that can actually go wrong, and each method's error channel is narrowed to the ones it can produce. `CatalogAssemblyError` is defined in `@effected/npm`, beside the resolver contract that names it in its channel — import it from there. Change detection additionally surfaces `@effected/git`'s typed git errors, such as `NotARepositoryError`.
 
 ## Features
 
 - `Workspaces.layer` / `Workspaces.layerWithGit` / `Workspaces.resolvers` — the composite layers, split on requirements rather than feature flags: a filesystem, a filesystem plus a subprocess, and the two `@effected/npm` resolver contracts.
+- `Workspaces.resolverLayer` / `Workspaces.resolveManifest` — the one-call manifest-resolution path: a fresh, unmemoized layer per call so root discovery follows your cwd, and one-shot resolution of a whole `Manifest` against the real workspace.
 - `WorkspaceRoot` — root discovery from a `cwd`, over `WORKSPACE_MARKERS`.
 - `WorkspaceDiscovery` — package enumeration with a bounded descent for segment-crossing `packages/**` patterns, plus per-package lookup.
-- `WorkspacePackage` — a deliberately tolerant manifest model, so one member with an odd version cannot fail discovery for the whole repo. `WorkspacePackage.manifest(pkg)` is the opt-in bridge to `@effected/package-json`'s strict `Package`.
+- `WorkspacePackage` — a deliberately tolerant manifest model, so one member with an odd version cannot fail discovery for the whole repo. `manifestRecord` keeps the as-read `package.json` for tolerant access to fields outside the typed slice without a second read; `WorkspacePackage.manifest(pkg)` re-reads and is the opt-in bridge to `@effected/package-json`'s strict `Package`.
 - `DependencyGraph` — a value class over discovered packages: `levels()` for parallel build tiers, the flattened topological order, and `CyclicDependencyError` when there isn't one.
 - `PackageManagerDetector` — npm, pnpm, yarn or bun from lockfiles and the `packageManager` field.
 - `WorkspaceCatalogs` — pnpm catalog assembly and `catalog:` resolution, on pnpm's own catalog packages.
 - `LockfileReader` — locate and parse the workspace's lockfile through `@effected/lockfiles`.
 - `ChangeDetector` — git-range change detection over `@effected/git`'s `Git` service; swap the layer to mock it with no repository.
 - `PublishabilityDetector` — whether a package publishes and to where, as a `PublishTarget` (registry, directory, access, provenance). The default layer implements npm's semantics; swap the layer if yours differ.
-- `findWorkspaceRootSync` / `getWorkspacePackagesSync` — the Node-only synchronous escape hatch for config-time callers that cannot await.
+- `findWorkspaceRootSync` / `getWorkspacePackagesSync` — the synchronous escape hatch for config-time callers that cannot await, over file and path operations you supply.
 
 ## License
 

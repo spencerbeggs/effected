@@ -1,11 +1,14 @@
 /**
  * Effect service contracts for resolving pnpm `catalog:` and `workspace:`
  * dependency specifiers: {@link CatalogResolver} and
- * {@link WorkspaceResolver}, their pure no-op default layers, and the shared
- * {@link DependencyResolutionError} they raise. Both contracts are
- * shape-only — this package ships no resolution logic beyond the no-op
- * layers; a consumer at the application boundary (e.g.
- * `@effected/workspaces`) supplies the real implementation.
+ * {@link WorkspaceResolver}, their pure no-op default layers, and the typed
+ * errors they raise ({@link DependencyResolutionError} for a failed
+ * resolution mechanism, {@link CatalogAssemblyError} for a failed catalog
+ * assembly). Both contracts are shape-only — this package ships no
+ * resolution logic beyond the no-op layers; a consumer at the application
+ * boundary (e.g. `@effected/workspaces`) supplies the real implementation.
+ * {@link Manifest} models a tolerant manifest and builds manifest-level
+ * resolution on top of the per-specifier contracts.
  *
  * @packageDocumentation
  */
@@ -14,6 +17,7 @@ import { Layer } from "effect";
 import { CatalogResolver } from "./CatalogResolver.js";
 import { WorkspaceResolver } from "./WorkspaceResolver.js";
 
+export { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 export { CatalogResolver } from "./CatalogResolver.js";
 export {
 	DependencyField,
@@ -40,6 +44,11 @@ export {
 	InvalidIntegrityHashError,
 	isValidIntegrityHash,
 } from "./IntegrityHash.js";
+export {
+	Manifest,
+	ManifestDecodeError,
+	UnresolvedDependencyError,
+} from "./Manifest.js";
 export { DependencyResolutionError, WorkspaceResolver } from "./WorkspaceResolver.js";
 
 /**

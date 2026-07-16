@@ -1,6 +1,6 @@
 ---
 name: effect-v4-schema
-description: Use when designing, reading, reviewing, or debugging any Effect v4 Schema — the Class-vs-Struct decision, fields and optionality, checks/refine/makeFilter, tagged unions, transformations and codecs (decodeTo, the FromString static), make-vs-new construction, brand/Opaque scalars, custom Equal/Hash, and derived tooling (toArbitrary, toJsonSchemaDocument). Also covers primitives, records, recursive schemas, custom declare types, serialization (JSON/XML/FormData), and error formatting. Verified against effect@4.0.0-beta.94; for v3→v4 renames see effect-v4-construct-map.
+description: Use when designing, reading, reviewing, or debugging any Effect v4 Schema — the Class-vs-Struct decision, fields and optionality, checks/refine/makeFilter, tagged unions, transformations and codecs (decodeTo, the FromString static), make-vs-new construction, brand/Opaque scalars, custom Equal/Hash, and derived tooling (toArbitrary, toJsonSchemaDocument). Also covers primitives, records, recursive schemas, custom declare types, serialization (JSON/XML/FormData), and error formatting. Verified against effect@4.0.0-beta.94+; for v3→v4 renames see effect-v4-construct-map.
 ---
 
 # Effect v4 Schema
@@ -85,7 +85,7 @@ package exits 0 without reading the repo config — it is not a check).
 ## Verify against the installed beta, not the references
 
 The `references/` track **upstream `effect-smol` main**, which runs AHEAD of the
-pinned `effect@4.0.0-beta.94` in this repo. Treat them as authoritative on *shape
+pinned `effect` v4 beta in this repo. Treat them as authoritative on *shape
 and intent*, not on exact export names. Before relying on any specific API, probe
 it from a package on the v4 catalog:
 

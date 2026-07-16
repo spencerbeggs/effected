@@ -1,11 +1,12 @@
-// The one error catalog assembly raises.
+// The typed failure of catalog *assembly* — reading and validating whatever
+// declares a workspace's catalogs — relocated here from `@effected/workspaces`
+// so the `CatalogResolver` contract can name it in its error channel and every
+// consumer can branch on it without `_tag`-sniffing an untyped defect.
 //
-// Extracted into its own module (rather than living beside `CatalogSet` in
-// `WorkspaceCatalogs.ts`) so that both `WorkspaceCatalogs` and the opt-in
-// `ConfigDependencyHooks` seam can import it without an import cycle:
-// `WorkspaceCatalogs` imports `ConfigDependencyHooks` to wire it, so
-// `ConfigDependencyHooks` cannot import back from `WorkspaceCatalogs`. The class
-// is still re-exported from `index.ts`, so no consumer sees the move.
+// It lives in its own module (rather than beside `CatalogResolver`) for the
+// same reason `DependencyResolutionError` lives in `WorkspaceResolver.ts`:
+// both resolver modules must be able to reference it without creating an
+// import cycle (`noImportCycles` is an error here).
 
 import { Schema } from "effect";
 
@@ -22,6 +23,11 @@ import { Schema } from "effect";
  * assembly yields the empty set. The reader is otherwise **hard-fail by design** —
  * a silently-empty catalog read is the "every dependency looks newly added" bug,
  * because catalog output is load-bearing for snapshot diffing.
+ *
+ * Defined here, next to the {@link CatalogResolver} contract that raises it,
+ * rather than in the implementing package (`@effected/workspaces`): folding it
+ * into `DependencyResolutionError`'s defect `cause` forced every consumer to
+ * `_tag`-sniff `unknown` to tell an assembly failure from a resolution failure.
  *
  * @public
  */

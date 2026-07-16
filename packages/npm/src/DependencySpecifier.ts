@@ -116,6 +116,54 @@ const protocolOf = (value: string): DependencyProtocol => {
 
 const isTag = (value: string): boolean => protocolOf(value) === "tag";
 
+// The one catalog-name extraction: shared by `classify` and the public
+// `catalogNameOf` static so the two can never disagree. Empty (after
+// trimming) selects the default catalog.
+const catalogNameOf = (specifier: string): Option.Option<string> => {
+	if (!isCatalog(specifier)) return Option.none();
+	const rest = specifier.slice(CATALOG_PREFIX.length).trim();
+	return rest.length === 0 ? Option.none() : Option.some(rest);
+};
+
+// The range-modifier projection pnpm applies at publish time: `*` (or an
+// empty modifier) pins to the version, `~`/`^` prefix it, anything else — a
+// pinned or concrete range — passes through as-is.
+const projectRangeModifier = (range: string, version: string): string =>
+	range === "*" || range === "" ? version : range === "~" ? `~${version}` : range === "^" ? `^${version}` : range;
+
+// Split the part after `workspace:` into pnpm's alias form (`<name>@<range>`,
+// e.g. `foo@^` or `@scope/charts@1.2.3`) and the plain form. The LAST `@` at
+// an index past 0 separates the target package name from the range modifier,
+// so scoped names keep their leading `@`; a lone scoped name with no second
+// `@` is not the alias form.
+const splitWorkspaceRest = (rest: string): { readonly target: string | undefined; readonly range: string } => {
+	const at = rest.lastIndexOf("@");
+	return at > 0 ? { target: rest.slice(0, at), range: rest.slice(at + 1) } : { target: undefined, range: rest };
+};
+
+// The one workspace-range projection: shared by the `resolveWorkspace` static
+// and `WorkspaceSpecifier#resolve`. `rest` is the part after `workspace:`.
+// Plain forms project the modifier directly; the alias form becomes pnpm's
+// publish-time aliased dependency `npm:<name>@<projected>`.
+const projectWorkspaceRange = (rest: string, version: string): string => {
+	const { target, range } = splitWorkspaceRest(rest);
+	const projected = projectRangeModifier(range, version);
+	return target === undefined ? projected : `npm:${target}@${projected}`;
+};
+
+const resolveWorkspace = (specifier: string, version: string): string =>
+	isWorkspace(specifier) ? projectWorkspaceRange(specifier.slice(WORKSPACE_PREFIX.length), version) : specifier;
+
+// The target package name of an alias-form `workspace:` specifier, `None` for
+// the plain form and for non-workspace input. Shared by `Manifest.resolve`
+// and `@effected/package-json`'s `Package.resolve`, which must look up the
+// TARGET's version before projecting.
+const workspaceTargetOf = (specifier: string): Option.Option<string> => {
+	if (!isWorkspace(specifier)) return Option.none();
+	const { target } = splitWorkspaceRest(specifier.slice(WORKSPACE_PREFIX.length));
+	return target === undefined ? Option.none() : Option.some(target);
+};
+
 /**
  * Whether a string is a recognized dependency specifier: a semver range, exact
  * version, dist-tag, URL, git ref, GitHub shorthand, file path, or an
@@ -150,7 +198,28 @@ export class WorkspaceSpecifier extends Schema.TaggedClass<WorkspaceSpecifier>()
 	raw: Schema.String,
 	/** The part after `workspace:` (e.g. `*`, `^1.2.3`, or an alias form). */
 	range: Schema.String,
-}) {}
+}) {
+	/**
+	 * The pnpm publish-time projection of this specifier against a concrete
+	 * workspace version: `*` (or an empty range) becomes `version`, `~` becomes
+	 * `~version`, `^` becomes `^version`, and a pinned range passes through
+	 * unchanged. The alias form (`workspace:<name>@<range>`) becomes pnpm's
+	 * publish-time aliased dependency `npm:<name>@<projected>`, with the range
+	 * modifier projected the same way — `version` must then be the TARGET
+	 * package's version (see `DependencySpecifier.workspaceTargetOf`).
+	 *
+	 * @remarks
+	 * The same projection as `DependencySpecifier.resolveWorkspace`, applied to
+	 * this instance's already-extracted `range`; the two share one internal
+	 * implementation.
+	 *
+	 * @param version - The concrete version of the workspace package the
+	 *   specifier points at (the alias target's version for the alias form).
+	 */
+	resolve(version: string): string {
+		return projectWorkspaceRange(this.range, version);
+	}
+}
 
 /**
  * A plain semver range or exact version (e.g. `^1.2.3`, `1.x`, `>=1 <2`).
@@ -205,8 +274,7 @@ const Classified = Schema.Union([CatalogSpecifier, WorkspaceSpecifier, RangeSpec
 // file, link, portal, npm) preserved as `raw`.
 const classify = (value: string): ClassifiedSpecifier => {
 	if (isCatalog(value)) {
-		const rest = value.slice(CATALOG_PREFIX.length);
-		return CatalogSpecifier.make({ raw: value, name: rest.length === 0 ? Option.none() : Option.some(rest) });
+		return CatalogSpecifier.make({ raw: value, name: catalogNameOf(value) });
 	}
 	if (isWorkspace(value)) {
 		return WorkspaceSpecifier.make({ raw: value, range: value.slice(WORKSPACE_PREFIX.length) });
@@ -219,8 +287,11 @@ const classify = (value: string): ClassifiedSpecifier => {
 const fromString: Schema.Codec<ClassifiedSpecifier, string> = Schema.String.pipe(
 	Schema.decodeTo(
 		Classified,
-		SchemaTransformation.transformOrFail({
-			decode: (input: string) =>
+		// Pinned to the union's ENCODED side (plain records, without instance
+		// methods like WorkspaceSpecifier#resolve): letting inference unify the
+		// transformation's target from decode/encode rejects the instance methods.
+		SchemaTransformation.transformOrFail<(typeof Classified)["Encoded"], string>({
+			decode: (input) =>
 				isValidDependencySpecifier(input)
 					? Effect.succeed(classify(input))
 					: Effect.fail(
@@ -228,7 +299,7 @@ const fromString: Schema.Codec<ClassifiedSpecifier, string> = Schema.String.pipe
 								message: `Invalid dependency specifier: "${input}"`,
 							}),
 						),
-			encode: (classified: ClassifiedSpecifier) => Effect.succeed(classified.raw),
+			encode: (classified) => Effect.succeed(classified.raw),
 		}),
 	),
 );
@@ -257,6 +328,36 @@ interface DependencySpecifierStatics {
 	readonly isCatalog: (value: string) => boolean;
 	/** Whether the specifier uses the `workspace:` protocol. */
 	readonly isWorkspace: (value: string) => boolean;
+	/**
+	 * The catalog name of a `catalog:` specifier: `Some(name)` for a named
+	 * catalog, `None` for the default catalog (nothing but whitespace after the
+	 * prefix). The result is only meaningful when `isCatalog(specifier)` is
+	 * true — non-catalog input also returns `None`.
+	 */
+	readonly catalogNameOf: (specifier: string) => Option.Option<string>;
+	/**
+	 * The pnpm publish-time projection of a `workspace:` specifier against a
+	 * concrete version: `workspace:*` (or a bare `workspace:`) becomes
+	 * `version`, `workspace:~` becomes `~version`, `workspace:^` becomes
+	 * `^version`, and a pinned range passes through as-is (the part after the
+	 * prefix). pnpm's alias form (`workspace:<name>@<range>`, the last `@`
+	 * separating a possibly scoped target name from the range) becomes the
+	 * aliased dependency pnpm publishes: `npm:<name>@<projected>`, with the
+	 * range modifier projected the same way — `version` must then be the
+	 * TARGET package's version, resolved via
+	 * {@link DependencySpecifierStatics.workspaceTargetOf | workspaceTargetOf}.
+	 * Non-workspace input is returned unchanged.
+	 */
+	readonly resolveWorkspace: (specifier: string, version: string) => string;
+	/**
+	 * The target package name of an alias-form `workspace:` specifier
+	 * (`workspace:<name>@<range>` — e.g. `workspace:foo@^`,
+	 * `workspace:@scope/charts@*`): `Some(name)` for the alias form, `None`
+	 * for the plain form and for non-workspace input. Resolvers must look up
+	 * this package's version (not the dependency-map key's) before projecting
+	 * with `resolveWorkspace`.
+	 */
+	readonly workspaceTargetOf: (specifier: string) => Option.Option<string>;
 	/** Whether the string is a valid dependency specifier. */
 	readonly isValid: (value: string) => boolean;
 	/** Validate a string, failing with a typed {@link InvalidDependencySpecifierError}. */
@@ -313,6 +414,9 @@ export const DependencySpecifier = Object.assign(brandedSpecifier, {
 	isPortal,
 	isCatalog,
 	isWorkspace,
+	catalogNameOf,
+	resolveWorkspace,
+	workspaceTargetOf,
 	isValid: isValidDependencySpecifier,
 	decode,
 	FromString: fromString,

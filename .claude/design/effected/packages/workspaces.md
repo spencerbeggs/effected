@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-16
+last-synced: 2026-07-16
 completeness: 95
 related:
   - ../effect-standards.md
@@ -45,7 +45,7 @@ Runtime dependencies:
 | `@effected/git` (`workspace:*`) | typed git introspection — `ChangeDetector` and `WorkspaceSnapshots` run on its `Git` service |
 | `effect` (peer) | core |
 
-There is no `minimatch` dependency — dependency-pattern matching and the enumerator's mini-glob both run on `@effected/glob`'s vendored engine. Subprocess spawning lives entirely behind `@effected/git`'s `ChildProcessSpawner` contract; there is no `node:child_process` anywhere here. The only Node-only overlays are the `WorkspacesSync` escape hatch (`node:fs`, `node:path`) and `ConfigDependencyHooks.layerLive`, which does an in-process dynamic `import()` of a config dependency's `pnpmfile.cjs`. Both are built-ins/dynamic-imports, not dependencies, so they do not affect tier — but their TSDoc names them plainly.
+There is no `minimatch` dependency — dependency-pattern matching and the enumerator's mini-glob both run on `@effected/glob`'s vendored engine. Subprocess spawning lives entirely behind `@effected/git`'s `ChildProcessSpawner` contract; there is no `node:child_process` anywhere here. The only Node-only overlay is `ConfigDependencyHooks.layerLive`, which does an in-process dynamic `import()` of a config dependency's pnpmfile — a built-in/dynamic-import, not a dependency, so it does not affect tier, and its TSDoc names it plainly. `WorkspacesSync` no longer imports `node:*` at all: since the 2026-07-16 retrofit its file and path operations are consumer-supplied (see [the escape hatch](#workspacessync--the-escape-hatch)).
 
 ## Implementing @effected/npm's resolver contracts
 
@@ -57,7 +57,14 @@ The implementations are exported as layers over this package's own services:
 - `WorkspaceDiscovery.workspaceResolver` — `Layer<WorkspaceResolver, never, WorkspaceDiscovery>`; `versionOf` consults the discovered packages.
 - `Workspaces.resolvers` — the merged convenience layer.
 
-Provide either alongside `Package.resolve` and a `package.json`'s `catalog:` / `workspace:` specifiers resolve for real instead of `Option.none()`. The contracts' convention holds exactly: an *unmatched* name is `Option.none()`, and the `DependencyResolutionError` channel is reserved for a failure of the resolution *mechanism* (an unreadable or malformed `pnpm-workspace.yaml`).
+Provide either alongside `Package.resolve` and a `package.json`'s `catalog:` / `workspace:` specifiers resolve for real instead of `Option.none()`. The contracts' convention holds exactly: an *unmatched* name is `Option.none()`, and the error channel is reserved for a failure of the resolution *mechanism*.
+
+**The assembly error is npm's, and it passes through typed** (2026-07-16, dogfood item 3). `CatalogAssemblyError` **moved to `@effected/npm`** — the contract package owns the contract's error vocabulary — and `CatalogResolver.rangeOf`'s channel is now `CatalogAssemblyError | DependencyResolutionError`. `WorkspaceCatalogs.catalogResolver` therefore no longer folds an assembly failure into `DependencyResolutionError`'s defect `cause` (which forced consumers to `_tag`-sniff `unknown`): an unreadable or malformed catalog source passes through as the typed `CatalogAssemblyError`, and only the remaining mechanism failure — an unfindable workspace root — is wrapped as `DependencyResolutionError`. This package imports the error back from npm and deliberately does **not** re-export it. `WorkspaceStateSnapshot`'s snapshot-scoped resolver satisfies the widened channel vacuously — its catalogs were assembled at capture, so its `rangeOf` is total.
+
+Two conveniences sit on top (2026-07-16, dogfood items 2 and 4):
+
+- **`Workspaces.resolverLayer(options?)`** — `Layer<CatalogResolver | WorkspaceResolver, never, FileSystem | Path>`: `resolvers` pre-wired over `layerWithConfigDependencies(options)`, so the two contracts need only a platform from the consumer. It is **deliberately a parameterized layer function, and the fresh layer per call is the feature**: layers memoize by reference, so each call mints an unmemoized layer whose root discovery re-runs — including a per-call `process.cwd()` read when `options.cwd` is omitted. A build tool that changes directory between manifests gets a correct re-discovery each time precisely because nothing is shared across calls; a consumer that wants sharing binds one call's result to a `const`. Catalog assembly takes the hook-replay path — compose `resolvers` with `layer()` yourself if config-dependency code must not run in process.
+- **`Workspaces.resolveManifest(manifest, options?)`** — the one-shot 90% path: `manifest.resolve()` (npm's `Manifest`, [npm.md](npm.md#manifest-tolerant-manifest-level-resolution)) provided with a fresh `resolverLayer(options)` per call. Consumers processing many manifests check the pure `manifest.needsResolution` first and skip the call — and catalog assembly — entirely when nothing needs resolving.
 
 ## The packages: enumerator
 
@@ -89,15 +96,14 @@ Module-per-concept.
 | `src/WorkspaceCatalogs.ts` | `CatalogSet` class, `WorkspaceCatalogs` service + layer, the `catalogResolver` layer |
 | `src/WorkspaceSnapshots.ts` | `WorkspaceSnapshots` service + layers, the snapshot error unions |
 | `src/WorkspaceStateSnapshot.ts` | `WorkspaceStateSnapshot` and `PackageStateSnapshot` value classes |
-| `src/CatalogAssemblyError.ts` | `CatalogAssemblyError` — a leaf module to break a cycle (see below) |
 | `src/ConfigDependencyHooks.ts` | `ConfigDependencyHooks` contract service, `layerLive`, `layerNoop` |
 | `src/LockfileReader.ts` | `LockfileReader` service + layer (the IO half of `@effected/lockfiles`), `LockfileReadError` |
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetector` service + default layer |
-| `src/Workspaces.ts` | The composite layers |
-| `src/WorkspacesSync.ts` | The synchronous escape hatch (Node-only) |
+| `src/Workspaces.ts` | The composite layers, `resolverLayer`, `resolveManifest` |
+| `src/WorkspacesSync.ts` | The synchronous escape hatch over consumer-supplied ops (`SyncFileSystem`, `SyncPath`, `WorkspacesSyncOptions`) |
 | `src/internal/` | `traverse.ts` (the traversal state machine), `enumerate.ts` (the Effect enumerator over it), `patterns.ts` (`packages:` pattern reading), `catalogs.ts` (the `@pnpm/catalogs.*` boundary), `limits.ts` |
 
-`CatalogAssemblyError` is a leaf module because `WorkspaceCatalogs` depends on `ConfigDependencyHooks` (which raises the error), so keeping the error in `WorkspaceCatalogs.ts` would create an import cycle. Its `source` literal has a `"hooks"` arm.
+`CatalogAssemblyError` used to be this package's own leaf module; it now lives in `@effected/npm` beside the `CatalogResolver` contract that names it (see [the error seam](#implementing-effectednpms-resolver-contracts)). `WorkspaceCatalogs`, `ConfigDependencyHooks` and `WorkspaceSnapshots` import it from npm; its `source` literal keeps the `"hooks"` arm.
 
 YAML-**stream** framing is not this package's job. `pnpm-lock.yaml` carries a config-dependencies preamble document ahead of the real lockfile whenever the workspace uses `configDependencies` (this repo's own lockfile is that shape); a first-document parse silently returns the preamble — an apparently empty workspace rather than a failure. [@effected/lockfiles](lockfiles.md#document-framing-a-lockfile-is-a-yaml-stream) owns it on a deterministic rule (pnpm's writer always emits the preamble as a prefix, so the lockfile is the **last** document) and surfaces a typed `LockfileFramingError` when a stream carries no lockfile document. `LockfileReader` therefore calls `Lockfile.parse` directly.
 
@@ -109,7 +115,9 @@ Sorting and file-to-package lookup are not services: `sort` / `sortSubset` / `le
 
 ### WorkspacePackage
 
-A `Schema.Class` carrying a located workspace member: `name`, `version`, `path`, `packageJsonPath`, `relativePath`, `private`, the four dependency maps, `publishConfig`. It keeps a **tolerant** manifest projection rather than embedding `@effected/package-json`'s `Package`: `Package` requires `name: PackageName` and `version: SemVer.FromString`, so one member with a non-semver version would fail *discovery* for the whole repo. The strict model is one method away — `pkg.manifest()` returns `Effect<Package, …>` by reading and decoding the file through `@effected/package-json` — so `WorkspacePackage` (a located member, discovered) and `Package` (a fully-typed manifest, decoded) are different entities, not duplicates.
+A `Schema.Class` carrying a located workspace member: `name`, `version`, `path`, `packageJsonPath`, `relativePath`, `private`, the four dependency maps, `publishConfig`, and `manifestRecord`. It keeps a **tolerant** manifest projection rather than embedding `@effected/package-json`'s `Package`: `Package` requires `name: PackageName` and `version: SemVer.FromString`, so one member with a non-semver version would fail *discovery* for the whole repo. The strict model is one method away — `pkg.manifest()` returns `Effect<Package, …>` by reading and decoding the file through `@effected/package-json` — so `WorkspacePackage` (a located member, discovered) and `Package` (a fully-typed manifest, decoded) are different entities, not duplicates.
+
+**`manifestRecord`** (2026-07-16, dogfood item 5) is the as-read `package.json` record, **captured at discovery**, so a consumer needing a field outside the typed slice (`scripts`, `exports`, …) reads it without a second file read or a strict decode that can fail on odd manifests. Values are `unknown` and unvalidated beyond being a record; it defaults to `{}` for construction sites and previously-serialized values that predate the field. Two decisions around it are deliberate: the re-reading `manifest()` **stays** — its point-in-time refresh semantics depend on re-reading, which a captured record cannot provide — and `PackageStateSnapshot` is **not** widened to carry it; the snapshot remains the narrow store-and-diff value, and bloating every stored snapshot with full manifests would tax the store for a field diffing never reads.
 
 `matchesDependency(pattern: GlobPattern | string): boolean` replaces the `minimatch` call. Passing a `GlobPattern` is total and free; passing a `string` compiles via `GlobPattern.make`, and an uncompilable literal is a **defect** — a glob in `matchesDependency("@types/*")` is developer wiring, not untrusted input. Compile once and reuse in a loop.
 
@@ -160,7 +168,9 @@ The policy contrast is deliberate: `PackageManagerDetector` **degrades gracefull
 
 ### WorkspacesSync — the escape hatch
 
-`findWorkspaceRootSync(cwd?)` and `getWorkspacePackagesSync(root)`. Vitest's config-time project discovery cannot await, and `vitest-agent` — the gate consumer — calls exactly these two. This monorepo does not use subpath exports, so the module ships from the main entry and its TSDoc says plainly it is Node-only and synchronous. It keeps **no third pattern semantic**: it compiles through the same `GlobSet` and enumerates through a synchronous mirror of the same worklist, so `packages/**` means the same thing in both worlds.
+`findWorkspaceRootSync(cwd, options)` and `getWorkspacePackagesSync(root, options)`. Vitest's config-time project discovery cannot await, and `vitest-agent` — the gate consumer — calls exactly these two. This monorepo does not use subpath exports, so the module ships from the main entry and its TSDoc says plainly it is synchronous. It keeps **no third pattern semantic**: it compiles through the same `GlobSet` and enumerates through a synchronous mirror of the same worklist, so `packages/**` means the same thing in both worlds.
+
+**Retrofitted to consumer-supplied ops** (2026-07-16, dogfood items 7 and 9; breaking, accepted under `0.x`). The design rule, stated by Spencer for every sync escape hatch in the kit: **the kit never imports `node:*` and never assumes posix — a sync surface takes the platform from its caller.** `WorkspacesSyncOptions` carries a `SyncFileSystem` (`exists` / `readFile` / `readDirectory` / `isDirectory`) and a `SyncPath` (`join` / `dirname` / `resolve`), both minimal structural interfaces that Node's built-ins satisfy verbatim — `node:fs` functions one-liner each, and `node:path` (or `node:path/win32`, or a Bun/Deno equivalent) *is* a `SyncPath`. Windows correctness is therefore the consumer passing a win32-appropriate `path`, not anything in this module — the same convention as `@effected/tsconfig-json`'s `TsconfigLoaderSync` ([tsconfig-json.md](tsconfig-json.md#tsconfigloadersync--the-sync-facade)). Throwing consumer ops degrade to the documented skip semantics; nothing propagates.
 
 ## Git integration
 
@@ -197,7 +207,7 @@ Mechanics follow the house rules: caching per `(root, ref)` via `Effect.cachedIn
 
 ## Error handling
 
-Nine `Schema.TaggedErrorClass` types with **structured** fields:
+The package's own `Schema.TaggedErrorClass` types with **structured** fields:
 
 | Error | Raised by | Structure |
 | --- | --- | --- |
@@ -209,10 +219,9 @@ Nine `Schema.TaggedErrorClass` types with **structured** fields:
 | `PackageNotFoundError` | discovery / graph | `name`, `available` |
 | `CyclicDependencyError` | `DependencyGraph` | `cycle` |
 | `ChangeDetectionError` | `ChangeDetector` | `operation`, `cause` |
-| `CatalogAssemblyError` | `WorkspaceCatalogs`, `ConfigDependencyHooks` | `source` (incl. `"hooks"`), `path`, `cause` |
 | `LockfileReadError` | `LockfileReader` | `lockfilePath`, `format`, `cause` |
 
-Every `kind` is a `Schema.Literals` discriminant and every `cause` is a `Schema.Defect()`. Git's typed errors (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`) arrive from `@effected/git` and surface alongside `ChangeDetectionError` in `ChangeDetector`'s channel. `LockfileParseError` and `DependencyResolutionError` arrive from `@effected/lockfiles` and `@effected/npm`. Per-method error unions stay narrow and are exported as type aliases. `SchemaError` never escapes: every `decodeUnknownEffect` boundary normalizes with `Effect.catchTag("SchemaError", …)` into the domain error, preserving the parse detail on `cause`.
+Every `kind` is a `Schema.Literals` discriminant and every `cause` is a `Schema.Defect()`. Git's typed errors (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`) arrive from `@effected/git` and surface alongside `ChangeDetectionError` in `ChangeDetector`'s channel. `LockfileParseError` arrives from `@effected/lockfiles`; `DependencyResolutionError` and `CatalogAssemblyError` arrive from `@effected/npm` — `CatalogAssemblyError` is raised here (by `WorkspaceCatalogs`, `ConfigDependencyHooks` and `WorkspaceSnapshots`) but owned there, and not re-exported. Per-method error unions stay narrow and are exported as type aliases. `SchemaError` never escapes: every `decodeUnknownEffect` boundary normalizes with `Effect.catchTag("SchemaError", …)` into the domain error, preserving the parse detail on `cause`.
 
 ## Lazy init
 
@@ -251,4 +260,4 @@ Mutation-proven edges:
 
 ## Build
 
-Standard per [package-setup.md](../package-setup.md). `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized class-factory bases; the gate is a zero-warning `dist/prod/issues.json` with only `*_base` symbols suppressed.
+Standard per [package-setup.md](../package-setup.md). `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized class-factory bases; the gate is a zero-warning `dist/prod/issues.json` with only `*_base` symbols suppressed. The prod gate's expected suppressed count is **28** (`suppressed: 0` in the prod gate means the build did not run properly).

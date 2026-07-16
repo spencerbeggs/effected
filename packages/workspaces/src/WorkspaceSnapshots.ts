@@ -17,9 +17,9 @@ import type { GitCommandError, NotARepositoryError, UnknownRefError } from "@eff
 import { Git } from "@effected/git";
 import { GlobSet } from "@effected/glob";
 import { Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
+import { CatalogAssemblyError } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, Layer, Option } from "effect";
-import { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import { CatalogSet, WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
 import type { WorkspaceDiscoveryFailure } from "./WorkspaceDiscovery.js";
@@ -38,7 +38,7 @@ import { PackageStateSnapshot, WorkspaceStateSnapshot } from "./WorkspaceStateSn
  * filesystem, so no `WorkspaceDiscoveryError` / `WorkspacePatternError` appears —
  * and a malformed *lockfile* at the ref degrades to no catalogs (a lockfile is a
  * record, not a source of truth), so only the inline source raises
- * {@link CatalogAssemblyError}.
+ * `CatalogAssemblyError`.
  *
  * @public
  */

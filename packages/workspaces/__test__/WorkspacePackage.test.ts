@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { GlobPattern } from "@effected/glob";
-import { Option } from "effect";
+import { Option, Schema } from "effect";
 import { PublishConfig, WorkspacePackage } from "../src/index.js";
 
 const base = {
@@ -206,5 +206,48 @@ describe("WorkspacePackage.dependencyVersion — inherited names are not depende
 
 	it("a real declared dependency still resolves", () => {
 		assert.deepStrictEqual(pkg.dependencyVersion("effect"), Option.some("^4.0.0"));
+	});
+});
+
+describe("WorkspacePackage.manifestRecord", () => {
+	it("defaults to an empty record at construction sites that predate the field", () => {
+		const bare = WorkspacePackage.make({ name: "bare", ...base });
+		assert.deepStrictEqual(bare.manifestRecord, {});
+	});
+
+	it("round-trips a non-trivial record through JSON serialization", () => {
+		// The snapshot path: encode, stringify, parse, decode — what a consumer
+		// persisting discovery output actually does. The record must survive
+		// byte-for-byte, including nested unknowns outside the discovery slice.
+		const pkg = WorkspacePackage.make({
+			name: "@my-org/utils",
+			...base,
+			dependencies: { effect: "^4.0.0" },
+			manifestRecord: {
+				name: "@my-org/utils",
+				version: "1.0.0",
+				scripts: { build: "tsc", test: "vitest run" },
+				exports: { ".": { types: "./dist/index.d.ts", default: "./dist/index.js" } },
+				sideEffects: false,
+			},
+		});
+		const wire = JSON.parse(JSON.stringify(Schema.encodeUnknownSync(WorkspacePackage)(pkg))) as unknown;
+		const decoded = Schema.decodeUnknownSync(WorkspacePackage)(wire);
+		assert.deepStrictEqual(decoded.manifestRecord, pkg.manifestRecord);
+		assert.deepStrictEqual(decoded.dependencies, { effect: "^4.0.0" });
+	});
+
+	it("a previously-serialized value WITHOUT the field decodes to an empty record", () => {
+		// Snapshots serialized before the field existed must stay valid — the
+		// decoding default, not an error and not `undefined`.
+		const legacy = {
+			name: "old",
+			version: "1.0.0",
+			path: "/repo/packages/old",
+			packageJsonPath: "/repo/packages/old/package.json",
+			relativePath: "packages/old",
+		};
+		const decoded = Schema.decodeUnknownSync(WorkspacePackage)(legacy);
+		assert.deepStrictEqual(decoded.manifestRecord, {});
 	});
 });

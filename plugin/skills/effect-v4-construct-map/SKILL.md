@@ -12,7 +12,7 @@ cross-referenced below; this skill is the lookup, not the tutorial. For what a
 v4 module *is* regardless of its v3 history, see `effect-v4-module-index`.
 
 **Ethos — verify against the installed package, not memory.** Everything here is
-verified against `effect@4.0.0-beta.94`. v4 betas move fast: when an API is not
+verified against `effect@4.0.0-beta.94+`. v4 betas move fast: when an API is not
 listed, check `node_modules/effect/dist/` for the module and its `.d.ts`
 signature before writing code. Never trust v3 muscle memory. One runtime probe
 beats an hour of type-error archaeology — see

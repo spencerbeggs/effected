@@ -1,11 +1,13 @@
 // The `CatalogResolver` service contract for resolving pnpm `catalog:`
 // specifiers, plus its no-op default layer.
 //
-// The `DependencyResolutionError` it raises lives in `WorkspaceResolver.ts`
-// and is imported type-only here, so the only runtime edge runs
+// Both errors it can raise live in sibling modules and are imported
+// type-only here (`DependencyResolutionError` in `WorkspaceResolver.ts`,
+// `CatalogAssemblyError` in its own module), so the only runtime edge runs
 // `CatalogResolver -> WorkspaceResolver`, keeping `noImportCycles` satisfied.
 
 import { Context, Effect, Layer, Option } from "effect";
+import type { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 import type { DependencyResolutionError } from "./WorkspaceResolver.js";
 
 /**
@@ -16,9 +18,11 @@ import type { DependencyResolutionError } from "./WorkspaceResolver.js";
  * (`Option.none()` selects the default catalog) and returns the configured
  * range as `Option.some`, or `Option.none()` when the specifier is absent
  * from the catalog. By convention the error channel is reserved for a
- * failure in the resolution mechanism itself (e.g. an unreadable catalog
- * file) — an unmatched package or catalog name is an `Option.none()`
- * success, not a {@link DependencyResolutionError}.
+ * failure in the resolution mechanism itself — an unmatched package or
+ * catalog name is an `Option.none()` success, never an error. A failure to
+ * *assemble* the catalogs (an unreadable or malformed catalog source)
+ * surfaces typed as a {@link CatalogAssemblyError}; any other mechanism
+ * failure is a {@link DependencyResolutionError}.
  *
  * This is a contract-only service: {@link CatalogResolver.noop} is the sole
  * implementation this package ships, and it resolves nothing. Real consumers
@@ -47,7 +51,7 @@ export class CatalogResolver extends Context.Service<
 		readonly rangeOf: (
 			packageName: string,
 			catalog: Option.Option<string>,
-		) => Effect.Effect<Option.Option<string>, DependencyResolutionError>;
+		) => Effect.Effect<Option.Option<string>, CatalogAssemblyError | DependencyResolutionError>;
 	}
 >()("@effected/npm/CatalogResolver") {
 	/**

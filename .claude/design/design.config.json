@@ -17,7 +17,7 @@
 		"effected": {
 			"path": ".",
 			"designDocsPath": ".claude/design/effected",
-			"categories": ["architecture", "meta", "documentation"],
+			"categories": ["architecture", "meta", "documentation", "feedback"],
 			"maintainer": "C. Spencer Beggs"
 		}
 	},

@@ -15,6 +15,7 @@ export {
 	NewLine,
 	Target,
 } from "./CompilerOptions.js";
+export { JsxConfig } from "./JsxConfig.js";
 export { PortableTsconfig } from "./PortableTsconfig.js";
 export { ResolvedTsconfig } from "./ResolvedTsconfig.js";
 export type { FindNearestOptions } from "./TsconfigDiscovery.js";
@@ -31,5 +32,7 @@ export {
 	WatchOptions,
 } from "./TsconfigJson.js";
 export { TsconfigExtendsError, TsconfigLoader } from "./TsconfigLoader.js";
+export type { SyncFileSystem, SyncPath, TsconfigLoaderSyncOptions } from "./TsconfigLoaderSync.js";
+export { TsconfigLoaderSync } from "./TsconfigLoaderSync.js";
 export type { EnumFamily } from "./TsEnumCodec.js";
 export { TsEnumCodec } from "./TsEnumCodec.js";

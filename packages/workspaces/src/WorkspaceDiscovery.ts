@@ -287,6 +287,9 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 						path: directory,
 						packageJsonPath,
 						relativePath,
+						// The as-read record rides along so consumers reach fields outside
+						// the discovery slice without a second file read.
+						manifestRecord: raw,
 						...(typeof raw.private === "boolean" ? { private: raw.private } : {}),
 						...(isStringRecord(raw.dependencies) ? { dependencies: raw.dependencies } : {}),
 						...(isStringRecord(raw.devDependencies) ? { devDependencies: raw.devDependencies } : {}),

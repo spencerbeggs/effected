@@ -172,6 +172,12 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * THIS snapshot's catalog set — so code written to the contract resolves
 	 * `catalog:` specifiers as of this ref. Built once per instance and cached, so
 	 * it memoizes by reference.
+	 *
+	 * @remarks
+	 * The contract's error channel (`CatalogAssemblyError` /
+	 * `DependencyResolutionError`) is satisfied vacuously: a snapshot's catalogs
+	 * were already assembled when it was captured, so this resolver is total —
+	 * `rangeOf` never fails.
 	 */
 	get catalogResolver(): Layer.Layer<CatalogResolver> {
 		if (this.#catalogResolver === undefined) {

@@ -1,6 +1,6 @@
 ---
 name: effect-v4-idioms
-description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Verified against effect@4.0.0-beta.94.
+description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Verified against effect@4.0.0-beta.94+.
 ---
 
 # Effect v4 core idioms
@@ -12,7 +12,7 @@ patterns, not the map. This is the *how to write it well* companion to
 `effect-v4-construct-map` (which owns the flat v3→v4 rename tables and the
 `Context.Service` / `Schema.TaggedErrorClass` migration rows — cross-reference it
 rather than duplicate). Every identifier below was probed against
-`effect@4.0.0-beta.94`; when you reach past this list, run one runtime probe
+`effect@4.0.0-beta.94+`; when you reach past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)
 before writing — v4 betas move fast and muscle memory lies.
 
@@ -333,13 +333,20 @@ service's error contract**: `@effected/git`'s `runClassified` owns a fixed
 `Cause.TimeoutError` never escapes its methods — the ceiling is absorbed
 into the taxonomy, not exposed as a parameter.
 
-## `Predicate` helpers — never hand-write `isRecord` / `isString`
+## `Predicate` helpers — never hand-write `isString` / record guards
 
 The official LLMS guidance, adopted as a house rule: **never** write your own
-type-guard helpers like `isRecord`, `isString`, `isPlainObject` — the
-`Predicate` module ships them (`Predicate.isRecord`, `Predicate.isString`,
-`Predicate.hasProperty`, …). A hand-rolled guard is both a duplication and a
-subtle-drift risk (v3 ports carry several; retire them on contact).
+type-guard helpers — the `Predicate` module ships them. A hand-rolled guard is
+both a duplication and a subtle-drift risk (v3 ports carry several; retire
+them on contact).
+
+Beware the v3 names: **`Predicate.isRecord` and `Predicate.isPlainObject` do
+NOT exist on beta.98** (probed; the vendored `Predicate.ts` has neither). The
+guards that DO ship: `isString`, `isNumber`, `isBoolean`, `isObject`,
+`isReadonlyObject`, `isObjectOrArray`, `isObjectKeyword`, `hasProperty`,
+`isTagged`, `isIterable`, `isNullish`/`isNotNullish`, `isTupleOf`, and
+friends — for a record check, pick the object refinement whose semantics you
+verified in the module, not a remembered v3 name.
 
 ## Scope and resource management
 

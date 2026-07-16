@@ -6,10 +6,9 @@
 // inline `pnpm-workspace.yaml` catalogs, which win.
 
 import type { Lockfile } from "@effected/lockfiles";
-import { CatalogResolver, DependencyResolutionError } from "@effected/npm";
+import { CatalogAssemblyError, CatalogResolver, DependencyResolutionError } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
-import { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
@@ -112,7 +111,7 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 	 * load-bearing for: a present-but-malformed `workspaces` shape (a number, a
 	 * string, an object with a malformed `packages` / `catalog` / `catalogs`), or
 	 * the default catalog declared twice — once as `workspaces.catalog` and again
-	 * as `workspaces.catalogs.default` — fails with {@link CatalogAssemblyError}
+	 * as `workspaces.catalogs.default` — fails with `CatalogAssemblyError`
 	 * naming what was wrong. An absent `workspaces` field, one explicitly `null`,
 	 * or the plain array form (npm/yarn patterns, which carry no catalogs) yields
 	 * the empty set. Presence is checked structurally, so an explicitly-declared
@@ -388,7 +387,7 @@ export interface WorkspaceCatalogsOptions {
  * within a catalog. An unreadable or absent lockfile degrades to no lockfile
  * catalogs rather than failing (the inline declaration is the source of truth, the
  * lockfile a record of what was installed); a malformed inline source **fails
- * typed** with {@link CatalogAssemblyError}, because a silently-empty catalog read
+ * typed** with `CatalogAssemblyError`, because a silently-empty catalog read
  * is the "every dependency looks newly added" bug.
  *
  * Assembly is deferred to the first call and memoized success-only, matching
@@ -566,9 +565,12 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	 *
 	 * @remarks
 	 * `rangeOf` returns `Option.none()` for a dependency no catalog declares, per
-	 * the contract's convention; `DependencyResolutionError` is reserved for a
-	 * failure of the resolution *mechanism* — an unfindable workspace root, an
-	 * unreadable or malformed `pnpm-workspace.yaml`.
+	 * the contract's convention. A failed catalog *assembly* — an unreadable or
+	 * malformed `pnpm-workspace.yaml`, a broken config-dependency hook — passes
+	 * through **typed** as the contract's `CatalogAssemblyError` (it used to be
+	 * folded into `DependencyResolutionError`'s defect `cause`, which forced
+	 * consumers to `_tag`-sniff `unknown`); only the remaining mechanism failure,
+	 * an unfindable workspace root, is wrapped as `DependencyResolutionError`.
 	 */
 	static readonly catalogResolver: Layer.Layer<CatalogResolver, never, WorkspaceCatalogs> = Layer.effect(
 		CatalogResolver,
@@ -578,8 +580,8 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				rangeOf: (packageName: string, catalog: Option.Option<string>) =>
 					catalogs.set().pipe(
 						Effect.map((set) => set.rangeOf(packageName, catalog)),
-						Effect.mapError(
-							(cause) =>
+						Effect.catchTag("WorkspaceRootNotFoundError", (cause) =>
+							Effect.fail(
 								new DependencyResolutionError({
 									specifier: Option.match(catalog, {
 										onNone: () => "catalog:",
@@ -587,6 +589,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 									}),
 									cause,
 								}),
+							),
 						),
 					),
 			};

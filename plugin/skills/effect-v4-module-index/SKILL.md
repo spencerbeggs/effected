@@ -100,7 +100,7 @@ top level as they stabilize.
 | `Pipeable` | internal: `.pipe(...)` method-chaining interface | only when authoring a pipeable data type; agents skip |
 | `PlatformError` | normalized platform error model (`BadArgument`/`SystemError` reasons) | typing/handling FileSystem/Terminal/subprocess/host IO failures |
 | `Pool` | shares scoped resources borrowed across fibers | pooling connections/clients with TTL and invalidation |
-| `Predicate` | runtime guards and refinements with combinators | type guards, tag/shape checks, composing predicates — never hand-write `isRecord`/`isString` |
+| `Predicate` | runtime guards and refinements with combinators | type guards, tag/shape checks, composing predicates — never hand-write `isString`/object guards (NB: no `isRecord` on the v4 line; the record-ish guards are `isObject`/`isReadonlyObject`/`isObjectOrArray`) |
 | `PrimaryKey` | protocol exposing a stable string identifier | giving a value a stable string key (requests, ring nodes) |
 | `PubSub` | broadcast hub; each subscriber gets every message | fan-out messaging where subscribers don't compete |
 | `Pull` | internal: one low-level stream pull step (value/error/done) | only when writing custom Stream/Channel internals; agents skip |
