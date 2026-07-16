@@ -60,6 +60,7 @@ in this repo before a source check deleted it.
 
 | Reference | Load when |
 | --- | --- |
+| [migration-checklist.md](./references/migration-checklist.md) | Starting or sweeping a v3→v4 migration of a whole library or app — the ordered, greppable checklist: dependency moves, silent behavior changes, blocking removals, then the mechanical renames. Load FIRST on any migration; the tables below settle individual lookups. |
 | [schema.md](./references/schema.md) | Any `Schema` name — renames, the `is*` filters, variadic→array, the `ParseResult` split, derived tooling. The biggest delta set. |
 | [core-idioms.md](./references/core-idioms.md) | `Effect` itself — construction/validation, `catch*`, async, retry, generators, forking, scope, `Cause`/`Exit`, equality, and all of `Config`. |
 | [services-layers.md](./references/services-layers.md) | `Context.Tag`/`Effect.Service` → `Context.Service`, `Layer.scoped`, and the `Context.Key` parameter type. |

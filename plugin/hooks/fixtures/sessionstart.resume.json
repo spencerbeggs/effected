@@ -1,7 +1,7 @@
 {
 	"session_id": "test-session-bats-resume",
 	"cwd": "/Users/spencer/workspaces/spencerbeggs/effected",
-	"transcript_path": "/tmp/bats-effective-resume.jsonl",
+	"transcript_path": "/tmp/bats-effected-resume.jsonl",
 	"hook_event_name": "SessionStart",
 	"source": "resume"
 }

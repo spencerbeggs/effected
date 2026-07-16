@@ -1,7 +1,7 @@
 {
 	"session_id": "test-session-bats-startup",
 	"cwd": "/Users/spencer/workspaces/spencerbeggs/effected",
-	"transcript_path": "/tmp/bats-effective-startup.jsonl",
+	"transcript_path": "/tmp/bats-effected-startup.jsonl",
 	"hook_event_name": "SessionStart",
 	"source": "startup",
 	"model": "claude-opus-4-8"

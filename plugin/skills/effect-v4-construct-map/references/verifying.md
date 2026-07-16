@@ -55,6 +55,13 @@ module-level throw (see the `Context.Service` TDZ in `effect-v4-services-layers`
 is swallowed by the agent reporter and exits 0. Zero collected tests is never a
 pass — read the Tests line, not the exit code.
 
+**6. Probe interruption in the shape the real code will meet it.** Probing
+"does `catchCause` see interrupts" by *externally* interrupting a fiber
+suspended in `Effect.never` shows the handler NOT running; an interrupt cause
+flowing *through the chain* via a yielded `Effect.interrupt` DOES run it. The
+two designs answer opposite questions — a probe proved this the expensive way.
+Decide which shape production actually encounters, and probe that one.
+
 For dual/curried APIs, probe the arity (`L.effect.length`).
 
 ## When a tool returns nothing, that is not an answer

@@ -1,7 +1,10 @@
 # Schema house style — worked patterns
 
 The `@effected` house patterns for Effect v4 `Schema`: the opinionated defaults
-and the traps that only surface at test or property-test time. This is the depth
+and the traps that only surface at test or property-test time. This file is
+**Schema-specific**; the cross-cutting house style — module layout, naming,
+error taxonomy, TSDoc habits, layer conventions, test organization — is the
+`effect-v4-house-style` skill, which links back here for Schema depth. This is the depth
 behind the **Do this, not this** rules in the `effect-v4-schema` `SKILL.md` — read
 those for the at-a-glance directives, come here for the worked examples and the
 reasoning.

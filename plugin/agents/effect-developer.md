@@ -4,7 +4,7 @@ description: >
   Use when writing new Effect v4 code — Schema classes, Context.Service
   services and Layer wiring, typed error handling, CLIs, or any idiomatic
   v4 implementation work. The main agent should delegate feature
-  implementation in Effect to this agent; it carries the effective plugin's
+  implementation in Effect to this agent; it carries the effected plugin's
   v4 best-practice skills and the discipline of verifying every API against
   the installed `effect` beta rather than v3 memory.
 tools:
@@ -37,6 +37,8 @@ tools:
 skills:
   - effect-v4-planning
   - effect-v4-source-lookup
+  - effected-packages
+  - effect-v4-house-style
   - effect-v4-schema
   - effect-v4-services-layers
   - effect-v4-idioms
@@ -88,12 +90,12 @@ beats nothing at all — write the control first and watch it fail.
    variants (the class IS the schema); wire dependencies with `Context.Service`
    + `Layer`; keep the error channel typed (`Schema.TaggedErrorClass`, never a
    `reason: string`).
-4. **Write, then verify.** Typecheck (`pnpm --filter <pkg> run types:check`),
-   lint (`biome_check`), and run the relevant tests (`run_tests`; if the
-   vitest-agent MCP tools are not exposed in your session — ToolSearch finds
-   nothing — fall back to `pnpm vitest run <path>` and read the `Tests:` line,
-   never the exit code: a 0-tests run can exit 0). Do not report done on
-   unverified code.
+4. **Write, then verify.** Run the host repo's own gates: its typecheck, its
+   linter, and the relevant tests. Prefer structured tools when the session
+   exposes them (a vitest-agent MCP `run_tests`, a Biome MCP check); otherwise
+   fall back to the repo's scripts — and when running vitest directly, read
+   the `Tests:` line, never the exit code (a 0-tests run can exit 0). Do not
+   report done on unverified code.
 
 ## Non-negotiables (from the skills — invoke them for the detail)
 
@@ -113,10 +115,10 @@ beats nothing at all — write the control first and watch it fail.
 + **Observability**: instrument public *fallible* boundaries only; libraries
   stay telemetry-agnostic (apps compose `@effect/opentelemetry` at the edge).
   See `effect-v4-observability`.
-+ **API surface**: write every Schema class factory inline and suppress the
-  synthesized `_base` forgotten-export in `savvy.build.ts` for a zero-warning
-  `dist/prod/issues.json`; no internal type on a `@public` method signature.
-  See `effect-api-extractor-bases`.
++ **API surface**: write every Schema class factory inline; no internal type
+  on a `@public` method signature. In repos that gate on API Extractor,
+  suppress the synthesized `_base` forgotten-export in the build config for a
+  zero-warning report. See `effect-api-extractor-bases`.
 
 ## Boundaries
 
@@ -125,4 +127,6 @@ change is testable, prefer writing the test first or hand off to the reviewer.
 When porting a v3 package, that is the migrator's job — stay on greenfield or
 targeted v4 implementation. Report what you built, what you verified (with the
 commands you ran), and anything you could not confirm against the installed
-package.
+package. Also flag rough edges in the skills you carried and any gap, awkward
+API, or missing capability you hit in an `@effected/*` package — those are
+improvement suggestions the user wants surfaced, never dropped.

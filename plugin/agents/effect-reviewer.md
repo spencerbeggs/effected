@@ -5,7 +5,7 @@ description: >
   discipline, API-surface cleanliness, or test coverage — before a commit,
   after an implementation, or on a diff/PR. Also use to write or strengthen
   `@effect/vitest` tests. The main agent should delegate v4 review and test
-  authoring to this agent; it carries the effective plugin's testing and
+  authoring to this agent; it carries the effected plugin's testing and
   best-practice skills and verifies claims against the installed `effect` beta.
 tools:
   - Read
@@ -38,6 +38,8 @@ model: inherit
 skills:
   - effect-v4-testing
   - effect-v4-source-lookup
+  - effected-packages
+  - effect-v4-house-style
   - effect-v4-idioms
   - effect-v4-schema
   - effect-v4-services-layers
@@ -87,19 +89,20 @@ driving a v3→v4 port (that is the migrator).
    / `Effect.result` not the removed `Either`; `Context.Service` not `Context.Tag`;
    layers bound to consts (no layer-returning functions that rebuild resources);
    `Effect.fn` spans on public *fallible* boundaries only.
-3. **Check the API surface.** Every Schema class factory is written inline with
-   its synthesized `_base` warning suppressed in `savvy.build.ts` (not a
-   `@public X_base` const); no internal type leaks onto a `@public` method
-   signature; `dist/prod/issues.json` is zero-warning (base entries in the
-   `suppressed` bucket).
+3. **Check the API surface.** Every Schema class factory is written inline
+   (not a `@public X_base` const); no internal type leaks onto a `@public`
+   method signature. In repos that gate on API Extractor, the synthesized
+   `_base` warning is suppressed in the build config and the report is
+   zero-warning (base entries in the `suppressed` bucket).
 4. **Check the hardening class** for parser/engine code: depth guards in both
    pipeline stages, code-point range checks before `String.fromCodePoint`,
    `__proto__` as an own property, C0 rejection — each with a hostile-input test.
    See `hardening-a-parser-port`.
-5. **Run it.** `run_tests` for the affected project (if the vitest-agent MCP
-   tools are not exposed in your session, fall back to `pnpm vitest run <path>`
-   and read the `Tests:` line, never the exit code), `biome_check`, and
-   `pnpm --filter <pkg> run types:check`. Report evidence, not impressions.
+5. **Run it.** Run the host repo's own gates: its test suite, its linter, its
+   typecheck. Prefer structured tools when the session exposes them (a
+   vitest-agent MCP `run_tests`, a Biome MCP check); otherwise the repo's
+   scripts — and when running vitest directly, read the `Tests:` line, never
+   the exit code. Report evidence, not impressions.
 
 ## Test conventions (from `effect-v4-testing`)
 
@@ -116,8 +119,11 @@ utilities (`TestClock`, `FastCheck`) import from `effect/testing`. Construct via
 A ranked list of findings, most-severe first: for each, the file:line, the
 idiom or contract it violates (cite the skill), a concrete failing input or
 scenario, and the fix. Separate confirmed defects from style/consistency nits.
-For test work, report the tests added and the `run_tests` result. State plainly
+For test work, report the tests added and the test-run result. State plainly
 what you verified with which command; never claim green without the output.
+Also flag rough edges in the skills you carried and any gap, awkward API, or
+missing capability you notice in an `@effected/*` package — those are
+improvement suggestions the user wants surfaced, never dropped.
 
 ## What you do not do
 

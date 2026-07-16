@@ -38,29 +38,27 @@ _run_hook() {
 	echo "$output" | jq -e '.hookSpecificOutput.additionalContext | length > 0'
 }
 
-@test "happy path: additionalContext names all eleven skills" {
+@test "happy path: additionalContext names every skill on disk" {
 	run _run_hook "$FIXTURES/sessionstart.startup.json"
 	[ "$status" -eq 0 ]
 
 	local ctx
 	ctx="$(echo "$output" | jq -r '.hookSpecificOutput.additionalContext')"
-	for skill in \
-		effect-v4-planning \
-		effect-v4-source-lookup \
-		effect-v4-schema \
-		effect-v4-services-layers \
-		effect-v4-idioms \
-		effect-v4-cli \
-		effect-v4-observability \
-		effect-v4-testing \
-		effect-v4-construct-map \
-		effect-api-extractor-bases \
-		hardening-a-parser-port; do
+	local found=0
+	for skill_dir in "$PLUGIN_ROOT"/skills/*/; do
+		local skill
+		skill="$(basename "$skill_dir")"
 		echo "$ctx" | grep -qF -- "- $skill" || {
 			echo "missing skill bullet: $skill" >&2
 			return 1
 		}
+		found=$((found + 1))
 	done
+	# Guard against a silently-empty glob reading as a pass.
+	[ "$found" -ge 14 ] || {
+		echo "expected at least 14 skills on disk, found $found" >&2
+		return 1
+	}
 }
 
 @test "happy path: additionalContext names all three agents" {

@@ -244,7 +244,7 @@ sent more than one agent chasing an innocent symbol.
 
 ## Reading the gate without fooling yourself
 
-`issues.json` is a **false-green oracle**. Three rules, each learned by being burned:
+`issues.json` is a **false-green oracle**. Four rules, each learned by being burned:
 
 1. **Build through Turbo, never the raw script.** `build:prod` dependsOn
    `types:check` and `build:dev`. Running `node savvy.build.ts --target prod`
@@ -262,6 +262,16 @@ sent more than one agent chasing an innocent symbol.
    feeds API Extractor an old `.d.ts`, so a warning present in a cold build is
    absent from the incremental one. Read the gate from a cold build (`rm -rf`
    the package's `dist` first) whenever the answer matters.
+
+4. **Concurrent agents corrupt each other's gates.** `dist/` has no lock:
+   two sessions building the same package (or one running `rm -rf dist &&
+   build` while another reads) produce torn artifacts that read as rule 2's
+   clean-shaped truncation — what looks like a nondeterministic bundler flake
+   is usually contention. Treat any `issues.json` read as suspect unless it
+   immediately follows YOUR serial, cold, exit-0 build of that package. And
+   **never `pkill -f` a shared build-tool pattern** (`pkill -f "savvy.build.ts"`
+   killed other sessions' legitimate builds — the actual root cause of one
+   "flake" storm); kill your own child process by PID or not at all.
 
 `dist/` is gitignored and shared. It carries no commit, no cleanliness, and no
 exit-code provenance, so it is only evidence when *your* build exited 0 against
