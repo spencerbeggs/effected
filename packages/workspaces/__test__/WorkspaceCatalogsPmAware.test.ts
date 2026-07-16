@@ -1,7 +1,8 @@
 import { assert, describe, it, layer } from "@effect/vitest";
 import { Lockfile } from "@effected/lockfiles";
+import { CatalogAssemblyError } from "@effected/npm";
 import { Effect, Layer, Option } from "effect";
-import { CatalogAssemblyError, CatalogSet, WorkspaceCatalogs, Workspaces } from "../src/index.js";
+import { CatalogSet, WorkspaceCatalogs, Workspaces } from "../src/index.js";
 import type { Tree } from "./fixtures.js";
 import { manifest, platform } from "./fixtures.js";
 

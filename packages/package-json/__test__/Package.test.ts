@@ -165,6 +165,19 @@ describe("Package wire transform + rest", () => {
 		}),
 	);
 
+	it.effect("a typed field wins over a rest entry smuggling the same key", () =>
+		Effect.gen(function* () {
+			const decoded = yield* Package.decode({ name: "p", version: "1.0.0", description: "real" });
+			// A decode never lands a known key in `rest`; only a hand-built patch
+			// can smuggle one. The typed member must win on encode.
+			const smuggled = decoded.copyWith({ rest: { description: "shadow", other: 1 } });
+			const encoded = Schema.encodeUnknownSync(Package.schema)(smuggled) as Record<string, unknown>;
+			assert.strictEqual(encoded.description, "real");
+			assert.strictEqual(encoded.other, 1);
+			assert.isFalse("rest" in encoded);
+		}),
+	);
+
 	it.effect("gives structural equality to independently decoded instances", () =>
 		Effect.gen(function* () {
 			const a = yield* Package.decode(minimal);

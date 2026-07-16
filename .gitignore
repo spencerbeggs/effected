@@ -38,6 +38,9 @@ docs/superpowers/
 .playwright-mcp
 .mcp.json
 
+# Dogfood mailbox — working communication between agent sessions, never committed
+.claude/dogfood/
+
 # Docs ignores
 website/lib/models/*
 website/docs/en/*/api/

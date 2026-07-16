@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
+import { CatalogAssemblyError } from "@effected/npm";
 import { Effect, Layer, Option } from "effect";
-import { CatalogAssemblyError, ConfigDependencyHooks, WorkspaceCatalogs, Workspaces } from "../../src/index.js";
+import { ConfigDependencyHooks, WorkspaceCatalogs, Workspaces } from "../../src/index.js";
 import type { Tree } from "../fixtures.js";
 import { manifest, platform } from "../fixtures.js";
 

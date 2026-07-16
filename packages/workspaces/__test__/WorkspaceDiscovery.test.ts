@@ -57,6 +57,21 @@ describe("WorkspaceDiscovery — one-level patterns", () => {
 			}),
 		);
 
+		it.effect("carries the as-read manifest record on every member", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const packages = yield* discovery.listPackages();
+				const beta = packages.find((pkg) => pkg.name === "@x/beta");
+				// The whole parsed record, not the typed slice: dependency fields AND
+				// everything discovery never modeled ride along from the one read.
+				assert.deepStrictEqual(beta?.manifestRecord, {
+					name: "@x/beta",
+					version: "1.0.0",
+					dependencies: { "@x/alpha": "1.0.0" },
+				});
+			}),
+		);
+
 		it.effect("a directory without a package.json is not a workspace package", () =>
 			Effect.gen(function* () {
 				const discovery = yield* WorkspaceDiscovery;

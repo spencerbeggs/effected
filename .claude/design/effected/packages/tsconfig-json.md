@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-13
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-16
+last-synced: 2026-07-16
 completeness: 95
 related:
   - ../roadmap.md
@@ -60,14 +60,16 @@ packages/tsconfig-json/
     ResolvedTsconfig.ts   # the pure extends-merge engine: absolutize / merge / substituteConfigDir
     TsEnumCodec.ts        # string↔numeric enum mappings as data (pure)
     PortableTsconfig.ts   # the portable filter (pure)
+    JsxConfig.ts          # jsx compiler option → JSX transform projection (pure)
     TsconfigLoader.ts     # load by path + extends-chain resolution (IO) + TsconfigExtendsError
+    TsconfigLoaderSync.ts # the sync facade over consumer-supplied ops
     TsconfigDiscovery.ts  # nearest-tsconfig upward search over walker (IO)
     internal/
       extendsTarget.ts    # extends-target resolution + hardened exports-map subset (IO, not exported)
   __test__/
 ```
 
-The first five source modules never import `FileSystem` — construction, validation, decoding of already-parsed objects, merging, enum conversion and the portable filter are all pure (`ResolvedTsconfig` takes an injected `join` rather than the `Path` service). Only the loader, discovery and internal target-resolver modules touch the `R` channel.
+The first six source modules never import `FileSystem` — construction, validation, decoding of already-parsed objects, merging, enum conversion, the portable filter and the JSX projection are all pure (`ResolvedTsconfig` takes an injected `join` rather than the `Path` service). Only the loader, discovery and internal target-resolver modules touch the `R` channel; the sync facade adapts consumer-supplied ops into it.
 
 Two shape choices are worth naming:
 
@@ -106,6 +108,22 @@ The exact tsc lookup rules are verified against the installed `typescript` sourc
 **Hardening.** Extends resolution is a recursive walk over untrusted files, so the [hardening invariants](../effect-standards.md#input-hardening-standards) apply: an extends-depth guard and cycle detection, both failing as typed errors.
 
 **The file-only FileSystem contract** (documented in the `src/TsconfigLoader.ts` header): target probes use core `FileSystem.exists`, which on a real filesystem is true for a directory, whereas tsc's `host.fileExists` is file-only. A relative extends target naming a real directory therefore resolves the directory verbatim and the subsequent `readFileString` fails with a typed `PlatformError` — where tsc would retry the `.json`-appended sibling. The divergence is accepted: it satisfies the hardening invariant, the in-memory fixture filesystem cannot exercise it (file-only by construction), and a stat-and-isFile probe would rewrite the tsc-cited target engine for a case no supported test can reach.
+
+**The query surface** (2026-07-16, dogfood item 8): `TsconfigLoader.compilerOptions(configPath)` is a thin projection of `resolve` down to the merged `compilerOptions` — the common "just give me the effective options" question, so consumers stop hand-parsing tsconfig files with bare `JSON.parse` (which is JSONC-blind and misses everything inherited through `extends`). All three loader entry points — `load`, `resolve`, `compilerOptions` — are uniform `Effect.fn`s with named spans (`TsconfigLoader.load` etc.), per the house observability rule.
+
+## TsconfigLoaderSync — the sync facade
+
+Bundler plugin hooks and config factories are synchronous host APIs, and the kit is async-first; `TsconfigLoaderSync` (2026-07-16, dogfood items 7 and 9) is the escape hatch, in the same mold as `@effected/workspaces`' `WorkspacesSync` ([workspaces.md](workspaces.md#workspacessync--the-escape-hatch)). The design rule it implements: **sync escape hatches take their platform from the caller — the kit never imports `node:*` and never assumes posix.**
+
+- **Consumer-supplied ops, structurally typed.** `TsconfigLoaderSyncOptions` carries a `SyncFileSystem` (`exists` / `readFile`) and a `SyncPath` (`resolve` / `dirname` / `join` / `isAbsolute` / `basename`) — minimal structural interfaces Node's built-ins satisfy verbatim: the `node:fs` functions one-liner each, and `node:path` (including `node:path/win32` explicitly, or a Bun/Deno equivalent) *is* a `SyncPath`. Windows correctness is the consumer passing a win32-appropriate `path` implementation, not anything in this module.
+- **Zero logic duplication.** The facade runs the **unchanged** `TsconfigLoader` pipeline: the consumer's ops are adapted into core `FileSystem`/`Path` service **values** provided per call via `Effect.provideService` — never layers, so there is no memoization to poison across calls with different options. A `Path` member the pipeline never calls throws an informative defect if something reaches it.
+- **The failure contract is the async pipeline's, thrown.** The pipeline runs under `Effect.runSyncExit`; on failure the `Cause` is unwrapped so the typed error (`TsconfigParseError`, `TsconfigExtendsError`, or a `PlatformError` wrapping what the consumer's `readFile` threw) is thrown **as itself**, and a defect rethrows as-is — a caller never sees a fiber-failure wrapper.
+
+`load`, `resolve` and `compilerOptions` mirror the async trio. This deletes the surveyed consumers' hand-rolled `FileSystem.layerNoop` + `Effect.runSync` facades.
+
+## JsxConfig
+
+A pure module projecting decoded compiler options to the JSX transform a bundler can actually configure (2026-07-16, dogfood item 8's ride-along vocabulary): `JsxConfig.fromCompilerOptions(options) → Option<JsxConfig>`. `react-jsx` / `react-jsxdev` yield the `automatic` runtime with `importSource` from `jsxImportSource`, defaulting to `"react"` exactly as tsc does; `react` yields `classic` (the factory options stay on `CompilerOptions`, where classic consumers read them); `preserve`, `react-native` and an absent `jsx` yield `Option.none()` — JSX is left untransformed, so there is nothing to configure. Combined with `compilerOptions`, this fixes the surveyed consumer's JSONC-blind, extends-blind JSX inference by construction.
 
 ## Discovery
 
@@ -156,4 +174,4 @@ Per the [testing standards](../effect-standards.md#testing-standards): `@effect/
 
 ## Build and scaffolding
 
-Scaffolded per [package-setup.md](../package-setup.md) — copied from an existing boundary package. Standard gates: `tsc --noEmit`, `turbo build:prod` with a zero-warning `dist/prod/issues.json`, biome and markdownlint clean, the full test suite green.
+Scaffolded per [package-setup.md](../package-setup.md) — copied from an existing boundary package. Standard gates: `tsc --noEmit`, `turbo build:prod` with a zero-warning `dist/prod/issues.json`, biome and markdownlint clean, the full test suite green. The prod gate's expected suppressed count (the narrow `_base` suppression) is **3** (`suppressed: 0` in the prod gate means the build did not run properly).

@@ -19,8 +19,8 @@
 
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { CatalogAssemblyError } from "@effected/npm";
 import { Context, Effect, Layer, Predicate, Result } from "effect";
-import { CatalogAssemblyError } from "./CatalogAssemblyError.js";
 import type { CatalogEntries } from "./internal/catalogs.js";
 import { normalize } from "./internal/catalogs.js";
 
@@ -166,7 +166,7 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * (in process, no subprocess) and replays its `updateConfig` hook over the
 	 * seed, in declaration order. A dependency without a `pnpmfile.cjs` contributes
 	 * nothing; a dependency whose file fails to load or replay fails typed with a
-	 * `hooks`-source {@link CatalogAssemblyError}, never a silent skip.
+	 * `hooks`-source `CatalogAssemblyError`, never a silent skip.
 	 *
 	 * @remarks
 	 * Node-coupled by design — the `node:fs` / `node:path` / `node:url` imports are

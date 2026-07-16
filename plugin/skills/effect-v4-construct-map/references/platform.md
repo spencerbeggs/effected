@@ -1,6 +1,6 @@
 # Platform — v3 → v4
 
-Verified against `effect@4.0.0-beta.94`. For the CLI and HTTP surfaces that moved
+Verified against `effect@4.0.0-beta.94+`. For the CLI and HTTP surfaces that moved
 into core, see `effect-v4-cli`.
 
 ## `@effect/platform-node`

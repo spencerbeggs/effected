@@ -1,6 +1,6 @@
 # Schema — v3 → v4
 
-Verified against `effect@4.0.0-beta.94`. Idiomatic form → see `effect-v4-schema`.
+Verified against `effect@4.0.0-beta.94+`. Idiomatic form → see `effect-v4-schema`.
 
 **`Schema.Schema` takes ONE type argument in v4.** The two-sided form is
 `Schema.Codec`:

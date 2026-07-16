@@ -1,6 +1,6 @@
 # Observability — v3 → v4
 
-Verified against `effect@4.0.0-beta.94`. Idiomatic form → see
+Verified against `effect@4.0.0-beta.94+`. Idiomatic form → see
 `effect-v4-observability`.
 
 | v3 | v4 |

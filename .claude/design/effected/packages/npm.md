@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-16
+last-synced: 2026-07-16
 completeness: 93
 related:
   - ../architecture.md
@@ -20,7 +20,7 @@ related:
 
 ## Overview
 
-`@effected/npm` is a **pure-tier** package (no `npm-effect` source repo behind it) that owns two things: the **dependency-resolution contracts** a package.json-document library defines but cannot implement — `CatalogResolver` and `WorkspaceResolver`, resolving pnpm `catalog:` / `workspace:` specifiers to concrete versions — and the **cross-cutting npm vocabulary** that flows between the manifest, lockfile and workspace packages: `DependencySpecifier`, the dependency-section literals (`DependencyKind` / `DependencyField`) and `IntegrityHash`.
+`@effected/npm` is a **pure-tier** package (no `npm-effect` source repo behind it) that owns three things: the **dependency-resolution contracts** a package.json-document library defines but cannot implement — `CatalogResolver` and `WorkspaceResolver`, resolving pnpm `catalog:` / `workspace:` specifiers to concrete versions — the **cross-cutting npm vocabulary** that flows between the manifest, lockfile and workspace packages: `DependencySpecifier`, the dependency-section literals (`DependencyKind` / `DependencyField`) and `IntegrityHash` — and the **[`Manifest` domain model](#manifest-tolerant-manifest-level-resolution)**, manifest-level resolution built on the per-specifier contracts (2026-07-16, from the systems dogfood feedback).
 
 Resolution lives here rather than in package-json because it fundamentally requires workspace/catalog context that a manifest library cannot have; the full rationale is [resolution belongs to @effected/npm](package-json.md#resolution-belongs-to-effectednpm). The vocabulary lives here because these scalars are shared by three or more packages, and a single home stops each from prefix-sniffing its own reimplementation.
 
@@ -41,23 +41,43 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 
 - `CatalogResolver.ts` — the `catalog:` resolver contract + no-op layer.
 - `WorkspaceResolver.ts` — the `workspace:` resolver contract + no-op layer; owns `DependencyResolutionError` (both resolvers raise it). `CatalogResolver.ts` type-imports the error, a one-way edge.
+- `CatalogAssemblyError.ts` — the typed catalog-assembly failure, relocated here from `@effected/workspaces` (see [the error seam](#resolver-contracts)). A leaf module rather than a resident of `CatalogResolver.ts` for the same reason `DependencyResolutionError` lives in `WorkspaceResolver.ts`: both resolver modules must reference it without an import cycle.
+- `Manifest.ts` — the `Manifest` domain model, `ManifestDecodeError` and `UnresolvedDependencyError`.
 - `DependencySpecifier.ts` — the branded specifier, its classification statics and the `FromString` codec to the classified union.
 - `DependencySection.ts` — the `DependencyKind` / `DependencyField` literals and their mapping.
 - `IntegrityHash.ts` — the SRI/corepack/yarn integrity brand.
 - `index.ts` — the public surface and the composite `Default` layer (`Layer.mergeAll(CatalogResolver.noop, WorkspaceResolver.noop)`), which lives here because merging both no-op layers is the cycle-free home.
 
-Every class factory is written **inline** with the synthesized `_base` heritage symbols suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern), per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), keeping `dist/prod/issues.json` zero-warning.
+Every class factory is written **inline** with the synthesized `_base` heritage symbols suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern), per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), keeping `dist/prod/issues.json` zero-warning. The prod gate's expected suppressed count is **14** (`suppressed: 0` in the prod gate means the build did not run properly).
 
 ## Resolver contracts
 
 Both contracts use `Context.Service<Self, Shape>()("@effected/npm/…")` — type params first, string id last — with the `Shape` inlined structurally. No-op layers are `static readonly noop = Layer.succeed(Class, { ...impl })`, bound to a const so they memoize by reference.
 
-- **`CatalogResolver`** — `rangeOf(packageName, catalog: Option<string>) → Effect<Option<string>, DependencyResolutionError>`. `Option.none()` catalog means the default catalog; the result is the configured range, or `Option.none()` if unresolvable.
+- **`CatalogResolver`** — `rangeOf(packageName, catalog: Option<string>) → Effect<Option<string>, CatalogAssemblyError | DependencyResolutionError>`. `Option.none()` catalog means the default catalog; the result is the configured range, or `Option.none()` if unresolvable.
 - **`WorkspaceResolver`** — `versionOf(packageName) → Effect<Option<string>, DependencyResolutionError>`. Returns the concrete version without the range modifier, or `Option.none()`.
 - **`DependencyResolutionError`** — a `Schema.TaggedErrorClass` with `specifier: string`, a `cause: Schema.Defect()` (never a stringified message) and a computed `get message()`. Reserved for **mechanism failure**; an unmatched specifier is the `Option.none()` convention, not an error.
+- **`CatalogAssemblyError`** — the typed failure of catalog *assembly* (`source: manifest | catalog | hooks`, `path`, structured `cause`), **relocated here from `@effected/workspaces`** (2026-07-16, dogfood item 3). The reasoning: the contract package owns the contract's error vocabulary. When the error lived in the implementing package, `rangeOf` could only name `DependencyResolutionError`, so implementations folded assembly failures into its defect `cause` and every consumer `_tag`-sniffed `unknown` to tell an assembly failure from a resolution failure. With the error beside the contract, `rangeOf`'s channel is the typed union and the sniffing adapter dies in every consumer. `@effected/workspaces` imports it back from here — deliberately **no re-export from workspaces**, so there is exactly one home.
 - **`Default`** — the composite layer a consumer provides when it just needs `Package.resolve` to type-check while resolving nothing.
 
 `@effected/workspaces` implements both contracts directly as layers over its own services, and the unmatched-name-is-`None` convention holds without amendment ([workspaces.md](workspaces.md#implementing-effectednpms-resolver-contracts)).
+
+## Manifest: tolerant manifest-level resolution
+
+`Manifest` (`src/Manifest.ts`) is the manifest-level resolution the per-specifier contracts could not offer alone (2026-07-16, dogfood item 2): a `Schema.Class` domain model of a **tolerant** manifest, replacing the originally planned `ManifestResolver` grouped const with a real domain type (Spencer's mid-flight directive).
+
+**The wire codec is deliberately tolerant, and the tolerance boundary is precise.** The four dependency fields are typed `string→string` records and **validate** — a malformed dependency field, or a non-record input, fails typed as `ManifestDecodeError` (structured `SchemaError` on `cause`, never stringified). **Everything else round-trips unvalidated**: the codec partitions the four dependency field names into typed members on decode and lands every other top-level key verbatim in a `rest` catch-all, flattened back to the top level on encode (no literal `rest` key ever appears on the wire) — mirroring `@effected/package-json`'s `makeWire` transform at a smaller scale, without taking the dependency. The rationale: mid-build manifests are arbitrary user records, and forcing them through the strict `Package` decode would fail resolution on fields this module never reads. Consumers wanting the strict model use `Package`.
+
+The surface, all on the class:
+
+- **`Manifest.decode(input)`** (static) — decode any unknown value through the tolerant wire codec (`Manifest.schema`), normalizing `SchemaError` to `ManifestDecodeError` at the boundary.
+- **`needsResolution`** (getter) — the pure fast-path predicate: does any dependency field carry a `catalog:` or `workspace:` specifier? Callers use it to skip catalog assembly entirely.
+- **`resolve()`** (instance) — project every `catalog:` specifier through `CatalogResolver` and every `workspace:` specifier through `WorkspaceResolver` + `DependencySpecifier.resolveWorkspace`, returning a **new** `Manifest` (never mutating, `rest` carried over). Requires `CatalogResolver | WorkspaceResolver` in `R`; the error channel is `CatalogAssemblyError | DependencyResolutionError | UnresolvedDependencyError`.
+- **`toRecord()`** (instance) — encode back to the wire shape, `rest` flattened.
+
+**`UnresolvedDependencyError`** is the manifest-level reading of the contracts' `Option.none()` convention: the resolution *mechanism* worked, the answer was empty — no catalog entry, no workspace package by that name — and a manifest with an unanswerable specifier cannot be projected to concrete ranges. It is distinct from the mechanism errors by design; the per-specifier contracts keep their `None`-is-success convention untouched.
+
+`@effected/workspaces` wraps `resolve()` in the one-shot `Workspaces.resolveManifest` over its real resolver implementations ([workspaces.md](workspaces.md#implementing-effectednpms-resolver-contracts)).
 
 ## DependencySpecifier
 
@@ -72,6 +92,8 @@ A `FromString` codec (`Schema.Codec<ClassifiedSpecifier, string>`) decodes the b
 - **`RawSpecifier`** — the honest fallback for `file:` / `link:` / git / URL forms this package does not further interpret.
 
 **Exact-string round-trip is structural, not reconstructed.** Every union case stores the original `raw` string and `encode` returns `raw`, so decode∘encode is byte-for-byte identity by construction rather than by re-serializing classified fields. That is what lets brownfield consumers (silk-update-action's lockfile diffing, systems' dependency-regeneration) reimplement on the new model without ever losing the raw specifier; an `it.effect.prop` round-trip suite pins it.
+
+**Resolution projections live with the specifier** (2026-07-16, dogfood item 1 — vocabulary the kit typed but consumers hand-rolled). `catalogNameOf(spec): Option<string>` extracts a `catalog:` specifier's catalog name, `None` selecting the default catalog; `resolveWorkspace(spec, version): string` is the pnpm publish-time projection (`workspace:*` or bare → the version, `workspace:^`/`workspace:~` → prefixed version, anything else — pinned range or alias form — passes through). `WorkspaceSpecifier#resolve(version)` applies the same projection to an already-classified instance. Each projection has **one** internal implementation shared between the static, the classifier and the instance method, so they can never disagree.
 
 ## Dependency-section vocabulary
 
@@ -135,4 +157,4 @@ The lockfiles npm parser normalizes `package-lock.json` into the one `Lockfile` 
 
 ## Testing
 
-`@effect/vitest`, `it.effect`; tests in `__test__/` per concept. The resolver surface is contracts, so those tests are light: the no-op layers return `Option.none()`, a stub-implementation layer proves the contract is implementable, and `DependencyResolutionError` preserves its structured `cause`. The vocabulary tests carry the weight — specifier classification across the protocol set, the `DependencySpecifier` round-trip property, `DependencyKind`/`DependencyField` mapping, and `IntegrityHash` across all three forms.
+`@effect/vitest`, `it.effect`; tests in `__test__/` per concept. The resolver surface is contracts, so those tests are light: the no-op layers return `Option.none()`, a stub-implementation layer proves the contract is implementable, and `DependencyResolutionError` preserves its structured `cause`. The vocabulary tests carry the weight — specifier classification across the protocol set, the `DependencySpecifier` round-trip property, the resolution projections (`catalogNameOf`, `resolveWorkspace`, `WorkspaceSpecifier#resolve`), `DependencyKind`/`DependencyField` mapping, and `IntegrityHash` across all three forms. `__test__/Manifest.test.ts` drives the tolerance boundary (dependency fields fail typed, everything else rides `rest` and round-trips), `needsResolution`, and `resolve()` over stub resolver layers including the `UnresolvedDependencyError` cases.

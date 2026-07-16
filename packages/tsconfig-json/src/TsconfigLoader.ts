@@ -30,6 +30,7 @@
 
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
+import type { CompilerOptions } from "./CompilerOptions.js";
 import { resolveExtendsTarget } from "./internal/extendsTarget.js";
 import { ResolvedTsconfig } from "./ResolvedTsconfig.js";
 import type { TsconfigJson } from "./TsconfigJson.js";
@@ -105,17 +106,10 @@ const loadAbs = (
  *
  * @public
  */
-const load = (
-	configPath: string,
-): Effect.Effect<
-	TsconfigJson.Type,
-	TsconfigParseError | PlatformError.PlatformError,
-	FileSystem.FileSystem | Path.Path
-> =>
-	Effect.gen(function* () {
-		const path = yield* Path.Path;
-		return yield* loadAbs(normalizeSlashes(path.resolve(configPath)));
-	});
+const load = Effect.fn("TsconfigLoader.load")(function* (configPath: string) {
+	const path = yield* Path.Path;
+	return yield* loadAbs(normalizeSlashes(path.resolve(configPath)));
+});
 
 /** One absolutized config document paired with its normalized absolute path, in fold order. */
 interface ConfigLayer {
@@ -200,35 +194,42 @@ const collect = (
  *
  * @public
  */
-const resolve = (
-	configPath: string,
-): Effect.Effect<
-	ResolvedTsconfig,
-	TsconfigParseError | TsconfigExtendsError | PlatformError.PlatformError,
-	FileSystem.FileSystem | Path.Path
-> =>
-	Effect.gen(function* () {
-		const path = yield* Path.Path;
-		const topAbs = normalizeSlashes(path.resolve(configPath));
-		const layers = yield* collect(topAbs, []);
+const resolve = Effect.fn("TsconfigLoader.resolve")(function* (configPath: string) {
+	const path = yield* Path.Path;
+	const topAbs = normalizeSlashes(path.resolve(configPath));
+	const layers = yield* collect(topAbs, []);
 
-		// Fold base-most first onto an empty seed; each merge sets the accumulated
-		// configPath to the derived config, so the seed's is immediately overwritten.
-		const seed: ResolvedTsconfig = { configPath: topAbs, extendedPaths: [], compilerOptions: {} };
-		let acc = seed;
-		for (const entry of layers) {
-			acc = ResolvedTsconfig.merge(acc, entry.doc, entry.path);
-		}
+	// Fold base-most first onto an empty seed; each merge sets the accumulated
+	// configPath to the derived config, so the seed's is immediately overwritten.
+	const seed: ResolvedTsconfig = { configPath: topAbs, extendedPaths: [], compilerOptions: {} };
+	let acc = seed;
+	for (const entry of layers) {
+		acc = ResolvedTsconfig.merge(acc, entry.doc, entry.path);
+	}
 
-		// E5 final phase: ${configDir} resolves against the TOP config's directory.
-		return ResolvedTsconfig.substituteConfigDir(acc, path.dirname(topAbs));
-	});
+	// E5 final phase: ${configDir} resolves against the TOP config's directory.
+	return ResolvedTsconfig.substituteConfigDir(acc, path.dirname(topAbs));
+});
+
+/**
+ * Resolve a tsconfig.json's full `extends` chain and project out the merged
+ * `compilerOptions` — a thin projection of {@link TsconfigLoader.resolve} for
+ * the common "just give me the effective options" query. Same pipeline, same
+ * typed failures.
+ *
+ * @public
+ */
+const compilerOptions = Effect.fn("TsconfigLoader.compilerOptions")(function* (configPath: string) {
+	const resolved = yield* resolve(configPath);
+	return resolved.compilerOptions satisfies CompilerOptions.Type;
+});
 
 /**
  * The tsconfig.json loader: {@link TsconfigLoader.load} reads and decodes one
  * config file, {@link TsconfigLoader.resolve} runs the full load -\> extends -\>
- * merge -\> `${configDir}` pipeline.
+ * merge -\> `${configDir}` pipeline, and {@link TsconfigLoader.compilerOptions}
+ * projects the resolved result down to its merged `compilerOptions`.
  *
  * @public
  */
-export const TsconfigLoader = { load, resolve } as const;
+export const TsconfigLoader = { load, resolve, compilerOptions } as const;

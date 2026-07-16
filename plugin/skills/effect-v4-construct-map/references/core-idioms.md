@@ -1,6 +1,6 @@
 # Core idioms — v3 → v4
 
-Verified against `effect@4.0.0-beta.94`. Idiomatic form → see `effect-v4-idioms`.
+Verified against `effect@4.0.0-beta.94+`. Idiomatic form → see `effect-v4-idioms`.
 
 ## Constructor and validation semantics
 

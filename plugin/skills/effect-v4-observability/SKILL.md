@@ -5,7 +5,7 @@ description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry t
 
 # Effect v4 observability
 
-Effect-core APIs below are verified against `effect@4.0.0-beta.94`.
+Effect-core APIs below are verified against `effect@4.0.0-beta.94+`.
 `@effect/opentelemetry` is **not installed** in this monorepo — every
 `@effect/opentelemetry` example is *shape per the official guide; verify against
 the installed package when first adopted*. v4 betas move fast; when an API is not
@@ -143,7 +143,7 @@ its call to the library.
 > Everything in this section is **shape per the official guide; verify against
 > the installed `@effect/opentelemetry` when first adopted.** The package is not
 > in this monorepo. Confirm the beta version compatible with
-> `effect@4.0.0-beta.94` and the exact option names before shipping.
+> the installed `effect` beta and the exact option names before shipping.
 
 Libraries never touch this. An **application** composes one telemetry layer at its
 top level:

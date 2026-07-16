@@ -58,6 +58,8 @@ console.log(resolved.compilerOptions);
 // the merged options after folding the whole chain — later configs win per field, paths replaced wholesale
 ```
 
+`TsconfigLoader.compilerOptions("./tsconfig.json")` is the same pipeline projected down to the merged options, for when the effective options are all you want.
+
 Find the nearest config first when you only have a starting directory:
 
 ```ts
@@ -80,15 +82,37 @@ console.log(PortableTsconfig.make(resolved).compilerOptions.noEmit);
 // true — always forced, whatever the source config declared
 ```
 
+## Synchronous loading
+
+Bundler plugin hooks and config factories often cannot await. `TsconfigLoaderSync` runs the unchanged loader pipeline synchronously over file and path operations you supply — the package still imports no `node:*` module, and Node's built-ins satisfy the operations directly:
+
+```ts
+import { existsSync, readFileSync } from "node:fs";
+import * as path from "node:path";
+import { TsconfigLoaderSync } from "@effected/tsconfig-json";
+
+const options = {
+  fileSystem: { exists: existsSync, readFile: (p: string) => readFileSync(p, "utf8") },
+  path, // node:path satisfies SyncPath verbatim; path.win32 / path.posix force a convention
+};
+
+const compilerOptions = TsconfigLoaderSync.compilerOptions("./tsconfig.json", options);
+// the merged options for the full extends chain — the same result TsconfigLoader.resolve computes
+```
+
+`load` and `resolve` have the same synchronous forms. Failures are the async pipeline's own typed errors thrown as themselves — `TsconfigParseError`, `TsconfigExtendsError` or a `PlatformError` wrapping whatever your `readFile` threw — never a fiber-failure wrapper.
+
 ## Features
 
 - `TsconfigJson` / `TsconfigJsonFromString` — the document schema and its JSONC string codec. Comments and trailing commas are legal in every parse; there is no JSON-strict path.
 - `CompilerOptions` — string-level schemas for `compilerOptions`: enum values decode case-insensitively and encode to canonical lowercase, and unknown or removed options survive a round trip as passthrough.
-- `TsconfigLoader.load` / `TsconfigLoader.resolve` — read and decode one config, or resolve its full `extends` chain depth-first with per-branch cycle stacks (diamond chains are legal), a depth guard and tsc's target resolution for relative, rooted and bare-specifier targets including `exports` maps.
+- `TsconfigLoader.load` / `TsconfigLoader.resolve` / `TsconfigLoader.compilerOptions` — read and decode one config, resolve its full `extends` chain depth-first with per-branch cycle stacks (diamond chains are legal), a depth guard and tsc's target resolution for relative, rooted and bare-specifier targets including `exports` maps, or project the resolved chain straight down to its merged options.
+- `TsconfigLoaderSync` — the synchronous facade for sync-only hosts: `load`, `resolve` and `compilerOptions` over consumer-supplied `{ fileSystem, path }` operations, running the same pipeline and throwing the same typed errors.
 - `ResolvedTsconfig` — the pure merge engine behind `resolve`: per-field merge semantics, path-option absolutization against the declaring config's directory, final `${configDir}` substitution and `pathsBase` provenance, with no filesystem access at all.
 - `TsconfigDiscovery.findNearest` — the nearest `tsconfig.json` (or any filename via `options.filename`) at or above a starting directory, over `@effected/walker`; one unreadable ancestor cannot hide a config above it.
 - `TsEnumCodec` — the string↔numeric enum tables as plain data with zero `typescript` imports. `encodeCompilerOptions` produces the numeric shape `ts.CompilerOptions` expects, with `lib` entries in the file-name form the compiler resolves verbatim; `decodeCompilerOptions` reverses it.
 - `PortableTsconfig.make` — an allow-list projection down to machine-independent type-semantics options, with `composite: false` and `noEmit: true` forced: the slice a virtual TypeScript environment (Twoslash, API Extractor, an in-memory language service) can safely inherit.
+- `JsxConfig.fromCompilerOptions` — the JSX transform a bundler can configure, projected from decoded options: `react-jsx` / `react-jsxdev` select the automatic runtime with its import source (defaulting to `react`, tsc's own default), `react` selects classic, and `preserve`, `react-native` or an absent `jsx` yield `Option.none()`.
 - Typed failures everywhere: a malformed file is a `TsconfigParseError` carrying its path, a broken chain is a `TsconfigExtendsError` with a `not-found` / `cycle` / `depth` / `empty` reason and the full resolution chain, and IO errors flow through as `PlatformError`. Nothing fails as a defect.
 
 ## License

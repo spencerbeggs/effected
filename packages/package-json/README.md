@@ -180,7 +180,7 @@ console.log(Effect.runSync(program));
 // => ["^4.0.0", "^1.4.0"]
 ```
 
-The `workspace:` range modifier is honored: `workspace:*` takes the bare version, `workspace:^` and `workspace:~` prefix it, and an explicit modifier is used as-is.
+The `workspace:` range modifier is honored: `workspace:*` takes the bare version, `workspace:^` and `workspace:~` prefix it, and an explicit modifier is used as-is. The projection is `@effected/npm`'s `DependencySpecifier` statics with full pnpm publish semantics: the alias form `workspace:<name>@<range>` resolves the *target* package's version and becomes the `npm:<name>@<range>` alias pnpm publishes, and a blank catalog name selects the default catalog. A failed catalog assembly surfaces typed as `@effected/npm`'s `CatalogAssemblyError`, alongside the contracts' `DependencyResolutionError`.
 
 ## Errors
 
@@ -206,7 +206,7 @@ Every failure is a `Schema.TaggedErrorClass` routed with `Effect.catchTag`. Caus
 - `Package.schema` / `Package.wireFor` — the open-JSON ↔ class wire codec, and the factory that builds one for a `.extend()`ed subclass so its custom fields decode as typed members instead of falling into `rest`.
 - `PackageJsonFile` — the IO surface: `read` and `write` over core `FileSystem` / `Path`, with the platform implementation supplied at the edge.
 - `PackageValidator` — rule-based validation aggregating every failure, with the default rule set, a parameterized `layerRules` factory, and the publish-gate rules `noUnresolvedDepsRule` and `noLocalDepsRule`.
-- `Package.resolve` — `catalog:` and `workspace:` expansion over the `@effected/npm` contracts, as an explicit step that `write` never performs for you.
+- `Package.resolve` — `catalog:` and `workspace:` expansion over the `@effected/npm` contracts with pnpm's publish-time projection (alias form included), as an explicit step that `write` never performs for you.
 - `PackageName`, `DependencySpecifier`, `Dependency`, `SpdxLicense`, `PackageManager`, `Person`, `DevEngine` — the leaf concepts, each owning its own statics, brand and error, usable independently of `Package`.
 - Field schemas (`DependencyMapField`, `BinField`, `ExportsField`, `RepositoryField`, `PublishConfigField`, `PeerDependenciesMetaField`, `StringMapField`) exported for subclasses that extend the model.
 

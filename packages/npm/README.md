@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers. `CatalogResolver.rangeOf` turns a package name plus an optional catalog name into the configured range; `WorkspaceResolver.versionOf` turns a workspace package name into its concrete version. Both are `Context.Service` contracts, both ship a no-op default layer that resolves nothing, and neither one reads a file. The package is the seam: a library that needs to *expand* a specifier depends on this, and something that can actually see the workspace supplies the implementation.
+Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers. `CatalogResolver.rangeOf` turns a package name plus an optional catalog name into the configured range; `WorkspaceResolver.versionOf` turns a workspace package name into its concrete version. Both are `Context.Service` contracts, both ship a no-op default layer that resolves nothing, and neither one reads a file. The package is the seam: a library that needs to *expand* a specifier depends on this, and something that can actually see the workspace supplies the implementation. On top of the contracts sit the kit's shared dependency vocabulary — `DependencySpecifier`, `DependencySection`, `IntegrityHash` — and `Manifest`, a tolerant manifest model that resolves every `catalog:` and `workspace:` specifier through the contracts in one call.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 beta. Packages graduate to
@@ -69,7 +69,7 @@ Effect.runPromise(Effect.provide(program, Default)).then(console.log);
 | `CatalogResolver` | `rangeOf(packageName, catalog: Option<string>)` | `Option<string>` — the configured range, or `None` when the package is not in that catalog |
 | `WorkspaceResolver` | `versionOf(packageName)` | `Option<string>` — the concrete version with the range modifier stripped, or `None` when the name is not a workspace member |
 
-Both fail with `DependencyResolutionError`, which carries the `specifier` that could not be resolved and the structured `cause` of the underlying failure. Both ship a `noop` layer bound to a const, so it memoizes by reference rather than minting a fresh layer at every use.
+Both fail with `DependencyResolutionError`, which carries the `specifier` that could not be resolved and the structured `cause` of the underlying failure; `rangeOf` can additionally fail with `CatalogAssemblyError` when the catalogs could not be assembled from their sources. Both ship a `noop` layer bound to a const, so it memoizes by reference rather than minting a fresh layer at every use.
 
 ## Implementing a resolver
 
@@ -99,18 +99,42 @@ export const ResolversLive = Layer.mergeAll(
 
 Note what the implementation does *not* do: an unknown package name returns `Option.none()` and never fails. Save the error channel for the case where you tried to read the catalog and could not.
 
+## Manifest-level resolution
+
+`Manifest` is a tolerant manifest model over the contracts: the four dependency fields are typed as string→string records, and every other top-level field rides through a `rest` catch-all that flattens back on encode, so the wire shape never carries a literal `rest` key. It is deliberately not `@effected/package-json`'s strict `Package` — a mid-build manifest is an arbitrary user record, and resolution has no business validating fields it never reads.
+
+```ts
+import { Default, Manifest } from "@effected/npm";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const manifest = yield* Manifest.decode({ name: "app", dependencies: { effect: "^4.0.0" } });
+  const resolved = manifest.needsResolution ? yield* manifest.resolve() : manifest;
+  return resolved.toRecord();
+});
+
+Effect.runPromise(Effect.provide(program, Default)).then(console.log);
+// => { dependencies: { effect: "^4.0.0" }, name: "app" }
+```
+
+`needsResolution` is a pure getter: check it first and skip resolution entirely (and whatever catalog assembly backs the resolvers) when no dependency field carries a `catalog:` or `workspace:` specifier. `resolve()` projects every such specifier through the contracts and returns a new `Manifest`, applying pnpm's publish-time semantics — the alias form `workspace:<name>@<range>` resolves the *target* package's version and becomes the `npm:<name>@<range>` alias pnpm publishes. At the manifest level a specifier the resolvers answer `Option.none()` for fails typed as `UnresolvedDependencyError`, naming the field, the dependency and the reason: an unmatched entry is an ordinary answer for a resolver, but it means the manifest cannot be projected.
+
 ## Who consumes this
 
-`@effected/package-json` is the reason the package exists. `Package.resolve` walks all four dependency maps, expands every `catalog:` and `workspace:` specifier through these two services, and leaves untouched any specifier the resolvers answered `None` for. `@effected/workspaces` sits on the other side of the seam and provides the implementations that read a real pnpm workspace. Nothing in this package points outward at either of them.
+`@effected/package-json` is the reason the package exists. `Package.resolve` walks all four dependency maps, expands every `catalog:` and `workspace:` specifier through these two services, and leaves untouched any specifier the resolvers answered `None` for. `@effected/lockfiles` came second, which is why the specifier and integrity vocabulary lives here rather than in package-json. `@effected/workspaces` sits on the other side of the seam and provides the implementations that read a real pnpm workspace — its `Workspaces.resolveManifest` runs `Manifest.resolve()` for you over a freshly discovered workspace. Nothing in this package points outward at any of them.
 
 ## Features
 
 - `CatalogResolver` — the `catalog:` contract, plus `CatalogResolver.noop`.
 - `WorkspaceResolver` — the `workspace:` contract, plus `WorkspaceResolver.noop`.
-- `DependencyResolutionError` — the one tagged error both contracts raise, carrying `specifier` and a structural `cause`.
+- `DependencyResolutionError` / `CatalogAssemblyError` — the typed failures: the resolution mechanism broke, or the catalogs could not be assembled from their sources.
 - `Default` — `Layer.mergeAll` of the two no-op layers, for when the types need satisfying and nothing needs resolving.
+- `Manifest` — the tolerant manifest model: `Manifest.decode`, the pure `needsResolution` fast path, `resolve()` over the contracts and `toRecord()` back to the wire shape, with `ManifestDecodeError` and `UnresolvedDependencyError` as its typed failures.
+- `DependencySpecifier` — the specifier taxonomy: an eleven-protocol classifier, a codec decoding any specifier into a matchable tagged union that encodes back byte-for-byte, and the resolution statics (`catalogNameOf`, `resolveWorkspace`, `workspaceTargetOf`) implementing pnpm's publish-time projection.
+- `DependencySection` — the kit-wide dependency vocabulary: `DependencyKind`, `DependencyField` and the mapping between them.
+- `IntegrityHash` — a brand over the three textual integrity forms (SRI, corepack, yarn), with `algorithmOf`.
 
-Four exports, and that is the whole surface. It grows when a second consumer proves it needs more, not before.
+The surface grows when a consumer proves it needs more, not before.
 
 ## License
 

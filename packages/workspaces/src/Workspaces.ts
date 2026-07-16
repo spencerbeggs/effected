@@ -8,9 +8,16 @@
 // (behind `@effected/git`'s `Git` service) to run git.
 
 import { Git } from "@effected/git";
-import type { CatalogResolver, WorkspaceResolver } from "@effected/npm";
+import type {
+	CatalogAssemblyError,
+	CatalogResolver,
+	DependencyResolutionError,
+	Manifest,
+	UnresolvedDependencyError,
+	WorkspaceResolver,
+} from "@effected/npm";
 import type { FileSystem, Path } from "effect";
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChangeDetector } from "./ChangeDetector.js";
 import { LockfileReader } from "./LockfileReader.js";
@@ -172,8 +179,98 @@ const layerWithConfigDependencies = (
 	compose(options, WorkspaceCatalogs.layerWithConfigDependencies);
 
 /**
+ * The one-call resolver factory: {@link Workspaces.resolvers} pre-wired over
+ * {@link Workspaces.layerWithConfigDependencies}, so the two `@effected/npm`
+ * contracts (`CatalogResolver`, `WorkspaceResolver`) need only a platform
+ * (`FileSystem` + `Path`) from the consumer.
+ *
+ * @remarks
+ * This is deliberately a **parameterized layer function, and the fresh layer
+ * per call is the feature**: layers memoize by reference, so each call mints
+ * an unmemoized layer whose root discovery re-runs — including a per-call
+ * `process.cwd()` read when `options.cwd` is omitted. A build tool that
+ * changes directory between manifests gets a correct re-discovery each time
+ * precisely because nothing is shared across calls. When you *want* sharing,
+ * bind one call's result to a `const` and provide that; the memoization rule
+ * is unchanged, this factory just refuses to hide it.
+ *
+ * Catalog assembly replays config-dependency `pnpmfile` hooks (the
+ * `layerWithConfigDependencies` path) — the semantics a real pnpm install
+ * has. Compose {@link Workspaces.resolvers} with {@link Workspaces.layer}
+ * yourself if config-dependency code must not run in process.
+ *
+ * @example
+ * ```ts
+ * import { Workspaces } from "@effected/workspaces";
+ * import { Effect } from "effect";
+ *
+ * const program = doSomethingWithResolvers.pipe(
+ *   Effect.provide(Workspaces.resolverLayer()),
+ * );
+ * ```
+ *
+ * @public
+ */
+const resolverLayer = (
+	options?: WorkspacesOptions,
+): Layer.Layer<CatalogResolver | WorkspaceResolver, never, FileSystem.FileSystem | Path.Path> =>
+	resolvers.pipe(Layer.provide(layerWithConfigDependencies(options)));
+
+/**
+ * Resolve every `catalog:` and `workspace:` specifier in one `Manifest`
+ * against the real workspace, in one call — the 90% path. Decode stays at the
+ * consumer's edge: build the `Manifest` with `Manifest.decode` (from
+ * `@effected/npm`), hand it here, and get a new `Manifest` back with concrete
+ * ranges; `toRecord()` returns to the wire shape.
+ *
+ * @remarks
+ * Composes `manifest.resolve()` with a fresh {@link Workspaces.resolverLayer}
+ * per call, so the workspace root is re-discovered from `options.cwd` (or the
+ * current `process.cwd()`) on every invocation. Consumers processing many
+ * manifests should check `manifest.needsResolution` first and skip the call
+ * entirely when no dependency field carries a `catalog:`/`workspace:`
+ * specifier — that predicate is pure and avoids catalog assembly altogether.
+ *
+ * A specifier the workspace cannot answer fails typed as
+ * `UnresolvedDependencyError`; assembly and mechanism failures surface as
+ * `CatalogAssemblyError` / `DependencyResolutionError`.
+ *
+ * @example
+ * ```ts
+ * import { Manifest } from "@effected/npm";
+ * import { Workspaces } from "@effected/workspaces";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const manifest = yield* Manifest.decode({ dependencies: { effect: "catalog:" } });
+ *   const resolved = manifest.needsResolution ? yield* Workspaces.resolveManifest(manifest) : manifest;
+ *   return resolved.toRecord();
+ * });
+ * ```
+ *
+ * @public
+ */
+const resolveManifest: (
+	manifest: Manifest,
+	options?: WorkspacesOptions,
+) => Effect.Effect<
+	Manifest,
+	CatalogAssemblyError | DependencyResolutionError | UnresolvedDependencyError,
+	FileSystem.FileSystem | Path.Path
+> = Effect.fn("Workspaces.resolveManifest")(function* (manifest: Manifest, options?: WorkspacesOptions) {
+	return yield* manifest.resolve().pipe(Effect.provide(resolverLayer(options)));
+});
+
+/**
  * The composite layers.
  *
  * @public
  */
-export const Workspaces = { layer, layerWithConfigDependencies, layerWithGit, resolvers } as const;
+export const Workspaces = {
+	layer,
+	layerWithConfigDependencies,
+	layerWithGit,
+	resolveManifest,
+	resolverLayer,
+	resolvers,
+} as const;

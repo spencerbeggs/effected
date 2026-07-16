@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { CatalogResolver, Default as NpmDefault, WorkspaceResolver } from "@effected/npm";
+import { CatalogAssemblyError, CatalogResolver, Default as NpmDefault, WorkspaceResolver } from "@effected/npm";
 import { Effect, HashMap, Layer, Option } from "effect";
 import { Package } from "../src/Package.js";
 
@@ -68,6 +68,45 @@ describe("Package.resolve", () => {
 				Effect.provide(Layer.mergeAll(WorkspaceResolver.noop, catalogOf({ react17: "^17.0.0" }))),
 			);
 			assert.deepStrictEqual(HashMap.get(resolved.dependencies, "react"), Option.some("^17.0.0"));
+		}),
+	);
+
+	// The alias form gets the shared @effected/npm publish semantics: the dep
+	// key is the alias, the TARGET package's version is looked up, and the
+	// published form is `npm:<target>@<projected>`.
+	it.effect("projects an alias-form workspace: specifier to pnpm's npm: publish alias", () =>
+		Effect.gen(function* () {
+			const pkg = yield* decodeDeps({ viz: "workspace:@x/charts@*", plot: "workspace:charts@^" });
+			const resolved = yield* Package.resolve(pkg).pipe(
+				Effect.provide(Layer.mergeAll(workspaceOf({ "@x/charts": "2.0.0", charts: "1.5.0" }), CatalogResolver.noop)),
+			);
+			assert.deepStrictEqual(HashMap.get(resolved.dependencies, "viz"), Option.some("npm:@x/charts@2.0.0"));
+			assert.deepStrictEqual(HashMap.get(resolved.dependencies, "plot"), Option.some("npm:charts@^1.5.0"));
+		}),
+	);
+
+	// The widened error channel: a CatalogResolver whose assembly failed
+	// surfaces its typed CatalogAssemblyError through Package.resolve untouched
+	// — never re-wrapped or defected. Mirrors @effected/npm's identity pin.
+	it.effect("a CatalogAssemblyError from the resolver passes through typed and unwrapped", () =>
+		Effect.gen(function* () {
+			const assemblyFailure = new CatalogAssemblyError({
+				source: "manifest",
+				path: "pnpm-workspace.yaml",
+				cause: new Error("unreadable"),
+			});
+			const pkg = yield* decodeDeps({ effect: "catalog:" });
+			const error = yield* Package.resolve(pkg).pipe(
+				Effect.provide(
+					Layer.mergeAll(
+						WorkspaceResolver.noop,
+						Layer.succeed(CatalogResolver, { rangeOf: () => Effect.fail(assemblyFailure) }),
+					),
+				),
+				Effect.flip,
+			);
+			assert.instanceOf(error, CatalogAssemblyError);
+			assert.strictEqual(error, assemblyFailure);
 		}),
 	);
 });

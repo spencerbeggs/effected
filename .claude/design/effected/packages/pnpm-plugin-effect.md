@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-16
+last-synced: 2026-07-16
 completeness: 85
 related:
   - ../architecture.md
@@ -34,6 +34,10 @@ The catalog strategy is declared in [`savvy.build.ts`](../../../../packages/pnpm
 - **The `effect3` catalog uses the `interop` strategy**, which downlevels peers to the widest safe floor — see [The effect3 interop catalog](#the-effect3-interop-catalog).
 
 `rolldown-pnpm-config` reads this config and emits the catalogs, computing `effectPeers` from the `peer` inputs. The build sets `bundleNodeModules: true` and uses `looseFiles` to ship the pnpmfile (`pnpmfile.mjs` / `pnpmfile.cjs` from `src/pnpmfile.ts`) that pnpm loads as the config dependency's hook. `src/index.ts` and `src/pnpmfile.ts` are one-line re-exports over `rolldown-pnpm-config` virtual modules; all real configuration is in `savvy.build.ts`.
+
+### Absence means absorbed
+
+The v4 `effect` catalog deliberately carries **no** entries for the packages Effect v4 absorbed into core: `@effect/platform`, `@effect/cluster`, `@effect/rpc`, `@effect/sql`, `@effect/workflow` and `@effect/experimental`. That absence **is** the removal signal — a consumer or migration agent looking one of these up in the catalog and finding nothing should read it as "this package no longer exists on the v4 line; its functionality lives in `effect` core", not as an oversight or a missing pin. Do not confuse them with the suffixed packages that still ship on v4 and are in the catalog (`@effect/platform-node`, the `@effect/sql-*` drivers, …); only the bare absorbed names are gone. The absorbed names still appear in the `effect3` catalog, where the v3 line legitimately carries them. This went undocumented during the savvy-web/systems migration and cost a verification pass — surfaced by the savvy-web/systems dogfood round, 2026-07-16.
 
 ## The effect3 interop catalog
 

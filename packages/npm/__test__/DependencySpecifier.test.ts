@@ -100,6 +100,120 @@ describe("DependencySpecifier.protocolOf", () => {
 	});
 });
 
+describe("DependencySpecifier.catalogNameOf", () => {
+	it("is Some(name) for a named catalog", () => {
+		assert.deepStrictEqual(DependencySpecifier.catalogNameOf("catalog:react18"), Option.some("react18"));
+		assert.deepStrictEqual(DependencySpecifier.catalogNameOf("catalog:build"), Option.some("build"));
+	});
+
+	it("is None for the default catalog — bare and whitespace-only", () => {
+		assert.isTrue(Option.isNone(DependencySpecifier.catalogNameOf("catalog:")));
+		assert.isTrue(Option.isNone(DependencySpecifier.catalogNameOf("catalog:  ")));
+	});
+
+	it("is None for non-catalog input (only meaningful when isCatalog is true)", () => {
+		assert.isTrue(Option.isNone(DependencySpecifier.catalogNameOf("workspace:*")));
+		assert.isTrue(Option.isNone(DependencySpecifier.catalogNameOf("^1.0.0")));
+		assert.isTrue(Option.isNone(DependencySpecifier.catalogNameOf("")));
+	});
+
+	it.effect("agrees with FromString's CatalogSpecifier classification (one extraction, not two)", () =>
+		Effect.gen(function* () {
+			const decode = Schema.decodeUnknownEffect(DependencySpecifier.FromString);
+			for (const specifier of ["catalog:", "catalog:react18"]) {
+				const classified = yield* decode(specifier);
+				assert.instanceOf(classified, CatalogSpecifier, specifier);
+				assert.deepStrictEqual(
+					(classified as CatalogSpecifier).name,
+					DependencySpecifier.catalogNameOf(specifier),
+					specifier,
+				);
+			}
+		}),
+	);
+});
+
+describe("DependencySpecifier.resolveWorkspace", () => {
+	it("projects the range modifiers against a concrete version", () => {
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:*", "1.2.3"), "1.2.3");
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:", "1.2.3"), "1.2.3");
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:^", "1.2.3"), "^1.2.3");
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:~", "1.2.3"), "~1.2.3");
+	});
+
+	it("passes a pinned range through unchanged", () => {
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:1.0.0", "1.2.3"), "1.0.0");
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:^2.0.0", "1.2.3"), "^2.0.0");
+	});
+
+	// pnpm publish semantics for the alias form: `"bar": "workspace:foo@*"`
+	// publishes as `"bar": "npm:foo@1.5.0"` — the range modifier projects
+	// against the TARGET package's version exactly like the plain form.
+	it("projects an alias form (workspace:pkg@…) to pnpm's npm: publish alias", () => {
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:foo@*", "1.2.3"), "npm:foo@1.2.3");
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:foo@^", "1.2.3"), "npm:foo@^1.2.3");
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:foo@~", "1.2.3"), "npm:foo@~1.2.3");
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:foo@2.0.0", "1.2.3"), "npm:foo@2.0.0");
+	});
+
+	it("splits a scoped alias at the LAST @, keeping the scope's leading @", () => {
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("workspace:@scope/foo@*", "1.2.3"), "npm:@scope/foo@1.2.3");
+		assert.strictEqual(
+			DependencySpecifier.resolveWorkspace("workspace:@scope/foo@^", "1.2.3"),
+			"npm:@scope/foo@^1.2.3",
+		);
+		assert.strictEqual(
+			DependencySpecifier.resolveWorkspace("workspace:@scope/foo@^1.0.0", "1.2.3"),
+			"npm:@scope/foo@^1.0.0",
+		);
+	});
+
+	it("returns non-workspace input unchanged", () => {
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("^1.0.0", "1.2.3"), "^1.0.0");
+		assert.strictEqual(DependencySpecifier.resolveWorkspace("catalog:", "1.2.3"), "catalog:");
+	});
+});
+
+describe("DependencySpecifier.workspaceTargetOf", () => {
+	it("extracts the target package name of an alias form", () => {
+		assert.deepStrictEqual(DependencySpecifier.workspaceTargetOf("workspace:foo@*"), Option.some("foo"));
+		assert.deepStrictEqual(DependencySpecifier.workspaceTargetOf("workspace:foo@^1.0.0"), Option.some("foo"));
+		assert.deepStrictEqual(DependencySpecifier.workspaceTargetOf("workspace:@scope/foo@~"), Option.some("@scope/foo"));
+	});
+
+	it("is None for the plain form and for non-workspace input", () => {
+		assert.deepStrictEqual(DependencySpecifier.workspaceTargetOf("workspace:*"), Option.none());
+		assert.deepStrictEqual(DependencySpecifier.workspaceTargetOf("workspace:^1.0.0"), Option.none());
+		// A lone scoped name has its only `@` at index 0 — not the alias form.
+		assert.deepStrictEqual(DependencySpecifier.workspaceTargetOf("workspace:@scope/foo"), Option.none());
+		assert.deepStrictEqual(DependencySpecifier.workspaceTargetOf("^1.0.0"), Option.none());
+		assert.deepStrictEqual(DependencySpecifier.workspaceTargetOf("catalog:"), Option.none());
+	});
+});
+
+describe("WorkspaceSpecifier#resolve", () => {
+	it.effect("applies the same projection to the decoded range", () =>
+		Effect.gen(function* () {
+			const decode = Schema.decodeUnknownEffect(DependencySpecifier.FromString);
+			const cases: ReadonlyArray<[string, string]> = [
+				["workspace:*", "1.2.3"],
+				["workspace:^", "^1.2.3"],
+				["workspace:~", "~1.2.3"],
+				["workspace:2.0.0", "2.0.0"],
+				["workspace:foo@*", "npm:foo@1.2.3"],
+				["workspace:@scope/foo@^", "npm:@scope/foo@^1.2.3"],
+			];
+			for (const [specifier, expected] of cases) {
+				const classified = yield* decode(specifier);
+				assert.instanceOf(classified, WorkspaceSpecifier, specifier);
+				assert.strictEqual((classified as WorkspaceSpecifier).resolve("1.2.3"), expected, specifier);
+				// The static and the instance method share one projection.
+				assert.strictEqual(DependencySpecifier.resolveWorkspace(specifier, "1.2.3"), expected, specifier);
+			}
+		}),
+	);
+});
+
 describe("DependencySpecifier.decode", () => {
 	it.effect("returns the branded value for a valid specifier", () =>
 		Effect.gen(function* () {

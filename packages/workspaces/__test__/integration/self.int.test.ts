@@ -10,11 +10,13 @@
 // calls the sync pair, and if the two ever disagree its project list silently
 // diverges from what the Effect API would have found.
 
-import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import nodePath, { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
+import type { WorkspacesSyncOptions } from "../../src/index.js";
 import {
 	DependencyGraph,
 	LockfileReader,
@@ -29,6 +31,17 @@ import {
 /** This package's own directory — the repo root is somewhere above it. */
 const here = dirname(fileURLToPath(import.meta.url));
 const cwd = resolve(here, "..", "..");
+
+// The documented one-liner wiring for the consumer-supplied sync operations.
+const syncOps: WorkspacesSyncOptions = {
+	fileSystem: {
+		exists: existsSync,
+		readFile: (p) => readFileSync(p, "utf8"),
+		readDirectory: (p) => readdirSync(p),
+		isDirectory: (p) => statSync(p).isDirectory(),
+	},
+	path: nodePath,
+};
 
 const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 const Live = Workspaces.layer({ cwd }).pipe(Layer.provideMerge(Platform));
@@ -124,7 +137,7 @@ describe("the sync escape hatch agrees with the Effect surface", () => {
 			Effect.gen(function* () {
 				const discovery = yield* WorkspaceDiscovery;
 				const info = yield* discovery.info();
-				assert.strictEqual(findWorkspaceRootSync(cwd), info.root);
+				assert.strictEqual(findWorkspaceRootSync({ ...syncOps, cwd }), info.root);
 			}),
 		);
 
@@ -133,7 +146,7 @@ describe("the sync escape hatch agrees with the Effect surface", () => {
 				const discovery = yield* WorkspaceDiscovery;
 				const info = yield* discovery.info();
 				const async = (yield* discovery.listPackages()).map((pkg) => pkg.name).sort();
-				const sync = getWorkspacePackagesSync(info.root)
+				const sync = getWorkspacePackagesSync(info.root, syncOps)
 					.map((pkg) => pkg.name)
 					.sort();
 				// The whole point of routing both through one GlobSet: if the sync
@@ -147,7 +160,7 @@ describe("the sync escape hatch agrees with the Effect surface", () => {
 				const discovery = yield* WorkspaceDiscovery;
 				const info = yield* discovery.info();
 				const async = yield* discovery.getPackage("@effected/workspaces");
-				const sync = getWorkspacePackagesSync(info.root).find((pkg) => pkg.name === "@effected/workspaces");
+				const sync = getWorkspacePackagesSync(info.root, syncOps).find((pkg) => pkg.name === "@effected/workspaces");
 				assert.isDefined(sync);
 				assert.deepStrictEqual(sync?.dependencies, async.dependencies);
 				assert.strictEqual(sync?.relativePath, async.relativePath);

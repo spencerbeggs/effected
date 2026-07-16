@@ -12,7 +12,7 @@ reasoning.
 The class IS the schema: one `Schema.Class` carries fields, validation, methods,
 statics, and derived tooling (`toArbitrary`, `toEquivalence`,
 `toJsonSchemaDocument`) in a single artifact. These patterns keep that artifact
-idiomatic and sound. Everything below is verified against `effect@4.0.0-beta.94`;
+idiomatic and sound. Everything below is verified against `effect@4.0.0-beta.94+`;
 v4 betas move fast, so probe anything not shown here before writing it
 (`node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)"`).
 For a v3→v4 name lookup, see `effect-v4-construct-map`; for the canonical

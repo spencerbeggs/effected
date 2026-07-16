@@ -47,7 +47,7 @@ Every package is `unstable` for the `0.1.0` release; see [release strategy](#rel
 | [@effected/jsonc](packages/jsonc) | unstable | Zero-dependency JSONC parsing, editing and formatting as Effect schemas |
 | [@effected/yaml](packages/yaml) | unstable | Zero-dependency YAML parsing, editing and formatting as Effect schemas |
 | [@effected/toml](packages/toml) | unstable | TOML 1.0.0 parsing, editing and formatting as Effect schemas: typed diagnostics, a lossless CST and first-class date-time values |
-| [@effected/npm](packages/npm) | unstable | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers |
+| [@effected/npm](packages/npm) | unstable | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers, plus the kit's shared dependency vocabulary and a tolerant `Manifest` model with manifest-level resolution |
 | [@effected/glob](packages/glob) | unstable | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
 | [@effected/lockfiles](packages/lockfiles) | unstable | Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
 

@@ -1,6 +1,6 @@
 ---
 name: effect-v4-cli
-description: Use when building or porting a command-line tool on Effect v4 — @effect/cli is DEAD on the v4 line (its latest peers on effect ^3.21.x), and the CLI framework now lives in core as effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a no-match must not), and the process-spawning gap. Verified against effect@4.0.0-beta.94.
+description: Use when building or porting a command-line tool on Effect v4 — @effect/cli is DEAD on the v4 line (its latest peers on effect ^3.21.x), and the CLI framework now lives in core as effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a no-match must not), and the process-spawning gap. Verified against effect@4.0.0-beta.94+.
 ---
 
 # Effect v4 CLIs

@@ -88,8 +88,8 @@
 		{
 			"source": "packages/npm/CLAUDE.md",
 			"target": ".claude/design/effected/packages/npm.md",
-			"hash": "c522ba40514ef4e7a836e6a5073ab9149c934dbb8521154cb7f9567b321d18b3",
-			"recordedAt": "2026-07-12"
+			"hash": "5dd33b8fa2fe9749eeec9937a2c4720a041756dc84ec18548b97a4c0653208c7",
+			"recordedAt": "2026-07-16"
 		},
 		{
 			"source": "packages/package-json/CLAUDE.md",
@@ -130,8 +130,8 @@
 		{
 			"source": "packages/tsconfig-json/CLAUDE.md",
 			"target": ".claude/design/effected/packages/tsconfig-json.md",
-			"hash": "1cecab1df9f6ff7949c17694d8e8cbdaaf513a2fe4392cbc3642baffc792c1a4",
-			"recordedAt": "2026-07-13"
+			"hash": "2899cb7f73d9e06dcea0fbbb5c175806500fa2663c6233064d768a89f739fe3e",
+			"recordedAt": "2026-07-16"
 		},
 		{
 			"source": "packages/walker/CLAUDE.md",
@@ -142,8 +142,8 @@
 		{
 			"source": "packages/workspaces/CLAUDE.md",
 			"target": ".claude/design/effected/packages/workspaces.md",
-			"hash": "2701f72942ac8382286717614ea72eb9bc1563eb2d5848a12e4c6a672bdb1601",
-			"recordedAt": "2026-07-12"
+			"hash": "00e59a04059fd621a005e1c5c7016f33a65724504de8fb2c237572982c2be14c",
+			"recordedAt": "2026-07-16"
 		},
 		{
 			"source": "packages/xdg/CLAUDE.md",

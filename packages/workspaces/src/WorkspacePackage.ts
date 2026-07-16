@@ -15,6 +15,11 @@ import { Effect, FileSystem, Option, Schema } from "effect";
 
 const EMPTY: Record<string, string> = Object.freeze(Object.create(null) as Record<string, string>);
 
+// The frozen empty default for `manifestRecord`, shared like the dependency-map
+// default: construction sites that predate the field — and previously-serialized
+// values without it — decode to `{}` rather than failing or carrying `undefined`.
+const EMPTY_MANIFEST: Record<string, unknown> = Object.freeze(Object.create(null) as Record<string, unknown>);
+
 /**
  * The `publishConfig` fields workspace tooling reads.
  *
@@ -141,6 +146,23 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 	optionalDependencies: DependencyMap,
 	/** The `publishConfig` block, when present. */
 	publishConfig: Schema.optionalKey(PublishConfig),
+	/**
+	 * The package's `package.json` as read — tolerant access to every field
+	 * outside the typed discovery slice (`scripts`, `exports`, …) without a
+	 * second file read.
+	 *
+	 * @remarks
+	 * Values are `unknown` and exactly what discovery parsed; nothing here is
+	 * validated beyond being a record. For the strict typed model use
+	 * `manifest()`, which deliberately **re-reads** the file — a point-in-time
+	 * refresh this captured record cannot provide. Defaults to `{}` for
+	 * construction sites and previously-serialized values that predate the
+	 * field.
+	 */
+	manifestRecord: Schema.Record(Schema.String, Schema.Unknown).pipe(
+		Schema.withDecodingDefaultKey(Effect.succeed(EMPTY_MANIFEST)),
+		Schema.withConstructorDefault(Effect.succeed(EMPTY_MANIFEST)),
+	),
 }) {
 	/** Whether this is the workspace root package. */
 	get isRootWorkspace(): boolean {

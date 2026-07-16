@@ -5,7 +5,7 @@
 // `Package.toJsonString` serializer, and `Package.resolve` over the
 // `@effected/npm` resolver contracts.
 
-import { CatalogResolver, WorkspaceResolver } from "@effected/npm";
+import { CatalogResolver, DependencySpecifier, WorkspaceResolver } from "@effected/npm";
 import type { InvalidVersionError } from "@effected/semver";
 import { SemVer } from "@effected/semver";
 import { Effect, Function as Fn, HashMap, Option, Pipeable, Schema, SchemaTransformation } from "effect";
@@ -178,25 +178,17 @@ const makeWire = <Self extends Package>(
 				},
 				encode: (encoded: Record<string, unknown>) => {
 					const { rest, ...known } = encoded as Record<string, unknown> & { rest?: Record<string, unknown> };
-					return { ...known, ...(rest ?? {}) };
+					// Typed fields win on a key collision: a hand-built instance whose
+					// `rest` smuggles a known key (including an .extend()ed subclass
+					// field — this is the one shared wire implementation behind both
+					// `Package.schema` and `Package.wireFor`) must not shadow the typed
+					// member on the wire.
+					return { ...(rest ?? {}), ...known };
 				},
 			}),
 		),
 	);
 	return wire as unknown as Schema.Codec<Self, { readonly [k: string]: unknown }>;
-};
-
-const applyWorkspaceModifier = (specifier: string, version: string): string => {
-	const modifier = specifier.slice("workspace:".length);
-	if (modifier === "*" || modifier === "") return version;
-	if (modifier === "^") return `^${version}`;
-	if (modifier === "~") return `~${version}`;
-	return modifier;
-};
-
-const catalogName = (specifier: string): Option.Option<string> => {
-	const name = specifier.slice("catalog:".length);
-	return name.length === 0 ? Option.none() : Option.some(name);
 };
 
 /**
@@ -477,9 +469,21 @@ export class Package extends Schema.Class<Package>("Package")({
 
 	/**
 	 * Resolve `catalog:` and `workspace:` specifiers across all four dependency
-	 * maps using the `CatalogResolver` and `WorkspaceResolver` from context.
-	 * Specifiers the resolvers return `None` for are left unchanged. This is the
-	 * explicit resolution step — `PackageJsonFile.write` never resolves.
+	 * maps using the `CatalogResolver` and `WorkspaceResolver` from context,
+	 * classifying and projecting through `@effected/npm`'s `DependencySpecifier`
+	 * statics (`workspace:` uses the pnpm publish-time projection; the alias
+	 * form `workspace:<name>@<range>` resolves the TARGET package's version and
+	 * becomes the published `npm:<name>@<range>` alias). Specifiers the
+	 * resolvers return `None` for are left unchanged — resolution still
+	 * succeeds. A `CatalogResolver` whose catalog assembly failed surfaces
+	 * typed as `@effected/npm`'s `CatalogAssemblyError`, alongside the
+	 * contracts' `DependencyResolutionError`. This is the explicit resolution
+	 * step — `PackageJsonFile.write` never resolves.
+	 *
+	 * @remarks
+	 * Leaves unresolvable specifiers unchanged. For fail-typed manifest
+	 * resolution over the tolerant model, see `@effected/npm`'s
+	 * `Manifest#resolve`.
 	 */
 	static readonly resolve = Effect.fn("Package.resolve")(function* (pkg: Package) {
 		const workspace = yield* WorkspaceResolver;
@@ -488,13 +492,16 @@ export class Package extends Schema.Class<Package>("Package")({
 		const resolveMap = Effect.fn("Package.resolve.map")(function* (map: HashMap.HashMap<string, string>) {
 			let next = map;
 			for (const [name, specifier] of HashMap.entries(map)) {
-				if (specifier.startsWith("workspace:")) {
-					const version = yield* workspace.versionOf(name);
+				if (DependencySpecifier.isWorkspace(specifier)) {
+					// The alias form resolves the TARGET package's version; the plain
+					// form resolves the map key's.
+					const target = Option.getOrElse(DependencySpecifier.workspaceTargetOf(specifier), () => name);
+					const version = yield* workspace.versionOf(target);
 					if (Option.isSome(version)) {
-						next = HashMap.set(next, name, applyWorkspaceModifier(specifier, version.value));
+						next = HashMap.set(next, name, DependencySpecifier.resolveWorkspace(specifier, version.value));
 					}
-				} else if (specifier.startsWith("catalog:")) {
-					const range = yield* catalog.rangeOf(name, catalogName(specifier));
+				} else if (DependencySpecifier.isCatalog(specifier)) {
+					const range = yield* catalog.rangeOf(name, DependencySpecifier.catalogNameOf(specifier));
 					if (Option.isSome(range)) {
 						next = HashMap.set(next, name, range.value);
 					}
