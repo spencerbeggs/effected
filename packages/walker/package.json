@@ -1,6 +1,6 @@
 {
 	"name": "@effected/walker",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate.",
 	"keywords": ["path", "traversal", "walk", "find-up", "effect", "effected"],

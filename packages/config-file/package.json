@@ -1,6 +1,6 @@
 {
 	"name": "@effected/config-file",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Composable config file loading for Effect: JSON, JSONC, YAML and TOML codecs, resolution strategies, and merge behaviors.",
 	"keywords": [

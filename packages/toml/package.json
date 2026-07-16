@@ -1,6 +1,6 @@
 {
 	"name": "@effected/toml",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "TOML 1.0.0 parsing, editing and formatting as Effect schemas: typed diagnostics, a lossless CST and first-class date-time values.",
 	"keywords": ["toml", "parser", "config", "cst", "effect", "schema", "effected"],

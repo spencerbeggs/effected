@@ -1,6 +1,6 @@
 {
 	"name": "@effected/glob",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates.",
 	"keywords": ["glob", "minimatch", "pattern", "wildcard", "matcher", "effect", "schema", "effected"],
