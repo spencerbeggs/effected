@@ -1,6 +1,6 @@
 {
 	"name": "@effected/runtimes",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Resolve semver-compatible Node.js, Bun and Deno runtime versions with offline fallback.",
 	"keywords": ["node", "bun", "deno", "runtime", "version", "semver", "resolver", "effect", "effected"],

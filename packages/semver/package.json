@@ -1,6 +1,6 @@
 {
 	"name": "@effected/semver",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas.",
 	"keywords": ["semver", "semantic-versioning", "effect", "schema", "range", "version", "effected"],
