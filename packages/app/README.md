@@ -27,7 +27,7 @@ The other half is the namespace itself. An application names it for its director
 
 This package is the composition that gets both right, and that is all it is. It owns **no domain logic**: no service, no schema, no error class, and it re-exports nothing. The entire surface is layer factories, one config preset and one type alias. If a change here wants a `Context.Service`, that is the signal the change belongs in one of the three packages beneath it.
 
-**Nothing may depend on `@effected/app`.** A library taking an application control plane as a dependency would drag a SQLite driver into its own consumers' trees. This is the package an application composes at its edge — and the only one in the kit whose docs show where OpenTelemetry goes.
+**No library or package may depend on `@effected/app`** — but the application at the top of the graph is exactly its intended consumer. A library taking an application control plane as a dependency would drag a SQLite driver into its own consumers' trees. This is the package an application composes at its edge — and the only one in the kit whose docs show where OpenTelemetry goes.
 
 ## Install
 

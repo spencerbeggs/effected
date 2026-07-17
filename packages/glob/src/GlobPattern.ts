@@ -220,9 +220,10 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * pattern, but {@link GlobPattern.matches} inverts the result — so the
 	 * pattern can match paths *outside* this prefix. A consumer that bounds
 	 * traversal to `enumerationPrefix` (e.g. a walker's descent) will
-	 * under-enumerate against a negated pattern; guard on `negated` and deep-walk
-	 * from the inner prefix instead. The inversion is not the getter's semantics
-	 * to express — check `negated` at the call site.
+	 * under-enumerate against a negated pattern; guard on `negated` and do not
+	 * use `enumerationPrefix` as the traversal root there — enumerate from `cwd`
+	 * or another encompassing root instead. The inversion is not the getter's
+	 * semantics to express — check `negated` at the call site.
 	 */
 	get enumerationPrefix(): string {
 		const set = this.#engineOf().set;
