@@ -1,5 +1,17 @@
 # @effected/glob
 
+## 0.1.1
+
+### Documentation
+
+* Documents on `GlobPattern.enumerationPrefix` (with a cross-reference on `crossesSegments`) that the getter is meaningful for non-negated patterns only. A negated pattern's prefix is still computed from the inner pattern while `matches` inverts the result, so the pattern can match paths outside its own `enumerationPrefix` — a consumer that bounds traversal to the prefix must guard on `negated` and deep-walk from the inner prefix instead. [#106][#106]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#106]: https://github.com/spencerbeggs/effected/pull/106
+
 ## 0.1.0
 
 ### Features
