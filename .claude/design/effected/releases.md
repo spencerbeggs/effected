@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-16
+last-synced: 2026-07-16
 completeness: 85
 related:
   - architecture.md
@@ -52,7 +52,7 @@ The release criterion is "the kit can replace the business logic of these five."
 - `vitest-agent` — consumes `workspaces`, `config-file`, `xdg` and `store`, and transitively `walker` and `lockfiles`.
 - `soda3js/tools` — via `@soda3js/config`, an Effect package that loads and writes a TOML config file. It consumes `config-file` and `toml`, needing **only** TOML. `TomlCodec` arrives inside `@effected/config-file`, so this consumer carries unexecuted dependency edges on `@effected/jsonc` and `@effected/yaml`. It provably pays nothing for them — an explicitly-composed codec is tree-shaken when unreferenced and, unbundled, ESM never loads a module nobody imports ([packages/config-file.md](packages/config-file.md#the-load-bearing-constraint-free-standing-named-exports-never-a-namespace-object)). This is the consumer that would pay if either fact were ever falsified.
 - `silk-update-action` (savvy-web) — consumes `workspaces` (root discovery, package-manager detection, the lockfile reader) and `lockfiles` (per-importer declared dependencies for before/after lockfile diffing).
-- `savvy-web/systems` — via `@savvy-web/silk-effects`' DepsRegen engine: consumes `workspaces`' snapshot service (git at-ref and worktree snapshots), the opt-in config-dependency hook replay, and `@effected/git` directly for merge-base/ls-tree reads it currently hand-rolls.
+- `savvy-web/systems` — via `@savvy-web/silk-effects`' DepsRegen engine: consumes `workspaces`' snapshot service (git at-ref and worktree snapshots), the opt-in config-dependency hook replay, and `@effected/git` directly for the git operations its tooling currently hand-rolls — DepsRegen's merge-base/ls-tree reads, the cli/mcp/silk-effects introspection wave and the repos domain's submodule mutations ([issue #82](https://github.com/spencerbeggs/effected/issues/82)).
 
 ## The gate
 
@@ -75,7 +75,7 @@ The gate is the union of what those consumers need, and it is met. The kit ships
 | `@effected/workspaces` | integrated | `vitest-agent`, `silk-update-action`, `savvy-web/systems`; implements `@effected/npm`'s resolver contracts |
 | `@effected/runtimes` | boundary | a migration target; takes only `@effected/semver` and core `HttpClient` |
 | `@effected/tsconfig-json` | boundary | `rspress-plugin-api-extractor`'s tsconfig path and the `@savvy-web/bundler` port; owns the version-coupled enum mappings as data |
-| `@effected/git` | boundary | typed git introspection over core's `ChildProcessSpawner`; consumers are `workspaces` and `savvy-web/systems`' DepsRegen |
+| `@effected/git` | boundary | typed git introspection plus a marked mutating tier over core's `ChildProcessSpawner`; consumers are `workspaces` and `savvy-web/systems` |
 | `@effected/app` | integrated | the composition layer over `xdg` + `config-file` + `store`; nothing may depend on it |
 | `@effected/pnpm-plugin-effect` | companion — no tier | not a library, but on the gate: it hands consumers the `effect` catalogs the kit was built against |
 

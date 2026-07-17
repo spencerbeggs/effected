@@ -104,7 +104,7 @@ body has nothing to `yield*`; you still get the named span and stack frames.
 | Cause type guards | `isFailType` / `isDieType` / `isInterruptType` | `isFailReason` / `isDieReason` / `isInterruptReason` |
 | Cause presence | `isFailure` / `isDie` / `isInterrupted` / `isInterruptedOnly` | `hasFails` / `hasDies` / `hasInterrupts` / `hasInterruptsOnly` |
 | Cause seq/par | `Cause.sequential` / `parallel` | `Cause.combine` (seq/par distinction gone) |
-| Cause find | `failureOption` / `failureOrCause` / `dieOption` / `interruptOption` | `findErrorOption` / `findError` (→ `Result`) / `findDefect` / `findInterrupt` |
+| Cause find | `failureOption` / `failureOrCause` / `dieOption` / `interruptOption` | `findErrorOption` / `findError` (→ `Result`) / `findDefect` / `findInterrupt`; also `findFail` → `Result<Fail<E>>` — the wrapper form, read the error as `.success.error` |
 | Cause collect | `Cause.failures(c)` / `defects(c)` | `c.reasons.filter(Cause.isFailReason)` / `isDieReason` |
 | `*Exception` classes | `NoSuchElementException`, `TimeoutException`, … | `NoSuchElementError`, `TimeoutError`, … (+ `isXError` guards); `RuntimeException` / `InterruptedException` removed |
 

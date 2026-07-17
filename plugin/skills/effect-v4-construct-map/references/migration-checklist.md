@@ -152,7 +152,11 @@ call sites; only reading finds the broken intent.
   `hasInterrupts*` — plural semantics.
 - `Cause.failureOption`/`failureOrCause`/`dieOption`/`interruptOption` →
   `findErrorOption`/`findError`/`findDefect`/`findInterrupt` — and
-  `findError`/`findDefect` return `Result`, not `Option`.
+  `findError`/`findDefect` return `Result`, not `Option`. `Cause.findFail`
+  also exists and returns the `Fail<E>` WRAPPER in a `Result` (the error is
+  `.success.error`) — use `findError`/`findErrorOption` when you want the
+  bare `E`; agents writing from v3 memory reach for `failureOption`, which
+  does not exist at all.
 - `Cause.failures`/`defects` → `cause.reasons.filter(Cause.isFailReason)` etc.
 - `*Exception` → `*Error` across the module (`NoSuchElementError`,
   `TimeoutError`, `IllegalArgumentError`, …) — treat as a convention sweep.

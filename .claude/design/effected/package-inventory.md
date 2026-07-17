@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-16
+last-synced: 2026-07-16
 completeness: 88
 related:
   - architecture.md
@@ -61,7 +61,7 @@ Provenance is one of: **port** (redesigned from a v3 `*-effect` source repo unde
 | `@effected/workspaces` | integrated | port of `workspaces-effect`; discovery, dependency graph, catalogs, change detection | [packages/workspaces.md](packages/workspaces.md) |
 | `@effected/runtimes` | boundary | port of `runtime-resolver` (the library half); resolve Node/Bun/Deno versions | [packages/runtimes.md](packages/runtimes.md) |
 | `@effected/tsconfig-json` | boundary | invention; read/resolve/construct tsconfig.json with zero `typescript` imports | [packages/tsconfig-json.md](packages/tsconfig-json.md) |
-| `@effected/git` | boundary | invention; typed git introspection over core's `ChildProcessSpawner` | [packages/git.md](packages/git.md) |
+| `@effected/git` | boundary | invention; typed git introspection plus a marked mutating tier over core's `ChildProcessSpawner` | [packages/git.md](packages/git.md) |
 | `@effected/app` | integrated | invention; thin composition over `xdg` + `config-file` + `store` | [packages/app.md](packages/app.md) |
 | `@effected/pnpm-plugin-effect` | companion — no tier | invention; publishes the `effect`/`effectPeers` catalogs | [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md) |
 

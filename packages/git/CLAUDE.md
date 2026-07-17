@@ -1,11 +1,13 @@
 # @effected/git
 
-Typed git introspection over core's `ChildProcessSpawner`: read a repository's
-state at any ref without checking it out, plus `checkout`, the one mutating
-operation. The nineteenth library package, created inside the monorepo for the
-point-in-time port rather than migrated from a v3 source repo; it absorbed the
-git half of workspaces' `GitReader`, which is now gone — `@effected/workspaces`
-runs `ChangeDetector` and `WorkspaceSnapshots` on this package's `Git`.
+Typed git introspection over core's `ChildProcessSpawner`: a read tier that
+reads a repository's state at any ref without checking it out, plus a
+clearly-marked mutating tier (`checkout`, `fetch`, `submoduleUpdate`,
+`submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`) that changes it. The
+nineteenth library package, created inside the monorepo for the point-in-time
+port rather than migrated from a v3 source repo; it absorbed the git half of
+workspaces' `GitReader`, which is now gone — `@effected/workspaces` runs
+`ChangeDetector` and `WorkspaceSnapshots` on this package's `Git`.
 
 **Design doc:** `@../../.claude/design/effected/packages/git.md`
 
@@ -29,10 +31,16 @@ backend.
 
 ## Three source modules
 
-- `GitCommand.ts` — ten pure constructors (`show`, `lsTree`, `refExists`,
-  `mergeBase`, `changedFiles`, `unstagedChanges`, `stagedChanges`,
-  `untrackedFiles`, `revParse`, `checkout`) returning core
-  `ChildProcess.StandardCommand` values. `changedFiles` and the three
+- `GitCommand.ts` — 24 pure constructors returning core
+  `ChildProcess.StandardCommand` values. Read tier: `show`, `lsTree`,
+  `refExists`, `mergeBase`, `changedFiles`, `unstagedChanges`,
+  `stagedChanges`, `untrackedFiles`, `revParse`, `nameStatus`,
+  `defaultBranch`, `currentBranch`, `repoRoot`, `commitInfo`, `configGet`,
+  `remoteUrl`, `status`. Mutating tier: `checkout`, `fetch`,
+  `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`.
+  (`Git.workingChanges` is a 25th `Git` service method, but it composes
+  `unstagedChanges` + `stagedChanges` + `untrackedFiles` rather than adding
+  its own `GitCommand` constructor.) `changedFiles` and the three
   working-tree diff constructors take a `relative` flag whose diff flag is
   **explicit in both branches** — `true` passes `--relative`, `false` passes
   `--no-relative`. The `--no-relative` is load-bearing: git honors a configured
@@ -53,9 +61,10 @@ backend.
   caller `GitReader` dissolved without needing it, and it is kept deliberately
   with its tests rather than deleted-and-reintroduced.
 - `Git.ts` — the `Context.Service` (tag id `"@effected/git/Git"`), the error
-  taxonomy (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`), and
-  the private `classify`/`runClassified` pair where git's stderr/exit-code
-  taxonomy is read exactly once.
+  taxonomy (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`), the
+  parsed-result models (`LsTreeEntry`, `NameStatusEntry`, `CommitInfo`,
+  `StatusEntry`), and the private `classify`/`runClassified` pair where git's
+  stderr/exit-code taxonomy is read exactly once.
 
 ## LC_ALL=C + extendEnv: true
 
@@ -72,19 +81,41 @@ merge explicitly rather than rely on an implementation-specific default.
 
 Every `Git` method funnels its run through the private `classify` step in
 `Git.ts` — nowhere else in the package inspects `stderr` or `exitCode`.
-`classify` takes a `ClassifyKind` (`"show" | "refExists" | "generic"`) that
-gates which method-specific rows apply on top of the shared taxonomy:
+`classify` takes a `ClassifyKind`
+(`"show" | "refExists" | "quiet" | "noSuchRemote" | "generic"`) that gates
+which method-specific rows apply on top of the shared taxonomy:
 
 | stderr / exit shape | kind gate | classification | surfaces as |
 | --- | --- | --- | --- |
 | `exitCode === 0` | any | `success` | the method's success value |
 | contains `"not a git repository"` | any | `notARepository` | `NotARepositoryError` |
-| contains an unknown-revision phrase | any | `unknownRef` | `UnknownRefError` — except `refExists`, which degrades to `false` |
+| contains an unknown-revision phrase, incl. `"couldn't find remote ref"` | any | `unknownRef` | `UnknownRefError` — except `refExists`, which degrades to `false` |
 | contains an absent-at-ref phrase | `"show"` only | `absent` | `Option.none()` |
+| `exitCode === 1` and `stderr === ""` | `"quiet"` only | `absent` | `Option.none()` |
+| contains `"No such remote"` | `"noSuchRemote"` only | `absent` | `Option.none()` |
 | `exitCode === 1` | `"refExists"` only | `refMissing` | `false` |
 | spawn-level `PlatformError` | any | `failure` | `GitCommandError` with `detail` set, no `exitCode` |
 | per-run timeout (30s) | any | `failure` | `GitCommandError` with `detail: "timed out after 30s"`, no `exitCode` |
 | anything else non-zero | any | `failure` | `GitCommandError` with `exitCode` + `stderr` |
+
+`"couldn't find remote ref"` was added to `UNKNOWN_REF_PATTERNS` for the
+mutating tier's ref-fetching operations. It classifies as `UnknownRefError`
+for every method that reaches `classify`, but in practice only `fetch`,
+`submoduleUpdate` and `submoduleAdd` produce it — it is the typed signal a
+tag-then-branch fetch fallback (`Effect.orElse`) branches on.
+
+`"quiet"` backs `defaultBranch` and `configGet`: both run their git command
+with `--quiet`/rely on a silent exit 1 to mean "unset", so any exit-1 WITH
+stderr text is a real failure, not an absence. `"noSuchRemote"` backs
+`remoteUrl`: `git remote get-url` prints `"No such remote '<name>'"` on a
+missing remote, which degrades to `Option.none()` rather than
+`GitCommandError`.
+
+Two methods additionally degrade a *successful* run's output rather than its
+exit code: `currentBranch` maps the literal answer `"HEAD"` (git's spelling of
+"detached") to `Option.none()` — a fake branch name would be worse than an
+honest absence — and `defaultBranch` strips the `<remote>/` prefix from
+`git symbolic-ref`'s short output before returning it.
 
 `PlatformError` and `Cause.TimeoutError` are **absorbed inside
 `runClassified`** — via `Effect.catch` and `Effect.timeoutOrElse` — and never
@@ -129,6 +160,31 @@ newline-split parse would silently corrupt any path containing one. Every one
 bakes `-z` into the argv unconditionally — there is no non-`-z` code path to
 regress into.
 
+## The three parsed models
+
+`Git.ts` defines three `Schema.Class` models beyond `LsTreeEntry`, each
+backing exactly one `-z`-terminated parser:
+
+- `NameStatusEntry` — `nameStatus`'s `git diff --name-status -z` parser
+  (`parseNameStatus`). A plain entry is two NUL tokens (`<code>`, `<path>`); a
+  rename/copy entry is three: `<R|C><score>`, the OLD path, then the NEW path.
+  `path` always holds the current (new, for a rename/copy) path; `oldPath` is
+  set only on rename/copy entries.
+- `StatusEntry` — `status`'s `git status --porcelain -z` parser
+  (`parseStatus`). Each entry is `XY <path>`, and a rename/copy entry appends
+  ONE extra NUL token: the ORIGINAL path, AFTER the new path.
+- `CommitInfo` — `commitInfo`'s `git log -1 --format=%H%x00%G?%x00%B` parser
+  (`parseCommitInfo`). `message` is the raw `%B` output, deliberately
+  untrimmed — it includes git's trailing format newline. Trimming is left to
+  the caller; this package does not decide what "the message" means for a
+  consumer that cares about trailing whitespace.
+
+**`NameStatusEntry` and `StatusEntry` order their rename token OPPOSITE each
+other** — `diff --name-status -z` emits old-path-then-new-path, `status
+--porcelain -z` emits new-path-then-old-path. The two parsers (`parseNameStatus`
+and `parseStatus`) must never be conflated or refactored into one shared
+implementation; each is correct only for its own token order.
+
 ## workingChanges is the deduplicated union
 
 `Git.workingChanges(cwd, { relative? })` runs `unstagedChanges`,
@@ -141,24 +197,49 @@ exists precisely so the `Set` dedups: from a nested `cwd` the diffs and
 `ChangeDetector`'s `includeUncommitted` path consumes this with
 `relative: true`.
 
-## checkout is the one mutation
+## The mutating tier
 
-Every other method reads repository state at an arbitrary `ref` without
-touching the working tree. `checkout` is the sole exception — it moves the
-working tree (and, for a branch ref, `HEAD`). Treat it accordingly in any
-caller: it is not safe to run concurrently with other work against the same
-`cwd`, and nothing in this package serializes that for you.
+Eighteen of `Git`'s twenty-five methods only read repository state at an
+arbitrary `ref` without touching the working tree. Seven are mutating:
+`checkout`, `fetch`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`,
+`configSet`, `add`. The tier rule is simple and absolute: every mutating
+method's TSDoc opens with the literal word `"Mutating:"`, and that is the
+ONLY signal a caller gets — nothing in this package serializes concurrent
+access. A caller running two mutating calls (or a mutating call alongside a
+read) against the same `cwd` at once owns the race; `Git` does not queue,
+lock, or detect it.
+
+`configSet` carries a recorded limitation from this same option-injection
+discipline: git config has no documented `--` separator, so `configSet`
+guards all three of its string inputs — `key`, `value`, AND `options.file` —
+through `rejectOptionLikeRefs`, not just the ref-shaped ones. The
+consequence: a legitimate config value that happens to start with `-` (e.g.
+`git config foo.bar -- -x`-style values git itself would accept) cannot be
+written through this method. It is refused typed, before any spawn, rather
+than risking git reading it as a flag.
+
+`fetch`, `submoduleUpdate` and `submoduleAdd` are the tier's ref-fetching
+trio; see the classification table above for `"couldn't find remote ref"`,
+the typed `UnknownRefError` signal a tag-then-branch fetch fallback branches
+on.
 
 ## Testing and building
 
-59 tests in `__test__/`: 12 `GitCommand` (pure constructor shape + the
-`setCwd` non-mutation guarantee), 6 `internal/run` (including defect
-passthrough through `available`), 28 `Git` (the full classification matrix,
-the option-injection guard block, and `workingChanges`' union/dedup, mocked
-spawner), 13 integration (`__test__/integration/Git.int.test.ts`, real git +
-`@effect/platform-node`, including a real nonexistent-ref case and the
-dual-stream backpressure test below). `@effect/vitest`, `assert.*` — never
-`expect`.
+129 tests in `__test__/`: 30 `GitCommand` (pure constructor shape + the
+`setCwd` non-mutation guarantee, covering all 24 constructors), 6
+`internal/run` (including defect passthrough through `available`), 65 `Git`
+(the full classification matrix across all five `ClassifyKind`s, the
+option-injection guard block — every guarded positional has a no-spawn
+rejection test — `workingChanges`' union/dedup, and the parsers
+for `NameStatusEntry`/`CommitInfo`/`StatusEntry`, mocked spawner), and 28
+integration split across two files: 14 in
+`__test__/integration/Git.int.test.ts` (the original surface —
+show/lsTree/refExists/mergeBase/changedFiles/workingChanges/revParse/checkout
+— plus the dual-stream backpressure test below) and 14 in
+`__test__/integration/GitSurface.int.test.ts` (the Task 3–6 additions:
+`nameStatus`, the promoted working-tree primitives, the quiet probes,
+`commitInfo`/`status`, and the full mutating tier), both real git +
+`@effect/platform-node`. `@effect/vitest`, `assert.*` — never `expect`.
 
 ```bash
 pnpm vitest run packages/git
@@ -172,17 +253,28 @@ pnpm build --filter @effected/git   # from the repo root
   regression guard for that concurrency option. It puts pressure on *both*
   stdout and stderr simultaneously; a large-output-on-one-stream case would
   not discriminate sequential collection from concurrent collection.
-- The integration suite's lifecycle is plain `beforeAll`/`afterAll` +
+- The integration suites' lifecycle is plain `beforeAll`/`afterAll` +
   `Effect.runPromise` — the first of its kind in this repo's `@effect/vitest`
   suites. Triage is done: this is SANCTIONED as a second integration-suite
   pattern for shared, expensive real-world fixtures; `app`'s `Effect.ensuring`
   per-test pattern remains the default for cheap per-test fixtures.
+- **`GitSurface.int.test.ts` sets `process.env.GIT_ALLOW_PROTOCOL = "file"` at
+  module scope.** git ≥ 2.38 (CVE-2022-39253) blocks a `file://` submodule
+  remote by default; this is a CALLER-ENVIRONMENT decision, not something
+  `Git`'s argv enables — nothing this package spawns sets it. A repo-local
+  `git config protocol.file.allow always` on the superproject does NOT reach
+  `git submodule add`'s internal clone subprocess (verified against the
+  installed git 2.54); only a command-line `-c`, the environment, or global
+  config do, which is why the module-scope env var is load-bearing. It is
+  contained by the `forks` pool's per-file process isolation, so it cannot
+  leak into other suites in the same run.
 - Mock the spawner with
   `Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, ChildProcessSpawner.make(mockSpawn))`
   and `ChildProcessSpawner.makeHandle({...})` over in-memory streams for unit
-  tests; only the integration suite spawns real git.
+  tests; only the integration suites spawn real git.
 - `savvy.build.ts` carries the **narrow** `_base` suppression (`{ messageId:
-  "ae-forgotten-export", pattern: "_base" }`) for the five synthesized bases
-  (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`, `LsTreeEntry`,
-  `Git`). Never widen it.
+  "ae-forgotten-export", pattern: "_base" }`) for the synthesized bases behind
+  every `Schema.TaggedErrorClass`/`Schema.Class` export (`GitCommandError`,
+  `NotARepositoryError`, `UnknownRefError`, `LsTreeEntry`, `NameStatusEntry`,
+  `CommitInfo`, `StatusEntry`, `Git`). Never widen it.
 - Never run `node savvy.build.ts --target prod` directly.

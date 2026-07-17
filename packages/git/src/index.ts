@@ -1,10 +1,21 @@
 /**
  * Typed git introspection over Effect's ChildProcessSpawner.
  *
- * Read a repository's state at any ref without checking it out, plus checkout.
+ * Read a repository's state at any ref without checking it out, plus a
+ * clearly-marked mutating tier — checkout, fetch, submodule management,
+ * sparse-checkout, config writes and staging — that changes it.
  *
  * @packageDocumentation
  */
 
-export { Git, GitCommandError, LsTreeEntry, NotARepositoryError, UnknownRefError } from "./Git.js";
+export {
+	CommitInfo,
+	Git,
+	GitCommandError,
+	LsTreeEntry,
+	NameStatusEntry,
+	NotARepositoryError,
+	StatusEntry,
+	UnknownRefError,
+} from "./Git.js";
 export { GitCommand } from "./GitCommand.js";

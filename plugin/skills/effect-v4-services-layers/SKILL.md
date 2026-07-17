@@ -281,6 +281,30 @@ subprocess vocabulary (`Command`/`CommandRunner` plus a hand-rolled
 source check found `effect/unstable/process` already declared all of it — the
 package was deleted the same day it was built.
 
+## Sync facades: per-call service values, not layers
+
+When a library exposes a synchronous escape hatch over consumer-supplied ops
+(build-tool plugin hooks, config-time contexts), build service **values** and
+provide them per call — do not reach for a Layer:
+
+- `FileSystem.makeNoop({ exists, readFileString })` overrides only the ops the
+  pipeline uses; every non-overridden member fails **typed `NotFound`** (core
+  behavior, `FileSystem.ts` at beta.98) — document that asymmetry if your
+  hand-rolled counterparts throw defects instead.
+- Core `Path` has **no `makeNoop`/`layerNoop` analog** (beta.98) — hand-roll a
+  `Path.Path` value (`Path.Path.of` with `[Path.TypeId]`), back the members you
+  use with the consumer's ops, and throw an informative defect from the rest.
+- Wire with `Effect.provideService` per call. No Layer means no
+  memoize-by-reference trap when consecutive calls carry different ops.
+- Run with `Effect.runSyncExit` and unwrap the Exit honestly:
+  `Cause.findErrorOption` → throw the typed error as itself;
+  `Cause.findDefect` (returns a `Result`) → rethrow the defect. Never leak a
+  fiber-failure wrapper to a sync caller.
+
+Worked example: `@effected/tsconfig-json`'s `TsconfigLoaderSync` (probed
+beta.98). The async pipeline stays the single implementation; the facade only
+adapts ops and unwraps.
+
 ## Memoization: layers build once, by reference
 
 v4 shares one `MemoMap` **across `Effect.provide` calls**, so the same

@@ -60,7 +60,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `runtimes` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot; its `runtime-resolver` binary ships from a separate external repo so consumers never install `@effect/platform-node` (boundary).
 - `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place; a thin composition over `xdg` + `store` + `config-file` with no domain logic of its own (integrated, by R2 over store alone). Nothing may depend on it.
 - `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier** (a category, not a fourth tier — see `effect-standards.md`). It **publishes with the kit at `0.1.0`** — on the release gate, not an exception. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
-- `git` — typed git introspection (show/ls-tree/ref probes/merge-base/diff/rev-parse) plus checkout, over core's ChildProcessSpawner required in R (boundary).
+- `git` — typed git introspection (a read tier of show/ls-tree/ref probes/merge-base/diffs/status) plus a marked mutating tier (checkout, fetch, submodules, sparse checkout, config, add), over core's ChildProcessSpawner required in R (boundary).
 
 ### .repos/effect-smol
 
@@ -123,7 +123,7 @@ Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml` (`ca
 
 **`catalog:effect` uses the `lock` strategy: exact beta pins (`4.0.0-beta.98`), never a caret.** A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect-smol` submodule, the authority on what v4 exports. Under `lock` every consumer resolves that one pinned version, so `catalog:effectPeers` holds the same exact beta, not a caret floor. The `effect3` / `effect3Peers` interop catalogs track the latest Effect **v3** (caret-ranged, not synced to the vendored tree) for dual-version testing, and drop at the plugin's `1.0.0`.
 
-**`pnpm peers check` reports exactly one known issue**: `@savvy-web/bundler@1.1.14` peers on `typescript@^7` while the workspace installs TypeScript 6 — the TypeScript 7 transition, recorded as the open defect in `effect-standards.md`. Do not silence it or tolerate a second: **any other warning is a genuine closure defect to fix upstream.**
+**`pnpm peers check` reports exactly one known issue**: `rolldown-pnpm-config`'s Effect **v3** satellites report unmet `effect` peers inside `packages/pnpm-plugin-effect` — they want v3 in a context that installs the v4 beta, a consequence of the bundler 2.0 upgrade, recorded as the open defect in `effect-standards.md`; the candidate fix is upstream in the external rolldown-pnpm-config repo. Do not silence it or tolerate a second: **any other warning is a genuine closure defect to fix upstream.**
 
 **Always check the lockfile diff after an install** — a plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from it.
 
