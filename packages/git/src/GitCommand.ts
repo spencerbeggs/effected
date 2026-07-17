@@ -300,8 +300,9 @@ const commitInfo = (ref = "HEAD"): ChildProcess.StandardCommand => git(["log", "
 const configGet = (key: string): ChildProcess.StandardCommand => git(["config", "--get", key]);
 
 /**
- * `git remote get-url <remote>` — the fetch URL of the given remote, or a
- * typed error if the remote does not exist.
+ * `git remote get-url <remote>` — the fetch URL of the given remote. A
+ * missing remote exits non-zero with a "No such remote" stderr shape, which
+ * the `Git` service degrades to `Option.none`, never a typed error.
  *
  * @public
  */

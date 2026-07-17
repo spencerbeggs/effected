@@ -225,11 +225,12 @@ on.
 
 ## Testing and building
 
-125 tests in `__test__/`: 30 `GitCommand` (pure constructor shape + the
+129 tests in `__test__/`: 30 `GitCommand` (pure constructor shape + the
 `setCwd` non-mutation guarantee, covering all 24 constructors), 6
-`internal/run` (including defect passthrough through `available`), 61 `Git`
+`internal/run` (including defect passthrough through `available`), 65 `Git`
 (the full classification matrix across all five `ClassifyKind`s, the
-option-injection guard block, `workingChanges`' union/dedup, and the parsers
+option-injection guard block — every guarded positional has a no-spawn
+rejection test — `workingChanges`' union/dedup, and the parsers
 for `NameStatusEntry`/`CommitInfo`/`StatusEntry`, mocked spawner), and 28
 integration split across two files: 14 in
 `__test__/integration/Git.int.test.ts` (the original surface —

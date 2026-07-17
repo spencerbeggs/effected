@@ -976,7 +976,8 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
  * the documented non-error (`Option.none`, `false`).
  *
  * Every method whose TSDoc opens "Mutating:" changes the working tree,
- * `HEAD`, the index, the repository config, or a submodule. None of it is
+ * `HEAD`, the index, the repository config, the object database and
+ * remote-tracking refs (`fetch`), or a submodule. None of it is
  * safe to run concurrently against the same `cwd`; nothing here serializes
  * that — a caller running two mutating calls (or a mutating call alongside a
  * read) against one `cwd` at once owns the race.
