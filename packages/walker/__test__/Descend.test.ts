@@ -1,6 +1,6 @@
 import { assert, layer } from "@effect/vitest";
 import { GlobPattern, GlobPatternOptions } from "@effected/glob";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 import { descend } from "../src/Descend.js";
 import { platform } from "./fixtures.js";
 
@@ -99,13 +99,15 @@ layer(platform(mainTree))("descend, magic patterns", (it) => {
 	);
 
 	// `descend`'s defect posture is `ascend`'s: a bad bound is a programmer
-	// error, never a silently-empty result. The error channel carries only
-	// DescendError, so a Failure exit here can only be a defect.
+	// error, never a silently-empty result. Assert the DIE specifically — a
+	// typed DescendError is also a Failure exit, so `_tag` alone would let a
+	// regression from defect to typed failure pass.
 	it.effect("dies when maxDepth is 0", () =>
 		Effect.gen(function* () {
 			const pattern = yield* GlobPattern.compile("src/**/*.ts");
 			const exit = yield* Effect.exit(descend(pattern, { cwd: "/proj", maxDepth: 0 }));
 			assert.strictEqual(exit._tag, "Failure");
+			if (exit._tag === "Failure") assert.isTrue(Cause.hasDies(exit.cause));
 		}),
 	);
 
@@ -114,6 +116,7 @@ layer(platform(mainTree))("descend, magic patterns", (it) => {
 			const pattern = yield* GlobPattern.compile("src/**/*.ts");
 			const exit = yield* Effect.exit(descend(pattern, { cwd: "/proj", maxDepth: Number.NaN }));
 			assert.strictEqual(exit._tag, "Failure");
+			if (exit._tag === "Failure") assert.isTrue(Cause.hasDies(exit.cause));
 		}),
 	);
 
@@ -122,6 +125,20 @@ layer(platform(mainTree))("descend, magic patterns", (it) => {
 			const pattern = yield* GlobPattern.compile("src/**/*.ts");
 			const exit = yield* Effect.exit(descend(pattern, { cwd: "/proj", maxDepth: 2.5 }));
 			assert.strictEqual(exit._tag, "Failure");
+			if (exit._tag === "Failure") assert.isTrue(Cause.hasDies(exit.cause));
+		}),
+	);
+
+	it.effect("a negated pattern matches files OUTSIDE its inner pattern's prefix", () =>
+		Effect.gen(function* () {
+			// `!src/*.ts` matches every walked file that src/*.ts does not — the
+			// walk must start at cwd, not at the inner pattern's `src` prefix, or
+			// readme.md and dist/out.ts silently vanish from the answer.
+			const pattern = yield* GlobPattern.compile("!src/*.ts");
+			const found = yield* descend(pattern, { cwd: "/proj" });
+			assert.include(found, "readme.md");
+			assert.include(found, "dist/out.ts");
+			assert.notInclude(found, "src/index.ts");
 		}),
 	);
 });
@@ -241,6 +258,60 @@ layer(platform(deepTree))("descend, depth cap", (it) => {
 		Effect.gen(function* () {
 			const pattern = yield* GlobPattern.compile("**/*.ts");
 			assert.deepStrictEqual(yield* descend(pattern, { cwd: "/proj", maxDepth: 3 }), ["a/b/c/d.ts"]);
+		}),
+	);
+});
+
+// A readable tree ABOVE the walk root: escapes would find real files here, so
+// an empty answer proves confinement rather than accidental absence.
+const escapeTree = {
+	"/secret/token.txt": "",
+	"/proj/readme.md": "",
+	"/proj/src/index.ts": "",
+};
+
+layer(platform(escapeTree))("descend, cwd confinement", (it) => {
+	it.effect("a literal pattern climbing above cwd is zero matches, never a read outside", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("../secret/token.txt");
+			assert.deepStrictEqual(yield* descend(pattern, { cwd: "/proj" }), []);
+		}),
+	);
+
+	it.effect("a magic pattern whose prefix climbs above cwd is zero matches", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("../secret/**");
+			assert.deepStrictEqual(yield* descend(pattern, { cwd: "/proj" }), []);
+		}),
+	);
+
+	it.effect("interior .. segments that stay under cwd are refused only when they climb above it", () =>
+		Effect.gen(function* () {
+			// src/../readme.md never leaves /proj — matching is lexical and walked
+			// paths carry no "..", so this is still zero matches, but it must not
+			// be conflated with an escape defect: both answers are [] by contract.
+			const pattern = yield* GlobPattern.compile("src/../../secret/token.txt");
+			assert.deepStrictEqual(yield* descend(pattern, { cwd: "/proj" }), []);
+		}),
+	);
+});
+
+// A FILE named .git — the submodule/worktree gitlink layout. Prune suppresses
+// directories only; the file stays matchable.
+const gitlinkTree = {
+	"/proj/sub/.git": "",
+	"/proj/sub/main.ts": "",
+	"/proj/.git/config": "",
+};
+
+layer(platform(gitlinkTree))("descend, prune is directory-only", (it) => {
+	it.effect("a file named by a prune entry still matches; the directory of the same name never descends", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("**/*", GlobPatternOptions.make({ dot: true }));
+			const found = yield* descend(pattern, { cwd: "/proj" });
+			assert.include(found, "sub/.git");
+			assert.include(found, "sub/main.ts");
+			assert.notInclude(found, ".git/config");
 		}),
 	);
 });

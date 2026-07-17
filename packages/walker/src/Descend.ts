@@ -63,6 +63,23 @@ export class DescendError extends Schema.TaggedErrorClass<DescendError>()("Desce
 /** Directory names never descended into unless the caller overrides `prune`. */
 const DEFAULT_PRUNE: ReadonlyArray<string> = ["node_modules", ".git"];
 
+/**
+ * Whether a cwd-relative pattern path lexically climbs above `cwd` via `..`
+ * segments. Walked paths never contain `..`, so such a pattern can never match
+ * one — the answer is zero matches, and no filesystem access outside `cwd`
+ * ever happens (a pattern must not enumerate the tree above its documented
+ * root).
+ */
+const escapesCwd = (relative: string): boolean => {
+	let depth = 0;
+	for (const segment of relative.split("/")) {
+		if (segment === "" || segment === ".") continue;
+		depth += segment === ".." ? -1 : 1;
+		if (depth < 0) return true;
+	}
+	return false;
+};
+
 /** A directory queued for reading: its cwd-relative POSIX path, its absolute path, and its depth below the base. */
 interface DescendFrame {
 	readonly relative: string;
@@ -78,11 +95,14 @@ interface DescendFrame {
  * A literal pattern (no magic, not negated) fast-paths to a single stat: the
  * result is `[source]` when it resolves to a file, `[]` otherwise — a missing
  * path is zero matches, not an error. A magic pattern walks from its literal
- * directory prefix (`GlobPattern.enumerationPrefix`); a missing base
- * directory is likewise an empty result, because zero matches is a normal glob
- * answer. Only an unreadable directory mid-walk (under the default
- * `onUnreadable: "fail"`) or a walk past `maxDepth` fails, typed as
- * {@link DescendError}.
+ * directory prefix (`GlobPattern.enumerationPrefix`); a NEGATED pattern can
+ * match paths outside that prefix, so it walks from `cwd` itself. A missing
+ * base directory is likewise an empty result, because zero matches is a
+ * normal glob answer — as is any pattern that lexically climbs above `cwd`
+ * via `..` segments (walked paths never contain `..`, and the walk never
+ * reads outside its documented root). Only an unreadable directory mid-walk
+ * (under the default `onUnreadable: "fail"`) or a walk past `maxDepth` fails,
+ * typed as {@link DescendError}.
  *
  * Only files match. A symlink counts when it stat-resolves to a file
  * (`FileSystem.stat` follows links, as node's does); a symlinked directory is
@@ -129,14 +149,22 @@ export const descend: (
 			Effect.orElseSucceed(() => false),
 		);
 
-	// Literal pattern: a single stat decides. Missing is zero matches.
+	// Literal pattern: a single stat decides. Missing is zero matches, and so is
+	// a literal that climbs above `cwd` — never stat outside the documented root.
 	if (!pattern.hasMagic && !pattern.negated) {
+		if (escapesCwd(pattern.source)) return [];
 		return (yield* typeOf(path.join(options.cwd, pattern.source))) === "File" ? [pattern.source] : [];
 	}
 
 	// Magic pattern: walk from the literal prefix. An absent base directory is
-	// an EMPTY result, not an error — zero matches is a normal glob answer.
-	const base = pattern.enumerationPrefix.replace(/\/+$/, "");
+	// an EMPTY result, not an error — zero matches is a normal glob answer. A
+	// NEGATED pattern matches everything its inner pattern does NOT — including
+	// paths outside the inner pattern's literal prefix — so it walks from `cwd`
+	// itself, never from the inner prefix (which would silently omit matches).
+	// A prefix that climbs above `cwd` yields zero matches for the same reason
+	// the literal fast-path refuses it.
+	const base = pattern.negated ? "" : pattern.enumerationPrefix.replace(/\/+$/, "");
+	if (escapesCwd(base)) return [];
 	const absoluteBase = base === "" ? options.cwd : path.join(options.cwd, base);
 	if ((yield* typeOf(absoluteBase)) !== "Directory") return [];
 
@@ -171,7 +199,6 @@ export const descend: (
 			);
 
 		for (const entry of entries) {
-			if (prune.has(entry)) continue;
 			const relative = frame.relative === "" ? entry : `${frame.relative}/${entry}`;
 			const absolute = path.join(frame.absolute, entry);
 
@@ -181,6 +208,9 @@ export const descend: (
 				continue;
 			}
 			if (kind !== "Directory" || !deep) continue;
+			// Prune suppresses DIRECTORIES only, per the option's contract — a
+			// FILE named `.git` (a submodule or worktree gitlink) stays matchable.
+			if (prune.has(entry)) continue;
 			// Never descend into a symlinked directory (cycle safety).
 			if (yield* isSymbolicLink(absolute)) continue;
 			// Depth exhaustion is a typed failure, not a truncation.

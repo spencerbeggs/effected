@@ -54,8 +54,12 @@ every other matching option are carried by the compiled pattern the caller
 hands in — never re-derived here.
 
 - A literal pattern (no magic, not negated) fast-paths to one stat; missing is
-  zero matches. A magic pattern walks from `enumerationPrefix`; a missing base
-  directory is an **empty result**, not an error.
+  zero matches. A magic pattern walks from `enumerationPrefix`; a **negated**
+  pattern walks from `cwd` itself (its matches can land outside the inner
+  pattern's prefix); a missing base directory is an **empty result**, not an
+  error. A pattern that lexically climbs above `cwd` via `..` segments is
+  zero matches, refused before any filesystem access — the walk never reads
+  outside its documented root.
 - Only files match. A symlink counts when it stat-resolves to a file (`stat`
   follows links, as node's does); a symlinked **directory is never descended**
   (cycle safety, detected by a `readLink` success-probe); dangling = no match.
@@ -70,6 +74,8 @@ hands in — never re-derived here.
 - The descent is a worklist dequeued by head index (never `Array.shift()`),
   and a pattern that cannot match below one level (`crossesSegments` false and
   not negated) reads a single level and never descends.
+- `prune` suppresses **directories only** — a FILE named `.git` (a submodule
+  or worktree gitlink) stays matchable.
 
 ## Invariants
 

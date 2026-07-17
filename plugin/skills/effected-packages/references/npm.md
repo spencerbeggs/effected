@@ -42,12 +42,15 @@ import { Default, Manifest } from "@effected/npm";
 import { Effect } from "effect";
 
 const program = Effect.gen(function* () {
-  const manifest = yield* Manifest.decode({ name: "app", dependencies: { effect: "catalog:", "@app/util": "workspace:*" } });
+  const manifest = yield* Manifest.decode({ name: "app", dependencies: { effect: "^4.0.0" } });
+  // A manifest with catalog:/workspace: specifiers sets needsResolution, and
+  // resolving THOSE needs real resolver layers (@effected/workspaces'
+  // Workspaces.resolvers) — under the no-op Default layers every lookup is
+  // Option.none() and resolve() fails typed as UnresolvedDependencyError.
   const resolved = manifest.needsResolution ? yield* manifest.resolve() : manifest;
   return resolved.toRecord();
 });
 
-// Real resolution needs real layers — @effected/workspaces provides them (Workspaces.resolvers).
 Effect.runPromise(Effect.provide(program, Default));
 ```
 

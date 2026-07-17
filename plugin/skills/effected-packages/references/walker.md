@@ -19,7 +19,7 @@ Single entrypoint; no subpaths. Note `descend` is a top-level named export sitti
 - **`Walker.firstMatch(candidates, predicate)`** — the single primitive: first candidate whose `Effect<boolean, E, R>` predicate is true; per-candidate failures are absorbed, defects propagate. `Effect<Option<string>, never, R>`.
 - **`Walker.findUpward(dirs, candidatesFor)`** — flattens candidates directory-major, then `firstMatch(..., fs.exists)`.
 - **`Walker.findRoot(dirs, isRoot)`** — marker-based root detection.
-- **`descend(pattern: GlobPattern, options: DescendOptions)`** → `Effect<ReadonlyArray<string>, DescendError, FileSystem.FileSystem | Path.Path>` — expand a COMPILED `@effected/glob` `GlobPattern` (from `GlobPattern.compile`) against the real filesystem, returning matching FILE paths relative to `cwd` (POSIX separators), sorted. A literal pattern (no magic, not negated) fast-paths to a single stat: `[source]` if it resolves to a file, `[]` otherwise. A magic pattern walks from `GlobPattern.enumerationPrefix` (its longest literal directory prefix); a missing base directory or zero matches is an empty result, never an error. Only FILES match — a symlink counts when it stat-resolves to a file, a symlinked directory is never descended into (cycle safety via a `readLink` probe), a dangling symlink is not a match. `DescendOptions`: `cwd` (required, absolute — `descend` never reads `process.cwd()` either), `maxDepth?` (default `256`, hard cap below the pattern's literal prefix), `prune?` (directory names never descended into; default `["node_modules", ".git"]` — a custom list REPLACES the default, it does not merge), `onUnreadable?: "fail" | "skip"` (default `"fail"` — an unreadable directory mid-walk fails typed rather than silently under-reporting; `"skip"` absorbs it and continues).
+- **`descend(pattern: GlobPattern, options: DescendOptions)`** → `Effect<ReadonlyArray<string>, DescendError, FileSystem.FileSystem | Path.Path>` — expand a COMPILED `@effected/glob` `GlobPattern` (from `GlobPattern.compile`) against the real filesystem, returning matching FILE paths relative to `cwd` (POSIX separators), sorted. A literal pattern (no magic, not negated) fast-paths to a single stat: `[source]` if it resolves to a file, `[]` otherwise. A magic pattern walks from `GlobPattern.enumerationPrefix` (its longest literal directory prefix); a NEGATED pattern walks from `cwd` itself (its matches can land outside the inner pattern's prefix); a missing base directory, a pattern that climbs above `cwd` via `..` segments, or zero matches is an empty result, never an error. Only FILES match — a symlink counts when it stat-resolves to a file, a symlinked directory is never descended into (cycle safety via a `readLink` probe), a dangling symlink is not a match. `DescendOptions`: `cwd` (required, absolute — `descend` never reads `process.cwd()` either), `maxDepth?` (default `256`, hard cap below the pattern's literal prefix), `prune?` (directory names never descended into; default `["node_modules", ".git"]` — a custom list REPLACES the default, it does not merge), `onUnreadable?: "fail" | "skip"` (default `"fail"` — an unreadable directory mid-walk fails typed rather than silently under-reporting; `"skip"` absorbs it and continues).
 - **`DescendError`** — tagged struct: `pattern` (the glob's source text), `reason: "unreadableDirectory" | "depthExceeded"`, `path` (the offending directory, relative to `cwd`; `""` is the walk's base), `limit?` (the depth cap, present only when `reason` is `"depthExceeded"`).
 
 ## Usage
@@ -45,9 +45,9 @@ Compiling a glob once and expanding it downward with `descend` — the shape eve
 import type { DescendError } from "@effected/walker";
 import { descend } from "@effected/walker";
 import { GlobPattern } from "@effected/glob";
-import { Effect, FileSystem, Option, Schema } from "effect";
+import { Effect, FileSystem, Option, Path, Schema } from "effect";
 
-class InvalidGlobError extends Schema.TaggedError<InvalidGlobError>()("InvalidGlobError", {
+class InvalidGlobError extends Schema.TaggedErrorClass<InvalidGlobError>()("InvalidGlobError", {
   glob: Schema.String,
   reason: Schema.String,
 }) {}
@@ -55,7 +55,7 @@ class InvalidGlobError extends Schema.TaggedError<InvalidGlobError>()("InvalidGl
 const materializeGlob = (
   source: string,
   cwd: string,
-): Effect.Effect<ReadonlyArray<string>, InvalidGlobError, FileSystem.FileSystem> =>
+): Effect.Effect<ReadonlyArray<string>, InvalidGlobError, FileSystem.FileSystem | Path.Path> =>
   Effect.option(GlobPattern.compile(source)).pipe(
     Effect.flatMap(
       Option.match({

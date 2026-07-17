@@ -57,10 +57,11 @@ against its services, or test code that uses it.
 
 ## Cross-cutting facts
 
-- Every package publishes a single flat entrypoint (`@effected/<pkg>`) — with
-  one exception: `@effected/workspaces` also ships `@effected/workspaces/node-sync`,
-  Node bindings for its synchronous escape hatch. Everywhere else, no subpath
-  imports.
+- Every package publishes a single flat CODE entrypoint (`@effected/<pkg>`) —
+  with one exception: `@effected/workspaces` also ships
+  `@effected/workspaces/node-sync`, Node bindings for its synchronous escape
+  hatch. Everywhere else, no code subpath imports (each package also exports
+  its own `./package.json` for tooling; that is metadata, not API).
 - One platform layer at the edge discharges all IO: `NodeFileSystem.layer` +
   `NodePath.layer` for the fs-only packages (walker, xdg, config-file,
   package-json, tsconfig-json, workspaces), `NodeServices.layer` when
