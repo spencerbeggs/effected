@@ -1,5 +1,26 @@
 # @effected/app
 
+## 0.1.2
+
+### Documentation
+
+* The bundled effected plugin's Effect v4 skills absorb three findings from the systems dogfood rounds: `effect-v4-idioms` and the construct map now document `Effect.catchTag`'s non-empty tag-array form (`Effect.catchTag(["A", "B"], recover)`, verified at beta.98), and `effect-v4-schema`'s make-vs-new rule now explicitly blesses the yieldable `yield* new SomeError({...})` construction for `TaggedErrorClass`, matching the house code across glob, workspaces and walker. [#91][#91]
+
+- The bundled effected plugin's package-index skill (`effected-packages`) is enriched across all 18 per-package references: each now enumerates the package's feature surface — services, schema classes, statics, options bags and error types — with generic usage examples distilled from real consumer integration, verified against the built declarations. Six stale claims were corrected along the way, including the single-entrypoint claim (workspaces now ships `./node-sync`), `Package.setVersion`'s string parameter, `GitHubAuth`'s real statics, and the previously undocumented `TsconfigLoaderSync` and `Manifest` surfaces. [#91][#91]
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.1.0 | 0.1.1 |
+| @effected/xdg         | dependency | updated | 0.1.0 | 0.1.1 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#91]: https://github.com/spencerbeggs/effected/pull/91
+
 ## 0.1.1
 
 ### Documentation
