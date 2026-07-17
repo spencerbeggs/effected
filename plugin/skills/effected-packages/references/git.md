@@ -1,6 +1,6 @@
 # @effected/git
 
-Typed git introspection over core's `ChildProcessSpawner`: read a repository's state at any ref without checking it out, plus `checkout` as the one mutating operation. Boundary tier: peers only on `effect`, zero runtime deps, zero `node:` imports — the spawner is required in `R` and discharged once by the consumer's platform layer.
+Typed git introspection over core's `ChildProcessSpawner`: a read tier that reads a repository's state at any ref without checking it out, plus a clearly-marked mutating tier (`checkout`, `fetch`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`) that changes it — nothing serializes concurrent access, so a caller running two mutating calls (or a mutating call alongside a read) against the same `cwd` owns the race. Boundary tier: peers only on `effect`, zero runtime deps, zero `node:` imports — the spawner is required in `R` and discharged once by the consumer's platform layer.
 
 ## Import
 
@@ -22,8 +22,8 @@ Single entrypoint; no subpaths.
   - `changedFiles(cwd, { base, head, relative? })` — committed-range diff.
   - `workingChanges(cwd, { relative? })` — deduplicated unstaged + staged + untracked.
   - `revParse(cwd, ref)` → normalized SHA.
-  - `checkout(cwd, ref)` — the one mutation.
-- **`GitCommand`** — ten pure constructors returning core `ChildProcess.StandardCommand` values, inspectable without spawning.
+  - `checkout(cwd, ref)`, `fetch`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add` — the mutating tier; caller owns serialization against the same `cwd`.
+- **`GitCommand`** — 24 pure constructors returning core `ChildProcess.StandardCommand` values, inspectable without spawning.
 - **Errors** — `GitCommandError` (carries `args`/`cwd`/`exitCode`/`stderr`), `NotARepositoryError`, `UnknownRefError`.
 
 ## Usage

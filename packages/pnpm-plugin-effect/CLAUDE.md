@@ -52,9 +52,9 @@ Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key: `autoInstallP
 
 ## Peer warnings
 
-The v3/v4 peer-resolution defect is fixed in pnpm 11.12.0; there is no expected-residual set to ignore. `pnpm peers check` currently reports **exactly one issue**: `@savvy-web/bundler@1.1.14` peers on `typescript@^7` while the workspace installs TypeScript 6 (from `catalog:silk`, the version every package typechecks against). It is recorded as the open defect in [effect-standards.md](../../.claude/design/effected/effect-standards.md#open-defect-one-peers-check-issue-2026-07-12) — do not silence it, and do not treat its presence as license to tolerate a second.
+The v3/v4 peer-resolution defect is fixed in pnpm 11.12.0; there is no expected-residual set to ignore. `pnpm peers check` currently reports **exactly one issue, and it lives in this package's context**: `rolldown-pnpm-config`'s Effect **v3** satellites (`@effect/platform`, `@effect/rpc`, `@effect/sql`, `@effect/cluster`) want `effect@^3.21.x` and get the v4 beta — a consequence of the bundler 2.0 upgrade; the candidate fix is upstream in the external rolldown-pnpm-config repo. Recorded as the open defect in [effect-standards.md](../../.claude/design/effected/effect-standards.md#open-defect-one-peers-check-issue) — do not silence it or treat it as license to tolerate a second: any other peer warning is a genuine closure defect to fix upstream.
 
-Any other peer warning is a genuine closure defect. Fix it upstream rather than silencing it.
+**The direct `effect` (`catalog:effect`) devDependency here is load-bearing — do not remove it as unused** (347ca229). It gives the resolver the right version to bind: without it, pnpm bound bundler 2.0's `@effected/*` peers to the v3 `effect` that `rolldown-pnpm-config` carries, loading v4 code against v3 at build time. The companion still ships no `effect`-importing code.
 
 ## Hazards
 

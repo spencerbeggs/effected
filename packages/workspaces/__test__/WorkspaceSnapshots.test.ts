@@ -48,6 +48,23 @@ const scriptGit = (
 		workingChanges: () => Effect.die("Git.workingChanges not scripted"),
 		revParse: () => Effect.die("Git.revParse not scripted"),
 		checkout: () => Effect.die("Git.checkout not scripted"),
+		nameStatus: () => Effect.die("Git.nameStatus not scripted"),
+		unstagedChanges: () => Effect.die("Git.unstagedChanges not scripted"),
+		stagedChanges: () => Effect.die("Git.stagedChanges not scripted"),
+		untrackedFiles: () => Effect.die("Git.untrackedFiles not scripted"),
+		defaultBranch: () => Effect.die("Git.defaultBranch not scripted"),
+		currentBranch: () => Effect.die("Git.currentBranch not scripted"),
+		repoRoot: () => Effect.die("Git.repoRoot not scripted"),
+		commitInfo: () => Effect.die("Git.commitInfo not scripted"),
+		configGet: () => Effect.die("Git.configGet not scripted"),
+		remoteUrl: () => Effect.die("Git.remoteUrl not scripted"),
+		status: () => Effect.die("Git.status not scripted"),
+		fetch: () => Effect.die("Git.fetch not scripted"),
+		submoduleUpdate: () => Effect.die("Git.submoduleUpdate not scripted"),
+		submoduleAdd: () => Effect.die("Git.submoduleAdd not scripted"),
+		sparseCheckoutSet: () => Effect.die("Git.sparseCheckoutSet not scripted"),
+		configSet: () => Effect.die("Git.configSet not scripted"),
+		add: () => Effect.die("Git.add not scripted"),
 	});
 
 /**

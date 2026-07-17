@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Typed git introspection as an Effect service. `Git.show` reads a file's content at any ref without checking it out, `Git.lsTree` lists a ref's tree, `Git.refExists` probes a ref, `Git.mergeBase`, `Git.changedFiles` and `Git.revParse` answer the questions monorepo tooling actually asks — and `Git.checkout` is the one deliberately-marked mutation. Subprocesses run through Effect core's `ChildProcessSpawner` contract, required in `R` and provided once at your application's edge, so this package has zero runtime dependencies and zero `node:` imports.
+Typed git introspection as an Effect service. A read tier answers the questions monorepo tooling actually asks — `Git.show` reads a file's content at any ref without checking it out, `Git.nameStatus` types each changed path as added, renamed, deleted and so on, `Git.workingChanges` gathers the full working-tree delta, `Git.commitInfo` returns a commit's sha, signature verdict and raw message — and a clearly-marked mutating tier (`checkout`, `fetch`, the submodule pair, `sparseCheckoutSet`, `configSet`, `add`) changes repository state on purpose. Subprocesses run through Effect core's `ChildProcessSpawner` contract, required in `R` and provided once at your application's edge, so this package has zero runtime dependencies and zero `node:` imports.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 beta. Packages graduate to
@@ -25,7 +25,7 @@ Shelling out to git looks easy until you have to interpret the answers. git spea
 
 This package reads git's exit codes and stderr in exactly one classification step and hands you typed answers instead: a path absent at a valid ref is `Option.none` from `show` (a fact about the ref, not an error), a ref that does not resolve is `false` from `refExists` and a typed `UnknownRefError` elsewhere, a directory outside any work tree is `NotARepositoryError`, and everything else is a `GitCommandError` carrying the exit code and stderr intact. Spawn-level platform failures and the 30-second per-run ceiling are absorbed into that same taxonomy — no `PlatformError` and no timeout defect ever leaks from a `Git` method. Every command pins `LC_ALL=C`, so the classification is stable across locales, and tree listings use NUL-terminated output, so a path containing a space — or a newline — survives parsing.
 
-`GitCommand` is exported alongside the service: seven pure constructors producing Effect core `Command` values you can inspect, log, or test against without spawning anything.
+`GitCommand` is exported alongside the service: 24 pure constructors producing Effect core `Command` values you can inspect, log, or test against without spawning anything.
 
 ## Install
 
@@ -83,14 +83,16 @@ const contentAt = (cwd: string, ref: string, path: string) =>
 
 ## Features
 
-- `Git.show(cwd, ref, path)` — file content at a ref; `Option.none` when the path is absent there.
-- `Git.lsTree(cwd, ref)` — the ref's full tree as typed entries (mode, type, oid, path), NUL-parsed.
-- `Git.refExists(cwd, ref)` — `true`/`false`, including `false` for refs that do not resolve at all.
-- `Git.mergeBase(cwd, a, b)` / `Git.revParse(cwd, ref)` — resolved SHAs.
-- `Git.changedFiles(cwd, { base, head })` — paths changed across a range, NUL-parsed.
-- `Git.checkout(cwd, ref)` — the one mutating operation, documented as such.
-- `GitCommand.*` — the seven invocations as pure, inspectable `Command` values.
-- Errors: `GitCommandError`, `NotARepositoryError`, `UnknownRefError` — classification happens once, inside the service.
+Twenty-five service methods: eighteen that read repository state and seven that mutate it, all funneled through the same one-step classification.
+
+- Content and trees: `Git.show(cwd, ref, path)` — file content at a ref, `Option.none` when the path is absent there — and `Git.lsTree(cwd, ref)` with an optional pathspec, returning typed `LsTreeEntry` values (mode, type, oid, path), NUL-parsed.
+- Diffs: `Git.changedFiles(cwd, { base, head })` — paths changed across a range — and `Git.nameStatus`, which types each change as added, modified, deleted, renamed, copied and more, carries `oldPath` on renames, and takes either a `base...head` range or the working tree versus a single ref.
+- Working tree: `Git.unstagedChanges`, `Git.stagedChanges`, `Git.untrackedFiles` and `Git.workingChanges` (their deduplicated union), plus `Git.status` as typed porcelain `StatusEntry` values.
+- Probes: `Git.refExists` (`true`/`false`, including `false` for refs that do not resolve at all), `Git.mergeBase` and `Git.revParse` (resolved SHAs), `Git.repoRoot`, and the `Option`-answering `Git.defaultBranch` (unset remote HEAD → `Option.none`, remote prefix stripped), `Git.currentBranch` (detached HEAD → `Option.none`), `Git.configGet` and `Git.remoteUrl`.
+- Commits: `Git.commitInfo(cwd, ref?)` — a typed `CommitInfo` with the sha, the `%G?` signature verdict and the raw, untrimmed message.
+- Mutating tier, each method marked as such: `Git.checkout` (with a detach option), `Git.fetch` (remote, ref, depth, tag), `Git.submoduleUpdate`, `Git.submoduleAdd`, `Git.sparseCheckoutSet` (explicit cone flag), `Git.configSet` and `Git.add`. Nothing here serializes concurrent access — the caller owns that, per working tree.
+- `GitCommand.*` — all 24 invocations as pure, inspectable `Command` values.
+- Errors: `GitCommandError`, `NotARepositoryError`, `UnknownRefError` — classification happens once, inside the service. A ref the remote does not have surfaces as `UnknownRefError` too, the typed signal a tag-then-branch fetch fallback branches on with `Effect.orElse`.
 
 ## License
 

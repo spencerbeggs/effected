@@ -79,8 +79,75 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.revParse("HEAD"), ["rev-parse", "--verify", "HEAD"]);
 	});
 
-	it("checkout builds `git checkout <ref>`", () => {
-		assertGitCommand(GitCommand.checkout("feat/git"), ["checkout", "feat/git"]);
+	it("checkout without options is unchanged", () => {
+		assertGitCommand(GitCommand.checkout("main"), ["checkout", "main"]);
+	});
+
+	it("checkout --detach places the flag before the ref", () => {
+		assertGitCommand(GitCommand.checkout("FETCH_HEAD", true), ["checkout", "--detach", "FETCH_HEAD"]);
+	});
+
+	it("fetch builds remote-then-ref, with optional depth and tag keyword", () => {
+		assertGitCommand(GitCommand.fetch("origin", "main"), ["fetch", "origin", "main"]);
+		assertGitCommand(GitCommand.fetch("origin", "v1.0.0", 1, true), [
+			"fetch",
+			"--depth",
+			"1",
+			"origin",
+			"tag",
+			"v1.0.0",
+		]);
+	});
+
+	it("submoduleUpdate composes --init, --depth and a -- pathspec", () => {
+		assertGitCommand(GitCommand.submoduleUpdate(), ["submodule", "update"]);
+		assertGitCommand(GitCommand.submoduleUpdate(true, 1, [".repos/effect-smol"]), [
+			"submodule",
+			"update",
+			"--init",
+			"--depth",
+			"1",
+			"--",
+			".repos/effect-smol",
+		]);
+	});
+
+	it("submoduleAdd puts url and path behind a literal --", () => {
+		assertGitCommand(GitCommand.submoduleAdd("https://example.com/r.git", ".repos/r", 1), [
+			"submodule",
+			"add",
+			"--depth",
+			"1",
+			"--",
+			"https://example.com/r.git",
+			".repos/r",
+		]);
+	});
+
+	it("sparseCheckoutSet passes the cone flag explicitly in both branches", () => {
+		assertGitCommand(GitCommand.sparseCheckoutSet(["src", "docs"], false), [
+			"sparse-checkout",
+			"set",
+			"--no-cone",
+			"src",
+			"docs",
+		]);
+		assertGitCommand(GitCommand.sparseCheckoutSet(["src"], true), ["sparse-checkout", "set", "--cone", "src"]);
+	});
+
+	it("configSet writes a key, optionally into an explicit file", () => {
+		assertGitCommand(GitCommand.configSet("user.name", "Test"), ["config", "user.name", "Test"]);
+		assertGitCommand(GitCommand.configSet("submodule.a.shallow", "true", ".gitmodules"), [
+			"config",
+			"-f",
+			".gitmodules",
+			"submodule.a.shallow",
+			"true",
+		]);
+	});
+
+	it("add stages paths behind a literal --", () => {
+		assertGitCommand(GitCommand.add([".gitmodules", ".repos/r"]), ["add", "--", ".gitmodules", ".repos/r"]);
 	});
 
 	it("setCwd returns a NEW command and leaves the original untouched", () => {
@@ -94,5 +161,76 @@ describe("GitCommand", () => {
 		if (ChildProcess.isStandardCommand(withCwd)) {
 			assert.strictEqual(withCwd.options.cwd, "/repo");
 		}
+	});
+
+	it("nameStatus builds the working-tree-vs-ref form when head is omitted", () => {
+		assertGitCommand(GitCommand.nameStatus("abc123", undefined), [
+			"diff",
+			"--name-status",
+			"-z",
+			"--no-relative",
+			"abc123",
+		]);
+	});
+
+	it("nameStatus builds the base...head form when head is present, honoring relative", () => {
+		assertGitCommand(GitCommand.nameStatus("main", "feat/x", true), [
+			"diff",
+			"--name-status",
+			"-z",
+			"--relative",
+			"main...feat/x",
+		]);
+	});
+
+	it("lsTree without a pathspec is unchanged", () => {
+		assertGitCommand(GitCommand.lsTree("HEAD"), ["ls-tree", "-r", "-z", "HEAD"]);
+	});
+
+	it("lsTree appends the pathspec behind a literal --", () => {
+		assertGitCommand(GitCommand.lsTree("HEAD", [".changeset", "docs"]), [
+			"ls-tree",
+			"-r",
+			"-z",
+			"HEAD",
+			"--",
+			".changeset",
+			"docs",
+		]);
+	});
+
+	it("defaultBranch probes the remote's symbolic HEAD quietly", () => {
+		assertGitCommand(GitCommand.defaultBranch(), ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+		assertGitCommand(GitCommand.defaultBranch("upstream"), [
+			"symbolic-ref",
+			"--quiet",
+			"--short",
+			"refs/remotes/upstream/HEAD",
+		]);
+	});
+
+	it("currentBranch builds `git rev-parse --abbrev-ref HEAD`", () => {
+		assertGitCommand(GitCommand.currentBranch(), ["rev-parse", "--abbrev-ref", "HEAD"]);
+	});
+
+	it("repoRoot builds `git rev-parse --show-toplevel`", () => {
+		assertGitCommand(GitCommand.repoRoot(), ["rev-parse", "--show-toplevel"]);
+	});
+
+	it("commitInfo builds a NUL-separated single-commit log format", () => {
+		assertGitCommand(GitCommand.commitInfo(), ["log", "-1", "--format=%H%x00%G?%x00%B", "HEAD"]);
+		assertGitCommand(GitCommand.commitInfo("v1.0.0"), ["log", "-1", "--format=%H%x00%G?%x00%B", "v1.0.0"]);
+	});
+
+	it("configGet builds `git config --get <key>`", () => {
+		assertGitCommand(GitCommand.configGet("user.signingkey"), ["config", "--get", "user.signingkey"]);
+	});
+
+	it("remoteUrl builds `git remote get-url <remote>`", () => {
+		assertGitCommand(GitCommand.remoteUrl(), ["remote", "get-url", "origin"]);
+	});
+
+	it("status builds `git status --porcelain -z`", () => {
+		assertGitCommand(GitCommand.status(), ["status", "--porcelain", "-z"]);
 	});
 });

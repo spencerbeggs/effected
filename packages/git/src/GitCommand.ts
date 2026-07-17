@@ -30,16 +30,19 @@ const git = (args: ReadonlyArray<string>): ChildProcess.StandardCommand =>
 const show = (ref: string, path: string): ChildProcess.StandardCommand => git(["show", `${ref}:${path}`]);
 
 /**
- * `git ls-tree -r -z <ref>` — every path in the tree at `ref`, recursively,
- * NUL-terminated.
+ * `git ls-tree -r -z <ref> [-- <pathspec>...]` — every path in the tree at
+ * `ref`, recursively, NUL-terminated, optionally scoped to `pathspec`.
  *
  * @remarks
  * `-z` is load-bearing: git paths may themselves contain newlines, so the
- * caller must split on `"\0"`, never on `"\n"`.
+ * caller must split on `"\0"`, never on `"\n"`. When `pathspec` is provided,
+ * a literal `--` separator is inserted before the pathspec entries to prevent
+ * git from interpreting pathspec values as options.
  *
  * @public
  */
-const lsTree = (ref: string): ChildProcess.StandardCommand => git(["ls-tree", "-r", "-z", ref]);
+const lsTree = (ref: string, pathspec: ReadonlyArray<string> = []): ChildProcess.StandardCommand =>
+	git(["ls-tree", "-r", "-z", ref, ...(pathspec.length > 0 ? ["--", ...pathspec] : [])]);
 
 /**
  * `git cat-file -e <ref>` — checks whether `ref` resolves to an existing
@@ -134,12 +137,188 @@ const untrackedFiles = (relative = false): ChildProcess.StandardCommand =>
 const revParse = (ref: string): ChildProcess.StandardCommand => git(["rev-parse", "--verify", ref]);
 
 /**
- * `git checkout <ref>` — the one mutating operation in this package. Moves
- * the working tree (and, for a branch ref, `HEAD`) to `ref`.
+ * Mutating: `git checkout [--detach] <ref>` — moves the working tree (and, for
+ * a branch ref, `HEAD`) to `ref`. When `detach` is true, checks out the ref in
+ * detached-HEAD state.
  *
  * @public
  */
-const checkout = (ref: string): ChildProcess.StandardCommand => git(["checkout", ref]);
+const checkout = (ref: string, detach = false): ChildProcess.StandardCommand =>
+	git(["checkout", ...(detach ? ["--detach"] : []), ref]);
+
+/**
+ * Mutating: `git fetch [--depth <n>] <remote> [tag] <ref>` — fetches the given
+ * ref from a remote, optionally with a depth limit and the `tag` keyword.
+ *
+ * @public
+ */
+const fetch = (remote: string, ref: string, depth?: number, tag = false): ChildProcess.StandardCommand =>
+	git(["fetch", ...(depth !== undefined ? ["--depth", String(depth)] : []), remote, ...(tag ? ["tag"] : []), ref]);
+
+/**
+ * Mutating: `git submodule update [--init] [--depth <n>] [-- <paths>...]` — updates
+ * registered submodules, optionally initializing them, with an optional depth limit,
+ * and scoped to specific paths. The literal `--` separator makes the pathspec
+ * injection-safe by construction.
+ *
+ * @public
+ */
+const submoduleUpdate = (
+	init = false,
+	depth?: number,
+	paths: ReadonlyArray<string> = [],
+): ChildProcess.StandardCommand =>
+	git([
+		"submodule",
+		"update",
+		...(init ? ["--init"] : []),
+		...(depth !== undefined ? ["--depth", String(depth)] : []),
+		...(paths.length > 0 ? ["--", ...paths] : []),
+	]);
+
+/**
+ * Mutating: `git submodule add [--depth <n>] -- <url> <path>` — registers and
+ * initializes a new submodule. The literal `--` separator makes the url and path
+ * injection-safe by construction.
+ *
+ * @public
+ */
+const submoduleAdd = (url: string, path: string, depth?: number): ChildProcess.StandardCommand =>
+	git(["submodule", "add", ...(depth !== undefined ? ["--depth", String(depth)] : []), "--", url, path]);
+
+/**
+ * Mutating: `git sparse-checkout set (--cone | --no-cone) <patterns...>` — configures
+ * which paths are checked out in a sparse repository. The cone flag is explicit in both
+ * branches — `--cone` when `cone` is true, `--no-cone` when false — to prevent git's
+ * default from silently changing the behavior.
+ *
+ * @public
+ */
+const sparseCheckoutSet = (patterns: ReadonlyArray<string>, cone: boolean): ChildProcess.StandardCommand =>
+	git(["sparse-checkout", "set", cone ? "--cone" : "--no-cone", ...patterns]);
+
+/**
+ * Mutating: `git config [-f <file>] <key> <value>` — writes a configuration value,
+ * optionally into an explicit configuration file (e.g., `.gitmodules`).
+ *
+ * @public
+ */
+const configSet = (key: string, value: string, file?: string): ChildProcess.StandardCommand =>
+	git(["config", ...(file !== undefined ? ["-f", file] : []), key, value]);
+
+/**
+ * Mutating: `git add -- <paths...>` — stages the given paths for commit. The literal
+ * `--` separator makes the pathspec injection-safe by construction.
+ *
+ * @public
+ */
+const add = (paths: ReadonlyArray<string>): ChildProcess.StandardCommand => git(["add", "--", ...paths]);
+
+/**
+ * `git diff --name-status -z (--relative | --no-relative) [<base> | <base>...<head>]`
+ * — the changed paths WITH their one-letter status codes, NUL-terminated.
+ *
+ * @remarks
+ * With `head` omitted this is the single-argument diff form: the working tree
+ * (staged + unstaged) against `base` — NOT a two-ref range. With `head`
+ * present it is the familiar `base...head` merge-base form, matching
+ * {@link GitCommand.changedFiles}. `-z` and the explicit relative flag follow
+ * the same rules as {@link GitCommand.changedFiles}. In `-z` mode a rename or
+ * copy entry is THREE NUL tokens: `R<score>`, the old path, the new path.
+ *
+ * @public
+ */
+const nameStatus = (base: string, head: string | undefined, relative = false): ChildProcess.StandardCommand =>
+	git([
+		"diff",
+		"--name-status",
+		"-z",
+		relative ? "--relative" : "--no-relative",
+		head === undefined ? base : `${base}...${head}`,
+	]);
+
+/**
+ * `git symbolic-ref --quiet --short refs/remotes/<remote>/HEAD` — the name of
+ * the default branch on the given remote, or empty string / exit 1 if unset.
+ *
+ * @remarks
+ * `--quiet` suppresses error messages; the exit code alone signals success
+ * (0) or "symbolic-ref does not exist" (1). The contract is "does the remote
+ * have a HEAD?" — an unset symbolic ref exits 1 silently, which `Git.defaultBranch`
+ * degrades to `Option.none()` rather than a typed error. `symbolic-ref` is a
+ * purely local ref lookup; it never touches the network.
+ *
+ * @public
+ */
+const defaultBranch = (remote = "origin"): ChildProcess.StandardCommand =>
+	git(["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
+
+/**
+ * `git rev-parse --abbrev-ref HEAD` — the name of the branch `HEAD` is
+ * pointing to.
+ *
+ * @remarks
+ * Returns `"HEAD"` (detached state), `"<branch>"` (an attached branch), or
+ * fails if the repository has no commits.
+ *
+ * @public
+ */
+const currentBranch = (): ChildProcess.StandardCommand => git(["rev-parse", "--abbrev-ref", "HEAD"]);
+
+/**
+ * `git rev-parse --show-toplevel` — the filesystem path to the root of the
+ * enclosing git repository.
+ *
+ * @public
+ */
+const repoRoot = (): ChildProcess.StandardCommand => git(["rev-parse", "--show-toplevel"]);
+
+/**
+ * `git log -1 --format=%H%x00%G?%x00%B <ref>` — a NUL-separated triple: the
+ * full commit hash, the GPG trust level, and the full commit body (message),
+ * all untrimmed.
+ *
+ * @remarks
+ * `%H` is the full object id (40-char sha1, or sha256 if configured).
+ * `%x00` is a literal NUL byte (the separator). `%G?` is the GPG trust level
+ * (`G` = good signature, `B` = bad, `U` = untrusted, `X` = expired, `Y` =
+ * expired key, `R` = revoked key, `E` = error, or `N` = not signed).
+ * `%B` is the full body, **untrimmed** — it includes leading/trailing
+ * whitespace — so the caller must decide whether to trim it. Splits on the
+ * two `\x00` bytes to extract all three values.
+ *
+ * @public
+ */
+const commitInfo = (ref = "HEAD"): ChildProcess.StandardCommand => git(["log", "-1", "--format=%H%x00%G?%x00%B", ref]);
+
+/**
+ * `git config --get <key>` — the value of the given git config key, or empty
+ * string / exit 1 if unset.
+ *
+ * @public
+ */
+const configGet = (key: string): ChildProcess.StandardCommand => git(["config", "--get", key]);
+
+/**
+ * `git remote get-url <remote>` — the fetch URL of the given remote, or a
+ * typed error if the remote does not exist.
+ *
+ * @public
+ */
+const remoteUrl = (remote = "origin"): ChildProcess.StandardCommand => git(["remote", "get-url", remote]);
+
+/**
+ * `git status --porcelain -z` — the porcelain (stable, machine-readable) short
+ * status of every modified file in the working tree, NUL-terminated.
+ *
+ * @remarks
+ * `-z` is load-bearing here too, for the same reason as
+ * {@link GitCommand.lsTree}: split the output on `"\0"`, never on `"\n"`.
+ * Each entry is a pair of status codes followed by a space and the path.
+ *
+ * @public
+ */
+const status = (): ChildProcess.StandardCommand => git(["status", "--porcelain", "-z"]);
 
 /**
  * Pure constructors for the `git` `ChildProcess.Command` values this package
@@ -164,4 +343,18 @@ export const GitCommand = {
 	untrackedFiles,
 	revParse,
 	checkout,
+	fetch,
+	submoduleUpdate,
+	submoduleAdd,
+	sparseCheckoutSet,
+	configSet,
+	add,
+	nameStatus,
+	defaultBranch,
+	currentBranch,
+	repoRoot,
+	commitInfo,
+	configGet,
+	remoteUrl,
+	status,
 } as const;

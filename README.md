@@ -37,7 +37,7 @@ Every package is `unstable` for the `0.1.0` release; see [release strategy](#rel
 | [@effected/xdg](packages/xdg) | unstable | XDG Base Directory resolution: environment paths, app-namespaced directories, native OS conventions and config-file resolvers |
 | [@effected/runtimes](packages/runtimes) | unstable | Resolve semver-compatible Node.js, Bun and Deno runtime versions from live feeds, with an offline snapshot fallback |
 | [@effected/tsconfig-json](packages/tsconfig-json) | unstable | tsconfig.json handling as Effect schemas: JSONC document and compiler-option schemas, tsc-parity extends-chain resolution, nearest-config discovery and a portable subset for virtual TypeScript environments |
-| [@effected/git](packages/git) | unstable | Typed git introspection over Effect core's ChildProcessSpawner: file content and trees at any ref, ref probes, merge bases and changed files — plus checkout, the one mutation |
+| [@effected/git](packages/git) | unstable | Typed git introspection over Effect core's ChildProcessSpawner: file content and trees at any ref, typed diffs and status, branch, commit and config probes — plus a clearly-marked mutating tier (checkout, fetch, submodules, sparse checkout, config, add) |
 
 ### Pure
 

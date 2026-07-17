@@ -28,7 +28,7 @@ type ChangedFiles = (
 
 type WorkingChanges = (
 	cwd: string,
-	options: { readonly relative?: boolean },
+	options?: { readonly relative?: boolean },
 ) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError>;
 
 /**
@@ -50,6 +50,23 @@ const stubGit = (impl: {
 		mergeBase: () => Effect.die("Git.mergeBase not stubbed"),
 		revParse: () => Effect.die("Git.revParse not stubbed"),
 		checkout: () => Effect.die("Git.checkout not stubbed"),
+		nameStatus: () => Effect.die("Git.nameStatus not stubbed"),
+		unstagedChanges: () => Effect.die("Git.unstagedChanges not stubbed"),
+		stagedChanges: () => Effect.die("Git.stagedChanges not stubbed"),
+		untrackedFiles: () => Effect.die("Git.untrackedFiles not stubbed"),
+		defaultBranch: () => Effect.die("Git.defaultBranch not stubbed"),
+		currentBranch: () => Effect.die("Git.currentBranch not stubbed"),
+		repoRoot: () => Effect.die("Git.repoRoot not stubbed"),
+		commitInfo: () => Effect.die("Git.commitInfo not stubbed"),
+		configGet: () => Effect.die("Git.configGet not stubbed"),
+		remoteUrl: () => Effect.die("Git.remoteUrl not stubbed"),
+		status: () => Effect.die("Git.status not stubbed"),
+		fetch: () => Effect.die("Git.fetch not stubbed"),
+		submoduleUpdate: () => Effect.die("Git.submoduleUpdate not stubbed"),
+		submoduleAdd: () => Effect.die("Git.submoduleAdd not stubbed"),
+		sparseCheckoutSet: () => Effect.die("Git.sparseCheckoutSet not stubbed"),
+		configSet: () => Effect.die("Git.configSet not stubbed"),
+		add: () => Effect.die("Git.add not stubbed"),
 	});
 
 const detectorOver = (git: Layer.Layer<Git>) => {

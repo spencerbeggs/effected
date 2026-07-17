@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-16
+last-synced: 2026-07-16
 completeness: 93
 related:
   - architecture.md
@@ -180,7 +180,9 @@ The pnpm resolver bug that once forced workarounds here — a v4 `effect` peer b
 
 ### Open defect: one peers-check issue
 
-`pnpm peers check` reports exactly one issue: `@savvy-web/bundler` peers on `typescript@^7` while the workspace installs TypeScript 6 (`catalog:silk`, the version every package typechecks against). It is part of the TypeScript 5→6→7 transition — either the workspace moves `catalog:silk` to `typescript@^7`, or the bundler's peer range widens. Routed to the maintainer; do not silence it, and do not treat its presence as license to tolerate a second. There is no expected-residual set, so any other warning is a genuine closure defect to fix upstream.
+`pnpm peers check` reports exactly one issue: `rolldown-pnpm-config`'s Effect **v3** satellites (`@effect/platform`, `@effect/rpc`, `@effect/sql`, `@effect/cluster`) report unmet `effect` peers — they want `^3.21.x` and get `4.0.0-beta.98` — inside `packages/pnpm-plugin-effect`'s context. It is a consequence of the bundler 2.0 upgrade: `@savvy-web/bundler@2` depends on published `@effected/*` packages that peer on the exact v4 beta, and `pnpm-plugin-effect` carries a direct `effect` (`catalog:effect`) devDependency so those peers bind v4 rather than the v3 that rolldown-pnpm-config itself carries (347ca229) — leaving rolldown-pnpm-config's own v3 satellites wanting v3 in a context that installs v4. The candidate fix lives upstream in the external rolldown-pnpm-config repo. Do not silence it, and do not treat its presence as license to tolerate a second: there is no expected-residual set beyond this one, so any other warning is a genuine closure defect to fix upstream.
+
+The previous residual recorded here — `@savvy-web/bundler@1.1.14` peering on `typescript@^7` against an installed TypeScript 6 — was **resolved** by the same silk 2.5 / bundler 2.0 upgrade: `catalog:silk` now installs TypeScript 7.0.2 and the whole workspace typechecks green under TS7.
 
 ## Cross-@effected dependencies
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-16
+last-synced: 2026-07-16
 completeness: 85
 related:
   - effect-standards.md
@@ -97,6 +97,6 @@ Every package typechecks with `tsc --noEmit` against `typescript` (`catalog:silk
 
 ### Peer-closure warnings
 
-`pnpm peers check` reports exactly **one** known residual: `@savvy-web/bundler` peers on `typescript@^7` while the workspace installs TypeScript 6 (`catalog:silk`) — part of the TypeScript 5→6→7 transition, routed to the maintainer, not to be silenced ([effect-standards.md](effect-standards.md#open-defect-one-peers-check-issue)). There is no other expected-residual set: **any** other warning is a genuine closure defect to fix upstream. The peer-closure discipline itself is in [effect-standards.md](effect-standards.md).
+`pnpm peers check` reports exactly **one** known residual: `rolldown-pnpm-config`'s Effect v3 satellites report unmet `effect` peers inside `packages/pnpm-plugin-effect`, a consequence of the bundler 2.0 upgrade whose mechanics and upstream fix path are in [effect-standards.md](effect-standards.md#open-defect-one-peers-check-issue). The old bundler-wants-TypeScript-7 residual is resolved — `catalog:silk` now installs TypeScript 7.0.2. There is no other expected-residual set: **any** other warning is a genuine closure defect to fix upstream. The peer-closure discipline itself is in [effect-standards.md](effect-standards.md).
 
 Always check the lockfile diff after an install — a plain `pnpm install` once stripped the turbo, biome and tsgo platform binaries from it.

@@ -72,7 +72,9 @@ The install steps and the two patterns are the package [README](../../../../pack
 
 These catalogs are the mechanism behind the [peer-dependency discipline](../effect-standards.md#peer-dependency-discipline) in the standards: `@effected/*` libraries keep `effect` as a `catalog:effect` peer and declare `catalog:effectPeers` as their advertised floor.
 
-The v3/v4 peer-resolution bug that once required pnpm-resolver workarounds is fixed upstream, and `pnpm peers check` is clean. Neither `dedupePeerDependents` nor `dedupeDirectDeps` is set anywhere — pnpm's defaults apply; only `autoInstallPeers: true` is set in `pnpm-workspace.yaml`. The one known residual is recorded in [effect-standards.md](../effect-standards.md#open-defect-one-peers-check-issue).
+The v3/v4 peer-resolution bug that once required pnpm-resolver workarounds is fixed upstream. Neither `dedupePeerDependents` nor `dedupeDirectDeps` is set anywhere — pnpm's defaults apply; only `autoInstallPeers: true` is set in `pnpm-workspace.yaml`.
+
+The workspace's one known peers-check residual lives in **this package's context**, recorded in [effect-standards.md](../effect-standards.md#open-defect-one-peers-check-issue): the bundler 2.0 upgrade made `@savvy-web/bundler` depend on published `@effected/*` packages that peer on the exact Effect v4 beta, and with no `effect` of its own this package let pnpm bind those peers to the v3 that `rolldown-pnpm-config` carries — loading v4 code against v3 at build time. The fix (347ca229) is a direct `effect` (`catalog:effect`) **devDependency** here, purely to give the resolver the right version to bind; the companion still ships no `effect`-importing code, so do not "clean up" that devDependency as unused. What remains after the fix is rolldown-pnpm-config's own Effect v3 satellites (`@effect/platform`, `@effect/rpc`, `@effect/sql`, `@effect/cluster`) wanting `^3.21.x` in a context that installs the v4 beta; the candidate fix is upstream in the external rolldown-pnpm-config repo.
 
 ## Classification: companion
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-16
+last-synced: 2026-07-16
 completeness: 88
 related:
   - releases.md
@@ -73,7 +73,7 @@ External repos. These are **pull, not push** — they proceed whenever their inp
 
 ## The TypeScript 5→6→7 posture
 
-TypeScript 7 (the Go rewrite) ships tsc but no JS-compatible API until 7.1, whose timing is unknown. The rule that threads through everything: **`@effected/*` packages never import `typescript`**. `tsconfig-json` owns the version-coupled enum mappings as data. Direct TS-API usage is confined to external consumers — the api-extractor plugin carries `typescript@6` directly for Twoslash, the bundler's syntactic walkers do the same — until the TS 7.1 JS API exists, at which point those islands are revisited. Because `@effected/ts-vfs` (the one package that kept the compiler behind optional peers) has left the kit, the posture holds at the package-set level, not only behind optional peers.
+TypeScript 7 (the Go rewrite) ships tsc but no JS-compatible API until 7.1, whose timing is unknown. The rule that threads through everything: **`@effected/*` packages never import `typescript`**. `tsconfig-json` owns the version-coupled enum mappings as data. Direct TS-API usage is confined to external consumers — the api-extractor plugin carries `typescript@6` directly for Twoslash — until the TS 7.1 JS API exists, at which point the island is revisited. The bundler left its TypeScript 6 island at 2.0: it now peers on `typescript@^7`, satisfied by the workspace's `catalog:silk` pin (TypeScript 7.0.2), which every package typechecks under. Because `@effected/ts-vfs` (the one package that kept the compiler behind optional peers) has left the kit, the posture holds at the package-set level, not only behind optional peers.
 
 ## Decided against
 
