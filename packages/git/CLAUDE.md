@@ -108,7 +108,7 @@ which method-specific rows apply on top of the shared taxonomy:
 mutating tier's ref-fetching operations. It classifies as `UnknownRefError`
 for every method that reaches `classify`, but in practice only `fetch`,
 `submoduleUpdate` and `submoduleAdd` produce it — it is the typed signal a
-tag-then-branch fetch fallback (`Effect.orElse`) branches on.
+tag-then-branch fetch fallback (`Effect.catchTag`) branches on.
 
 `"quiet"` backs `defaultBranch` and `configGet`: both run their git command
 with `--quiet`/rely on a silent exit 1 to mean "unset", so any exit-1 WITH
