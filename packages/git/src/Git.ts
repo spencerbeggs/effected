@@ -16,11 +16,22 @@ const GIT_TIMEOUT = Duration.seconds(30);
  * `exitCode` and `stderr` are populated when git actually ran. `detail`
  * carries a human-readable explanation of an absorbed spawn-level
  * `PlatformError` or a per-run timeout — the two cases where git never
- * produced an exit code at all.
+ * produced an exit code at all. {@link GitCommandError.kind | `kind`}
+ * discriminates a pre-spawn guard rejection (`"refused"`) from a genuine git
+ * failure (`"failed"`) structurally, so composed retry/fallback logic never has
+ * to parse the prose in `message` or `detail`.
  *
  * @public
  */
 export class GitCommandError extends Schema.TaggedErrorClass<GitCommandError>()("GitCommandError", {
+	/**
+	 * Discriminates a pre-spawn guard rejection from a genuine git failure.
+	 * `"refused"` — a pre-spawn guard (an option-like ref) rejected the
+	 * invocation and no process was ever spawned. `"failed"` — git actually ran
+	 * and exited non-zero, or the spawn/IO itself failed. Composed retry/fallback
+	 * logic routes on this instead of matching `detail` prose.
+	 */
+	kind: Schema.Literals(["refused", "failed"]),
 	/** The argument vector, without the leading `git`. */
 	args: Schema.Array(Schema.String),
 	/** The working directory the command ran in. */
@@ -182,7 +193,7 @@ const classify = (
 			outcome.reason._tag === "NotFound"
 				? "git is not installed (or the working directory does not exist)"
 				: `spawn failed: ${outcome.reason._tag}: ${outcome.message}`;
-		return { _tag: "failure", error: GitCommandError.make({ args, cwd, stderr: "", detail }) };
+		return { _tag: "failure", error: GitCommandError.make({ kind: "failed", args, cwd, stderr: "", detail }) };
 	}
 	const { stdout, stderr, exitCode } = outcome;
 	if (exitCode === 0) {
@@ -208,7 +219,7 @@ const classify = (
 	if (kind === "refExists" && exitCode === 1) {
 		return { _tag: "refMissing" };
 	}
-	return { _tag: "failure", error: GitCommandError.make({ args, cwd, exitCode, stderr }) };
+	return { _tag: "failure", error: GitCommandError.make({ kind: "failed", args, cwd, exitCode, stderr }) };
 };
 
 /**
@@ -231,7 +242,7 @@ const runClassified = (
 			orElse: () =>
 				Effect.succeed<Classified>({
 					_tag: "failure",
-					error: GitCommandError.make({ args, cwd, stderr: "", detail: "timed out after 30s" }),
+					error: GitCommandError.make({ kind: "failed", args, cwd, stderr: "", detail: "timed out after 30s" }),
 				}),
 		}),
 	);
@@ -400,6 +411,7 @@ const rejectOptionLikeRefs = (cwd: string, refs: ReadonlyArray<string>): Effect.
 		? Effect.void
 		: Effect.fail(
 				new GitCommandError({
+					kind: "refused",
 					args: [offending],
 					cwd,
 					stderr: "",
@@ -690,16 +702,19 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 	) {
 		const remote = options.remote ?? "origin";
 		yield* Effect.annotateCurrentSpan({ cwd, remote, ref: options.ref });
-		// Guard once, up front: an option-like remote or ref fails typed before
-		// EITHER attempt spawns, rather than surfacing as the plain attempt's
-		// guard rejection after a phantom tag-form fallback.
-		yield* rejectOptionLikeRefs(cwd, [remote, options.ref]);
 		return yield* fetch(cwd, { ...options, tag: true }).pipe(
 			// UnknownRefError is the typed "not a tag on the remote" signal; a
 			// GitCommandError keeps unclassified tag-form stderr shapes on the
 			// fallback path too. NotARepositoryError deliberately propagates —
 			// the plain form would fail identically, so the retry is pure waste.
-			Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fetch(cwd, options)),
+			// A refused GitCommandError (kind "refused") is a pre-spawn guard
+			// rejection — an option-like remote or ref — that the plain form's own
+			// guard would reproduce identically: it short-circuits here rather than
+			// routing through a phantom fallback and re-rejecting. Routing on `kind`
+			// is why fetchAny no longer duplicates the guard up front.
+			Effect.catchTag(["UnknownRefError", "GitCommandError"], (error) =>
+				error._tag === "GitCommandError" && error.kind === "refused" ? Effect.fail(error) : fetch(cwd, options),
+			),
 		);
 	});
 
