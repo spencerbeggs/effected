@@ -62,6 +62,7 @@ const stubGit = (impl: {
 		remoteUrl: () => Effect.die("Git.remoteUrl not stubbed"),
 		status: () => Effect.die("Git.status not stubbed"),
 		fetch: () => Effect.die("Git.fetch not stubbed"),
+		fetchAny: () => Effect.die("Git.fetchAny not stubbed"),
 		submoduleUpdate: () => Effect.die("Git.submoduleUpdate not stubbed"),
 		submoduleAdd: () => Effect.die("Git.submoduleAdd not stubbed"),
 		sparseCheckoutSet: () => Effect.die("Git.sparseCheckoutSet not stubbed"),

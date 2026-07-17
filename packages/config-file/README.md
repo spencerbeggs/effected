@@ -35,6 +35,8 @@ pnpm add @effected/config-file effect @effect/platform-node
 
 Requires Node.js >=24.11.0. Every format is covered by that one install; there is no separate package to add for YAML or TOML.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 `effect` v4 is a peer dependency, and so are `@effected/jsonc`, `@effected/toml`, `@effected/walker` and `@effected/yaml` — the first-party engines behind the JSONC, YAML and TOML codecs, plus the traversal primitive the `upwardWalk`, `workspaceRoot` and `gitRoot` resolvers are built on. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not. The package declares no runtime dependencies of its own, so nothing it drags into your tree comes from outside `effect` and `@effected/*`.
 
 Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.

@@ -32,6 +32,18 @@ import { AliasExpansionBudgetExceeded, CollectionStyle, ScalarStyle, nodeToJsVal
  * denial-of-service guard) and `uniqueKeys` `true` (duplicate mapping keys
  * are errors).
  *
+ * Construct with the validated `YamlParseOptions.make({ ... })` static — the
+ * kit convention (never `new`). Call sites that take a `YamlParseOptions`
+ * also accept a structurally-matching plain literal.
+ *
+ * @example
+ * ```ts
+ * import { Yaml, YamlParseOptions } from "@effected/yaml";
+ *
+ * const options = YamlParseOptions.make({ maxAliasCount: 50 });
+ * const parsed = Yaml.parse("a: 1", options);
+ * ```
+ *
  * @public
  */
 export class YamlParseOptions extends Schema.Class<YamlParseOptions>("YamlParseOptions")({
@@ -44,7 +56,29 @@ export class YamlParseOptions extends Schema.Class<YamlParseOptions>("YamlParseO
  * Options controlling stringify behavior. All fields are omissible; absent
  * fields resolve to `indent` `2`, `lineWidth` `80`, `defaultScalarStyle`
  * `"plain"`, `defaultCollectionStyle` `"block"`, `sortKeys` `false`,
- * `finalNewline` `true` and `forceDefaultStyles` `false`.
+ * `indentSequences` `false`, `finalNewline` `true` and `forceDefaultStyles`
+ * `false`.
+ *
+ * `indentSequences` controls the presentation of block sequences nested under
+ * a mapping key: `false` (the default) emits them at the key's column — the
+ * kit's byte-compatible legacy form — while `true` indents them one level,
+ * matching the `yaml` npm package's default output. Top-level sequences stay
+ * at column zero in both modes.
+ *
+ * Construct with the validated `YamlStringifyOptions.make({ ... })` static —
+ * the kit convention (never `new`). Call sites that take a
+ * `YamlStringifyOptions` also accept a structurally-matching plain literal.
+ *
+ * @example
+ * ```ts
+ * import { Yaml, YamlStringifyOptions } from "@effected/yaml";
+ *
+ * const options = YamlStringifyOptions.make({ indentSequences: true });
+ * const yaml = Yaml.stringify({ key: ["a", "b"] }, options);
+ * // key:
+ * //   - a
+ * //   - b
+ * ```
  *
  * @public
  */
@@ -54,6 +88,7 @@ export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("Ya
 	defaultScalarStyle: Schema.optionalKey(ScalarStyle),
 	defaultCollectionStyle: Schema.optionalKey(CollectionStyle),
 	sortKeys: Schema.optionalKey(Schema.Boolean),
+	indentSequences: Schema.optionalKey(Schema.Boolean),
 	finalNewline: Schema.optionalKey(Schema.Boolean),
 	forceDefaultStyles: Schema.optionalKey(Schema.Boolean),
 }) {}
@@ -115,6 +150,7 @@ const toStringifyInput = (options?: YamlStringifyOptions): StringifyOptionsInput
 				defaultScalarStyle: options.defaultScalarStyle,
 				defaultCollectionStyle: options.defaultCollectionStyle,
 				sortKeys: options.sortKeys,
+				indentSequences: options.indentSequences,
 				finalNewline: options.finalNewline,
 				forceDefaultStyles: options.forceDefaultStyles,
 			};

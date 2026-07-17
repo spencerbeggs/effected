@@ -70,6 +70,26 @@ describe("YamlFormat", () => {
 		});
 	});
 
+	describe("format — indentSequences", () => {
+		// Exercises the AST (node-path) stringifier: YamlFormattingOptions
+		// derives every YamlStringifyOptions field, including indentSequences.
+		it("indents block sequences under mapping keys one level when set", () => {
+			const options = YamlFormattingOptions.make({ indentSequences: true });
+			assert.strictEqual(YamlFormat.formatToString("key:\n- a\n- b\n", undefined, options), "key:\n  - a\n  - b\n");
+		});
+
+		it("default formatting leaves sequences under mapping keys unindented", () => {
+			assert.strictEqual(YamlFormat.formatToString("key:\n  - a\n  - b\n"), "key:\n- a\n- b\n");
+		});
+
+		it("YamlFormattingOptions.make constructs a validated instance carrying the derived field", () => {
+			const options = YamlFormattingOptions.make({ indentSequences: true, preserveComments: false });
+			assert.instanceOf(options, YamlFormattingOptions);
+			assert.strictEqual(options.indentSequences, true);
+			assert.throws(() => YamlFormattingOptions.make({ indentSequences: "yes" as unknown as boolean }));
+		});
+	});
+
 	describe("modify — replace", () => {
 		it.effect("updates an existing mapping value", () =>
 			Effect.gen(function* () {

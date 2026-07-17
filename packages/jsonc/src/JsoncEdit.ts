@@ -51,6 +51,26 @@ export class JsoncFormattingOptions extends Schema.Class<JsoncFormattingOptions>
 }) {}
 
 /**
+ * Formatting options accepted at call sites: either a
+ * {@link JsoncFormattingOptions} instance or a plain literal with the same
+ * fields (the two are structurally interchangeable — only the option fields
+ * are read). Mirrors the `YamlRangeLike` posture in `@effected/yaml`, so a
+ * caller can pass `{ insertSpaces: false, tabSize: 2 }` without constructing
+ * the class. `JsoncFormattingOptions` remains the canonical decoded form.
+ *
+ * @public
+ */
+export type JsoncFormattingOptionsLike =
+	| JsoncFormattingOptions
+	| {
+			readonly tabSize?: number;
+			readonly insertSpaces?: boolean;
+			readonly eol?: string;
+			readonly insertFinalNewline?: boolean;
+			readonly keepLines?: boolean;
+	  };
+
+/**
  * A non-mutating text edit: replace the span `[offset, offset + length)` with
  * `content`. Set `length` to `0` to insert, `content` to `""` to delete.
  *

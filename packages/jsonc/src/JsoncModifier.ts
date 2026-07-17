@@ -7,7 +7,7 @@
 
 import { Effect, Schema } from "effect";
 import { navigate } from "./internal/navigate.js";
-import type { JsoncFormattingOptions } from "./JsoncEdit.js";
+import type { JsoncFormattingOptionsLike } from "./JsoncEdit.js";
 import { JsoncEdit } from "./JsoncEdit.js";
 import type { JsoncPath } from "./JsoncNode.js";
 
@@ -55,8 +55,13 @@ export class JsoncModificationError extends Schema.TaggedErrorClass<JsoncModific
  * @public
  */
 export interface JsoncModifyOptions {
-	/** Formatting applied to inserted/replaced content (indentation, EOL, spacing). */
-	readonly formattingOptions?: JsoncFormattingOptions;
+	/**
+	 * Formatting applied to inserted/replaced content (indentation, EOL,
+	 * spacing). Accepts a `JsoncFormattingOptions` instance or a plain literal
+	 * (e.g. `{ insertSpaces: false, tabSize: 2 }`) — see
+	 * {@link JsoncFormattingOptionsLike}.
+	 */
+	readonly formattingOptions?: JsoncFormattingOptionsLike;
 }
 
 /**

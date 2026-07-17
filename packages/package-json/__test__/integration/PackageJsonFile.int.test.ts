@@ -167,6 +167,35 @@ describe("PackageJsonFile round-trip", () => {
 			}),
 		);
 
+		it.effect('write with indent: "preserve" detects the overwritten file\'s indentation', () =>
+			Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				const dir = mkdtempSync(join(tmpdir(), "pkg-json-preserve-"));
+				const outPath = join(dir, "package.json");
+				writeFileSync(outPath, '{\n\t"name": "p",\n\t"version": "1.0.0"\n}\n');
+				const pkg = yield* Package.decode({ name: "p", version: "2.0.0" });
+				yield* file.write(outPath, pkg, { indent: "preserve" });
+				const written = readFileSync(outPath, "utf-8");
+				rmSync(dir, { recursive: true, force: true });
+				assert.isTrue(written.includes('\n\t"name"'));
+				assert.isTrue(written.includes('"version": "2.0.0"'));
+			}),
+		);
+
+		it.effect('write with indent: "preserve" to a fresh path falls back to two spaces', () =>
+			Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				const dir = mkdtempSync(join(tmpdir(), "pkg-json-preserve-fresh-"));
+				const outPath = join(dir, "package.json");
+				const pkg = yield* Package.decode({ name: "p", version: "1.0.0" });
+				yield* file.write(outPath, pkg, { indent: "preserve" });
+				const written = readFileSync(outPath, "utf-8");
+				rmSync(dir, { recursive: true, force: true });
+				assert.isTrue(written.includes('\n  "name"'));
+				assert.isFalse(written.includes("\t"));
+			}),
+		);
+
 		it.effect("full round-trip preserves nested, encoded and unknown-shaped fields", () =>
 			Effect.gen(function* () {
 				const result = yield* roundtrip("full");

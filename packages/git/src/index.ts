@@ -12,6 +12,7 @@ export {
 	CommitInfo,
 	Git,
 	GitCommandError,
+	type GitShape,
 	LsTreeEntry,
 	NameStatusEntry,
 	NotARepositoryError,

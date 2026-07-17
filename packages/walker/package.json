@@ -2,7 +2,7 @@
 	"name": "@effected/walker",
 	"version": "0.1.0",
 	"private": true,
-	"description": "Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate.",
+	"description": "Path traversal as Effect primitives: ascend a directory chain to the first matching candidate, or descend a tree expanding a glob against the filesystem.",
 	"keywords": ["path", "traversal", "walk", "find-up", "effect", "effected"],
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/walker#readme",
 	"bugs": {
@@ -33,12 +33,14 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
+		"@effected/glob": "workspace:*",
 		"@savvy-web/bundler": "^2.0.0",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
 		"typescript": "catalog:silk"
 	},
 	"peerDependencies": {
+		"@effected/glob": "workspace:*",
 		"effect": "catalog:effect"
 	},
 	"engines": {

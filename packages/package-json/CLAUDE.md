@@ -1,6 +1,6 @@
 # @effected/package-json
 
-package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged. 12 `src/` modules (down from 34 v3 files), 10 test files, 64 tests.
+package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged. 12 `src/` modules (down from 34 v3 files), 11 test files, 91 tests.
 
 **Design doc:** `@../../.claude/design/effected/packages/package-json.md` — load when
 changing the public surface, the `rest` wire transform, or the error taxonomy.
@@ -65,8 +65,13 @@ re-exports below it).
 - **`PackageValidator.ts`** — rule-based validation over a decoded `Package`;
   `layer` (default rules) and the parameterized `layerRules` factory.
 - **`PackageJsonFile.ts`** — the IO surface.
-- **`internal/format.ts`** — private; canonical key order, dependency sorting,
-  empty-map stripping. Never re-export it.
+- **`internal/format.ts`** — private; canonical key order (aligned verbatim to
+  `sort-package-json@4.0.0`'s default `sortOrder` — re-baseline the fixtures in
+  `__test__/fixtures/` together with `KEY_ORDER` when bumping that reference),
+  map alphabetization (the dependency maps plus the HashMap-backed `scripts` /
+  `engines` / `bin`, whose source order the model does not retain), empty-map
+  stripping, and indent detection/resolution for `PackageIndent`
+  (`number | "tab" | "preserve"`). Never re-export it.
 
 ## Conventions and gotchas
 

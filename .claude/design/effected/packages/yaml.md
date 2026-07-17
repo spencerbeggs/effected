@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-17
+last-synced: 2026-07-17
 completeness: 95
 related:
   - ../architecture.md
@@ -158,6 +158,16 @@ The [parity convention](jsonc.md#jsoncyaml-parity-convention) requires `YamlEdit
 ### Options derivation
 
 All three options classes (`YamlParseOptions`, `YamlStringifyOptions`, `YamlFormattingOptions`) use **bare `optionalKey` fields with implementation-level `?? default`** rather than v4 constructor/decoding-default wrappers, which keeps the class-factory annotations tractable. `YamlFormattingOptions` derives its shared fields **at runtime by spreading `YamlStringifyOptions.fields`** (v4 classes expose `.fields`), adding `preserveComments` and `range` on top. Because the field-spread mechanics differ from jsonc's hand-derived shape, `YamlFormattingOptions` is **deliberately not structurally identical to `JsoncFormattingOptions`** even though the field names and semantics line up — this is the parity exception; `Edit`/`Range`/`Path`/`Segment`/diagnostic-core parity all still hold. The `stringify` signature is a single `YamlStringifyOptions?` parameter.
+
+The runtime field-spread earns its keep here: `indentSequences` (below) was added to `YamlStringifyOptions` alone and appeared on `YamlFormattingOptions` **derived, not hand-duplicated** — which is exactly the drift the spread exists to prevent.
+
+### `indentSequences` — presentation, not fidelity
+
+`YamlStringifyOptions` and `YamlFormattingOptions` carry an optional `indentSequences` controlling how a block sequence nested under a mapping key is presented: `false` emits it at the key's column, `true` indents it one level (the `yaml` npm package's and prettier's default shape). Top-level sequences sit at column zero in both modes.
+
+**The default is `false`, and the default is the whole decision.** Both forms are valid YAML parsing to identical data, so this is presentation, not semantics — but the kit's stringifier is byte-compatible with yaml-effect 0.7, and flipping a default that changes *bytes* would rewrite sequence indentation in every file every existing consumer round-trips. A cosmetic default is not worth a diff in every downstream repo; consumers who want the popular shape ask for it.
+
+The **explicit-key compact-sequence branch is deliberately untouched** by the option. `? key` / `: value` explicit-key syntax is a different construct with its own emitter path, and folding it under the same flag would mean changing a form nobody asked about while chasing the common one.
 
 ## Multi-document support
 

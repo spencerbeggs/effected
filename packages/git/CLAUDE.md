@@ -2,8 +2,9 @@
 
 Typed git introspection over core's `ChildProcessSpawner`: a read tier that
 reads a repository's state at any ref without checking it out, plus a
-clearly-marked mutating tier (`checkout`, `fetch`, `submoduleUpdate`,
-`submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`) that changes it. The
+clearly-marked mutating tier (`checkout`, `fetch`, `fetchAny`,
+`submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`)
+that changes it. The
 nineteenth library package, created inside the monorepo for the point-in-time
 port rather than migrated from a v3 source repo; it absorbed the git half of
 workspaces' `GitReader`, which is now gone — `@effected/workspaces` runs
@@ -38,9 +39,11 @@ backend.
   `defaultBranch`, `currentBranch`, `repoRoot`, `commitInfo`, `configGet`,
   `remoteUrl`, `status`. Mutating tier: `checkout`, `fetch`,
   `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`.
-  (`Git.workingChanges` is a 25th `Git` service method, but it composes
-  `unstagedChanges` + `stagedChanges` + `untrackedFiles` rather than adding
-  its own `GitCommand` constructor.) `changedFiles` and the three
+  (`Git.workingChanges` and `Git.fetchAny` are the 25th and 26th `Git`
+  service methods, but each composes existing methods —
+  `unstagedChanges` + `stagedChanges` + `untrackedFiles`, and tag-form
+  `fetch` then plain `fetch` — rather than adding its own `GitCommand`
+  constructor.) `changedFiles` and the three
   working-tree diff constructors take a `relative` flag whose diff flag is
   **explicit in both branches** — `true` passes `--relative`, `false` passes
   `--no-relative`. The `--no-relative` is load-bearing: git honors a configured
@@ -60,7 +63,10 @@ backend.
   `runCollected` only; `available` has no production consumer — its intended
   caller `GitReader` dissolved without needing it, and it is kept deliberately
   with its tests rather than deleted-and-reintroduced.
-- `Git.ts` — the `Context.Service` (tag id `"@effected/git/Git"`), the error
+- `Git.ts` — the `Context.Service` (tag id `"@effected/git/Git"`) over the
+  exported `GitShape` interface (the `WorkspaceDiscoveryShape` precedent —
+  consumers type fakes/fields against it instead of re-declaring the
+  surface), the error
   taxonomy (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`), the
   parsed-result models (`LsTreeEntry`, `NameStatusEntry`, `CommitInfo`,
   `StatusEntry`), and the private `classify`/`runClassified` pair where git's
@@ -199,10 +205,10 @@ exists precisely so the `Set` dedups: from a nested `cwd` the diffs and
 
 ## The mutating tier
 
-Eighteen of `Git`'s twenty-five methods only read repository state at an
-arbitrary `ref` without touching the working tree. Seven are mutating:
-`checkout`, `fetch`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`,
-`configSet`, `add`. The tier rule is simple and absolute: every mutating
+Eighteen of `Git`'s twenty-six methods only read repository state at an
+arbitrary `ref` without touching the working tree. Eight are mutating:
+`checkout`, `fetch`, `fetchAny`, `submoduleUpdate`, `submoduleAdd`,
+`sparseCheckoutSet`, `configSet`, `add`. The tier rule is simple and absolute: every mutating
 method's TSDoc opens with the literal word `"Mutating:"`, and that is the
 ONLY signal a caller gets — nothing in this package serializes concurrent
 access. A caller running two mutating calls (or a mutating call alongside a
@@ -221,16 +227,25 @@ than risking git reading it as a flag.
 `fetch`, `submoduleUpdate` and `submoduleAdd` are the tier's ref-fetching
 trio; see the classification table above for `"couldn't find remote ref"`,
 the typed `UnknownRefError` signal a tag-then-branch fetch fallback branches
-on.
+on. `fetchAny` IS that fallback, shipped: it guards `remote`/`ref` once up
+front, runs the tag-form `fetch` (`tag: true`), and on `UnknownRefError` OR
+any `GitCommandError` (unclassified tag-form stderr shapes stay on the
+fallback path) retries as a plain `fetch`. `NotARepositoryError` propagates
+from the tag attempt — the plain form would fail identically. When both
+attempts fail, the PLAIN fetch's error surfaces; the tag attempt's failure is
+discarded.
 
 ## Testing and building
 
-129 tests in `__test__/`: 30 `GitCommand` (pure constructor shape + the
+135 tests in `__test__/`: 30 `GitCommand` (pure constructor shape + the
 `setCwd` non-mutation guarantee, covering all 24 constructors), 6
-`internal/run` (including defect passthrough through `available`), 65 `Git`
+`internal/run` (including defect passthrough through `available`), 71 `Git`
 (the full classification matrix across all five `ClassifyKind`s, the
 option-injection guard block — every guarded positional has a no-spawn
-rejection test — `workingChanges`' union/dedup, and the parsers
+rejection test — `workingChanges`' union/dedup, `fetchAny`'s
+tag-then-plain fallback matrix — single-spawn success, both fallback
+triggers, plain-error surfacing, `NotARepositoryError` short-circuit, and a
+no-spawn guard rejection — and the parsers
 for `NameStatusEntry`/`CommitInfo`/`StatusEntry`, mocked spawner), and 28
 integration split across two files: 14 in
 `__test__/integration/Git.int.test.ts` (the original surface —

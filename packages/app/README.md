@@ -41,6 +41,8 @@ pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-fil
 
 Requires Node.js >=24.11.0.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 There are **no runtime dependencies**. `effect` v4 is a peer dependency, and so are `@effected/xdg`, `@effected/store` and `@effected/config-file` — which is load-bearing rather than incidental. Each of the three appears in this package's public signature types, so a second copy of any of them in your graph would mint two distinct service tags for one concept and the layer would silently fail to satisfy the requirement. Single copies are the point, and that is exactly what a peer declares. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not.
 
 The package is integrated tier **by inheritance, not by anything it does**: `@effected/store` reaches `@effect/sql-sqlite-node`, and that propagates. It performs no IO the three packages beneath it do not already perform.

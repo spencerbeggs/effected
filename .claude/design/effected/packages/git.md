@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-14
-updated: 2026-07-16
-last-synced: 2026-07-16
+updated: 2026-07-17
+last-synced: 2026-07-17
 completeness: 95
 related:
   - ../effect-standards.md
@@ -45,7 +45,7 @@ Two invariants ride on the argv:
 
 ### `Git` — the service, read tier
 
-A `Context.Service` whose layer resolves `ChildProcessSpawner` once at construction, so every method's `R` is `never`. Every method takes `cwd` explicitly — the caller who knows where "here" is passes it in. The per-operation ceiling is git's own policy (30 seconds via `Effect.timeoutOrElse`, owned here, not a spawner option). Small internal helpers over the spawner (a collected-run and an `available` probe) live in `internal/run.ts`, not on the public surface.
+A `Context.Service` whose layer resolves `ChildProcessSpawner` once at construction, so every method's `R` is `never`. The service's shape is the **exported `GitShape` interface** (`Context.Service<Git, GitShape>`), not an inferred object type: exporting it lets a consumer write a function that accepts any `GitShape` — a test double, a decorated instance — without naming the service class, and it makes the surface a reviewable declaration rather than whatever the implementation happened to return. Every method takes `cwd` explicitly — the caller who knows where "here" is passes it in. The per-operation ceiling is git's own policy (30 seconds via `Effect.timeoutOrElse`, owned here, not a spawner option). Small internal helpers over the spawner (a collected-run and an `available` probe) live in `internal/run.ts`, not on the public surface.
 
 The founding read contracts are unchanged: `show(cwd, ref, path)` returns `Option<string>` — **absent-at-ref degrades to `Option.none`, never an error**, the invariant `WorkspaceSnapshots.at` depends on; `lsTree` (now with an optional pathspec) returns the `LsTreeEntry[]` a compiled [`@effected/glob`](glob.md) set filters; `refExists` answers a non-resolving ref as `false`, never an error; `mergeBase` and `changedFiles` are the committed-range primitives `ChangeDetector` runs on; `revParse` normalizes refs for snapshot cache keys.
 
@@ -60,7 +60,15 @@ One trap is load-bearing enough to record: **`NameStatusEntry` and `StatusEntry`
 
 ### `Git` — the service, mutating tier
 
-The mutating methods are `checkout` (now with a `detach` option), `fetch` (remote/ref with optional depth and tag mode), `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet` (`--cone`/`--no-cone` explicit in both branches, never defaulted to git's config), `configSet` and `add` (whose paths sit behind a literal `--`). They exist for systems' repos domain — the `savvy repos` CLI and `repos_manage` MCP tool managing vendored read-only submodules — and for checkout's original snapshot use. `fetch`, `submoduleUpdate` and `submoduleAdd` are the ref-fetching trio whose unknown-ref failures surface typed (see the classification below) so a tag-then-branch fetch fallback can branch on the error tag rather than on stderr.
+The mutating methods are `checkout` (now with a `detach` option), `fetch` (remote/ref with optional depth and tag mode), `fetchAny`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet` (`--cone`/`--no-cone` explicit in both branches, never defaulted to git's config), `configSet` and `add` (whose paths sit behind a literal `--`). They exist for systems' repos domain — the `savvy repos` CLI and `repos_manage` MCP tool managing vendored read-only submodules — and for checkout's original snapshot use. `fetch`, `submoduleUpdate` and `submoduleAdd` are the ref-fetching trio whose unknown-ref failures surface typed (see the classification below).
+
+**`fetchAny` is that typed classification cashed in.** The tag-then-branch fallback was previously left to consumers; it is now a method, because every consumer of a "fetch this ref, I don't know which kind it is" operation would otherwise rebuild the same composition — and rebuilding it on stderr strings is exactly what the typed errors exist to prevent. It composes `fetch(tag: true)` with `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fetch(plain))`:
+
+- **`UnknownRefError`** is the typed "not a tag on the remote" signal — the intended fallback trigger.
+- **`GitCommandError`** falls back too, so an unclassified tag-form stderr shape still reaches the plain attempt rather than failing a fetch that would have succeeded.
+- **`NotARepositoryError` deliberately propagates.** The plain form would fail identically, so retrying is pure waste — a fallback that retries an error whose cause it cannot change is a fallback that only doubles the latency of a certain failure.
+- On double failure, **the plain attempt's error surfaces**, not the tag attempt's: the second error is the one describing the form the caller most likely meant.
+- The option-like ref guard runs **once, up front**, before either attempt spawns. Guarding inside each `fetch` would surface a rejection from the plain attempt *after* a phantom tag-form fallback, describing the wrong invocation. Zero spawns on a rejected ref.
 
 ## Errors: classification happens once
 
@@ -68,7 +76,7 @@ The design rule: **no consumer of this package ever string-matches stderr.** Git
 
 - **`GitCommandError`** — git ran and failed in a way that is not a recognized domain case, **or** the spawn itself failed. The spawner's `PlatformError` and a per-run timeout are absorbed here rather than leaked raw, so consumers of `Git` see git's taxonomy, not core's plumbing. Carries `args`, `cwd`, `exitCode` and `stderr` when git ran; a `detail` string carries the absorbed spawn failure or timeout when it did not (the non-`NotFound` arms keep the underlying `PlatformError` reason and message so `PermissionDenied` / `TimedOut` diagnostics survive absorption).
 - **`NotARepositoryError`** — the cwd is not inside a git work tree. Every consumer branches on this, so it is a distinct tag rather than a `GitCommandError` the caller regex-matches.
-- **`UnknownRefError`** — the ref does not resolve. Actionable and user-facing ("diff against a base branch that does not exist locally"), so it is distinct from mechanics. The two-ref methods (`mergeBase`, `changedFiles`) report `ref` as the `"a...b"` range label; the single-ref methods report the plain ref value. `UNKNOWN_REF_PATTERNS` includes `"couldn't find remote ref"` so the ref-fetching trio's failures land here typed — the signal an `Effect.orElse` tag-then-branch fetch fallback branches on.
+- **`UnknownRefError`** — the ref does not resolve. Actionable and user-facing ("diff against a base branch that does not exist locally"), so it is distinct from mechanics. The two-ref methods (`mergeBase`, `changedFiles`) report `ref` as the `"a...b"` range label; the single-ref methods report the plain ref value. `UNKNOWN_REF_PATTERNS` includes `"couldn't find remote ref"` so the ref-fetching trio's failures land here typed — the signal [`fetchAny`](#git--the-service-mutating-tier)'s `catchTag` tag-then-plain fallback branches on.
 
 `classify` is gated by a `ClassifyKind` (`"show" | "refExists" | "quiet" | "noSuchRemote" | "generic"`) selecting which method-specific rows apply on top of the shared taxonomy: the absent-at-ref degrade for `show`; the exit-1-is-false degrade for `refExists`; `"quiet"` (a silent exit 1 — empty stderr — means "unset" and degrades to `Option.none`, while exit 1 **with** stderr stays a real failure) backing `defaultBranch` and `configGet`; and `"noSuchRemote"` (git's `"No such remote"` stderr degrades to `Option.none`) backing `remoteUrl`. Both `PlatformError` and `Cause.TimeoutError` are absorbed inside `runClassified`, so a `Git` method's error channel only ever sees the three typed errors — never core's raw plumbing.
 

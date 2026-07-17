@@ -27,6 +27,8 @@ export interface StringifyOptionsInput {
 	readonly defaultCollectionStyle?: CollectionStyle | undefined;
 	/** Sort mapping keys alphabetically. Default `false`. */
 	readonly sortKeys?: boolean | undefined;
+	/** Indent block sequences one level under a mapping key. Default `false`. */
+	readonly indentSequences?: boolean | undefined;
 	/** End output with a trailing newline. Default `true`. */
 	readonly finalNewline?: boolean | undefined;
 	/** Ignore per-node styles and force the defaults. Default `false`. */

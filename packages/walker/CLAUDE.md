@@ -1,16 +1,21 @@
 # @effected/walker
 
-Upward path traversal. Sixth migration; the first package extracted from an
-already-merged sibling rather than ported from a `*-effect` repo.
+Path traversal: upward (`Walker.ascend` / `firstMatch` / `findUpward` /
+`findRoot`) and downward (`descend`, the public glob-file walker). Sixth
+migration; the first package extracted from an already-merged sibling rather
+than ported from a `*-effect` repo.
 
 **Design doc:** `@../../.claude/design/effected/packages/walker.md`
 
 ## Tier: boundary
 
-**Boundary tier**: `effect` is the only peer and there are no runtime
-dependencies, but walker does IO. `FileSystem` and `Path` arrive through the `R`
-channel from `effect` core, so the consumer's platform layer is the single place
-POSIX-vs-win32 semantics are chosen. Requiring core services costs no dependency.
+**Boundary tier**: `effect` and `@effected/glob` are the only peers and there
+are no runtime dependencies, but walker does IO. `FileSystem` and `Path` arrive
+through the `R` channel from `effect` core, so the consumer's platform layer is
+the single place POSIX-vs-win32 semantics are chosen. Requiring core services
+costs no dependency. The `@effected/glob` peer is type-and-property only —
+`descend` imports `GlobPattern` as a type and calls `matches()`; no value
+imports, mirroring config-file's peering on the format packages.
 
 Walker needs **no platform package, even in tests** — `Path.layer` and
 `FileSystem.layerNoop` come from core. Do not add `@effect/platform-node`.
@@ -37,7 +42,34 @@ watched failing against a deliberately broken implementation:
   `isWorkspaceRoot` reads and parses a `package.json` — so this is not just an
   optimization.
 
-Every public error channel is `never`. There is no error module.
+Every upward error channel is `never`. The one typed error in the package is
+`descend`'s `DescendError` — see below.
+
+## `descend` — the downward glob-file walker
+
+`descend(pattern, options)` expands a compiled `@effected/glob` `GlobPattern`
+under `options.cwd`, returning matching FILE paths relative to `cwd`, POSIX
+separators, sorted. The walker is **semantics-free**: dotfile behavior and
+every other matching option are carried by the compiled pattern the caller
+hands in — never re-derived here.
+
+- A literal pattern (no magic, not negated) fast-paths to one stat; missing is
+  zero matches. A magic pattern walks from `enumerationPrefix`; a missing base
+  directory is an **empty result**, not an error.
+- Only files match. A symlink counts when it stat-resolves to a file (`stat`
+  follows links, as node's does); a symlinked **directory is never descended**
+  (cycle safety, detected by a `readLink` success-probe); dangling = no match.
+- Unreadable directory mid-walk: `onUnreadable: "fail"` (default) fails typed
+  as `DescendError` — the OPPOSITE of the upward per-probe absorption, because
+  a swallowed subtree in a downward enumeration is silently missing
+  membership. `"skip"` absorbs and continues. A NotFound mid-walk is a benign
+  vanished-directory race and reads as empty in both modes.
+- Depth past `maxDepth` (default 256) is a typed `depthExceeded` failure,
+  never a truncation; an invalid `maxDepth` is a **defect**, exactly
+  `ascend`'s guard.
+- The descent is a worklist dequeued by head index (never `Array.shift()`),
+  and a pattern that cannot match below one level (`crossesSegments` false and
+  not negated) reads a single level and never descends.
 
 ## Invariants
 
@@ -57,7 +89,8 @@ Every public error channel is `never`. There is no error module.
 
 ## Build
 
-`savvy.build.ts` carries **no** `suppressWarnings`. Walker declares no classes,
-so no `_base` symbol is synthesized. Keep the list empty; fix exports instead.
+`savvy.build.ts` carries the one narrow `_base` suppression
+(`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized
+base of the `DescendError` class factory. Never widen it.
 
 Never run `node savvy.build.ts --target prod` directly.

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-17
+last-synced: 2026-07-17
 completeness: 92
 related:
   - ../architecture.md
@@ -42,7 +42,7 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 - `PackageName.ts`, `License.ts`, `PackageManager.ts`, `Person.ts`, `DevEngines.ts`, `Dependency.ts` — the leaf concepts, each with its statics and errors.
 - `PackageValidator.ts` — the `Context.Service`, `ValidationRule` interface, `defaultRules` and the parameterized `layer({ rules })` factory.
 - `PackageJsonFile.ts` — **the only IO module**: one `Context.Service`, `read` + `write` over core `FileSystem`, and its read/write error tags.
-- `internal/format.ts` — the pure canonical-key-order, dependency-sorting and empty-map-stripping functions, surfaced as write options and `Package.toJsonString`.
+- `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions, surfaced as write options and `Package.toJsonString`. Holds `KEY_ORDER` and its `sort-package-json@4.0.0` provenance comment — see [formatting](#formatting-byte-agreement-with-the-ecosystem-oracle).
 - `spdx-expression-parse.d.ts` — the hand-written type shim for the one CJS runtime dependency.
 
 `DependencySpecifier` is **not** defined here — the specifier taxonomy lives in [`@effected/npm`](npm.md) and `index.ts` re-exports it for surface compatibility. The package ships a single entry point (`src/index.ts`); there is no `./schema` subpath, and field codecs are either `@public` consts on their owning concept or `internal/` privates.
@@ -127,6 +127,26 @@ Two boundary properties are load-bearing:
 2. **The formatter and transformer are pure functions**, not services — `internal/format.ts`, surfaced as `write` options and `Package.toJsonString(options)`.
 
 A composite convenience layer wires the defaults for the common case.
+
+## Formatting: byte-agreement with the ecosystem oracle
+
+The formatter's job is not "a reasonable order" — it is **the order the ecosystem already produces**, so running the kit's writer over a repo does not churn every manifest against whatever the team's `sort-package-json` pre-commit hook does next.
+
+**The canonical top-level key order is `sort-package-json@4.0.0`'s default `sortOrder`, re-baselined verbatim** — all 108 keys, with the version recorded as provenance in `src/internal/format.ts` beside the list. Verbatim is the point: a hand-curated *near*-copy is the shape that drifts silently, since every disagreement shows up as a diff in someone's repo rather than as a failure here. Unknown keys append after the known ones — public keys alphabetically, then `_`-prefixed keys alphabetically — matching the oracle's own unknown-key behavior.
+
+### Map-field alphabetization follows from HashMap, not taste
+
+Sorting alphabetizes the dependency maps for canonical presentation, and **`scripts`, `engines` and `bin` join them** — but for a different and stronger reason: the `Package` model carries all three as `HashMap`s, whose encode order is *hash* order. **Source order is already unrecoverable**, so the choice is not "preserve or sort" but "hash order or alphabetical," and deterministic alphabetical wins uncontested. `sort-package-json` sorts `engines` and `bin` identically; its `scripts` sort is a grouped sort agreeing with plain code-unit order except for `pre*`/`post*` pairing. `scripts` also joined `stripEmpty`.
+
+### `PackageIndent` and `"preserve"`
+
+`PackageFormatOptions.indent` is now `PackageIndent` = `number | "tab" | "preserve"`. `"preserve"` reuses the indentation of the source text, backed by an explicit `sourceText` option — and `PackageJsonFile.write` supplies it by **reading the file it is about to overwrite** when the caller gives none. That read is the only way `"preserve"` can mean anything at a write site that holds a decoded `Package` and nothing else; without it the option would silently degrade to a default and quietly re-indent the file.
+
+### Byte-parity fixtures
+
+`__test__/fixtures/` holds real manifests from this repo paired with frozen `sort-package-json@4.0.0` output for the same input, and `Format.test.ts` asserts `Package.decode(input).toJsonString()` byte-equals it. **`sort-package-json` is deliberately not a dependency** — the oracle's *output* is committed, not the tool, so the parity claim is checked without taking a runtime edge on the thing being matched.
+
+The **re-baseline rule** is that the fixtures, the recorded version in the fixture README and the `KEY_ORDER` provenance comment move **together**, in one deliberate act. Regenerating fixtures alone would silently ratify whatever a newer version changed — turning the oracle test from a check into a rubber stamp.
 
 ## Resolution belongs to @effected/npm
 

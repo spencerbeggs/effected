@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-16
-last-synced: 2026-07-16
+updated: 2026-07-17
+last-synced: 2026-07-17
 completeness: 95
 related:
   - ../effect-standards.md
@@ -45,7 +45,7 @@ Runtime dependencies:
 | `@effected/git` (`workspace:*`) | typed git introspection — `ChangeDetector` and `WorkspaceSnapshots` run on its `Git` service |
 | `effect` (peer) | core |
 
-There is no `minimatch` dependency — dependency-pattern matching and the enumerator's mini-glob both run on `@effected/glob`'s vendored engine. Subprocess spawning lives entirely behind `@effected/git`'s `ChildProcessSpawner` contract; there is no `node:child_process` anywhere here. The only Node-only overlay is `ConfigDependencyHooks.layerLive`, which does an in-process dynamic `import()` of a config dependency's pnpmfile — a built-in/dynamic-import, not a dependency, so it does not affect tier, and its TSDoc names it plainly. `WorkspacesSync` no longer imports `node:*` at all: since the 2026-07-16 retrofit its file and path operations are consumer-supplied (see [the escape hatch](#workspacessync--the-escape-hatch)).
+There is no `minimatch` dependency — dependency-pattern matching and the enumerator's mini-glob both run on `@effected/glob`'s vendored engine. Subprocess spawning lives entirely behind `@effected/git`'s `ChildProcessSpawner` contract; there is no `node:child_process` anywhere here. Two modules are Node-only, and both are opt-in rather than on the main path. `ConfigDependencyHooks.layerLive` does an in-process dynamic `import()` of a config dependency's pnpmfile — a built-in/dynamic-import, not a dependency, so it does not affect tier, and its TSDoc names it plainly. `src/node-sync.ts` imports `node:fs` / `node:path`, but it is a **separate entry point** (`@effected/workspaces/node-sync`) that the index never re-exports, so nothing reaches it unless a consumer imports the subpath by name — the main entry stays platform-free (see [the escape hatch](#workspacessync--the-escape-hatch)). `WorkspacesSync` itself imports `node:*` not at all: since the 2026-07-16 retrofit its file and path operations are consumer-supplied.
 
 ## Implementing @effected/npm's resolver contracts
 
@@ -98,9 +98,10 @@ Module-per-concept.
 | `src/WorkspaceStateSnapshot.ts` | `WorkspaceStateSnapshot` and `PackageStateSnapshot` value classes |
 | `src/ConfigDependencyHooks.ts` | `ConfigDependencyHooks` contract service, `layerLive`, `layerNoop` |
 | `src/LockfileReader.ts` | `LockfileReader` service + layer (the IO half of `@effected/lockfiles`), `LockfileReadError` |
-| `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetector` service + default layer |
+| `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetectorShape`, `PublishabilityDetector` service + default layer |
 | `src/Workspaces.ts` | The composite layers, `resolverLayer`, `resolveManifest` |
 | `src/WorkspacesSync.ts` | The synchronous escape hatch over consumer-supplied ops (`SyncFileSystem`, `SyncPath`, `WorkspacesSyncOptions`) |
+| `src/node-sync.ts` | **A second package entry** (`@effected/workspaces/node-sync`) — `nodeSyncOps` over `node:fs` / `node:path`; the only module here that imports `node:*` |
 | `src/internal/` | `traverse.ts` (the traversal state machine), `enumerate.ts` (the Effect enumerator over it), `patterns.ts` (`packages:` pattern reading), `catalogs.ts` (the `@pnpm/catalogs.*` boundary), `limits.ts` |
 
 `CatalogAssemblyError` used to be this package's own leaf module; it now lives in `@effected/npm` beside the `CatalogResolver` contract that names it (see [the error seam](#implementing-effectednpms-resolver-contracts)). `WorkspaceCatalogs`, `ConfigDependencyHooks` and `WorkspaceSnapshots` import it from npm; its `source` literal keeps the `"hooks"` arm.
@@ -151,6 +152,16 @@ Both fields' versions normalize through `@effected/package-json`'s `PackageManag
 
 `PackageManagerName` is this package's own literal (`"npm" | "pnpm" | "yarn" | "bun"`). It is structurally identical to `@effected/lockfiles`' `LockfileFormat` and assigns freely to it (which `LockfileReader` relies on), but they are different concepts sharing a carrier, and the name avoids colliding with `@effected/package-json`'s `PackageManager` (the corepack spec class) in a consumer's import list.
 
+### PublishabilityDetector
+
+A `Context.Service` deciding whether a package publishes and to where. Its shape is the **exported `PublishabilityDetectorShape` interface**, for symmetry with `WorkspaceDiscoveryShape` — a swappable service whose whole point is that consumers override it must let a consumer *name the type they are implementing* without reaching into the class.
+
+The default layer implements **npm's** semantics, not necessarily anyone's: `private` with no `publishConfig.access` publishes nowhere; an explicit `publishConfig.access` overrides `private`; anything else publishes to the public registry.
+
+**The contract is degrade-or-die**, now stated on the service rather than implied by the signature. `detect`'s error channel is deliberately **`never`**, because every caller — the release planner iterating a whole workspace, most of all — treats "does this publish?" as a **total** question. An overriding layer whose lookup *can* fail therefore has exactly two honest moves: fold the recoverable failure into a safe answer (usually the empty target list), or `Effect.orDie` it into the defect channel. It may not widen the channel the contract declares. Writing this down is the point: the `never` was always load-bearing, but a consumer reading only the signature could mistake it for an accident of the default implementation rather than a rule their layer inherits.
+
+`PublishConfig` gains an optional `linkDirectory` boolean, completing the pnpm-flavored fields the projection carries.
+
 ### Ambient cwd is an explicit option
 
 Root resolution is one concern, applied uniformly: every root-consuming layer is `X.layer(options?: { readonly cwd?: string })`, defaulting to `process.cwd()` read lazily at first use (inside `Effect.suspend`, so a `process.chdir` between provide and first call is honoured). No service method reaches for the ambient cwd. A parameterized layer factory mints a fresh reference per call — bind it to a `const` once.
@@ -168,9 +179,15 @@ The policy contrast is deliberate: `PackageManagerDetector` **degrades gracefull
 
 ### WorkspacesSync — the escape hatch
 
-`findWorkspaceRootSync(cwd, options)` and `getWorkspacePackagesSync(root, options)`. Vitest's config-time project discovery cannot await, and `vitest-agent` — the gate consumer — calls exactly these two. This monorepo does not use subpath exports, so the module ships from the main entry and its TSDoc says plainly it is synchronous. It keeps **no third pattern semantic**: it compiles through the same `GlobSet` and enumerates through a synchronous mirror of the same worklist, so `packages/**` means the same thing in both worlds.
+`findWorkspaceRootSync(cwd, options)` and `getWorkspacePackagesSync(root, options)`. Vitest's config-time project discovery cannot await, and `vitest-agent` — the gate consumer — calls exactly these two. The sync surface ships from the main entry, its TSDoc saying plainly that it is synchronous. It keeps **no third pattern semantic**: it compiles through the same `GlobSet` and enumerates through a synchronous mirror of the same worklist, so `packages/**` means the same thing in both worlds.
 
 **Retrofitted to consumer-supplied ops** (2026-07-16, dogfood items 7 and 9; breaking, accepted under `0.x`). The design rule, stated by Spencer for every sync escape hatch in the kit: **the kit never imports `node:*` and never assumes posix — a sync surface takes the platform from its caller.** `WorkspacesSyncOptions` carries a `SyncFileSystem` (`exists` / `readFile` / `readDirectory` / `isDirectory`) and a `SyncPath` (`join` / `dirname` / `resolve`), both minimal structural interfaces that Node's built-ins satisfy verbatim — `node:fs` functions one-liner each, and `node:path` (or `node:path/win32`, or a Bun/Deno equivalent) *is* a `SyncPath`. Windows correctness is therefore the consumer passing a win32-appropriate `path`, not anything in this module — the same convention as `@effected/tsconfig-json`'s `TsconfigLoaderSync` ([tsconfig-json.md](tsconfig-json.md#tsconfigloadersync--the-sync-facade)). Throwing consumer ops degrade to the documented skip semantics; nothing propagates.
+
+**`@effected/workspaces/node-sync` — the second entry point.** Hand-wiring four `node:fs` one-liners at every adoption site is a tax the rule above imposed on the common case, and a tax paid per consumer is a tax paid wrong. This subpath supplies ready-made `nodeSyncOps` (`SyncFileSystem` + `SyncPath` over `node:fs` / `node:path`), making the Node case one import while leaving the rule intact.
+
+It is **deliberately not re-exported from the index**, and this is the whole point of it being a separate entry: re-exporting it would drag `node:*` imports into the main entry and therefore into every consumer — including the ones that supply their own ops precisely to avoid them (a win32-explicit `path`, a Bun or Deno binding, a test fake). **The main entry stays platform-free**; the platform binding is opt-in by import path. `nodePath` is the *running* platform's `node:path`, so on Windows this hands back win32 paths — which is the correct default only for a consumer who means "Node, here."
+
+It is the repo's first subpath export, and the entry-point status has one consequence worth recording: **an entry point re-exports, contrary to the [no-barrel rule](../effect-standards.md#module-layout-module-per-concept)** — api-extractor models each entry as its own surface, so the three op types appearing in this entry's declarations must be re-exported here or the build reports `ae-forgotten-export` for all three. The rule bans barrels, not entry points; this is an entry point.
 
 ## Git integration
 

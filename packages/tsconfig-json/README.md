@@ -37,6 +37,8 @@ pnpm add @effected/tsconfig-json @effected/jsonc @effected/walker effect
 
 Requires Node.js >=24.11.0. `effect` v4, `@effected/jsonc` and `@effected/walker` are peer dependencies; there are no runtime dependencies of its own.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 All IO goes through `FileSystem` and `Path` from `effect` core, not a platform package, so a consumer provides them once at the edge (`@effect/platform-node` on Node, `@effect/platform-bun` on Bun) and a test provides `Path.layer` and `FileSystem.layerNoop` straight from core with nothing else installed.
 
 ## Quick start

@@ -11,7 +11,7 @@ import { SemVer } from "@effected/semver";
 import { Effect, Function as Fn, HashMap, Option, Pipeable, Schema, SchemaTransformation } from "effect";
 import { Dependency } from "./Dependency.js";
 import { DevEnginesSchema } from "./DevEngines.js";
-import { renderJson } from "./internal/format.js";
+import { renderJson, resolveIndent } from "./internal/format.js";
 import { InvalidSpdxLicenseError, SpdxLicense, isValidSpdx } from "./License.js";
 import { PackageManager } from "./PackageManager.js";
 import { InvalidPackageNameError, PackageName } from "./PackageName.js";
@@ -118,13 +118,31 @@ export class PackageDecodeError extends Schema.TaggedErrorClass<PackageDecodeErr
 // ── Formatting options ──────────────────────────────────────────────────────
 
 /**
+ * Indentation for serialized package.json output: a spaces count, `"tab"` for
+ * real tab indentation, or `"preserve"` to reuse the indentation detected from
+ * the original source text (falling back to the two-space default when no
+ * source text is available).
+ *
+ * @public
+ */
+export type PackageIndent = number | "tab" | "preserve";
+
+/**
  * Options for {@link Package.toJsonString} and `PackageJsonFile.write`.
  *
  * @public
  */
 export interface PackageFormatOptions {
-	/** Indentation width in spaces (default `2`). */
-	readonly indent?: number;
+	/** Indentation: a spaces count, `"tab"`, or `"preserve"` (default `2`). */
+	readonly indent?: PackageIndent;
+	/**
+	 * The original source text backing `indent: "preserve"`: its indentation
+	 * (tab vs N spaces, detected from the first indented line) is reused.
+	 * Ignored for other `indent` values. When absent, `PackageJsonFile.write`
+	 * supplies the existing file's text automatically; the pure
+	 * {@link Package.toJsonString} falls back to the default indentation.
+	 */
+	readonly sourceText?: string;
 	/** Order top-level keys canonically and alphabetize dependency maps (default `true`). */
 	readonly sort?: boolean;
 	/** Strip empty dependency-map keys (default `true`). */
@@ -134,7 +152,7 @@ export interface PackageFormatOptions {
 }
 
 const resolveFormatOptions = (options?: PackageFormatOptions) => ({
-	indent: options?.indent ?? 2,
+	indent: resolveIndent(options?.indent, options?.sourceText),
 	sort: options?.sort ?? true,
 	stripEmpty: options?.stripEmpty ?? true,
 	newline: options?.newline ?? true,

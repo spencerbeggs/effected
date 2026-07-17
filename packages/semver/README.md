@@ -37,6 +37,8 @@ pnpm add @effected/semver effect
 
 Requires Node.js >=24.11.0.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 `effect` v4 is the only peer dependency, and it is the only dependency of any kind — no parser, no polyfill, no platform package rides in behind it. There is no IO here, so there is nothing to provide at the edge either: the whole surface runs under `Effect.runSync`, apart from `VersionCache`, which brings its own layer.
 
 ## Quick start

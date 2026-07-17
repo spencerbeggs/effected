@@ -167,6 +167,39 @@ describe("JsoncModifier", () => {
 				assert.deepStrictEqual(yield* Jsonc.parse(apply("{}", edits)), { a: { b: 1 } });
 			}),
 		);
+
+		it.effect("accepts formattingOptions as a plain literal, identically to an instance", () =>
+			Effect.gen(function* () {
+				const viaLiteral = yield* JsoncModifier.modify(
+					"{}",
+					["a"],
+					{ b: 1 },
+					{
+						formattingOptions: { insertSpaces: false, tabSize: 2 },
+					},
+				);
+				const viaInstance = yield* JsoncModifier.modify(
+					"{}",
+					["a"],
+					{ b: 1 },
+					{
+						formattingOptions: JsoncFormattingOptions.make({ insertSpaces: false, tabSize: 2 }),
+					},
+				);
+				assert.deepStrictEqual(viaLiteral, viaInstance);
+				assert.include(viaLiteral[0].content, '\t"b"');
+			}),
+		);
+
+		it.effect("a literal eol is honored in generated content", () =>
+			Effect.gen(function* () {
+				const edits = yield* JsoncModifier.modify("{}", ["a"], 1, {
+					formattingOptions: { eol: "\r\n" },
+				});
+				assert.include(edits[0].content, "\r\n");
+				assert.deepStrictEqual(yield* Jsonc.parse(apply("{}", edits)), { a: 1 });
+			}),
+		);
 	});
 
 	describe("errors", () => {

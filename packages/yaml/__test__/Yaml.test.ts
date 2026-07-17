@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
-import { Yaml, YamlParseError, YamlStringifyError } from "../src/index.js";
+import { Yaml, YamlParseError, YamlParseOptions, YamlStringifyError, YamlStringifyOptions } from "../src/index.js";
 
 describe("Yaml", () => {
 	describe("parse", () => {
@@ -170,6 +170,85 @@ describe("Yaml", () => {
 				assert.strictEqual(result.failure.diagnostics[0]?.code, "NestingDepthExceeded");
 			}),
 		);
+
+		describe("indentSequences", () => {
+			// The `indentSequences: true` expected strings are byte-for-byte the
+			// `yaml` npm package's (2.9.0) default (`indentSeq: true`) output for
+			// the same values; the kit default (false) preserves the legacy
+			// unindented form (byte-compatible with yaml-effect 0.7).
+			const indented = YamlStringifyOptions.make({ indentSequences: true });
+
+			it.effect("default leaves a block sequence under a mapping key unindented", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* Yaml.stringify({ key: ["a", "b"] }), "key:\n- a\n- b\n");
+				}),
+			);
+
+			it.effect("true indents a block sequence under a mapping key one level", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* Yaml.stringify({ key: ["a", "b"] }, indented), "key:\n  - a\n  - b\n");
+				}),
+			);
+
+			it.effect("nested sequence-of-maps renders exactly in both modes", () =>
+				Effect.gen(function* () {
+					const value = { items: [{ name: "a", value: 1 }, { name: "b" }] };
+					assert.strictEqual(
+						yield* Yaml.stringify(value, indented),
+						"items:\n  - name: a\n    value: 1\n  - name: b\n",
+					);
+					assert.strictEqual(yield* Yaml.stringify(value), "items:\n- name: a\n  value: 1\n- name: b\n");
+				}),
+			);
+
+			it.effect("a top-level sequence stays at column zero in both modes", () =>
+				Effect.gen(function* () {
+					const value = ["a", "b", { k: 1 }];
+					const expected = "- a\n- b\n- k: 1\n";
+					assert.strictEqual(yield* Yaml.stringify(value), expected);
+					assert.strictEqual(yield* Yaml.stringify(value, indented), expected);
+				}),
+			);
+
+			it.effect("deeper nesting indents each sequence relative to its key", () =>
+				Effect.gen(function* () {
+					const value = { a: { b: ["x", { c: ["y"] }] } };
+					assert.strictEqual(yield* Yaml.stringify(value, indented), "a:\n  b:\n    - x\n    - c:\n        - y\n");
+					assert.strictEqual(yield* Yaml.stringify(value), "a:\n  b:\n  - x\n  - c:\n    - y\n");
+				}),
+			);
+
+			it.effect("sequence-of-sequences under a key keeps compact nested dashes", () =>
+				Effect.gen(function* () {
+					const value = { k: [["a", "b"], ["c"]] };
+					assert.strictEqual(yield* Yaml.stringify(value, indented), "k:\n  - - a\n    - b\n  - - c\n");
+				}),
+			);
+
+			it.effect("a map with a sequence value inside a sequence item indents relative to the key", () =>
+				Effect.gen(function* () {
+					const value = [{ key: ["a"] }];
+					assert.strictEqual(yield* Yaml.stringify(value, indented), "- key:\n    - a\n");
+					assert.strictEqual(yield* Yaml.stringify(value), "- key:\n  - a\n");
+				}),
+			);
+		});
+	});
+
+	describe("options classes", () => {
+		it("constructs validated instances via .make (kit convention, never new)", () => {
+			const parse = YamlParseOptions.make({ maxAliasCount: 50 });
+			assert.instanceOf(parse, YamlParseOptions);
+			assert.strictEqual(parse.maxAliasCount, 50);
+			const stringify = YamlStringifyOptions.make({ indentSequences: true, sortKeys: true });
+			assert.instanceOf(stringify, YamlStringifyOptions);
+			assert.strictEqual(stringify.indentSequences, true);
+		});
+
+		it(".make validates its input", () => {
+			assert.throws(() => YamlStringifyOptions.make({ indent: "four" as unknown as number }));
+			assert.throws(() => YamlParseOptions.make({ strict: 1 as unknown as boolean }));
+		});
 	});
 
 	describe("stripComments", () => {

@@ -37,6 +37,8 @@ pnpm add @effected/lockfiles @effected/jsonc @effected/semver @effected/yaml eff
 
 Requires Node.js >=24.11.0. `effect` v4, `@effected/jsonc`, `@effected/semver` and `@effected/yaml` are peer dependencies — the JSONC and YAML engines and the SemVer range checker all arrive through those siblings, so nothing outside `effect` and `@effected/*` reaches your tree. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 ## Quick start
 
 ```ts

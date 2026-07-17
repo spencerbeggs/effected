@@ -14,7 +14,7 @@ Other runtime deps are `workspace:*` edges: `@effected/git`, `@effected/glob`, `
 
 ## Public surface
 
-`src/index.ts` is the only re-exporting module. Fourteen concept modules:
+`src/index.ts` is the only re-exporting module, and the package ships a **second entry**, `@effected/workspaces/node-sync` (`src/node-sync.ts`) — the node-bound preset for the sync entry points (`nodeFileSystem`, `nodePath`, `nodeSyncOps`). It is a separate subpath **deliberately**: the main entry imports nothing platform-shaped, and `index.ts` must never re-export it or `node:` imports leak into every consumer. Fifteen concept modules:
 
 - `WorkspacePackage.ts` — `WorkspacePackage`, `PublishConfig`, `DependencyDiff`, `WorkspaceManifestError`
 - `WorkspaceRoot.ts` — `WorkspaceRoot` service + layer, `WORKSPACE_MARKERS`, `WorkspaceRootNotFoundError`
@@ -30,6 +30,7 @@ Other runtime deps are `workspace:*` edges: `@effected/git`, `@effected/glob`, `
 - `Publishability.ts` — `PublishabilityDetector`, `PublishTarget`
 - `Workspaces.ts` — the composite layers (`layer`, `layerWithConfigDependencies`, `layerWithGit`, `resolvers`) plus the one-call manifest path (`resolverLayer`, `resolveManifest`)
 - `WorkspacesSync.ts` — `findWorkspaceRootSync`, `getWorkspacePackagesSync` over consumer-supplied `SyncFileSystem` / `SyncPath` ops
+- `node-sync.ts` — the node-bound ops preset (`node:fs` / `node:path`), published only under the `./node-sync` subpath
 
 **`CatalogAssemblyError` moved to `@effected/npm`** (beside the contract that names it in its channel) and is deliberately **not re-exported** here — import it from `@effected/npm`. `catalogResolver` passes assembly failures through **typed** as that error, no longer folded into a `DependencyResolutionError` defect `cause`; only an unfindable workspace root still wraps as `DependencyResolutionError`.
 
@@ -69,7 +70,7 @@ The deliberate exception is `Workspaces.resolverLayer(options?)`: a **fresh, unm
 
 The one exception is `__test__/integration/self.int.test.ts`, which discovers **this repository** through `@effect/platform-node` (a devDependency). It is the only test that proves the whole stack composes against a real pnpm workspace — and it is what caught the multi-document lockfile bug.
 
-230 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 28 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it); never widen it. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
+236 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 28 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it); never widen it. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
 
 ## Point-in-time surface (as built)
 
