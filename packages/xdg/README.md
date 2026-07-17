@@ -37,6 +37,8 @@ pnpm add @effected/xdg effect @effect/platform-node
 
 Requires Node.js >=24.11.0.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 `effect` v4 is a peer dependency, and so are `@effected/walker` (the upward-traversal and search primitives the resolvers are built on) and `@effected/config-file` (whose `ConfigResolver` seam `XdgConfig` implements). Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not. There are no runtime dependencies.
 
 Creating directories needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node. Resolution itself needs neither.

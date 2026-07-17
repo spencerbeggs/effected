@@ -39,6 +39,8 @@ pnpm add @effected/runtimes effect
 
 Requires Node.js >=24.11.0.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 `effect` v4 is the only peer dependency. `@effected/semver` is a regular dependency and comes along automatically; nothing else reaches your tree.
 
 Live resolution needs an `HttpClient`, provided at the edge with `FetchHttpClient.layer` from `effect/unstable/http` — that layer has no requirements of its own, so it works anywhere `fetch` does. If you only ever use `layerOffline`, you need no HTTP client at all.

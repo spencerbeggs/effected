@@ -37,6 +37,8 @@ pnpm add @effected/package-json effect @effect/platform-node
 
 Requires Node.js >=24.11.0.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 `effect` v4 is the only peer dependency. `@effected/semver` and `@effected/npm` come along as ordinary dependencies — they back the `version` field and the resolver contracts — and `spdx-expression-parse` is the one external package in the tree, used to validate SPDX license expressions.
 
 Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge, from `@effect/platform-node` on Node. Everything except `PackageJsonFile` is pure and needs no platform layer at all.

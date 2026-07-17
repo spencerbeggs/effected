@@ -15,9 +15,9 @@ Single entrypoint; no subpaths.
 ## Core API
 
 - **`Xdg`** — `Context.Service` whose shape IS `XdgPaths` (`home`, optional `configHome`/`dataHome`/`cacheHome`/`stateHome`/`runtimeDir`, `configDirs`/`dataDirs`). `Xdg.layer` reads the real environment (fails `XdgEnvError` only when `HOME` is unset); `Xdg.layerFrom(paths)` supplies fixed values. `CurrentPlatform` is a `Context.Reference<XdgPlatform>` defaulting to `process.platform`.
-- **`AppDirs`** — `Context.Service` via `AppDirs.layer({ namespace, native?, fallbackDir?, dirs? })`. `dirs` resolves once at layer construction; `ensureConfig`/`ensureData`/`ensureCache`/`ensureState`/`ensureRuntime` `mkdir -p` on demand, each `Effect<string, AppDirsError>` (`ensureRuntime` → `Option<string>`). Five-rung precedence: explicit override → namespaced XDG env var → native dir (only with `native: true`) → `$HOME/<fallbackDir>` → `$HOME/.<namespace>`.
-- **`NativeDirs.resolve({ platform, namespace, paths, path })`** — pure darwin/win32 native-dir mapping; `Option.none()` elsewhere.
-- **`XdgConfig`** — `resolver({ filename })` (search the XDG config path), `nativeResolver({ namespace, filename })`, `savePath(filename)` — these produce `@effected/config-file` `ConfigResolver` values, bridging the two packages.
+- **`AppDirs`** — `Context.Service` via `AppDirs.layer({ namespace, native?, fallbackDir?, dirs? })`. `dirs: ResolvedAppDirs` resolves once at layer construction (a value, never an `Effect` — reading a path cannot fail); `ensureConfig`/`ensureData`/`ensureCache`/`ensureState`/`ensureRuntime` `mkdir -p` on demand, each `Effect<string, AppDirsError>` (`ensureRuntime` → `Option<string>`); `ensure` creates every directory the resolution has and returns the whole `ResolvedAppDirs`. Five-rung precedence: explicit override → namespaced XDG env var → native dir (only with `native: true`) → `$HOME/<fallbackDir>` → `$HOME/.<namespace>`. `ResolvedAppDirs` also carries `configSearchPath`/`dataSearchPath` — the full ordered lookup lists `XdgConfig.resolver` searches, not just the app's own directory.
+- **`NativeDirs.resolve({ platform, namespace, paths, path })`** — pure darwin/win32 native-dir mapping; `Option.none()` elsewhere (Linux has no native override — XDG already is the native convention there).
+- **`XdgConfig`** — `resolver({ filename }): ConfigResolver<AppDirs | FileSystem | Path>` (searches the app's whole XDG config search path via `Walker.firstMatch` — an unreadable candidate is skipped, not fatal), `nativeResolver({ namespace, filename }): ConfigResolver<Xdg | FileSystem | Path>` (probes the OS-native directory only), `savePath(filename): Effect<string, never, AppDirs | Path>` — these produce `@effected/config-file` `ConfigResolver` values, bridging the two packages. `savePath`'s error channel is `never` on purpose: it is the only shape that fits `ConfigFile.layer`'s `defaultPath?: Effect<string, never, RR>` slot without an `orDie`.
 
 ## Usage
 
@@ -33,6 +33,25 @@ const program = Effect.gen(function* () {
  const dirs = yield* AppDirs;
  return yield* dirs.ensureConfig; // mkdir -p — needs the platform layer
 }).pipe(Effect.provide(XdgLive), Effect.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)));
+```
+
+Bridging into `@effected/config-file` — `XdgConfig` produces `ConfigResolver` values directly:
+
+```ts
+import { XdgConfig } from "@effected/xdg";
+import { ConfigFile, JsonCodec, MergeStrategy } from "@effected/config-file";
+import { Effect, Schema } from "effect";
+
+class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
+class AppConfigTag extends ConfigFile.Service<AppConfigTag, AppShape>()("myapp/Config") {}
+
+const AppConfigLive = ConfigFile.layer(AppConfigTag, {
+ schema: AppShape,
+ codec: JsonCodec,
+ resolvers: [XdgConfig.resolver({ filename: "config.json" }), XdgConfig.nativeResolver({ namespace: "myapp", filename: "config.json" })],
+ strategy: MergeStrategy.firstMatch(),
+ defaultPath: XdgConfig.savePath("config.json"), // `never` error channel — fits without an `orDie`
+});
 ```
 
 ## Testing machinery

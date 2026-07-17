@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Upward path traversal as Effect primitives. `Walker.ascend` gives you the directory chain from a starting path to the filesystem root; `Walker.findUpward` returns the nearest existing file among per-directory candidates; `Walker.findRoot` returns the nearest directory a marker predicate accepts. Every probe absorbs its own failure, so a single unreadable ancestor cannot hide a valid `.git` or `pnpm-workspace.yaml` above it. `FileSystem` and `Path` arrive from `effect` core, so no platform package is pulled in — not even in tests.
+Path traversal as Effect primitives. `Walker.ascend` gives you the directory chain from a starting path to the filesystem root; `Walker.findUpward` returns the nearest existing file among per-directory candidates; `Walker.findRoot` returns the nearest directory a marker predicate accepts. Every probe absorbs its own failure, so a single unreadable ancestor cannot hide a valid `.git` or `pnpm-workspace.yaml` above it. Going the other way, `descend` expands a compiled [`@effected/glob`](https://www.npmjs.com/package/@effected/glob) pattern under a directory into the matching file paths — sorted, symlink-safe, and typed about unreadable subtrees instead of silently swallowing them. `FileSystem` and `Path` arrive from `effect` core, so no platform package is pulled in — not even in tests.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 beta. Packages graduate to
@@ -21,7 +21,7 @@ Upward path traversal as Effect primitives. `Walker.ascend` gives you the direct
 
 ## Why @effected/walker
 
-Walking up a directory tree looks like four lines of code until you meet the edges, and the edges are where the hand-rolled version quietly gets it wrong. If a probe on one ancestor fails — an `EACCES` on a directory you had no business reading anyway — the naive loop propagates that error and the whole search fails, so an unreadable directory hides the workspace root sitting one level above it. Walker absorbs each probe individually: a failed probe means "this candidate did not match", never "abort the scan". Every public error channel is `never` as a result, and the trade is stated up front rather than discovered later — not-found and cannot-look are deliberately indistinguishable, because discovery is best-effort.
+Walking up a directory tree looks like four lines of code until you meet the edges, and the edges are where the hand-rolled version quietly gets it wrong. If a probe on one ancestor fails — an `EACCES` on a directory you had no business reading anyway — the naive loop propagates that error and the whole search fails, so an unreadable directory hides the workspace root sitting one level above it. Walker absorbs each probe individually: a failed probe means "this candidate did not match", never "abort the scan". Every upward error channel is `never` as a result, and the trade is stated up front rather than discovered later — not-found and cannot-look are deliberately indistinguishable, because discovery is best-effort. The downward walk makes the opposite call on purpose: an unreadable subtree during glob expansion fails typed by default, because "no matches there" would be a wrong answer dressed as an empty one.
 
 The other edges get the same treatment. Absorption uses `Effect.catch`, which catches failures and not defects, so a predicate that *throws* is still programmer error and still surfaces. `findUpward` scans directory-major — every candidate in the nearest directory is exhausted before ascending — so a distant ancestor's `.apprc` can never beat a nearer `config/.apprc`. `maxDepth` must be a positive integer: `NaN`, `2.5` and `0` are defects rather than a silently empty chain, which is the failure mode that looks exactly like "nothing found". And `start` is required — walker never reads `process.cwd()` on your behalf.
 
@@ -35,7 +35,9 @@ npm install @effected/walker effect
 pnpm add @effected/walker effect
 ```
 
-Requires Node.js >=24.11.0. `effect` v4 is a peer dependency, and it is the only one — walker has no runtime dependencies of its own.
+Requires Node.js >=24.11.0. `effect` v4 and `@effected/glob` are peer dependencies — walker has no runtime dependencies of its own, and the glob peer is consumed as types plus `matches()` calls only.
+
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
 `Path` and `FileSystem` come from `effect` core, not from a platform package, so a consumer provides them once at the edge (`@effect/platform-node` on Node, `@effect/platform-bun` on Bun) and a test provides `Path.layer` and `FileSystem.layerNoop` straight from core with nothing else installed.
 

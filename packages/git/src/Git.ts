@@ -91,10 +91,20 @@ export class LsTreeEntry extends Schema.Class<LsTreeEntry>("LsTreeEntry")({
 /**
  * One entry of a `git diff --name-status` listing.
  *
+ * @remarks
+ * The `status` vocabulary is this package's own decoded spelling:
+ * `"typeChanged"` and `"broken"` — deliberately NOT git porcelain's
+ * `"typechange"` word. A consumer mapping these values onto an existing
+ * enum that follows porcelain's spelling must translate.
+ *
  * @public
  */
 export class NameStatusEntry extends Schema.Class<NameStatusEntry>("NameStatusEntry")({
-	/** The change kind, decoded from git's one-letter status code. */
+	/**
+	 * The change kind, decoded from git's one-letter status code. `T` decodes
+	 * to `"typeChanged"` and `B` to `"broken"` — this package's spelling, not
+	 * porcelain's `"typechange"`.
+	 */
 	status: Schema.Literals([
 		"added",
 		"modified",
@@ -674,6 +684,25 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		}
 	});
 
+	const fetchAny = Effect.fn("Git.fetchAny")(function* (
+		cwd: string,
+		options: { readonly ref: string; readonly remote?: string; readonly depth?: number },
+	) {
+		const remote = options.remote ?? "origin";
+		yield* Effect.annotateCurrentSpan({ cwd, remote, ref: options.ref });
+		// Guard once, up front: an option-like remote or ref fails typed before
+		// EITHER attempt spawns, rather than surfacing as the plain attempt's
+		// guard rejection after a phantom tag-form fallback.
+		yield* rejectOptionLikeRefs(cwd, [remote, options.ref]);
+		return yield* fetch(cwd, { ...options, tag: true }).pipe(
+			// UnknownRefError is the typed "not a tag on the remote" signal; a
+			// GitCommandError keeps unclassified tag-form stderr shapes on the
+			// fallback path too. NotARepositoryError deliberately propagates —
+			// the plain form would fail identically, so the retry is pure waste.
+			Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fetch(cwd, options)),
+		);
+	});
+
 	const submoduleUpdate = Effect.fn("Git.submoduleUpdate")(function* (
 		cwd: string,
 		options?: { readonly init?: boolean; readonly depth?: number; readonly paths?: ReadonlyArray<string> },
@@ -942,6 +971,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		revParse,
 		checkout,
 		fetch,
+		fetchAny,
 		submoduleUpdate,
 		submoduleAdd,
 		sparseCheckoutSet,
@@ -962,9 +992,226 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 };
 
 /**
+ * The {@link Git} service shape.
+ *
+ * @remarks
+ * Exported so a consumer can type a variable, field or test fake holding the
+ * service without re-declaring the surface — `Layer.succeed(Git, fake)`
+ * accepts any `GitShape`.
+ *
+ * @public
+ */
+export interface GitShape {
+	/** `git show <ref>:<path>` — the contents of `path` at `ref`, or `Option.none` if absent there. */
+	readonly show: (
+		cwd: string,
+		ref: string,
+		path: string,
+	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git ls-tree -r -z <ref> [-- <pathspec>...]` — every path in the tree at
+	 * `ref`, recursively, optionally scoped to `pathspec`.
+	 */
+	readonly lsTree: (
+		cwd: string,
+		ref: string,
+		options?: { readonly pathspec?: ReadonlyArray<string> },
+	) => Effect.Effect<ReadonlyArray<LsTreeEntry>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/** `git cat-file -e <ref>` — whether `ref` resolves to an existing object. */
+	readonly refExists: (cwd: string, ref: string) => Effect.Effect<boolean, GitCommandError | NotARepositoryError>;
+	/** `git merge-base <a> <b>` — the best common ancestor commit, trimmed. */
+	readonly mergeBase: (
+		cwd: string,
+		a: string,
+		b: string,
+	) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git diff --name-only -z [--relative] <base>...<head>` — the paths that
+	 * differ. Pass `relative: true` to report paths relative to `cwd` and
+	 * exclude changes outside it (a workspace nested in a larger repository).
+	 */
+	readonly changedFiles: (
+		cwd: string,
+		options: { readonly base: string; readonly head: string; readonly relative?: boolean },
+	) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * The union of unstaged, staged and untracked working-tree paths —
+	 * `git diff --name-only -z [--relative]`, `--cached`, and
+	 * `git ls-files --others --exclude-standard -z`, deduplicated. Pass
+	 * `relative: true` for `cwd`-relative diff paths (`ls-files` reports
+	 * `cwd`-relative paths by default too; when `relative` is `false`,
+	 * `--full-name` makes it repo-root-relative instead, matching the
+	 * un-`--relative` diffs). No ref is involved, so it never fails `UnknownRefError`.
+	 */
+	readonly workingChanges: (
+		cwd: string,
+		options?: { readonly relative?: boolean },
+	) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/** `git rev-parse --verify <ref>` — resolves `ref` to its full object id, trimmed. */
+	readonly revParse: (
+		cwd: string,
+		ref: string,
+	) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git checkout [--detach] <ref>` — moves the working tree
+	 * (and, for a branch ref, `HEAD`) to `ref`; `options.detach` checks it out
+	 * in detached-HEAD state instead of updating a branch.
+	 * Real git reports an unknown ref to checkout as a pathspec error, which
+	 * classifies as `GitCommandError` rather than `UnknownRefError`; the
+	 * `UnknownRefError` arm remains declared for the stderr shapes that do match.
+	 */
+	readonly checkout: (
+		cwd: string,
+		ref: string,
+		options?: { readonly detach?: boolean },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git fetch [--depth <n>] <remote> [tag] <ref>` — fetches
+	 * `options.ref` from `options.remote` (default `origin`) into the local
+	 * object database, optionally shallow (`options.depth`) and/or as a tag
+	 * (`options.tag`). A ref the remote does not have surfaces as
+	 * `UnknownRefError` — the typed signal a tag-then-branch fetch fallback
+	 * can branch on.
+	 */
+	readonly fetch: (
+		cwd: string,
+		options: { readonly ref: string; readonly remote?: string; readonly depth?: number; readonly tag?: boolean },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: fetches `options.ref` from `options.remote` (default
+	 * `origin`) without knowing whether it names a tag — the tag form
+	 * (`git fetch [--depth <n>] <remote> tag <ref>`) runs first, and when it
+	 * fails as `UnknownRefError` (the typed "not a tag on the remote"
+	 * signal) or any `GitCommandError`, the plain form
+	 * (`git fetch [--depth <n>] <remote> <ref>`) runs as the fallback.
+	 *
+	 * `NotARepositoryError` from the tag attempt propagates immediately —
+	 * the plain form would fail identically. When both attempts fail, the
+	 * PLAIN fetch's error surfaces; the tag attempt's failure is discarded.
+	 */
+	readonly fetchAny: (
+		cwd: string,
+		options: { readonly ref: string; readonly remote?: string; readonly depth?: number },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git submodule update [--init] [--depth <n>] [-- <paths>...]`
+	 * — updates registered submodules in the working tree, optionally
+	 * initializing them (`options.init`), with an optional depth limit and
+	 * scoped to `options.paths`.
+	 */
+	readonly submoduleUpdate: (
+		cwd: string,
+		options?: { readonly init?: boolean; readonly depth?: number; readonly paths?: ReadonlyArray<string> },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git submodule add [--depth <n>] -- <url> <path>` —
+	 * registers and initializes a new submodule at `options.path`, cloned
+	 * from `options.url`, optionally shallow.
+	 */
+	readonly submoduleAdd: (
+		cwd: string,
+		options: { readonly url: string; readonly path: string; readonly depth?: number },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git sparse-checkout set (--cone | --no-cone) <patterns...>`
+	 * — rewrites which paths are checked out in the working tree to
+	 * `patterns`, in cone mode or full pattern mode per `options.cone`.
+	 */
+	readonly sparseCheckoutSet: (
+		cwd: string,
+		patterns: ReadonlyArray<string>,
+		options: { readonly cone: boolean },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git config [-f <file>] <key> <value>` — writes `value` for
+	 * `key` into the repository config, or into `options.file` when given
+	 * (e.g. `.gitmodules`).
+	 */
+	readonly configSet: (
+		cwd: string,
+		key: string,
+		value: string,
+		options?: { readonly file?: string },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git add -- <paths...>` — stages `paths` in the index for
+	 * the next commit.
+	 */
+	readonly add: (
+		cwd: string,
+		paths: ReadonlyArray<string>,
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git diff --name-status -z [--relative] [<base> | <base>...<head>]` —
+	 * the changed paths with their status codes. `head` omitted diffs the
+	 * working tree against `base`; `head` present diffs the merge-base range.
+	 */
+	readonly nameStatus: (
+		cwd: string,
+		options: { readonly base: string; readonly head?: string; readonly relative?: boolean },
+	) => Effect.Effect<ReadonlyArray<NameStatusEntry>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/** `git diff --name-only -z [--relative]` — the unstaged working-tree paths. */
+	readonly unstagedChanges: (
+		cwd: string,
+		options?: { readonly relative?: boolean },
+	) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/** `git diff --name-only -z [--relative] --cached` — the staged paths. */
+	readonly stagedChanges: (
+		cwd: string,
+		options?: { readonly relative?: boolean },
+	) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/** `git ls-files --others --exclude-standard -z [--full-name]` — the untracked paths. */
+	readonly untrackedFiles: (
+		cwd: string,
+		options?: { readonly relative?: boolean },
+	) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git symbolic-ref --quiet --short refs/remotes/<remote>/HEAD` — the
+	 * bare branch name, remote prefix stripped, or `Option.none` when the
+	 * remote's HEAD is unset — run `git remote set-head` to set it.
+	 */
+	readonly defaultBranch: (
+		cwd: string,
+		options?: { readonly remote?: string },
+	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git rev-parse --abbrev-ref HEAD` — the current branch name, or
+	 * `Option.none` when `HEAD` is detached (the literal answer `"HEAD"`
+	 * degrades to the typed absence rather than a fake branch name).
+	 */
+	readonly currentBranch: (
+		cwd: string,
+	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/** `git rev-parse --show-toplevel` — the absolute repository root path, trimmed. */
+	readonly repoRoot: (cwd: string) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/** `git config --get <key>` — the trimmed value, or `Option.none` when the key is unset. */
+	readonly configGet: (
+		cwd: string,
+		key: string,
+	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/** `git remote get-url <remote>` — the trimmed URL, or `Option.none` when the remote does not exist. */
+	readonly remoteUrl: (
+		cwd: string,
+		options?: { readonly remote?: string },
+	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git log -1 --format=%H%x00%G?%x00%B <ref>` — a single commit's sha,
+	 * signature verdict and raw (untrimmed) message. `ref` defaults to `HEAD`.
+	 */
+	readonly commitInfo: (
+		cwd: string,
+		ref?: string,
+	) => Effect.Effect<CommitInfo, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/** `git status --porcelain -z` — the working tree's porcelain status listing. */
+	readonly status: (
+		cwd: string,
+	) => Effect.Effect<ReadonlyArray<StatusEntry>, GitCommandError | NotARepositoryError | UnknownRefError>;
+}
+
+/**
  * Typed git introspection over core's `ChildProcessSpawner`: read a
  * repository's state at any ref without checking it out, plus the mutating
- * tier (`checkout`, `fetch`, `submoduleUpdate`, `submoduleAdd`,
+ * tier (`checkout`, `fetch`, `fetchAny`, `submoduleUpdate`, `submoduleAdd`,
  * `sparseCheckoutSet`, `configSet`, `add`) that changes it.
  *
  * @remarks
@@ -984,199 +1231,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
  *
  * @public
  */
-export class Git extends Context.Service<
-	Git,
-	{
-		/** `git show <ref>:<path>` — the contents of `path` at `ref`, or `Option.none` if absent there. */
-		readonly show: (
-			cwd: string,
-			ref: string,
-			path: string,
-		) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * `git ls-tree -r -z <ref> [-- <pathspec>...]` — every path in the tree at
-		 * `ref`, recursively, optionally scoped to `pathspec`.
-		 */
-		readonly lsTree: (
-			cwd: string,
-			ref: string,
-			options?: { readonly pathspec?: ReadonlyArray<string> },
-		) => Effect.Effect<ReadonlyArray<LsTreeEntry>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git cat-file -e <ref>` — whether `ref` resolves to an existing object. */
-		readonly refExists: (cwd: string, ref: string) => Effect.Effect<boolean, GitCommandError | NotARepositoryError>;
-		/** `git merge-base <a> <b>` — the best common ancestor commit, trimmed. */
-		readonly mergeBase: (
-			cwd: string,
-			a: string,
-			b: string,
-		) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * `git diff --name-only -z [--relative] <base>...<head>` — the paths that
-		 * differ. Pass `relative: true` to report paths relative to `cwd` and
-		 * exclude changes outside it (a workspace nested in a larger repository).
-		 */
-		readonly changedFiles: (
-			cwd: string,
-			options: { readonly base: string; readonly head: string; readonly relative?: boolean },
-		) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * The union of unstaged, staged and untracked working-tree paths —
-		 * `git diff --name-only -z [--relative]`, `--cached`, and
-		 * `git ls-files --others --exclude-standard -z`, deduplicated. Pass
-		 * `relative: true` for `cwd`-relative diff paths (`ls-files` reports
-		 * `cwd`-relative paths by default too; when `relative` is `false`,
-		 * `--full-name` makes it repo-root-relative instead, matching the
-		 * un-`--relative` diffs). No ref is involved, so it never fails `UnknownRefError`.
-		 */
-		readonly workingChanges: (
-			cwd: string,
-			options?: { readonly relative?: boolean },
-		) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git rev-parse --verify <ref>` — resolves `ref` to its full object id, trimmed. */
-		readonly revParse: (
-			cwd: string,
-			ref: string,
-		) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * Mutating: `git checkout [--detach] <ref>` — moves the working tree
-		 * (and, for a branch ref, `HEAD`) to `ref`; `options.detach` checks it out
-		 * in detached-HEAD state instead of updating a branch.
-		 * Real git reports an unknown ref to checkout as a pathspec error, which
-		 * classifies as `GitCommandError` rather than `UnknownRefError`; the
-		 * `UnknownRefError` arm remains declared for the stderr shapes that do match.
-		 */
-		readonly checkout: (
-			cwd: string,
-			ref: string,
-			options?: { readonly detach?: boolean },
-		) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * Mutating: `git fetch [--depth <n>] <remote> [tag] <ref>` — fetches
-		 * `options.ref` from `options.remote` (default `origin`) into the local
-		 * object database, optionally shallow (`options.depth`) and/or as a tag
-		 * (`options.tag`). A ref the remote does not have surfaces as
-		 * `UnknownRefError` — the typed signal a tag-then-branch fetch fallback
-		 * can branch on.
-		 */
-		readonly fetch: (
-			cwd: string,
-			options: { readonly ref: string; readonly remote?: string; readonly depth?: number; readonly tag?: boolean },
-		) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * Mutating: `git submodule update [--init] [--depth <n>] [-- <paths>...]`
-		 * — updates registered submodules in the working tree, optionally
-		 * initializing them (`options.init`), with an optional depth limit and
-		 * scoped to `options.paths`.
-		 */
-		readonly submoduleUpdate: (
-			cwd: string,
-			options?: { readonly init?: boolean; readonly depth?: number; readonly paths?: ReadonlyArray<string> },
-		) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * Mutating: `git submodule add [--depth <n>] -- <url> <path>` —
-		 * registers and initializes a new submodule at `options.path`, cloned
-		 * from `options.url`, optionally shallow.
-		 */
-		readonly submoduleAdd: (
-			cwd: string,
-			options: { readonly url: string; readonly path: string; readonly depth?: number },
-		) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * Mutating: `git sparse-checkout set (--cone | --no-cone) <patterns...>`
-		 * — rewrites which paths are checked out in the working tree to
-		 * `patterns`, in cone mode or full pattern mode per `options.cone`.
-		 */
-		readonly sparseCheckoutSet: (
-			cwd: string,
-			patterns: ReadonlyArray<string>,
-			options: { readonly cone: boolean },
-		) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * Mutating: `git config [-f <file>] <key> <value>` — writes `value` for
-		 * `key` into the repository config, or into `options.file` when given
-		 * (e.g. `.gitmodules`).
-		 */
-		readonly configSet: (
-			cwd: string,
-			key: string,
-			value: string,
-			options?: { readonly file?: string },
-		) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * Mutating: `git add -- <paths...>` — stages `paths` in the index for
-		 * the next commit.
-		 */
-		readonly add: (
-			cwd: string,
-			paths: ReadonlyArray<string>,
-		) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * `git diff --name-status -z [--relative] [<base> | <base>...<head>]` —
-		 * the changed paths with their status codes. `head` omitted diffs the
-		 * working tree against `base`; `head` present diffs the merge-base range.
-		 */
-		readonly nameStatus: (
-			cwd: string,
-			options: { readonly base: string; readonly head?: string; readonly relative?: boolean },
-		) => Effect.Effect<ReadonlyArray<NameStatusEntry>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git diff --name-only -z [--relative]` — the unstaged working-tree paths. */
-		readonly unstagedChanges: (
-			cwd: string,
-			options?: { readonly relative?: boolean },
-		) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git diff --name-only -z [--relative] --cached` — the staged paths. */
-		readonly stagedChanges: (
-			cwd: string,
-			options?: { readonly relative?: boolean },
-		) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git ls-files --others --exclude-standard -z [--full-name]` — the untracked paths. */
-		readonly untrackedFiles: (
-			cwd: string,
-			options?: { readonly relative?: boolean },
-		) => Effect.Effect<ReadonlyArray<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * `git symbolic-ref --quiet --short refs/remotes/<remote>/HEAD` — the
-		 * bare branch name, remote prefix stripped, or `Option.none` when the
-		 * remote's HEAD is unset — run `git remote set-head` to set it.
-		 */
-		readonly defaultBranch: (
-			cwd: string,
-			options?: { readonly remote?: string },
-		) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * `git rev-parse --abbrev-ref HEAD` — the current branch name, or
-		 * `Option.none` when `HEAD` is detached (the literal answer `"HEAD"`
-		 * degrades to the typed absence rather than a fake branch name).
-		 */
-		readonly currentBranch: (
-			cwd: string,
-		) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git rev-parse --show-toplevel` — the absolute repository root path, trimmed. */
-		readonly repoRoot: (cwd: string) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git config --get <key>` — the trimmed value, or `Option.none` when the key is unset. */
-		readonly configGet: (
-			cwd: string,
-			key: string,
-		) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git remote get-url <remote>` — the trimmed URL, or `Option.none` when the remote does not exist. */
-		readonly remoteUrl: (
-			cwd: string,
-			options?: { readonly remote?: string },
-		) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/**
-		 * `git log -1 --format=%H%x00%G?%x00%B <ref>` — a single commit's sha,
-		 * signature verdict and raw (untrimmed) message. `ref` defaults to `HEAD`.
-		 */
-		readonly commitInfo: (
-			cwd: string,
-			ref?: string,
-		) => Effect.Effect<CommitInfo, GitCommandError | NotARepositoryError | UnknownRefError>;
-		/** `git status --porcelain -z` — the working tree's porcelain status listing. */
-		readonly status: (
-			cwd: string,
-		) => Effect.Effect<ReadonlyArray<StatusEntry>, GitCommandError | NotARepositoryError | UnknownRefError>;
-	}
->()("@effected/git/Git") {
+export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 	/** Resolves `ChildProcessSpawner` once, at construction — every method's `R` is `never`. */
 	static readonly layer: Layer.Layer<Git, never, ChildProcessSpawner.ChildProcessSpawner> = Layer.effect(
 		this,

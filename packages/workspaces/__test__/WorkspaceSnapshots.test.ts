@@ -60,6 +60,7 @@ const scriptGit = (
 		remoteUrl: () => Effect.die("Git.remoteUrl not scripted"),
 		status: () => Effect.die("Git.status not scripted"),
 		fetch: () => Effect.die("Git.fetch not scripted"),
+		fetchAny: () => Effect.die("Git.fetchAny not scripted"),
 		submoduleUpdate: () => Effect.die("Git.submoduleUpdate not scripted"),
 		submoduleAdd: () => Effect.die("Git.submoduleAdd not scripted"),
 		sparseCheckoutSet: () => Effect.die("Git.sparseCheckoutSet not scripted"),

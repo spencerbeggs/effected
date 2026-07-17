@@ -32,6 +32,7 @@ export {
 	JsoncParseErrorDetail,
 	JsoncParseOptions,
 } from "./Jsonc.js";
+export type { JsoncFormattingOptionsLike } from "./JsoncEdit.js";
 export { JsoncEdit, JsoncFormattingOptions, JsoncRange } from "./JsoncEdit.js";
 export { JsoncFormatter } from "./JsoncFormatter.js";
 export { JsoncModificationError, JsoncModifier, type JsoncModifyOptions } from "./JsoncModifier.js";

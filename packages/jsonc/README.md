@@ -39,6 +39,8 @@ pnpm add @effected/jsonc effect
 
 Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package itself adds no other runtime dependencies.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 ## Quick start
 
 Compose your schema with `Jsonc.schema` to decode JSONC straight into a validated domain value:
@@ -100,6 +102,12 @@ Effect.runPromise(program).then(console.log);
 ```
 
 `JsoncFormatter.format` produces the same kind of edit array for whitespace normalization, so a formatter pass is a diff rather than a rewrite.
+
+> **Migrating from `jsonc-effect` 0.3.x?** That library's value spans over-reached
+> trailing content ([jsonc-effect#62](https://github.com/spencerbeggs/jsonc-effect/issues/62)),
+> so edits could swallow whitespace or comments after a value. `@effected/jsonc`
+> 0.1.0 fixes this: value spans cover exactly the value, format-preserving edits
+> are byte-exact, and any downstream AST-plus-`trimEnd` workarounds can be deleted.
 
 ## Comments and round-trips
 

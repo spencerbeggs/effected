@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-17
+last-synced: 2026-07-17
 completeness: 95
 related:
   - ../architecture.md
@@ -81,6 +81,8 @@ The **tight token-end offset discipline** — node spans never swallow trailing 
 ### JsoncModifier
 
 `modify(text, path, value, options?)` → `Effect<ReadonlyArray<JsoncEdit>, JsoncModificationError>`. `value === undefined` means delete (including comma handling); insertion appends after the last property/element. Navigation goes through `internal/navigate.ts`, a tested scanner-based navigator that resolves segments through structural tokens rather than a raw substring match — a correctness property, since a naive backwards string search breaks on keys containing quotes.
+
+`JsoncModifyOptions.formattingOptions` is typed `JsoncFormattingOptionsLike` — a `JsoncFormattingOptions` **instance or a structurally-matching plain literal**, so a caller writes `{ insertSpaces: false, tabSize: 2 }` without constructing the class. Only the option fields are read, and nothing decodes, so requiring construction bought validation the modifier never performs. This follows the established `YamlRangeLike` posture in [@effected/yaml](yaml.md) rather than inventing a second convention, and the widening is source-compatible — every existing instance call site still typechecks. **`JsoncFormattingOptions` remains the canonical stored form**: the `Like` type is an *input* accommodation at the boundary, not a second representation, so anything held or passed onward is still the class.
 
 ### JsoncVisitor
 

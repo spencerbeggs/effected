@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-17
+last-synced: 2026-07-17
 completeness: 98
 related:
   - ../effect-standards.md
@@ -65,6 +65,10 @@ A `Schema.Class` with one encoded field, `source: string`; the compiled matcher 
 
 `enumerationPrefix` and `crossesSegments` are **new API with no upstream analogue**, designed for the enumerator contract — glob-core's `prefix` was substring-to-last-`/`, which is wrong once `**` is real. They are computed under default options, which is all `GlobSet` uses; their interaction with `matchBase`/windows modes stays defined only for default-options patterns.
 
+Both held under a **second, independent consumer**: [`@effected/walker`](walker.md)'s `descend` drives a general-purpose filesystem walk off the same two getters, and needed no change to either for non-negated patterns. That is the useful part of the result — the metadata was designed against workspaces' enumerator, and a contract that survives its second consumer unmodified is one that generalizes rather than one that encoded its first caller.
+
+**`enumerationPrefix` is meaningful for NON-NEGATED patterns only.** It is computed from the *inner* pattern, but a negated pattern's `matches()` **inverts**, so it matches everything the inner pattern does not — and those matches can land anywhere, including outside the prefix. A negated pattern's walk must therefore ignore the prefix entirely: **start at the walk root (`cwd`) AND deep-walk unconditionally**, regardless of `crossesSegments` — `descend` uses base `""` and walk condition `crossesSegments || negated` (deep-walking *from the inner prefix* is the tempting half-fix that still silently misses every match outside it). Neither getter is wrong here — the inversion is simply not theirs to express, and the caveat lives with the contract rather than in each consumer's memory.
+
 `GlobPatternOptions` exposes minimatch's full options surface (schema-validated; see the source for the field list). Invalid options are a developer wiring error and raise a **defect** at construction; the typed channel stays reserved for malformed **patterns**. `braceExpandMax` is schema-bounded `[1, 100_000]` rather than a bare positive integer: it is the one cap that can produce a compile-time typed failure, so bounding it above by the stock budget guarantees permissive options can never admit a pattern the defaults check would reject. `platform` defaults to `"posix"`.
 
 **Not a duplication of core.** `effect` introduced `FileSystem.glob(pattern, { root, exclude })` — a filesystem-*scanning* glob. This package is deliberately a **pure string→predicate matcher** with no IO, which is exactly why the kit can point it at non-file candidates: `git ls-tree` entries and package names. Same noun, different concern; core still has no minimatch-dialect string predicate. Consumers who want scan-plus-match against a real filesystem should reach for core's `FileSystem.glob`.
@@ -115,3 +119,5 @@ Per [package-setup.md](../package-setup.md): scaffolded from a pure sibling (jso
 - `WorkspacePackage.matchesDependency` is expressed over `GlobPattern`, so workspaces carries no `minimatch` runtime dep.
 - The `packages:` enumerator is expressed over `GlobSet`: a `literals` fast-path, `wildcards` driving `readDirectory` from `enumerationPrefix`, and `crossesSegments` triggering the bounded descent that makes `**` real end to end.
 - `WorkspaceSnapshots` ([workspaces.md](workspaces.md)) matches the same compiled set against `git ls-tree` entries from [`@effected/git`](git.md) for at-ref discovery.
+
+[`@effected/walker`](walker.md)'s `descend` is the second consumer, and the first outside workspaces: it peers on glob **type-and-property only** (a type-level `GlobPattern` import, the metadata getters and `matches`), so the boundary holds in the other direction too — the walker that does the IO takes no value dependency on the matcher that does none.

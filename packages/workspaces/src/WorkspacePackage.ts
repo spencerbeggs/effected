@@ -26,9 +26,9 @@ const EMPTY_MANIFEST: Record<string, unknown> = Object.freeze(Object.create(null
  * @remarks
  * Deliberately narrow. `@effected/package-json` models `publishConfig` as an
  * open `Record<string, unknown>` for round-trip fidelity, which preserves every
- * key but types none of them; this is the typed projection of the four that
- * decide *where and whether* a package publishes. Unknown keys are ignored, not
- * rejected.
+ * key but types none of them; this is the typed projection of the handful that
+ * decide *where, whether and as what* a package publishes. Unknown keys are
+ * ignored, not rejected.
  *
  * @public
  */
@@ -39,6 +39,13 @@ export class PublishConfig extends Schema.Class<PublishConfig>("PublishConfig")(
 	registry: Schema.optionalKey(Schema.String),
 	/** A subdirectory to publish instead of the package root. */
 	directory: Schema.optionalKey(Schema.String),
+	/**
+	 * Whether workspace links point into `directory` during local development —
+	 * pnpm symlinks the publish directory instead of the package root, so
+	 * siblings resolve the built artifact they would install from the registry.
+	 * Meaningful only alongside `directory`.
+	 */
+	linkDirectory: Schema.optionalKey(Schema.Boolean),
 	/** The dist-tag to publish under. */
 	tag: Schema.optionalKey(Schema.String),
 }) {}

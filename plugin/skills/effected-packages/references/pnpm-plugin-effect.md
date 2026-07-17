@@ -1,6 +1,8 @@
 # @effected/pnpm-plugin-effect
 
-The kit's one **companion** package (a category, not a tier): published and installable, but not a library — there is no API to import. It is a pnpm **config dependency** that centralizes Effect-ecosystem versioning via pnpm catalogs.
+The kit's one **companion** package (a category, not a tier): published and installable, but not a library — there is no *application-facing* API to import. It is a pnpm **config dependency** that centralizes Effect-ecosystem versioning via pnpm catalogs.
+
+Its source does export one value from the published entrypoint — `catalogs` from `@effected/pnpm-plugin-effect`, a generated re-export of `rolldown-pnpm-config/virtual/catalogs`, built from the catalog table declared in `savvy.build.ts` — plus a second, `hooks`, from an internal `src/pnpmfile.ts` module that carries no package.json export path at all (pnpm's config-dependency loader locates it by convention, not through the public `exports` map). Both exist for pnpm's own tooling to consume; nothing in a normal application dependency graph imports either.
 
 ## Install (pnpm 11+, config install — not a normal add)
 

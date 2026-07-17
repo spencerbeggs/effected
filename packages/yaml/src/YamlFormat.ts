@@ -37,9 +37,25 @@ export type YamlRangeLike = YamlRange | { readonly offset: number; readonly leng
 
 /**
  * Options controlling formatting behavior: every {@link YamlStringifyOptions}
- * field (derived, not hand-duplicated) plus `preserveComments` (default
- * `true`) and `range` (restrict edits to a region; see the module-level
- * remarks on the `range` parameter vs. this field).
+ * field (derived, not hand-duplicated — including `indentSequences`) plus
+ * `preserveComments` (default `true`) and `range` (restrict edits to a
+ * region; see the module-level remarks on the `range` parameter vs. this
+ * field).
+ *
+ * Construct with the validated `YamlFormattingOptions.make({ ... })` static —
+ * the kit convention (never `new`). Call sites that take a
+ * `YamlFormattingOptions` also accept a structurally-matching plain literal.
+ *
+ * @example
+ * ```ts
+ * import { YamlFormat, YamlFormattingOptions } from "@effected/yaml";
+ *
+ * const options = YamlFormattingOptions.make({ indentSequences: true });
+ * const formatted = YamlFormat.formatToString("key:\n- a\n- b\n", undefined, options);
+ * // key:
+ * //   - a
+ * //   - b
+ * ```
  *
  * @public
  */
@@ -97,6 +113,7 @@ const toStringifyInput = (options?: YamlStringifyOptions) =>
 				defaultScalarStyle: options.defaultScalarStyle,
 				defaultCollectionStyle: options.defaultCollectionStyle,
 				sortKeys: options.sortKeys,
+				indentSequences: options.indentSequences,
 				finalNewline: options.finalNewline,
 				forceDefaultStyles: options.forceDefaultStyles,
 			};

@@ -37,6 +37,8 @@ pnpm add @effected/npm effect
 
 Requires Node.js >=24.11.0.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 `effect` v4 is the only peer dependency and the only dependency of any kind. Defining a contract runs no effect and touches no filesystem: the default layers are `Layer.succeed` over functions that return `Option.none()`.
 
 ## Quick start

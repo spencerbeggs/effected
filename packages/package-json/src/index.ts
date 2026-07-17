@@ -32,6 +32,7 @@ export {
 	Package,
 	PackageDecodeError,
 	type PackageFormatOptions,
+	type PackageIndent,
 	type PackagePatch,
 	PeerDependenciesMetaField,
 	PublishConfigField,

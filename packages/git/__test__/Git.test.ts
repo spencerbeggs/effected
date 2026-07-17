@@ -922,6 +922,127 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("fetchAny stops at a successful tag-form fetch — one spawn, depth and remote composed", () =>
+			Effect.gen(function* () {
+				const invocations: Array<ReadonlyArray<string>> = [];
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchAny(cwd, { ref: "v1.0.0", depth: 1 });
+				});
+				yield* run(program, (args) => {
+					invocations.push(args);
+					return { exit: 0 };
+				});
+				assert.deepStrictEqual(invocations, [["fetch", "--depth", "1", "origin", "tag", "v1.0.0"]]);
+			}),
+		);
+
+		it.effect("fetchAny falls back to the plain form on UnknownRefError — options reach both invocations", () =>
+			Effect.gen(function* () {
+				const invocations: Array<ReadonlyArray<string>> = [];
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchAny(cwd, { ref: "v1.0.0", remote: "upstream", depth: 1 });
+				});
+				yield* run(program, (args) => {
+					invocations.push(args);
+					return args.includes("tag")
+						? { stderr: "fatal: couldn't find remote ref refs/tags/v1.0.0\n", exit: 128 }
+						: { exit: 0 };
+				});
+				assert.deepStrictEqual(invocations, [
+					["fetch", "--depth", "1", "upstream", "tag", "v1.0.0"],
+					["fetch", "--depth", "1", "upstream", "v1.0.0"],
+				]);
+			}),
+		);
+
+		it.effect("fetchAny falls back on an unclassified GitCommandError from the tag form too", () =>
+			Effect.gen(function* () {
+				const invocations: Array<ReadonlyArray<string>> = [];
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchAny(cwd, { ref: "main" });
+				});
+				yield* run(program, (args) => {
+					invocations.push(args);
+					return args.includes("tag")
+						? { stderr: "error: some unclassified transport failure\n", exit: 128 }
+						: { exit: 0 };
+				});
+				assert.strictEqual(invocations.length, 2);
+				assert.deepStrictEqual(invocations[1], ["fetch", "origin", "main"]);
+			}),
+		);
+
+		it.effect("fetchAny surfaces the PLAIN fetch's error when both attempts fail", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchAny(cwd, { ref: "v9.9.9" });
+				});
+				const exit = yield* Effect.exit(
+					run(program, (args) =>
+						args.includes("tag")
+							? { stderr: "fatal: tag-attempt failed\n", exit: 128 }
+							: { stderr: "fatal: plain-attempt failed\n", exit: 128 },
+					),
+				);
+				assert.isTrue(Exit.isFailure(exit));
+				if (Exit.isFailure(exit)) {
+					const found = Cause.findFail(exit.cause);
+					assert.isTrue(Result.isSuccess(found));
+					if (Result.isSuccess(found)) {
+						assert.instanceOf(found.success.error, GitCommandError);
+						const error = found.success.error as GitCommandError;
+						// The plain attempt's failure surfaces; the tag attempt's is discarded.
+						assert.include(error.stderr, "plain-attempt failed");
+						assert.isFalse(error.args.includes("tag"));
+					}
+				}
+			}),
+		);
+
+		it.effect("fetchAny propagates NotARepositoryError from the tag attempt without a second spawn", () =>
+			Effect.gen(function* () {
+				let spawns = 0;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchAny(cwd, { ref: "v1.0.0" });
+				});
+				const exit = yield* Effect.exit(
+					run(program, () => {
+						spawns += 1;
+						return { stderr: "fatal: not a git repository (or any of the parent directories): .git\n", exit: 128 };
+					}),
+				);
+				assert.strictEqual(spawns, 1);
+				assert.isTrue(Exit.isFailure(exit));
+				if (Exit.isFailure(exit)) {
+					const found = Cause.findFail(exit.cause);
+					assert.isTrue(Result.isSuccess(found) && found.success.error instanceof NotARepositoryError);
+				}
+			}),
+		);
+
+		it.effect("fetchAny refuses an option-like REF without spawning either attempt", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchAny(cwd, { ref: "--tags" });
+				});
+				const exit = yield* Effect.exit(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isTrue(Exit.isFailure(exit));
+				assert.isFalse(spawned);
+			}),
+		);
+
 		it.effect("submoduleUpdate composes init, depth and paths behind --", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {

@@ -39,6 +39,8 @@ pnpm add @effected/workspaces effect
 
 Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. You provide a `FileSystem` and `Path` implementation at the edge — `@effect/platform-node` or `@effect/platform-bun`.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 pnpm's catalog semantics come from pnpm's own `@pnpm/catalogs.*` packages, which install as regular dependencies. Reimplementing them would mean owning a moving spec with no oracle, so they are used directly and confined to a single internal module.
 
 ## Quick start

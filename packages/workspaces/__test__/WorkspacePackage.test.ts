@@ -173,6 +173,26 @@ describe("WorkspacePackage", () => {
 		assert.strictEqual(scoped.publishConfig?.registry, "https://npm.internal/");
 		assert.isUndefined(scoped.publishConfig?.directory);
 	});
+
+	it("publishConfig.linkDirectory round-trips through decode and encode", () => {
+		// The pnpm dist-linking field: `directory` says what publishes,
+		// `linkDirectory` says workspace links point there during development.
+		const decoded = Schema.decodeUnknownSync(PublishConfig)({ directory: "dist/dev/pkg", linkDirectory: true });
+		assert.isTrue(decoded.linkDirectory);
+		assert.strictEqual(decoded.directory, "dist/dev/pkg");
+
+		const encoded = Schema.encodeUnknownSync(PublishConfig)(decoded);
+		assert.deepStrictEqual(encoded, { directory: "dist/dev/pkg", linkDirectory: true });
+	});
+
+	it("publishConfig.linkDirectory is an optionalKey — absent stays absent, never explicit undefined", () => {
+		const absent = Schema.decodeUnknownSync(PublishConfig)({ access: "public" });
+		assert.isFalse("linkDirectory" in absent);
+		assert.isFalse("linkDirectory" in Schema.encodeUnknownSync(PublishConfig)(absent));
+
+		const explicit = PublishConfig.make({ linkDirectory: false });
+		assert.isFalse(explicit.linkDirectory);
+	});
 });
 
 describe("WorkspacePackage.dependencyVersion — inherited names are not dependencies", () => {

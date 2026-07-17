@@ -200,6 +200,7 @@ const toStringifyInput = (options?: YamlStringifyOptions) =>
 				defaultScalarStyle: options.defaultScalarStyle,
 				defaultCollectionStyle: options.defaultCollectionStyle,
 				sortKeys: options.sortKeys,
+				indentSequences: options.indentSequences,
 				finalNewline: options.finalNewline,
 				forceDefaultStyles: options.forceDefaultStyles,
 			};

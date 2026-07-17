@@ -39,6 +39,8 @@ pnpm add @effected/toml effect
 
 Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package itself adds no other runtime dependencies.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 ## Quick start
 
 Compose your schema with `Toml.schema` to decode TOML straight into a validated domain value, or reach for the pre-bound `Toml.TomlFromString` codec when you just want the plain value:

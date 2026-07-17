@@ -33,6 +33,26 @@ export class PublishTarget extends Schema.Class<PublishTarget>("PublishTarget")(
 }) {}
 
 /**
+ * The {@link PublishabilityDetector} service shape.
+ *
+ * @remarks
+ * The error channel is deliberately `never`: every consumer of the service —
+ * a release planner iterating a whole workspace — treats "does this publish"
+ * as a total question, so an overriding layer whose lookup can fail must
+ * **degrade or die**. Fold a recoverable failure into a safe answer (usually
+ * the empty target list), or `Effect.orDie` it into the defect channel; it
+ * cannot widen the channel the contract declares. See
+ * {@link PublishabilityDetector} for the adapter an overriding consumer
+ * writes.
+ *
+ * @public
+ */
+export interface PublishabilityDetectorShape {
+	/** The publish targets for a package; empty means it does not publish. */
+	readonly detect: (pkg: WorkspacePackage) => Effect.Effect<ReadonlyArray<PublishTarget>>;
+}
+
+/**
  * Decides whether a workspace package publishes, and to where.
  *
  * @remarks
@@ -63,15 +83,42 @@ export class PublishTarget extends Schema.Class<PublishTarget>("PublishTarget")(
  * });
  * ```
  *
+ * @example
+ * The shape's error channel is `never` — **degrade or die**. An override
+ * backed by something fallible (a policy service, a registry probe) folds its
+ * failure structurally over `{ readonly message: string }` — matching every
+ * `Error`, every Effect schema error class, and anything else carrying a
+ * message — and either degrades to a safe answer or dies:
+ *
+ * ```ts
+ * import { PublishabilityDetector, PublishTarget } from "@effected/workspaces";
+ * import { Effect, Layer } from "effect";
+ *
+ * declare const lookupPolicy: (
+ *   name: string,
+ * ) => Effect.Effect<ReadonlyArray<PublishTarget>, { readonly message: string }>;
+ *
+ * const fromPolicyService = Layer.succeed(PublishabilityDetector, {
+ *   detect: (pkg) =>
+ *     lookupPolicy(pkg.name).pipe(
+ *       Effect.catch((error) =>
+ *         Effect.die(new Error(`publishability policy lookup failed for ${pkg.name}: ${error.message}`)),
+ *       ),
+ *     ),
+ * });
+ * ```
+ *
+ * A lookup failure that should *not* abort the run degrades instead —
+ * `Effect.catch(() => Effect.succeed([]))` reads as "unknown means
+ * unpublishable" — but pick one deliberately; silently swallowing the failure
+ * into a wrong "publishes to npm" answer is the one option the contract
+ * forbids.
+ *
  * @public
  */
-export class PublishabilityDetector extends Context.Service<
-	PublishabilityDetector,
-	{
-		/** The publish targets for a package; empty means it does not publish. */
-		readonly detect: (pkg: WorkspacePackage) => Effect.Effect<ReadonlyArray<PublishTarget>>;
-	}
->()("@effected/workspaces/PublishabilityDetector") {
+export class PublishabilityDetector extends Context.Service<PublishabilityDetector, PublishabilityDetectorShape>()(
+	"@effected/workspaces/PublishabilityDetector",
+) {
 	/** Standard npm publishing semantics. Pure — no filesystem, no platform services. */
 	static readonly layer: Layer.Layer<PublishabilityDetector> = Layer.succeed(PublishabilityDetector, {
 		detect: (pkg: WorkspacePackage) =>

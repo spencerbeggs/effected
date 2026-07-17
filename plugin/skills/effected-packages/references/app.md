@@ -19,7 +19,7 @@ Single entrypoint; exactly four value exports (plus their option types and the `
 - **`App.layer(options)`** → `Layer<Xdg | AppDirs | Store | Cache, AppError, FileSystem | Path>` — wires all four services from a namespace + `store` (migrations, required) + `cache` options. Always opens BOTH databases.
 - **`App.layerTest(options)`** — same services with `R = never`: synthetic XDG paths, `:memory:` databases, `FileSystem.layerNoop` internally.
 - **`AppStore.layer(options)` / `AppCache.layer(options)`** — the state-dir / cache-dir SQLite glue alone (`R = AppDirs | Path`).
-- **`AppConfig.layer(tag, options)`** — the XDG-flavored `ConfigFile.layer` preset. Requires an explicit `codec`; takes NO `namespace` parameter — it reads the namespace from the ambient `AppDirs` service so the two can never drift.
+- **`AppConfig.layer(tag, options)`** — the XDG-flavored `ConfigFile.layer` preset: `{ filename, schema, codec, strategy?, validate?, events?, native? }`. Requires an explicit `codec` (never defaulted or inferred from `filename`'s extension — that would hard-code a format choice into a composition layer); takes NO `namespace` parameter — it reads the namespace from the ambient `AppDirs` service so the two can never drift. `native` (default `true`) probes the OS-native config directory as a fallback, after the XDG resolver — pass `false` to drop it. Reaches only `@effected/xdg` + `@effected/config-file`, never the SQLite driver, so a consumer wanting XDG-placed config alone imports `AppConfig` without pulling a database into their graph.
 
 ## Usage
 

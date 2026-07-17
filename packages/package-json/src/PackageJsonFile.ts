@@ -98,7 +98,12 @@ export interface PackageJsonFileShape {
 		Package,
 		PackageJsonReadError | PackageJsonNotFoundError | PackageJsonParseError | PackageDecodeError
 	>;
-	/** Serialize and write a package.json file. Fails with `PackageJsonWriteError`. */
+	/**
+	 * Serialize and write a package.json file. Fails with
+	 * `PackageJsonWriteError`. With `indent: "preserve"` and no explicit
+	 * `sourceText`, the existing file at `path` (when readable) supplies the
+	 * source text whose indentation is preserved.
+	 */
 	readonly write: (
 		path: string,
 		pkg: Package,
@@ -161,7 +166,19 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 				pkg: Package,
 				options?: PackageFormatOptions,
 			) {
-				const json = pkg.toJsonString(options);
+				let effective = options;
+				if (options?.indent === "preserve" && options.sourceText === undefined) {
+					// `indent: "preserve"` with no source text in hand: detect the
+					// indentation from the file being overwritten. Any read failure
+					// (most commonly a fresh file) falls back to the default indent.
+					const existing = yield* fs
+						.readFileString(target)
+						.pipe(Effect.catch(() => Effect.succeed<string | undefined>(undefined)));
+					if (existing !== undefined) {
+						effective = { ...options, sourceText: existing };
+					}
+				}
+				const json = pkg.toJsonString(effective);
 				const directory = path.dirname(target);
 				yield* fs
 					.makeDirectory(directory, { recursive: true })

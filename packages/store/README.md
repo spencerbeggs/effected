@@ -37,6 +37,8 @@ pnpm add @effected/store effect
 
 Requires Node.js >=24.11.0.
 
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
 `effect` v4 is the only peer dependency. The SQLite driver (`@effect/sql-sqlite-node`) is a regular dependency of this package, so you do not install it yourself — it rides Node's built-in `node:sqlite`, with no native build and no transitive peers of its own. That single runtime dependency is what makes this the repo's one integrated-tier package: anything that depends on `@effected/store` inherits the driver.
 
 ## Quick start

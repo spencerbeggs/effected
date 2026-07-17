@@ -3,46 +3,56 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-17
+last-synced: 2026-07-17
 completeness: 95
 related:
   - ../effect-standards.md
   - ../package-inventory.md
   - ../releases.md
   - config-file.md
+  - glob.md
 ---
 
 # @effected/walker design
 
 ## Overview
 
-`@effected/walker` is upward path traversal as a small, testable library: ascend a directory chain toward the filesystem root, probe candidates along the way and return the first that satisfies a predicate. It is the one absorbing traversal loop in the repo — `@effected/config-file`, `@effected/xdg` and `@effected/workspaces` all discover files through it.
+`@effected/walker` is path traversal as a small, testable library. Two directions, two concept modules: **upward**, ascend a directory chain toward the filesystem root and return the first candidate satisfying a predicate; **downward**, expand a compiled glob pattern under a directory and return the matching files. The upward walk is the one absorbing traversal loop in the repo — `@effected/config-file`, `@effected/xdg` and `@effected/workspaces` all discover files through it.
 
 It is **boundary tier**: it does IO, reading the filesystem through `effect`-core `FileSystem` and `Path`. A package that does IO through core platform abstractions is boundary by [R4](../effect-standards.md#dependency-policy), and requiring `FileSystem`/`Path` costs walker nothing in dependencies because both are `effect` core in v4.
 
 ## Tier and dependencies
 
-**Boundary tier.** `peerDependencies: { effect }`, and **no runtime dependencies**. `FileSystem` and `Path` arrive via the `R` channel from the consumer's platform layer. This is the cleanest possible boundary profile: `effect`-only peer, zero runtime deps, tested entirely from core layers with no `@effect/platform-node` devDependency (see [Testing](#testing)).
+**Boundary tier.** `peerDependencies: { effect, @effected/glob }`, and **no runtime dependencies**. `FileSystem` and `Path` arrive via the `R` channel from the consumer's platform layer.
 
-## Scope: upward only
+The `@effected/glob` peer is **type-and-property only** — `descend` imports `GlobPattern` as a type and reads its metadata getters and `matches()`; there is no value import, so no engine is pulled into a consumer that never globs. This mirrors config-file's peering on the format packages, and leaves the boundary profile intact: no `@effect/platform-node` devDependency, tested entirely from core layers (see [Testing](#testing)).
 
-Walker is **upward traversal and nothing else** — no downward enumeration, no glob, no `Context.Service` of its own, and no `Effect.fn` spans. Every public function's error channel is `never` (see [Error handling](#error-handling)); the [observability standard](../effect-standards.md#observability-standards) instruments fallible boundaries and walker has none.
+## Scope: both directions, one shared discipline
 
-Two adjacent concerns deliberately live elsewhere: **glob compilation** (pattern → matcher, pure string matching) is [@effected/glob](../package-inventory.md#the-packages)'s job, and **downward enumeration** (walking *into* a tree) is workspaces-specific and lives in `@effected/workspaces`. Walker owns only the shared upward algorithm — "first candidate satisfying a predicate."
+Walker owns **path traversal** and nothing else — no `Context.Service` of its own, and no glob *compilation*. Pattern → matcher is [@effected/glob](../package-inventory.md#the-packages)'s job; walker is **semantics-free** about matching, reading only the compiled pattern's `hasMagic` / `negated` / `enumerationPrefix` / `crossesSegments` and calling `matches`. Dotfile behavior, case folding and every other option ride in on the pattern the caller hands in and are never re-derived here.
+
+Downward enumeration [used to be out of scope](#the-downward-walk-descend), on the theory that walking *into* a tree was workspaces-specific. It is not: glob is a pure matching engine with no walker, and workspaces' enumerator was internal and package-dir-specific, so "files matching a glob under a directory" had no home. `descend` is that home, and it is the package's second concept module.
+
+The two directions do **not** share an error posture — see [Error handling](#error-handling). That asymmetry is the package's most load-bearing design decision.
 
 ## Module layout
 
-One concept module holds the whole library — walker is small enough that a single `Walker.ts` is the honest shape, per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept):
+Two concept modules, one per direction, per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept):
 
 ```text
 packages/walker/
   src/
-    Walker.ts            # the whole library — the Walker namespace object
+    Walker.ts            # upward — the Walker namespace object
+    Descend.ts           # downward — descend, DescendOptions, DescendError
     index.ts             # public surface, re-exports only
   __test__/
     Walker.test.ts
+    Descend.test.ts
+    fixtures.ts
 ```
+
+`descend` is a **bare function**, not a member of the `Walker` namespace object: it is a different algorithm with a different error posture, and folding it into `Walker` would imply it shares the namespace's `never`-channel contract.
 
 ## Public surface
 
@@ -77,7 +87,22 @@ findRoot<E, R>(
 ): Effect<Option<string>, never, R>;
 ```
 
-`start` is **required**. Walker never reads `process.cwd()` — a traversal library that silently defaults to the process working directory cannot be tested or reasoned about, so the caller who knows where "here" is passes it in.
+`start` is **required**. Walker never reads `process.cwd()` — a traversal library that silently defaults to the process working directory cannot be tested or reasoned about, so the caller who knows where "here" is passes it in. `descend`'s `cwd` is required for the same reason.
+
+Downward, a bare function alongside the namespace:
+
+```ts
+export interface DescendOptions {
+  readonly cwd: string;                      // required — absolute, never process.cwd()
+  readonly maxDepth?: number;                // default 256
+  readonly prune?: ReadonlyArray<string>;    // default ["node_modules", ".git"]; a custom list REPLACES it
+  readonly onUnreadable?: "fail" | "skip";   // default "fail"
+}
+
+// Expand a compiled pattern to matching FILE paths, cwd-relative, POSIX, sorted.
+descend(pattern: GlobPattern, options: DescendOptions):
+  Effect<ReadonlyArray<string>, DescendError, FileSystem.FileSystem | Path.Path>;
+```
 
 ## firstMatch is the whole algorithm
 
@@ -87,6 +112,21 @@ findRoot<E, R>(
 - `findUpward` first **flattens** `dirs.flatMap(candidatesFor)` into one directory-major candidate list, then hands that to `firstMatch(candidates, fs.exists)`. The flattening *is* the ordering invariant: every candidate in the nearest directory is exhausted before the scan ascends, so a distant ancestor's marker can never beat a nearer directory's.
 
 Per-probe absorption (an unreadable ancestor must not abort the scan) lives in exactly one place — `firstMatch`.
+
+## The downward walk (`descend`)
+
+The descent is a **worklist, not a recursion** — it cannot overflow the stack — dequeued by a head index rather than `Array.shift()`, which re-indexes the whole array on every dequeue and turns a large walk quadratic.
+
+What earns a filesystem read is decided by the pattern's metadata, and two cases are worth recording because they are not obvious:
+
+- **A literal pattern (no magic, not negated) never walks at all**: one stat decides, and the result is `[source]` for a file or `[]` otherwise.
+- **A pattern that cannot match below one level never descends.** `crossesSegments: false` reads a single level.
+- **A negated pattern walks from `cwd` and always deep-walks, regardless of `crossesSegments`.** This is the subtle one. `enumerationPrefix` is computed from the *inner* pattern, but `matches()` **inverts** — so a negated pattern matches everything the inner pattern does not, and its matches can land arbitrarily deep and *outside the prefix*. Both halves matter: the base is `""` (walking from the inner prefix silently omits every match outside it — the initial implementation got exactly this wrong) and the walk condition is `crossesSegments || negated`, never `crossesSegments` alone. See [glob's note](glob.md#public-surface) that `enumerationPrefix` is meaningful for non-negated patterns only.
+- **Patterns never escape `cwd`.** A pattern that lexically climbs above the root via `..` segments (a literal target or an enumeration base) is zero matches, refused before any filesystem access — walked paths never contain `..`, so nothing such a pattern could match is ever produced, and a walker documented as rooted at `cwd` must not read (or stat) above it.
+
+Zero matches is a **normal glob answer, not an error**: a missing literal path and a missing base directory both read as `[]`. Only files match — a symlink counts when it stat-resolves to a file (`stat` follows links, as node's does), a dangling symlink does not, and a symlinked **directory is never descended** for cycle safety, detected by a `readLink` success-probe. A directory that vanishes between its parent's listing and its own read is a benign race and reads as empty in both `onUnreadable` modes.
+
+Output is sorted by cwd-relative POSIX path — an unsorted enumeration is a reproducibility hazard for every downstream consumer that hashes or diffs it.
 
 ## Wiring: services via R, not parameters
 
@@ -99,13 +139,35 @@ Both services live in `effect` core in v4, so requiring them via `R` costs walke
 
 ## Error handling
 
-Walker has **no error module**. Every public channel is `never`, a designed contract:
+**The two directions have deliberately opposite error postures.** Absorption is not a house style to apply uniformly — it is a claim about what a failed read *means*, and the meaning inverts with direction.
+
+### Upward: every channel is `never`
 
 - **Probe failures are absorbed per candidate, inside `firstMatch`.** An `EACCES`, `ENOTDIR` or broken-symlink failure on one candidate is caught (`Effect.catch`) and treated as "this candidate did not match," so the scan continues. Not-found and cannot-look are deliberately indistinguishable: discovery is best-effort.
 - **Defects propagate.** `firstMatch` uses `Effect.catch`, which catches *failures*, not defects. A predicate that `throw`s is programmer error and must surface as a defect. The choice of `catch` over `catchCause` is load-bearing — a refactor to `catchCause` would quietly break this contract.
 - **A non-positive-integer `maxDepth` is a defect.** The guard is `!Number.isInteger(maxDepth) || maxDepth < 1`, not a bare `< 1` (which lets `NaN` and `2.5` through). It can only come from code, so `ascend` raises it as `Effect.die`.
 
 Because the channel is `never`, the walking resolvers in config-file inherit their best-effort guarantee from walker's type rather than from wrapper prose.
+
+### Downward: `DescendError`, the package's first typed error
+
+`descend` fails typed, and **must not** inherit the upward absorption posture. The asymmetry is the point:
+
+- Upward, an unreadable ancestor is one candidate that did not match; the scan can still succeed above it, and the answer stays correct.
+- Downward, a swallowed subtree is **silently missing membership dressed as an empty result**. The caller cannot tell "no files matched" from "I could not look," and every consumer that acts on the answer — publishing, hashing, change detection — acts on a quietly wrong set.
+
+So `onUnreadable` defaults to `"fail"`. `"skip"` exists for callers who genuinely want best-effort, but it must be **asked for**, never assumed. Depth exhaustion is likewise a typed `depthExceeded` failure, never a truncation — silent truncation silently changes match semantics.
+
+```ts
+class DescendError extends Schema.TaggedErrorClass<DescendError>()("DescendError", {
+  pattern: Schema.String,
+  reason: Schema.Literals(["unreadableDirectory", "depthExceeded"]),  // Literals, not Literal
+  path: Schema.String,        // relative to cwd; "" is the walk's base
+  limit: Schema.optionalKey(Schema.Number),
+})
+```
+
+`Schema.Literals`, not `Schema.Literal`: the v3 variadic `Literal` **silently ignores every argument after the first** in the beta, so a `Literal("a", "b")` union quietly narrows to `"a"`. An invalid `maxDepth` stays a defect, exactly as in `ascend`.
 
 ## Hardening
 
@@ -122,9 +184,9 @@ Walker is the repo's single absorbing traversal loop. Config-file's walking reso
 
 ## Testing
 
-`@effect/vitest`, `it.effect`, `assert.*` — never `expect`. Tests live in `packages/walker/__test__/Walker.test.ts`.
+`@effect/vitest`, `it.effect`, `assert.*` — never `expect`. Tests live in `packages/walker/__test__/`, one suite per concept module, with the descend suite's in-memory trees factored into `fixtures.ts`.
 
-Walker needs **no platform package**: tests provide `Path.layer` (POSIX) and `FileSystem.layerNoop({ exists, readFileString })`, both from `effect` core. A boundary package that does real IO can still be tested with core-only layers when the IO surface is small enough.
+Walker needs **no platform package, even for `descend`**: tests provide `Path.layer` (POSIX) and `FileSystem.layerNoop`, both from `effect` core. A boundary package that does real IO can still be tested with core-only layers when the IO surface is small enough — and `descend` did not change that, it only raised the bar for the fake. The `layerNoop` tree must be faithful to the node backend exactly where `descend` reads it: `stat` **follows** symlinks (a link to a file stats as a `File`; a dangling link fails `NotFound`), and `readLink` succeeds **only** on links, which is the walker's is-this-a-symlink probe. A `layer(...)` boundary cannot vary per test, so each distinct tree gets its own block.
 
 The mutation-proven invariants the suite pins:
 
@@ -137,4 +199,4 @@ The mutation-proven invariants the suite pins:
 
 ## Build
 
-`savvy.build.ts` carries an empty suppression list. Walker declares no classes at all — no `Schema.Class`, no `Context.Service`, no tagged errors — so there is no API-Extractor class-factory `_base` warning to suppress.
+`savvy.build.ts` carries the one narrow suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }`, for the synthesized base of the `DescendError` class factory (effect-api-extractor-bases). **Never widen it** — the pattern is scoped to `_base` precisely so a genuinely forgotten export still fails the gate. Walker declared no classes at all until `DescendError`; this is the only one.

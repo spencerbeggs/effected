@@ -50,7 +50,7 @@ export {
 	PackageManagerDetector,
 	PackageManagerName,
 } from "./PackageManagerName.js";
-export { PublishTarget, PublishabilityDetector } from "./Publishability.js";
+export { PublishTarget, PublishabilityDetector, type PublishabilityDetectorShape } from "./Publishability.js";
 export {
 	type CatalogAssemblyFailure,
 	CatalogSet,

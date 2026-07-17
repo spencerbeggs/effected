@@ -175,4 +175,15 @@ describe("DependencyGraph", () => {
 			assert.instanceOf(error, PackageNotFoundError);
 		}),
 	);
+
+	it("make accepts a ReadonlyArray of packages without a spread copy", () => {
+		// The type-level half IS the test: `packages` is declared readonly and
+		// handed to `make` unspread. `Schema.Array`'s constructor input is
+		// `ReadonlyArray<...>` on the pinned beta — if a regression narrows it
+		// back to a mutable `Array`, this stops compiling.
+		const packages: ReadonlyArray<WorkspacePackage> = [pkg("a", { b: "1.0.0" }), pkg("b")] as const;
+		const graph = DependencyGraph.make({ packages });
+		assert.deepStrictEqual(graph.names, ["a", "b"]);
+		assert.deepStrictEqual([...(graph.adjacency.get("a") ?? [])], ["b"]);
+	});
 });

@@ -399,6 +399,7 @@ interface StringifyContext {
 	defaultScalarStyle: ScalarStyle;
 	defaultCollectionStyle: CollectionStyle;
 	sortKeys: boolean;
+	indentSequences: boolean;
 	forceDefaultStyles: boolean;
 	seen: Set<object>;
 	/**
@@ -418,6 +419,7 @@ function createContext(options?: StringifyOptionsInput): StringifyContext {
 		defaultScalarStyle: options?.defaultScalarStyle ?? "plain",
 		defaultCollectionStyle: options?.defaultCollectionStyle ?? "block",
 		sortKeys: options?.sortKeys ?? false,
+		indentSequences: options?.indentSequences ?? false,
 		forceDefaultStyles: options?.forceDefaultStyles ?? false,
 		seen: new Set(),
 	};
@@ -584,9 +586,12 @@ function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContex
 				}
 			} else if (Array.isArray(val) && val.length > 0) {
 				// Block sequence as mapping value: compact notation (no extra indent)
+				// by default; one indent level when `indentSequences` is set (the
+				// `yaml` npm package's default presentation). Empty lines (block
+				// scalar bodies) are never padded — no trailing whitespace.
 				lines.push(`${keyStr}:`);
 				for (const vl of valLines) {
-					lines.push(vl);
+					lines.push(ctx.indentSequences && vl !== "" ? `${pad}${vl}` : vl);
 				}
 			} else {
 				// Nested block mapping: key on its own line, value indented
@@ -1081,12 +1086,16 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			(ctx.forceDefaultStyles ? ctx.defaultCollectionStyle : (valNode.style ?? ctx.defaultCollectionStyle)) === "block";
 		if (isBlockSeqValue) {
 			// Block sequence as mapping value: compact notation (no extra indent)
+			// by default; one indent level when `indentSequences` is set (the
+			// `yaml` npm package's default presentation). Empty lines (block
+			// scalar bodies) are never padded — no trailing whitespace.
 			// If seq has metadata (anchor/tag), place it on the key line
 			const seqMeta = buildMetadataPrefix(valNode.tag, valNode.anchor);
 			const startIdx = seqMeta ? 1 : 0; // skip metadata line if present
 			lines.push(seqMeta ? `${keyStr}${sep} ${seqMeta}` : `${keyStr}${sep}`);
 			for (let i = startIdx; i < valLines.length; i++) {
-				lines.push(valLines[i]);
+				const vl = valLines[i];
+				lines.push(ctx.indentSequences && vl !== "" ? `${pad}${vl}` : vl);
 			}
 		} else if (
 			valNode instanceof YamlMap &&
