@@ -265,7 +265,10 @@ describe("Git surface — introspection repository (fixture A)", () => {
 				assert.strictEqual(info.sha, sha);
 				// The fixture's commits are never signed.
 				assert.strictEqual(info.signatureStatus, "N");
-				assert.isTrue(info.message.startsWith("commit1"));
+				// Raw %B output is byte-identical to commitInfo's untrimmed message —
+				// a trim or mutation anywhere in the pipeline breaks this equality.
+				const expectedMessage = yield* runFixtureGit(dirA, ["log", "-1", "--format=%B"]);
+				assert.strictEqual(info.message, expectedMessage);
 			}),
 		),
 	);
@@ -383,6 +386,15 @@ describe("Git surface — submodule/fetch pair (fixture B)", () => {
 				const git = yield* Git;
 				yield* git.sparseCheckoutSet(subDir(), ["src"], { cone: false });
 				assert.deepStrictEqual(yield* git.configGet(subDir(), "core.sparseCheckout"), Option.some("true"));
+				// The narrowing must be real, not just configured: lib.txt sits at the
+				// tree root, outside the "src" pattern, so it leaves the working tree.
+				const libGone = yield* Effect.promise(() =>
+					stat(join(subDir(), "lib.txt")).then(
+						() => false,
+						() => true,
+					),
+				);
+				assert.isTrue(libGone);
 			}),
 		),
 	);

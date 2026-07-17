@@ -1018,6 +1018,78 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("configSet refuses an option-like KEY without spawning", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configSet(cwd, "--global", "true");
+				});
+				const exit = yield* Effect.exit(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isTrue(Exit.isFailure(exit));
+				assert.isFalse(spawned);
+			}),
+		);
+
+		it.effect("configSet refuses an option-like FILE without spawning", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configSet(cwd, "alias.x", "true", { file: "--blob=evil" });
+				});
+				const exit = yield* Effect.exit(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isTrue(Exit.isFailure(exit));
+				assert.isFalse(spawned);
+			}),
+		);
+
+		it.effect("fetch refuses an option-like REMOTE without spawning", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "main", remote: "--upload-pack=evil" });
+				});
+				const exit = yield* Effect.exit(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isTrue(Exit.isFailure(exit));
+				assert.isFalse(spawned);
+			}),
+		);
+
+		it.effect("fetch refuses an option-like REF without spawning", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "--tags" });
+				});
+				const exit = yield* Effect.exit(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isTrue(Exit.isFailure(exit));
+				assert.isFalse(spawned);
+			}),
+		);
+
 		it.effect("add stages paths behind -- so option-like paths are inert", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {
