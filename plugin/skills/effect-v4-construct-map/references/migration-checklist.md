@@ -230,6 +230,10 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
 
 ## 9. Testing sweep (details: `effect-v4-testing`)
 
+- Plain-Vitest repo? Adopt `@effect/vitest` (in `catalog:effect`, same beta pin
+  as `effect`) and route Effect-returning tests through `it.effect` — it
+  re-exports Vitest, so plain `it()` tests keep working. Plain Vitest is not a
+  "nothing to migrate" state.
 - Imports: `effect/FastCheck` → `effect/testing/FastCheck`; `TestClock` →
   `effect/testing/TestClock`.
 - `it.effect` installs a virtual `TestClock` **at the epoch** — clock-reading

@@ -46,7 +46,7 @@ The platform-agnostic sync functions (`findWorkspaceRootSync`, `getWorkspacePack
 - **`ChangeDetector`** — `changedFiles`/`workingChanges` over `@effected/git` (`includeUncommitted` option).
 - **`WorkspaceSnapshots`** — `at(ref)` (git-only, no checkout, cached per `(root, ref)`) and `worktree()` (live tree, uncached), both returning `WorkspaceStateSnapshot` (`versions`, `package(name)`, `resolve(...)`, snapshot-scoped resolver layers).
 - **`LockfileReader`** — root → PM detection → file read → `Lockfile.parse`.
-- **`WorkspacesSync`** — `findWorkspaceRootSync(options)` / `getWorkspacePackagesSync(root, options)`: Node-only synchronous escape hatch for config-time discovery that cannot `await` (e.g. a vitest config). Both are **total** — an unenumerable pattern or unreadable manifest is skipped, never raised, and only truncate at a depth/budget bound where the async surface fails typed.
+- **Sync escape hatch (bare consts, NOT a `WorkspacesSync` namespace)** — `findWorkspaceRootSync(options)` / `getWorkspacePackagesSync(root, options)`, both re-exported from the MAIN entrypoint and platform-agnostic. There is no `WorkspacesSync` namespace object; each is a free-standing const taking a required options bag that carries a consumer-supplied `SyncFileSystem`/`SyncPath` — nothing defaults to Node. Pass `nodeSyncOps` from `@effected/workspaces/node-sync` (or `{ ...nodeSyncOps, cwd }`) as shown above. For config-time discovery that cannot `await` (e.g. a vitest config). Both are **total** — an unenumerable pattern or unreadable manifest is skipped, never raised, and only truncate at a depth/budget bound where the async surface fails typed.
 
 ## Usage
 

@@ -135,7 +135,11 @@ For an app upgrading where it stands:
    restructures until typecheck is clean, suite green.
 5. Migrate tests alongside: `@effect/vitest` pinned to the matching beta,
    `effect/testing/*` imports, and the false-green patterns in
-   `effect-v4-testing` (TestClock at the epoch, prop array-form).
+   `effect-v4-testing` (TestClock at the epoch, prop array-form). If the repo is
+   on **plain Vitest** (no `@effect/vitest`), adopt it — add `@effect/vitest`
+   from `catalog:effect` and route Effect-returning tests through `it.effect`;
+   it re-exports Vitest, so plain `it()` tests keep working unchanged. Do not
+   treat plain Vitest as a terminal "nothing to migrate" state.
 
 ## Cycle-firewall discipline (library ports)
 
