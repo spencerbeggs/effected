@@ -1,5 +1,17 @@
 # @effected/pnpm-plugin-effect
 
+## 0.1.1
+
+### Bug Fixes
+
+* Added a direct `effect` devDependency (pinned to the workspace's `catalog:effect`) so pnpm binds `@savvy-web/bundler` 2.0's published `@effected/*` peers to Effect v4 instead of the v3 version `rolldown-pnpm-config` carries. Without this, the package failed to build. [#85][#85]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#85]: https://github.com/spencerbeggs/effected/pull/85
+
 ## 0.1.0
 
 ### Features
