@@ -4,6 +4,115 @@
 // represent a value faithfully.
 
 /**
+ * Column-based line folding for a single logical scalar line (YAML 1.2 flow
+ * folding, §7.3 / §8.2.1). Breaks the content at "safe" single-space
+ * boundaries — a space whose neighbours are both non-space — so each inserted
+ * line break is a *semantically transparent* fold: on read, a lone break
+ * between non-empty lines at the same indent folds back to a single space, and
+ * the leading indentation of continuation lines is absorbed as separation
+ * whitespace. The original space at the break point is consumed, replaced by
+ * the break, so no content whitespace is added or lost.
+ *
+ * Continuation lines are prefixed with `indent`. `indentAtStart` is the column
+ * the first line begins at (its content is already `indentAtStart` columns in),
+ * used only to budget the first line; it is approximate because the caller's
+ * exact column (after a `key: ` prefix, say) is not known here.
+ *
+ * Only breaks where a break is safe. When no safe break point exists before the
+ * width limit, the line overflows unwrapped rather than corrupting the value —
+ * width folding is a best-effort presentation concern, never a correctness one.
+ * A non-positive `lineWidth` (the default) returns the text unchanged.
+ */
+export function foldScalarLine(text: string, indent: string, lineWidth: number, indentAtStart: number): string {
+	if (lineWidth <= 0) return text;
+	// Chars a continuation line can hold before reaching the width column. Guard
+	// against a pathological indent >= lineWidth (nothing would fit) by never
+	// dropping below one character of progress.
+	const contentWidth = Math.max(1, lineWidth - indent.length);
+	// Index budget for the current physical line: fold once the scan index
+	// reaches it and a candidate split has been seen.
+	let end = Math.max(1, lineWidth - indentAtStart);
+	const folds: number[] = [];
+	let split: number | undefined;
+	let prev: string | undefined;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i];
+		if (ch === " " && prev !== undefined && prev !== " ") {
+			const next = text[i + 1];
+			if (next !== undefined && next !== " ") split = i;
+		}
+		if (i >= end && split !== undefined) {
+			folds.push(split);
+			end = split + contentWidth;
+			split = undefined;
+		}
+		prev = ch;
+	}
+	if (folds.length === 0) return text;
+	let result = text.slice(0, folds[0]);
+	for (let f = 0; f < folds.length; f++) {
+		const fold = folds[f];
+		const sliceEnd = folds[f + 1] ?? text.length;
+		// Drop the space at `fold`; the inserted break carries the join.
+		result += `\n${indent}${text.slice(fold + 1, sliceEnd)}`;
+	}
+	return result;
+}
+
+/**
+ * Apply {@link foldScalarLine} to an already-rendered scalar according to its
+ * style, inferred from the leading character:
+ *
+ * - `|` block-literal — returned unchanged; literal blocks preserve bytes by
+ *   definition and must never be folded.
+ * - `>` block-folded — each base-indent body content line is folded; blank
+ *   lines and more-indented lines (which the reader treats as literal breaks)
+ *   are left untouched.
+ * - `"` double-quoted — the inner content is folded; breaking only at content
+ *   spaces means no `\`-escaped continuations are needed.
+ * - `'` single-quoted — returned unchanged (out of scope for width folding).
+ * - otherwise plain — folded directly.
+ *
+ * `indent` is one indentation level (the continuation prefix); `lineWidth` is
+ * the target column. A non-positive `lineWidth` returns the text unchanged.
+ */
+export function foldRenderedScalar(rendered: string, indent: string, lineWidth: number): string {
+	if (lineWidth <= 0 || rendered.length === 0) return rendered;
+	const first = rendered[0];
+	// Block-literal and single-quoted are never width-folded.
+	if (first === "|" || first === "'") return rendered;
+	if (first === ">") {
+		const lines = rendered.split("\n");
+		const out: string[] = [lines[0]];
+		for (let i = 1; i < lines.length; i++) {
+			const line = lines[i];
+			// Fold only base-indent content lines: they start with exactly `indent`
+			// and the next char is content (not a further space/tab, which would
+			// make the line "more-indented" and its break literal to the reader).
+			if (
+				line.length > indent.length &&
+				line.startsWith(indent) &&
+				line[indent.length] !== " " &&
+				line[indent.length] !== "\t"
+			) {
+				const content = line.slice(indent.length);
+				out.push(indent + foldScalarLine(content, indent, lineWidth, indent.length));
+			} else {
+				out.push(line);
+			}
+		}
+		return out.join("\n");
+	}
+	if (first === '"') {
+		const inner = rendered.slice(1, -1);
+		// +1 for the opening quote already consumed on the first line.
+		return `"${foldScalarLine(inner, indent, lineWidth, indent.length + 1)}"`;
+	}
+	// Plain scalar.
+	return foldScalarLine(rendered, indent, lineWidth, indent.length);
+}
+
+/**
  * C0 control characters (except TAB) that must be escaped in double-quoted scalars.
  */
 export function isControlChar(code: number): boolean {

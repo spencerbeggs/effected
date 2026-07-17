@@ -14,7 +14,7 @@
 // The dependency edge runs facade → engine only, so `noImportCycles` stays
 // satisfied.
 
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { buildAnchorMap } from "./internal/composer/anchors.js";
 import { composeAllDocuments, composeFirstDocument } from "./internal/composer/document.js";
 import type { RawDiagnostic } from "./internal/diagnostics.js";
@@ -54,10 +54,17 @@ export class YamlParseOptions extends Schema.Class<YamlParseOptions>("YamlParseO
 
 /**
  * Options controlling stringify behavior. All fields are omissible; absent
- * fields resolve to `indent` `2`, `lineWidth` `80`, `defaultScalarStyle`
+ * fields resolve to `indent` `2`, `lineWidth` `0`, `defaultScalarStyle`
  * `"plain"`, `defaultCollectionStyle` `"block"`, `sortKeys` `false`,
  * `indentSequences` `false`, `finalNewline` `true` and `forceDefaultStyles`
  * `false`.
+ *
+ * `lineWidth` controls column-based scalar folding. The default `0` (and any
+ * value `<= 0`) never wraps, emitting byte-identical output to the historic
+ * no-fold behavior; a positive value folds long plain, double-quoted and
+ * block-folded (`>`) scalars at approximately that column, inserting only
+ * semantically transparent line breaks. Block-literal (`|`) content is never
+ * folded — literal blocks preserve their bytes by definition.
  *
  * `indentSequences` controls the presentation of block sequences nested under
  * a mapping key: `false` (the default) emits them at the key's column — the
@@ -84,6 +91,11 @@ export class YamlParseOptions extends Schema.Class<YamlParseOptions>("YamlParseO
  */
 export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("YamlStringifyOptions")({
 	indent: Schema.optionalKey(Schema.Number),
+	/**
+	 * Column at which to fold long scalars. Default `0` (and any value `<= 0`)
+	 * never wraps; a positive value folds plain, double-quoted and block-folded
+	 * (`>`) scalars at approximately that column, never block-literal (`|`).
+	 */
 	lineWidth: Schema.optionalKey(Schema.Number),
 	defaultScalarStyle: Schema.optionalKey(ScalarStyle),
 	defaultCollectionStyle: Schema.optionalKey(CollectionStyle),
@@ -159,6 +171,106 @@ const toDiagnostics = (text: string, records: ReadonlyArray<RawDiagnostic>): Rea
 	records.map((r) => YamlDiagnostic.fromRaw(r, text));
 
 /**
+ * Build the fatal {@link YamlParseError} for an alias-expansion "billion
+ * laughs" blow-up. The offending expansion has no source span, so the
+ * diagnostic carries zero offsets.
+ */
+const aliasCountExceededError = (message: string, text: string): YamlParseError =>
+	new YamlParseError({
+		diagnostics: [
+			YamlDiagnostic.make({ code: "AliasCountExceeded", message, offset: 0, length: 0, line: 0, character: 0 }),
+		],
+		input: text,
+	});
+
+/**
+ * Map an internal stringifier throw to its typed {@link YamlStringifyError},
+ * or return `undefined` for any other defect (which the caller re-throws).
+ * Shared by the Effect and synchronous stringify paths so both surface the
+ * hardening guards (circular reference, nesting-depth cap) identically.
+ */
+const stringifyDefectToError = (defect: unknown, value: unknown): YamlStringifyError | undefined => {
+	if (defect instanceof StringifyFailure) {
+		return new YamlStringifyError({
+			diagnostics: [
+				YamlDiagnostic.make({
+					code: "CircularReference",
+					message: defect.reason,
+					offset: 0,
+					length: 0,
+					line: 0,
+					character: 0,
+				}),
+			],
+			value,
+		});
+	}
+	// Deeply-nested acyclic value overflowed the stringifier's recursion budget —
+	// surface it as a fatal stringify error, not a stack-overflow defect.
+	if (defect instanceof StringifyDepthExceeded) {
+		return new YamlStringifyError({
+			diagnostics: [
+				YamlDiagnostic.make({
+					code: "NestingDepthExceeded",
+					message: defect.message,
+					offset: 0,
+					length: 0,
+					line: 0,
+					character: 0,
+				}),
+			],
+			value,
+		});
+	}
+	return undefined;
+};
+
+/**
+ * Synchronous single-document parse returning a {@link Result}. The pure
+ * engine bypasses the Effect runtime entirely: the composer, the failure
+ * collection and the alias-expansion budget all run inline, and every failure
+ * mode (fatal diagnostics, duplicate keys, a "billion laughs" blow-up) yields
+ * a `Failure` carrying a typed {@link YamlParseError} — never a throw.
+ */
+const parseSyncImpl = (text: string, options?: YamlParseOptions): Result.Result<unknown, YamlParseError> => {
+	const doc = composeFirstDocument(text, toParseInput(options));
+	const failures = failureRecords(doc, options?.uniqueKeys ?? true);
+	if (failures.length > 0) {
+		return Result.fail(new YamlParseError({ diagnostics: toDiagnostics(text, failures), input: text }));
+	}
+	// An empty map lets nodeToJsValue register anchors incrementally, so aliases
+	// resolve to the most recent anchor at the point of use.
+	const anchors = new Map<string, YamlNode>();
+	try {
+		return Result.succeed(nodeToJsValue(doc.contents, anchors, options?.maxAliasCount ?? 100));
+	} catch (defect) {
+		if (defect instanceof AliasExpansionBudgetExceeded) {
+			return Result.fail(aliasCountExceededError(defect.message, text));
+		}
+		throw defect;
+	}
+};
+
+/**
+ * Synchronous stringify returning a {@link Result}. Mirrors {@link Yaml.stringify}
+ * without the Effect wrapper: a circular reference or a value nested past the
+ * recursion budget yields a `Failure` carrying a typed {@link YamlStringifyError},
+ * never a thrown defect.
+ */
+const stringifySyncImpl = (
+	value: unknown,
+	options?: YamlStringifyOptions,
+): Result.Result<string, YamlStringifyError> => {
+	try {
+		return Result.succeed(stringifyValue(value, toStringifyInput(options)));
+	} catch (defect) {
+		const error = stringifyDefectToError(defect, value);
+		if (error !== undefined) return Result.fail(error);
+		throw defect;
+	}
+};
+
+/**
  * Collect the raw diagnostics that make a composed document a parse failure:
  * every fatal-code error, plus DuplicateKey warnings promoted to errors when
  * `uniqueKeys` is in force (the v3 `parse` contract). Order preserved:
@@ -186,19 +298,7 @@ const extractDocumentValue = (
 		try: () => nodeToJsValue(contents, anchors, maxAliasCount),
 		catch: (defect) => {
 			if (defect instanceof AliasExpansionBudgetExceeded) {
-				return new YamlParseError({
-					diagnostics: [
-						YamlDiagnostic.make({
-							code: "AliasCountExceeded",
-							message: defect.message,
-							offset: 0,
-							length: 0,
-							line: 0,
-							character: 0,
-						}),
-					],
-					input: text,
-				});
+				return aliasCountExceededError(defect.message, text);
 			}
 			throw defect;
 		},
@@ -208,39 +308,8 @@ const stringifyOrFail = (value: unknown, options?: YamlStringifyOptions): Effect
 	Effect.try({
 		try: () => stringifyValue(value, toStringifyInput(options)),
 		catch: (defect) => {
-			if (defect instanceof StringifyFailure) {
-				return new YamlStringifyError({
-					diagnostics: [
-						YamlDiagnostic.make({
-							code: "CircularReference",
-							message: defect.reason,
-							offset: 0,
-							length: 0,
-							line: 0,
-							character: 0,
-						}),
-					],
-					value,
-				});
-			}
-			// Deeply-nested acyclic value overflowed the stringifier's recursion
-			// budget — surface it as a fatal stringify error, not a stack-overflow
-			// defect.
-			if (defect instanceof StringifyDepthExceeded) {
-				return new YamlStringifyError({
-					diagnostics: [
-						YamlDiagnostic.make({
-							code: "NestingDepthExceeded",
-							message: defect.message,
-							offset: 0,
-							length: 0,
-							line: 0,
-							character: 0,
-						}),
-					],
-					value,
-				});
-			}
+			const error = stringifyDefectToError(defect, value);
+			if (error !== undefined) return error;
 			throw defect;
 		},
 	});
@@ -337,6 +406,65 @@ export class Yaml {
 	static readonly stringify = Effect.fn("Yaml.stringify")(function* (value: unknown, options?: YamlStringifyOptions) {
 		return yield* stringifyOrFail(value, options);
 	});
+
+	/**
+	 * Synchronous single-document parse, returning a {@link Result} instead of
+	 * an `Effect`. A pure escape hatch for config-time callers that cannot
+	 * `await` an Effect (a `vitest.config.ts` is the motivating case): it runs
+	 * the same engine as {@link Yaml.parse} inline.
+	 *
+	 * Preserves the package contract — malformed and adversarial input fails
+	 * typed, never as a defect. Fatal diagnostics, duplicate keys and a
+	 * "billion laughs" alias-expansion blow-up all yield a `Failure` carrying a
+	 * {@link YamlParseError}; the method never throws.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Yaml } from "@effected/yaml";
+	 * import { Result } from "effect";
+	 *
+	 * const result = Yaml.parseSync("name: Alice\nage: 30");
+	 * if (Result.isSuccess(result)) {
+	 *   result.success; // { name: "Alice", age: 30 }
+	 * } else {
+	 *   result.failure; // YamlParseError
+	 * }
+	 * ```
+	 *
+	 * @public
+	 */
+	static parseSync(text: string, options?: YamlParseOptions): Result.Result<unknown, YamlParseError> {
+		return parseSyncImpl(text, options);
+	}
+
+	/**
+	 * Synchronous stringify, returning a {@link Result} instead of an `Effect`.
+	 * The pure counterpart to {@link Yaml.stringify} for config-time callers
+	 * that cannot `await`.
+	 *
+	 * Preserves the package contract — a circular reference (`CircularReference`)
+	 * or a value nested past the recursion budget (`NestingDepthExceeded`)
+	 * yields a `Failure` carrying a {@link YamlStringifyError} rather than a
+	 * thrown stack-overflow defect; the method never throws.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Yaml } from "@effected/yaml";
+	 * import { Result } from "effect";
+	 *
+	 * const result = Yaml.stringifySync({ name: "Alice" });
+	 * if (Result.isFailure(result)) {
+	 *   result.failure; // YamlStringifyError
+	 * } else {
+	 *   result.success; // "name: Alice\n"
+	 * }
+	 * ```
+	 *
+	 * @public
+	 */
+	static stringifySync(value: unknown, options?: YamlStringifyOptions): Result.Result<string, YamlStringifyError> {
+		return stringifySyncImpl(value, options);
+	}
 
 	/**
 	 * Strip comments from YAML text. Without `replaceCh`, comment characters
