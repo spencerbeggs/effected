@@ -83,6 +83,10 @@ idiomatic recoveries:
 
 - **`Effect.catchTag(tag, handler)` / `Effect.catchTags({ Tag: handler })`** —
   targeted typed recovery, both unchanged. Default choice for domain errors.
+  `catchTag` also accepts a non-empty tag ARRAY sharing one handler —
+  `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fallback)` —
+  which obviates `catchTags` boilerplate when several tags route to the same
+  recovery (verified at beta.98, `Effect.ts` `NonEmptyReadonlyArray<Tags<E>>`).
 - **`Effect.catch(handler)`** — recover from any typed failure (the v3
   `catchAll`). **`Effect.catchCause(handler)`** for full-cause infra handling,
   **`Effect.catchDefect(handler)`** for defects.

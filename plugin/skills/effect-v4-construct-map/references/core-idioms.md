@@ -59,7 +59,7 @@ limit onto a backoff is the v3 habit; in v4 the limit is just another key.
 | `Effect.catchSome` (Option-returning fn) | `Effect.catchFilter` (takes a `Filter`, e.g. `Filter.fromPredicate`) |
 | `Effect.catchSomeCause` | `Effect.catchCauseFilter` |
 | `Effect.catchSomeDefect` | **Removed** |
-| `Effect.catchTag` / `catchTags` / `catchIf` | unchanged |
+| `Effect.catchTag` / `catchTags` / `catchIf` | unchanged — and `catchTag` now also takes a non-empty tag ARRAY sharing one handler (`Effect.catchTag(["A", "B"], recover)`), replacing a two-entry `catchTags` |
 | — (new in v4) | `Effect.catchReason` / `catchReasons` / `catchEager` |
 
 ## Generators, yieldables, forking, runtime, scope, equality
