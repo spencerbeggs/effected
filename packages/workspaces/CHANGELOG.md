@@ -1,5 +1,25 @@
 # @effected/workspaces
 
+## 0.3.1
+
+### Dependencies
+
+| Dependency          | Type       | Action  | From  | To    |
+| ------------------- | ---------- | ------- | ----- | ----- |
+| @effected/git       | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/glob      | dependency | updated | 0.1.0 | 0.1.1 |
+| @effected/lockfiles | dependency | updated | 0.1.2 | 0.1.3 |
+| @effected/walker    | dependency | updated | 0.2.0 | 0.2.1 |
+| @effected/yaml      | dependency | updated | 0.2.0 | 0.3.0 |
+
+* | Dependency       | Type       | Action | From | To    |                                                                       |
+  | ---------------- | ---------- | ------ | ---- | ----- | --------------------------------------------------------------------- |
+  | @effected/semver | dependency | added  | —    | 0.1.0 | [#106][#106] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#106]: https://github.com/spencerbeggs/effected/pull/106
+
 ## 0.3.0
 
 ### Features
