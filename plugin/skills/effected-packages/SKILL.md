@@ -52,8 +52,10 @@ against its services, or test code that uses it.
   one you use and never collect them into a namespace object; a namespace
   object reaches every codec and silently drags every parsing engine into the
   bundle.
-- **Nothing may depend on `@effected/app`.** It is the application control
-  plane; libraries compose `xdg`/`store`/`config-file` directly.
+- **No library or package may depend on `@effected/app`** — but the application
+  itself is exactly its intended consumer. It is the application control plane;
+  a library taking it as a dependency drags integrated tier into every consumer,
+  so libraries compose `xdg`/`store`/`config-file` directly.
 
 ## Cross-cutting facts
 
@@ -81,6 +83,11 @@ against its services, or test code that uses it.
 - If a package feels like it is missing a service, a construct reads awkwardly,
   or you re-implement something twice, surface it to the user as an
   improvement suggestion for the kit — the ecosystem is actively dogfooding.
+- **Adopting the kit from the v3-era predecessors** (`xdg-effect`,
+  `config-file-effect`, `workspaces-effect`)? That's a rename **plus** real API
+  breaks, not net-new wiring — the Effect v3→v4 map doesn't cover old kit → new
+  kit. See [predecessor-bridge.md](./references/predecessor-bridge.md) for the
+  per-package before/after tables.
 
 ## Related skills
 

@@ -2,7 +2,7 @@
 
 The application control plane: one composition layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place. A thin composition over `xdg` + `store` + `config-file` with no domain logic of its own. Integrated tier (inherited from `store`).
 
-**The rule: nothing may depend on `@effected/app`.** It is for applications only — a library taking the control plane as a dependency drags integrated tier into every consumer. Libraries compose the underlying packages directly.
+**The rule: no library or package may depend on `@effected/app`** — the application at the top of the graph is exactly what's meant to provide and use it, so "nothing may depend on it" bars *other libraries*, not the application itself. A library taking the control plane as a dependency drags integrated tier into every consumer; libraries compose the underlying packages directly. If you're building the app, `@effected/app` is precisely your control plane — reach for it.
 
 ## Import
 

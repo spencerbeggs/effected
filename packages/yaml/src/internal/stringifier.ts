@@ -12,6 +12,7 @@ import type { CollectionStyle, ScalarStyle, YamlNode } from "../YamlNode.js";
 import { YamlAlias, YamlMap, YamlPair, YamlScalar, YamlSeq } from "../YamlNode.js";
 import { MAX_NESTING_DEPTH } from "./composer/state.js";
 import {
+	foldRenderedScalar,
 	hasInteriorTrailingWhitespace,
 	hasNewlineSpacesTab,
 	isControlChar,
@@ -415,7 +416,9 @@ interface StringifyContext {
 function createContext(options?: StringifyOptionsInput): StringifyContext {
 	return {
 		indent: options?.indent ?? 2,
-		lineWidth: options?.lineWidth ?? 80,
+		// Default 0 = never wrap: byte-identical to the historic (inert) behavior.
+		// Only a positive lineWidth opts a caller into column-based folding.
+		lineWidth: options?.lineWidth ?? 0,
 		defaultScalarStyle: options?.defaultScalarStyle ?? "plain",
 		defaultCollectionStyle: options?.defaultCollectionStyle ?? "block",
 		sortKeys: options?.sortKeys ?? false,
@@ -432,7 +435,7 @@ function createContext(options?: StringifyOptionsInput): StringifyContext {
  * responsible for prepending the appropriate indentation prefix to each line.
  * This avoids double-indentation when embedding nested collections.
  */
-function stringifyLines(value: unknown, ctx: StringifyContext, depth: number): string[] {
+function stringifyLines(value: unknown, ctx: StringifyContext, depth: number, allowFold = true): string[] {
 	// Depth guard: the value-stringifier trio (this fn, stringifyArrayLines and
 	// stringifyObjectLines) is mutually recursive with no natural bound, so a
 	// deeply-nested acyclic value would overflow the stack as a RangeError
@@ -455,8 +458,14 @@ function stringifyLines(value: unknown, ctx: StringifyContext, depth: number): s
 	// string
 	if (typeof value === "string") {
 		// For block scalars the header line and body lines are already split
-		const rendered = renderString(value, ctx.defaultScalarStyle, " ".repeat(ctx.indent), false, ctx.forceDefaultStyles);
-		return rendered.split("\n");
+		const indentStr = " ".repeat(ctx.indent);
+		const rendered = renderString(value, ctx.defaultScalarStyle, indentStr, false, ctx.forceDefaultStyles);
+		// Column-based folding only fires in block contexts (not flow items, whose
+		// lines are re-joined with spaces) and only for a positive lineWidth. The
+		// folded continuation lines carry `indentStr`, which the block mapping /
+		// sequence callers place inline just like a multi-line block scalar.
+		const folded = allowFold && ctx.lineWidth > 0 ? foldRenderedScalar(rendered, indentStr, ctx.lineWidth) : rendered;
+		return folded.split("\n");
 	}
 
 	// array
@@ -494,7 +503,8 @@ function stringifyArrayLines(arr: unknown[], ctx: StringifyContext, depth: numbe
 	}
 
 	if (ctx.defaultCollectionStyle === "flow") {
-		const items = arr.map((item) => stringifyLines(item, ctx, depth + 1).join(" "));
+		// Flow items are re-joined with spaces, so folding must not run here.
+		const items = arr.map((item) => stringifyLines(item, ctx, depth + 1, false).join(" "));
 		return [`[${items.join(", ")}]`];
 	}
 
@@ -508,7 +518,10 @@ function stringifyArrayLines(arr: unknown[], ctx: StringifyContext, depth: numbe
 		} else {
 			// First line of a block scalar goes on the same line as `-`
 			const first = itemLines[0];
-			if (first.startsWith("|") || first.startsWith(">")) {
+			// Block scalars (`|`/`>`) and folded/multi-line string scalars (plain or
+			// double-quoted, whose continuation lines already carry their indent)
+			// put the first line inline after `-` and emit continuations as-is.
+			if (first.startsWith("|") || first.startsWith(">") || typeof item === "string") {
 				lines.push(`- ${first}`);
 				for (let i = 1; i < itemLines.length; i++) {
 					lines.push(itemLines[i]);
@@ -554,7 +567,8 @@ function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContex
 	if (ctx.defaultCollectionStyle === "flow") {
 		const pairs = keys.map((k) => {
 			const keyStr = renderString(k, "plain", "");
-			const valStr = stringifyLines(obj[k], ctx, depth + 1).join(" ");
+			// Flow values are re-joined with spaces, so folding must not run here.
+			const valStr = stringifyLines(obj[k], ctx, depth + 1, false).join(" ");
 			return `${keyStr}: ${valStr}`;
 		});
 		return [`{${pairs.join(", ")}}`];
@@ -578,8 +592,10 @@ function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContex
 			lines.push(`${keyStr}: ${valLines[0]}`);
 		} else {
 			const first = valLines[0];
-			if (first.startsWith("|") || first.startsWith(">")) {
-				// Block scalar header on same line as key
+			if (first.startsWith("|") || first.startsWith(">") || typeof val === "string") {
+				// Block scalar header, or a folded/multi-line string scalar (plain or
+				// double-quoted, continuation lines already indented): first line on
+				// the key line, continuation lines emitted as-is.
 				lines.push(`${keyStr}: ${first}`);
 				for (let i = 1; i < valLines.length; i++) {
 					lines.push(valLines[i]);

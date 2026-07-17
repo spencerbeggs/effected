@@ -19,7 +19,12 @@ export interface ParseOptionsInput {
 export interface StringifyOptionsInput {
 	/** Spaces per indentation level. Default `2`. */
 	readonly indent?: number | undefined;
-	/** Preferred maximum line width. Default `80`. */
+	/**
+	 * Column at which to fold long flow and block-folded scalars. Default `0`
+	 * (and any value `<= 0`) means never wrap — byte-identical, no-fold output.
+	 * A positive value folds plain, double-quoted and block-folded (`>`)
+	 * scalars at approximately that column; block-literal (`|`) is never folded.
+	 */
 	readonly lineWidth?: number | undefined;
 	/** Scalar output style when none is requested. Default `"plain"`. */
 	readonly defaultScalarStyle?: ScalarStyle | undefined;

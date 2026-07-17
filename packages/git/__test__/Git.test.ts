@@ -353,6 +353,7 @@ describe("Git", () => {
 				);
 				assert.instanceOf(failure, GitCommandError);
 				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "failed");
 					assert.strictEqual(failure.exitCode, 2);
 					assert.strictEqual(failure.stderr, "fatal: something unrecognized went wrong\n");
 				}
@@ -490,6 +491,27 @@ describe("Git", () => {
 				});
 				const sha = yield* run(program, () => ({ stdout: "a".repeat(40), exit: 0 }));
 				assert.strictEqual(sha, "a".repeat(40));
+			}),
+		);
+
+		it.effect("a guard rejection carries kind 'refused' and never spawns a process", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.checkout(cwd, "-b");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isFalse(spawned);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
 			}),
 		);
 	});
@@ -1040,6 +1062,30 @@ describe("Git", () => {
 				);
 				assert.isTrue(Exit.isFailure(exit));
 				assert.isFalse(spawned);
+			}),
+		);
+
+		it.effect("fetchAny short-circuits a refused ref to a single refused error, not a double rejection", () =>
+			Effect.gen(function* () {
+				// The refused error must NOT route through the tag-then-plain fallback
+				// (which would re-reject through the plain form's guard). Routing on
+				// kind "refused" is what keeps it a single rejection.
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchAny(cwd, { ref: "--tags" });
+				});
+				const exit = yield* Effect.exit(run(program, () => ({ exit: 0 })));
+				assert.isTrue(Exit.isFailure(exit));
+				if (Exit.isFailure(exit)) {
+					const found = Cause.findFail(exit.cause);
+					assert.isTrue(Result.isSuccess(found));
+					if (Result.isSuccess(found)) {
+						assert.instanceOf(found.success.error, GitCommandError);
+						const error = found.success.error as GitCommandError;
+						assert.strictEqual(error.kind, "refused");
+						assert.deepStrictEqual([...error.args], ["--tags"]);
+					}
+				}
 			}),
 		);
 

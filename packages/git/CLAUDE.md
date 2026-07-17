@@ -108,7 +108,7 @@ which method-specific rows apply on top of the shared taxonomy:
 mutating tier's ref-fetching operations. It classifies as `UnknownRefError`
 for every method that reaches `classify`, but in practice only `fetch`,
 `submoduleUpdate` and `submoduleAdd` produce it — it is the typed signal a
-tag-then-branch fetch fallback (`Effect.orElse`) branches on.
+tag-then-branch fetch fallback (`Effect.catchTag`) branches on.
 
 `"quiet"` backs `defaultBranch` and `configGet`: both run their git command
 with `--quiet`/rely on a silent exit 1 to mean "unset", so any exit-1 WITH
@@ -227,13 +227,17 @@ than risking git reading it as a flag.
 `fetch`, `submoduleUpdate` and `submoduleAdd` are the tier's ref-fetching
 trio; see the classification table above for `"couldn't find remote ref"`,
 the typed `UnknownRefError` signal a tag-then-branch fetch fallback branches
-on. `fetchAny` IS that fallback, shipped: it guards `remote`/`ref` once up
-front, runs the tag-form `fetch` (`tag: true`), and on `UnknownRefError` OR
-any `GitCommandError` (unclassified tag-form stderr shapes stay on the
-fallback path) retries as a plain `fetch`. `NotARepositoryError` propagates
-from the tag attempt — the plain form would fail identically. When both
-attempts fail, the PLAIN fetch's error surfaces; the tag attempt's failure is
-discarded.
+on. `fetchAny` IS that fallback, shipped: it runs the tag-form `fetch`
+(`tag: true`), and on `UnknownRefError` OR a `GitCommandError` (unclassified
+tag-form stderr shapes stay on the fallback path) retries as a plain `fetch` —
+EXCEPT a `GitCommandError` whose `kind` is `"refused"`, which it re-fails
+immediately. That refused case is a pre-spawn guard rejection from the tag-form
+`fetch`'s own option-like-ref guard; routing on `kind` is why `fetchAny` no
+longer duplicates an up-front `rejectOptionLikeRefs` guard — a refused ref would
+be rejected identically by the plain form, so the short-circuit yields a single
+rejection with zero further spawns. `NotARepositoryError` propagates from the
+tag attempt — the plain form would fail identically. When both attempts fail,
+the PLAIN fetch's error surfaces; the tag attempt's failure is discarded.
 
 ## Testing and building
 

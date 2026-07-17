@@ -188,3 +188,9 @@ arity — v3's `orElse(self, () => that)` `LazyArg` form is now
 `orElse(self, that: ConfigProvider)`, `dual(2)`. `tsc` catches the thunk
 (TS2345); untyped JS does not, and it half-works — succeeding for keys the
 primary holds and throwing only on the fallback path.
+
+Two constructs common in v3 **test setup** are gone. `ConfigProvider.fromMap(new
+Map([...]))` → `ConfigProvider.fromUnknown({ ... })` — a plain object tree, not a
+`Map`; `fromMap` no longer exists. And `Effect.withConfigProvider(p)(eff)` →
+`eff.pipe(Effect.provide(ConfigProvider.layer(p)))` — `withConfigProvider` was
+removed; provide the provider as a `Layer`.

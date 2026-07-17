@@ -210,6 +210,7 @@ describe("ChangeDetector — a git command that fails", () => {
 			base === "nope"
 				? Effect.fail(
 						new GitCommandError({
+							kind: "failed",
 							args: ["diff", "--name-only", "-z", "--relative", `${base}...${head}`],
 							cwd,
 							exitCode: 128,

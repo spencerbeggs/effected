@@ -247,7 +247,9 @@ describe("WorkspaceSnapshots.at — a failed init is retried", () => {
 	const flakyLsTree: Git["Service"]["lsTree"] = (_cwd: string, ref: string) => {
 		lsTreeCalls += 1;
 		if (lsTreeCalls === 1) {
-			return Effect.fail(new GitCommandError({ args: ["ls-tree", "-r", "-z", ref], cwd: "/repo", stderr: "boom" }));
+			return Effect.fail(
+				new GitCommandError({ kind: "failed", args: ["ls-tree", "-r", "-z", ref], cwd: "/repo", stderr: "boom" }),
+			);
 		}
 		return Effect.succeed(
 			Object.keys(npmRefTrees[ref] ?? {}).map((path) =>

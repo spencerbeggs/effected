@@ -13,6 +13,18 @@ are the canonical shapes; this skill is why they look the way they do. (The
 `effect/testing/*` modules — TestClock, TestConsole, TestSchema, FastCheck —
 are indexed in `effect-v4-module-index`; this skill owns how to use them.)
 
+**Migrating a plain-Vitest Effect repo? Adopt `@effect/vitest` — don't stay on
+plain Vitest.** A repo whose tests are plain Vitest (no `@effect/vitest`) is not
+"nothing to migrate on the testing axis"; the move is to add `@effect/vitest`
+(it's in `catalog:effect`, pinned to the same beta as `effect` — `pnpm add -D
+@effect/vitest` resolves the catalog pin) and route Effect-returning tests
+through `it.effect`. `@effect/vitest` re-exports Vitest, so it is a drop-in
+entrypoint: existing plain `it()` tests keep working unchanged, and only the
+Effect-bearing ones move to `it.effect` to unlock the typed-error assertions and
+false-green protections below. (Effect's own test helpers — `TestClock`,
+`TestConsole`, `FastCheck` — live in core `effect/testing/*` regardless of the
+test framework.)
+
 ## The default runner: `it.effect` + `Effect.gen`
 
 ```ts

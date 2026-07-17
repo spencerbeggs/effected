@@ -233,6 +233,161 @@ describe("Yaml", () => {
 				}),
 			);
 		});
+
+		describe("lineWidth folding", () => {
+			const long = "the quick brown fox jumps over the lazy dog and keeps running far away into the sunset";
+
+			it.effect("a positive lineWidth folds a long plain scalar transparently (round-trips)", () =>
+				Effect.gen(function* () {
+					const value = { text: long };
+					const wrapped = yield* Yaml.stringify(value, { lineWidth: 30 });
+					const lines = wrapped.trimEnd().split("\n");
+					// Folding fired: the scalar spans several physical lines.
+					assert.isAbove(lines.length, 1);
+					// Each line stays near the target column (folding is approximate but
+					// bounded — never wildly over the requested width).
+					for (const line of lines) assert.isAtMost(line.length, 40);
+					// A fold is a semantically transparent break: it re-parses identically.
+					assert.deepStrictEqual(yield* Yaml.parse(wrapped), value);
+				}),
+			);
+
+			it.effect("folds double-quoted and block-folded scalars, round-tripping each", () =>
+				Effect.gen(function* () {
+					const value = { text: long };
+					for (const defaultScalarStyle of ["double-quoted", "block-folded"] as const) {
+						const wrapped = yield* Yaml.stringify(value, { lineWidth: 30, defaultScalarStyle });
+						assert.isAbove(wrapped.trimEnd().split("\n").length, 1);
+						assert.deepStrictEqual(yield* Yaml.parse(wrapped), value);
+					}
+				}),
+			);
+
+			it.effect("folds a scalar in a sequence item and at the document root", () =>
+				Effect.gen(function* () {
+					const seq = yield* Yaml.stringify([long], { lineWidth: 30 });
+					assert.isAbove(seq.trimEnd().split("\n").length, 1);
+					assert.deepStrictEqual(yield* Yaml.parse(seq), [long]);
+
+					const root = yield* Yaml.stringify(long, { lineWidth: 30 });
+					assert.isAbove(root.trimEnd().split("\n").length, 1);
+					assert.strictEqual(yield* Yaml.parse(root), long);
+				}),
+			);
+
+			it.effect("never folds block-literal content (literal blocks preserve bytes)", () =>
+				Effect.gen(function* () {
+					// A multi-line string renders as a block literal (`|`); its long first
+					// line must survive uncut so the literal round-trips byte-for-byte.
+					const value = { text: `${long}\nsecond line` };
+					const out = yield* Yaml.stringify(value, { lineWidth: 20 });
+					assert.isTrue(out.split("\n").some((l) => l.length > 40));
+					assert.deepStrictEqual(yield* Yaml.parse(out), value);
+				}),
+			);
+
+			it.effect("lineWidth 0, negative and absent all produce byte-identical no-wrap output", () =>
+				Effect.gen(function* () {
+					const value = { text: long };
+					const absent = yield* Yaml.stringify(value);
+					const zero = yield* Yaml.stringify(value, { lineWidth: 0 });
+					const negative = yield* Yaml.stringify(value, { lineWidth: -10 });
+					assert.strictEqual(zero, absent);
+					assert.strictEqual(negative, absent);
+					// No-wrap keeps the long scalar on a single physical line.
+					assert.strictEqual(absent, `text: ${long}\n`);
+				}),
+			);
+
+			it.effect("mutation guard: folding actually fires (wrapped differs from no-wrap)", () =>
+				Effect.gen(function* () {
+					// Pins that the fold is not a no-op: were foldRenderedScalar inert,
+					// wrapped and unwrapped would be equal and this test would fail.
+					const value = { text: long };
+					const wrapped = yield* Yaml.stringify(value, { lineWidth: 30 });
+					const unwrapped = yield* Yaml.stringify(value, { lineWidth: 0 });
+					assert.notStrictEqual(wrapped, unwrapped);
+					assert.isAbove(wrapped.split("\n").length, unwrapped.split("\n").length);
+				}),
+			);
+		});
+	});
+
+	describe("parseSync / stringifySync (synchronous Result escape hatch)", () => {
+		it.effect("parseSync succeeds and matches Yaml.parse on valid input", () =>
+			Effect.gen(function* () {
+				const text = "name: Alice\nage: 30\ntags:\n  - a\n  - b";
+				const result = Yaml.parseSync(text);
+				if (!Result.isSuccess(result)) {
+					assert.fail("parseSync must succeed on valid input");
+				}
+				assert.deepStrictEqual(result.success, yield* Yaml.parse(text));
+			}),
+		);
+
+		it("parseSync returns a Failure with a typed YamlParseError on malformed input, never a throw", () => {
+			let result!: Result.Result<unknown, YamlParseError>;
+			assert.doesNotThrow(() => {
+				result = Yaml.parseSync("a: *missing");
+			});
+			assert.isTrue(Result.isFailure(result));
+			if (!Result.isFailure(result)) return;
+			assert.instanceOf(result.failure, YamlParseError);
+			assert.isTrue(result.failure.diagnostics.some((d) => d.code === "UndefinedAlias"));
+		});
+
+		it.effect("stringifySync succeeds and matches Yaml.stringify on valid input", () =>
+			Effect.gen(function* () {
+				const value = { name: "Alice", nested: { list: [1, 2, true, null] } };
+				const result = Yaml.stringifySync(value);
+				if (!Result.isSuccess(result)) {
+					assert.fail("stringifySync must succeed on valid input");
+				}
+				assert.strictEqual(result.success, yield* Yaml.stringify(value));
+			}),
+		);
+
+		it("stringifySync returns a Failure with CircularReference on a cycle, never a throw", () => {
+			const value: Record<string, unknown> = {};
+			value.self = value;
+			let result!: Result.Result<string, YamlStringifyError>;
+			assert.doesNotThrow(() => {
+				result = Yaml.stringifySync(value);
+			});
+			assert.isTrue(Result.isFailure(result));
+			if (!Result.isFailure(result)) return;
+			assert.instanceOf(result.failure, YamlStringifyError);
+			assert.strictEqual(result.failure.diagnostics[0]?.code, "CircularReference");
+		});
+
+		it("stringifySync surfaces a deep-nesting overflow as a typed Failure, never a stack overflow", () => {
+			let value: unknown = 1;
+			for (let i = 0; i < 50000; i++) value = [value];
+			let result!: Result.Result<string, YamlStringifyError>;
+			assert.doesNotThrow(() => {
+				result = Yaml.stringifySync(value);
+			});
+			assert.isTrue(Result.isFailure(result));
+			if (!Result.isFailure(result)) return;
+			assert.strictEqual(result.failure.diagnostics[0]?.code, "NestingDepthExceeded");
+		});
+
+		it("parseSync surfaces an alias 'billion laughs' bomb as a typed Failure, never OOM", () => {
+			const width = 10;
+			const depth = 8;
+			const lines: string[] = [`a1: &a1 [${Array.from({ length: width }, () => "x").join(", ")}]`];
+			for (let i = 2; i <= depth; i++) {
+				lines.push(`a${i}: &a${i} [${Array.from({ length: width }, () => `*a${i - 1}`).join(", ")}]`);
+			}
+			lines.push(`top: *a${depth}`);
+			let result!: Result.Result<unknown, YamlParseError>;
+			assert.doesNotThrow(() => {
+				result = Yaml.parseSync(lines.join("\n"));
+			});
+			assert.isTrue(Result.isFailure(result));
+			if (!Result.isFailure(result)) return;
+			assert.isTrue(result.failure.diagnostics.some((d) => d.code === "AliasCountExceeded"));
+		});
 	});
 
 	describe("options classes", () => {

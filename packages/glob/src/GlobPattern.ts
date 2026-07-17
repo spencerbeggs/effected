@@ -213,6 +213,17 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * `""` when the first segment carries magic. New API with no upstream
 	 * analogue, designed for the workspaces enumerator; well-defined for
 	 * default-options patterns.
+	 *
+	 * @remarks
+	 * Meaningful for **non-negated** patterns only. For a negated pattern
+	 * ({@link GlobPattern.negated}), the prefix is still computed from the inner
+	 * pattern, but {@link GlobPattern.matches} inverts the result — so the
+	 * pattern can match paths *outside* this prefix. A consumer that bounds
+	 * traversal to `enumerationPrefix` (e.g. a walker's descent) will
+	 * under-enumerate against a negated pattern; guard on `negated` and do not
+	 * use `enumerationPrefix` as the traversal root there — enumerate from `cwd`
+	 * or another encompassing root instead. The inversion is not the getter's
+	 * semantics to express — check `negated` at the call site.
 	 */
 	get enumerationPrefix(): string {
 		const set = this.#engineOf().set;
@@ -242,6 +253,11 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * a globstar, or a magic segment followed by more segments. The enumerator
 	 * uses this to decide between a single-level read and a bounded recursive
 	 * descent (the issue-#62 fix, end to end).
+	 *
+	 * @remarks
+	 * Like {@link GlobPattern.enumerationPrefix}, this reads the inner pattern
+	 * and does not account for whole-pattern negation; guard on
+	 * {@link GlobPattern.negated} at the call site.
 	 */
 	get crossesSegments(): boolean {
 		return this.#engineOf().set.some((row) => {
