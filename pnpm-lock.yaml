@@ -936,8 +936,8 @@ packages:
       '@effect/rpc': ^0.75.1
       effect: ^3.21.2
 
-  '@effected/git@0.1.0':
-    resolution: {integrity: sha512-rpwPfTXSx1gpXtteQaDYXbU4PbXuQtqjLVi+RZbGaUc8dlv9PN+cYT5tzpFs40nKX5br6OFU0I1q12wnEnzf0g==}
+  '@effected/git@0.2.0':
+    resolution: {integrity: sha512-CGB9AVK3dBgfL8xGjYDoPze9he/d/dKhZEctOl7JyRdd0MGKtcGns+28rmu+41NkmFsYLFo5CpIHLKiwZPVziQ==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       effect: 4.0.0-beta.98
@@ -997,8 +997,8 @@ packages:
     peerDependencies:
       effect: 4.0.0-beta.98
 
-  '@effected/workspaces@0.2.0':
-    resolution: {integrity: sha512-XTRtrWKNg0p+GMVvsg7j4zP4H9ILkXhegMRZuhYS9aYOzhijnupM3n3kikG47G/9xYXPK1Puq4A9AsmaIB3tCQ==}
+  '@effected/workspaces@0.2.1':
+    resolution: {integrity: sha512-RkQ8dRZBDwAg35ED9WQERJg/YB/JawHx11TWNWi+k0b8303975umNqdu7u6bW/F3z8QIeApR8J/GL0A12lsCaQ==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       effect: 4.0.0-beta.98
@@ -2442,125 +2442,125 @@ packages:
   '@vitest/utils@4.1.10':
     resolution: {integrity: sha512-fy9am/HWxbaGt/Sawrp90vt6Y6jQwf1RX77cz3uwoJwJVMli/e1IEwRPnMNJ7vKfPTwo0diXifkpPvwH9v7nGA==}
 
-  '@yuku-codegen/binding-darwin-arm64@0.6.3':
-    resolution: {integrity: sha512-pbDcFygFmbvo0jGFq5U0m5Sa9U8aVttVJWbBHZDZ68w/X48HdDWS1V4XvBacs8XkmWbTr/ef5fMGG7HsngqTmg==}
+  '@yuku-codegen/binding-darwin-arm64@0.6.4':
+    resolution: {integrity: sha512-oTXKokdxrIc/rK+FOZ3GXsafSVLe9u92pIb7Zt/oiHtRj4unQbHl4badFXs0VIeRrqILshK1IXTdvE0PlA4QGg==}
     cpu: [arm64]
     os: [darwin]
 
-  '@yuku-codegen/binding-darwin-x64@0.6.3':
-    resolution: {integrity: sha512-qZMrnA4i8OfqL3NMGoOvLdh1vby8cCGsmNo+tJQIIezXO557m3fdQLenz/57GqtBnnGWzWqd/aDp+faNxWlLwQ==}
+  '@yuku-codegen/binding-darwin-x64@0.6.4':
+    resolution: {integrity: sha512-gKmy9V5VSnk6ZcoZrxKxWypmm+hercCh8gh/HNP5jvzWGKSobJAlYJJ9wQ0aHc3QI4h4gWBtDD7aizOrh1OEhQ==}
     cpu: [x64]
     os: [darwin]
 
-  '@yuku-codegen/binding-freebsd-x64@0.6.3':
-    resolution: {integrity: sha512-2+SFpfem2GBH6BlCTAq6R44bZwuieduwRWHkCQnSgbK8tdEjMwB0Ix0IchryVBn6hdiWCZSTkSE3UILliRXsRQ==}
+  '@yuku-codegen/binding-freebsd-x64@0.6.4':
+    resolution: {integrity: sha512-yts1prQuuttrQlxIj546k6lYnktUCK4afcwAg/bu+h9mE+CpzhgDdonAGjJbayBRWvRtpGCmz4SDU0AgFgeWXw==}
     cpu: [x64]
     os: [freebsd]
 
-  '@yuku-codegen/binding-linux-arm-gnu@0.6.3':
-    resolution: {integrity: sha512-fbxg3cBPdJ++36DXtdzcoKw2xzFov91Wxvmn1khX9MXQbDqJQLJmITZhtokcZsj4uGJe32sUmxAZnKbUtZLjmA==}
+  '@yuku-codegen/binding-linux-arm-gnu@0.6.4':
+    resolution: {integrity: sha512-w4buuxYQMeb/hmFlVClDcTfLzbX6ASsZfpAFKi+99DtJKn6vxFFoYgl36EotpLwBkvYDG7nP+Q4sy/GYBpQ3Xg==}
     cpu: [arm]
     os: [linux]
     libc: [glibc]
 
-  '@yuku-codegen/binding-linux-arm-musl@0.6.3':
-    resolution: {integrity: sha512-Jk4P7kocGEisSvUFIm1VuHO3hC01LvS3sYAAmVVu1/ve5TuZ0iXyl9kIGtd1ZrgUvchgvZWNOaB+/Kq/RO63FA==}
+  '@yuku-codegen/binding-linux-arm-musl@0.6.4':
+    resolution: {integrity: sha512-Ia176bKbP/eV0bB5lKh4m0MYf5KwEURm6NqxrW0iu5vaOTfiaV4WdD+pixskzon89G91yOe5uF9cUM5LJs9wLQ==}
     cpu: [arm]
     os: [linux]
     libc: [musl]
 
-  '@yuku-codegen/binding-linux-arm64-gnu@0.6.3':
-    resolution: {integrity: sha512-i1xE8Bx1YZLheWtBZHD0Mq3nAIDrhgiH7o8VB4GiCbHufKb4XKj4CqSDMWSC0RYPmn//E+UEd1NsE2NbOux1tQ==}
+  '@yuku-codegen/binding-linux-arm64-gnu@0.6.4':
+    resolution: {integrity: sha512-4HpkS5jgqVW5DOQnhIB5ObXwGWDdzz3TKNbBObRcXS3xmPBxDO7CEdXu7SznL9zzaVBWyjGUN+gdxf5eNu6Ggw==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@yuku-codegen/binding-linux-arm64-musl@0.6.3':
-    resolution: {integrity: sha512-ZeLkC6xZrlDoIJTadHfqTABTmsj2f6wCCtYBYx/RPGgdmQcGLA0NALRl7m0tnK2CT45eNRuOYzsfEZyF0XWM/A==}
+  '@yuku-codegen/binding-linux-arm64-musl@0.6.4':
+    resolution: {integrity: sha512-VxjgM1a6O9ykOWB7jdaFn9VnMZVdcQXyy4+OGUd34P+WOJYey0xtWqRUNMFi8LkSky+89lWXpC5fT3txj8hT9w==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@yuku-codegen/binding-linux-x64-gnu@0.6.3':
-    resolution: {integrity: sha512-HNYt7zjIChPcnjZRG42CZq3Zn5mqaRo4UcFLr4mIbmGqdhX5hDDE8O8US8YgYyOUosfbBTBFdsbvFwVAx1TOkQ==}
+  '@yuku-codegen/binding-linux-x64-gnu@0.6.4':
+    resolution: {integrity: sha512-sRnYHQ/NBIBh+klW1vzGyHAs2YovD926HsqGyioRJcPIhI3e7xxhjGnoKyfKROVd7VihHHKjsaIqEGPdx7Nn+A==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@yuku-codegen/binding-linux-x64-musl@0.6.3':
-    resolution: {integrity: sha512-/1ttT31dAQc7hGtXWSEYEgzGtakAyO2C+/GqAzIuKXlGLpNPZgXdR8LZ0iDHDalbEr3AuHIPRV43sWLUrHWdsA==}
+  '@yuku-codegen/binding-linux-x64-musl@0.6.4':
+    resolution: {integrity: sha512-1JKVnPbAsl3SqTdnB6hWgRL3LqJnUiPVP/s4hyAGscNbl0orBUZu/hlwF6+AfluWVgrT4fxaS46rszZ7iP0lqw==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@yuku-codegen/binding-win32-arm64@0.6.3':
-    resolution: {integrity: sha512-oAArRDU1lkKg+xFEtiQ7C+/wghpqrkBrFWM05W73S+3sZz8JIHH79Q+Qh5gWls3i8vccitUgCnvln5V7xKn3XQ==}
+  '@yuku-codegen/binding-win32-arm64@0.6.4':
+    resolution: {integrity: sha512-5BAvS1UIZ0/tG4VlMpOxd8OVZuVDRnZF++BDgPWLTn+HUrF73GHKZD0AYpjZHIG167S5Nfqo5PQgvIavrOfQ9A==}
     cpu: [arm64]
     os: [win32]
 
-  '@yuku-codegen/binding-win32-x64@0.6.3':
-    resolution: {integrity: sha512-bhFDcDsvmp5KuBfWTt4carNo1E4LXH7++S8qqZgDtXVqJxs0xMm7gbuqPihA8kBbphM+NzAUm5qmq6ocfqM6kg==}
+  '@yuku-codegen/binding-win32-x64@0.6.4':
+    resolution: {integrity: sha512-1RXR6uh2qzMn61DyRmhQgPJW/oFdpUdUp6iKnpC+dAhdF2xVOobNE8ZifKBYhteZQsHOn7p4+f/YJBBZfXdFDg==}
     cpu: [x64]
     os: [win32]
 
-  '@yuku-parser/binding-darwin-arm64@0.6.3':
-    resolution: {integrity: sha512-Xate6yyZgvi7da/gdnZy+Vu5jlFB0LRlb5m4MY6Y98KSQeJPZIhoVXMK2Vsl48XOmPlDIS8lge414HUVUEo+hg==}
+  '@yuku-parser/binding-darwin-arm64@0.6.4':
+    resolution: {integrity: sha512-QsZxEeAt5r52mBl3kxu7bmW9Tk82Jtvc12O73IAXE89wBMIDxiBJhErYI+ct/nJ8Rw5oNa/+1cK+M1eMUsGSiA==}
     cpu: [arm64]
     os: [darwin]
 
-  '@yuku-parser/binding-darwin-x64@0.6.3':
-    resolution: {integrity: sha512-WKMZ5UU2HBdGZDEpQoLq+21f1FlS+BjroH1FaVE6zCSeqKmZ7xRP5jIRGtQ4vCYj/k2KHgyABZ16lgK9mTe2Sg==}
+  '@yuku-parser/binding-darwin-x64@0.6.4':
+    resolution: {integrity: sha512-EnbVvqHmMI45oQXQsH1jJWq54a2oJ+L2JN1hFzTvKbhnMMn8BeUtUNMXQwPffHR2TngoCn+vDujqbXxXmF37EA==}
     cpu: [x64]
     os: [darwin]
 
-  '@yuku-parser/binding-freebsd-x64@0.6.3':
-    resolution: {integrity: sha512-OWX8V2k4bmtl/DNwU3yz3PZa2QXiSqWN3Xk7pNB5IPt7FcJBDlnpkOcX6h3tjMS7CyKE0lMvPUwwcmWSdbjkyA==}
+  '@yuku-parser/binding-freebsd-x64@0.6.4':
+    resolution: {integrity: sha512-fLNeBSLR5nxTt5a/sUpbN/WcXGhzzPjhJOoV4f9SCNV5hPiprandAE9FvdaFLUHodSq8EioLlQe7ntEDsF4vSg==}
     cpu: [x64]
     os: [freebsd]
 
-  '@yuku-parser/binding-linux-arm-gnu@0.6.3':
-    resolution: {integrity: sha512-/4LzmPXPaCWqIpY1j3+XVb8rbXIratqCte3A4sGEjua6aVhvVxEVAqeKlBsoGkORWLeqbpcxhgxKwOGM17eexA==}
+  '@yuku-parser/binding-linux-arm-gnu@0.6.4':
+    resolution: {integrity: sha512-DKZndPj19B//6klRKE35+MbiY2b6yv3kGSzzxikReHm+wUgEOc84Cv9Q6/006NLmzNVM/apOFfT3gLD4DWprdg==}
     cpu: [arm]
     os: [linux]
     libc: [glibc]
 
-  '@yuku-parser/binding-linux-arm-musl@0.6.3':
-    resolution: {integrity: sha512-Df4jk0M/eNKKQfYzXBBKhKkmJBpB+XoX2LkMxmlK3GN+fxUdeb8EM78wX+1+eLVl5dZNo6f7gOd6oDV0gChevw==}
+  '@yuku-parser/binding-linux-arm-musl@0.6.4':
+    resolution: {integrity: sha512-IpQLxD32qIWMujAAGwW1zwgcPyeBDdBjDbUzik8D+esgpW7Gf2z5r7exsvzXPGlEr3V3dolnv4hJ0QggAgGwVg==}
     cpu: [arm]
     os: [linux]
     libc: [musl]
 
-  '@yuku-parser/binding-linux-arm64-gnu@0.6.3':
-    resolution: {integrity: sha512-sRCtDktUgIbbV78SYX3wdGVVm1Hz/nSUS24JgXB4MzUeGNwBNB+eQAWMtBxCGriyJNXK3zwfj+SSgvTmUdPf/A==}
+  '@yuku-parser/binding-linux-arm64-gnu@0.6.4':
+    resolution: {integrity: sha512-HXCiigA/akjVgDbXi9VnwXvQFBi50PdQ6pF80uh7M2scFLLpn7I3dqSan7ooHpopqZgofniBOXCt3MorZgSlFA==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@yuku-parser/binding-linux-arm64-musl@0.6.3':
-    resolution: {integrity: sha512-3J/jV3ROSqlhLyB/6i5EUHxjkom5i59iPvrtiAsnAjHzMsZJJPEke9LSaOsB0rf4MJFH9AmjvsK8gDahTjZy+A==}
+  '@yuku-parser/binding-linux-arm64-musl@0.6.4':
+    resolution: {integrity: sha512-jEBbF8dXlvnmMtDJU+J126H8oWsfi61vUBpSf56IDMm6JsbcEDRJLV0HHuSu88GIT+AMwYqO9NbMW5yqidSjdQ==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@yuku-parser/binding-linux-x64-gnu@0.6.3':
-    resolution: {integrity: sha512-a5mPn/OMSq2Aa2i7eJXcc37Jtw0b89gDO2mDpXN769b06IirEiqOzLNNJd6R7R8DxoadHzY0nLFhYNChE+jyAg==}
+  '@yuku-parser/binding-linux-x64-gnu@0.6.4':
+    resolution: {integrity: sha512-SgHXzC6eN/rdRp7kLjCY76vKguKdIrX3GRMpr/MMz4+c0uZs8DpQ8XK/6TsgnJ+VPYjoTZm5e7wwyZZGhUJOuw==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@yuku-parser/binding-linux-x64-musl@0.6.3':
-    resolution: {integrity: sha512-kQSjfa6zdvotuXEGNKQ9vZZxE+lcEEbTUMSuvY/5+0crlwBCjEqrf9/W9ViFDoQAEt8WJiu/mtVNYkKAOkjLmA==}
+  '@yuku-parser/binding-linux-x64-musl@0.6.4':
+    resolution: {integrity: sha512-bq6PsBS1VYpc6cPLSnTxMHxYKjlQSSnqrDlI7WF8fI8PCCZ2rKUgSVspNlnAXB8bbyqnG2Djt+LWu0SvRToBYA==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@yuku-parser/binding-win32-arm64@0.6.3':
-    resolution: {integrity: sha512-ZawdN3R0YKr48BeXCpbax+WDWbgEG6nWyDosVeZasrT5TjgfF4XMP5SfuyMNvRJ4gbTitrcYHZkENSXZ9ncqcg==}
+  '@yuku-parser/binding-win32-arm64@0.6.4':
+    resolution: {integrity: sha512-dzzSSFEP/ecfLE/VPOdnqUP3gWbHvQrKmZgWTgNjKj/z7zyjTNt7OPHwwt7oXfY0d1fZXpOUu0ZTLaTVt1wFyQ==}
     cpu: [arm64]
     os: [win32]
 
-  '@yuku-parser/binding-win32-x64@0.6.3':
-    resolution: {integrity: sha512-NcqZwBXQhKyfC0Eb+yBxXQcPjZoUstD1Dbr3X4UlOD1QiYfnvAYRKCZJ6nQ6KQ5p30dGaKkQeBL4t3qQtDQNWA==}
+  '@yuku-parser/binding-win32-x64@0.6.4':
+    resolution: {integrity: sha512-KBBaoGTqDpN7LUiR4fFPvZzNDTpQIbPOqTOjxEhFCCp+eq3liQzSgneyBsXf11teWqNcIPiue6jUtk2ckEF42Q==}
     cpu: [x64]
     os: [win32]
 
@@ -2747,8 +2747,8 @@ packages:
     resolution: {integrity: sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ==}
     engines: {node: '>=6'}
 
-  caniuse-lite@1.0.30001805:
-    resolution: {integrity: sha512-52noaS3DubycKSXaU30TwPGIp+POyQSUVa5jBEq3vkRkY0kjyb3LQgvhU6WGyCcyXqVLWO0Cw0Q6BSdD0kUfVA==}
+  caniuse-lite@1.0.30001806:
+    resolution: {integrity: sha512-72Cuvd95zbSYPKq6Fhg8eDJRlzgWDf7/mtoZv6Qe/DYNCEBdNxoA3+rZAU2ZhGCpZlns3EssFavaZomckT5Uuw==}
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -5553,11 +5553,11 @@ packages:
   yuku-ast@0.1.7:
     resolution: {integrity: sha512-2RiMEWv500TixY5rJy6OZd4fSy9WYZKWh6gGbIJ7y7vAGcuCugWOWwOLGaQcRZrXcPUfqtLtvpaJ3SdXtWlhKA==}
 
-  yuku-codegen@0.6.3:
-    resolution: {integrity: sha512-3c9H521tf1RRDu4cNUySfH01sKlALve4HKu2sITk33gLl5HhsvI6ngSuarpWxMPAiJEgqJc/HTvojWQRnYm9/g==}
+  yuku-codegen@0.6.4:
+    resolution: {integrity: sha512-Y0nBr04uOalpLjoZ7sNhTV5olBBmLySg+obVXl+bcaFTo4cLk5fluvqpG4jNzDbPLOZTNP1Q/MOigf5hMl0WIA==}
 
-  yuku-parser@0.6.3:
-    resolution: {integrity: sha512-iI6uABvvup9mvv8Mcpz7Tp//gehQlvcSnX4A4/0bf9i6X3RVQDuVUZel8jdpljwlF7WrbKsvD19y55Mc6+sKZw==}
+  yuku-parser@0.6.4:
+    resolution: {integrity: sha512-8RSyH8NK0BcvCiZohjh24EI/1dQqXmC8P+gCDJ4OC+WLTNavkMI27IRhkLM3DbMxw9fyd7Xfztq5Wn7Io5NRhQ==}
 
   zod-to-json-schema@3.25.2:
     resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
@@ -5937,16 +5937,6 @@ snapshots:
       toml: 3.0.0
       yaml: 2.9.0
 
-  '@effect/cli@0.75.2(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0))(effect@3.22.0)':
-    dependencies:
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      '@effect/printer': 0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0)
-      '@effect/printer-ansi': 0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0)
-      effect: 3.22.0
-      ini: 4.1.3
-      toml: 3.0.0
-      yaml: 2.9.0
-
   '@effect/cluster@0.59.0(@effect/platform@0.96.3(effect@3.22.0))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(effect@3.22.0)':
     dependencies:
       '@effect/platform': 0.96.3(effect@3.22.0)
@@ -5956,35 +5946,9 @@ snapshots:
       effect: 3.22.0
       kubernetes-types: 1.30.0
 
-  '@effect/cluster@0.59.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@3.22.0))(effect@3.22.0)':
-    dependencies:
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/workflow': 0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@3.22.0)
-      effect: 3.22.0
-      kubernetes-types: 1.30.0
-
-  '@effect/cluster@0.59.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@3.22.0))(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/workflow': 0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@3.22.0)
-      effect: 4.0.0-beta.98
-      kubernetes-types: 1.30.0
-
   '@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1)':
     dependencies:
       '@effect/platform': 0.96.3(effect@3.22.0)
-      effect: 3.22.0
-      uuid: 11.1.1
-    optionalDependencies:
-      ioredis: 5.11.1
-
-  '@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1)':
-    dependencies:
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
       effect: 3.22.0
       uuid: 11.1.1
     optionalDependencies:
@@ -5996,20 +5960,6 @@ snapshots:
       '@effect/platform': 0.96.3(effect@3.22.0)
       '@effect/rpc': 0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)
       '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)
-      '@parcel/watcher': 2.5.6
-      effect: 3.22.0
-      multipasta: 0.2.8
-      ws: 8.21.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@effect/platform-node-shared@0.60.0(c136b6c4516d908a5b11e1f13bd7c2ab)':
-    dependencies:
-      '@effect/cluster': 0.59.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@3.22.0))(effect@4.0.0-beta.98)
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@parcel/watcher': 2.5.6
       effect: 3.22.0
       multipasta: 0.2.8
@@ -6042,21 +5992,6 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@0.107.0(c136b6c4516d908a5b11e1f13bd7c2ab)':
-    dependencies:
-      '@effect/cluster': 0.59.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@3.22.0))(effect@4.0.0-beta.98)
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      '@effect/platform-node-shared': 0.60.0(c136b6c4516d908a5b11e1f13bd7c2ab)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      effect: 3.22.0
-      mime: 3.0.0
-      undici: 7.28.0
-      ws: 8.21.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
   '@effect/platform-node@4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)':
     dependencies:
       '@effect/platform-node-shared': 4.0.0-beta.98(effect@4.0.0-beta.98)
@@ -6071,13 +6006,6 @@ snapshots:
   '@effect/platform@0.96.3(effect@3.22.0)':
     dependencies:
       effect: 3.22.0
-      find-my-way-ts: 0.1.6
-      msgpackr: 1.12.1
-      multipasta: 0.2.8
-
-  '@effect/platform@0.96.3(effect@4.0.0-beta.98)':
-    dependencies:
-      effect: 4.0.0-beta.98
       find-my-way-ts: 0.1.6
       msgpackr: 1.12.1
       multipasta: 0.2.8
@@ -6099,18 +6027,6 @@ snapshots:
       effect: 3.22.0
       msgpackr: 1.12.1
 
-  '@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)':
-    dependencies:
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      effect: 3.22.0
-      msgpackr: 1.12.1
-
-  '@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      effect: 4.0.0-beta.98
-      msgpackr: 1.12.1
-
   '@effect/sql-sqlite-node@0.52.0(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(effect@3.22.0)':
     dependencies:
       '@effect/experimental': 0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1)
@@ -6130,20 +6046,6 @@ snapshots:
       effect: 3.22.0
       uuid: 11.1.1
 
-  '@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)':
-    dependencies:
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1)
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      effect: 3.22.0
-      uuid: 11.1.1
-
-  '@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
-    dependencies:
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1)
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      effect: 4.0.0-beta.98
-      uuid: 11.1.1
-
   '@effect/typeclass@0.40.0(effect@3.22.0)':
     dependencies:
       effect: 3.22.0
@@ -6160,14 +6062,7 @@ snapshots:
       '@effect/rpc': 0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)
       effect: 3.22.0
 
-  '@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@3.22.0)':
-    dependencies:
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1)
-      '@effect/platform': 0.96.3(effect@4.0.0-beta.98)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      effect: 3.22.0
-
-  '@effected/git@0.1.0(effect@4.0.0-beta.98)':
+  '@effected/git@0.2.0(effect@4.0.0-beta.98)':
     dependencies:
       effect: 4.0.0-beta.98
 
@@ -6260,9 +6155,9 @@ snapshots:
     dependencies:
       effect: 4.0.0-beta.98
 
-  '@effected/workspaces@0.2.0(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
+  '@effected/workspaces@0.2.1(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
     dependencies:
-      '@effected/git': 0.1.0(effect@4.0.0-beta.98)
+      '@effected/git': 0.2.0(effect@4.0.0-beta.98)
       '@effected/glob': 0.1.0(effect@4.0.0-beta.98)
       '@effected/lockfiles': 0.1.1(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/npm@0.2.0(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effected/semver@0.1.0(effect@4.0.0-beta.98))(@effected/yaml@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@effected/npm': 0.2.0(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
@@ -6278,9 +6173,9 @@ snapshots:
       - '@effected/jsonc'
       - '@effected/semver'
 
-  '@effected/workspaces@0.2.0(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)':
+  '@effected/workspaces@0.2.1(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)':
     dependencies:
-      '@effected/git': 0.1.0(effect@4.0.0-beta.98)
+      '@effected/git': 0.2.0(effect@4.0.0-beta.98)
       '@effected/glob': 0.1.0(effect@4.0.0-beta.98)
       '@effected/lockfiles': 0.1.1(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/npm@0.2.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/yaml@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@effected/npm': 0.2.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)
@@ -6296,9 +6191,9 @@ snapshots:
       - '@effected/jsonc'
       - '@effected/semver'
 
-  '@effected/workspaces@0.2.0(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
+  '@effected/workspaces@0.2.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
     dependencies:
-      '@effected/git': 0.1.0(effect@4.0.0-beta.98)
+      '@effected/git': 0.2.0(effect@4.0.0-beta.98)
       '@effected/glob': 0.1.0(effect@4.0.0-beta.98)
       '@effected/lockfiles': 0.1.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/npm@0.2.0(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effected/semver@0.1.0(effect@4.0.0-beta.98))(@effected/yaml@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@effected/npm': 0.2.0(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
@@ -6314,9 +6209,9 @@ snapshots:
       - '@effected/jsonc'
       - '@effected/semver'
 
-  '@effected/workspaces@0.2.0(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)':
+  '@effected/workspaces@0.2.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)':
     dependencies:
-      '@effected/git': 0.1.0(effect@4.0.0-beta.98)
+      '@effected/git': 0.2.0(effect@4.0.0-beta.98)
       '@effected/glob': 0.1.0(effect@4.0.0-beta.98)
       '@effected/lockfiles': 0.1.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/npm@0.2.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/yaml@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@effected/npm': 0.2.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)
@@ -7343,7 +7238,7 @@ snapshots:
       '@effect/platform-node': 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
       '@effected/npm': 0.2.0(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@effected/tsconfig-json': 0.2.0(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/walker@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effected/workspaces': 0.2.0(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
+      '@effected/workspaces': 0.2.1(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@microsoft/api-extractor': 7.58.10(@types/node@26.1.1)
       '@microsoft/tsdoc': 0.16.0
       '@microsoft/tsdoc-config': 0.18.1
@@ -7380,7 +7275,7 @@ snapshots:
       '@effect/platform-node': 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
       '@effected/npm': 0.2.0(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@effected/tsconfig-json': 0.2.0(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/walker@packages+walker+dist+dev+pkg)(effect@4.0.0-beta.98)
-      '@effected/workspaces': 0.2.0(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
+      '@effected/workspaces': 0.2.1(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@microsoft/api-extractor': 7.58.10(@types/node@26.1.1)
       '@microsoft/tsdoc': 0.16.0
       '@microsoft/tsdoc-config': 0.18.1
@@ -7417,7 +7312,7 @@ snapshots:
       '@effect/platform-node': 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
       '@effected/npm': 0.2.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)
       '@effected/tsconfig-json': 0.2.0(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/walker@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effected/workspaces': 0.2.0(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)
+      '@effected/workspaces': 0.2.1(@effected/jsonc@0.1.0(effect@4.0.0-beta.98))(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)
       '@microsoft/api-extractor': 7.58.10(@types/node@26.1.1)
       '@microsoft/tsdoc': 0.16.0
       '@microsoft/tsdoc-config': 0.18.1
@@ -7454,7 +7349,7 @@ snapshots:
       '@effect/platform-node': 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
       '@effected/npm': 0.2.0(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@effected/tsconfig-json': 0.2.0(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(effect@4.0.0-beta.98)
-      '@effected/workspaces': 0.2.0(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
+      '@effected/workspaces': 0.2.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
       '@microsoft/api-extractor': 7.58.10(@types/node@26.1.1)
       '@microsoft/tsdoc': 0.16.0
       '@microsoft/tsdoc-config': 0.18.1
@@ -7491,7 +7386,7 @@ snapshots:
       '@effect/platform-node': 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
       '@effected/npm': 0.2.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)
       '@effected/tsconfig-json': 0.2.0(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/walker@0.1.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
-      '@effected/workspaces': 0.2.0(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)
+      '@effected/workspaces': 0.2.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.98)
       '@microsoft/api-extractor': 7.58.10(@types/node@26.1.1)
       '@microsoft/tsdoc': 0.16.0
       '@microsoft/tsdoc-config': 0.18.1
@@ -8054,70 +7949,70 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@yuku-codegen/binding-darwin-arm64@0.6.3':
+  '@yuku-codegen/binding-darwin-arm64@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-darwin-x64@0.6.3':
+  '@yuku-codegen/binding-darwin-x64@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-freebsd-x64@0.6.3':
+  '@yuku-codegen/binding-freebsd-x64@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-linux-arm-gnu@0.6.3':
+  '@yuku-codegen/binding-linux-arm-gnu@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-linux-arm-musl@0.6.3':
+  '@yuku-codegen/binding-linux-arm-musl@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-linux-arm64-gnu@0.6.3':
+  '@yuku-codegen/binding-linux-arm64-gnu@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-linux-arm64-musl@0.6.3':
+  '@yuku-codegen/binding-linux-arm64-musl@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-linux-x64-gnu@0.6.3':
+  '@yuku-codegen/binding-linux-x64-gnu@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-linux-x64-musl@0.6.3':
+  '@yuku-codegen/binding-linux-x64-musl@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-win32-arm64@0.6.3':
+  '@yuku-codegen/binding-win32-arm64@0.6.4':
     optional: true
 
-  '@yuku-codegen/binding-win32-x64@0.6.3':
+  '@yuku-codegen/binding-win32-x64@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-darwin-arm64@0.6.3':
+  '@yuku-parser/binding-darwin-arm64@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-darwin-x64@0.6.3':
+  '@yuku-parser/binding-darwin-x64@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-freebsd-x64@0.6.3':
+  '@yuku-parser/binding-freebsd-x64@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-linux-arm-gnu@0.6.3':
+  '@yuku-parser/binding-linux-arm-gnu@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-linux-arm-musl@0.6.3':
+  '@yuku-parser/binding-linux-arm-musl@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-linux-arm64-gnu@0.6.3':
+  '@yuku-parser/binding-linux-arm64-gnu@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-linux-arm64-musl@0.6.3':
+  '@yuku-parser/binding-linux-arm64-musl@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-linux-x64-gnu@0.6.3':
+  '@yuku-parser/binding-linux-x64-gnu@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-linux-x64-musl@0.6.3':
+  '@yuku-parser/binding-linux-x64-musl@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-win32-arm64@0.6.3':
+  '@yuku-parser/binding-win32-arm64@0.6.4':
     optional: true
 
-  '@yuku-parser/binding-win32-x64@0.6.3':
+  '@yuku-parser/binding-win32-x64@0.6.4':
     optional: true
 
   '@yuku-toolchain/types@0.5.43': {}
@@ -8257,7 +8152,7 @@ snapshots:
   browserslist@4.28.6:
     dependencies:
       baseline-browser-mapping: 2.10.43
-      caniuse-lite: 1.0.30001805
+      caniuse-lite: 1.0.30001806
       electron-to-chromium: 1.5.392
       node-releases: 2.0.51
       update-browserslist-db: 1.2.3(browserslist@4.28.6)
@@ -8291,7 +8186,7 @@ snapshots:
 
   callsites@3.1.0: {}
 
-  caniuse-lite@1.0.30001805: {}
+  caniuse-lite@1.0.30001806: {}
 
   ccount@2.0.1: {}
 
@@ -10818,8 +10713,8 @@ snapshots:
       obug: 2.1.3
       rolldown: 1.1.5
       yuku-ast: 0.1.7
-      yuku-codegen: 0.6.3
-      yuku-parser: 0.6.3
+      yuku-codegen: 0.6.4
+      yuku-parser: 0.6.4
     optionalDependencies:
       typescript: 6.0.3
     transitivePeerDependencies:
@@ -10832,8 +10727,8 @@ snapshots:
       obug: 2.1.3
       rolldown: 1.1.5
       yuku-ast: 0.1.7
-      yuku-codegen: 0.6.3
-      yuku-parser: 0.6.3
+      yuku-codegen: 0.6.4
+      yuku-parser: 0.6.4
     optionalDependencies:
       typescript: 7.0.2
     transitivePeerDependencies:
@@ -10841,17 +10736,17 @@ snapshots:
 
   rolldown-pnpm-config@0.3.0(@types/react@19.2.17)(ioredis@5.11.1)(rolldown@1.2.0):
     dependencies:
-      '@effect/cli': 0.75.2(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0))(effect@3.22.0)
-      '@effect/cluster': 0.59.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@3.22.0))(effect@3.22.0)
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1)
+      '@effect/cli': 0.75.2(@effect/platform@0.96.3(effect@3.22.0))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0))(effect@3.22.0)
+      '@effect/cluster': 0.59.0(@effect/platform@0.96.3(effect@3.22.0))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(effect@3.22.0)
+      '@effect/experimental': 0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1)
       '@effect/platform': 0.96.3(effect@3.22.0)
-      '@effect/platform-node': 0.107.0(c136b6c4516d908a5b11e1f13bd7c2ab)
+      '@effect/platform-node': 0.107.0(@effect/cluster@0.59.0(@effect/platform@0.96.3(effect@3.22.0))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(@effect/workflow@0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(effect@3.22.0))(@effect/platform@0.96.3(effect@3.22.0))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(effect@3.22.0)
       '@effect/printer': 0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0)
       '@effect/printer-ansi': 0.49.0(@effect/typeclass@0.40.0(effect@3.22.0))(effect@3.22.0)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)
-      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)
+      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)
       '@effect/typeclass': 0.40.0(effect@3.22.0)
-      '@effect/workflow': 0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@4.0.0-beta.98))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@4.0.0-beta.98))(effect@4.0.0-beta.98))(effect@3.22.0)
+      '@effect/workflow': 0.18.2(@effect/experimental@0.60.0(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0)(ioredis@5.11.1))(@effect/platform@0.96.3(effect@3.22.0))(@effect/rpc@0.75.1(@effect/platform@0.96.3(effect@3.22.0))(effect@3.22.0))(effect@3.22.0)
       effect: 3.22.0
       ink: 7.1.0(@types/react@19.2.17)(react@19.2.7)
       ink-tab: 5.2.0(@types/react@19.2.17)(ink@7.1.0(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
@@ -11756,37 +11651,37 @@ snapshots:
     dependencies:
       '@yuku-toolchain/types': 0.5.43
 
-  yuku-codegen@0.6.3:
+  yuku-codegen@0.6.4:
     dependencies:
       '@yuku-toolchain/types': 0.5.43
     optionalDependencies:
-      '@yuku-codegen/binding-darwin-arm64': 0.6.3
-      '@yuku-codegen/binding-darwin-x64': 0.6.3
-      '@yuku-codegen/binding-freebsd-x64': 0.6.3
-      '@yuku-codegen/binding-linux-arm-gnu': 0.6.3
-      '@yuku-codegen/binding-linux-arm-musl': 0.6.3
-      '@yuku-codegen/binding-linux-arm64-gnu': 0.6.3
-      '@yuku-codegen/binding-linux-arm64-musl': 0.6.3
-      '@yuku-codegen/binding-linux-x64-gnu': 0.6.3
-      '@yuku-codegen/binding-linux-x64-musl': 0.6.3
-      '@yuku-codegen/binding-win32-arm64': 0.6.3
-      '@yuku-codegen/binding-win32-x64': 0.6.3
+      '@yuku-codegen/binding-darwin-arm64': 0.6.4
+      '@yuku-codegen/binding-darwin-x64': 0.6.4
+      '@yuku-codegen/binding-freebsd-x64': 0.6.4
+      '@yuku-codegen/binding-linux-arm-gnu': 0.6.4
+      '@yuku-codegen/binding-linux-arm-musl': 0.6.4
+      '@yuku-codegen/binding-linux-arm64-gnu': 0.6.4
+      '@yuku-codegen/binding-linux-arm64-musl': 0.6.4
+      '@yuku-codegen/binding-linux-x64-gnu': 0.6.4
+      '@yuku-codegen/binding-linux-x64-musl': 0.6.4
+      '@yuku-codegen/binding-win32-arm64': 0.6.4
+      '@yuku-codegen/binding-win32-x64': 0.6.4
 
-  yuku-parser@0.6.3:
+  yuku-parser@0.6.4:
     dependencies:
       '@yuku-toolchain/types': 0.5.43
     optionalDependencies:
-      '@yuku-parser/binding-darwin-arm64': 0.6.3
-      '@yuku-parser/binding-darwin-x64': 0.6.3
-      '@yuku-parser/binding-freebsd-x64': 0.6.3
-      '@yuku-parser/binding-linux-arm-gnu': 0.6.3
-      '@yuku-parser/binding-linux-arm-musl': 0.6.3
-      '@yuku-parser/binding-linux-arm64-gnu': 0.6.3
-      '@yuku-parser/binding-linux-arm64-musl': 0.6.3
-      '@yuku-parser/binding-linux-x64-gnu': 0.6.3
-      '@yuku-parser/binding-linux-x64-musl': 0.6.3
-      '@yuku-parser/binding-win32-arm64': 0.6.3
-      '@yuku-parser/binding-win32-x64': 0.6.3
+      '@yuku-parser/binding-darwin-arm64': 0.6.4
+      '@yuku-parser/binding-darwin-x64': 0.6.4
+      '@yuku-parser/binding-freebsd-x64': 0.6.4
+      '@yuku-parser/binding-linux-arm-gnu': 0.6.4
+      '@yuku-parser/binding-linux-arm-musl': 0.6.4
+      '@yuku-parser/binding-linux-arm64-gnu': 0.6.4
+      '@yuku-parser/binding-linux-arm64-musl': 0.6.4
+      '@yuku-parser/binding-linux-x64-gnu': 0.6.4
+      '@yuku-parser/binding-linux-x64-musl': 0.6.4
+      '@yuku-parser/binding-win32-arm64': 0.6.4
+      '@yuku-parser/binding-win32-x64': 0.6.4
 
   zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:
