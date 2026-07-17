@@ -57,6 +57,7 @@ A `Stream<YamlToken>` / `Stream<CstNode>` public interface — the Effect-native
 - **Pure synchronous**: node navigation (`YamlNode.find`, `findAtOffset`, `pathOf`), value extraction (`YamlNode.toValue`, `YamlDocument.toValue`), edit application (`YamlEdit.applyAll`, `YamlFormat.formatToString`/`modifyToString`), the formatting-edit *computation* (`YamlFormat.format`), comment stripping (`Yaml.stripComments`), and semantic equality (`Yaml.equals`/`equalsValue`). These are total functions; an `Effect<_, never>` wrapper is ceremony.
 - **`Effect`** (real typed `E`): `Yaml.parse` / `parseAll` (fail `YamlParseError`), `Yaml.stringify` / `YamlDocument.stringify` (fail `YamlStringifyError`), `YamlFormat.modify` (fail `YamlModificationError`), and the schema decode path.
 - **`Stream`** for the visitor: `YamlVisitor.visit` returns `Stream<YamlVisitorEvent>`; malformed input surfaces as error events in the union, keeping the stream demand-driven and infallible at the type level.
+- **`Result`** (sync escape hatch): `Yaml.parseSync` / `Yaml.stringifySync` return a v4 `Result` for config-time callers that cannot enter the Effect runtime; the same typed failures as their Effect counterparts, materialized synchronously rather than thrown.
 
 The pure/Effect split makes fallible operations legible at the call site — an `Effect` return type *means* "this can produce a domain error."
 
@@ -69,6 +70,7 @@ A namespace object of statics over the parser, stringifier and schema layers. No
 - `parse(text, options?)` → `Effect<unknown, YamlParseError>`. Single-document value parse; error-recovery collects all fatal diagnostics and fails once with the aggregate.
 - `parseAll(text, options?)` → `Effect<ReadonlyArray<unknown>, YamlParseError>`. Multi-document value parse.
 - `stringify(value, options?)` → `Effect<string, YamlStringifyError>`.
+- `parseSync(text, options?)` → `Result<unknown, YamlParseError>` and `stringifySync(value, options?)` → `Result<string, YamlStringifyError>` — the v4-`Result` escape hatches for config-time callers that cannot `await` (a `vitest.config.ts`, say). Pure: they drive the same synchronous engine the Effect variants do and share the `stringifyDefectToError` / `aliasCountExceededError` materialization helpers, so hardening is identical across both — the fail-typed-never-a-defect contract holds. Malformed or adversarial input (fatal diagnostics, duplicate keys, an alias-expansion bomb, a circular reference, depth overflow) returns a `Failure` Result, never throws.
 - `stripComments(text, replaceCh?)` → `string`. Scanner-based, total in both modes: without a `replaceCh`, comment characters are deleted with line breaks kept; with one, offsets are preserved by replacing in place. Pure and quote-aware in both branches.
 - `equals(a, b)` / `equalsValue(a, b)` → `boolean`. Semantic equality (comments/formatting ignored). Any recorded parse error, or a `DuplicateKey` warning, on either side yields `false` — malformed input is never equal to anything, including itself.
 - `schema(Target, options?)`, `fromString(options?)`, `allFromString(options?)`, and the `YamlFromString` default-options schema — see [schema transformation strategy](#schema-transformation-strategy). `fromString` takes **parse** options only; the encode direction uses default stringify options.
@@ -169,6 +171,12 @@ The runtime field-spread earns its keep here: `indentSequences` (below) was adde
 
 The **explicit-key compact-sequence branch is deliberately untouched** by the option. `? key` / `: value` explicit-key syntax is a different construct with its own emitter path, and folding it under the same flag would mean changing a form nobody asked about while chasing the common one.
 
+### `lineWidth` — real column folding
+
+`lineWidth` now performs the column-based scalar folding it always advertised. It was previously **inert**: threaded into the stringifier's render context (`internal/stringifier.ts`) but never read, so output never wrapped for any value. A positive `lineWidth` now folds long **plain**, **double-quoted** and **block-folded (`>`)** scalars at approximately that column, inserting only semantically transparent line breaks — breaks a reader folds back to a single space, so the round-trip is preserved. **Block-literal (`|`) and single-quoted scalars are never folded**: literal blocks preserve their bytes by definition, and single-quoted folding is out of scope. The two folding functions — `foldScalarLine` (one logical line) and `foldRenderedScalar` (style-aware, dispatching on the rendered scalar's leading character) — live in `internal/fold.ts` and are wired into the **value path** (`stringifyLines` / `stringifyObjectLines` / `stringifyArrayLines`). Flow-collection items pass `allowFold=false`, because they are re-joined with spaces and a fold break would corrupt them.
+
+**The default is `0`, and — as with `indentSequences` — the default is the whole decision.** `0` (and any value `<= 0`) means never wrap. The change lowered the default from `80` to `0`, which is byte-compat-preserving precisely *because* the option was inert: the historic behavior was no-wrap, so defaulting to `0` keeps default output and any explicit `lineWidth: 0` byte-identical, while a positive value opts into folding. The compliance harness stays at 100% for exactly this reason — nothing folds unless a caller asks.
+
 ## Multi-document support
 
 Yaml-specific surface with no jsonc analog. YAML's `---`/`...` document-stream model gets first-class support: `Yaml.parseAll` / `Yaml.allFromString`, and `YamlDocument.parseAll` alongside the single-document `YamlDocument.parse` / `schema`. This is genuinely yaml's own concern (anchors, aliases, pairs-vs-properties, multi-document); no shared tree/document abstraction is extracted across jsonc and yaml — the trees differ enough that a shared abstraction would be premature and leaky.
@@ -211,6 +219,10 @@ The vendored yaml-test-suite is committed as plain files (nested `.git` stripped
 - **Schema-pipeline tests**: `Yaml.schema(Target)` decode/encode, `allFromString` multi-document decode, and the boundary guarantee that decode failures surface as `YamlParseError` (never `SchemaError`) through the `parse`/`parseAll` contract.
 
 Known limitation, the same one the source dialect shipped with: per-node comments (`pair.comment` etc.) are captured by the composer but never re-emitted by the stringifier — only a document-level leading comment round-trips. Closing it is future work if a consumer needs full comment round-tripping.
+
+## Open items
+
+- **`lineWidth` folding is wired into the value path only** ([issue #105](https://github.com/spencerbeggs/effected/issues/105)). `Yaml.stringify` folds; `YamlDocument.stringify` — the AST/node path (`stringifyNodeLines`) — still treats `lineWidth` as inert, so the two stringify entry points are currently inconsistent. Closing it means teaching the node path the same `foldRenderedScalar` integration the value path already carries.
 
 ## Build
 
