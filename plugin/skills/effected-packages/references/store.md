@@ -35,6 +35,22 @@ const program = Effect.gen(function* () {
 }).pipe(Effect.provide(StoreLive));
 ```
 
+Tag-based invalidation with a transactional callback — `onRemoved` runs inside the same delete transaction, before it commits, and only when something was actually removed:
+
+```ts
+import { Cache } from "@effected/store";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+ const cache = yield* Cache;
+ yield* cache.set({ key: "pkg:effect", value: new TextEncoder().encode("4.0.0-beta.98"), tags: ["registry"] });
+ const { count, keys } = yield* cache.invalidateByTag("registry", (result) =>
+  Effect.log(`evicting ${result.count} entries: ${result.keys.join(", ")}`),
+ );
+ return { count, keys };
+});
+```
+
 ## Testing machinery
 
 **`Store.layerTest(options)`** and **`Cache.layerTest(options)`** are exported hermetic `:memory:` layers — use them directly in consumer test suites.

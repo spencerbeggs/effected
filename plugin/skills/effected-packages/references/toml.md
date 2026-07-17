@@ -35,6 +35,38 @@ const program = Effect.gen(function* () {
 const error = Effect.runSync(Effect.flip(Toml.parse("a = 1\na = 2\n")));
 ```
 
+Date-time values decode as one of four `Schema.Class`es depending on how much of the calendar the source string carries — never a JS `Date`:
+
+```ts
+import { Toml } from "@effected/toml";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+ const value = (yield* Toml.parse("built = 2024-01-15T10:30:00-05:00\n")) as { built: unknown };
+ return value.built; // a TomlOffsetDateTime instance: { year, month, day, hour, minute, second, nanosecond, offsetMinutes }
+});
+```
+
+```ts
+import { TomlLocalDate } from "@effected/toml";
+
+const date = new TomlLocalDate({ year: 2024, month: 1, day: 15 });
+date.toString(); // "2024-01-15"
+```
+
+Streaming a document's structure without materializing the full parsed value:
+
+```ts
+import { TomlVisitor } from "@effected/toml";
+import { Effect, Stream } from "effect";
+
+const program = TomlVisitor.visit('[owner]\nname = "Tom"\n').pipe(
+ Stream.runForEach((event) =>
+  event._tag === "KeyValue" ? Effect.log(`${event.path.join(".")} = ${event.node.value._tag}`) : Effect.void,
+ ),
+);
+```
+
 ## Testing machinery
 
 None exported (differential testing against `smol-toml` and the toml-test corpus is internal).
