@@ -1,0 +1,229 @@
+---
+title: Advanced
+description: Compose @effected/xdg into a real CLI — resolve directories across three operating systems, wire a config search path into @effected/config-file, route the two failure modes, and test the whole platform matrix without touching a disk.
+---
+
+# Advanced
+
+Picture a release CLI that publishes packages from a monorepo. It reads settings an operator may have left in `~/.config/release/config.json`, or in `/etc/xdg/release/config.json` on a shared CI box, or — on a developer's Mac — in `~/Library/Application Support/release/config.json`. It writes its own state (a resume file for an interrupted publish) and caches registry answers so a re-run does not re-fetch every tarball. Every one of those paths is different on Linux, macOS and Windows, and getting one wrong means the tool writes to a directory the OS will not back up, or reads from a place the operator never looked.
+
+`@effected/xdg` is the piece that answers "where does this go" once, deterministically, at the edge of that application. This guide assumes you have read the [overview](/xdg) and are comfortable with Effect v4 layers and services; it picks up where reading a single directory stops being enough — composing the config search path into [`@effected/config-file`](/config-file), routing the failure modes, and testing the platform matrix.
+
+## How it composes with Effect
+
+The whole package is built around one decision: the environment is read **once**, when the layer is constructed, and the service *is* the resolved value. `yield* Xdg` gives you a plain `XdgPaths` record; `yield* AppDirs` gives you a shape whose `dirs` is a plain `ResolvedAppDirs`. Reading a path is a property access, not an effect, because it cannot fail and cannot do IO.
+
+That shape is what makes the layer graph composable. `Xdg.layer` reads the environment and is the only place an unset `HOME` can fail, so its error channel carries `XdgEnvError` and nothing downstream does. `AppDirs.layer` consumes `Xdg`, a `FileSystem` and a `Path`, and its own error channel is `never` — the failure already happened upstream, or it has not happened at all.
+
+```ts
+import { AppDirs, Xdg } from "@effected/xdg";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+// `provideMerge` keeps `Xdg` in the output as well as feeding it to `AppDirs`,
+// so a config resolver downstream can still reach the raw environment.
+const DirsLive = Layer.provideMerge(AppDirs.layer({ namespace: "release", native: true }), Xdg.layer).pipe(
+  Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+);
+
+const program = Effect.gen(function* () {
+  const app = yield* AppDirs;
+  return {
+    config: app.dirs.config, // a string — reading it cannot fail
+    searchPath: app.dirs.configSearchPath, // where to *look*, in priority order
+  };
+});
+
+Effect.runPromise(program.pipe(Effect.provide(DirsLive)));
+```
+
+`AppDirs.layer` is a layer-**returning function**: each call mints an independent service. Bind its result to a `const` and provide that same `const` everywhere, or you build two unrelated `AppDirs` and the requirement silently fails to close.
+
+## Pattern: the precedence ladder as a real knob
+
+The five-rung ladder — explicit override, then the namespaced XDG variable, then the OS-native directory (only with `native: true`), then `$HOME/<fallbackDir>`, then `$HOME/.<namespace>` — is not just theory. Each `AppDirsOptions` field turns one rung on:
+
+```ts
+import { AppDirs, Xdg } from "@effected/xdg";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const DirsLive = Layer.provideMerge(
+  AppDirs.layer({
+    namespace: "release",
+    // Consult ~/Library/Application Support (macOS) or %APPDATA% (Windows)
+    // when no XDG variable and no override applies. A no-op on Linux.
+    native: true,
+    // Collapse all four kinds under one dot-directory when the ladder falls
+    // through to $HOME. `fallbackDir: ".release"` gives $HOME/.release.
+    fallbackDir: ".release",
+    // An absolute per-kind override wins outright over every rung below it —
+    // e.g. a --cache-dir flag the operator passed on the command line.
+    dirs: { cache: "/var/tmp/release-cache" },
+  }),
+  Xdg.layer,
+).pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)));
+
+const program = Effect.gen(function* () {
+  const app = yield* AppDirs;
+  // Only the ensure* members touch the filesystem. Reading is free.
+  const cacheDir = yield* app.ensureCache;
+  return cacheDir;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(DirsLive)));
+```
+
+Two rungs deserve a note. The `native` rung is deliberately **not** the XDG spec's per-kind defaults (`~/.config`, `~/.local/share`); rungs 4 and 5 collapse to a single dot-directory instead. A CLI that wants the spec defaults passes them as `dirs` overrides. And the runtime directory has no ladder at all — it is `$XDG_RUNTIME_DIR` namespaced, an override, or absent, because a runtime directory must be user-owned and mode 0700 and inventing a fallback would be a lie.
+
+## Pattern: a config search path, not a single stat
+
+The reason `configSearchPath` is an array is that finding config is a real ordered search. `XdgConfig` is the bridge that hands that search to [`@effected/config-file`](/config-file): each function returns a `ConfigResolver` (or, for `savePath`, an infallible default path) you drop straight into `ConfigFile.layer`.
+
+```ts
+import { ConfigFile, JsonCodec, MergeStrategy } from "@effected/config-file";
+import { AppDirs, Xdg, XdgConfig } from "@effected/xdg";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+class Settings extends Schema.Class<Settings>("Settings")({
+  registry: Schema.String,
+  concurrency: Schema.Number,
+}) {}
+
+class SettingsFile extends ConfigFile.Service<SettingsFile, Settings>()("release/Settings") {}
+
+const DirsLive = Layer.provideMerge(AppDirs.layer({ namespace: "release", native: true }), Xdg.layer);
+
+const SettingsLive = ConfigFile.layer(SettingsFile, {
+  schema: Settings,
+  codec: JsonCodec,
+  strategy: MergeStrategy.firstMatch<Settings>(),
+  resolvers: [
+    // Search ~/.config/release, then every $XDG_CONFIG_DIRS entry namespaced.
+    XdgConfig.resolver({ filename: "config.json" }),
+    // Then, and only then, the OS-native directory — so an existing
+    // ~/.config/release still wins over ~/Library/Application Support.
+    XdgConfig.nativeResolver({ namespace: "release", filename: "config.json" }),
+  ],
+  // Where `save`/`update` write when given no explicit path. Infallible by
+  // construction, which is the whole reason AppDirs resolves at layer time.
+  defaultPath: XdgConfig.savePath("config.json"),
+}).pipe(Layer.provide(DirsLive), Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)));
+
+const load = Effect.gen(function* () {
+  const settings = yield* SettingsFile;
+  return yield* settings.loadOrDefault(new Settings({ registry: "https://registry.npmjs.org", concurrency: 4 }));
+});
+
+Effect.runPromise(load.pipe(Effect.provide(SettingsLive)));
+```
+
+The ordering of the two resolvers is load-bearing, and so is the fact that `XdgConfig.resolver` searches through `@effected/walker`'s `firstMatch`. Absorption is **per candidate**: if `/etc/xdg/release/config.json` is unreadable, that candidate simply does not match and the search continues to the next entry. It does not abort the probe and hide a perfectly readable `~/.config/release/config.json` behind it. That is the contract `ConfigResolver` requires — a resolver's `resolve` channel is `never`, so "not found" and "could not look" stay indistinguishable to the strategy above it.
+
+## Failure modes worth knowing
+
+There are exactly two typed errors, and they surface at two different times.
+
+`XdgEnvError` is raised by `Xdg.layer` when `HOME` is unset — the one variable with no defensible default. Because resolution happens at layer construction, this failure lands when the layer is **built**, not when a path is read. Every other XDG variable is optional, so its absence is a resolved default, never a failure.
+
+`AppDirsError` is raised by the `ensure*` members when a `mkdir -p` fails — a permissions problem, a read-only mount. It carries the `directory` kind that failed, the `path`, and the underlying `PlatformError` structurally in `cause`. Reading `dirs` never produces it.
+
+Route both by tag rather than catching broadly:
+
+```ts
+import { AppDirs, Xdg } from "@effected/xdg";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer, Option } from "effect";
+
+const DirsLive = Layer.provideMerge(AppDirs.layer({ namespace: "release" }), Xdg.layer).pipe(
+  Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+);
+
+const program = Effect.gen(function* () {
+  const app = yield* AppDirs;
+
+  const stateDir = yield* app.ensureState;
+
+  // The runtime directory may not exist at all — an Option, not a thrown miss.
+  const runtime = yield* app.ensureRuntime;
+  const runtimeDir = Option.getOrElse(runtime, () => "(no runtime directory on this host)");
+
+  return { stateDir, runtimeDir };
+});
+
+const runnable = program.pipe(
+  Effect.provide(DirsLive),
+  Effect.catchTags({
+    // Surfaces from building Xdg.layer — an incomplete environment.
+    XdgEnvError: (error) => Effect.succeed(`environment incomplete: ${error.message}`),
+    // Surfaces from an ensure* — the directory could not be created.
+    AppDirsError: (error) =>
+      Effect.succeed(`could not create the ${error.directory} directory at ${error.path}`),
+  }),
+);
+
+Effect.runPromise(runnable);
+```
+
+Note `ensureRuntime` returns `Effect<Option<string>>`: a host with no `$XDG_RUNTIME_DIR` is not an error, it is an absent key, so nothing is created and nothing fails. Reach for a runtime directory only when the platform actually offers one.
+
+A third failure category never reaches the error channel at all. A `namespace` that is empty, contains a path separator, or is `.` / `..` is a **defect**, not a typed error — it dies at layer construction. A namespace can only come from code, so `namespace: "../../etc"` is a programmer bug that would resolve the app's directories outside `$HOME`, and it belongs on the defect channel, not in `E`.
+
+## Testing the platform matrix without a disk
+
+The reason `CurrentPlatform` is a `Context.Reference` rather than a `process.platform` read is that it makes the darwin/win32/linux matrix testable with no platform IO. Pin the platform with `Layer.succeed`, feed fixed paths with `Xdg.layerFrom` instead of `Xdg.layer`, and provide `Path.layer` plus `FileSystem.layerNoop` from Effect core — no `@effect/platform-node`, no temp directory, no real environment.
+
+```ts
+import { assert, describe, it } from "@effect/vitest";
+import { AppDirs, CurrentPlatform, Xdg, XdgPaths } from "@effected/xdg";
+import { Effect, FileSystem, Layer, Path } from "effect";
+
+const paths = XdgPaths.make({
+  home: "/home/ada",
+  configDirs: ["/etc/xdg"],
+  dataDirs: ["/usr/share"],
+});
+
+// Resolve against fixed paths and a fixed platform. No IO happens: `dirs` is a
+// value, and FileSystem.layerNoop is only there to satisfy AppDirs.layer's `R`.
+const dirsOn = (platform: "darwin" | "linux") =>
+  Effect.gen(function* () {
+    const app = yield* AppDirs;
+    return app.dirs;
+  }).pipe(
+    Effect.provide(
+      AppDirs.layer({ namespace: "release", native: true }).pipe(
+        Layer.provide(Xdg.layerFrom(paths)),
+        Layer.provide(Layer.mergeAll(Path.layer, FileSystem.layerNoop({}))),
+        Layer.provide(Layer.succeed(CurrentPlatform, platform)),
+      ),
+    ),
+  );
+
+describe("release directories", () => {
+  it.effect("uses Application Support on macOS", () =>
+    Effect.gen(function* () {
+      const dirs = yield* dirsOn("darwin");
+      assert.strictEqual(dirs.config, "/home/ada/Library/Application Support/release");
+    }),
+  );
+
+  it.effect("falls through to the dot-directory on Linux", () =>
+    Effect.gen(function* () {
+      const dirs = yield* dirsOn("linux");
+      // No XDG variable, no native rung on Linux — rung 5 wins.
+      assert.strictEqual(dirs.config, "/home/ada/.release");
+    }),
+  );
+});
+```
+
+Two cautions carried over from the package's own tests. Drive the environment with `Xdg.layerFrom` (or `ConfigProvider.layer(ConfigProvider.fromUnknown({…}))` if you want to exercise `Xdg.layer` itself) and never mutate `process.env`. And if you stub `FileSystem.layerNoop` to record `makeDirectory` calls, record inside `Effect.suspend` — the `ensure*` effects are built once at layer construction, so a stub that pushes eagerly counts directories that were never created.
+
+## Learn more
+
+- [`@effected/config-file`](/config-file) — the codec × resolver × strategy service the `XdgConfig` resolvers plug into.
+- [`@effected/walker`](/walker) — the upward-traversal package whose `firstMatch` backs the per-candidate search absorption.
+- [`@effected/app`](/app) — wires `AppDirs` to a migrated `Store`, a TTL `Cache` and a `ConfigFile` under one namespace, if you want the whole control plane rather than directories alone.
+- [API reference](/xdg/api) — every export, with full signatures: `AppDirs`, `Xdg`, `XdgConfig`, `NativeDirs`, `ResolvedAppDirs`, `CurrentPlatform`, and the two tagged errors.

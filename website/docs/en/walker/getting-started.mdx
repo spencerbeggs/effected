@@ -1,0 +1,212 @@
+---
+title: Getting Started
+description: Find the nearest config file, locate a project root, and list files by glob — the core @effected/walker workflow end to end, both upward and down.
+---
+
+# Getting started
+
+Reach for `@effected/walker` whenever a program has to locate a file it was not told the exact path to. Climbing *up* from the current directory to find the nearest `.apprc`, a `package.json`, or the `.git` at the repository root is the classic case; walking *down* from a folder to list every file matching a glob is the other. Both are loops almost every tool re-implements, and the upward one has a subtle failure mode most implementations get wrong — a single unreadable directory aborting the whole search. This package is those two loops written once, with that bug fixed: a failing probe means "not this candidate", never "give up".
+
+If you are new to Effect v4, the only idioms this guide leans on are `Effect.gen(function* () { ... })` to sequence steps with `yield*`, `Option` for a result that may be absent, and `Effect.runPromise` to run the finished program. You do not need anything else to follow along.
+
+## Install
+
+```bash
+npm install @effected/walker @effected/glob effect
+```
+
+```bash
+pnpm add @effected/walker @effected/glob effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. All of walker's IO goes through a `FileSystem` and a `Path` implementation, which you provide once at the edge — from `@effect/platform-node` on Node. The downward `descend` walker takes a compiled pattern from `@effected/glob`, its other peer; if you only use the upward walkers you can leave `@effected/glob` out.
+
+## Your first task: find the nearest config file
+
+Say a CLI is invoked deep inside a project and needs to load its config. The file might sit right there, or in any parent directory up to the repository root — you do not know which. That is exactly the upward walk: list every directory from where you are up toward the filesystem root, then take the first one that holds the file.
+
+Two functions do it. `Walker.ascend(start)` returns that directory chain, nearest first. `Walker.findUpward(dirs, candidatesFor)` scans the chain and returns the first candidate path that exists, as an `Option`:
+
+```ts with-api
+import { Walker } from "@effected/walker";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer, Option } from "effect";
+
+const findAppConfig = Effect.gen(function* () {
+  // Every directory from the cwd up to the filesystem root, nearest first.
+  const dirs = yield* Walker.ascend(process.cwd());
+
+  // In each directory, try both config names; the nearest existing file wins.
+  return yield* Walker.findUpward(dirs, (dir) => [`${dir}/.apprc.json`, `${dir}/.apprc`]);
+});
+
+// FileSystem + Path, provided once at the edge.
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+const program = findAppConfig.pipe(
+  Effect.map(
+    Option.match({
+      onNone: () => "no config found — falling back to defaults",
+      onSome: (path) => `using config at ${path}`,
+    }),
+  ),
+  Effect.provide(PlatformLive),
+);
+
+Effect.runPromise(program).then(console.log);
+// "using config at /home/you/projects/app/.apprc.json"   (or the fallback string)
+```
+
+Three things are worth noticing:
+
+- **The result is an `Option`, never an exception.** A missing file is `Option.none()`, so you branch on presence with `Option.match` instead of a `try`/`catch`.
+- **`findUpward` is directory-major.** Every candidate in the nearest directory (`.apprc.json` *and* `.apprc`) is tried before climbing one level, so a nearer directory always wins over a farther one.
+- **The upward walk cannot fail.** Notice there is no error to catch — its typed error channel is `never`. That is deliberate, and the next section explains the contract behind it.
+
+## Absorption, and the contract it buys you
+
+The reason the upward walkers have no error channel is the one idea this package exists to get right: each probe is absorbed **individually**. If checking one directory fails — a permission error on an ancestor you happened to walk through — walker treats it as "this candidate did not match" and keeps going, rather than aborting the whole search. One unreadable directory can never hide a valid config file above it.
+
+The trade-off is a contract worth knowing: not-found and cannot-look are deliberately **indistinguishable**. An `Option.none()` might mean the file is genuinely absent, or that a directory was unreadable. Discovery is best-effort by design — which is the right default for locating config, but worth remembering when a result surprises you.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built from the package's real exports.
+
+### Cap or stop the climb
+
+`Walker.ascend` only needs `Path` — it computes the chain lexically and touches no files, so `NodePath.layer` alone satisfies it. Pass `stopAt` to halt at a known boundary (inclusive), or `maxDepth` to cap the chain length (it defaults to 256):
+
+```ts with-api
+import { Walker } from "@effected/walker";
+import { NodePath } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  // Climb no higher than the project root, whatever directory we start in.
+  const dirs = yield* Walker.ascend(process.cwd(), { stopAt: "/home/you/projects/app" });
+  return dirs; // nearest-first, ending at stopAt (inclusive)
+});
+
+Effect.runPromise(program.pipe(Effect.provide(NodePath.layer))).then(console.log);
+```
+
+`start` is required — walker never reads `process.cwd()` for you, so you always pass the directory you mean.
+
+### Locate a project root by a marker
+
+When you want the *directory* a marker lives in rather than the marker's own path, use `Walker.findRoot`. It takes a predicate that reports whether a directory is the root, and returns the nearest one that says yes. The predicate is a full `Effect`, so it can read the filesystem — here, checking for a `.git` entry:
+
+```ts with-api
+import { Walker } from "@effected/walker";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, FileSystem, Layer } from "effect";
+
+const findRepoRoot = Effect.gen(function* () {
+  const dirs = yield* Walker.ascend(process.cwd());
+  return yield* Walker.findRoot(dirs, (dir) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      return yield* fs.exists(`${dir}/.git`);
+    }),
+  );
+});
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+Effect.runPromise(findRepoRoot.pipe(Effect.provide(PlatformLive))).then(console.log);
+// Option.some("/home/you/projects/app") — the nearest directory containing .git
+```
+
+`findRoot` **short-circuits**: it stops at the first directory the predicate accepts and never probes the rest. That matters when the marker test is expensive — reading and parsing a `package.json` to decide whether a directory is a workspace root, for instance.
+
+### Pick the first existing path from your own list
+
+`Walker.firstMatch` is the absorbing loop itself, unattached to any ascent — hand it any list of candidates and a predicate, and it returns the first that matches. Reach for it when the candidates are a fixed set of known locations rather than a directory chain:
+
+```ts with-api
+import { Walker } from "@effected/walker";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, FileSystem, Layer } from "effect";
+
+const pickConfig = Effect.gen(function* () {
+  const candidates = ["./app.config.ts", "./app.config.js", "./.apprc.json"];
+  return yield* Walker.firstMatch(candidates, (candidate) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      return yield* fs.exists(candidate);
+    }),
+  );
+});
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+Effect.runPromise(pickConfig.pipe(Effect.provide(PlatformLive))).then(console.log);
+// Option.some("./app.config.ts") if it exists, else the next that does, else Option.none()
+```
+
+A predicate that *fails* — an unreadable candidate — is absorbed exactly like a `false`: the loop moves on. Defects still propagate, so a genuine programmer error (a predicate that throws) is never quietly swallowed.
+
+### List files by glob (walking down)
+
+The downward walker is `descend`. It takes a **compiled** `@effected/glob` pattern and expands it against the filesystem under `cwd`, returning the matching *file* paths — relative to `cwd`, POSIX separators, sorted. All the matching semantics (dotfiles, case, negation) live in the pattern you compile; `descend` only walks:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { descend } from "@effected/walker";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const listSources = Effect.gen(function* () {
+  // Compile once; the pattern carries every matching decision.
+  const pattern = yield* GlobPattern.compile("src/**/*.ts");
+  return yield* descend(pattern, { cwd: process.cwd() });
+});
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+Effect.runPromise(listSources.pipe(Effect.provide(PlatformLive))).then(console.log);
+// ["src/Descend.ts", "src/Walker.ts", "src/index.ts"] — relative to cwd, sorted
+```
+
+By default `descend` never descends into `node_modules` or `.git` (override with `prune`), and it caps depth at 256 levels (override with `maxDepth`). Unlike the upward walk, an unreadable directory here is *not* absorbed — the next section explains why, and how to handle it.
+
+## Handling errors
+
+The two directions have deliberately opposite error contracts, and that asymmetry is the thing to internalize:
+
+- **Upward — nothing to catch.** `ascend`, `firstMatch`, `findUpward` and `findRoot` all have a `never` error channel. A missing or unreadable directory folds into `Option.none()`, so you handle absence by matching the `Option`, not by catching an error.
+- **Downward — one tagged error.** `descend` can fail, because silently dropping a subtree from an enumeration would hand you a wrong answer dressed as an empty one. Its single failure is `DescendError`, raised when a directory mid-walk is unreadable (under the default `onUnreadable: "fail"`) or when the walk runs past `maxDepth`.
+
+Because `DescendError` is a tagged error, you route it with `Effect.catchTag` and branch on its `reason`:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { DescendError, descend } from "@effected/walker";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const program = Effect.gen(function* () {
+  const pattern = yield* GlobPattern.compile("src/**/*.ts");
+  return yield* descend(pattern, { cwd: process.cwd(), maxDepth: 8 });
+}).pipe(
+  Effect.catchTag("DescendError", (error: DescendError) =>
+    Effect.succeed(
+      error.reason === "depthExceeded"
+        ? `stopped: tree is deeper than ${error.limit} levels at ${error.path || "the base directory"}`
+        : `stopped: could not read ${error.path || "the base directory"}`,
+    ),
+  ),
+);
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+Effect.runPromise(program.pipe(Effect.provide(PlatformLive))).then(console.log);
+```
+
+The error carries `pattern`, `reason`, `path` and (for `depthExceeded`) `limit`, so you can report precisely what happened and where. If you would rather tolerate an unreadable subtree than fail on it, pass `onUnreadable: "skip"` and the walk continues past it — trading the guarantee of completeness for resilience. (Compiling the pattern is a separate fallible step: an invalid glob fails as a `GlobPatternError` from `@effected/glob`, routed the same way.)
+
+## Next steps
+
+- Ready to compose these primitives into a real devtool — expensive short-circuiting markers, directory-major precedence, and glob-file descent in anger? See the [advanced guide](/walker/advanced).
+- Every export, with complete signatures, lives in the [API reference](/walker/api) — start with [`Walker`](/walker/api/variable/walker) for the upward primitives, [`descend`](/walker/api/function/descend) for the downward walk, and [`DescendError`](/walker/api/class/descenderror) for its one typed failure.

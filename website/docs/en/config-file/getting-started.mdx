@@ -1,0 +1,218 @@
+---
+title: "Getting Started"
+description: "Load a real application config file from disk with @effected/config-file — define a schema, wire a service, run it, and route the failures — starting from zero."
+---
+
+# Getting Started
+
+Almost every tool needs to read a config file: an `.rc` in the project, a `config.yaml` at the workspace root, a fallback in `/etc`. Doing that well means finding the file wherever it lives, parsing the right format, checking it against a schema, and telling "there is no config" apart from "the config is broken" — and `@effected/config-file` gives you all of that as one composable Effect service. Reach for it whenever your program loads settings from the filesystem and you want the result typed, validated, and its failures routable rather than a `try/catch` around `JSON.parse`.
+
+This guide assumes you have never used the package. If you are also new to Effect v4, the only idioms you need here are `Effect.gen(function* () { … })` with `yield*` to sequence steps, and `Effect.provide` to supply a service — both shown in full below.
+
+## Install
+
+```bash
+npm install @effected/config-file effect @effect/platform-node
+```
+
+```bash
+pnpm add @effected/config-file effect @effect/platform-node
+```
+
+`effect` v4 is a peer dependency, and so are `@effected/jsonc`, `@effected/toml`, `@effected/walker` and `@effected/yaml` — the engines behind the JSONC, YAML and TOML codecs and the traversal primitive the walking resolvers use. Package managers that install peers automatically pull them in; add them to your manifest explicitly if yours does not. The package itself declares no runtime dependencies. Reading and writing files needs a `FileSystem` and a `Path` implementation, provided once at the edge — from `@effect/platform-node` on Node.
+
+## Your first task: load a project config
+
+Say you are building a CLI called `todo`, and you want it to read a `.todorc.json` from the user's project — searching upward from the current directory so it works from any subfolder — and fall back to sane defaults when there is nothing to read. Here is that goal, start to finish.
+
+### 1. Describe the shape with a schema
+
+Every discovered document is decoded through an Effect `Schema`, so define one for your settings. A `Schema.Class` gives you both the runtime validator and the TypeScript type in one declaration:
+
+```ts
+import { Schema } from "effect";
+
+class TodoSettings extends Schema.Class<TodoSettings>("TodoSettings")({
+  editor: Schema.String,
+  color: Schema.Boolean,
+  maxItems: Schema.Number,
+}) {}
+```
+
+### 2. Mint a service for that schema
+
+`ConfigFile.Service` creates a uniquely-keyed service class bound to one schema. The class is how you reach the loader from inside your program:
+
+```ts
+import { ConfigFile } from "@effected/config-file";
+
+class TodoConfig extends ConfigFile.Service<TodoConfig, TodoSettings>()("todo/Config") {}
+```
+
+### 3. Build the live layer
+
+`ConfigFile.layer` wires the three orthogonal seams — a **codec** (bytes to document), a **resolver** chain (where to look), and a **strategy** (many sources to one value) — into a layer that provides the service:
+
+```ts
+import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
+
+const TodoConfigLive = ConfigFile.layer(TodoConfig, {
+  schema: TodoSettings,
+  codec: JsonCodec,
+  resolvers: [ConfigResolver.upwardWalk({ filename: ".todorc.json" })],
+  strategy: MergeStrategy.firstMatch<TodoSettings>(),
+});
+```
+
+`ConfigFile.layer` is a layer-returning *function*, not a layer: calling it twice mints two independent service instances. Bind its result to a const, as above, and provide that const everywhere.
+
+### 4. Run it
+
+Ask the service for its value, provide the layer and the platform, and run. `loadOrDefault` returns your fallback when the resolver chain finds nothing, so "no config" is not a failure you have to handle here:
+
+```ts
+import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+class TodoSettings extends Schema.Class<TodoSettings>("TodoSettings")({
+  editor: Schema.String,
+  color: Schema.Boolean,
+  maxItems: Schema.Number,
+}) {}
+
+class TodoConfig extends ConfigFile.Service<TodoConfig, TodoSettings>()("todo/Config") {}
+
+const TodoConfigLive = ConfigFile.layer(TodoConfig, {
+  schema: TodoSettings,
+  codec: JsonCodec,
+  resolvers: [ConfigResolver.upwardWalk({ filename: ".todorc.json" })],
+  strategy: MergeStrategy.firstMatch<TodoSettings>(),
+});
+
+const defaults = new TodoSettings({ editor: "vi", color: true, maxItems: 50 });
+
+const program = Effect.gen(function* () {
+  const config = yield* TodoConfig;
+  return yield* config.loadOrDefault(defaults);
+});
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+Effect.runPromise(program.pipe(Effect.provide(TodoConfigLive), Effect.provide(PlatformLive))).then(console.log);
+// TodoSettings { editor: "code", color: true, maxItems: 200 }  ← from a discovered .todorc.json
+```
+
+That is the whole workflow: a schema, a service, a layer, and a program that reads a validated value. Everything below is a variation on it.
+
+## Common operations
+
+Each snippet reuses the `TodoConfig` service and `TodoSettings` schema from above and runs inside the same `Effect.gen`/`Effect.provide` harness.
+
+### Require a config, or fail loudly
+
+Use `load` instead of `loadOrDefault` when a missing file is a real error. It fails with `ConfigFileNotFoundError` when the chain matches nothing, which you can route on (see error handling below):
+
+```ts
+const program = Effect.gen(function* () {
+  const config = yield* TodoConfig;
+  return yield* config.load;
+});
+```
+
+### Layer several sources into one value
+
+Resolvers are consulted highest-priority first. Pair a multi-resolver chain with `MergeStrategy.layeredMerge` to deep-merge every source that matched — a project `.todorc.json` overriding shared defaults at the workspace root:
+
+```ts
+const TodoConfigLive = ConfigFile.layer(TodoConfig, {
+  schema: TodoSettings,
+  codec: JsonCodec,
+  resolvers: [
+    ConfigResolver.upwardWalk({ filename: ".todorc.json" }),
+    ConfigResolver.workspaceRoot({ filename: ".todorc.json" }),
+  ],
+  strategy: MergeStrategy.layeredMerge<TodoSettings>(),
+});
+```
+
+Swap `layeredMerge` for `firstMatch` and the highest-priority source wins outright, with the rest ignored.
+
+### Read one explicit path
+
+When you already know the file — a `--config` flag, say — `loadFrom` reads, decodes and validates that exact path and skips discovery entirely:
+
+```ts
+const program = Effect.gen(function* () {
+  const config = yield* TodoConfig;
+  return yield* config.loadFrom("./configs/ci.todorc.json");
+});
+```
+
+### Save and update on disk
+
+Give the layer a `defaultPath` and the service can write. `save` encodes a value through the schema and codec and writes it (creating parent directories); `update` performs a serialized load-modify-save so concurrent writers do not clobber each other:
+
+```ts
+const TodoConfigLive = ConfigFile.layer(TodoConfig, {
+  schema: TodoSettings,
+  codec: JsonCodec,
+  resolvers: [ConfigResolver.upwardWalk({ filename: ".todorc.json" })],
+  strategy: MergeStrategy.firstMatch<TodoSettings>(),
+  defaultPath: Effect.succeed(".todorc.json"),
+});
+
+const program = Effect.gen(function* () {
+  const config = yield* TodoConfig;
+  // Persist a value...
+  yield* config.save(new TodoSettings({ editor: "code", color: true, maxItems: 200 }));
+  // ...then bump one field in place, falling back to defaults if the file is absent.
+  return yield* config.update((current) => new TodoSettings({ ...current, maxItems: 500 }), defaults);
+});
+```
+
+Without a `defaultPath`, `save` and `update` fail honestly with `ConfigDefaultPathMissingError` rather than inventing a path to write to.
+
+### Switch formats with one word
+
+The codec is the only thing that changes to read YAML or TOML instead of JSON — the schema, resolvers and strategy are untouched. One install covers every format, and naming `YamlCodec` never drags the TOML or JSONC engines into your bundle:
+
+```ts
+import { YamlCodec } from "@effected/config-file";
+
+const TodoConfigLive = ConfigFile.layer(TodoConfig, {
+  schema: TodoSettings,
+  codec: YamlCodec,
+  resolvers: [ConfigResolver.upwardWalk({ filename: ".todorc.yaml" })],
+  strategy: MergeStrategy.firstMatch<TodoSettings>(),
+});
+```
+
+`JsonCodec`, `JsoncCodec`, `YamlCodec` and `TomlCodec` are all free-standing exports you drop in the same slot.
+
+## Handling failures
+
+Every failure is a tagged error carrying its cause structurally, so you route on the tag with `Effect.catchTags` (or `Effect.catchTag` for one). The distinction the package exists to make: `ConfigFileNotFoundError` — the resolver chain matched nothing — is usually not an error at all and is answered with defaults, while `ConfigValidationError` — a file was found but did not satisfy the schema — is a real problem the user must fix:
+
+```ts
+const program = Effect.gen(function* () {
+  const config = yield* TodoConfig;
+  return yield* config.load;
+}).pipe(
+  Effect.catchTags({
+    // Nothing on disk: fall back to defaults.
+    ConfigFileNotFoundError: () => Effect.succeed(defaults),
+    // The file exists but is malformed JSON: report and re-raise.
+    ConfigCodecError: (error) => Effect.logError(error.message).pipe(Effect.zipRight(Effect.fail(error))),
+    // The file parsed but failed the schema: the issue tree is on error.issue.
+    ConfigValidationError: (error) => Effect.logError(error.message).pipe(Effect.zipRight(Effect.fail(error))),
+  }),
+);
+```
+
+The full failure set — `ConfigFileNotFoundError`, `ConfigFileReadError`, `ConfigCodecError`, `ConfigValidationError`, `ConfigFileWriteError` and `ConfigDefaultPathMissingError` — is narrowed per method, so each method's error channel names exactly the failures it can produce; TypeScript will not let you forget to handle one that can happen or route on one that cannot.
+
+## Next steps
+
+- **[Advanced guide](/config-file/advanced)** — encrypted codecs, config migrations, event hooks, and bridging into Effect's `ConfigProvider`.
+- **[API reference](/config-file/api)** — every export with full signatures, including all resolvers (`explicitPath`, `staticDir`, `upwardWalk`, `workspaceRoot`, `gitRoot`, `systemEtc`) and both merge strategies.

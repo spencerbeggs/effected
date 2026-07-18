@@ -1,0 +1,256 @@
+---
+title: Advanced
+description: Build a publish preflight on @effected/npm — implement the two resolver contracts, project a manifest's catalog: and workspace: specifiers to concrete ranges, and route the three-way failure model as typed values.
+---
+
+# Advanced
+
+The [overview](/npm) shows the shape of the contracts. This guide is for building something real on top of them: the resolution step a monorepo publish tool has to run before it can hand a package to npm.
+
+## A concrete scenario: a publish preflight
+
+pnpm lets a workspace package declare a dependency as `catalog:` or `workspace:*` — a reference into the repo's shared catalogs or into a sibling package, resolved at publish time to a concrete range. That indirection is wonderful in development and impossible on the registry: npm has never heard of your catalog, and `workspace:^` is not a version anyone can install. So before a package ships, every `catalog:` and `workspace:` specifier in its manifest must be projected to the exact range pnpm would write into the published `package.json`.
+
+That projection is pure — it is a function of the specifier plus two lookups: "what range does the catalog configure for this package?" and "what version does this workspace package carry?" But the *answers* are not pure: they come from reading `pnpm-workspace.yaml` and the sibling manifests off disk. `@effected/npm` draws the line exactly there. It owns the projection and the two questions as `Context.Service` contracts; the disk work belongs to the application at the edge (in the kit, `@effected/workspaces`). A publish preflight is then a thin `Effect` that provides real resolvers and asks the manifest to project itself.
+
+This guide builds that preflight from the contract side: implementing the resolvers, projecting a `Manifest`, classifying raw specifiers, and routing the failure model the package is careful to keep three-way.
+
+## How it composes
+
+The whole package is Effect-native by construction:
+
+- **The resolvers are `Context.Service` contracts.** `CatalogResolver` and `WorkspaceResolver` are services with no shipped logic beyond `noop` — you provide the implementation as a `Layer`, and consumers accept them in `R`. This is the standard "define the seam, inject at the boundary" shape.
+- **`Manifest` is a `Schema.Class`.** It embeds directly in your own schemas, so a resolved manifest can ride inside a cache row or a report struct with no adapter:
+
+```ts with-api
+import { Manifest } from "@effected/npm";
+import { Schema } from "effect";
+
+// `Manifest` is a `Schema.Class`, so it drops straight into your own schema —
+// e.g. a preflight record pairing the source manifest with where it came from.
+const ResolutionRecord = Schema.Struct({
+	manifest: Manifest,
+	packagePath: Schema.String,
+	resolvedAt: Schema.Number,
+});
+
+type ResolutionRecord = typeof ResolutionRecord.Type;
+```
+
+It also composes across the kit. The dependency vocabulary lives here so every neighbour names the same things: `DependencyField` for the four manifest sections, `DependencySpecifier` for a declared range, `IntegrityHash` for a checksum — consumed by `@effected/package-json`, `@effected/lockfiles`, and `@effected/workspaces` alike. `DependencySpecifier`'s range detection decodes `@effected/semver`'s `Range` purely, the one edge that keeps this package pure tier. And when you want the batteries included rather than hand-wiring resolvers, `@effected/workspaces` supplies the real implementation of both contracts (its `Workspaces.resolveManifest` / `Workspaces.resolverLayer()`) built from actual workspace IO.
+
+## Pattern: implementing the resolver contracts
+
+Because this is a contract package, writing your own resolver is *the* pattern — the `noop` layers exist only to type-check. An implementation is a `Layer.succeed` over the service shape. The application reads its catalogs and workspace versions once (that IO is the caller's job), then answers the two questions from the data in hand:
+
+```ts with-api
+import { CatalogResolver, WorkspaceResolver } from "@effected/npm";
+import { Effect, Layer, Option } from "effect";
+
+// Read once at startup by the application — not this package.
+const catalogRanges = new Map([["effect", "4.0.0-beta.98"]]);
+const workspaceVersions = new Map([["@acme/core", "1.4.0"]]);
+
+const CatalogFromMap = Layer.succeed(CatalogResolver, {
+	// The optional catalog name selects a named catalog; a default-catalog-only
+	// tool can ignore it. A miss is `Option.none()` — an ordinary answer, never
+	// a failure of the mechanism.
+	rangeOf: (packageName: string, _catalog: Option.Option<string>) =>
+		Effect.succeed(Option.fromUndefinedOr(catalogRanges.get(packageName))),
+});
+
+const WorkspaceFromMap = Layer.succeed(WorkspaceResolver, {
+	versionOf: (packageName: string) => Effect.succeed(Option.fromUndefinedOr(workspaceVersions.get(packageName))),
+});
+
+const Resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver> = Layer.mergeAll(CatalogFromMap, WorkspaceFromMap);
+```
+
+The invariant to internalize: **an unmatched specifier is `Option.none()`, not an error.** A package that simply is not in the catalog is a `None`. The error channels (`CatalogAssemblyError`, `DependencyResolutionError`) are reserved for the resolution *mechanism* failing — an unreadable `pnpm-workspace.yaml`, a malformed catalog block — not for an ordinary miss.
+
+## Pattern: projecting a whole manifest
+
+With resolvers provided, `Manifest` does the projection for you. Decode a raw record, use the pure `needsResolution` fast path to skip resolution (and thus catalog assembly) entirely when there is nothing to project, then `resolve()` and encode back with `toRecord()`:
+
+```ts with-api
+import { CatalogResolver, Manifest, WorkspaceResolver } from "@effected/npm";
+import { Effect, Layer, Option } from "effect";
+
+const catalogRanges = new Map([["effect", "4.0.0-beta.98"]]);
+const workspaceVersions = new Map([["@acme/core", "1.4.0"]]);
+
+const Resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver> = Layer.mergeAll(
+	Layer.succeed(CatalogResolver, {
+		rangeOf: (name: string, _catalog: Option.Option<string>) =>
+			Effect.succeed(Option.fromUndefinedOr(catalogRanges.get(name))),
+	}),
+	Layer.succeed(WorkspaceResolver, {
+		versionOf: (name: string) => Effect.succeed(Option.fromUndefinedOr(workspaceVersions.get(name))),
+	}),
+);
+
+// The preflight: project every `catalog:` / `workspace:` specifier to the
+// concrete range pnpm would publish, leaving every other field untouched.
+const publishable = Effect.gen(function* () {
+	const manifest = yield* Manifest.decode({
+		name: "@acme/cli",
+		dependencies: { effect: "catalog:", "@acme/core": "workspace:^" },
+	});
+
+	// Pure predicate: nothing to resolve means no resolver traffic at all.
+	const resolved = manifest.needsResolution ? yield* manifest.resolve() : manifest;
+
+	return resolved.toRecord();
+});
+
+Effect.runPromise(Effect.provide(publishable, Resolvers)).then(console.log);
+// => { name: "@acme/cli", dependencies: { effect: "4.0.0-beta.98", "@acme/core": "^1.4.0" } }
+```
+
+Two things worth noticing. First, the `Manifest` codec is deliberately **tolerant**: only the four dependency fields are typed, and every other top-level key (`name` here) rides through `rest` and flattens back on encode, so the round-trip is faithful for arbitrary mid-build manifests. This is not `@effected/package-json`'s strict `Package` — reach for that when you want validation. Second, resolution never mutates the input; `resolve()` returns a new `Manifest`.
+
+## Pattern: classifying and projecting a single specifier
+
+When you are not projecting a whole manifest — a lockfile importer, a diff tool, a linter reading one field — reach for `DependencySpecifier`. Its `FromString` codec decodes a string into a five-case tagged union you pattern-match on, and encodes back byte-for-byte:
+
+```ts with-api
+import { DependencySpecifier } from "@effected/npm";
+import { Schema } from "effect";
+
+const classify = Schema.decodeUnknownSync(DependencySpecifier.FromString);
+
+const describe = (raw: string): string => {
+	const spec = classify(raw); // ClassifiedSpecifier
+	switch (spec._tag) {
+		case "catalog":
+			return `catalog ref (name: ${spec.name._tag})`; // `name` is Option<string>
+		case "workspace":
+			return `workspace ref -> ${spec.resolve("1.4.0")}`; // pnpm publish projection
+		case "range":
+			return `plain range ${spec.raw}`;
+		case "dist-tag":
+			return `dist-tag ${spec.raw}`;
+		case "raw":
+			return `uninterpreted ${spec.raw}`; // git / url / file / link / portal / npm:
+	}
+};
+```
+
+The load-bearing subtlety is pnpm's **alias form**, `workspace:<name>@<range>`. There the version you must look up is the *alias target's*, not the dependency-map key's. The statics make that explicit — `workspaceTargetOf` names the package to resolve, and `resolveWorkspace` projects to the exact `npm:` dependency pnpm publishes:
+
+```ts with-api
+import { DependencySpecifier } from "@effected/npm";
+
+// A dependency aliased against a workspace package.
+const specifier = "workspace:@acme/charts@^";
+
+// The version to look up belongs to `@acme/charts` — NOT the map key.
+const target = DependencySpecifier.workspaceTargetOf(specifier); // Option<string> => Some("@acme/charts")
+
+// Given that target's concrete version, project to what pnpm actually ships.
+const published = DependencySpecifier.resolveWorkspace(specifier, "1.4.0");
+// => "npm:@acme/charts@^1.4.0"
+```
+
+The plain form (`workspace:^`, `workspace:*`, `workspace:~`) resolves the map key's own version and projects the modifier directly (`^1.4.0`, `1.4.0`, `~1.4.0`); this is exactly the walk `Manifest.resolve` runs per entry, exposed for the times you need it a specifier at a time.
+
+## Pattern: integrity hashes as one brand
+
+A polyglot fleet meets three textual integrity forms, and `IntegrityHash` spans them with one brand plus taxonomy statics — so a checksum from an npm lockfile, a corepack `packageManager` pin, and a yarn Berry entry all classify through the same surface:
+
+```ts with-api
+import { IntegrityHash } from "@effected/npm";
+
+IntegrityHash.isSri("sha512-abcABC123+/=="); // npm / pnpm SRI: <algo>-<base64>
+IntegrityHash.isCorepack("sha512.deadbeef"); // corepack pin: <algo>.<hex>
+IntegrityHash.isYarnChecksum("10c0/deadbeef"); // yarn Berry: <cachekey>/<hex>
+
+// The algorithm reads out of the SRI and corepack forms; the yarn form names
+// none, so it is honestly `Option.none()` rather than a guess.
+const algo = IntegrityHash.algorithmOf("sha512.deadbeef"); // Option<IntegrityAlgorithm> => Some("sha512")
+const yarnAlgo = IntegrityHash.algorithmOf("10c0/deadbeef"); // Option.none()
+```
+
+## Edge cases and failure modes
+
+The package keeps a **three-way** failure model, and blurring it is the mistake to avoid:
+
+1. **`Option.none()` — not a failure.** A specifier the resolvers cannot match. At the contract level this is an ordinary answer; a caller inspecting a single field decides what it means.
+2. **`UnresolvedDependencyError` — a manifest-level failure.** When `Manifest.resolve()` meets that same `Option.none()`, the manifest *cannot* be projected to concrete ranges, so it fails typed — carrying the `field`, the `dependency`, the raw `specifier`, and a `reason` (`"catalog-entry-missing"` or `"workspace-package-missing"`).
+3. **`CatalogAssemblyError` / `DependencyResolutionError` — mechanism failures.** The catalogs could not be assembled (an unreadable `pnpm-workspace.yaml`, a malformed catalog block, the default catalog declared twice — `source` tells you which), or the resolver itself failed while answering.
+
+Every one is a typed value; nothing throws. Route them where the distinction matters — a preflight usually wants a different exit code per branch:
+
+```ts with-api
+import { CatalogResolver, Manifest, WorkspaceResolver } from "@effected/npm";
+import { Effect, Layer } from "effect";
+
+declare const Resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver>;
+declare const raw: unknown; // a parsed manifest record, e.g. from JSON.parse
+
+const preflight = Manifest.decode(raw).pipe(
+	Effect.flatMap((manifest) => (manifest.needsResolution ? manifest.resolve() : Effect.succeed(manifest))),
+	Effect.map((manifest) => ({ status: "ok" as const, manifest: manifest.toRecord() })),
+	Effect.catchTags({
+		// A dependency field was not a string→string record (or input was not a record).
+		ManifestDecodeError: () => Effect.succeed({ status: "undecodable" as const }),
+		// A `catalog:` / `workspace:` specifier resolved to nothing — a real gate failure.
+		UnresolvedDependencyError: (error) =>
+			Effect.succeed({ status: "unresolved" as const, dependency: error.dependency, reason: error.reason }),
+		// The catalogs could not be assembled — an unreadable or malformed source.
+		CatalogAssemblyError: (error) => Effect.succeed({ status: "catalog-broken" as const, source: error.source }),
+		// The resolver itself failed while answering.
+		DependencyResolutionError: (error) =>
+			Effect.succeed({ status: "mechanism-broken" as const, specifier: error.specifier }),
+	}),
+	Effect.provide(Resolvers),
+);
+```
+
+One more trap the model guards against: the alias form's error names the *target* package, not the map key. If `workspace:@acme/charts@^` cannot resolve, `UnresolvedDependencyError.dependency` is `@acme/charts` with the original specifier preserved — so a diagnostic points at the package that is actually missing.
+
+## Testing tips
+
+Because the resolvers are contracts, a **stub-implementation layer** is both the pattern real consumers follow and the cheapest way to unit-test projection without touching a disk. Provide it once with `@effect/vitest`'s top-level `layer(...)` grouping rather than per-test (this snippet imports the test framework, so it is shown as a plain example rather than a live API block):
+
+```ts
+import { CatalogResolver, Manifest, WorkspaceResolver } from "@effected/npm";
+import { assert, layer } from "@effect/vitest";
+import { Effect, Layer, Option } from "effect";
+
+// A stub that answers only what the test needs. `Option.fromUndefinedOr` builds
+// the result — `Option.fromNullable` is gone in v4.
+const TestResolvers = Layer.mergeAll(
+	Layer.succeed(CatalogResolver, {
+		rangeOf: (name: string) => Effect.succeed(name === "effect" ? Option.some("4.0.0-beta.98") : Option.none()),
+	}),
+	Layer.succeed(WorkspaceResolver, {
+		versionOf: () => Effect.succeed(Option.none()),
+	}),
+);
+
+layer(TestResolvers)("Manifest.resolve", (it) => {
+	it.effect("projects a default-catalog specifier to its range", () =>
+		Effect.gen(function* () {
+			const manifest = yield* Manifest.decode({ dependencies: { effect: "catalog:" } });
+			const resolved = yield* manifest.resolve();
+			assert.deepStrictEqual(resolved.dependencies, { effect: "4.0.0-beta.98" });
+		}),
+	);
+
+	it.effect("a catalog miss fails typed as UnresolvedDependencyError", () =>
+		Effect.gen(function* () {
+			const manifest = yield* Manifest.decode({ dependencies: { missing: "catalog:" } });
+			const error = yield* manifest.resolve().pipe(Effect.flip);
+			assert.strictEqual(error._tag, "UnresolvedDependencyError");
+		}),
+	);
+});
+```
+
+Flip the channel with `Effect.flip` and assert on `_tag` to prove hostile input *fails typed* rather than throwing. The pure surface needs no layer at all: `DependencySpecifier` and `IntegrityHash` statics are ordinary functions, so `protocolOf`, `resolveWorkspace`, `workspaceTargetOf`, and `algorithmOf` test as plain value assertions.
+
+## Learn more
+
+- [Overview](/npm) — why the package exists, install, and the quick start.
+- [API reference](/npm/api) — every export with full signatures: the `CatalogResolver` / `WorkspaceResolver` contracts, `Manifest` with `ManifestDecodeError` and `UnresolvedDependencyError`, `DependencySpecifier` and its `ClassifiedSpecifier` union, `DependencySection`, `IntegrityHash`, and the `CatalogAssemblyError` / `DependencyResolutionError` tagged errors.

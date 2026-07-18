@@ -1,0 +1,187 @@
+---
+title: Advanced
+description: Wire @effected/glob into a real release tool — config-embedded patterns, include/exclude sets, bounded directory traversal, and hostile input routed as typed errors.
+---
+
+# Advanced
+
+Picture a monorepo release orchestrator. It reads an `effected.config.json` that a human wrote, computes the set of changed paths since the last tag, and decides which packages to publish. The config carries glob patterns — `packages/*`, `!packages/*-internal` — and those patterns are *untrusted input*: a typo, a copied-in `{a,b}{c,d}…` brace bomb, or a 60KB pathological extglob must not take the release down with a stack overflow or a hang. And once the tool knows *which* packages a pattern targets, it wants to walk only those directories, not the whole tree.
+
+That is the shape `@effected/glob` is built for. It turns pattern strings into a compiled, hardened matcher; it fails compilation through the typed `E` channel so a bad pattern is a routable error rather than a thrown surprise; and it exposes the structural metadata a traversal needs to stay bounded. This guide assumes you have read the [overview](/glob) and are comfortable with Effect v4.
+
+## Composing with Effect
+
+The two fallible boundaries — `GlobPattern.compile` and `GlobSet.compile` — are `Effect.fn` spans that return `Effect<…, GlobPatternError>`. Everything downstream (`matches`, the getters) is total and synchronous, so a typical program compiles once inside a `Effect.gen` and then matches freely:
+
+```ts with-api
+import { GlobSet } from "@effected/glob";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  // A leading ! is a set-level exclusion filter, applied after inclusion.
+  const publishable = yield* GlobSet.compile(["packages/*", "!packages/*-internal", "!packages/playground"]);
+
+  const changed = ["packages/glob", "packages/glob-internal", "packages/playground", "docs/guide.md"];
+  return changed.filter((path) => publishable.matches(path));
+});
+
+Effect.runPromise(program).then(console.log);
+// ["packages/glob"]
+```
+
+`packages/glob-internal` is caught by the `!packages/*-internal` exclusion, `packages/playground` by `!packages/playground`, and `docs/guide.md` never matches an include — so only `packages/glob` survives the filter.
+
+### Embedding patterns in a config schema
+
+The orchestrator does not want a two-phase "parse JSON, then compile globs" flow where the second phase can still explode. `GlobPattern.FromString` is a `Schema.Codec<GlobPattern, string>`, so a pattern field decodes straight into a compiled value and an uncompilable pattern fails *at decode time* as a `SchemaError` — the same boundary that already validates the rest of the config shape:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { Effect, Schema } from "effect";
+
+const PublishConfig = Schema.Struct({
+  include: Schema.Array(GlobPattern.FromString),
+  exclude: Schema.Array(GlobPattern.FromString),
+});
+
+// Already-parsed JSON from the config file.
+const raw = { include: ["packages/*"], exclude: ["packages/*-internal"] };
+
+const program = Effect.gen(function* () {
+  const config = yield* Schema.decodeUnknownEffect(PublishConfig)(raw);
+  // config.include: ReadonlyArray<GlobPattern>, each pattern already compiled.
+  return config.include[0]?.matches("packages/glob");
+});
+```
+
+This is where `@effected/glob` slots into the rest of the kit. A config loaded through `@effected/config-file` can name `GlobPattern.FromString` in its schema and get compilability validation for free; the `@effected/workspaces` enumerator consumes the structural accessors below to discover packages without reading every directory. The pattern type is the shared vocabulary between all three.
+
+Choose the boundary deliberately: `FromString` routes a bad pattern as a `SchemaError` alongside your other shape errors, whereas building a `GlobSet` from raw strings routes it as a `GlobPatternError` you can `catchTag`. Both are typed; they surface at different seams.
+
+## Bounded traversal with the structural accessors
+
+A naive "match every file against every pattern" walk reads the whole tree. `@effected/glob` was designed to avoid that. A `GlobSet` classifies its includes into three buckets, each answering a different traversal question:
+
+```ts with-api
+import { GlobSet } from "@effected/glob";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const set = yield* GlobSet.compile(["packages/glob", "packages/*", "docs/**"]);
+
+  set.literals; // ["packages/glob"] — exact lookups, no directory read at all
+  for (const wildcard of set.wildcards) {
+    const root = wildcard.enumerationPrefix; // "packages/", then "docs/"
+    const recurse = wildcard.crossesSegments; // false for packages/*, true for docs/**
+    // Read `root`; descend into subdirectories only when `recurse` is true.
+    void root;
+    void recurse;
+  }
+});
+```
+
+`literals` are exact paths — check them with a set lookup and never touch the filesystem. Each `wildcard` is a `GlobPattern` whose `enumerationPrefix` is the longest literal directory prefix (where to start reading) and whose `crossesSegments` says whether matching can go deeper than that prefix by more than one level (whether to recurse). `packages/*` matches one level below `packages/`, so a single directory read suffices; `docs/**` crosses segments, so it needs a bounded recursive descent. This is the issue-#62 globstar fix carried end to end into the enumerator contract — pair it with `@effected/walker` and you read exactly the directories a pattern can reach.
+
+### The negation caveat that bites a walker
+
+`enumerationPrefix` and `crossesSegments` read the *inner* pattern and ignore whole-pattern (`!`) negation. For a negated `GlobPattern`, `matches()` inverts the result — so the pattern accepts paths *outside* the prefix, and bounding a walk to `enumerationPrefix` will silently under-enumerate:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pattern = yield* GlobPattern.compile("!packages/*");
+  pattern.negated; // true
+  pattern.enumerationPrefix; // "packages/" — computed from the INNER pattern
+  // But matches() accepts paths OUTSIDE packages/. Do not root a walk here;
+  // guard on `negated` and enumerate from an encompassing root instead.
+});
+```
+
+Guard on `negated` at the call site before you trust `enumerationPrefix` as a traversal root. This is a whole-pattern negation (minimatch's `!`), which is a distinct mechanism from `GlobSet`'s set-level exclusion filter — both exist, at different levels, on purpose.
+
+## Hardening against untrusted patterns
+
+Because the patterns come from a config file, compilation is the security boundary. Every guard fires at compile time, before an instance exists, so `matches` is total — the release tool can never hang or stack-overflow at match time. A hostile pattern instead fails typed with a `GlobPatternError` whose `reason` is one of three literals. Route them by tag and discriminate on the reason:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { Effect } from "effect";
+
+const compileUserPattern = (source: string) =>
+  GlobPattern.compile(source).pipe(
+    Effect.catchTag("GlobPatternError", (error) => {
+      const detail =
+        error.reason === "PatternTooLong"
+          ? `too long (${error.actual} bytes, limit ${error.limit})`
+          : error.reason === "ExpansionBudgetExceeded"
+            ? `expands past ${error.limit} alternatives`
+            : `nests past depth ${error.limit}`;
+      return Effect.logWarning(`skipped pattern ${JSON.stringify(error.pattern)}: ${detail}`);
+    }),
+  );
+```
+
+For patterns from an especially untrusted source, tighten the caps through `GlobPatternOptions`. Caps only ever tighten — `braceExpandMax` is bounded above by the stock 100,000 budget, which is what keeps a compiled value always matchable under default options:
+
+```ts with-api
+import { GlobPattern, GlobPatternOptions } from "@effected/glob";
+import { Effect } from "effect";
+
+const strict = GlobPatternOptions.make({ braceExpandMax: 64, maxExtglobRecursion: 1 });
+
+const program = Effect.gen(function* () {
+  // Four alternatives — admitted under this tightened budget; a genuinely
+  // explosive pattern would fail typed with ExpansionBudgetExceeded instead.
+  const pattern = yield* GlobPattern.compile("{a,b}{c,d}", strict);
+  return pattern.matches("ac");
+});
+```
+
+When you need a literal path that may itself contain magic characters — a directory a user named `app[dev]` — do not hand-build the pattern string. `GlobPattern.escape` neutralizes every magic character so the literal matches only itself, then you compose it into a real pattern:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { Effect } from "effect";
+
+const forDirectory = (dir: string) => GlobPattern.compile(`${GlobPattern.escape(dir)}/**`);
+
+const program = Effect.gen(function* () {
+  const pattern = yield* forDirectory("app[dev]");
+  return pattern.matches("app[dev]/main.ts"); // true — the brackets are literal, not a class
+});
+```
+
+## Edge cases and failure modes
+
+- **The three `reason` values are the whole error vocabulary.** `PatternTooLong` (past the 64KB length cap), `ExpansionBudgetExceeded` (brace expansion past its budget), and `NestingDepthExceeded` (depth past 256). Each carries `pattern`, `limit` and `actual`. Nothing else fails compilation.
+- **Invalid *options* are a defect, not a typed error.** `GlobPatternOptions.make({ braceExpandMax: 0 })` throws at construction — the typed channel is reserved for malformed *patterns*, while bad options are a developer wiring mistake. Do not `catchTag` for them.
+- **`platform` is never inferred.** It defaults to `"posix"`; the engine never reads `process.platform`. Win32 handling — UNC paths, drive letters, backslash splitting — sits behind an explicit `platform: "win32"` option, so a caller who wants it passes it in and matching never drifts with the ambient environment.
+- **Deep globstar backtracking is a deliberate false negative, not an error.** Exceeding `maxGlobstarRecursion` (default 200) makes `matches` return `false` rather than raising — an intentional correctness-for-security trade inherited from upstream. It never converts to a `GlobPatternError`.
+
+## Testing
+
+Compilation failures are values, so test them the same way you test any Effect failure — flip and assert, no mocking. `@effect/vitest` gives you `it.effect`, and `assert.*` is the house convention (never `expect`):
+
+```ts with-api
+import { GlobPattern, GlobPatternError } from "@effected/glob";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("publish filter", () => {
+  it.effect("rejects a brace bomb as a typed error, not a defect", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(GlobPattern.compile("{a,b}".repeat(17)));
+      assert.instanceOf(error, GlobPatternError);
+      assert.strictEqual(error.reason, "ExpansionBudgetExceeded");
+    }));
+});
+```
+
+Because `matches` is pure and total, the happy path needs no runtime at all beyond compiling the pattern once — assert `matches` results directly on the compiled value.
+
+## Learn more
+
+- [Overview](/glob) — install, the hardening story, and the two deliberate deviations from minimatch.
+- [API reference](/glob/api) — every export with full signatures: `GlobPattern`, `GlobSet`, `GlobPatternOptions`, and `GlobPatternError`.

@@ -1,0 +1,218 @@
+---
+title: "Getting started"
+description: "Provide the two resolver contracts, project a manifest's catalog: and workspace: specifiers to concrete versions, classify a raw specifier, and route the typed failures — the @effected/npm workflow end to end."
+---
+
+# Getting started
+
+`@effected/npm` is the vocabulary the rest of the kit uses to talk about dependency specifiers — the strings on the right-hand side of a `package.json` dependency, including pnpm's `catalog:` and `workspace:` protocols. It ships two Effect *contracts* for turning those two protocols into concrete versions, the tagged errors they raise, and a tolerant `Manifest` model that applies them across a whole `package.json`. Reach for it when you are building tooling that has to understand what `"effect": "catalog:"` or `"@acme/ui": "workspace:^"` actually means — a publish step, a lockfile auditor, a monorepo linter. The package does no IO and ships no real resolution logic of its own: it defines the shapes, and you (or `@effected/workspaces`) supply the workspace knowledge.
+
+## Install
+
+```bash
+npm install @effected/npm effect
+```
+
+```bash
+pnpm add @effected/npm effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. There are no external runtime dependencies and no IO — the package is pure, and its own default layers resolve nothing.
+
+## A one-minute mental model
+
+Two ideas carry the whole package:
+
+- A **specifier** is one dependency's version string. `@effected/npm` classifies any specifier (`^4.0.0`, `latest`, `catalog:react19`, `workspace:^`, a git URL) and knows how to *project* the two pnpm protocols to concrete versions.
+- A **resolver contract** is a service that answers one lookup. [`CatalogResolver`](/npm/api/class/catalogresolver) answers "what range does this catalog pin for this package?"; [`WorkspaceResolver`](/npm/api/class/workspaceresolver) answers "what version is this workspace package at?". The package ships only no-op implementations — the real answers depend on a workspace it cannot see.
+
+Everything else — the [`Manifest`](/npm/api/class/manifest) model, the typed errors — is built on those two.
+
+## Your first task: resolve a manifest's catalog: and workspace: specifiers
+
+Here is the concrete goal: you have a mid-build `package.json` that pins two of its dependencies through pnpm protocols, and you want the concrete ranges pnpm would publish. `catalog:` should become the range your catalog configures; `workspace:^` should become a caret range on the workspace package's real version.
+
+Because the package ships no resolution logic, the first step is to *supply the two facts your workspace knows* by implementing the two contracts. Each is a one-line `Layer` over a lookup:
+
+```ts with-api
+import { CatalogResolver, WorkspaceResolver } from "@effected/npm";
+import { Effect, Layer, Option } from "effect";
+
+// The two facts your workspace knows. In a real app these come from
+// @effected/workspaces reading pnpm-workspace.yaml; here we spell them out.
+const catalogRanges: Record<string, string> = {
+  effect: "^4.0.0",
+  typescript: "^5.6.0",
+};
+const workspaceVersions: Record<string, string> = {
+  "@acme/ui": "1.4.0",
+};
+
+// rangeOf answers Option.none() for a package the catalog does not pin —
+// an absent entry is an ordinary answer, never an error.
+const CatalogLayer = Layer.succeed(CatalogResolver, {
+  rangeOf: (packageName, _catalog) => Effect.succeed(Option.fromUndefinedOr(catalogRanges[packageName])),
+});
+
+const WorkspaceLayer = Layer.succeed(WorkspaceResolver, {
+  versionOf: (packageName) => Effect.succeed(Option.fromUndefinedOr(workspaceVersions[packageName])),
+});
+
+// One layer providing both contracts.
+export const Resolvers = Layer.mergeAll(CatalogLayer, WorkspaceLayer);
+```
+
+With the contracts in hand, decode the manifest and project it. [`Manifest.decode`](/npm/api/class/manifest) turns an arbitrary record into the tolerant model; `needsResolution` is a pure fast-path check so you can skip the work entirely when nothing needs it; `resolve()` walks every dependency field and projects each `catalog:`/`workspace:` specifier through the contracts; `toRecord()` encodes back to a plain object:
+
+```ts with-api
+import { CatalogResolver, Manifest, WorkspaceResolver } from "@effected/npm";
+import { Effect, Layer, Option } from "effect";
+
+declare const Resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver>;
+// ---cut---
+const program = Effect.gen(function* () {
+  const manifest = yield* Manifest.decode({
+    name: "@acme/app",
+    dependencies: {
+      effect: "catalog:",
+      "@acme/ui": "workspace:^",
+    },
+  });
+
+  // Skip catalog assembly entirely when there is nothing to resolve.
+  const resolved = manifest.needsResolution ? yield* manifest.resolve() : manifest;
+
+  return resolved.toRecord();
+});
+
+Effect.runPromise(Effect.provide(program, Resolvers)).then(console.log);
+// => { name: "@acme/app", dependencies: { effect: "^4.0.0", "@acme/ui": "^1.4.0" } }
+```
+
+`program` is a description, not a result — nothing runs until `Effect.runPromise`. Notice what `resolve()` did: `catalog:` picked up the catalog's `^4.0.0`, and `workspace:^` became `^1.4.0` — a caret on `@acme/ui`'s real version, exactly the projection pnpm applies at publish time. Every other field (`name`) rode through untouched.
+
+> This is the whole reason the two contracts are separate from their implementations: swap `Resolvers` for `Workspaces.resolverLayer()` from [`@effected/workspaces`](/workspaces) and the same `program` resolves against a real `pnpm-workspace.yaml`, no code change.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built only from the package's real exports. The specifier statics are all pure — no Effect, no layers.
+
+### Classify a raw specifier's protocol
+
+[`DependencySpecifier.protocolOf`](/npm/api/variable/dependencyspecifier) sorts any specifier string into one of eleven protocols, and the `is*` predicates answer the yes/no questions directly.
+
+```ts with-api
+import { DependencySpecifier } from "@effected/npm";
+
+DependencySpecifier.protocolOf("catalog:react19"); // "catalog"
+DependencySpecifier.protocolOf("workspace:^"); // "workspace"
+DependencySpecifier.protocolOf("^4.0.0"); // "range"
+DependencySpecifier.protocolOf("latest"); // "tag"
+DependencySpecifier.protocolOf("github:acme/ui#next"); // "git"
+
+DependencySpecifier.isWorkspace("workspace:*"); // true
+DependencySpecifier.isValid(""); // false
+```
+
+### Read a catalog name and project a workspace range
+
+Two projections you reach for when handling the pnpm protocols yourself. [`catalogNameOf`](/npm/api/variable/dependencyspecifier) extracts the catalog a `catalog:` specifier points at (`None` is the default catalog); [`resolveWorkspace`](/npm/api/variable/dependencyspecifier) applies pnpm's publish-time projection given a concrete version.
+
+```ts with-api
+import { DependencySpecifier } from "@effected/npm";
+
+DependencySpecifier.catalogNameOf("catalog:react19"); // Option.some("react19")
+DependencySpecifier.catalogNameOf("catalog:"); // Option.none() — the default catalog
+
+DependencySpecifier.resolveWorkspace("workspace:^", "1.4.0"); // "^1.4.0"
+DependencySpecifier.resolveWorkspace("workspace:*", "1.4.0"); // "1.4.0"
+DependencySpecifier.resolveWorkspace("workspace:1.2.3", "1.4.0"); // "1.2.3" — a pinned range passes through
+```
+
+### Decode a specifier into a tagged union you can match on
+
+When you want to branch structurally, [`DependencySpecifier.FromString`](/npm/api/variable/dependencyspecifier) is a codec that decodes a string into a [`ClassifiedSpecifier`](/npm/api/type/classifiedspecifier) — a five-case tagged union you `switch` on by `_tag`. The `workspace` case is a [`WorkspaceSpecifier`](/npm/api/class/workspacespecifier) instance, so it carries a `resolve` method.
+
+```ts with-api
+import { DependencySpecifier } from "@effected/npm";
+import { Effect, Schema } from "effect";
+
+const program = Effect.gen(function* () {
+  const classified = yield* Schema.decodeUnknownEffect(DependencySpecifier.FromString)("workspace:^");
+
+  switch (classified._tag) {
+    case "catalog":
+      return `catalog reference: ${classified.raw}`;
+    case "workspace":
+      return classified.resolve("1.4.0"); // "^1.4.0"
+    default:
+      return classified.raw;
+  }
+});
+```
+
+### Map between dependency kinds and manifest fields
+
+[`DependencySection`](/npm/api/variable/dependencysection) is the kit-wide vocabulary for the four dependency sections — a short `kind` (`prod`/`dev`/`peer`/`optional`) and the `package.json` field name it lives under — with a total mapping each way.
+
+```ts with-api
+import { DependencySection } from "@effected/npm";
+
+DependencySection.fieldOf("dev"); // "devDependencies"
+DependencySection.fieldOf("peer"); // "peerDependencies"
+DependencySection.kindOf("optionalDependencies"); // "optional"
+```
+
+### Inspect an integrity hash
+
+[`IntegrityHash`](/npm/api/variable/integrityhash) recognizes the three textual integrity forms the kit meets — SRI, corepack and yarn — and reads the algorithm out of the two that name one.
+
+```ts with-api
+import { IntegrityHash } from "@effected/npm";
+
+IntegrityHash.isValid("sha512-K5f2Bd8QwErTyUiOpAsDfGhw=="); // true (SRI)
+IntegrityHash.algorithmOf("sha512-K5f2Bd8QwErTyUiOpAsDfGhw=="); // Option.some("sha512")
+
+IntegrityHash.isYarnChecksum("10c0/abc123def456"); // true
+IntegrityHash.algorithmOf("10c0/abc123def456"); // Option.none() — yarn names no algorithm
+```
+
+## Handling failures
+
+The resolution flow fails in typed ways, and every failure is a tagged error you route with `Effect.catchTag` — no `try`/`catch`, no `_tag` sniffing. Keep the three levels distinct:
+
+- [`UnresolvedDependencyError`](/npm/api/class/unresolveddependencyerror) — the mechanism worked, but the answer was empty. `Manifest.resolve()` raises it when a `catalog:` specifier has no catalog entry, or a `workspace:` specifier names no workspace package. Its `reason` is `"catalog-entry-missing"` or `"workspace-package-missing"`, and it names the offending `field`, `dependency` and `specifier`.
+- [`DependencyResolutionError`](/npm/api/class/dependencyresolutionerror) — the resolution *mechanism* itself failed. Reserved for a resolver that could not do its job at all; it carries the original failure structurally on `cause`.
+- [`CatalogAssemblyError`](/npm/api/class/catalogassemblyerror) — the catalogs could not even be *assembled* (an unreadable or malformed `pnpm-workspace.yaml`). Its `source` is `manifest`, `catalog` or `hooks`.
+- [`ManifestDecodeError`](/npm/api/class/manifestdecodeerror) — the input to `Manifest.decode` was not a valid manifest record.
+
+Here the manifest declares `effect` as `catalog:` but is resolved under the no-op [`Default`](/npm/api/variable/default) layer, which pins nothing — so resolution comes back empty and fails typed:
+
+```ts with-api
+import { Default, Manifest } from "@effected/npm";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const manifest = yield* Manifest.decode({
+    dependencies: { effect: "catalog:" },
+  });
+  return yield* manifest.resolve();
+});
+
+const safe = program.pipe(
+  Effect.provide(Default),
+  Effect.catchTag("UnresolvedDependencyError", (error) =>
+    // error.field, error.dependency, error.specifier, error.reason
+    Effect.succeed(`unresolved ${error.dependency} in ${error.field} (${error.reason})`),
+  ),
+  Effect.catchTag("ManifestDecodeError", () => Effect.succeed("input was not a valid manifest")),
+);
+```
+
+Recovering a tag turns that branch of the error channel into a plain success; recover only the tags you have a plan for and let the rest propagate. The invariant to lean on: at the contract level an *unmatched* specifier is an `Option.none()`, not a failure — it only becomes an `UnresolvedDependencyError` once a whole `Manifest` cannot be projected because of it.
+
+## Next steps
+
+- The [package overview](/npm) frames why the contract lives here and the implementation lives elsewhere.
+- [`@effected/workspaces`](/workspaces) is the batteries-included implementation — `Workspaces.resolverLayer()` and `Workspaces.resolveManifest` wire real catalog and workspace resolution behind the same two contracts.
+- The [API reference](/npm/api) has every export with full signatures.

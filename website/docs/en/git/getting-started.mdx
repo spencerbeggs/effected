@@ -1,0 +1,273 @@
+---
+title: Getting started
+description: Install @effected/git, wire the layer, and read a repository's branch, status and history end to end — a first tour of typed git introspection in Effect.
+---
+
+# Getting started
+
+`@effected/git` lets an Effect program ask git questions — what branch am I on,
+which files changed between two commits, what does this file look like at an old
+ref — and get back typed values instead of raw stdout you have to parse. Every
+failure git can produce arrives as one of three tagged errors you branch on, and
+nothing shells out behind your back: IO goes through Effect core's
+`ChildProcessSpawner`, which you provide once at the edge. Reach for it whenever a
+CLI, a CI check, or a monorepo tool needs to read repository state
+programmatically without scripting `git` by hand.
+
+## Install
+
+```bash
+npm install @effected/git effect
+```
+
+```bash
+pnpm add @effected/git effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; there are no
+runtime dependencies. The package does not spawn processes itself — it describes
+git commands and runs them through a `ChildProcessSpawner` you supply at the
+edge. On Node, `@effect/platform-node`'s `NodeServices` layer provides one, so
+every example below installs that too:
+
+```bash
+pnpm add @effect/platform-node
+```
+
+## Your first task: report on a repository
+
+The goal: print the repository root, the current branch, and the list of files
+you have changed but not committed. All three are read-only — nothing here
+touches your working tree.
+
+Start by wiring the layer. `Git.layer` needs a `ChildProcessSpawner`;
+`NodeServices.layer` supplies it, so providing the latter to the former yields a
+self-contained `GitLive` layer that requires nothing:
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { Git } from "@effected/git";
+import { Layer } from "effect";
+
+// Git.layer resolves the spawner once, at construction — so every method's
+// requirement is `never`, and GitLive needs nothing from the caller.
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+```
+
+Now write the program. `yield* Git` hands you the service; each method takes the
+working directory as its first argument. `currentBranch` returns an
+`Option<string>` — `Option.none` on a detached `HEAD`, because a fake branch name
+would be worse than an honest absence — so unwrap it with a fallback:
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { Git } from "@effected/git";
+import { Effect, Layer, Option } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const git = yield* Git;
+  const cwd = process.cwd();
+
+  const root = yield* git.repoRoot(cwd);
+  const branch = yield* git.currentBranch(cwd);
+  const changed = yield* git.workingChanges(cwd, { relative: true });
+
+  return {
+    root,
+    branch: Option.getOrElse(branch, () => "(detached HEAD)"),
+    changed,
+  };
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
+```
+
+Run it inside a git repository and you get a plain object back:
+
+```txt
+{
+  root: '/home/you/projects/my-app',
+  branch: 'main',
+  changed: [ 'src/index.ts', 'README.md' ]
+}
+```
+
+`workingChanges` is the deduplicated union of unstaged, staged and untracked
+paths — the full working-tree delta against `HEAD`. Passing `relative: true`
+reports the paths relative to `cwd`, which is what you want when your program
+runs from inside a package of a larger repository.
+
+## Common operations
+
+Each snippet below reuses the same `GitLive` layer and the
+`yield* Git` handle from the walkthrough.
+
+### Check that a ref exists, then resolve it
+
+`refExists` never throws for a missing ref — a ref that does not resolve *is* the
+negative answer, so you get back `false`. `revParse` turns a ref into its full
+object id:
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { Git } from "@effected/git";
+import { Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const git = yield* Git;
+  const cwd = process.cwd();
+
+  if (!(yield* git.refExists(cwd, "v1.0.0"))) {
+    return "tag v1.0.0 does not exist";
+  }
+  const sha = yield* git.revParse(cwd, "v1.0.0");
+  return `v1.0.0 resolves to ${sha}`;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
+```
+
+### List the files changed between two refs
+
+This is the change-detection primitive the package was extracted to provide.
+`changedFiles` diffs a `base...head` range and returns the differing paths:
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { Git } from "@effected/git";
+import { Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const git = yield* Git;
+  const files = yield* git.changedFiles(process.cwd(), {
+    base: "origin/main",
+    head: "HEAD",
+  });
+  return `${files.length} files changed since origin/main`;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
+```
+
+### Read a commit's metadata
+
+`commitInfo` returns a `CommitInfo` with the full `sha`, a `signatureStatus`
+verdict, and the raw `message`. The message is deliberately left untrimmed — it
+still carries git's trailing newline — so trim it yourself if you only want the
+subject line:
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { Git } from "@effected/git";
+import { Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const git = yield* Git;
+  const commit = yield* git.commitInfo(process.cwd()); // defaults to HEAD
+  const subject = commit.message.trim().split("\n")[0];
+  return `${commit.sha.slice(0, 8)} ${subject}`;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
+```
+
+### Read a file's contents at an old ref, without checking it out
+
+`show` reads a path at any ref and returns `Option<string>` — `Option.none` when
+the file did not exist at that ref, rather than an error:
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { Git } from "@effected/git";
+import { Effect, Layer, Option } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const git = yield* Git;
+  const contents = yield* git.show(process.cwd(), "HEAD~1", "package.json");
+  return Option.match(contents, {
+    onNone: () => "package.json did not exist at HEAD~1",
+    onSome: (text) => `package.json was ${text.length} bytes at HEAD~1`,
+  });
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
+```
+
+### Inspect the working-tree status
+
+`status` returns porcelain entries, each with an index-side code `x`, a
+working-tree-side code `y`, and the `path`:
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { Git } from "@effected/git";
+import { Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const git = yield* Git;
+  const entries = yield* git.status(process.cwd());
+  return entries.map((entry) => `${entry.x}${entry.y} ${entry.path}`);
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
+```
+
+## Handling errors
+
+Every method fails through exactly three tagged errors, and route each with
+`Effect.catchTag`:
+
+- `NotARepositoryError` — `cwd` is not inside a git work tree. It carries `cwd`.
+- `UnknownRefError` — a ref (or `a...b` range) did not resolve. It carries `ref`
+  and `cwd`.
+- `GitCommandError` — git ran and exited non-zero, the spawn failed, or a
+  pre-spawn guard refused an option-like argument. It carries `args`, `cwd`,
+  `stderr`, an optional `exitCode`, and a `kind` of `"failed"` or `"refused"`.
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { Git } from "@effected/git";
+import { Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const git = yield* Git;
+  return yield* git.revParse("/tmp/not-a-repo", "release-42");
+}).pipe(
+  Effect.catchTag("NotARepositoryError", (error) =>
+    Effect.succeed(`${error.cwd} is not a git repository`),
+  ),
+  Effect.catchTag("UnknownRefError", (error) =>
+    Effect.succeed(`ref '${error.ref}' does not resolve`),
+  ),
+  Effect.catchTag("GitCommandError", (error) =>
+    Effect.succeed(`git failed: ${error.message}`),
+  ),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
+```
+
+Because absences already degrade to their honest value — `currentBranch` and
+`show` return `Option.none`, `refExists` returns `false` — the typed error
+channel only ever holds the failures a caller actually needs to branch on.
+
+## Next steps
+
+- The [advanced guide](/git/advanced) covers the mutating tier — `checkout`,
+  `fetch`, `fetchAny`, submodules, sparse checkout, config writes and staging —
+  and the parsed diff models.
+- Every export, with full signatures, lives in the [API reference](/git/api).

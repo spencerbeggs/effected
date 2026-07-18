@@ -1,0 +1,245 @@
+---
+title: "Advanced"
+description: "Compose @effected/tsconfig-json into a real application: extends-chain resolution with tsc parity, a portable subset for virtual TypeScript environments, numeric-enum encoding for a real compiler, and typed failure routing."
+---
+
+# Advanced
+
+Picture a monorepo build orchestrator — call it `typecheck-all` — that walks every package in a workspace and reports, per package, the *effective* compiler options TypeScript would actually use. That is not `JSON.parse` on each `tsconfig.json`: nearly every package `extends` a shared base at the repo root, that base may itself extend a `@company/tsconfig` package resolved through `node_modules`, and the options that matter (`strict`, `target`, `paths`) are scattered across the whole chain. The orchestrator also feeds two downstream tools from the same read: a virtual TypeScript environment (an API Extractor pass, a Twoslash renderer) that needs a *machine-independent* slice of those options, and a bundler that needs to know which JSX transform to configure. All of it has to run from a plain directory path, with no `typescript` install anywhere in the tool.
+
+That is the job `@effected/tsconfig-json` is built for. It reproduces what tsc does when it reads a config — module-style `extends` resolution, per-field merge, path absolutization against the declaring config, one final `${configDir}` substitution — as pure, string-level Effect code, and hands you typed projections for the compiler, the virtual environment and the bundler. This guide assumes you are comfortable with Effect v4 layers, services and typed errors; it picks up where reading a single file stops being enough. If you have not seen the package before, start with the [API reference](/tsconfig-json/api) for the full export surface.
+
+## Composing into an application
+
+The package is a boundary-tier port with **zero external runtime dependencies**. Every disk touch flows through `effect`-core's `FileSystem` and `Path`, which arrive from your platform layer once at the edge — so the loader is an ordinary effect you provide context to, never a thing that reaches out to the filesystem on its own:
+
+- **All IO is in `R`.** `TsconfigLoader.resolve` returns `Effect<ResolvedTsconfig, …, FileSystem | Path>`. You satisfy that requirement with `@effect/platform-node` on Node, `@effect/platform-bun` on Bun, and — in a test — with `Path.layer` plus `FileSystem.layerNoop` straight from core, nothing else installed.
+- **It composes with the rest of the kit through first-party peers.** `extends`-chain resolution walks `node_modules` and parses each file, so the package leans on [`@effected/jsonc`](/jsonc/api) for the parse (every read is JSONC — comments and trailing commas are legal everywhere) and on [`@effected/walker`](/walker/api) for the upward directory scan behind [`TsconfigDiscovery`](/tsconfig-json/api/variable/tsconfigdiscovery). Nothing from outside `effect` and `@effected/*` enters your tree.
+- **The result is a plain, serializable value.** [`ResolvedTsconfig`](/tsconfig-json/api/interface/resolvedtsconfig) is an interface, not a class — the merged `compilerOptions`, the full `extendedPaths` chain, and provenance like `pathsBase`. You can log it, cache it, or hand slices of it to the projections below.
+
+Here is the `typecheck-all` core as an application program. `findNearest` locates the package's config, `resolve` folds its whole `extends` chain, and the platform layer is provided once at the edge:
+
+```ts with-api
+import { TsconfigDiscovery, TsconfigLoader } from "@effected/tsconfig-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer, Option } from "effect";
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+const effectiveOptions = (packageDir: string) =>
+  Effect.gen(function* () {
+    // Absence is Option.none(), never an error — a package with no config is a fact, not a failure.
+    const found = yield* TsconfigDiscovery.findNearest(packageDir);
+    if (Option.isNone(found)) return Option.none();
+
+    const resolved = yield* TsconfigLoader.resolve(found.value);
+    // The whole extends chain, base-most first and this package's own config last.
+    yield* Effect.logInfo(`resolved ${resolved.extendedPaths.length} configs for ${packageDir}`);
+    return Option.some(resolved);
+  });
+
+const report = effectiveOptions("./packages/app").pipe(Effect.provide(PlatformLive));
+
+Effect.runPromise(report);
+```
+
+`TsconfigLoader.compilerOptions(path)` is the same pipeline projected straight down to the merged options, for the common case where the effective `compilerOptions` are all you want and you do not need the chain provenance.
+
+## Pattern: resolving the extends chain with tsc's own semantics
+
+The value of `resolve` is that the fold is *correct*, not just present. The merge is per-field with tsc's exact rules, and `ResolvedTsconfig` carries enough provenance to explain any surprising result:
+
+- **`extendedPaths`** is the full resolution chain as normalized absolute paths, base-most first and your own config last — the order options were folded in, so the last entry that set a key wins.
+- **`paths` is replaced wholesale, not merged.** A derived config that declares `paths` shadows the base's entirely; `pathsBase` records the directory of the config that declared the surviving `paths`, because those values resolve relative to *that* config, not the one you loaded.
+- **`references` and `typeAcquisition` are never inherited** — they come only from the most-derived config. `files`/`include`/`exclude` are re-rooted relative to the declaring config when inherited, and a leading `${configDir}` is substituted once at the end against the top config's directory.
+
+Because the whole engine is string-level, an option value like `"target": "es2023"` stays the string `"es2023"` through parse, merge and discovery. Reading it back is just a field access:
+
+```ts with-api
+import { TsconfigLoader } from "@effected/tsconfig-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+const program = Effect.gen(function* () {
+  const options = yield* TsconfigLoader.compilerOptions("./tsconfig.json");
+  // Strings all the way down — no `typescript` enum juggling to read a value.
+  const strict = options.strict === true;
+  const target = options.target ?? "es2016";
+  return { strict, target };
+});
+
+Effect.runPromise(program.pipe(Effect.provide(PlatformLive)));
+```
+
+Diamond `extends` chains (two branches that both reach the same base) are legal: cycle detection is **per-branch**, so a shared base is visited on each branch without being mistaken for a loop. A genuine cycle, on the other hand, fails typed — see the failure-modes section below.
+
+## Pattern: a portable subset for virtual TypeScript environments
+
+The orchestrator's virtual-environment consumer — an API Extractor run, a Twoslash pass, an in-memory language service — controls its own file set and its own emit. Handing it the source config's absolute `outDir`, `rootDir` or `paths` would be wrong at best and machine-specific at worst. [`PortableTsconfig.make`](/tsconfig-json/api/variable/portabletsconfig) projects a resolved config (or a bare options bag) down to exactly the type-semantics options a virtual environment can safely inherit:
+
+```ts with-api
+import { PortableTsconfig, TsconfigLoader } from "@effected/tsconfig-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+const portable = Effect.gen(function* () {
+  const resolved = yield* TsconfigLoader.resolve("./tsconfig.json");
+  const config = PortableTsconfig.make(resolved);
+  // `composite: false` and `noEmit: true` are always forced, whatever the source declared.
+  return config.compilerOptions.noEmit;
+});
+
+Effect.runPromise(portable.pipe(Effect.provide(PlatformLive)));
+```
+
+Two properties are worth internalizing before you rely on it:
+
+- **It is an allow-list, not a deny-list.** Only options the package classifies as portable type-semantics (`strict` and its family, `target`/`module`/`moduleResolution`/`jsx`/`lib`, the JSX factory strings) ever reach the output. Every emit destination, every path, every file-selection key, and every unknown passthrough key the source preserved for forward tolerance is dropped. Growing the portable surface is a deliberate, reviewed change to the allow-list — never an accident of "we forgot to exclude it."
+- **`composite` and `noEmit` are forced.** `PortableTsconfig` stamps `composite: false` and `noEmit: true` regardless of what the source config said, plus a `$schema` URL for editor support, so a portable config can never drag project-reference orchestration or emit into a virtual environment.
+
+## Pattern: encoding to the numeric shape a real compiler expects
+
+When the destination is a real `ts.CompilerOptions` — driving `@typescript/vfs` or `ts.createProgram` — the string form has to become TypeScript's numeric enums. [`TsEnumCodec`](/tsconfig-json/api/variable/tsenumcodec) holds those version-coupled mappings as plain data tables, so the conversion is an explicit final step rather than a `typescript` dependency you carry everywhere:
+
+```ts with-api
+import { TsconfigLoader, TsEnumCodec } from "@effected/tsconfig-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+const numeric = Effect.gen(function* () {
+  const options = yield* TsconfigLoader.compilerOptions("./tsconfig.json");
+  // `target: "es2023"` -> 10, and each `lib` entry -> its on-disk file name form.
+  return TsEnumCodec.encodeCompilerOptions(options);
+});
+
+Effect.runPromise(numeric.pipe(Effect.provide(PlatformLive)));
+```
+
+Two details save real debugging time. First, `lib` entries encode to the **file-name form** (`lib.esnext.d.ts`), not the short name — because that is the literal string the compiler joins onto its lib directory when it resolves the file; a short `"esnext"` would resolve to a nonexistent path. `TsEnumCodec.normalizeLibReference` reverses any spelling (short name, file name, or absolute path) back to the canonical short form. Second, the codec **never guesses**: `encode`/`decode` return `Option.none()` for a value with no table entry, and `encodeCompilerOptions` copies an unmappable value through untouched rather than inventing a number — so a future TS enum member degrades to passthrough instead of a wrong answer. `decodeCompilerOptions` is the inverse, for reading options off a live compiler back into this package's string shape.
+
+## Pattern: projecting the JSX transform for a bundler
+
+The bundler consumer does not care about the numeric `jsx` enum; it needs to know which *runtime* to configure. [`JsxConfig.fromCompilerOptions`](/tsconfig-json/api/class/jsxconfig) is a total projection from decoded options to that decision, and it is honest about the cases where there is nothing to configure:
+
+```ts with-api
+import { JsxConfig, TsconfigLoader } from "@effected/tsconfig-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer, Option } from "effect";
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+const jsxRuntime = Effect.gen(function* () {
+  const options = yield* TsconfigLoader.compilerOptions("./tsconfig.json");
+  const jsx = JsxConfig.fromCompilerOptions(options);
+  // `preserve`, `react-native` and an absent `jsx` yield Option.none() — nothing for a bundler to set.
+  return Option.match(jsx, {
+    onNone: () => "leave JSX untransformed",
+    onSome: (config) =>
+      config.runtime === "automatic"
+        ? `automatic runtime, importSource=${config.importSource ?? "react"}`
+        : "classic runtime",
+  });
+});
+
+Effect.runPromise(jsxRuntime.pipe(Effect.provide(PlatformLive)));
+```
+
+`react-jsx` / `react-jsxdev` select the `automatic` runtime with `importSource` defaulting to `"react"` (tsc's own default); `react` selects `classic`, whose factory options (`jsxFactory`, `jsxFragmentFactory`) stay on `CompilerOptions` for a classic consumer to read directly. Everything else is `Option.none()`, so a bundler that pattern-matches on the `Option` never has to invent behavior for the untransformed cases.
+
+## Synchronous loading for sync-only hosts
+
+A bundler plugin hook or a config factory often cannot `await`. [`TsconfigLoaderSync`](/tsconfig-json/api/variable/tsconfigloadersync) runs the **unchanged** loader pipeline synchronously over file and path operations you supply — the package still imports no `node:*` module, and Node's built-ins satisfy the operations directly:
+
+```ts with-api
+import { existsSync, readFileSync } from "node:fs";
+import * as path from "node:path";
+import { TsconfigLoaderSync } from "@effected/tsconfig-json";
+
+const options = {
+  fileSystem: { exists: existsSync, readFile: (p: string) => readFileSync(p, "utf8") },
+  path, // node:path IS a SyncPath; path.win32 / path.posix force a convention
+};
+
+// The same merged options TsconfigLoader.resolve computes, without an Effect runtime.
+const compilerOptions = TsconfigLoaderSync.compilerOptions("./tsconfig.json", options);
+```
+
+`load` and `resolve` have the same synchronous forms. Failures are the async pipeline's own typed errors **thrown as themselves** — `TsconfigParseError`, `TsconfigExtendsError`, or a `PlatformError` wrapping whatever your `readFile` threw — never a fiber-failure wrapper, so a `try`/`catch` around a sync call sees exactly the error the async loader would have failed with. Windows correctness is entirely the `path` you pass: hand it `node:path` on Windows, or `node:path/win32` to force the convention.
+
+## Edge cases and failure modes
+
+Every failure is a tagged error you route on with `Effect.catchTag`, each carrying its cause structurally rather than as a string. The distinctions worth designing around:
+
+- **"No config found" is not "config is broken."** `TsconfigDiscovery.findNearest` returns `Option.none()` when nothing is on the chain — absence is data, answered with a default. A file that *is* found but fails to parse is a `TsconfigParseError` carrying its path; a broken `extends` chain is a `TsconfigExtendsError`. Routing the three the same way is the exact mistake the typed channel exists to prevent.
+- **`TsconfigExtendsError` tells you why the chain broke.** Its `reason` is one of `"not-found"` (an unresolvable target), `"cycle"` (a re-entrant chain), `"depth"` (deeper than the 32-level guard on untrusted files), or `"empty"` (an empty target string), and `chain` carries the full resolution path so a failure names the exact hop.
+
+```ts with-api
+import { TsconfigExtendsError, TsconfigLoader } from "@effected/tsconfig-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+const resilient = TsconfigLoader.resolve("./tsconfig.json").pipe(
+  Effect.catchTag("TsconfigExtendsError", (error: TsconfigExtendsError) =>
+    error.reason === "not-found"
+      ? Effect.logWarning(`missing base ${error.target}, using defaults`).pipe(Effect.as(undefined))
+      : Effect.fail(error),
+  ),
+  Effect.provide(PlatformLive),
+);
+
+Effect.runPromise(resilient);
+```
+
+- **Malformed input always fails typed, never as a defect.** A non-object `package.json` on an `extends` target coerces to `{}` and falls through to the package's `tsconfig.json` probe (tsc's own behavior), and the recursive walk carries both a cycle guard and a depth guard. `Object.hasOwn` guards every untrusted map read and `__proto__` / `constructor` / `prototype` keys are skipped — a config file is untrusted input and is treated as such.
+- **The loader's file-existence contract is file-only.** Target probing uses `FileSystem.exists`, which is `true` for a directory, where tsc's own probe is file-only. A relative `extends` target pointing at a real *directory* therefore resolves the directory and then fails typed via the subsequent read's `PlatformError` — an accepted, documented divergence, and still a typed failure rather than a defect. A `PlatformError` from any underlying IO flows through untranslated.
+
+## Testing with @effect/vitest
+
+Because all IO is in `R`, resolution tests need no platform package and no temp directory — provide an in-memory filesystem from core. `FileSystem.layerNoop` with `exists`/`readFileString` over a `Map` of file paths, merged with `Path.layer`, gives you a fixture tree that is structurally file-only, matching the loader's own contract:
+
+```ts with-api
+import { TsconfigLoader } from "@effected/tsconfig-json";
+import { it } from "@effect/vitest";
+import { Effect, FileSystem, Layer, Path } from "effect";
+
+const files = new Map<string, string>([
+  ["/repo/tsconfig.base.json", `{ "compilerOptions": { "strict": true, "target": "es2022" } }`],
+  ["/repo/tsconfig.json", `{ "extends": "./tsconfig.base.json", "compilerOptions": { "target": "es2023" } }`],
+]);
+
+const FixtureFs = FileSystem.layerNoop({
+  exists: (path) => Effect.succeed(files.has(path)),
+  readFileString: (path) =>
+    files.has(path)
+      ? Effect.succeed(files.get(path)!)
+      : Effect.die(`no fixture file at ${path}`),
+});
+
+const TestLive = Layer.mergeAll(FixtureFs, Path.layer);
+
+it.effect("derived config wins per field, base fills the rest", () =>
+  Effect.gen(function* () {
+    const resolved = yield* TsconfigLoader.resolve("/repo/tsconfig.json");
+    // derived target wins; strict is inherited from the base.
+    assert.strictEqual(resolved.compilerOptions.target, "es2023");
+    assert.strictEqual(resolved.compilerOptions.strict, true);
+    assert.strictEqual(resolved.extendedPaths.length, 2);
+  }).pipe(Effect.provide(TestLive)),
+);
+```
+
+Assert with `assert.*`, never `expect`. The map holds file paths only, so `exists` is file-only by construction — the same shape the loader's real contract assumes, which means a passing test is a statement about the actual merge engine rather than about a stub. The pure engine ([`ResolvedTsconfig.merge`](/tsconfig-json/api/variable/resolvedtsconfig)) takes no services at all, so its per-field semantics can also be unit-tested with plain values and no layer.
+
+## Learn more
+
+- **[API reference](/tsconfig-json/api)** — every export with full signatures: `TsconfigLoader` / `TsconfigLoaderSync`, `TsconfigDiscovery`, the `ResolvedTsconfig` merge engine, `PortableTsconfig`, `TsEnumCodec`, `JsxConfig`, the document schemas, and the complete tagged-error set (`TsconfigParseError`, `TsconfigExtendsError`).
+</content>
+</invoke>

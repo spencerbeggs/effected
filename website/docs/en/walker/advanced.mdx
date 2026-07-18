@@ -1,0 +1,181 @@
+---
+title: Advanced
+description: Compose @effected/walker into a real monorepo devtool — the two-directional discovery model, expensive short-circuiting markers, directory-major precedence, glob-file descent, and the typed failures worth routing.
+---
+
+# Advanced
+
+The [overview](/walker) shows the loop and the one failure mode it fixes. This guide is for building something real on top of it: a tool that has to find where it is, find the config that governs it, and enumerate the files it acts on — all as Effect primitives with the correct failure semantics baked in.
+
+## A concrete scenario: a monorepo release CLI
+
+Picture the preflight step of a release CLI, invoked from wherever a developer happens to be standing — a package subdirectory, a nested `apps/web/src`, occasionally the repo root. Before it can do anything it has to answer three location questions, in order:
+
+1. **Where is the workspace root?** Climb until a directory declares a workspace, so catalogs and the lockfile resolve against the right place.
+2. **Which config governs this run?** From the invocation directory, find the nearest tool config — respecting a nested `config/` folder and several accepted filenames — without ever climbing past the workspace root into a user's home directory.
+3. **Which files does this package publish?** Expand a glob under the package directory into a concrete, sorted file list to lint, stamp, or pack.
+
+Every one of those is the same trivial-looking loop with the same subtle failure mode, and most hand-rolled versions get it wrong: a single `EACCES` on a directory the walk happened to pass through hides a valid root above it, or a swallowed unreadable subtree silently drops a file from the published set. `@effected/walker` is those loops written once, with the two failure modes fixed in *opposite* directions — because they are genuinely different problems.
+
+## How it composes
+
+Walker is **boundary tier**: it does IO, but owns no backend. `FileSystem` and `Path` arrive through the `R` channel from `effect` core, so the consumer's platform layer is the single place POSIX-vs-win32 semantics are chosen. There is no `@effect/platform-node` dependency here — even the tests run without one.
+
+The package has two directions with two deliberately different error contracts:
+
+- **Upward — every public error channel is `never`.** `Walker.ascend`, `firstMatch`, `findUpward` and `findRoot` cannot fail. A probe that errors on one candidate is absorbed and the scan continues, because one unreadable ancestor must never hide a valid match above it.
+- **Downward — one typed failure, `DescendError`.** `descend` fails when a subtree it was asked to enumerate is unreadable, because a swallowed subtree is *silently missing membership* dressed up as an empty answer.
+
+It composes across the kit in both directions. Downward, `descend` takes a compiled `@effected/glob` `GlobPattern` — the peer is type-and-property only, so the walker imports `GlobPattern` as a type and reads its properties; it never re-derives matching semantics. Upward, `@effected/xdg` builds config discovery on `Walker.firstMatch`, and `@effected/workspaces` builds workspace-root discovery on `Walker.ascend` + `findRoot`. This guide reassembles those same primitives into the release CLI above.
+
+## Pattern: expensive markers and short-circuit
+
+`Walker.firstMatch` — the loop that `findRoot` and `findUpward` both delegate to — stops at the first match and never probes later candidates. That is not just an optimization: a marker predicate can be genuinely expensive, and short-circuiting means you only pay for it up to the winner.
+
+Workspace-root discovery is exactly that case. The marker reads and parses a `package.json` to decide whether a directory declares a workspace, and per-candidate absorption means a directory *without* a manifest (or with a malformed one) is simply "not the root," not an aborted scan:
+
+```ts with-api
+import { Walker } from "@effected/walker";
+import { Effect, FileSystem, Path } from "effect";
+
+// An expensive marker: read and parse a package.json, then check for a
+// `workspaces` field. Both failure modes here — a missing file and malformed
+// JSON — are routed through the E channel, so `findRoot` absorbs each one
+// per-directory and keeps climbing.
+const declaresWorkspace = (dir: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const text = yield* fs.readFileString(path.join(dir, "package.json"));
+		const json = yield* Effect.try(() => JSON.parse(text) as Record<string, unknown>);
+		return "workspaces" in json;
+	});
+
+// `findRoot` short-circuits at the nearest declaring directory, so the
+// expensive marker runs only until it finds one — never on every ancestor.
+const findWorkspaceRoot = (start: string) =>
+	Effect.gen(function* () {
+		const chain = yield* Walker.ascend(start);
+		return yield* Walker.findRoot(chain, declaresWorkspace); // Option<string>
+	});
+```
+
+Wrapping `JSON.parse` in `Effect.try` is load-bearing: absorption catches *failures*, not *defects*. A malformed manifest is input, not programmer error — routing it through the `E` channel keeps it absorbable, whereas a bare `JSON.parse` that throws would surface as a defect and abort the whole ascent.
+
+## Pattern: directory-major precedence
+
+`Walker.findUpward(dirs, candidatesFor)` is **directory-major**: every candidate the callback produces for the nearest directory is tried before the walk ascends. That ordering is the whole point of config discovery — a candidate-major interleave would let a distant ancestor's `.apprc` beat a nearer `config/app.json`, quietly picking the wrong file.
+
+This is also where the release CLI bounds its search. `Walker.ascend` takes a `stopAt` that halts the ascent inclusively, so config discovery never climbs above the workspace root the previous step found:
+
+```ts with-api
+import { Walker } from "@effected/walker";
+import { Effect } from "effect";
+
+// From the invocation directory, find the nearest config — trying several
+// accepted names and a nested `config/` folder in each directory before
+// ascending. `stopAt` bounds the climb at the workspace root, inclusive, so
+// discovery never escapes into the user's home directory.
+const findConfig = (start: string, workspaceRoot: string) =>
+	Effect.gen(function* () {
+		const chain = yield* Walker.ascend(start, { stopAt: workspaceRoot });
+		return yield* Walker.findUpward(chain, (dir) => [
+			`${dir}/release.config.json`,
+			`${dir}/.releaserc`,
+			`${dir}/config/release.json`,
+		]);
+	});
+```
+
+`ascend` also takes `maxDepth` (default 256) as a hard cap, and `start` is required — walker never reads `process.cwd()` on your behalf. If you want the ambient directory, pass it explicitly.
+
+## Pattern: glob-file descent
+
+The third question — which files a glob selects under a directory — is `descend`. It expands a compiled `GlobPattern` under `options.cwd` and returns matching **file** paths relative to `cwd`, POSIX separators, sorted. The walker is deliberately *semantics-free*: dotfile behavior, case folding and every other matching option are carried by the compiled pattern you hand in, never re-derived at walk time.
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { descend } from "@effected/walker";
+import { Effect } from "effect";
+
+// The files this package publishes. `descend` returns file paths only — a
+// symlink counts when it stat-resolves to a file, but a symlinked *directory*
+// is never descended into (cycle safety). `prune` suppresses directories by
+// name; a custom list replaces the default `["node_modules", ".git"]`.
+const publishedSources = (packageDir: string) =>
+	Effect.gen(function* () {
+		const pattern = yield* GlobPattern.compile("src/**/*.ts");
+		return yield* descend(pattern, {
+			cwd: packageDir,
+			prune: ["node_modules", ".git", "dist"],
+			onUnreadable: "fail",
+		});
+	});
+```
+
+Because the pattern is compiled separately, the combined failure channel is honest: `GlobPattern.compile` contributes `GlobPatternError` (a pattern that trips a hardening guard), and `descend` contributes `DescendError`. Both are typed; neither throws.
+
+## Edge cases and failure modes
+
+Every one of these is a routed value or a deliberate defect — nothing here throws an unaudited exception.
+
+- **Upward, not-found and cannot-look are indistinguishable by design.** An `Option.none()` from `findUpward` / `findRoot` may mean "no candidate exists" *or* "a directory was unreadable." Discovery is best-effort; if you need to know a directory was inaccessible, walker is the wrong tool — check it directly.
+- **`maxDepth` must be a positive integer.** For both `ascend` and `descend`, anything else — `< 1`, `NaN`, or a non-integer like `2.5` — is a **defect** (`Effect.die`), never a silently-empty result. It is a wiring bug, and it dies as one.
+- **`descend` refuses to read outside `cwd`.** A pattern that lexically climbs above `cwd` via `..` segments is zero matches, refused *before* any filesystem access. A missing base directory is likewise an empty result, not an error — zero matches is a normal glob answer.
+- **A negated pattern walks from `cwd`, not from its prefix.** Because a negated pattern can match paths outside the inner pattern's literal prefix, `descend` walks from `cwd` itself for it. You do not have to account for this — but do not assume the walk is bounded to `enumerationPrefix` when the pattern is negated.
+- **`prune` suppresses directories only.** A *file* named `.git` (a submodule or worktree gitlink) stays matchable even when `.git` is in the prune list.
+
+`descend`'s two failure reasons are the ones worth routing explicitly. `onUnreadable: "skip"` is the built-in absorb; reach for `catchTag` only when you need to branch on *why*:
+
+```ts with-api
+import type { GlobPattern } from "@effected/glob";
+import { descend } from "@effected/walker";
+import { Effect } from "effect";
+
+declare const pattern: GlobPattern;
+
+const files = descend(pattern, { cwd: "/repo/packages/app" }).pipe(
+	Effect.catchTag("DescendError", (error) =>
+		error.reason === "depthExceeded"
+			? // A pathological tree tripped the depth cap: surface it, never
+				// truncate — a silent truncation silently changes match semantics.
+				Effect.fail(error)
+			: // An unreadable subtree under the default `onUnreadable: "fail"`.
+				// `error.path` names the offending directory, relative to `cwd`.
+				Effect.logWarning(`skipping unreadable ${error.path}`).pipe(Effect.as<ReadonlyArray<string>>([])),
+	),
+);
+```
+
+Depth exhaustion mid-walk is a typed `depthExceeded` failure, never a truncated result — a subtree past the cap fails loudly rather than returning a shorter list that looks complete.
+
+## Testing tips
+
+Walker needs **no platform package, even in tests**: `Path.layer` and `FileSystem.layerNoop` both come from `effect` core, so a whole suite runs on a virtual filesystem. `FileSystem.layerNoop({ stat, readDirectory, readLink })` lets you implement exactly the three operations `descend` touches and model the realistic edge cases — an `unreadable` directory that fails `readDirectory`, a symlink whose `readLink` succeeds, a directory that vanishes mid-walk.
+
+The upward primitives never fail, so their tests are ordinary `Option` assertions — build a tree where a nearer and a farther candidate both exist and assert the nearer wins. The two claims that most deserve a test are the ones the type signature cannot express:
+
+```ts
+import { Walker } from "@effected/walker";
+import { assert, describe, it } from "@effect/vitest";
+import { Cause, Effect, Path } from "effect";
+
+describe("Walker.ascend", () => {
+	// maxDepth must be a positive integer — anything else is a DEFECT, not a
+	// silently-empty chain. Assert on the Cause, not the failure channel: a
+	// typed error would be a `Failure` exit too, so `_tag` alone is not enough.
+	it.effect("dies on a non-integer maxDepth", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(Walker.ascend("/repo/a/b", { maxDepth: 2.5 }));
+			assert.isTrue(exit._tag === "Failure" && Cause.hasDies(exit.cause));
+		}).pipe(Effect.provide(Path.layer)),
+	);
+});
+```
+
+For `descend`, flip the channel with `Effect.flip` and assert on the tag: an unreadable directory under the default `onUnreadable: "fail"` yields a `DescendError` with `reason === "unreadableDirectory"`, and the same tree under `onUnreadable: "skip"` returns the readable matches instead. Driving both against one fixture tree pins the absorb/fail seam exactly where it belongs.
+
+## Learn more
+
+- [Overview](/walker) — why the package exists, install, and the quick start.
+- [API reference](/walker/api) — every export with full signatures: `Walker` (`ascend`, `firstMatch`, `findUpward`, `findRoot`), `descend`, `AscendOptions`, `DescendOptions`, and the `DescendError` tagged error.

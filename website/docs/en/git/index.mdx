@@ -1,0 +1,58 @@
+---
+title: "@effected/git"
+description: "Typed git introspection over Effect: read a repository's state at any ref without checking it out, plus a clearly-marked mutating tier."
+---
+
+# @effected/git
+
+Typed git introspection over Effect. A read tier reads a repository's state at any ref — commits, trees, refs, merge-bases, diffs, status — **without checking it out**, and a clearly-marked mutating tier (`checkout`, `fetch`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`) changes it. Every command classifies git's stderr and exit-code taxonomy exactly once and surfaces a typed result: a value, an `Option.none`, or one of three tagged errors — never a stderr blob you have to grep.
+
+## Why @effected/git
+
+A release gate needs to answer "what changed since the last published tag", "was the tip signed", and "which package directories does this touch" against the developer's checkout — at an arbitrary base ref, without disturbing the working tree the developer is sitting in. That is the shape this package is built for. `Git` is a `Context.Service`; `Git.layer` resolves core's `ChildProcessSpawner` **once, at construction**, so every method's `R` channel is `never` and a consumer of the typed surface never carries the spawn machinery in its requirements. There are zero runtime dependencies and zero `node:` imports — IO arrives through the `R` channel, and you provide a platform backend at the edge.
+
+## Install
+
+```bash
+npm install @effected/git effect
+```
+
+```bash
+pnpm add @effected/git effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own. Provide a `ChildProcessSpawner` — `@effect/platform-node`'s `NodeServices` supplies one — once, at the edge.
+
+## Quick start
+
+```ts
+import { Git } from "@effected/git";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const git = yield* Git;
+  const repo = process.cwd();
+
+  // Read state at any ref, no checkout.
+  const base = yield* git.mergeBase(repo, "v0.1.0", "HEAD");
+  const changed = yield* git.changedFiles(repo, { base, head: "HEAD" });
+  return changed;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
+```
+
+## A read tier and a mutating tier
+
+The read tier is total in intent: `show`, `lsTree`, `refExists`, `mergeBase`, `changedFiles`, `unstagedChanges`, `stagedChanges`, `untrackedFiles`, `revParse`, `nameStatus`, `defaultBranch`, `currentBranch`, `repoRoot`, `commitInfo`, `configGet`, `remoteUrl` and `status` observe a repository without changing it. Absence — a ref that does not resolve, a remote that is not configured — is `Option.none`, not a failure. The mutating tier (`checkout`, `fetch`, `fetchAny`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`) is named apart precisely so a read-only consumer can see, at a glance, that it never reaches for it.
+
+## Errors
+
+Failures are tagged error classes, and a spawn-level `PlatformError` plus the run timeout are absorbed before they can escape a method — nothing leaks into your error channel that you did not sign up to handle. Route on `GitCommandError.kind` with `Effect.catchTag` and branch a pipeline on the git failure taxonomy rather than a string.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/git/api).

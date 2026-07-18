@@ -1,0 +1,222 @@
+---
+title: Advanced
+description: Compose @effected/semver into a real Effect application — embed versions in domain schemas, resolve ranges through a cached service, solve conflicting dependency constraints, and keep every failure on the typed error channel.
+---
+
+# Advanced
+
+## A resolver that has to pick the right published version
+
+Picture the job this package was built for. A toolchain installer — the kind [`@effected/runtimes`](/runtimes/api) runs when it decides which Node, Bun or Deno build to fetch — pulls a registry's list of published versions, holds a range constraint like `^22.0.0` from a project's config, and has to answer one question: *which real, published version does that constraint resolve to?* A monorepo release CLI faces the mirror image — given a package's current version, classify the pending change and compute the next tag. Neither job is a string operation. `"22.11.0"` is greater than `"22.9.0"` only if you compare it as a version, not as text, and `^22.0.0` matching `22.11.0` but not `23.0.0` is grammar, not substring logic.
+
+The package's whole reason to exist is to make that reasoning exact and typed: parse versions and ranges from their canonical strings, compare them by SemVer 2.0.0 precedence, resolve the highest match from a set, intersect two constraints into a value, and route every malformed input or empty result through a tagged error instead of a thrown string. This guide covers the four capabilities a real application leans on — embedding versions in domain schemas, resolving through the [`VersionCache`](/semver/api/class/versioncache) service, the range algebra for constraint solving, and SemVer-correct structural equality — plus the failure modes and testing patterns a production tool needs. It assumes the core parse-and-compare workflow from the [overview](/semver).
+
+## How it composes with Effect
+
+Nothing in the parse-and-compare surface owns a service or a layer. `SemVer.parse`, `Range.parse` and the dual statics are pure functions or plain `Effect` values, so they drop into an `Effect.fn` workflow and their tagged errors — `InvalidVersionError`, `InvalidRangeError`, `UnsatisfiableConstraintError` — join your program's typed `E` channel with no wrapping. Because [`SemVer`](/semver/api/class/semver), [`Comparator`](/semver/api/class/comparator) and [`Range`](/semver/api/class/range_2) are each a `Schema.Class` with a `FromString` codec, a version embeds directly into a domain schema rather than being validated on the side.
+
+Only [`VersionCache`](/semver/api/class/versioncache) is a service, and it earns it: it holds mutable sorted state behind a `Ref`, so it is a `Context.Service` you provide with `VersionCache.layer`. That split is the composition story — the value-level algebra layers *underneath* the rest of the kit, and the one stateful concept is a proper layer. A tool built on [`@effected/workspaces`](/workspaces/api) discovers the manifests, [`@effected/npm`](/npm/api) supplies the dependency-resolution contracts, and `@effected/semver` is the engine that turns their version strings into ordered, comparable, resolvable values.
+
+## Embed a version in a domain schema
+
+The flagship reason an Effect-native SemVer library exists: a version field decodes and validates as part of the schema that contains it, not as a follow-up step. `SemVer.FromString` is a `Schema.Codec<SemVer, string>`, so it slots into any `Schema.Struct` and a manifest's `version` string comes back as a live `SemVer` instance.
+
+```ts with-api
+import { SemVer } from "@effected/semver";
+import { Effect, Schema } from "effect";
+
+// A version is a first-class field, decoded with the rest of the manifest.
+const PackageManifest = Schema.Struct({
+  name: Schema.String,
+  version: SemVer.FromString,
+});
+
+const program = Effect.gen(function* () {
+  const manifest = yield* Schema.decodeUnknownEffect(PackageManifest)({
+    name: "app",
+    version: "1.4.2",
+  });
+  // manifest.version is a SemVer, so its behavior is right there.
+  return manifest.version.bump.minor().toString();
+});
+
+Effect.runPromise(program).then(console.log);
+// "1.5.0"
+```
+
+The decode direction reports a malformed version through a generic schema parse error carrying the same message as `InvalidVersionError` — so a bad `version` in a manifest fails validation alongside every other field, in one pass, rather than throwing. Once you hold versions as values, the collection statics do the aggregate work a dashboard or installer wants: `SemVer.sort` and `SemVer.rsort` order them by precedence, `SemVer.latestByMajor` and `SemVer.latestByMinor` collapse a feed to its newest release per line, and `SemVer.groupBy` buckets them by `"major"`, `"minor"` or `"patch"`.
+
+```ts with-api
+import { SemVer } from "@effected/semver";
+
+const feed = [
+  SemVer.of(1, 0, 0),
+  SemVer.of(1, 4, 3),
+  SemVer.of(2, 0, 0),
+  SemVer.of(2, 3, 1),
+];
+
+console.log(SemVer.latestByMajor(feed).map((v) => v.toString()));
+// ["1.4.3", "2.3.1"]
+```
+
+## Resolve through the VersionCache service
+
+`VersionCache` is the package's one stateful concept: a sorted, deduplicated set of versions behind a `Ref`, exposed as a service. You load a registry's published versions once, then query, resolve and navigate over them. `resolveString` is the resolver's core move — parse a range and return the highest cached version that satisfies it, in a single fallible step.
+
+```ts with-api
+import { SemVer, VersionCache } from "@effected/semver";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const cache = yield* VersionCache;
+  yield* cache.load([
+    SemVer.of(1, 0, 0),
+    SemVer.of(1, 2, 0),
+    SemVer.of(1, 4, 3),
+    SemVer.of(2, 0, 0),
+  ]);
+
+  // Highest version matching the range — the install-resolution answer.
+  const resolved = yield* cache.resolveString("^1.2.0");
+  return resolved.toString();
+}).pipe(Effect.provide(VersionCache.layer));
+
+Effect.runPromise(program).then(console.log);
+// "1.4.3"
+```
+
+The service layers its absences deliberately, and the distinction matters when you write the caller. `latest`/`oldest` fail with `EmptyCacheError` only when the cache holds nothing. `resolve`/`resolveString` fail with `UnsatisfiedRangeError` when versions exist but none matches — the error carries both the `range` and the `available` versions, so a diagnostic can show the user exactly what was on offer. `next`/`prev` split two different absences: the typed `VersionNotFoundError` means "the pivot version is not cached", while `Option.none()` means "the pivot is real but sits at the boundary". Because whole-cache queries (`versions`, `filter`) never fail and return `[]` when empty, you only reach for `catchTag` on the operations that genuinely can be empty-handed.
+
+## Solve constraints with the range algebra
+
+A dependency resolver's hardest question is whether two constraints can agree. `Range.intersect` answers it as a value: it cross-products the comparator sets, keeps only the satisfiable combinations, and fails with [`UnsatisfiableConstraintError`](/semver/api/class/unsatisfiableconstrainterror) when none remain — an honest typed failure rather than a silently unsatisfiable range.
+
+```ts with-api
+import { Range } from "@effected/semver";
+import { Effect } from "effect";
+
+// Two packages each pin a shared dependency; do their constraints overlap?
+const solve = Effect.fn("solve")(function* (a: string, b: string) {
+  const left = yield* Range.parse(a);
+  const right = yield* Range.parse(b);
+  return yield* Range.intersect(left, right);
+});
+
+const program = solve("^1.0.0", "^2.0.0").pipe(
+  Effect.map((range) => `agree on ${range.toString()}`),
+  Effect.catchTag("UnsatisfiableConstraintError", (error) =>
+    Effect.succeed(`no version satisfies all ${error.constraints.length} constraints`),
+  ),
+);
+
+Effect.runPromise(program).then(console.log);
+// "no version satisfies all 2 constraints"
+```
+
+The rest of the algebra rounds out constraint reasoning, all as dual statics on `Range`. `Range.union` combines two ranges with OR semantics. `Range.simplify` drops redundant comparator sets a union accumulated. `Range.isSubset` and `Range.equivalent` compare ranges structurally. One caveat worth internalizing before you depend on it: `isSubset` (and therefore `equivalent` and `simplify`) is a *conservative* approximation. It can return `false` for a range that is technically a subset when the sub-range straddles comparator-set boundaries in the sup-range — for example `>=1.0.0 <3.0.0` against `>=1.0.0 <2.0.0 || >=2.0.0 <3.0.0`. The false negatives are deliberate and safe: they prevent an incorrect simplification, never allow one. Do not treat a `false` as proof two ranges differ.
+
+## Equality has SemVer's semantics, not JavaScript's
+
+`SemVer` overrides both `Equal.symbol` and `Hash.symbol`, and they agree with the specification: build metadata is ignored (§10), prerelease identifiers are significant (§11). That means anything built on Effect's structural equality inherits the right behavior for free — a `HashSet` of versions dedupes by precedence, and `VersionCache` (which is a sorted set under the hood) collapses versions that differ only in build metadata into one slot.
+
+```ts with-api
+import { SemVer } from "@effected/semver";
+import { Equal, HashSet } from "effect";
+
+const set = HashSet.make(
+  SemVer.of(1, 2, 3, [], ["build", "1"]),
+  SemVer.of(1, 2, 3, [], ["build", "2"]),
+  SemVer.of(1, 2, 3, ["rc", 1]),
+);
+
+// The two build-metadata variants collapse; the prerelease stays distinct.
+console.log(HashSet.size(set));
+// 2
+
+console.log(Equal.equals(SemVer.of(1, 2, 3), SemVer.of(1, 2, 3, [], ["sha", "abc"])));
+// true — build metadata is ignored (§10)
+
+console.log(Equal.equals(SemVer.of(1, 2, 3), SemVer.of(1, 2, 3, ["alpha"])));
+// false — a prerelease is significant (§11)
+```
+
+Because `Equal.equals` short-circuits on a hash mismatch, the hash is computed over the same fields equality compares (build metadata excluded) — the two can never disagree. When you *do* need a total order that distinguishes build metadata for a deterministic tiebreak, reach for `SemVer.OrderWithBuild` rather than the spec-precedence `SemVer.Order`.
+
+## Edge cases and failure modes
+
+Everything malformed or empty arrives on the typed `E` channel — never as a thrown exception or a `Cause.Die` defect. Knowing which typed failure to expect is half the battle.
+
+**Ranges do not match prereleases by accident.** `Range.test` implements node-semver's prerelease restriction: a prerelease version satisfies a range only when some comparator in the matching set carries a prerelease on the *same* `major.minor.patch` tuple. So `^1.2.0` matches `1.4.0` but not `1.4.0-beta.1` — a caret written for stable releases never silently pulls in a prerelease.
+
+```ts with-api
+import { Range, SemVer } from "@effected/semver";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const range = yield* Range.parse("^1.2.0");
+  const stable = yield* SemVer.parse("1.4.0");
+  const pre = yield* SemVer.parse("1.4.0-beta.1");
+  return [range.test(stable), range.test(pre)] as const;
+});
+
+Effect.runPromise(program).then(console.log);
+// [true, false]
+```
+
+**Parsing is strict, and the failure carries the input.** Unlike node-semver there is no loose mode and no `v`-prefix coercion — `"v1.2.3"`, a leading zero, or partially consumed input all fail. `InvalidVersionError`, `InvalidComparatorError` and `InvalidRangeError` each carry the offending `input` and, when available, the `position` where parsing gave up. Route on the tag and read the fields; the `message` is a getter derived from them, never a preformatted string you have to parse back.
+
+```ts with-api
+import { SemVer } from "@effected/semver";
+import { Effect } from "effect";
+
+const program = SemVer.parse("v1.2.3").pipe(
+  Effect.catchTag("InvalidVersionError", (error) => Effect.succeed(`rejected: ${error.input}`)),
+);
+
+Effect.runPromise(program).then(console.log);
+// "rejected: v1.2.3"
+```
+
+**There is no `SemVer.diff`.** Because `VersionDiff` references `SemVer` in its fields, a delegating static on `SemVer` would form an import cycle. Compute a diff with [`VersionDiff.between(a, b)`](/semver/api/class/versiondiff) instead — it returns a tagged class whose `type` field is the highest-precedence component that differs (`"major"`, `"minor"`, `"patch"`, `"prerelease"`, `"build"` or `"none"`), so a release tool branches on the bump kind directly rather than re-deriving it.
+
+## Testing with @effect/vitest
+
+`VersionCache` is the one concept that needs a layer in tests; everything else is pure or a plain `Effect`, so there is no IO to mock. Provide the layer once with the `layer` helper, drive it with `it.effect`, and assert with `assert.*` — never `expect`. To prove a failure lands on the typed channel, flip the effect and assert on the error's `_tag`.
+
+```ts
+import { Range, SemVer, VersionCache } from "@effected/semver";
+import { assert, describe, it, layer } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("version resolver", () => {
+  layer(VersionCache.layer)((it) => {
+    it.effect("resolves the highest version satisfying a range", () =>
+      Effect.gen(function* () {
+        const cache = yield* VersionCache;
+        yield* cache.load([SemVer.of(1, 0, 0), SemVer.of(1, 4, 3), SemVer.of(2, 0, 0)]);
+        const resolved = yield* cache.resolveString("^1.0.0");
+        assert.strictEqual(resolved.toString(), "1.4.3");
+      }));
+
+    it.effect("routes an unsatisfiable range through the typed channel", () =>
+      Effect.gen(function* () {
+        const cache = yield* VersionCache;
+        yield* cache.load([SemVer.of(1, 0, 0)]);
+        const range = yield* Range.parse(">=5.0.0");
+        const error = yield* Effect.flip(cache.resolve(range));
+        assert.strictEqual(error._tag, "UnsatisfiedRangeError");
+        assert.strictEqual(error.available.length, 1);
+      }));
+  });
+});
+```
+
+Because `SemVer` implements structural equality, you can also assert with `Equal.equals` (or Effect's equality-aware matchers) for meaning rather than exact bytes — two versions differing only in build metadata compare equal, which is usually exactly the assertion a version test wants.
+
+## Next steps
+
+- New to the package? Start with the [overview](/semver) for the parse, compare and bump basics.
+- Every export, with full signatures, lives in the [API reference](/semver/api). The types this guide leaned on: [`SemVer`](/semver/api/class/semver) and its [`SemVerBump`](/semver/api/class/semverbump), [`Range`](/semver/api/class/range_2) and [`Comparator`](/semver/api/class/comparator), [`VersionCache`](/semver/api/class/versioncache) with its [`VersionCacheShape`](/semver/api/interface/versioncacheshape), [`VersionDiff`](/semver/api/class/versiondiff), and the tagged errors [`InvalidVersionError`](/semver/api/class/invalidversionerror), [`UnsatisfiableConstraintError`](/semver/api/class/unsatisfiableconstrainterror) and [`UnsatisfiedRangeError`](/semver/api/class/unsatisfiedrangeerror).
+</content>
+</invoke>

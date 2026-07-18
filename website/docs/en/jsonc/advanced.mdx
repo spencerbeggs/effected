@@ -1,0 +1,276 @@
+---
+title: Advanced
+description: Compose @effected/jsonc into a real Effect application — decode JSONC into domain schemas, query the AST, batch byte-minimal edits, and keep hostile input on the typed error channel.
+---
+
+# Advanced
+
+## A release tool that must not vandalize a repo
+
+Picture the job `@effected/jsonc` was built for. A monorepo release CLI walks every package on each cut and rewrites a handful of values — the `version` in a `package.json`, a `target` in a shared `tsconfig.json`, a feature flag in a `.vscode/settings.json`. Those files are full of comments a human wrote to explain non-obvious choices, and a `JSON.parse` / `JSON.stringify` round-trip erases every one of them and reflows the whole file. The result is an unreviewable diff and a pile of lost institutional knowledge.
+
+The package's whole reason to exist is to make that job safe: change exactly the bytes you ask for, keep every comment and blank line, validate what you read against a real schema, and route malformed or hostile input through a typed error channel instead of crashing. This guide covers the three capabilities the [getting-started guide](/jsonc/getting-started) pointed you here for — decoding straight into a domain schema, querying the AST, and batching byte-minimal edits — plus the hardening and testing patterns a production tool needs.
+
+## How it composes with Effect
+
+Nothing here owns a service or a layer. The parse and edit primitives are pure functions or plain `Effect` values, so they drop into an `Effect.fn` workflow and their tagged errors (`JsoncParseError`, `JsoncModificationError`) join your program's typed `E` channel with no wrapping. The schema factories go further: `Jsonc.schema` returns an ordinary `Schema.Codec`, so JSONC decoding composes with the rest of your Effect `Schema` layer the same way any other codec does.
+
+That makes the package the byte-preserving layer *underneath* the rest of the kit. A workspace tool built on [`@effected/workspaces`](/workspaces/api) discovers the files; [`@effected/tsconfig-json`](/tsconfig-json/api) supplies the domain schema you decode into; [`@effected/config-file`](/config-file/api) handles loading and writing — and `@effected/jsonc` is what lets the write stage touch a config without destroying it.
+
+## Decode straight into a domain schema
+
+`Jsonc.schema` composes JSONC decoding with a target schema, giving you a `Schema.Codec<Domain, string>` that goes from raw file text to a validated value in one step. This is the flagship reason an Effect-native JSONC library exists: parsing and domain validation are a single decode.
+
+```ts with-api
+import { Jsonc } from "@effected/jsonc";
+import { Effect, Schema } from "effect";
+
+// Bind the codec once. Jsonc.schema builds a fresh derivation on every call,
+// so rebuilding it per request wastes work on a hot path.
+const TsConfig = Schema.Struct({
+  compilerOptions: Schema.Struct({
+    strict: Schema.Boolean,
+    target: Schema.String,
+  }),
+});
+const TsConfigFromJsonc = Jsonc.schema(TsConfig);
+
+const program = Effect.gen(function* () {
+  return yield* Schema.decodeUnknownEffect(TsConfigFromJsonc)(`{
+    // strict everywhere
+    "compilerOptions": { "strict": true, "target": "ES2024" },
+  }`);
+});
+
+Effect.runPromise(program).then(console.log);
+// { compilerOptions: { strict: true, target: "ES2024" } }
+```
+
+Two things to keep in mind. First, `Jsonc.schema` and `Jsonc.fromString` are schema-*producing* — bind their results to a `const`, as above, rather than calling them inside a request handler. For the zero-config case there is a pre-bound `Jsonc.JsoncFromString` you can reach for directly. Second, this codec's *encode* direction is `JSON.stringify` with a two-space indent: comments do not survive a decode-then-encode round-trip. When you need to write a change back with its comments intact, do not encode the schema — reach for the edit primitives below.
+
+## Two error channels: parse vs. validate
+
+`Jsonc.schema` collapses a parse failure into a single schema issue carrying only the aggregate's message. That is the right shape for a form validator, but a tool that renders diagnostics wants the *structured* `JsoncParseError` — every recovered error with its `code` and zero-based `line`/`character`. Split the decode into two phases to keep it:
+
+```ts with-api
+import { Jsonc } from "@effected/jsonc";
+import { Effect, Schema } from "effect";
+
+const TsConfig = Schema.Struct({
+  compilerOptions: Schema.Struct({ strict: Schema.Boolean }),
+});
+
+// Phase 1 keeps the structured JsoncParseError channel; phase 2 validates the
+// decoded value against the domain schema. Two failure modes, two channels.
+const load = Effect.fn("load")(function* (source: string) {
+  const raw = yield* Jsonc.parse(source);
+  return yield* Schema.decodeUnknownEffect(TsConfig)(raw);
+});
+
+// An unquoted key — legal in JSON5, but not JSONC — trips the parser.
+const diagnostics = load(`{ "compilerOptions": { strict: true } }`).pipe(
+  Effect.catchTag("JsoncParseError", (error) =>
+    Effect.succeed(error.errors.map((detail) => `${detail.line + 1}:${detail.character + 1} ${detail.code}`)),
+  ),
+);
+
+Effect.runPromise(diagnostics).then(console.log);
+// [ "1:24 PropertyNameExpected" ]
+```
+
+Because parsing recovers rather than bailing on the first mistake, `error.errors` reports the whole batch at once — a user sees every problem in their config file in a single pass, not one per re-run.
+
+## Query the AST
+
+`Jsonc.parseTree` gives you an offset-preserving `JsoncNode` AST wrapped in an `Option` — `Option.none()` for empty input, the aggregate `JsoncParseError` for malformed input. The tree carries no parent pointers (they would break structural equality and serialization); you navigate down through `children` with three pure methods.
+
+`find` takes the same path vocabulary as `JsoncModifier.modify` — string keys and numeric indices — and `toValue` reconstructs the plain JavaScript value of any subtree:
+
+```ts with-api
+import { Jsonc } from "@effected/jsonc";
+import { Effect, Option } from "effect";
+
+const source = `{ "servers": [ { "port": 3000 }, { "port": 3001 } ] }`;
+
+const program = Effect.gen(function* () {
+  const tree = yield* Jsonc.parseTree(source);
+  return Option.flatMap(tree, (root) =>
+    root.find(["servers", 1, "port"]).pipe(Option.map((node) => node.toValue())),
+  );
+});
+
+Effect.runPromise(program).then(console.log);
+// Option.some(3001)
+```
+
+The inverse — `pathAt` — turns a character offset back into a path. That is exactly what an editor integration needs: given a caret position, which setting is under the cursor?
+
+```ts with-api
+import { Jsonc } from "@effected/jsonc";
+import { Effect, Option } from "effect";
+
+const source = `{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2024"
+  }
+}`;
+
+const program = Effect.gen(function* () {
+  const tree = yield* Jsonc.parseTree(source);
+  return Option.flatMap(tree, (root) => root.pathAt(source.indexOf("ES2024")));
+});
+
+Effect.runPromise(program).then(console.log);
+// Option.some([ "compilerOptions", "target" ])
+```
+
+`findAtOffset` is the node-returning sibling of `pathAt` when you want the covering `JsoncNode` rather than its path.
+
+## Batch byte-minimal edits
+
+A `JsoncEdit` is a `{ offset, length, content }` splice against the *original* text. Each call to `JsoncModifier.modify` computes its edits independently against that original, so you can gather several changes and apply the whole batch in one pass — `JsoncEdit.applyAll` sorts in reverse-offset order, keeping earlier offsets valid as later splices land.
+
+```ts with-api
+import { JsoncEdit, JsoncModifier } from "@effected/jsonc";
+import { Effect } from "effect";
+
+const source = `{
+  "name": "app",
+  // pinned by the release tool
+  "version": "1.0.0",
+  "private": true
+}`;
+
+const program = Effect.gen(function* () {
+  const batches = yield* Effect.all([
+    JsoncModifier.modify(source, ["version"], "2.0.0"),
+    JsoncModifier.modify(source, ["private"], false),
+  ]);
+  return JsoncEdit.applyAll(source, batches.flat());
+});
+
+Effect.runPromise(program).then(console.log);
+// Both values change; the comment and the "name" line survive byte for byte.
+```
+
+The one rule: the edits in a batch must not overlap. Independent keys, as here, never do. If you need to layer edits that *do* touch overlapping spans, apply one batch, re-parse, and compute the next against the result.
+
+Two more edit-layer controls a real tool wants:
+
+- **Match the file's indentation.** `JsoncModifyOptions.formattingOptions` accepts a plain literal — no need to construct a `JsoncFormattingOptions` — so honoring a tab-indented file is a one-field option.
+
+  ```ts with-api
+  import { JsoncEdit, JsoncModifier } from "@effected/jsonc";
+  import { Effect } from "effect";
+
+  const source = `{\n\t"compilerOptions": {\n\t\t"strict": true\n\t}\n}`;
+
+  const program = Effect.gen(function* () {
+    const edits = yield* JsoncModifier.modify(source, ["compilerOptions", "target"], "ES2024", {
+      formattingOptions: { insertSpaces: false },
+    });
+    return JsoncEdit.applyAll(source, edits);
+  });
+
+  Effect.runPromise(program).then(console.log);
+  ```
+
+- **Reformat only a region.** `JsoncFormatter.format` takes an optional `JsoncRange`; only edits that fall inside it are returned, so you can tidy one subtree and leave the rest of the file — sloppy spacing and all — untouched.
+
+  ```ts with-api
+  import { JsoncEdit, JsoncFormatter, JsoncRange } from "@effected/jsonc";
+
+  const source = `{
+    "a": { "x":1,"y":2 },
+    "b":    2
+  }`;
+
+  const start = source.indexOf("{", 1);
+  const end = source.indexOf("}", start) + 1;
+  const edits = JsoncFormatter.format(source, JsoncRange.make({ offset: start, length: end - start }));
+
+  console.log(JsoncEdit.applyAll(source, edits));
+  // The "a" subtree is reindented; the "b":    2 gap is left alone.
+  ```
+
+## Edge cases and failure modes
+
+Everything malformed or hostile arrives on the typed `E` channel — never as a thrown exception or a `Cause.Die` defect. Knowing which typed failure to expect is half the battle.
+
+**A nesting bomb stays typed.** Deeply nested input that would overflow a naive recursive parser trips a depth cap enforced independently at every recursive surface, and comes back as a `NestingDepthExceeded` parse code:
+
+```ts with-api
+import { Jsonc } from "@effected/jsonc";
+import { Effect } from "effect";
+
+// Thousands of unclosed brackets, crafted to blow the call stack.
+const bomb = "[".repeat(5000);
+
+const program = Jsonc.parse(bomb).pipe(
+  Effect.catchTag("JsoncParseError", (error) =>
+    Effect.succeed(error.errors.some((detail) => detail.code === "NestingDepthExceeded")),
+  ),
+);
+
+Effect.runPromise(program).then(console.log);
+// true — a typed failure, never a RangeError defect
+```
+
+**Empty is not the same as malformed.** A config file that is present but holds only comments is a legitimate state, not a parse error — opt into it with `allowEmptyContent`, and `parseTree` yields `Option.none()` instead of failing:
+
+```ts with-api
+import { Jsonc, JsoncParseOptions } from "@effected/jsonc";
+import { Effect, Option } from "effect";
+
+const program = Effect.gen(function* () {
+  const tree = yield* Jsonc.parseTree("// no settings yet\n", JsoncParseOptions.make({ allowEmptyContent: true }));
+  return Option.isNone(tree);
+});
+
+Effect.runPromise(program).then(console.log);
+// true
+```
+
+**Know the parse-option defaults.** `allowTrailingComma` defaults to `true` — the JSONC convention, and deliberately different from Microsoft's parser, which defaults to `false`. Set `disallowComments: true` when you want to reject comments outright (parsing settings that must round-trip as strict JSON, for example). All of `JsoncParseOptions` is omissible.
+
+**Structural-edit failures carry data, not prose.** When `JsoncModifier.modify` cannot navigate a path — a segment expects an object but finds a scalar — it fails with a `JsoncModificationError` whose `path`, `expected` (`"object"` or `"array"`) and `depth` fields tell you exactly where and why. Route it with `Effect.catchTag("JsoncModificationError", …)` and read the fields; there is no `reason: string` to parse.
+
+## Testing with @effect/vitest
+
+Because every operation is pure or an `Effect`, there is no IO to mock. Assert on the actual bytes an edit produces, and flip a hostile input to prove it lands on the error channel. Use `it.effect` and assert with `assert.*` — never `expect`:
+
+```ts
+import { Jsonc, JsoncEdit, JsoncModifier } from "@effected/jsonc";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("release patcher", () => {
+  it.effect("bumps a version without disturbing comments", () =>
+    Effect.gen(function* () {
+      const source = `{
+  // pinned by the release tool
+  "version": "1.0.0"
+}`;
+      const edits = yield* JsoncModifier.modify(source, ["version"], "2.0.0");
+      const next = JsoncEdit.applyAll(source, edits);
+
+      assert.include(next, "// pinned by the release tool");
+      assert.include(next, '"2.0.0"');
+    }));
+
+  it.effect("routes a hostile payload through the typed error channel", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(Jsonc.parse("[".repeat(5000)));
+      assert.strictEqual(error._tag, "JsoncParseError");
+      assert.isTrue(error.errors.some((detail) => detail.code === "NestingDepthExceeded"));
+    }));
+});
+```
+
+For semantic comparisons in tests, `Jsonc.equals` and `Jsonc.equalsValue` ignore comments, whitespace and object key order (array order stays significant) and are total — malformed input is simply never equal — so they make robust assertions about *meaning* rather than exact bytes.
+
+## Next steps
+
+- New to the package? Start with the [getting-started guide](/jsonc/getting-started) for the core read-and-edit workflow.
+- Every export, with full signatures, lives in the [API reference](/jsonc/api). The types this guide leaned on: [`Jsonc`](/jsonc/api/class/jsonc) (the parse, schema and equality statics), [`JsoncNode`](/jsonc/api/class/jsoncnode) (the AST), [`JsoncModifier`](/jsonc/api/class/jsoncmodifier) and [`JsoncFormatter`](/jsonc/api/class/jsoncformatter) (edits), and the tagged [`JsoncParseError`](/jsonc/api/class/jsoncparseerror) and [`JsoncModificationError`](/jsonc/api/class/jsoncmodificationerror).

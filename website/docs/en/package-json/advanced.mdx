@@ -1,0 +1,233 @@
+---
+title: Advanced
+description: Compose @effected/package-json into a real Effect application — edit manifests immutably, classify and resolve dependency specifiers, gate publishes with custom rules, and keep every filesystem failure on the typed error channel.
+---
+
+# Advanced
+
+## A release gate that must not corrupt a manifest
+
+Picture the job `@effected/package-json` was built for. A monorepo release CLI walks every package on each cut and rewrites a handful of values — bump the `version`, expand a `workspace:*` dependency to the range it will publish as, drop a `link:` override that only made sense locally. Those manifests carry keys your tool never modeled: a `pnpm` block, a `tshy` config, an internal `x-acme-tooling` extension a teammate added last quarter. A `JSON.parse` / re-serialize round-trip through a partial model silently drops every one of them, and the first anyone notices is a broken install two releases later.
+
+The package's whole reason to exist is to make that job safe: decode a manifest into a typed `Package`, change exactly the fields you mean to, keep every unmodeled key on the `rest` catch-all so it round-trips byte-for-value, and route a missing file, malformed JSON or a schema violation through a typed error channel instead of a thrown exception. This guide covers the patterns a production release tool leans on — immutable editing, dependency classification, explicit resolution, and a publish gate built from custom rules — plus the failure modes and testing discipline that keep it trustworthy.
+
+## How it composes with Effect
+
+Almost nothing here owns a service. `Package` is a `Schema.Class`, its mutation statics are pure functions or plain `Effect` values, and its tagged errors (`PackageDecodeError`, and the validator's `PackageValidationError`) join your program's typed `E` channel with no wrapping. `Package.schema` is an ordinary `Schema.Codec<Package, { readonly [k: string]: unknown }>`, so a manifest decodes and encodes the same way any other codec in your Effect `Schema` layer does — and `Package.wireFor` builds the same codec for a `.extend()`ed subclass when you need to model extra fields as typed members instead of leaving them in `rest`.
+
+The one exception is IO. Every filesystem operation lives in [`PackageJsonFile`](/package-json/api/class/packagejsonfile) — one `Context.Service`, two methods — reading and writing over Effect core's `FileSystem` and `Path`, which you provide at the edge from `@effect/platform-node`. That keeps the package the typed-manifest layer the rest of the kit sits above: [`@effected/workspaces`](/workspaces/api) discovers the packages and supplies the real resolvers, [`@effected/npm`](/npm/api) owns the specifier and resolver contracts, and `@effected/package-json` is what turns each file on disk into a value you can safely edit and write back.
+
+## Edit immutably, then serialize once
+
+`Package`'s mutation statics never mutate — each returns a fresh instance. The value-first statics (`addDependency`, `setScript`, `removeDependency`) are pure and return a `Package`; the validating ones (`setVersion`, `setName`, `setLicense`) parse their input and return an `Effect` that fails typed. Every static is dual, so a data-first call and a curried `pipe` step read the same. Sequence a batch of edits in one `Effect.gen`, then serialize the result exactly once with `toJsonString`:
+
+```ts with-api
+import { Package } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({
+    name: "@acme/app",
+    version: "1.0.0",
+    // an unmodeled block the release tool never touches
+    "x-acme-tooling": { registry: "internal" },
+  });
+
+  // setVersion validates and fails typed; addDependency / setScript are pure.
+  const bumped = yield* Package.setVersion(pkg, "1.1.0");
+  const next = bumped.pipe(
+    Package.addDependency("@effected/semver", "workspace:*"),
+    Package.setScript("build", "tsc -p ."),
+  );
+
+  return next.toJsonString();
+});
+
+Effect.runPromise(program).then(console.log);
+// The bumped version, new dep and script are present — and the
+// "x-acme-tooling" block survives on `rest`, flattened back to a top-level key.
+```
+
+`toJsonString` is where formatting policy lives. It defaults to the canonical `sort-package-json` key order, alphabetized dependency maps, empty-map stripping and a trailing newline; pass `PackageFormatOptions` to opt out or to control indentation. The `indent: "preserve"` mode is the one a release tool wants — it reuses the indentation detected from the original source text so a tab-indented manifest stays tab-indented. When you write through `PackageJsonFile.write`, `preserve` reads the existing file automatically to detect its indentation; the pure `toJsonString` needs the `sourceText` handed to it.
+
+## Dependencies are classified values, not strings
+
+The `get*Dependencies` getters project each dependency map into a `HashMap<string, Dependency>` of classified [`Dependency`](/package-json/api/class/dependency) values. A `Dependency` knows its own protocol — `isWorkspace`, `isCatalog`, `isGit`, `isRange` and the rest delegate to `@effected/npm`'s `DependencySpecifier`, so no caller writes its own `startsWith("workspace:")` check. `isUnresolved` is the one a release gate reaches for most: it is `true` for exactly the `catalog:` and `workspace:` specifiers that must not reach a published manifest.
+
+```ts with-api
+import { isUnresolvedDependency, Package } from "@effected/package-json";
+import { Effect, HashMap } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({
+    name: "@acme/app",
+    version: "1.0.0",
+    dependencies: {
+      "@effected/semver": "workspace:*",
+      effect: "catalog:effect",
+      lodash: "^4.17.21",
+    },
+  });
+
+  // The type guard narrows the array to `UnresolvedDependency`, so `.name` is
+  // available on the filtered values with no cast.
+  return Array.from(HashMap.values(pkg.getDependencies()))
+    .filter(isUnresolvedDependency)
+    .map((dependency) => dependency.name);
+});
+
+Effect.runPromise(program).then(console.log);
+// [ "@effected/semver", "effect" ] — lodash is a plain range, so it drops out.
+```
+
+`getPeerDependencies` carries one extra bit the others do not: it reads `peerDependenciesMeta` and sets `isOptional` on each peer, so an optional peer is a property of the value rather than a second map you have to cross-reference.
+
+## Resolution is an explicit step you compose
+
+`Package.resolve` is the one manifest operation that reaches for context. It expands `catalog:` and `workspace:` specifiers across all four dependency maps using the `CatalogResolver` and `WorkspaceResolver` contracts from [`@effected/npm`](/npm/api) — which is deliberate, because this package has no view of the workspace and cannot resolve them itself. Provide `@effected/npm`'s no-op `Default` layer and resolution type-checks while changing nothing; provide `@effected/workspaces`'s real resolvers and the same call rewrites specifiers against the live catalogs. Either way it is a step you run on purpose — `PackageJsonFile.write` never resolves on your behalf.
+
+```ts with-api
+import { Default } from "@effected/npm";
+import { Package } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({
+    name: "@acme/app",
+    version: "1.0.0",
+    dependencies: { "@effected/semver": "workspace:*", effect: "catalog:effect" },
+  });
+
+  // Under the no-op Default both specifiers are left unchanged and resolution
+  // still succeeds — specifiers the resolvers return `None` for are never an
+  // error. Swap in `@effected/workspaces`' resolvers to rewrite them for real.
+  const resolved = yield* Package.resolve(pkg);
+  return resolved.toJsonString();
+}).pipe(Effect.provide(Default));
+
+Effect.runPromise(program).then(console.log);
+```
+
+A `CatalogResolver` whose catalog assembly failed surfaces typed as `@effected/npm`'s `CatalogAssemblyError`, alongside the contracts' `DependencyResolutionError` — both stay on the `E` channel, so a broken catalog never becomes a defect mid-release.
+
+## A publish gate from custom rules
+
+[`PackageValidator`](/package-json/api/class/packagevalidator) runs a set of [`ValidationRule`](/package-json/api/interface/validationrule)s against an already-decoded `Package` and aggregates every failure into one `PackageValidationError`. `PackageValidator.layer` ships the default rules (license, description, repository, not-private); `PackageValidator.layerRules` takes your own list. A rule is just a name plus a `validate` function that fails with a `RuleFailure`, so a publish gate is the default rules plus the package's own `noUnresolvedDepsRule` and `noLocalDepsRule` plus whatever your org insists on:
+
+```ts with-api
+import { defaultRules, noLocalDepsRule, noUnresolvedDepsRule, Package, PackageValidator } from "@effected/package-json";
+import type { ValidationRule } from "@effected/package-json";
+import { Effect, Option } from "effect";
+
+const mustBeScoped: ValidationRule = {
+  name: "scoped-name",
+  validate: (pkg) =>
+    pkg.isScoped
+      ? Effect.void
+      : Effect.fail({ message: "Publishable packages must be scoped", path: Option.some("name") }),
+};
+
+const PublishGate = PackageValidator.layerRules({
+  rules: [...defaultRules, noUnresolvedDepsRule, noLocalDepsRule, mustBeScoped],
+});
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({ name: "app", version: "1.0.0" });
+  const validator = yield* PackageValidator;
+  yield* validator.validate(pkg);
+}).pipe(
+  Effect.provide(PublishGate),
+  // The aggregated failures list every broken rule at once, not one per re-run.
+  Effect.catchTag("PackageValidationError", (error) => Effect.succeed(error.failures.map((failure) => failure.rule))),
+);
+
+Effect.runPromise(program).then(console.log);
+// [ "has-license", "has-description", "has-repository", "scoped-name" ]
+```
+
+Because the validator runs every rule and collects failures rather than bailing on the first, a contributor sees every reason a package is not publishable in one pass. Each entry carries the `rule` name, a `message`, and a `path` `Option` pointing at the offending field.
+
+## Edge cases and failure modes
+
+Everything that can go wrong reading or writing a manifest arrives on the typed `E` channel. `PackageJsonFile.read` splits four ways, and knowing which tag to expect is most of the work:
+
+```ts with-api
+import { PackageJsonFile } from "@effected/package-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const Live = PackageJsonFile.layer.pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)));
+
+const load = (path: string) =>
+  Effect.gen(function* () {
+    const files = yield* PackageJsonFile;
+    return yield* files.read(path);
+  }).pipe(
+    Effect.catchTags({
+      PackageJsonNotFoundError: (error) => Effect.succeed(`no manifest at ${error.path}`),
+      PackageJsonReadError: (error) => Effect.succeed(`could not read ${error.path}`),
+      PackageJsonParseError: (error) => Effect.succeed(`invalid JSON at ${error.path}`),
+      PackageDecodeError: () => Effect.succeed("manifest failed schema validation"),
+    }),
+    Effect.provide(Live),
+  );
+
+Effect.runPromise(load("/no/such/package.json")).then(console.log);
+// no manifest at /no/such/package.json
+```
+
+Four things worth internalizing:
+
+- **`PackageJsonNotFoundError` is distinct from `PackageJsonReadError`.** `read` deliberately skips an `exists` pre-check — that check is a TOCTOU race that reports a file deleted between the two calls as the wrong error. Instead it reads directly and routes the core `PlatformError` whose `reason._tag` is `"NotFound"` to `PackageJsonNotFoundError`; every other filesystem failure becomes `PackageJsonReadError`.
+- **`PackageDecodeError` keeps the issue tree.** Its `cause` holds the underlying `SchemaError` structurally rather than as a stringified message, so a diagnostics UI can walk the real issue tree.
+- **`PackageJsonWriteError` is narrow.** It signals a filesystem write failure only — never a resolution or encode error, because `write` does neither. If you want expanded specifiers on disk, run `Package.resolve` first and write the result.
+- **`indent: "preserve"` is automatic on write.** Pass it with no `sourceText` and `write` reads the file it is about to overwrite to detect the indentation, falling back to the two-space default for a fresh file.
+
+## Testing with @effect/vitest
+
+Because the model is pure and IO is one service over core `FileSystem` / `Path`, an integration test wires `PackageJsonFile.layer` to `NodeFileSystem` / `NodePath` and asserts on the actual round trip. The assertion that matters most is `rest` fidelity — prove an unmodeled key survives a read/edit/write cycle. Use `it.effect` and assert with `assert.*` — never `expect`:
+
+```ts with-api
+import { Package, PackageJsonFile } from "@effected/package-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { assert, it } from "@effect/vitest";
+import { Effect, Layer } from "effect";
+
+const Live = PackageJsonFile.layer.pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)));
+
+it.effect("preserves unmodeled fields across a read/edit/write cycle", () =>
+  Effect.gen(function* () {
+    const files = yield* PackageJsonFile;
+    const path = `${process.cwd()}/tmp.fixture.package.json`;
+
+    const original = yield* Package.decode({
+      name: "@acme/app",
+      version: "1.0.0",
+      "x-acme-tooling": { registry: "internal" },
+    });
+    yield* files.write(path, original);
+
+    const roundTripped = yield* files.read(path);
+    const bumped = yield* Package.setVersion(roundTripped, "1.1.0");
+
+    assert.deepStrictEqual(bumped.rest, { "x-acme-tooling": { registry: "internal" } });
+    assert.include(bumped.toJsonString(), '"1.1.0"');
+  }).pipe(Effect.provide(Live)),
+);
+
+it.effect("routes a missing manifest to a typed NotFound", () =>
+  Effect.gen(function* () {
+    const files = yield* PackageJsonFile;
+    const error = yield* Effect.flip(files.read("/no/such/package.json"));
+    assert.strictEqual(error._tag, "PackageJsonNotFoundError");
+  }).pipe(Effect.provide(Live)),
+);
+```
+
+For validation and specifier logic there is no IO at all: decode a fixture, project its dependencies, and assert on the classified `Dependency` values or the aggregated `PackageValidationError.failures` directly.
+
+## Next steps
+
+- New to the package? Start with the [overview](/package-json) for the decode-and-mutate basics.
+- Every export, with full signatures, lives in the [API reference](/package-json/api). The types this guide leaned on: [`Package`](/package-json/api/class/package) (the model, mutation statics and `resolve`), [`Dependency`](/package-json/api/class/dependency) (the classified specifier value), [`PackageValidator`](/package-json/api/class/packagevalidator) with its [`ValidationRule`](/package-json/api/interface/validationrule) and [`RuleFailure`](/package-json/api/interface/rulefailure), [`PackageJsonFile`](/package-json/api/class/packagejsonfile) (the IO surface), and the tagged errors [`PackageDecodeError`](/package-json/api/class/packagedecodeerror), [`PackageJsonNotFoundError`](/package-json/api/class/packagejsonnotfounderror) and [`PackageJsonWriteError`](/package-json/api/class/packagejsonwriteerror).
+- [`@effected/npm`](/npm) supplies the `CatalogResolver` / `WorkspaceResolver` contracts behind `Package.resolve`; [`@effected/workspaces`](/workspaces) implements them against a real monorepo.

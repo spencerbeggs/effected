@@ -1,0 +1,214 @@
+---
+title: Advanced
+description: Build a release gate on typed git introspection — read repository state at any ref without checkout, route every failure through tagged errors, and swap the whole service in tests.
+---
+
+# Advanced
+
+Picture the release gate for a monorepo. Before it cuts a version it has to answer three questions against the developer's checkout: what changed since the last published tag, was the tip commit signed by a trusted key, and which package directories does that change touch. It must answer all three at an arbitrary base ref — a tag from three weeks ago — **without disturbing the working tree the developer is sitting in**, and it must fail in a way a release pipeline can branch on rather than a stderr blob it has to grep.
+
+That is the shape `@effected/git` is built for. Every method reads (or, in the mutating tier, writes) at an explicit `cwd` and ref, classifies git's stderr and exit-code taxonomy exactly once, and surfaces a typed result: a value, an `Option.none`, or one of three tagged errors. A spawn-level `PlatformError` and the 30-second run timeout are absorbed before they can escape a method — nothing leaks into your error channel that you did not sign up to handle.
+
+## Composition with Effect
+
+`Git` is a `Context.Service`. `Git.layer` resolves the `ChildProcessSpawner` **once, at construction**, so every method's `R` channel is `never` — a consumer of the typed surface never carries the spawn machinery in its requirements. You provide a platform backend at the edge and bind the composed layer to a `const` (layers memoize by reference):
+
+```ts with-api
+import { Git } from "@effected/git";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+// Resolve the ChildProcessSpawner once; every Git method's R is now `never`.
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+// The release gate: what changed since the last published tag — no checkout.
+const program = Effect.gen(function* () {
+  const git = yield* Git;
+  const repo = process.cwd();
+
+  const base = yield* git.mergeBase(repo, "v0.1.0", "HEAD");
+  const changed = yield* git.changedFiles(repo, { base, head: "HEAD" });
+  return changed;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitLive)));
+```
+
+`NodeServices.layer` supplies the `ChildProcessSpawner`; a Bun or Deno consumer swaps that one layer and everything above it is untouched. The package has zero `node:` imports of its own — IO arrives entirely through core's spawner contract.
+
+The parsed results are `Schema.Class` models with typed fields, not loose records: `CommitInfo.signatureStatus` is git's `%G?` verdict as a literal union, `StatusEntry`'s `x`/`y` are the two porcelain axis codes, and `NameStatusEntry.status` is this package's decoded vocabulary. Because they are schema classes, a downstream schema can embed them directly rather than re-describing the shape.
+
+This read tier is also what [`@effected/workspaces`](/workspaces) builds its `ChangeDetector` on — the git half of the old `GitReader` moved here, so change detection runs on exactly the `changedFiles` / `mergeBase` primitives shown above.
+
+## Reading history at any ref
+
+The whole read tier operates at a ref without touching `HEAD` or the index, which is what lets a gate inspect an old tag while a developer works on top of it. Decode a diff into typed changes, and pull a file's contents straight out of a commit:
+
+```ts with-api
+import { Git } from "@effected/git";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const audit = Effect.gen(function* () {
+  const git = yield* Git;
+  const repo = process.cwd();
+
+  // Status codes come back decoded — "renamed", not a raw "R100" token.
+  const entries = yield* git.nameStatus(repo, { base: "v0.1.0", head: "HEAD" });
+  const renames = entries
+    .filter((entry) => entry.status === "renamed")
+    .map((entry) => ({ from: entry.oldPath, to: entry.path }));
+
+  // %G? signature verdict is a typed literal, not a string to eyeball.
+  const head = yield* git.commitInfo(repo);
+  const trusted = head.signatureStatus === "G";
+
+  return { renames, trusted, sha: head.sha };
+});
+
+Effect.runPromise(audit.pipe(Effect.provide(GitLive)));
+```
+
+Every path-returning method (`nameStatus`, `changedFiles`, `lsTree`, `status`, the working-tree queries) parses git's `-z` NUL-terminated output, never newline-split — a path that itself contains a newline survives intact instead of corrupting the parse.
+
+## Absence is an `Option`, not a failure
+
+Several reads have a legitimate "nothing there" answer that is not an error: a detached `HEAD` has no current branch, a repository may have no `origin`, a config key may be unset. Those degrade to `Option.none()` so your error channel stays reserved for genuine failures:
+
+```ts with-api
+import { Git } from "@effected/git";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer, Option } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const describeHead = Effect.gen(function* () {
+  const git = yield* Git;
+  const repo = process.cwd();
+
+  const branch = yield* git.currentBranch(repo); // none on a detached HEAD
+  const remote = yield* git.remoteUrl(repo); // none when `origin` is unset
+  const email = yield* git.configGet(repo, "user.email");
+
+  return {
+    branch: Option.getOrElse(branch, () => "(detached HEAD)"),
+    remote: Option.getOrElse(remote, () => "(no origin)"),
+    email: Option.getOrNull(email),
+  };
+});
+
+Effect.runPromise(describeHead.pipe(Effect.provide(GitLive)));
+```
+
+`refExists` follows the same principle from the other direction: an unknown ref is the *negative answer* the method promises, so it resolves `false` rather than failing `UnknownRefError`.
+
+## Structured recovery on `GitCommandError.kind`
+
+The mutating tier's ref-fetching trio can fail in a way worth retrying (the remote does not have that ref as a tag) or a way that is not (a pre-spawn guard refused the argument). `fetchAny` already ships the tag-then-branch fallback, but when you compose your own recovery, route on the structured `kind` field instead of parsing prose out of `message`:
+
+```ts with-api
+import { Git, GitCommandError } from "@effected/git";
+import { NodeServices } from "@effect/platform-node";
+import { Console, Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const sync = Effect.gen(function* () {
+  const git = yield* Git;
+  const repo = process.cwd();
+
+  yield* git.fetchAny(repo, { ref: "v0.1.0" }).pipe(
+    Effect.catchTag("GitCommandError", (error: GitCommandError) =>
+      // "refused" is a guard rejection — no process ran, retrying is pointless.
+      error.kind === "refused"
+        ? Effect.fail(error)
+        : Console.warn(`fetch failed (exit ${error.exitCode ?? "?"}): ${error.stderr}`),
+    ),
+  );
+});
+
+Effect.runPromise(sync.pipe(Effect.provide(GitLive)));
+```
+
+`kind` discriminates `"refused"` (a guard rejected the invocation, nothing was spawned) from `"failed"` (git actually ran and exited non-zero). This is exactly why `fetchAny` short-circuits a refused ref rather than re-rejecting it through a phantom fallback.
+
+## Hardening: the option-injection guard
+
+Refs are caller-controlled and land in git's argv as positional arguments. A value beginning with `-` would be read as a flag — `checkout("-b")` would *create a branch* — so every ref, range, and (for `configSet`) config input is validated **before any process is spawned**. An option-like value is refused as a typed `GitCommandError` with `kind: "refused"`:
+
+```ts with-api
+import { Git } from "@effected/git";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+const guarded = Effect.gen(function* () {
+  const git = yield* Git;
+  return yield* git.revParse(process.cwd(), "--upload-pack=touch pwned");
+}).pipe(
+  // The guard fired pre-spawn: no git process ever ran.
+  Effect.catchTag("GitCommandError", (error) => Effect.succeed(error.kind)),
+);
+
+Effect.runPromise(guarded.pipe(Effect.provide(GitLive)));
+```
+
+Two limits ride alongside the guard. Every run has a 30-second ceiling — a command that has not answered by then surfaces as a `GitCommandError` with `detail: "timed out after 30s"` and no exit code. And `configSet` guards its `value` as strictly as its `key`, so a legitimate config value that begins with `-` cannot be written through this method: it is a recorded trade-off, refused typed rather than risking git parsing it as a flag.
+
+## Edge cases and failure modes
+
+- **`cwd` is not a repository** → `NotARepositoryError` carrying the offending `cwd`. Every method can raise it.
+- **A ref does not resolve** → `UnknownRefError`. For the two-ref methods (`mergeBase`, `changedFiles`, ranged `nameStatus`) the `ref` field is the `"a...b"` range label, not either individual ref.
+- **Detached `HEAD`** → `currentBranch` returns `Option.none()`; git's literal answer of `"HEAD"` is treated as absence, never handed back as a fake branch name.
+- **Concurrency on the mutating tier** → nothing here serializes access. Running two mutating calls (or a mutating call alongside a read) against the same `cwd` at once is a race the caller owns; `Git` does not queue or lock.
+- **Everything else non-zero** → `GitCommandError` with `exitCode` and `stderr` populated. A spawn that never produced an exit code (git not installed, a timeout) instead carries `detail`.
+
+## Testing
+
+Because `Git.layer` composes over a real `ChildProcessSpawner`, an integration test wires it to `NodeServices.layer` and drives real git against a temp repository — read-only reads are safe to run against the current checkout:
+
+```ts with-api
+import { Git } from "@effected/git";
+import { NodeServices } from "@effect/platform-node";
+import { assert, it } from "@effect/vitest";
+import { Effect, Layer } from "effect";
+
+const GitLive = Git.layer.pipe(Layer.provide(NodeServices.layer));
+
+it.effect("HEAD resolves to a 40-character object id", () =>
+  Effect.gen(function* () {
+    const git = yield* Git;
+    const sha = yield* git.revParse(process.cwd(), "HEAD");
+    assert.strictEqual(sha.length, 40);
+  }).pipe(Effect.provide(GitLive)),
+);
+```
+
+For a unit test that needs no repository on disk, the exported `GitShape` interface lets you type a fake and provide it directly — `Layer.succeed(Git, fake)` accepts any `GitShape`, so you implement only the methods the code under test actually calls:
+
+```ts
+import type { GitShape } from "@effected/git";
+import { Git } from "@effected/git";
+import { Effect, Layer, Option } from "effect";
+
+// Illustrative sketch — a real fake implements every GitShape method you call.
+const fakeGit = {
+  currentBranch: () => Effect.succeed(Option.some("main")),
+  changedFiles: () => Effect.succeed(["packages/git/src/Git.ts"]),
+  // ...the remaining GitShape methods
+} as unknown as GitShape;
+
+const GitTest = Layer.succeed(Git, fakeGit);
+```
+
+For the lowest-level tests, provide a mock `ChildProcessSpawner` under the real `Git.layer` — `Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, ChildProcessSpawner.make(mockSpawn))` — to exercise the full classification path (argv shaping, `LC_ALL=C` stderr matching, `-z` splitting) without touching real git.
+
+## Next steps
+
+- [API reference](/git/api) — every method, error, and model with full signatures.
+- [`GitCommandError`](/git/api/class/gitcommanderror) — the `kind` / `exitCode` / `detail` fields the recovery patterns above route on.
+- [`CommitInfo`](/git/api/class/commitinfo) — the `signatureStatus` verdict letters and the untrimmed `message` contract.
+- [`@effected/workspaces`](/workspaces) — change detection and the dependency graph built on this read tier.

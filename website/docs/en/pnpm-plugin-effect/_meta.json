@@ -7,5 +7,15 @@
 		"type": "file",
 		"name": "index.mdx",
 		"label": "Overview"
+	},
+	{
+		"type": "file",
+		"name": "getting-started.mdx",
+		"label": "Getting Started"
+	},
+	{
+		"type": "file",
+		"name": "advanced.mdx",
+		"label": "Advanced"
 	}
 ]

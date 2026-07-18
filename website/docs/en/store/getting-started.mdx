@@ -1,0 +1,252 @@
+---
+title: "Getting Started"
+description: "Give an Effect program durable local state with @effected/store — declare a migrated SQLite store, cache bytes with a TTL, and route the failures — starting from zero."
+---
+
+# Getting Started
+
+Almost every long-lived tool needs to remember something between runs: what the user did last time, a table of records, a downloaded response you would rather not fetch again. `@effected/store` gives you two Effect services for exactly that, over one embedded SQLite file — `Store`, a schema-versioned database with a migration ledger you control, and `Cache`, a `key → bytes` cache with TTL, tags and an eviction policy. Reach for `Store` when a row is state you must not lose, and for `Cache` when a row is a saved copy you can afford to drop; the two are deliberately different services, because an evicted cache entry is correct behavior while a lost state row is a bug.
+
+This guide assumes you have never used the package. If you are also new to Effect v4, the only idioms you need here are `Effect.gen(function* () { … })` with `yield*` to sequence steps, `Effect.provide` to supply a service, and `Effect.catchTag` to route a typed failure — all shown in full below.
+
+## Install
+
+```bash
+npm install @effected/store effect
+```
+
+```bash
+pnpm add @effected/store effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency, which your package manager pulls in automatically if it installs peers, and which you should add to your own manifest if it does not. `@effect/sql-sqlite-node` is the one runtime dependency, and it rides Node's built-in `node:sqlite` — so there is no native compile step and no `better-sqlite3`. This is the only package in the kit that carries a runtime dependency outside Effect core, which is exactly why the SQLite services were split out of [`@effected/xdg`](/xdg): so xdg's consumers do not pay for a database driver they never use.
+
+## Your first task: remember what your CLI has seen
+
+Say you are building a CLI called `open`, and you want it to keep a durable list of the projects a user has opened, so it can offer them again next time. That is persistent state — losing it is a bug, not an inconvenience — so it belongs in a `Store`. Here is that goal, start to finish.
+
+### 1. Declare your schema as migrations
+
+A `Store` is defined by an ordered list of migrations. Each one has a positive-integer `id`, a human-readable `name` recorded in the ledger, and an `up` that does the SQL work. The callback is handed the underlying SQL client and returns the tagged-template effect directly — no `Effect.asVoid` ceremony, because the engine discards the value:
+
+```ts with-api
+import { type StoreMigration } from "@effected/store";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+  {
+    id: 1,
+    name: "create-projects",
+    up: (sql) => sql`
+      CREATE TABLE projects (
+        name TEXT PRIMARY KEY,
+        last_opened TEXT NOT NULL
+      )
+    `,
+  },
+];
+```
+
+### 2. Build the live layer
+
+`Store.layerSqlite` is the batteries-included layer: give it a `filename` and your migrations and it provides the SQLite driver itself. It applies every pending migration when the layer is built, so by the time your program runs, the schema is already there. Bind the layer to a `const` and reuse that one binding — the statics are parameterized factories, so calling `layerSqlite` twice builds two layers and opens the database twice:
+
+```ts with-api
+import { Store, type StoreMigration } from "@effected/store";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+  { id: 1, name: "create-projects", up: (sql) => sql`CREATE TABLE projects (name TEXT PRIMARY KEY, last_opened TEXT NOT NULL)` },
+];
+
+// The filename reaches SQLite as given, so its parent directory must exist.
+const StoreLive = Store.layerSqlite({ filename: "projects.db", migrations });
+```
+
+### 3. Read and write, then run it
+
+Reach the service with `yield* Store`, and run your own queries through `store.client` — the same tagged-template SQL client the migrations used. Provide the layer and run. This is the whole workflow end to end:
+
+```ts with-api
+import { Store, type StoreMigration } from "@effected/store";
+import { Effect } from "effect";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+  { id: 1, name: "create-projects", up: (sql) => sql`CREATE TABLE projects (name TEXT PRIMARY KEY, last_opened TEXT NOT NULL)` },
+];
+
+const StoreLive = Store.layerSqlite({ filename: "projects.db", migrations });
+
+const program = Effect.gen(function* () {
+  const store = yield* Store;
+  yield* store.client`
+    INSERT OR REPLACE INTO projects (name, last_opened)
+    VALUES ('effected', datetime('now'))
+  `;
+  return yield* store.client<{ name: string; last_opened: string }>`
+    SELECT name, last_opened FROM projects ORDER BY last_opened DESC
+  `;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(StoreLive))).then(console.log);
+// [ { name: "effected", last_opened: "2026-07-18 12:00:00" } ]
+```
+
+Everything below is a variation on this shape: declare a layer, ask for the service, do work.
+
+## Common operations
+
+Each snippet is a complete, runnable program. Several use `layerTest`, which is `layerSqlite` at an in-memory `:memory:` database — the same layer the package's own test suite uses, hermetic and leaving no file behind.
+
+### Cache bytes with a TTL
+
+`Cache` stores `Uint8Array` values under string keys. Pass a `ttl` to `set` and the entry expires on its own; `get` returns an `Option` — `some` while the entry is live, `none` once it has expired or was never written. An expired entry is deleted the moment a read touches it:
+
+```ts with-api
+import { Cache } from "@effected/store";
+import { Duration, Effect, Option } from "effect";
+
+const CacheLive = Cache.layerSqlite({ filename: "cache.db", maxEntries: 500 });
+
+const program = Effect.gen(function* () {
+  const cache = yield* Cache;
+  yield* cache.set({
+    key: "registry:effect",
+    value: Uint8Array.of(0x7b, 0x7d), // the bytes for `{}`
+    contentType: "application/json",
+    tags: ["registry"],
+    ttl: Duration.hours(1),
+  });
+
+  const hit = yield* cache.get("registry:effect");
+  return Option.match(hit, {
+    onNone: () => "cache miss",
+    onSome: (entry) => `hit: ${entry.sizeBytes} bytes of ${entry.contentType}`,
+  });
+});
+
+Effect.runPromise(program.pipe(Effect.provide(CacheLive))).then(console.log);
+// hit: 2 bytes of application/json
+```
+
+The `maxEntries: 500` bound is enforced on every `set`: once the cache is full, the oldest-written entries are evicted in the same transaction. Eviction is least-recently-**written**, not read-touching LRU — deterministic and index-free.
+
+### Invalidate a group of entries by tag
+
+Every entry can carry `tags`, and `invalidateByTag` removes all of them in one transaction, returning how many went and which keys they were. This is how you drop a whole family of cached responses at once — every entry tagged `registry`, say, after a publish:
+
+```ts with-api
+import { Cache } from "@effected/store";
+import { Effect } from "effect";
+
+const CacheLive = Cache.layerTest();
+
+const program = Effect.gen(function* () {
+  const cache = yield* Cache;
+  yield* cache.set({ key: "registry:effect", value: Uint8Array.of(1), tags: ["registry"] });
+  yield* cache.set({ key: "registry:vitest", value: Uint8Array.of(2), tags: ["registry"] });
+
+  const result = yield* cache.invalidateByTag("registry");
+  return `removed ${result.count}: ${result.keys.join(", ")}`;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(CacheLive))).then(console.log);
+// removed 2: registry:effect, registry:vitest
+```
+
+### Inspect which migrations have run
+
+`store.status` projects the full migration list with each migration's `appliedAt`, which is present once it has run and absent while it is pending. It is how you show the schema's state without touching a table:
+
+```ts with-api
+import { Store, type StoreMigration } from "@effected/store";
+import { Effect } from "effect";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+  { id: 1, name: "create-projects", up: (sql) => sql`CREATE TABLE projects (name TEXT PRIMARY KEY)` },
+  { id: 2, name: "add-last-opened", up: (sql) => sql`ALTER TABLE projects ADD COLUMN last_opened TEXT` },
+];
+
+const StoreLive = Store.layerTest({ migrations });
+
+const program = Effect.gen(function* () {
+  const store = yield* Store;
+  const status = yield* store.status;
+  return status.map((m) => `${m.id} ${m.name}: ${m.appliedAt !== undefined ? "applied" : "pending"}`);
+});
+
+Effect.runPromise(program.pipe(Effect.provide(StoreLive))).then(console.log);
+// [ "1 create-projects: applied", "2 add-last-opened: applied" ]
+```
+
+### Roll a migration back and re-apply it
+
+Unlike Effect's forward-only migrator, a `Store` migration can define a `down`, and `rollback(toId)` unwinds every applied migration with an `id` greater than `toId`, newest first, calling each `down` as it goes. `rollback(0)` unwinds everything; `store.migrate` then re-applies the pending set. Both report exactly what they changed:
+
+```ts with-api
+import { Store, type StoreMigration } from "@effected/store";
+import { Effect } from "effect";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+  {
+    id: 1,
+    name: "create-projects",
+    up: (sql) => sql`CREATE TABLE projects (name TEXT PRIMARY KEY)`,
+    down: (sql) => sql`DROP TABLE projects`,
+  },
+];
+
+const StoreLive = Store.layerTest({ migrations });
+
+const program = Effect.gen(function* () {
+  const store = yield* Store;
+  const undone = yield* store.rollback(0); // unwind everything, calling `down`
+  const redone = yield* store.migrate; // re-apply the pending migrations
+  return { rolledBack: undone.rolledBack.length, applied: redone.applied.length };
+});
+
+Effect.runPromise(program.pipe(Effect.provide(StoreLive))).then(console.log);
+// { rolledBack: 1, applied: 1 }
+```
+
+## Handling failures
+
+The package's sharpest rule is the line between a failure and a defect. A typed SQL failure becomes a tagged domain error you can route on; a programmer bug — a throwing migration callback, a duplicate migration `id` — stays a defect and is never laundered into a domain error, so your `catchTag` handler never accidentally swallows your own mistake.
+
+There are three tagged errors. `StoreError` carries the `operation` that failed (`setup`, `migrate`, `rollback`, `status`). `StoreMigrationError` carries the failing migration's `id`, `name` and `direction` (`up` or `down`) — exactly what you need to report or repair. `CacheError` carries the cache `operation` and, where the operation has one, the `key`. Each wraps the underlying `SqlError` structurally in a `cause` field rather than flattening it to a string.
+
+Because a store applies its migrations when the layer is built, a broken migration surfaces the moment you provide the layer. Route it with `Effect.catchTag` on the error's tag:
+
+```ts with-api
+import { Store, type StoreMigration } from "@effected/store";
+import { Effect } from "effect";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+  {
+    id: 1,
+    name: "create-projects",
+    // A typo the SQL engine rejects when the layer applies this migration:
+    up: (sql) => sql`CREATE TABEL projects (name TEXT)`,
+  },
+];
+
+const StoreLive = Store.layerTest({ migrations });
+
+const program = Effect.gen(function* () {
+  const store = yield* Store;
+  return yield* store.status;
+}).pipe(
+  Effect.provide(StoreLive),
+  Effect.catchTag("StoreMigrationError", (error) =>
+    Effect.succeed(`migration ${error.id} "${error.name}" failed going ${error.direction}`),
+  ),
+);
+
+Effect.runPromise(program).then(console.log);
+// migration 1 "create-projects" failed going up
+```
+
+Because each method's error channel names exactly the failures it can produce, TypeScript will not let you forget to route one that can happen — or route on one that cannot.
+
+## Next steps
+
+- **[Advanced guide](/store/advanced)** — the driver-agnostic `layer` seam, subscribing to the `CacheEvent` stream, transactional `onRemoved` cleanup, and sharing one database file between a `Store` and a `Cache`.
+- **[API reference](/store/api)** — every export with full signatures, including [`Store`](/store/api/class/store), [`Cache`](/store/api/class/cache_2), and all three tagged errors.

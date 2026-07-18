@@ -1,0 +1,308 @@
+---
+title: Getting started
+description: Install @effected/workspaces, wire the layer, and discover a monorepo's packages, dependency graph and build order end to end — a first tour of workspace tooling in Effect.
+---
+
+# Getting started
+
+`@effected/workspaces` answers the questions every monorepo tool keeps
+re-deriving: where is the workspace root, which directories are packages, what
+depends on what, which package manager runs this repo, and which packages a git
+range touches. It hands those facts back as typed values from Effect services
+you provide once at the edge and swap for fakes in tests — instead of a pile of
+`fs` walks and `git` scripts each tool reinvents slightly differently. Reach for
+it whenever a CLI, a release gate, or a CI check needs to reason about a
+monorepo's shape programmatically.
+
+## Install
+
+```bash
+npm install @effected/workspaces effect
+```
+
+```bash
+pnpm add @effected/workspaces effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. The package reads
+the filesystem, so you supply a `FileSystem` and a `Path` implementation once at
+the edge — from `@effect/platform-node` on Node — and every example below
+installs that too:
+
+```bash
+pnpm add @effect/platform-node
+```
+
+## Your first task: list a monorepo's packages
+
+The goal: point the package at a monorepo, find its root, and print every
+member package's name, version, and location. Nothing here writes anything —
+discovery is entirely read-only.
+
+Start by wiring the layer. `Workspaces.layer()` builds the whole service stack —
+discovery, package-manager detection, the lockfile reader, catalogs — over a
+`FileSystem` and a `Path`. Provide those from `@effect/platform-node` and you
+get a self-contained `WorkspacesLive` layer:
+
+```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Workspaces } from "@effected/workspaces";
+import { Layer } from "effect";
+
+// Bind the layer to a const. Layers memoize by reference, so calling
+// Workspaces.layer() twice would build the entire stack twice.
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLive = Workspaces.layer().pipe(Layer.provide(Platform));
+```
+
+Now write the program. `yield* WorkspaceDiscovery` hands you the discovery
+service; `listPackages()` enumerates every workspace member. Each is a
+`WorkspacePackage` with plain fields you read directly:
+
+```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLive = Workspaces.layer().pipe(Layer.provide(Platform));
+
+const program = Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+
+  const packages = yield* discovery.listPackages();
+
+  return packages.map((pkg) => ({
+    name: pkg.name,
+    version: pkg.version,
+    at: pkg.relativePath,
+  }));
+});
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive))).then(console.log);
+```
+
+Run it from anywhere inside a monorepo and you get one row per package:
+
+```txt
+[
+  { name: '@acme/core', version: '1.4.0', at: 'packages/core' },
+  { name: '@acme/cli', version: '0.9.2', at: 'packages/cli' },
+  { name: '@acme/web', version: '2.1.0', at: 'apps/web' }
+]
+```
+
+Discovery walks up from the current directory to find the workspace root, reads
+its `packages:` patterns, and enumerates the matches. A `packages/**` pattern
+finds packages nested more than one level deep — the enumerator runs on
+[`@effected/glob`](/glob)'s engine, which does a bounded descent rather than
+silently rewriting `/**` to a single level.
+
+## Common operations
+
+Each snippet below reuses the same `WorkspacesLive` layer and the
+`yield* WorkspaceDiscovery` handle from the walkthrough.
+
+### Look up a single package by name
+
+`getPackage` fetches one member by its package name and fails with a typed
+`PackageNotFoundError` — carrying the full list of names that *do* exist — when
+there is no match:
+
+```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLive = Workspaces.layer().pipe(Layer.provide(Platform));
+
+const program = Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+  const pkg = yield* discovery.getPackage("@acme/core");
+  return `${pkg.name}@${pkg.version} lives at ${pkg.relativePath}`;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive))).then(console.log);
+```
+
+### Compute a parallel build order
+
+`DependencyGraph` draws the directed graph of dependencies *between workspace
+packages* — external npm dependencies are not nodes. Build one from the
+enumerated packages, then `levels()` groups them into parallel build tiers:
+level 0 depends on nothing in the workspace, and each later level depends only
+on levels below it, so everything in one level can build at once:
+
+```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { DependencyGraph, WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLive = Workspaces.layer().pipe(Layer.provide(Platform));
+
+const program = Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+  const packages = yield* discovery.listPackages();
+
+  const graph = DependencyGraph.make({ packages });
+
+  // levels[0] builds first; each inner array can build in parallel.
+  return yield* graph.levels();
+});
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive))).then(console.log);
+```
+
+`levels()` fails with a typed `CyclicDependencyError` if the workspace has a
+dependency cycle — its `cycle` field lists the packages still tangled. For the
+flattened single-file order instead of tiers, use `graph.sort()`.
+
+### Find the blast radius of a change
+
+`affectedBy` answers "if these packages change, what else has to be rebuilt or
+retested?" It takes the changed package names and returns them plus every
+package that transitively depends on one — sorted, and including the inputs
+themselves:
+
+```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { DependencyGraph, WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLive = Workspaces.layer().pipe(Layer.provide(Platform));
+
+const program = Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+  const graph = DependencyGraph.make({ packages: yield* discovery.listPackages() });
+
+  // Everything downstream of a change to @acme/core.
+  return yield* graph.affectedBy(["@acme/core"]);
+});
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive))).then(console.log);
+```
+
+For the opposite direction — the packages a single one depends *on* — use
+`graph.dependenciesOf(name)`, and `graph.dependentsOf(name)` for its direct
+dependents.
+
+### Detect the package manager
+
+`PackageManagerDetector` reports which manager runs the workspace, inferred from
+`devEngines`, a `packageManager` field, corepack hints and lockfiles. The
+version comes back as an `Option` — `Option.none` when nothing pins one — so
+unwrap it with a fallback:
+
+```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { PackageManagerDetector, WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
+import { Effect, Layer, Option } from "effect";
+
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLive = Workspaces.layer().pipe(Layer.provide(Platform));
+
+const program = Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+  const detector = yield* PackageManagerDetector;
+
+  const { root } = yield* discovery.info();
+  const pm = yield* detector.detect(root);
+
+  return `${pm.name} ${Option.getOrElse(pm.version, () => "(version unpinned)")}`;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive))).then(console.log);
+```
+
+### Detect which packages a git range touches
+
+Change detection needs to run git, so it lives on a heavier layer:
+`Workspaces.layerWithGit()` adds the `ChangeDetector` and requires a
+`ChildProcessSpawner` alongside the filesystem. `@effect/platform-node`'s
+`NodeServices.layer` supplies all three at once, so providing it yields a
+complete layer:
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { ChangeDetectionOptions, ChangeDetector, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+// NodeServices.layer provides FileSystem, Path and ChildProcessSpawner together.
+const WorkspacesWithGit = Workspaces.layerWithGit().pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const detector = yield* ChangeDetector;
+
+  const affected = yield* detector.affectedPackages(
+    ChangeDetectionOptions.make({ base: "origin/main" }),
+  );
+
+  return affected.map((pkg) => pkg.name);
+});
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesWithGit))).then(console.log);
+```
+
+`ChangeDetector` offers three depths on one service, cheapest first:
+`changedFiles` returns the raw changed paths, `changedPackages` the packages
+owning them, and `affectedPackages` those plus everything downstream through the
+dependency graph — the release-gate answer. Pass
+`ChangeDetectionOptions.make({ base, head, includeUncommitted: true })` to widen
+the range.
+
+## Handling errors
+
+Every failure is a tagged error class with structured fields you branch on
+rather than a message you have to parse. Route each with `Effect.catchTag`,
+which narrows the error type in each handler:
+
+- `PackageNotFoundError` — no workspace package by that name. Carries the
+  requested `name` and the `available` names that do exist.
+- `WorkspaceRootNotFoundError` — no workspace root above the search path.
+  Carries the `searchPath` and the marker filenames it `markers` probed.
+- `WorkspacePatternError` — a `packages:` pattern could not be enumerated. Its
+  `kind` is one of `missingBaseDir`, `uncompilable`, `depthExceeded` or
+  `budgetExceeded`, so you branch on the reason without reading prose.
+
+```ts
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+const Platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const WorkspacesLive = Workspaces.layer().pipe(Layer.provide(Platform));
+
+const program = Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+  return yield* discovery.getPackage("@acme/does-not-exist");
+}).pipe(
+  Effect.catchTag("PackageNotFoundError", (error) =>
+    Effect.succeed(
+      `no package "${error.name}" — workspace has ${error.available.length} packages`,
+    ),
+  ),
+  Effect.catchTag("WorkspaceRootNotFoundError", (error) =>
+    Effect.succeed(`no workspace root above ${error.searchPath}`),
+  ),
+  Effect.catchTag("WorkspacePatternError", (error) =>
+    Effect.succeed(`unenumerable packages: pattern (${error.kind})`),
+  ),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive))).then(console.log);
+```
+
+A developer wiring mistake — an uncompilable glob literal, a fractional depth
+cap — is a defect rather than a domain error, so the typed channel stays the
+failures a caller actually needs to branch on.
+
+## Next steps
+
+- The [advanced guide](/workspaces/advanced) covers the pnpm catalog resolvers,
+  reading workspace state at a git ref with `WorkspaceSnapshots`, and the
+  synchronous `findWorkspaceRootSync` / `getWorkspacePackagesSync` escape hatch
+  for config-time discovery.
+- Every export, with full signatures, lives in the [API reference](/workspaces/api).

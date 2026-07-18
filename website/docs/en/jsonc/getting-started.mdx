@@ -1,0 +1,182 @@
+---
+title: Getting Started
+description: Read, edit and validate a commented config file with @effected/jsonc, preserving every comment and byte you did not touch.
+---
+
+# Getting Started
+
+Reach for `@effected/jsonc` when a tool needs to read *or write* a JSONC file — a `tsconfig.json`, a VS Code `settings.json`, a `.jsonc` config — and must not destroy the comments and formatting a human put there. A `JSON.parse` / `JSON.stringify` round-trip silently throws all of that away; this package parses with error recovery, changes exactly the bytes you ask it to, and can decode straight into a validated Effect `Schema`. Everything is a pure function or an `Effect` — there is no IO to mock and nothing to configure.
+
+## Install
+
+```bash
+npm install @effected/jsonc effect
+```
+
+```bash
+pnpm add @effected/jsonc effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies.
+
+## Your first task: change a value without losing the comments
+
+Say you have a config file with a comment and you need to bump one value. The naive approach — parse to an object, mutate it, stringify — would erase the comment and reflow the whole file. Instead, ask `JsoncModifier` for the *edits* that make the change, then apply them to the original text.
+
+An edit is a `{ offset, length, content }` splice. `JsoncModifier.modify` returns an array of them as an `Effect`, and `JsoncEdit.applyAll` applies the whole batch against the source string:
+
+```ts with-api
+import { JsoncEdit, JsoncModifier } from "@effected/jsonc";
+import { Effect } from "effect";
+
+const source = `{
+  // dev server settings — keep in sync with docker-compose
+  "port": 3000,
+  "host": "localhost"
+}`;
+
+const program = Effect.gen(function* () {
+  const edits = yield* JsoncModifier.modify(source, ["port"], 8080);
+  return JsoncEdit.applyAll(source, edits);
+});
+
+Effect.runPromise(program).then(console.log);
+// {
+//   // dev server settings — keep in sync with docker-compose
+//   "port": 8080,
+//   "host": "localhost"
+// }
+```
+
+Only the `3000` was touched — the comment, the `host` line and every space survive byte for byte, because setting `["port"]` produced a single splice over those four characters. The `path` argument is an array of string keys and numeric indices, so `["servers", 0, "port"]` reaches into nested objects and arrays. Passing `undefined` as the value deletes the target instead of setting it.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built from the package's real exports.
+
+### Parse at a synchronous boundary
+
+Inside Effect code, `Jsonc.parse` gives you an `Effect`. At a plain synchronous boundary — a build script, a config loader that is not Effect-native — reach for `Jsonc.parseResult`, which returns a `Result` you can match on without a runtime:
+
+```ts with-api
+import { Jsonc } from "@effected/jsonc";
+import { Result } from "effect";
+
+const result = Jsonc.parseResult(`{
+  "name": "my-app", // trailing commas are allowed by default
+  "version": "1.0.0",
+}`);
+
+if (Result.isSuccess(result)) {
+  console.log(result.success); // { name: "my-app", version: "1.0.0" }
+}
+```
+
+### Strip comments to plain JSON
+
+`Jsonc.stripComments` turns JSONC into JSON that `JSON.parse` accepts. Pass a replacement character (typically `" "`) to blank each comment character in place instead of deleting it, which keeps every offset stable for downstream position math:
+
+```ts with-api
+import { Jsonc } from "@effected/jsonc";
+
+const jsonc = `{ "port": 3000 /* default */ }`;
+
+console.log(Jsonc.stripComments(jsonc));
+// { "port": 3000  }
+
+console.log(Jsonc.stripComments(jsonc, " ").length === jsonc.length);
+// true — offset-preserving
+```
+
+### Reformat a messy document
+
+`JsoncFormatter.formatToString` reindents a document and returns the formatted text directly. (Its sibling `JsoncFormatter.format` returns the underlying `JsoncEdit` array if you would rather apply the reformat as splices.)
+
+```ts with-api
+import { JsoncFormatter } from "@effected/jsonc";
+
+const messy = `{"port":3000,"host":"localhost"}`;
+
+console.log(JsoncFormatter.formatToString(messy));
+// {
+//   "port": 3000,
+//   "host": "localhost"
+// }
+```
+
+### Compare two configs semantically
+
+`Jsonc.equals` decodes both sides and compares the values: comments, whitespace, formatting and object key order are ignored, while array order stays significant. It is total — malformed input on either side is simply never equal:
+
+```ts with-api
+import { Jsonc } from "@effected/jsonc";
+
+const before = `{ "a": 1, "b": 2 }`;
+const after = `{
+  // reordered and reformatted, same meaning
+  "b": 2,
+  "a": 1
+}`;
+
+console.log(Jsonc.equals(before, after)); // true
+```
+
+### Scan a large document without materializing it
+
+`JsoncVisitor.visit` returns a lazy `Stream` of SAX-style events. Because events are pulled on demand, `Stream.take` short-circuits after the first few instead of building the whole tree — useful for probing a big file:
+
+```ts with-api
+import { JsoncVisitor, JsoncVisitorEvent } from "@effected/jsonc";
+import { Effect, Stream } from "effect";
+
+const source = `{ "port": 3000, "host": "localhost", "debug": true }`;
+
+const program = Effect.gen(function* () {
+  yield* JsoncVisitor.visit(source).pipe(
+    Stream.filter(JsoncVisitorEvent.$is("ObjectProperty")),
+    Stream.take(2),
+    Stream.runForEach((event) => Effect.sync(() => console.log(event.property, event.path))),
+  );
+});
+
+Effect.runPromise(program);
+// port [ "port" ]
+// host [ "host" ]
+```
+
+## Handling errors
+
+Parsing recovers rather than bailing on the first problem: every recovered error is collected into a single `JsoncParseError` whose `errors` array carries the code and position of each one, so a user sees all the mistakes in their file at once. Structural edits that cannot be navigated fail with a `JsoncModificationError` carrying typed `path`, `expected` and `depth` fields.
+
+Both are tagged errors, so `Effect.catchTag` routes each by its `_tag` with full type inference:
+
+```ts with-api
+import { Jsonc, JsoncEdit, JsoncModifier } from "@effected/jsonc";
+import { Effect } from "effect";
+
+const source = `{ "port": 3000 }`;
+
+const program = Effect.gen(function* () {
+  const edits = yield* JsoncModifier.modify(source, ["port"], 8080);
+  const updated = JsoncEdit.applyAll(source, edits);
+  return yield* Jsonc.parse(updated);
+});
+
+const recovered = program.pipe(
+  Effect.catchTag("JsoncParseError", (error) =>
+    Effect.succeed(error.errors.map((detail) => `${detail.code} at ${detail.line}:${detail.character}`)),
+  ),
+  Effect.catchTag("JsoncModificationError", (error) =>
+    Effect.succeed([`could not navigate to [${error.path.join(".")}]: expected ${error.expected}`]),
+  ),
+);
+
+Effect.runPromise(recovered).then(console.log);
+```
+
+Because the error channel is fully typed, dropping either `catchTag` is a compile error until every failure is accounted for. That is the whole point of the typed channel: hostile or malformed input — including a nesting bomb, which trips a depth cap and returns a `NestingDepthExceeded` parse code rather than crashing the stack — always arrives here, never as an unhandled exception.
+
+## Next steps
+
+- Ready for the AST, byte-minimal edit batches and decoding straight into a domain schema? See the [advanced guide](/jsonc/advanced).
+- Every export, with full signatures, lives in the [API reference](/jsonc/api) — start with [`JsoncModifier`](/jsonc/api/class/jsoncmodifier) and [`JsoncVisitor`](/jsonc/api/class/jsoncvisitor).
