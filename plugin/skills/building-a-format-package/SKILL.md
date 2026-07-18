@@ -75,6 +75,19 @@ the tests never sampled). The exact-pinned oracle devDependency in the
 Testing section is the *shipping-gate* complement to this porting-time tool:
 same idea, different moment — use both.
 
+**Where a ported extension hooks into an existing pipeline is determined by
+two constraints, not by taste.** A pass that must read source text verbatim
+(offset fidelity) cannot run after decoding — entities and escapes have
+already shortened node values, so offsets computed there are guesses. A pass
+that must scan backwards over consumed text cannot run before the
+delimiter/bracket stacks are spent — unlinking a node a live delimiter still
+points at corrupts the list. The two constraints can split one upstream
+extension across both moments: cmark-gfm's autolink literals port as an
+inline construct for www/scheme literals (raw source, offsets intact) and a
+postprocess after `processEmphasis` for email literals (backwards scan, no
+stack left to corrupt). Check the upstream source for this split before
+assuming a single mechanism.
+
 ## Effect-wrapping policy (and the Result-parity pattern)
 
 Verbatim from the yaml design doc, binding on every format package:
@@ -140,7 +153,11 @@ same way:
 - **Empty skip map is the standing goal** — toml runs 205 valid + 474
   invalid cases with zero skips; yaml runs 353 case dirs with empty
   `SKIP`/`SKIP_ASSERTIONS` maps. A skip is a documented exception, not a
-  pressure valve.
+  pressure valve. One qualification: real corpora contain entries with no
+  assertable output (cmark-gfm's `extensions.txt` example 20 expects
+  literally `<IGNORE>` — an upstream crash regression asserting only
+  termination). Run those through an explicit `TERMINATION_ONLY` set with
+  the reason inline — neither a skip nor a fabricated assertion.
 - **Guard the corpus count** (`assert(validCases.length >= N)`) so a
   silently-empty fixture walk cannot green the suite.
 - **Fixtures are raw bytes.** When cases deliberately embed CR/CRLF, a
