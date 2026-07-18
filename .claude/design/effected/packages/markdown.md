@@ -25,7 +25,7 @@ The real identified consumer is rspress-plugin-api-extractor, which currently us
 
 ## Headline decisions
 
-Eight decisions define the package, each settled up front (2026-07-18).
+Nine decisions define the package, each settled up front (2026-07-18).
 
 ### Engine: port commonmark.js, restructured with micromark's modularization
 
@@ -49,6 +49,14 @@ Matching toml and yaml's zero-plugin posture: a `dialect: "commonmark" | "gfm"` 
 
 The core engine captures the frontmatter block as a raw fidelity-preserving node (text plus a format marker). Schema decoding ships as **free-standing named codec modules** — `YamlFrontmatter`, `TomlFrontmatter`, `JsonFrontmatter` — one module each, peering on `@effected/yaml`, `@effected/toml` and `@effected/jsonc` respectively. **Never a namespace object**: the [config-file tree-shaking rule](config-file.md) applies verbatim — a JSON-frontmatter consumer must not pay for the yaml engine. `Frontmatter.schema(MySchema, YamlFrontmatter)` gives typed gray-matter parity. mdast has no native frontmatter parsing story; this is a differentiator.
 
+### Frontmatter `$schema` declarations: a classified grammar plus a resolver seam
+
+Settled 2026-07-18. Frontmatter blocks may self-describe their schema via a `$schema` key; the package classifies the declaration by shape into a tagged union, and this is the full grammar contract. **`ByUrl`** (a string containing `://`) and **`ByPath`** (a string starting `./`, `../` or `/` — a bundle/file-relative reference) are carried as data and never resolved in-package: no IO in the pure tier. **`Inline`** (the value is a mapping — a JSON-Schema-like document) is likewise carried as data, interpretable only via an external resolver — the kit deliberately has no JSON Schema engine (`@effected/json-schema` is off the roadmap; external libraries like json-schema-effect plug in through the resolver seam). **`ByName`** is any other string with a committed grammar: `name[@version]`, split at the **last** `@` so a leading npm-style scope `@` survives (`@savvy/skill@2.1.0` → name `@savvy/skill`, version `2.1.0`). The version grammar is internal and dependency-free: `X[.Y[.Z]]` — one to three dot-separated non-negative integers, with no prerelease, no build metadata and no npm range operators (`^` `~` `>` `<` `||`), which are explicitly out of the grammar; additive grammar extensions later remain compatible, since a previously-malformed string becoming legal breaks nothing. Validation and comparison are ~30 lines in the engine's internal code — `@effected/semver` was consciously declined as a peer so `FrontmatterResolver.ts` depends on nothing. Recorded cost: `@` in a ByName is reserved forever as the version separator, except the leading scope `@`.
+
+Resolution lives behind an in-package seam: a `FrontmatterSchemaResolver` contract that, given the declaration **and** the whole decoded frontmatter data, returns an Effect Schema or fails typed. The package ships exactly one implementation, registry-backed — `SchemaResolver.fromRegistry({ "skill@2.1.0": Skill2, "blog-post": BlogPost })`, registrations carrying concrete versions or no version. Because the resolver sees the whole decoded frontmatter, dispatch need not key on `$schema` at all — an OKF resolver can dispatch on OKF's `type` key with zero OKF code in this package. Strictness knobs: `requireDeclaration` makes a missing `$schema` a typed error, and an unknown name is a typed error in strict decode and a diagnostic in lenient. Indicative error names, final naming at implementation: `SchemaDeclarationMissing`, `SchemaNameUnknown`, `SchemaVersionUnresolvable`.
+
+Day one the grammar is fully validated but resolution is **exact version-segment equality**: a partial version like `skill@2` or `okf/concept@0.1` is legal grammar (one or two integers) yet resolves only against an identically-written registration, otherwise failing with the dedicated `SchemaVersionUnresolvable`, distinct from unknown-name. The documented future minor is **prefix resolution** — the Docker-tag/Go-module mental model: `skill@2` selects the highest registered `2.y.z`, `skill@2.1` the highest `2.1.z` and a full `X.Y.Z` stays exact. No grammar or API change; `SchemaVersionUnresolvable` simply stops firing for satisfiable prefixes — a clean semver-minor evolution for the package itself. Deliberate bonus: OKF's two-number `0.1` style is natively legal in this grammar, where it is not a legal npm-semver version.
+
 ### Editing: offset-splice, not a lossless CST
 
 Research finding, recorded: nobody in the JS ecosystem ships a lossless markdown CST — remark's serializer reformats by design, and the remark maintainers themselves recommend positional splicing (remarkjs discussion #719). The edit model is the house pattern: `MarkdownEdit { offset, length, content }` plus `applyAll`, structurally identical to `JsoncEdit`/`YamlEdit`/`TomlEdit` — the cross-package parity contract and the pre-work for the deferred `@effected/text-edit` kernel. Surgical edits are computed as offset-splices over the original source; the canonical `stringify` serves synthesized trees.
@@ -59,7 +67,7 @@ CommonMark has no syntax errors — every string is a valid document. The parse 
 
 ### OKF: design-informed, package deferred
 
-OKF (Open Knowledge Format — GoogleCloudPlatform/knowledge-catalog/okf, Apache-2.0, draft v0.1, launched 2026-06-12, single-vendor, no formal grammar or JSON schema, reference implementation contradicting the spec on required frontmatter keys) adds **zero markdown syntax**: it is YAML-frontmatter conventions (one required key, `type`), reserved filenames (`index.md`, `log.md`), bundle-relative links and a directory layout — effectively GFM in practice (its examples use pipe tables). Decision: `@effected/markdown`'s generic surface — frontmatter schemas, heading/section navigation, link extraction, lossless round-trip — must make OKF trivially expressible; a future separate `@effected/okf` package (Concept/Index/Log schemas plus bundle walking over `@effected/walker` and `@effected/glob`) waits for the spec to stabilize past v0.1.
+OKF (Open Knowledge Format — GoogleCloudPlatform/knowledge-catalog/okf, Apache-2.0, draft v0.1, launched 2026-06-12, single-vendor, no formal grammar or JSON schema, reference implementation contradicting the spec on required frontmatter keys) adds **zero markdown syntax**: it is YAML-frontmatter conventions (one required key, `type`), reserved filenames (`index.md`, `log.md`), bundle-relative links and a directory layout — effectively GFM in practice (its examples use pipe tables). Decision: `@effected/markdown`'s generic surface — frontmatter schemas, heading/section navigation, link extraction, lossless round-trip — must make OKF trivially expressible; a future separate `@effected/okf` package (Concept/Index/Log schemas plus bundle walking over `@effected/walker` and `@effected/glob`) waits for the spec to stabilize past v0.1. The `$schema` resolver seam already covers OKF's dispatch model: because the resolver sees the whole decoded frontmatter, an OKF resolver can key on OKF's `type` field with no OKF code in this package.
 
 ## Tier and dependencies
 
@@ -84,6 +92,7 @@ One concern per file, mirroring [yaml's layout](yaml.md#module-layout); `src/ind
 - `src/MarkdownVisitor.ts` — `Stream<MarkdownVisitorEvent>` tree walk, sibling-style and infallible at the type level.
 - `src/MarkdownDiagnostic.ts` — the diagnostic core (`code`/`offset`/`length`/`line`/`character`, parity-shaped) plus the error-code unions.
 - `src/Frontmatter.ts` — raw capture plus the schema composition seam.
+- `src/FrontmatterResolver.ts` — the `$schema` declaration union, the `FrontmatterSchemaResolver` contract and the registry-backed resolver, dependency-free (the version grammar is validated and compared in the engine's internal code); its own module so `Frontmatter.ts` stays a lean composition seam and a consumer who never resolves declarations never loads the resolution machinery.
 - `src/YamlFrontmatter.ts` / `src/TomlFrontmatter.ts` / `src/JsonFrontmatter.ts` — the free-standing codecs over the kit peers.
 - `src/internal/` — the engine: construct-per-module two-phase parser, the dialect registries and `limits.ts`.
 
@@ -114,6 +123,8 @@ Pure-tier rule: named `Effect.fn` spans on the public fallible boundaries only. 
 
 Standing goals: an **empty skip map** (the toml precedent — zero skips); the differential oracle is the `commonmark` npm package, an exact-pinned devDependency imported only by a property test (the smol-toml pattern). Property tests: parse never throws, node positions span valid offsets, `applyAll` splice idempotence, stringify∘parse semantic preservation (re-parse equivalence) and frontmatter round-trip.
 
+The `$schema` contract adds its own unit and property coverage: declaration shape classification across the four variants, version grammar validation (one to three integer segments, junk rejected as a typed error), the last-`@` split including scoped names, day-one exact-match resolution against the registry and the prefix-selector-parses-but-unresolvable vs unknown-name distinction (`SchemaVersionUnresolvable` vs `SchemaNameUnknown`).
+
 ## Consumer seam
 
 rspress-plugin-api-extractor is the identified consumer: the `Mdast` projection replaces `mdast-util-from-markdown` output and the frontmatter codecs replace `gray-matter`, adopted incrementally at that repo's boundary. Nothing in this package knows about any consumer; like its format siblings, it stays a pure, unaware format package, and any future codec-style integration (config-file, okf) points its dependency arrow **at** markdown, never from it.
@@ -131,11 +142,11 @@ Each phase lands green and mergeable:
 - **P0** — this design doc (the migration-playbook gate).
 - **P1** — CommonMark core: scaffold from the pure sibling, block and inline passes, mdast-shaped nodes with offsets, `Markdown.parse` plus `MarkdownDocument`, the 652-example spec corpus and the pathological suite green. The long pole.
 - **P2** — GFM dialect: construct modules plus the dialect option; corpora 2 and 3 green.
-- **P3** — frontmatter: the capture node, `Frontmatter.schema` and the three codecs.
+- **P3** — frontmatter: the capture node, `Frontmatter.schema` and the three codecs, plus the `$schema` declaration contract and the registry-backed resolver with exact-match resolution.
 - **P4** — edit/format: the parity vocabulary, offset-splice `modify`, canonical `stringify` and `format`.
 - **P5** — interop and traversal: the `Mdast` projection (fixture corpus green), `MarkdownVisitor` and the navigation accessors.
 - **P6** — docs and adoption: the api-extractor model plus website docs, dogfooded via the rspress-plugin-api-extractor swap.
-- **Future/deferred**: the `obsidian` dialect; the `@effected/okf` package.
+- **Future/deferred**: the `obsidian` dialect; the `@effected/okf` package; prefix `$schema` version resolution (the committed semver-minor evolution of the resolver).
 
 ## Build and scaffold
 
