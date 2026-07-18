@@ -321,6 +321,12 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`. See
   `effect-v4-schema` for making field models canonical so round-trip
   properties do not lie.
+- **`fc.fullUnicodeString` / `fc.fullUnicode` do not exist** in the FastCheck
+  bundled with `effect/testing` at beta.98 (`typeof` is `undefined` — probed
+  2026-07-18). The v4 spelling for hostile-unicode strings (lone surrogates,
+  astral planes, U+0000) is `FastCheck.string({ unit: "binary" })`; plain
+  `FastCheck.string()` stays BMP-safe and misses exactly the inputs a
+  never-throws property exists to find.
 
 ## Time-dependent logic: `TestClock`
 
@@ -511,8 +517,21 @@ vanish with it. The `--reporter=json` output is equally empty
 a package you KNOW has a nonzero suite reporting `0/0`; the remedy is bisecting
 the test files for the one that fails to load (observed 2026-07-18: a 400-test
 package zeroed by one bad scratch file). Never leave scratch `*.test.ts` files
-in a test tree — probe with `npx tsx /tmp/probe.ts` instead (see
-`effect-v4-source-lookup`).
+in a test tree — probe with `npx tsx` against a probe file INSIDE the package
+tree instead (see `effect-v4-source-lookup` for why `/tmp` cannot resolve
+`effect`).
+
+## Timing gates under coverage lie by an order of magnitude
+
+v8 coverage instrumentation cost a measured **~18×** on parser-heavy code in
+this repo (63ms clean vs 1126ms instrumented for the same parse; a 4.9s
+pathological case took 114s). A raw-millisecond performance assertion is
+therefore meaningless under coverage: it fails in CI for reasons unrelated to
+the code. The house pattern is **calibrated budgets** — time a small
+calibration input through the same code path, divide by its clean-run
+baseline, and scale every budget by that factor. A genuine algorithmic
+regression still fails (quadratic outruns any constant factor), while
+instrumentation and slow hardware scale both sides together.
 
 ## House conventions
 

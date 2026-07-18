@@ -157,6 +157,17 @@ same way:
   devDependency, imported by exactly one property test (toml's `smol-toml`
   at 250 runs; markdown's plan pins `commonmark`). Corpus wins on
   disagreement; the oracle catches what the corpus never sampled.
+- **The oracle can be WRONG — and "corpus wins" only settles disagreements
+  the corpus actually exercises.** A generated input the corpus never
+  sampled needs root-cause investigation in the *oracle's* source before
+  either side is trusted: a 20k-input hunt during the markdown port found a
+  real commonmark.js defect (a reference-only paragraph before a thematic
+  break renders a phantom empty `<p></p>` — a flag that does not carry
+  between its two definition-stripping sites in `blocks.js`). When the port
+  is right and the oracle is not: correct the oracle's OUTPUT narrowly on
+  the oracle side of the comparison, AND pin a tripwire test asserting the
+  divergence still exists — a future upstream fix fails the tripwire and
+  forces the correction's deletion. Never a skip entry.
 - **Unit fixtures must land in the layer they claim to test.** In a
   multi-pass engine, an innocuous-looking input can be claimed by an
   earlier pass and silently test the wrong thing — a markdown inline
