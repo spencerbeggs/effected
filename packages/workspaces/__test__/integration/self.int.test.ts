@@ -137,7 +137,7 @@ describe("the sync escape hatch agrees with the Effect surface", () => {
 			Effect.gen(function* () {
 				const discovery = yield* WorkspaceDiscovery;
 				const info = yield* discovery.info();
-				assert.strictEqual(findWorkspaceRootSync({ ...syncOps, cwd }), info.root);
+				assert.strictEqual(findWorkspaceRootSync(cwd, syncOps), info.root);
 			}),
 		);
 

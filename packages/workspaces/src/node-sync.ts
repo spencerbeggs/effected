@@ -17,7 +17,7 @@
  * import { findWorkspaceRootSync, getWorkspacePackagesSync } from "@effected/workspaces";
  * import { nodeSyncOps } from "@effected/workspaces/node-sync";
  *
- * const root = findWorkspaceRootSync(nodeSyncOps);
+ * const root = findWorkspaceRootSync(process.cwd(), nodeSyncOps);
  * const packages = root === null ? [] : getWorkspacePackagesSync(root, nodeSyncOps);
  * ```
  *
@@ -64,7 +64,9 @@ export const nodePath: SyncPath = path;
 /**
  * The complete Node-bound options bag for `findWorkspaceRootSync` and
  * `getWorkspacePackagesSync` — {@link nodeFileSystem} plus {@link nodePath}.
- * Spread it to add the per-call extras: `{ ...nodeSyncOps, cwd }`.
+ * Both helpers take their path positionally, so this bag usually passes
+ * through verbatim; spread it only to add `getWorkspacePackagesSync`'s
+ * traversal extras: `{ ...nodeSyncOps, maxDepth }`.
  *
  * @public
  */

@@ -36,7 +36,7 @@ Errors preserve structure. `JsoncModificationError` carries typed `path`/`expect
 
 Exported from `src/index.ts`:
 
-- `Jsonc` — `parse`, `parseTree` (`Effect`, failing with the aggregate `JsoncParseError`); `stripComments`, `equals`, `equalsValue` (pure, total); `fromString`, `JsoncFromString`, `schema(target)`. Plus `JsoncParseError`, `JsoncParseErrorDetail`, `JsoncParseErrorCode`, `JsoncParseOptions`
+- `Jsonc` — `parse`, `parseTree` (`Effect`, failing with the aggregate `JsoncParseError`); `parseResult` (synchronous `Result` variant of `parse`; `parse` is defined in terms of it); `stripComments`, `equals`, `equalsValue` (pure, total); `fromString`, `JsoncFromString`, `schema(target)`. Plus `JsoncParseError`, `JsoncParseErrorDetail`, `JsoncParseErrorCode`, `JsoncParseOptions`
 - `JsoncNode`, `JsoncNodeType`, `JsoncPath`, `JsoncSegment` — the AST; no parent pointers (they would break equality, serialization and encode/decode)
 - `JsoncEdit` (+ `applyAll`), `JsoncRange`, `JsoncFormattingOptions`
 - `JsoncFormatter` — `format`, `formatToString`

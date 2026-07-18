@@ -32,13 +32,13 @@ const handWired: WorkspacesSyncOptions = {
 
 describe("the node-sync preset against the real repository", () => {
 	it("findWorkspaceRootSync finds the workspace root from a packages/ subdir", () => {
-		const root = findWorkspaceRootSync({ ...nodeSyncOps, cwd });
+		const root = findWorkspaceRootSync(cwd, nodeSyncOps);
 		assert.isNotNull(root);
 		assert.isTrue(nodeFileSystem.exists(nodePath.join(root as string, "pnpm-workspace.yaml")));
 	});
 
 	it("getWorkspacePackagesSync enumerates this package and its siblings", () => {
-		const root = findWorkspaceRootSync({ ...nodeSyncOps, cwd });
+		const root = findWorkspaceRootSync(cwd, nodeSyncOps);
 		assert.isNotNull(root);
 		const names = getWorkspacePackagesSync(root as string, nodeSyncOps).map((pkg) => pkg.name);
 		assert.include(names, "@effected/workspaces");
@@ -47,8 +47,8 @@ describe("the node-sync preset against the real repository", () => {
 	});
 
 	it("agrees exactly with hand-wired node ops", () => {
-		const presetRoot = findWorkspaceRootSync({ ...nodeSyncOps, cwd });
-		const manualRoot = findWorkspaceRootSync({ ...handWired, cwd });
+		const presetRoot = findWorkspaceRootSync(cwd, nodeSyncOps);
+		const manualRoot = findWorkspaceRootSync(cwd, handWired);
 		assert.strictEqual(presetRoot, manualRoot);
 		assert.isNotNull(presetRoot);
 

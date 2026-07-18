@@ -12,7 +12,7 @@
 // builds the aggregate `JsoncParseError`. The dependency edge runs facade →
 // parser only, so `noImportCycles` stays satisfied.
 
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import type { ParseFlags, RawParseError } from "./internal/parser.js";
 import {
@@ -192,9 +192,56 @@ export class Jsonc {
 	private constructor() {}
 
 	/**
+	 * Parse JSONC into a plain JavaScript value, synchronously, returning a
+	 * `Result` instead of an `Effect`. Same error-recovery semantics as
+	 * {@link Jsonc.parse}: every parse error is collected and the failure side
+	 * carries one aggregate {@link JsoncParseError}. Pure — parsing is
+	 * fundamentally synchronous, so non-Effect consumers (a plain config
+	 * loader, a build script) can call this directly instead of wrapping
+	 * `Effect.runSync(Effect.result(Jsonc.parse(text)))`.
+	 *
+	 * @remarks
+	 * {@link Jsonc.parse} is defined in terms of this function; the two never
+	 * diverge. Reach for the `Effect` variant inside Effect code — it carries
+	 * the `Jsonc.parse` tracing span — and for this one at synchronous
+	 * boundaries.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Jsonc } from "@effected/jsonc";
+	 * import { Result } from "effect";
+	 *
+	 * const ok = Jsonc.parseResult('{ "port": 3000 // dev\n }');
+	 * if (Result.isSuccess(ok)) {
+	 *   console.log(ok.success); // => { port: 3000 }
+	 * }
+	 *
+	 * const bad = Jsonc.parseResult("{ bad }");
+	 * if (Result.isFailure(bad)) {
+	 *   console.log(bad.failure._tag); // => "JsoncParseError"
+	 * }
+	 * ```
+	 *
+	 * @param text - The JSONC source to parse.
+	 * @param options - Optional {@link JsoncParseOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns A `Result` succeeding with the decoded value (`unknown`, never
+	 *   `any`), or failing with the aggregate {@link JsoncParseError}.
+	 */
+	static parseResult(text: string, options?: JsoncParseOptions): Result.Result<unknown, JsoncParseError> {
+		const { value, errors } = parseValueInternal(text, toFlags(options));
+		if (errors.length > 0) {
+			return Result.fail(new JsoncParseError({ errors: toDetails(text, errors), input: text }));
+		}
+		return Result.succeed(value);
+	}
+
+	/**
 	 * Parse JSONC into a plain JavaScript value. Error-recovery parsing:
 	 * collects every parse error and fails once with the aggregate
-	 * {@link JsoncParseError}. Returns `unknown`, never `any`.
+	 * {@link JsoncParseError}. Returns `unknown`, never `any`. Defined in terms
+	 * of {@link Jsonc.parseResult} — synchronous callers can use that variant
+	 * directly.
 	 *
 	 * @param text - The JSONC source to parse.
 	 * @param options - Optional {@link JsoncParseOptions}; defaults apply for
@@ -202,13 +249,9 @@ export class Jsonc {
 	 * @returns An `Effect` that succeeds with the decoded value, or fails with
 	 *   the aggregate {@link JsoncParseError}.
 	 */
-	static readonly parse = Effect.fn("Jsonc.parse")(function* (text: string, options?: JsoncParseOptions) {
-		const { value, errors } = parseValueInternal(text, toFlags(options));
-		if (errors.length > 0) {
-			return yield* new JsoncParseError({ errors: toDetails(text, errors), input: text });
-		}
-		return value;
-	});
+	static readonly parse = Effect.fn("Jsonc.parse")((text: string, options?: JsoncParseOptions) =>
+		Effect.fromResult(Jsonc.parseResult(text, options)),
+	);
 
 	/**
 	 * Parse JSONC into an immutable {@link JsoncNode} AST. `Option.none()` for

@@ -64,7 +64,9 @@ export class YamlParseOptions extends Schema.Class<YamlParseOptions>("YamlParseO
  * no-fold behavior; a positive value folds long plain, double-quoted and
  * block-folded (`>`) scalars at approximately that column, inserting only
  * semantically transparent line breaks. Block-literal (`|`) content is never
- * folded — literal blocks preserve their bytes by definition.
+ * folded — literal blocks preserve their bytes by definition. Folding is a
+ * value-path feature only: `YamlDocument#stringify` and the `YamlFormat`
+ * helpers accept these options but do not fold (see `lineWidth`).
  *
  * `indentSequences` controls the presentation of block sequences nested under
  * a mapping key: `false` (the default) emits them at the key's column — the
@@ -95,6 +97,15 @@ export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("Ya
 	 * Column at which to fold long scalars. Default `0` (and any value `<= 0`)
 	 * never wraps; a positive value folds plain, double-quoted and block-folded
 	 * (`>`) scalars at approximately that column, never block-literal (`|`).
+	 *
+	 * Takes effect only through {@link Yaml.stringify} and
+	 * {@link Yaml.stringifySync} — the two entry points that accept these
+	 * options on the value path. The schema factories ({@link Yaml.fromString},
+	 * {@link Yaml.schema}, {@link Yaml.YamlFromString}) encode with default
+	 * stringify options (`lineWidth` `0`), so their output never folds. The
+	 * document/node path — `YamlDocument#stringify` and the `YamlFormat`
+	 * helpers built on it — threads the field into its render context but
+	 * never reads it, so it is inert there.
 	 */
 	lineWidth: Schema.optionalKey(Schema.Number),
 	defaultScalarStyle: Schema.optionalKey(ScalarStyle),
@@ -226,7 +237,7 @@ const stringifyDefectToError = (defect: unknown, value: unknown): YamlStringifyE
 };
 
 /**
- * Synchronous single-document parse returning a {@link Result}. The pure
+ * Synchronous single-document parse returning a `Result`. The pure
  * engine bypasses the Effect runtime entirely: the composer, the failure
  * collection and the alias-expansion budget all run inline, and every failure
  * mode (fatal diagnostics, duplicate keys, a "billion laughs" blow-up) yields
@@ -252,7 +263,7 @@ const parseSyncImpl = (text: string, options?: YamlParseOptions): Result.Result<
 };
 
 /**
- * Synchronous stringify returning a {@link Result}. Mirrors {@link Yaml.stringify}
+ * Synchronous stringify returning a `Result`. Mirrors {@link Yaml.stringify}
  * without the Effect wrapper: a circular reference or a value nested past the
  * recursion budget yields a `Failure` carrying a typed {@link YamlStringifyError},
  * never a thrown defect.
@@ -408,7 +419,7 @@ export class Yaml {
 	});
 
 	/**
-	 * Synchronous single-document parse, returning a {@link Result} instead of
+	 * Synchronous single-document parse, returning a `Result` instead of
 	 * an `Effect`. A pure escape hatch for config-time callers that cannot
 	 * `await` an Effect (a `vitest.config.ts` is the motivating case): it runs
 	 * the same engine as {@link Yaml.parse} inline.
@@ -438,7 +449,7 @@ export class Yaml {
 	}
 
 	/**
-	 * Synchronous stringify, returning a {@link Result} instead of an `Effect`.
+	 * Synchronous stringify, returning a `Result` instead of an `Effect`.
 	 * The pure counterpart to {@link Yaml.stringify} for config-time callers
 	 * that cannot `await`.
 	 *
