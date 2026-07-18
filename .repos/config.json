@@ -31,7 +31,17 @@
 				"lib",
 				"test",
 				"LICENSE"
-			]
+			],
+			"orientation": {
+				"layout": "Sparse checkout: lib/ (the parser: blocks.js block pass, inlines.js inline pass, node.js AST, render/ excluded from the port), test/ (spec.txt copy, regression.txt, smart_punct.txt).",
+				"keyPaths": {
+					"block-pass": "lib/blocks.js",
+					"inline-pass": "lib/inlines.js",
+					"ast-node": "lib/node.js",
+					"regression-corpus": "test/regression.txt"
+				},
+				"startHere": "lib/blocks.js then lib/inlines.js — the two-phase algorithm the @effected/markdown engine ports. Port deltas are decided in the design doc (.claude/design/effected/packages/markdown.md): mdast node names, byte offsets, keep definitions/references unresolved. lib/render is out of scope (no product HTML)."
+			}
 		},
 		"commonmark-spec": {
 			"url": "https://github.com/commonmark/commonmark-spec.git",
@@ -41,7 +51,16 @@
 				"spec.txt",
 				"test",
 				"LICENSE"
-			]
+			],
+			"orientation": {
+				"layout": "Sparse checkout: spec.txt (the CommonMark 0.31.2 spec; 652 embedded examples), test/ (spec_tests.py extracts examples, normalize.py is the HTML-normalization reference for the test-only writer).",
+				"keyPaths": {
+					"spec": "spec.txt",
+					"example-extractor": "test/spec_tests.py",
+					"html-normalizer": "test/normalize.py"
+				},
+				"startHere": "spec.txt's appendix 'A parsing strategy' is the algorithm contract. Extract the conformance corpus with spec_tests.py --dump-tests (or vendor the published spec.json); normalize.py defines the HTML equivalence the __test__/ harness reimplements. Test data is CC-BY-SA 4.0 — vendor test-only with attribution."
+			}
 		},
 		"cmark-gfm": {
 			"url": "https://github.com/github/cmark-gfm.git",
@@ -52,12 +71,29 @@
 				"extensions",
 				"src",
 				"COPYING"
-			]
+			],
+			"orientation": {
+				"layout": "Sparse checkout: test/ (spec.txt with the GFM extension sections, extensions.txt incl. the only official footnote corpus, pathological_tests.py, fuzzing assets), extensions/ (C implementations: table, strikethrough, autolink, tasklist, tagfilter), src/ (cmark core incl. footnotes).",
+				"keyPaths": {
+					"gfm-spec": "test/spec.txt",
+					"extension-corpus": "test/extensions.txt",
+					"pathological-suite": "test/pathological_tests.py",
+					"construct-impls": "extensions"
+				},
+				"startHere": "test/spec.txt extension sections (Tables/Task list items/Strikethrough/Autolinks/Disallowed Raw HTML, 24 examples) + test/extensions.txt (30 more, incl. footnotes) are the P2 corpora; test/pathological_tests.py is the linear-time guarantee suite every dialect must pass. extensions/*.c are semantic references only — the port base is commonmark.js, not this C."
+			}
 		},
 		"mdast": {
 			"url": "https://github.com/syntax-tree/mdast.git",
 			"ref": "5.0.0",
-			"purpose": "The mdast spec prose (readme.md IS the spec) — the node-type contract @effected/markdown's Schema classes mirror, incl. the GFM extension node set"
+			"purpose": "The mdast spec prose (readme.md IS the spec) — the node-type contract @effected/markdown's Schema classes mirror, incl. the GFM extension node set",
+			"orientation": {
+				"layout": "Full checkout; readme.md is the entire spec (unist-based node types, mixins, enumerations).",
+				"keyPaths": {
+					"spec": "readme.md"
+				},
+				"startHere": "readme.md — the 19 CommonMark node types plus the GFM section (delete, table/tableRow/tableCell, listItem.checked, footnoteDefinition/footnoteReference) are the names and field shapes MarkdownNode.ts must mirror exactly; the Mdast projection is spec-valid only if these match."
+			}
 		},
 		"mdast-util-from-markdown": {
 			"url": "https://github.com/syntax-tree/mdast-util-from-markdown.git",
@@ -68,7 +104,16 @@
 				"test",
 				"license",
 				"readme.md"
-			]
+			],
+			"orientation": {
+				"layout": "Sparse checkout: dev/lib/index.js (the readable event-to-mdast assembler), test/index.js (the CommonMark-conformance-without-product-HTML harness precedent), test/fixtures/ (27 .md/.json pairs with full unist positions).",
+				"keyPaths": {
+					"tree-assembler": "dev/lib/index.js",
+					"harness-precedent": "test/index.js",
+					"ast-fixtures": "test/fixtures"
+				},
+				"startHere": "test/fixtures/*.json are the position-complete mdast trees the Mdast projection is asserted against (P5 corpus). test/index.js shows the normalized-HTML conformance technique for a library that ships no HTML renderer — the pattern __test__/e2e reimplements."
+			}
 		}
 	}
 }
