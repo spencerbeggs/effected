@@ -60,7 +60,15 @@
 					"html-normalizer": "test/normalize.py"
 				},
 				"startHere": "spec.txt's appendix 'A parsing strategy' is the algorithm contract. Extract the conformance corpus with spec_tests.py --dump-tests (or vendor the published spec.json); normalize.py defines the HTML equivalence the __test__/ harness reimplements. Test data is CC-BY-SA 4.0 — vendor test-only with attribution."
-			}
+			},
+			"notes": [
+				{
+					"id": "n-34b9",
+					"date": "2026-07-18",
+					"ref": "0.31.2",
+					"note": "Running test/spec_tests.py drops test/__pycache__/ into the checkout, which shows as dirty in repos status forever (the .repos tripwires block git clean inside the submodule, and sync does not fix dirt). Always invoke it as PYTHONDONTWRITEBYTECODE=1 python3 test/spec_tests.py ... — avoiding the write is the only clean path. The existing __pycache__ from the 2026-07-18 corpus generation is harmless untracked bytecode."
+				}
+			]
 		},
 		"cmark-gfm": {
 			"url": "https://github.com/github/cmark-gfm.git",
