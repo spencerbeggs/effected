@@ -37,6 +37,8 @@ The alternatives were evaluated and rejected: wrapping mdast/remark as runtime d
 
 Node Schema classes use mdast's exact node type names and field shapes: the 19 CommonMark types (root, paragraph, heading, thematicBreak, blockquote, list, listItem, code, html, definition, text, emphasis, strong, inlineCode, break, link, image, linkReference, imageReference), the GFM additions (delete, table, tableRow, tableCell, `listItem.checked`, footnoteDefinition, footnoteReference) and the frontmatter nodes. Positions are unist `Position` with line/column **and** byte offsets. Fidelity fields (bullet char, fence char and info string, ATX vs setext, delimiter runs, spacing) ride alongside the mdast shape; the `Mdast` module projects to plain spec-valid mdast JSON by stripping them. The mdast spec is stable — unchanged for years, MIT — which makes shaping to it a safe bet.
 
+**P1 rulings** (implementation, 2026-07-18): (a) `List.ordered`, `List.spread` and `ListItem.spread` are `optionalKey` per the mdast spec's `boolean?` with absence meaning unknown, not `false` — the mdast readme wins over any summary of it; consumers and the test-only HTML writer treat an absent `spread` as tight. (b) Node type discriminators use `Schema.Class` with an explicit tag field named `type`, not `Schema.TaggedClass` — `TaggedClass` is unusable for a foreign contract because it hardwires the `_tag` key, and mdast's contract requires exactly `type`.
+
 ### Three port deltas from commonmark.js
 
 Decided up front, not discovered mid-port: (a) mdast type names, not commonmark.js names; (b) byte-offset tracking added everywhere — commonmark.js only has line/column sourcepos, and offsets also power the edit layer; (c) `definition` nodes are **kept in the tree** and linkReference/imageReference are emitted unresolved, per mdast semantics — commonmark.js deletes definitions and resolves references eagerly, which is wrong for an editing library. The port also retains the concrete-syntax markers mdast drops.
@@ -129,6 +131,10 @@ The `$schema` contract adds its own unit and property coverage: declaration shap
 
 rspress-plugin-api-extractor is the identified consumer: the `Mdast` projection replaces `mdast-util-from-markdown` output and the frontmatter codecs replace `gray-matter`, adopted incrementally at that repo's boundary. Nothing in this package knows about any consumer; like its format siblings, it stays a pure, unaware format package, and any future codec-style integration (config-file, okf) points its dependency arrow **at** markdown, never from it.
 
+## Open questions
+
+**hast output.** Porting `mdast-util-to-hast` so the kit could emit hast trees directly was raised, since rspress-plugin-api-extractor uses it today. Decision: deferred, with an explicit decision gate — revisit after the rspress plugin's actual adoption (the P6 docs/adoption phase) shows whether keeping its one remaining `mdast-util-to-hast` dependency is a real cost. Either way the `Mdast` projection is the bridge: consumers render via `toHast` over the projected plain-mdast tree, and the P6 docs ship that recipe. HTML string serialization remains permanently out of scope regardless of how this resolves. If the question later closes toward porting, the shape already sketched is in-package free-standing `Hast`/`ToHast` modules — tree-shakable, extractable to an `@effected/okf`-style separate package only on second-consumer evidence.
+
 ## Parity notes
 
 - `MarkdownEdit` and `MarkdownRange` are field-identical to `JsoncEdit`/`YamlEdit`/`TomlEdit` (`{ offset, length, content }`); the diagnostic core carries the shared five fields. This is the binding cross-package parity contract and the pre-work for the deferred `@effected/text-edit` kernel.
@@ -140,7 +146,7 @@ rspress-plugin-api-extractor is the identified consumer: the `Mdast` projection 
 Each phase lands green and mergeable:
 
 - **P0** — this design doc (the migration-playbook gate).
-- **P1** — CommonMark core: scaffold from the pure sibling, block and inline passes, mdast-shaped nodes with offsets, `Markdown.parse` plus `MarkdownDocument`, the 652-example spec corpus and the pathological suite green. The long pole.
+- **P1** — CommonMark core: scaffold from the pure sibling, block and inline passes, mdast-shaped nodes with offsets, `Markdown.parse` plus `MarkdownDocument`, the 652-example spec corpus and the pathological suite green. The long pole. Progress as of 2026-07-18: tasks 1-7 of 12 are committed on `feat/markdown` (scaffold `a9ee0e5` through containers `d29e44d`) — corpora vendored (652 examples plus 20 pathological cases, count-guarded), diagnostics/limits/line index, the 19 node classes, the test-only HTML writer differentially verified against normalize.py, and the full block pass with kept definitions and refmap. The conformance harness is at 255/652 examples green, 0 failing, with the remaining deferrals all inline-pass work (tasks 8-9). The executable plan is `.claude/plans/2026-07-18-markdown-p1-commonmark-core.md` (local, gitignored).
 - **P2** — GFM dialect: construct modules plus the dialect option; corpora 2 and 3 green.
 - **P3** — frontmatter: the capture node, `Frontmatter.schema` and the three codecs, plus the `$schema` declaration contract and the registry-backed resolver with exact-match resolution.
 - **P4** — edit/format: the parity vocabulary, offset-splice `modify`, canonical `stringify` and `format`.
