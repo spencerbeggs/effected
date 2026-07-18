@@ -5,6 +5,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
+import { MarkdownDiagnostic } from "../src/MarkdownDiagnostic.js";
 import { MarkdownDocument } from "../src/MarkdownDocument.js";
 import { Definition, Root } from "../src/MarkdownNode.js";
 
@@ -62,13 +63,36 @@ describe("MarkdownDocument.parseResult", () => {
 		assert.strictEqual(inTree.length, 2);
 	});
 
-	it("reports no diagnostics for a clean document", () => {
+	it("reports no diagnostics, because P1 has no producers of them yet", () => {
+		// Not a coverage gap: the engine's carrier array is empty for every
+		// input the P1 parser accepts, since no construct emits a non-fatal
+		// diagnostic yet (they arrive with unresolved link references and P3
+		// frontmatter). The materialization path from carriers to this field
+		// is exercised by `materializes the carriers it is given` below, which
+		// does not depend on a producer existing.
 		const result = MarkdownDocument.parseResult(source);
 		if (Result.isFailure(result)) {
 			assert.fail("expected the document to parse");
 			return;
 		}
 		assert.deepStrictEqual(result.success.diagnostics, []);
+	});
+
+	it("materializes the carriers it is given, deriving line and character", () => {
+		// The producers are absent, so drive the materialization directly:
+		// this is the exact transformation `parseResult` applies to each
+		// carrier, and it is what will light up when producers land.
+		const text = "alpha\nbravo charlie\n";
+		const diagnostic = MarkdownDiagnostic.fromRaw(text, {
+			code: "NestingDepthExceeded",
+			message: "synthetic carrier",
+			offset: text.indexOf("charlie"),
+			length: 7,
+		});
+		assert.strictEqual(diagnostic.line, 1);
+		assert.strictEqual(diagnostic.character, "bravo ".length);
+		assert.strictEqual(diagnostic.message, "synthetic carrier");
+		assert.strictEqual(diagnostic.length, 7);
 	});
 
 	it("prototype pollution through a reference label leaves Object.prototype untouched", () => {

@@ -16,8 +16,16 @@ import { Markdown, MarkdownParseError, MarkdownParseOptions } from "../src/Markd
 import type { MarkdownNode } from "../src/MarkdownNode.js";
 import { Paragraph, Root } from "../src/MarkdownNode.js";
 
-/** An input nesting containers past the cap: the guard's canonical trip. */
+/** An input nesting containers past the cap: the block pass's guard trip. */
 const nestingBomb = `${">".repeat(MAX_NESTING_DEPTH + 44)} foo\n`;
+
+/**
+ * An input tripping the guard from the OTHER throw site — the inline pass's
+ * emphasis materialization rather than the block pass's container stack.
+ * Delimiters pair two at a time, so the run has to exceed twice the cap
+ * before the nesting it would build does.
+ */
+const emphasisBomb = `${"*".repeat(2 * MAX_NESTING_DEPTH + 20)}a${"*".repeat(2 * MAX_NESTING_DEPTH + 20)}`;
 
 /** Walk every node of a tree, children-first-agnostic, yielding each node. */
 const walk = (node: MarkdownNode, visit: (n: MarkdownNode) => void): void => {
@@ -59,6 +67,28 @@ describe("Markdown.parseResult", () => {
 		assert.instanceOf(error, MarkdownParseError);
 		assert.strictEqual(error._tag, "MarkdownParseError");
 		assert.strictEqual(error.diagnostic.code, "NestingDepthExceeded");
+	});
+
+	it("materializes an inline-pass guard trip the same way as a block-pass one", () => {
+		// Same typed outcome from a different throw site: the facade must not
+		// have learned only the block pass's shape of carrier.
+		const result = Markdown.parseResult(emphasisBomb);
+		assert.isTrue(Result.isFailure(result));
+		if (Result.isSuccess(result)) return;
+		assert.instanceOf(result.failure, MarkdownParseError);
+		assert.strictEqual(result.failure.diagnostic.code, "NestingDepthExceeded");
+	});
+
+	it("derives the position of an inline-pass guard trip from its offset", () => {
+		const result = Markdown.parseResult(`para\n\n${emphasisBomb}`);
+		assert.isTrue(Result.isFailure(result));
+		if (Result.isSuccess(result)) return;
+		const { line, character, offset } = result.failure.diagnostic;
+		// Third line (zero-based 2), and the offset accounts for the two
+		// preceding lines while `character` is measured from the line start.
+		assert.strictEqual(line, 2);
+		assert.isAbove(character, 0);
+		assert.strictEqual(offset, character + "para\n\n".length);
 	});
 
 	it("populates line and character on the guard diagnostic", () => {

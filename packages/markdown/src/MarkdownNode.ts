@@ -196,8 +196,9 @@ export class Text extends Schema.Class<Text>("Text")({
 }) {}
 
 /**
- * InlineCode — a code span (`` `foo` ``). `value` holds the span's content
- * with the backtick fence stripped and the spec's space-stripping applied.
+ * InlineCode — a code span: `foo` written between backtick fences in the
+ * source. `value` holds the span's content with the backtick fence stripped
+ * and the spec's space-stripping applied.
  *
  * @public
  */

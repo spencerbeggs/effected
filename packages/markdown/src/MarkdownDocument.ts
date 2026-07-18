@@ -27,6 +27,15 @@ import { Definition, Root } from "./MarkdownNode.js";
  * is not a place they were moved to. References are emitted unresolved, so
  * resolution happens against this map.
  *
+ * `diagnostics` is empty for every input the P1 parser accepts, and that is
+ * the current state of the world rather than a missing feature: the plumbing
+ * from the engine through to this field is real and exercised, but no P1
+ * construct emits a non-fatal diagnostic yet. The producers arrive with the
+ * conditions that warrant them — unresolved link references, and
+ * present-but-unparseable frontmatter in P3. Read an empty array as "nothing
+ * to report", not as "not implemented", and do not code against it staying
+ * empty.
+ *
  * Navigation accessors (headings, sections, links) are P5 scope.
  *
  * @public
