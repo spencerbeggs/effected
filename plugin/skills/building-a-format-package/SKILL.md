@@ -65,6 +65,16 @@ Never the third route: wrapping an external parser as a runtime dependency.
 The rejected upstream often survives anyway — as the **differential-test
 oracle** (see Testing below).
 
+**Differential verification starts the port, it doesn't just gate the ship.**
+When a reference implementation is executable and vendored (a reference
+parser, a `normalize.py`), run the port against it **over the real corpus as
+the first verification step** — before trusting any hand-written unit suite.
+During the markdown P1 port this took ~10 minutes and caught 3 real bugs that
+59 green hand-written tests had missed entirely (all in edge-case handling
+the tests never sampled). The exact-pinned oracle devDependency in the
+Testing section is the *shipping-gate* complement to this porting-time tool:
+same idea, different moment — use both.
+
 ## Effect-wrapping policy (and the Result-parity pattern)
 
 Verbatim from the yaml design doc, binding on every format package:
@@ -136,10 +146,24 @@ same way:
 - **Fixtures are raw bytes.** When cases deliberately embed CR/CRLF, a
   scoped `.gitattributes` (`* -text`) in the fixture root keeps Git from
   normalizing them (toml's harness protects ~7 such cases this way).
+- **Control characters in hand-written tests and TS fixtures are ALWAYS
+  escapes (` `, `�`), never literal bytes.** File-editing tooling
+  silently mangles literal control characters — an edit round-trip once
+  replaced a NUL with a space, which would have made a preprocessing
+  hardening test pass vacuously. Literal bytes belong only in committed raw
+  fixture files under the scoped `.gitattributes`, which are never
+  hand-edited.
 - **Differential oracle**: the rejected upstream parser, exact-pinned as a
   devDependency, imported by exactly one property test (toml's `smol-toml`
   at 250 runs; markdown's plan pins `commonmark`). Corpus wins on
   disagreement; the oracle catches what the corpus never sampled.
+- **Unit fixtures must land in the layer they claim to test.** In a
+  multi-pass engine, an innocuous-looking input can be claimed by an
+  earlier pass and silently test the wrong thing — a markdown inline
+  fixture starting with `<` opens an HTML *block*, so the "inline" test was
+  exercising the block pass. Lead inline fixtures with plain text (or
+  assert the parsed node type first) so a fixture cannot drift between
+  layers unnoticed.
 - Where the format has a **performance corpus** (markdown's pathological
   suite), it is a separate mandatory family — see the
   algorithmic-complexity section of `hardening-a-parser-port`.

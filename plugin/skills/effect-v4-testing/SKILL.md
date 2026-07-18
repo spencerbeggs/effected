@@ -165,6 +165,19 @@ if (!Result.isSuccess(result)) {
 assert.deepStrictEqual(result.success, { port: 3000 });
 ```
 
+**`assert.deepStrictEqual` vs literal-typed encodes.** Comparing an encoded
+value that carries literal types (`type: "root"`) against an untyped
+plain-object fixture fails to COMPILE: chai's `<T>(actual: T, expected: T)`
+unifies `T` from the first argument, and the fixture's `type` widens to
+`string`. The pattern is an explicit type argument with a comment:
+
+```ts
+// fixture is untyped JSON; literal-typed encode needs the explicit <unknown>
+assert.deepStrictEqual<unknown>(encoded, fixture);
+```
+
+Any encode round-trip against plain-object fixtures hits this.
+
 ## Providing test / mock layers
 
 `layer(...)` applies to **any service in a test's `R` — owned or consumed**.
@@ -489,6 +502,17 @@ A module-level throw — most commonly the `Context.Service` TDZ (see
 **Zero collected tests is never a pass.** Read the Tests line, not the exit code.
 If a file you just touched reports no tests, it did not run: import it directly
 and look at the throw before you believe anything else the suite says.
+
+**The sharper form: ONE broken file zeroes the whole package.** A single test
+file with a load-time error — even a scratch/debug file — silently zeroes the
+entire package run: `Tests: 0/0 passed`, exit 0, and hundreds of sibling tests
+vanish with it. The `--reporter=json` output is equally empty
+(`numTotalTests: 0`, zero suites), so the reporter offers no cause. The tell is
+a package you KNOW has a nonzero suite reporting `0/0`; the remedy is bisecting
+the test files for the one that fails to load (observed 2026-07-18: a 400-test
+package zeroed by one bad scratch file). Never leave scratch `*.test.ts` files
+in a test tree — probe with `npx tsx /tmp/probe.ts` instead (see
+`effect-v4-source-lookup`).
 
 ## House conventions
 

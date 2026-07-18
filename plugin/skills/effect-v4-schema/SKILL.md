@@ -50,6 +50,7 @@ Each row is a hard house default; reasoning and worked code in
 | override BOTH `[Equal.symbol]` AND `[Hash.symbol]` when equality ignores fields | override `[Equal.symbol]` alone — the hash fast-path silently defeats it |
 | `Schema.toJsonSchemaDocument(S)` | `Schema.toJsonSchema(S)` — that export does not exist. It returns `{ dialect, schema, definitions }`, **not** `$defs` / `properties` |
 | a single-return **ternary chain** in an error's `message` getter | an exhaustive `switch` with no terminal return — tsgo accepts it, but Biome's `useGetterReturn` rejects it (see below) |
+| `Schema.Class` + `Schema.tag("literal")` on an explicitly-named field when the discriminator belongs to a FOREIGN contract | `Schema.TaggedClass` for a foreign discriminator — it hardwires the key `_tag` (see below) |
 
 ## The `message` getter: ternary chain, not an exhaustive switch
 
@@ -82,6 +83,35 @@ get message(): string {
 
 Verified through `pnpm lint` (a bare `npx biome check <file>` from inside a
 package exits 0 without reading the repo config — it is not a check).
+
+## Foreign JSON contracts: `TaggedClass` owns `_tag`, `Schema.tag` serves everyone else
+
+`Schema.TaggedClass` hardwires its discriminator key to `_tag` (the vendored
+`TaggedStruct` is `{ _tag: tag<Tag> } & fields`, `Schema.ts:12880`), so it
+serves only contracts **we** own. When shaping classes to a foreign JSON
+contract whose discriminator has its own name — mdast's `type`, JSON Schema's
+`type`/`$ref`, OpenAPI, LSP — use `Schema.Class` with `Schema.tag("literal")`
+on an explicitly-named field:
+
+```ts
+export class Paragraph extends Schema.Class<Paragraph>("Paragraph")({
+ type: Schema.tag("paragraph"), // the FOREIGN key, not _tag
+ children: PhrasingContent,
+}) {}
+```
+
+`Schema.tag` gives the same three properties `TaggedClass` would: a
+constructor default (`X.make` omits it), literal narrowing for union
+branching, and presence on the encoded side. `@effected/markdown`'s
+`MarkdownNode` classes are the worked precedent — the encoded trees are
+spec-valid mdast because the tag field is literally named `type`.
+
+While here, the factory-signature trap between the two (verified
+`Schema.ts:12805`/`12865`): `Schema.Class<Self>("Identifier")(fields)` takes
+the **identifier in the first call** and fields in the second, while
+`Schema.TaggedClass<Self>()("Tag", fields)` takes an **optional identifier
+first** and the tag+fields in the second. Mixing them up produces confusing
+inference errors, not a clear TS message.
 
 ## Verify against the installed beta, not the references
 
