@@ -25,6 +25,7 @@ export type InlineNodeType =
 	| "break"
 	| "emphasis"
 	| "strong"
+	| "delete"
 	| "link"
 	| "image"
 	| "linkReference"

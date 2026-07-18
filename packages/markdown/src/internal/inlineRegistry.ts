@@ -14,6 +14,7 @@
 // special case.
 
 import { autolinkConstruct } from "./inlines/autolink.js";
+import { linkifyEmails, urlAutolinkConstruct, wwwAutolinkConstruct } from "./inlines/autolinkLiteral.js";
 import { codeSpanConstruct } from "./inlines/codeSpan.js";
 import { emphasisConstruct } from "./inlines/emphasis.js";
 import { entityConstruct } from "./inlines/entity.js";
@@ -21,11 +22,12 @@ import { escapeConstruct } from "./inlines/escape.js";
 import { lineBreakConstruct } from "./inlines/lineBreak.js";
 import { imageOpenConstruct, linkCloseConstruct, linkOpenConstruct } from "./inlines/link.js";
 import { rawHtmlConstruct } from "./inlines/rawHtml.js";
-import { textConstruct } from "./inlines/text.js";
+import { strikethroughConstruct } from "./inlines/strikethrough.js";
+import { gfmTextConstruct, textConstruct } from "./inlines/text.js";
 import type { InlineConstruct, InlineDialect } from "./inlineTypes.js";
 
-/** The dialects the inline pass can be keyed by. P2 widens this union. */
-export type InlineDialectName = "commonmark";
+/** The dialects the inline pass can be keyed by. */
+export type InlineDialectName = "commonmark" | "gfm";
 
 const triggerTable = (
 	constructs: ReadonlyArray<InlineConstruct>,
@@ -45,23 +47,45 @@ const triggerTable = (
 	return table;
 };
 
+/** The CommonMark construct set, which every dialect starts from. */
+const COMMONMARK_CONSTRUCTS: ReadonlyArray<InlineConstruct> = [
+	lineBreakConstruct,
+	escapeConstruct,
+	codeSpanConstruct,
+	emphasisConstruct,
+	linkOpenConstruct,
+	imageOpenConstruct,
+	linkCloseConstruct,
+	autolinkConstruct,
+	rawHtmlConstruct,
+	entityConstruct,
+];
+
 const commonmarkDialect: InlineDialect = {
-	byTrigger: triggerTable([
-		lineBreakConstruct,
-		escapeConstruct,
-		codeSpanConstruct,
-		emphasisConstruct,
-		linkOpenConstruct,
-		imageOpenConstruct,
-		linkCloseConstruct,
-		autolinkConstruct,
-		rawHtmlConstruct,
-		entityConstruct,
-	]),
+	byTrigger: triggerTable(COMMONMARK_CONSTRUCTS),
 	text: textConstruct,
+	postprocess: [],
 };
 
-const dialects: ReadonlyMap<InlineDialectName, InlineDialect> = new Map([["commonmark", commonmarkDialect]]);
+// GFM: the CommonMark set plus strikethrough and the two literal-autolink
+// matchers, with the email half as a postprocess pass (`autolinkLiteral.ts`
+// carries the reason for the split). The additions are appended, so a
+// character CommonMark already claims keeps its existing precedence.
+const gfmDialect: InlineDialect = {
+	byTrigger: triggerTable([
+		...COMMONMARK_CONSTRUCTS,
+		strikethroughConstruct,
+		wwwAutolinkConstruct,
+		urlAutolinkConstruct,
+	]),
+	text: gfmTextConstruct,
+	postprocess: [linkifyEmails],
+};
+
+const dialects: ReadonlyMap<InlineDialectName, InlineDialect> = new Map([
+	["commonmark", commonmarkDialect],
+	["gfm", gfmDialect],
+]);
 
 /**
  * The inline tables for `dialect`.

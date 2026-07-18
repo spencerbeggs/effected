@@ -22,8 +22,14 @@ const C_UNDERSCORE = 0x5f;
 const rePunctuation = /^[!"#$%&'()*+,\-./:;<=>?@[\]\\^_`{|}~\p{P}\p{S}]/u;
 const reUnicodeWhitespaceChar = /^\s/;
 
-/** What a run of delimiters at the cursor can do. */
-interface DelimiterRun {
+/**
+ * What a run of delimiters at the cursor can do.
+ *
+ * Exported because GFM strikethrough reuses this measurement verbatim:
+ * cmark-gfm's `strikethrough.c` calls the same `scan_delimiters` the emphasis
+ * algorithm does and reads the same two flanking flags out of it.
+ */
+export interface DelimiterRun {
 	readonly numdelims: number;
 	readonly canOpen: boolean;
 	readonly canClose: boolean;
@@ -33,8 +39,11 @@ interface DelimiterRun {
  * Measure the delimiter run at the cursor and decide whether it can open or
  * close emphasis, per the spec's left- and right-flanking rules. Leaves the
  * cursor where it found it.
+ *
+ * The `_` arm is the only character-specific rule here, so `~` (which follows
+ * `*`'s rules) reuses this as it stands.
  */
-const scanDelims = (scanner: InlineScanner, cc: number): DelimiterRun | undefined => {
+export const scanDelims = (scanner: InlineScanner, cc: number): DelimiterRun | undefined => {
 	const startpos = scanner.pos;
 	let numdelims = 0;
 

@@ -8,6 +8,7 @@
 import type { Definition, PhrasingContent, Position } from "../MarkdownNode.js";
 import type { BlockNode, PreparedInline, RawInlineSegment } from "./blockTypes.js";
 import { parseInlines } from "./inlineParser.js";
+import type { InlineDialectName } from "./inlineRegistry.js";
 
 /** Builds the `Position` for an absolute source range. */
 type PositionOf = (start: number, end: number) => Position;
@@ -59,6 +60,7 @@ export const prepareInline = (
 	block: BlockNode,
 	position: PositionOf,
 	refmap: ReadonlyMap<string, Definition>,
+	dialect: InlineDialectName = "commonmark",
 ): PreparedInline => {
 	const { text, segments } = trimWithSegments(block.stringContent, block.segments);
 	const first = segments[0];
@@ -67,7 +69,7 @@ export const prepareInline = (
 	const endOffset = last === undefined ? startOffset : last.sourceOffset + last.length;
 
 	const children: ReadonlyArray<PhrasingContent> =
-		text.length === 0 ? [] : parseInlines({ text, startOffset, segments }, refmap, position);
+		text.length === 0 ? [] : parseInlines({ text, startOffset, segments }, refmap, position, dialect);
 
 	return { text, startOffset, endOffset, segments, children };
 };

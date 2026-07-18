@@ -7,7 +7,7 @@
 // makes emphasis linear-time instead of the quadratic blowup that is
 // markdown's DoS vector.
 //
-// Port notes, four changes from upstream:
+// Port notes, five changes from upstream:
 //
 // 1. Positions. Upstream's inline nodes inherit their leaf block's sourcepos
 //    and have no offsets of their own. Every node built here is positioned
@@ -22,7 +22,12 @@
 //    (`inlineRegistry.ts`).
 // 4. Smart punctuation is not ported at all, so `'` and `"` never reach the
 //    delimiter stack and the two `openers_bottom` slots they use stay unused
-//    (the 14-slot layout is kept so the index arithmetic matches upstream's).
+//    (upstream's 14-slot layout is kept so the index arithmetic matches, with
+//    six more appended for GFM strikethrough's `~`).
+// 5. A dialect may carry POSTPROCESS passes, run over the finished list before
+//    materialization — cmark-gfm's extension hook of the same name. GFM's
+//    email autolinks are the only one; `inlines/autolinkLiteral.ts` says why
+//    they cannot be a trigger-table construct.
 //
 // Recursion surfaces, for the hardening enumeration: the delimiter stack and
 // the bracket stack are ITERATIVE and deliberately unguarded — that is the
@@ -36,6 +41,7 @@
 import type { Definition, PhrasingContent, Position } from "../MarkdownNode.js";
 import {
 	Break,
+	Delete,
 	Emphasis,
 	Html,
 	Image,
@@ -51,6 +57,7 @@ import type { InlineNode } from "./inlineNode.js";
 import { appendChild, childrenOf, insertAfter, makeInlineNode, unlink } from "./inlineNode.js";
 import type { InlineDialectName } from "./inlineRegistry.js";
 import { inlineDialect } from "./inlineRegistry.js";
+import { C_TILDE, insertStrikethrough } from "./inlines/strikethrough.js";
 import type { Bracket, Delimiter, InlineDialect, InlineScanner, InlineSource } from "./inlineTypes.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
 import { globalOf, stickyOf } from "./patterns.js";
@@ -220,6 +227,41 @@ class InlineParser implements InlineScanner {
 		return this.root.lastChild;
 	}
 
+	unputText(count: number): boolean {
+		if (count === 0) {
+			return true;
+		}
+
+		// Check before mutating: a partial unput would leave the output list
+		// short of the characters the caller is about to re-emit.
+		let available = 0;
+		for (let node = this.root.lastChild; node !== undefined && available < count; node = node.prev) {
+			if (node.type !== "text") {
+				break;
+			}
+			available += node.value.length;
+		}
+		if (available < count) {
+			return false;
+		}
+
+		let remaining = count;
+		while (remaining > 0) {
+			const last = this.root.lastChild;
+			if (last === undefined) {
+				return false;
+			}
+			if (last.value.length > remaining) {
+				last.value = last.value.slice(0, last.value.length - remaining);
+				last.end -= remaining;
+				return true;
+			}
+			remaining -= last.value.length;
+			unlink(last);
+		}
+		return true;
+	}
+
 	trimTrailingSpaces(): number {
 		const last = this.root.lastChild;
 		if (last === undefined || last.type !== "text") {
@@ -314,8 +356,10 @@ class InlineParser implements InlineScanner {
 	 */
 	processEmphasis(stackBottom: Delimiter | undefined): void {
 		// One lower bound per (character, can-open, length mod 3) combination.
-		// Slots 0 and 1 belong to upstream's smart quotes and stay unused.
-		const openersBottom: Array<Delimiter | undefined> = new Array(14).fill(stackBottom);
+		// Slots 0 and 1 belong to upstream's smart quotes and stay unused;
+		// 14–19 are GFM strikethrough's, which shares this loop exactly as
+		// cmark-gfm's extension delimiters share `process_emphasis`.
+		const openersBottom: Array<Delimiter | undefined> = new Array(20).fill(stackBottom);
 
 		let closer = this.delimiters;
 		while (closer !== undefined && closer.previous !== stackBottom) {
@@ -330,7 +374,9 @@ class InlineParser implements InlineScanner {
 
 			const closercc = closer.cc;
 			const openersBottomIndex =
-				(closercc === C_UNDERSCORE ? 2 : 8) + (closer.canOpen ? 3 : 0) + (closer.origdelims % 3);
+				(closercc === C_UNDERSCORE ? 2 : closercc === C_TILDE ? 14 : 8) +
+				(closer.canOpen ? 3 : 0) +
+				(closer.origdelims % 3);
 
 			let opener = closer.previous;
 			let openerFound = false;
@@ -392,6 +438,10 @@ class InlineParser implements InlineScanner {
 						closer = next;
 					}
 				}
+			} else if (closercc === C_TILDE) {
+				// GFM strikethrough rides the same stack; the pairing rules
+				// that differ from emphasis live in the construct module.
+				closer = !openerFound || opener === undefined ? closer.next : insertStrikethrough(this, opener, closer);
 			} else {
 				closer = closer.next;
 			}
@@ -489,6 +539,8 @@ class InlineParser implements InlineScanner {
 					position,
 					...(markerChar === undefined ? {} : { markerChar }),
 				});
+			case "delete":
+				return Delete.make({ children: this.materialize(node, depth + 1), position });
 			case "strong":
 				return Strong.make({
 					children: this.materialize(node, depth + 1),
@@ -571,6 +623,9 @@ class InlineParser implements InlineScanner {
 			// each call consumes at least one character
 		}
 		this.processEmphasis(undefined);
+		for (const pass of this.dialect.postprocess) {
+			pass(this.root);
+		}
 		return this.materialize(this.root, 0);
 	}
 }

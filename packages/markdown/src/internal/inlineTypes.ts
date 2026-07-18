@@ -122,6 +122,17 @@ export interface InlineScanner {
 	/** The last node appended, if any. */
 	lastChild(): InlineNode | undefined;
 	/**
+	 * Take `count` characters back off the end of the output — cmark-gfm's
+	 * `cmark_node_unput`, which its `url_match` uses to reclaim the scheme it
+	 * already emitted as text before the `:` triggered.
+	 *
+	 * Refuses (leaving the output untouched) unless those characters are all
+	 * literal text: a run that came out of an entity or an escape is not the
+	 * source it looks like, and a construct that cannot reclaim it must not
+	 * pretend it did.
+	 */
+	unputText(count: number): boolean;
+	/**
 	 * Strip trailing spaces from the trailing text node, pulling its end back,
 	 * and report how many were removed. Removes the node if nothing survives.
 	 */
@@ -157,8 +168,18 @@ export interface InlineConstruct {
 	parse(scanner: InlineScanner): boolean;
 }
 
-/** A dialect: a trigger table plus the text fallback, nothing more. */
+/** A dialect: a trigger table, the text fallback, and its postprocess passes. */
 export interface InlineDialect {
 	readonly byTrigger: ReadonlyMap<number, ReadonlyArray<InlineConstruct>>;
 	readonly text: InlineConstruct;
+	/**
+	 * Passes run over the finished node list, before it is materialized —
+	 * cmark-gfm's `postprocess` extension hook.
+	 *
+	 * A construct belongs here rather than in the trigger table when it has to
+	 * see text the cursor has already gone past: GFM's email autolinks scan
+	 * backwards from an `@`, which is only safe once the delimiter stack that
+	 * text may be pinned to has been spent.
+	 */
+	readonly postprocess: ReadonlyArray<(root: InlineNode) => void>;
 }

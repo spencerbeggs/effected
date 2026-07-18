@@ -22,17 +22,35 @@ import type { InlineConstruct } from "../inlineTypes.js";
 // the match to sit at the cursor besides.
 const reMain = /^[^\n`[\]\\!<&*_'"]+/;
 
-/** Ordinary text: the fallback construct, with no trigger of its own. */
-export const textConstruct: InlineConstruct = {
-	name: "text",
+// The GFM exclusion set, three characters wider. `~` is strikethrough's
+// delimiter; `w` and `:` are the autolink-literal triggers, and they are here
+// for the same reason every other character in the set is — a text run that
+// swallowed them would consume the construct before it was ever dispatched.
+// cmark-gfm spells this as `special_inline_chars` on each extension, which its
+// `parse_inline` adds to the same set.
+//
+// Excluding a letter as common as `w` looks expensive and is not: a run simply
+// ends there and the next one begins, and `inlineParser`'s materialization
+// coalesces adjacent text nodes into one anyway.
+const reMainGfm = /^[^\n`[\]\\!<&*_'"~w:]+/;
+
+/** Consume a run of ordinary characters, stopping before any construct's. */
+const runConstruct = (name: string, pattern: RegExp): InlineConstruct => ({
+	name,
 	triggers: [],
 	parse: (scanner) => {
 		const from = scanner.pos;
-		const matched = scanner.match(reMain);
+		const matched = scanner.match(pattern);
 		if (matched === undefined) {
 			return false;
 		}
 		scanner.appendText(matched, from, scanner.pos);
 		return true;
 	},
-};
+});
+
+/** Ordinary text: the fallback construct, with no trigger of its own. */
+export const textConstruct: InlineConstruct = runConstruct("text", reMain);
+
+/** Ordinary text under `gfm`, which has three more characters to yield to. */
+export const gfmTextConstruct: InlineConstruct = runConstruct("text", reMainGfm);

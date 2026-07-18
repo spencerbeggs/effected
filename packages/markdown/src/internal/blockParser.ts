@@ -80,6 +80,11 @@ class BlockParser implements BlockScanner {
 	private readonly lines: ReadonlyArray<SourceLine>;
 	private readonly lineIndex: LineIndex;
 	private readonly dialect: BlockDialect;
+	/**
+	 * The dialect's NAME, kept alongside its block tables because the inline
+	 * pass keys its own registry off the same string.
+	 */
+	private readonly dialectName: MarkdownDialect;
 	private readonly sourceLength: number;
 
 	private readonly doc: BlockNode;
@@ -102,7 +107,7 @@ class BlockParser implements BlockScanner {
 	private partiallyConsumedTab = false;
 	private lastLineLength = 0;
 
-	constructor(text: string, dialect: BlockDialect) {
+	constructor(text: string, dialect: BlockDialect, dialectName: MarkdownDialect) {
 		this.lines = preprocessLines(text);
 		// The index is built from the preprocessor's OWN line table, not from a
 		// second scan of the text: the two disagree about bare `\r`, and a
@@ -114,6 +119,7 @@ class BlockParser implements BlockScanner {
 		);
 		this.sourceLength = text.length;
 		this.dialect = dialect;
+		this.dialectName = dialectName;
 		this.doc = makeBlockNode("document", 0, 1);
 		this.tipNode = this.doc;
 		this.oldtip = this.doc;
@@ -511,7 +517,7 @@ class BlockParser implements BlockScanner {
 
 		const context: MaterializeContext = {
 			position: (start, end) => this.position(start, end),
-			inlineSlice: (block) => prepareInline(block, (start, end) => this.position(start, end), refmap),
+			inlineSlice: (block) => prepareInline(block, (start, end) => this.position(start, end), refmap, this.dialectName),
 			registerInline: (parent: Paragraph | Heading, prepared: PreparedInline) => {
 				rawInlines.push({
 					parent,
@@ -541,4 +547,4 @@ class BlockParser implements BlockScanner {
  * built from.
  */
 export const parseBlocks = (text: string, dialect: MarkdownDialect = "commonmark"): BlockPassResult =>
-	new BlockParser(text, blockDialect(dialect)).parse();
+	new BlockParser(text, blockDialect(dialect), dialect).parse();

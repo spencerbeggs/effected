@@ -24,8 +24,13 @@ import { setextHeadingStart } from "./blocks/setextHeading.js";
 import { thematicBreakConstruct, thematicBreakStart } from "./blocks/thematicBreak.js";
 import type { BlockConstruct, BlockDialect, BlockType } from "./blockTypes.js";
 
-/** The dialects the block pass can be keyed by. P2 widens this union. */
-export type MarkdownDialect = "commonmark";
+/**
+ * The dialects the block pass can be keyed by.
+ *
+ * The name doubles as the inline pass's dialect key (`InlineDialectName`), so
+ * one string selects both registries.
+ */
+export type MarkdownDialect = "commonmark" | "gfm";
 
 const constructTable = (constructs: ReadonlyArray<BlockConstruct>): ReadonlyMap<BlockType, BlockConstruct> =>
 	// A real Map, not an object literal: construct names are engine-controlled
@@ -58,7 +63,16 @@ const commonmarkDialect: BlockDialect = {
 	],
 };
 
-const dialects: ReadonlyMap<MarkdownDialect, BlockDialect> = new Map([["commonmark", commonmarkDialect]]);
+// GFM's BLOCK grammar is CommonMark's until tables, task-list items and
+// footnote definitions land (P2 Tasks 4-6). Its inline grammar already
+// differs, and the dialect name is what selects that — so the entry has to
+// exist now even though the two tables are the same object.
+const gfmDialect: BlockDialect = commonmarkDialect;
+
+const dialects: ReadonlyMap<MarkdownDialect, BlockDialect> = new Map([
+	["commonmark", commonmarkDialect],
+	["gfm", gfmDialect],
+]);
 
 /**
  * The block tables for `dialect`.
