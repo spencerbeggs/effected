@@ -18,6 +18,8 @@ import type {
 	Code,
 	Definition,
 	FlowContent,
+	FootnoteDefinition,
+	FootnoteReference,
 	Heading,
 	ImageReference,
 	LinkReference,
@@ -26,6 +28,9 @@ import type {
 	Paragraph,
 	PhrasingContent,
 	Root,
+	Table,
+	TableAlign,
+	TableCell,
 } from "../../../src/MarkdownNode.js";
 
 // --- escaping ---------------------------------------------------------------
@@ -138,6 +143,32 @@ export const normalizeLabel = (label: string): string =>
 		.toUpperCase();
 
 /**
+ * Walks every {@link FlowContent} node in the tree, including nested
+ * containers (`blockquote`, `list`, `footnoteDefinition`), calling `visit`
+ * once per node in document order. Shared by {@link collectDefinitions} and
+ * {@link collectFootnoteDefinitions} — both need the same "find this leaf
+ * anywhere flow content can nest" traversal.
+ */
+const walkFlowContainers = (nodes: ReadonlyArray<FlowContent>, visit: (node: FlowContent) => void): void => {
+	for (const node of nodes) {
+		visit(node);
+		switch (node.type) {
+			case "blockquote":
+			case "footnoteDefinition":
+				walkFlowContainers(node.children, visit);
+				break;
+			case "list":
+				for (const item of node.children) {
+					walkFlowContainers(item.children, visit);
+				}
+				break;
+			default:
+				break;
+		}
+	}
+};
+
+/**
  * Collects every {@link Definition} in the tree, keyed by normalized label.
  *
  * The parser deliberately leaves references unresolved and keeps definitions
@@ -149,33 +180,75 @@ export const collectDefinitions = (root: Root): ReadonlyMap<string, Definition> 
 	// `__proto__` label must be a key, not a prototype write.
 	const definitions = new Map<string, Definition>();
 
-	const visitFlow = (nodes: ReadonlyArray<FlowContent>): void => {
-		for (const node of nodes) {
-			switch (node.type) {
-				case "definition": {
-					const key = normalizeLabel(node.identifier);
-					if (!definitions.has(key)) {
-						definitions.set(key, node);
-					}
-					break;
-				}
-				case "blockquote":
-					visitFlow(node.children);
-					break;
-				case "list":
-					for (const item of node.children) {
-						visitFlow(item.children);
-					}
-					break;
-				default:
-					break;
+	walkFlowContainers(root.children, (node) => {
+		if (node.type === "definition") {
+			const key = normalizeLabel(node.identifier);
+			if (!definitions.has(key)) {
+				definitions.set(key, node);
 			}
 		}
-	};
+	});
 
-	visitFlow(root.children);
 	return definitions;
 };
+
+/**
+ * Collects every {@link FootnoteDefinition} in the tree, keyed by normalized
+ * identifier — the same "kept at source position, resolved by the renderer"
+ * treatment {@link collectDefinitions} gives link reference definitions.
+ */
+export const collectFootnoteDefinitions = (root: Root): ReadonlyMap<string, FootnoteDefinition> => {
+	const definitions = new Map<string, FootnoteDefinition>();
+
+	walkFlowContainers(root.children, (node) => {
+		if (node.type === "footnoteDefinition") {
+			const key = normalizeLabel(node.identifier);
+			if (!definitions.has(key)) {
+				definitions.set(key, node);
+			}
+		}
+	});
+
+	return definitions;
+};
+
+// --- GFM tagfilter -----------------------------------------------------------
+
+/**
+ * The nine raw-HTML tag names GFM's tagfilter extension disallows, ported
+ * from cmark-gfm's `extensions/tagfilter.c` blacklist.
+ */
+const TAGFILTER_TAG_NAMES = [
+	"title",
+	"textarea",
+	"style",
+	"xmp",
+	"iframe",
+	"noembed",
+	"noframes",
+	"script",
+	"plaintext",
+] as const;
+
+// Matches the `<` that opens a disallowed tag (optionally a closing `/tag`),
+// requiring a boundary character to follow the tag name — a space, `>`, or
+// the `/>` of a self-closing tag — exactly as `tagfilter.c`'s `is_tag` scans
+// forward from each `<` and refuses to match if the tag name runs off the
+// end of the checked span. `$` is deliberately excluded from the boundary
+// class for that reason: a tag name at the very end of the string, with
+// nothing after it, is not filtered.
+const TAGFILTER_RE = new RegExp(`<(/?(?:${TAGFILTER_TAG_NAMES.join("|")}))(?=[ \\t\\n\\v\\f\\r>]|/>)`, "gi");
+
+/**
+ * GFM's tagfilter extension: escapes the leading `<` of the nine disallowed
+ * raw-HTML tag names (case-insensitively, opening or closing form), leaving
+ * everything else — including the tag's own `>` — untouched. This is an
+ * OUTPUT concern only: the parse tree keeps `Html` node values verbatim, and
+ * this filter runs at render time when the `gfm` option is set.
+ *
+ * Ported from cmark-gfm's `extensions/tagfilter.c`.
+ */
+export const applyTagfilter = (value: string): string => value.replace(TAGFILTER_RE, "&lt;$1");
 
 // --- the writer -------------------------------------------------------------
 
@@ -188,9 +261,24 @@ class HtmlWriter {
 	private lastOut = "\n";
 	private disableTags = 0;
 	private readonly definitions: ReadonlyMap<string, Definition>;
+	private readonly footnoteDefinitions: ReadonlyMap<string, FootnoteDefinition>;
+	private readonly gfm: boolean;
+	// Footnote numbering state, built lazily as references are encountered
+	// during the main-body render pass — see `footnoteReference` and
+	// `renderFootnoteSection`.
+	private readonly footnoteIndex = new Map<string, number>();
+	private readonly footnoteRefCount = new Map<string, number>();
+	private readonly footnoteOrder: FootnoteDefinition[] = [];
+	private nextFootnoteIndex = 1;
 
-	constructor(definitions: ReadonlyMap<string, Definition>) {
+	constructor(
+		definitions: ReadonlyMap<string, Definition>,
+		footnoteDefinitions: ReadonlyMap<string, FootnoteDefinition>,
+		gfm: boolean,
+	) {
 		this.definitions = definitions;
+		this.footnoteDefinitions = footnoteDefinitions;
+		this.gfm = gfm;
 	}
 
 	private lit(s: string): void {
@@ -225,6 +313,7 @@ class HtmlWriter {
 
 	render(root: Root): string {
 		this.renderFlow(root.children);
+		this.renderFootnoteSection();
 		return this.buffer;
 	}
 
@@ -254,13 +343,19 @@ class HtmlWriter {
 				case "html":
 					// html_block: surrounded by newlines, emitted raw.
 					this.cr();
-					this.lit(node.value);
+					this.lit(this.gfm ? applyTagfilter(node.value) : node.value);
 					this.cr();
 					break;
+				case "table":
+					this.table(node);
+					break;
 				case "definition":
-					// Definitions render to nothing. They stay in the tree
-					// because this package edits markdown; HTML has no place
-					// to put them.
+				case "footnoteDefinition":
+					// Both render to nothing at their source position. They stay
+					// in the tree because this package edits markdown; a
+					// `Definition` has no place in HTML at all, and a
+					// `FootnoteDefinition`'s content moves to the end-of-document
+					// footnotes section instead (`renderFootnoteSection`).
 					break;
 			}
 		}
@@ -324,6 +419,13 @@ class HtmlWriter {
 
 	private listItem(node: ListItem, tight: boolean): void {
 		this.tag("li");
+		// GFM task-list marker: cmark-gfm emits it unconditionally right after
+		// `<li>`, before any child content, regardless of tight/loose.
+		if (node.checked !== undefined) {
+			this.lit(
+				node.checked ? '<input type="checkbox" checked="" disabled="" /> ' : '<input type="checkbox" disabled="" /> ',
+			);
+		}
 		for (const child of node.children) {
 			if (child.type === "paragraph") {
 				this.paragraph(child, tight);
@@ -355,6 +457,52 @@ class HtmlWriter {
 		this.cr();
 	}
 
+	private table(node: Table): void {
+		this.cr();
+		this.tag("table");
+		const align: ReadonlyArray<TableAlign | null> = node.align ?? [];
+		let bodyOpen = false;
+
+		node.children.forEach((row, rowIndex) => {
+			const isHeader = rowIndex === 0;
+			this.cr();
+			if (isHeader) {
+				this.lit("<thead>");
+				this.cr();
+			} else if (!bodyOpen) {
+				this.lit("<tbody>");
+				this.cr();
+				bodyOpen = true;
+			}
+			this.tag("tr");
+			row.children.forEach((cell, cellIndex) => {
+				this.tableCell(cell, isHeader, align[cellIndex] ?? null);
+			});
+			this.cr();
+			this.tag("/tr");
+			if (isHeader) {
+				this.cr();
+				this.lit("</thead>");
+			}
+		});
+
+		if (bodyOpen) {
+			this.cr();
+			this.lit("</tbody>");
+		}
+		this.cr();
+		this.tag("/table");
+		this.cr();
+	}
+
+	private tableCell(node: TableCell, isHeader: boolean, align: TableAlign | null): void {
+		const attrs: Attr[] = align === null ? [] : [["align", align]];
+		this.cr();
+		this.tag(isHeader ? "th" : "td", attrs);
+		this.renderPhrasing(node.children);
+		this.tag(isHeader ? "/th" : "/td");
+	}
+
 	private renderPhrasing(nodes: ReadonlyArray<PhrasingContent>): void {
 		for (const node of nodes) {
 			switch (node.type) {
@@ -375,7 +523,7 @@ class HtmlWriter {
 					break;
 				case "html":
 					// html_inline: raw, no surrounding newlines.
-					this.lit(node.value);
+					this.lit(this.gfm ? applyTagfilter(node.value) : node.value);
 					break;
 				case "emphasis":
 					this.tag("em");
@@ -386,6 +534,11 @@ class HtmlWriter {
 					this.tag("strong");
 					this.renderPhrasing(node.children);
 					this.tag("/strong");
+					break;
+				case "delete":
+					this.tag("del");
+					this.renderPhrasing(node.children);
+					this.tag("/del");
 					break;
 				case "link":
 					this.link(node.url, node.title, node.children);
@@ -398,6 +551,9 @@ class HtmlWriter {
 					break;
 				case "imageReference":
 					this.imageReference(node);
+					break;
+				case "footnoteReference":
+					this.footnoteReference(node);
 					break;
 			}
 		}
@@ -466,15 +622,145 @@ class HtmlWriter {
 				return `[${label}]`;
 		}
 	}
+
+	// --- footnotes ------------------------------------------------------------
+	//
+	// Numbering mirrors cmark-gfm's `process_footnotes` (src/blocks.c): a
+	// footnote is assigned its number the first time a reference to it is
+	// encountered, in document order; every later reference to the same
+	// footnote reuses that number but gets its own `fnref-*` id, suffixed by
+	// how many times the footnote has been referenced so far. Because this
+	// writer already visits the tree in document order to produce the main
+	// body, that numbering falls out of a single pass — `footnoteReference`
+	// assigns as it goes, `footnoteOrder` accumulates the resolved
+	// definitions in assignment order, and the section at the end of the
+	// document (`renderFootnoteSection`) is rendered only once the main body
+	// is done, by which point every definition's final reference count is
+	// known. cmark-gfm instead does a dedicated pass before rendering and
+	// physically relocates the definition nodes; a `FootnoteDefinition`
+	// renders to nothing at its own tree position here (see `renderFlow`)
+	// for the same reason `Definition` does.
+
+	private footnoteReference(node: FootnoteReference): void {
+		const key = normalizeLabel(node.identifier);
+		const definition = this.footnoteDefinitions.get(key);
+		if (definition === undefined) {
+			// No matching definition: cmark-gfm leaves the source text alone.
+			this.out(`[^${node.label ?? node.identifier}]`);
+			return;
+		}
+
+		let index = this.footnoteIndex.get(key);
+		if (index === undefined) {
+			index = this.nextFootnoteIndex;
+			this.nextFootnoteIndex += 1;
+			this.footnoteIndex.set(key, index);
+			this.footnoteOrder.push(definition);
+		}
+		const refIx = (this.footnoteRefCount.get(key) ?? 0) + 1;
+		this.footnoteRefCount.set(key, refIx);
+
+		const escId = escapeXml(normalizeUri(definition.identifier));
+		this.lit(`<sup class="footnote-ref"><a href="#fn-${escId}" id="fnref-${escId}`);
+		if (refIx > 1) {
+			this.lit(`-${refIx}`);
+		}
+		this.lit(`" data-footnote-ref>${index}</a></sup>`);
+	}
+
+	private renderFootnoteSection(): void {
+		if (this.footnoteOrder.length === 0) {
+			return;
+		}
+		// Each segment gets its own `lit()` + `cr()` rather than one call with
+		// embedded newlines: `cr()` recognizes "already at a fresh line" by
+		// comparing the WHOLE last-written string against `"\n"`, so a `lit()`
+		// carrying an internal newline (e.g. `"<section>\n<ol>\n"`) would leave
+		// `lastOut` holding that whole string — never `"\n"` alone — and the
+		// next `cr()` would print a spurious blank line.
+		this.cr();
+		this.lit('<section class="footnotes" data-footnotes>');
+		this.cr();
+		this.lit("<ol>");
+		this.cr();
+		for (const definition of this.footnoteOrder) {
+			this.footnoteDefinitionItem(definition);
+		}
+		this.lit("</ol>");
+		this.cr();
+		this.lit("</section>");
+		this.cr();
+	}
+
+	private footnoteDefinitionItem(node: FootnoteDefinition): void {
+		const escId = escapeXml(normalizeUri(node.identifier));
+		this.cr();
+		this.tag("li", [["id", `fn-${escId}`]]);
+		this.cr();
+
+		const backrefHtml = this.buildFootnoteBackref(node, escId);
+		const lastIndex = node.children.length - 1;
+		let backrefWritten = false;
+		node.children.forEach((child, index) => {
+			if (index === lastIndex && child.type === "paragraph") {
+				this.footnoteParagraph(child, backrefHtml);
+				backrefWritten = true;
+			} else {
+				this.renderFlow([child]);
+			}
+		});
+		if (!backrefWritten) {
+			this.lit(backrefHtml);
+			this.cr();
+		}
+
+		this.tag("/li");
+		this.cr();
+	}
+
+	private footnoteParagraph(node: Paragraph, backrefHtml: string): void {
+		this.cr();
+		this.tag("p");
+		this.renderPhrasing(node.children);
+		this.lit(" ");
+		this.lit(backrefHtml);
+		this.tag("/p");
+		this.cr();
+	}
+
+	/** Ported from cmark-gfm's `S_put_footnote_backref` (src/html.c). */
+	private buildFootnoteBackref(node: FootnoteDefinition, escId: string): string {
+		const index = this.footnoteIndex.get(normalizeLabel(node.identifier));
+		const useCount = this.footnoteRefCount.get(normalizeLabel(node.identifier)) ?? 0;
+
+		let html = `<a href="#fnref-${escId}" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="${index}" aria-label="Back to reference ${index}">↩</a>`;
+		for (let useIndex = 2; useIndex <= useCount; useIndex += 1) {
+			html += ` <a href="#fnref-${escId}-${useIndex}" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="${index}-${useIndex}" aria-label="Back to reference ${index}-${useIndex}">↩<sup class="footnote-ref">${useIndex}</sup></a>`;
+		}
+		return html;
+	}
+}
+
+/** Rendering options for {@link renderHtml}. */
+export interface RenderHtmlOptions {
+	/**
+	 * Render under the `gfm` dialect: applies the tagfilter to raw `Html`
+	 * node values. Defaults to `false` (plain CommonMark rendering, matching
+	 * the `commonmark` dialect's conformance corpus). This is purely an
+	 * output-time decision — the parse tree is identical either way.
+	 */
+	readonly gfm?: boolean;
 }
 
 /**
- * Renders a document to spec-conventional HTML, the form the CommonMark
- * corpus expects. Compare results with {@link normalizeHtml}, never directly —
- * the corpus's expected output differs from this writer's in insignificant
- * whitespace.
+ * Renders a document to spec-conventional HTML, the form the CommonMark and
+ * GFM conformance corpora expect. Compare results with {@link normalizeHtml},
+ * never directly — the corpus's expected output differs from this writer's
+ * in insignificant whitespace.
  *
- * Reference nodes are resolved here, against the {@link Definition} nodes
- * found anywhere in the tree, because the parser emits them unresolved.
+ * Reference nodes are resolved here, against the {@link Definition} and
+ * {@link FootnoteDefinition} nodes found anywhere in the tree, because the
+ * parser emits them unresolved.
  */
-export const renderHtml = (root: Root): string => new HtmlWriter(collectDefinitions(root)).render(root);
+export const renderHtml = (root: Root, options?: RenderHtmlOptions): string =>
+	new HtmlWriter(collectDefinitions(root), collectFootnoteDefinitions(root), options?.gfm ?? false).render(root);

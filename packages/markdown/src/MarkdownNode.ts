@@ -181,6 +181,21 @@ export const HeadingDepth = Schema.Literals([1, 2, 3, 4, 5, 6]);
  */
 export type HeadingDepth = typeof HeadingDepth.Type;
 
+/**
+ * The three alignments a GFM table column may declare. A `null` entry in a
+ * {@link Table}'s `align` array means the column carries no alignment.
+ *
+ * @public
+ */
+export const TableAlign = Schema.Literals(["left", "right", "center"]);
+
+/**
+ * The union of all table-alignment string literals.
+ *
+ * @public
+ */
+export type TableAlign = typeof TableAlign.Type;
+
 // --- Phrasing content -------------------------------------------------------
 
 /**
@@ -295,6 +310,22 @@ export class Strong extends Schema.Class<Strong>("Strong")({
 }) {}
 
 /**
+ * Delete — GFM strikethrough (`~~foo~~`). Content that is no longer accurate
+ * or relevant.
+ *
+ * `~~` is the only marker `~~foo~~` renders through, so unlike
+ * {@link Emphasis} and {@link Strong} there is no marker-character fidelity
+ * extra to carry.
+ *
+ * @public
+ */
+export class Delete extends Schema.Class<Delete>("Delete")({
+	type: Schema.tag("delete"),
+	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
+	position: Position,
+}) {}
+
+/**
  * Link — an inline link (`[text](url "title")`), including autolinks.
  *
  * @public
@@ -325,6 +356,24 @@ export class LinkReference extends Schema.Class<LinkReference>("LinkReference")(
 }) {}
 
 /**
+ * FootnoteReference — a GFM footnote marker (`[^alpha]`), associating this
+ * point in the text with a {@link FootnoteDefinition} by identifier.
+ *
+ * Has no content model of its own — the marker carries no children, only the
+ * {@link Association} pair `identifier`/`label`. Like {@link LinkReference},
+ * the parser emits these unresolved: resolution against a matching
+ * `FootnoteDefinition` is the consumer's business.
+ *
+ * @public
+ */
+export class FootnoteReference extends Schema.Class<FootnoteReference>("FootnoteReference")({
+	type: Schema.tag("footnoteReference"),
+	identifier: Schema.String,
+	label: Schema.optionalKey(Schema.String),
+	position: Position,
+}) {}
+
+/**
  * The union of every node that may appear where mdast expects **phrasing**
  * content — the text of a document and its markup.
  *
@@ -334,7 +383,20 @@ export class LinkReference extends Schema.Class<LinkReference>("LinkReference")(
  * @public
  */
 export const PhrasingContent: Schema.Codec<PhrasingContent> = Schema.suspend(() =>
-	Schema.Union([Break, Emphasis, Html, Image, ImageReference, InlineCode, Link, LinkReference, Strong, Text]),
+	Schema.Union([
+		Break,
+		Delete,
+		Emphasis,
+		FootnoteReference,
+		Html,
+		Image,
+		ImageReference,
+		InlineCode,
+		Link,
+		LinkReference,
+		Strong,
+		Text,
+	]),
 );
 
 /**
@@ -344,7 +406,9 @@ export const PhrasingContent: Schema.Codec<PhrasingContent> = Schema.suspend(() 
  */
 export type PhrasingContent =
 	| Break
+	| Delete
 	| Emphasis
+	| FootnoteReference
 	| Html
 	| Image
 	| ImageReference
@@ -408,6 +472,24 @@ export class Definition extends Schema.Class<Definition>("Definition")({
 }) {}
 
 /**
+ * FootnoteDefinition — a GFM footnote definition (`[^alpha]: bravo.`), the
+ * content a {@link FootnoteReference} points at.
+ *
+ * Kept in the tree at its source position, on the same terms as
+ * {@link Definition} — the parser never relocates it; a consumer that wants
+ * cmark-gfm's end-of-document footnote section renders it there instead.
+ *
+ * @public
+ */
+export class FootnoteDefinition extends Schema.Class<FootnoteDefinition>("FootnoteDefinition")({
+	type: Schema.tag("footnoteDefinition"),
+	identifier: Schema.String,
+	label: Schema.optionalKey(Schema.String),
+	children: Schema.Array(Schema.suspend((): Schema.Codec<FlowContent> => FlowContent)),
+	position: Position,
+}) {}
+
+/**
  * Paragraph — a run of phrasing content.
  *
  * @public
@@ -440,6 +522,11 @@ export class Heading extends Schema.Class<Heading>("Heading")({
  * `spread` follows mdast in being optional: absent means "not known", which a
  * hand-built tree may legitimately be. The parser always sets it.
  *
+ * `checked` is a GFM extra (task-list items, `- [ ] foo` / `- [x] foo`):
+ * `true` for done, `false` for not done, and **absent** — never `null` — for
+ * an item that is not a task-list item at all. The parser only ever sets it
+ * on items it recognized as task-list markers.
+ *
  * @public
  */
 export class ListItem extends Schema.Class<ListItem>("ListItem")({
@@ -447,6 +534,7 @@ export class ListItem extends Schema.Class<ListItem>("ListItem")({
 	spread: Schema.optionalKey(Schema.Boolean),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<FlowContent> => FlowContent)),
 	position: Position,
+	checked: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 /**
@@ -484,26 +572,130 @@ export class Blockquote extends Schema.Class<Blockquote>("Blockquote")({
 }) {}
 
 /**
+ * TableCell — one cell of a {@link TableRow}: a header cell if its
+ * grandparent {@link Table}'s first row, a data cell otherwise.
+ *
+ * mdast's content model for `TableCell` is phrasing content **excluding**
+ * `Break` nodes — GFM tables are single-line source, so a hard break cannot
+ * occur inside one. This schema does not carve that exclusion out of
+ * {@link PhrasingContent}: a second phrasing union just for table cells would
+ * duplicate the whole recursive-suspend machinery above for one excluded
+ * member, and a parser that never emits `Break` inside a cell satisfies the
+ * exclusion in practice without it.
+ *
+ * @public
+ */
+export class TableCell extends Schema.Class<TableCell>("TableCell")({
+	type: Schema.tag("tableCell"),
+	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
+	position: Position,
+}) {}
+
+/**
+ * The union of every node that may appear where mdast expects **row**
+ * content — the cells in a {@link TableRow}. A one-member union, kept because
+ * mdast names the category.
+ *
+ * @public
+ */
+export const RowContent: Schema.Codec<RowContent> = Schema.suspend(() => TableCell);
+
+/**
+ * The union of all row-content node types.
+ *
+ * @public
+ */
+export type RowContent = TableCell;
+
+/**
+ * TableRow — one row of a {@link Table}: the labels of the columns if it is
+ * the table's first row, a data row otherwise.
+ *
+ * @public
+ */
+export class TableRow extends Schema.Class<TableRow>("TableRow")({
+	type: Schema.tag("tableRow"),
+	children: Schema.Array(Schema.suspend((): Schema.Codec<TableCell> => TableCell)),
+	position: Position,
+}) {}
+
+/**
+ * The union of every node that may appear where mdast expects **table**
+ * content — the rows in a {@link Table}. A one-member union, kept because
+ * mdast names the category.
+ *
+ * @public
+ */
+export const TableContent: Schema.Codec<TableContent> = Schema.suspend(() => TableRow);
+
+/**
+ * The union of all table-content node types.
+ *
+ * @public
+ */
+export type TableContent = TableRow;
+
+/**
+ * Table — GFM two-dimensional data.
+ *
+ * `align` is optional per mdast: absent means "not known" — which the parser
+ * never produces, since a GFM table's delimiter row always yields one
+ * `TableAlign | null` entry per column, but a hand-built tree may omit it.
+ * When present, each entry is `null` for a column with no declared alignment.
+ *
+ * @public
+ */
+export class Table extends Schema.Class<Table>("Table")({
+	type: Schema.tag("table"),
+	align: Schema.optionalKey(Schema.Array(Schema.NullOr(TableAlign))),
+	children: Schema.Array(Schema.suspend((): Schema.Codec<TableRow> => TableRow)),
+	position: Position,
+}) {}
+
+/**
  * The union of every node that may appear where mdast expects **flow**
  * content — the sections of a document.
  *
  * Defined lazily via `Schema.suspend` to break the recursive reference chain
- * `FlowContent -> Blockquote/List -> FlowContent`.
+ * `FlowContent -> Blockquote/List -> FlowContent`. Widened for GFM with
+ * {@link FootnoteDefinition} and {@link Table}, per mdast's `FlowContent`
+ * (GFM) category.
  *
  * @public
  */
 export const FlowContent: Schema.Codec<FlowContent> = Schema.suspend(() =>
-	Schema.Union([Blockquote, Code, Definition, Heading, Html, List, Paragraph, ThematicBreak]),
+	Schema.Union([
+		Blockquote,
+		Code,
+		Definition,
+		FootnoteDefinition,
+		Heading,
+		Html,
+		List,
+		Paragraph,
+		Table,
+		ThematicBreak,
+	]),
 );
 
 /**
  * The union of all flow-content node types. Includes mdast's `Content`
  * category (`Definition | Paragraph`) inline, as the spec's `FlowContent`
- * definition does.
+ * definition does, and the GFM extras `FootnoteDefinition` and `Table`.
  *
  * @public
  */
-export type FlowContent = Blockquote | Code | Definition | Heading | Html | List | Paragraph | ThematicBreak;
+export type FlowContent =
+	| Blockquote
+	| Code
+	| Definition
+	| FootnoteDefinition
+	| Heading
+	| Html
+	| List
+	| Paragraph
+	| Table
+	| ThematicBreak;
 
 /**
  * The union of every node that may appear where mdast expects **list**
@@ -538,12 +730,12 @@ export class Root extends Schema.Class<Root>("Root")({
 }) {}
 
 /**
- * The union of every mdast node type this package produces — the four content
+ * The union of every mdast node type this package produces — the content
  * categories plus {@link Root}.
  *
  * @public
  */
-export type MarkdownNode = Root | FlowContent | ListContent | PhrasingContent;
+export type MarkdownNode = Root | FlowContent | ListContent | PhrasingContent | RowContent | TableContent;
 
 /**
  * A schema matching any node in the tree.
@@ -551,5 +743,5 @@ export type MarkdownNode = Root | FlowContent | ListContent | PhrasingContent;
  * @public
  */
 export const MarkdownNode: Schema.Codec<MarkdownNode> = Schema.suspend(() =>
-	Schema.Union([Root, FlowContent, ListContent, PhrasingContent]),
+	Schema.Union([Root, FlowContent, ListContent, PhrasingContent, RowContent, TableContent]),
 );

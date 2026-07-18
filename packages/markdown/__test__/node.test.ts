@@ -5,7 +5,10 @@ import {
 	Break,
 	Code,
 	Definition,
+	Delete,
 	Emphasis,
+	FootnoteDefinition,
+	FootnoteReference,
 	Heading,
 	Html,
 	Image,
@@ -20,6 +23,9 @@ import {
 	Position,
 	Root,
 	Strong,
+	Table,
+	TableCell,
+	TableRow,
 	Text,
 	ThematicBreak,
 } from "../src/MarkdownNode.js";
@@ -360,6 +366,300 @@ describe("MarkdownNode", () => {
 
 			assert.strictEqual(seen, 40);
 			assert.instanceOf(cursor, Paragraph);
+		});
+	});
+
+	describe("GFM extensions", () => {
+		describe("construction", () => {
+			it("builds a table with X.make", () => {
+				const table = Table.make({
+					align: ["left", null, "right"],
+					children: [
+						TableRow.make({
+							children: [
+								TableCell.make({ children: [Text.make({ value: "a", position: span(0, 1) })], position: span(0, 1) }),
+								TableCell.make({ children: [Text.make({ value: "b", position: span(2, 3) })], position: span(2, 3) }),
+								TableCell.make({ children: [Text.make({ value: "c", position: span(4, 5) })], position: span(4, 5) }),
+							],
+							position: span(0, 5),
+						}),
+					],
+					position: span(0, 5),
+				});
+
+				assert.strictEqual(table.type, "table");
+				assert.deepStrictEqual(table.align, ["left", null, "right"]);
+				assert.strictEqual(table.children[0]?.type, "tableRow");
+				assert.strictEqual(table.children[0]?.children[0]?.type, "tableCell");
+			});
+
+			it("builds a delete node with X.make", () => {
+				const strikethrough = Delete.make({
+					children: [Text.make({ value: "gone", position: span(2, 6) })],
+					position: span(0, 8),
+				});
+
+				assert.strictEqual(strikethrough.type, "delete");
+				assert.strictEqual(strikethrough.children[0]?.type, "text");
+			});
+
+			it("builds a footnote definition and a resolving reference with X.make", () => {
+				const definition = FootnoteDefinition.make({
+					identifier: "alpha",
+					label: "alpha",
+					children: [
+						Paragraph.make({ children: [Text.make({ value: "bravo", position: span(0, 5) })], position: span(0, 5) }),
+					],
+					position: span(0, 5),
+				});
+				const reference = FootnoteReference.make({ identifier: "alpha", label: "alpha", position: span(10, 17) });
+
+				assert.strictEqual(definition.type, "footnoteDefinition");
+				assert.strictEqual(reference.type, "footnoteReference");
+				assert.strictEqual(definition.identifier, reference.identifier);
+			});
+
+			it("sets checked on a task-list item", () => {
+				const done = ListItem.make({ checked: true, children: [], position: span(0, 5) });
+				const notDone = ListItem.make({ checked: false, children: [], position: span(0, 5) });
+				const notATask = ListItem.make({ children: [], position: span(0, 5) });
+
+				assert.strictEqual(done.checked, true);
+				assert.strictEqual(notDone.checked, false);
+				assert.isUndefined(notATask.checked);
+			});
+		});
+
+		describe("absent optionalKey fields", () => {
+			it("omits checked on a non-task list item rather than storing undefined", () => {
+				const item = ListItem.make({ children: [], position: span(0, 1) });
+				assert.isFalse(Object.hasOwn(item, "checked"));
+			});
+
+			it("omits align on a table with no declared alignment rather than storing undefined", () => {
+				const table = Table.make({ children: [], position: span(0, 1) });
+				assert.isFalse(Object.hasOwn(table, "align"));
+			});
+
+			it("omits label on a footnote definition and reference rather than storing undefined", () => {
+				const definition = FootnoteDefinition.make({ identifier: "a", children: [], position: span(0, 1) });
+				const reference = FootnoteReference.make({ identifier: "a", position: span(0, 1) });
+				assert.isFalse(Object.hasOwn(definition, "label"));
+				assert.isFalse(Object.hasOwn(reference, "label"));
+			});
+		});
+
+		describe("structural equality", () => {
+			it("treats two identically-shaped GFM trees as equal", () => {
+				const build = (): Root =>
+					Root.make({
+						children: [
+							Table.make({
+								align: ["left"],
+								children: [
+									TableRow.make({
+										children: [
+											TableCell.make({
+												children: [Text.make({ value: "h", position: span(0, 1) })],
+												position: span(0, 1),
+											}),
+										],
+										position: span(0, 1),
+									}),
+								],
+								position: span(0, 1),
+							}),
+						],
+						position: span(0, 1),
+					});
+
+				assert.deepStrictEqual(build(), build());
+			});
+
+			it("distinguishes list items differing only in checked", () => {
+				const done = ListItem.make({ checked: true, children: [], position: span(0, 1) });
+				const notATask = ListItem.make({ children: [], position: span(0, 1) });
+
+				assert.notDeepEqual(done, notATask);
+			});
+		});
+
+		describe("mdast type literals", () => {
+			it("spells every GFM node type exactly as mdast does", () => {
+				const p = span(0, 0);
+				const types = [
+					Delete.make({ children: [], position: p }).type,
+					FootnoteDefinition.make({ identifier: "a", children: [], position: p }).type,
+					FootnoteReference.make({ identifier: "a", position: p }).type,
+					Table.make({ children: [], position: p }).type,
+					TableRow.make({ children: [], position: p }).type,
+					TableCell.make({ children: [], position: p }).type,
+				];
+
+				assert.deepStrictEqual(types, [
+					"delete",
+					"footnoteDefinition",
+					"footnoteReference",
+					"table",
+					"tableRow",
+					"tableCell",
+				]);
+			});
+		});
+
+		describe("decoding", () => {
+			const decodeRoot = Schema.decodeUnknownSync(Root);
+
+			it("decodes a plain-object tree through the GFM-widened flow and phrasing unions", () => {
+				const tree = {
+					type: "root",
+					position: rawSpan(0, 60),
+					children: [
+						{
+							type: "paragraph",
+							position: rawSpan(0, 10),
+							children: [
+								{
+									type: "delete",
+									position: rawSpan(0, 6),
+									children: [{ type: "text", value: "gone", position: rawSpan(1, 5) }],
+								},
+								{ type: "footnoteReference", identifier: "note", label: "note", position: rawSpan(6, 10) },
+							],
+						},
+						{
+							type: "list",
+							spread: false,
+							position: rawSpan(10, 25),
+							children: [
+								{
+									type: "listItem",
+									checked: true,
+									position: rawSpan(10, 25),
+									children: [
+										{
+											type: "paragraph",
+											position: rawSpan(14, 25),
+											children: [{ type: "text", value: "done", position: rawSpan(14, 18) }],
+										},
+									],
+								},
+							],
+						},
+						{
+							type: "table",
+							align: ["left", null],
+							position: rawSpan(25, 45),
+							children: [
+								{
+									type: "tableRow",
+									position: rawSpan(25, 35),
+									children: [
+										{
+											type: "tableCell",
+											position: rawSpan(25, 30),
+											children: [{ type: "text", value: "h1", position: rawSpan(25, 27) }],
+										},
+										{
+											type: "tableCell",
+											position: rawSpan(30, 35),
+											children: [{ type: "text", value: "h2", position: rawSpan(30, 32) }],
+										},
+									],
+								},
+							],
+						},
+						{
+							type: "footnoteDefinition",
+							identifier: "note",
+							label: "note",
+							position: rawSpan(45, 60),
+							children: [
+								{
+									type: "paragraph",
+									position: rawSpan(48, 60),
+									children: [{ type: "text", value: "referent", position: rawSpan(48, 56) }],
+								},
+							],
+						},
+					],
+				};
+
+				const decoded = decodeRoot(tree);
+
+				assert.instanceOf(decoded, Root);
+				assert.strictEqual(decoded.children.length, 4);
+
+				const paragraph = decoded.children[0];
+				assert.instanceOf(paragraph, Paragraph);
+				assert.instanceOf(paragraph.children[0], Delete);
+				assert.instanceOf(paragraph.children[1], FootnoteReference);
+
+				const list = decoded.children[1];
+				assert.instanceOf(list, List);
+				const item = list.children[0];
+				assert.instanceOf(item, ListItem);
+				assert.strictEqual(item.checked, true);
+
+				const table = decoded.children[2];
+				assert.instanceOf(table, Table);
+				assert.deepStrictEqual(table.align, ["left", null]);
+				const row = table.children[0];
+				assert.instanceOf(row, TableRow);
+				assert.instanceOf(row.children[0], TableCell);
+
+				const footnoteDefinition = decoded.children[3];
+				assert.instanceOf(footnoteDefinition, FootnoteDefinition);
+				assert.strictEqual(footnoteDefinition.identifier, "note");
+			});
+
+			it("round-trips a decoded GFM tree back through encode", () => {
+				const tree = {
+					type: "root",
+					position: rawSpan(0, 5),
+					children: [
+						{
+							type: "table",
+							align: ["center"],
+							position: rawSpan(0, 5),
+							children: [
+								{
+									type: "tableRow",
+									position: rawSpan(0, 5),
+									children: [
+										{
+											type: "tableCell",
+											position: rawSpan(0, 5),
+											children: [{ type: "text", value: "x", position: rawSpan(0, 5) }],
+										},
+									],
+								},
+							],
+						},
+					],
+				};
+
+				const decoded = decodeRoot(tree);
+				const encoded = Schema.encodeUnknownSync(Root)(decoded);
+
+				assert.deepStrictEqual<unknown>(encoded, tree);
+			});
+
+			it("rejects a checked value that is not a boolean", () => {
+				assert.throws(() =>
+					decodeRoot({
+						type: "root",
+						position: rawSpan(0, 1),
+						children: [
+							{
+								type: "list",
+								position: rawSpan(0, 1),
+								children: [{ type: "listItem", checked: "yes", position: rawSpan(0, 1), children: [] }],
+							},
+						],
+					}),
+				);
+			});
 		});
 	});
 });

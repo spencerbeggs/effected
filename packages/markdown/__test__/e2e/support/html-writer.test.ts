@@ -4,7 +4,10 @@ import {
 	Break,
 	Code,
 	Definition,
+	Delete,
 	Emphasis,
+	FootnoteDefinition,
+	FootnoteReference,
 	Heading,
 	Html,
 	Image,
@@ -17,10 +20,13 @@ import {
 	Paragraph,
 	Root,
 	Strong,
+	Table,
+	TableCell,
+	TableRow,
 	Text,
 	ThematicBreak,
 } from "../../../src/MarkdownNode.js";
-import { escapeXml, normalizeLabel, normalizeUri, renderHtml } from "./htmlWriter.js";
+import { applyTagfilter, escapeXml, normalizeLabel, normalizeUri, renderHtml } from "./htmlWriter.js";
 import { normalizeHtml } from "./normalizeHtml.js";
 import { span } from "./span.js";
 
@@ -435,6 +441,376 @@ describe("renderHtml", () => {
 
 		it("folds the sharp s the way commonmark's double-case trick does", () => {
 			assert.strictEqual(normalizeLabel("ß"), normalizeLabel("SS"));
+		});
+	});
+
+	describe("gfm: delete", () => {
+		it("renders a strikethrough, matching the spec-extensions fixture shape", () => {
+			// cmark-gfm test/spec.txt "Strikethrough (extension)" example 491:
+			// "~~Hi~~ Hello, world!" -> "<p><del>Hi</del> Hello, world!</p>\n"
+			const tree = doc(
+				Paragraph.make({
+					children: [
+						Delete.make({ children: [Text.make({ value: "Hi", position: p })], position: p }),
+						Text.make({ value: " Hello, world!", position: p }),
+					],
+					position: p,
+				}),
+			);
+			assert.strictEqual(renderHtml(tree), "<p><del>Hi</del> Hello, world!</p>\n");
+		});
+	});
+
+	describe("gfm: tables", () => {
+		const cell = (value: string): TableCell =>
+			TableCell.make({ children: [Text.make({ value, position: p })], position: p });
+		const row = (...values: ReadonlyArray<string>): TableRow =>
+			TableRow.make({ children: values.map(cell), position: p });
+
+		it("renders a header and body, matching the extensions fixture shape", () => {
+			// __test__/fixtures/gfm/extensions.json example 1.
+			const table = Table.make({ children: [row("abc", "def"), row("ghi", "jkl"), row("mno", "pqr")], position: p });
+			assert.strictEqual(
+				renderHtml(doc(table)),
+				"<table>\n<thead>\n<tr>\n<th>abc</th>\n<th>def</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>ghi</td>\n<td>jkl</td>\n</tr>\n<tr>\n<td>mno</td>\n<td>pqr</td>\n</tr>\n</tbody>\n</table>\n",
+			);
+		});
+
+		it("omits tbody entirely when there are no body rows", () => {
+			// __test__/fixtures/gfm/spec-extensions.json example 205.
+			const table = Table.make({ children: [row("abc", "def")], position: p });
+			assert.strictEqual(
+				renderHtml(doc(table)),
+				"<table>\n<thead>\n<tr>\n<th>abc</th>\n<th>def</th>\n</tr>\n</thead>\n</table>\n",
+			);
+		});
+
+		it("emits align only for columns with a declared alignment", () => {
+			// __test__/fixtures/gfm/extensions.json example 6.
+			const table = Table.make({
+				align: ["left", null, "center", null, "right"],
+				children: [row("aaa", "bbb", "ccc", "ddd", "eee"), row("fff", "ggg", "hhh", "iii", "jjj")],
+				position: p,
+			});
+			assert.strictEqual(
+				renderHtml(doc(table)),
+				'<table>\n<thead>\n<tr>\n<th align="left">aaa</th>\n<th>bbb</th>\n<th align="center">ccc</th>\n<th>ddd</th>\n<th align="right">eee</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align="left">fff</td>\n<td>ggg</td>\n<td align="center">hhh</td>\n<td>iii</td>\n<td align="right">jjj</td>\n</tr>\n</tbody>\n</table>\n',
+			);
+		});
+	});
+
+	describe("gfm: task list items", () => {
+		it("renders unchecked and checked markers, matching the extensions fixture shape", () => {
+			// __test__/fixtures/gfm/extensions.json example 28.
+			const list = List.make({
+				spread: false,
+				children: [
+					ListItem.make({ checked: false, children: [para("foo")], position: p }),
+					ListItem.make({ checked: true, children: [para("bar")], position: p }),
+				],
+				position: p,
+			});
+			assert.strictEqual(
+				renderHtml(doc(list)),
+				'<ul>\n<li><input type="checkbox" disabled="" /> foo</li>\n<li><input type="checkbox" checked="" disabled="" /> bar</li>\n</ul>\n',
+			);
+		});
+
+		it("omits the marker on a list item that is not a task item", () => {
+			const list = List.make({
+				spread: false,
+				children: [ListItem.make({ children: [para("a")], position: p })],
+				position: p,
+			});
+			assert.strictEqual(renderHtml(doc(list)), "<ul>\n<li>a</li>\n</ul>\n");
+		});
+
+		it("renders the marker before a nested sublist, matching the extensions fixture shape", () => {
+			// __test__/fixtures/gfm/extensions.json example 29 (outer list only).
+			const inner = List.make({
+				spread: false,
+				children: [
+					ListItem.make({ checked: false, children: [para("bar")], position: p }),
+					ListItem.make({ checked: true, children: [para("baz")], position: p }),
+				],
+				position: p,
+			});
+			const outer = List.make({
+				spread: false,
+				children: [
+					ListItem.make({ checked: true, children: [para("foo"), inner], position: p }),
+					ListItem.make({ checked: false, children: [para("bim")], position: p }),
+				],
+				position: p,
+			});
+			assert.strictEqual(
+				renderHtml(doc(outer)),
+				'<ul>\n<li><input type="checkbox" checked="" disabled="" /> foo\n<ul>\n<li><input type="checkbox" disabled="" /> bar</li>\n<li><input type="checkbox" checked="" disabled="" /> baz</li>\n</ul>\n</li>\n<li><input type="checkbox" disabled="" /> bim</li>\n</ul>\n',
+			);
+		});
+	});
+
+	describe("gfm: footnotes", () => {
+		it("renders sup markers and an end-of-document section, matching the extensions fixture shape", () => {
+			// __test__/fixtures/gfm/extensions.json example 23, as a hand-built
+			// tree (the parser doesn't exist yet — Task 6 builds it). Footnote
+			// definitions are placed at their mdast source positions, same as
+			// `Definition`; the writer relocates them to the section itself.
+			const tree = doc(
+				Paragraph.make({
+					children: [
+						Text.make({ value: "This is some text!", position: p }),
+						FootnoteReference.make({ identifier: "1", position: p }),
+						Text.make({ value: ". Other text.", position: p }),
+						FootnoteReference.make({ identifier: "footnote", position: p }),
+						Text.make({ value: ".", position: p }),
+					],
+					position: p,
+				}),
+				Paragraph.make({
+					children: [
+						Text.make({ value: "Here's a thing", position: p }),
+						FootnoteReference.make({ identifier: "other-note", position: p }),
+						Text.make({ value: ".", position: p }),
+					],
+					position: p,
+				}),
+				Paragraph.make({
+					children: [
+						Text.make({ value: "And another thing", position: p }),
+						FootnoteReference.make({ identifier: "codeblock-note", position: p }),
+						Text.make({ value: ".", position: p }),
+					],
+					position: p,
+				}),
+				Paragraph.make({
+					children: [
+						Text.make({ value: "This doesn't have a referent", position: p }),
+						FootnoteReference.make({ identifier: "nope", position: p }),
+						Text.make({ value: ".", position: p }),
+					],
+					position: p,
+				}),
+				FootnoteDefinition.make({
+					identifier: "other-note",
+					children: [para("no code block here (spaces are stripped away)")],
+					position: p,
+				}),
+				FootnoteDefinition.make({
+					identifier: "codeblock-note",
+					children: [Code.make({ value: "this is now a code block (8 spaces indentation)\n", position: p })],
+					position: p,
+				}),
+				FootnoteDefinition.make({
+					identifier: "1",
+					children: [
+						Paragraph.make({
+							children: [
+								Text.make({ value: "Some ", position: p }),
+								Emphasis.make({ children: [Text.make({ value: "bolded", position: p })], position: p }),
+								Text.make({ value: " footnote definition.", position: p }),
+							],
+							position: p,
+						}),
+					],
+					position: p,
+				}),
+				para("Hi!"),
+				FootnoteDefinition.make({
+					identifier: "footnote",
+					children: [
+						Blockquote.make({ children: [para("Blockquotes can be in a footnote.")], position: p }),
+						Code.make({ value: "as well as code blocks\n", position: p }),
+						para("or, naturally, simple paragraphs."),
+					],
+					position: p,
+				}),
+				FootnoteDefinition.make({ identifier: "unused", children: [para("This is unused.")], position: p }),
+			);
+
+			const expected = [
+				'<p>This is some text!<sup class="footnote-ref"><a href="#fn-1" id="fnref-1" data-footnote-ref>1</a></sup>. Other text.<sup class="footnote-ref"><a href="#fn-footnote" id="fnref-footnote" data-footnote-ref>2</a></sup>.</p>',
+				'<p>Here\'s a thing<sup class="footnote-ref"><a href="#fn-other-note" id="fnref-other-note" data-footnote-ref>3</a></sup>.</p>',
+				'<p>And another thing<sup class="footnote-ref"><a href="#fn-codeblock-note" id="fnref-codeblock-note" data-footnote-ref>4</a></sup>.</p>',
+				"<p>This doesn't have a referent[^nope].</p>",
+				"<p>Hi!</p>",
+				'<section class="footnotes" data-footnotes>',
+				"<ol>",
+				'<li id="fn-1">',
+				'<p>Some <em>bolded</em> footnote definition. <a href="#fnref-1" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a></p>',
+				"</li>",
+				'<li id="fn-footnote">',
+				"<blockquote>",
+				"<p>Blockquotes can be in a footnote.</p>",
+				"</blockquote>",
+				"<pre><code>as well as code blocks",
+				"</code></pre>",
+				'<p>or, naturally, simple paragraphs. <a href="#fnref-footnote" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="2" aria-label="Back to reference 2">↩</a></p>',
+				"</li>",
+				'<li id="fn-other-note">',
+				'<p>no code block here (spaces are stripped away) <a href="#fnref-other-note" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="3" aria-label="Back to reference 3">↩</a></p>',
+				"</li>",
+				'<li id="fn-codeblock-note">',
+				"<pre><code>this is now a code block (8 spaces indentation)",
+				"</code></pre>",
+				'<a href="#fnref-codeblock-note" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="4" aria-label="Back to reference 4">↩</a>',
+				"</li>",
+				"</ol>",
+				"</section>",
+				"",
+			].join("\n");
+
+			assert.strictEqual(renderHtml(tree), expected);
+		});
+
+		it("inserts multiple backrefs when a footnote is referenced more than once, matching the extensions fixture shape", () => {
+			// __test__/fixtures/gfm/extensions.json example 24.
+			const tree = doc(
+				Paragraph.make({
+					children: [
+						Text.make({ value: "This is some text. It has a footnote", position: p }),
+						FootnoteReference.make({ identifier: "a-footnote", position: p }),
+						Text.make({ value: ".", position: p }),
+					],
+					position: p,
+				}),
+				Paragraph.make({
+					children: [
+						Text.make({ value: "This footnote is referenced", position: p }),
+						FootnoteReference.make({ identifier: "a-footnote", position: p }),
+						Text.make({ value: " multiple times, in lots of different places.", position: p }),
+						FootnoteReference.make({ identifier: "a-footnote", position: p }),
+					],
+					position: p,
+				}),
+				FootnoteDefinition.make({
+					identifier: "a-footnote",
+					children: [para("This footnote definition should have three backrefs.")],
+					position: p,
+				}),
+			);
+
+			const expected = [
+				'<p>This is some text. It has a footnote<sup class="footnote-ref"><a href="#fn-a-footnote" id="fnref-a-footnote" data-footnote-ref>1</a></sup>.</p>',
+				'<p>This footnote is referenced<sup class="footnote-ref"><a href="#fn-a-footnote" id="fnref-a-footnote-2" data-footnote-ref>1</a></sup> multiple times, in lots of different places.<sup class="footnote-ref"><a href="#fn-a-footnote" id="fnref-a-footnote-3" data-footnote-ref>1</a></sup></p>',
+				'<section class="footnotes" data-footnotes>',
+				"<ol>",
+				'<li id="fn-a-footnote">',
+				'<p>This footnote definition should have three backrefs. <a href="#fnref-a-footnote" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a> <a href="#fnref-a-footnote-2" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1-2" aria-label="Back to reference 1-2">↩<sup class="footnote-ref">2</sup></a> <a href="#fnref-a-footnote-3" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1-3" aria-label="Back to reference 1-3">↩<sup class="footnote-ref">3</sup></a></p>',
+				"</li>",
+				"</ol>",
+				"</section>",
+				"",
+			].join("\n");
+
+			assert.strictEqual(renderHtml(tree), expected);
+		});
+
+		it("href-escapes an identifier containing markup, matching the extensions fixture shape", () => {
+			// __test__/fixtures/gfm/extensions.json example 25.
+			const identifier = '"><script>alert(1)</script>';
+			const tree = doc(
+				Paragraph.make({
+					children: [Text.make({ value: "Hello", position: p }), FootnoteReference.make({ identifier, position: p })],
+					position: p,
+				}),
+				FootnoteDefinition.make({ identifier, children: [para("pwned")], position: p }),
+			);
+
+			const expected = [
+				'<p>Hello<sup class="footnote-ref"><a href="#fn-%22%3E%3Cscript%3Ealert(1)%3C/script%3E" id="fnref-%22%3E%3Cscript%3Ealert(1)%3C/script%3E" data-footnote-ref>1</a></sup></p>',
+				'<section class="footnotes" data-footnotes>',
+				"<ol>",
+				'<li id="fn-%22%3E%3Cscript%3Ealert(1)%3C/script%3E">',
+				'<p>pwned <a href="#fnref-%22%3E%3Cscript%3Ealert(1)%3C/script%3E" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a></p>',
+				"</li>",
+				"</ol>",
+				"</section>",
+				"",
+			].join("\n");
+
+			assert.strictEqual(renderHtml(tree), expected);
+		});
+
+		it("renders an unresolved footnote reference as literal bracket text", () => {
+			const tree = doc(
+				Paragraph.make({
+					children: [
+						Text.make({ value: "orphan", position: p }),
+						FootnoteReference.make({ identifier: "missing", position: p }),
+					],
+					position: p,
+				}),
+			);
+			assert.strictEqual(renderHtml(tree), "<p>orphan[^missing]</p>\n");
+		});
+
+		it("prefers label over identifier when reconstructing an unresolved reference", () => {
+			const tree = doc(
+				Paragraph.make({
+					children: [FootnoteReference.make({ identifier: "missing", label: "Missing Label", position: p })],
+					position: p,
+				}),
+			);
+			assert.strictEqual(renderHtml(tree), "<p>[^Missing Label]</p>\n");
+		});
+	});
+
+	describe("gfm: tagfilter", () => {
+		it("leaves the nine disallowed tags alone when the gfm option is off", () => {
+			// __test__/fixtures/gfm/spec-extensions.json example 652, gfm: false.
+			const tree = doc(
+				Paragraph.make({
+					children: [
+						Html.make({ value: "<strong>", position: p }),
+						Text.make({ value: " ", position: p }),
+						Html.make({ value: "<title>", position: p }),
+						Text.make({ value: " ", position: p }),
+						Html.make({ value: "<style>", position: p }),
+						Text.make({ value: " ", position: p }),
+						Html.make({ value: "<em>", position: p }),
+					],
+					position: p,
+				}),
+			);
+			assert.strictEqual(renderHtml(tree), "<p><strong> <title> <style> <em></p>\n");
+		});
+
+		it("escapes the leading < of the nine disallowed tags when the gfm option is on", () => {
+			// __test__/fixtures/gfm/spec-extensions.json example 652, gfm: true.
+			const tree = doc(
+				Paragraph.make({
+					children: [
+						Html.make({ value: "<strong>", position: p }),
+						Text.make({ value: " ", position: p }),
+						Html.make({ value: "<title>", position: p }),
+						Text.make({ value: " ", position: p }),
+						Html.make({ value: "<style>", position: p }),
+						Text.make({ value: " ", position: p }),
+						Html.make({ value: "<em>", position: p }),
+					],
+					position: p,
+				}),
+			);
+			assert.strictEqual(renderHtml(tree, { gfm: true }), "<p><strong> &lt;title> &lt;style> <em></p>\n");
+		});
+
+		it("filters case-insensitively and in an html block, not just inline", () => {
+			assert.strictEqual(renderHtml(doc(Html.make({ value: "<XMP>", position: p })), { gfm: true }), "&lt;XMP>\n");
+			assert.strictEqual(renderHtml(doc(Html.make({ value: "<XMP>", position: p }))), "<XMP>\n");
+		});
+
+		it("filters a closing tag form too", () => {
+			assert.strictEqual(applyTagfilter("</script>"), "&lt;/script>");
+		});
+
+		it("leaves a tag that merely starts with a disallowed name alone", () => {
+			// "xmpp" is not "xmp" followed by a boundary character.
+			assert.strictEqual(applyTagfilter("<xmpp>"), "<xmpp>");
+		});
+
+		it("leaves an allowed tag alone", () => {
+			assert.strictEqual(applyTagfilter("<random />"), "<random />");
 		});
 	});
 });
