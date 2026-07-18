@@ -88,6 +88,40 @@ never exceed the walker's cap, so the walker's guard fires only on a hand-built
 tree. Do not mis-flag equal caps as a defect in that shape, and do not demand a
 +8 offset where the two surfaces are independent rather than chained.
 
+## Algorithmic complexity is its own hardening class — the DoS vector can be time, not stack
+
+Depth caps close the stack-overflow vector. Some grammars have a second,
+independent vector: **superlinear parse time on small, flat input** — no
+recursion, no nesting, nothing for a depth guard to see. Markdown is the
+canonical case: nested strong emphasis (`*a **a **a …`), thousands of
+unmatched emphasis openers or link brackets, and repeated `[ (](` patterns
+drive a naive matcher quadratic (or worse) while staying a few bytes wide and
+one level deep. yaml's alias-expansion bomb — bounded by a materialized-node
+budget (`AliasCountExceeded`), not a depth cap — is the same lesson from the
+memory side: **amplification vectors are orthogonal to nesting depth.**
+
+Two consequences for a port:
+
+- **The guard is the algorithm, not a limit constant.** CommonMark's
+  delimiter-stack emphasis algorithm and its "openers and closers multiple
+  of 3" rule exist precisely to make pathological delimiter runs linear; an
+  engine that "simplifies" them re-opens the vector. Port the algorithm
+  faithfully — there is no bolt-on cap that fixes a quadratic matcher.
+- **The regression instrument is a vendored pathological corpus with
+  timeout assertions.** cmark's `pathological_tests.py` is the pattern:
+  ~25 named cases (`"*a **a" * 65000`, 65k mismatched openers/closers, deep
+  bracket nests, reference collisions), each asserting output *shape* via
+  regex under a wall-clock timeout — no HTML fixture needed. Vendor it and
+  run it as its own mandatory suite.
+
+**A green conformance corpus says nothing about complexity.** Every
+conformance example is small and well-formed; an engine can pass all of them
+and still hang on twenty repeated bytes. For any grammar whose spec (or whose
+reference implementation's test tree) ships pathological cases, treat that
+suite as a second, non-optional corpus — and where none exists, write the
+hostile generator yourself (`"[".repeat(65000)`-style) before declaring the
+engine hardened.
+
 ## Numeric bound guards — `if (n < LIMIT)` silently admits `NaN` and non-integers
 
 The guard on a **numeric option** (a `maxDepth`, a size cap, an iteration bound)

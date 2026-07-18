@@ -145,11 +145,25 @@ inspect the ORIGINAL defect value.
 The no-Fail-reason line is the discriminating assertion — without it, an
 implementation that wraps the defect in a typed error still passes.
 
-**`Exit.isFailure` inside `assert.isTrue(...)` does not narrow.** Verified under
-tsgo: `assert.isTrue(Exit.isFailure(exit))` leaves `exit` at the full union, so
-the next line's `exit.cause` is a type error. Use `if (Exit.isFailure(exit)) { … }`
-as above, or go through `Exit.getCause(exit)` → `Option<Cause<E>>` and branch on
-`Option.isSome`.
+**Assert helpers are never type predicates — narrow with a real `if`.** The
+rule is general, not Exit-specific: `assert.isTrue(guard(x))` leaves `x` at
+the full union for ANY guard, because the assertion signature takes a
+`boolean`, not a type predicate. Verified under tsgo for `Exit.isFailure`:
+`assert.isTrue(Exit.isFailure(exit))` leaves `exit` unnarrowed, so the next
+line's `exit.cause` is a type error — use `if (Exit.isFailure(exit)) { … }`
+as above, or go through `Exit.getCause(exit)` → `Option<Cause<E>>` and branch
+on `Option.isSome`. The same trap applies to `Result.isSuccess`/
+`Result.isFailure` on the kit's pure Result-returning APIs
+(`Jsonc.parseResult` today; more as the Result-parity pattern spreads):
+
+```ts
+const result = Jsonc.parseResult(text);
+// assert.isTrue(Result.isSuccess(result)) — does NOT narrow; result.success below fails tsgo
+if (!Result.isSuccess(result)) {
+  assert.fail("expected a successful parse");
+}
+assert.deepStrictEqual(result.success, { port: 3000 });
+```
 
 ## Providing test / mock layers
 
