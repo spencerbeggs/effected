@@ -40,16 +40,33 @@ when you only need the decoded type.
 | `TaggedError` / `Data.TaggedError` | `TaggedErrorClass` (schema-backed, yieldable, serializable, `instanceof Error`) |
 | `decodeUnknown` | `decodeUnknownEffect` |
 | `decode` | `decodeEffect` |
-| `decodeUnknownEither` | `decodeUnknownExit` |
-| `decodeEither` | `decodeExit` |
+| `decodeUnknownEither` | `decodeUnknownResult` (`Result` is v4's `Either`) or `decodeUnknownExit` |
+| `decodeEither` | `decodeResult` or `decodeExit` |
 | `encodeUnknown` | `encodeUnknownEffect` |
 | `encode` | `encodeEffect` |
-| `encodeUnknownEither` | `encodeUnknownExit` |
-| `encodeEither` | `encodeExit` |
+| `encodeUnknownEither` | `encodeUnknownResult` or `encodeUnknownExit` |
+| `encodeEither` | `encodeResult` or `encodeExit` |
 | `equivalence` | `toEquivalence` |
 | `arbitrary` | `toArbitrary` |
 | `pretty` | `toFormatter` |
 | `standardSchemaV1` | `toStandardSchemaV1` |
+
+**The decode/encode rows are NOT a family sweep.** Only the Effect-returning
+base names (`decode`/`decodeUnknown`/`encode`/`encodeUnknown` → `*Effect`) and
+the `*Either` variants (→ `*Result` / `*Exit`) are forced renames. The
+`*Sync` / `*Option` / `*Promise` variants **survive unchanged**, typed and
+`Unknown` flavors both — `decodeSync`, `decodeUnknownSync`, `encodeSync`,
+`encodeUnknownSync`, and friends (verified beta.98, `Schema.d.ts:1377–1738`).
+Do not "migrate" `encodeSync` to `encodeUnknownSync`: both exist, and they
+differ by input type — `encodeSync` takes the typed `S["Type"]`,
+`encodeUnknownSync` takes `unknown`. Prefer `encodeSync` (and `decodeSync`)
+when the input is already a typed value; reach for the `*Unknown*` form only at
+a genuinely untyped boundary.
+
+One trap inside the renamed set: `Schema.decode` and `Schema.encode` still
+**exist** in v4 — as transformation combinators taking a `SchemaGetter` pair
+(`St.pipe(Schema.decode({ decode, encode }))`), not parsers. Reaching for the
+v3 parser meaning does not get `undefined`; it gets a different function.
 
 `*FromSelf` suffix dropped (the un-suffixed name is now the self schema):
 `DateFromSelf`→`Date`, `DurationFromSelf`→`Duration`, `ChunkFromSelf`→`Chunk`,

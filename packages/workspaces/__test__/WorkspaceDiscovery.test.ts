@@ -1,9 +1,11 @@
-import { assert, describe, layer } from "@effect/vitest";
+import { assert, describe, it, layer } from "@effect/vitest";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import {
 	PackageNotFoundError,
 	WorkspaceDiscovery,
 	WorkspaceDiscoveryError,
+	WorkspaceInfo,
+	WorkspacePackage,
 	WorkspacePatternError,
 	WorkspaceRoot,
 	WorkspaceRootNotFoundError,
@@ -510,4 +512,150 @@ describe("WorkspaceDiscovery — an unreadable pnpm-workspace.yaml", () => {
 			}),
 		);
 	});
+});
+
+// ── the test double: stub ONE method, the derived surface answers consistently ──
+//
+// The motivating boilerplate (workspaces issue #109): `WorkspaceDiscoveryShape`
+// is seven methods wide, and every in-memory double used to hand-stub all of
+// them to satisfy tsc even when the test exercised one. `makeTest` fills the
+// rest — and derives the lookup methods from the EFFECTIVE `listPackages`, so
+// one stub yields a coherent workspace, not seven unrelated stubs.
+
+const utilsPackage = WorkspacePackage.make({
+	name: "@x/utils",
+	version: "1.0.0",
+	path: "/repo/packages/utils",
+	packageJsonPath: "/repo/packages/utils/package.json",
+	relativePath: "packages/utils",
+});
+
+const nestedPackage = WorkspacePackage.make({
+	name: "@x/utils-extra",
+	version: "1.0.0",
+	path: "/repo/packages/utils/extra",
+	packageJsonPath: "/repo/packages/utils/extra/package.json",
+	relativePath: "packages/utils/extra",
+});
+
+// Bound to a const: layerTest is a parameterized layer factory and layers
+// memoize by reference.
+const StubbedDiscovery = WorkspaceDiscovery.layerTest({
+	listPackages: () => Effect.succeed([utilsPackage, nestedPackage]),
+});
+
+describe("WorkspaceDiscovery.layerTest — one stubbed method", () => {
+	layer(StubbedDiscovery)((it) => {
+		it.effect("listPackages returns the stub", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const packages = yield* discovery.listPackages();
+				assert.deepStrictEqual(
+					packages.map((pkg) => pkg.name),
+					["@x/utils", "@x/utils-extra"],
+				);
+			}),
+		);
+
+		it.effect("getPackage derives from the stubbed list — hit and typed miss", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const found = yield* discovery.getPackage("@x/utils");
+				assert.strictEqual(found.relativePath, "packages/utils");
+
+				const miss = yield* Effect.flip(discovery.getPackage("@x/nope"));
+				assert.instanceOf(miss, PackageNotFoundError);
+				assert.deepStrictEqual(miss.available, ["@x/utils", "@x/utils-extra"]);
+			}),
+		);
+
+		it.effect("importerMap derives from the stubbed list", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const map = yield* discovery.importerMap();
+				assert.strictEqual(map.get("packages/utils")?.name, "@x/utils");
+				assert.strictEqual(map.size, 2);
+			}),
+		);
+
+		it.effect("resolveFile derives by LONGEST prefix, not first match", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const owner = yield* discovery.resolveFile("/repo/packages/utils/extra/src/index.ts");
+				assert.isTrue(Option.isSome(owner));
+				assert.strictEqual(Option.isSome(owner) ? owner.value.name : "", "@x/utils-extra");
+
+				const outside = yield* discovery.resolveFile("/elsewhere/file.ts");
+				assert.isTrue(Option.isNone(outside));
+			}),
+		);
+
+		it.effect("resolveFiles derives distinct owners sorted by name", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const owners = yield* discovery.resolveFiles([
+					"/repo/packages/utils/extra/src/index.ts",
+					"/repo/packages/utils/src/a.ts",
+					"/repo/packages/utils/src/b.ts",
+				]);
+				assert.deepStrictEqual(
+					owners.map((pkg) => pkg.name),
+					["@x/utils", "@x/utils-extra"],
+				);
+			}),
+		);
+	});
+});
+
+// Bound to a const — see StubbedDiscovery.
+const EmptyDiscovery = WorkspaceDiscovery.layerTest();
+
+describe("WorkspaceDiscovery.makeTest — the empty-workspace defaults", () => {
+	layer(EmptyDiscovery)((it) => {
+		it.effect("list-shaped methods succeed empty and refresh is a no-op", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				assert.deepStrictEqual(yield* discovery.listPackages(), []);
+				assert.strictEqual((yield* discovery.importerMap()).size, 0);
+				assert.deepStrictEqual(yield* discovery.resolveFiles(["/repo/a.ts"]), []);
+				assert.isTrue(Option.isNone(yield* discovery.resolveFile("/repo/a.ts")));
+				yield* discovery.refresh();
+			}),
+		);
+
+		it.effect("getPackage fails with the service's own typed error, never a fabricated one", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const miss = yield* Effect.flip(discovery.getPackage("@x/anything"));
+				assert.instanceOf(miss, PackageNotFoundError);
+				assert.deepStrictEqual(miss.available, []);
+			}),
+		);
+
+		it.effect("info() DIES unless stubbed — an unstubbed call is a wiring mistake", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				// No honest default WorkspaceInfo exists (a fabricated root would leak
+				// into consumer path logic), so the default is a defect, not a typed
+				// failure a test could accidentally swallow.
+				const exit = yield* Effect.exit(discovery.info());
+				assert.isTrue(Exit.isFailure(exit));
+				assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause));
+			}),
+		);
+	});
+});
+
+describe("WorkspaceDiscovery.makeTest — overrides win over derivation", () => {
+	it.effect("a stubbed info() succeeds and the shape needs nothing else", () =>
+		Effect.gen(function* () {
+			// The shape value directly — no layer needed to use a double inline.
+			const double = WorkspaceDiscovery.makeTest({
+				info: () => Effect.succeed(WorkspaceInfo.make({ root: "/repo", patterns: ["packages/*"] })),
+			});
+			const info = yield* double.info();
+			assert.strictEqual(info.root, "/repo");
+			assert.deepStrictEqual(yield* double.listPackages(), []);
+		}),
+	);
 });

@@ -151,7 +151,7 @@ const options = {
   path, // node:path satisfies SyncPath verbatim
 };
 
-const root = findWorkspaceRootSync(options);
+const root = findWorkspaceRootSync(process.cwd(), options);
 const packages = root === null ? [] : getWorkspacePackagesSync(root, options);
 // root: the workspace root path, or null when none is found above the cwd
 // packages: the discovered workspace packages, empty when there is no root
@@ -180,12 +180,38 @@ const program = Effect.gen(function* () {
 
 `WorkspaceRootNotFoundError`, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError`, `WorkspaceManifestError`, `PackageManagerDetectionError`, `CatalogAssemblyError`, `LockfileReadError`, `CyclicDependencyError` and `ChangeDetectionError` each name one thing that can actually go wrong, and each method's error channel is narrowed to the ones it can produce. `CatalogAssemblyError` is defined in `@effected/npm`, beside the resolver contract that names it in its channel — import it from there. Change detection additionally surfaces `@effected/git`'s typed git errors, such as `NotARepositoryError`.
 
+## Testing
+
+Every service here can be replaced with `Layer.succeed` and a hand-built value, and `WorkspaceDiscovery` ships that pattern ready-made: `WorkspaceDiscovery.layerTest(overrides)` provides an in-memory double where a test stubs only the methods it exercises. The defaults model an empty workspace, and the derived methods run over the effective `listPackages`, so stubbing that one method keeps `getPackage`, `importerMap` and `resolveFile` answering consistently:
+
+```ts
+import { WorkspaceDiscovery, WorkspacePackage } from "@effected/workspaces";
+import { Effect } from "effect";
+
+// Bind to a const — layers memoize by reference.
+const TestDiscovery = WorkspaceDiscovery.layerTest({
+  listPackages: () =>
+    Effect.succeed([
+      WorkspacePackage.make({
+        name: "@my-org/utils",
+        version: "1.0.0",
+        path: "/repo/packages/utils",
+        packageJsonPath: "/repo/packages/utils/package.json",
+        relativePath: "packages/utils",
+      }),
+    ]),
+});
+// program.pipe(Effect.provide(TestDiscovery))
+```
+
+A name miss in the derived `getPackage` fails with the service's own typed `PackageNotFoundError`, exactly as the live implementation does. Two deliberate edges: `info()` has no honest default (a fabricated root path would leak into consumer path logic), so it dies with an explanatory defect unless stubbed, and the derived file-ownership methods assume POSIX paths, so pass your own `resolveFile` for win32 fixtures. `WorkspaceDiscovery.makeTest(overrides)` returns the bare service shape when you want the double without a layer.
+
 ## Features
 
 - `Workspaces.layer` / `Workspaces.layerWithGit` / `Workspaces.resolvers` — the composite layers, split on requirements rather than feature flags: a filesystem, a filesystem plus a subprocess, and the two `@effected/npm` resolver contracts.
 - `Workspaces.resolverLayer` / `Workspaces.resolveManifest` — the one-call manifest-resolution path: a fresh, unmemoized layer per call so root discovery follows your cwd, and one-shot resolution of a whole `Manifest` against the real workspace.
 - `WorkspaceRoot` — root discovery from a `cwd`, over `WORKSPACE_MARKERS`.
-- `WorkspaceDiscovery` — package enumeration with a bounded descent for segment-crossing `packages/**` patterns, plus per-package lookup.
+- `WorkspaceDiscovery` — package enumeration with a bounded descent for segment-crossing `packages/**` patterns, per-package lookup and the `makeTest` / `layerTest` in-memory test doubles.
 - `WorkspacePackage` — a deliberately tolerant manifest model, so one member with an odd version cannot fail discovery for the whole repo. `manifestRecord` keeps the as-read `package.json` for tolerant access to fields outside the typed slice without a second read; `WorkspacePackage.manifest(pkg)` re-reads and is the opt-in bridge to `@effected/package-json`'s strict `Package`.
 - `DependencyGraph` — a value class over discovered packages: `levels()` for parallel build tiers, the flattened topological order, and `CyclicDependencyError` when there isn't one.
 - `PackageManagerDetector` — npm, pnpm, yarn or bun from lockfiles and the `packageManager` field.

@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Result, Schema } from "effect";
 import {
+	Yaml,
 	YamlAlias,
 	YamlDocument,
 	YamlMap,
@@ -95,6 +96,32 @@ describe("YamlDocument", () => {
 				}
 				assert.instanceOf(result.failure, YamlStringifyError);
 				assert.strictEqual(result.failure.diagnostics[0]?.code, "NestingDepthExceeded");
+			}),
+		);
+
+		it.effect("lineWidth is inert on the node path — pins the gap documented for #105", () =>
+			Effect.gen(function* () {
+				// Column-based folding exists only on the value path; the node path
+				// threads lineWidth into its render context and never reads it. That
+				// gap is documented on YamlDocument#stringify (with the
+				// Yaml.stringify(doc.toValue(), options) workaround) and on
+				// YamlStringifyOptions.lineWidth. If node-path folding ever lands,
+				// this test MUST fail so those docs are rewritten with it rather
+				// than silently drifting.
+				const long = "the quick brown fox jumps over the lazy dog and keeps running far away into the sunset";
+				const doc = yield* YamlDocument.parse(`text: ${long}\n`);
+
+				const viaNodePath = yield* doc.stringify({ lineWidth: 30 });
+				// Inert: the long scalar stays on one physical line, far past column 30.
+				assert.isTrue(viaNodePath.split("\n").some((line) => line.length > 40));
+
+				// The documented workaround folds: render the plain value instead.
+				const viaValuePath = yield* Yaml.stringify(doc.toValue(), { lineWidth: 30 });
+				const foldedLines = viaValuePath.trimEnd().split("\n");
+				assert.isAbove(foldedLines.length, 1);
+				for (const line of foldedLines) assert.isAtMost(line.length, 40);
+				// The fold is semantically transparent: both spellings re-parse alike.
+				assert.deepStrictEqual(yield* Yaml.parse(viaValuePath), doc.toValue());
 			}),
 		);
 	});

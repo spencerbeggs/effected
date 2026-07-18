@@ -177,6 +177,8 @@ The **explicit-key compact-sequence branch is deliberately untouched** by the op
 
 **The default is `0`, and — as with `indentSequences` — the default is the whole decision.** `0` (and any value `<= 0`) means never wrap. The change lowered the default from `80` to `0`, which is byte-compat-preserving precisely *because* the option was inert: the historic behavior was no-wrap, so defaulting to `0` keeps default output and any explicit `lineWidth: 0` byte-identical, while a positive value opts into folding. The compliance harness stays at 100% for exactly this reason — nothing folds unless a caller asks.
 
+**Value-path-only scope is the documented contract, not a gap** ([issue #105](https://github.com/spencerbeggs/effected/issues/105), resolved 2026-07-17 by documentation — deliberately not by implementing node-path folding). `Yaml.stringify` / `Yaml.stringifySync` are the only entry points that fold; the document/node path (`YamlDocument.stringify` and the `YamlFormat` helpers built on it) threads `lineWidth` into its render context but never reads it, and the schema factories (`fromString` / `schema` / `YamlFromString`) encode with default stringify options, so their output never folds either. The TSDoc on `YamlStringifyOptions.lineWidth` and `YamlDocument.stringify` states the boundary and steers node-path callers that need folding to `Yaml.stringify(doc.toValue(), options)`, and a regression test pins the node path's inertness — so folding cannot land there without forcing the docs to update.
+
 ## Multi-document support
 
 Yaml-specific surface with no jsonc analog. YAML's `---`/`...` document-stream model gets first-class support: `Yaml.parseAll` / `Yaml.allFromString`, and `YamlDocument.parseAll` alongside the single-document `YamlDocument.parse` / `schema`. This is genuinely yaml's own concern (anchors, aliases, pairs-vs-properties, multi-document); no shared tree/document abstraction is extracted across jsonc and yaml — the trees differ enough that a shared abstraction would be premature and leaky.
@@ -219,10 +221,6 @@ The vendored yaml-test-suite is committed as plain files (nested `.git` stripped
 - **Schema-pipeline tests**: `Yaml.schema(Target)` decode/encode, `allFromString` multi-document decode, and the boundary guarantee that decode failures surface as `YamlParseError` (never `SchemaError`) through the `parse`/`parseAll` contract.
 
 Known limitation, the same one the source dialect shipped with: per-node comments (`pair.comment` etc.) are captured by the composer but never re-emitted by the stringifier — only a document-level leading comment round-trips. Closing it is future work if a consumer needs full comment round-tripping.
-
-## Open items
-
-- **`lineWidth` folding is wired into the value path only** ([issue #105](https://github.com/spencerbeggs/effected/issues/105)). `Yaml.stringify` folds; `YamlDocument.stringify` — the AST/node path (`stringifyNodeLines`) — still treats `lineWidth` as inert, so the two stringify entry points are currently inconsistent. Closing it means teaching the node path the same `foldRenderedScalar` integration the value path already carries.
 
 ## Build
 

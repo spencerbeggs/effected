@@ -196,8 +196,11 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
 
 - **Mechanical renames** (safe): `annotations`→`annotate`,
   `typeSchema`→`toType`, `encodedSchema`→`toEncoded`, `asSchema`→`revealCodec`,
-  `decode`/`encode` family → `decodeEffect`/`decodeExit`/… (`*Either` variants
-  became `*Exit`, not `*Result`), `equivalence`/`arbitrary`/`pretty` →
+  Effect-returning `decode`/`decodeUnknown`/`encode`/`encodeUnknown` →
+  `*Effect` and `*Either` → `*Result`/`*Exit` — NOT a family sweep: the
+  `*Sync`/`*Option`/`*Promise` variants (`encodeSync`, `decodeUnknownSync`, …)
+  survive unchanged, and typed `encodeSync` beats `encodeUnknownSync` when the
+  input is already `S["Type"]` — `equivalence`/`arbitrary`/`pretty` →
   `toEquivalence`/`toArbitrary`/`toFormatter`, `TaggedError`→`TaggedErrorClass`,
   `*FromSelf` suffix dropped (`DateFromSelf`→`Date`, …) — EXCEPT `Redacted`
   (section 2).

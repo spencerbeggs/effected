@@ -32,7 +32,7 @@ Pure tier — no IO anywhere. `peerDependencies`: `effect` only (`catalog:effect
 
 Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept); every non-entrypoint module imports explicitly from defining modules — no barrels. See `src/` for the full set:
 
-- `Jsonc.ts` — the facade: statics `parse`, `parseTree`, `stripComments`, `equals`, `equalsValue`, the schema factories `schema(Target, options?)` / `fromString(options?)` and the `JsoncFromString` default-options schema. Owns `JsoncParseOptions`, `JsoncParseError`, `JsoncParseErrorDetail` and the `JsoncParseErrorCode` literal set.
+- `Jsonc.ts` — the facade: statics `parse`, `parseResult`, `parseTree`, `stripComments`, `equals`, `equalsValue`, the schema factories `schema(Target, options?)` / `fromString(options?)` and the `JsoncFromString` default-options schema. Owns `JsoncParseOptions`, `JsoncParseError`, `JsoncParseErrorDetail` and the `JsoncParseErrorCode` literal set.
 - `JsoncNode.ts` — the recursive AST node (`Schema.Class` + `Schema.suspend`, no parent pointers). Owns `JsoncNodeType` and the `JsoncPath` / `JsoncSegment` type aliases.
 - `JsoncEdit.ts` — the edit `Schema.Class` plus `applyAll(text, edits)`. Owns the shared edit vocabulary `JsoncRange` and `JsoncFormattingOptions`.
 - `JsoncFormatter.ts` — `format` and the `formatToString` convenience.
@@ -48,6 +48,7 @@ The package-wide rule, and the template for `@effected/yaml`: **pure synchronous
 
 - **Pure synchronous** (no `Effect`): node value extraction (`JsoncNode.toValue`), edit application (`JsoncEdit.applyAll`, `JsoncFormatter.formatToString`), formatting (`JsoncFormatter.format` — computing edits never fails), comment stripping (`Jsonc.stripComments`) and semantic equality (`Jsonc.equals` / `equalsValue`).
 - **`Effect`** (real typed `E`): `Jsonc.parse`, `Jsonc.parseTree`, `JsoncModifier.modify` and the schema decode path.
+- **`Result`** (sync escape hatch): `Jsonc.parseResult` returns a v4 `Result<unknown, JsoncParseError>` for callers outside the Effect runtime — jsonc's counterpart to yaml's [`parseSync` posture](yaml.md#effect-wrapping-policy). `Jsonc.parse` is *defined in terms of it* (`Effect.fromResult` behind the named span), so the two variants cannot diverge; the `@remarks` steer Effect consumers to `parse` for the span.
 - **`Stream`** for the visitor: `JsoncVisitor.visit` returns `Stream<JsoncVisitorEvent>`, demand-driven and `Stream.take`-friendly; malformed input surfaces as error events in the union.
 
 `equals` / `equalsValue` are pure total booleans with a hardened contract: inputs with **any** parse errors compare unequal (return `false`) rather than comparing the recovery parser's best-effort output, so malformed input is never equal to anything. They run the recovery parser but short-circuit to `false` whenever either side produced parse errors, comparing recovered values only when both sides parsed cleanly.
@@ -61,6 +62,7 @@ Class-based DX throughout: statics and instance methods on the schema classes, s
 A namespace object of statics over the parser and schema layers, not a schema class.
 
 - `parse(text, options?)` → `Effect<unknown, JsoncParseError>` — error-recovery parsing that collects all parse-error details and fails once with the aggregate. Returns `unknown`, never `any`.
+- `parseResult(text, options?)` → `Result<unknown, JsoncParseError>` — the synchronous `Result` variant with identical error-recovery semantics; `parse` delegates to it (see [Effect-wrapping policy](#effect-wrapping-policy)).
 - `parseTree(text, options?)` → `Effect<Option<JsoncNode>, JsoncParseError>` — `Option.none()` for empty input, the aggregate error for malformed input.
 - `stripComments(text, replaceCh?)` → `string` — offset-preserving (replaces comment bytes with `replaceCh`, default space).
 - `equals` / `equalsValue` → `boolean` — key-order-independent for objects, order-sensitive for arrays, comments/formatting ignored.
@@ -133,7 +135,7 @@ There is **no shared-package extraction**: a possible later `@effected/text-edit
 
 ## Observability
 
-Per the observability standard, `Effect.fn("name")` at public *fallible* boundaries only: `parse`, `parseTree` and `modify`. Pure synchronous operations are not instrumented — no `Effect`, no span. `JsoncVisitor.visit` is **not** span-wrapped: stream construction is lazy and pure, with no clean `Effect.fn` boundary to attach a span to without forcing the stream into an effect it does not need. The library stays telemetry-agnostic — applications compose `@effect/opentelemetry` at the edge.
+Per the observability standard, `Effect.fn("name")` at public *fallible* boundaries only: `parse`, `parseTree` and `modify`. Pure synchronous operations are not instrumented — no `Effect`, no span. `parseResult` carries no span (it is not an Effect); `parse` keeps its `Jsonc.parse` span while delegating to it, so Effect consumers lose nothing by the delegation. `JsoncVisitor.visit` is **not** span-wrapped: stream construction is lazy and pure, with no clean `Effect.fn` boundary to attach a span to without forcing the stream into an effect it does not need. The library stays telemetry-agnostic — applications compose `@effect/opentelemetry` at the edge.
 
 ## API Extractor bases
 

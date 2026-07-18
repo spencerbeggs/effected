@@ -81,7 +81,6 @@ export {
 export { PackageStateSnapshot, WorkspaceStateSnapshot } from "./WorkspaceStateSnapshot.js";
 export { Workspaces, type WorkspacesOptions, type WorkspacesServices } from "./Workspaces.js";
 export {
-	type FindWorkspaceRootSyncOptions,
 	type GetWorkspacePackagesSyncOptions,
 	type SyncFileSystem,
 	type SyncPath,
