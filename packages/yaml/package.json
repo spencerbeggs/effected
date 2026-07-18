@@ -1,6 +1,6 @@
 {
 	"name": "@effected/yaml",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"private": true,
 	"description": "Zero-dependency YAML parsing, editing and formatting as Effect schemas.",
 	"keywords": ["yaml", "parser", "effect", "schema", "ast", "cst", "editing", "formatting", "effected"],

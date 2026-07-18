@@ -1,5 +1,13 @@
 # @effected/xdg
 
+## 0.1.3
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.1.2 | 0.1.3 |
+
 ## 0.1.2
 
 ### Dependencies

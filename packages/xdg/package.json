@@ -1,6 +1,6 @@
 {
 	"name": "@effected/xdg",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"private": true,
 	"description": "XDG Base Directory resolution for Effect: environment paths, app-namespaced directories, native OS conventions and config-file resolvers.",
 	"keywords": ["xdg", "basedir", "appdirs", "config", "paths", "effect", "effected"],
