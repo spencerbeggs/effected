@@ -4,9 +4,9 @@
 //
 // Port notes: this module owns the shared `heading` construct as well as the
 // ATX block start, because upstream's `blocks.heading` entry serves both
-// spellings. Task 7's setext start opens a `heading` block too and sets
-// `data.headingStyle` to "setext"; materialization reads that field, so
-// nothing here needs to change.
+// spellings. The setext start (`setextHeading.ts`) promotes a paragraph into
+// a `heading` block and sets `data.headingStyle` to "setext"; materialization
+// reads that field, so both spellings land on the same construct.
 //
 // The offset delta: upstream records only a start column for the heading and
 // lets the inline pass inherit it. Here the content run is pushed onto the

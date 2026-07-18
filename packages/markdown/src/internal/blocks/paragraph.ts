@@ -4,11 +4,14 @@
 //
 // Port notes: a paragraph has no block start of its own — the line loop opens
 // one for any line no other construct claimed, which is upstream's structure
-// too. Task 7 adds the link-reference-definition split to `finalize`; here it
-// is absent, so P1 Task 6 paragraphs keep their whole content.
+// too. The link-reference-definition split runs here rather than in the
+// document's finalize walk (see `linkReferenceDefinition.ts`), which is the
+// one structural difference: upstream defers it to a tree walk at the end,
+// this port does it as each paragraph closes.
 
 import { Paragraph } from "../../MarkdownNode.js";
 import type { BlockConstruct } from "../blockTypes.js";
+import { extractDefinitions } from "./linkReferenceDefinition.js";
 
 /** Paragraph: absorbs lines until a blank one, and contains nothing. */
 export const paragraphConstruct: BlockConstruct = {
@@ -16,11 +19,14 @@ export const paragraphConstruct: BlockConstruct = {
 	acceptsLines: true,
 	canContain: () => false,
 	continue: (scanner) => (scanner.blank ? 1 : 0),
+	finalize: (_scanner, block) => {
+		extractDefinitions(block);
+	},
 	materialize: (block, _children, context) => {
 		const inline = context.inlineSlice(block);
 		// A paragraph whose content trimmed away renders nothing; dropping it
-		// keeps `<p></p>` out of the tree. Task 7's definition split is the
-		// case that makes this reachable.
+		// keeps `<p></p>` out of the tree. A paragraph that held only link
+		// reference definitions is the case that makes this reachable.
 		if (inline.text.length === 0) {
 			return undefined;
 		}

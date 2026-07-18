@@ -24,6 +24,7 @@ import type {
 	HeadingDepth,
 	HeadingStyle,
 	ListDelimiter,
+	ListItem,
 	Paragraph,
 	PhrasingContent,
 	Position,
@@ -32,9 +33,11 @@ import type {
 } from "../MarkdownNode.js";
 
 /**
- * The block constructs the engine knows. Keys of a dialect's construct table;
- * `definition` is absent because definitions are produced during a
- * paragraph's finalize rather than opened as a block.
+ * The block constructs the engine knows. Keys of a dialect's construct table.
+ *
+ * `definition` has no block start of its own: link reference definitions are
+ * split out of a paragraph's content when it closes, and spliced into the
+ * tree ahead of what is left of that paragraph.
  */
 export type BlockType =
 	| "document"
@@ -45,7 +48,8 @@ export type BlockType =
 	| "heading"
 	| "thematicBreak"
 	| "code"
-	| "html";
+	| "html"
+	| "definition";
 
 /**
  * A run of characters copied verbatim from the source into a leaf block's
@@ -116,6 +120,23 @@ export interface BlockData {
 	htmlBlockType?: number;
 	/** List and list-item bookkeeping. */
 	listData?: ListData;
+	/** mdast's `spread`, computed for a list and each of its items at finalize. */
+	spread?: boolean;
+	/** A split-out link reference definition (see {@link BlockType}). */
+	definition?: DefinitionData;
+}
+
+/** A parsed link reference definition, awaiting materialization. */
+export interface DefinitionData {
+	/** The case-folded lookup key. */
+	readonly key: string;
+	/** mdast's `identifier`: the normalized label, lowercased. */
+	readonly identifier: string;
+	/** mdast's `label`: the raw label text. */
+	readonly label: string;
+	/** The decoded destination — never percent-encoded (`references.ts`). */
+	readonly url: string;
+	readonly title?: string;
 }
 
 /** A list marker's parsed shape, upstream's `_listData`. */
@@ -147,6 +168,11 @@ export interface BlockNode {
 	endOffset: number;
 	startLine: number;
 	endLine: number;
+	/**
+	 * Distance from the document, which is depth 0. Recorded at open time so
+	 * the nesting guard is a comparison rather than a walk up the parents.
+	 */
+	readonly depth: number;
 	readonly data: BlockData;
 }
 
@@ -206,14 +232,33 @@ export interface BlockScanner {
 	closeUnmatchedBlocks(): void;
 	/** Open a block of `type` as a child of the tip, starting at `offsetInLine`. */
 	addChild(type: BlockType, offsetInLine: number): BlockNode;
+	/**
+	 * Rewind the scan position, upstream's direct `parser.offset`/
+	 * `parser.column` assignment in `parseListMarker`. Deliberately does NOT
+	 * clear the partially-consumed-tab flag: upstream's assignment does not
+	 * either, and the caller re-establishes it on the next `advanceOffset`.
+	 */
+	setScanPosition(offset: number, column: number): void;
+	/**
+	 * Override the length the next `finalize` treats the current line as
+	 * having — upstream's `parser.lastLineLength` write in the closing-fence
+	 * path, where the block ends mid-line rather than at its end.
+	 */
+	setLastLineLength(length: number): void;
+	/**
+	 * Swap `block` for a fresh block of `type` carrying its position, content
+	 * and segments, and make it the tip. Upstream's
+	 * `insertAfter` + `unlink` pair in the setext-heading start.
+	 */
+	replaceBlock(block: BlockNode, type: BlockType): BlockNode;
 	/** Close `block`, ending it at the end of `lineNumber`. */
 	finalizeBlock(block: BlockNode, lineNumber: number): void;
 	/** Append the rest of the current line to the tip's content. */
 	addLine(): void;
 }
 
-/** What a construct materializes into: a flow node, or the document's root. */
-export type MaterializedBlock = Root | FlowContent;
+/** What a construct materializes into: flow content, a list item, or the root. */
+export type MaterializedBlock = Root | FlowContent | ListItem;
 
 /** Services a construct needs to turn its {@link BlockNode} into a real node. */
 export interface MaterializeContext {
@@ -246,10 +291,18 @@ export interface BlockConstruct {
 	 */
 	materialize(
 		block: BlockNode,
-		children: ReadonlyArray<FlowContent>,
+		children: ReadonlyArray<MaterializedBlock>,
 		context: MaterializeContext,
 	): MaterializedBlock | undefined;
 }
+
+/** Narrow materialized children to the flow content most constructs contain. */
+export const flowChildren = (children: ReadonlyArray<MaterializedBlock>): ReadonlyArray<FlowContent> =>
+	children.filter((child): child is FlowContent => child.type !== "root" && child.type !== "listItem");
+
+/** Narrow materialized children to the list items a list contains. */
+export const listItemChildren = (children: ReadonlyArray<MaterializedBlock>): ReadonlyArray<ListItem> =>
+	children.filter((child): child is ListItem => child.type === "listItem");
 
 /** One entry of a dialect's ordered block-start table. */
 export interface BlockStart {
@@ -265,8 +318,9 @@ export interface BlockDialect {
 }
 
 /** Open a fresh {@link BlockNode}. */
-export const makeBlockNode = (type: BlockType, startOffset: number, startLine: number): BlockNode => ({
+export const makeBlockNode = (type: BlockType, startOffset: number, startLine: number, depth = 0): BlockNode => ({
 	type,
+	depth,
 	parent: undefined,
 	children: [],
 	open: true,

@@ -3,10 +3,10 @@
 // License: BSD-2-Clause
 //
 // Port notes: upstream's `document` finalize runs
-// `removeLinkReferenceDefinitions`, which strips definitions out of the tree.
-// This package keeps definitions as nodes (the design's third port delta), so
-// that step becomes Task 7's paragraph finalize and this construct's finalize
-// is a no-op.
+// `removeLinkReferenceDefinitions`, a whole-tree walk that strips definitions
+// out. This package keeps definitions as nodes (the design's third port
+// delta) and splits them out as each paragraph closes
+// (`linkReferenceDefinition.ts`), so this construct's finalize is a no-op.
 
 import { Root } from "../../MarkdownNode.js";
 import type { BlockConstruct } from "../blockTypes.js";

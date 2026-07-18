@@ -8,16 +8,19 @@
 // GFM (P2) and a future `obsidian` dialect land as new construct modules with
 // no change to any public API.
 //
-// THE ORDER OF `starts` IS THE ALGORITHM. Upstream's order is blockquote, ATX
-// heading, fenced code, HTML block, setext heading, thematic break, list item,
-// indented code. P1 Task 6 registers the three it implements at their
-// upstream positions; Task 7 inserts the rest into the gaps, it does not
-// append them.
+// THE ORDER OF `starts` IS THE ALGORITHM, and it is upstream's order exactly.
 
 import { atxHeadingStart, headingConstruct } from "./blocks/atxHeading.js";
+import { blockquoteConstruct, blockquoteStart } from "./blocks/blockquote.js";
+import { codeConstruct } from "./blocks/code.js";
 import { documentConstruct } from "./blocks/document.js";
-import { codeConstruct, indentedCodeStart } from "./blocks/indentedCode.js";
+import { fencedCodeStart } from "./blocks/fencedCode.js";
+import { htmlBlockConstruct, htmlBlockStart } from "./blocks/htmlBlock.js";
+import { indentedCodeStart } from "./blocks/indentedCode.js";
+import { definitionConstruct } from "./blocks/linkReferenceDefinition.js";
+import { listConstruct, listItemConstruct, listItemStart } from "./blocks/list.js";
 import { paragraphConstruct } from "./blocks/paragraph.js";
+import { setextHeadingStart } from "./blocks/setextHeading.js";
 import { thematicBreakConstruct, thematicBreakStart } from "./blocks/thematicBreak.js";
 import type { BlockConstruct, BlockDialect, BlockType } from "./blockTypes.js";
 
@@ -33,19 +36,24 @@ const constructTable = (constructs: ReadonlyArray<BlockConstruct>): ReadonlyMap<
 const commonmarkDialect: BlockDialect = {
 	constructs: constructTable([
 		documentConstruct,
+		blockquoteConstruct,
+		listConstruct,
+		listItemConstruct,
 		paragraphConstruct,
 		headingConstruct,
 		thematicBreakConstruct,
 		codeConstruct,
+		htmlBlockConstruct,
+		definitionConstruct,
 	]),
 	starts: [
-		// blockquote — Task 7
+		blockquoteStart,
 		atxHeadingStart,
-		// fencedCode — Task 7
-		// htmlBlock — Task 7
-		// setextHeading — Task 7
+		fencedCodeStart,
+		htmlBlockStart,
+		setextHeadingStart,
 		thematicBreakStart,
-		// listItem — Task 7
+		listItemStart,
 		indentedCodeStart,
 	],
 };

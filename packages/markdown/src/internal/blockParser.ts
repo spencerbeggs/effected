@@ -28,10 +28,11 @@
 // Imports node classes from `../MarkdownNode.js` (the sanctioned exception to
 // the cycle firewall) and nothing else public.
 
-import type { FlowContent, Heading, Paragraph, Root } from "../MarkdownNode.js";
+import type { Definition, Heading, Paragraph, Root } from "../MarkdownNode.js";
 import { Point, Position } from "../MarkdownNode.js";
 import type { MarkdownDialect } from "./blockRegistry.js";
 import { blockDialect } from "./blockRegistry.js";
+import { isHtmlBlockEnd } from "./blocks/htmlBlock.js";
 import type {
 	BlockConstruct,
 	BlockDialect,
@@ -45,6 +46,8 @@ import type {
 } from "./blockTypes.js";
 import { makeBlockNode } from "./blockTypes.js";
 import type { RawDiagnostic } from "./carriers.js";
+import { GuardExceeded } from "./carriers.js";
+import { MAX_NESTING_DEPTH } from "./limits.js";
 import { LineIndex } from "./lineIndex.js";
 import type { SourceLine } from "./preprocess.js";
 import { columnsToNextTabStop, preprocessLines } from "./preprocess.js";
@@ -61,6 +64,16 @@ export interface BlockPassResult {
 	readonly rawInlines: ReadonlyArray<RawInlineSlice>;
 	/** Non-fatal engine diagnostics; the facade materializes them. */
 	readonly carriers: ReadonlyArray<RawDiagnostic>;
+	/**
+	 * Every {@link Definition} in the tree, keyed by its case-folded label,
+	 * first definition winning.
+	 *
+	 * The definitions stay in `root` as well — this map is a lookup index
+	 * over them, not a place they were moved to. References are emitted
+	 * unresolved, so whoever resolves them (the inline pass, a renderer, a
+	 * consumer) does it against this.
+	 */
+	readonly refmap: ReadonlyMap<string, Definition>;
 }
 
 class BlockParser implements BlockScanner {
@@ -210,11 +223,54 @@ class BlockParser implements BlockScanner {
 			this.finalizeBlock(this.tip, this.lineNumber - 1);
 		}
 
-		const child = makeBlockNode(type, this.lineStart + offsetInLine, this.lineNumber);
-		child.parent = this.tip;
-		this.tip.children.push(child);
+		const parent = this.tip;
+		const depth = parent.depth + 1;
+		if (depth > MAX_NESTING_DEPTH) {
+			// The hardening guard. Container nesting is the block pass's only
+			// unbounded recursion surface — the line loop itself is iterative —
+			// and materialization walks whatever this builds, so refusing here
+			// is what keeps the walk inside the stack. The facade materializes
+			// the typed error; the engine only ever throws the raw carrier.
+			throw new GuardExceeded("NestingDepthExceeded", MAX_NESTING_DEPTH, depth, this.lineStart + offsetInLine);
+		}
+
+		const child = makeBlockNode(type, this.lineStart + offsetInLine, this.lineNumber, depth);
+		child.parent = parent;
+		parent.children.push(child);
 		this.tipNode = child;
 		return child;
+	}
+
+	setScanPosition(offset: number, column: number): void {
+		this.offset = offset;
+		this.column = column;
+	}
+
+	setLastLineLength(length: number): void {
+		this.lastLineLength = length;
+	}
+
+	replaceBlock(block: BlockNode, type: BlockType): BlockNode {
+		const parent = block.parent;
+		const replacement = makeBlockNode(type, block.startOffset, block.startLine, block.depth);
+		replacement.parent = parent;
+		replacement.stringContent = block.stringContent;
+		replacement.segments.push(...block.segments);
+		replacement.endOffset = block.endOffset;
+		replacement.endLine = block.endLine;
+
+		if (parent !== undefined) {
+			const at = parent.children.indexOf(block);
+			if (at === -1) {
+				parent.children.push(replacement);
+			} else {
+				parent.children[at] = replacement;
+			}
+		}
+
+		block.open = false;
+		this.tipNode = replacement;
+		return replacement;
 	}
 
 	closeUnmatchedBlocks(): void {
@@ -327,16 +383,24 @@ class BlockParser implements BlockScanner {
 
 		// Whatever is left at the scan position is text; give it to a block.
 		if (!this.allClosed && !this.blank && this.tip.type === "paragraph") {
-			// Lazy paragraph continuation. Task 7 completes container laziness;
-			// with no containers registered yet this arm is only reachable once
-			// blockquotes and lists exist.
+			// Lazy paragraph continuation: a line that failed to match the open
+			// containers, but is non-blank and lands on an open paragraph,
+			// belongs to that paragraph anyway — and crucially the unmatched
+			// containers are NOT closed, because the paragraph is still inside
+			// them. That is why this arm skips `closeUnmatchedBlocks` entirely.
 			this.addLine();
 		} else {
 			this.closeUnmatchedBlocks();
 
 			if (this.constructOf(container.type).acceptsLines) {
 				this.addLine();
-				// Task 7: the HTML-block end condition is checked here.
+				// An HTML block of type 1 through 5 ends on the line that
+				// carries its closing pattern, which is only knowable after
+				// that line has been appended.
+				if (container.type === "html" && isHtmlBlockEnd(container, this.currentLine.slice(this.offset))) {
+					this.lastLineLength = this.currentLine.length;
+					this.finalizeBlock(container, this.lineNumber);
+				}
 			} else if (this.offset < this.currentLine.length && !this.blank) {
 				container = this.addChild("paragraph", this.offset);
 				this.advanceNextNonspace();
@@ -362,18 +426,28 @@ class BlockParser implements BlockScanner {
 
 	/**
 	 * Depth-first materialization. Recursion depth is container nesting depth,
-	 * which Task 7's `MAX_NESTING_DEPTH` guard caps at parse time — this walk
-	 * can never see a tree the line loop refused to build.
+	 * which `addChild`'s `MAX_NESTING_DEPTH` guard caps at parse time — this
+	 * walk can never see a tree the line loop refused to build.
 	 */
-	private materializeBlock(block: BlockNode, context: MaterializeContext): MaterializedBlock | undefined {
-		const children: FlowContent[] = [];
+	private materializeBlock(
+		block: BlockNode,
+		context: MaterializeContext,
+		definitions: Array<readonly [key: string, node: Definition]>,
+	): MaterializedBlock | undefined {
+		const children: MaterializedBlock[] = [];
 		for (const child of block.children) {
-			const node = this.materializeBlock(child, context);
+			const node = this.materializeBlock(child, context, definitions);
 			if (node !== undefined && node.type !== "root") {
 				children.push(node);
 			}
 		}
-		return this.constructOf(block.type).materialize(block, children, context);
+
+		const node = this.constructOf(block.type).materialize(block, children, context);
+		const key = block.data.definition?.key;
+		if (node?.type === "definition" && key !== undefined) {
+			definitions.push([key, node]);
+		}
+		return node;
 	}
 
 	parse(): BlockPassResult {
@@ -399,12 +473,23 @@ class BlockParser implements BlockScanner {
 			},
 		};
 
-		const root = this.materializeBlock(this.doc, context);
+		const definitions: Array<readonly [key: string, node: Definition]> = [];
+		const root = this.materializeBlock(this.doc, context, definitions);
 		if (root === undefined || root.type !== "root") {
 			throw new TypeError("block parser: the document construct did not materialize a root");
 		}
 
-		return { root, rawInlines, carriers: [] };
+		// A real Map: link labels are attacker-controlled, so a `__proto__`
+		// label must be a key and not a prototype write. First definition wins,
+		// which is CommonMark's rule and the order this walk visits in.
+		const refmap = new Map<string, Definition>();
+		for (const [key, node] of definitions) {
+			if (!refmap.has(key)) {
+				refmap.set(key, node);
+			}
+		}
+
+		return { root, rawInlines, carriers: [], refmap };
 	}
 }
 

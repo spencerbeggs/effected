@@ -33,9 +33,16 @@ const SECTIONS_GREEN: ReadonlyArray<string> = [
 	"Precedence",
 	"Thematic breaks",
 	"ATX headings",
+	"Setext headings",
 	"Indented code blocks",
+	"Fenced code blocks",
+	"HTML blocks",
+	"Link reference definitions",
 	"Paragraphs",
 	"Blank lines",
+	"Block quotes",
+	"List items",
+	"Lists",
 ];
 
 /** The P1 task that clears a deferred example. */
@@ -46,36 +53,64 @@ type ClearingTask = "task-7" | "task-8" | "task-9";
  * landed yet. Keyed by spec example number.
  */
 const DEFERRED_EXAMPLES: ReadonlyMap<number, ClearingTask> = new Map<number, ClearingTask>([
-	// Tabs — every one of these is a container-block example that happens to
-	// exercise tab arithmetic; the tab handling itself is covered by the
-	// examples in this section that already pass, and by the unit tests.
-	[4, "task-7"], // list item, blank line, tab-indented continuation
-	[5, "task-7"], // list item with a tab-indented code block
-	[6, "task-7"], // blockquote with a tab-indented code block
-	[7, "task-7"], // list item with a tab-indented code block
-	[9, "task-7"], // three nested lists, the innermost tab-indented
+	// Every remaining deferral is an inline construct. The block structure
+	// each of these examples produces is already correct — what is missing is
+	// the pass that turns a leaf's raw text into phrasing content.
 
-	// Precedence — list markers take precedence over the code span that spans
-	// two of them, so this needs both the list (7) and code spans (8).
-	[42, "task-8"], // `- \`one` / `- two\``
+	// Precedence
+	[42, "task-8"], // a code span spanning two list markers
 
-	// Thematic breaks — the break itself is right in each of these; what is
-	// missing is the construct it is being weighed against.
+	// Thematic breaks
 	[56, "task-9"], // ` *-*` is emphasis, not a break
-	[57, "task-7"], // thematic break between two lists
-	[59, "task-7"], // `---` as a setext underline, not a break
-	[60, "task-7"], // `* * *` between two lists
-	[61, "task-7"], // `- * * *` as a list item containing a break
 
 	// ATX headings
 	[65, "task-8"], // backslash-escaped `\##` opening
-	[66, "task-9"], // emphasis inside a heading, plus escapes
+	[66, "task-9"], // emphasis inside a heading
 	[76, "task-8"], // backslash-escaped closing sequences
 
-	// Indented code blocks — the code block is right; the container is not.
-	[108, "task-7"], // list-item paragraph, not code
-	[109, "task-7"], // nested list, not code
-	[115, "task-7"], // setext heading interleaved with code
+	// Setext headings
+	[80, "task-9"], // emphasis in the heading text
+	[81, "task-9"], // emphasis spanning both heading lines
+	[82, "task-9"], // emphasis spanning both heading lines
+	[102, "task-8"], // backslash-escaped `\>`
+	[106, "task-8"], // backslash-escaped `\---`
+
+	// Fenced code blocks
+	[121, "task-8"], // `` `` foo `` `` is a code span, not a fence
+	[138, "task-8"], // a code span made of fence-length backtick runs
+	[145, "task-8"], // a code span made of fence-length backtick runs
+
+	// HTML blocks
+	[148, "task-9"], // emphasis in a paragraph between HTML lines
+	[152, "task-9"], // emphasis in a paragraph after a block
+	[155, "task-9"], // emphasis in a paragraph after a block
+	[167, "task-9"], // emphasis in a paragraph inside `<del>`
+	[168, "task-9"], // inline `<del>` plus emphasis
+	[176, "task-9"], // emphasis after a `<style>` block
+	[177, "task-9"], // emphasis after a comment block
+	[187, "task-8"], // an inline `<a>` tag that does not open a block
+	[188, "task-9"], // emphasis inside a `<div>`
+
+	// Link reference definitions — the definitions parse and are kept; what is
+	// missing is the reference that resolves against them.
+	[192, "task-9"],
+	[193, "task-9"],
+	[194, "task-9"],
+	[195, "task-9"],
+	[196, "task-9"],
+	[198, "task-9"],
+	[200, "task-9"],
+	[201, "task-8"], // `<bar>` is inline raw HTML in a plain paragraph
+	[202, "task-9"],
+	[203, "task-9"],
+	[204, "task-9"],
+	[205, "task-9"],
+	[206, "task-9"],
+	[214, "task-9"],
+	[215, "task-9"],
+	[216, "task-9"],
+	[217, "task-9"],
+	[218, "task-9"],
 
 	// Paragraphs
 	[226, "task-8"], // two trailing spaces make a hard line break
