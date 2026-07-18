@@ -22,6 +22,53 @@
 				},
 				"startHere": "packages/effect/src settles what v4 actually exports (evidence-ladder rung 2); migration/*.md settles v3→v4 renames (rung 1). Before trusting an answer, check the pin matches the installed effect version — node_modules wins on disagreement."
 			}
+		},
+		"commonmark-js": {
+			"url": "https://github.com/commonmark/commonmark.js.git",
+			"ref": "0.31.2",
+			"purpose": "Port base for @effected/markdown: the CommonMark reference parser (two-phase blocks/inlines algorithm, BSD-2) pinned at spec 0.31.2",
+			"sparse": [
+				"lib",
+				"test",
+				"LICENSE"
+			]
+		},
+		"commonmark-spec": {
+			"url": "https://github.com/commonmark/commonmark-spec.git",
+			"ref": "0.31.2",
+			"purpose": "CommonMark 0.31.2 spec text and conformance tooling (spec.txt, spec_tests.py, normalize.py) — source of the 652-example corpus for @effected/markdown",
+			"sparse": [
+				"spec.txt",
+				"test",
+				"LICENSE"
+			]
+		},
+		"cmark-gfm": {
+			"url": "https://github.com/github/cmark-gfm.git",
+			"ref": "0.29.0.gfm.13",
+			"purpose": "GFM spec text and corpora (test/spec.txt extension sections, extensions.txt incl. footnotes, pathological tests) plus C reference implementations of the GFM constructs",
+			"sparse": [
+				"test",
+				"extensions",
+				"src",
+				"COPYING"
+			]
+		},
+		"mdast": {
+			"url": "https://github.com/syntax-tree/mdast.git",
+			"ref": "5.0.0",
+			"purpose": "The mdast spec prose (readme.md IS the spec) — the node-type contract @effected/markdown's Schema classes mirror, incl. the GFM extension node set"
+		},
+		"mdast-util-from-markdown": {
+			"url": "https://github.com/syntax-tree/mdast-util-from-markdown.git",
+			"ref": "2.0.3",
+			"purpose": "Reference for event-to-mdast tree assembly and the 27 position-complete .md/.json AST fixtures used as @effected/markdown's interop corpus",
+			"sparse": [
+				"dev",
+				"test",
+				"license",
+				"readme.md"
+			]
 		}
 	}
 }
