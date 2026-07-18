@@ -105,11 +105,7 @@ The `@savvy-web/*` packages are in active development — if behavior seems unex
 
 ### Code Quality and Hooks
 
-- **Biome**: `biome.jsonc` extends `@savvy-web/silk/biome`.
-- **Commitlint**: `lib/configs/commitlint.config.ts` uses `CommitlintConfig.silk()`.
-- **Lint-staged**: `lib/configs/lint-staged.config.ts` uses `Preset.silk()`.
-- **Markdownlint**: config at `lib/configs/.markdownlint-cli2.jsonc`. Check with `pnpm lint:md`, fix with `pnpm lint:md:fix`.
-- **Husky hooks**: `pre-commit` runs lint-staged; `commit-msg` runs commitlint; `post-checkout` / `post-commit` / `post-merge` maintain file modes and script exec bits.
+Biome, commitlint, lint-staged and markdownlint all take their presets from `@savvy-web/silk`; configs live at the repo root and in `lib/configs/`. Markdownlint runs via `pnpm lint:md` / `pnpm lint:md:fix`.
 
 **Never invoke `markdownlint-cli2` directly — run `pnpm lint:md` or `pnpm lint:md:fix`.** The tool *merges* explicit path arguments with the config's repo-wide `globs` rather than narrowing to them, so "lint just my file" lints every markdown file in the repo. The config deliberately omits `fix` (present, it overrides the `--fix` flag in both directions) so the flag decides.
 
