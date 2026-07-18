@@ -4,14 +4,11 @@
 //
 // Character-reference decoding. Upstream delegates the whole job to the
 // `entities` package's `decodeHTMLStrict`; this package owns its engine, so
-// the named-entity table is generated data that lands in Task 8
-// (`entityMap.ts`). Until then the numeric forms — which need no table at all
-// — decode here, and a named reference is left as literal text.
-//
-// TASK 8: replace the `undefined` branch below with the generated map lookup.
-// Nothing else in the engine changes; every caller goes through this function.
-//
-// Leaf module: imports nothing.
+// the named references come from `entityMap.ts`, generated once from that
+// package's data and committed (see `__test__/tools/generate-entities.ts`).
+// The numeric forms need no table at all and decode here.
+
+import { ENTITY_MAP } from "./entityMap.js";
 
 /** The largest code point Unicode defines. */
 const MAX_CODE_POINT = 0x10ffff;
@@ -30,8 +27,9 @@ export const decodeEntity = (entity: string): string | undefined => {
 
 	const body = entity.slice(1, -1);
 	if (!body.startsWith("#")) {
-		// A named reference. Task 8 resolves these against the generated map.
-		return undefined;
+		// A named reference. An unknown name is not an error — the caller
+		// keeps the literal source text, as upstream's decoder does.
+		return ENTITY_MAP.get(body);
 	}
 
 	const hex = body.charAt(1) === "x" || body.charAt(1) === "X";

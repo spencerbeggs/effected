@@ -43,6 +43,15 @@ const SECTIONS_GREEN: ReadonlyArray<string> = [
 	"Block quotes",
 	"List items",
 	"Lists",
+	"Inlines",
+	"Backslash escapes",
+	"Entity and numeric character references",
+	"Code spans",
+	"Autolinks",
+	"Raw HTML",
+	"Hard line breaks",
+	"Soft line breaks",
+	"Textual content",
 ];
 
 /** The P1 task that clears a deferred example. */
@@ -57,28 +66,30 @@ const DEFERRED_EXAMPLES: ReadonlyMap<number, ClearingTask> = new Map<number, Cle
 	// each of these examples produces is already correct — what is missing is
 	// the pass that turns a leaf's raw text into phrasing content.
 
-	// Precedence
-	[42, "task-8"], // a code span spanning two list markers
-
 	// Thematic breaks
 	[56, "task-9"], // ` *-*` is emphasis, not a break
 
+	// Backslash escapes — the escaping is right in each of these; the
+	// construct being escaped into is what is missing.
+	[15, "task-9"], // an escaped backslash before emphasis
+	[22, "task-9"], // escapes inside an inline link's destination and title
+	[23, "task-9"], // escapes inside a definition, resolved through a reference
+
+	// Entity and numeric character references — decoding works (both of these
+	// render the decoded destination); resolving the link does not.
+	[32, "task-9"], // entities in an inline link's destination and title
+	[33, "task-9"], // entities in a definition, resolved through a reference
+	[37, "task-9"], // a numeric reference next to real emphasis
+
 	// ATX headings
-	[65, "task-8"], // backslash-escaped `\##` opening
 	[66, "task-9"], // emphasis inside a heading
-	[76, "task-8"], // backslash-escaped closing sequences
 
 	// Setext headings
 	[80, "task-9"], // emphasis in the heading text
 	[81, "task-9"], // emphasis spanning both heading lines
 	[82, "task-9"], // emphasis spanning both heading lines
-	[102, "task-8"], // backslash-escaped `\>`
-	[106, "task-8"], // backslash-escaped `\---`
 
 	// Fenced code blocks
-	[121, "task-8"], // `` `` foo `` `` is a code span, not a fence
-	[138, "task-8"], // a code span made of fence-length backtick runs
-	[145, "task-8"], // a code span made of fence-length backtick runs
 
 	// HTML blocks
 	[148, "task-9"], // emphasis in a paragraph between HTML lines
@@ -88,7 +99,6 @@ const DEFERRED_EXAMPLES: ReadonlyMap<number, ClearingTask> = new Map<number, Cle
 	[168, "task-9"], // inline `<del>` plus emphasis
 	[176, "task-9"], // emphasis after a `<style>` block
 	[177, "task-9"], // emphasis after a comment block
-	[187, "task-8"], // an inline `<a>` tag that does not open a block
 	[188, "task-9"], // emphasis inside a `<div>`
 
 	// Link reference definitions — the definitions parse and are kept; what is
@@ -100,7 +110,6 @@ const DEFERRED_EXAMPLES: ReadonlyMap<number, ClearingTask> = new Map<number, Cle
 	[196, "task-9"],
 	[198, "task-9"],
 	[200, "task-9"],
-	[201, "task-8"], // `<bar>` is inline raw HTML in a plain paragraph
 	[202, "task-9"],
 	[203, "task-9"],
 	[204, "task-9"],
@@ -112,8 +121,10 @@ const DEFERRED_EXAMPLES: ReadonlyMap<number, ClearingTask> = new Map<number, Cle
 	[217, "task-9"],
 	[218, "task-9"],
 
-	// Paragraphs
-	[226, "task-8"], // two trailing spaces make a hard line break
+	// Hard line breaks — the break is emitted correctly; the emphasis it sits
+	// inside is not.
+	[638, "task-9"],
+	[639, "task-9"],
 ]);
 
 const bySection = (examples: ReadonlyArray<SpecExample>): ReadonlyMap<string, ReadonlyArray<SpecExample>> => {

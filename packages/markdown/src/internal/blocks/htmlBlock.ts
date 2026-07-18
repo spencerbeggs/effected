@@ -7,30 +7,15 @@
 // blank line; types 1 through 5 end at their own closing pattern, which the
 // line loop checks after appending each line (`isHtmlBlockEnd`).
 //
-// The tag grammar (`OPENTAG`/`CLOSETAG`) is `lib/common.js`, kept here rather
-// than in a shared module: the inline pass needs the full `HTMLTAG` union,
-// which is a superset and lands with raw inline HTML in Task 8.
+// The tag grammar lives in `htmlTags.ts`, shared with the inline pass, which
+// matches the full `HTMLTAG` union this file's type 7 is a subset of.
 
 import { Html } from "../../MarkdownNode.js";
 import type { BlockConstruct, BlockNode, BlockStart } from "../blockTypes.js";
+import { CLOSETAG, OPENTAG } from "../htmlTags.js";
 import { peekCode } from "../preprocess.js";
 
 const C_LESSTHAN = 0x3c;
-
-const TAGNAME = "[A-Za-z][A-Za-z0-9-]*";
-const ATTRIBUTENAME = "[a-zA-Z_:][a-zA-Z0-9:._-]*";
-const UNQUOTEDVALUE = "[^\"'=<>`\\x00-\\x20]+";
-const SINGLEQUOTEDVALUE = "'[^']*'";
-const DOUBLEQUOTEDVALUE = '"[^"]*"';
-const ATTRIBUTEVALUE = `(?:${UNQUOTEDVALUE}|${SINGLEQUOTEDVALUE}|${DOUBLEQUOTEDVALUE})`;
-const ATTRIBUTEVALUESPEC = `(?:\\s*=\\s*${ATTRIBUTEVALUE})`;
-const ATTRIBUTE = `(?:\\s+${ATTRIBUTENAME}${ATTRIBUTEVALUESPEC}?)`;
-
-/** `lib/common.js` OPENTAG. */
-export const OPENTAG = `<${TAGNAME}${ATTRIBUTE}*\\s*/?>`;
-
-/** `lib/common.js` CLOSETAG. */
-export const CLOSETAG = `</${TAGNAME}\\s*[>]`;
 
 // Index 0 is a placeholder so the array is indexed by the spec's 1-based
 // block type, exactly as upstream's is.

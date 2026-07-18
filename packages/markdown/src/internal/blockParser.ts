@@ -21,9 +21,9 @@
 //    a private mutable `BlockNode` for the pass and materializes the
 //    immutable schema classes afterwards, so no half-built node is ever
 //    reachable from a public type.
-// 4. The inline pass is not wired yet (Task 8): leaf blocks emit their raw
-//    text as `RawInlineSlice`s, and `rawInline.ts` attaches a temporary
-//    single-`Text` passthrough child so the conformance harness can render.
+// 4. Materialization runs in two walks: definitions are built and indexed
+//    first, because the inline pass resolves references against the refmap and
+//    a definition may follow the paragraph that references it.
 //
 // Imports node classes from `../MarkdownNode.js` (the sanctioned exception to
 // the cycle firewall) and nothing else public.
@@ -432,7 +432,7 @@ class BlockParser implements BlockScanner {
 	private materializeBlock(
 		block: BlockNode,
 		context: MaterializeContext,
-		definitions: Array<readonly [key: string, node: Definition]>,
+		definitions: ReadonlyMap<BlockNode, Definition>,
 	): MaterializedBlock | undefined {
 		const children: MaterializedBlock[] = [];
 		for (const child of block.children) {
@@ -442,12 +442,49 @@ class BlockParser implements BlockScanner {
 			}
 		}
 
-		const node = this.constructOf(block.type).materialize(block, children, context);
-		const key = block.data.definition?.key;
-		if (node?.type === "definition" && key !== undefined) {
-			definitions.push([key, node]);
+		// A definition was already built by the refmap pre-pass; reusing that
+		// node is what keeps the tree and the refmap pointing at one object.
+		const definition = definitions.get(block);
+		if (definition !== undefined) {
+			return definition;
 		}
-		return node;
+
+		return this.constructOf(block.type).materialize(block, children, context);
+	}
+
+	/**
+	 * Materialize every definition in the tree and index them, before anything
+	 * else is built.
+	 *
+	 * The inline pass resolves references against the refmap, and a definition
+	 * can appear anywhere — including after the paragraph that references it —
+	 * so the map has to exist before the first leaf is parsed. Walking twice
+	 * is the price; the alternative is a mutable tree the inline pass patches
+	 * afterwards.
+	 */
+	private collectDefinitions(
+		block: BlockNode,
+		context: MaterializeContext,
+		nodes: Map<BlockNode, Definition>,
+		refmap: Map<string, Definition>,
+	): void {
+		if (block.type === "definition") {
+			const materialized = this.constructOf(block.type).materialize(block, [], context);
+			const key = block.data.definition?.key;
+			if (materialized?.type === "definition" && key !== undefined) {
+				nodes.set(block, materialized);
+				// First definition wins, which is CommonMark's rule and the
+				// order this walk visits in.
+				if (!refmap.has(key)) {
+					refmap.set(key, materialized);
+				}
+			}
+			return;
+		}
+
+		for (const child of block.children) {
+			this.collectDefinitions(child, context, nodes, refmap);
+		}
 	}
 
 	parse(): BlockPassResult {
@@ -459,10 +496,15 @@ class BlockParser implements BlockScanner {
 			this.finalizeBlock(this.tipNode, this.lines.length);
 		}
 
+		// A real Map: link labels are attacker-controlled, so a `__proto__`
+		// label must be a key and not a prototype write.
+		const refmap = new Map<string, Definition>();
+		const definitionNodes = new Map<BlockNode, Definition>();
 		const rawInlines: RawInlineSlice[] = [];
+
 		const context: MaterializeContext = {
 			position: (start, end) => this.position(start, end),
-			inlineSlice: (block) => prepareInline(block, (start, end) => this.position(start, end)),
+			inlineSlice: (block) => prepareInline(block, (start, end) => this.position(start, end), refmap),
 			registerInline: (parent: Paragraph | Heading, prepared: PreparedInline) => {
 				rawInlines.push({
 					parent,
@@ -473,20 +515,11 @@ class BlockParser implements BlockScanner {
 			},
 		};
 
-		const definitions: Array<readonly [key: string, node: Definition]> = [];
-		const root = this.materializeBlock(this.doc, context, definitions);
+		this.collectDefinitions(this.doc, context, definitionNodes, refmap);
+
+		const root = this.materializeBlock(this.doc, context, definitionNodes);
 		if (root === undefined || root.type !== "root") {
 			throw new TypeError("block parser: the document construct did not materialize a root");
-		}
-
-		// A real Map: link labels are attacker-controlled, so a `__proto__`
-		// label must be a key and not a prototype write. First definition wins,
-		// which is CommonMark's rule and the order this walk visits in.
-		const refmap = new Map<string, Definition>();
-		for (const [key, node] of definitions) {
-			if (!refmap.has(key)) {
-				refmap.set(key, node);
-			}
 		}
 
 		return { root, rawInlines, carriers: [], refmap };
@@ -496,9 +529,9 @@ class BlockParser implements BlockScanner {
 /**
  * Run the block pass over `text`.
  *
- * Every node carries a complete {@link Position}; leaf blocks carry their raw
- * inline text as {@link RawInlineSlice}s for the inline pass, plus a
- * temporary `Text` passthrough child until Task 8 replaces it.
+ * Every node carries a complete {@link Position}, leaf blocks have their
+ * inline content parsed, and `rawInlines` reports the raw text each leaf was
+ * built from.
  */
 export const parseBlocks = (text: string, dialect: MarkdownDialect = "commonmark"): BlockPassResult =>
 	new BlockParser(text, blockDialect(dialect)).parse();

@@ -22,8 +22,8 @@
 import { Definition } from "../../MarkdownNode.js";
 import type { BlockConstruct, BlockNode } from "../blockTypes.js";
 import { makeBlockNode } from "../blockTypes.js";
-import { sliceWithSegments, sourceOffsetAt } from "../rawInline.js";
 import { parseReference } from "../references.js";
+import { sliceWithSegments, sourceOffsetAt } from "../segments.js";
 
 const C_OPEN_BRACKET = 0x5b;
 
