@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-07-16
-last-synced: 2026-07-16
+updated: 2026-07-18
+last-synced: 2026-07-18
 completeness: 88
 related:
   - architecture.md
@@ -30,6 +30,7 @@ related:
   - packages/tsconfig-json.md
   - packages/git.md
   - packages/pnpm-plugin-effect.md
+  - packages/markdown.md
 ---
 
 # Package inventory
@@ -77,6 +78,12 @@ Tiers classify libraries by dependency surface; the companion is not a library a
 `@effected/config-file` absorbs all four config codecs — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec` — as free-standing named exports, one module each, with **no namespace object**. `ConfigCodec` is the interface only. This is what keeps them tree-shakeable, [measured not assumed](packages/config-file.md#the-load-bearing-constraint-free-standing-named-exports-never-a-namespace-object): a `JsonCodec`-only consumer bundles a few hundred bytes; a namespace object would drag every engine into every consumer. The rule and its rationale live in [effect-standards.md](effect-standards.md#no-barrel-re-exports).
 
 The `jsonc`, `yaml` and `toml` **format** packages remain independent — they are pure format engines with no knowledge of `config-file`, so the dependency direction stays strictly acyclic (`config-file` → format packages, never the reverse). `config-file` carries **zero external runtime dependencies**: it peers on `jsonc`, `yaml`, `toml` and `walker`, all pure or boundary `@effected/*`.
+
+## In flight (post-`0.1.0`)
+
+Packages under active development that are **not part of the eighteen-package `0.1.0` gate set** and do not ship with it.
+
+- `@effected/markdown` — invention; CommonMark + GFM as pure Effect Schema schemas, the kit's typed communication layer with AI agents. A post-`0.1.0` workstream whose first identified consumer is `rspress-plugin-api-extractor` (see [packages/markdown.md](packages/markdown.md)). **P1 (CommonMark core) is complete in tree** at `packages/markdown` on `feat/markdown` (2026-07-18); phases P2-P6 are pending. Pure tier when it ships.
 
 ## Not in the kit
 

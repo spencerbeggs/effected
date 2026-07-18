@@ -5,7 +5,7 @@ category: architecture
 created: 2026-07-18
 updated: 2026-07-18
 last-synced: 2026-07-18
-completeness: 80
+completeness: 85
 related:
   - ../effect-standards.md
   - ../package-inventory.md
@@ -43,6 +43,8 @@ Node Schema classes use mdast's exact node type names and field shapes: the 19 C
 
 Decided up front, not discovered mid-port: (a) mdast type names, not commonmark.js names; (b) byte-offset tracking added everywhere — commonmark.js only has line/column sourcepos, and offsets also power the edit layer; (c) `definition` nodes are **kept in the tree** and linkReference/imageReference are emitted unresolved, per mdast semantics — commonmark.js deletes definitions and resolves references eagerly, which is wrong for an editing library. The port also retains the concrete-syntax markers mdast drops.
 
+**P1 ruling** (2026-07-18): reference *formation* still follows the CommonMark spec exactly — a link or image label with no matching definition stays literal text, never a reference node — so the design's only delta is the emitted node *shape* (`linkReference`/`imageReference` plus the kept `definition` nodes) where commonmark.js would eagerly resolve a `link`. This corrects a subtle earlier misreading of the delta as forming references even when undefined; the spec-conformant behavior is pinned by tests.
+
 ### Dialects: a closed set, no public extension API
 
 Matching toml and yaml's zero-plugin posture: a `dialect: "commonmark" | "gfm"` parse option (default `gfm`) plus a frontmatter toggle. GFM means tables, strikethrough, autolink literals, task-list items and tagfilter, **plus footnotes** — footnotes are a cmark-gfm/GitHub extension, not in the GFM spec text (recorded as such), but included as table stakes. A future `obsidian` dialect (wikilinks, embeds, callouts, highlights) is an explicit design goal: it must land purely as new construct modules in the dialect registries with **no public API change** — that constraint is the acceptance test for the registry design.
@@ -67,6 +69,8 @@ Research finding, recorded: nobody in the JS ecosystem ships a lossless markdown
 
 CommonMark has no syntax errors — every string is a valid document. The parse error channel carries **only hardening-guard failures** (depth caps, expansion budgets), never "malformed markdown". Diagnostics carry warnings: unresolved link references, present-but-unparseable frontmatter. Strict or failing validation lives at the schema layer, not the parser.
 
+**P1 status** (2026-07-18): the engine emits no non-fatal diagnostics yet — `MarkdownDocument.diagnostics` is real plumbing with no producers until a construct emits one (documented in TSDoc).
+
 ### OKF: design-informed, package deferred
 
 OKF (Open Knowledge Format — GoogleCloudPlatform/knowledge-catalog/okf, Apache-2.0, draft v0.1, launched 2026-06-12, single-vendor, no formal grammar or JSON schema, reference implementation contradicting the spec on required frontmatter keys) adds **zero markdown syntax**: it is YAML-frontmatter conventions (one required key, `type`), reserved filenames (`index.md`, `log.md`), bundle-relative links and a directory layout — effectively GFM in practice (its examples use pipe tables). Decision: `@effected/markdown`'s generic surface — frontmatter schemas, heading/section navigation, link extraction, lossless round-trip — must make OKF trivially expressible; a future separate `@effected/okf` package (Concept/Index/Log schemas plus bundle walking over `@effected/walker` and `@effected/glob`) waits for the spec to stabilize past v0.1. The `$schema` resolver seam already covers OKF's dispatch model: because the resolver sees the whole decoded frontmatter, an OKF resolver can key on OKF's `type` field with no OKF code in this package.
@@ -81,11 +85,13 @@ The engine honors CommonMark's own parsing strategy: a **block pass** consuming 
 
 parse = block pass → inline pass → mdast-shaped node tree with offsets and fidelity fields, plus diagnostics. edit/format operate as offset-splices against the original source. stringify is canonical serialization of a node tree. The visitor streams events from a tree walk.
 
+**P1 implementation note** (2026-07-18): the inline pass builds a **mutable linked list** of tokens and materializes the immutable node Schema classes only once that list is final — the array form would reintroduce the quadratic behavior the delimiter stack exists to prevent.
+
 ## Module layout
 
 One concern per file, mirroring [yaml's layout](yaml.md#module-layout); `src/index.ts` is the sole barrel:
 
-- `src/Markdown.ts` — the facade: `parse`/`stringify` (`Effect`, typed `E`) and the `MarkdownFromString` schema.
+- `src/Markdown.ts` — the facade: `parse`/`stringify` (`Effect`, typed `E`) and the `MarkdownFromString` schema. **P1 (2026-07-18):** `MarkdownFromString` ships as a two-way codec whose encode fails typed until P4 drops `stringify` into the existing lambda — probed at beta.98, zero signature change later.
 - `src/MarkdownDocument.ts` — the lossless unit: source text + tree + frontmatter + diagnostics, plus navigation accessors (headings, sections, links — the OKF-informed surface).
 - `src/MarkdownNode.ts` — the node Schema classes, co-located in one file to break the recursive-AST cycle: `Schema.suspend`, no parent pointers, recursive references typed `Schema.Codec<T>`.
 - `src/Mdast.ts` — projection to and from plain mdast JSON; the remark-ecosystem interop boundary.
@@ -105,9 +111,11 @@ House schema conventions apply throughout: `Schema.Class`/`Schema.TaggedClass`, 
 The [input-hardening standards](../effect-standards.md#input-hardening-standards) apply in full:
 
 - `src/internal/limits.ts` is the zero-dependency leaf; `MAX_NESTING_DEPTH = 256` (the cross-package parity constant) guards every **recursive** surface, enumerated per engine: container nesting in the block pass, the delimiter/bracket stacks in the inline pass, stringify recursion and the visitor walk. Iterative surfaces are deliberately unguarded — the toml lesson: know what NOT to guard.
-- The cmark pathological suite is the **linear-time guarantee**: markdown's DoS vector is quadratic emphasis/link blowup, defeated by the delimiter-stack algorithm, and ~25 vendored pathological cases with timeout assertions pin it.
+- The cmark pathological suite is the **linear-time guarantee**: markdown's DoS vector is quadratic emphasis/link blowup, defeated by the delimiter-stack algorithm, and the vendored pathological cases with timeout assertions pin it. **P1 (2026-07-18):** the suite is 21 cases, three of them deep-nesting cases the depth guard correctly REFUSES — a `GUARD_REFUSED` set pins that posture. Its budgets are **calibrated** — scaled against a same-code-path baseline measurement rather than raw milliseconds — because v8 coverage instrumentation costs a measured ~18x; a considered, approved decision, and an algorithmic regression still fails because quadratic outruns any constant factor.
 - The reference map is keyed through a real `Map` — link labels are attacker-controlled, so this is the prototype-pollution guard.
 - Malformed input yields a typed error or a diagnostic, never a defect. The raw-carrier cycle firewall holds: `src/internal/` never imports public modules, and the facade materializes diagnostics. Defect passthrough is proven at the facade — non-carrier errors rethrow.
+- **P1 hardening evidence** (2026-07-18): the hardening pass found and fixed five real engine defects — one defect-channel violation, one non-termination and three complexity fixes — recorded as evidence for the enumeration-plus-pathological discipline.
+- **Known performance characteristic to revisit before P4/P5:** Schema class construction costs ~17µs per node (~85% of the heaviest pathological case); `MakeOptions.disableChecks` does not help — the cost is `struct.make` field processing. A 1MB document with ~50k nodes pays roughly a second in construction.
 
 ## Observability
 
@@ -124,6 +132,8 @@ Pure-tier rule: named `Effect.fn` spans on the public fallible boundaries only. 
 5. **mdast-util-from-markdown fixtures** — 27 `.md`/`.json` pairs with full unist positions — direct AST-plus-position equality through the `Mdast` projection, proving interop, not just rendering. MIT.
 
 Standing goals: an **empty skip map** (the toml precedent — zero skips); the differential oracle is the `commonmark` npm package, an exact-pinned devDependency imported only by a property test (the smol-toml pattern). Property tests: parse never throws, node positions span valid offsets, `applyAll` splice idempotence, stringify∘parse semantic preservation (re-parse equivalence) and frontmatter round-trip.
+
+**P1 (2026-07-18):** the empty skip map held — all 652 spec examples run with zero skips and zero deferrals, and the oracle agrees across the corpus plus 30,000 generated documents. The differential oracle surfaced a genuine `commonmark.js` defect — a phantom empty paragraph emitted from a reference-only paragraph before a thematic break — resolved by a narrow oracle-side correction plus a tripwire test that fails when upstream fixes it.
 
 The `$schema` contract adds its own unit and property coverage: declaration shape classification across the four variants, version grammar validation (one to three integer segments, junk rejected as a typed error), the last-`@` split including scoped names, day-one exact-match resolution against the registry and the prefix-selector-parses-but-unresolvable vs unknown-name distinction (`SchemaVersionUnresolvable` vs `SchemaNameUnknown`).
 
@@ -146,7 +156,7 @@ rspress-plugin-api-extractor is the identified consumer: the `Mdast` projection 
 Each phase lands green and mergeable:
 
 - **P0** — this design doc (the migration-playbook gate).
-- **P1** — CommonMark core: scaffold from the pure sibling, block and inline passes, mdast-shaped nodes with offsets, `Markdown.parse` plus `MarkdownDocument`, the 652-example spec corpus and the pathological suite green. The long pole. Progress as of 2026-07-18: tasks 1-7 of 12 are committed on `feat/markdown` (scaffold `a9ee0e5` through containers `d29e44d`) — corpora vendored (652 examples plus 20 pathological cases, count-guarded), diagnostics/limits/line index, the 19 node classes, the test-only HTML writer differentially verified against normalize.py, and the full block pass with kept definitions and refmap. The conformance harness is at 255/652 examples green, 0 failing, with the remaining deferrals all inline-pass work (tasks 8-9). The executable plan is `.claude/plans/2026-07-18-markdown-p1-commonmark-core.md` (local, gitignored).
+- **P1** — CommonMark core: scaffold from the pure sibling, block and inline passes, mdast-shaped nodes with offsets, `Markdown.parse` plus `MarkdownDocument`, the 652-example spec corpus and the pathological suite green. The long pole, **COMPLETE 2026-07-18** on `feat/markdown` (commits `a9ee0e5` through `ab931fbe`): 972 package tests, 0 failures; the conformance harness runs all 652 spec examples with zero skips and zero deferrals; the 21-case pathological suite passes with three deep-nesting cases correctly REFUSED by the depth guard (a `GUARD_REFUSED` set pins that posture); the differential oracle (`commonmark@0.31.2`, exact-pinned devDep) agrees on the full corpus plus 30,000 generated documents.
 - **P2** — GFM dialect: construct modules plus the dialect option; corpora 2 and 3 green.
 - **P3** — frontmatter: the capture node, `Frontmatter.schema` and the three codecs, plus the `$schema` declaration contract and the registry-backed resolver with exact-match resolution.
 - **P4** — edit/format: the parity vocabulary, offset-splice `modify`, canonical `stringify` and `format`.
