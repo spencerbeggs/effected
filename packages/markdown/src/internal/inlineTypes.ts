@@ -92,11 +92,28 @@ export interface InlineScanner {
 	/**
 	 * Scan forward for `pattern`, advancing past it on success.
 	 *
-	 * Only the code span's search for its closing backtick run wants this;
-	 * everything else asks whether a construct begins at the cursor, and a
-	 * match found further along is not one.
+	 * Almost nothing wants this — a construct asks whether it begins at the
+	 * cursor, and a match found further along is not one.
 	 */
 	matchAhead(pattern: RegExp): string | undefined;
+	/**
+	 * Whether `needle` occurs at or after the cursor.
+	 *
+	 * Memoized per needle: once a search from some position finds nothing,
+	 * nothing later can either, so a construct whose closing sequence is
+	 * missing entirely fails in constant time after the first look. Without
+	 * it, a document of 300k unclosed `<!--` costs one full scan per opener.
+	 */
+	hasAhead(needle: string): boolean;
+	/**
+	 * The start of the next backtick run of exactly `length`, at or after
+	 * `from`, or `undefined` when there is none.
+	 *
+	 * Backed by an index built once per subject. Walking run by run is
+	 * quadratic on a document of thousands of distinct-length runs, which is
+	 * precisely the vendored "backticks" pathological case.
+	 */
+	closingBacktickRun(from: number, length: number): number | undefined;
 
 	/** Append a node to the output list. */
 	append(node: InlineNode): void;
@@ -116,6 +133,14 @@ export interface InlineScanner {
 	addBracket(node: InlineNode, index: number, image: boolean): void;
 	/** Pop the top bracket opener. */
 	removeBracket(): void;
+	/**
+	 * Spend every link opener still on the stack — links do not nest.
+	 *
+	 * A method rather than a loop at the call site because it keeps an O(1)
+	 * fast path: image openers accumulate without ever being closed, and
+	 * walking past them on every link close is quadratic.
+	 */
+	deactivateLinkOpeners(): void;
 	/** Run the emphasis algorithm down to `stackBottom`. */
 	processEmphasis(stackBottom: Delimiter | undefined): void;
 }

@@ -53,12 +53,44 @@ import type { InlineDialectName } from "./inlineRegistry.js";
 import { inlineDialect } from "./inlineRegistry.js";
 import type { Bracket, Delimiter, InlineDialect, InlineScanner, InlineSource } from "./inlineTypes.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
+import { globalOf, stickyOf } from "./patterns.js";
 import { sourceOffsetAt } from "./segments.js";
 
 const C_UNDERSCORE = 0x5f;
 const C_ASTERISK = 0x2a;
 
 const reTrailingSpaces = / +$/;
+
+const C_BACKTICK = 0x60;
+
+/**
+ * Every backtick run in `subject`, as start offsets grouped by run length.
+ *
+ * One forward scan, so a code span's search for its closing run is a binary
+ * search rather than a walk over every run in between.
+ */
+const indexBacktickRuns = (subject: string): Map<number, number[]> => {
+	const runs = new Map<number, number[]>();
+	let index = 0;
+	while (index < subject.length) {
+		if (subject.charCodeAt(index) !== C_BACKTICK) {
+			index += 1;
+			continue;
+		}
+		const start = index;
+		while (index < subject.length && subject.charCodeAt(index) === C_BACKTICK) {
+			index += 1;
+		}
+		const length = index - start;
+		const starts = runs.get(length);
+		if (starts === undefined) {
+			runs.set(length, [start]);
+		} else {
+			starts.push(start);
+		}
+	}
+	return runs;
+};
 
 /**
  * Builds a {@link Position} from an absolute source range. The block pass owns
@@ -73,6 +105,13 @@ class InlineParser implements InlineScanner {
 	readonly refmap: ReadonlyMap<string, Definition>;
 	delimiters: Delimiter | undefined;
 	brackets: Bracket | undefined;
+
+	/** How many link openers on the stack are still active (see `deactivateLinkOpeners`). */
+	private activeLinkOpeners = 0;
+	/** Per-needle memo of the offset from which it no longer occurs. */
+	private readonly absentAfter = new Map<string, number>();
+	/** Backtick run starts, by run length; built on first use. */
+	private backtickRuns: Map<number, number[]> | undefined;
 
 	private readonly source: InlineSource;
 	private readonly dialect: InlineDialect;
@@ -109,21 +148,60 @@ class InlineParser implements InlineScanner {
 	 * a guarantee the trigger table does not make (see `inlines/text.ts`).
 	 */
 	match(pattern: RegExp): string | undefined {
-		const found = pattern.exec(this.subject.slice(this.pos));
-		if (found === null || found.index !== 0) {
+		const sticky = stickyOf(pattern);
+		sticky.lastIndex = this.pos;
+		const found = sticky.exec(this.subject);
+		if (found === null) {
 			return undefined;
 		}
-		this.pos += found[0].length;
+		this.pos = sticky.lastIndex;
 		return found[0];
 	}
 
 	matchAhead(pattern: RegExp): string | undefined {
-		const found = pattern.exec(this.subject.slice(this.pos));
+		const forward = globalOf(pattern);
+		forward.lastIndex = this.pos;
+		const found = forward.exec(this.subject);
 		if (found === null) {
 			return undefined;
 		}
-		this.pos += found.index + found[0].length;
+		this.pos = found.index + found[0].length;
 		return found[0];
+	}
+
+	hasAhead(needle: string): boolean {
+		const known = this.absentAfter.get(needle);
+		if (known !== undefined && this.pos >= known) {
+			return false;
+		}
+		if (this.subject.indexOf(needle, this.pos) !== -1) {
+			return true;
+		}
+		this.absentAfter.set(needle, Math.min(known ?? this.pos, this.pos));
+		return false;
+	}
+
+	closingBacktickRun(from: number, length: number): number | undefined {
+		if (this.backtickRuns === undefined) {
+			this.backtickRuns = indexBacktickRuns(this.subject);
+		}
+		const starts = this.backtickRuns.get(length);
+		if (starts === undefined) {
+			return undefined;
+		}
+
+		// Binary search for the first run starting at or after `from`.
+		let low = 0;
+		let high = starts.length;
+		while (low < high) {
+			const mid = (low + high) >> 1;
+			if ((starts[mid] ?? 0) < from) {
+				low = mid + 1;
+			} else {
+				high = mid;
+			}
+		}
+		return starts[low];
 	}
 
 	// --- output list --------------------------------------------------------
@@ -196,10 +274,35 @@ class InlineParser implements InlineScanner {
 			image,
 			active: true,
 		};
+		if (!image) {
+			this.activeLinkOpeners += 1;
+		}
 	}
 
 	removeBracket(): void {
-		this.brackets = this.brackets?.previous;
+		const popped = this.brackets;
+		if (popped !== undefined && !popped.image && popped.active) {
+			this.activeLinkOpeners -= 1;
+		}
+		this.brackets = popped?.previous;
+	}
+
+	deactivateLinkOpeners(): void {
+		// The fast path is the point. Upstream walks the whole bracket stack
+		// here on every link close; image openers are never popped, so a
+		// document like `![[]()` repeated accumulates them and the walk turns
+		// quadratic — 160k repetitions of that shape did not terminate. The
+		// counter makes the common case (nothing left to deactivate) O(1)
+		// while the walk itself stays exactly upstream's.
+		if (this.activeLinkOpeners === 0) {
+			return;
+		}
+		for (let opener = this.brackets; opener !== undefined; opener = opener.previous) {
+			if (!opener.image && opener.active) {
+				opener.active = false;
+				this.activeLinkOpeners -= 1;
+			}
+		}
 	}
 
 	/**

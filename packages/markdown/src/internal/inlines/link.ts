@@ -49,19 +49,44 @@ const withReferenceScanner = <A>(scanner: InlineScanner, run: (reference: Refere
 	return result;
 };
 
-/** The plain-text flattening of a node list — an image's `alt`. */
+/**
+ * The plain-text flattening of a node list — an image's `alt`.
+ *
+ * ITERATIVE ON PURPOSE. This runs while the brackets close, before
+ * materialization's depth guard has seen anything, and the content it walks
+ * can nest as deeply as the input has balanced delimiters: the recursive
+ * spelling died with a `RangeError` — a defect, not a typed error — on
+ * `![` plus ten thousand nested emphasis markers. A flattening has no reason
+ * to recurse, so it does not, and needs no cap.
+ */
 const plainTextOf = (nodes: ReadonlyArray<InlineNode>): string => {
 	let text = "";
-	for (const node of nodes) {
+	// A stack of node lists rather than a stack of frames: entries are
+	// pushed in reverse so the walk stays left to right.
+	const pending: InlineNode[] = [...nodes].reverse();
+
+	while (pending.length > 0) {
+		const node = pending.pop();
+		if (node === undefined) {
+			break;
+		}
+
 		if (node.type === "text" || node.type === "inlineCode") {
 			text += node.value;
 		} else if (node.type === "image" || node.type === "imageReference") {
 			// A nested image contributes the alt text it already flattened.
 			text += node.value;
 		} else {
-			text += plainTextOf(childrenOf(node));
+			const children = childrenOf(node);
+			for (let index = children.length - 1; index >= 0; index -= 1) {
+				const child = children[index];
+				if (child !== undefined) {
+					pending.push(child);
+				}
+			}
 		}
 	}
+
 	return text;
 };
 
@@ -240,11 +265,7 @@ export const linkCloseConstruct: InlineConstruct = {
 			}
 		} else {
 			// Links do not nest: every earlier link opener is spent.
-			for (let earlier = scanner.brackets; earlier !== undefined; earlier = earlier.previous) {
-				if (!earlier.image) {
-					earlier.active = false;
-				}
-			}
+			scanner.deactivateLinkOpeners();
 		}
 
 		return true;

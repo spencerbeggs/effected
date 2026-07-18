@@ -22,6 +22,7 @@
 //    object. Definitions become nodes in this port, so the caller decides
 //    what to do with the result, and the map is keyed through a real `Map`.
 
+import { stickyOf } from "./patterns.js";
 import { unescapeString } from "./unescape.js";
 
 const ESCAPABLE = "[!\"#$%&'()*+,./:;<=>?@[\\\\\\]^_`{|}~-]";
@@ -39,9 +40,20 @@ const reLinkTitle = new RegExp(
 const reLinkDestinationBraces = /^(?:<(?:[^<>\n\\\0]|\\.)*>)/;
 const reEscapable = new RegExp(`^${ESCAPABLE}`);
 const reSpnl = /^ *(?:\n *)?/;
-const reWhitespaceChar = /^[ \t\n\v\f\r]/;
 const reSpaceAtEndOfLine = /^ *(?:\n|$)/;
 const reLinkLabel = /^\[(?:[^\\[\]]|\\.){0,1000}\]/s;
+
+/**
+ * The whitespace set a link destination may not contain, as codes.
+ *
+ * The destination walk below tests every character it passes. Upstream spells
+ * that test `reWhitespaceChar.exec(fromCodePoint(c))`, which allocates a
+ * string and runs a regex per character — in a scan that is already O(n) per
+ * attempt on an unterminated destination, that constant is the difference
+ * between seconds and minutes.
+ */
+const isWhitespaceCode = (code: number): boolean =>
+	code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0b || code === 0x0c || code === 0x0d;
 
 const C_BACKSLASH = 0x5c;
 const C_COLON = 0x3a;
@@ -63,13 +75,21 @@ export class ReferenceScanner {
 		return this.pos < this.subject.length ? this.subject.charCodeAt(this.pos) : -1;
 	}
 
-	/** Match `pattern` at the cursor, advancing past it on success. */
+	/**
+	 * Match `pattern` at the cursor, advancing past it on success.
+	 *
+	 * Sticky rather than upstream's slice-then-match: every pattern here is
+	 * anchored, and slicing the subject per attempt is quadratic on a large
+	 * one (`patterns.ts`).
+	 */
 	match(pattern: RegExp): string | undefined {
-		const found = pattern.exec(this.subject.slice(this.pos));
+		const sticky = stickyOf(pattern);
+		sticky.lastIndex = this.pos;
+		const found = sticky.exec(this.subject);
 		if (found === null) {
 			return undefined;
 		}
-		this.pos += found.index + found[0].length;
+		this.pos = sticky.lastIndex;
 		return found[0];
 	}
 
@@ -117,7 +137,7 @@ export class ReferenceScanner {
 				}
 				this.pos += 1;
 				openParens -= 1;
-			} else if (reWhitespaceChar.test(String.fromCodePoint(code))) {
+			} else if (isWhitespaceCode(code)) {
 				break;
 			} else {
 				this.pos += 1;

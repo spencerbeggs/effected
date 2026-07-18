@@ -14,12 +14,31 @@ import type { InlineConstruct } from "../inlineTypes.js";
 
 const C_LESSTHAN = 0x3c;
 
+/** The raw-HTML forms that scan forward for a fixed closing sequence. */
+const UNTERMINATED_FORMS: ReadonlyArray<readonly [opener: string, closer: string]> = [
+	["<!--", "-->"],
+	["<?", "?>"],
+	["<![CDATA[", "]]>"],
+];
+
 /** A raw HTML tag, comment, processing instruction, declaration or CDATA. */
 export const rawHtmlConstruct: InlineConstruct = {
 	name: "rawHtml",
 	triggers: [C_LESSTHAN],
 	parse: (scanner) => {
 		const from = scanner.pos;
+
+		// The comment, instruction and CDATA forms all end in a fixed sequence
+		// that their pattern scans forward for. When the document holds no such
+		// sequence at all, that scan runs to the end of input for EVERY opener —
+		// 300k unclosed `<!--` is one of the vendored pathological cases. Asking
+		// first is memoized and constant-time after the first miss.
+		for (const [opener, closer] of UNTERMINATED_FORMS) {
+			if (scanner.subject.startsWith(opener, from) && !scanner.hasAhead(closer)) {
+				return false;
+			}
+		}
+
 		const matched = scanner.match(reHtmlTag);
 		if (matched === undefined) {
 			return false;

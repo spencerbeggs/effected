@@ -104,7 +104,14 @@ class BlockParser implements BlockScanner {
 
 	constructor(text: string, dialect: BlockDialect) {
 		this.lines = preprocessLines(text);
-		this.lineIndex = LineIndex.make(text);
+		// The index is built from the preprocessor's OWN line table, not from a
+		// second scan of the text: the two disagree about bare `\r`, and a
+		// document with one would otherwise report line numbers off by however
+		// many it contains.
+		this.lineIndex = LineIndex.fromLineStarts(
+			text,
+			this.lines.map((line) => line.start),
+		);
 		this.sourceLength = text.length;
 		this.dialect = dialect;
 		this.doc = makeBlockNode("document", 0, 1);

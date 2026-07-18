@@ -13,7 +13,6 @@ import type { InlineConstruct } from "../inlineTypes.js";
 const C_BACKTICK = 0x60;
 
 const reTicksHere = /^`+/;
-const reTicks = /`+/;
 const reNewline = /\n/gm;
 const reNonSpace = /[^ ]/;
 
@@ -29,19 +28,21 @@ export const codeSpanConstruct: InlineConstruct = {
 		}
 
 		const afterOpenTicks = scanner.pos;
-		let matched = scanner.matchAhead(reTicks);
-		while (matched !== undefined) {
-			if (matched === ticks) {
-				const contents = scanner.subject.slice(afterOpenTicks, scanner.pos - ticks.length).replace(reNewline, " ");
-				const stripped =
-					contents.length > 0 && reNonSpace.test(contents) && contents.startsWith(" ") && contents.endsWith(" ")
-						? contents.slice(1, -1)
-						: contents;
 
-				scanner.append(makeInlineNode("inlineCode", from, scanner.pos, stripped));
-				return true;
-			}
-			matched = scanner.matchAhead(reTicks);
+		// Upstream walks run by run until it meets one of equal length, which
+		// is quadratic on a document of many distinct-length runs (the vendored
+		// "backticks" case). The run index answers the same question directly.
+		const closing = scanner.closingBacktickRun(afterOpenTicks, ticks.length);
+		if (closing !== undefined) {
+			const contents = scanner.subject.slice(afterOpenTicks, closing).replace(reNewline, " ");
+			const stripped =
+				contents.length > 0 && reNonSpace.test(contents) && contents.startsWith(" ") && contents.endsWith(" ")
+					? contents.slice(1, -1)
+					: contents;
+
+			scanner.pos = closing + ticks.length;
+			scanner.append(makeInlineNode("inlineCode", from, scanner.pos, stripped));
+			return true;
 		}
 
 		// No closing run of the same length: the opening ticks are literal.
