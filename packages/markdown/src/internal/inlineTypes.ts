@@ -11,8 +11,9 @@
 // is what lets P2's GFM constructs (autolink literals, strikethrough) register
 // without touching the parser.
 
-import type { PhrasingContent, Position, Text } from "../MarkdownNode.js";
+import type { Definition } from "../MarkdownNode.js";
 import type { RawInlineSegment } from "./blockTypes.js";
+import type { InlineNode } from "./inlineNode.js";
 
 /**
  * A leaf block's raw text with the provenance needed to position what the
@@ -28,18 +29,62 @@ export interface InlineSource {
 }
 
 /**
- * The cursor and output surface an inline construct drives.
+ * One entry of the delimiter stack: a run of `*` or `_` that might open or
+ * close emphasis, and the text node holding those characters.
+ */
+export interface Delimiter {
+	/** The delimiter character's code. */
+	readonly cc: number;
+	/** How many delimiters are still unused. */
+	numdelims: number;
+	/** How many there were to begin with — the multiple-of-three rule reads this. */
+	readonly origdelims: number;
+	/** The text node carrying the run; emphasis truncates it in place. */
+	readonly node: InlineNode;
+	previous: Delimiter | undefined;
+	next: Delimiter | undefined;
+	readonly canOpen: boolean;
+	readonly canClose: boolean;
+}
+
+/** One entry of the bracket stack: an unmatched `[` or `![`. */
+export interface Bracket {
+	/** The text node carrying the bracket. */
+	readonly node: InlineNode;
+	previous: Bracket | undefined;
+	/** The delimiter stack top when this bracket opened. */
+	readonly previousDelimiter: Delimiter | undefined;
+	/** Where the bracket's content starts. */
+	readonly index: number;
+	/** Whether this opener was `![`. */
+	readonly image: boolean;
+	/** Cleared when an enclosing link forms — links do not nest. */
+	active: boolean;
+	/** Whether another bracket opened after this one. */
+	bracketAfter?: boolean;
+}
+
+/**
+ * The cursor, output list and stacks an inline construct drives — upstream's
+ * `InlineParser` object, as the interface its constructs see.
  *
- * Positions are the reason this is not just a string and an index: every
- * local index maps back through the segment table to an absolute source
- * offset, so a node built here is positioned in the ORIGINAL document rather
- * than in the stripped, tab-expanded content the block pass accumulated.
+ * Positions are the reason the source is here: every local index maps back
+ * through the segment table to an absolute source offset, so a node built
+ * here is positioned in the ORIGINAL document rather than in the stripped,
+ * tab-expanded content the block pass accumulated.
  */
 export interface InlineScanner {
 	/** The content being parsed — a leaf block's trimmed text. */
 	readonly subject: string;
 	/** The cursor. */
 	pos: number;
+	/** The definitions a reference may resolve against. */
+	readonly refmap: ReadonlyMap<string, Definition>;
+	/** The delimiter stack top. */
+	delimiters: Delimiter | undefined;
+	/** The bracket stack top. */
+	brackets: Bracket | undefined;
+
 	/** The char code at the cursor, or `-1` at the end. */
 	peek(): number;
 	/** Match `pattern` AT the cursor, advancing past it on success. */
@@ -52,26 +97,27 @@ export interface InlineScanner {
 	 * match found further along is not one.
 	 */
 	matchAhead(pattern: RegExp): string | undefined;
-	/** The absolute source offset of a local index. */
-	offsetAt(index: number): number;
-	/** A {@link Position} from a local index range. */
-	position(from: number, to: number): Position;
+
+	/** Append a node to the output list. */
+	append(node: InlineNode): void;
+	/** Append a literal text node spanning local `[from, to)`. */
+	appendText(value: string, from: number, to: number): InlineNode;
+	/** The last node appended, if any. */
+	lastChild(): InlineNode | undefined;
 	/**
-	 * Append literal text spanning local `[from, to)`. Merges into the
-	 * preceding {@link Text} when there is one, which is what keeps a soft
-	 * line break a `\n` inside one text value rather than a node boundary.
-	 */
-	appendText(value: string, from: number, to: number): void;
-	/** Append a node. */
-	append(node: PhrasingContent): void;
-	/** The trailing {@link Text}, if the last child is one. */
-	lastText(): Text | undefined;
-	/**
-	 * Strip trailing spaces from the trailing {@link Text}, pulling its end
-	 * position back, and report how many were removed. Removes the node if
-	 * nothing survives.
+	 * Strip trailing spaces from the trailing text node, pulling its end back,
+	 * and report how many were removed. Removes the node if nothing survives.
 	 */
 	trimTrailingSpaces(): number;
+
+	/** Drop `delimiter` from the stack. */
+	removeDelimiter(delimiter: Delimiter): void;
+	/** Push a bracket opener. */
+	addBracket(node: InlineNode, index: number, image: boolean): void;
+	/** Pop the top bracket opener. */
+	removeBracket(): void;
+	/** Run the emphasis algorithm down to `stackBottom`. */
+	processEmphasis(stackBottom: Delimiter | undefined): void;
 }
 
 /** One inline construct: upstream's `parse*` methods, one per module. */

@@ -4,18 +4,11 @@
 // and normalized, must equal the spec's expected HTML normalized the same way
 // (the mdast-util-from-markdown precedent — the package ships no HTML).
 //
-// Two gates, both of which must shrink to nothing by the end of P1:
-//
-// - `SECTIONS_GREEN` is the inverse of a skip map. A section not listed is
-//   skipped wholesale, by name, with its example count visible. It grows task
-//   by task and reaches every section at Task 9.
-// - `DEFERRED_EXAMPLES` is the per-example escape hatch inside an allowlisted
-//   section: an example that needs a construct a later task delivers. Every
-//   entry names the task that clears it, and the guard below refuses stale or
-//   misfiled entries.
-//
-// Neither is a skip list in the standing-goal sense: nothing here is
-// permanent, and Task 9 deletes both.
+// All 652 examples run and all 652 pass. There is no skip map and no
+// per-example deferral list: both existed while the parser was being built
+// task by task, and both are gone. `SECTIONS_GREEN` stays as a tripwire — the
+// gate below fails if a section ever leaves it, so a future dialect cannot
+// quietly drop a section's coverage to make a change land.
 
 import { assert, describe, it } from "@effect/vitest";
 import { parseBlocks } from "../../src/internal/blockParser.js";
@@ -24,12 +17,11 @@ import { loadSpecExamples } from "./support/corpus.js";
 import { renderHtml } from "./support/htmlWriter.js";
 import { normalizeHtml } from "./support/normalizeHtml.js";
 
-/**
- * The sections whose examples run. Task 6's gate; Tasks 7-9 widen it to all
- * twenty-six.
- */
+/** Every section of the spec. All of them run. */
 const SECTIONS_GREEN: ReadonlyArray<string> = [
 	"Tabs",
+	"Backslash escapes",
+	"Entity and numeric character references",
 	"Precedence",
 	"Thematic breaks",
 	"ATX headings",
@@ -44,88 +36,16 @@ const SECTIONS_GREEN: ReadonlyArray<string> = [
 	"List items",
 	"Lists",
 	"Inlines",
-	"Backslash escapes",
-	"Entity and numeric character references",
 	"Code spans",
+	"Emphasis and strong emphasis",
+	"Links",
+	"Images",
 	"Autolinks",
 	"Raw HTML",
 	"Hard line breaks",
 	"Soft line breaks",
 	"Textual content",
 ];
-
-/** The P1 task that clears a deferred example. */
-type ClearingTask = "task-7" | "task-8" | "task-9";
-
-/**
- * Examples inside an allowlisted section that need a construct P1 has not
- * landed yet. Keyed by spec example number.
- */
-const DEFERRED_EXAMPLES: ReadonlyMap<number, ClearingTask> = new Map<number, ClearingTask>([
-	// Every remaining deferral is an inline construct. The block structure
-	// each of these examples produces is already correct — what is missing is
-	// the pass that turns a leaf's raw text into phrasing content.
-
-	// Thematic breaks
-	[56, "task-9"], // ` *-*` is emphasis, not a break
-
-	// Backslash escapes — the escaping is right in each of these; the
-	// construct being escaped into is what is missing.
-	[15, "task-9"], // an escaped backslash before emphasis
-	[22, "task-9"], // escapes inside an inline link's destination and title
-	[23, "task-9"], // escapes inside a definition, resolved through a reference
-
-	// Entity and numeric character references — decoding works (both of these
-	// render the decoded destination); resolving the link does not.
-	[32, "task-9"], // entities in an inline link's destination and title
-	[33, "task-9"], // entities in a definition, resolved through a reference
-	[37, "task-9"], // a numeric reference next to real emphasis
-
-	// ATX headings
-	[66, "task-9"], // emphasis inside a heading
-
-	// Setext headings
-	[80, "task-9"], // emphasis in the heading text
-	[81, "task-9"], // emphasis spanning both heading lines
-	[82, "task-9"], // emphasis spanning both heading lines
-
-	// Fenced code blocks
-
-	// HTML blocks
-	[148, "task-9"], // emphasis in a paragraph between HTML lines
-	[152, "task-9"], // emphasis in a paragraph after a block
-	[155, "task-9"], // emphasis in a paragraph after a block
-	[167, "task-9"], // emphasis in a paragraph inside `<del>`
-	[168, "task-9"], // inline `<del>` plus emphasis
-	[176, "task-9"], // emphasis after a `<style>` block
-	[177, "task-9"], // emphasis after a comment block
-	[188, "task-9"], // emphasis inside a `<div>`
-
-	// Link reference definitions — the definitions parse and are kept; what is
-	// missing is the reference that resolves against them.
-	[192, "task-9"],
-	[193, "task-9"],
-	[194, "task-9"],
-	[195, "task-9"],
-	[196, "task-9"],
-	[198, "task-9"],
-	[200, "task-9"],
-	[202, "task-9"],
-	[203, "task-9"],
-	[204, "task-9"],
-	[205, "task-9"],
-	[206, "task-9"],
-	[214, "task-9"],
-	[215, "task-9"],
-	[216, "task-9"],
-	[217, "task-9"],
-	[218, "task-9"],
-
-	// Hard line breaks — the break is emitted correctly; the emphasis it sits
-	// inside is not.
-	[638, "task-9"],
-	[639, "task-9"],
-]);
 
 const bySection = (examples: ReadonlyArray<SpecExample>): ReadonlyMap<string, ReadonlyArray<SpecExample>> => {
 	const sections = new Map<string, SpecExample[]>();
@@ -151,14 +71,13 @@ describe("CommonMark 0.31.2 conformance", () => {
 			}
 		});
 
-		it("defers only real examples inside allowlisted sections", () => {
-			const allowed = new Set(SECTIONS_GREEN);
-			for (const number of DEFERRED_EXAMPLES.keys()) {
-				const example = examples.find((candidate) => candidate.example === number);
-				assert.isDefined(example, `DEFERRED_EXAMPLES names example ${number}, which the corpus does not have`);
+		it("runs every section the corpus has", () => {
+			// The empty-skip-map goal, as an assertion: a section missing from
+			// the allowlist would silently stop being tested.
+			for (const section of sections.keys()) {
 				assert.isTrue(
-					allowed.has(example?.section ?? ""),
-					`example ${number} is deferred but its section is not allowlisted — delete the entry`,
+					SECTIONS_GREEN.includes(section),
+					`the corpus has a section the harness does not run: ${section}`,
 				);
 			}
 		});
@@ -166,18 +85,7 @@ describe("CommonMark 0.31.2 conformance", () => {
 
 	for (const [section, sectionExamples] of sections) {
 		describe(section, () => {
-			if (!SECTIONS_GREEN.includes(section)) {
-				it.skip(`${sectionExamples.length} examples — section not yet in SECTIONS_GREEN`, () => {});
-				return;
-			}
-
 			for (const example of sectionExamples) {
-				const deferred = DEFERRED_EXAMPLES.get(example.example);
-				if (deferred !== undefined) {
-					it.skip(`example ${example.example} — deferred to ${deferred}`, () => {});
-					continue;
-				}
-
 				it(`example ${example.example}`, () => {
 					const actual = normalizeHtml(renderHtml(parseBlocks(example.markdown).root));
 					assert.strictEqual(actual, normalizeHtml(example.html));

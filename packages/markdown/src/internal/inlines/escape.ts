@@ -5,7 +5,7 @@
 // `parseBackslash`: a backslash escapes the punctuation that follows it, ends
 // the line as a hard break, or stands for itself.
 
-import { Break } from "../../MarkdownNode.js";
+import { makeInlineNode } from "../inlineNode.js";
 import type { InlineConstruct } from "../inlineTypes.js";
 import { ESCAPABLE } from "../unescape.js";
 
@@ -24,7 +24,9 @@ export const escapeConstruct: InlineConstruct = {
 
 		if (scanner.peek() === C_NEWLINE) {
 			scanner.pos += 1;
-			scanner.append(Break.make({ position: scanner.position(from, scanner.pos), breakStyle: "backslash" }));
+			const node = makeInlineNode("break", from, scanner.pos);
+			node.data.breakStyle = "backslash";
+			scanner.append(node);
 			return true;
 		}
 

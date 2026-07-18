@@ -2,34 +2,61 @@
 // Copyright (c) 2014-2023 John MacFarlane
 // License: BSD-2-Clause
 //
-// The inline pass: upstream's `InlineParser` minus emphasis and links, which
-// need the delimiter and bracket stacks and arrive in Task 9. The loop, the
-// cursor primitives and the construct dispatch are all here; the two stack
-// slots below are where Task 9 hangs its state.
+// The inline pass: upstream's `InlineParser`, including `processEmphasis` —
+// the delimiter-stack algorithm the whole design rests on, since it is what
+// makes emphasis linear-time instead of the quadratic blowup that is
+// markdown's DoS vector.
 //
-// Port notes, three changes from upstream:
+// Port notes, four changes from upstream:
 //
 // 1. Positions. Upstream's inline nodes inherit their leaf block's sourcepos
 //    and have no offsets of their own. Every node built here is positioned
 //    through the segment table (`segments.ts`), so an inline node inside a
 //    twice-indented blockquote still points at the right characters in the
 //    ORIGINAL source.
-// 2. Adjacent text merges. Upstream emits a text node per run and lets its
-//    renderer concatenate; mdast wants one text node per contiguous run, and
-//    merging is also what makes a soft line break a `\n` inside a value
-//    rather than a node boundary.
+// 2. Adjacent text nodes merge at materialization. Upstream emits one per run
+//    and lets its renderer concatenate; mdast wants one node per contiguous
+//    run, and merging late rather than eagerly keeps `processEmphasis` free to
+//    truncate a delimiter's text node in place.
 // 3. Dispatch is a per-dialect trigger table rather than a `switch`
 //    (`inlineRegistry.ts`).
+// 4. Smart punctuation is not ported at all, so `'` and `"` never reach the
+//    delimiter stack and the two `openers_bottom` slots they use stay unused
+//    (the 14-slot layout is kept so the index arithmetic matches upstream's).
+//
+// Recursion surfaces, for the hardening enumeration: the delimiter stack and
+// the bracket stack are ITERATIVE and deliberately unguarded — that is the
+// point of the algorithm. What recurses is `materialize`, over the node tree
+// those stacks build, and it shares the block pass's depth cap: emphasis can
+// nest as deeply as the input has balanced delimiters.
 //
 // Imports node classes from `../MarkdownNode.js` (the sanctioned exception to
 // the cycle firewall) and nothing else public.
 
-import type { Definition, PhrasingContent } from "../MarkdownNode.js";
-import { Point, Position, Text } from "../MarkdownNode.js";
+import type { Definition, PhrasingContent, Position } from "../MarkdownNode.js";
+import {
+	Break,
+	Emphasis,
+	Html,
+	Image,
+	ImageReference,
+	InlineCode,
+	Link,
+	LinkReference,
+	Strong,
+	Text,
+} from "../MarkdownNode.js";
+import { GuardExceeded } from "./carriers.js";
+import type { InlineNode } from "./inlineNode.js";
+import { appendChild, childrenOf, insertAfter, makeInlineNode, unlink } from "./inlineNode.js";
 import type { InlineDialectName } from "./inlineRegistry.js";
 import { inlineDialect } from "./inlineRegistry.js";
-import type { InlineDialect, InlineScanner, InlineSource } from "./inlineTypes.js";
+import type { Bracket, Delimiter, InlineDialect, InlineScanner, InlineSource } from "./inlineTypes.js";
+import { MAX_NESTING_DEPTH } from "./limits.js";
 import { sourceOffsetAt } from "./segments.js";
+
+const C_UNDERSCORE = 0x5f;
+const C_ASTERISK = 0x2a;
 
 const reTrailingSpaces = / +$/;
 
@@ -43,24 +70,31 @@ type PositionOf = (startOffset: number, endOffset: number) => Position;
 class InlineParser implements InlineScanner {
 	readonly subject: string;
 	pos = 0;
+	readonly refmap: ReadonlyMap<string, Definition>;
+	delimiters: Delimiter | undefined;
+	brackets: Bracket | undefined;
 
 	private readonly source: InlineSource;
 	private readonly dialect: InlineDialect;
 	private readonly positionOf: PositionOf;
-	private readonly children: PhrasingContent[] = [];
+	/** The output list's root; only ever a container for the children. */
+	private readonly root: InlineNode;
 
-	// The delimiter and bracket stacks Task 9 fills. They exist here so the
-	// loop below is the final shape: emphasis and links are constructs that
-	// push onto these, not a different parser.
-	// private delimiters: Delimiter | undefined;
-	// private brackets: Bracket | undefined;
-
-	constructor(source: InlineSource, dialect: InlineDialect, positionOf: PositionOf) {
+	constructor(
+		source: InlineSource,
+		dialect: InlineDialect,
+		positionOf: PositionOf,
+		refmap: ReadonlyMap<string, Definition>,
+	) {
 		this.source = source;
 		this.subject = source.text;
 		this.dialect = dialect;
 		this.positionOf = positionOf;
+		this.refmap = refmap;
+		this.root = makeInlineNode("text", 0, source.text.length);
 	}
+
+	// --- cursor -------------------------------------------------------------
 
 	peek(): number {
 		return this.pos < this.subject.length ? this.subject.charCodeAt(this.pos) : -1;
@@ -72,7 +106,7 @@ class InlineParser implements InlineScanner {
 	 * A match that starts later is not a match: every construct here asks
 	 * "does this begin at the cursor". Upstream adds `m.index` to its position
 	 * instead, which is safe only because its dispatch guarantees index zero —
-	 * a guarantee the trigger table does not make (see `text.ts`).
+	 * a guarantee the trigger table does not make (see `inlines/text.ts`).
 	 */
 	match(pattern: RegExp): string | undefined {
 		const found = pattern.exec(this.subject.slice(this.pos));
@@ -92,39 +126,25 @@ class InlineParser implements InlineScanner {
 		return found[0];
 	}
 
-	offsetAt(index: number): number {
-		return sourceOffsetAt(this.source.segments, index, this.source.startOffset);
+	// --- output list --------------------------------------------------------
+
+	append(node: InlineNode): void {
+		appendChild(this.root, node);
 	}
 
-	position(from: number, to: number): Position {
-		const start = this.offsetAt(from);
-		return this.positionOf(start, Math.max(this.offsetAt(to), start));
+	appendText(value: string, from: number, to: number): InlineNode {
+		const node = makeInlineNode("text", from, to, value);
+		appendChild(this.root, node);
+		return node;
 	}
 
-	appendText(value: string, from: number, to: number): void {
-		const previous = this.children[this.children.length - 1];
-		if (previous?.type === "text") {
-			this.children[this.children.length - 1] = Text.make({
-				value: previous.value + value,
-				position: Position.make({ start: previous.position.start, end: this.position(from, to).end }),
-			});
-			return;
-		}
-		this.children.push(Text.make({ value, position: this.position(from, to) }));
-	}
-
-	append(node: PhrasingContent): void {
-		this.children.push(node);
-	}
-
-	lastText(): Text | undefined {
-		const previous = this.children[this.children.length - 1];
-		return previous?.type === "text" ? previous : undefined;
+	lastChild(): InlineNode | undefined {
+		return this.root.lastChild;
 	}
 
 	trimTrailingSpaces(): number {
-		const last = this.lastText();
-		if (last === undefined) {
+		const last = this.root.lastChild;
+		if (last === undefined || last.type !== "text") {
 			return 0;
 		}
 
@@ -135,23 +155,281 @@ class InlineParser implements InlineScanner {
 		}
 
 		if (trimmed.length === 0) {
-			this.children.pop();
+			unlink(last);
 			return removed;
 		}
 
-		this.children[this.children.length - 1] = Text.make({
-			value: trimmed,
-			position: Position.make({
-				start: last.position.start,
-				end: Point.make({
-					line: last.position.end.line,
-					column: Math.max(last.position.end.column - removed, 0),
-					offset: Math.max(last.position.end.offset - removed, last.position.start.offset),
-				}),
-			}),
-		});
+		last.value = trimmed;
+		last.end = Math.max(last.end - removed, last.start);
 		return removed;
 	}
+
+	// --- stacks -------------------------------------------------------------
+
+	removeDelimiter(delimiter: Delimiter): void {
+		if (delimiter.previous !== undefined) {
+			delimiter.previous.next = delimiter.next;
+		}
+		if (delimiter.next === undefined) {
+			this.delimiters = delimiter.previous;
+		} else {
+			delimiter.next.previous = delimiter.previous;
+		}
+	}
+
+	private removeDelimitersBetween(bottom: Delimiter, top: Delimiter): void {
+		if (bottom.next !== top) {
+			bottom.next = top;
+			top.previous = bottom;
+		}
+	}
+
+	addBracket(node: InlineNode, index: number, image: boolean): void {
+		if (this.brackets !== undefined) {
+			this.brackets.bracketAfter = true;
+		}
+		this.brackets = {
+			node,
+			previous: this.brackets,
+			previousDelimiter: this.delimiters,
+			index,
+			image,
+			active: true,
+		};
+	}
+
+	removeBracket(): void {
+		this.brackets = this.brackets?.previous;
+	}
+
+	/**
+	 * Pair up the delimiter stack above `stackBottom` into emphasis and strong
+	 * nodes — upstream's `processEmphasis`, including the two rules that make
+	 * the algorithm terminate in linear time: `openers_bottom`, which records
+	 * how far back a failed search already looked, and the multiple-of-three
+	 * rule for runs that can both open and close.
+	 */
+	processEmphasis(stackBottom: Delimiter | undefined): void {
+		// One lower bound per (character, can-open, length mod 3) combination.
+		// Slots 0 and 1 belong to upstream's smart quotes and stay unused.
+		const openersBottom: Array<Delimiter | undefined> = new Array(14).fill(stackBottom);
+
+		let closer = this.delimiters;
+		while (closer !== undefined && closer.previous !== stackBottom) {
+			closer = closer.previous;
+		}
+
+		while (closer !== undefined) {
+			if (!closer.canClose) {
+				closer = closer.next;
+				continue;
+			}
+
+			const closercc = closer.cc;
+			const openersBottomIndex =
+				(closercc === C_UNDERSCORE ? 2 : 8) + (closer.canOpen ? 3 : 0) + (closer.origdelims % 3);
+
+			let opener = closer.previous;
+			let openerFound = false;
+			while (opener !== undefined && opener !== stackBottom && opener !== openersBottom[openersBottomIndex]) {
+				// The multiple-of-three rule: a run that can both open and
+				// close cannot pair when the two lengths sum to a multiple of
+				// three unless both are themselves multiples of three.
+				const oddMatch =
+					(closer.canOpen || opener.canClose) &&
+					closer.origdelims % 3 !== 0 &&
+					(opener.origdelims + closer.origdelims) % 3 === 0;
+				if (opener.cc === closer.cc && opener.canOpen && !oddMatch) {
+					openerFound = true;
+					break;
+				}
+				opener = opener.previous;
+			}
+
+			const oldCloser = closer;
+
+			if (closercc === C_ASTERISK || closercc === C_UNDERSCORE) {
+				if (!openerFound || opener === undefined) {
+					closer = closer.next;
+				} else {
+					// Two delimiters make strong emphasis, one makes emphasis.
+					const useDelims = closer.numdelims >= 2 && opener.numdelims >= 2 ? 2 : 1;
+					const openerNode = opener.node;
+					const closerNode = closer.node;
+
+					opener.numdelims -= useDelims;
+					closer.numdelims -= useDelims;
+					openerNode.value = openerNode.value.slice(0, openerNode.value.length - useDelims);
+					openerNode.end -= useDelims;
+					closerNode.value = closerNode.value.slice(0, closerNode.value.length - useDelims);
+					closerNode.start += useDelims;
+
+					const emphasis = makeInlineNode(useDelims === 1 ? "emphasis" : "strong", openerNode.end, closerNode.start);
+					emphasis.data.markerChar = closercc === C_UNDERSCORE ? "_" : "*";
+
+					let between = openerNode.next;
+					while (between !== undefined && between !== closerNode) {
+						const following = between.next;
+						appendChild(emphasis, between);
+						between = following;
+					}
+
+					insertAfter(openerNode, emphasis);
+					this.removeDelimitersBetween(opener, closer);
+
+					if (opener.numdelims === 0) {
+						unlink(openerNode);
+						this.removeDelimiter(opener);
+					}
+
+					if (closer.numdelims === 0) {
+						unlink(closerNode);
+						const next = closer.next;
+						this.removeDelimiter(closer);
+						closer = next;
+					}
+				}
+			} else {
+				closer = closer.next;
+			}
+
+			if (!openerFound) {
+				// Nothing above this point can ever match this closer, so future
+				// searches stop here.
+				openersBottom[openersBottomIndex] = oldCloser.previous;
+				if (!oldCloser.canOpen) {
+					this.removeDelimiter(oldCloser);
+				}
+			}
+		}
+
+		while (this.delimiters !== undefined && this.delimiters !== stackBottom) {
+			this.removeDelimiter(this.delimiters);
+		}
+	}
+
+	// --- positions and materialization --------------------------------------
+
+	private offsetAt(index: number): number {
+		return sourceOffsetAt(this.source.segments, index, this.source.startOffset);
+	}
+
+	private position(from: number, to: number): Position {
+		const start = this.offsetAt(from);
+		return this.positionOf(start, Math.max(this.offsetAt(to), start));
+	}
+
+	/**
+	 * Turn the mutable list into mdast nodes, coalescing adjacent text runs.
+	 *
+	 * Depth is emphasis nesting, which the input controls, so the same cap the
+	 * block pass applies to containers applies here.
+	 */
+	private materialize(parent: InlineNode, depth: number): ReadonlyArray<PhrasingContent> {
+		if (depth > MAX_NESTING_DEPTH) {
+			throw new GuardExceeded("NestingDepthExceeded", MAX_NESTING_DEPTH, depth, this.offsetAt(parent.start));
+		}
+
+		const children: PhrasingContent[] = [];
+		let pendingText: InlineNode | undefined;
+
+		const flushText = (): void => {
+			if (pendingText === undefined) {
+				return;
+			}
+			if (pendingText.value.length > 0) {
+				children.push(
+					Text.make({ value: pendingText.value, position: this.position(pendingText.start, pendingText.end) }),
+				);
+			}
+			pendingText = undefined;
+		};
+
+		for (const node of childrenOf(parent)) {
+			if (node.type === "text") {
+				// Merge the run rather than emitting a node per construct: two
+				// text nodes side by side are one mdast text node.
+				if (pendingText === undefined) {
+					pendingText = makeInlineNode("text", node.start, node.end, node.value);
+				} else {
+					pendingText.value += node.value;
+					pendingText.end = node.end;
+				}
+				continue;
+			}
+
+			flushText();
+			const built = this.materializeNode(node, depth);
+			if (built !== undefined) {
+				children.push(built);
+			}
+		}
+
+		flushText();
+		return children;
+	}
+
+	private materializeNode(node: InlineNode, depth: number): PhrasingContent | undefined {
+		const position = this.position(node.start, node.end);
+		const { url, title, identifier, label, referenceType, markerChar, breakStyle } = node.data;
+
+		switch (node.type) {
+			case "inlineCode":
+				return InlineCode.make({ value: node.value, position });
+			case "html":
+				return Html.make({ value: node.value, position });
+			case "break":
+				return Break.make({ position, ...(breakStyle === undefined ? {} : { breakStyle }) });
+			case "emphasis":
+				return Emphasis.make({
+					children: this.materialize(node, depth + 1),
+					position,
+					...(markerChar === undefined ? {} : { markerChar }),
+				});
+			case "strong":
+				return Strong.make({
+					children: this.materialize(node, depth + 1),
+					position,
+					...(markerChar === undefined ? {} : { markerChar }),
+				});
+			case "link":
+				return Link.make({
+					url: url ?? "",
+					children: this.materialize(node, depth + 1),
+					position,
+					...(title === undefined ? {} : { title }),
+				});
+			case "image":
+				return Image.make({
+					url: url ?? "",
+					position,
+					...(title === undefined ? {} : { title }),
+					...(node.value === "" ? {} : { alt: node.value }),
+				});
+			case "linkReference":
+				return LinkReference.make({
+					identifier: identifier ?? "",
+					referenceType: referenceType ?? "shortcut",
+					children: this.materialize(node, depth + 1),
+					position,
+					...(label === undefined ? {} : { label }),
+				});
+			case "imageReference":
+				return ImageReference.make({
+					identifier: identifier ?? "",
+					referenceType: referenceType ?? "shortcut",
+					position,
+					...(label === undefined ? {} : { label }),
+					...(node.value === "" ? {} : { alt: node.value }),
+				});
+			default:
+				// A bare text node never reaches here — `materialize` coalesces
+				// those before dispatching.
+				return undefined;
+		}
+	}
+
+	// --- the loop -----------------------------------------------------------
 
 	/**
 	 * One construct at the cursor. Upstream's `parseInline`: try the
@@ -174,8 +452,8 @@ class InlineParser implements InlineScanner {
 			return true;
 		}
 
-		// A character no construct claimed — an emphasis marker until Task 9,
-		// a stray bracket, a quote — is literal text.
+		// A character no construct claimed — a stray quote, a `]` with nothing
+		// open — is literal text.
 		const from = this.pos;
 		this.pos += 1;
 		this.appendText(String.fromCodePoint(code), from, this.pos);
@@ -189,23 +467,23 @@ class InlineParser implements InlineScanner {
 		while (this.parseOne()) {
 			// each call consumes at least one character
 		}
-		return this.children;
+		this.processEmphasis(undefined);
+		return this.materialize(this.root, 0);
 	}
 }
 
 /**
  * Parse a leaf block's raw text into phrasing content.
  *
- * `refmap` is threaded now so the signature is final: reference links resolve
- * against it in Task 9, and nothing here consults it yet. `position` comes
- * from the block pass, which owns the line index.
+ * A reference only forms when `refmap` holds its normalized label — a
+ * dangling `[foo]` is literal text, per the spec — and when one does form it
+ * is emitted as a `linkReference` carrying the identifier rather than an
+ * eagerly resolved link. `position` comes from the block pass, which owns the
+ * line index.
  */
 export const parseInlines = (
 	source: InlineSource,
 	refmap: ReadonlyMap<string, Definition>,
 	position: PositionOf,
 	dialect: InlineDialectName = "commonmark",
-): ReadonlyArray<PhrasingContent> => {
-	void refmap;
-	return new InlineParser(source, inlineDialect(dialect), position).parse();
-};
+): ReadonlyArray<PhrasingContent> => new InlineParser(source, inlineDialect(dialect), position, refmap).parse();

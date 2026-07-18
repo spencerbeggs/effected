@@ -11,7 +11,7 @@
 // `breakStyle: "spaces"`; the trailing spaces are stripped either way, which
 // is upstream's behavior for a single trailing space too.
 
-import { Break } from "../../MarkdownNode.js";
+import { makeInlineNode } from "../inlineNode.js";
 import type { InlineConstruct } from "../inlineTypes.js";
 
 const C_NEWLINE = 0x0a;
@@ -28,9 +28,9 @@ export const lineBreakConstruct: InlineConstruct = {
 
 		const trailingSpaces = scanner.trimTrailingSpaces();
 		if (trailingSpaces >= 2) {
-			scanner.append(
-				Break.make({ position: scanner.position(from - trailingSpaces, scanner.pos), breakStyle: "spaces" }),
-			);
+			const node = makeInlineNode("break", from - trailingSpaces, scanner.pos);
+			node.data.breakStyle = "spaces";
+			scanner.append(node);
 		} else {
 			// A soft break is the newline itself, kept as text.
 			scanner.appendText("\n", from, scanner.pos);

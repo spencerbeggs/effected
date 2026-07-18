@@ -8,8 +8,8 @@
 // mdast has one `html` node for both, which is what this emits — a renderer
 // tells them apart by where the node sits, as the test writer does.
 
-import { Html } from "../../MarkdownNode.js";
 import { reHtmlTag } from "../htmlTags.js";
+import { makeInlineNode } from "../inlineNode.js";
 import type { InlineConstruct } from "../inlineTypes.js";
 
 const C_LESSTHAN = 0x3c;
@@ -24,7 +24,7 @@ export const rawHtmlConstruct: InlineConstruct = {
 		if (matched === undefined) {
 			return false;
 		}
-		scanner.append(Html.make({ value: matched, position: scanner.position(from, scanner.pos) }));
+		scanner.append(makeInlineNode("html", from, scanner.pos, matched));
 		return true;
 	},
 };

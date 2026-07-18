@@ -15,9 +15,11 @@
 
 import { autolinkConstruct } from "./inlines/autolink.js";
 import { codeSpanConstruct } from "./inlines/codeSpan.js";
+import { emphasisConstruct } from "./inlines/emphasis.js";
 import { entityConstruct } from "./inlines/entity.js";
 import { escapeConstruct } from "./inlines/escape.js";
 import { lineBreakConstruct } from "./inlines/lineBreak.js";
+import { imageOpenConstruct, linkCloseConstruct, linkOpenConstruct } from "./inlines/link.js";
 import { rawHtmlConstruct } from "./inlines/rawHtml.js";
 import { textConstruct } from "./inlines/text.js";
 import type { InlineConstruct, InlineDialect } from "./inlineTypes.js";
@@ -48,8 +50,10 @@ const commonmarkDialect: InlineDialect = {
 		lineBreakConstruct,
 		escapeConstruct,
 		codeSpanConstruct,
-		// emphasis — Task 9 (`*`, `_`)
-		// link, image — Task 9 (`[`, `]`, `!`)
+		emphasisConstruct,
+		linkOpenConstruct,
+		imageOpenConstruct,
+		linkCloseConstruct,
 		autolinkConstruct,
 		rawHtmlConstruct,
 		entityConstruct,

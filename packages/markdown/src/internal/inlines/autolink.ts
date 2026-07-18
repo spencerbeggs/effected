@@ -11,7 +11,7 @@
 // the same note for link destinations). An autolink also carries no title;
 // upstream sets `""`, and an absent optionalKey is the mdast-faithful form.
 
-import { Link, Text } from "../../MarkdownNode.js";
+import { appendChild, makeInlineNode } from "../inlineNode.js";
 import type { InlineConstruct } from "../inlineTypes.js";
 
 const C_LESSTHAN = 0x3c;
@@ -32,26 +32,20 @@ export const autolinkConstruct: InlineConstruct = {
 		const email = scanner.match(reEmailAutolink);
 		if (email !== undefined) {
 			const destination = email.slice(1, -1);
-			scanner.append(
-				Link.make({
-					url: `mailto:${destination}`,
-					children: [Text.make({ value: destination, position: scanner.position(from + 1, scanner.pos - 1) })],
-					position: scanner.position(from, scanner.pos),
-				}),
-			);
+			const node = makeInlineNode("link", from, scanner.pos);
+			node.data.url = `mailto:${destination}`;
+			appendChild(node, makeInlineNode("text", from + 1, scanner.pos - 1, destination));
+			scanner.append(node);
 			return true;
 		}
 
 		const uri = scanner.match(reAutolink);
 		if (uri !== undefined) {
 			const destination = uri.slice(1, -1);
-			scanner.append(
-				Link.make({
-					url: destination,
-					children: [Text.make({ value: destination, position: scanner.position(from + 1, scanner.pos - 1) })],
-					position: scanner.position(from, scanner.pos),
-				}),
-			);
+			const node = makeInlineNode("link", from, scanner.pos);
+			node.data.url = destination;
+			appendChild(node, makeInlineNode("text", from + 1, scanner.pos - 1, destination));
+			scanner.append(node);
 			return true;
 		}
 

@@ -7,7 +7,7 @@
 // space of padding on each side is stripped when the content is not all
 // spaces.
 
-import { InlineCode } from "../../MarkdownNode.js";
+import { makeInlineNode } from "../inlineNode.js";
 import type { InlineConstruct } from "../inlineTypes.js";
 
 const C_BACKTICK = 0x60;
@@ -38,7 +38,7 @@ export const codeSpanConstruct: InlineConstruct = {
 						? contents.slice(1, -1)
 						: contents;
 
-				scanner.append(InlineCode.make({ value: stripped, position: scanner.position(from, scanner.pos) }));
+				scanner.append(makeInlineNode("inlineCode", from, scanner.pos, stripped));
 				return true;
 			}
 			matched = scanner.matchAhead(reTicks);
