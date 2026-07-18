@@ -1,0 +1,238 @@
+---
+title: Advanced
+description: Build a real tool on @effected/store — one database file shared by two services, schema evolution, the cache event stream, transactional cleanup, and the typed failures worth routing.
+---
+
+# Advanced
+
+The [overview](/store) shows the two services and the line between a failure and a defect. This guide is for building something real on top of them: a tool that keeps durable state and a byte cache in the same place, evolves its schema over time, and stays honest about what can go wrong.
+
+## A concrete scenario: a monorepo release CLI
+
+Picture the tool that cuts releases for a monorepo — the kind this repository runs. It builds packages, versions them, and publishes them, and a release can take minutes and die halfway through. Two kinds of memory keep it honest, and they are genuinely different kinds:
+
+- **A run ledger** — which packages built, which versioned, which published — that must survive a crash mid-release so a re-run resumes instead of double-publishing. A lost row here is a bug.
+- **A registry cache** — npm metadata, resolved dist-tags, tarball digests — keyed by package, expiring after an hour, capped so it never grows without bound. An evicted entry here is correct; the tool just re-fetches.
+
+Collapse those into one "storage" abstraction and every call site has to remember which mode it is in, until one of them forgets and treats an evicted release row as normal. `@effected/store` keeps them apart: `Store` carries your migrated schema, `Cache` carries `key → Uint8Array` with TTL, tags and eviction. What they share is the migration-ledger engine underneath — and, when you want it, a single database file.
+
+The package does **no path policy**: it opens the `filename` you hand it and never decides where a database belongs. That is the deliberate seam that keeps its dependency from leaking upward — the directory work belongs to the caller (in the kit, [`@effected/xdg`](/xdg) resolves the state directory and [`@effected/app`](/app) wires the whole plane together).
+
+## Composition: one database file, two services
+
+The overview covers `layerSqlite` — batteries included, one file per service. The advanced move is the driver-agnostic `layer` seam. Both `Store.layer` and `Cache.layer` require an abstract `SqlClient` rather than providing their own, so a single SQLite driver layer can satisfy both. Their ledgers live in different tables — `_store_migrations` and `_cache_migrations` — so they coexist in one file without id collisions:
+
+```ts with-api
+import { Cache, Store, type StoreMigration } from "@effected/store";
+import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
+import { Layer } from "effect";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+	{ id: 1, name: "create-runs", up: (sql) => sql`CREATE TABLE runs (id TEXT PRIMARY KEY, status TEXT NOT NULL)` },
+];
+
+// Bind the driver layer to a `const` and provide the same reference to both
+// services: Layer memoization by reference is what makes them share one open
+// connection instead of opening `release.db` twice.
+const SqliteLive = SqliteClient.layer({ filename: "release.db" });
+
+const StoreLive = Store.layer({ migrations });
+const CacheLive = Cache.layer({ maxEntries: 2_000 });
+
+// One file, two services. The `SqlClient` requirement of both is satisfied by
+// the one driver; the result requires nothing.
+const StateLive = Layer.provide(Layer.merge(StoreLive, CacheLive), SqliteLive);
+```
+
+The `const` binding is load-bearing, exactly as the overview warns: the layer statics are parameterized factories, and it is memoization by *reference* that collapses two `SqlClient` requirements onto one connection. Inline `SqliteClient.layer(...)` twice and you get two file handles to the same database — the ledger tables still keep the services from colliding, but you have paid for a connection you did not need.
+
+## Pattern: schema evolution with rollback
+
+A release tool's schema grows. `Store` runs every pending migration when its layer is built, but the three operations on the service let you drive the ledger deliberately — project it, unwind it, re-apply it. A migration's `up`/`down` return the raw statement effect (the engine discards the value), and `down` is optional: omit it to declare a step irreversible, and `rollback` skips over it while still removing its ledger row.
+
+```ts with-api
+import { Store, type StoreMigration } from "@effected/store";
+import { Effect } from "effect";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+	{
+		id: 1,
+		name: "create-runs",
+		up: (sql) => sql`CREATE TABLE runs (id TEXT PRIMARY KEY, status TEXT NOT NULL)`,
+		down: (sql) => sql`DROP TABLE runs`,
+	},
+	{
+		id: 2,
+		name: "add-runs-published-at",
+		up: (sql) => sql`ALTER TABLE runs ADD COLUMN published_at TEXT`,
+		// No `down`: declare the column add irreversible and let rollback skip it.
+	},
+];
+
+const StoreLive = Store.layerSqlite({ filename: "release.db", migrations });
+
+const program = Effect.gen(function* () {
+	const store = yield* Store;
+
+	// Layer construction already applied both — `status` projects each
+	// migration's `appliedAt`, absent while a migration is pending.
+	const before = yield* store.status; // ReadonlyArray<StoreMigrationStatus>
+
+	// Unwind everything with id > 1, newest first, running each `down` where defined.
+	const { rolledBack } = yield* store.rollback(1);
+
+	// Re-apply the pending tail; a no-op until a rollback reopens a gap.
+	const { applied } = yield* store.migrate;
+
+	return { before, rolledBack, applied };
+});
+
+Effect.runPromise(program.pipe(Effect.provide(StoreLive)));
+```
+
+`store.status` is the projection your resume logic reads to decide what already happened; `store.client` is the same `SqlClient` for your own schema-aware queries against the tables the migrations created. See [`StoreShape`](/store/api/interface/storeshape) for the whole surface.
+
+## Pattern: the cache event stream
+
+`Cache` publishes a [`CacheEvent`](/store/api/class/cacheevent) to an unbounded `PubSub` for every lifecycle transition — `Set`, `Hit`, `Miss`, `Expired`, `Evicted`, and the invalidations. The hub is unbounded on purpose: a slow subscriber must never backpressure a cache write. Subscribe before you write, then narrow the payload union by its `_tag` to react to just the transitions you care about — here, watching the eviction policy do its work:
+
+```ts with-api
+import { Cache } from "@effected/store";
+import { Effect, PubSub } from "effect";
+
+const CacheLive = Cache.layerSqlite({ filename: "registry-cache.db", maxEntries: 3 });
+
+const program = Effect.scoped(
+	Effect.gen(function* () {
+		const cache = yield* Cache;
+
+		// Subscribe first; the hub is unbounded, so nothing published after this
+		// point is dropped even if we read it all at the end.
+		const subscription = yield* PubSub.subscribe(cache.events);
+
+		// maxEntries is 3, so the fourth write evicts the oldest-written entry
+		// in the same transaction — least-recently-WRITTEN, not read-touching LRU.
+		for (const name of ["effect", "vitest", "typescript", "biome"]) {
+			yield* cache.set({ key: `npm:${name}`, value: new TextEncoder().encode("{}"), tags: ["registry"] });
+		}
+
+		const events = yield* PubSub.takeUpTo(subscription, Number.MAX_SAFE_INTEGER);
+
+		// Narrow by `_tag` and collect the keys the policy evicted.
+		return events.flatMap((e) => (e.event._tag === "Evicted" ? e.event.keys : []));
+	}),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(CacheLive)));
+```
+
+Events are a consumer hook, not the package's telemetry — every public fallible method is also a named span, so tracing is already covered whether or not anyone subscribes.
+
+## Pattern: transactional cleanup with onRemoved
+
+The invariant most worth not breaking: the removal mutations — `invalidate`, `invalidateByTag`, `invalidateAll`, `prune` — take an optional `onRemoved` callback that runs **inside** the delete transaction, before it commits. A typed failure in your callback rolls the delete back and suppresses the event, and your error type survives in the channel alongside `CacheError`. That makes it safe to keep a cache entry consistent with something outside the cache — a backing blob file, a secondary record — because the two either both go or neither does:
+
+```ts with-api
+import { Cache, type CacheRemovalResult } from "@effected/store";
+import { Data, Effect } from "effect";
+
+class BlobCleanupError extends Data.TaggedError("BlobCleanupError")<{ readonly key: string }> {}
+
+// The caller's own IO — deleting the backing artifact a cache entry pointed at.
+declare const deleteBlobFile: (key: string) => Effect.Effect<void, BlobCleanupError>;
+
+const CacheLive = Cache.layerSqlite({ filename: "artifact-cache.db" });
+
+const program = Effect.gen(function* () {
+	const cache = yield* Cache;
+
+	yield* cache
+		.invalidateByTag("stale-build", (result: CacheRemovalResult) =>
+			// Runs inside the delete transaction. If a blob delete fails, the cache
+			// rows roll back too — no entry left pointing at a file that is gone.
+			Effect.forEach(result.keys, deleteBlobFile, { discard: true }),
+		)
+		.pipe(
+			// `BlobCleanupError` rode the channel out next to `CacheError`.
+			Effect.catchTag("BlobCleanupError", (error) =>
+				Effect.logError(`kept cache rows: blob delete failed for ${error.key}`),
+			),
+		);
+});
+
+Effect.runPromise(program.pipe(Effect.provide(CacheLive)));
+```
+
+A callback that *throws* instead of failing typed is a programmer bug, not a domain error, and stays a defect — the transaction still rolls back, but nothing launders it into a `CacheError` for your `catchTag` to swallow.
+
+## Edge cases and failure modes
+
+The line between a typed failure and a defect is the package's sharpest rule, and both `Store` layers surface migration failures on the layer's typed channel — construction does not `orDie` to tidy the signature. So the errors are catchable exactly where you provide the layer:
+
+```ts with-api
+import { Store, type StoreMigration } from "@effected/store";
+import { Effect } from "effect";
+
+declare const migrations: ReadonlyArray<StoreMigration>;
+const StoreLive = Store.layerSqlite({ filename: "release.db", migrations });
+
+const guarded = Effect.gen(function* () {
+	const store = yield* Store;
+	return yield* store.migrate;
+}).pipe(
+	Effect.provide(StoreLive),
+	Effect.catchTags({
+		// A user migration's own SQL failed; `direction`, `id` and `name` say which.
+		StoreMigrationError: (error) =>
+			Effect.logError(`migration ${error.id} "${error.name}" failed migrating ${error.direction}`),
+		// The store's own ledger bookkeeping failed (`setup` / `migrate` / `rollback` / `status`).
+		StoreError: (error) => Effect.logError(`store ${error.operation} failed`),
+	}),
+);
+```
+
+Each error wraps the underlying `SqlError` structurally in `cause` rather than flattening it to a string, so the driver's own diagnostics survive the trip. What stays a **defect**, never a domain error:
+
+- **A missing parent directory.** `SqliteClient.layer` has no error channel and defects on a `filename` whose directory does not exist — ensuring the directory is the caller's job ([`@effected/app`](/app) does exactly this before building the layer). This is why the `Store` and `Cache` layers publish only the domain error in their channel.
+- **Wiring mistakes die at construction.** A duplicate or non-positive-integer migration `id`, a `maxEntries` that is not a positive integer, a negative `rollback(toId)` — all developer wiring, all defects, and the guards are `Number.isInteger(n) && n >= 1` shaped so `NaN` never slips through a bare comparison.
+- **A throwing `up` / `down` / `onRemoved`.** A programmer bug, not domain input; the transaction rolls back but the throw is not caught into `StoreError` / `CacheError`.
+
+Only a typed `SqlError` from your own SQL becomes a domain error. Everything else that reaches SQLite goes through the tagged-template `SqlClient`, so keys, tags and values are data — a `__proto__` key is an ordinary TEXT primary key, and `invalidateByTag` escapes its pattern before interpolating, so a tag with a backslash or quote matches its own entries.
+
+## Testing tips
+
+Both services expose `layerTest`, an in-memory (`:memory:`) layer that opens no file, so a suite is hermetic and leaves nothing behind. Because expiry reads the clock through `DateTime.now`, `TestClock` drives TTL deterministically and no test ever sleeps. With `@effect/vitest`, the house form is a top-level `layer(...)` fixture and `assert.*` — never `expect`:
+
+```ts
+import { assert, describe, it, layer } from "@effect/vitest";
+import { Duration, Effect, Option } from "effect";
+import { TestClock } from "effect/testing";
+import { Cache } from "@effected/store";
+
+describe("Cache expiry", () => {
+	layer(Cache.layerTest())((it) => {
+		it.effect("an entry past its TTL reads as none, deterministically", () =>
+			Effect.gen(function* () {
+				const cache = yield* Cache;
+				yield* cache.set({ key: "npm:effect", value: new TextEncoder().encode("{}"), ttl: Duration.seconds(10) });
+
+				// Live before the bound, gone at it — no real sleep.
+				assert.isTrue(Option.isSome(yield* cache.get("npm:effect")));
+				yield* TestClock.adjust(Duration.seconds(10));
+				assert.isTrue(Option.isNone(yield* cache.get("npm:effect")));
+
+				// The expired row was deleted on read, not merely hidden.
+				const metas = yield* cache.entries;
+				assert.isFalse(metas.some((meta) => meta.key === "npm:effect"));
+			}),
+		);
+	});
+});
+```
+
+To assert that a hostile wiring value *dies* rather than failing typed, run the layer build to an `Exit` and inspect the cause; to assert that a migration failure lands typed, flip the channel with `Effect.flip` and check the `_tag`. The event stream tests read like the pattern above — subscribe, act, `PubSub.takeUpTo`, then assert on the tags.
+
+## Learn more
+
+- [Overview](/store) — why the two services are not one, install, and the quick start.
+- [API reference](/store/api) — every export with full signatures: [`Store`](/store/api/class/store), [`Cache`](/store/api/class/cache_2), the migration types, [`CacheEvent`](/store/api/class/cacheevent) and its payload union, and the three tagged errors.

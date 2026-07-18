@@ -1,0 +1,182 @@
+---
+title: "Getting Started"
+description: "Compile your first glob pattern, filter a list of paths with an include/exclude set, and handle a rejected pattern — the core @effected/glob workflow end to end."
+---
+
+# Getting started
+
+`@effected/glob` turns a glob string like `src/**/*.ts` into a value you can ask questions of: "does this path match?" You reach for it whenever a program needs to select paths by pattern — filtering a directory listing, validating the `include`/`exclude` globs in a config file, or deciding which files a tool should touch. Because it is built on Effect v4 schemas, a pattern that cannot be compiled fails through a typed error channel instead of throwing a surprise at runtime, and once a pattern is compiled, matching against it never throws, hangs, or blows the stack — even on hostile input.
+
+This guide assumes no prior experience with the package, and only a passing familiarity with Effect. If you have written an `Effect.gen(function* () { … })` block before, you know enough to follow along.
+
+## Install
+
+```bash
+npm install @effected/glob effect
+```
+
+```bash
+pnpm add @effected/glob effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies.
+
+## Your first task: filter a file list
+
+Say you have a list of file paths — the kind a directory scan returns — and you want to keep only the TypeScript sources under `src/`, dropping the test files. That is two decisions per path (is it included? is it excluded?), which is exactly what a `GlobSet` expresses: a set of include patterns plus exclude filters, where a leading `!` marks an exclusion.
+
+Compiling the set is the one step that can fail — a malformed pattern is caught here — so it happens inside an `Effect`. Once compiled, `set.matches(path)` is a plain, total boolean you can call as often as you like.
+
+```ts with-api
+import { GlobSet } from "@effected/glob";
+import { Effect } from "effect";
+
+// The kind of paths a directory scan hands back.
+const files = [
+	"src/index.ts",
+	"src/glob/pattern.ts",
+	"src/glob/pattern.test.ts",
+	"README.md",
+	"dist/index.js",
+];
+
+const program = Effect.gen(function* () {
+	// Include every .ts file under src/, then filter the test files back out.
+	const set = yield* GlobSet.compile(["src/**/*.ts", "!src/**/*.test.ts"]);
+	return files.filter((path) => set.matches(path));
+});
+
+const sources = Effect.runSync(program);
+// sources: ["src/index.ts", "src/glob/pattern.ts"]
+```
+
+Three things are worth noticing:
+
+- **`**` really crosses directory levels.** `src/**/*.ts` matches both `src/index.ts` and `src/glob/pattern.ts`, not just one level down.
+- **The `!` exclusion is a set-level filter**, applied after the includes: `pattern.test.ts` is caught by `src/**/*.ts` and then removed by `!src/**/*.test.ts`.
+- **`GlobSet.compile` returns an `Effect`, but `set.matches` does not.** Compilation is the fallible boundary; matching is total and synchronous. `Effect.runSync` runs the program and returns its value (and would throw if compilation had failed — we handle that case [below](#when-a-pattern-is-rejected)).
+
+## Common operations
+
+Each example below is a complete, runnable program built from real exports.
+
+### Match with options
+
+A bare `GlobPattern` matches case-sensitively and skips dotfiles by default. Both behaviors are options you opt into with `GlobPatternOptions`, which you pass to `compile`:
+
+```ts with-api
+import { GlobPattern, GlobPatternOptions } from "@effected/glob";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+	const images = yield* GlobPattern.compile("assets/**/*.png", GlobPatternOptions.make({ nocase: true }));
+	return images.matches("assets/icons/Logo.PNG"); // true — nocase folds the extension case
+});
+
+Effect.runSync(program);
+```
+
+Options refine how a pattern matches, but they never let a pattern through that would be rejected under defaults — so a value you hold is always one that compiles.
+
+### Match a literal path that contains glob characters
+
+Sometimes a real path segment contains characters that mean something to a glob — parentheses, brackets, braces. `GlobPattern.escape` neutralizes them so the pattern matches the text literally:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+	// A real Next.js route group directory whose name contains glob metacharacters.
+	const literal = GlobPattern.escape("app/(marketing)/page.tsx");
+	const pattern = yield* GlobPattern.compile(literal);
+	return {
+		exact: pattern.matches("app/(marketing)/page.tsx"), // true — matched literally
+		magic: pattern.hasMagic, // false — nothing magic is left after escaping
+	};
+});
+
+Effect.runSync(program);
+```
+
+### Inspect a compiled pattern
+
+A compiled `GlobPattern` can describe itself. `enumerationPrefix` is the longest literal directory prefix — the deepest folder you could start a scan from — and `crossesSegments` tells you whether matching can reach more than one level below it:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+	const pattern = yield* GlobPattern.compile("packages/*/src/**");
+	return {
+		prefix: pattern.enumerationPrefix, // "packages/" — the literal root to scan from
+		deep: pattern.crossesSegments, // true — needs a recursive descent, not a flat read
+		negated: pattern.negated, // false — not a leading-! whole-pattern negation
+	};
+});
+
+Effect.runSync(program);
+```
+
+### Validate patterns inside a config schema
+
+Because a `GlobPattern` is itself a schema, the `FromString` codec lets you embed patterns directly in a larger config schema. Decoding the config then validates that every pattern actually compiles — an uncompilable one fails as a `SchemaError` at the config boundary, before your program ever runs:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { Effect, Schema } from "effect";
+
+const LintConfig = Schema.Struct({
+	include: Schema.Array(GlobPattern.FromString),
+	exclude: Schema.Array(GlobPattern.FromString),
+});
+
+const program = Schema.decodeUnknownEffect(LintConfig)({
+	include: ["src/**/*.ts"],
+	exclude: ["src/**/*.d.ts"],
+});
+
+const config = Effect.runSync(program);
+// The decoded strings are real GlobPattern values — ready to match against.
+config.include[0].matches("src/index.ts"); // true
+```
+
+## When a pattern is rejected
+
+Compilation is the only place `@effected/glob` can fail, and it fails in exactly one way: `GlobPatternError`. A pattern is rejected when it trips one of three compile-time guards, named by the error's `reason` field:
+
+- `PatternTooLong` — the source exceeds the 64KB length cap.
+- `ExpansionBudgetExceeded` — its `{a,b}` braces expand past the alternative budget.
+- `NestingDepthExceeded` — it nests deeper than the depth cap.
+
+Because `GlobPatternError` is a tagged error, you route it with `Effect.catchTag`. Both `GlobPattern.compile` and `GlobSet.compile` raise this same tag, so one handler covers every fallible boundary in the package:
+
+```ts with-api
+import { GlobPattern } from "@effected/glob";
+import { Effect } from "effect";
+
+const program = GlobPattern.compile("a".repeat(65_537)).pipe(
+	Effect.map((pattern) => `compiled: ${pattern.source}`),
+	Effect.catchTag("GlobPatternError", (error) => {
+		// One tag, three reasons — branch on error.reason.
+		const detail =
+			error.reason === "PatternTooLong"
+				? "the pattern is over the length cap"
+				: error.reason === "ExpansionBudgetExceeded"
+					? "its braces expand past the budget"
+					: "it nests past the depth cap";
+		return Effect.succeed(`skipped: ${detail} (limit ${error.limit}, actual ${error.actual})`);
+	}),
+);
+
+Effect.runSync(program);
+// "skipped: the pattern is over the length cap (limit 65536, actual 65537)"
+```
+
+The error carries `pattern`, `reason`, `limit`, and `actual`, so you can report precisely which pattern failed and by how much. Malformed or hostile input always arrives here, through the typed channel — never as a thrown `RangeError`, a stack overflow, or a hang.
+
+## Next steps
+
+- The [advanced guide](/glob/advanced) covers the full options surface, `GlobSet`'s structural accessors, and the workspace-enumeration use case.
+- The [API reference](/glob/api) documents every export with complete signatures — `GlobPattern`, `GlobSet`, `GlobPatternOptions`, and `GlobPatternError`.

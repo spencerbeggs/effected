@@ -1,0 +1,228 @@
+---
+title: Getting Started
+description: Decode a package.json, edit it without losing the fields you never modeled, validate it and write it back — the core @effected/package-json workflow end to end.
+---
+
+# Getting Started
+
+Reach for `@effected/package-json` when a tool needs to read *or write* a `package.json` and must not damage it. Decoding a manifest into a typed `Package` gives you real fields, computed getters and immutable edits — while a `rest` catch-all keeps every key your model never heard of, so a bump-the-version script does not silently drop a `funding` block or a custom tooling section on the way back to disk. Everything except one IO service is a pure function or an `Effect`, so it drops straight into an Effect program with typed errors and nothing to mock.
+
+If you are new to Effect v4, the only idioms this guide leans on are `Effect.gen(function* () { ... })` to sequence steps with `yield*`, and `Effect.runPromise` to run the finished program. You do not need anything else to follow along.
+
+## Install
+
+```bash
+npm install @effected/package-json effect
+```
+
+```bash
+pnpm add @effected/package-json effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. Reading and writing files needs a `FileSystem` and a `Path` implementation, which you provide once at the edge — from `@effect/platform-node` on Node. Everything else in the package is pure and needs no platform.
+
+## Your first task: bump a version without losing a field
+
+Say a release script has to raise a package's version and add a dependency, then write the manifest back. The naive approach — `JSON.parse`, mutate the object, `JSON.stringify` — reflows the whole file and, worse, only round-trips the keys your code happens to know about. `Package` keeps the rest.
+
+Decode the manifest into a `Package`, apply the edits, then serialize with `toJsonString`. `Package.setVersion` validates the new version and so returns an `Effect` (it fails with `InvalidVersionError` on a bad string); `Package.addDependency` is a pure edit and returns the next `Package` directly:
+
+```ts with-api
+import { Package } from "@effected/package-json";
+import { Effect } from "effect";
+
+const manifest = {
+  name: "@acme/widgets",
+  version: "1.2.0",
+  // a field the typed model never mentions — it must survive the round trip
+  acme: { registry: "internal", team: "platform" },
+};
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode(manifest);
+  const bumped = yield* Package.setVersion(pkg, "1.3.0");
+  const withDep = Package.addDependency(bumped, "effect", "^4.0.0");
+  return withDep.toJsonString();
+});
+
+Effect.runPromise(program).then(console.log);
+// {
+//   "name": "@acme/widgets",
+//   "version": "1.3.0",
+//   "dependencies": {
+//     "effect": "^4.0.0"
+//   },
+//   "acme": {
+//     "registry": "internal",
+//     "team": "platform"
+//   }
+// }
+```
+
+The `version` became `1.3.0`, a `dependencies` block appeared, and the unmodeled `acme` field came through untouched because decoding parked it in `Package`'s `rest` catch-all and `toJsonString` flattened it back to a top-level key. `toJsonString` also applied the canonical `package.json` key order for you. That round-trip fidelity is the whole reason to decode into a `Package` instead of a plain object.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built from the package's real exports.
+
+### Inspect a manifest with computed getters
+
+A decoded `Package` answers the questions you would otherwise re-derive by hand. `isScoped`, `isESM` and `isPrivate` are getters; `hasDependency` searches all four dependency maps at once:
+
+```ts with-api
+import { Package } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({
+    name: "@acme/widgets",
+    version: "1.3.0",
+    type: "module",
+    dependencies: { effect: "^4.0.0" },
+  });
+
+  return {
+    isScoped: pkg.isScoped, // true — the name is @acme/widgets
+    isESM: pkg.isESM, // true — "type": "module"
+    isPrivate: pkg.isPrivate, // false — no "private": true
+    usesEffect: pkg.hasDependency("effect"), // true
+  };
+});
+
+Effect.runPromise(program).then(console.log);
+```
+
+### Classify a dependency specifier
+
+A `package.json` value can be a semver range, a dist-tag, a git URL, a `catalog:` or `workspace:` protocol and more. `DependencySpecifier.protocolOf` classifies any string into one label so every caller asks the same question instead of writing its own `startsWith` check. The predicate statics (`isWorkspace`, `isCatalog`, `isRange`, ...) answer the yes/no form:
+
+```ts with-api
+import { DependencySpecifier } from "@effected/package-json";
+
+console.log(DependencySpecifier.protocolOf("^4.0.0")); // "range"
+console.log(DependencySpecifier.protocolOf("workspace:*")); // "workspace"
+console.log(DependencySpecifier.protocolOf("catalog:effect")); // "catalog"
+console.log(DependencySpecifier.protocolOf("github:acme/widgets")); // "git"
+
+console.log(DependencySpecifier.isWorkspace("workspace:^")); // true
+console.log(DependencySpecifier.isRange("^4.0.0")); // true
+```
+
+### Batch immutable edits with the pipe form
+
+Every mutation static has a dual signature. The data-first form (`Package.addDependency(pkg, name, spec)`) reads well one call at a time; the curried form (`Package.addDependency(name, spec)`) returns a function, so you can thread several pure edits through `pkg.pipe(...)` in one expression. Each step returns a fresh `Package` — the original is never mutated:
+
+```ts with-api
+import { Package } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({ name: "@acme/widgets", version: "1.3.0" });
+
+  const next = pkg.pipe(
+    Package.addDependency("effect", "^4.0.0"),
+    Package.addDevDependency("typescript", "^5.6.0"),
+    Package.setScript("build", "tsc --build"),
+    Package.removeScript("prepublishOnly"),
+  );
+
+  return next.toJsonString();
+});
+
+Effect.runPromise(program).then(console.log);
+```
+
+### Validate a decoded manifest against rules
+
+`PackageValidator` runs rule-based checks over an already-decoded `Package` and aggregates every failure into one `PackageValidationError`. `PackageValidator.layer` ships the default rules (license, description, repository, not-private); provide it once and ask the service to `validate`:
+
+```ts with-api
+import { Package, PackageValidator } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({
+    name: "@acme/widgets",
+    version: "1.3.0",
+    license: "MIT",
+    description: "Reusable widgets",
+    repository: "github:acme/widgets",
+  });
+
+  const validator = yield* PackageValidator;
+  yield* validator.validate(pkg); // succeeds — all default rules pass
+  return "valid";
+}).pipe(Effect.provide(PackageValidator.layer));
+
+Effect.runPromise(program).then(console.log);
+```
+
+Swap in your own rule set with `PackageValidator.layerRules({ rules: [...] })`. The package also exports ready-made rules like `noUnresolvedDepsRule` and `noLocalDepsRule` for release-gate checks.
+
+### Read and write a real file
+
+`PackageJsonFile` is the package's one IO surface — one service, a `read` and a `write`. It works over Effect core's `FileSystem` and `Path`, which you supply at the edge; on Node that comes from `@effect/platform-node`. Passing `indent: "preserve"` on `write` keeps the file's existing indentation:
+
+```ts
+import { Package, PackageJsonFile } from "@effected/package-json";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const program = Effect.gen(function* () {
+  const files = yield* PackageJsonFile;
+  const pkg = yield* files.read("./package.json");
+  const bumped = yield* Package.setVersion(pkg, "1.3.0");
+  yield* files.write("./package.json", bumped, { indent: "preserve" });
+});
+
+// Provide the service and its platform dependencies once, at the edge.
+const Live = PackageJsonFile.layer.pipe(
+  Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(Live)));
+```
+
+The read/edit/write cycle is where `rest` earns its keep: `read` decodes the whole file, your edit touches one field, and `write` serializes every other key — modeled or not — straight back. `write` never resolves `catalog:` or `workspace:` specifiers on your behalf; if you want those expanded, compose `Package.resolve` explicitly first.
+
+## Handling errors
+
+Every failure this package produces is a tagged error, so `Effect.catchTag` routes each one by its `_tag` with full type inference. Two you meet early:
+
+- `PackageDecodeError` — `Package.decode` could not turn the input into a valid manifest (a malformed version, a bad name). The underlying schema issue is preserved on `cause`.
+- `PackageValidationError` — a decoded `Package` failed one or more validation rules. Every failure is aggregated on `failures`, and `message` renders a multi-line report.
+
+Here a manifest decodes cleanly but is missing the fields the default rules require, so validation fails and the `PackageValidationError` branch runs:
+
+```ts with-api
+import { Package, PackageValidator } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const pkg = yield* Package.decode({ name: "@acme/widgets", version: "1.3.0" });
+  const validator = yield* PackageValidator;
+  yield* validator.validate(pkg);
+  return "valid";
+}).pipe(Effect.provide(PackageValidator.layer));
+
+const recovered = program.pipe(
+  Effect.catchTag("PackageDecodeError", (error) =>
+    Effect.succeed(`could not decode package.json: ${error.message}`),
+  ),
+  Effect.catchTag("PackageValidationError", (error) =>
+    Effect.succeed(error.failures.map((failure) => `[${failure.rule}] ${failure.message}`)),
+  ),
+);
+
+Effect.runPromise(recovered).then(console.log);
+// [ "[has-license] Missing license field", "[has-description] Missing description field", "[has-repository] Missing repository field" ]
+```
+
+Because the error channel is fully typed, dropping either `catchTag` is a compile error until every failure is accounted for — malformed or incomplete input always arrives here, never as an unhandled exception. Reading a file adds `PackageJsonNotFoundError` (no file at the path), `PackageJsonParseError` (not valid JSON) and `PackageJsonReadError` (any other filesystem failure) to the same routing pattern.
+
+## Next steps
+
+- Ready for round-trip edits over real files, `catalog:` / `workspace:` resolution and custom validation rules? See the [advanced guide](/package-json/advanced).
+- Every export, with full signatures, lives in the [API reference](/package-json/api) — start with [`Package`](/package-json/api/class/package), [`PackageValidator`](/package-json/api/class/packagevalidator) and [`PackageJsonFile`](/package-json/api/class/packagejsonfile).
+</content>
+</invoke>

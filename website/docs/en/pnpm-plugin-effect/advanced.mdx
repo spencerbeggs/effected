@@ -1,0 +1,174 @@
+---
+title: Advanced
+description: Coordinate Effect versions across a real application, its libraries, and their peer ranges with the lock and interop catalog strategies.
+---
+
+# Advanced
+
+Picture the shape of a real project: a monorepo release tool built on Effect v4. The
+CLI package depends on `@effect/platform-node` to touch the filesystem, `@effect/sql-pg`
+to record releases, and `@effect/ai-openai` to draft changelog prose. Beneath it sit a
+handful of your own libraries and several `@effected/*` packages, each of which also
+pulls in some slice of the `@effect/*` surface. Every one of those packages has an
+opinion about which `effect` it wants, and a second opinion about which `effect` it will
+tolerate from a consumer.
+
+Reconciling those opinions by hand is the tax this package exists to remove. It is not a
+library — there is nothing to import and no runtime API — so this page is not about calling
+it. It is about the version-coordination patterns it enables once it is installed, and the
+failure modes worth understanding before you rely on them. If you have not yet installed the
+config dependency or seen the application-versus-library split, start with the
+[overview](/pnpm-plugin-effect) first; this page builds on both.
+
+## How the catalogs compose
+
+A `catalog:` specifier is resolved by pnpm at install time, not by your code at runtime. When
+a manifest says `"effect": "catalog:effect"`, pnpm substitutes the version the catalog names
+before it ever writes the lockfile. The catalogs are workspace-level data; your packages
+reference them by name and stay ignorant of the concrete versions.
+
+Installing the config dependency gives your workspace four catalogs, produced by two different
+strategies:
+
+- **`catalog:effect`** and **`catalog:effectPeers`** — the current Effect **v4** package set
+  under the `lock` strategy. `effect` is pinned to an exact beta (`4.0.0-beta.98` today, never
+  a caret), and under `lock` the peer catalog's floor equals that same pin. Develop against
+  `catalog:effect`; advertise `catalog:effectPeers`.
+- **`catalog:effect3`** and **`catalog:effect3Peers`** — the latest Effect **v3** package set
+  under the `interop` strategy. These are caret-ranged and downlevelled to the widest safe
+  floor, and they exist only to test a package against both major lines in one workspace. They
+  are transitional and drop at this plugin's `1.0.0`.
+
+The `lock` strategy is deliberate. A caret on a prerelease floats across the whole beta line,
+which would silently desynchronize the `effect` you install from the exact beta the kit was
+built and tested against. Exact pins keep every consumer on one version.
+
+## Pattern: pinning the `@effect/*` satellites in lockstep
+
+The catalogs are not `effect`-only. Every `@effect/*` package the release tool touches is
+pinned to the same beta, so a single upgrade moves the entire surface together instead of
+leaving `@effect/sql-pg` a beta behind `effect` itself.
+
+An application pins the concrete versions directly:
+
+```json
+{
+  "dependencies": {
+    "effect": "catalog:effect",
+    "@effect/platform-node": "catalog:effect",
+    "@effect/sql-pg": "catalog:effect",
+    "@effect/ai-openai": "catalog:effect",
+    "@effect/opentelemetry": "catalog:effect"
+  }
+}
+```
+
+A library that ships inside that same workspace develops against the identical pins but
+advertises the calculated floor as its peer range, so it never over-constrains a downstream
+consumer:
+
+```json
+{
+  "devDependencies": {
+    "effect": "catalog:effect",
+    "@effect/platform-node": "catalog:effect",
+    "@effect/sql-pg": "catalog:effect"
+  },
+  "peerDependencies": {
+    "effect": "catalog:effectPeers",
+    "@effect/platform-node": "catalog:effectPeers",
+    "@effect/sql-pg": "catalog:effectPeers"
+  }
+}
+```
+
+Answering "what do I build against?" and "what will I accept from a consumer?" as two
+independent questions, across a dozen satellites, is the manual work the catalogs delete.
+
+## Pattern: a dual-version v3/v4 test matrix
+
+The `effect3` catalogs are for the awkward middle of a migration, where a library must keep
+working on Effect v3 while you port it to v4. Because `@effect/vitest` is itself pinned through
+the catalogs, your test runner tracks whichever line you are testing rather than drifting to a
+version of its own:
+
+```json
+{
+  "devDependencies": {
+    "effect": "catalog:effect",
+    "@effect/vitest": "catalog:effect"
+  }
+}
+```
+
+Swap the two `catalog:effect` references for `catalog:effect3` in a second project or a matrix
+job and the same suite runs against the v3 line — with both `effect` and its test harness moving
+together, so a green run on one line is not quietly a v4 harness testing v3 code. These interop
+catalogs are transitional; once Effect `4.0.0` ships they are removed and the matrix collapses to
+one line.
+
+## Composing with the rest of the kit
+
+This is the payoff that makes the coordination worth centralizing. Every `@effected/*` library
+already declares its Effect dependencies through `catalog:effect` and `catalog:effectPeers`, and
+`@effected/app` — the kit's application control plane — is wired the same way. Adopt the config
+dependency and your own application inherits exactly the Effect closure the kit was tested
+against, in one step, instead of reconstructing a dozen pins and peer floors by hand. The version
+agreement composes: the app, the `@effected/*` packages it wires together, and your own libraries
+all resolve the same single `effect`.
+
+## Advancing the pin and detecting drift
+
+Three workspace scripts move the pin forward. They mutate the lockfile and the root
+`pnpm-workspace.yaml`, so they are meant to be run by a person, not by CI or an agent:
+
+```bash
+# preview the generated catalogs without writing anything
+pnpm pnpm:preview
+
+# upgrade every package to its latest v4 release and recompute the peer floor
+pnpm pnpm:up
+
+# write the catalogs into pnpm-workspace.yaml, surfacing any drift
+pnpm pnpm:export
+```
+
+Advancing the beta is `pnpm pnpm:up` followed by `pnpm pnpm:export`. The `export` step is also a
+drift check: it reports where the plugin's definitions and what the workspace actually pins have
+diverged, which is the signal that someone edited a version by hand instead of through the
+catalog.
+
+## Edge cases and failure modes
+
+This package has no runtime API, so it has no typed error channel — nothing here fails through
+`Effect.catchTag`. Its failure surface is entirely at install time, in the resolver, and these
+are the diagnostics worth recognizing:
+
+- **It is a config dependency, not a normal one.** It installs with `pnpm add --config`, which
+  writes it into `pnpm-workspace.yaml` under `configDependencies` with an integrity hash pnpm
+  fills in. It requires pnpm `>=11`, and there is no npm or yarn equivalent — config dependencies
+  and catalogs are pnpm-only features. A plain `pnpm add` installs the wrong thing.
+- **One peer warning is expected; a second is a defect.** `pnpm peers check` surfaces exactly one
+  known issue — a set of Effect **v3** satellites that want `effect@^3.21.x` and see the v4 beta,
+  a consequence of the build toolchain rather than your workspace. Do not silence it, and do not
+  treat it as license to tolerate a second warning: any other unmet peer is a genuine resolution
+  defect to fix, not to ignore.
+- **Check the lockfile diff after every install.** A plain `pnpm install` has, on occasion,
+  stripped platform binaries out of the lockfile. Read the diff before you commit it; a lockfile
+  that lost entries is a silent failure that only surfaces on another machine.
+- **The exact pin is load-bearing.** The whole point is that everyone resolves one `effect`.
+  Replacing an exact beta with a caret to "loosen things up" reintroduces the drift the `lock`
+  strategy exists to prevent, and desynchronizes you from the vendored Effect source the kit
+  treats as the authority on what v4 exports.
+
+## Learn more
+
+- [Overview](/pnpm-plugin-effect) — what the package is, the install, and the
+  application-versus-library split in full.
+- [pnpm catalogs](https://pnpm.io/catalogs) and [config dependencies](https://pnpm.io/config-dependencies)
+  — the two pnpm features this package is built on.
+- [Effect v4 beta](https://effect.website/blog/releases/effect/40-beta/) — the release line the
+  `effect` catalog pins to.
+
+Because this package ships no importable API, there is no generated API reference for it — the
+catalogs it publishes are the surface, and they are documented above and in the overview.

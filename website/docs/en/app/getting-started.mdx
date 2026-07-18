@@ -1,0 +1,277 @@
+---
+title: "Getting started"
+description: "Build your first application on @effected/app end to end: a config file, a migrated state database and a TTL cache, all wired to one namespace with one layer."
+---
+
+# Getting started
+
+`@effected/app` is the layer you compose at the very edge of an application to give it a *home on disk*: a directory for its config file, a directory for its state database, and a directory for its cache — all named for one namespace, all created before anything tries to open a file inside them. You reach for it when you are building an actual program (a CLI, a daemon, a background worker) on this kit and you are tired of hand-wiring [`@effected/xdg`](/xdg), [`@effected/store`](/store) and [`@effected/config-file`](/config-file) together and getting the ordering subtly wrong. If you are writing a *library*, you do not want this package — it drags a SQLite driver into your consumers. This is the piece an application composes once, at the top.
+
+This guide assumes you have never used the package and are still finding your feet with Effect v4. Every example is a complete program; copy one, change the namespace, and run it.
+
+## Install
+
+```bash
+npm install @effected/app effect @effected/xdg @effected/store @effected/config-file
+```
+
+```bash
+pnpm add @effected/app effect @effected/xdg @effected/store @effected/config-file
+```
+
+Requires Node.js >=24.11.0. Note that `effect` and the three `@effected/*` packages are **peer** dependencies, not regular ones — each appears in this package's public types, so your project must hold exactly one copy of each. Install them alongside `@effected/app`, as above. You will also want a platform package to supply the filesystem at the edge:
+
+```bash
+pnpm add @effect/platform-node
+```
+
+## Your first task
+
+Let us build the smallest program that is actually worth writing: a command-line tool called `linkstash` that remembers every time you run it. It reads a small settings file, records each run in a durable database, and prints how many times it has run so far. Everything survives a restart, because everything lives in a real directory on disk.
+
+We will build it in five steps and then run it.
+
+### Step 1 — describe the state you want to keep
+
+State lives in a SQLite database, and the database's shape is defined by *migrations*: an ordered list of forward changes. You own this list; the package just runs it for you. Here is a single migration that creates a `runs` table:
+
+```ts
+import type { StoreMigration } from "@effected/store";
+
+const migrations: ReadonlyArray<StoreMigration> = [
+  {
+    id: 1,
+    name: "create-runs",
+    up: (sql) => sql`
+      CREATE TABLE runs (
+        id  TEXT PRIMARY KEY,
+        at  TEXT NOT NULL
+      )
+    `,
+  },
+];
+```
+
+Each migration has a numeric `id` (they run in ascending order), a `name`, and an `up` function that receives a SQL client. You never call `up` yourself — the layer applies every pending migration when it builds, and records which ones it has run so a second launch is a no-op.
+
+### Step 2 — describe your settings file
+
+Settings live in a config file. You declare their shape with an Effect `Schema`, then wrap it in a `ConfigFile.Service` class so it becomes something you can ask for by name inside a program:
+
+```ts
+import { ConfigFile } from "@effected/config-file";
+import { Schema } from "effect";
+
+class Settings extends Schema.Class<Settings>("Settings")({
+  greeting: Schema.String,
+  verbose: Schema.Boolean,
+}) {}
+
+class SettingsFile extends ConfigFile.Service<SettingsFile, Settings>()("linkstash/Settings") {}
+```
+
+`Settings` is the decoded value; `SettingsFile` is the service you will `yield*` to load it.
+
+### Step 3 — wire the control plane with one layer
+
+Now compose everything. `App.layer` takes your namespace and your migrations and hands back four services at once — the XDG directories, the state `Store`, the `Cache`, and the directory service they share. `AppConfig.layer` adds the config file on top, and it deliberately takes **no** namespace: it reads that from `App.layer`, so you name `"linkstash"` exactly once and the two can never drift apart.
+
+```ts
+import { App, AppConfig } from "@effected/app";
+import { JsonCodec } from "@effected/config-file";
+import { NodeServices } from "@effect/platform-node";
+import { Layer } from "effect";
+
+// Bind each layer to a const ONCE and reuse it. Calling App.layer(...) inline
+// at two provide sites opens the database twice — this is the single most
+// important rule in the package.
+const AppLive = App.layer({
+  namespace: "linkstash",
+  store: { migrations },
+  cache: { maxEntries: 200 },
+});
+
+const ConfigLive = AppConfig.layer(SettingsFile, {
+  filename: "config.json",
+  schema: Settings,
+  codec: JsonCodec, // required, never guessed from the filename
+});
+
+const MainLive = ConfigLive.pipe(
+  Layer.provideMerge(AppLive),
+  Layer.provide(NodeServices.layer), // the one place a platform is named
+);
+```
+
+`codec` is required on purpose: choosing JSON versus TOML is *your* decision, and naming `JsonCodec` explicitly is also what keeps the other parsers out of your bundle.
+
+### Step 4 — write the program
+
+With the wiring done, the program itself is short. Ask for the services you need, use them, and let the types tell you what can fail:
+
+```ts
+import { App, AppConfig } from "@effected/app";
+import { JsonCodec } from "@effected/config-file";
+import { Store } from "@effected/store";
+import { Console, Effect } from "effect";
+
+const main = Effect.gen(function* () {
+  // Load settings, falling back to a default if the file does not exist yet.
+  const settings = yield* (yield* SettingsFile).loadOrDefault(
+    Settings.make({ greeting: "hello", verbose: false }),
+  );
+
+  const store = yield* Store;
+
+  // Record this run.
+  yield* store.client`INSERT INTO runs (id, at) VALUES (${crypto.randomUUID()}, datetime())`;
+
+  // Read back how many runs there have been.
+  const rows = yield* store.client<{ readonly n: number }>`SELECT count(*) AS n FROM runs`;
+  const count = rows[0]?.n ?? 0;
+
+  yield* Console.log(`${settings.greeting} — this is run #${count}`);
+});
+```
+
+Notice you never opened a database, created a directory, or parsed a file. The layer did all of that before `main` started, and it did it in the right order.
+
+### Step 5 — run it
+
+Hand the program its layer and run it with the platform's runtime:
+
+```ts
+import { NodeRuntime } from "@effect/platform-node";
+import { Effect } from "effect";
+
+NodeRuntime.runMain(main.pipe(Effect.provide(MainLive)));
+```
+
+Run it a few times. On a Linux or macOS machine with the default settings you will find your data under `~/.local/state/linkstash/store.db`, your cache under `~/.cache/linkstash/`, and (once you create it) your config at `~/.config/linkstash/config.json`. The run counter climbs every time, because the state is genuinely durable.
+
+That is the whole package: name a place, and it is ready to use.
+
+## Common operations
+
+Each snippet below is a fragment of a `main` like the one above — it assumes the same `App.layer` / `AppConfig.layer` wiring is in scope.
+
+### Read settings, with a default when the file is missing
+
+`load` fails if there is no config file; `loadOrDefault` gives you a value to fall back on. For a first-run tool, prefer the latter:
+
+```ts
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const config = yield* SettingsFile;
+  const settings = yield* config.loadOrDefault(
+    Settings.make({ greeting: "hi", verbose: false }),
+  );
+  return settings.verbose;
+});
+```
+
+### Update the settings file in place
+
+`update` loads the current value, applies your function, and writes the result back — a read-modify-write in one call. Pass a default so it works even before the file exists:
+
+```ts
+import { Effect } from "effect";
+
+const flipVerbose = Effect.gen(function* () {
+  const config = yield* SettingsFile;
+  yield* config.update(
+    (current) => Settings.make({ ...current, verbose: !current.verbose }),
+    Settings.make({ greeting: "hi", verbose: false }),
+  );
+});
+```
+
+### Cache an expensive value with a TTL
+
+The `Cache` service stores bytes under a key, optionally with a time-to-live and tags for bulk invalidation. Values are `Uint8Array`, so encode text on the way in:
+
+```ts
+import { Cache } from "@effected/store";
+import { Duration, Effect } from "effect";
+
+const cacheTitle = Effect.gen(function* () {
+  const cache = yield* Cache;
+  yield* cache.set({
+    key: "page:title",
+    value: new TextEncoder().encode("The Effect Handbook"),
+    tags: ["titles"],
+    ttl: Duration.minutes(30),
+  });
+});
+```
+
+### Read from the cache and handle a miss
+
+`get` returns an `Option`, because the entry may be absent or expired. Match on it rather than assuming a hit:
+
+```ts
+import { Cache } from "@effected/store";
+import { Effect, Option } from "effect";
+
+const readTitle = Effect.gen(function* () {
+  const cache = yield* Cache;
+  const hit = yield* cache.get("page:title");
+  return Option.match(hit, {
+    onNone: () => "no cached title",
+    onSome: (entry) => new TextDecoder().decode(entry.value),
+  });
+});
+```
+
+### Invalidate a group of entries by tag
+
+Because the entry above carried a `titles` tag, you can drop every entry with that tag in one call — useful when a whole category of cached data goes stale:
+
+```ts
+import { Cache } from "@effected/store";
+import { Effect } from "effect";
+
+const clearTitles = Effect.gen(function* () {
+  const cache = yield* Cache;
+  const removed = yield* cache.invalidateByTag("titles");
+  return removed.count; // how many entries were dropped
+});
+```
+
+## Handling errors
+
+Everything the control plane can fail with is a **tagged error** — a class with a `_tag` field you can route on. `@effected/app` gathers the full set into one type alias, `AppError`, which is exactly the list of tags you might see at the application edge:
+
+```ts
+import type { AppError } from "@effected/app";
+// AppError = XdgEnvError | AppDirsError | StoreError | StoreMigrationError | CacheError
+```
+
+`AppError` is a *type only* — there is no `AppError` class to construct. Each tag is raised and documented by the package that owns it, and it reaches you with its structure intact: a `StoreMigrationError`, for instance, still carries the failing migration's `id` and `name`.
+
+Route on the tag with `Effect.catchTag`. This lets you give a missing-directory failure a different exit path from a broken migration:
+
+```ts
+import { Console, Effect } from "effect";
+
+const guarded = main.pipe(
+  Effect.provide(MainLive),
+  Effect.catchTag("AppDirsError", (error) =>
+    Console.error(`could not create a directory: ${error.message}`),
+  ),
+  Effect.catchTag("StoreMigrationError", (error) =>
+    Console.error(`migration failed: ${error.message}`),
+  ),
+  Effect.catchTag("CacheError", (error) =>
+    Console.error(`cache failure: ${error.message}`),
+  ),
+);
+```
+
+Anything you do not catch stays on the error channel, fully typed, so the compiler keeps reminding you what is still unhandled. Note the deliberate line the package draws: a directory that cannot be created is a *typed, recoverable* `AppDirsError` you can catch here — not a defect that crashes the process. That conversion is the main thing the package promises.
+
+## Next steps
+
+- The [advanced guide](/app/advanced) — composing `AppStore` and `AppCache` on their own, `App.layerTest` for one-line hermetic tests, native OS directories, and wiring OpenTelemetry at the app edge.
+- The [API reference](/app/api) — every export with full signatures, including `AppOptions`, `AppConfigOptions`, and the complete `Cache` and `Store` surfaces.

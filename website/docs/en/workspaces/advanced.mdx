@@ -1,0 +1,277 @@
+---
+title: Advanced
+description: Build an affected-aware release orchestrator on workspace services — plan builds in dependency order, diff the workspace at any git ref without checkout, and resolve catalog specifiers as of a release tag.
+---
+
+# Advanced
+
+Picture the release orchestrator for a monorepo that ships several packages together. Before it cuts a version it has to answer a chain of questions against the developer's checkout: which packages changed since the last published tag, which _other_ packages transitively depend on those, what order to build and publish them in so a dependency is never released after its dependent, and — for reproducibility — what each package's `catalog:` and `workspace:*` specifiers actually resolved to _at that tag_. It must answer the "what changed" and "as of the tag" questions without disturbing the working tree the developer is sitting in, and every failure has to be something a pipeline can branch on rather than a stderr blob it greps.
+
+That is the shape `@effected/workspaces` is built for. Discovery, the dependency graph, change detection and point-in-time snapshots are all Effect services (or pure values) you provide once at the edge and query as often as you like. This guide assumes you have read the [overview](/workspaces) and reaches for the surfaces a real release tool leans on.
+
+## Composition with Effect
+
+Everything composes through layers. `Workspaces.layer()` provides the filesystem-only services — discovery, package-manager detection, lockfile reading, catalogs, publishability. `Workspaces.layerWithGit()` adds `ChangeDetector` and `WorkspaceSnapshots` over [`@effected/git`](/git/getting-started)'s `Git` service, so its requirement set grows by core's `ChildProcessSpawner`. All three edge requirements — `FileSystem`, `Path`, `ChildProcessSpawner` — come from `NodeServices.layer` in one place. Bind the composed layer to a `const`: these are parameterized factories and layers memoize by reference.
+
+```ts with-api
+import { NodeServices } from "@effect/platform-node";
+import { DependencyGraph, WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+// layerWithGit needs FileSystem + Path + ChildProcessSpawner — NodeServices
+// provides all three. A Bun consumer swaps this one layer and nothing above moves.
+const WorkspacesLive = Workspaces.layerWithGit().pipe(Layer.provide(NodeServices.layer));
+
+const program = Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+  const graph = DependencyGraph.make({ packages: yield* discovery.listPackages() });
+
+  // Parallel build tiers: level 0 depends on nothing in the workspace.
+  return yield* graph.levels();
+});
+
+Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive)));
+```
+
+The values these services return are `Schema.Class` models, not loose records: a `WorkspacePackage`, a `WorkspaceStateSnapshot`, a `PublishTarget` each carry typed fields and are serializable by construction. Because they are schema classes, a downstream schema — a release manifest, a cache entry — can embed them directly instead of re-describing the shape. `@effected/workspaces` is also where [`@effected/npm`](/npm)'s `CatalogResolver` and `WorkspaceResolver` contracts are finally implemented, and where [`@effected/git`](/git/getting-started) supplies the change-detection primitives, so a real tool wires all three together without a bespoke seam between them.
+
+## An affected-aware release plan
+
+`ChangeDetector` offers three depths on one service, cheapest first: `changedFiles` (raw paths), `changedPackages` (the packages owning them), and `affectedPackages` (those plus every workspace package that transitively depends on one — the blast radius). Feed the affected set to `DependencyGraph.sortSubset` and you have the exact list to release, in the exact order to release it.
+
+```ts with-api
+import { NodeServices } from "@effect/platform-node";
+import {
+  ChangeDetectionOptions,
+  ChangeDetector,
+  DependencyGraph,
+  WorkspaceDiscovery,
+  Workspaces,
+} from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+const WorkspacesLive = Workspaces.layerWithGit().pipe(Layer.provide(NodeServices.layer));
+
+const releasePlan = Effect.gen(function* () {
+  const discovery = yield* WorkspaceDiscovery;
+  const detector = yield* ChangeDetector;
+
+  // Everything touched since the last published tag, plus its transitive dependents.
+  const affected = yield* detector.affectedPackages(
+    ChangeDetectionOptions.make({ base: "v0.1.0", includeUncommitted: false }),
+  );
+
+  const graph = DependencyGraph.make({ packages: yield* discovery.listPackages() });
+
+  // The affected names plus their workspace deps, topologically ordered — the build/publish order.
+  return yield* graph.sortSubset(affected.map((pkg) => pkg.name));
+});
+
+Effect.runPromise(releasePlan.pipe(Effect.provide(WorkspacesLive)));
+```
+
+`DependencyGraph` is a pure value, not a service — `sortSubset` and `levels` are `Effect.fn` boundaries only because a cycle is a typed failure. Where `sort()` flattens the whole workspace into one topological order and `sortSubset(names)` restricts to a subset, `levels()` groups packages into parallel waves: level 0 depends on nothing in the workspace, level _n_ only on levels below it, so a publisher can fan out each wave concurrently and wait for it before starting the next. A dependency cycle fails all three as `CyclicDependencyError`, whose `cycle` field lists the strongly-connected residue — the set to break, not a single loop to trace.
+
+## Diffing the workspace at a git ref
+
+`WorkspaceSnapshots` is the surface a release tool reaches for that has no equivalent in a plain "list my packages" library. `at(ref)` reads the entire workspace state at a git ref **with no checkout** — package directories from `Git.lsTree`, manifests from `Git.show`, catalogs assembled from the inline config and lockfile as they were at that ref. `worktree()` captures the live tree over the shared discovery path. Diff the two and you know exactly which versions moved between the last release and now.
+
+```ts with-api
+import { NodeServices } from "@effect/platform-node";
+import { WorkspaceSnapshots, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+const WorkspacesLive = Workspaces.layerWithGit().pipe(Layer.provide(NodeServices.layer));
+
+// Which packages changed version between the last release and the working tree?
+const versionBumps = Effect.gen(function* () {
+  const snapshots = yield* WorkspaceSnapshots;
+  const before = yield* snapshots.at("v0.1.0"); // read at the tag, no checkout
+  const after = yield* snapshots.worktree(); // the live tree
+
+  const bumped: Array<{ name: string; from: string; to: string }> = [];
+  for (const [name, to] of after.versions) {
+    const from = before.versions.get(name);
+    if (from !== undefined && from !== to) bumped.push({ name, from, to });
+  }
+  return bumped;
+});
+
+Effect.runPromise(versionBumps.pipe(Effect.provide(WorkspacesLive)));
+```
+
+Two things make this correct where a naive `git show` loop would not be. `at(ref)` is cached per `(resolved root, ref)`, invalidated on any non-success exit — a failed read is retried, never memoized. And it resolves every workspace-relative path against `cwd` (the resolved workspace root), so a workspace root nested inside a _larger_ git repository reads its own manifests rather than the outer repo's. A `WorkspaceStateSnapshot` also hands back a `package(name)` lookup and a `versions` map; each `PackageStateSnapshot` carries the four dependency records and an `allDependencies` merge, which is enough to compute a per-package `DependencyDiff` between two refs entirely in memory.
+
+## Resolving specifiers as of a ref
+
+A `WorkspaceStateSnapshot` answers "what did this specifier mean _here_" against its own captured state. `resolve(dependency, specifier)` classifies the specifier through `@effected/npm`'s `DependencySpecifier` — never by prefix-sniffing — and returns the concrete range or version, or `Option.none()` for anything with no indirection to resolve. Better still, the snapshot exposes `resolvers`: a `Layer` implementing `@effected/npm`'s `CatalogResolver` and `WorkspaceResolver` contracts bound to that ref, so code written to those contracts runs "as of" the tag.
+
+```ts with-api
+import { NodeServices } from "@effect/platform-node";
+import { Manifest } from "@effected/npm";
+import { WorkspaceSnapshots, Workspaces } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+const WorkspacesLive = Workspaces.layerWithGit().pipe(Layer.provide(NodeServices.layer));
+
+// What did a catalog:/workspace:* manifest resolve to AT the release tag?
+const asOfRelease = Effect.gen(function* () {
+  const snapshots = yield* WorkspaceSnapshots;
+  const snapshot = yield* snapshots.at("v0.1.0");
+
+  const manifest = yield* Manifest.decode({
+    dependencies: { effect: "catalog:", "@effected/git": "workspace:*" },
+  });
+
+  // The snapshot's resolvers answer @effected/npm's contracts against its captured state.
+  const resolved = yield* manifest.resolve().pipe(Effect.provide(snapshot.resolvers));
+  return resolved.toRecord();
+});
+
+Effect.runPromise(asOfRelease.pipe(Effect.provide(WorkspacesLive)));
+```
+
+For the live workspace rather than a ref, `Workspaces.resolveManifest` is the one-call path: it mints a fresh resolver layer per call (re-discovering the root each time, which is the feature for a build tool that changes directory), so it needs only `FileSystem` and `Path`. Check the pure `manifest.needsResolution` predicate first and skip catalog assembly entirely when no field carries a `catalog:`/`workspace:` specifier.
+
+```ts with-api
+import { NodeServices } from "@effect/platform-node";
+import { Manifest } from "@effected/npm";
+import { Workspaces } from "@effected/workspaces";
+import { Effect } from "effect";
+
+const resolveLive = Effect.gen(function* () {
+  const manifest = yield* Manifest.decode({ dependencies: { effect: "catalog:" } });
+  // The pure predicate short-circuits before any catalog assembly runs.
+  return manifest.needsResolution ? yield* Workspaces.resolveManifest(manifest) : manifest;
+});
+
+Effect.runPromise(resolveLive.pipe(Effect.provide(NodeServices.layer)));
+```
+
+## Custom publish policy
+
+`PublishabilityDetector` decides whether a package publishes, and where. The default layer implements standard npm semantics — a `private` package with no `publishConfig.access` publishes nowhere; an explicit `access` overrides `private`. Those are npm's rules, not necessarily yours: it is a service precisely so an organization with its own registry policy replaces the layer instead of forking the package.
+
+```ts with-api
+import { PublishabilityDetector, PublishTarget } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
+
+// Only @acme/* packages publish, and only to the internal registry.
+const InternalPublishing = Layer.succeed(PublishabilityDetector, {
+  detect: (pkg) =>
+    Effect.succeed(
+      pkg.name.startsWith("@acme/")
+        ? [
+            PublishTarget.make({
+              name: pkg.name,
+              registry: "https://npm.acme.internal/",
+              directory: ".",
+              access: "restricted",
+            }),
+          ]
+        : [],
+    ),
+});
+```
+
+The shape's error channel is deliberately `never`: a release planner iterating a whole workspace treats "does this publish" as a total question. An override backed by something fallible — a policy service, a registry probe — must **degrade or die**: fold a recoverable failure into a safe answer (`Effect.catch(() => Effect.succeed([]))` reads as "unknown means unpublishable"), or `Effect.orDie` it into the defect channel. Silently swallowing a lookup failure into a wrong "publishes to npm" answer is the one option the contract forbids.
+
+## Edge cases and failure modes
+
+Every failure is a tagged error you branch on, and change detection is deliberately transparent about git's own taxonomy — a git command that fails surfaces as `@effected/git` classified it, not re-wrapped:
+
+```ts with-api
+import { NodeServices } from "@effect/platform-node";
+import { ChangeDetector, Workspaces } from "@effected/workspaces";
+import { Console, Effect, Layer } from "effect";
+
+const WorkspacesLive = Workspaces.layerWithGit().pipe(Layer.provide(NodeServices.layer));
+
+const changed = Effect.gen(function* () {
+  const detector = yield* ChangeDetector;
+  return yield* detector.changedPackages();
+}).pipe(
+  // Git's errors pass through typed; ChangeDetectionError wraps only non-git failures.
+  Effect.catchTag("NotARepositoryError", () => Effect.succeed([])),
+  Effect.catchTag("UnknownRefError", (error) => Console.warn(`base ref not found: ${error.ref}`).pipe(Effect.as([]))),
+);
+
+Effect.runPromise(changed.pipe(Effect.provide(WorkspacesLive)));
+```
+
+The rest of the taxonomy worth knowing:
+
+- **A `packages:` pattern cannot be enumerated** → `WorkspacePatternError`, whose `kind` is one of `missingBaseDir` (usually a typo), `depthExceeded`, `budgetExceeded`, `unreadableDirectory` or `uncompilable`. A trailing `/**` really does descend more than one level here — the bounded, worklist-driven descent is the bug this package exists to have fixed.
+- **A member's `package.json` is unusable** → `WorkspaceDiscoveryError`, with `kind` distinguishing `read`, `invalidJson`, `invalidShape`, `invalidYaml`, `missingName` and `missingVersion`. Discovery uses a **tolerant** projection: it does not embed `@effected/package-json`'s strict `Package`, so one member with an odd version string cannot fail discovery for the whole repo.
+- **You want the strict, fully typed manifest** → `WorkspacePackage.manifest()` bridges the tolerant projection to `@effected/package-json`'s `Package`. It **re-reads** the file (a point-in-time refresh) and fails as `WorkspaceManifestError` with `kind: "read" | "decode"` — an individually recoverable step, never something discovery forces on you. For tolerant access to fields outside the discovery slice (`scripts`, `exports`) without a second read, `manifestRecord` holds the `package.json` as read.
+- **A developer wiring mistake** — an uncompilable glob literal handed to `matchesDependency`, a fractional `maxDepth` — is a **defect**, not a typed failure. The typed channel stays the domain errors a caller actually branches on.
+
+## Testing
+
+`DependencyGraph` is a pure value, so its ordering logic tests with no layers at all — construct it from `WorkspacePackage.make` fixtures and assert against `@effect/vitest`:
+
+```ts with-api
+import { DependencyGraph, WorkspacePackage } from "@effected/workspaces";
+import { assert, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+const pkg = (name: string, dependencies: Record<string, string>) =>
+  WorkspacePackage.make({
+    name,
+    version: "1.0.0",
+    path: `/repo/packages/${name}`,
+    packageJsonPath: `/repo/packages/${name}/package.json`,
+    relativePath: `packages/${name}`,
+    dependencies,
+  });
+
+it.effect("a dependent sorts after its workspace dependency", () =>
+  Effect.gen(function* () {
+    const graph = DependencyGraph.make({
+      packages: [pkg("app", { lib: "workspace:*" }), pkg("lib", {})],
+    });
+    const order = yield* graph.sort();
+    assert.deepStrictEqual(order, ["lib", "app"]);
+  }),
+);
+```
+
+For code that depends on discovery, `WorkspaceDiscovery.layerTest` is an in-memory double whose methods default to an empty workspace and derive over the _effective_ `listPackages` — stub only that, and `getPackage`, `importerMap` and `resolveFile(s)` answer consistently against your fixtures:
+
+```ts with-api
+import { WorkspaceDiscovery, WorkspacePackage } from "@effected/workspaces";
+import { assert, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+const TestDiscovery = WorkspaceDiscovery.layerTest({
+  listPackages: () =>
+    Effect.succeed([
+      WorkspacePackage.make({
+        name: "@my-org/utils",
+        version: "1.0.0",
+        path: "/repo/packages/utils",
+        packageJsonPath: "/repo/packages/utils/package.json",
+        relativePath: "packages/utils",
+      }),
+    ]),
+});
+
+it.effect("getPackage answers over the stubbed list", () =>
+  Effect.gen(function* () {
+    const discovery = yield* WorkspaceDiscovery;
+    const found = yield* discovery.getPackage("@my-org/utils");
+    assert.strictEqual(found.unscopedName, "utils");
+  }).pipe(Effect.provide(TestDiscovery)),
+);
+```
+
+One deliberate gap: `layerTest`'s `info()` **dies** with an explanatory defect unless you stub it — no honest default `WorkspaceInfo` exists, since a fabricated root path would leak into consumer path logic. For change detection, provide `ChangeDetector.layer` over your test discovery and a `Layer.succeed(Git, …)` double; because it runs on `@effected/git`'s `Git` service rather than a raw subprocess, the test needs no repository on disk.
+
+## Next steps
+
+- [API reference](/workspaces/api) — every export, error and model with full signatures.
+- [`WorkspaceSnapshots`](/workspaces/api/class/workspacesnapshots) and [`WorkspaceStateSnapshot`](/workspaces/api/class/workspacestatesnapshot) — reading and resolving state at a ref.
+- [`DependencyGraph`](/workspaces/api/class/dependencygraph) — `levels`, `sort`, `sortSubset` and `affectedBy`.
+- [`ChangeDetector`](/workspaces/api/class/changedetector) — the three depths of change analysis.
+- [`PublishabilityDetector`](/workspaces/api/class/publishabilitydetector) — the swappable publish-policy service.
+- [`@effected/git`](/git/getting-started) and [`@effected/npm`](/npm) — the change-detection primitives and the resolver contracts this package implements.

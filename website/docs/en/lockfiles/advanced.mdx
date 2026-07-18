@@ -1,0 +1,186 @@
+---
+title: Advanced
+description: Compose @effected/lockfiles into a real drift-detection tool — format-agnostic ingestion, the pnpm two-stage seam, integrity as data, and the typed failures worth routing.
+---
+
+# Advanced
+
+The [overview](/lockfiles) shows the shape of the model. This guide is for building something real on top of it: a tool that reads whatever lockfile a repository ships, normalizes it, and reports on it.
+
+## A concrete scenario: a lockfile drift gate
+
+Picture a release preflight for a polyglot fleet — some repos on pnpm, some on npm, one holdout on yarn Berry, a new service on bun. Before any of them publish, one gate has to answer the same question for all four: **does the lockfile still agree with the manifests?** A workspace the manifests declare but the lockfile never resolved, a resolved version that no longer satisfies a declared range, a stale workspace edge — each is a release you do not want to cut.
+
+Writing four gates, one per package manager, means four dialect parsers and four notions of "a package," "a workspace edge," and "an integrity hash." `@effected/lockfiles` collapses that to one: every format decodes into the same `Lockfile`, and one total function compares it to the manifests. The gate reads a string, picks a format, and asks its questions once.
+
+The package does **no IO** — it never reads a file, finds a root, or detects a package manager. That is the deliberate seam that keeps it pure tier: the disk work belongs to the caller (in the kit, the future `@effected/workspaces`), and everything here is a pure function of the text you hand it.
+
+## How it composes
+
+`Lockfile.parse` is the package's **only** fallible boundary — one `Effect` that fails with `LockfileParseError` or `LockfileFramingError`. Everything downstream — `withImporterNames`, `packagesNamed`, `importer`, `workspacePackages`, `LockfileIntegrity.compare` — is total: plain synchronous functions with no error channel, because a drift finding is data, not a failure. So a real program is a thin `Effect` at the edge wrapping a pure core.
+
+It also composes across the kit. The model speaks `@effected/npm`'s shared vocabulary — `DependencyField` for dependency sections, `DependencySpecifier` for declared ranges, `IntegrityHash` for checksums — so a lockfile, a `package.json` model, and a resolver all name the same things. `LockfileIntegrity.compare` decodes constraints through `@effected/semver`'s `Range` and `SemVer` to test satisfaction. And because `Lockfile` is a `Schema.Class`, it embeds directly in your own schemas:
+
+```ts with-api
+import { Lockfile } from "@effected/lockfiles";
+import { Schema } from "effect";
+
+// `Lockfile` is a `Schema.Class`, so it drops straight into your own schema —
+// e.g. to cache a parsed lockfile alongside the metadata that keyed it.
+const CachedLockfile = Schema.Struct({
+	lockfile: Lockfile,
+	fromFile: Schema.String,
+	checkedAt: Schema.Number,
+});
+
+type CachedLockfile = typeof CachedLockfile.Type;
+```
+
+## Format-agnostic ingestion
+
+When the caller discovers a lockfile path rather than being told the format, `fromFilename` classifies it and `filenameFor` is its inverse — a round-trip that stays honest as formats are added:
+
+```ts with-api
+import { filenameFor, fromFilename } from "@effected/lockfiles";
+import { Option } from "effect";
+
+// Dispatch by the filename a caller found on disk. Non-conventional
+// spellings and paths return `Option.none()` — no guessing.
+const detected = fromFilename("pnpm-lock.yaml"); // Option<LockfileFormat>
+
+const canonical = Option.map(detected, filenameFor); // Option<string> => Some("pnpm-lock.yaml")
+```
+
+With a format in hand, the whole gate is one small `Effect`. Note that both parse failures are tagged, so every mode — bad text, wrong shape, an unlocatable document — becomes a verdict the pipeline acts on rather than an exception it has to catch by hand:
+
+```ts with-api
+import { Lockfile, LockfileFormat, LockfileIntegrity, WorkspaceManifest } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string; // lockfile text, read by the caller
+declare const manifests: ReadonlyArray<WorkspaceManifest>;
+
+const preflight = (format: LockfileFormat) =>
+	Lockfile.parse(content, { format }).pipe(
+		Effect.map((lockfile) => {
+			// Drift is data: a report, not a thrown error.
+			const report = LockfileIntegrity.compare(lockfile, manifests);
+			return report.valid ? { status: "ok" as const } : { status: "drift" as const, report };
+		}),
+		Effect.catchTags({
+			// Malformed text (`"syntax"`) or the wrong shape for the format (`"validation"`).
+			LockfileParseError: (error) => Effect.succeed({ status: "unparseable" as const, stage: error.stage }),
+			// Parsed as text, but no single lockfile document could be located.
+			LockfileFramingError: (error) => Effect.succeed({ status: "unframed" as const, reason: error.reason }),
+		}),
+	);
+```
+
+## Pattern: the pnpm two-stage seam
+
+pnpm records workspace packages by importer *path*, not by name — the names live in manifests the parser never read. So `Lockfile.parse` emits the honest intermediate: workspace packages named by their `relativePath`, versioned `"0.0.0"`. `withImporterNames` is the explicit, **total and pure** second stage that rewrites those names — and both ends of every workspace dependency edge — once the caller supplies a path → name map (in the kit, built from manifest IO by `@effected/workspaces`):
+
+```ts with-api
+import { Lockfile, LockfileIntegrity, WorkspaceManifest } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string;
+declare const manifestNames: ReadonlyMap<string, string>; // importer path -> real name
+
+const audit = Effect.gen(function* () {
+	const raw = yield* Lockfile.parse(content, { format: "pnpm" });
+
+	// Straight from parse, pnpm workspace packages carry their importer path
+	// as a name — the lockfile does not record the real ones.
+	raw.workspacePackages.map((pkg) => pkg.relativePath);
+
+	// The consumer reads the manifests and supplies path -> real name. This is
+	// the only stage that makes pnpm names correct; npm, bun and yarn skip it.
+	const named = raw.withImporterNames(manifestNames);
+
+	return LockfileIntegrity.compare(named, [
+		WorkspaceManifest.make({ name: "@acme/core" }),
+		WorkspaceManifest.make({ name: "@acme/cli", dependencies: { "@acme/core": "workspace:*" } }),
+	]);
+});
+```
+
+Run `withImporterNames` **before** `LockfileIntegrity.compare`, or the report's `missingWorkspaces` / `extraWorkspaces` will list importer paths against manifest names and every workspace will look both missing and extra.
+
+## Pattern: integrity as a report, not an error
+
+`LockfileIntegrity.compare` returns a `LockfileIntegrity` value — `valid`, `missingWorkspaces`, `extraWorkspaces`, `unsatisfiedConstraints` — with no error channel, because a mismatch is a finding to present, not a failure to recover from. Constraint checking is best-effort by design: `workspace:` / `link:` / `file:` specifiers and rows whose range (or every resolved version) does not parse as SemVer are **skipped**, not reported as violations. A constraint is satisfied when *any* resolved version matches, and an unsatisfied row names every candidate it saw in `resolved`. Read the shape, decide the exit code yourself.
+
+## Pattern: reading declared specifiers by tag
+
+Each importer's declared dependencies carry a `specifier` decoded through `@effected/npm`'s `DependencySpecifier.FromString` — a tag-matchable `ClassifiedSpecifier` (`catalog` / `workspace` / `range` / `dist-tag` / `raw`) whose original string round-trips byte-for-byte on encode. That makes questions like "which root dependencies point at a pnpm catalog?" a structural match, backed by the lazy `importer` path index:
+
+```ts with-api
+import { Lockfile } from "@effected/lockfiles";
+import { Effect, Option } from "effect";
+
+declare const content: string;
+
+const rootCatalogDeps = Effect.gen(function* () {
+	const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+
+	const root = lockfile.importer("."); // Option<LockfileImporter> — "." is the root
+	if (Option.isNone(root)) return [];
+
+	return root.value.dependencies.filter((dep) => dep.specifier._tag === "catalog").map((dep) => dep.name);
+});
+```
+
+`packagesNamed(name)` answers the resolved-version question the same way — one entry per resolved version, O(1) after the first lookup, `[]` when the name is absent. Both indexes are `Map`-backed, so an attacker-adjacent path (`__proto__`, `constructor`) neither pollutes nor collides.
+
+## Edge cases and failure modes
+
+Every one of these is routed as a typed value — nothing here throws.
+
+- **`LockfileParseError` distinguishes `stage`.** `"syntax"` is text that would not parse at all (broken YAML/JSON/JSONC); `"validation"` is text that parsed but did not have the format's shape. Classic yarn v1 content fails here at `"validation"` — support is Berry only, and v1 is never mis-normalized into a wrong answer.
+- **`LockfileFramingError` guards the YAML *stream*.** A `pnpm-lock.yaml` can be two documents — a config-dependencies preamble, then the lockfile — and the preamble *validates*, so a naive read succeeds and returns an empty workspace. The parser instead takes the last document (pnpm writes the preamble as a prefix) and fails typed when it cannot: `"noLockfileDocument"` (nothing lockfile-shaped, including empty input), `"noImporters"` (a document that declares no workspace), or `"unexpectedDocuments"` (multi-document input to yarn, which defines no framing — refuse to guess).
+- **The load-bearing invariant:** an unlocatable lockfile *fails typed*; it never returns an empty `Lockfile`. An empty result is indistinguishable from "this workspace has no packages," which is exactly the bug this error exists to prevent.
+
+Route them where the distinction matters — the two tags plus `stage` / `reason` are usually enough:
+
+```ts with-api
+import { Lockfile } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string;
+
+const parsed = Lockfile.parse(content, { format: "pnpm" }).pipe(
+	Effect.catchTag("LockfileFramingError", (error) =>
+		// An env-only lockfile reads as "no document" — treat it as no workspace.
+		error.reason === "noLockfileDocument"
+			? Effect.succeed(Lockfile.make({ format: "pnpm", lockfileVersion: "9.0", packages: [], workspaceDependencies: [] }))
+			: Effect.fail(error),
+	),
+);
+```
+
+## Testing tips
+
+The parse boundary is the one place with an error channel, so the tests that matter most assert that hostile input *fails typed* rather than throwing. With `@effect/vitest`, flip the channel and assert on the tag (this snippet imports the test framework, so it is shown as a plain example rather than a live API block):
+
+```ts
+import { Lockfile } from "@effected/lockfiles";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("Lockfile.parse", () => {
+	it.effect("a multi-document yarn.lock fails typed, never truncated", () =>
+		Effect.gen(function* () {
+			const error = yield* Lockfile.parse("a:\n  b: c\n---\nd:\n  e: f", { format: "yarn" }).pipe(Effect.flip);
+			assert.strictEqual(error._tag, "LockfileFramingError");
+		}),
+	);
+});
+```
+
+Because the total surface has no error channel, its tests are ordinary value assertions — call `LockfileIntegrity.compare` and assert on `report.valid` and the three finding arrays; call `withImporterNames` and assert the names rewrote. And since the whole model is `Schema.Class`-based, `Schema.toArbitrary` gives you property-test inputs for codec round-trips without hand-writing fixtures.
+
+## Learn more
+
+- [Overview](/lockfiles) — why the package exists, install, and the quick start.
+- [API reference](/lockfiles/api) — every export with full signatures: `Lockfile`, `LockfileIntegrity`, `WorkspaceManifest`, `LockfileImporter`, `ImporterDependency`, `ResolvedPackage`, the two tagged errors, and the format helpers.

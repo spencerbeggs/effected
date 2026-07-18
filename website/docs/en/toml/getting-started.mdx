@@ -1,0 +1,223 @@
+---
+title: Getting Started
+description: Parse, edit, validate and reformat a TOML config with @effected/toml, preserving every comment and byte you did not touch.
+---
+
+# Getting Started
+
+Reach for `@effected/toml` when a tool needs to read *or write* a TOML file — a `Cargo.toml`, a `pyproject.toml`, a `netlify.toml`, any `*.toml` config — and must not destroy the comments and layout a human put there. A naive parse-to-object, mutate, re-stringify round-trip throws all of that away and reflows the whole file. This package parses TOML 1.0.0 into a plain value or a byte-exact document, changes exactly the bytes you ask it to, and can decode straight into a validated Effect `Schema`. Everything is a pure function or an `Effect` — there is no IO to mock and nothing to configure.
+
+## Install
+
+```bash
+npm install @effected/toml effect
+```
+
+```bash
+pnpm add @effected/toml effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies.
+
+## Your first task: bump a version without losing the comments
+
+Say you have a manifest with comments and you need to change one value. The naive approach — parse to an object, mutate it, stringify — would erase every comment and reflow the file. Instead, ask `TomlFormat` for the *edits* that make the change, then apply them to the original text.
+
+An edit is a `{ offset, length, content }` splice. `TomlFormat.modify` returns an array of them as an `Effect`, and `TomlEdit.applyAll` applies the whole batch against the source string:
+
+```ts with-api
+import { TomlEdit, TomlFormat } from "@effected/toml";
+import { Effect } from "effect";
+
+const source = `# package manifest
+[package]
+name = "my-app"
+version = "0.1.0" # bump on release
+`;
+
+const program = Effect.gen(function* () {
+  const edits = yield* TomlFormat.modify(source, ["package", "version"], "0.2.0");
+  return TomlEdit.applyAll(source, edits);
+});
+
+Effect.runPromise(program).then(console.log);
+// # package manifest
+// [package]
+// name = "my-app"
+// version = "0.2.0" # bump on release
+```
+
+Only the `0.1.0` was touched — the header comment, the `name` line, the trailing `# bump on release` and every space survive byte for byte, because setting `["package", "version"]` produced a single splice over those characters. The `path` argument is an array of string keys and numeric indices, so `["servers", 0, "port"]` reaches into nested tables and arrays. Passing `undefined` as the value deletes the target instead of setting it. When you just want the finished text, `TomlFormat.modifyToString` folds the `applyAll` step in for you:
+
+```ts with-api
+import { TomlFormat } from "@effected/toml";
+import { Effect } from "effect";
+
+const source = `[package]
+version = "0.1.0"
+`;
+
+const program = TomlFormat.modifyToString(source, ["package", "version"], "0.2.0");
+
+Effect.runPromise(program).then(console.log);
+// [package]
+// version = "0.2.0"
+```
+
+## Common operations
+
+Each snippet below is a complete, runnable program built from the package's real exports.
+
+### Parse into a plain value
+
+`Toml.parse` decodes a document into plain JavaScript: tables become plain objects, arrays become arrays, integers become `number` (or `bigint` past 2^53) and date-times become the four `TomlDateTime` classes. It returns an `Effect` failing with `TomlParseError`, and gives you back `unknown` — never `any`:
+
+```ts with-api
+import { Toml } from "@effected/toml";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  return yield* Toml.parse(`
+    title = "TOML Example"
+    [owner]
+    name = "Tom"
+    ports = [8000, 8001]
+  `);
+});
+
+Effect.runPromise(program).then(console.log);
+// { title: "TOML Example", owner: { name: "Tom", ports: [ 8000, 8001 ] } }
+```
+
+### Decode straight into a validated schema
+
+Compose your domain schema with `Toml.schema` to get a `Schema<A, string>` that decodes TOML text straight into a validated value — nested `[table]` headers map to nested `Schema.Struct`s, and a wrong type or a missing key fails as a schema issue rather than slipping through:
+
+```ts with-api
+import { Toml } from "@effected/toml";
+import { Effect, Schema } from "effect";
+
+const ServerConfig = Schema.Struct({
+  host: Schema.String,
+  port: Schema.Number,
+  database: Schema.Struct({
+    url: Schema.String,
+    poolSize: Schema.Number,
+  }),
+});
+const ConfigFromToml = Toml.schema(ServerConfig);
+
+const program = Effect.gen(function* () {
+  return yield* Schema.decodeUnknownEffect(ConfigFromToml)(`
+    host = "0.0.0.0"
+    port = 8080
+
+    [database]
+    url = "postgres://localhost/app"
+    poolSize = 10
+  `);
+});
+
+Effect.runPromise(program).then(console.log);
+// { host: "0.0.0.0", port: 8080, database: { url: "postgres://localhost/app", poolSize: 10 } }
+```
+
+### Round-trip a document losslessly
+
+When you need to inspect a document *and* write it back untouched, `TomlDocument.parse` gives you the source paired with its expression list. `stringify()` reconstructs the text byte for byte, and `toValue()` materializes the plain value on demand:
+
+```ts with-api
+import { TomlDocument } from "@effected/toml";
+import { Effect } from "effect";
+
+const source = `# keep me
+name = "api" # and me
+`;
+
+const program = Effect.gen(function* () {
+  const doc = yield* TomlDocument.parse(source);
+  console.log(doc.stringify() === source); // true — byte-exact
+  return yield* doc.toValue();
+});
+
+Effect.runPromise(program).then(console.log);
+// true
+// { name: "api" }
+```
+
+### Reformat a messy document
+
+`TomlFormat.formatToString` conservatively normalizes whitespace — one space around `=`, stripped indentation, a single final newline — and returns the formatted text directly. It is pure and total, and it never reorders keys or rewrites values:
+
+```ts with-api
+import { TomlFormat } from "@effected/toml";
+
+const messy = `name="api"
+port   =    3000
+`;
+
+console.log(TomlFormat.formatToString(messy));
+// name = "api"
+// port = 3000
+```
+
+### Scan a document as a stream of events
+
+`TomlVisitor.visit` returns a `Stream` of SAX-style events — `TableStart`, `ArrayTableStart`, `KeyValue` and `Comment` — in document order. Filter it with `TomlVisitorEvent.$is` and let `Stream.take` short-circuit once you have seen enough:
+
+```ts with-api
+import { TomlVisitor, TomlVisitorEvent } from "@effected/toml";
+import { Effect, Stream } from "effect";
+
+const source = `title = "example"
+[owner]
+name = "Tom"
+`;
+
+const program = TomlVisitor.visit(source).pipe(
+  Stream.filter(TomlVisitorEvent.$is("KeyValue")),
+  Stream.runForEach((event) => Effect.sync(() => console.log(event.path.join(".")))),
+);
+
+Effect.runPromise(program);
+// title
+// owner.name
+```
+
+## Handling errors
+
+Every fallible entry point carries a typed error channel. `Toml.parse` and `TomlDocument.parse` fail with `TomlParseError`, whose `diagnostics` array carries the `code`, `message` and `line`/`character` of each violation. `TomlFormat.modify` can fail *two* ways: the document might not parse (`TomlParseError`), or the requested path might not resolve against the document's structure (`TomlModificationError`, carrying a single `diagnostic`).
+
+Both are tagged errors, so `Effect.catchTag` routes each by its `_tag` with full type inference:
+
+```ts with-api
+import { TomlFormat } from "@effected/toml";
+import { Effect } from "effect";
+
+const source = `[server]
+port = 3000
+`;
+
+// "database" is never auto-created, so this path cannot resolve.
+const program = TomlFormat.modifyToString(source, ["database", "url"], "postgres://localhost");
+
+const recovered = program.pipe(
+  Effect.catchTag("TomlParseError", (error) =>
+    Effect.succeed(
+      error.diagnostics.map((d) => `${d.code} at ${d.line}:${d.character} — ${d.message}`),
+    ),
+  ),
+  Effect.catchTag("TomlModificationError", (error) =>
+    Effect.succeed([`${error.diagnostic.code}: ${error.diagnostic.message}`]),
+  ),
+);
+
+Effect.runPromise(recovered).then(console.log);
+```
+
+Because the error channel is fully typed, dropping either `catchTag` is a compile error until every failure is accounted for. That is the whole point of the typed channel: hostile or malformed input — including a nesting bomb, which trips a depth cap and returns a `NestingDepthExceeded` code rather than crashing the stack — always arrives here, never as an unhandled exception.
+
+## Next steps
+
+- Ready for the byte-exact linear CST, hand-built edit batches, range-scoped formatting and TOML's four date-time value classes? See the [advanced guide](/toml/advanced).
+- Every export, with full signatures, lives in the [API reference](/toml/api) — start with [`TomlFormat`](/toml/api/class/tomlformat), [`Toml`](/toml/api/class/toml) and [`TomlVisitor`](/toml/api/class/tomlvisitor).

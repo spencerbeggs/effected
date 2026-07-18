@@ -1,0 +1,286 @@
+---
+title: Advanced
+description: Compose only the subsystems you need, layer config across repo and user, invalidate a durable cache by tag, roll migrations back, and keep every failure on the typed channel.
+---
+
+# Advanced
+
+Picture a monorepo release CLI. Run `release publish`, and it reads a `release.toml` (registry URL, dist-tag, publish concurrency), records each package it publishes in a durable ledger so a crashed run resumes instead of double-publishing, and caches "is this version already on the registry?" answers so a re-run does not hammer npm. Three concerns — configuration, durable state, and an expendable cache — and every one of them wants to live in a directory named for the same application.
+
+That is the shape `@effected/app` exists for. The [overview](/app) shows the whole control plane wired in one `App.layer`. This guide goes past that: composing only the pieces a tool actually needs, layering config across sources, driving the cache and the store, and the failure modes worth knowing before an operator finds them for you.
+
+Everything below assumes the [overview](/app)'s two ground rules: bind each layer to a `const` once (Effect memoizes by reference, so calling a factory twice opens two databases), and provide a platform layer once at the edge.
+
+## Compose only what you need
+
+`App.layer` always opens both databases. That is the right default for an application, but not every tool is one. Because the surface is four independent factories rather than a namespace object, you can reach for exactly the subsystems you want — and, crucially, pull in exactly the dependencies they carry and no more.
+
+The sharpest case is a config-only tool: a linter, a codegen, anything that reads settings but keeps no state. `AppConfig` reaches [`@effected/xdg`](/xdg) and [`@effected/config-file`](/config-file) **only** — never [`@effected/store`](/store) — so composing it directly keeps the SQLite driver out of your graph entirely:
+
+```ts
+import { AppConfig } from "@effected/app";
+import { ConfigFile, TomlCodec } from "@effected/config-file";
+import { AppDirs, Xdg } from "@effected/xdg";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+class Release extends Schema.Class<Release>("Release")({
+  registry: Schema.String,
+  distTag: Schema.String,
+  concurrency: Schema.Number,
+}) {}
+class ReleaseFile extends ConfigFile.Service<ReleaseFile, Release>()("release/Release") {}
+
+// AppDirs + Xdg supply the namespace; no @effected/store means no SQLite driver.
+const DirsLive = Layer.provideMerge(AppDirs.layer({ namespace: "release" }), Xdg.layer);
+
+const ConfigLive = AppConfig.layer(ReleaseFile, {
+  filename: "release.toml",
+  schema: Release,
+  codec: TomlCodec,
+}).pipe(Layer.provide(DirsLive), Layer.provide(NodeServices.layer));
+```
+
+`AppConfig.layer` leaves `FileSystem`, `Path`, `AppDirs` and `Xdg` in its requirements; `DirsLive` satisfies the last two and `NodeServices` the first two, so `R` closes to `never`. The namespace is named once, in `AppDirs.layer` — `AppConfig` reads it from that ambient service and never takes it as a parameter.
+
+The symmetric move opens one database and not the other. A devtool that only caches expensive lookups composes `AppCache.layer` directly, picks its own filename, and never touches `store.db`:
+
+```ts
+import { AppCache } from "@effected/app";
+import { AppDirs, Xdg } from "@effected/xdg";
+import { NodeServices } from "@effect/platform-node";
+import { Duration, Layer } from "effect";
+
+const DirsLive = Layer.provideMerge(AppDirs.layer({ namespace: "release" }), Xdg.layer);
+
+const CacheLive = AppCache.layer({
+  filename: "registry.db",
+  defaultTtl: Duration.hours(6),
+  maxEntries: 10_000,
+}).pipe(Layer.provideMerge(DirsLive), Layer.provide(NodeServices.layer));
+```
+
+Both `AppStore.layer` and `AppCache.layer` run their directory `ensure` *before* the database layer is built, exactly as `App.layer` does — that ordering is the package's one real claim, and you keep it whether you compose the whole plane or one piece.
+
+## Layer config across repo and user
+
+A release CLI reads a project-level `release.toml` checked into the repo, but an operator may also keep machine-wide defaults in `~/.config/release/release.toml`. `AppConfig.layer` wires the XDG search path for you; a `strategy` decides what happens when more than one source is found. The default is `MergeStrategy.firstMatch` — highest-priority source wins outright. Swap in `layeredMerge` and the sources deep-merge, so a repo file overrides only the keys it sets and inherits the rest:
+
+```ts
+import { AppConfig } from "@effected/app";
+import { ConfigFile, MergeStrategy, TomlCodec } from "@effected/config-file";
+import { Effect, Schema } from "effect";
+
+class Release extends Schema.Class<Release>("Release")({
+  registry: Schema.String,
+  distTag: Schema.String,
+  concurrency: Schema.Number,
+}) {}
+class ReleaseFile extends ConfigFile.Service<ReleaseFile, Release>()("release/Release") {}
+
+const ConfigLive = AppConfig.layer(ReleaseFile, {
+  filename: "release.toml",
+  schema: Release,
+  codec: TomlCodec,
+  strategy: MergeStrategy.layeredMerge<Release>(),
+  native: false, // skip the OS-native probe; XDG only
+});
+
+const load = Effect.gen(function* () {
+  const config = yield* ReleaseFile;
+
+  // Every source the resolver chain found, highest priority first.
+  const sources = yield* config.discover;
+  yield* Effect.log(`merging ${sources.length} config source(s)`);
+
+  // Nothing on disk yet? Fall back to a trusted default instead of failing.
+  return yield* config.loadOrDefault(
+    new Release({ registry: "https://registry.npmjs.org", distTag: "latest", concurrency: 4 }),
+  );
+});
+```
+
+Three details earn their place here. The `codec` is **required** — `TomlCodec` is a named import, and that import is what keeps the JSON, JSONC and YAML engines out of your bundle; the layer will not guess a format from the `.toml` extension. `native` defaults to `true` (probing an OS-native directory a user may have written to is a cheap courtesy), and passing `false` drops that rung. And `loadOrDefault` returns the default *as-is* — it is trusted caller input, so neither the schema nor a `validate` hook runs against it.
+
+Writing config back is a read-modify-write that never clobbers a concurrent edit:
+
+```ts
+const promote = Effect.gen(function* () {
+  const config = yield* ReleaseFile;
+  return yield* config.update((current) =>
+    new Release({ registry: current.registry, distTag: "next", concurrency: current.concurrency }),
+  );
+});
+```
+
+`update` loads the current value, applies your function, `mkdir -p`s the config directory, and saves — all on one typed channel. The full `ConfigFileShape` surface (`loadFrom`, `write`, `save`, `validate`) is on [`ConfigFile`](/config-file); `AppConfig` just points it at the app's own directory.
+
+## Cache with TTLs and tag invalidation
+
+The cache is a durable, TTL-bounded key/value store keyed by string, valued by bytes. The release CLI uses it to remember registry answers: check the cache, fall back to the network on a miss, and write the result back with a TTL and a tag per package so a single command can drop everything it cached about one package.
+
+```ts
+import { App } from "@effected/app";
+import { Cache } from "@effected/store";
+import { Duration, Effect, Option } from "effect";
+
+const AppLive = App.layer({
+  namespace: "release",
+  store: { migrations: [] },
+  cache: { defaultTtl: Duration.hours(6), maxEntries: 10_000 },
+});
+
+const fetchPublished = (pkg: string) =>
+  Effect.succeed(new TextEncoder().encode(JSON.stringify({ pkg, latest: "0.1.0" })));
+
+const publishedMeta = (pkg: string) =>
+  Effect.gen(function* () {
+    const cache = yield* Cache;
+    const key = `npm:${pkg}`;
+
+    const cached = yield* cache.get(key);
+    if (Option.isSome(cached)) {
+      const entry = cached.value; // a CacheEntry; entry.value is the stored Uint8Array
+      return new TextDecoder().decode(entry.value);
+    }
+
+    const bytes = yield* fetchPublished(pkg);
+    yield* cache.set({
+      key,
+      value: bytes,
+      contentType: "application/json",
+      tags: [pkg, "registry"],
+      ttl: Duration.minutes(30), // overrides the layer's defaultTtl for this entry
+    });
+    return new TextDecoder().decode(bytes);
+  });
+```
+
+A `--force <pkg>` flag becomes one tag invalidation. The optional `onRemoved` callback runs *inside the same transaction as the delete*, so if it fails the delete rolls back — useful when the eviction must stay consistent with a side effect:
+
+```ts
+const forceRefresh = (pkg: string) =>
+  Effect.gen(function* () {
+    const cache = yield* Cache;
+    const removed = yield* cache.invalidateByTag(pkg, (result) =>
+      Effect.log(`dropped ${result.count} cached entr${result.count === 1 ? "y" : "ies"} for ${pkg}`),
+    );
+    return removed.count;
+  });
+```
+
+Expiry is lazy — `get` and `has` delete an expired row on read — so a long-lived process should sweep periodically with `cache.prune()`, which removes every entry at or past its `expiresAt` in bulk and returns how many it took. Every cache mutation also publishes a typed `CacheEvent` to `cache.events`, a `PubSub` you can subscribe to for metrics without the cache ever knowing you are listening. The full method and event surface lives on [`Cache`](/store).
+
+## Migrations you can roll back
+
+The state database is a migrated SQLite store: the migration list is your schema, applied in ascending `id` order at layer construction. Give a migration a `down` and it becomes reversible, which matters when a release goes wrong and you need to unwind a schema change without dropping the ledger it lives in.
+
+```ts
+import { App } from "@effected/app";
+import { Store } from "@effected/store";
+import { Effect } from "effect";
+
+const AppLive = App.layer({
+  namespace: "release",
+  store: {
+    migrations: [
+      {
+        id: 1,
+        name: "runs",
+        up: (sql) => sql`CREATE TABLE runs (id TEXT PRIMARY KEY, pkg TEXT, version TEXT, at TEXT)`,
+      },
+      {
+        id: 2,
+        name: "runs.status",
+        up: (sql) => sql`ALTER TABLE runs ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'`,
+        down: (sql) => sql`ALTER TABLE runs DROP COLUMN status`,
+      },
+    ],
+  },
+});
+
+const recordAndRewind = Effect.gen(function* () {
+  const store = yield* Store;
+
+  // Keys, values and paths are data — everything reaches SQLite as a bound parameter.
+  yield* store.client`
+    INSERT INTO runs (id, pkg, version, at)
+    VALUES (${crypto.randomUUID()}, ${"@effected/app"}, ${"0.1.0"}, datetime())`;
+
+  const applied = yield* store.status; // each migration with its appliedAt
+  yield* Effect.log(`${applied.length} migrations known`);
+
+  // Unwind migration 2 (runs its `down`) while keeping everything at id <= 1.
+  yield* store.rollback(1);
+});
+```
+
+`store.status` projects the full migration list with each one's `appliedAt`, `store.rollback(toId)` unwinds everything with `id > toId` newest-first, and `store.migrate` re-applies pending migrations — a no-op until a rollback re-opens a gap. The `client` is the underlying `SqlClient` for your own schema-aware queries. See [`Store`](/store) for the whole shape.
+
+## Failure modes: what dies and what you catch
+
+This package draws a hard line, and knowing which side a failure lands on saves debugging time.
+
+**Wiring defects die.** A `filename` that is not a single path component — `""`, `"a/b"`, or the traversal name `".."` — would resolve outside the namespace directory, so it fails as a **defect** at layer construction, on all three of `AppStore`, `AppCache` and `AppConfig`. This is deliberate: a filename can only come from your code, never from user input, so it is a bug to fix rather than a condition to handle. Do not wrap these in a `catchTag`; fix the call site. The same reasoning is why the namespace is typed exactly once and never re-supplied to `AppConfig`.
+
+**Boundary failures stay typed.** Everything an operator or the environment can actually cause routes to the error channel, unwrapped, with its structure intact. The load-bearing example is directory creation: `SqliteClient.layer` has no error channel and *defects* on a missing parent directory, so `AppStore.layer` runs `AppDirs.ensureState` first and converts that defect surface into a typed `AppDirsError`. Nothing is `orDie`d to tidy a signature. [`AppError`](/app/api/type/apperror) is the copy-pasteable union for the `catchTags` block at the edge:
+
+```ts
+import { App } from "@effected/app";
+import { Store } from "@effected/store";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const AppLive = App.layer({ namespace: "release", store: { migrations: [] } });
+
+const main = Effect.gen(function* () {
+  const store = yield* Store;
+  yield* store.migrate;
+});
+
+const handled = main.pipe(
+  Effect.provide(AppLive),
+  Effect.provide(NodeServices.layer),
+  Effect.catchTags({
+    AppDirsError: (e) => Effect.logError(`could not create the ${e.directory} directory at ${e.path}`),
+    XdgEnvError: () => Effect.logError("the XDG environment could not be resolved"),
+    StoreError: (e) => Effect.logError(`store ${e.operation} failed`),
+    StoreMigrationError: (e) => Effect.logError(`migration ${e.id} (${e.name}) failed going ${e.direction}`),
+    CacheError: (e) => Effect.logError(`cache ${e.operation} failed`),
+  }),
+);
+```
+
+Because the channel is typed, dropping any one of those tags is a compile error until every failure is accounted for — and each error still carries the fields the package that raised it documents. A `StoreMigrationError` reaching your handler knows the failing migration's `id`, `name` and `direction`; an `AppDirsError` knows which `directory` kind and `path` it choked on. This package adds no wrapper — `AppError` is a type-only alias that erases, so it costs nothing in the module graph.
+
+## Testing the control plane
+
+`App.layerTest` is the hermetic plane: fixed XDG paths, `:memory:` databases, and the platform layers provided *internally*, so a test needs no platform import and `R` is `never` by construction. That makes a first test one line of wiring:
+
+```ts
+import { App } from "@effected/app";
+import { Cache } from "@effected/store";
+import { layer } from "@effect/vitest";
+import { Effect, Option } from "effect";
+import { assert } from "vitest";
+
+layer(App.layerTest({ namespace: "release" }))("release control plane", (it) => {
+  it.effect("caches a registry lookup in memory", () =>
+    Effect.gen(function* () {
+      const cache = yield* Cache;
+      yield* cache.set({ key: "npm:@effected/app", value: new TextEncoder().encode("0.1.0") });
+      const hit = yield* cache.get("npm:@effected/app");
+      assert.isTrue(Option.isSome(hit));
+    }));
+});
+```
+
+Two things to keep in mind. First, the documented limit: code paths that actually exercise `ensure*` **die** against the stub filesystem `layerTest` provides — it is for testing logic that *uses* the plane, not directory behavior. A test of real directory creation uses `App.layer` against a temp-directory `HOME`, which is what this package's own integration suite does. Second, cache expiry reads Effect's `Clock`, so TTL behavior is deterministic under `@effect/vitest`'s `TestClock` — advance the clock instead of sleeping, and an entry's expiry is exact.
+
+## Next steps
+
+- Composing telemetry, the full quick start, and where files land on each platform are in the [overview](/app).
+- The three services this package wires live in their own packages: [`Store`](/store) and [`Cache`](/store) in [`@effected/store`](/store), [`ConfigFile`](/config-file) and the codecs in [`@effected/config-file`](/config-file), and the directory resolution in [`@effected/xdg`](/xdg).
+- Every export, with full signatures, is in the [API reference](/app/api) — start with [`App`](/app/api/variable/app), [`AppConfig`](/app/api/variable/appconfig), [`AppStore`](/app/api/variable/appstore), [`AppCache`](/app/api/variable/appcache) and [`AppError`](/app/api/type/apperror).
+</content>
+</invoke>

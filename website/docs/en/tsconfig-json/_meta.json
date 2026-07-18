@@ -1,7 +1,7 @@
 [
 	{
 		"type": "section-header",
-		"label": "@effected/app"
+		"label": "@effected/tsconfig-json"
 	},
 	{
 		"type": "file",

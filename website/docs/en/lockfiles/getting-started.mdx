@@ -1,0 +1,214 @@
+---
+title: "Getting started"
+description: "Parse a lockfile into the unified model, query the packages it resolved, check it against your manifests, and route its typed failures — the @effected/lockfiles workflow end to end."
+---
+
+# Getting started
+
+`@effected/lockfiles` turns a lockfile — `bun.lock`, `package-lock.json`, `pnpm-lock.yaml` or `yarn.lock` — into one model your tooling can query the same way regardless of which package manager wrote it. Reach for it whenever you need to inspect what a project *actually* resolved: auditing which versions landed, finding duplicate copies of a dependency, or checking that a lockfile still agrees with the `package.json` files it was generated from. It never reads the disk; you hand it the file's text and it hands you a typed model back.
+
+## Install
+
+```bash
+npm install @effected/lockfiles @effected/jsonc @effected/semver @effected/yaml effect
+```
+
+```bash
+pnpm add @effected/lockfiles @effected/jsonc @effected/semver @effected/yaml effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4, `@effected/jsonc`, `@effected/semver` and `@effected/yaml` are peer dependencies — the text-parsing engines arrive through those sibling packages, so nothing else reaches your tree.
+
+## Your first task: audit a dependency's resolved versions
+
+A common question when a bug feels version-shaped: *did we end up with more than one copy of this package?* Two versions of `typescript` (or `effect`) in the same install is a classic source of "works on my machine." Here is that check, end to end.
+
+Everything starts with **[`Lockfile.parse`](/lockfiles/api/class/lockfile)**, the package's one fallible boundary. You give it the lockfile's text and tell it the format; it returns an Effect that succeeds with a [`Lockfile`](/lockfiles/api/class/lockfile) or fails with a typed error.
+
+```ts with-api
+import { Lockfile } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+// Your app read the file; this package does no IO of its own.
+declare const content: string; // the text of a pnpm-lock.yaml
+
+const program = Effect.gen(function* () {
+  // Parse once, then ask the model questions.
+  const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+
+  // packagesNamed returns every resolved entry for a name — one per version.
+  const resolved = lockfile.packagesNamed("typescript");
+  const versions = resolved.map((pkg) => pkg.version);
+
+  return {
+    duplicated: versions.length > 1,
+    versions,
+  };
+});
+```
+
+`program` is a description, not a result — nothing has run yet. Hand it to an Effect runner to execute it:
+
+```ts with-api
+import { Lockfile } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string;
+// ---cut---
+const program = Lockfile.parse(content, { format: "pnpm" }).pipe(
+  Effect.map((lockfile) => lockfile.packagesNamed("typescript").map((pkg) => pkg.version)),
+);
+
+// Resolves to a string[] of every resolved typescript version.
+const run = Effect.runPromise(program);
+```
+
+Each entry in `packagesNamed` is a [`ResolvedPackage`](/lockfiles/api/class/resolvedpackage), carrying `name`, `version`, an optional `integrity` hash, and — for workspace-local packages — `isWorkspace` and a `relativePath`.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built only from the package's real exports.
+
+### Detect the format from a filename
+
+You will not always know the format ahead of time. [`fromFilename`](/lockfiles/api/function/fromfilename) maps a conventional lockfile name to its format, and [`filenameFor`](/lockfiles/api/function/filenamefor) goes the other way. Both are total; `fromFilename` returns an `Option` because an unrecognized name has no format.
+
+```ts with-api
+import { filenameFor, fromFilename } from "@effected/lockfiles";
+import { Option } from "effect";
+
+const detected = fromFilename("pnpm-lock.yaml"); // Option<LockfileFormat>
+
+const label = Option.match(detected, {
+  onNone: () => "not a recognized lockfile",
+  onSome: (format) => `${format} lockfile (${filenameFor(format)})`,
+});
+```
+
+### List the workspace's own packages
+
+`workspacePackages` filters the model down to the workspace-local packages — the ones that live in your repo, not the registry.
+
+```ts with-api
+import { Lockfile } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string;
+
+const program = Effect.gen(function* () {
+  const lockfile = yield* Lockfile.parse(content, { format: "npm" });
+
+  return lockfile.workspacePackages.map((pkg) => ({
+    name: pkg.name,
+    path: pkg.relativePath,
+  }));
+});
+```
+
+### Inspect what one importer declared
+
+An *importer* is a single workspace package's declared dependencies, keyed by its path (`"."` is the root). [`lockfile.importer`](/lockfiles/api/class/lockfile) looks one up and returns an `Option`, since the path may not exist. Each entry is an [`ImporterDependency`](/lockfiles/api/class/importerdependency) with the declared `specifier` and the `depType` it was declared under.
+
+```ts with-api
+import { Lockfile } from "@effected/lockfiles";
+import { Effect, Option } from "effect";
+
+declare const content: string;
+
+const program = Effect.gen(function* () {
+  const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+
+  const root = lockfile.importer("."); // Option<LockfileImporter>
+
+  return Option.match(root, {
+    onNone: () => [],
+    onSome: (importer) =>
+      importer.dependencies.map((dep) => ({ name: dep.name, kind: dep.depType })),
+  });
+});
+```
+
+### Give pnpm workspace packages their real names
+
+pnpm records workspace packages by importer *path*, not name — straight out of the parser they are named `packages/core`, not `@acme/core`. Once your app has read each package's `package.json`, `withImporterNames` rewrites those names (and both ends of every workspace dependency edge) in one pure, total pass.
+
+```ts with-api
+import { Lockfile } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string;
+
+const program = Effect.gen(function* () {
+  const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+
+  const named = lockfile.withImporterNames(
+    new Map([
+      [".", "@acme/root"],
+      ["packages/core", "@acme/core"],
+    ]),
+  );
+
+  return named.workspacePackages.map((pkg) => pkg.name);
+});
+```
+
+### Check the lockfile against your manifests
+
+[`LockfileIntegrity.compare`](/lockfiles/api/class/lockfileintegrity) answers "does this lockfile still agree with these `package.json` files?" It takes plain [`WorkspaceManifest`](/lockfiles/api/class/workspacemanifest) values and returns a report — there is no error channel, because a mismatch is a *finding*, not a failure. For pnpm, call `withImporterNames` first so the workspace names line up.
+
+```ts with-api
+import { Lockfile, LockfileIntegrity, WorkspaceManifest } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string;
+
+const program = Effect.gen(function* () {
+  const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+
+  const report = LockfileIntegrity.compare(lockfile, [
+    WorkspaceManifest.make({
+      name: "@acme/core",
+      dependencies: { effect: "^4.0.0" },
+    }),
+  ]);
+
+  return {
+    valid: report.valid,
+    missing: report.missingWorkspaces,
+    extra: report.extraWorkspaces,
+    unsatisfied: report.unsatisfiedConstraints,
+  };
+});
+```
+
+## Handling failures
+
+`Lockfile.parse` is the only place that can fail, and it fails in exactly two typed ways. Both are tagged errors, so you route them with `Effect.catchTag` — no `try`/`catch`, no `_tag` sniffing.
+
+- [`LockfileParseError`](/lockfiles/api/class/lockfileparseerror) — the text itself was wrong. Its `stage` is `"syntax"` when the JSON/JSONC/YAML did not parse, or `"validation"` when it parsed but did not have the format's shape (classic yarn v1 content lands here). It carries the underlying engine failure in `cause`.
+- [`LockfileFramingError`](/lockfiles/api/class/lockfileframingerror) — the text parsed, but no single lockfile document could be located in it. Its `reason` is `"noLockfileDocument"`, `"noImporters"` or `"unexpectedDocuments"`. This is the error that stops a two-document `pnpm-lock.yaml` from silently reading as an empty workspace.
+
+```ts with-api
+import { Lockfile } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string;
+
+const safe = Lockfile.parse(content, { format: "pnpm" }).pipe(
+  Effect.catchTag("LockfileParseError", (error) =>
+    // error.format, error.stage ("syntax" | "validation"), error.cause
+    Effect.succeed(`malformed ${error.format} lockfile at ${error.stage}`),
+  ),
+  Effect.catchTag("LockfileFramingError", (error) =>
+    // error.reason, error.documents
+    Effect.succeed(`no lockfile document (${error.reason})`),
+  ),
+);
+```
+
+Recovering both tags turns the error channel into a plain string result; recover only the tags you have a plan for and let the rest propagate. The key invariant to lean on: an unlocatable lockfile **fails typed** — it never comes back as an empty `Lockfile` you have to second-guess.
+
+## Next steps
+
+- The [advanced guide](/lockfiles/advanced) goes deeper on the pnpm YAML-stream framing, the two seam repairs, and per-format quirks.
+- The [API reference](/lockfiles/api) has every export with full signatures.

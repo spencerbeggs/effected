@@ -1,0 +1,181 @@
+---
+title: Getting Started
+description: Resolve the newest Node, Bun or Deno version matching a semver range, pick a cache strategy, and route the typed failures — the core @effected/runtimes workflow end to end.
+---
+
+# Getting Started
+
+Reach for `@effected/runtimes` when a tool needs to answer a question like "what is the newest Node.js version matching `>=20` that is still in active LTS?" — a CI matrix builder, a version manager, a project scaffolder. You hand a resolver a semver range, it reads the upstream release feed, cross-references the lifecycle schedule, and hands back the matching versions with honest provenance. Node, Bun and Deno each get a resolver with the same shape. There is one thing to choose up front — whether an answer must be live, may fall back to a bundled snapshot, or should never touch the network at all — and that choice is a layer, not a flag.
+
+## Install
+
+```bash
+npm install @effected/runtimes effect
+```
+
+```bash
+pnpm add @effected/runtimes effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; `@effected/semver` is the only other edge. Live resolution needs an `HttpClient`, provided at the edge with `FetchHttpClient.layer`. Offline resolution needs nothing at all.
+
+## Your first task: pin the Node version to scaffold with
+
+Say a project generator needs to pick the Node.js version to write into a new project's `.nvmrc` — the newest release matching the engines range `>=20` that is still in active LTS. You want the live answer when the network is up, but you also want to keep working offline, and you want to *know* which one you got so you can warn about a possibly stale pick.
+
+That is exactly what `NodeResolver.layer` does: it fetches live, falls back to the bundled snapshot when it cannot, and records which happened in the result's `source` field. Provide it an `HttpClient` at the edge and read the answer back:
+
+```ts with-api
+import { NodeResolver } from "@effected/runtimes";
+import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+
+const program = Effect.gen(function* () {
+  const node = yield* NodeResolver;
+  const result = yield* node.resolve({ range: ">=20", phases: ["active-lts"] });
+
+  if (result.source === "cache") {
+    yield* Effect.logWarning("Resolved from the bundled snapshot — the pick may be stale");
+  }
+  return result.latest;
+});
+
+// `layer` needs an HttpClient; provide one at the edge.
+const NodeLive = NodeResolver.layer.pipe(Layer.provide(FetchHttpClient.layer));
+
+Effect.runPromise(program.pipe(Effect.provide(NodeLive))).then((version) => {
+  console.log(`Writing .nvmrc with ${version}`);
+  // Writing .nvmrc with 22.x.y
+});
+```
+
+`resolve` takes a `NodeResolverOptions`: `range` is the semver constraint (defaulting to `*`), and `phases` restricts matches by lifecycle stage — here, only releases currently in active LTS. Everything else on the options is optional. The result is a `ResolvedVersions`: `latest` is the newest match, `versions` holds every match newest-first, `source` is `"api"` or `"cache"`, and `lts` carries the newest LTS pick when one applies.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built from the package's real exports.
+
+### Resolve Bun and Deno
+
+Bun and Deno resolve through GitHub's REST API rather than a public dist index, so their `layer` requires a `GitHubClient` instead of a bare `HttpClient`. `GitHubClient.layerDefault` is the batteries-included wiring — environment-detected auth over `fetch` — so no credentials are needed to get started:
+
+```ts with-api
+import { BunResolver, DenoResolver, GitHubClient } from "@effected/runtimes";
+import { Effect, Layer } from "effect";
+
+const program = Effect.gen(function* () {
+  const bun = yield* BunResolver;
+  const deno = yield* DenoResolver;
+  return {
+    bun: (yield* bun.resolve({ range: "^1.0.0" })).latest,
+    deno: (yield* deno.resolve({ range: ">=2" })).latest,
+  };
+});
+
+const Live = Layer.mergeAll(
+  BunResolver.layer.pipe(Layer.provide(GitHubClient.layerDefault)),
+  DenoResolver.layer.pipe(Layer.provide(GitHubClient.layerDefault)),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(Live))).then(console.log);
+// { bun: "1.x.y", deno: "2.x.y" }
+```
+
+Anonymous GitHub requests share a low rate limit. To raise it, provide your own credential with `GitHubClient.layer` under a `GitHubAuth.token(...)` layer instead of `layerDefault`.
+
+### Resolve without touching the network
+
+`layerOffline` serves the bundled snapshot only. It performs no IO, requires nothing, and structurally cannot fail on the transport — the ideal choice for a deterministic unit test or an air-gapped build, where a network call would be flakiness you did not ask for:
+
+```ts with-api
+import { DenoResolver } from "@effected/runtimes";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const deno = yield* DenoResolver;
+  return yield* deno.resolve({ range: ">=1.40" });
+}).pipe(Effect.provide(DenoResolver.layerOffline));
+
+Effect.runPromise(program).then((result) => console.log(result.source));
+// cache — always, by construction
+```
+
+### Group matches with `increments`
+
+By default `resolve` returns one version per major line (`latest`). Ask for `patch` to get every matching release, or `minor` for the newest patch of each minor line — useful when building a full CI test matrix rather than a single pin:
+
+```ts with-api
+import { NodeResolver } from "@effected/runtimes";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const node = yield* NodeResolver;
+  const phases = ["active-lts", "maintenance-lts"] as const;
+
+  const everyPatch = yield* node.resolve({ range: ">=18", phases: [...phases], increments: "patch" });
+  const perLine = yield* node.resolve({ range: ">=18", phases: [...phases], increments: "latest" });
+
+  return { patches: everyPatch.versions.length, lines: perLine.versions };
+}).pipe(Effect.provide(NodeResolver.layerOffline));
+
+Effect.runPromise(program).then(console.log);
+// { patches: <many>, lines: [ "22.x.y", "20.x.y", "18.x.y" ] }
+```
+
+### Mark a default within the matches
+
+Pass `defaultVersion` and the resolver populates the result's `default` field with the newest release matching that secondary range — a way to say "give me every `>=18` line, but the one I want checked out is the newest `20`":
+
+```ts with-api
+import { NodeResolver } from "@effected/runtimes";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const node = yield* NodeResolver;
+  const result = yield* node.resolve({ range: ">=18", defaultVersion: "20" });
+  return { latest: result.latest, default: result.default, lts: result.lts };
+}).pipe(Effect.provide(NodeResolver.layerOffline));
+
+Effect.runPromise(program).then(console.log);
+```
+
+## Handling errors
+
+The resolver's error channel keeps distinctions that a naive implementation collapses. `resolve` can fail three typed ways: an `InvalidRangeError` (from `@effected/semver`) means the range string itself is malformed, `NoMatchingVersionError` means the range was fine but nothing matched it, and `UnresolvableDefaultError` means the main range resolved but the separate `defaultVersion` you named did not. On top of that, choosing `layerFresh` — live data or nothing — adds a `FreshnessError` raised at layer construction when the feed cannot be reached.
+
+All four are tagged errors, so `Effect.catchTag` routes each by its `_tag` with full type inference. Provide the layer first so the `FreshnessError` enters the channel, then catch every case:
+
+```ts with-api
+import { NodeResolver } from "@effected/runtimes";
+import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+
+const program = Effect.gen(function* () {
+  const node = yield* NodeResolver;
+  return yield* node.resolve({ range: ">=20", defaultVersion: "20.11.0" });
+});
+
+// `layerFresh` refuses the snapshot, so its FreshnessError joins the channel.
+const NodeFresh = NodeResolver.layerFresh.pipe(Layer.provide(FetchHttpClient.layer));
+
+const recovered = program.pipe(
+  Effect.provide(NodeFresh),
+  Effect.catchTag("InvalidRangeError", (error) => Effect.succeed(`malformed range: ${error.input}`)),
+  Effect.catchTag("NoMatchingVersionError", (error) =>
+    Effect.succeed(`no ${error.runtime} release matched ${error.constraint}`),
+  ),
+  Effect.catchTag("UnresolvableDefaultError", (error) =>
+    Effect.succeed(`default ${error.defaultVersion} did not resolve`),
+  ),
+  Effect.catchTag("FreshnessError", (error) => Effect.succeed(`could not reach the ${error.runtime} feed`)),
+);
+
+Effect.runPromise(recovered).then(console.log);
+```
+
+Because the channel is fully typed, dropping any one `catchTag` leaves that failure in the channel — the compiler will not let a `FreshnessError` reach production as an unhandled defect. The GitHub-backed resolvers add a transport ladder of their own — `AuthenticationError`, `RateLimitError`, `NetworkError` and `ResponseParseError` — which `layer` absorbs into a snapshot fallback and `layerFresh` wraps into the same `FreshnessError`.
+
+## Next steps
+
+- Ready for custom GitHub credentials, the release schedule model, and the reasoning behind the three cache strategies? See the [advanced guide](/runtimes/advanced).
+- Every export, with full signatures, lives in the [API reference](/runtimes/api) — start with [`NodeResolver`](/runtimes/api/class/noderesolver), [`ResolvedVersions`](/runtimes/api/class/resolvedversions) and [`GitHubClient`](/runtimes/api/class/githubclient).

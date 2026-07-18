@@ -1,0 +1,194 @@
+---
+title: Advanced
+description: Compose @effected/yaml into a real Effect application — schema-decoded config, comment-preserving edits, streaming scans, and the hardening budgets that keep adversarial input on the typed error channel.
+---
+
+# Advanced
+
+You maintain a release tool for a monorepo. It reads the CI workflow that pins your toolchain, bumps the Node version across every job when the runtime feed advances, and writes the file back. A human owns that workflow — its comments explain _why_ each pin exists — so a naive `parse → mutate → stringify` round-trip is unacceptable: it strips the comments, reorders the keys, and turns a one-line version bump into a reviewer's nightmare of a diff.
+
+This is the problem `@effected/yaml` is built for. Its editing layer computes **byte-minimal splices** against the original text, so a version bump touches exactly the bytes of the version and nothing else. Its parser **recovers** rather than failing on the first problem, aggregating every diagnostic into one typed error with source positions. And every fallible entry point — parse, stringify, encode, modify — keeps malformed and adversarial input on the typed error channel, never letting it escape as an unhandled defect or a stack overflow. This guide covers the patterns that matter once the toy examples are behind you.
+
+If you have not read the [overview](/yaml), start there; this page does not repeat it.
+
+## Composing with Effect
+
+The single highest-leverage feature is `Yaml.schema` — it composes a YAML codec with _your_ domain schema, so YAML text decodes straight into a validated value and any Effect service that needs configuration takes it as a `Schema.Codec<A, string>`, not as untyped `unknown`.
+
+```ts with-api
+import { Yaml } from "@effected/yaml";
+import { Effect, Schema } from "effect";
+
+// The shape your application actually wants — validated, not `unknown`.
+const Pipeline = Schema.Struct({
+	name: Schema.String,
+	concurrency: Schema.Number,
+	steps: Schema.Array(Schema.String),
+});
+
+// One codec: YAML text in, a validated `Pipeline` out.
+const PipelineFromYaml = Yaml.schema(Pipeline);
+
+const load = (source: string) =>
+	Schema.decodeUnknownEffect(PipelineFromYaml)(source);
+
+const program = Effect.gen(function* () {
+	const pipeline = yield* load(`
+name: release        # human-maintained
+concurrency: 4
+steps:
+  - build
+  - test
+`);
+	return pipeline.steps.length; // 2 — typed as number, validated
+});
+```
+
+Because `Yaml.schema` returns an ordinary `Schema.Codec`, the target's own decoding requirements flow through: wrap a schema that reads from a service, and the composed codec carries that `R` too. That is what lets a YAML-backed configuration slot into a `Layer` exactly like any other decoded value — the YAML is an encoding detail the rest of your program never sees.
+
+Two composition notes worth internalizing:
+
+- **Bind the schema to a `const`.** Every `Yaml.schema(...)` / `Yaml.fromString(...)` call returns a _fresh_ codec whose derivation caches are not shared. On a hot path, construct it once at module scope; for the zero-config case, reach for the pre-bound `Yaml.YamlFromString` singleton.
+- **A stream of documents is one call away.** `Yaml.allFromString` (and `Yaml.parseAll`) decode a `---`-separated multi-document stream into one value per document — which is what a `pnpm-lock.yaml` produced by a workspace actually is.
+
+Within the kit, `@effected/config-file` already wires this up: its `YamlCodec` named export is `@effected/yaml` behind the config-file loading pipeline, so a config loader gets format-agnostic resolution for free. When you only need the format, depend on `@effected/yaml` directly.
+
+## Pattern: comment-preserving modification
+
+Back to the release tool. `YamlFormat.modify` computes the edits that insert, replace, or remove a value at a **path**, and `modifyToString` applies them in one step. Everything you did not touch — comments, key order, quoting, the blank line between sections — survives byte-for-byte.
+
+```ts with-api
+import { YamlFormat } from "@effected/yaml";
+import { Effect } from "effect";
+
+const workflow = `# Pinned by the release tool — do not edit by hand.
+runtime:
+  node: "20.11.0" # LTS
+  registry: https://registry.npmjs.org
+`;
+
+const bump = Effect.gen(function* () {
+	// Navigate by path: mapping keys as strings, sequence indices as numbers.
+	return yield* YamlFormat.modifyToString(workflow, ["runtime", "node"], "22.12.0");
+});
+
+// Result keeps the header comment, the `# LTS` trailing comment,
+// the registry line and the exact indentation — only "20.11.0" → "22.12.0".
+```
+
+Passing `value === undefined` removes the target key or element; a path whose final segment is missing from a mapping appends a new pair after the last one. When you only need reformatting rather than a value change, `YamlFormat.format` / `formatToString` run the same non-mutating diff pipeline and are **pure and total** — malformed input yields no edits rather than corrupting the document.
+
+> **Folding is a value-path feature only.** `YamlStringifyOptions.lineWidth` folds long scalars on `Yaml.stringify` / `Yaml.stringifySync`, but `YamlDocument#stringify` and the `YamlFormat` helpers accept the option and deliberately ignore it. If you need column folding, render the plain value with `Yaml.stringify(doc.toValue(), options)` — at the cost of the framing and styles the document path preserves.
+
+## Pattern: streaming scans with the visitor
+
+For a large document — a generated lockfile, a sprawling manifest — you rarely want the whole value in memory just to answer one question. `YamlVisitor.visit` returns a demand-driven `Stream` of SAX-style events, so pairing it with `Stream.take` gives you genuine early termination.
+
+```ts with-api
+import { YamlVisitor, YamlVisitorEvent } from "@effected/yaml";
+import { Effect, Stream } from "effect";
+
+// "Does any job still pin the deprecated action?" — stop at the first hit.
+const usesDeprecatedAction = (source: string) =>
+	Effect.gen(function* () {
+		const hits = yield* YamlVisitor.visit(source).pipe(
+			Stream.filter(YamlVisitorEvent.$is("Scalar")),
+			Stream.filter((event) => event.value === "actions/checkout@v3"),
+			Stream.take(1),
+			Stream.runCollect,
+		);
+		return hits.length > 0;
+	});
+```
+
+The visitor is **infallible at the type level**: diagnostics recovered while composing — fatal or not — arrive as `Error` events inside the stream rather than failing it. That makes it the right tool for a linter that reports every problem as data:
+
+```ts with-api
+import { YamlVisitor, YamlVisitorEvent } from "@effected/yaml";
+import { Effect, Stream } from "effect";
+
+const lint = (source: string) =>
+	Effect.gen(function* () {
+		const problems = yield* YamlVisitor.visit(source).pipe(
+			Stream.filter(YamlVisitorEvent.$is("Error")),
+			Stream.map((event) => event.diagnostic),
+			Stream.runCollect,
+		);
+		return problems.map((d) => `${d.line}:${d.character} ${d.code} — ${d.message}`);
+	});
+```
+
+`YamlVisitorEvent` is a `Data.TaggedEnum`, so `$is("Scalar")` narrows a filtered stream and `$match` handles the full union — no hand-written guards, and events compare by structural equality.
+
+## Pattern: hardening budgets and the sync escape hatch
+
+Malformed input is a certainty when you parse files a human or a feed produced. `@effected/yaml` treats depth and reference-expansion as denial-of-service vectors and bounds them: a "billion laughs" alias bomb — a chain of anchors each aliasing the one below it — stays under a static alias count and still exhausts the heap the moment the tree is _materialized_. The parser budgets the materialization, and an exceeded budget surfaces as a `YamlParseError` carrying an `AliasCountExceeded` diagnostic, never as a defect. Tighten the budget through `YamlParseOptions.maxAliasCount` for untrusted input.
+
+Some callers cannot `await` an Effect at all — a `vitest.config.ts` read at config-load time is the motivating case. `Yaml.parseSync` runs the same engine inline and returns a `Result`, preserving the contract that malformed and adversarial input fails typed rather than throwing:
+
+```ts with-api
+import { Yaml, YamlParseOptions } from "@effected/yaml";
+import { Result } from "effect";
+
+// Config-time: no runtime, no await, but still no thrown parse errors.
+const raw = 'coverage: true\nreporters:\n  - default\n';
+const result = Yaml.parseSync(raw, YamlParseOptions.make({ maxAliasCount: 32 }));
+
+const config = Result.isFailure(result)
+	? // `result.failure` is a YamlParseError with positioned diagnostics.
+		(() => {
+			throw new Error(result.failure.message);
+		})()
+	: result.success;
+```
+
+`Yaml.stringifySync` is the encode-side counterpart, returning a `Result<string, YamlStringifyError>` for the same config-time constraint.
+
+## Failure modes worth knowing
+
+Every failure below leaves through the typed channel — route it with `Effect.catchTag`, never a `try`/`catch`.
+
+- **Aggregated parse errors.** `Yaml.parse` collects _every_ fatal diagnostic and fails once. The `YamlParseError` carries a `diagnostics` array with `code`, `message`, `line` and `character` for each — inspect it to build a positioned report:
+
+  ```ts with-api
+  import { Yaml } from "@effected/yaml";
+  import { Effect } from "effect";
+
+  const report = Yaml.parse("a: [1, 2\nb: {").pipe(
+  	Effect.catchTag("YamlParseError", (error) =>
+  		Effect.succeed(error.diagnostics.map((d) => `${d.line}:${d.character} ${d.code}`)),
+  	),
+  );
+  ```
+
+- **Duplicate keys are an error by default.** `uniqueKeys` defaults to `true`, so a repeated mapping key fails the parse; set it `false` on `YamlParseOptions` when last-wins is intended.
+- **Structural modification mismatch.** `YamlFormat.modify` fails with `YamlModificationError` when a path tries to navigate _through_ a scalar or into a missing intermediate key — caught with `Effect.catchTag("YamlModificationError", ...)`. Its `diagnostics` are structured, never a collapsed reason string.
+- **Circular references on stringify.** `Yaml.stringify` fails with `YamlStringifyError` (`CircularReference`) rather than looping, and a value nested past the recursion budget fails with a `NestingDepthExceeded` diagnostic instead of overflowing the stack.
+- **Malformed input is never equal to anything.** `Yaml.equals` / `Yaml.equalsValue` return `false` when either side fails to parse, so a release tool can skip a no-op write — `if (Yaml.equals(current, next)) return` — without risking a false match on a broken file.
+
+## Testing tips
+
+Test the Effect-returning entry points with `@effect/vitest` and assert with `assert.*` (never `expect`):
+
+```ts with-api
+import { Yaml } from "@effected/yaml";
+import { Effect, Result } from "effect";
+
+// In a test body: it.effect("...", () => Effect.gen(function* () {
+const program = Effect.gen(function* () {
+	const value = yield* Yaml.parse("port: 3000");
+	return value;
+});
+// }))
+
+// Sync surfaces need no runtime — assert on the Result directly.
+const parsed = Yaml.parseSync("port: 3000");
+const port = Result.isSuccess(parsed) ? parsed.success : undefined;
+```
+
+Because parsing, editing and equality are pure over strings, most tests need no layers at all — feed a string, assert on the value, the edit array, or the boolean. Reserve `Effect.gen` for the fallible entry points where the error channel is the thing under test, and prefer `parseSync` / `stringifySync` when a `Result` assertion reads more directly than running an Effect.
+
+## Learn more
+
+- [Overview](/yaml) — what the package is, install, and the quick start.
+- [API reference](/yaml/api) — every export with full signatures, including [`Yaml`](/yaml/api/class/yaml), [`YamlFormat`](/yaml/api/class/yamlformat), [`YamlVisitor`](/yaml/api/class/yamlvisitor) and the [`YamlVisitorEvent`](/yaml/api/variable/yamlvisitorevent) union.

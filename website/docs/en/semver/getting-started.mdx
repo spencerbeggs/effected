@@ -1,0 +1,159 @@
+---
+title: Getting Started
+description: Parse, compare and bump SemVer versions, resolve the right one against a range, and route every malformed string as a typed error with @effected/semver.
+---
+
+# Getting Started
+
+Reach for `@effected/semver` whenever a tool has to *reason* about version numbers rather than just print them — resolve which published version an install range should pick, decide whether an update is a patch or a breaking change, or bump a version for the next release. Plain string comparison gets this wrong (`"1.10.0"` sorts below `"1.2.0"`), and `JSON`-style parsing throws on bad input instead of telling you what was wrong. This package parses strictly against the SemVer 2.0.0 grammar, compares by real precedence, and turns every parse failure into a typed Effect error carrying the offending string — so nothing arrives as an unhandled exception.
+
+## Install
+
+```bash
+npm install @effected/semver effect
+```
+
+```bash
+pnpm add @effected/semver effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own and does no IO.
+
+## Your first task: resolve the version an install would pick
+
+Here is a concrete, everyday goal. A registry reports the versions it has published for a dependency, your `package.json` pins a range like `^1.2.0`, and you want the single highest version that satisfies it — exactly the decision `npm install` makes. We will build it up one step at a time.
+
+The version numbers arrive as strings, so the first move is to parse each one into a `SemVer`. `SemVer.parse` returns an `Effect` that either yields a validated version or fails with `InvalidVersionError`. To parse a whole array in one shot, hand `SemVer.parse` to `Effect.forEach` — if any string is malformed, the whole `Effect` fails with that one error rather than silently dropping it:
+
+```ts with-api
+import { Range, SemVer } from "@effected/semver";
+import { Effect, Option } from "effect";
+
+// The versions a registry reported, and the range from package.json.
+const published = ["1.2.0", "1.4.1", "1.5.0", "2.0.0-rc.1", "2.0.0"];
+const constraint = "^1.2.0";
+
+const program = Effect.gen(function* () {
+  // 1. Parse every published string into a SemVer.
+  const versions = yield* Effect.forEach(published, SemVer.parse);
+
+  // 2. Parse the range constraint from package.json.
+  const range = yield* Range.parse(constraint);
+
+  // 3. Pick the highest version that satisfies it — what an install resolves to.
+  return Range.maxSatisfying(versions, range);
+});
+
+const chosen = Effect.runSync(program);
+
+console.log(Option.getOrElse(chosen, () => "no match").toString());
+// 1.5.0
+```
+
+Two results are worth pausing on. `2.0.0` is excluded because `^1.2.0` desugars to `>=1.2.0 <2.0.0`, and `2.0.0-rc.1` is excluded because a prerelease only satisfies a range when a comparator in the matching set carries a prerelease on the same `major.minor.patch` — so `1.5.0` wins. `Range.maxSatisfying` returns an `Option` rather than throwing on an empty match, which is why the last line uses `Option.getOrElse` to supply a fallback. That is the whole shape of a real resolution: parse, constrain, pick, handle the "nothing matched" case as a value.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built only from the package's real exports.
+
+### Sort versions by precedence
+
+`SemVer.of(major, minor, patch)` constructs a version directly, no parsing needed. `SemVer.rsort` orders an array by real SemVer precedence, descending — so `1.10.0` correctly sorts above `1.2.0`, which a string sort gets backwards:
+
+```ts with-api
+import { SemVer } from "@effected/semver";
+
+const versions = [SemVer.of(1, 2, 0), SemVer.of(2, 0, 0), SemVer.of(1, 10, 0)];
+
+console.log(SemVer.rsort(versions).map((v) => v.toString()));
+// [ "2.0.0", "1.10.0", "1.2.0" ]
+```
+
+### Bump toward the next release
+
+Every version exposes a `bump` group of operations that each return a fresh `SemVer`. `bump.patch()` and `bump.minor()` step the stable line; `bump.prerelease("rc")` starts a named prerelease of the next patch, node-semver style:
+
+```ts with-api
+import { SemVer } from "@effected/semver";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const current = yield* SemVer.parse("1.4.0");
+  return {
+    patch: current.bump.patch().toString(), // 1.4.1
+    minor: current.bump.minor().toString(), // 1.5.0
+    rc: current.bump.prerelease("rc").toString(), // 1.4.1-rc.0
+  };
+});
+
+console.log(Effect.runSync(program));
+// { patch: "1.4.1", minor: "1.5.0", rc: "1.4.1-rc.0" }
+```
+
+### Classify how big a change is
+
+`VersionDiff.between(from, to)` reports the difference as structured data rather than a string. Its `type` field names the highest-precedence component that changed (`"major"`, `"minor"`, `"patch"`, ...), so a release tool can branch on the bump kind directly instead of re-deriving it:
+
+```ts with-api
+import { SemVer, VersionDiff } from "@effected/semver";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const from = yield* SemVer.parse("1.4.0");
+  const to = yield* SemVer.parse("1.4.3");
+  const diff = VersionDiff.between(from, to);
+  return `${diff.type} release (patch delta ${diff.patch})`;
+});
+
+console.log(Effect.runSync(program));
+// patch release (patch delta 3)
+```
+
+### Check a single constraint with a comparator
+
+When you have one constraint rather than a full range — an engine requirement like `>=18.0.0`, say — parse it with `Comparator.parse` and test a version against it:
+
+```ts with-api
+import { Comparator, SemVer } from "@effected/semver";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const required = yield* Comparator.parse(">=18.0.0");
+  const installed = yield* SemVer.parse("20.11.0");
+  return required.test(installed);
+});
+
+console.log(Effect.runSync(program)); // true
+```
+
+## Handling errors
+
+Every parse entry point fails with a tagged error instead of throwing: `SemVer.parse` with `InvalidVersionError`, `Range.parse` with `InvalidRangeError`, and `Comparator.parse` with `InvalidComparatorError`. Each carries the raw `input` it choked on (and a `position` when the grammar can pin one down), and each derives its `message` from those fields rather than storing a preformatted string.
+
+Because they are tagged, `Effect.catchTag` routes each failure by its `_tag` with full type inference:
+
+```ts with-api
+import { Range, SemVer } from "@effected/semver";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const version = yield* SemVer.parse("1.2"); // too few components — rejected
+  const range = yield* Range.parse("^1.0.0");
+  return range.test(version);
+});
+
+const safe = program.pipe(
+  Effect.catchTag("InvalidVersionError", (error) => Effect.succeed(`bad version: ${error.input}`)),
+  Effect.catchTag("InvalidRangeError", (error) => Effect.succeed(`bad range: ${error.input}`)),
+);
+
+Effect.runPromise(safe).then(console.log);
+// bad version: 1.2
+```
+
+The failure channel here is the union `InvalidVersionError | InvalidRangeError`, and handling both narrows it to `never`. That is the payoff of the typed channel: drop either `catchTag` and it is a compile error until every failure is accounted for, so a malformed string can never escape as an unhandled exception. Range algebra adds one more — `Range.intersect` fails with `UnsatisfiableConstraintError` when two constraints have no overlap — and the `VersionCache` service has its own error set; both are covered in the advanced guide.
+
+## Next steps
+
+- Ready for range intersection, subset checks, and the stateful `VersionCache` service that resolves and navigates a whole version set? See the [advanced guide](/semver/advanced).
+- Every export, with full signatures, lives in the [API reference](/semver/api) — start with [`SemVer`](/semver/api/class/semver), [`Range`](/semver/api/class/range_2) and [`VersionCache`](/semver/api/class/versioncache).

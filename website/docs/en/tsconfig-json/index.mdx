@@ -1,0 +1,59 @@
+---
+title: "@effected/tsconfig-json"
+description: "tsconfig.json schemas, extends-chain resolution and config discovery as Effect schemas — tsc-parity merge semantics with zero typescript imports."
+---
+
+# @effected/tsconfig-json
+
+tsconfig.json schemas, `extends`-chain resolution and config discovery. Decode a tsconfig from JSONC, follow its `extends` chain across relative paths and bare package specifiers, merge the result with TypeScript's own per-field semantics, and find the nearest config by walking upward from a directory. The `extends`/merge behavior was extracted from TypeScript 6.0.3 source and pinned by data-driven tests that cite `typescript.js` line numbers — and the package does it all with **zero `typescript` imports**, including `import type`.
+
+## Why @effected/tsconfig-json
+
+A bundler, a devtool or a config factory that needs to know a project's *effective* compiler options cannot just read one file — it has to resolve the whole `extends` chain and merge it the way tsc does, or it will silently disagree with the type-checker. This package makes that boundary typed and faithful: every parse is JSONC (there is no JSON-strict path), a `PlatformError` from the underlying IO flows through untranslated, and the version-coupled enum mappings live as plain data tables so nothing in the package depends on TypeScript's numeric enums. All IO goes through core `FileSystem`/`Path` in `R`, and a sync facade exists for the sync-only host APIs bundler hooks live in.
+
+## Install
+
+```bash
+npm install @effected/tsconfig-json effect
+```
+
+```bash
+pnpm add @effected/tsconfig-json effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; `@effected/jsonc` and `@effected/walker` are peers too. The package adds no external runtime dependencies. IO arrives through core `FileSystem`/`Path`, provided at the edge.
+
+## Quick start
+
+```ts
+import { TsconfigLoader } from "@effected/tsconfig-json";
+import { NodeContext } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const loader = yield* TsconfigLoader;
+  // Resolve the extends chain and merge to effective compiler options.
+  const options = yield* loader.compilerOptions("./tsconfig.json");
+  return options;
+});
+
+Effect.runPromise(
+  program.pipe(Effect.provide(TsconfigLoader.layer), Effect.provide(NodeContext.layer)),
+).then(console.log);
+```
+
+## Resolution, merge and discovery
+
+`TsconfigLoader` exposes `load`, `resolve` and `compilerOptions` (a thin projection of `resolve` down to the merged options). It walks `extends` depth-first with **per-branch** cycle stacks, so diamond inheritance is legal while a true cycle fails typed; `MAX_EXTENDS_DEPTH` caps runaway chains, and `TsconfigExtendsError` carries the reason — `not-found`, `cycle`, `depth` or `empty`. `TsconfigDiscovery.findNearest` walks upward from a directory and returns `Option.none` when there is no config — absence is never an error. `TsconfigLoaderSync` runs the exact same pipeline for sync-only host APIs, over consumer-supplied file-system and path ops.
+
+## tsc parity is the contract
+
+The merge engine reproduces facts that cost real review cycles: a malformed `package.json` coerces to `{}` and falls through to the `tsconfig.json` probe, the ancestor `node_modules` walk continues past a present-but-unresolved candidate, `exports`-map `*` patterns match by longest base prefix, enum *values* are case-insensitive while option *names* are case-sensitive. `PortableTsconfig` narrows a resolved config to a portable, allow-listed subset, and `JsxConfig` projects decoded options to the JSX transform a bundler can configure.
+
+## Errors
+
+`TsconfigParseError` and `TsconfigExtendsError` are tagged error classes; a `PlatformError` from IO passes through untranslated. Route on them with `Effect.catchTag` and read the structured fields rather than parsing a message.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/tsconfig-json/api).

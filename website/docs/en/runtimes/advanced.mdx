@@ -1,0 +1,247 @@
+---
+title: Advanced
+description: Compose the three resolvers into one toolchain layer, bring your own GitHub credentials, plan against the release schedule, and keep every network failure on the typed channel.
+---
+
+# Advanced
+
+Picture the version-pinning brain of a monorepo release tool. On every `release prepare` it decides which Node.js, Bun and Deno versions the repo should build and test against — the `engines` field it writes, the `.nvmrc` it drops, the version axis of the CI matrix it generates. It wants the live answer when the network is up, a bundled snapshot when it is not, and it wants to *say so in the run log* so an operator can tell a fresh pin from a stale one. Because it hits GitHub for two of the three runtimes, it also wants its own credential so a busy CI account does not run into the anonymous rate limit. And once a quarter it wants to look eighteen months ahead — which lines will still be in LTS by the next planned release — so the pin it writes today does not age out mid-cycle.
+
+That is the shape `@effected/runtimes` earns its place in. The [overview](/runtimes) frames the package and the [getting-started guide](/runtimes/getting-started) walks a single resolver end to end. This guide goes past both: composing all three resolvers into one application layer, supplying your own credentials (including the App-auth seam the package deliberately leaves open), reaching past the resolvers to the GitHub client directly, planning against the release schedule, and the failure modes worth knowing before an operator finds them for you.
+
+Everything below assumes the getting-started guide's two ground rules: pick the cache strategy as a *layer* — `layer`, `layerFresh` or `layerOffline` — and provide the transport once at the edge.
+
+## One layer for the whole toolchain
+
+The three resolvers share a service shape but not a transport, and that asymmetry is the point: `NodeResolver` reads two unauthenticated feeds and needs only an `HttpClient`, while `BunResolver` and `DenoResolver` go through GitHub's REST API and need a `GitHubClient`. Compose them into one layer by wiring each to what it actually requires, then resolve all three concurrently and fold the answers into a single pin manifest — branching on `source` to gate the run:
+
+```ts with-api
+import { BunResolver, DenoResolver, GitHubClient, NodeResolver } from "@effected/runtimes";
+import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+
+// One layer for three runtimes; each transport wired to what that resolver needs.
+const ToolchainLive = Layer.mergeAll(
+  NodeResolver.layer.pipe(Layer.provide(FetchHttpClient.layer)),
+  BunResolver.layer.pipe(Layer.provide(GitHubClient.layerDefault)),
+  DenoResolver.layer.pipe(Layer.provide(GitHubClient.layerDefault)),
+);
+
+const pinToolchain = Effect.gen(function* () {
+  const node = yield* NodeResolver;
+  const bun = yield* BunResolver;
+  const deno = yield* DenoResolver;
+
+  const [nodePin, bunPin, denoPin] = yield* Effect.all([
+    node.resolve({ range: ">=20", phases: ["active-lts"] }),
+    bun.resolve({ range: "^1.0.0" }),
+    deno.resolve({ range: ">=2" }),
+  ]);
+
+  // Honest provenance in practice: one snapshot answer taints the whole pin.
+  const stale = [nodePin, bunPin, denoPin].some((pin) => pin.source === "cache");
+  if (stale) {
+    yield* Effect.logWarning("Toolchain pinned from a bundled snapshot — a version may be behind");
+  }
+
+  return {
+    node: nodePin.latest,
+    bun: bunPin.latest,
+    deno: denoPin.latest,
+    provenance: stale ? "snapshot" : "live",
+  };
+}).pipe(Effect.provide(ToolchainLive));
+
+Effect.runPromise(pinToolchain).then(console.log);
+// { node: "22.x.y", bun: "1.x.y", deno: "2.x.y", provenance: "live" }
+```
+
+Two things this composition buys you. First, `Effect.all` runs the three resolutions concurrently, and because each resolver holds its own release index, they do not contend. Second, `source` stops being a curiosity and becomes a control signal: a CI job can refuse to write a snapshot-derived pin, or write it and annotate the commit, rather than silently shipping a version that was current last quarter. That distinction is only trustworthy because the `layer` strategy sets `source: "cache"` on a fallback — the field is state on the index, not a constant.
+
+## Bring your own GitHub credentials
+
+Anonymous GitHub requests share a much lower rate limit, so a tool that resolves Bun and Deno on every CI run wants its own credential. `GitHubClient.layerDefault` reads one from the environment; to supply one explicitly, build the client from `GitHubClient.layer` under a `GitHubAuth` layer of your choosing. Read the token as a `Redacted` so it never lands in a log or a span annotation:
+
+```ts with-api
+import { BunResolver, GitHubAuth, GitHubClient } from "@effected/runtimes";
+import { Layer, Redacted } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+
+// Bind the layer to a const — layers memoize by reference, so calling
+// GitHubAuth.token twice would build two of them and share neither.
+const Auth = GitHubAuth.token(Redacted.make(process.env.RELEASE_BOT_TOKEN ?? ""));
+
+const GitHubLive = GitHubClient.layer.pipe(Layer.provide(Layer.mergeAll(Auth, FetchHttpClient.layer)));
+
+// Both GitHub-backed resolvers now share one authenticated client.
+export const BunLive = BunResolver.layer.pipe(Layer.provide(GitHubLive));
+```
+
+The deeper seam is that `GitHubAuth` is a *service*, not a concrete token — which is exactly how GitHub App authentication lives outside this package without dragging a JWT-signing dependency into a boundary-tier library. If your release bot authenticates as an App, mint the installation token in your own code and hand back a `Layer<GitHubAuth>` whose `headers` effect produces the `authorization` header. Nothing else in the wiring changes:
+
+```ts with-api
+import { BunResolver, GitHubAuth, GitHubClient } from "@effected/runtimes";
+import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+
+// Your own installation-token minting lives behind this effect; GitHubAuth is
+// just a contract for "produce the headers to attach to each GitHub request".
+const AppAuth: Layer.Layer<GitHubAuth> = Layer.succeed(GitHubAuth)({
+  headers: Effect.succeed({ authorization: "Bearer <installation-token>" }),
+});
+
+const GitHubApp = GitHubClient.layer.pipe(Layer.provide(Layer.mergeAll(AppAuth, FetchHttpClient.layer)));
+
+export const BunViaApp = BunResolver.layer.pipe(Layer.provide(GitHubApp));
+```
+
+The client reports the credential honestly: it classifies each request as `"token"` or `"anonymous"` from the header that actually went out, so an `AuthenticationError` names the method the request really used rather than a hardcoded guess. See [`GitHubAuth`](/runtimes/api/class/githubauth) and its [`GitHubAuthShape`](/runtimes/api/interface/githubauthshape) contract.
+
+## Reach past the resolvers
+
+The resolvers filter GitHub releases down to published, non-prerelease versions — the right default for a pin. When you need what they discard — say, to surface upcoming Bun prereleases in a "what's coming" panel — talk to [`GitHubClient`](/runtimes/api/class/githubclient) directly. Its `listReleases` and `listTags` take a [`ListOptions`](/runtimes/api/interface/listoptions), and the pagination behind them is bounded: `pages` is capped regardless of what you ask for, so a misbehaving upstream cannot drive an unbounded loop on your machine.
+
+```ts with-api
+import { GitHubClient } from "@effected/runtimes";
+import { Effect } from "effect";
+
+const inspectPrereleases = Effect.gen(function* () {
+  const gh = yield* GitHubClient;
+  // `pages` and `perPage` bound the fetch; `pages` is capped above whatever you pass.
+  const releases = yield* gh.listReleases("oven-sh", "bun", { pages: 2, perPage: 50 });
+  return releases.filter((release) => release.prerelease).map((release) => release.tag_name);
+}).pipe(Effect.provide(GitHubClient.layerDefault));
+
+Effect.runPromise(inspectPrereleases).then(console.log);
+// [ "bun-v1.2.0-canary.1", ... ]
+```
+
+`listReleases` fails on the same typed ladder the resolvers ride — `AuthenticationError`, `RateLimitError`, `NetworkError`, `ResponseParseError` — so the client is a first-class part of your program's error channel, not an escape hatch out of it.
+
+## Plan against the release schedule
+
+Node's lifecycle phases are not a property of a release; they are a function of the release, the `nodejs/Release` schedule, and *a moment in time*. `resolve` evaluates them at "now" by default, reading the wall clock through `Clock`. Pass an explicit `date` and it evaluates them at that moment instead — which is how you answer a planning question rather than a status one. "Which lines will still be in an LTS phase by our next release, eighteen months out?" is a single call:
+
+```ts with-api
+import { NodeResolver } from "@effected/runtimes";
+import { DateTime, Effect } from "effect";
+
+const planFutureToolchain = Effect.gen(function* () {
+  const node = yield* NodeResolver;
+  const nextRelease = DateTime.makeUnsafe({ year: 2027, month: 6, day: 1 });
+
+  // Phases are computed *as of* nextRelease, not today.
+  const result = yield* node.resolve({
+    range: ">=20",
+    phases: ["active-lts", "maintenance-lts"],
+    increments: "minor",
+    date: nextRelease,
+  });
+  return result.versions;
+}).pipe(Effect.provide(NodeResolver.layerOffline));
+
+Effect.runPromise(planFutureToolchain).then(console.log);
+```
+
+Because the date is a parameter, this is deterministic against `layerOffline` — no network, no wall clock — which is what makes a phase-transition test reproducible rather than a time bomb that flips the day a line ages out.
+
+The schedule model that powers this is exported for direct use. The two pure helpers are the ones you reach for most: `nodeReleaseLine` normalizes a version to its release *line* (which is keyed by line, not major — `v0.10` and `v0.12` are distinct lines, and collapsing both to major `0` is the classic bug this avoids), and `isLtsPhase` folds the four-way [`NodePhase`](/runtimes/api/variable/nodephase) down to the LTS question:
+
+```ts with-api
+import { isLtsPhase, nodeReleaseLine } from "@effected/runtimes";
+
+nodeReleaseLine({ major: 20, minor: 11 }); // "20"
+nodeReleaseLine({ major: 0, minor: 12 }); // "0.12" — not "0"
+
+isLtsPhase("active-lts"); // true
+isLtsPhase("maintenance-lts"); // true
+isLtsPhase("current"); // false
+```
+
+The full lifecycle model — [`NodeSchedule`](/runtimes/api/class/nodeschedule) with its `phaseFor` and `entryFor`, plus [`nodeReleaseLine`](/runtimes/api/function/nodereleaseline) — lives in the reference.
+
+## Failure modes worth knowing
+
+Every failure this package can produce is on the typed channel; none is thrown. The distinctions it keeps are the ones a naive implementation collapses, and they are worth wiring into a real command's exit codes rather than a catch-all:
+
+- **A malformed range is not a not-found.** `InvalidRangeError` (from [`@effected/semver`](/semver)) means the range string is garbage; `NoMatchingVersionError` means the range was valid and nothing matched it. A typo deserves a different exit than an empty result.
+- **An unresolvable *explicit* default fails; an absent one falls back.** Naming a `defaultVersion` that matches nothing is `UnresolvableDefaultError` — distinct precisely because Node's default otherwise falls back to the LTS pick, so silently dropping it would hand you LTS as though you had asked for it.
+- **A GitHub `403` is classified, not assumed.** GitHub returns `403` for both an exhausted rate limit and a permission failure. The client reads `x-ratelimit-remaining` and `retry-after` to tell them apart; a rate-limit `403` becomes a [`RateLimitError`](/runtimes/api/class/ratelimiterror) carrying `limit`, `remaining` and — when GitHub said — `retryAfter`, while a permission `403` stays a `NetworkError` and is **not** retried. A server-supplied `retry-after` is honored but capped before it becomes a sleep, and a negative value is discarded.
+- **A changed upstream feed fails typed.** When a feed responds with a shape the package does not expect, it is a [`ResponseParseError`](/runtimes/api/class/responseparseerror) carrying the `source` URL — an operator-facing signal that an upstream format moved, never a defect.
+
+Routing these to a command's exit code is where the typed channel pays off: cover every tag and the compiler proves the handler is total.
+
+```ts with-api
+import { NodeResolver } from "@effected/runtimes";
+import { Effect } from "effect";
+
+// Map each failure to a distinct sysexits-style code. Cover all three tags and
+// the error channel closes to `never` — an unhandled case will not compile.
+export const exitCodeFor = (range: string) =>
+  Effect.gen(function* () {
+    const node = yield* NodeResolver;
+    yield* node.resolve({ range });
+    return 0;
+  }).pipe(
+    Effect.catchTags({
+      InvalidRangeError: () => Effect.logError(`malformed range: ${range}`).pipe(Effect.as(64)),
+      NoMatchingVersionError: (error) =>
+        Effect.logError(`nothing matched ${error.constraint}`).pipe(Effect.as(69)),
+      UnresolvableDefaultError: (error) =>
+        Effect.logError(`default ${error.defaultVersion} did not resolve`).pipe(Effect.as(69)),
+    }),
+    Effect.provide(NodeResolver.layerOffline),
+  );
+```
+
+The GitHub-backed resolvers add the transport ladder — `AuthenticationError`, `RateLimitError`, `NetworkError`, `ResponseParseError` — which `layer` absorbs into a snapshot fallback and `layerFresh` wraps into a single `FreshnessError`. Choosing `layerOffline` makes your error channel *smaller*, not larger: it advertises no failure because a snapshot read structurally cannot fail.
+
+## Testing
+
+Two seams keep resolver-consuming code fast and deterministic. For logic that does not care about the transport, `layerOffline` serves the bundled snapshot with no IO — the default for a unit test. For a test that needs a *specific* dataset, mock the [`GitHubClient`](/runtimes/api/class/githubclient) with `Layer.mock` and feed it canned releases; the resolver runs its real filtering, semver parsing and grouping over your fixture, and reports `source: "api"` because the live path succeeded:
+
+```ts with-api
+import { BunResolver, GitHubClient, GitHubRelease } from "@effected/runtimes";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Layer } from "effect";
+
+// Canned GitHub responses drive the real resolver pipeline — filtering,
+// tag-prefix stripping, semver parse and grouping all run over this fixture.
+const cannedGitHub = Layer.mock(GitHubClient, {
+  listReleases: () =>
+    Effect.succeed([
+      GitHubRelease.make({
+        tag_name: "bun-v1.1.30",
+        draft: false,
+        prerelease: false,
+        published_at: "2026-01-02T00:00:00Z",
+      }),
+      GitHubRelease.make({
+        tag_name: "bun-v1.0.35",
+        draft: false,
+        prerelease: false,
+        published_at: "2025-06-01T00:00:00Z",
+      }),
+    ]),
+});
+
+const BunUnderTest = BunResolver.layer.pipe(Layer.provide(cannedGitHub));
+
+describe("toolchain pinning", () => {
+  it.effect("picks the newest matching Bun and reports it as live", () =>
+    Effect.gen(function* () {
+      const bun = yield* BunResolver;
+      const result = yield* bun.resolve({ range: "^1.0.0" });
+      assert.strictEqual(result.latest, "1.1.30");
+      assert.strictEqual(result.source, "api");
+    }).pipe(Effect.provide(BunUnderTest)),
+  );
+});
+```
+
+Assert against the error *type*, not just failure: a `layerFresh` test that only checks "it failed" stays green when a raw `NetworkError` leaks through, which is exactly what `FreshnessError` exists to wrap. And for the rate-limit retry path, `it.effect` installs a virtual `TestClock` — advance the clock to just short of the expected backoff and assert the retry has *not* fired yet, rather than asserting only that it eventually did, which passes whether the delay was the server's, the exponential one, or a negative value collapsed to zero.
+
+## Next steps
+
+- New to the package? Start with the [overview](/runtimes), then the [getting-started guide](/runtimes/getting-started).
+- Every export, with full signatures, lives in the [API reference](/runtimes/api) — the pieces this guide leans on are [`GitHubClient`](/runtimes/api/class/githubclient), [`GitHubAuth`](/runtimes/api/class/githubauth), [`NodeSchedule`](/runtimes/api/class/nodeschedule) and [`RateLimitError`](/runtimes/api/class/ratelimiterror).

@@ -1,0 +1,233 @@
+---
+title: "Advanced"
+description: "Compose @effected/config-file into a real application: layered machine-wide resolution, encrypted and versioned codecs, an Effect ConfigProvider bridge, and typed failure routing."
+---
+
+# Advanced
+
+Picture a release CLI — call it `shipit` — that you run from a package subfolder in the morning and from a CI runner at night. It needs the same `.shipitrc` settings in both places, but the *sources* differ: a developer keeps machine-wide defaults in `/etc/shipit/config.toml`, the monorepo commits shared release policy at its workspace root, and an individual package overrides the publish tag in its own directory. On CI, a `--config` flag points at a pinned file that must win outright. The publish token has to live encrypted at rest, and last quarter's config schema renamed a field, so old checkouts still carry the previous shape.
+
+That is the job `@effected/config-file` is built for. Everything in it is one composable Effect service: a **codec** (bytes to document), a **resolver** chain (where to look), and a **strategy** (many sources to one value), each an orthogonal seam you swap independently. This guide assumes you have worked through the [Getting Started](/config-file/getting-started) guide and are comfortable with Effect v4 layers and services; it picks up where a single-file loader stops being enough.
+
+## Composing into an application
+
+The service is designed to disappear into an application's layer graph rather than to be called ad hoc. Three properties make that clean:
+
+- **The service is per-schema and uniquely keyed.** `ConfigFile.Service<Self, A>()(id)` mints a distinct service class for one schema, so an app that loads a release config *and* a cache config keeps them as two separate services with two independent layers — no ambient singleton, no collision.
+- **Resolver requirements flow into the layer's `R`.** The built-in resolvers walk the filesystem through `effect`-core's `FileSystem` and `Path`, which arrive from your platform layer once at the edge. The package is a boundary-tier port with **zero external runtime dependencies**: the upward-walking resolvers are expressed over [`@effected/walker`](/walker/api), and the JSONC, YAML and TOML codecs over [`@effected/jsonc`](/jsonc/api), [`@effected/yaml`](/yaml/api) and [`@effected/toml`](/toml/api) — all first-party peers, nothing from outside `effect` and `@effected/*` enters your tree.
+- **The schema is a real `Schema.Codec<A, I>`.** The encoded form `I` matters on the write path, so a `Schema.Class` gives you decode *and* encode from one declaration, and the value you get back from `load` is a live instance with its methods and getters intact.
+
+Here is the `shipit` loader as an application layer. Note that `defaultPath` is itself an `Effect` that may use `Path`, so the write target is resolved through the same platform context the resolvers use:
+
+```ts
+import { ConfigFile, ConfigResolver, MergeStrategy, TomlCodec } from "@effected/config-file";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer, Path, Schema } from "effect";
+
+class ReleaseConfig extends Schema.Class<ReleaseConfig>("ReleaseConfig")({
+  version: Schema.Number,
+  registry: Schema.String,
+  tag: Schema.String,
+  dryRun: Schema.Boolean,
+}) {}
+
+class Release extends ConfigFile.Service<Release, ReleaseConfig>()("shipit/Release") {}
+
+const defaultPath = Effect.gen(function* () {
+  const path = yield* Path.Path;
+  return path.join(process.cwd(), ".shipitrc");
+});
+
+const ReleaseLive = ConfigFile.layer(Release, {
+  schema: ReleaseConfig,
+  codec: TomlCodec,
+  resolvers: [
+    ConfigResolver.explicitPath(process.env.SHIPIT_CONFIG ?? ".shipitrc"),
+    ConfigResolver.workspaceRoot({ filename: ".shipitrc" }),
+    ConfigResolver.gitRoot({ filename: ".shipitrc" }),
+    ConfigResolver.systemEtc({ app: "shipit", filename: "config.toml" }),
+  ],
+  strategy: MergeStrategy.layeredMerge<ReleaseConfig>(),
+  defaultPath,
+});
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+export const AppLive = ReleaseLive.pipe(Layer.provide(PlatformLive));
+```
+
+`ConfigFile.layer` is a layer-returning *function*, not a layer — calling it twice mints two independent service instances. Bind its result to a const, as above, and provide that const everywhere.
+
+## Pattern: layered resolution across machine tiers
+
+The resolver array is a priority list, highest first. Paired with `MergeStrategy.layeredMerge`, each discovered source deep-merges over the ones below it, so the `shipit` chain reads exactly as the scenario demands: an explicit `--config` file wins, then the package's own `.shipitrc`, then the workspace root's shared policy, then `/etc` machine defaults fill whatever is still missing.
+
+```ts
+const program = Effect.gen(function* () {
+  const release = yield* Release;
+  // Every matching tier contributes; higher tiers overwrite lower ones key by key.
+  const config = yield* release.load;
+  return config;
+});
+```
+
+Two properties of `layeredMerge` are worth internalizing before you rely on it:
+
+- **Class instances survive the merge.** Two values merge only when both are record-like and share a prototype, so a `ReleaseConfig` decoded from one tier merges with a `ReleaseConfig` from another and comes back as a real instance — `instanceof` holds, getters work. Nested plain-object sections (a `Schema.Struct`) still merge field by field.
+- **Everything else is atomic.** A nested `Date`, `Map`, `Set`, `RegExp`, or array is taken *whole* from the highest-priority tier that defines it, never reshaped field by field. That is deliberate: field-splicing a `Date` would hand back a `{}` and make `load`'s declared return type a lie.
+
+Swap `layeredMerge` for `MergeStrategy.firstMatch` and the highest-priority tier wins outright, the rest ignored — the right choice when a config file is meant to be whole-or-nothing rather than composed.
+
+Resolver discovery is best-effort by contract: a resolver's error channel is `never`, and every filesystem failure — a permission-denied `/etc`, a broken symlink — is absorbed into "not found" so one unreadable tier never aborts the chain. A *found but corrupt* file is the opposite: discovery stops with a typed error rather than silently skipping it, because running on the wrong config is worse than failing loudly.
+
+## Pattern: encrypting secrets at rest
+
+`shipit`'s publish token must not sit in plaintext on disk. `EncryptedCodec` wraps any codec with AES-GCM: `stringify` serializes through the inner codec, then encrypts and base64-encodes the envelope; `parse` reverses it. Supply the key as a pre-derived `CryptoKey` effect, or derive one from a passphrase and salt via PBKDF2 at first use.
+
+```ts
+import { EncryptedCodec, EncryptedCodecKey, JsonCodec } from "@effected/config-file";
+import { Effect } from "effect";
+
+// Salt should be stored alongside the ciphertext, not hard-coded — shown inline for brevity.
+const salt = new Uint8Array(16);
+const secretsCodec = EncryptedCodec(JsonCodec, EncryptedCodecKey.fromPassphrase(process.env.SHIPIT_KEY ?? "", salt));
+
+const roundtrip = Effect.gen(function* () {
+  const envelope = yield* secretsCodec.stringify({ token: "npm_live_xxx" });
+  // `envelope` is base64 ciphertext safe to write to disk.
+  const recovered = yield* secretsCodec.parse(envelope);
+  return recovered;
+});
+```
+
+The error channel **widens** to `ConfigCodecError | ConfigEncryptionError` rather than flattening — an inner parse failure stays distinguishable from a cryptographic one, and `ConfigEncryptionError.phase` (`"key-derivation" | "encrypt" | "decrypt" | "encoding"`) tells you which stage failed. The key effect is resolved once per codec instance and its *success* reused; a failure or interruption is not cached, so the next operation resolves it again. If you want a failure to be terminal, wrap your key effect in `Effect.cached` yourself; if a passphrase is wrong, `parse` fails with a `decrypt`-phase `ConfigEncryptionError` rather than returning garbage.
+
+## Pattern: versioned migrations
+
+Old checkouts still carry last quarter's shape. `ConfigMigration.make` wraps a codec so parsed content is stepped up to the latest version before it reaches your schema. Each step names a target `version`, and by default the version is read from and written to a top-level `version` field (`VersionAccess.default`); supply a custom `VersionAccess` if yours lives elsewhere.
+
+```ts
+import { ConfigMigration, JsonCodec } from "@effected/config-file";
+import { Effect } from "effect";
+
+const migratingCodec = ConfigMigration.make({
+  codec: JsonCodec,
+  migrations: [
+    {
+      version: 2,
+      name: "rename-repo-to-registry",
+      // Signal recoverable failure with Effect.fail; a synchronous throw is a defect, not a ConfigMigrationError.
+      up: (raw) => {
+        const doc = raw as Record<string, unknown>;
+        const { repo, ...rest } = doc;
+        return Effect.succeed({ ...rest, registry: repo ?? "https://registry.npmjs.org" });
+      },
+    },
+  ],
+});
+
+const upgraded = migratingCodec.parse(`{"version":1,"repo":"https://custom.example"}`);
+```
+
+Steps run in ascending `version` order, and only those newer than the document's current version apply, so re-running is idempotent. As with encryption, the error channel widens — to `ConfigCodecError | ConfigMigrationError` — and `ConfigMigrationError.phase` (`"read-version" | "apply" | "write-version"`) plus its `name` and `version` fields pinpoint the failing step instead of collapsing into a prose string.
+
+> **Composition note.** `EncryptedCodec` and `ConfigMigration.make` each return a `ConfigCodec` and stack — encryption on the outside, migration within — so a migrating, encrypted codec is `EncryptedCodec(ConfigMigration.make({ codec: JsonCodec, migrations }), key)`. Today these decorated codecs are best used directly (`parse`/`stringify`, as above) for reading and writing secret or versioned payloads; see the *Known limitation* at the end of this page before wiring a widened codec straight into `ConfigFile.layer`.
+
+## Pattern: bridging into Effect's ConfigProvider
+
+Effect's own `Config` accessors read discrete keys from an ambient `ConfigProvider` (environment variables by default) and have no whole-document story. `layerConfigProvider` installs a loaded, merged, schema-validated document *beneath* the ambient provider, so `Config.string("registry")` reads the environment first and the config file second — exactly the precedence a deployed service wants, where an env var overrides the file it shipped with.
+
+```ts
+import { layerConfigProvider } from "@effected/config-file";
+import { Config, Effect, Layer } from "effect";
+
+const ProviderLive = layerConfigProvider(Release).pipe(Layer.provide(ReleaseLive));
+
+const registry = Effect.gen(function* () {
+  // Reads env, then falls back to the loaded .shipitrc.
+  return yield* Config.string("registry");
+});
+```
+
+Pass `{ asPrimary: true }` to make the file win over the ambient provider instead. Two sharp edges to know: a missing file surfaces as `ConfigFileNotFoundError` in the layer's error channel rather than degrading to an empty provider, and descent is **structural** — nested keys are reached with `Config.nested(Config.string("host"), "db")`, never the dotted `Config.string("db.host")`. Leaves are read in their *decoded* form, so a field whose decoded type is not a JSON primitive (a `Date`, an `Option`) descends as an empty or internal record and a `Config` read of it looks identical to a missing key. When a field is not a plain primitive, reach for `load` — the whole-document API designed to carry it — and keep the provider bridge for the flat, primitive keys it serves well. If you only need the document once, `asConfigProvider(service)` returns the provider as an `Effect` without installing a layer.
+
+## Observability: the event hook
+
+Every fallible method is already an `Effect.fn` named span, so tracing works with no wiring. When you want a consumer-facing feed — a `--verbose` mode that prints each tier as it is discovered, say — opt into `ConfigEvents`. Pass the class as the layer's `events` option and provide `ConfigEvents.layer` alongside it:
+
+```ts
+import { ConfigEvents, ConfigFile, ConfigResolver, MergeStrategy, TomlCodec } from "@effected/config-file";
+import { Layer } from "effect";
+
+const ObservedRelease = ConfigFile.layer(Release, {
+  schema: ReleaseConfig,
+  codec: TomlCodec,
+  resolvers: [ConfigResolver.workspaceRoot({ filename: ".shipitrc" })],
+  strategy: MergeStrategy.layeredMerge<ReleaseConfig>(),
+  events: ConfigEvents,
+});
+
+const ObservedLive = Layer.mergeAll(ObservedRelease, ConfigEvents.layer).pipe(Layer.provide(PlatformLive));
+```
+
+The `ConfigEvents` service exposes an unbounded `PubSub<ConfigEvent>` on its `events` field that you subscribe to. Each `ConfigEvent` carries a `timestamp` and a tagged `event` payload you narrow on `_tag`: `Discovered`, `Parsed`, `Validated`, `Resolved`, `Loaded`, `Written`, `Saved`, `Updated`, and the failure variants `ParseFailed`, `ValidationFailed`, `StringifyFailed`. The hook is honestly zero-cost when absent: omit the `events` option and the pipeline's emit is `Effect.void` and never even looks the service up. The hub is unbounded on purpose so a slow subscriber can never apply backpressure to a config load, and a subscriber that throws is absorbed rather than allowed to fail a load.
+
+## Edge cases and failure modes
+
+Every failure is a tagged error you route on with `Effect.catchTag`, each carrying its cause structurally rather than as a string. The distinctions worth designing around:
+
+- **"Nothing found" is not "found something broken."** `ConfigFileNotFoundError` (the resolver chain matched nothing) is usually answered with defaults; `ConfigValidationError` (a file was found but failed the schema) is a real problem whose structured issue tree lives on `error.issue`. Routing them the same way is the exact mistake the typed error ladder exists to prevent.
+
+```ts
+import { Effect } from "effect";
+
+const resilient = program.pipe(
+  Effect.catchTag("ConfigFileNotFoundError", () =>
+    Effect.succeed(new ReleaseConfig({ version: 1, registry: "https://registry.npmjs.org", tag: "latest", dryRun: true })),
+  ),
+  Effect.catchTag("ConfigValidationError", (error) => Effect.logError(error.message).pipe(Effect.zipRight(Effect.fail(error)))),
+);
+```
+
+- **Per-method error channels are narrowed.** `load` can fail with `ConfigFileNotFoundError`; `loadFrom` cannot, because it takes an explicit path. `write` targets a path you already vouched for and never creates its parent directory; `save` resolves `defaultPath`, `mkdir -p`s its parent, and can additionally fail with `ConfigDefaultPathMissingError` when no `defaultPath` was configured — a typed error with an empty payload rather than a fabricated path.
+- **`update` is a serialized read-modify-write.** It loads, applies your function, and saves under a semaphore so two concurrent `update`s on one service instance do not clobber each other. That lock guards a single instance in a single process — it is **not** a file lock, so another process writing the same path concurrently can still win.
+- **`loadOrDefault`'s default is trusted, not validated.** The `defaultValue` you pass is returned as-is when nothing is discovered; neither the schema nor your `validate` runs on it. It is caller input, not a discovered document — construct it as a valid instance yourself.
+
+## Testing with @effect/vitest
+
+`ConfigFile.testLayer` seeds files into a temp directory and runs the **real** pipeline over them — the same `makeImpl` the live layer uses, not a mock — so a passing test is a statement about your codec, resolvers and merge strategy rather than about a stub. It removes the temp directory when the scope closes.
+
+```ts
+import { ConfigFile, JsonCodec, MergeStrategy } from "@effected/config-file";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { it } from "@effect/vitest";
+import { Effect, Layer } from "effect";
+
+const TestRelease = ConfigFile.testLayer(Release, {
+  schema: ReleaseConfig,
+  codec: JsonCodec,
+  strategy: MergeStrategy.firstMatch<ReleaseConfig>(),
+  files: { ".shipitrc": `{"version":1,"registry":"r","tag":"latest","dryRun":true}` },
+}).pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)));
+
+it.effect("loads the highest-priority seeded file", () =>
+  Effect.gen(function* () {
+    const release = yield* Release;
+    const config = yield* release.load;
+    assert.strictEqual(config.registry, "r");
+  }).pipe(Effect.provide(TestRelease)),
+);
+```
+
+Two things to remember under `testLayer`: it synthesizes one `staticDir` resolver per seeded file in insertion order, so the first key wins under `firstMatch`; and it has **no** `defaultPath`, so `save` and `update` honestly fail with `ConfigDefaultPathMissingError` — the honest answer, since nothing in a temp directory is a defensible default write target. Exercise the write path against `ConfigFile.layer` with a real `defaultPath` instead. (Assert with `assert.*`, never `expect`; `it.effect` installs a virtual `TestClock`, so any `Effect.sleep` or `timeout` must be advanced explicitly.)
+
+## Known limitation
+
+`EncryptedCodec` and `ConfigMigration.make` return codecs whose error channel is *widened* (`ConfigCodec<ConfigCodecError | ConfigEncryptionError>` and `ConfigCodec<ConfigCodecError | ConfigMigrationError>`), but `ConfigFile.layer`'s `codec` option is typed as the narrow `ConfigCodec<ConfigCodecError>`. A widened codec therefore does not currently type-check into the loader, so the decorator patterns above are shown reading and writing directly through the codec. Use them that way for encrypted or versioned payloads until the loader accepts a widened codec.
+
+## Learn more
+
+- **[Getting Started](/config-file/getting-started)** — the single-file loader this guide builds on.
+- **[Overview](/config-file/)** — the codec/resolver/strategy model and the full codec table.
+- **[API reference](/config-file/api)** — every export with full signatures: all six resolvers, both merge strategies, the codecs, `ConfigMigration`, `EncryptedCodec`, `ConfigEvents`, `asConfigProvider`/`layerConfigProvider`, and the complete tagged-error set.
+</content>
+</invoke>

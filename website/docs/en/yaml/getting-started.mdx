@@ -1,0 +1,214 @@
+---
+title: Getting Started
+description: Parse, edit and validate a YAML config file with @effected/yaml, preserving every comment and byte you did not touch.
+---
+
+# Getting Started
+
+Reach for `@effected/yaml` when a tool needs to read *or write* a YAML file — a CI workflow, a Kubernetes manifest, an app config, a `pnpm-lock.yaml` — and must survive contact with the comments, anchors and formatting a human (or another tool) put there. A parse / re-serialize round-trip through a naive library silently reflows the whole file and drops its comments; this package parses with error recovery, changes exactly the bytes you ask it to, and can decode straight into a validated Effect `Schema`. The whole surface is a pure function or an `Effect` — there is no IO to mock and nothing to configure.
+
+## Install
+
+```bash
+npm install @effected/yaml effect
+```
+
+```bash
+pnpm add @effected/yaml effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies.
+
+## Your first task: change a value without losing the comments
+
+Say you have a service config with a comment and you need to bump one value. The naive approach — parse to an object, mutate it, re-stringify — erases the comment and reflows every line. Instead, ask `YamlFormat` for a modification at a *path*, and let it compute the minimal edits. `YamlFormat.modifyToString` runs that whole pipeline and hands you back the updated text as an `Effect`:
+
+```ts with-api
+import { YamlFormat } from "@effected/yaml";
+import { Effect } from "effect";
+
+const source = `# service config — keep the port in sync with the load balancer
+service:
+  name: api
+  port: 3000
+  host: localhost
+`;
+
+const program = Effect.gen(function* () {
+  return yield* YamlFormat.modifyToString(source, ["service", "port"], 8080);
+});
+
+Effect.runPromise(program).then(console.log);
+// # service config — keep the port in sync with the load balancer
+// service:
+//   name: api
+//   port: 8080
+//   host: localhost
+```
+
+Only the `3000` was rewritten — the leading comment, the `name` and `host` lines and every space survive byte for byte, because targeting `["service", "port"]` produced a single splice. The `path` argument is an array of string keys and numeric indices, so `["servers", 0, "port"]` reaches into nested maps and sequences. Passing `undefined` as the value removes the target instead of setting it.
+
+If you would rather apply the change yourself, `YamlFormat.modify` returns the underlying `YamlEdit` array, and `YamlEdit.applyAll` splices a whole batch against the source in reverse-offset order:
+
+```ts with-api
+import { YamlEdit, YamlFormat } from "@effected/yaml";
+import { Effect } from "effect";
+
+const source = `service:
+  port: 3000
+`;
+
+const program = Effect.gen(function* () {
+  const edits = yield* YamlFormat.modify(source, ["service", "port"], 8080);
+  return YamlEdit.applyAll(source, edits);
+});
+
+Effect.runPromise(program).then(console.log);
+// service:
+//   port: 8080
+```
+
+## Common operations
+
+Each snippet below is a complete, runnable program built from the package's real exports.
+
+### Parse at a synchronous boundary
+
+Inside Effect code, `Yaml.parse` gives you an `Effect`. At a plain synchronous boundary — a build script, a config loader that is not Effect-native — reach for `Yaml.parseSync`, which returns a `Result` you can match on without a runtime:
+
+```ts with-api
+import { Yaml } from "@effected/yaml";
+import { Result } from "effect";
+
+const result = Yaml.parseSync(`name: my-app
+version: 1.0.0
+`);
+
+if (Result.isSuccess(result)) {
+  console.log(result.success); // { name: "my-app", version: "1.0.0" }
+}
+```
+
+### Read a multi-document stream
+
+A single file can hold several `---`-separated documents — exactly the shape of a Kubernetes manifest bundle. `Yaml.parseAll` decodes the whole stream into an array of values in one pass:
+
+```ts with-api
+import { Yaml } from "@effected/yaml";
+import { Effect } from "effect";
+
+const manifest = `kind: Service
+name: api
+---
+kind: Deployment
+name: api
+replicas: 3
+`;
+
+const program = Effect.gen(function* () {
+  const docs = yield* Yaml.parseAll(manifest);
+  return docs.length;
+});
+
+Effect.runPromise(program).then(console.log);
+// 2
+```
+
+### Strip comments in place
+
+`Yaml.stripComments` removes every comment from a document. Pass a replacement character (typically `" "`) to blank each comment character instead of deleting it, which keeps every offset stable for downstream position math:
+
+```ts with-api
+import { Yaml } from "@effected/yaml";
+
+const yaml = `port: 3000 # default`;
+
+console.log(Yaml.stripComments(yaml));
+// port: 3000
+
+console.log(Yaml.stripComments(yaml, " ").length === yaml.length);
+// true — offset-preserving
+```
+
+### Compare two configs semantically
+
+`Yaml.equals` decodes both sides and compares the values: comments, whitespace, quoting style and map key order are all ignored, while sequence order stays significant. It is total — malformed input on either side is simply never equal:
+
+```ts with-api
+import { Yaml } from "@effected/yaml";
+
+const before = `a: 1
+b: 2
+`;
+
+const after = `# reordered and recommented, same meaning
+b: 2
+a: 1
+`;
+
+console.log(Yaml.equals(before, after)); // true
+```
+
+### Scan a large document without materializing it
+
+`YamlVisitor.visit` returns a lazy `Stream` of SAX-style events. Because events are pulled on demand, `Stream.take` short-circuits after the first few instead of building the whole tree — useful for probing a big file. `YamlVisitorEvent.$is` narrows the union to one variant:
+
+```ts with-api
+import { YamlVisitor, YamlVisitorEvent } from "@effected/yaml";
+import { Effect, Stream } from "effect";
+
+const source = `port: 3000
+host: localhost
+debug: true
+`;
+
+const program = Effect.gen(function* () {
+  yield* YamlVisitor.visit(source).pipe(
+    Stream.filter(YamlVisitorEvent.$is("Pair")),
+    Stream.take(2),
+    Stream.runForEach((event) => Effect.sync(() => console.log(event.key, event.value))),
+  );
+});
+
+Effect.runPromise(program);
+// port 3000
+// host localhost
+```
+
+## Handling errors
+
+Parsing recovers rather than bailing on the first problem: every recovered error is collected into a single `YamlParseError` whose `diagnostics` array carries the code and position of each one, so a user sees all the mistakes in their file at once. A structural edit that cannot be navigated fails with a `YamlModificationError` carrying the typed `path` it could not reach and its own `diagnostics`.
+
+Both are tagged errors, so `Effect.catchTag` routes each by its `_tag` with full type inference:
+
+```ts with-api
+import { Yaml, YamlFormat } from "@effected/yaml";
+import { Effect } from "effect";
+
+const source = `service:
+  port: 3000
+`;
+
+const program = Effect.gen(function* () {
+  const updated = yield* YamlFormat.modifyToString(source, ["service", "port"], 8080);
+  return yield* Yaml.parse(updated);
+});
+
+const recovered = program.pipe(
+  Effect.catchTag("YamlParseError", (error) =>
+    Effect.succeed(error.diagnostics.map((d) => `${d.code} at ${d.line}:${d.character}`)),
+  ),
+  Effect.catchTag("YamlModificationError", (error) =>
+    Effect.succeed([`could not navigate to [${error.path.join(", ")}]`]),
+  ),
+);
+
+Effect.runPromise(recovered).then(console.log);
+```
+
+Because the error channel is fully typed, dropping either `catchTag` is a compile error until every failure is accounted for. That is the whole point of the typed channel: hostile or malformed input — including an alias bomb, which trips the materialization budget and returns an `AliasCountExceeded` parse diagnostic rather than exhausting the heap — always arrives here, never as an unhandled defect.
+
+## Next steps
+
+- Ready for the parsed AST, byte-minimal edit batches, streaming visitors and decoding straight into a domain schema? See the [advanced guide](/yaml/advanced).
+- Every export, with full signatures, lives in the [API reference](/yaml/api) — start with [`Yaml`](/yaml/api/class/yaml), [`YamlFormat`](/yaml/api/class/yamlformat) and [`YamlVisitor`](/yaml/api/class/yamlvisitor).
