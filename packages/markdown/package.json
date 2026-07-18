@@ -35,6 +35,7 @@
 		"@effect/vitest": "catalog:effect",
 		"@savvy-web/bundler": "^2.0.3",
 		"@types/node": "catalog:silk",
+		"commonmark": "0.31.2",
 		"effect": "catalog:effect",
 		"entities": "6.0.1",
 		"typescript": "catalog:silk"
