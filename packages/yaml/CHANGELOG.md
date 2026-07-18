@@ -1,5 +1,24 @@
 # @effected/yaml
 
+## 0.3.1
+
+### Documentation
+
+* Clarify that `lineWidth` scalar folding is a value-path-only feature:
+  `Yaml.stringify`/`Yaml.stringifySync` honor it, while `YamlDocument#stringify`
+  and the `YamlFormat` helpers accept the option but never fold — callers
+  needing folded output on that path should render the plain value instead
+  (`Yaml.stringify(doc.toValue(), options)`).
+* Fixed two `{@link Result}` cross-package references that produced
+  `ae-unresolved-link` warnings in the production build; the package now
+  builds warning-free. [#112][#112]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#112]: https://github.com/spencerbeggs/effected/pull/112
+
 ## 0.3.0
 
 ### Features

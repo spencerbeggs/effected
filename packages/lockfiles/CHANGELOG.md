@@ -1,5 +1,14 @@
 # @effected/lockfiles
 
+## 0.1.4
+
+### Dependencies
+
+| Dependency      | Type       | Action  | From  | To    |
+| --------------- | ---------- | ------- | ----- | ----- |
+| @effected/jsonc | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/yaml  | dependency | updated | 0.3.0 | 0.3.1 |
+
 ## 0.1.3
 
 ### Dependencies

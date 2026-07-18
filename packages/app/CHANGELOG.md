@@ -1,5 +1,31 @@
 # @effected/app
 
+## 0.1.4
+
+### Documentation
+
+* Corrected the `effect-v4-construct-map` skill's Schema rename reference: the
+  `decode`/`encode` family is not a blanket sweep. Only the Effect-returning
+  base names (`decode`/`decodeUnknown`/`encode`/`encodeUnknown` → `*Effect`)
+  and the `*Either` variants (→ `*Result`/`*Exit`) are renamed; the
+  `*Sync`/`*Option`/`*Promise` variants survive unchanged, and the typed and
+  `Unknown` flavors of each differ by input type rather than being
+  interchangeable. Also notes that `Schema.decode`/`Schema.encode` still exist
+  in v4, but as transformation combinators rather than parsers. [#112][#112]
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.1.2 | 0.1.3 |
+| @effected/xdg         | dependency | updated | 0.1.2 | 0.1.3 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#112]: https://github.com/spencerbeggs/effected/pull/112
+
 ## 0.1.3
 
 ### Documentation

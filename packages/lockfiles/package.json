@@ -1,6 +1,6 @@
 {
 	"name": "@effected/lockfiles",
-	"version": "0.1.3",
+	"version": "0.1.4",
 	"private": true,
 	"description": "Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests.",
 	"keywords": ["lockfile", "pnpm", "npm", "yarn", "bun", "workspaces", "effect", "schema", "effected"],
