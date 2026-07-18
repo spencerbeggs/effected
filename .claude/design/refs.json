@@ -82,8 +82,8 @@
 		{
 			"source": "packages/jsonc/CLAUDE.md",
 			"target": ".claude/design/effected/packages/jsonc.md",
-			"hash": "6a73ee89fcd028bf39eba2e20c9ec2274453e6a1eca5cd38c98c46f6e03ff46a",
-			"recordedAt": "2026-07-12"
+			"hash": "8e6ad0248c2484d03c7de59fe837351ff83dd4241a1e7266bdb6587aa5a474c7",
+			"recordedAt": "2026-07-17"
 		},
 		{
 			"source": "packages/lockfiles/CLAUDE.md",
@@ -148,8 +148,8 @@
 		{
 			"source": "packages/workspaces/CLAUDE.md",
 			"target": ".claude/design/effected/packages/workspaces.md",
-			"hash": "00e59a04059fd621a005e1c5c7016f33a65724504de8fb2c237572982c2be14c",
-			"recordedAt": "2026-07-16"
+			"hash": "bfb803fab2f14b0fbe70ea954ce25ec78d695623ccee449066a5f58b9a30474a",
+			"recordedAt": "2026-07-17"
 		},
 		{
 			"source": "packages/xdg/CLAUDE.md",
@@ -160,8 +160,8 @@
 		{
 			"source": "packages/yaml/CLAUDE.md",
 			"target": ".claude/design/effected/packages/yaml.md",
-			"hash": "f2dc9ed79643b55adebd904a2cd4aced26e981c88635e0def21a09efa4edd425",
-			"recordedAt": "2026-07-12"
+			"hash": "0a570d3f986b999e97b6b9f998cc98f4a24cd32807bbe2423248df61d6bcb777",
+			"recordedAt": "2026-07-17"
 		}
 	]
 }

@@ -146,35 +146,28 @@ const isPackage = (options: WorkspacesSyncOptions, dir: string): boolean =>
 	options.fileSystem.exists(options.path.join(dir, "package.json"));
 
 /**
- * Options for {@link findWorkspaceRootSync}: the required consumer-supplied
- * operations plus where to start the ascent.
- *
- * @public
- */
-export interface FindWorkspaceRootSyncOptions extends WorkspacesSyncOptions {
-	/**
-	 * Where to start the ascent, matching the Effect layers' `{ cwd }` option.
-	 *
-	 * @defaultValue `process.cwd()`, read lazily per call.
-	 */
-	readonly cwd?: string;
-}
-
-/**
- * The nearest workspace root at or above `options.cwd`, or `null`.
+ * The nearest workspace root at or above `cwd`, or `null`.
  *
  * @remarks
  * **Synchronous.** The Effect surface is `WorkspaceRoot`; reach for this one
  * only where you genuinely cannot run an Effect — a Vitest config being the
  * motivating case. The file and path operations are the caller's
- * ({@link FindWorkspaceRootSyncOptions}); this module imports no `node:*` and
+ * ({@link WorkspacesSyncOptions}); this module imports no `node:*` and
  * assumes no posix.
+ *
+ * The signature is path-first, options second — the same shape as
+ * {@link getWorkspacePackagesSync} and the rest of the kit's sync facades
+ * (`TsconfigLoaderSync.load(configPath, options)`). `cwd` is required and
+ * positional: the earlier options-bag form defaulted it to an ambient
+ * `process.cwd()` read, which both broke the symmetry with its sibling and
+ * was the module's one platform assumption.
  *
  * Markers match the async service exactly: a `pnpm-workspace.yaml`, or a
  * `package.json` carrying a `workspaces` field.
  *
- * @param options - The consumer-supplied file and path operations, plus the
- *   optional `cwd` to start from (defaulting to `process.cwd()`).
+ * @param cwd - Where to start the ascent (typically `process.cwd()`),
+ *   matching the Effect layers' `{ cwd }` option.
+ * @param options - The consumer-supplied file and path operations.
  *
  * @example
  * ```ts
@@ -182,7 +175,7 @@ export interface FindWorkspaceRootSyncOptions extends WorkspacesSyncOptions {
  * import * as path from "node:path";
  * import { findWorkspaceRootSync } from "@effected/workspaces";
  *
- * const root = findWorkspaceRootSync({
+ * const root = findWorkspaceRootSync(process.cwd(), {
  * 	fileSystem: {
  * 		exists: existsSync,
  * 		readFile: (p) => readFileSync(p, "utf8"),
@@ -195,9 +188,9 @@ export interface FindWorkspaceRootSyncOptions extends WorkspacesSyncOptions {
  *
  * @public
  */
-export const findWorkspaceRootSync = (options: FindWorkspaceRootSyncOptions): string | null => {
+export const findWorkspaceRootSync = (cwd: string, options: WorkspacesSyncOptions): string | null => {
 	const { fileSystem, path } = options;
-	let current = path.resolve(options.cwd ?? process.cwd());
+	let current = path.resolve(cwd);
 	// Bounded twice over: `dirname` is a fixpoint at the filesystem root, and the
 	// depth cap guards a pathological path implementation that never reaches one.
 	for (let depth = 0; depth < MAX_ENUMERATION_DEPTH * 8; depth++) {
@@ -339,7 +332,7 @@ export interface GetWorkspacePackagesSyncOptions extends WorkspacesSyncOptions {
  * 	},
  * 	path,
  * };
- * const root = findWorkspaceRootSync(ops);
+ * const root = findWorkspaceRootSync(process.cwd(), ops);
  * const packages = root === null ? [] : getWorkspacePackagesSync(root, ops);
  * ```
  *

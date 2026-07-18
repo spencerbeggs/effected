@@ -470,6 +470,122 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 		Layer.effect(WorkspaceDiscovery, WorkspaceDiscovery.make(options));
 
 	/**
+	 * An in-memory test double of the service shape, with every method
+	 * defaulted so a test stubs only what it exercises.
+	 *
+	 * @remarks
+	 * The defaults model an **empty workspace**, and the derived methods run
+	 * over the *effective* `listPackages` — the override when one is supplied —
+	 * so stubbing only `listPackages` yields a consistent double:
+	 *
+	 * - `listPackages` — succeeds with `[]`.
+	 * - `importerMap` — derived: the packages keyed by `relativePath`.
+	 * - `getPackage` — derived: a name lookup that fails with the service's own
+	 *   typed {@link PackageNotFoundError} on a miss, exactly as the live
+	 *   implementation does.
+	 * - `resolveFile` / `resolveFiles` — derived: longest-prefix ownership over
+	 *   `pkg.path`, POSIX-terminated (`"/"`); supply a win32 double explicitly
+	 *   if your fixture paths are win32.
+	 * - `refresh` — a no-op (`Effect.void`); there is nothing memoized to drop.
+	 * - `info` — **dies** with an explanatory defect. No honest default exists
+	 *   (a fabricated root path would leak into consumer path logic), so an
+	 *   unstubbed `info()` call is a test-wiring mistake and fails loudly as a
+	 *   defect rather than succeeding with a lie or failing with a dishonest
+	 *   typed error.
+	 *
+	 * @example
+	 * ```ts
+	 * import { WorkspaceDiscovery, WorkspacePackage } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const double = WorkspaceDiscovery.makeTest({
+	 *   listPackages: () =>
+	 *     Effect.succeed([
+	 *       WorkspacePackage.make({
+	 *         name: "@my-org/utils",
+	 *         version: "1.0.0",
+	 *         path: "/repo/packages/utils",
+	 *         packageJsonPath: "/repo/packages/utils/package.json",
+	 *         relativePath: "packages/utils",
+	 *       }),
+	 *     ]),
+	 * });
+	 * // `getPackage`, `importerMap`, `resolveFile(s)` now answer consistently.
+	 * ```
+	 */
+	static readonly makeTest = (overrides: Partial<WorkspaceDiscoveryShape> = {}): WorkspaceDiscoveryShape => {
+		const listPackages = overrides.listPackages ?? (() => Effect.succeed([]));
+
+		// POSIX-terminated longest-prefix ownership, mirroring the live
+		// `resolveFile` semantics minus the platform `Path` service.
+		const ownerOf = (filePath: string, all: ReadonlyArray<WorkspacePackage>): Option.Option<WorkspacePackage> => {
+			let best: WorkspacePackage | undefined;
+			let bestLength = 0;
+			for (const pkg of all) {
+				const prefix = pkg.path.endsWith("/") ? pkg.path : `${pkg.path}/`;
+				if (filePath.startsWith(prefix) && prefix.length > bestLength) {
+					best = pkg;
+					bestLength = prefix.length;
+				}
+			}
+			return Option.fromUndefinedOr(best);
+		};
+
+		return {
+			listPackages,
+			info: () =>
+				Effect.die(
+					new Error(
+						"WorkspaceDiscovery.makeTest: info() was called but not stubbed — no honest default WorkspaceInfo exists for a test double; pass an `info` override.",
+					),
+				),
+			importerMap: () => Effect.map(listPackages(), (all) => new Map(all.map((pkg) => [pkg.relativePath, pkg]))),
+			getPackage: (name: string) =>
+				Effect.flatMap(listPackages(), (all) => {
+					const found = all.find((pkg) => pkg.name === name);
+					return found !== undefined
+						? Effect.succeed(found)
+						: Effect.fail(new PackageNotFoundError({ name, available: all.map((pkg) => pkg.name) }));
+				}),
+			resolveFile: (filePath: string) => Effect.map(listPackages(), (all) => ownerOf(filePath, all)),
+			resolveFiles: (filePaths: ReadonlyArray<string>) =>
+				Effect.map(listPackages(), (all) => {
+					const seen = new Map<string, WorkspacePackage>();
+					for (const filePath of filePaths) {
+						const owner = ownerOf(filePath, all);
+						if (Option.isSome(owner)) seen.set(owner.value.name, owner.value);
+					}
+					return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+				}),
+			refresh: () => Effect.void,
+			...overrides,
+		};
+	};
+
+	/**
+	 * The test layer: {@link WorkspaceDiscovery.makeTest} behind
+	 * `Layer.succeed`, so a suite provides only the methods it exercises.
+	 *
+	 * @remarks
+	 * A parameterized layer factory mints a **fresh reference per call**, and
+	 * layers memoize by reference — bind the result to a `const` and reuse it
+	 * rather than calling `layerTest(...)` at each composition site.
+	 *
+	 * @example
+	 * ```ts
+	 * import { WorkspaceDiscovery } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const TestDiscovery = WorkspaceDiscovery.layerTest({
+	 *   listPackages: () => Effect.succeed([]),
+	 * });
+	 * // program.pipe(Effect.provide(TestDiscovery))
+	 * ```
+	 */
+	static readonly layerTest = (overrides: Partial<WorkspaceDiscoveryShape> = {}): Layer.Layer<WorkspaceDiscovery> =>
+		Layer.succeed(WorkspaceDiscovery, WorkspaceDiscovery.makeTest(overrides));
+
+	/**
 	 * The real implementation of `@effected/npm`'s `WorkspaceResolver` contract
 	 * — the one `@effected/package-json` declares but cannot fill.
 	 *

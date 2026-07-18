@@ -109,7 +109,7 @@ describe("getWorkspacePackagesSync — hostile manifests", () => {
 
 describe("findWorkspaceRootSync", () => {
 	it("finds the root from a nested directory", () => {
-		assert.strictEqual(findWorkspaceRootSync({ ...nodeOps, cwd: join(root, "packages", "good") }), root);
+		assert.strictEqual(findWorkspaceRootSync(join(root, "packages", "good"), nodeOps), root);
 	});
 
 	it("a root whose package.json is `null` still resolves via pnpm-workspace.yaml", () => {
@@ -123,7 +123,7 @@ describe("findWorkspaceRootSync", () => {
 			mkdirSync(join(hostile, "packages", "a"), { recursive: true });
 			writeFileSync(join(hostile, "packages", "a", "package.json"), JSON.stringify({ name: "@h/a", version: "1.0.0" }));
 
-			assert.strictEqual(findWorkspaceRootSync({ ...nodeOps, cwd: join(hostile, "packages", "a") }), hostile);
+			assert.strictEqual(findWorkspaceRootSync(join(hostile, "packages", "a"), nodeOps), hostile);
 			// And enumeration over that root still works, skipping the null root manifest.
 			assert.deepStrictEqual(
 				getWorkspacePackagesSync(hostile, nodeOps).map((pkg) => pkg.name),
@@ -301,7 +301,7 @@ describe("getWorkspacePackagesSync over pure in-memory ops (no ambient Node fs)"
 	});
 
 	it("finds the root by ascending the virtual tree", () => {
-		assert.strictEqual(findWorkspaceRootSync({ ...ops, cwd: "/repo/packages/a" }), "/repo");
+		assert.strictEqual(findWorkspaceRootSync("/repo/packages/a", ops), "/repo");
 	});
 
 	it("carries fields outside the discovery slice through manifestRecord", () => {
@@ -327,7 +327,7 @@ describe("WorkspacesSync with a win32 SyncPath", () => {
 	const ops: WorkspacesSyncOptions = { fileSystem: fakeFs(files), path: nodePath.win32 };
 
 	it("finds the root by ascending a drive-letter path", () => {
-		assert.strictEqual(findWorkspaceRootSync({ ...ops, cwd: "C:\\repo\\packages\\a" }), "C:\\repo");
+		assert.strictEqual(findWorkspaceRootSync("C:\\repo\\packages\\a", ops), "C:\\repo");
 	});
 
 	it("enumerates the workspace under a drive-letter root", () => {
@@ -349,6 +349,6 @@ describe("WorkspacesSync with a win32 SyncPath", () => {
 		// from the posix implementation.
 		assert.strictEqual(nodePath.posix.dirname("C:\\repo\\packages\\a"), ".");
 		assert.strictEqual(nodePath.win32.dirname("C:\\repo\\packages\\a"), "C:\\repo\\packages");
-		assert.isNull(findWorkspaceRootSync({ ...ops, path: nodePath.posix, cwd: "C:\\repo\\packages\\a" }));
+		assert.isNull(findWorkspaceRootSync("C:\\repo\\packages\\a", { ...ops, path: nodePath.posix }));
 	});
 });

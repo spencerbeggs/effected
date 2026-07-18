@@ -76,6 +76,19 @@ Effect.runPromise(Effect.result(Jsonc.parse('{ "a": }'))).then(console.log);
 // each with code, offset, length, line and character.
 ```
 
+Synchronous boundaries that cannot run an Effect (a plain config loader, a build script) call `Jsonc.parseResult`, the same parse returning a `Result` directly instead of wrapping it in `Effect.runSync(Effect.result(...))`:
+
+```ts
+import { Jsonc } from "@effected/jsonc";
+import { Result } from "effect";
+
+const result = Jsonc.parseResult('{ "port": 3000 // dev\n}');
+console.log(Result.isSuccess(result) ? result.success : result.failure);
+// { port: 3000 }
+```
+
+`Jsonc.parse` is defined in terms of `parseResult`, so the two never diverge. Prefer the Effect variant inside Effect code, where it carries the `Jsonc.parse` tracing span.
+
 ## Editing without losing comments
 
 `JsoncModifier.modify` returns a `JsoncEdit` array — offset, length and replacement content — that `JsoncEdit.applyAll` splices into the original text. Only the bytes covered by an edit change:
@@ -118,6 +131,7 @@ Preserving comments requires the original source text, which is exactly what `Js
 ## Features
 
 - `Jsonc.parse` / `Jsonc.parseTree` — error-recovery parsing to a plain value or an offset-preserving `JsoncNode` AST, aggregating every recovered error into one `JsoncParseError` rather than failing on the first.
+- `Jsonc.parseResult` — the synchronous `Result` variant of `parse` for callers outside an Effect runtime; `parse` is defined in terms of it, so the two never diverge.
 - `Jsonc.stripComments` — pure comment removal yielding valid JSON; pass a replacement character to keep every byte offset stable.
 - `Jsonc.equals` / `Jsonc.equalsValue` — semantic equality that ignores comments, whitespace, formatting and object key order, while keeping array order significant.
 - `Jsonc.schema` / `Jsonc.fromString` / `Jsonc.JsoncFromString` — string→domain schema factories that decode JSONC directly into a validated Effect `Schema` value.
