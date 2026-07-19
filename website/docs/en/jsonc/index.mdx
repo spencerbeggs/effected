@@ -5,7 +5,7 @@ description: "Zero-dependency JSONC parsing, editing and formatting as Effect sc
 
 # @effected/jsonc
 
-Zero-dependency JSONC parsing, editing and formatting expressed as Effect schemas and pure functions. Parse JSONC into plain values or an offset-preserving AST, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
+Zero-dependency JSONC parsing, editing and formatting expressed as Effect schemas and pure functions. Parse JSONC into plain values or an offset-preserving AST, strip comments, stringify values back to plain JSON, compute byte-minimal edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
 
 ## Why @effected/jsonc
 
@@ -54,7 +54,7 @@ The distinctive capability is that editing never re-serializes the document. `Js
 
 ## Errors aggregate, and hostile input stays typed
 
-Parsing recovers rather than failing on the first problem: every recovered error is collected into a single `JsoncParseError` carrying structured, positional detail, so a user sees all the problems in their config file at once. `JsoncModificationError` carries typed `path`, `expected`, `depth` and `offset` fields rather than a prose `reason`.
+Parsing recovers rather than failing on the first problem: every recovered error is collected into a single `JsoncParseError` carrying structured, positional detail, so a user sees all the problems in their config file at once. `JsoncModificationError` carries typed `path`, `expected`, `depth` and `offset` fields rather than a prose `reason`. Encoding is typed too: `Jsonc.stringify` and `Jsonc.stringifyResult` emit plain JSON — comments live in the document and edit layers, not in values — and fail with a `JsoncStringifyError` coded `CircularReference`, `BigIntValue` or `TopLevelUnrepresentable`, where `JSON.stringify` would throw or return `undefined`.
 
 Malformed and adversarial input always fails through the typed error channel. A nesting bomb trips a depth cap enforced independently at every recursive surface and returns a `NestingDepthExceeded` parse error — never a `RangeError: Maximum call stack size exceeded`.
 

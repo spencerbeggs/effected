@@ -36,14 +36,16 @@ Errors preserve structure. `JsoncModificationError` carries typed `path`/`expect
 
 Exported from `src/index.ts`:
 
-- `Jsonc` — `parse`, `parseTree` (`Effect`, failing with the aggregate `JsoncParseError`); `parseResult` (synchronous `Result` variant of `parse`; `parse` is defined in terms of it); `stripComments`, `equals`, `equalsValue` (pure, total); `fromString`, `JsoncFromString`, `schema(target)`. Plus `JsoncParseError`, `JsoncParseErrorDetail`, `JsoncParseErrorCode`, `JsoncParseOptions`
+- `Jsonc` — `parse`, `parseTree`, `stringify` (`Effect`, failing with the aggregate `JsoncParseError` / `JsoncStringifyError`); `parseResult`, `stringifyResult` (synchronous `Result` variants the `Effect` forms are defined in terms of); `stripComments`, `equals`, `equalsValue` (pure, total); `fromString`, `JsoncFromString`, `schema(target)` (generic over `RD`/`RE`, at parity with yaml and toml), `bind(target)` → a `JsoncBoundCodec` `{ schema, decode, encode }` pre-binding both directions, each failing with `Schema.SchemaError` — thin sugar over `schema(target)` plus `Schema.decodeEffect`/`encodeEffect`, adding no error taxonomy of its own. Plus `JsoncParseError`, `JsoncParseErrorDetail`, `JsoncParseErrorCode`, `JsoncParseOptions`, `JsoncStringifyError`, `JsoncStringifyErrorCode`, `JsoncStringifyOptions`
 - `JsoncNode`, `JsoncNodeType`, `JsoncPath`, `JsoncSegment` — the AST; no parent pointers (they would break equality, serialization and encode/decode)
-- `JsoncEdit` (+ `applyAll`), `JsoncRange`, `JsoncFormattingOptions`
+- `JsoncEdit` (+ `applyAll`, which **rejects overlapping edits as a thrown defect** — toml's posture, now shared by all four format packages; a programmer-error guard on hand-constructed arrays, not input hardening), `JsoncRange`, `JsoncFormattingOptions`
 - `JsoncFormatter` — `format`, `formatToString`
 - `JsoncModifier` — `modify`; `JsoncModificationError`, `JsoncModifyOptions`
 - `JsoncVisitor`, `JsoncVisitorEvent` — SAX `Stream`, infallible at type level
 
-`fromString` and `schema` are schema-producing: bind results to a `const` on hot paths.
+`fromString`, `schema` and `bind` are schema-producing: bind results to a `const` on hot paths.
+
+**Value-stringify is plain JSON emission, not JSONC.** `Jsonc.stringify` writes what `JSON.stringify(value, null, 2)` writes — comments live only in the document/edit layer, so they never survive a value round-trip. The typed failure is deliberately narrow: `CircularReference`, `BigIntValue` and `TopLevelUnrepresentable` only. **Nested** unrepresentables (functions, `undefined`, symbols) follow `JSON.stringify`'s documented semantics — dropped from objects, nulled in arrays — rather than erroring. Do not "harden" that into a typed error; it is JSON's contract, matched on purpose.
 
 ## Working here
 

@@ -25,12 +25,16 @@
  * @packageDocumentation
  */
 
+export type { JsoncBoundCodec } from "./Jsonc.js";
 export {
 	Jsonc,
 	JsoncParseError,
 	JsoncParseErrorCode,
 	JsoncParseErrorDetail,
 	JsoncParseOptions,
+	JsoncStringifyError,
+	JsoncStringifyErrorCode,
+	JsoncStringifyOptions,
 } from "./Jsonc.js";
 export type { JsoncFormattingOptionsLike } from "./JsoncEdit.js";
 export { JsoncEdit, JsoncFormattingOptions, JsoncRange } from "./JsoncEdit.js";

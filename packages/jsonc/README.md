@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@effected%2Fjsonc?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/jsonc)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
-[![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
 Zero-dependency JSONC parsing, editing and formatting expressed as Effect schemas and pure functions. Parse JSONC into plain values or an offset-preserving AST, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
 
@@ -124,7 +124,24 @@ Effect.runPromise(program).then(console.log);
 
 ## Comments and round-trips
 
-There is no comment-preserving `stringify` in this package, and that is deliberate rather than an oversight. The encode direction of `Jsonc.schema`, `Jsonc.fromString` and `Jsonc.JsoncFromString` is `JSON.stringify` with a 2-space indent. **Comments do not survive a decode then encode round trip** — once a document has been reduced to a plain JavaScript value, the comments are already gone and no honest encoder can put them back.
+There is no comment-preserving `stringify` in this package, and that is deliberate rather than an oversight. `Jsonc.stringify` and its synchronous twin `Jsonc.stringifyResult` emit plain JSON — comments live in the document and edit layer (`JsoncNode`, `JsoncEdit`, `JsoncFormatter`), never in a plain JavaScript value. The encode direction of `Jsonc.schema`, `Jsonc.fromString` and `Jsonc.JsoncFromString` is that same emission. **Comments do not survive a decode then encode round trip** — once a document has been reduced to a plain JavaScript value, the comments are already gone and no honest encoder can put them back.
+
+Values JSON cannot represent fail through a typed channel rather than throwing:
+
+```ts
+import { Jsonc } from "@effected/jsonc";
+import { Result } from "effect";
+
+const ok = Jsonc.stringifyResult({ port: 3000 });
+console.log(Result.isSuccess(ok) ? ok.success : ok.failure);
+// {
+//   "port": 3000
+// }
+
+const bad = Jsonc.stringifyResult(0n);
+console.log(Result.isFailure(bad) ? bad.failure.code : "");
+// BigIntValue
+```
 
 Preserving comments requires the original source text, which is exactly what `JsoncModifier` and `JsoncFormatter` take. If you need to write a JSONC file back out with its comments intact, edit the text: parse for reading, and modify for writing.
 
@@ -132,6 +149,7 @@ Preserving comments requires the original source text, which is exactly what `Js
 
 - `Jsonc.parse` / `Jsonc.parseTree` — error-recovery parsing to a plain value or an offset-preserving `JsoncNode` AST, aggregating every recovered error into one `JsoncParseError` rather than failing on the first.
 - `Jsonc.parseResult` — the synchronous `Result` variant of `parse` for callers outside an Effect runtime; `parse` is defined in terms of it, so the two never diverge.
+- `Jsonc.stringify` / `Jsonc.stringifyResult` — value-level JSON emission with configurable indent, failing with a typed `JsoncStringifyError` whose `code` names the mode: `CircularReference`, `BigIntValue` or `TopLevelUnrepresentable`.
 - `Jsonc.stripComments` — pure comment removal yielding valid JSON; pass a replacement character to keep every byte offset stable.
 - `Jsonc.equals` / `Jsonc.equalsValue` — semantic equality that ignores comments, whitespace, formatting and object key order, while keeping array order significant.
 - `Jsonc.schema` / `Jsonc.fromString` / `Jsonc.JsoncFromString` — string→domain schema factories that decode JSONC directly into a validated Effect `Schema` value.
