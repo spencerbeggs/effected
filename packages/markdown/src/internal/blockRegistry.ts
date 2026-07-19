@@ -21,6 +21,13 @@ import { definitionConstruct } from "./blocks/linkReferenceDefinition.js";
 import { listConstruct, listItemConstruct, listItemStart } from "./blocks/list.js";
 import { paragraphConstruct } from "./blocks/paragraph.js";
 import { setextHeadingStart } from "./blocks/setextHeading.js";
+import {
+	tableCellConstruct,
+	tableConstruct,
+	tableHeaderStart,
+	tableRowConstruct,
+	tableRowStart,
+} from "./blocks/table.js";
 import { thematicBreakConstruct, thematicBreakStart } from "./blocks/thematicBreak.js";
 import type { BlockConstruct, BlockDialect, BlockType } from "./blockTypes.js";
 
@@ -63,11 +70,49 @@ const commonmarkDialect: BlockDialect = {
 	],
 };
 
-// GFM's BLOCK grammar is CommonMark's until tables, task-list items and
-// footnote definitions land (P2 Tasks 4-6). Its inline grammar already
-// differs, and the dialect name is what selects that — so the entry has to
-// exist now even though the two tables are the same object.
-const gfmDialect: BlockDialect = commonmarkDialect;
+// GFM's block grammar is CommonMark's plus tables, with task-list items and
+// footnote definitions still to come (P2 Tasks 5-6).
+//
+// The two table starts sit LAST, after every CommonMark start, because that is
+// where cmark-gfm runs its extensions: `open_new_blocks` tries the core
+// constructs first and only reaches `try_opening_block` when none of them
+// claimed the line. The ordering is load-bearing rather than cosmetic — it is
+// what makes `---` under a paragraph a setext heading instead of a one-column
+// table, and `> quoted` under a table a blockquote instead of a row.
+const gfmDialect: BlockDialect = {
+	constructs: constructTable([
+		documentConstruct,
+		blockquoteConstruct,
+		listConstruct,
+		listItemConstruct,
+		paragraphConstruct,
+		headingConstruct,
+		thematicBreakConstruct,
+		codeConstruct,
+		htmlBlockConstruct,
+		definitionConstruct,
+		tableConstruct,
+		tableRowConstruct,
+		tableCellConstruct,
+	]),
+	starts: [
+		blockquoteStart,
+		atxHeadingStart,
+		fencedCodeStart,
+		htmlBlockStart,
+		setextHeadingStart,
+		thematicBreakStart,
+		listItemStart,
+		indentedCodeStart,
+		tableHeaderStart,
+		tableRowStart,
+	],
+	// commonmark.js's `reMaybeSpecial` fast path knows nothing of tables: a
+	// delimiter row can begin with `|` or `:`, and a table row can begin with
+	// any character at all. cmark-gfm has no such filter, so this restores the
+	// lines it would hide — and only those.
+	mayStartBlock: (rest, container) => container.type === "table" || rest.startsWith("|") || rest.startsWith(":"),
+};
 
 const dialects: ReadonlyMap<MarkdownDialect, BlockDialect> = new Map([
 	["commonmark", commonmarkDialect],

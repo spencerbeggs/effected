@@ -198,9 +198,9 @@ describe("block pass", () => {
 			const [heading, paragraph] = root.children;
 
 			assert.strictEqual(rawInlines.length, 2);
-			assert.strictEqual(rawInlines[0]?.parent, heading);
+			assert.strictEqual<unknown>(rawInlines[0]?.parent, heading);
 			assert.strictEqual(rawInlines[0]?.text, "Title");
-			assert.strictEqual(rawInlines[1]?.parent, paragraph);
+			assert.strictEqual<unknown>(rawInlines[1]?.parent, paragraph);
 			assert.strictEqual(rawInlines[1]?.text, "Hello\nworld");
 		});
 

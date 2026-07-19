@@ -29,6 +29,9 @@ import type {
 	PhrasingContent,
 	Position,
 	Root,
+	TableAlign,
+	TableCell,
+	TableRow,
 	ThematicBreakChar,
 } from "../MarkdownNode.js";
 
@@ -49,7 +52,10 @@ export type BlockType =
 	| "thematicBreak"
 	| "code"
 	| "html"
-	| "definition";
+	| "definition"
+	| "table"
+	| "tableRow"
+	| "tableCell";
 
 /**
  * A run of characters copied verbatim from the source into a leaf block's
@@ -72,6 +78,16 @@ export interface RawInlineSegment {
 }
 
 /**
+ * A node that owns parsed phrasing content — the parent side of a
+ * {@link RawInlineSlice}.
+ *
+ * A GFM table cell is one of these even though it is not a leaf block: cells
+ * are the block pass's other inline host, and they go through the same
+ * `inlineSlice`/`registerInline` seam every leaf does.
+ */
+export type InlineHost = Paragraph | Heading | TableCell;
+
+/**
  * A leaf block's raw inline text, handed to the inline pass.
  *
  * `parent` is the materialized node the parsed children belong to; `text` is
@@ -79,7 +95,7 @@ export interface RawInlineSegment {
  * and `segments` maps the rest of it (see {@link RawInlineSegment}).
  */
 export interface RawInlineSlice {
-	readonly parent: Paragraph | Heading;
+	readonly parent: InlineHost;
 	readonly text: string;
 	readonly startOffset: number;
 	readonly segments: ReadonlyArray<RawInlineSegment>;
@@ -124,6 +140,25 @@ export interface BlockData {
 	spread?: boolean;
 	/** A split-out link reference definition (see {@link BlockType}). */
 	definition?: DefinitionData;
+	/** GFM table bookkeeping, set by the table block starts. */
+	tableData?: TableData;
+	/**
+	 * Set on a paragraph whose delimiter row failed to match its header —
+	 * cmark-gfm's `CMARK_NODE__TABLE_VISITED`, which stops a paragraph being
+	 * rescanned for a table once for every line it goes on to absorb.
+	 */
+	tableVisited?: boolean;
+}
+
+/** A GFM table's parsed shape, carried on the table block. */
+export interface TableData {
+	/** The header's column count; every row is truncated or padded to it. */
+	readonly columns: number;
+	/** One entry per column, `null` where the delimiter row declared none. */
+	readonly align: ReadonlyArray<TableAlign | null>;
+	/** Rows added so far, and cells among them that came from real source. */
+	rows: number;
+	nonemptyCells: number;
 }
 
 /** A parsed link reference definition, awaiting materialization. */
@@ -251,14 +286,26 @@ export interface BlockScanner {
 	 * `insertAfter` + `unlink` pair in the setext-heading start.
 	 */
 	replaceBlock(block: BlockNode, type: BlockType): BlockNode;
+	/**
+	 * Open a closed block of `type` as `block`'s immediately preceding sibling,
+	 * without disturbing the tip.
+	 *
+	 * cmark-gfm's `cmark_node_insert_before` in the table header reclaim: when
+	 * a paragraph becomes a table, the lines above the header row have to go
+	 * back into the tree as the paragraph they were.
+	 */
+	insertBefore(block: BlockNode, type: BlockType): BlockNode;
 	/** Close `block`, ending it at the end of `lineNumber`. */
 	finalizeBlock(block: BlockNode, lineNumber: number): void;
 	/** Append the rest of the current line to the tip's content. */
 	addLine(): void;
 }
 
-/** What a construct materializes into: flow content, a list item, or the root. */
-export type MaterializedBlock = Root | FlowContent | ListItem;
+/**
+ * What a construct materializes into: flow content, a list item, a table row
+ * or cell, or the root.
+ */
+export type MaterializedBlock = Root | FlowContent | ListItem | TableRow | TableCell;
 
 /** Services a construct needs to turn its {@link BlockNode} into a real node. */
 export interface MaterializeContext {
@@ -267,7 +314,7 @@ export interface MaterializeContext {
 	/** Trim and prepare a leaf's accumulated content for the inline pass. */
 	inlineSlice(block: BlockNode): PreparedInline;
 	/** Record a leaf's raw inline text against the node that will own it. */
-	registerInline(parent: Paragraph | Heading, prepared: PreparedInline): void;
+	registerInline(parent: InlineHost, prepared: PreparedInline): void;
 }
 
 /**
@@ -298,11 +345,22 @@ export interface BlockConstruct {
 
 /** Narrow materialized children to the flow content most constructs contain. */
 export const flowChildren = (children: ReadonlyArray<MaterializedBlock>): ReadonlyArray<FlowContent> =>
-	children.filter((child): child is FlowContent => child.type !== "root" && child.type !== "listItem");
+	children.filter(
+		(child): child is FlowContent =>
+			child.type !== "root" && child.type !== "listItem" && child.type !== "tableRow" && child.type !== "tableCell",
+	);
 
 /** Narrow materialized children to the list items a list contains. */
 export const listItemChildren = (children: ReadonlyArray<MaterializedBlock>): ReadonlyArray<ListItem> =>
 	children.filter((child): child is ListItem => child.type === "listItem");
+
+/** Narrow materialized children to the rows a table contains. */
+export const tableRowChildren = (children: ReadonlyArray<MaterializedBlock>): ReadonlyArray<TableRow> =>
+	children.filter((child): child is TableRow => child.type === "tableRow");
+
+/** Narrow materialized children to the cells a table row contains. */
+export const tableCellChildren = (children: ReadonlyArray<MaterializedBlock>): ReadonlyArray<TableCell> =>
+	children.filter((child): child is TableCell => child.type === "tableCell");
 
 /** One entry of a dialect's ordered block-start table. */
 export interface BlockStart {
@@ -315,6 +373,16 @@ export interface BlockStart {
 export interface BlockDialect {
 	readonly constructs: ReadonlyMap<BlockType, BlockConstruct>;
 	readonly starts: ReadonlyArray<BlockStart>;
+	/**
+	 * An escape hatch from the line loop's fast path.
+	 *
+	 * commonmark.js skips the whole block-start table when the line cannot
+	 * begin any CommonMark construct (`reMaybeSpecial`). cmark-gfm has no such
+	 * filter, so a dialect whose constructs start on other characters — a GFM
+	 * table row starts on anything at all — says so here, and the loop tries
+	 * its starts anyway. Absent means the CommonMark filter is the whole truth.
+	 */
+	readonly mayStartBlock?: (rest: string, container: BlockNode) => boolean;
 }
 
 /** Open a fresh {@link BlockNode}. */

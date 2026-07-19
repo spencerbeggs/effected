@@ -28,7 +28,7 @@
 // Imports node classes from `../MarkdownNode.js` (the sanctioned exception to
 // the cycle firewall) and nothing else public.
 
-import type { Definition, Heading, Paragraph, Root } from "../MarkdownNode.js";
+import type { Definition, Root } from "../MarkdownNode.js";
 import { Point, Position } from "../MarkdownNode.js";
 import type { MarkdownDialect } from "./blockRegistry.js";
 import { blockDialect } from "./blockRegistry.js";
@@ -39,6 +39,7 @@ import type {
 	BlockNode,
 	BlockScanner,
 	BlockType,
+	InlineHost,
 	MaterializeContext,
 	MaterializedBlock,
 	PreparedInline,
@@ -286,6 +287,26 @@ class BlockParser implements BlockScanner {
 		return replacement;
 	}
 
+	insertBefore(block: BlockNode, type: BlockType): BlockNode {
+		const parent = block.parent;
+		const sibling = makeBlockNode(type, block.startOffset, block.startLine, block.depth);
+		sibling.parent = parent;
+		// Closed on arrival: it is a block the parser has already read past, so
+		// the container-match loop must never descend into it, and the tip is
+		// deliberately left where the caller had it.
+		sibling.open = false;
+
+		if (parent !== undefined) {
+			const at = parent.children.indexOf(block);
+			if (at === -1) {
+				parent.children.push(sibling);
+			} else {
+				parent.children.splice(at, 0, sibling);
+			}
+		}
+		return sibling;
+	}
+
 	closeUnmatchedBlocks(): void {
 		if (this.allClosed) {
 			return;
@@ -366,10 +387,15 @@ class BlockParser implements BlockScanner {
 		while (!matchedLeaf) {
 			this.findNextNonspace();
 
-			// Upstream's fast path: no block can start here, so stop looking.
-			if (!this.indented && !reMaybeSpecial.test(this.currentLine.slice(this.nextNonspace))) {
-				this.advanceNextNonspace();
-				break;
+			// Upstream's fast path: no block can start here, so stop looking —
+			// unless the dialect has a construct the filter cannot see (GFM
+			// table rows begin on any character there is).
+			if (!this.indented) {
+				const rest = this.currentLine.slice(this.nextNonspace);
+				if (!reMaybeSpecial.test(rest) && !(this.dialect.mayStartBlock?.(rest, container) ?? false)) {
+					this.advanceNextNonspace();
+					break;
+				}
 			}
 
 			let index = 0;
@@ -518,7 +544,7 @@ class BlockParser implements BlockScanner {
 		const context: MaterializeContext = {
 			position: (start, end) => this.position(start, end),
 			inlineSlice: (block) => prepareInline(block, (start, end) => this.position(start, end), refmap, this.dialectName),
-			registerInline: (parent: Paragraph | Heading, prepared: PreparedInline) => {
+			registerInline: (parent: InlineHost, prepared: PreparedInline) => {
 				rawInlines.push({
 					parent,
 					text: prepared.text,
