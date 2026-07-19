@@ -19,13 +19,16 @@ import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
 import { Root } from "./MarkdownNode.js";
 
 /**
- * The markdown dialects the parser can be pointed at. P1 registers exactly
- * CommonMark 0.31.2; P2 widens the union with `gfm` as a registry
- * composition, with no signature change here.
+ * The markdown dialects the parser can be pointed at. `"gfm"` — CommonMark
+ * 0.31.2 plus the GitHub extensions (tables, strikethrough, autolink
+ * literals, task-list items, footnotes, and the tagfilter's output contract)
+ * — is the default; `"commonmark"` opts out of every extension. A dialect is
+ * a registry composition in the engine, so widening this union is additive
+ * and never changes an existing dialect's behavior.
  *
  * @public
  */
-export const MarkdownDialect = Schema.Literals(["commonmark"]);
+export const MarkdownDialect = Schema.Literals(["commonmark", "gfm"]);
 
 /**
  * The union of all markdown dialect string literals.
@@ -36,7 +39,7 @@ export type MarkdownDialect = typeof MarkdownDialect.Type;
 
 /**
  * Options controlling parse behavior. The only knob is `dialect` — omitted,
- * it resolves to `"commonmark"`.
+ * it resolves to `"gfm"`.
  *
  * @public
  */
@@ -66,8 +69,14 @@ export class MarkdownParseError extends Schema.TaggedErrorClass<MarkdownParseErr
 	}
 }
 
-/** The dialect an options object resolves to; the impl-level default lives here. */
-const dialectOf = (options?: MarkdownParseOptions): MarkdownDialect => options?.dialect ?? "commonmark";
+/**
+ * The dialect an options object resolves to. The PUBLIC default — `"gfm"`,
+ * a product decision — is spelled exactly once, here. The engine's own
+ * `parseBlocks` default is `"commonmark"` and means something different: the
+ * base dialect the registries compose on top of. The facade always passes
+ * this resolved value explicitly, so the two defaults never interact.
+ */
+const dialectOf = (options?: MarkdownParseOptions): MarkdownDialect => options?.dialect ?? "gfm";
 
 /**
  * Run the block pass, converting the engine's raw carriers into a typed
@@ -106,8 +115,9 @@ export const parsePassResult = (
 };
 
 /**
- * The markdown facade: parse CommonMark source into an mdast-shaped
- * {@link Root} tree, as a pure `Result` or as an `Effect`.
+ * The markdown facade: parse markdown source — GFM by default, CommonMark by
+ * option — into an mdast-shaped {@link Root} tree, as a pure `Result` or as
+ * an `Effect`.
  *
  * @public
  */
@@ -125,10 +135,10 @@ export class Markdown {
 	 * synchronous boundaries. This function carries no span: it is not an
 	 * `Effect`.
 	 *
-	 * Failure is rare by design: every string is a valid CommonMark document,
-	 * so the only failures are hardening-guard trips such as nesting past the
-	 * 256-container cap. Programmer errors are not converted — they propagate
-	 * as thrown defects.
+	 * Failure is rare by design: every string is a valid markdown document in
+	 * both dialects, so the only failures are hardening-guard trips such as
+	 * nesting past the 256-container cap. Programmer errors are not converted
+	 * — they propagate as thrown defects.
 	 *
 	 * @example
 	 * ```ts
@@ -143,7 +153,7 @@ export class Markdown {
 	 *
 	 * @param text - The markdown source to parse.
 	 * @param options - Optional {@link MarkdownParseOptions}; the dialect
-	 *   defaults to `"commonmark"`.
+	 *   defaults to `"gfm"`.
 	 * @returns A `Result` succeeding with the document {@link Root}, or
 	 *   failing with {@link MarkdownParseError}.
 	 */
@@ -158,7 +168,7 @@ export class Markdown {
 	 *
 	 * @param text - The markdown source to parse.
 	 * @param options - Optional {@link MarkdownParseOptions}; the dialect
-	 *   defaults to `"commonmark"`.
+	 *   defaults to `"gfm"`.
 	 * @returns An `Effect` that succeeds with the document {@link Root}, or
 	 *   fails with {@link MarkdownParseError}.
 	 */

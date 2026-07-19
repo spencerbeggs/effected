@@ -13,7 +13,15 @@ import type { InlineDialectName } from "./inlineRegistry.js";
 /** Builds the `Position` for an absolute source range. */
 type PositionOf = (start: number, end: number) => Position;
 
+// Two trims because two upstreams: commonmark.js hands paragraph content to
+// `String.prototype.trim()`, whose JS `\s` strips `\v`, `\f` and unicode
+// spaces — the oracle suite pins that parity. cmark-gfm trims table cells
+// with `cmark_strbuf_trim` over `cmark_isspace`, whose space class is exactly
+// {space, tab, LF, CR} (`src/cmark_ctype.c`), so a `\v` or `\f` SURVIVES in
+// cell content even though the row scanners treat both as spacechars
+// (`ext_scanners.re`). The pathological "tables" case pins that survival.
 const reWhitespace = /\s/;
+const reCmarkSpace = /[ \t\n\r]/;
 
 /**
  * Trim `text` the way commonmark.js does before inline parsing, carrying the
@@ -22,13 +30,14 @@ const reWhitespace = /\s/;
 const trimWithSegments = (
 	text: string,
 	segments: ReadonlyArray<RawInlineSegment>,
+	whitespace: RegExp,
 ): { readonly text: string; readonly segments: ReadonlyArray<RawInlineSegment> } => {
 	let start = 0;
 	let end = text.length;
-	while (start < end && reWhitespace.test(text.charAt(start))) {
+	while (start < end && whitespace.test(text.charAt(start))) {
 		start += 1;
 	}
-	while (end > start && reWhitespace.test(text.charAt(end - 1))) {
+	while (end > start && whitespace.test(text.charAt(end - 1))) {
 		end -= 1;
 	}
 
@@ -63,7 +72,11 @@ export const prepareInline = (
 	dialect: InlineDialectName = "commonmark",
 	footnoteLabels: ReadonlySet<string> = new Set(),
 ): PreparedInline => {
-	const { text, segments } = trimWithSegments(block.stringContent, block.segments);
+	const { text, segments } = trimWithSegments(
+		block.stringContent,
+		block.segments,
+		block.type === "tableCell" ? reCmarkSpace : reWhitespace,
+	);
 	const first = segments[0];
 	const last = segments[segments.length - 1];
 	const startOffset = first === undefined ? block.startOffset : first.sourceOffset;

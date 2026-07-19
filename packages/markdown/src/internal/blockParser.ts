@@ -605,5 +605,10 @@ class BlockParser implements BlockScanner {
  * inline content parsed, and `rawInlines` reports the raw text each leaf was
  * built from.
  */
+// The engine's default is the BASE dialect the registries compose on top of —
+// not the public default, which is `"gfm"` and lives in the facade's
+// `dialectOf`. The facade always passes its resolved dialect explicitly, so
+// this default only ever serves engine-level callers (tests, mostly) that
+// mean "the substrate".
 export const parseBlocks = (text: string, dialect: MarkdownDialect = "commonmark"): BlockPassResult =>
 	new BlockParser(text, blockDialect(dialect), dialect).parse();

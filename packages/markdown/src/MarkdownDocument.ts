@@ -58,7 +58,7 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 *
 	 * @param text - The markdown source to parse.
 	 * @param options - Optional {@link MarkdownParseOptions}; the dialect
-	 *   defaults to `"commonmark"`.
+	 *   defaults to `"gfm"`.
 	 * @returns A `Result` succeeding with the document, or failing with
 	 *   `MarkdownParseError`.
 	 */
@@ -83,7 +83,7 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 *
 	 * @param text - The markdown source to parse.
 	 * @param options - Optional {@link MarkdownParseOptions}; the dialect
-	 *   defaults to `"commonmark"`.
+	 *   defaults to `"gfm"`.
 	 * @returns An `Effect` that succeeds with the document, or fails with
 	 *   `MarkdownParseError`.
 	 */

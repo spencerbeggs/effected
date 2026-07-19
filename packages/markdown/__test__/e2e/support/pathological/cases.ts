@@ -3,9 +3,9 @@
 // Copyright: John MacFarlane
 // License: BSD-2-Clause (https://github.com/github/cmark-gfm/blob/master/COPYING)
 // Port notes: every case in upstream's `pathological` dict is carried over
-// AS DATA except "tables" (a GFM table-extension case; P1 is CommonMark-only,
-// GFM cases join in P2) and the already-disabled "many references" entry
-// (commented out upstream itself, never active). Construction (repeat counts,
+// AS DATA except the already-disabled "many references" entry (commented out
+// upstream itself, never active). The "tables" case — upstream's one
+// GFM-extension case — joined in P2 and runs under the `gfm` dialect. Construction (repeat counts,
 // nesting shapes) and expected-output regexes are preserved faithfully,
 // translated from Python `re` syntax to JS `RegExp` syntax 1:1 — no pattern
 // was loosened or tightened. "reference collisions" replicates upstream's
@@ -26,6 +26,11 @@ export interface PathologicalCase {
 	readonly input: string;
 	readonly expectedPattern: RegExp;
 	readonly timeoutMs: number;
+	/**
+	 * The dialect the case parses under. Absent means the commonmark
+	 * substrate; upstream's GFM-extension cases carry `"gfm"`.
+	 */
+	readonly dialect?: "gfm";
 }
 
 const TIMEOUT_MS = 8000;
@@ -203,5 +208,19 @@ export const PATHOLOGICAL_CASES: ReadonlyArray<PathologicalCase> = [
 		input: hashCollisionsDocument,
 		expectedPattern: new RegExp(`(<p>\\[${hashCollisionsBadKey}\\]<\\/p>\\n){49999}`),
 		timeoutMs: TIMEOUT_MS,
+	},
+	{
+		// Upstream's one GFM case: 30k CR-separated candidate header rows, each
+		// followed by a one-dash delimiter line ending in a vertical tab. A
+		// naive table scanner re-walks the accumulated paragraph on every line.
+		name: "tables",
+		input: "aaa\rbbb\n-\u000b\n".repeat(30000),
+		expectedPattern: new RegExp(
+			"^<p>aaa</p>\\n<table>\\n<thead>\\n<tr>\\n<th>bbb</th>\\n</tr>\\n</thead>\\n<tbody>\\n" +
+				"(<tr>\\n<td>aaa</td>\\n</tr>\\n<tr>\\n<td>bbb</td>\\n</tr>\\n<tr>\\n<td>-\\u000b</td>\\n</tr>\\n){29999}" +
+				"</tbody>\\n</table>\\n$",
+		),
+		timeoutMs: TIMEOUT_MS,
+		dialect: "gfm",
 	},
 ];

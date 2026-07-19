@@ -150,11 +150,25 @@ describe("MarkdownDocument.parse", () => {
 		}),
 	);
 
-	it.effect("honors an explicit commonmark dialect the same as the default", () =>
+	it.effect("defaults the dialect to gfm, matching an explicit gfm parse", () =>
 		Effect.gen(function* () {
 			const implicit = yield* MarkdownDocument.parse(source);
-			const explicit = yield* MarkdownDocument.parse(source, { dialect: "commonmark" });
+			const explicit = yield* MarkdownDocument.parse(source, { dialect: "gfm" });
 			assert.deepStrictEqual(explicit, implicit);
+		}),
+	);
+
+	it.effect("diverges from an explicit commonmark parse exactly where extension syntax appears", () =>
+		Effect.gen(function* () {
+			// No extension syntax: the dialects agree on the shared source.
+			const gfmDoc = yield* MarkdownDocument.parse(source, { dialect: "gfm" });
+			const commonmarkDoc = yield* MarkdownDocument.parse(source, { dialect: "commonmark" });
+			assert.deepStrictEqual(gfmDoc.root, commonmarkDoc.root);
+			// Extension syntax: they must not agree.
+			const struck = "~~struck~~\n";
+			const viaDefault = yield* MarkdownDocument.parse(struck);
+			const viaCommonmark = yield* MarkdownDocument.parse(struck, { dialect: "commonmark" });
+			assert.notDeepEqual(viaDefault.root, viaCommonmark.root);
 		}),
 	);
 });

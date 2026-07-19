@@ -182,18 +182,42 @@ describe("Markdown.parse", () => {
 });
 
 describe("MarkdownParseOptions", () => {
-	it("defaults the dialect to commonmark when options are omitted", () => {
-		const source = "# Title\n\n*em*\n";
-		const implicit = Markdown.parseResult(source);
-		const explicit = Markdown.parseResult(source, MarkdownParseOptions.make({ dialect: "commonmark" }));
-		const empty = Markdown.parseResult(source, MarkdownParseOptions.make({}));
-		assert.isTrue(Result.isSuccess(implicit));
+	// A construct only the gfm dialect parses: under commonmark the tildes
+	// stay literal text, under gfm they become a `delete` node.
+	const gfmMarker = "~~struck~~\n";
+
+	const firstChildTypes = (result: Result.Result<Root, MarkdownParseError>): ReadonlyArray<string> => {
+		if (Result.isFailure(result)) {
+			assert.fail("expected the parse to succeed");
+		}
+		const paragraph = result.success.children[0];
+		assert.instanceOf(paragraph, Paragraph);
+		return paragraph.children.map((child) => child.type);
+	};
+
+	it("defaults the dialect to gfm when options are omitted", () => {
+		const implicit = Markdown.parseResult(gfmMarker);
+		const explicit = Markdown.parseResult(gfmMarker, MarkdownParseOptions.make({ dialect: "gfm" }));
+		const empty = Markdown.parseResult(gfmMarker, MarkdownParseOptions.make({}));
+		assert.deepStrictEqual(firstChildTypes(implicit), ["delete"]);
 		if (Result.isFailure(implicit) || Result.isFailure(explicit) || Result.isFailure(empty)) {
 			assert.fail("expected every options form to parse");
 			return;
 		}
 		assert.deepStrictEqual(explicit.success, implicit.success);
 		assert.deepStrictEqual(empty.success, implicit.success);
+	});
+
+	it("honors an explicit commonmark dialect by disabling every extension", () => {
+		const commonmark = Markdown.parseResult(gfmMarker, MarkdownParseOptions.make({ dialect: "commonmark" }));
+		assert.deepStrictEqual(firstChildTypes(commonmark), ["text"]);
+	});
+
+	it("admits both dialect literals and rejects anything else, typed", () => {
+		const decode = Schema.decodeUnknownResult(MarkdownParseOptions);
+		assert.isTrue(Result.isSuccess(decode({ dialect: "gfm" })));
+		assert.isTrue(Result.isSuccess(decode({ dialect: "commonmark" })));
+		assert.isTrue(Result.isFailure(decode({ dialect: "markdown-extra" })));
 	});
 });
 

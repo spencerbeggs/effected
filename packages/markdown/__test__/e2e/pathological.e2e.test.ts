@@ -96,7 +96,12 @@ describe("pathological inputs", () => {
 				let caught: unknown;
 				let html = "";
 				try {
-					html = renderHtml(parseBlocks(testCase.input).root);
+					// A case's dialect defaults to the commonmark substrate;
+					// upstream's GFM-extension cases parse and render under gfm.
+					html =
+						testCase.dialect === "gfm"
+							? renderHtml(parseBlocks(testCase.input, "gfm").root, { gfm: true })
+							: renderHtml(parseBlocks(testCase.input).root);
 				} catch (error) {
 					caught = error;
 				}

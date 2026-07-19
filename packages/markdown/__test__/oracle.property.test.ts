@@ -19,9 +19,17 @@ import { renderHtml } from "./e2e/support/htmlWriter.js";
 import { normalizeHtml } from "./e2e/support/normalizeHtml.js";
 import { renderOracleHtml } from "./e2e/support/oracle.js";
 
-/** Render with our stack; `undefined` if the parse tripped a hardening guard. */
+/**
+ * Render with our stack; `undefined` if the parse tripped a hardening guard.
+ *
+ * Pinned to `dialect: "commonmark"` explicitly: the oracle is commonmark.js,
+ * which implements no GFM extension, so the comparison is only meaningful
+ * against our commonmark dialect. The package's public default is `"gfm"` —
+ * relying on the default here would diff a GFM parse against a CommonMark
+ * oracle and fail on every extension construct the generator emits.
+ */
 const renderOurs = (markdown: string): string | undefined => {
-	const result = Markdown.parseResult(markdown);
+	const result = Markdown.parseResult(markdown, { dialect: "commonmark" });
 	return Result.isFailure(result) ? undefined : normalizeHtml(renderHtml(result.success));
 };
 

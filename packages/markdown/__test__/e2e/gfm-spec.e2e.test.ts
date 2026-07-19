@@ -6,10 +6,10 @@
 // parsing runs under `"gfm"`, and the writer runs with its `gfm` option so
 // the tagfilter applies.
 //
-// `SECTIONS_GREEN` is the P1 allowlist pattern and it is deliberately still
-// PARTIAL here: this file grows one entry per construct task, and the gate
-// below fails if a section ever leaves it. Sections still off carry the task
-// that clears them.
+// Every section of both corpora runs — the allowlists grew one entry per
+// construct task during P2 and are complete as of Task 7. They stay as
+// tripwires, the same posture as the CommonMark harness: the gate below
+// fails if a section ever leaves one, so coverage cannot quietly shrink.
 
 import { assert, describe, it } from "@effect/vitest";
 import { parseBlocks } from "../../src/internal/blockParser.js";
@@ -18,29 +18,15 @@ import { loadGfmExtensionsExamples, loadGfmSpecExtensionExamples } from "./suppo
 import { renderHtml } from "./support/htmlWriter.js";
 import { normalizeHtml } from "./support/normalizeHtml.js";
 
-/**
- * The GFM spec's extension sections that run today.
- *
- * Still off, with the P2 task that turns each on:
- *   - "Disallowed Raw HTML (extension)" → Task 7 (the writer's tagfilter is
- *     already in place, but the example nests a table AND a task list)
- */
+/** The GFM spec's extension sections. All of them run. */
 const SPEC_SECTIONS_GREEN: ReadonlyArray<string> = [
 	"Tables (extension)",
 	"Strikethrough (extension)",
 	"Autolinks (extension)",
+	"Disallowed Raw HTML (extension)",
 ];
 
-/**
- * The `extensions.txt` sections that run today.
- *
- * Still off, with the P2 task that turns each on:
- *   - "HTML tag filter"                                          → Task 7
- *
- * "Interop" joins here rather than at Task 7: both its examples cross tables
- * with strikethrough and autolink literals, and nothing in them waits on a
- * construct still to come.
- */
+/** The `extensions.txt` sections. All of them run. */
 const EXTENSIONS_SECTIONS_GREEN: ReadonlyArray<string> = [
 	"Tables",
 	"Table cell count mismatches",
@@ -59,11 +45,10 @@ const EXTENSIONS_SECTIONS_GREEN: ReadonlyArray<string> = [
 	"Footnotes",
 	"When a footnote is used multiple times, we insert multiple backrefs.",
 	"Footnote reference labels are href escaped",
+	"HTML tag filter",
 ];
 
 /**
- * Examples inside a green section that a later task clears.
- *
  * `extensions.txt` example 20 is upstream's own crash regression and its
  * expected output is the literal `<IGNORE>` — cmark-gfm asserts only that it
  * terminates. There is nothing to compare against, so it is checked for
@@ -128,6 +113,6 @@ const runCorpus = (
 };
 
 describe("GFM conformance", () => {
-	runCorpus("spec.txt extension sections", loadGfmSpecExtensionExamples(), SPEC_SECTIONS_GREEN, 21);
-	runCorpus("extensions.txt", loadGfmExtensionsExamples(), EXTENSIONS_SECTIONS_GREEN, 29);
+	runCorpus("spec.txt extension sections", loadGfmSpecExtensionExamples(), SPEC_SECTIONS_GREEN, 22);
+	runCorpus("extensions.txt", loadGfmExtensionsExamples(), EXTENSIONS_SECTIONS_GREEN, 30);
 });
