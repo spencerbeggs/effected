@@ -16,8 +16,14 @@
  * @packageDocumentation
  */
 
-export type { FrontmatterCodec } from "./Frontmatter.js";
-export { FrontmatterDecodeError, FrontmatterFormatMismatchError } from "./Frontmatter.js";
+export type { FrontmatterCodec, FrontmatterSchemaError } from "./Frontmatter.js";
+export {
+	FrontmatterDecodeError,
+	FrontmatterFormatMismatchError,
+	FrontmatterMissingError,
+	FrontmatterValidationError,
+	MarkdownFrontmatter,
+} from "./Frontmatter.js";
 export { JsonFrontmatter } from "./JsonFrontmatter.js";
 export { Markdown, MarkdownDialect, MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";
 export { MarkdownDiagnostic, MarkdownParseErrorCode } from "./MarkdownDiagnostic.js";

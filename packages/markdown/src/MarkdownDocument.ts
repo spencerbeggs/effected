@@ -10,6 +10,7 @@ import { Effect, Result, Schema } from "effect";
 import type { MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";
 import { parsePassResult } from "./Markdown.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
+import type { Frontmatter } from "./MarkdownNode.js";
 import { Definition, Root } from "./MarkdownNode.js";
 
 /**
@@ -46,6 +47,21 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	diagnostics: Schema.Array(MarkdownDiagnostic),
 	definitions: Schema.ReadonlyMap(Schema.String, Definition),
 }) {
+	/**
+	 * The document's frontmatter capture, or `undefined` when there is none.
+	 *
+	 * @remarks
+	 * Derived from the tree rather than stored: a {@link Frontmatter} node can
+	 * only ever sit at the head of `root.children` (the capture fires at most
+	 * once, at offset 0), so the tree is the single source of truth and the
+	 * accessor can never disagree with it. `undefined` covers both a document
+	 * with no frontmatter block and one parsed with the capture toggle off.
+	 */
+	get frontmatter(): Frontmatter | undefined {
+		const head = this.root.children[0];
+		return head !== undefined && head.type === "frontmatter" ? head : undefined;
+	}
+
 	/**
 	 * Parse markdown into a {@link MarkdownDocument}, synchronously, as a
 	 * `Result`. The pure primitive; {@link MarkdownDocument.parse} is defined
