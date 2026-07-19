@@ -70,7 +70,7 @@ export class MarkdownVisitor {
 	 * Infallible at the type level. A tree produced by `Markdown.parse` can
 	 * never trip the walk's depth guard — the parser refuses deeper input —
 	 * but a decoded foreign tree (`Mdast.fromMdast`) can; the trip surfaces
-	 * as a terminal {@link MarkdownVisitorEvent} `Error` event carrying a
+	 * as a terminal `MarkdownVisitorEvent` `Error` event carrying a
 	 * `NestingDepthExceeded` {@link MarkdownDiagnostic}, mirroring the typed
 	 * failure `Markdown.stringify` produces for the same tree.
 	 */
