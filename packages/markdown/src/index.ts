@@ -24,6 +24,19 @@ export {
 	FrontmatterValidationError,
 	MarkdownFrontmatter,
 } from "./Frontmatter.js";
+export type { FrontmatterResolveError, FrontmatterSchemaResolver } from "./FrontmatterResolver.js";
+export {
+	SchemaDeclaration,
+	SchemaDeclarationByName,
+	SchemaDeclarationByPath,
+	SchemaDeclarationByUrl,
+	SchemaDeclarationInline,
+	SchemaDeclarationInvalidError,
+	SchemaDeclarationMissingError,
+	SchemaNameUnknownError,
+	SchemaResolver,
+	SchemaVersionUnresolvableError,
+} from "./FrontmatterResolver.js";
 export { JsonFrontmatter } from "./JsonFrontmatter.js";
 export { Markdown, MarkdownDialect, MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";
 export { MarkdownDiagnostic, MarkdownParseErrorCode } from "./MarkdownDiagnostic.js";
