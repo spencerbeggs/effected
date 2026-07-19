@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@effected%2Fsemver?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/semver)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
-[![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
 Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas. `SemVer`, `Comparator` and `Range` are `Schema.Class`es, so a version is a validated value with methods on it rather than a string you re-parse at every call site, and each one carries a `FromString` codec that decodes the canonical form and encodes back to it. Parsing is strict: no `v` prefix, no `=` prefix, no leading zeros on numeric identifiers, no partially consumed input. Every failure is a tagged error carrying the offending string and the character position where the grammar gave up. Zero runtime dependencies, no IO.
 

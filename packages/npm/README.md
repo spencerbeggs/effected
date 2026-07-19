@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@effected%2Fnpm?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/npm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
-[![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
 Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers. `CatalogResolver.rangeOf` turns a package name plus an optional catalog name into the configured range; `WorkspaceResolver.versionOf` turns a workspace package name into its concrete version. Both are `Context.Service` contracts, both ship a no-op default layer that resolves nothing, and neither one reads a file. The package is the seam: a library that needs to *expand* a specifier depends on this, and something that can actually see the workspace supplies the implementation. On top of the contracts sit the kit's shared dependency vocabulary — `DependencySpecifier`, `DependencySection`, `IntegrityHash` — and `Manifest`, a tolerant manifest model that resolves every `catalog:` and `workspace:` specifier through the contracts in one call.
 

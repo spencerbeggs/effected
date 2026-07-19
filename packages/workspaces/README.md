@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@effected%2Fworkspaces?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/workspaces)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
-[![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
 Monorepo workspace tooling for [Effect](https://effect.website) v4: find the workspace root, enumerate its packages, walk the dependency graph, detect the package manager, resolve pnpm catalogs, read the lockfile and work out which packages a git range touches. Every capability is a service you provide at the edge and swap in tests. Works with npm, pnpm, yarn Berry and bun.
 

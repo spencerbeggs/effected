@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@effected%2Fapp?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/app)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
-[![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
 The application control plane for Effect. `App.layer` gives an application its XDG-namespaced directories, a migrated SQLite state database, a TTL cache and — through `AppConfig.layer` — a config file, all pointed at the same place, with the namespace typed exactly once. It is a composition over [`@effected/xdg`](../xdg), [`@effected/store`](../store) and [`@effected/config-file`](../config-file), and nothing else.
 
