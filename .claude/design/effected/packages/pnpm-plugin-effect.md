@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-16
+updated: 2026-07-19
 last-synced: 2026-07-16
 completeness: 85
 related:
@@ -75,6 +75,14 @@ These catalogs are the mechanism behind the [peer-dependency discipline](../effe
 The v3/v4 peer-resolution bug that once required pnpm-resolver workarounds is fixed upstream. Neither `dedupePeerDependents` nor `dedupeDirectDeps` is set anywhere — pnpm's defaults apply; only `autoInstallPeers: true` is set in `pnpm-workspace.yaml`.
 
 The workspace's one known peers-check residual lives in **this package's context**, recorded in [effect-standards.md](../effect-standards.md#open-defect-one-peers-check-issue): the bundler 2.0 upgrade made `@savvy-web/bundler` depend on published `@effected/*` packages that peer on the exact Effect v4 beta, and with no `effect` of its own this package let pnpm bind those peers to the v3 that `rolldown-pnpm-config` carries — loading v4 code against v3 at build time. The fix (347ca229) is a direct `effect` (`catalog:effect`) **devDependency** here, purely to give the resolver the right version to bind; the companion still ships no `effect`-importing code, so do not "clean up" that devDependency as unused. What remains after the fix is rolldown-pnpm-config's own Effect v3 satellites (`@effect/platform`, `@effect/rpc`, `@effect/sql`, `@effect/cluster`) wanting `^3.21.x` in a context that installs the v4 beta; the candidate fix is upstream in the external rolldown-pnpm-config repo.
+
+## Proposed: a generated peer allowed-versions table (2026-07-19, not yet implemented)
+
+Every catalog advance strands the kit's previously-published artifacts: a registry `@effected/*` package peers on the exact beta it was built against under the `lock` strategy, so the moment the workspace installs the next beta its peer goes unmet and `pnpm peers check` gains a new rotating occupant of the known-issue slot (the rolldown v3 satellites, then `@effect/platform-node-shared` wanting beta.99 early, now `@effected/jsonc@0.2.0` wanting beta.98 late). The proposal, from the 2026-07-19 beta.99 advance: `pnpm:export` additionally generates a `peerDependencyRules.allowedVersions` table into the root `pnpm-workspace.yaml`, declaring the lock catalog's exact current beta an acceptable resolution for the `effect`-family peers of the kit's own artifacts, which retires the warning class structurally instead of documenting each occupant.
+
+The rules are parent-scoped, never blanket. pnpm 11 supports `parent>peer` selectors in `allowedVersions` (verified in the installed 11.15.0: rules parse through `parsePkgAndParentSelector` and match by declaring parent, with the rule value checked as a semver range against the found version), and scoping is load-bearing: a blanket `effect: 4.0.0-beta.99` rule would also silence a genuine Effect v3 satellite's unmet `^3` peer, because `allowedVersions` matches the found version against the rule range regardless of what the parent asked for. The generator therefore emits one `"<pkg>>effect"` rule per `@effected/*` workspace member (a closed, kit-owned parent list — rules for parents absent from the installed graph never match and are harmless), valued at the lock catalog's exact beta only, regenerated on every export so the table advances in the same commit as the catalogs. The `effect3` interop satellites never match a scoped rule, so a v3-line defect still warns.
+
+Costs and consequences, recorded up front: the table suppresses reporting only — it does not change resolution, so `autoInstallPeers` may still materialize an old-beta `effect` instance for a stranded artifact's subgraph, which is today's behavior and acceptable; the rule values must stay exact-version (a range would quietly widen what counts as satisfied and recreate the masking risk); and once implemented the CLAUDE.md dependency discipline retires from "exactly one known issue" to "`pnpm peers check` reports zero issues; any warning is a genuine closure defect to fix upstream", which is the stronger invariant this table exists to buy.
 
 ## Classification: companion
 
