@@ -1,3 +1,75 @@
+/** [initial, operation, expected] */
+export const incrementTests: ReadonlyArray<[string, "major" | "minor" | "patch", string]> = [
+	["0.0.0", "major", "1.0.0"],
+	["0.0.0", "minor", "0.1.0"],
+	["0.0.0", "patch", "0.0.1"],
+	["1.2.3", "major", "2.0.0"],
+	["1.2.3", "minor", "1.3.0"],
+	["1.2.3", "patch", "1.2.4"],
+	["1.0.0-alpha", "major", "2.0.0"],
+	["1.0.0-alpha", "minor", "1.1.0"],
+	["1.0.0-alpha", "patch", "1.0.1"],
+	["0.9.9", "major", "1.0.0"],
+	["0.9.9", "minor", "0.10.0"],
+	["0.9.9", "patch", "0.9.10"],
+];
+/** [range, version, expected_result] */
+export const rangeTests: ReadonlyArray<[string, string, boolean]> = [
+	// Basic ranges
+	[">=1.0.0", "1.0.0", true],
+	[">=1.0.0", "0.9.9", false],
+	[">1.0.0", "1.0.1", true],
+	[">1.0.0", "1.0.0", false],
+	["<2.0.0", "1.9.9", true],
+	["<2.0.0", "2.0.0", false],
+	["<=2.0.0", "2.0.0", true],
+	["<=2.0.0", "2.0.1", false],
+	["1.0.0", "1.0.0", true],
+	["1.0.0", "1.0.1", false],
+	// Tilde ranges
+	["~1.2.3", "1.2.3", true],
+	["~1.2.3", "1.2.9", true],
+	["~1.2.3", "1.3.0", false],
+	["~1.2", "1.2.0", true],
+	["~1.2", "1.2.999", true],
+	["~1.2", "1.3.0", false],
+	["~1", "1.0.0", true],
+	["~1", "1.999.999", true],
+	["~1", "2.0.0", false],
+	// Caret ranges
+	["^1.2.3", "1.2.3", true],
+	["^1.2.3", "1.9.9", true],
+	["^1.2.3", "2.0.0", false],
+	["^0.2.3", "0.2.3", true],
+	["^0.2.3", "0.2.9", true],
+	["^0.2.3", "0.3.0", false],
+	["^0.0.3", "0.0.3", true],
+	["^0.0.3", "0.0.4", false],
+	// Hyphen ranges
+	["1.0.0 - 2.0.0", "1.5.0", true],
+	["1.0.0 - 2.0.0", "2.0.0", true],
+	["1.0.0 - 2.0.0", "2.0.1", false],
+	["1.0.0 - 2.0.0", "0.9.9", false],
+	// X-ranges
+	["*", "1.0.0", true],
+	["*", "999.999.999", true],
+	["1.x", "1.0.0", true],
+	["1.x", "1.999.0", true],
+	["1.x", "2.0.0", false],
+	["1.2.x", "1.2.0", true],
+	["1.2.x", "1.2.999", true],
+	["1.2.x", "1.3.0", false],
+	// OR ranges
+	[">=1.0.0 <2.0.0 || >=3.0.0", "1.5.0", true],
+	[">=1.0.0 <2.0.0 || >=3.0.0", "2.5.0", false],
+	[">=1.0.0 <2.0.0 || >=3.0.0", "3.0.0", true],
+	// Prerelease
+	[">=1.0.0-alpha", "1.0.0-beta", true],
+	[">=1.0.0-alpha", "1.0.0", true],
+	[">=1.0.0-alpha <1.0.1", "1.0.0-rc", true],
+	// Prerelease tuple restriction
+	[">=1.0.0 <2.0.0", "1.5.0-alpha", false],
+];
 export const validVersions: ReadonlyArray<string> = [
 	"0.0.0",
 	"1.0.0",
