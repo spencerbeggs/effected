@@ -281,7 +281,11 @@ describe("Markdown parse invariants", () => {
 		);
 	});
 
-	it("never throws on a large input", () => {
+	// Invariant, not a performance budget: parsing ~500KB under coverage in a
+	// whole-workspace run shares cores with 18 other suites, so the default 5s
+	// timeout flakes on contention. The calibrated pathological suite owns
+	// timing; this test only asserts totality.
+	it("never throws on a large input", { timeout: 30_000 }, () => {
 		const large = "para *em* [ref][a] `code`\n\n".repeat(20_000);
 		assert.isAbove(large.length, 500_000);
 		const result = Markdown.parseResult(large);
