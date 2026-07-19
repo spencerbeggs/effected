@@ -39,7 +39,7 @@ Application pattern — exact pin directly:
 
 ## Testing machinery
 
-None — no runtime code.
+One suite, `__test__/allowed-versions.test.ts`, covering the allowed-versions generator (`allowed-versions.gen.ts`): the package's `pnpm:export` script first regenerates a `peerDependencyRules.allowedVersions` table — one version-qualified rule `"<satellite>@<its pin>>effect"` per v4 lock-catalog package, valued at the effect pin — as pure literals spliced between sentinel comments in `savvy.build.ts`, because the export CLI statically evaluates the config source and rejects computed values. A drift tripwire test fails whenever the committed table differs from regeneration, so a catalog advance cannot leave the table behind. Never a blanket or unqualified key: the version qualifier is what keeps a same-named Effect v3 satellite's genuine unmet peer warning alive, and the kit's own `@effected/*` artifacts are deliberately not covered (their stranding is repaired by the toolchain republish cycle).
 
 ## Gotchas
 
