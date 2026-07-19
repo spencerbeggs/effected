@@ -28,17 +28,17 @@ settings:
 catalogs:
   effect:
     '@effect/platform-node':
-      specifier: 4.0.0-beta.98
-      version: 4.0.0-beta.98
+      specifier: 4.0.0-beta.99
+      version: 4.0.0-beta.99
     '@effect/sql-sqlite-node':
-      specifier: 4.0.0-beta.98
-      version: 4.0.0-beta.98
+      specifier: 4.0.0-beta.99
+      version: 4.0.0-beta.99
     '@effect/vitest':
-      specifier: 4.0.0-beta.98
-      version: 4.0.0-beta.98
+      specifier: 4.0.0-beta.99
+      version: 4.0.0-beta.99
     effect:
-      specifier: 4.0.0-beta.98
-      version: 4.0.0-beta.98
+      specifier: 4.0.0-beta.99
+      version: 4.0.0-beta.99
   silk:
     '@rspress/core':
       specifier: ^2.0.17
@@ -82,10 +82,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1(supports-color@9.4.0))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@9.4.0))
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
@@ -97,13 +97,13 @@ importers:
         version: link:../xdg/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -113,10 +113,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1(supports-color@9.4.0))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@9.4.0))
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
@@ -137,7 +137,7 @@ importers:
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -147,19 +147,19 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1(supports-color@9.4.0))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@9.4.0))
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -169,16 +169,16 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       minimatch:
         specifier: 10.2.5
         version: 10.2.5
@@ -191,16 +191,16 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -210,7 +210,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
@@ -231,7 +231,7 @@ importers:
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -241,7 +241,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
@@ -262,7 +262,7 @@ importers:
         version: 0.31.2
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       entities:
         specifier: 6.0.1
         version: 6.0.1
@@ -275,19 +275,19 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@effected/semver':
         specifier: workspace:*
         version: link:../semver/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -307,19 +307,19 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1(supports-color@9.4.0))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@9.4.0))
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -329,16 +329,16 @@ importers:
     devDependencies:
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       rolldown-pnpm-config:
         specifier: ^0.4.0
-        version: 0.4.0(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(rolldown@1.2.0)
+        version: 0.4.1(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(rolldown@1.2.0)
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -352,16 +352,16 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -371,16 +371,16 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -390,20 +390,20 @@ importers:
     dependencies:
       '@effect/sql-sqlite-node':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -413,16 +413,16 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       smol-toml:
         specifier: 1.7.0
         version: 1.7.0
@@ -435,7 +435,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
@@ -450,7 +450,7 @@ importers:
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -460,19 +460,19 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -519,19 +519,19 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1(supports-color@9.4.0))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@9.4.0))
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -541,7 +541,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
@@ -550,13 +550,13 @@ importers:
         version: link:../walker/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -566,16 +566,16 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.0.3
-        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
+        version: 2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-beta.98
+        version: 4.0.0-beta.99
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -866,15 +866,27 @@ packages:
       effect: ^4.0.0-beta.98
       ioredis: ^5.7.0
 
+  '@effect/platform-node@4.0.0-beta.99':
+    resolution: {integrity: sha512-jnK2KMW4W50AEOKK+Tgvab3YPHBxa3ApLQE8BCad+LH57JOziKzOjqtEpAgJgmao3t77x1UESK4JraaHJDHaYA==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      effect: ^4.0.0-beta.99
+      ioredis: ^5.7.0
+
   '@effect/sql-sqlite-node@4.0.0-beta.98':
     resolution: {integrity: sha512-FNbCms8egZYvkF3aKbM4RRxpFGnCFc31yifn5PRrTDxDzhXakD+RQcBDNI64GvI+UXLxecBHhu+Qj2ZLncf5iw==}
     peerDependencies:
       effect: ^4.0.0-beta.98
 
-  '@effect/vitest@4.0.0-beta.98':
-    resolution: {integrity: sha512-uXRPuN8Y6v43/OVmQwKOd/VFDh+dipaxGKdWPr1bdnM+4bl8NZlYYRJi5omgXLFZ6ZbleduXKcmLM3NeePe69w==}
+  '@effect/sql-sqlite-node@4.0.0-beta.99':
+    resolution: {integrity: sha512-43fKlLxWADCDdRYU+ZTig/xeYfyXQOR+j+A0Tp1dZRpztfH8xIkz7o8XxAgcAZMlW3a0EmaHdlgFSU7itziRog==}
     peerDependencies:
-      effect: ^4.0.0-beta.98
+      effect: ^4.0.0-beta.99
+
+  '@effect/vitest@4.0.0-beta.99':
+    resolution: {integrity: sha512-SiZo3UGTsG2itbqLU1SJVmFraK+0AkrEU7ZLRpQALx3lFRBaohzB/7UQKVsRjCHHjDg0kNkGitZusGRN3mVAhg==}
+    peerDependencies:
+      effect: ^4.0.0-beta.99
       vitest: ^3.0.0 || ^4.0.0
 
   '@effected/jsonc@0.2.0':
@@ -895,12 +907,6 @@ packages:
 
   '@effected/workspaces@0.3.1':
     resolution: {integrity: sha512-31eOrGo87Ns+bxBOTNPDevU9exhhZp4NJtMaIxceVVbSZtzd0Ff96gbf9YLOG5R4iSbZdLPA9ZKeUrP2gCLVEQ==}
-    engines: {node: '>=24.11.0'}
-    peerDependencies:
-      effect: 4.0.0-beta.98
-
-  '@effected/yaml@0.1.0':
-    resolution: {integrity: sha512-PEhAtcpcTf2nbHShSq/51Abf83pm+3XwbBE24eAWy9miRGS/vBV+8zGOfYsgQAeZwS5IuOTBY1NcGs823GnJxQ==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       effect: 4.0.0-beta.98
@@ -2974,6 +2980,9 @@ packages:
   effect@4.0.0-beta.98:
     resolution: {integrity: sha512-oz+bsG5h+6RNrw4t5GMfQrk/xBS8ROoqkYsuvRhBr5O7mCOrpvH/hbw+QrDzvKIpX4HJClwm86F94c87W0sJxg==}
 
+  effect@4.0.0-beta.99:
+    resolution: {integrity: sha512-hP1C61uzINfLl/4kKMwcqksxd34s4sQ3VSjsWjhGrkx9CRlXaqnfOK9dpTEKynQ6rA7wU9rb3c+48eDYw7uzxA==}
+
   electron-to-chromium@1.5.393:
     resolution: {integrity: sha512-kiDJdIUawuEIcp9XoICKp1iTYDEbgguIPq526N1Q7jIQDeQ3CqoMx71025PI/7E48Ddtw2HuWsVjY7afEgNxmg==}
 
@@ -4472,12 +4481,12 @@ packages:
       vue-tsc:
         optional: true
 
-  rolldown-pnpm-config@0.4.0:
-    resolution: {integrity: sha512-Do3cq6Xs0kuRu5nG+zwlaq/osKlGdjvBi/fLNLMxdqYkcp1vKL78Pf3va5nn7bg3WS/jcT5/qq+BksB3Sj10iQ==}
+  rolldown-pnpm-config@0.4.1:
+    resolution: {integrity: sha512-uGgItKnaiwX2VNnecaOEJkjhnkt7lw8xIUN++/unOFHxSEb4sz/x+xCajIvwz7IOlcedXGF7RPNDyzJ9QSt8RA==}
     engines: {node: '>=24.11.0'}
     hasBin: true
     peerDependencies:
-      rolldown: ^1.1.0
+      rolldown: ^1.2.0
     peerDependenciesMeta:
       rolldown:
         optional: true
@@ -5572,6 +5581,15 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@effect/platform-node-shared@4.0.0-beta.99(effect@4.0.0-beta.99)':
+    dependencies:
+      '@types/ws': 8.18.1
+      effect: 4.0.0-beta.99
+      ws: 8.21.1
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@effect/platform-node@4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1(supports-color@9.4.0))':
     dependencies:
       '@effect/platform-node-shared': 4.0.0-beta.99(effect@4.0.0-beta.98)
@@ -5583,22 +5601,49 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@effect/platform-node@4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@9.4.0))':
+    dependencies:
+      '@effect/platform-node-shared': 4.0.0-beta.99(effect@4.0.0-beta.99)
+      effect: 4.0.0-beta.99
+      ioredis: 5.11.1(supports-color@9.4.0)
+      mime: 4.1.0
+      undici: 8.7.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@effect/sql-sqlite-node@4.0.0-beta.98(effect@4.0.0-beta.98)':
     dependencies:
       effect: 4.0.0-beta.98
 
-  '@effect/vitest@4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)':
+  '@effect/sql-sqlite-node@4.0.0-beta.99(effect@4.0.0-beta.99)':
     dependencies:
-      effect: 4.0.0-beta.98
+      effect: 4.0.0-beta.99
+
+  '@effect/vitest@4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.10)':
+    dependencies:
+      effect: 4.0.0-beta.99
       vitest: 4.1.10(@types/node@26.1.1)(@vitest/coverage-istanbul@4.1.10)(@vitest/coverage-v8@4.1.10)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.6.1)(tsx@4.23.1)(yaml@2.9.0))
 
   '@effected/jsonc@0.2.0(effect@4.0.0-beta.98)':
     dependencies:
       effect: 4.0.0-beta.98
 
+  '@effected/jsonc@0.2.0(effect@4.0.0-beta.99)':
+    dependencies:
+      effect: 4.0.0-beta.99
+
   '@effected/lockfiles@0.1.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@effected/npm@packages+npm+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/yaml@0.3.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
     dependencies:
       '@effected/jsonc': 0.2.0(effect@4.0.0-beta.98)
+      '@effected/npm': link:packages/npm/dist/dev/pkg
+      '@effected/semver': link:packages/semver/dist/dev/pkg
+      '@effected/yaml': 0.3.0(effect@4.0.0-beta.98)
+      effect: 4.0.0-beta.98
+
+  '@effected/lockfiles@0.1.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@effected/npm@packages+npm+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/yaml@0.3.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)':
+    dependencies:
+      '@effected/jsonc': 0.2.0(effect@4.0.0-beta.99)
       '@effected/npm': link:packages/npm/dist/dev/pkg
       '@effected/semver': link:packages/semver/dist/dev/pkg
       '@effected/yaml': 0.3.0(effect@4.0.0-beta.98)
@@ -5630,6 +5675,24 @@ snapshots:
     transitivePeerDependencies:
       - '@effected/jsonc'
 
+  '@effected/workspaces@0.3.1(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.98)':
+    dependencies:
+      '@effected/git': link:packages/git/dist/dev/pkg
+      '@effected/glob': link:packages/glob/dist/dev/pkg
+      '@effected/lockfiles': 0.1.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@effected/npm@packages+npm+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/yaml@0.3.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
+      '@effected/npm': link:packages/npm/dist/dev/pkg
+      '@effected/package-json': link:packages/package-json/dist/dev/pkg
+      '@effected/semver': link:packages/semver/dist/dev/pkg
+      '@effected/walker': link:packages/walker/dist/dev/pkg
+      '@effected/yaml': 0.3.0(effect@4.0.0-beta.98)
+      '@pnpm/catalogs.config': 1100.0.2
+      '@pnpm/catalogs.protocol-parser': 1100.0.0
+      '@pnpm/catalogs.resolver': 1100.0.0
+      '@pnpm/catalogs.types': 1100.0.0
+      effect: 4.0.0-beta.98
+    transitivePeerDependencies:
+      - '@effected/jsonc'
+
   '@effected/workspaces@0.3.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(effect@4.0.0-beta.98)':
     dependencies:
       '@effected/git': link:packages/git/dist/dev/pkg
@@ -5647,10 +5710,6 @@ snapshots:
       effect: 4.0.0-beta.98
     transitivePeerDependencies:
       - '@effected/jsonc'
-
-  '@effected/yaml@0.1.0(effect@4.0.0-beta.98)':
-    dependencies:
-      effect: 4.0.0-beta.98
 
   '@effected/yaml@0.3.0(effect@4.0.0-beta.98)':
     dependencies:
@@ -6318,9 +6377,9 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
 
-  '@savvy-web/bundler@2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)':
+  '@savvy-web/bundler@2.0.3(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tsx@4.23.1)(typescript@7.0.2)':
     dependencies:
-      '@savvy-web/tsdown-plugins': 2.1.2(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@tsdown/exe@0.22.9)(@types/node@26.1.1)(ioredis@5.11.1(supports-color@9.4.0))(tsx@4.23.1)
+      '@savvy-web/tsdown-plugins': 2.1.2(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@tsdown/exe@0.22.9)(@types/node@26.1.1)(ioredis@5.11.1(supports-color@9.4.0))(tsx@4.23.1)
       '@tsdown/exe': 0.22.9(tsdown@0.22.9)
       '@types/node': 26.1.1
       effect: 4.0.0-beta.98
@@ -6477,13 +6536,13 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@savvy-web/tsdown-plugins@2.1.2(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(@tsdown/exe@0.22.9)(@types/node@26.1.1)(ioredis@5.11.1(supports-color@9.4.0))(tsx@4.23.1)':
+  '@savvy-web/tsdown-plugins@2.1.2(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(@tsdown/exe@0.22.9)(@types/node@26.1.1)(ioredis@5.11.1(supports-color@9.4.0))(tsx@4.23.1)':
     dependencies:
       '@changesets/get-release-plan': 5.0.0-next.8
       '@effect/platform-node': 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1(supports-color@9.4.0))
       '@effected/npm': link:packages/npm/dist/dev/pkg
       '@effected/tsconfig-json': link:packages/tsconfig-json/dist/dev/pkg
-      '@effected/workspaces': 0.3.1(@effected/jsonc@0.2.0(effect@4.0.0-beta.98))(effect@4.0.0-beta.98)
+      '@effected/workspaces': 0.3.1(@effected/jsonc@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.98)
       '@microsoft/api-extractor': 7.58.11(@types/node@26.1.1)
       '@microsoft/tsdoc': 0.16.0
       '@microsoft/tsdoc-config': 0.18.1
@@ -7654,6 +7713,19 @@ snapshots:
   ee-first@1.1.1: {}
 
   effect@4.0.0-beta.98:
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      fast-check: 4.9.0
+      find-my-way-ts: 0.1.6
+      ini: 7.0.0
+      kubernetes-types: 1.30.0
+      msgpackr: 2.0.4
+      multipasta: 0.2.8
+      toml: 4.3.0
+      uuid: 14.0.1
+      yaml: 2.9.0
+
+  effect@4.0.0-beta.99:
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 4.9.0
@@ -9716,11 +9788,11 @@ snapshots:
     transitivePeerDependencies:
       - oxc-resolver
 
-  rolldown-pnpm-config@0.4.0(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(rolldown@1.2.0):
+  rolldown-pnpm-config@0.4.1(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(rolldown@1.2.0):
     dependencies:
       '@effect/platform-node': 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1(supports-color@9.4.0))
       '@effected/semver': link:packages/semver/dist/dev/pkg
-      '@effected/yaml': 0.1.0(effect@4.0.0-beta.98)
+      '@effected/yaml': link:packages/yaml/dist/dev/pkg
       effect: 4.0.0-beta.98
       ink: 7.1.1(@types/react@19.2.17)(react@19.2.7)
       ink-tab: 5.2.0(@types/react@19.2.17)(ink@7.1.1(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)

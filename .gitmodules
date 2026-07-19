@@ -1,6 +1,6 @@
 [submodule ".repos/effect-smol"]
 	path = .repos/effect-smol
-	url = https://github.com/Effect-TS/effect-smol.git
+	url = https://github.com/Effect-TS/effect.git
 	shallow = true
 [submodule ".repos/commonmark-js"]
 	path = .repos/commonmark-js
