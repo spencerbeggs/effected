@@ -243,13 +243,11 @@ describe("Markdown.MarkdownFromString", () => {
 		}),
 	);
 
-	it.effect("fails to encode until stringify lands in P4", () =>
+	it.effect("encodes a tree back to markdown source", () =>
 		Effect.gen(function* () {
-			const root = yield* decode("para\n");
-			const result = yield* Effect.result(encode(root));
-			assert.isTrue(Result.isFailure(result));
-			if (Result.isSuccess(result)) return;
-			assert.include(String(result.failure), "stringify");
+			const root = yield* decode("para *em*\n");
+			const emitted = yield* encode(root);
+			assert.strictEqual(emitted, "para *em*\n");
 		}),
 	);
 });

@@ -15,6 +15,7 @@ import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } fro
 import type { BlockPassResult } from "./internal/blockParser.js";
 import { parseBlocks } from "./internal/blockParser.js";
 import { isGuardExceeded, isRawMarkdownError } from "./internal/carriers.js";
+import { stringifyTree } from "./internal/stringify.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
 import { Root } from "./MarkdownNode.js";
 
@@ -76,6 +77,33 @@ export class MarkdownParseError extends Schema.TaggedErrorClass<MarkdownParseErr
 	override get message(): string {
 		const { code, line, character, message } = this.diagnostic;
 		return `Markdown parse failed: ${code} at ${line}:${character} ${message}`;
+	}
+}
+
+/**
+ * Stringify failure: the {@link MarkdownDiagnostic} describing why the tree
+ * was refused.
+ *
+ * @remarks
+ * Serialization is total over parser-produced trees — the parser cannot
+ * produce one that nests past the guard, because parsing it would have been
+ * refused first. The only failures here are hardening-guard trips on
+ * synthesized or decoded hostile trees, symmetric with
+ * {@link MarkdownParseError}'s posture on parse. Stringify has no source
+ * text to derive positions from, so the diagnostic's `line`/`character` are
+ * `0` and `offset` carries whatever the offending node's position claimed.
+ *
+ * @public
+ */
+export class MarkdownStringifyError extends Schema.TaggedErrorClass<MarkdownStringifyError>()(
+	"MarkdownStringifyError",
+	{
+		diagnostic: MarkdownDiagnostic,
+	},
+) {
+	override get message(): string {
+		const { code, message } = this.diagnostic;
+		return `Markdown stringify failed: ${code} ${message}`;
 	}
 }
 
@@ -195,15 +223,67 @@ export class Markdown {
 	);
 
 	/**
-	 * A `Schema<Root, string>` decoding markdown source into a {@link Root}
-	 * tree.
+	 * Serialize a {@link Root} tree to canonical markdown, synchronously, as a
+	 * `Result`. The pure primitive twin of {@link Markdown.stringify}, on the
+	 * same terms as {@link Markdown.parseResult}.
 	 *
 	 * @remarks
-	 * Decode-only in P1. The encode direction fails with a schema issue
-	 * naming `Markdown.stringify` as the P4 deliverable that will implement
-	 * it; the codec shape is chosen so P4 fills the encode slot without any
-	 * signature change for consumers.
+	 * Canonical serialization: fidelity fields (marker characters, fence
+	 * style, heading spelling) win when present; documented canonical
+	 * defaults apply when absent. The output re-parses to a render-equivalent
+	 * document — the corpus-pinned contract — but is not a byte-level
+	 * round-trip of any original source; surgical editing goes through the
+	 * offset-splice edit layer instead.
 	 *
+	 * Failure is rare by design, symmetric with parse: only a hardening-guard
+	 * trip on a tree nesting past the depth cap fails, and only synthesized
+	 * or decoded trees can nest that far.
+	 *
+	 * @param root - The document tree to serialize.
+	 * @returns A `Result` succeeding with markdown source, or failing with
+	 *   {@link MarkdownStringifyError}.
+	 */
+	static stringifyResult(root: Root): Result.Result<string, MarkdownStringifyError> {
+		try {
+			return Result.succeed(stringifyTree(root));
+		} catch (caught) {
+			if (isGuardExceeded(caught)) {
+				return Result.fail(
+					new MarkdownStringifyError({
+						diagnostic: MarkdownDiagnostic.make({
+							code: caught.reason,
+							message: caught.message,
+							offset: caught.offset,
+							length: 0,
+							line: 0,
+							character: 0,
+						}),
+					}),
+				);
+			}
+			throw caught;
+		}
+	}
+
+	/**
+	 * Serialize a {@link Root} tree to canonical markdown. Defined in terms of
+	 * {@link Markdown.stringifyResult} — synchronous callers can use that
+	 * variant directly.
+	 *
+	 * @param root - The document tree to serialize.
+	 * @returns An `Effect` that succeeds with markdown source, or fails with
+	 *   {@link MarkdownStringifyError}.
+	 */
+	static readonly stringify = Effect.fn("Markdown.stringify")((root: Root) =>
+		Effect.fromResult(Markdown.stringifyResult(root)),
+	);
+
+	/**
+	 * A `Schema<Root, string>` decoding markdown source into a {@link Root}
+	 * tree and encoding a tree back to canonical markdown via
+	 * {@link Markdown.stringifyResult}.
+	 *
+	 * @remarks
 	 * Schema-producing: each call returns a fresh schema whose derivation
 	 * caches are not shared across calls. Bind the result to a `const` on hot
 	 * paths; the pre-bound {@link Markdown.MarkdownFromString} covers the
@@ -224,10 +304,9 @@ export class Markdown {
 							(error) => new SchemaIssue.InvalidValue(Option.some(input), { message: error.message }),
 						),
 					encode: (value: Root) =>
-						Effect.fail(
-							new SchemaIssue.InvalidValue(Option.some(value), {
-								message: "Markdown stringify is not implemented yet (arrives with Markdown.stringify in P4)",
-							}),
+						Effect.mapError(
+							Markdown.stringify(value),
+							(error) => new SchemaIssue.InvalidValue(Option.some(value), { message: error.message }),
 						),
 				}),
 			),

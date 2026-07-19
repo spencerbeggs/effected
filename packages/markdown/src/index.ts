@@ -40,7 +40,13 @@ export {
 	SchemaVersionUnresolvableError,
 } from "./FrontmatterResolver.js";
 export { JsonFrontmatter } from "./JsonFrontmatter.js";
-export { Markdown, MarkdownDialect, MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";
+export {
+	Markdown,
+	MarkdownDialect,
+	MarkdownParseError,
+	MarkdownParseOptions,
+	MarkdownStringifyError,
+} from "./Markdown.js";
 export { MarkdownDiagnostic, MarkdownParseErrorCode } from "./MarkdownDiagnostic.js";
 export { MarkdownDocument } from "./MarkdownDocument.js";
 export type { MarkdownPath, MarkdownSegment } from "./MarkdownEdit.js";
