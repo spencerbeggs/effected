@@ -1,7 +1,7 @@
 import { Toml } from "@effected/toml";
 import { Effect } from "effect";
 import type { FrontmatterCodec } from "./Frontmatter.js";
-import { FrontmatterDecodeError, FrontmatterFormatMismatchError } from "./Frontmatter.js";
+import { FrontmatterDecodeError, FrontmatterEncodeError, FrontmatterFormatMismatchError } from "./Frontmatter.js";
 
 /**
  * The toml frontmatter codec, over `@effected/toml`.
@@ -12,6 +12,12 @@ import { FrontmatterDecodeError, FrontmatterFormatMismatchError } from "./Frontm
  * frontmatter block surfaces as a {@link FrontmatterDecodeError} carrying the
  * `TomlParseError` structurally, never a defect. An empty capture decodes to
  * an empty table (`{}`), toml's empty-document value.
+ *
+ * Encodes with `Toml.stringify`; a value toml cannot represent fails as a
+ * {@link FrontmatterEncodeError} carrying the `TomlStringifyError`
+ * structurally. An empty object encodes to the **empty body** — the exact
+ * mirror of the decode ruling above, rendering as adjacent `+++` fences —
+ * so `set`-then-decode recovers `{}` exactly.
  *
  * `@effected/toml` is an optional peer — importing this module is what
  * requires it; a consumer who never touches toml frontmatter never loads the
@@ -25,4 +31,6 @@ export const TomlFrontmatter: FrontmatterCodec = {
 		node.format !== "toml"
 			? Effect.fail(new FrontmatterFormatMismatchError({ expected: "toml", actual: node.format }))
 			: Toml.parse(node.value).pipe(Effect.mapError((cause) => new FrontmatterDecodeError({ format: "toml", cause }))),
+	encode: (data) =>
+		Toml.stringify(data).pipe(Effect.mapError((cause) => new FrontmatterEncodeError({ format: "toml", cause }))),
 };

@@ -11,11 +11,12 @@
 // bound by the jsonc/yaml/toml parity convention: they are structurally
 // identical to their `Jsonc*`, `Yaml*` and `Toml*` counterparts (same field
 // names, types and semantics) so consumer code can be written once over "a
-// document codec's Edit/Range/Path". Where the siblings themselves diverge —
-// toml's `applyAll` rejects overlapping edits as a thrown defect, jsonc's and
-// yaml's do not check — this module adopts the toml posture: the formatter and
-// modifier never produce overlapping edits, so the check only ever fires on a
-// hand-constructed edit array, which is a programmer error worth surfacing.
+// document codec's Edit/Range/Path". All four packages share the `applyAll`
+// overlap check: rejecting overlapping edits as a thrown defect. The formatter
+// and modifier never produce overlapping edits, so the check only ever fires on
+// a hand-constructed edit array, which is a programmer error worth surfacing.
+// The `format` range-filter posture still diverges: this module and toml use
+// owning-node/expression intersection, yaml requires edits fully within range.
 
 import { Schema } from "effect";
 

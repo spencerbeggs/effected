@@ -8,10 +8,9 @@
 // Markdown-prefix convention instead — `MarkdownFrontmatter.schema`.
 //
 // The round-trip property generates data, stringifies it through each format
-// package's public stringify surface (`Yaml.stringify`, `Toml.stringify`;
-// `@effected/jsonc` ships no public stringify, so the json leg uses
-// `JSON.stringify` — every JSON.stringify output is valid JSON), wraps it in
-// fences, parses with capture on and decodes back through the seam. Generated
+// package's public stringify surface (`Yaml.stringify`, `Toml.stringify`,
+// `Jsonc.stringify`), wraps it in fences, parses with capture on and decodes
+// back through the seam. Generated
 // strings are constrained newline-free: a multi-line string could legally
 // place a bare fence-closer at column zero inside the block (toml multi-line
 // basic strings do exactly that), which the capture scanner would rightly
@@ -19,6 +18,7 @@
 // so the property excludes it.
 
 import { assert, describe, it } from "@effect/vitest";
+import { Jsonc } from "@effected/jsonc";
 import { Toml } from "@effected/toml";
 import { Yaml } from "@effected/yaml";
 import { Effect, Schema } from "effect";
@@ -178,7 +178,7 @@ describe("frontmatter round-trip property", () => {
 	it("json: stringify, parse and decode recovers the data", () => {
 		fc.assert(
 			fc.property(metaArb, (data) => {
-				const block = JSON.stringify(data, null, 2);
+				const block = Effect.runSync(Jsonc.stringify(data));
 				assert.deepStrictEqual(decodeVia(fenced("---json", block, "---"), JsonFrontmatter), data);
 			}),
 			{ numRuns: 60 },

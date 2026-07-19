@@ -7,8 +7,12 @@
 // Two deliberate departures from plain mdast:
 //
 // 1. Every node carries a required `position`. unist makes it optional because
-//    synthesized trees have no source; here the parser is the only producer
-//    and the offset-based edit layer depends on it, so the schema enforces it.
+//    synthesized trees have no source; here the offset-based edit layer
+//    depends on it, so the schema enforces it on every decoded tree. `make`
+//    alone softens the requirement: the field carries a constructor default of
+//    `Position.synthetic` (the same mechanism as the `type` tag), so a
+//    hand-built fragment constructs in one line while decode — the mdast
+//    admission boundary — still demands a full position.
 // 2. Fidelity fields (`headingStyle`, `fenceChar`, `bulletChar`, ...) ride
 //    alongside the mdast fields as `optionalKey` extras. They record concrete
 //    syntax mdast throws away, which lossless editing needs.
@@ -21,7 +25,7 @@
 //
 // Leaf module: imports only `effect`.
 
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 /**
  * A single point in a source document: 1-based `line` and `column`, 0-based
@@ -47,7 +51,38 @@ export class Point extends Schema.Class<Point>("Point")({
 export class Position extends Schema.Class<Position>("Position")({
 	start: Point,
 	end: Point,
-}) {}
+}) {
+	/**
+	 * The zero-width synthetic position: line 1, column 1, offset 0 at both
+	 * ends — the span every node class's `make` fills in when `position` is
+	 * omitted, and the same sentinel `Mdast.fromMdast` synthesizes for foreign
+	 * nodes that carry none.
+	 *
+	 * @remarks
+	 * Clearly synthetic and inert for rendering: trees carrying it serve
+	 * tree-level workflows (stringify, the visitor, `MarkdownFormat.modify`
+	 * replacement fragments, projection out), not offset-splice editing, whose
+	 * offsets must come from a real parse.
+	 */
+	static readonly synthetic: Position = Position.make({
+		start: Point.make({ line: 1, column: 1, offset: 0 }),
+		end: Point.make({ line: 1, column: 1, offset: 0 }),
+	});
+}
+
+// Every node class takes `position` through this field schema: required on
+// the decoded type (a parsed or decoded tree always carries a real span, so
+// the mdast admission boundary is untouched) but constructor-defaulted to the
+// zero-width sentinel, so a replacement fragment for `MarkdownFormat.modify`
+// constructs in one line — `Text.make({ value: "shipped" })`. Constructor
+// defaults apply only to `make`, never to decode or encode.
+//
+// Known limitation (effect@4.0.0-beta.99, tripwired in frontmatter.test.ts):
+// the default makes `make` lose the field's nested plain-object construction
+// — an explicit `position` must be a `Position` instance, not a literal. The
+// type level still admits the literal; upstream's `recurDefaults` replaces
+// the class construction link instead of appending to it.
+const NodePosition = Position.pipe(Schema.withConstructorDefault(Effect.succeed(Position.synthetic)));
 
 /**
  * The explicitness of a reference, per mdast's `referenceType` enum.
@@ -207,7 +242,7 @@ export type TableAlign = typeof TableAlign.Type;
 export class Text extends Schema.Class<Text>("Text")({
 	type: Schema.tag("text"),
 	value: Schema.String,
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -220,7 +255,7 @@ export class Text extends Schema.Class<Text>("Text")({
 export class InlineCode extends Schema.Class<InlineCode>("InlineCode")({
 	type: Schema.tag("inlineCode"),
 	value: Schema.String,
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -233,7 +268,7 @@ export class InlineCode extends Schema.Class<InlineCode>("InlineCode")({
 export class Html extends Schema.Class<Html>("Html")({
 	type: Schema.tag("html"),
 	value: Schema.String,
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -246,7 +281,7 @@ export class Html extends Schema.Class<Html>("Html")({
  */
 export class Break extends Schema.Class<Break>("Break")({
 	type: Schema.tag("break"),
-	position: Position,
+	position: NodePosition,
 	breakStyle: Schema.optionalKey(BreakStyle),
 }) {}
 
@@ -260,7 +295,7 @@ export class Image extends Schema.Class<Image>("Image")({
 	url: Schema.String,
 	title: Schema.optionalKey(Schema.String),
 	alt: Schema.optionalKey(Schema.String),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -278,7 +313,7 @@ export class ImageReference extends Schema.Class<ImageReference>("ImageReference
 	label: Schema.optionalKey(Schema.String),
 	referenceType: ReferenceType,
 	alt: Schema.optionalKey(Schema.String),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -291,7 +326,7 @@ export class ImageReference extends Schema.Class<ImageReference>("ImageReference
 export class Emphasis extends Schema.Class<Emphasis>("Emphasis")({
 	type: Schema.tag("emphasis"),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
-	position: Position,
+	position: NodePosition,
 	markerChar: Schema.optionalKey(EmphasisChar),
 }) {}
 
@@ -305,7 +340,7 @@ export class Emphasis extends Schema.Class<Emphasis>("Emphasis")({
 export class Strong extends Schema.Class<Strong>("Strong")({
 	type: Schema.tag("strong"),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
-	position: Position,
+	position: NodePosition,
 	markerChar: Schema.optionalKey(EmphasisChar),
 }) {}
 
@@ -322,7 +357,7 @@ export class Strong extends Schema.Class<Strong>("Strong")({
 export class Delete extends Schema.Class<Delete>("Delete")({
 	type: Schema.tag("delete"),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -335,7 +370,7 @@ export class Link extends Schema.Class<Link>("Link")({
 	url: Schema.String,
 	title: Schema.optionalKey(Schema.String),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -352,7 +387,7 @@ export class LinkReference extends Schema.Class<LinkReference>("LinkReference")(
 	label: Schema.optionalKey(Schema.String),
 	referenceType: ReferenceType,
 	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -370,7 +405,7 @@ export class FootnoteReference extends Schema.Class<FootnoteReference>("Footnote
 	type: Schema.tag("footnoteReference"),
 	identifier: Schema.String,
 	label: Schema.optionalKey(Schema.String),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -429,7 +464,7 @@ export type PhrasingContent =
  */
 export class ThematicBreak extends Schema.Class<ThematicBreak>("ThematicBreak")({
 	type: Schema.tag("thematicBreak"),
-	position: Position,
+	position: NodePosition,
 	markerChar: Schema.optionalKey(ThematicBreakChar),
 }) {}
 
@@ -448,7 +483,7 @@ export class Code extends Schema.Class<Code>("Code")({
 	value: Schema.String,
 	lang: Schema.optionalKey(Schema.String),
 	meta: Schema.optionalKey(Schema.String),
-	position: Position,
+	position: NodePosition,
 	fenceChar: Schema.optionalKey(FenceChar),
 	fenceLength: Schema.optionalKey(Schema.Number),
 }) {}
@@ -468,7 +503,7 @@ export class Definition extends Schema.Class<Definition>("Definition")({
 	label: Schema.optionalKey(Schema.String),
 	url: Schema.String,
 	title: Schema.optionalKey(Schema.String),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -486,7 +521,7 @@ export class FootnoteDefinition extends Schema.Class<FootnoteDefinition>("Footno
 	identifier: Schema.String,
 	label: Schema.optionalKey(Schema.String),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<FlowContent> => FlowContent)),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -497,7 +532,7 @@ export class FootnoteDefinition extends Schema.Class<FootnoteDefinition>("Footno
 export class Paragraph extends Schema.Class<Paragraph>("Paragraph")({
 	type: Schema.tag("paragraph"),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -512,7 +547,7 @@ export class Heading extends Schema.Class<Heading>("Heading")({
 	type: Schema.tag("heading"),
 	depth: HeadingDepth,
 	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
-	position: Position,
+	position: NodePosition,
 	headingStyle: Schema.optionalKey(HeadingStyle),
 }) {}
 
@@ -533,7 +568,7 @@ export class ListItem extends Schema.Class<ListItem>("ListItem")({
 	type: Schema.tag("listItem"),
 	spread: Schema.optionalKey(Schema.Boolean),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<FlowContent> => FlowContent)),
-	position: Position,
+	position: NodePosition,
 	checked: Schema.optionalKey(Schema.Boolean),
 }) {}
 
@@ -555,7 +590,7 @@ export class List extends Schema.Class<List>("List")({
 	start: Schema.optionalKey(Schema.Number),
 	spread: Schema.optionalKey(Schema.Boolean),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<ListItem> => ListItem)),
-	position: Position,
+	position: NodePosition,
 	bulletChar: Schema.optionalKey(BulletChar),
 	delimiter: Schema.optionalKey(ListDelimiter),
 }) {}
@@ -568,7 +603,7 @@ export class List extends Schema.Class<List>("List")({
 export class Blockquote extends Schema.Class<Blockquote>("Blockquote")({
 	type: Schema.tag("blockquote"),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<FlowContent> => FlowContent)),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -588,7 +623,7 @@ export class Blockquote extends Schema.Class<Blockquote>("Blockquote")({
 export class TableCell extends Schema.Class<TableCell>("TableCell")({
 	type: Schema.tag("tableCell"),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -616,7 +651,7 @@ export type RowContent = TableCell;
 export class TableRow extends Schema.Class<TableRow>("TableRow")({
 	type: Schema.tag("tableRow"),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<TableCell> => TableCell)),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -649,7 +684,7 @@ export class Table extends Schema.Class<Table>("Table")({
 	type: Schema.tag("table"),
 	align: Schema.optionalKey(Schema.Array(Schema.NullOr(TableAlign))),
 	children: Schema.Array(Schema.suspend((): Schema.Codec<TableRow> => TableRow)),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -754,7 +789,7 @@ export class Frontmatter extends Schema.Class<Frontmatter>("Frontmatter")({
 	type: Schema.tag("frontmatter"),
 	format: FrontmatterFormat,
 	value: Schema.String,
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -790,7 +825,7 @@ export class Root extends Schema.Class<Root>("Root")({
 	children: Schema.Array(
 		Schema.suspend((): Schema.Codec<Frontmatter | FlowContent> => Schema.Union([Frontmatter, FlowContent])),
 	),
-	position: Position,
+	position: NodePosition,
 }) {}
 
 /**
@@ -816,3 +851,19 @@ export type MarkdownNode =
 export const MarkdownNode: Schema.Codec<MarkdownNode> = Schema.suspend(() =>
 	Schema.Union([Root, FrontmatterContent, FlowContent, ListContent, PhrasingContent, RowContent, TableContent]),
 );
+
+/**
+ * The union of every node `type` tag this package produces — the selector
+ * vocabulary of `MarkdownDocument.find`/`findAll`.
+ *
+ * @public
+ */
+export type MarkdownNodeType = MarkdownNode["type"];
+
+/**
+ * The node class whose `type` tag is `T` — how a type-string selector narrows
+ * its result (`MarkdownNodeOfType<"heading">` is {@link Heading}).
+ *
+ * @public
+ */
+export type MarkdownNodeOfType<T extends MarkdownNodeType> = Extract<MarkdownNode, { readonly type: T }>;

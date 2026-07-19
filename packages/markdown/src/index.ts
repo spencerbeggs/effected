@@ -22,9 +22,10 @@
  * @packageDocumentation
  */
 
-export type { FrontmatterCodec, FrontmatterSchemaError } from "./Frontmatter.js";
+export type { FrontmatterCodec, FrontmatterSchemaError, FrontmatterWriteError } from "./Frontmatter.js";
 export {
 	FrontmatterDecodeError,
+	FrontmatterEncodeError,
 	FrontmatterFormatMismatchError,
 	FrontmatterMissingError,
 	FrontmatterValidationError,
@@ -63,6 +64,7 @@ export {
 	MarkdownModificationError,
 	MarkdownModificationErrorCode,
 } from "./MarkdownFormat.js";
+export type { MarkdownNodeOfType, MarkdownNodeType } from "./MarkdownNode.js";
 export {
 	Blockquote,
 	Break,

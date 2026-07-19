@@ -41,8 +41,6 @@ import {
 	FenceChar,
 	HeadingStyle,
 	Paragraph,
-	Point,
-	Position,
 	Root,
 	Text,
 	ThematicBreakChar,
@@ -437,12 +435,6 @@ const NO_MULTILINE_ANCESTORS: ReadonlySet<string> = new Set([
 	"heading",
 ]);
 
-const throwawaySpan = (): Position =>
-	Position.make({
-		start: Point.make({ line: 1, column: 1, offset: 0 }),
-		end: Point.make({ line: 1, column: 1, offset: 0 }),
-	});
-
 /** Find `target` by identity; returns its ancestor chain (nearest first) or undefined. */
 const findAncestry = (root: Root, target: MarkdownNode): ReadonlyArray<MarkdownNode> | undefined => {
 	const search = (node: MarkdownNode, trail: Array<MarkdownNode>): ReadonlyArray<MarkdownNode> | undefined => {
@@ -583,9 +575,11 @@ export class MarkdownFormat {
 		}
 		let renderRoot: Root;
 		if (typeof replacement === "string") {
-			const textNode = Text.make({ value: replacement, position: throwawaySpan() });
-			const paragraph = Paragraph.make({ children: [textNode], position: throwawaySpan() });
-			renderRoot = Root.make({ children: [paragraph], position: throwawaySpan() });
+			// Synthesized render scaffolding: `make` fills the zero-width
+			// sentinel position, and the stringifier never reads it.
+			const textNode = Text.make({ value: replacement });
+			const paragraph = Paragraph.make({ children: [textNode] });
+			renderRoot = Root.make({ children: [paragraph] });
 		} else if (slot === "flow") {
 			if (!FLOW_TYPES.has(replacement.type)) {
 				return yield* fail(
@@ -593,7 +587,7 @@ export class MarkdownFormat {
 					`a ${replacement.type} fragment does not fit a flow slot — pass flow content or a plain string`,
 				);
 			}
-			renderRoot = Root.make({ children: [replacement as FlowContent], position: throwawaySpan() });
+			renderRoot = Root.make({ children: [replacement as FlowContent] });
 		} else {
 			if (!PHRASING_TYPES.has(replacement.type)) {
 				return yield* fail(
@@ -601,8 +595,8 @@ export class MarkdownFormat {
 					`a ${replacement.type} fragment does not fit a phrasing slot — pass phrasing content or a plain string`,
 				);
 			}
-			const paragraph = Paragraph.make({ children: [replacement as PhrasingContent], position: throwawaySpan() });
-			renderRoot = Root.make({ children: [paragraph], position: throwawaySpan() });
+			const paragraph = Paragraph.make({ children: [replacement as PhrasingContent] });
+			renderRoot = Root.make({ children: [paragraph] });
 		}
 		const rendered = Markdown.stringifyResult(renderRoot);
 		if (Result.isFailure(rendered)) {

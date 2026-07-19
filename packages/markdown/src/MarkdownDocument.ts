@@ -23,6 +23,8 @@ import type {
 	Link,
 	LinkReference,
 	MarkdownNode,
+	MarkdownNodeOfType,
+	MarkdownNodeType,
 	PhrasingContent,
 } from "./MarkdownNode.js";
 import { Definition, Root } from "./MarkdownNode.js";
@@ -111,6 +113,37 @@ const walkTree = (node: NavigationNode, depth: number, visit: (node: NavigationN
 		}
 	}
 };
+
+// Depth-guarded pre-order search with early exit — `walkTree`'s visit callback
+// cannot stop the walk, and `find` should not pay for the rest of the tree
+// once it has its match.
+const findInTree = (
+	node: NavigationNode,
+	depth: number,
+	predicate: (node: MarkdownNode) => boolean,
+): MarkdownNode | undefined => {
+	if (depth > MAX_NESTING_DEPTH) {
+		throw new Error(`NestingDepthExceeded: limit ${MAX_NESTING_DEPTH} exceeded while walking the document tree`);
+	}
+	if (predicate(node)) {
+		return node;
+	}
+	if ("children" in node) {
+		for (const child of node.children) {
+			const found = findInTree(child, depth + 1, predicate);
+			if (found !== undefined) {
+				return found;
+			}
+		}
+	}
+	return undefined;
+};
+
+/** Normalize a find/findAll selector — a `type` tag or a predicate — to a predicate. */
+const selectorPredicate = (
+	selector: MarkdownNodeType | ((node: MarkdownNode) => boolean),
+): ((node: MarkdownNode) => boolean) =>
+	typeof selector === "string" ? (node: MarkdownNode): boolean => node.type === selector : selector;
 
 const phrasingText = (nodes: ReadonlyArray<PhrasingContent>): string => {
 	let out = "";
@@ -288,6 +321,59 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 			});
 		}
 		return entries;
+	}
+
+	/**
+	 * Find the first node matching a selector, in document pre-order — the
+	 * same order {@link MarkdownVisitor} enters nodes, starting at the root
+	 * itself.
+	 *
+	 * @remarks
+	 * A string selector matches on the node's `type` tag and narrows the
+	 * result (`find("heading")` is `Heading | undefined`); a type-guard
+	 * predicate narrows the same way, and a plain predicate returns the wide
+	 * `MarkdownNode` union. The returned node is the document's own — matched
+	 * and returnable by identity, so it feeds `MarkdownFormat.modify`
+	 * directly. Like the navigation getters, the walk is synchronous with no
+	 * error channel: a tree nested past the depth cap (reachable only via a
+	 * hand-built or foreign decoded tree) is a thrown defect.
+	 *
+	 * @param selector - A node `type` tag or a predicate over nodes.
+	 * @returns The first matching node in document order, or `undefined`.
+	 */
+	find<T extends MarkdownNodeType>(selector: T): MarkdownNodeOfType<T> | undefined;
+	find<T extends MarkdownNode>(selector: (node: MarkdownNode) => node is T): T | undefined;
+	find(selector: (node: MarkdownNode) => boolean): MarkdownNode | undefined;
+	find(selector: MarkdownNodeType | ((node: MarkdownNode) => boolean)): MarkdownNode | undefined {
+		return findInTree(this.root, 0, selectorPredicate(selector));
+	}
+
+	/**
+	 * Find every node matching a selector, in document pre-order — the same
+	 * order {@link MarkdownVisitor} enters nodes, starting at the root itself.
+	 *
+	 * @remarks
+	 * Selector and narrowing semantics are `MarkdownDocument.find`'s; so is
+	 * the guard posture — an over-deep hand-built or foreign tree is a
+	 * thrown defect. Nodes are the document's own, matched by identity, so
+	 * `findAll("heading")[1]` addresses the second heading for
+	 * `MarkdownFormat.modify` without raw child indexing.
+	 *
+	 * @param selector - A node `type` tag or a predicate over nodes.
+	 * @returns Every matching node, in document order; empty when none match.
+	 */
+	findAll<T extends MarkdownNodeType>(selector: T): ReadonlyArray<MarkdownNodeOfType<T>>;
+	findAll<T extends MarkdownNode>(selector: (node: MarkdownNode) => node is T): ReadonlyArray<T>;
+	findAll(selector: (node: MarkdownNode) => boolean): ReadonlyArray<MarkdownNode>;
+	findAll(selector: MarkdownNodeType | ((node: MarkdownNode) => boolean)): ReadonlyArray<MarkdownNode> {
+		const predicate = selectorPredicate(selector);
+		const matches: Array<MarkdownNode> = [];
+		walkTree(this.root, 0, (node) => {
+			if (predicate(node)) {
+				matches.push(node);
+			}
+		});
+		return matches;
 	}
 
 	/**

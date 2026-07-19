@@ -1,7 +1,7 @@
 import { Yaml } from "@effected/yaml";
 import { Effect } from "effect";
 import type { FrontmatterCodec } from "./Frontmatter.js";
-import { FrontmatterDecodeError, FrontmatterFormatMismatchError } from "./Frontmatter.js";
+import { FrontmatterDecodeError, FrontmatterEncodeError, FrontmatterFormatMismatchError } from "./Frontmatter.js";
 
 /**
  * The yaml frontmatter codec, over `@effected/yaml`.
@@ -13,6 +13,12 @@ import { FrontmatterDecodeError, FrontmatterFormatMismatchError } from "./Frontm
  * as a {@link FrontmatterDecodeError} carrying the `YamlParseError`
  * structurally, never a defect. An empty capture decodes to `null`, yaml's
  * empty-document value.
+ *
+ * Encodes with `Yaml.stringify`; an unserializable value fails as a
+ * {@link FrontmatterEncodeError} carrying the `YamlStringifyError`
+ * structurally. An empty object encodes to the flow mapping `{}` —
+ * deliberately not an empty body, which would round-trip as `null` — so
+ * `set`-then-decode recovers `{}` exactly.
  *
  * `@effected/yaml` is an optional peer — importing this module is what
  * requires it; a consumer who never touches yaml frontmatter never loads the
@@ -26,4 +32,6 @@ export const YamlFrontmatter: FrontmatterCodec = {
 		node.format !== "yaml"
 			? Effect.fail(new FrontmatterFormatMismatchError({ expected: "yaml", actual: node.format }))
 			: Yaml.parse(node.value).pipe(Effect.mapError((cause) => new FrontmatterDecodeError({ format: "yaml", cause }))),
+	encode: (data) =>
+		Yaml.stringify(data).pipe(Effect.mapError((cause) => new FrontmatterEncodeError({ format: "yaml", cause }))),
 };

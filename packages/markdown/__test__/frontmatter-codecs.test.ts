@@ -191,8 +191,9 @@ describe("frontmatter codecs", () => {
 		it("the three codecs carry field-identical contract shapes", () => {
 			const codecs: ReadonlyArray<FrontmatterCodec> = [YamlFrontmatter, TomlFrontmatter, JsonFrontmatter];
 			for (const codec of codecs) {
-				assert.deepStrictEqual(Object.keys(codec).sort(), ["decode", "format"]);
+				assert.deepStrictEqual(Object.keys(codec).sort(), ["decode", "encode", "format"]);
 				assert.isFunction(codec.decode);
+				assert.isFunction(codec.encode);
 			}
 			assert.deepStrictEqual(
 				codecs.map((codec) => codec.format),

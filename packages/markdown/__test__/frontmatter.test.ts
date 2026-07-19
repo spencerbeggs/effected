@@ -14,7 +14,7 @@ import { parseBlocks } from "../src/internal/blockParser.js";
 import { Markdown, MarkdownParseOptions } from "../src/Markdown.js";
 import { MarkdownDocument } from "../src/MarkdownDocument.js";
 import type { Frontmatter as FrontmatterNode } from "../src/MarkdownNode.js";
-import { Frontmatter, Root } from "../src/MarkdownNode.js";
+import { Frontmatter, Point, Position, Root } from "../src/MarkdownNode.js";
 
 const withFrontmatter = MarkdownParseOptions.make({ frontmatter: true });
 
@@ -224,12 +224,35 @@ describe("frontmatter capture", () => {
 				type: "frontmatter",
 				format: "yaml",
 				value: "a: 1",
-				position: {
-					start: { line: 1, column: 1, offset: 0 },
-					end: { line: 3, column: 4, offset: 12 },
-				},
+				position: Position.make({
+					start: Point.make({ line: 1, column: 1, offset: 0 }),
+					end: Point.make({ line: 3, column: 4, offset: 12 }),
+				}),
 			});
 			assert.strictEqual(node.format, "yaml");
+		});
+
+		// Known-limitation tripwire (effect@4.0.0-beta.99): `withConstructorDefault`
+		// on the `position` field makes `SchemaParser.recurDefaults` REPLACE the
+		// class field's construction link with the default link, so an explicit
+		// plain-object position — admitted by `~type.make.in` at the type level,
+		// and constructed fine before the default landed — now throws in `make`.
+		// Decode is untouched (plain positions still admit at the mdast
+		// boundary). If this test goes red, upstream fixed the replacement to
+		// append: delete this pin and re-widen the previous test to the plain
+		// literal.
+		it("make no longer constructs a plain-object position (upstream recurDefaults limitation)", () => {
+			assert.throws(() =>
+				Frontmatter.make({
+					type: "frontmatter",
+					format: "yaml",
+					value: "a: 1",
+					position: {
+						start: { line: 1, column: 1, offset: 0 },
+						end: { line: 3, column: 4, offset: 12 },
+					},
+				}),
+			);
 		});
 	});
 });

@@ -1,7 +1,7 @@
 import { Jsonc } from "@effected/jsonc";
 import { Effect } from "effect";
 import type { FrontmatterCodec } from "./Frontmatter.js";
-import { FrontmatterDecodeError, FrontmatterFormatMismatchError } from "./Frontmatter.js";
+import { FrontmatterDecodeError, FrontmatterEncodeError, FrontmatterFormatMismatchError } from "./Frontmatter.js";
 
 /**
  * The json frontmatter codec, over `@effected/jsonc`.
@@ -16,6 +16,11 @@ import { FrontmatterDecodeError, FrontmatterFormatMismatchError } from "./Frontm
  * empty capture fails typed: unlike yaml and toml, JSON has no
  * empty-document value.
  *
+ * Encodes with `Jsonc.stringify` — plain 2-space JSON emission, never
+ * comments; a circular reference, a `bigint` or a top-level unrepresentable
+ * value fails as a {@link FrontmatterEncodeError} carrying the
+ * `JsoncStringifyError` structurally. An empty object encodes to `{}`.
+ *
  * `@effected/jsonc` is an optional peer — importing this module is what
  * requires it; a consumer who never touches json frontmatter never loads the
  * jsonc engine.
@@ -28,4 +33,6 @@ export const JsonFrontmatter: FrontmatterCodec = {
 		node.format !== "json"
 			? Effect.fail(new FrontmatterFormatMismatchError({ expected: "json", actual: node.format }))
 			: Jsonc.parse(node.value).pipe(Effect.mapError((cause) => new FrontmatterDecodeError({ format: "json", cause }))),
+	encode: (data) =>
+		Jsonc.stringify(data).pipe(Effect.mapError((cause) => new FrontmatterEncodeError({ format: "json", cause }))),
 };
