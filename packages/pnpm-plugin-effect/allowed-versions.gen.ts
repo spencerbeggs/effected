@@ -8,18 +8,25 @@
 // the single source of truth `pnpm:up` maintains — and splices them between
 // sentinel comments, so the table can never drift from the catalog it mirrors.
 //
-// The rules are parent-scoped ("<member>>effect"), never blanket: a blanket
-// `effect` rule would also silence a genuine Effect v3 satellite's unmet `^3`
-// peer, because pnpm checks the found version against the rule range
-// regardless of what the parent asked for. One rule per @effected workspace
-// member; rules for parents absent from the installed graph never match and
-// are harmless. Values are the lock catalog's exact beta only.
+// The rules are version-qualified parent selectors over the effect satellite
+// family — one `"<satellite>@<its pin>>effect"` rule per v4 lock-catalog
+// package, valued at the effect pin — never blanket and never name-only: the
+// same satellite names ship on the Effect v3 line (the effect3 interop
+// catalogs), and pnpm's matcher applies a qualified rule only when the actual
+// parent instance's version satisfies the qualifier (verified in pnpm
+// 11.15.0: `parsePkgAndParentSelector` parses `name@version>peer`, and the
+// bad-issue filter checks `semver.satisfies(parentVersion, qualifier)`), so a
+// v3 satellite's genuine unmet `^3` peer still warns. The @effected kit's own
+// published artifacts are deliberately NOT covered: those strand only until
+// the toolchain republish cycle catches up, which is accepted — the table
+// exists for the uncontrollable drift class, effect's own satellites sitting
+// at a different beta than the installed effect.
 //
 // Invoked by this package's `pnpm:export` script ahead of the real export;
 // runnable directly with `node allowed-versions.gen.ts`. Tests import the
 // exported functions; the write only happens under `import.meta.main`.
 
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,60 +40,45 @@ export const BLOCK_END = "\t\t\t// end generated allowed-versions";
 /** An exact version: no range operator, no wildcard — `X.Y.Z` with an optional prerelease. */
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
+/** A v4 lock-catalog entry: the package and its pinned range. */
+export interface LockEntry {
+	readonly name: string;
+	readonly range: string;
+}
+
 /**
- * Pull the effect lock catalog's pinned beta out of the config source: the
- * bare `effect:` package entry whose `strategy` is `"lock"` — the v4 catalog's
- * pin. The `effect3` interop catalog carries a bare `effect:` entry too, so
- * the strategy is what disambiguates, and the scan refuses anything that is
- * not an exact version — exactness is load-bearing for the whole table.
+ * Pull every `strategy: "lock"` catalog entry out of the config source — the
+ * v4 catalog's membership (the `effect3` catalog is all `interop`, so the
+ * strategy is what disambiguates). Keys are quoted (`"@effect/x"`) except the
+ * bare `effect` identifier; both forms are matched.
  */
-export const extractEffectBeta = (source: string): string => {
-	const matches = [
-		...source.matchAll(
-			/\n\t{6}effect:\s*\{\s*\n\t{7}range:\s*"([^"]+)",\s*\n\t{7}peer:\s*"[^"]+",\s*\n\t{7}strategy:\s*"lock"/g,
-		),
-	];
-	if (matches.length !== 1) {
-		throw new Error(`expected exactly one bare effect catalog entry, found ${matches.length}`);
+export const extractLockEntries = (source: string): ReadonlyArray<LockEntry> => {
+	const entries: Array<LockEntry> = [];
+	for (const match of source.matchAll(
+		/\n\t{6}(?:"([^"]+)"|([A-Za-z_$][\w$]*)):\s*\{\s*\n\t{7}range:\s*"([^"]+)",\s*\n\t{7}peer:\s*"[^"]+",\s*\n\t{7}strategy:\s*"lock"/g,
+	)) {
+		entries.push({ name: match[1] ?? match[2] ?? "", range: match[3] ?? "" });
 	}
-	const version = matches[0]?.[1] ?? "";
-	if (!EXACT_VERSION.test(version)) {
-		throw new Error(`effect catalog range ${JSON.stringify(version)} is not an exact version`);
-	}
-	return version;
+	return entries;
 };
 
-/** The @effected workspace member names, read from packages/<dir>/package.json, sorted. */
-export const readMemberNames = (packagesDir: string): ReadonlyArray<string> => {
-	const names: Array<string> = [];
-	for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
-		let manifest: { name?: unknown };
-		try {
-			manifest = JSON.parse(readFileSync(join(packagesDir, entry.name, "package.json"), "utf8")) as {
-				name?: unknown;
-			};
-		} catch {
-			continue;
-		}
-		if (typeof manifest.name === "string" && manifest.name.startsWith("@effected/")) {
-			names.push(manifest.name);
-		}
-	}
-	return names.sort();
-};
-
-/** One parent-scoped rule per member, valued at the exact beta. Never a blanket key. */
-export const deriveAllowedVersions = (beta: string, members: ReadonlyArray<string>): Record<string, string> => {
-	if (!EXACT_VERSION.test(beta)) {
-		throw new Error(`refusing a non-exact beta ${JSON.stringify(beta)}`);
+/**
+ * The version-qualified rule table: one `"<satellite>@<its pin>>effect"` rule
+ * per lock-catalog package, valued at the effect pin. The bare `effect` entry
+ * supplies the value and gets no rule of its own (it cannot be its own peer
+ * parent); entries whose range is not an exact version are skipped — a range
+ * cannot qualify a parent instance exactly, and widening would recreate the
+ * masking risk. A missing or non-exact effect pin is a hard error.
+ */
+export const deriveAllowedVersions = (entries: ReadonlyArray<LockEntry>): Record<string, string> => {
+	const effectEntry = entries.find((entry) => entry.name === "effect");
+	if (effectEntry === undefined || !EXACT_VERSION.test(effectEntry.range)) {
+		throw new Error(`the effect lock pin is missing or not exact: ${JSON.stringify(effectEntry?.range)}`);
 	}
 	const table: Record<string, string> = {};
-	for (const member of [...members].sort()) {
-		if (!member.startsWith("@effected/")) {
-			throw new Error(`refusing a non-kit parent ${JSON.stringify(member)}`);
-		}
-		table[`${member}>effect`] = beta;
+	for (const { name, range } of entries) {
+		if (name === "effect" || !EXACT_VERSION.test(range)) continue;
+		table[`${name}@${range}>effect`] = effectEntry.range;
 	}
 	return table;
 };
@@ -130,16 +122,15 @@ export const spliceBlock = (source: string, rendered: string): string => {
 	return `${source.slice(0, insertAt)}${rendered}\n${source.slice(insertAt)}`;
 };
 
-/** Derive the current table for a repo layout: config source + packages dir. */
-export const regenerate = (source: string, packagesDir: string): string =>
-	spliceBlock(source, renderBlock(deriveAllowedVersions(extractEffectBeta(source), readMemberNames(packagesDir))));
+/** Derive the current table from the config source alone. */
+export const regenerate = (source: string): string =>
+	spliceBlock(source, renderBlock(deriveAllowedVersions(extractLockEntries(source))));
 
 if (import.meta.main) {
 	const here = dirname(fileURLToPath(import.meta.url));
 	const configFile = join(here, "savvy.build.ts");
-	const packagesDir = dirname(here);
 	const before = readFileSync(configFile, "utf8");
-	const after = regenerate(before, packagesDir);
+	const after = regenerate(before);
 	if (after === before) {
 		console.log("allowed-versions: table already current");
 	} else {
