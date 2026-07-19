@@ -21,11 +21,11 @@ It is the lex → CST → compose → stringify pipeline: `lexer.ts`, `cst-parse
 
 Re-exported from `src/index.ts`; nothing else is public.
 
-- `Yaml.ts` — value-level facade: `parse`/`parseAll`, `stringify`, `stripComments`, `equals`/`equalsValue`, schema factories (`schema`, `fromString`, `allFromString`, the `YamlFromString` singleton). Owns `YamlParseOptions`, `YamlStringifyOptions`, `YamlParseError`, `YamlStringifyError`.
+- `Yaml.ts` — value-level facade: `parse`/`parseAll`, `stringify`, `stripComments`, `equals`/`equalsValue`, schema factories (`schema`, `fromString`, `allFromString`, the `YamlFromString` singleton), and `bind(target)` → a `YamlBoundCodec` `{ schema, decode, encode }` pre-binding both directions, each failing with `Schema.SchemaError` — thin sugar over `schema(target)` plus `Schema.decodeEffect`/`encodeEffect`, adding no error taxonomy of its own. Schema-producing like the rest: bind to a `const` on hot paths. Owns `YamlParseOptions`, `YamlStringifyOptions`, `YamlParseError`, `YamlStringifyError`.
 - `YamlDiagnostic.ts` — structured diagnostic carrying errors *and* warnings-as-data, the staged code unions, and the **single** fatal-code predicate: one source of truth for fatality.
 - `YamlNode.ts` — the co-located mutually-recursive AST: `YamlScalar`, `YamlMap`, `YamlSeq`, `YamlPair`, `YamlAlias`, the `YamlNode` union, and the `ScalarStyle`/`CollectionStyle`/`ScalarChomp` sets. Co-location is what breaks the AST import cycle.
 - `YamlDocument.ts` — `YamlDocument` and `YamlDirective`: full parsed AST plus recovered `errors`/`warnings` arrays.
-- `YamlEdit.ts` — `YamlEdit`, `YamlRange`, `YamlPath`, `YamlSegment`. `applyAll(text, edits)` applies in reverse-offset order.
+- `YamlEdit.ts` — `YamlEdit`, `YamlRange`, `YamlPath`, `YamlSegment`. `applyAll(text, edits)` applies in reverse-offset order and **rejects overlapping edits as a thrown defect** — parity with jsonc, toml and markdown, all four now agreeing. It is a programmer-error guard on hand-constructed arrays; `YamlFormat` never emits overlapping edits.
 - `YamlFormat.ts` — non-mutating `format`/`modify` edits preserving comments and whitespace. Owns `YamlFormattingOptions`, `YamlModificationError`.
 - `YamlVisitor.ts` — SAX-style AST events as `Stream<YamlVisitorEvent>`. Infallible: diagnostics surface as `Error` events, never a stream failure.
 

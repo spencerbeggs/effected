@@ -15,6 +15,7 @@
  * @packageDocumentation
  */
 
+export type { YamlBoundCodec } from "./Yaml.js";
 export {
 	Yaml,
 	YamlParseError,

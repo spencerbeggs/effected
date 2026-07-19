@@ -40,6 +40,27 @@ describe("YamlEdit", () => {
 			);
 		});
 
+		it("touching (adjacent, non-overlapping) edits both apply", () => {
+			assert.strictEqual(
+				YamlEdit.applyAll("abcdef", [
+					YamlEdit.make({ offset: 0, length: 3, content: "X" }),
+					YamlEdit.make({ offset: 3, length: 3, content: "Y" }),
+				]),
+				"XY",
+			);
+		});
+
+		it("overlapping edits throw as a programmer-error defect", () => {
+			assert.throws(
+				() =>
+					YamlEdit.applyAll("abcdef", [
+						YamlEdit.make({ offset: 0, length: 4, content: "x" }),
+						YamlEdit.make({ offset: 2, length: 3, content: "y" }),
+					]),
+				/overlap/,
+			);
+		});
+
 		it("does not mutate the input array", () => {
 			const edits = [YamlEdit.make({ offset: 0, length: 0, content: "!" })];
 			const snapshot = [...edits];

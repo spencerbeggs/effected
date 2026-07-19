@@ -60,10 +60,20 @@ export class YamlEdit extends Schema.Class<YamlEdit>("YamlEdit")({
 	/**
 	 * Apply `edits` to `text`, producing a new string. Edits are applied in
 	 * reverse-offset order so earlier offsets stay valid; the input `edits`
-	 * array is not mutated. Pure and total.
+	 * array is not mutated. Overlapping edits are a programmer error and throw
+	 * as a defect — `YamlFormat` never produces them.
 	 */
 	static applyAll(text: string, edits: ReadonlyArray<YamlEdit>): string {
 		const sorted = [...edits].sort((a, b) => b.offset - a.offset);
+		for (let i = 0; i + 1 < sorted.length; i++) {
+			const upper = sorted[i];
+			const lower = sorted[i + 1];
+			if (lower.offset + lower.length > upper.offset) {
+				throw new Error(
+					`YamlEdit.applyAll received overlapping edits at offsets ${lower.offset} and ${upper.offset} — overlapping edits are a programmer error`,
+				);
+			}
+		}
 		let result = text;
 		for (const edit of sorted) {
 			result = result.substring(0, edit.offset) + edit.content + result.substring(edit.offset + edit.length);
