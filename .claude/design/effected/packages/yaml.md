@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-17
-last-synced: 2026-07-17
+updated: 2026-07-19
+last-synced: 2026-07-19
 completeness: 95
 related:
   - ../architecture.md
@@ -12,6 +12,8 @@ related:
   - ../package-inventory.md
   - semver.md
   - jsonc.md
+  - toml.md
+  - markdown.md
   - package-json.md
   - npm.md
 ---
@@ -33,7 +35,7 @@ Pure tier — no IO anywhere. All inputs are strings; all outputs are values, do
 Per the module-per-concept standard, public source files plus an internal engine directory:
 
 - `src/index.ts` — public surface, re-exports only.
-- `src/Yaml.ts` — the facade. Statics `parse`, `parseAll` (value-level), `stringify`, `stripComments`, `equals`, `equalsValue`, and the schema factories `schema(Target, options?)` / `fromString(options?)` / `allFromString(options?)` plus the `YamlFromString` default-options schema. Owns `YamlParseOptions`, `YamlStringifyOptions`, `YamlParseError`, `YamlStringifyError`.
+- `src/Yaml.ts` — the facade. Statics `parse`, `parseAll` (value-level), `stringify`, `stripComments`, `equals`, `equalsValue`, and the schema factories `schema(Target, options?)` / `fromString(options?)` / `allFromString(options?)` / `bind(Target)` plus the `YamlFromString` default-options schema. Owns `YamlParseOptions`, `YamlStringifyOptions`, `YamlParseError`, `YamlStringifyError` and the `YamlBoundCodec` interface.
 - `src/YamlDiagnostic.ts` — the structured diagnostic concept, carrying both errors *and* warnings-as-data on `YamlDocument`. Owns the staged code literal unions (lex/parse/compose stages) and the **single** fatal-code predicate.
 - `src/YamlNode.ts` — the mutually-recursive AST, co-located in one file (the co-location breaks the import cycle). `YamlScalar`, `YamlMap`, `YamlSeq`, `YamlPair`, `YamlAlias`, the `YamlNode` union, and the `ScalarStyle`/`CollectionStyle` literal sets, with instance navigation methods and `X.is` static guards.
 - `src/YamlDocument.ts` — `YamlDocument` and `YamlDirective`, carrying `errors`/`warnings` `YamlDiagnostic` arrays for the recoverable-parse design.
@@ -74,6 +76,7 @@ A namespace object of statics over the parser, stringifier and schema layers. No
 - `stripComments(text, replaceCh?)` → `string`. Scanner-based, total in both modes: without a `replaceCh`, comment characters are deleted with line breaks kept; with one, offsets are preserved by replacing in place. Pure and quote-aware in both branches.
 - `equals(a, b)` / `equalsValue(a, b)` → `boolean`. Semantic equality (comments/formatting ignored). Any recorded parse error, or a `DuplicateKey` warning, on either side yields `false` — malformed input is never equal to anything, including itself.
 - `schema(Target, options?)`, `fromString(options?)`, `allFromString(options?)`, and the `YamlFromString` default-options schema — see [schema transformation strategy](#schema-transformation-strategy). `fromString` takes **parse** options only; the encode direction uses default stringify options.
+- `bind(Target)` → `YamlBoundCodec<T, RD, RE>` (2026-07-19) — `{ schema, decode, encode }`: the composed `schema` plus both directions derived from it once via `Schema.decodeEffect`/`Schema.encodeEffect`. Thin sugar over `schema(Target)`, introducing **no new error taxonomy** — both directions fail `Schema.SchemaError` exactly as the hand-written pair would, with the target's `RD`/`RE` flowing through. **Single-document form only**: multi-document stays on `allFromString`, since a bound codec's `decode: (text) => T` shape has no natural array reading, and inventing a `bindAll` for a surface with no jsonc/toml analog would spend parity for no consumer. Schema-producing — bind the result to a `const`.
 - Owns `YamlParseOptions` and `YamlStringifyOptions` (both `Schema.Class` with bare `optionalKey` fields and implementation-level defaults — see [options](#options-derivation)).
 
 ### YamlNode (AST)
@@ -97,7 +100,7 @@ The framing flags (`hasDocumentStart`/`hasDocumentEnd`/`hasDocumentStartTab`) ar
 
 ### YamlEdit
 
-`Schema.Class` holding `offset`, `length`, `content`. Static `applyAll(text, edits)` → `string` applies edits in reverse-offset order (byte-minimal, comment/whitespace-preserving — the library's real differentiator). Named `applyAll` to match `JsoncEdit.applyAll` (parity). Owns `YamlRange` (`Schema.Class`: `offset`, `length`) and the `YamlPath` / `YamlSegment` type aliases, all bound by the parity convention.
+`Schema.Class` holding `offset`, `length`, `content`. Static `applyAll(text, edits)` → `string` applies edits in reverse-offset order (byte-minimal, comment/whitespace-preserving — the library's real differentiator) and **rejects overlapping edits as a defect** (2026-07-19): overlapping splices are a caller wiring error, not recoverable input. That guard adopts [toml](toml.md)'s posture, harmonizing `applyAll` across all four format siblings — the divergence [markdown](markdown.md)'s P4 parity note recorded is closed. Named `applyAll` to match `JsoncEdit.applyAll` (parity). Owns `YamlRange` (`Schema.Class`: `offset`, `length`) and the `YamlPath` / `YamlSegment` type aliases, all bound by the parity convention.
 
 ### YamlFormat
 

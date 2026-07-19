@@ -57,6 +57,15 @@ against its services, or test code that uses it.
   a library taking it as a dependency drags integrated tier into every consumer,
   so libraries compose `xdg`/`store`/`config-file` directly.
 
+## In flight (designed, not yet shipped)
+
+- **`@effected/markdown`** — CommonMark + GFM parse/edit/format with mdast
+  interop and schema-decoded frontmatter; pure tier. Designed 2026-07-18,
+  design doc at `.claude/design/effected/packages/markdown.md`; implementation
+  phased P1-P6. Do **not** hand-roll markdown parsing or reach for
+  remark/mdast dependencies in kit code in the interim — check the design doc
+  and the package's progress first.
+
 ## Cross-cutting facts
 
 - Every package publishes a single flat CODE entrypoint (`@effected/<pkg>`) —

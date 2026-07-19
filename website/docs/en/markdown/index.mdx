@@ -1,0 +1,118 @@
+---
+title: "@effected/markdown"
+description: "Zero-dependency CommonMark and GFM parsing, editing and formatting as Effect schemas, on a hardened commonmark.js port."
+---
+
+# @effected/markdown
+
+Zero-dependency CommonMark 0.31.2 and GFM parsing, editing and formatting expressed as Effect schemas and pure functions. Parse markdown into an mdast-shaped tree with byte offsets, decode typed frontmatter, compute offset-splice edits, format, walk a document as a `Stream`, and project to plain mdast JSON for the remark ecosystem.
+
+## Why @effected/markdown
+
+Markdown is the kit's communication layer with AI agents — skills, CLAUDE.md-style context files, knowledge documents. Those files are read and rewritten by programs far more often than by people, yet most JavaScript markdown libraries are render pipelines that treat a document as a stop on the way to HTML. This package treats the document itself as the product: typed, navigable and programmable.
+
+The engine is a vendored, hardened port of commonmark.js — the reference parser maintained by the spec author, restructured construct-per-module with dialect-keyed registries. Dialects are a closed set, `commonmark` or `gfm`, with `gfm` (tables, strikethrough, autolink literals, task-list items, tagfilter and footnotes) the default. Nodes use mdast's exact type names and field shapes, with byte offsets and concrete-syntax fidelity fields riding alongside — the same tree drives spec-conformant parsing, surgical editing and ecosystem interop.
+
+## Install
+
+```bash
+npm install @effected/markdown effect
+```
+
+```bash
+pnpm add @effected/markdown effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no other runtime dependencies. The three frontmatter codecs peer **optionally** on `@effected/yaml`, `@effected/toml` and `@effected/jsonc` — install only the format you decode, and none if you never touch frontmatter.
+
+## Quick start
+
+Frontmatter is where agent documents keep their contract. Compose your schema with a format codec via `MarkdownFrontmatter.schema` for typed, gray-matter-parity decoding — every failure mode is a distinct typed error, never a string:
+
+```ts
+import { MarkdownDocument, MarkdownFrontmatter, MarkdownParseOptions, YamlFrontmatter } from "@effected/markdown";
+import { Effect, Schema } from "effect";
+
+const Skill = Schema.Struct({ name: Schema.String, description: Schema.String });
+const decodeSkill = MarkdownFrontmatter.schema(Skill, YamlFrontmatter);
+
+const source = `---
+name: review
+description: Run the review rubric.
+---
+
+# Review
+`;
+
+const program = Effect.gen(function* () {
+  const document = yield* MarkdownDocument.parse(source, MarkdownParseOptions.make({ frontmatter: true }));
+  return yield* decodeSkill(document);
+});
+
+Effect.runPromise(program).then(console.log);
+// { name: "review", description: "Run the review rubric." }
+```
+
+Capture is opt-in (`---` yaml, `+++` toml, `---json` json) because an enabled capture changes how a document opening with `---` parses — the spec-conformant reading holds unless you ask. Frontmatter blocks can also self-describe via a `$schema` declaration; `SchemaResolver.fromRegistry` resolves declarations like `@savvy/skill@2.1.0` against a registry of schemas you provide.
+
+## Sections are spliceable
+
+`MarkdownDocument` derives navigation from the tree: `headings`, `links`, and `sections` — heading-delimited spans whose ranges feed straight into the offset-splice edit layer. Its `find` and `findAll` selectors narrow by node type — `doc.findAll("heading")` returns `Heading`s, not bare nodes — and also take a predicate or type guard when a type tag is too coarse. Edits are `{ offset, length, content }` splices against the original source, the same parity vocabulary as `@effected/jsonc`, `@effected/yaml` and `@effected/toml`, so everything you don't touch survives byte for byte:
+
+```ts
+import { MarkdownDocument, MarkdownEdit } from "@effected/markdown";
+import { Effect } from "effect";
+
+const source = `# Notes
+
+Keep this paragraph.
+
+## Scratch
+
+Drop these working notes.
+`;
+
+const program = Effect.gen(function* () {
+  const document = yield* MarkdownDocument.parse(source);
+  const edits = document.sections
+    .filter((section) => section.depth === 2)
+    .map((section) => MarkdownEdit.make({ offset: section.range.offset, length: section.range.length, content: "" }));
+  return MarkdownEdit.applyAll(document.source, edits);
+});
+
+Effect.runPromise(program).then(console.log);
+// # Notes
+//
+// Keep this paragraph.
+```
+
+For synthesized trees — node fragments construct in one line, `Text.make({ value: "shipped" })` — `Markdown.stringify` serializes canonically; `MarkdownFormat.format` computes conservative marker-normalization edits (heading style, bullet character, fence character and friends), and `MarkdownFormat.modify` replaces a node by identity with a fragment rendered through the canonical stringifier, so the modified document re-parses cleanly by construction.
+
+## The remark ecosystem is one projection away
+
+`Mdast.toMdast` strips the fidelity fields and emits plain, spec-valid mdast JSON — the exact shape `mdast-util-from-markdown` produces — so the entire mdast utility ecosystem, `mdast-util-to-hast` included, works on the projected tree unchanged. `Mdast.fromMdastResult` is the checked admission boundary in the other direction, decoding foreign trees into the package's node classes:
+
+```ts
+import { Markdown, Mdast } from "@effected/markdown";
+import { Result } from "effect";
+
+const parsed = Markdown.parseResult("A ~~struck~~ sentence.\n");
+if (Result.isSuccess(parsed)) {
+  const tree = Mdast.toMdast(parsed.success);
+  // plain mdast JSON — hand it to any mdast utility
+}
+```
+
+Rendering HTML is deliberately not this package's job — the mdast projection is the bridge, and what you run over it is up to you.
+
+## There is no malformed markdown
+
+CommonMark has no syntax errors: every string is a valid document, so parse is near-total. The error channel carries only hardening-guard trips — nesting depth caps and expansion budgets that turn a crafted nesting bomb into a typed `MarkdownParseError` instead of a `RangeError`. Recoverable oddities surface as diagnostics on the document, never as failures, and the delimiter-stack algorithm keeps parsing linear against the classic quadratic emphasis and link blowups.
+
+## Conformance runs to zero skips
+
+All 652 CommonMark 0.31.2 spec examples pass with an empty skip map, alongside the GFM extension corpora (including the only official footnote corpus), the cmark pathological suite with calibrated timeout assertions, and a 27-fixture mdast interop corpus asserting AST-plus-position equality against `mdast-util-from-markdown`'s exact emission shape. Independently, the `commonmark` npm package is pinned as a devDependency-only differential oracle, agreeing across the full corpus plus tens of thousands of generated documents.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/markdown/api).

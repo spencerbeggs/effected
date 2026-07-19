@@ -133,8 +133,12 @@ const parseLineEnd = (source: string, pos: number): { readonly comment?: string;
 	return { ...(comment !== undefined ? { comment } : {}), end: after };
 };
 
-/** Skip whitespace, newlines and comments inside array brackets. */
-const skipArrayGap = (source: string, pos: number): number => {
+/**
+ * Skip whitespace, newlines and comments inside array brackets or inline-table
+ * braces — the grammar's `ws-comment-newline`, shared by both container
+ * parsers since TOML 1.1 let inline tables span lines.
+ */
+const skipValueGap = (source: string, pos: number): number => {
 	let i = pos;
 	for (;;) {
 		i = scanWhitespace(source, i);
@@ -151,17 +155,6 @@ const skipArrayGap = (source: string, pos: number): number => {
 	}
 };
 
-/** Guard the inline-table single-line rule and unterminated end-of-input. */
-const checkInsideInlineTable = (source: string, pos: number, openPos: number): void => {
-	if (pos >= source.length) {
-		raise("UnterminatedInlineTable", "inline table not closed before end of input", openPos, pos - openPos);
-	}
-	const code = source.charCodeAt(pos);
-	if (code === LF || code === CR) {
-		raise("NewlineInInlineTable", "inline tables must fit on a single line", pos, 1);
-	}
-};
-
 /** Whether a token that classified as `number` spells a float (never called on hex/oct/bin). */
 const isFloatToken = (token: string): boolean =>
 	!/^0[xob]/.test(token) && (/[.eE]/.test(token) || token.includes("inf") || token.includes("nan"));
@@ -174,7 +167,7 @@ const parseArray = (source: string, openPos: number, depth: number): Parsed<Toml
 	const items: Array<TomlValueNode> = [];
 	let i = openPos + 1;
 	for (;;) {
-		i = skipArrayGap(source, i);
+		i = skipValueGap(source, i);
 		if (i >= source.length) {
 			raise("UnterminatedArray", "array not closed before end of input", openPos, i - openPos);
 		}
@@ -184,7 +177,7 @@ const parseArray = (source: string, openPos: number, depth: number): Parsed<Toml
 		}
 		const item = parseValue(source, i, depth);
 		items.push(item.node);
-		i = skipArrayGap(source, item.end);
+		i = skipValueGap(source, item.end);
 		const code = source.charCodeAt(i);
 		if (code === COMMA) {
 			i += 1;
@@ -202,27 +195,35 @@ const parseArray = (source: string, openPos: number, depth: number): Parsed<Toml
 	return { node: new TomlArray({ items, offset: openPos, length: i - openPos }), end: i };
 };
 
-/** An inline table starting at `{`; `depth` is this table's own nesting count. */
+/**
+ * An inline table starting at `{`; `depth` is this table's own nesting count.
+ * TOML 1.1 grammar: `ws-comment-newline` may sit before each key-value,
+ * before each separator and before the closing brace, and a trailing comma is
+ * allowed — but `keyval-sep` is still ws-only, so no newline may split a key
+ * from its `=` or the `=` from its value.
+ */
 const parseInlineTable = (source: string, openPos: number, depth: number): Parsed<TomlInlineTable> => {
 	if (depth > MAX_NESTING_DEPTH) {
 		throw new GuardExceeded("NestingDepthExceeded", MAX_NESTING_DEPTH, depth, openPos);
 	}
 	const entries: Array<TomlInlineEntry> = [];
-	let i = scanWhitespace(source, openPos + 1);
-	checkInsideInlineTable(source, i, openPos);
-	if (source.charCodeAt(i) === RIGHT_BRACE) {
-		return { node: new TomlInlineTable({ entries, offset: openPos, length: i + 1 - openPos }), end: i + 1 };
-	}
+	let i = openPos + 1;
 	for (;;) {
+		i = skipValueGap(source, i);
+		if (i >= source.length) {
+			raise("UnterminatedInlineTable", "inline table not closed before end of input", openPos, i - openPos);
+		}
+		if (source.charCodeAt(i) === RIGHT_BRACE) {
+			i += 1;
+			break;
+		}
 		const entryStart = i;
 		const keyPath = parseKeyPath(source, i);
 		i = scanWhitespace(source, keyPath.end);
-		checkInsideInlineTable(source, i, openPos);
 		if (source.charCodeAt(i) !== EQUALS) {
 			raise("ExpectedEquals", "expected = after key", i, 1);
 		}
 		i = scanWhitespace(source, i + 1);
-		checkInsideInlineTable(source, i, openPos);
 		const value = parseValue(source, i, depth);
 		entries.push(
 			new TomlInlineEntry({
@@ -232,21 +233,18 @@ const parseInlineTable = (source: string, openPos: number, depth: number): Parse
 				length: value.end - entryStart,
 			}),
 		);
-		i = scanWhitespace(source, value.end);
-		checkInsideInlineTable(source, i, openPos);
+		i = skipValueGap(source, value.end);
 		const code = source.charCodeAt(i);
 		if (code === RIGHT_BRACE) {
 			i += 1;
 			break;
 		}
 		if (code === COMMA) {
-			const commaPos = i;
-			i = scanWhitespace(source, i + 1);
-			checkInsideInlineTable(source, i, openPos);
-			if (source.charCodeAt(i) === RIGHT_BRACE) {
-				raise("TrailingCommaInInlineTable", "inline tables may not end with a trailing comma", commaPos, 1);
-			}
+			i += 1;
 			continue;
+		}
+		if (i >= source.length) {
+			raise("UnterminatedInlineTable", "inline table not closed before end of input", openPos, i - openPos);
 		}
 		raise("UnterminatedInlineTable", "expected , or } in inline table", i, 1);
 	}

@@ -16,7 +16,7 @@ const GIT_TIMEOUT = Duration.seconds(30);
  * `exitCode` and `stderr` are populated when git actually ran. `detail`
  * carries a human-readable explanation of an absorbed spawn-level
  * `PlatformError` or a per-run timeout — the two cases where git never
- * produced an exit code at all. {@link GitCommandError.kind | `kind`}
+ * produced an exit code at all. `kind`
  * discriminates a pre-spawn guard rejection (`"refused"`) from a genuine git
  * failure (`"failed"`) structurally, so composed retry/fallback logic never has
  * to parse the prose in `message` or `detail`.

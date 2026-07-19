@@ -145,11 +145,38 @@ inspect the ORIGINAL defect value.
 The no-Fail-reason line is the discriminating assertion — without it, an
 implementation that wraps the defect in a typed error still passes.
 
-**`Exit.isFailure` inside `assert.isTrue(...)` does not narrow.** Verified under
-tsgo: `assert.isTrue(Exit.isFailure(exit))` leaves `exit` at the full union, so
-the next line's `exit.cause` is a type error. Use `if (Exit.isFailure(exit)) { … }`
-as above, or go through `Exit.getCause(exit)` → `Option<Cause<E>>` and branch on
-`Option.isSome`.
+**Assert helpers are never type predicates — narrow with a real `if`.** The
+rule is general, not Exit-specific: `assert.isTrue(guard(x))` leaves `x` at
+the full union for ANY guard, because the assertion signature takes a
+`boolean`, not a type predicate. Verified under tsgo for `Exit.isFailure`:
+`assert.isTrue(Exit.isFailure(exit))` leaves `exit` unnarrowed, so the next
+line's `exit.cause` is a type error — use `if (Exit.isFailure(exit)) { … }`
+as above, or go through `Exit.getCause(exit)` → `Option<Cause<E>>` and branch
+on `Option.isSome`. The same trap applies to `Result.isSuccess`/
+`Result.isFailure` on the kit's pure Result-returning APIs
+(`Jsonc.parseResult` today; more as the Result-parity pattern spreads):
+
+```ts
+const result = Jsonc.parseResult(text);
+// assert.isTrue(Result.isSuccess(result)) — does NOT narrow; result.success below fails tsgo
+if (!Result.isSuccess(result)) {
+  assert.fail("expected a successful parse");
+}
+assert.deepStrictEqual(result.success, { port: 3000 });
+```
+
+**`assert.deepStrictEqual` vs literal-typed encodes.** Comparing an encoded
+value that carries literal types (`type: "root"`) against an untyped
+plain-object fixture fails to COMPILE: chai's `<T>(actual: T, expected: T)`
+unifies `T` from the first argument, and the fixture's `type` widens to
+`string`. The pattern is an explicit type argument with a comment:
+
+```ts
+// fixture is untyped JSON; literal-typed encode needs the explicit <unknown>
+assert.deepStrictEqual<unknown>(encoded, fixture);
+```
+
+Any encode round-trip against plain-object fixtures hits this.
 
 ## Providing test / mock layers
 
@@ -294,6 +321,12 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`. See
   `effect-v4-schema` for making field models canonical so round-trip
   properties do not lie.
+- **`fc.fullUnicodeString` / `fc.fullUnicode` do not exist** in the FastCheck
+  bundled with `effect/testing` at beta.98 (`typeof` is `undefined` — probed
+  2026-07-18). The v4 spelling for hostile-unicode strings (lone surrogates,
+  astral planes, U+0000) is `FastCheck.string({ unit: "binary" })`; plain
+  `FastCheck.string()` stays BMP-safe and misses exactly the inputs a
+  never-throws property exists to find.
 
 ## Time-dependent logic: `TestClock`
 
@@ -475,6 +508,30 @@ A module-level throw — most commonly the `Context.Service` TDZ (see
 **Zero collected tests is never a pass.** Read the Tests line, not the exit code.
 If a file you just touched reports no tests, it did not run: import it directly
 and look at the throw before you believe anything else the suite says.
+
+**The sharper form: ONE broken file zeroes the whole package.** A single test
+file with a load-time error — even a scratch/debug file — silently zeroes the
+entire package run: `Tests: 0/0 passed`, exit 0, and hundreds of sibling tests
+vanish with it. The `--reporter=json` output is equally empty
+(`numTotalTests: 0`, zero suites), so the reporter offers no cause. The tell is
+a package you KNOW has a nonzero suite reporting `0/0`; the remedy is bisecting
+the test files for the one that fails to load (observed 2026-07-18: a 400-test
+package zeroed by one bad scratch file). Never leave scratch `*.test.ts` files
+in a test tree — probe with `npx tsx` against a probe file INSIDE the package
+tree instead (see `effect-v4-source-lookup` for why `/tmp` cannot resolve
+`effect`).
+
+## Timing gates under coverage lie by an order of magnitude
+
+v8 coverage instrumentation cost a measured **~18×** on parser-heavy code in
+this repo (63ms clean vs 1126ms instrumented for the same parse; a 4.9s
+pathological case took 114s). A raw-millisecond performance assertion is
+therefore meaningless under coverage: it fails in CI for reasons unrelated to
+the code. The house pattern is **calibrated budgets** — time a small
+calibration input through the same code path, divide by its clean-run
+baseline, and scale every budget by that factor. A genuine algorithmic
+regression still fails (quadratic outruns any constant factor), while
+instrumentation and slow hardware scale both sides together.
 
 ## House conventions
 

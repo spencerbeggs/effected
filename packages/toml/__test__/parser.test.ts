@@ -230,6 +230,25 @@ describe("parser", () => {
 			const kv = keyValueAt(parseExpressions("a = [1, 2,]"), 0);
 			assert.strictEqual((kv.value as TomlArray).items.length, 2);
 		});
+		it("allows a trailing comma in inline tables (TOML 1.1)", () => {
+			const kv = keyValueAt(parseExpressions("a = {b = 1,}"), 0);
+			assert.strictEqual((kv.value as TomlInlineTable).entries.length, 1);
+		});
+		it("allows newlines and comments inside inline tables (TOML 1.1)", () => {
+			const src = ["t = { # opening", "\ta = 1, # one", "\t# a lone comment line", "\tb = 2,", "}", ""].join("\n");
+			const exprs = tiles(src);
+			assert.strictEqual(exprs.length, 1);
+			const table = keyValueAt(exprs, 0).value as TomlInlineTable;
+			assert.strictEqual(table.entries.length, 2);
+			assert.deepStrictEqual(
+				table.entries.map((entry) => entry.keyPath[0]?.value),
+				["a", "b"],
+			);
+		});
+		it("allows a comment-only empty inline table (TOML 1.1)", () => {
+			const kv = keyValueAt(parseExpressions("a = { # comment\n}\n"), 0);
+			assert.strictEqual((kv.value as TomlInlineTable).entries.length, 0);
+		});
 	});
 
 	describe("errors", () => {
@@ -256,13 +275,17 @@ describe("parser", () => {
 		});
 		it("throws UnterminatedInlineTable on an unclosed inline table", () => {
 			assertParseError("a = {b = 1", "UnterminatedInlineTable");
+			assertParseError("a = {b = 1,", "UnterminatedInlineTable");
+			assertParseError("a = {b = 1 c = 2}", "UnterminatedInlineTable");
 		});
-		it("throws TrailingCommaInInlineTable", () => {
-			assertParseError("a = {b = 1,}", "TrailingCommaInInlineTable");
+		it("keeps keyval-sep newline-free inside inline tables: no newline around =", () => {
+			// TOML 1.1 relaxes ws-comment-newline around entries, NOT keyval-sep.
+			assertParseError("a = {b\n= 1}", "ExpectedEquals");
+			assertParseError("a = {b =\n1}", "ExpectedValue");
 		});
-		it("throws NewlineInInlineTable", () => {
-			assertParseError("a = {b = 1\n}", "NewlineInInlineTable");
-			assertParseError("a = {\nb = 1}", "NewlineInInlineTable");
+		it("rejects a comma-only inline table", () => {
+			assertParseError("a = {,}", "ExpectedKey");
+			assertParseError("a = {b = 1,,c = 2}", "ExpectedKey");
 		});
 		it("throws ExpectedNewline on junk after a value or header", () => {
 			assertParseError("a = 1 b = 2", "ExpectedNewline", 6);

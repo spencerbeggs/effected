@@ -6,7 +6,8 @@
 	"enabledPlugins": {
 		"design-docs@spencerbeggs": true,
 		"silk@savvy-web-systems": true,
-		"vitest-agent@spencerbeggs": true
+		"vitest-agent@spencerbeggs": true,
+		"effected@spencerbeggs": true
 	},
 	"plansDirectory": ".claude/plans"
 }

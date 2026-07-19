@@ -88,6 +88,25 @@ console.log(Jsonc.stripComments(jsonc, " ").length === jsonc.length);
 // true — offset-preserving
 ```
 
+### Stringify a value to JSON
+
+`Jsonc.stringify` closes the loop for *new* documents: it emits plain, 2-space-indented JSON — comments belong to the document and edit layers, not to values — and fails with a typed `JsoncStringifyError` (`CircularReference`, `BigIntValue` or `TopLevelUnrepresentable`) where `JSON.stringify` would throw or return `undefined`. At a synchronous boundary, `Jsonc.stringifyResult` is its `Result` twin:
+
+```ts with-api
+import { Jsonc } from "@effected/jsonc";
+import { Result } from "effect";
+
+const result = Jsonc.stringifyResult({ port: 3000, host: "localhost" });
+
+if (Result.isSuccess(result)) {
+  console.log(result.success);
+  // {
+  //   "port": 3000,
+  //   "host": "localhost"
+  // }
+}
+```
+
 ### Reformat a messy document
 
 `JsoncFormatter.formatToString` reindents a document and returns the formatted text directly. (Its sibling `JsoncFormatter.format` returns the underlying `JsoncEdit` array if you would rather apply the reformat as splices.)

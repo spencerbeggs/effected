@@ -22,8 +22,6 @@ export const TOML_PARSE_ERROR_CODES = [
 	"ExpectedTableHeaderClose",
 	"UnterminatedArray",
 	"UnterminatedInlineTable",
-	"TrailingCommaInInlineTable",
-	"NewlineInInlineTable",
 	"InvalidValue",
 	"InvalidNumber",
 	"IntegerOutOfRange",

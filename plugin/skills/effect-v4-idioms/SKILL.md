@@ -69,6 +69,13 @@ Reach for it when the body has nothing to `yield*` — you still get the named s
 and the stack frames, without a generator wrapping a single expression. The
 generator is the common case, not a requirement.
 
+Two semantics of the plain-function form worth stating, both probed at
+beta.98: the body is **lazy** — it runs when the returned effect is *executed*,
+not when `double(21)` is called (calling the wrapped function only constructs
+the effect); and a **`throw` from the body becomes a `Die` defect**, not a
+typed failure — the plain form gives you no typed error channel for free, so a
+body that can throw belongs in `Effect.try`, or the throw escapes as a defect.
+
 ## `Effect.async` is `Effect.callback`
 
 Wrapping a callback API is **`Effect.callback`**. `Effect.async` is `undefined`
@@ -170,8 +177,22 @@ v4 narrows the old "many types ARE Effects" model to a **`Yieldable`** trait:
 `yield*`-able in a generator, but not assignable to `Effect`.
 
 Still yield directly (no call needed): `Effect`, `Option` (fails
-`NoSuchElementError`), `Result` (fails with its error), `Config` (fails
-`ConfigError`), and any `Context.Service`.
+`NoSuchElementError`), `Config` (fails `ConfigError`), and any
+`Context.Service`.
+
+**`Result` is NOT on that list.** `yield* Result.fail("boom")` inside
+`Effect.gen` dies as a **defect** — `Fiber.runLoop: Not a valid effect:
+failure("boom")` — and the success case dies identically (probed beta.98;
+`Result`'s `[Symbol.iterator]` serves `Result.gen` only, `internal/result.ts:22`).
+The bridge is **`Effect.fromResult`** (`Effect.ts:1781`):
+
+```ts
+const value = yield* Effect.fromResult(Fmt.parseResult(text))  // fails typed with the Result's E
+```
+
+`Result` also has **no `.asEffect()`** — `Result.fail("x").asEffect` is
+`undefined` at beta.98, so the materialize-with-`.asEffect()` advice below
+does not apply to it either. `Effect.fromResult` is the only bridge.
 
 No longer yieldable — call the module function:
 

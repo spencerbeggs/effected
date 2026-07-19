@@ -243,6 +243,50 @@ describe("Toml", () => {
 		);
 	});
 
+	describe("bind", () => {
+		const Config = Schema.Struct({ port: Schema.Number });
+		const config = Toml.bind(Config);
+
+		it.effect("decode parses TOML straight into a validated domain value", () =>
+			Effect.gen(function* () {
+				const value = yield* config.decode("port = 8080\n");
+				assert.deepStrictEqual(value, { port: 8080 });
+			}),
+		);
+
+		it.effect("decode surfaces a SchemaError carrying the parse message on malformed text", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(config.decode("port = 1\nport = 2\n"));
+				assert.strictEqual(error._tag, "SchemaError");
+				assert.include(String(error), "TOML parse failed");
+			}),
+		);
+
+		it.effect("decode surfaces a SchemaError from the target schema, distinct from a parse failure", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(config.decode('port = "not-a-number"\n'));
+				assert.strictEqual(error._tag, "SchemaError");
+				assert.notInclude(String(error), "TOML parse failed");
+			}),
+		);
+
+		it.effect("encode writes canonical TOML that decode round-trips", () =>
+			Effect.gen(function* () {
+				const text = yield* config.encode({ port: 8080 });
+				assert.strictEqual(text, "port = 8080\n");
+				const value = yield* config.decode(text);
+				assert.deepStrictEqual(value, { port: 8080 });
+			}),
+		);
+
+		it.effect("schema is the Toml.schema composition, usable with generic Schema machinery", () =>
+			Effect.gen(function* () {
+				const value = yield* Schema.decodeUnknownEffect(config.schema)("port = 8080\n");
+				assert.deepStrictEqual(value, { port: 8080 });
+			}),
+		);
+	});
+
 	describe("renderInlineValue", () => {
 		it("renders a single value as an inline TOML fragment", () => {
 			assert.strictEqual(renderInlineValue('va"l'), '"va\\"l"');

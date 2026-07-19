@@ -34,6 +34,27 @@ describe("JsoncEdit", () => {
 			assert.strictEqual(JsoncEdit.applyAll("[1,2]", [JsoncEdit.make({ offset: 2, length: 2, content: "" })]), "[1]");
 		});
 
+		it("touching (adjacent, non-overlapping) edits both apply", () => {
+			assert.strictEqual(
+				JsoncEdit.applyAll("abcdef", [
+					JsoncEdit.make({ offset: 0, length: 3, content: "X" }),
+					JsoncEdit.make({ offset: 3, length: 3, content: "Y" }),
+				]),
+				"XY",
+			);
+		});
+
+		it("overlapping edits throw as a programmer-error defect", () => {
+			assert.throws(
+				() =>
+					JsoncEdit.applyAll("abcdef", [
+						JsoncEdit.make({ offset: 0, length: 4, content: "x" }),
+						JsoncEdit.make({ offset: 2, length: 3, content: "y" }),
+					]),
+				/overlap/,
+			);
+		});
+
 		it("does not mutate the input array", () => {
 			const edits = [JsoncEdit.make({ offset: 0, length: 0, content: "!" })];
 			const snapshot = [...edits];

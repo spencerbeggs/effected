@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@effected%2Fpnpm-plugin-effect?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/pnpm-plugin-effect)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
-[![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-f69220.svg)](https://pnpm.io/)
 
 A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to one [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effectPeers` catalog carries the same package set at a computed shared floor — the lowest version safe to advertise as a peer range — so a library you publish does not over-constrain the applications that install it. Install it once and both catalogs are available to every package in your workspace.

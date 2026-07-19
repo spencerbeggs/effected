@@ -93,6 +93,64 @@ export class JsoncParseOptions extends Schema.Class<JsoncParseOptions>("JsoncPar
 	allowEmptyContent: Schema.optionalKey(Schema.Boolean),
 }) {}
 
+/**
+ * The public stringify-error code vocabulary, appearing as the `code` field of
+ * {@link JsoncStringifyError}:
+ *
+ * - `CircularReference` — the value contains a reference cycle, so no finite
+ *   JSON text exists for it.
+ * - `BigIntValue` — the value contains a `bigint` (anywhere, top-level or
+ *   nested), which JSON cannot represent.
+ * - `TopLevelUnrepresentable` — the top-level value (`undefined`, a function
+ *   or a symbol) serializes to no output at all.
+ *
+ * @public
+ */
+export const JsoncStringifyErrorCode = Schema.Literals(["CircularReference", "BigIntValue", "TopLevelUnrepresentable"]);
+
+/**
+ * The union of all JSONC stringify-error code string literals.
+ *
+ * @public
+ */
+export type JsoncStringifyErrorCode = typeof JsoncStringifyErrorCode.Type;
+
+/**
+ * Options controlling stringify behavior. All fields are omissible; the
+ * vocabulary matches `JsoncFormattingOptions`.
+ *
+ * - `tabSize` — the indent width in spaces when `insertSpaces` is `true`.
+ *   Defaults to `2`; `0` produces compact single-line output.
+ * - `insertSpaces` — indent with spaces (`tabSize` of them) when `true`, or a
+ *   single tab character when `false`. Defaults to `true`.
+ *
+ * @public
+ */
+export class JsoncStringifyOptions extends Schema.Class<JsoncStringifyOptions>("JsoncStringifyOptions")({
+	tabSize: Schema.optionalKey(Schema.Number),
+	insertSpaces: Schema.optionalKey(Schema.Boolean),
+}) {}
+
+/**
+ * Stringification failure: a `JsoncStringifyErrorCode` naming the
+ * failure mode, a human-readable `detail` (the engine's message for thrown
+ * cases — on V8 the circular-reference message includes the offending property
+ * path), and the offending `value`. Raised by {@link Jsonc.stringify},
+ * {@link Jsonc.stringifyResult} and the encode direction of the schema
+ * factories.
+ *
+ * @public
+ */
+export class JsoncStringifyError extends Schema.TaggedErrorClass<JsoncStringifyError>()("JsoncStringifyError", {
+	code: JsoncStringifyErrorCode,
+	detail: Schema.String,
+	value: Schema.Unknown,
+}) {
+	override get message(): string {
+		return `JSONC stringify failed: ${this.code} — ${this.detail}`;
+	}
+}
+
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 const toFlags = (options?: JsoncParseOptions): ParseFlags =>
@@ -168,6 +226,25 @@ const deepEqual = (a: unknown, b: unknown, depth = 0): boolean => {
 
 	return false;
 };
+
+// ── Bound codec ─────────────────────────────────────────────────────────────
+
+/**
+ * A domain codec pre-bound to its two directions, returned by
+ * {@link Jsonc.bind}: the composed `schema` (what {@link Jsonc.schema}
+ * returns) plus `decode` and `encode` functions derived from it once, so
+ * callers need no generic `Schema` machinery at the use site.
+ *
+ * @public
+ */
+export interface JsoncBoundCodec<T, RD = never, RE = never> {
+	/** The composed codec decoding a JSONC `string` straight into `T`. */
+	readonly schema: Schema.Codec<T, string, RD, RE>;
+	/** Decode JSONC text into a validated `T`. */
+	readonly decode: (text: string) => Effect.Effect<T, Schema.SchemaError, RD>;
+	/** Encode a `T` back to JSON text (default 2-space indent). */
+	readonly encode: (value: T) => Effect.Effect<string, Schema.SchemaError, RE>;
+}
 
 // ── Facade ──────────────────────────────────────────────────────────────────
 
@@ -274,6 +351,105 @@ export class Jsonc {
 	});
 
 	/**
+	 * Stringify a plain JavaScript value as JSON text, synchronously, returning
+	 * a `Result` instead of an `Effect`. With no options the output is
+	 * byte-identical to `JSON.stringify(value, null, 2)`.
+	 *
+	 * Plain JSON emission: JSONC comments exist only in the document/edit layer
+	 * (`JsoncNode`, `JsoncEdit`, `JsoncFormatter`), so no comment survives — or
+	 * can be produced by — value-level stringification.
+	 *
+	 * Nested unrepresentable values follow `JSON.stringify`'s documented
+	 * semantics: `undefined`, functions and symbols are dropped from objects and
+	 * become `null` in arrays. The typed failure channel covers only the cases
+	 * where output would be absent or an exception thrown — see
+	 * `JsoncStringifyErrorCode`. A throwing `toJSON` method or getter is
+	 * caller code failing and rethrows as a defect, never a typed error.
+	 *
+	 * @remarks
+	 * {@link Jsonc.stringify} is defined in terms of this function; the two
+	 * never diverge. Reach for the `Effect` variant inside Effect code — it
+	 * carries the `Jsonc.stringify` tracing span — and for this one at
+	 * synchronous boundaries.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Jsonc } from "@effected/jsonc";
+	 * import { Result } from "effect";
+	 *
+	 * const ok = Jsonc.stringifyResult({ port: 3000 });
+	 * if (Result.isSuccess(ok)) {
+	 *   console.log(ok.success); // => '{\n  "port": 3000\n}'
+	 * }
+	 *
+	 * const bad = Jsonc.stringifyResult(0n);
+	 * if (Result.isFailure(bad)) {
+	 *   console.log(bad.failure.code); // => "BigIntValue"
+	 * }
+	 * ```
+	 *
+	 * @param value - The plain JavaScript value to stringify.
+	 * @param options - Optional {@link JsoncStringifyOptions}; defaults apply
+	 *   for omitted fields.
+	 * @returns A `Result` succeeding with the JSON text, or failing with a
+	 *   {@link JsoncStringifyError}.
+	 */
+	static stringifyResult(value: unknown, options?: JsoncStringifyOptions): Result.Result<string, JsoncStringifyError> {
+		const space = options?.insertSpaces === false ? "\t" : (options?.tabSize ?? 2);
+		let text: string | undefined;
+		try {
+			text = JSON.stringify(value, null, space);
+		} catch (defect) {
+			// Classify the two exceptions JSON.stringify documents. The message
+			// patterns cover V8 ("circular structure", "serialize a BigInt"), JSC
+			// ("cyclic structures", "serialize BigInt") and SpiderMonkey ("cyclic
+			// object value", "BigInt value can't be serialized"); anything else —
+			// including a throwing `toJSON` or getter — is caller code failing and
+			// rethrows as a genuine defect.
+			if (defect instanceof TypeError) {
+				if (/circular|cyclic/i.test(defect.message)) {
+					return Result.fail(new JsoncStringifyError({ code: "CircularReference", detail: defect.message, value }));
+				}
+				if (/bigint/i.test(defect.message)) {
+					return Result.fail(new JsoncStringifyError({ code: "BigIntValue", detail: defect.message, value }));
+				}
+			}
+			throw defect;
+		}
+		if (text === undefined) {
+			return Result.fail(
+				new JsoncStringifyError({
+					code: "TopLevelUnrepresentable",
+					detail: "the top-level value (undefined, a function or a symbol) has no JSON representation",
+					value,
+				}),
+			);
+		}
+		return Result.succeed(text);
+	}
+
+	/**
+	 * Stringify a plain JavaScript value as JSON text. With no options the
+	 * output is byte-identical to `JSON.stringify(value, null, 2)`. Fails with
+	 * {@link JsoncStringifyError} on circular references, `bigint` values and a
+	 * top-level value with no JSON representation; nested `undefined`, functions
+	 * and symbols follow `JSON.stringify`'s documented semantics (dropped from
+	 * objects, `null` in arrays). Comments are a document/edit-layer concern —
+	 * value-level stringification never emits them. Defined in terms of
+	 * {@link Jsonc.stringifyResult} — synchronous callers can use that variant
+	 * directly.
+	 *
+	 * @param value - The plain JavaScript value to stringify.
+	 * @param options - Optional {@link JsoncStringifyOptions}; defaults apply
+	 *   for omitted fields.
+	 * @returns An `Effect` that succeeds with the JSON text, or fails with a
+	 *   {@link JsoncStringifyError}.
+	 */
+	static readonly stringify = Effect.fn("Jsonc.stringify")((value: unknown, options?: JsoncStringifyOptions) =>
+		Effect.fromResult(Jsonc.stringifyResult(value, options)),
+	);
+
+	/**
 	 * Remove all comments from JSONC, producing valid JSON. Pass a `replaceCh`
 	 * (e.g. `" "`) to replace each comment character instead of deleting it,
 	 * keeping all offsets stable (line breaks inside block comments are kept).
@@ -357,8 +533,11 @@ export class Jsonc {
 
 	/**
 	 * A `Schema<unknown, string>` decoding JSONC with the given `options`
-	 * (defaults when omitted). Encoding is `JSON.stringify` with 2-space indent,
-	 * so comments do not survive a round-trip encode.
+	 * (defaults when omitted). Encoding is {@link Jsonc.stringifyResult} with
+	 * default options (2-space indent, byte-identical to
+	 * `JSON.stringify(value, null, 2)`), so comments do not survive a
+	 * round-trip encode; a {@link JsoncStringifyError} on the encode side
+	 * surfaces as a schema issue.
 	 *
 	 * @remarks
 	 * Schema-producing: each call returns a fresh schema whose derivation caches
@@ -385,7 +564,10 @@ export class Jsonc {
 						}
 						return Effect.succeed(value);
 					},
-					encode: (value: unknown) => Effect.succeed(JSON.stringify(value, null, 2)),
+					encode: (value: unknown) =>
+						Effect.fromResult(Jsonc.stringifyResult(value)).pipe(
+							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(value), { message: error.message })),
+						),
 				}),
 			),
 		);
@@ -412,7 +594,10 @@ export class Jsonc {
 	 *   decode step.
 	 * @returns A codec decoding a JSONC `string` straight into `T`.
 	 */
-	static schema<T, E>(target: Schema.Codec<T, E>, options?: JsoncParseOptions): Schema.Codec<T, string> {
+	static schema<T, E, RD = never, RE = never>(
+		target: Schema.Codec<T, E, RD, RE>,
+		options?: JsoncParseOptions,
+	): Schema.Codec<T, string, RD, RE> {
 		// The double-cast is sound: `fromString` decodes to `Schema.Unknown`, whose
 		// decoded type is `unknown` — precisely the decode-input any `target` codec
 		// accepts. Re-typing `target`'s Encoded from `E` to `unknown` lets the two
@@ -420,7 +605,51 @@ export class Jsonc {
 		// restates. The runtime is untouched — only the Encoded type parameter is
 		// widened, and `Schema.Unknown` accepts every value at runtime.
 		return Jsonc.fromString(options).pipe(
-			Schema.decodeTo(target as unknown as Schema.Codec<T, unknown>),
-		) as unknown as Schema.Codec<T, string>;
+			Schema.decodeTo(target as unknown as Schema.Codec<T, unknown, RD, RE>),
+		) as unknown as Schema.Codec<T, string, RD, RE>;
+	}
+
+	/**
+	 * Bind a target schema to the JSONC codec once, yielding the composed
+	 * schema plus pre-derived `decode`/`encode` directions — the
+	 * {@link Jsonc.schema} composition without the generic `Schema` machinery
+	 * at every use site. Binds the plain form only: default
+	 * {@link JsoncParseOptions} on decode, default stringify options on encode.
+	 *
+	 * Both directions fail with `Schema.SchemaError`, exactly as
+	 * `Schema.decodeEffect`/`Schema.encodeEffect` over {@link Jsonc.schema}
+	 * would; the target's decoding/encoding service requirements flow through.
+	 *
+	 * @remarks
+	 * Schema-producing: each call composes a fresh schema and derives both
+	 * directions from it. Bind the result to a `const` — that single binding is
+	 * the point.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Jsonc } from "@effected/jsonc";
+	 * import { Effect, Schema } from "effect";
+	 *
+	 * const Config = Schema.Struct({ port: Schema.Number });
+	 * const config = Jsonc.bind(Config);
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const value = yield* config.decode('{ "port": 3000 // dev\n }');
+	 *   const text = yield* config.encode(value);
+	 *   return [value, text] as const;
+	 * });
+	 * ```
+	 *
+	 * @param target - The domain schema decoded values must satisfy.
+	 * @returns A {@link JsoncBoundCodec} carrying the composed schema and its
+	 *   two pre-bound directions.
+	 */
+	static bind<T, E, RD = never, RE = never>(target: Schema.Codec<T, E, RD, RE>): JsoncBoundCodec<T, RD, RE> {
+		const schema = Jsonc.schema(target);
+		return {
+			schema,
+			decode: Schema.decodeEffect(schema),
+			encode: Schema.encodeEffect(schema),
+		};
 	}
 }

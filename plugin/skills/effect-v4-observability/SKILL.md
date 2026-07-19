@@ -70,6 +70,18 @@ boundary only); **bare `Effect.fn` = stack-frame ergonomics** (fine internally);
 **`fnUntraced` = hot path, no frames**. "Boundaries only" governs *named* spans —
 it does not forbid bare `Effect.fn` inside an engine.
 
+**Pure `Result`-returning siblings of a spanned boundary carry no span.** When
+a public Effect boundary has a synchronous escape-hatch twin (`Fmt.parse`
+spanned, `Fmt.parseResult` pure — the kit's Result-parity pattern), the sync
+variant is not an Effect and gets no span, no log, no metric; do not wrap it
+in one to "keep coverage uniform" — the uniform-coverage rule governs the
+*Effect* surface. Two obligations instead: the Effect variant is defined **in
+terms of** the Result variant behind its named span (so tracing sees every
+Effect-path call and the two can never diverge), and the sync variant's TSDoc
+points Effect consumers at the spanned variant. A sync twin whose Effect
+sibling lacks a span, or that quietly grows its own logging, is a review
+finding.
+
 Explicit / nested / edge spans:
 
 ```ts

@@ -3,6 +3,13 @@
 // a corpus-wide differential over every toml-test valid file. This is the
 // ONLY file that may import smol-toml.
 //
+// TOML 1.1 coverage: smol-toml 1.7.0 was probed against the 1.1 relaxations
+// (optional seconds, inline-table newlines/comments/trailing commas, \e and
+// \xHH escapes) and accepts them all, so the corpus differential exercises
+// the full 1.1.0 valid tree. The generator emits only 1.0-spelling documents
+// (our stringify writes conservative 1.0 output by design); the corpus is
+// the 1.1 authority and wins any disagreement.
+//
 // Probe-derived decisions (all probed against the installed 1.7.0 before the
 // normalizer was written):
 // - Datetimes are EXCLUDED from generation: smol-toml models all four TOML
@@ -291,7 +298,7 @@ describe("smol-toml differential oracle", () => {
 const CORPUS_DIR = resolve(import.meta.dirname, "fixtures/toml-test/valid");
 
 // Guard against a silently-empty walk (count recorded in the fixture README).
-const README_VALID_COUNT = 205;
+const README_VALID_COUNT = 214;
 
 const validCases: ReadonlyArray<string> = readdirSync(CORPUS_DIR, { recursive: true, encoding: "utf8" })
 	.filter((entry) => entry.endsWith(".toml"))

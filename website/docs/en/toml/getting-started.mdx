@@ -5,7 +5,7 @@ description: Parse, edit, validate and reformat a TOML config with @effected/tom
 
 # Getting Started
 
-Reach for `@effected/toml` when a tool needs to read *or write* a TOML file — a `Cargo.toml`, a `pyproject.toml`, a `netlify.toml`, any `*.toml` config — and must not destroy the comments and layout a human put there. A naive parse-to-object, mutate, re-stringify round-trip throws all of that away and reflows the whole file. This package parses TOML 1.0.0 into a plain value or a byte-exact document, changes exactly the bytes you ask it to, and can decode straight into a validated Effect `Schema`. Everything is a pure function or an `Effect` — there is no IO to mock and nothing to configure.
+Reach for `@effected/toml` when a tool needs to read *or write* a TOML file — a `Cargo.toml`, a `pyproject.toml`, a `netlify.toml`, any `*.toml` config — and must not destroy the comments and layout a human put there. A naive parse-to-object, mutate, re-stringify round-trip throws all of that away and reflows the whole file. This package parses TOML 1.1.0 into a plain value or a byte-exact document, changes exactly the bytes you ask it to, and can decode straight into a validated Effect `Schema`. Everything is a pure function or an `Effect` — there is no IO to mock and nothing to configure.
 
 ## Install
 

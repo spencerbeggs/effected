@@ -1,6 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Equal, Option, Result, Schema } from "effect";
-import { Jsonc, JsoncNode, JsoncParseError, JsoncParseOptions } from "../src/index.js";
+import {
+	Jsonc,
+	JsoncNode,
+	JsoncParseError,
+	JsoncParseOptions,
+	JsoncStringifyError,
+	JsoncStringifyOptions,
+} from "../src/index.js";
 
 const deeplyNested = `${"[".repeat(20000)}1${"]".repeat(20000)}`;
 
@@ -216,6 +223,108 @@ describe("Jsonc", () => {
 		});
 	});
 
+	describe("stringifyResult", () => {
+		it("default output is byte-identical to JSON.stringify(value, null, 2)", () => {
+			const samples: ReadonlyArray<unknown> = [
+				{ port: 3000, hosts: ["a", "b"], nested: { flag: true, nothing: null } },
+				[1, "two", false, null, { deep: [{ deeper: 1.5 }] }],
+				"plain string",
+				42,
+				true,
+				null,
+				{},
+				[],
+			];
+			for (const value of samples) {
+				const result = Jsonc.stringifyResult(value);
+				assert.isTrue(Result.isSuccess(result));
+				assert.strictEqual(Result.getOrThrow(result), JSON.stringify(value, null, 2));
+			}
+		});
+
+		it("fails with CircularReference on a reference cycle", () => {
+			const value: Record<string, unknown> = { a: 1 };
+			value.self = value;
+			const result = Jsonc.stringifyResult(value);
+			assert.isTrue(Result.isFailure(result));
+			if (Result.isFailure(result)) {
+				assert.strictEqual(result.failure._tag, "JsoncStringifyError");
+				assert.strictEqual(result.failure.code, "CircularReference");
+				assert.strictEqual(result.failure.value, value);
+			}
+		});
+
+		it("fails with BigIntValue on top-level and nested bigints", () => {
+			const topLevel = Jsonc.stringifyResult(1n);
+			assert.isTrue(Result.isFailure(topLevel));
+			if (Result.isFailure(topLevel)) {
+				assert.strictEqual(topLevel.failure.code, "BigIntValue");
+			}
+			const nested = Jsonc.stringifyResult({ a: { b: [1n] } });
+			assert.isTrue(Result.isFailure(nested));
+			if (Result.isFailure(nested)) {
+				assert.strictEqual(nested.failure.code, "BigIntValue");
+			}
+		});
+
+		it("fails with TopLevelUnrepresentable when output would be absent", () => {
+			for (const value of [undefined, () => 1, Symbol("s")]) {
+				const result = Jsonc.stringifyResult(value);
+				assert.isTrue(Result.isFailure(result));
+				if (Result.isFailure(result)) {
+					assert.strictEqual(result.failure.code, "TopLevelUnrepresentable");
+				}
+			}
+		});
+
+		it("nested unrepresentables follow JSON.stringify semantics (dropped in objects, null in arrays)", () => {
+			const value = { keep: 1, drop: undefined, fn: () => 1, arr: [undefined, () => 1, 2] };
+			const result = Jsonc.stringifyResult(value);
+			assert.isTrue(Result.isSuccess(result));
+			assert.strictEqual(Result.getOrThrow(result), JSON.stringify(value, null, 2));
+			assert.deepStrictEqual(JSON.parse(Result.getOrThrow(result)), { keep: 1, arr: [null, null, 2] });
+		});
+
+		it("honors the tabSize and insertSpaces knobs", () => {
+			const value = { a: [1] };
+			assert.strictEqual(
+				Result.getOrThrow(Jsonc.stringifyResult(value, JsoncStringifyOptions.make({ tabSize: 4 }))),
+				JSON.stringify(value, null, 4),
+			);
+			assert.strictEqual(
+				Result.getOrThrow(Jsonc.stringifyResult(value, JsoncStringifyOptions.make({ insertSpaces: false }))),
+				JSON.stringify(value, null, "\t"),
+			);
+			assert.strictEqual(
+				Result.getOrThrow(Jsonc.stringifyResult(value, JsoncStringifyOptions.make({ tabSize: 0 }))),
+				JSON.stringify(value),
+			);
+		});
+
+		it("a throwing toJSON rethrows as a defect, never a typed error", () => {
+			const bomb = {
+				toJSON: () => {
+					throw new RangeError("boom");
+				},
+			};
+			assert.throws(() => Jsonc.stringifyResult(bomb), RangeError);
+		});
+	});
+
+	describe("stringify delegates to stringifyResult", () => {
+		it.effect("succeeds and fails identically to the Result variant", () =>
+			Effect.gen(function* () {
+				const text = yield* Jsonc.stringify({ a: 1 });
+				assert.strictEqual(text, JSON.stringify({ a: 1 }, null, 2));
+				const error = yield* Effect.flip(Jsonc.stringify(1n));
+				assert.instanceOf(error, JsoncStringifyError);
+				assert.strictEqual(error._tag, "JsoncStringifyError");
+				assert.strictEqual(error.code, "BigIntValue");
+				assert.include(error.message, "JSONC stringify failed");
+			}),
+		);
+	});
+
 	describe("equals / equalsValue", () => {
 		it("is key-order independent for objects", () => {
 			assert.isTrue(Jsonc.equals('{ "a": 1, "b": 2 }', '{"b":2,"a":1}'));
@@ -341,6 +450,16 @@ describe("Jsonc", () => {
 			}),
 		);
 
+		it.effect("encode surfaces a SchemaError carrying the stringify message on a circular value", () =>
+			Effect.gen(function* () {
+				const value: Record<string, unknown> = {};
+				value.self = value;
+				const error = yield* Effect.flip(Schema.encodeUnknownEffect(Jsonc.JsoncFromString)(value));
+				assert.strictEqual(error._tag, "SchemaError");
+				assert.include(String(error), "JSONC stringify failed");
+			}),
+		);
+
 		it.effect("boundary: Jsonc.parse yields JsoncParseError, never SchemaError", () =>
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(Jsonc.parse("{ bad }"));
@@ -366,6 +485,50 @@ describe("Jsonc", () => {
 				);
 				assert.strictEqual(error._tag, "SchemaError");
 				assert.notInclude(String(error), "JSONC parse failed");
+			}),
+		);
+	});
+
+	describe("bind", () => {
+		const Config = Schema.Struct({ name: Schema.String, version: Schema.Number });
+		const config = Jsonc.bind(Config);
+
+		it.effect("decode parses JSONC straight into a validated domain value", () =>
+			Effect.gen(function* () {
+				const value = yield* config.decode('{ "name": "app", "version": 1 /* v1 */ }');
+				assert.deepStrictEqual(value, { name: "app", version: 1 });
+			}),
+		);
+
+		it.effect("decode surfaces a SchemaError carrying the aggregate parse message on malformed text", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(config.decode("{ bad }"));
+				assert.strictEqual(error._tag, "SchemaError");
+				assert.include(String(error), "JSONC parse failed");
+			}),
+		);
+
+		it.effect("decode surfaces a SchemaError from the target schema, distinct from a parse failure", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(config.decode('{ "name": "app", "version": "not-a-number" }'));
+				assert.strictEqual(error._tag, "SchemaError");
+				assert.notInclude(String(error), "JSONC parse failed");
+			}),
+		);
+
+		it.effect("encode writes JSON text that decode round-trips", () =>
+			Effect.gen(function* () {
+				const text = yield* config.encode({ name: "app", version: 1 });
+				assert.strictEqual(text, JSON.stringify({ name: "app", version: 1 }, null, 2));
+				const value = yield* config.decode(text);
+				assert.deepStrictEqual(value, { name: "app", version: 1 });
+			}),
+		);
+
+		it.effect("schema is the Jsonc.schema composition, usable with generic Schema machinery", () =>
+			Effect.gen(function* () {
+				const value = yield* Schema.decodeUnknownEffect(config.schema)('{ "name": "app", "version": 2, }');
+				assert.deepStrictEqual(value, { name: "app", version: 2 });
 			}),
 		);
 	});

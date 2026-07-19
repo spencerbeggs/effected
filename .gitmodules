@@ -1,4 +1,24 @@
 [submodule ".repos/effect-smol"]
 	path = .repos/effect-smol
-	url = https://github.com/Effect-TS/effect-smol.git
+	url = https://github.com/Effect-TS/effect.git
+	shallow = true
+[submodule ".repos/commonmark-js"]
+	path = .repos/commonmark-js
+	url = https://github.com/commonmark/commonmark.js.git
+	shallow = true
+[submodule ".repos/commonmark-spec"]
+	path = .repos/commonmark-spec
+	url = https://github.com/commonmark/commonmark-spec.git
+	shallow = true
+[submodule ".repos/cmark-gfm"]
+	path = .repos/cmark-gfm
+	url = https://github.com/github/cmark-gfm.git
+	shallow = true
+[submodule ".repos/mdast"]
+	path = .repos/mdast
+	url = https://github.com/syntax-tree/mdast.git
+	shallow = true
+[submodule ".repos/mdast-util-from-markdown"]
+	path = .repos/mdast-util-from-markdown
+	url = https://github.com/syntax-tree/mdast-util-from-markdown.git
 	shallow = true

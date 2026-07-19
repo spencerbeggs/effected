@@ -613,6 +613,50 @@ describe("Yaml", () => {
 		);
 	});
 
+	describe("bind", () => {
+		const Config = Schema.Struct({ host: Schema.String, port: Schema.Number });
+		const config = Yaml.bind(Config);
+
+		it.effect("decode parses YAML straight into a validated domain value", () =>
+			Effect.gen(function* () {
+				const value = yield* config.decode("host: localhost\nport: 3000");
+				assert.deepStrictEqual(value, { host: "localhost", port: 3000 });
+			}),
+		);
+
+		it.effect("decode surfaces a SchemaError carrying the aggregate parse message on malformed text", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(config.decode("host: *missing"));
+				assert.strictEqual(error._tag, "SchemaError");
+				assert.include(String(error), "YAML parse failed");
+			}),
+		);
+
+		it.effect("decode surfaces a SchemaError from the target schema, distinct from a parse failure", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(config.decode("host: localhost\nport: not-a-number"));
+				assert.strictEqual(error._tag, "SchemaError");
+				assert.notInclude(String(error), "YAML parse failed");
+			}),
+		);
+
+		it.effect("encode writes YAML text that decode round-trips", () =>
+			Effect.gen(function* () {
+				const text = yield* config.encode({ host: "localhost", port: 3000 });
+				assert.strictEqual(text, "host: localhost\nport: 3000\n");
+				const value = yield* config.decode(text);
+				assert.deepStrictEqual(value, { host: "localhost", port: 3000 });
+			}),
+		);
+
+		it.effect("schema is the Yaml.schema composition, usable with generic Schema machinery", () =>
+			Effect.gen(function* () {
+				const value = yield* Schema.decodeUnknownEffect(config.schema)("host: localhost\nport: 3000");
+				assert.deepStrictEqual(value, { host: "localhost", port: 3000 });
+			}),
+		);
+	});
+
 	describe("stringify ∘ parse roundtrip (property)", () => {
 		const Sample = Schema.Struct({
 			name: Schema.String,

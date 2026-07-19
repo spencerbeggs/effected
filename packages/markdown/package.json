@@ -1,0 +1,74 @@
+{
+	"name": "@effected/markdown",
+	"version": "0.1.0",
+	"private": true,
+	"description": "CommonMark and GFM markdown parse, edit and transform schemas for Effect",
+	"keywords": ["markdown", "commonmark", "gfm", "mdast", "parser", "effect", "schema", "effected"],
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/markdown#readme",
+	"bugs": {
+		"url": "https://github.com/spencerbeggs/effected/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/markdown"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"email": "spencer@beggs.codes",
+		"url": "https://spencerbeg.gs"
+	},
+	"sideEffects": false,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build:dev": "node savvy.build.ts --target dev",
+		"build:prod": "node savvy.build.ts --target prod",
+		"prepare": "turbo run build:dev",
+		"types:check": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@effect/vitest": "catalog:effect",
+		"@effected/jsonc": "workspace:*",
+		"@effected/toml": "workspace:*",
+		"@effected/yaml": "workspace:*",
+		"@savvy-web/bundler": "^2.0.3",
+		"@types/node": "catalog:silk",
+		"commonmark": "0.31.2",
+		"effect": "catalog:effect",
+		"entities": "6.0.1",
+		"typescript": "catalog:silk"
+	},
+	"peerDependencies": {
+		"@effected/jsonc": "workspace:*",
+		"@effected/toml": "workspace:*",
+		"@effected/yaml": "workspace:*",
+		"effect": "catalog:effect"
+	},
+	"peerDependenciesMeta": {
+		"@effected/jsonc": {
+			"optional": true
+		},
+		"@effected/toml": {
+			"optional": true
+		},
+		"@effected/yaml": {
+			"optional": true
+		}
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist/dev/pkg",
+		"linkDirectory": true,
+		"targets": {
+			"npm": true
+		}
+	}
+}

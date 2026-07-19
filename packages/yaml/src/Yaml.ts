@@ -325,6 +325,25 @@ const stringifyOrFail = (value: unknown, options?: YamlStringifyOptions): Effect
 		},
 	});
 
+// ── Bound codec ─────────────────────────────────────────────────────────────
+
+/**
+ * A domain codec pre-bound to its two directions, returned by
+ * {@link Yaml.bind}: the composed `schema` (what {@link Yaml.schema} returns)
+ * plus `decode` and `encode` functions derived from it once, so callers need
+ * no generic `Schema` machinery at the use site.
+ *
+ * @public
+ */
+export interface YamlBoundCodec<T, RD = never, RE = never> {
+	/** The composed codec decoding a YAML `string` straight into `T`. */
+	readonly schema: Schema.Codec<T, string, RD, RE>;
+	/** Decode a single-document YAML string into a validated `T`. */
+	readonly decode: (text: string) => Effect.Effect<T, Schema.SchemaError, RD>;
+	/** Encode a `T` back to YAML text with default stringify options. */
+	readonly encode: (value: T) => Effect.Effect<string, Schema.SchemaError, RE>;
+}
+
 // ── Facade ──────────────────────────────────────────────────────────────────
 
 /**
@@ -654,6 +673,52 @@ export class Yaml {
 		return Yaml.fromString(options).pipe(
 			Schema.decodeTo(target as unknown as Schema.Codec<T, unknown, RD, RE>),
 		) as unknown as Schema.Codec<T, string, RD, RE>;
+	}
+
+	/**
+	 * Bind a target schema to the YAML codec once, yielding the composed
+	 * schema plus pre-derived `decode`/`encode` directions — the
+	 * {@link Yaml.schema} composition without the generic `Schema` machinery
+	 * at every use site. Binds the plain single-document form only: default
+	 * {@link YamlParseOptions} on decode, default stringify options on encode;
+	 * for multi-document streams compose over {@link Yaml.allFromString}
+	 * directly.
+	 *
+	 * Both directions fail with `Schema.SchemaError`, exactly as
+	 * `Schema.decodeEffect`/`Schema.encodeEffect` over {@link Yaml.schema}
+	 * would; the target's decoding/encoding service requirements flow through.
+	 *
+	 * @remarks
+	 * Schema-producing: each call composes a fresh schema and derives both
+	 * directions from it. Bind the result to a `const` — that single binding is
+	 * the point.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Yaml } from "@effected/yaml";
+	 * import { Effect, Schema } from "effect";
+	 *
+	 * const Config = Schema.Struct({ port: Schema.Number });
+	 * const config = Yaml.bind(Config);
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const value = yield* config.decode("port: 3000");
+	 *   const text = yield* config.encode(value);
+	 *   return [value, text] as const;
+	 * });
+	 * ```
+	 *
+	 * @param target - The domain schema decoded values must satisfy.
+	 * @returns A {@link YamlBoundCodec} carrying the composed schema and its
+	 *   two pre-bound directions.
+	 */
+	static bind<T, E, RD = never, RE = never>(target: Schema.Codec<T, E, RD, RE>): YamlBoundCodec<T, RD, RE> {
+		const schema = Yaml.schema(target);
+		return {
+			schema,
+			decode: Schema.decodeEffect(schema),
+			encode: Schema.encodeEffect(schema),
+		};
 	}
 }
 

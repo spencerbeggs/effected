@@ -1,9 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { Range, SemVer } from "../src/index.js";
-import { incrementTests } from "./fixtures/increments.js";
-import { rangeTests } from "./fixtures/ranges.js";
-import { comparisonPairs, invalidVersions, validVersions } from "./fixtures/versions.js";
+import {
+	comparisonPairs,
+	incrementTests,
+	invalidVersions,
+	rangeTests,
+	validVersions,
+} from "./spec-compliance.fixtures.js";
 
 describe("SemVer 2.0.0 spec compliance", () => {
 	describe("valid versions", () => {

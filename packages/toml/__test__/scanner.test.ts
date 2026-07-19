@@ -64,18 +64,34 @@ describe("scanner", () => {
 			assert.strictEqual(scanBasicString('"\\u0041"', 0).value, "A");
 			assert.strictEqual(scanBasicString('"\\U0001F600"', 0).value, "\u{1F600}");
 		});
+		it("decodes the TOML 1.1 escapes: \\e and \\xHH", () => {
+			assert.strictEqual(scanBasicString('"\\e[0m"', 0).value, "\u001b[0m");
+			assert.strictEqual(scanBasicString('"\\x41\\xff"', 0).value, "Aÿ");
+		});
+		it("decodes \\xHH control characters preserved unnormalized beside real newlines", () => {
+			// Escapes are grammar-siblings of basic-unescaped: the full 0x00-0xFF
+			// range is legal, control characters included, and the decoded bytes
+			// bypass both the control-character ban and newline normalization.
+			assert.strictEqual(scanBasicString('"\\x00"', 0).value, "\u0000");
+			assert.strictEqual(scanBasicString('"a\\x0d\\x0ab"', 0).value, "a\r\nb");
+			// a real newline beside the escaped CRLF is still consumed as a line
+			// ending in a multiline string, while the escaped bytes stay literal
+			assert.strictEqual(scanMultilineBasicString('"""\na\\x0d\\x0a\nb"""', 0).value, "a\r\n\nb");
+		});
 		it("throws UnterminatedString at EOF and on a trailing backslash", () => {
 			assertScanError(() => scanBasicString('"abc', 0), "UnterminatedString", 0);
 			assertScanError(() => scanBasicString('"a\\', 0), "UnterminatedString", 0);
 		});
 		it("throws InvalidEscape on an unknown escape", () => {
-			assertScanError(() => scanBasicString('"a\\xb"', 0), "InvalidEscape", 2);
+			assertScanError(() => scanBasicString('"a\\zb"', 0), "InvalidEscape", 2);
 		});
 		it("throws InvalidUnicodeEscape on surrogates, out-of-range and short hex", () => {
 			assertScanError(() => scanBasicString('"\\uD800"', 0), "InvalidUnicodeEscape", 1);
 			assertScanError(() => scanBasicString('"\\U00110000"', 0), "InvalidUnicodeEscape", 1);
 			assertScanError(() => scanBasicString('"\\u00G0"', 0), "InvalidUnicodeEscape", 1);
 			assertScanError(() => scanBasicString('"\\u00"', 0), "InvalidUnicodeEscape", 1);
+			assertScanError(() => scanBasicString('"\\xG0"', 0), "InvalidUnicodeEscape", 1);
+			assertScanError(() => scanBasicString('"\\x4"', 0), "InvalidUnicodeEscape", 1);
 		});
 		it("throws ControlCharacterInString on raw control characters including DEL", () => {
 			assertScanError(() => scanBasicString('"a\u0001b"', 0), "ControlCharacterInString", 2);
@@ -331,8 +347,23 @@ describe("scanner", () => {
 			assert.strictEqual(classifyInstance("1979-05-27T07:32:00-23:59", TomlOffsetDateTime).offsetMinutes, -1439);
 			assert.isTrue(Object.is(classifyInstance("1979-05-27T07:32:00-00:00", TomlOffsetDateTime).offsetMinutes, 0));
 		});
-		it("requires seconds", () => {
-			assertScanError(() => classifyValueToken("07:32", 0), "InvalidNumber", 0);
+		it("allows omitted seconds, materialized as second 0 (TOML 1.1)", () => {
+			const time = classifyInstance("07:32", TomlLocalTime);
+			assert.strictEqual(time.second, 0);
+			assert.strictEqual(time.nanosecond, 0);
+			const dt = classifyInstance("1979-05-27T07:32", TomlLocalDateTime);
+			assert.strictEqual(dt.second, 0);
+			const odt = classifyInstance("1979-05-27T07:32Z", TomlOffsetDateTime);
+			assert.strictEqual(odt.second, 0);
+			assert.strictEqual(odt.offsetMinutes, 0);
+			assert.strictEqual(classifyInstance("1979-05-27 07:32-07:00", TomlOffsetDateTime).offsetMinutes, -420);
+		});
+		it("rejects a fractional second without seconds: secfrac nests inside the seconds group", () => {
+			// partial-time = time-hour ":" time-minute [ ":" time-second [ time-secfrac ] ]
+			// — the fraction is only reachable through the seconds group.
+			assertScanError(() => classifyValueToken("07:32.5", 0), "InvalidNumber", 0);
+			assertScanError(() => classifyValueToken("1979-05-27T07:32.5", 0), "InvalidNumber", 0);
+			assertScanError(() => classifyValueToken("1979-05-27T07:32.5Z", 0), "InvalidNumber", 0);
 		});
 	});
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-07-16
-last-synced: 2026-07-16
+updated: 2026-07-19
+last-synced: 2026-07-19
 completeness: 88
 related:
   - releases.md
@@ -16,6 +16,7 @@ related:
   - packages/app.md
   - packages/tsconfig-json.md
   - packages/git.md
+  - packages/markdown.md
 ---
 
 # Roadmap
@@ -54,9 +55,20 @@ Naming: recommended `@effected/plugin`. `@effected/config` is rejected because i
 
 `rspress-plugin-api-extractor` already parses and emits markdown via `mdast-util-from-markdown`, `mdast-util-to-hast` and `gray-matter`, so a low-level markdown package has a real identified consumer rather than a speculative one. It is not a release gate: the plugin can keep its `mdast` dependencies and swap everything else.
 
+The package now exists on `feat/markdown` with implementation phases P1-P5 complete (2026-07-19): CommonMark plus the gfm dialect with full conformance, frontmatter with the codec modules and the schema resolver, edit/format with canonical stringify, and the mdast projection, visitor and navigation surface — 3516 tests. P6 (docs and adoption, the rspress-plugin-api-extractor swap) remains before the package's story closes; details in [packages/markdown.md](packages/markdown.md).
+
 ### `@effected/vfs`
 
 Out of the ts-vfs work: the TypeScript-specific part it exercised (a `Vfs` keyed by `node_modules/`-prefixed paths, merge/prefix helpers, an environment seam) is a flavor of a generic virtual filesystem rather than the whole of it. Evidence-gated like everything here — build it only when a **second** VFS consumer materializes beyond the TypeScript one, never speculatively.
+
+## Kit workstreams from the markdown sprint
+
+Recorded 2026-07-19 as findings from the `@effected/markdown` implementation sprint (P1-P5 on `feat/markdown`, see [packages/markdown.md](packages/markdown.md)), in execution order.
+
+1. **Effect beta nosebleed policy** — advance the effect catalogs to the newest beta (currently `.99`) promptly after each phase of major work: the effect team publishes caret peer ranges, so live applications already resolve the newest beta and the kit should test against what consumers actually run. The advance is the user-run `pnpm pnpm:up`/`pnpm pnpm:export` flow with the `.repos/effect-smol` re-pin in the same commit and a full-kit verification after.
+2. **`Jsonc.stringify` and frontmatter completion** — add a canonical stringify to `@effected/jsonc` for surface parity with yaml and toml (design-doc pass on [packages/jsonc.md](packages/jsonc.md) first), then complete the markdown frontmatter story: replace the `JSON.stringify` fallback in the round-trip property and lift `MarkdownFormat.modify`'s frontmatter refusal so frontmatter updates flow through the edit layer.
+3. **Edit-parity hardening** — backport toml's `applyAll` overlap guard to jsonc and yaml, standardize the format range-filter posture (three postures are currently documented across the four format packages) and promote the parity contract in [effect-standards.md](effect-standards.md) from shape-identical to behavior-identical.
+4. **TOML 1.1 investigation** — a design-doc note in [packages/toml.md](packages/toml.md) enumerating the 1.1 delta set (draft spec — verify release status first) against the engine, shaped as a dialect/version option per the markdown dialect-registry pattern; implement when 1.1 tags a release or behind a draft flag on application demand.
 
 ## The tsgo LSP track
 

@@ -114,7 +114,7 @@ export class TomlDateTimeLiteral extends Schema.TaggedClass<TomlDateTimeLiteral>
 }) {}
 
 /**
- * An array value node. Heterogeneous per TOML 1.0.0; may span multiple lines
+ * An array value node. Heterogeneous per TOML; may span multiple lines
  * (the span covers brackets, inner newlines and inner comments).
  *
  * @public
@@ -139,7 +139,8 @@ export class TomlInlineEntry extends Schema.TaggedClass<TomlInlineEntry>()("Toml
 }) {}
 
 /**
- * An inline table value node (`{ k = v, ... }`). Single-line by grammar.
+ * An inline table value node (`{ k = v, ... }`). May span multiple lines
+ * since TOML 1.1 (the span covers braces, inner newlines and inner comments).
  *
  * @public
  */

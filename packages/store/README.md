@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@effected%2Fstore?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/store)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
-[![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
 Durable local state for Effect: two services over one primitive. `Store` is a schema-versioned, migrated `SqlClient` — a managed database connection with a user-defined migration ledger that supports `up`, `down`, rollback and a status projection. `Cache` is a `key → Uint8Array` cache with TTL, tags, bulk invalidation, an eviction policy and a `PubSub` of lifecycle events. Both run on SQLite through Node's built-in `node:sqlite`, so there is no native compile step, and both surface their failures as tagged errors that carry the underlying `SqlError` structurally.
 

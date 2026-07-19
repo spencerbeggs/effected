@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-17
-last-synced: 2026-07-17
+updated: 2026-07-19
+last-synced: 2026-07-19
 completeness: 95
 related:
   - ../architecture.md
@@ -14,6 +14,8 @@ related:
   - package-json.md
   - npm.md
   - yaml.md
+  - toml.md
+  - markdown.md
 ---
 
 # @effected/jsonc design
@@ -32,7 +34,7 @@ Pure tier — no IO anywhere. `peerDependencies`: `effect` only (`catalog:effect
 
 Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept); every non-entrypoint module imports explicitly from defining modules — no barrels. See `src/` for the full set:
 
-- `Jsonc.ts` — the facade: statics `parse`, `parseResult`, `parseTree`, `stripComments`, `equals`, `equalsValue`, the schema factories `schema(Target, options?)` / `fromString(options?)` and the `JsoncFromString` default-options schema. Owns `JsoncParseOptions`, `JsoncParseError`, `JsoncParseErrorDetail` and the `JsoncParseErrorCode` literal set.
+- `Jsonc.ts` — the facade: statics `parse`, `parseResult`, `parseTree`, `stringify`, `stringifyResult`, `stripComments`, `equals`, `equalsValue`, the schema factories `schema(Target, options?)` / `fromString(options?)` / `bind(Target)` and the `JsoncFromString` default-options schema. Owns the `JsoncBoundCodec` interface and `JsoncParseOptions`, `JsoncParseError`, `JsoncParseErrorDetail`, the `JsoncParseErrorCode` literal set and their stringify counterparts `JsoncStringifyOptions`, `JsoncStringifyError` and `JsoncStringifyErrorCode`.
 - `JsoncNode.ts` — the recursive AST node (`Schema.Class` + `Schema.suspend`, no parent pointers). Owns `JsoncNodeType` and the `JsoncPath` / `JsoncSegment` type aliases.
 - `JsoncEdit.ts` — the edit `Schema.Class` plus `applyAll(text, edits)`. Owns the shared edit vocabulary `JsoncRange` and `JsoncFormattingOptions`.
 - `JsoncFormatter.ts` — `format` and the `formatToString` convenience.
@@ -47,8 +49,8 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 The package-wide rule, and the template for `@effected/yaml`: **pure synchronous methods where nothing can fail; `Effect` only where the error channel is real.** This makes fallible operations legible at the call site — an `Effect` return type *means* "this can produce a `JsoncParseError`" — and keeps the flagship pure operations ergonomic without forcing callers into `runSync`.
 
 - **Pure synchronous** (no `Effect`): node value extraction (`JsoncNode.toValue`), edit application (`JsoncEdit.applyAll`, `JsoncFormatter.formatToString`), formatting (`JsoncFormatter.format` — computing edits never fails), comment stripping (`Jsonc.stripComments`) and semantic equality (`Jsonc.equals` / `equalsValue`).
-- **`Effect`** (real typed `E`): `Jsonc.parse`, `Jsonc.parseTree`, `JsoncModifier.modify` and the schema decode path.
-- **`Result`** (sync escape hatch): `Jsonc.parseResult` returns a v4 `Result<unknown, JsoncParseError>` for callers outside the Effect runtime — jsonc's counterpart to yaml's [`parseSync` posture](yaml.md#effect-wrapping-policy). `Jsonc.parse` is *defined in terms of it* (`Effect.fromResult` behind the named span), so the two variants cannot diverge; the `@remarks` steer Effect consumers to `parse` for the span.
+- **`Effect`** (real typed `E`): `Jsonc.parse`, `Jsonc.parseTree`, `Jsonc.stringify`, `JsoncModifier.modify` and the schema decode path.
+- **`Result`** (sync escape hatch): `Jsonc.parseResult` returns a v4 `Result<unknown, JsoncParseError>` for callers outside the Effect runtime — jsonc's counterpart to yaml's [`parseSync` posture](yaml.md#effect-wrapping-policy). `Jsonc.parse` is *defined in terms of it* (`Effect.fromResult` behind the named span), so the two variants cannot diverge; the `@remarks` steer Effect consumers to `parse` for the span. `Jsonc.stringifyResult` is the symmetric twin on the stringify side, with `Jsonc.stringify` defined in terms of it the same way.
 - **`Stream`** for the visitor: `JsoncVisitor.visit` returns `Stream<JsoncVisitorEvent>`, demand-driven and `Stream.take`-friendly; malformed input surfaces as error events in the union.
 
 `equals` / `equalsValue` are pure total booleans with a hardened contract: inputs with **any** parse errors compare unequal (return `false`) rather than comparing the recovery parser's best-effort output, so malformed input is never equal to anything. They run the recovery parser but short-circuit to `false` whenever either side produced parse errors, comparing recovered values only when both sides parsed cleanly.
@@ -63,6 +65,7 @@ A namespace object of statics over the parser and schema layers, not a schema cl
 
 - `parse(text, options?)` → `Effect<unknown, JsoncParseError>` — error-recovery parsing that collects all parse-error details and fails once with the aggregate. Returns `unknown`, never `any`.
 - `parseResult(text, options?)` → `Result<unknown, JsoncParseError>` — the synchronous `Result` variant with identical error-recovery semantics; `parse` delegates to it (see [Effect-wrapping policy](#effect-wrapping-policy)).
+- `stringify(value, options?)` → `Effect<string, JsoncStringifyError>` and `stringifyResult(value, options?)` → `Result<string, JsoncStringifyError>` — plain values → JSONC text (landed 2026-07-19, closing the surface-parity gap [markdown](markdown.md) recorded). Default output is **byte-identical to `JSON.stringify(value, null, 2)`**. `JsoncStringifyOptions` reuses the `JsoncFormattingOptions` vocabulary rather than JSON's `space` — `tabSize` (default `2`, `0` for compact single-line) and `insertSpaces` (default `true`, tabs when `false`) — so one indent vocabulary covers the formatter and the emitter. Nested unrepresentable values (`undefined`, functions, symbols) follow `JSON.stringify`'s documented semantics exactly — dropped from objects, `null` in arrays — rather than inventing a stricter contract.
 - `parseTree(text, options?)` → `Effect<Option<JsoncNode>, JsoncParseError>` — `Option.none()` for empty input, the aggregate error for malformed input.
 - `stripComments(text, replaceCh?)` → `string` — offset-preserving (replaces comment bytes with `replaceCh`, default space).
 - `equals` / `equalsValue` → `boolean` — key-order-independent for objects, order-sensitive for arrays, comments/formatting ignored.
@@ -78,7 +81,7 @@ The **tight token-end offset discipline** — node spans never swallow trailing 
 
 ### JsoncEdit and JsoncFormatter
 
-`JsoncEdit` holds `offset`, `length`, `content`; `applyAll(text, edits)` applies in reverse-offset order (byte-minimal, comment/whitespace preserving). It owns `JsoncRange` and `JsoncFormattingOptions`. `JsoncFormatter.format` computes edits (pure, never fails); `formatToString` is `applyAll ∘ format`.
+`JsoncEdit` holds `offset`, `length`, `content`; `applyAll(text, edits)` applies in reverse-offset order (byte-minimal, comment/whitespace preserving) and **rejects overlapping edits as a defect** (2026-07-19). Overlapping splices are a caller wiring error, not recoverable input, so a defect is the right channel — this adopts [toml](toml.md)'s posture and harmonizes the guard across all four format siblings, closing what the [markdown](markdown.md) P4 parity note flagged as a divergence. It owns `JsoncRange` and `JsoncFormattingOptions`. `JsoncFormatter.format` computes edits (pure, never fails); `formatToString` is `applyAll ∘ format`.
 
 ### JsoncModifier
 
@@ -96,9 +99,10 @@ The `JsoncFromString` default-options singleton and the factories are both flags
 
 - `Jsonc.JsoncFromString` — a `Schema<unknown, string>` transformation using the default `JsoncParseOptions`; the zero-config entry point.
 - `Jsonc.fromString(options?)` — a factory returning a `Schema<unknown, string>` bound to the supplied options; `JsoncFromString` is `Jsonc.fromString()` with defaults.
-- `Jsonc.schema(Target, options?)` — composes `fromString(options)` with a target `Schema`, yielding the `Schema<A, string>` pipeline that is the reason an Effect-native JSONC library exists.
+- `Jsonc.schema(Target, options?)` — composes `fromString(options)` with a target `Schema`, yielding the `Schema<A, string>` pipeline that is the reason an Effect-native JSONC library exists. **Generics parity fix (2026-07-19):** the signature was `schema<T, E>` returning `Schema.Codec<T, string>`, which **dropped a target's service requirements** — a target carrying decoding or encoding dependencies came out with `R = never` and the requirement silently vanished from the type. It now reads `schema<T, E, RD, RE>` → `Schema.Codec<T, string, RD, RE>`, matching yaml and toml, which had the generics from the start. Runtime is untouched; only the type-level thread was missing.
+- `Jsonc.bind(Target)` → `JsoncBoundCodec<T, RD, RE>` (2026-07-19) — `{ schema, decode, encode }`: the composed `schema` plus both directions derived from it once via `Schema.decodeEffect`/`Schema.encodeEffect`. **Thin sugar, deliberately**: it introduces no new error taxonomy — both directions fail `Schema.SchemaError`, exactly as calling the two `Schema` helpers by hand would, and the target's `RD`/`RE` requirements flow through. The value is call-site ergonomics: a consumer binds once and never touches generic `Schema` machinery again. Schema-producing like its neighbors, so the returned codec goes in a `const`.
 
-Decode is driven by the internal parser (value mode); encode is `JSON`-style stringification. The **domain `JsoncParseError` is constructed directly by the `parse` / `parseTree` path**, which bypasses `Schema` entirely — so `SchemaError` never escapes as the documented contract of those methods. The raw schema decode path fails with a `SchemaError` carrying a `SchemaIssue.InvalidValue` whose message is the aggregate parse message; consumers wanting the domain error from a schema pipeline normalize at the boundary with `Effect.catchTag("SchemaError", ...)`, the same shape semver ships.
+Decode is driven by the internal parser (value mode); encode is `Jsonc.stringifyResult` (2026-07-19 — previously a bare `JSON.stringify` call whose circular-reference and `bigint` failures escaped as **defects**; both are now typed `JsoncStringifyError` failures on the encode channel). The **domain `JsoncParseError` is constructed directly by the `parse` / `parseTree` path**, which bypasses `Schema` entirely — so `SchemaError` never escapes as the documented contract of those methods. The raw schema decode path fails with a `SchemaError` carrying a `SchemaIssue.InvalidValue` whose message is the aggregate parse message; consumers wanting the domain error from a schema pipeline normalize at the boundary with `Effect.catchTag("SchemaError", ...)`, the same shape semver ships.
 
 **Memoization by reference.** `fromString(options)` and `schema(Target, options)` are schema-*producing* functions, so each call returns a fresh instance; v4 schema derivation caches key by reference and are not shared across calls with structurally-equal options. Consumers on a hot path should bind the produced schema to a `const` once. `JsoncFromString` is the pre-bound singleton precisely so the common default case needs no such discipline.
 
@@ -109,7 +113,10 @@ A restrained aggregate design (the best error shape in this vocabulary, and corr
 | Error | Raised by | Payload |
 | --- | --- | --- |
 | `JsoncParseError` | `parse` / `parseTree`; schema decode | `errors: ReadonlyArray<JsoncParseErrorDetail>`, `input: string` |
+| `JsoncStringifyError` | `stringify` / `stringifyResult`; schema encode | `code: JsoncStringifyErrorCode`, `detail`, `value` |
 | `JsoncModificationError` | `JsoncModifier.modify` | `path`, `expected: "object" \| "array"`, `depth`, optional `offset` (reserved, currently unpopulated) |
+
+`JsoncStringifyErrorCode` is a three-member literal set naming exactly the failures `JSON.stringify` documents: `CircularReference` (a reference cycle, so no finite output exists), `BigIntValue` (a `bigint` anywhere in the value) and `TopLevelUnrepresentable` (the top-level value is `undefined`, a function or a symbol, where `JSON.stringify` returns `undefined` instead of a string). The implementation classifies the two exceptions `JSON.stringify` throws and detects the third by the `undefined` return, so the vocabulary is closed by the underlying primitive rather than invented.
 
 `JsoncParseErrorDetail` is a `Schema.Class` (not an error) carrying `code: JsoncParseErrorCode`, `offset`, `length`, `line`, `character` — one detail per recovered parse error, so a single `JsoncParseError` reports the whole batch. Both errors are `Schema.TaggedErrorClass` with `message` derived via getter, never preformatted strings.
 
@@ -135,7 +142,7 @@ There is **no shared-package extraction**: a possible later `@effected/text-edit
 
 ## Observability
 
-Per the observability standard, `Effect.fn("name")` at public *fallible* boundaries only: `parse`, `parseTree` and `modify`. Pure synchronous operations are not instrumented — no `Effect`, no span. `parseResult` carries no span (it is not an Effect); `parse` keeps its `Jsonc.parse` span while delegating to it, so Effect consumers lose nothing by the delegation. `JsoncVisitor.visit` is **not** span-wrapped: stream construction is lazy and pure, with no clean `Effect.fn` boundary to attach a span to without forcing the stream into an effect it does not need. The library stays telemetry-agnostic — applications compose `@effect/opentelemetry` at the edge.
+Per the observability standard, `Effect.fn("name")` at public *fallible* boundaries only: `parse`, `parseTree`, `stringify` and `modify`. Pure synchronous operations are not instrumented — no `Effect`, no span. `parseResult` and `stringifyResult` carry no span (they are not Effects); `parse` and `stringify` keep their spans while delegating, so Effect consumers lose nothing by the delegation. `JsoncVisitor.visit` is **not** span-wrapped: stream construction is lazy and pure, with no clean `Effect.fn` boundary to attach a span to without forcing the stream into an effect it does not need. The library stays telemetry-agnostic — applications compose `@effect/opentelemetry` at the edge.
 
 ## API Extractor bases
 

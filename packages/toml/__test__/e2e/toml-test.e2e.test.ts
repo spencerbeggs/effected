@@ -3,8 +3,9 @@
 // invalid file must fail through the typed error channel (TomlParseError,
 // any code) — never as a defect, crash or hang.
 //
-// Fixtures are read as raw bytes (utf8, NO newline normalization): seven
-// cases deliberately carry CRLF / lone-CR bytes protected by a scoped
+// Fixtures are read as raw bytes (utf8, NO newline normalization): several
+// cases deliberately carry CRLF / lone-CR bytes — in both directions, valid
+// CRLF documents and invalid bare-CR ones — protected by a scoped
 // .gitattributes in the fixture tree.
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -17,8 +18,8 @@ import { assertMatchesTagged } from "./taggedJson.js";
 const CORPUS_DIR = resolve(import.meta.dirname, "../fixtures/toml-test");
 
 // Counts recorded in the fixture README — guards against a silently-empty walk.
-const README_VALID_COUNT = 205;
-const README_INVALID_COUNT = 474;
+const README_VALID_COUNT = 214;
+const README_INVALID_COUNT = 467;
 
 /** All `.toml` files under `root`, as sorted paths relative to `root`. */
 function walkTomlFiles(root: string): ReadonlyArray<string> {
