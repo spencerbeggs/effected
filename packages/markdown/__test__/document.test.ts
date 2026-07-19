@@ -7,7 +7,8 @@ import { Effect, Result, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
 import { MarkdownDiagnostic } from "../src/MarkdownDiagnostic.js";
 import { MarkdownDocument } from "../src/MarkdownDocument.js";
-import { Definition, Root } from "../src/MarkdownNode.js";
+import type { FlowContent } from "../src/MarkdownNode.js";
+import { Blockquote, Definition, LinkReference, Paragraph, Point, Position, Root, Text } from "../src/MarkdownNode.js";
 
 const nestingBomb = `${">".repeat(MAX_NESTING_DEPTH + 44)} foo\n`;
 
@@ -188,5 +189,219 @@ describe("MarkdownDocument schema", () => {
 			decoded.root.children.map((child) => child.type),
 			result.success.root.children.map((child) => child.type),
 		);
+	});
+});
+
+describe("MarkdownDocument navigation accessors", () => {
+	const navSource = [
+		"---",
+		"title: Nav",
+		"---",
+		"",
+		"Intro paragraph with [inline](https://example.com/inline).",
+		"",
+		"# Alpha *one*",
+		"",
+		"Alpha body with [ref][a] and ![pic](/img.png).",
+		"",
+		"## Beta `code`",
+		"",
+		"| cell |",
+		"| ---- |",
+		"| [cell link](/cell) |",
+		"",
+		"# Gamma",
+		"",
+		"> ## Quoted heading",
+		"",
+		"Trailing www.example.com literal.",
+		"",
+		'[a]: /a "A"',
+		"",
+	].join("\n");
+
+	const parseNav = () => {
+		const result = MarkdownDocument.parseResult(navSource, { frontmatter: true });
+		if (Result.isFailure(result)) {
+			assert.fail("expected the navigation document to parse");
+			throw new Error("unreachable");
+		}
+		return result.success;
+	};
+
+	it("lists every heading in document order with depth and plain text", () => {
+		const document = parseNav();
+		assert.deepStrictEqual(
+			document.headings.map((entry) => [entry.depth, entry.text]),
+			[
+				[1, "Alpha one"],
+				[2, "Beta code"],
+				[1, "Gamma"],
+				[2, "Quoted heading"],
+			],
+		);
+		for (const entry of document.headings) {
+			assert.strictEqual(entry.node.type, "heading");
+			assert.strictEqual(entry.depth, entry.node.depth);
+		}
+	});
+
+	it("derives sections from root-level headings only", () => {
+		const document = parseNav();
+		assert.deepStrictEqual(
+			document.sections.map((section) => [section.depth, section.heading.children[0]?.type]),
+			[
+				[1, "text"],
+				[2, "text"],
+				[1, "text"],
+			],
+		);
+	});
+
+	it("spans each section from its heading to the next boundary heading", () => {
+		const document = parseNav();
+		const alphaStart = navSource.indexOf("# Alpha");
+		const betaStart = navSource.indexOf("## Beta");
+		const gammaStart = navSource.indexOf("# Gamma");
+		const [alpha, beta, gamma] = document.sections;
+		assert.isDefined(alpha);
+		assert.isDefined(beta);
+		assert.isDefined(gamma);
+		assert.strictEqual(alpha.range.offset, alphaStart);
+		assert.strictEqual(alpha.range.offset + alpha.range.length, gammaStart);
+		assert.strictEqual(beta.range.offset, betaStart);
+		assert.strictEqual(beta.range.offset + beta.range.length, gammaStart);
+		assert.strictEqual(gamma.range.offset, gammaStart);
+		assert.strictEqual(gamma.range.offset + gamma.range.length, navSource.length);
+	});
+
+	it("collects the section's root-level content after its heading", () => {
+		const document = parseNav();
+		const [alpha, beta, gamma] = document.sections;
+		assert.isDefined(alpha);
+		assert.isDefined(beta);
+		assert.isDefined(gamma);
+		// Alpha runs to Gamma: body paragraph, the Beta subsection heading, its table.
+		assert.deepStrictEqual(
+			alpha.children.map((child) => child.type),
+			["paragraph", "heading", "table"],
+		);
+		assert.deepStrictEqual(
+			beta.children.map((child) => child.type),
+			["table"],
+		);
+		assert.deepStrictEqual(
+			gamma.children.map((child) => child.type),
+			["blockquote", "paragraph", "definition"],
+		);
+	});
+
+	it("excludes frontmatter and the preamble from sections", () => {
+		const document = parseNav();
+		const first = document.sections[0];
+		assert.isDefined(first);
+		// The first section starts at the first heading: the frontmatter block and
+		// the intro paragraph before it belong to no section.
+		assert.strictEqual(first.range.offset, navSource.indexOf("# Alpha"));
+		// section.children is typed FlowContent — frontmatter is excluded by
+		// construction; assert the intro paragraph stayed out at runtime.
+		const sectioned = document.sections.flatMap((section) => section.children);
+		const intro = document.root.children.find((child) => child.type === "paragraph");
+		assert.isDefined(intro);
+		assert.isFalse(sectioned.includes(intro));
+	});
+
+	it("collects every link-bearing node in document order with its url", () => {
+		const document = parseNav();
+		assert.deepStrictEqual(
+			document.links.map((entry) => [entry.node.type, entry.url]),
+			[
+				["link", "https://example.com/inline"],
+				["linkReference", "/a"],
+				["image", "/img.png"],
+				["link", "/cell"],
+				["link", "http://www.example.com"],
+				["definition", "/a"],
+			],
+		);
+	});
+
+	it("leaves url genuinely absent on an unresolved foreign reference", () => {
+		const point = Point.make({ line: 1, column: 1, offset: 0 });
+		const position = Position.make({ start: point, end: Point.make({ line: 1, column: 7, offset: 6 }) });
+		const reference = LinkReference.make({
+			type: "linkReference",
+			identifier: "nope",
+			referenceType: "shortcut",
+			children: [Text.make({ type: "text", value: "nope", position })],
+			position,
+		});
+		const document = MarkdownDocument.make({
+			source: "[nope]",
+			root: Root.make({
+				type: "root",
+				children: [Paragraph.make({ type: "paragraph", children: [reference], position })],
+				position,
+			}),
+			diagnostics: [],
+			definitions: new Map(),
+		});
+		const [entry] = document.links;
+		assert.isDefined(entry);
+		assert.strictEqual(entry.node.type, "linkReference");
+		assert.isFalse(Object.hasOwn(entry, "url"));
+	});
+
+	it("returns empty accessors on an empty document", () => {
+		const result = MarkdownDocument.parseResult("");
+		if (Result.isFailure(result)) {
+			assert.fail("expected the empty document to parse");
+			return;
+		}
+		assert.deepStrictEqual(result.success.headings, []);
+		assert.deepStrictEqual(result.success.sections, []);
+		assert.deepStrictEqual(result.success.links, []);
+	});
+
+	it("handles skipped depths, setext headings and a trailing heading", () => {
+		const source = ["Title", "=====", "", "### Deep", "", "# Last"].join("\n");
+		const result = MarkdownDocument.parseResult(source);
+		if (Result.isFailure(result)) {
+			assert.fail("expected the document to parse");
+			return;
+		}
+		const document = result.success;
+		assert.deepStrictEqual(
+			document.sections.map((section) => section.depth),
+			[1, 3, 1],
+		);
+		const [title, deep, last] = document.sections;
+		assert.isDefined(title);
+		assert.isDefined(deep);
+		assert.isDefined(last);
+		const lastStart = source.indexOf("# Last");
+		assert.strictEqual(title.range.offset + title.range.length, lastStart);
+		assert.strictEqual(deep.range.offset + deep.range.length, lastStart);
+		assert.strictEqual(last.range.offset + last.range.length, source.length);
+	});
+
+	it("refuses an over-deep foreign tree as a defect, mirroring the guarded walks", () => {
+		const point = Point.make({ line: 1, column: 1, offset: 0 });
+		const position = Position.make({ start: point, end: point });
+		let flow: FlowContent = Paragraph.make({
+			type: "paragraph",
+			children: [Text.make({ type: "text", value: "x", position })],
+			position,
+		});
+		for (let index = 0; index < MAX_NESTING_DEPTH + 44; index += 1) {
+			flow = Blockquote.make({ type: "blockquote", children: [flow], position });
+		}
+		const document = MarkdownDocument.make({
+			source: "",
+			root: Root.make({ type: "root", children: [flow], position }),
+			diagnostics: [],
+			definitions: new Map(),
+		});
+		assert.throws(() => document.links);
 	});
 });

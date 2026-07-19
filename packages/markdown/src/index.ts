@@ -15,8 +15,9 @@
  * contract; `Markdown.stringify` serializes trees canonically, and
  * `MarkdownFormat` computes marker-normalization and surgical-replacement
  * edits over it. {@link Mdast} is the remark-ecosystem interop boundary:
- * projection to plain mdast JSON and checked decoding back. The visitor
- * arrives in a later phase.
+ * projection to plain mdast JSON and checked decoding back;
+ * {@link MarkdownVisitor} streams a tree walk; and the document's navigation
+ * accessors (headings, sections, links) serve outline and link extraction.
  *
  * @packageDocumentation
  */
@@ -51,6 +52,7 @@ export {
 	MarkdownStringifyError,
 } from "./Markdown.js";
 export { MarkdownDiagnostic, MarkdownParseErrorCode } from "./MarkdownDiagnostic.js";
+export type { DocumentHeading, DocumentLink, DocumentSection, LinkBearingNode } from "./MarkdownDocument.js";
 export { MarkdownDocument } from "./MarkdownDocument.js";
 export type { MarkdownPath, MarkdownSegment } from "./MarkdownEdit.js";
 export { MarkdownEdit, MarkdownRange } from "./MarkdownEdit.js";
