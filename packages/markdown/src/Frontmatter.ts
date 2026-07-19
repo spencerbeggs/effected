@@ -69,8 +69,8 @@ export class FrontmatterDecodeError extends Schema.TaggedErrorClass<FrontmatterD
 }
 
 /**
- * A frontmatter codec: how to turn a raw {@link FrontmatterNode | Frontmatter}
- * capture into decoded data.
+ * A frontmatter codec: how to turn a raw `Frontmatter` capture into decoded
+ * data.
  *
  * @remarks
  * The three built-in codecs — `YamlFrontmatter`, `TomlFrontmatter` and
