@@ -55,6 +55,8 @@ Naming: recommended `@effected/plugin`. `@effected/config` is rejected because i
 
 `rspress-plugin-api-extractor` already parses and emits markdown via `mdast-util-from-markdown`, `mdast-util-to-hast` and `gray-matter`, so a low-level markdown package has a real identified consumer rather than a speculative one. It is not a release gate: the plugin can keep its `mdast` dependencies and swap everything else.
 
+The package now exists on `feat/markdown` with implementation phases P1-P5 complete (2026-07-19): CommonMark plus the gfm dialect with full conformance, frontmatter with the codec modules and the schema resolver, edit/format with canonical stringify, and the mdast projection, visitor and navigation surface — 3516 tests. P6 (docs and adoption, the rspress-plugin-api-extractor swap) remains before the package's story closes; details in [packages/markdown.md](packages/markdown.md).
+
 ### `@effected/vfs`
 
 Out of the ts-vfs work: the TypeScript-specific part it exercised (a `Vfs` keyed by `node_modules/`-prefixed paths, merge/prefix helpers, an environment seam) is a flavor of a generic virtual filesystem rather than the whole of it. Evidence-gated like everything here — build it only when a **second** VFS consumer materializes beyond the TypeScript one, never speculatively.
