@@ -2,11 +2,13 @@
  * CommonMark and GFM markdown parse, edit and transform schemas for Effect.
  *
  * @remarks
- * P1 ships the CommonMark 0.31.2 parse surface: {@link Markdown} (the
- * `parseResult` primitive, the `parse` Effect and the `MarkdownFromString`
- * codec), {@link MarkdownDocument} (source, tree, diagnostics, definitions),
- * the mdast-shaped node classes, and {@link MarkdownDiagnostic}. Edit/format,
- * the mdast projection, the visitor and frontmatter arrive in later phases.
+ * The parse surface covers CommonMark 0.31.2 and the GFM dialect (tables,
+ * strikethrough, autolink literals, task-list items and footnotes; `gfm` is
+ * the default dialect): {@link Markdown} (the `parseResult` primitive, the
+ * `parse` Effect and the `MarkdownFromString` codec), {@link MarkdownDocument}
+ * (source, tree, diagnostics, definitions), the mdast-shaped node classes, and
+ * {@link MarkdownDiagnostic}. Edit/format, the mdast projection, the visitor
+ * and frontmatter arrive in later phases.
  *
  * @packageDocumentation
  */
@@ -21,10 +23,13 @@ export {
 	BulletChar,
 	Code,
 	Definition,
+	Delete,
 	Emphasis,
 	EmphasisChar,
 	FenceChar,
 	FlowContent,
+	FootnoteDefinition,
+	FootnoteReference,
 	Heading,
 	HeadingDepth,
 	HeadingStyle,
@@ -45,7 +50,13 @@ export {
 	Position,
 	ReferenceType,
 	Root,
+	RowContent,
 	Strong,
+	Table,
+	TableAlign,
+	TableCell,
+	TableContent,
+	TableRow,
 	Text,
 	ThematicBreak,
 	ThematicBreakChar,

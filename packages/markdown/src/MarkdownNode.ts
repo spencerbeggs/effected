@@ -360,7 +360,7 @@ export class LinkReference extends Schema.Class<LinkReference>("LinkReference")(
  * point in the text with a {@link FootnoteDefinition} by identifier.
  *
  * Has no content model of its own — the marker carries no children, only the
- * {@link Association} pair `identifier`/`label`. Like {@link LinkReference},
+ * mdast Association pair `identifier`/`label`. Like {@link LinkReference},
  * the parser emits these unresolved: resolution against a matching
  * `FootnoteDefinition` is the consumer's business.
  *
@@ -578,7 +578,7 @@ export class Blockquote extends Schema.Class<Blockquote>("Blockquote")({
  * mdast's content model for `TableCell` is phrasing content **excluding**
  * `Break` nodes — GFM tables are single-line source, so a hard break cannot
  * occur inside one. This schema does not carve that exclusion out of
- * {@link PhrasingContent}: a second phrasing union just for table cells would
+ * `PhrasingContent`: a second phrasing union just for table cells would
  * duplicate the whole recursive-suspend machinery above for one excluded
  * member, and a parser that never emits `Break` inside a cell satisfies the
  * exclusion in practice without it.
