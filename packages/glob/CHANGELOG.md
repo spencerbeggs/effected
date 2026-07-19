@@ -1,5 +1,17 @@
 # @effected/glob
 
+## 0.1.2
+
+### Dependencies
+
+* | Dependency | Type           | Action  | From          | To            |                                                                       |
+  | ---------- | -------------- | ------- | ------------- | ------------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#122]: https://github.com/spencerbeggs/effected/pull/122
+
 ## 0.1.1
 
 ### Documentation

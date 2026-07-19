@@ -1,6 +1,6 @@
 {
 	"name": "@effected/pnpm-plugin-effect",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"private": true,
 	"description": "pnpm config dependency for centralized catalog management across the Effected ecosystem.",
 	"keywords": ["pnpm", "pnpm-plugin", "config-dependency", "catalog", "monorepo", "effected"],

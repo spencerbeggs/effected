@@ -1,5 +1,23 @@
 # @effected/app
 
+## 0.1.5
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.1.3 | 0.1.4 |
+| @effected/store       | dependency | updated | 0.1.0 | 0.1.1 |
+| @effected/xdg         | dependency | updated | 0.1.3 | 0.1.4 |
+
+* | Dependency | Type           | Action  | From          | To            |                                                                       |
+  | ---------- | -------------- | ------- | ------------- | ------------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#122]: https://github.com/spencerbeggs/effected/pull/122
+
 ## 0.1.4
 
 ### Documentation
