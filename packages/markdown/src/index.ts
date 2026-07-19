@@ -109,6 +109,7 @@ export {
 	ThematicBreak,
 	ThematicBreakChar,
 } from "./MarkdownNode.js";
+export { MarkdownVisitor, MarkdownVisitorEvent } from "./MarkdownVisitor.js";
 export type { MdastNode } from "./Mdast.js";
 export { Mdast, MdastDecodeError } from "./Mdast.js";
 export { TomlFrontmatter } from "./TomlFrontmatter.js";
