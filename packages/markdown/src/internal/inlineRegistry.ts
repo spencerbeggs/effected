@@ -19,6 +19,7 @@ import { codeSpanConstruct } from "./inlines/codeSpan.js";
 import { emphasisConstruct } from "./inlines/emphasis.js";
 import { entityConstruct } from "./inlines/entity.js";
 import { escapeConstruct } from "./inlines/escape.js";
+import { gfmImageOpenConstruct, gfmLinkCloseConstruct } from "./inlines/footnoteReference.js";
 import { lineBreakConstruct } from "./inlines/lineBreak.js";
 import { imageOpenConstruct, linkCloseConstruct, linkOpenConstruct } from "./inlines/link.js";
 import { rawHtmlConstruct } from "./inlines/rawHtml.js";
@@ -71,9 +72,30 @@ const commonmarkDialect: InlineDialect = {
 // matchers, with the email half as a postprocess pass (`autolinkLiteral.ts`
 // carries the reason for the split). The additions are appended, so a
 // character CommonMark already claims keeps its existing precedence.
+//
+// Footnote references are the exception to "additions are appended", because
+// they are not an addition to any trigger table — they are two branches inside
+// constructs CommonMark already owns, so both are SWAPPED for the variants
+// carrying them:
+//
+//   `]` — the footnote branch sits inside the close-bracket handler, reached
+//   only once every link shape has failed. A construct registered AFTER the
+//   close-bracket one could never run (it claims every `]`), and one before it
+//   would beat the links a footnote must lose to.
+//
+//   `!` — cmark-gfm's bang handler refuses to open an image on `![^`, which is
+//   what keeps the `!` in `text![^1]` literal and lets the bracket reach the
+//   footnote branch as an ordinary opener.
+//
+// `inlines/footnoteReference.ts` and `makeImageOpenConstruct` carry the
+// reasoning for each.
 const gfmDialect: InlineDialect = {
 	byTrigger: triggerTable([
-		...COMMONMARK_CONSTRUCTS,
+		...COMMONMARK_CONSTRUCTS.filter(
+			(construct) => construct !== linkCloseConstruct && construct !== imageOpenConstruct,
+		),
+		gfmLinkCloseConstruct,
+		gfmImageOpenConstruct,
 		strikethroughConstruct,
 		wwwAutolinkConstruct,
 		urlAutolinkConstruct,

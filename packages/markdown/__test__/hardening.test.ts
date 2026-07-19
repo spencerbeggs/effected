@@ -13,7 +13,10 @@
 //     because no tree deeper than the cap is ever built.
 //  2. `blockParser.materializeBlock` — walks the block tree. Bounded by (1):
 //     the tree it walks cannot be deeper than the cap that built it.
-//  3. `blockParser.collectDefinitions` — walks the same tree, same bound.
+//  3. `blockParser.collectReferences` — walks the same tree, same bound. It
+//     indexes link reference definitions AND GFM footnote definition labels,
+//     so a `[^a]: [^b]: ...` recursion is bounded by (1) like any other
+//     container nesting (pinned in `gfm-footnotes.test.ts`).
 //  4. `inlineParser.materialize` / `materializeNode` — mutually recursive over
 //     the inline tree, which nests as deeply as the input has balanced
 //     delimiters. Carries its own explicit depth counter and cap.

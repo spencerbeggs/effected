@@ -15,6 +15,7 @@ import { blockquoteConstruct, blockquoteStart } from "./blocks/blockquote.js";
 import { codeConstruct } from "./blocks/code.js";
 import { documentConstruct } from "./blocks/document.js";
 import { fencedCodeStart } from "./blocks/fencedCode.js";
+import { footnoteDefinitionConstruct, footnoteDefinitionStart } from "./blocks/footnoteDefinition.js";
 import { htmlBlockConstruct, htmlBlockStart } from "./blocks/htmlBlock.js";
 import { indentedCodeStart } from "./blocks/indentedCode.js";
 import { definitionConstruct } from "./blocks/linkReferenceDefinition.js";
@@ -71,8 +72,8 @@ const commonmarkDialect: BlockDialect = {
 	],
 };
 
-// GFM's block grammar is CommonMark's plus tables and task-list items, with
-// footnote definitions still to come (P2 Task 6).
+// GFM's block grammar is CommonMark's plus tables, task-list items and
+// footnote definitions.
 //
 // The extension starts sit LAST, after every CommonMark start, because that is
 // where cmark-gfm runs its extensions: `open_new_blocks` tries the core
@@ -80,6 +81,13 @@ const commonmarkDialect: BlockDialect = {
 // claimed the line. The ordering is load-bearing rather than cosmetic — it is
 // what makes `---` under a paragraph a setext heading instead of a one-column
 // table, and `> quoted` under a table a blockquote instead of a row.
+//
+// The footnote definition is the exception, and deliberately so: it is not an
+// extension at all. cmark-gfm keeps footnotes in its core, gated by
+// `CMARK_OPT_FOOTNOTES`, and its branch of `open_new_blocks` sits between the
+// thematic break and the list marker. It is registered at that same core
+// position rather than with the extensions, because a `[^a]: ...` line has to
+// beat the list-item start that would otherwise claim what follows.
 const gfmDialect: BlockDialect = {
 	constructs: constructTable([
 		documentConstruct,
@@ -92,6 +100,7 @@ const gfmDialect: BlockDialect = {
 		codeConstruct,
 		htmlBlockConstruct,
 		definitionConstruct,
+		footnoteDefinitionConstruct,
 		tableConstruct,
 		tableRowConstruct,
 		tableCellConstruct,
@@ -103,22 +112,20 @@ const gfmDialect: BlockDialect = {
 		htmlBlockStart,
 		setextHeadingStart,
 		thematicBreakStart,
+		footnoteDefinitionStart,
 		listItemStart,
 		indentedCodeStart,
 		taskListItemStart,
 		tableHeaderStart,
 		tableRowStart,
 	],
-	// commonmark.js's `reMaybeSpecial` fast path knows nothing of tables or
-	// task lists: a delimiter row can begin with `|` or `:`, a table row can
-	// begin with any character at all, and a task-list checkbox begins with
-	// `[`. cmark-gfm has no such filter, so this restores the lines it would
-	// hide — and only those.
+	// commonmark.js's `reMaybeSpecial` fast path knows nothing of tables, task
+	// lists or footnotes: a delimiter row can begin with `|` or `:`, a table
+	// row can begin with any character at all, and both a task-list checkbox
+	// and a footnote definition begin with `[`. cmark-gfm has no such filter,
+	// so this restores the lines it would hide — and only those.
 	mayStartBlock: (rest, container) =>
-		container.type === "table" ||
-		(container.type === "listItem" && rest.startsWith("[")) ||
-		rest.startsWith("|") ||
-		rest.startsWith(":"),
+		container.type === "table" || rest.startsWith("[") || rest.startsWith("|") || rest.startsWith(":"),
 };
 
 const dialects: ReadonlyMap<MarkdownDialect, BlockDialect> = new Map([

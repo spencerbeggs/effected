@@ -163,19 +163,29 @@ export class ReferenceScanner {
 }
 
 /**
- * commonmark.js `normalizeReference`: strip the brackets, trim, collapse
- * internal whitespace and case-fold.
+ * Case-fold a bare label: trim, collapse internal whitespace, fold case.
  *
  * The `toLowerCase().toUpperCase()` pair is upstream's Unicode case-folding
  * trick, not redundancy — it is what makes `ẞ` and `ß` the same label.
+ *
+ * Split out of {@link normalizeReference} because GFM footnote labels are the
+ * same fold applied to a label that never carried brackets to strip: this is
+ * cmark-gfm's `normalize_map_label`, which its footnote map and its link
+ * refmap both call.
  */
-export const normalizeReference = (rawLabel: string): string =>
-	rawLabel
-		.slice(1, rawLabel.length - 1)
+export const normalizeLabelText = (label: string): string =>
+	label
 		.trim()
 		.replace(/[ \t\r\n]+/g, " ")
 		.toLowerCase()
 		.toUpperCase();
+
+/**
+ * commonmark.js `normalizeReference`: strip the brackets, then case-fold what
+ * is left.
+ */
+export const normalizeReference = (rawLabel: string): string =>
+	normalizeLabelText(rawLabel.slice(1, rawLabel.length - 1));
 
 /** A link reference definition, parsed but not yet placed in the tree. */
 export interface ParsedReference {

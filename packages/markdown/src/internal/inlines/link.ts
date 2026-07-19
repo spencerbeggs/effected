@@ -23,10 +23,11 @@
 
 import type { InlineNode } from "../inlineNode.js";
 import { appendChild, childrenOf, insertAfter, makeInlineNode, unlink } from "../inlineNode.js";
-import type { InlineConstruct, InlineScanner } from "../inlineTypes.js";
+import type { Bracket, InlineConstruct, InlineScanner } from "../inlineTypes.js";
 import { ReferenceScanner, normalizeReference } from "../references.js";
 
 const C_BANG = 0x21;
+const C_CARET = 0x5e;
 const C_OPEN_BRACKET = 0x5b;
 const C_CLOSE_BRACKET = 0x5d;
 const C_OPEN_PAREN = 0x28;
@@ -105,14 +106,34 @@ export const linkOpenConstruct: InlineConstruct = {
 	},
 };
 
-/** `!` — an image opener when a `[` follows, otherwise literal. */
-export const imageOpenConstruct: InlineConstruct = {
+/**
+ * Build the `!` construct — an image opener when a `[` follows, otherwise
+ * literal.
+ *
+ * `caretOpensImage` is the second GFM footnote seam, and the surprising one.
+ * cmark-gfm's bang handler reads
+ *
+ * ```c
+ * if (peek_char(subj) == '[' && peek_char_n(subj, 1) != '^') {
+ * ```
+ *
+ * so under GFM `![^` NEVER opens an image: the `!` stays literal text and the
+ * `[` becomes an ordinary bracket, which is what lets `text![^1]` render as a
+ * literal `!` followed by a footnote reference (`extensions.txt` example 23
+ * pins exactly that). It also means the footnote branch in the close-bracket
+ * handler can never see an image opener, which is why that branch does not
+ * test for one. CommonMark passes `true` and is untouched.
+ */
+export const makeImageOpenConstruct = (caretOpensImage: boolean): InlineConstruct => ({
 	name: "imageOpen",
 	triggers: [C_BANG],
 	parse: (scanner) => {
 		const startpos = scanner.pos;
 		scanner.pos += 1;
-		if (scanner.peek() === C_OPEN_BRACKET) {
+		if (
+			scanner.peek() === C_OPEN_BRACKET &&
+			(caretOpensImage || scanner.subject.charCodeAt(scanner.pos + 1) !== C_CARET)
+		) {
 			scanner.pos += 1;
 			const node = scanner.appendText("![", startpos, scanner.pos);
 			scanner.addBracket(node, startpos + 1, true);
@@ -121,10 +142,40 @@ export const imageOpenConstruct: InlineConstruct = {
 		scanner.appendText("!", startpos, scanner.pos);
 		return true;
 	},
-};
+});
 
-/** `]` — closes a link or image, or stays literal. */
-export const linkCloseConstruct: InlineConstruct = {
+/** `!` — an image opener when a `[` follows, otherwise literal. */
+export const imageOpenConstruct: InlineConstruct = makeImageOpenConstruct(true);
+
+/**
+ * A dialect's last chance at a `]` that closed nothing.
+ *
+ * cmark-gfm's footnote reference is not a construct of its own: it is a branch
+ * under `handle_close_bracket`'s `noMatch` label, reached only once an inline
+ * link, a full reference, a collapsed reference and a shortcut reference have
+ * all failed. This is that branch as a seam, so a GFM-only construct can sit
+ * exactly where the C puts it without a `gfm` copy of the 150 lines above it,
+ * and without giving the footnote a chance to beat a real link.
+ *
+ * Returning `true` means the fallback handled everything — including popping
+ * the bracket — and the close-bracket construct stops.
+ */
+export type LinkCloseFallback = (
+	scanner: InlineScanner,
+	opener: Bracket,
+	/** The index of the `]` in the subject. */
+	bracketPos: number,
+	/** The index just past the `]`, where the cursor must end up. */
+	afterBracket: number,
+) => boolean;
+
+/**
+ * Build the `]` construct — closes a link or image, or stays literal.
+ *
+ * `onNoMatch` is the dialect seam described on {@link LinkCloseFallback}. With
+ * none, this is CommonMark's close-bracket handler exactly.
+ */
+export const makeLinkCloseConstruct = (onNoMatch?: LinkCloseFallback): InlineConstruct => ({
 	name: "linkClose",
 	triggers: [C_CLOSE_BRACKET],
 	parse: (scanner) => {
@@ -219,6 +270,12 @@ export const linkCloseConstruct: InlineConstruct = {
 		}
 
 		if (!matched) {
+			// The `noMatch` label. The dialect seam comes first, because that
+			// is where cmark-gfm's footnote branch sits: after every link shape
+			// has failed, before the bracket becomes literal text.
+			if (onNoMatch?.(scanner, opener, bracketPos, startpos) === true) {
+				return true;
+			}
 			scanner.removeBracket();
 			scanner.pos = startpos;
 			scanner.appendText("]", bracketPos, scanner.pos);
@@ -270,4 +327,7 @@ export const linkCloseConstruct: InlineConstruct = {
 
 		return true;
 	},
-};
+});
+
+/** `]` — closes a link or image, or stays literal. The CommonMark spelling. */
+export const linkCloseConstruct: InlineConstruct = makeLinkCloseConstruct();

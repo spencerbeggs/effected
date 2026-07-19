@@ -29,7 +29,8 @@ export type InlineNodeType =
 	| "link"
 	| "image"
 	| "linkReference"
-	| "imageReference";
+	| "imageReference"
+	| "footnoteReference";
 
 /** Per-kind fields, all optional and never explicitly `undefined`. */
 export interface InlineNodeData {

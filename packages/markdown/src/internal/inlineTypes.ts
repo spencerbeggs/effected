@@ -80,6 +80,15 @@ export interface InlineScanner {
 	pos: number;
 	/** The definitions a reference may resolve against. */
 	readonly refmap: ReadonlyMap<string, Definition>;
+	/**
+	 * The case-folded labels a GFM footnote reference may form against.
+	 *
+	 * A set rather than a map to the definitions: a footnote definition's own
+	 * children are inline-parsed, so an index holding materialized nodes could
+	 * not exist yet (`blockParser.collectReferences` carries the full reason).
+	 * Empty under `commonmark`, which never forms a footnote reference.
+	 */
+	readonly footnoteLabels: ReadonlySet<string>;
 	/** The delimiter stack top. */
 	delimiters: Delimiter | undefined;
 	/** The bracket stack top. */

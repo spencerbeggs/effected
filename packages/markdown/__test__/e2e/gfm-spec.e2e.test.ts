@@ -35,9 +35,6 @@ const SPEC_SECTIONS_GREEN: ReadonlyArray<string> = [
  * The `extensions.txt` sections that run today.
  *
  * Still off, with the P2 task that turns each on:
- *   - "Footnotes", "When a footnote is used multiple times, we insert
- *     multiple backrefs.", "Footnote reference labels are href escaped"
- *                                                                → Task 6
  *   - "HTML tag filter"                                          → Task 7
  *
  * "Interop" joins here rather than at Task 7: both its examples cross tables
@@ -59,6 +56,9 @@ const EXTENSIONS_SECTIONS_GREEN: ReadonlyArray<string> = [
 	"Autolinks",
 	"Interop",
 	"Task lists",
+	"Footnotes",
+	"When a footnote is used multiple times, we insert multiple backrefs.",
+	"Footnote reference labels are href escaped",
 ];
 
 /**
@@ -129,5 +129,5 @@ const runCorpus = (
 
 describe("GFM conformance", () => {
 	runCorpus("spec.txt extension sections", loadGfmSpecExtensionExamples(), SPEC_SECTIONS_GREEN, 21);
-	runCorpus("extensions.txt", loadGfmExtensionsExamples(), EXTENSIONS_SECTIONS_GREEN, 26);
+	runCorpus("extensions.txt", loadGfmExtensionsExamples(), EXTENSIONS_SECTIONS_GREEN, 29);
 });

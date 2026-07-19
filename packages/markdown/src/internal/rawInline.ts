@@ -61,6 +61,7 @@ export const prepareInline = (
 	position: PositionOf,
 	refmap: ReadonlyMap<string, Definition>,
 	dialect: InlineDialectName = "commonmark",
+	footnoteLabels: ReadonlySet<string> = new Set(),
 ): PreparedInline => {
 	const { text, segments } = trimWithSegments(block.stringContent, block.segments);
 	const first = segments[0];
@@ -69,7 +70,7 @@ export const prepareInline = (
 	const endOffset = last === undefined ? startOffset : last.sourceOffset + last.length;
 
 	const children: ReadonlyArray<PhrasingContent> =
-		text.length === 0 ? [] : parseInlines({ text, startOffset, segments }, refmap, position, dialect);
+		text.length === 0 ? [] : parseInlines({ text, startOffset, segments }, refmap, position, dialect, footnoteLabels);
 
 	return { text, startOffset, endOffset, segments, children };
 };

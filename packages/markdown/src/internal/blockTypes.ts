@@ -53,6 +53,7 @@ export type BlockType =
 	| "code"
 	| "html"
 	| "definition"
+	| "footnoteDefinition"
 	| "table"
 	| "tableRow"
 	| "tableCell";
@@ -146,6 +147,8 @@ export interface BlockData {
 	spread?: boolean;
 	/** A split-out link reference definition (see {@link BlockType}). */
 	definition?: DefinitionData;
+	/** A GFM footnote definition's label, set by the footnote block start. */
+	footnote?: FootnoteData;
 	/** GFM table bookkeeping, set by the table block starts. */
 	tableData?: TableData;
 	/**
@@ -178,6 +181,21 @@ export interface DefinitionData {
 	/** The decoded destination — never percent-encoded (`references.ts`). */
 	readonly url: string;
 	readonly title?: string;
+}
+
+/**
+ * A GFM footnote definition's label, carried on the block.
+ *
+ * The fold happens once, at the block start, so the label map the inline pass
+ * consults and the node's `identifier` can never disagree.
+ */
+export interface FootnoteData {
+	/** The case-folded lookup key. */
+	readonly key: string;
+	/** mdast's `identifier`: the normalized label, lowercased. */
+	readonly identifier: string;
+	/** mdast's `label`: the raw label text, as written. */
+	readonly label: string;
 }
 
 /** A list marker's parsed shape, upstream's `_listData`. */

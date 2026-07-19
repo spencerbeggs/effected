@@ -75,6 +75,19 @@ export interface BlockPassResult {
 	 * consumer) does it against this.
 	 */
 	readonly refmap: ReadonlyMap<string, Definition>;
+	/**
+	 * The case-folded label of every GFM footnote definition in the tree.
+	 *
+	 * The GFM counterpart of `refmap`, and a SET rather than a map for a
+	 * structural reason: a footnote definition's own children are inline-parsed
+	 * during materialization, and that parse consults this index, so the index
+	 * cannot hold materialized nodes without a cycle. Formation only ever asks
+	 * whether a label exists; the definitions themselves stay in `root` at
+	 * their source position, where a consumer resolves against them.
+	 *
+	 * Always empty under the `commonmark` dialect, which has no such construct.
+	 */
+	readonly footnoteLabels: ReadonlySet<string>;
 }
 
 class BlockParser implements BlockScanner {
@@ -492,20 +505,30 @@ class BlockParser implements BlockScanner {
 	}
 
 	/**
-	 * Materialize every definition in the tree and index them, before anything
-	 * else is built.
+	 * Index every reference target in the tree — link reference definitions and
+	 * GFM footnote definition labels — before anything else is built.
 	 *
-	 * The inline pass resolves references against the refmap, and a definition
-	 * can appear anywhere — including after the paragraph that references it —
-	 * so the map has to exist before the first leaf is parsed. Walking twice
-	 * is the price; the alternative is a mutable tree the inline pass patches
+	 * The inline pass resolves references against these, and a definition can
+	 * appear anywhere, including after the paragraph that references it, so
+	 * both maps have to exist before the first leaf is parsed. Walking twice is
+	 * the price; the alternative is a mutable tree the inline pass patches
 	 * afterwards.
+	 *
+	 * Link reference definitions are MATERIALIZED here, so the tree and the
+	 * refmap point at one object. Footnote definitions deliberately are not:
+	 * a footnote definition is a container whose children are flow blocks, and
+	 * materializing those runs the inline pass over them — which consults this
+	 * very map. Only the labels are collected, which is all formation needs,
+	 * and the nodes are built in document order by the ordinary walk. That is
+	 * why `footnoteLabels` is a set of labels rather than a map to nodes; a
+	 * consumer wanting the node walks the tree, where it still sits.
 	 */
-	private collectDefinitions(
+	private collectReferences(
 		block: BlockNode,
 		context: MaterializeContext,
 		nodes: Map<BlockNode, Definition>,
 		refmap: Map<string, Definition>,
+		footnoteLabels: Set<string>,
 	): void {
 		if (block.type === "definition") {
 			const materialized = this.constructOf(block.type).materialize(block, [], context);
@@ -521,8 +544,13 @@ class BlockParser implements BlockScanner {
 			return;
 		}
 
+		const footnoteKey = block.data.footnote?.key;
+		if (footnoteKey !== undefined) {
+			footnoteLabels.add(footnoteKey);
+		}
+
 		for (const child of block.children) {
-			this.collectDefinitions(child, context, nodes, refmap);
+			this.collectReferences(child, context, nodes, refmap, footnoteLabels);
 		}
 	}
 
@@ -538,12 +566,17 @@ class BlockParser implements BlockScanner {
 		// A real Map: link labels are attacker-controlled, so a `__proto__`
 		// label must be a key and not a prototype write.
 		const refmap = new Map<string, Definition>();
+		// A real Set for the same reason the refmap is a real Map: footnote
+		// labels are attacker-controlled, so `__proto__` must be a member and
+		// not a prototype write.
+		const footnoteLabels = new Set<string>();
 		const definitionNodes = new Map<BlockNode, Definition>();
 		const rawInlines: RawInlineSlice[] = [];
 
 		const context: MaterializeContext = {
 			position: (start, end) => this.position(start, end),
-			inlineSlice: (block) => prepareInline(block, (start, end) => this.position(start, end), refmap, this.dialectName),
+			inlineSlice: (block) =>
+				prepareInline(block, (start, end) => this.position(start, end), refmap, this.dialectName, footnoteLabels),
 			registerInline: (parent: InlineHost, prepared: PreparedInline) => {
 				rawInlines.push({
 					parent,
@@ -554,14 +587,14 @@ class BlockParser implements BlockScanner {
 			},
 		};
 
-		this.collectDefinitions(this.doc, context, definitionNodes, refmap);
+		this.collectReferences(this.doc, context, definitionNodes, refmap, footnoteLabels);
 
 		const root = this.materializeBlock(this.doc, context, definitionNodes);
 		if (root === undefined || root.type !== "root") {
 			throw new TypeError("block parser: the document construct did not materialize a root");
 		}
 
-		return { root, rawInlines, carriers: [], refmap };
+		return { root, rawInlines, carriers: [], refmap, footnoteLabels };
 	}
 }
 

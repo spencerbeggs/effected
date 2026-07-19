@@ -43,6 +43,7 @@ import {
 	Break,
 	Delete,
 	Emphasis,
+	FootnoteReference,
 	Html,
 	Image,
 	ImageReference,
@@ -110,6 +111,7 @@ class InlineParser implements InlineScanner {
 	readonly subject: string;
 	pos = 0;
 	readonly refmap: ReadonlyMap<string, Definition>;
+	readonly footnoteLabels: ReadonlySet<string>;
 	delimiters: Delimiter | undefined;
 	brackets: Bracket | undefined;
 
@@ -131,12 +133,14 @@ class InlineParser implements InlineScanner {
 		dialect: InlineDialect,
 		positionOf: PositionOf,
 		refmap: ReadonlyMap<string, Definition>,
+		footnoteLabels: ReadonlySet<string>,
 	) {
 		this.source = source;
 		this.subject = source.text;
 		this.dialect = dialect;
 		this.positionOf = positionOf;
 		this.refmap = refmap;
+		this.footnoteLabels = footnoteLabels;
 		this.root = makeInlineNode("text", 0, source.text.length);
 	}
 
@@ -569,6 +573,15 @@ class InlineParser implements InlineScanner {
 					position,
 					...(label === undefined ? {} : { label }),
 				});
+			case "footnoteReference":
+				// The GFM counterpart of `linkReference`, and unresolved for the
+				// same reason: which definition it points at is the consumer's
+				// business, not the parser's.
+				return FootnoteReference.make({
+					identifier: identifier ?? "",
+					position,
+					...(label === undefined ? {} : { label }),
+				});
 			case "imageReference":
 				return ImageReference.make({
 					identifier: identifier ?? "",
@@ -644,4 +657,6 @@ export const parseInlines = (
 	refmap: ReadonlyMap<string, Definition>,
 	position: PositionOf,
 	dialect: InlineDialectName = "commonmark",
-): ReadonlyArray<PhrasingContent> => new InlineParser(source, inlineDialect(dialect), position, refmap).parse();
+	footnoteLabels: ReadonlySet<string> = new Set(),
+): ReadonlyArray<PhrasingContent> =>
+	new InlineParser(source, inlineDialect(dialect), position, refmap, footnoteLabels).parse();
