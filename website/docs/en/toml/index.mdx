@@ -1,17 +1,17 @@
 ---
 title: "@effected/toml"
-description: "Zero-dependency TOML 1.0.0 parsing, editing and formatting as Effect schemas, on a from-scratch engine."
+description: "Zero-dependency TOML 1.1.0 parsing, editing and formatting as Effect schemas, on a from-scratch engine."
 ---
 
 # @effected/toml
 
-Zero-dependency TOML 1.0.0 parsing, editing and formatting expressed as Effect schemas and pure functions. Parse TOML into plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
+Zero-dependency TOML 1.1.0 parsing, editing and formatting expressed as Effect schemas and pure functions. Parse TOML into plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
 
 ## Why @effected/toml
 
 TOML is the format behind `Cargo.toml`, `pyproject.toml` and a large share of the Rust and Python toolchains. Most JavaScript TOML libraries round-trip through a plain-object model, which loses every comment and blank line the moment you write the file back out.
 
-This is the first format package in the repo with no vendored code. `@effected/jsonc`, `@effected/yaml` and `@effected/glob` each port an upstream engine with attribution; TOML's engine is original work, built from the TOML 1.0.0 specification directly rather than translated from a reference implementation. That bought a shape the ported engines could not have: a **lossless linear CST** whose expression spans tile the source byte-exact, so `TomlDocument.parse(text).stringify()` reconstructs any valid document byte for byte. There is no separate re-serialization path that can drift from the source, because stringify is a concatenation of the slices the parser recorded.
+This is the first format package in the repo with no vendored code. `@effected/jsonc`, `@effected/yaml` and `@effected/glob` each port an upstream engine with attribution; TOML's engine is original work, built from the TOML specification directly rather than translated from a reference implementation, and it tracks the released TOML 1.1.0 revision: inline tables may span multiple lines with comments and trailing commas, seconds are optional in times, and strings gain `\e` and `\xHH` escapes. Writes stay conservative — `Toml.stringify` deliberately emits only 1.0 spellings, since every 1.0 document is valid 1.1. That bought a shape the ported engines could not have: a **lossless linear CST** whose expression spans tile the source byte-exact, so `TomlDocument.parse(text).stringify()` reconstructs any valid document byte for byte. There is no separate re-serialization path that can drift from the source, because stringify is a concatenation of the slices the parser recorded.
 
 ## Install
 
@@ -76,7 +76,7 @@ Integers split between `number` and `bigint` at `±(2^53 − 1)`, and both sides
 
 ## Correctness is proven twice
 
-The vendored [toml-test](https://github.com/toml-lang/toml-test) 1.0.0 compliance corpus — 205 valid and 474 invalid cases — runs to 100% pass with no skip list. Independently, `smol-toml` is pinned as a devDependency-only differential oracle for a property-test suite. Neither substitutes for the other, and neither is a runtime dependency.
+The vendored [toml-test](https://github.com/toml-lang/toml-test) compliance corpus, filtered to its TOML 1.1.0 manifest — 214 valid and 467 invalid cases — runs to 100% pass with no skip list. Independently, `smol-toml` is pinned as a devDependency-only differential oracle for a property-test suite. Neither substitutes for the other, and neither is a runtime dependency.
 
 ## API reference
 

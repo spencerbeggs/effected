@@ -1,8 +1,8 @@
 # @effected/toml
 
-Zero-dependency TOML 1.0.0 parse/edit/format schemas: parse into plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, visit as a `Stream`.
+Zero-dependency TOML 1.1.0 parse/edit/format schemas: parse into plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, visit as a `Stream`.
 
-**Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO. Eighth migration; merged. **The first format package in the repo with no vendored code** — jsonc, yaml and glob all port an upstream engine with attribution; toml's engine is original work, built from the TOML 1.0.0 spec directly rather than translated from a reference implementation.
+**Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO. Eighth migration; merged. **The first format package in the repo with no vendored code** — jsonc, yaml and glob all port an upstream engine with attribution; toml's engine is original work, built from the TOML 1.0.0 spec directly rather than translated from a reference implementation, then upgraded in place to TOML 1.1.0 (released 2025-12-24).
 
 **For the full design:** → `@../../.claude/design/effected/packages/toml.md`
 
@@ -42,30 +42,31 @@ Defect passthrough is proven, not assumed: every `catch` block in the facade (`T
 
 Two independent checks, neither a substitute for the other:
 
-- **The vendored toml-test 1.0.0 corpus** (`__test__/fixtures/toml-test/`, `files-toml-1.0.0` subset: 205 valid + 474 invalid cases) runs in `__test__/e2e/toml-test.e2e.test.ts` to **100% pass, no skip list**. Every valid case decodes to its expected typed value; every invalid case fails through `TomlParseError`. The corpus tree carries its own `.gitattributes` (`* -text`) scoping off the repo-root `*.toml text eol=lf` rule, because several fixtures deliberately embed bare CR / CRLF bytes to exercise line-ending handling and must stay byte-for-byte identical to upstream.
-- **`smol-toml@1.7.0`** is an exact-pinned `devDependency`, imported only by `__test__/oracle.property.test.ts` as a **differential property-test oracle** (250 runs) — never a runtime dependency, never imported outside that one file. Corpus and oracle disagreement, if it ever occurs, is resolved with the corpus winning (it is the spec's own compliance suite); document the divergence rather than silently picking a side.
+- **The vendored toml-test 1.1.0 corpus** (`__test__/fixtures/toml-test/`, toml-test `v2.2.0`, `files-toml-1.1.0` subset: 214 valid + 467 invalid cases) runs in `__test__/e2e/toml-test.e2e.test.ts` to **100% pass, no skip list**. Every valid case decodes to its expected typed value; every invalid case fails through `TomlParseError`. The corpus tree carries its own `.gitattributes` (`* -text`) scoping off the repo-root `*.toml text eol=lf` rule, because several fixtures deliberately embed bare CR / CRLF bytes to exercise line-ending handling and must stay byte-for-byte identical to upstream.
+- **`smol-toml@1.7.0`** is an exact-pinned `devDependency`, imported only by `__test__/oracle.property.test.ts` as a **differential property-test oracle** (250 runs) — never a runtime dependency, never imported outside that one file. `EXPECTED_ORACLE_DIVERGENCES` is **empty**: oracle, corpus and this engine are in full three-way agreement, and the assertion pins that. Corpus and oracle disagreement, if it ever recurs, is resolved with the corpus winning (it is the spec's own compliance suite); document the divergence rather than silently picking a side.
 - The hostile-input suite (`__test__/hostile.test.ts`) exercises the guard surfaces in the previous section plus prototype-key handling (`__proto__` lands as an own data property, never polluting the prototype) and defect-passthrough.
 
 ## Deviations from a hypothetical "full spec + full parity" package
 
-- **No `TomlParseOptions`.** `Toml.parse` takes no options — TOML 1.0.0 parsing has no knobs, unlike jsonc's error-recovery mode or yaml's multi-document handling. Do not add an options parameter speculatively; add it only when a real knob exists.
+- **No `TomlParseOptions`.** `Toml.parse` takes no options — TOML 1.1.0 parsing has no knobs, unlike jsonc's error-recovery mode or yaml's multi-document handling. The 1.1.0 upgrade did **not** add a spec-version knob: the parser accepts the full 1.1 grammar unconditionally. Do not add an options parameter speculatively; add it only when a real knob exists.
+- **Liberal read, conservative write.** `parse` accepts the full 1.1 grammar, but `stringify` deliberately emits 1.0 spellings (every 1.0 document is valid 1.1, so the asymmetry is safe in one direction only). Do not "modernize" the emitter to 1.1 syntax for symmetry.
 - **`U+FFFD` is rejected as `InvalidUtf8`.** The replacement character is treated as evidence of lossy decoding upstream (a prior UTF-8 decode step already lost information) rather than a legal source character. This is corpus-compliant — the toml-test suite expects this — but is a deliberate deviance from the RFC 3629 letter of "any Unicode scalar value is legal," worth knowing before "fixing" it to accept literal U+FFFD.
 - **Nanosecond truncation beyond 9 fractional digits.** A `TomlLocalTime`/`TomlLocalDateTime`/`TomlOffsetDateTime` literal with more than 9 digits after the decimal point truncates to 9 (nanosecond resolution); it does not round or error.
-- **`TomlEdit`/`TomlRange` are parity-identical to jsonc/yaml** (`{ offset, length, content }` / `{ offset, length }`) but two behaviors diverge:
+- **`TomlEdit`/`TomlRange` are parity-identical to jsonc/yaml** (`{ offset, length, content }` / `{ offset, length }`); one behavior still diverges:
   - `TomlFormat.format`'s `range` filter is an **owning-expression intersection** — an edit survives if its owning expression's span intersects the requested range at all — where yaml's equivalent requires the edit to fall **fully within** the range. Do not assume the two are interchangeable when porting range-filtering logic between packages.
-  - `TomlEdit.applyAll` **rejects overlapping edits as a thrown defect**; yaml's `applyAll` does not perform this check. `TomlFormat` never produces overlapping edits itself, so this only fires on hand-constructed edit arrays — which is the point: it is a programmer-error guard, not a runtime input-hardening guard.
+  - `TomlEdit.applyAll` **rejects overlapping edits as a thrown defect**, and this is no longer a divergence: jsonc, yaml and markdown all adopted the same guard, so all four format packages agree. `TomlFormat` never produces overlapping edits itself, so it only fires on hand-constructed edit arrays — which is the point: it is a programmer-error guard, not a runtime input-hardening guard.
 - **`TomlVisitor` construction is eager; enumeration is streamed.** `TomlVisitor.visit` parses, runs `analyze`, and sorts the full event list into document order **before** the `Stream` starts producing — `Stream.take` still short-circuits consumption, but it cannot skip the up-front parse/analyze/sort pass the way a truly lazy visitor could skip late document sections. Do not advertise early termination as an input-size optimization for this visitor; it isn't one.
 
 ## Public surface
 
 Exported from `src/index.ts`:
 
-- `Toml` — `parse`, `stringify` (`Effect`, failing with `TomlParseError`/`TomlStringifyError`); `fromString`, `TomlFromString`, `schema(target)`. Plus `TomlStringifyOptions` (the only knob: `newline`).
+- `Toml` — `parse`, `stringify` (`Effect`, failing with `TomlParseError`/`TomlStringifyError`); `fromString`, `TomlFromString`, `schema(target)`, `bind(target)` → a `TomlBoundCodec` `{ schema, decode, encode }` pre-binding both directions, each failing with `Schema.SchemaError` — thin sugar over `schema(target)` plus `Schema.decodeEffect`/`encodeEffect`, adding no error taxonomy of its own. All three are schema-producing: bind results to a `const` on hot paths. Plus `TomlStringifyOptions` (the only knob: `newline`).
 - `TomlDocument` — `parse`, `schema()`, `toValue()`, `stringify()` — the lossless document (`source`, `expressions`, `diagnostics`).
 - `TomlEdit` (+ `applyAll`), `TomlRange`, `TomlPath`, `TomlSegment` — the edit vocabulary.
 - `TomlFormat` — `format`/`formatToString` (pure, total), `modify`/`modifyToString` (`Effect`, failing with `TomlParseError`/`TomlModificationError`); `TomlFormattingOptions`.
 - `TomlVisitor`, `TomlVisitorEvent` — SAX-style `Stream<TomlVisitorEvent, TomlParseError>` (`TableStart`/`ArrayTableStart`/`KeyValue`/`Comment`).
-- `TomlDiagnostic` — `code`, `message`, `offset`/`length`, `line`/`character`; plus the five staged error-code unions: `TomlLexErrorCode`, `TomlParseErrorCode`, `TomlSemanticErrorCode`, `TomlStringifyErrorCode`, and the aggregate `TomlErrorCode`.
+- `TomlDiagnostic` — `code`, `message`, `offset`/`length`, `line`/`character`; plus the five staged error-code unions: `TomlLexErrorCode`, `TomlParseErrorCode`, `TomlSemanticErrorCode`, `TomlStringifyErrorCode`, and the aggregate `TomlErrorCode`. The 1.1.0 upgrade **retired `TrailingCommaInInlineTable` and `NewlineInInlineTable`** from `TomlParseErrorCode` — both constructs are legal in 1.1, so the codes have no producer and are gone from the public union, not merely unused.
 - `TomlLocalDate`, `TomlLocalTime`, `TomlLocalDateTime`, `TomlOffsetDateTime` — the four date-time value classes.
 - The CST node classes (`TomlNode.ts`): `TomlKey`, `TomlKeyKind`, `TomlString`, `TomlStringStyle`, `TomlInteger`, `TomlFloat`, `TomlBoolean`, `TomlDateTimeLiteral`, `TomlArray`, `TomlInlineEntry`, `TomlInlineTable`, `TomlKeyValue`, `TomlTableHeader`, `TomlArrayTableHeader`, `TomlTrivia`, `TomlValueNode`, `TomlExpression`.
 

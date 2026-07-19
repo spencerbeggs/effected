@@ -7,7 +7,7 @@
 // One corpus-driven deviation from the G8 matrix as originally written:
 // header navigation PASSES THROUGH `table-dotted` intermediates (the spec's
 // "[table] form can be used to define sub-tables within tables defined via
-// dotted keys" — valid/spec-1.0.0/table-9.toml, valid/table/
+// dotted keys" — valid/spec-1.1.0/common-46.toml, valid/table/
 // array-within-dotted.toml); only landing the FINAL header segment on an
 // existing `table-dotted` is an error (invalid/table/redefine-02, -03).
 //

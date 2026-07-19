@@ -3,9 +3,9 @@
 [![npm](https://img.shields.io/npm/v/@effected%2Ftoml?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
-[![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Zero-dependency TOML 1.0.0 parsing, editing and formatting expressed as Effect schemas and pure functions. Parse TOML into plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
+Zero-dependency TOML 1.1.0 parsing, editing and formatting expressed as Effect schemas and pure functions. Parse TOML into plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 beta. Packages graduate to
@@ -23,7 +23,7 @@ Zero-dependency TOML 1.0.0 parsing, editing and formatting expressed as Effect s
 
 TOML is the config format behind `Cargo.toml`, `pyproject.toml` and a large share of the Rust and Python toolchains — files that people maintain by hand and comment heavily. Most JavaScript TOML libraries round-trip through a plain-object model, which loses every comment and blank line the moment you write the file back out.
 
-The engine here is written from scratch against the TOML 1.0.0 spec, and it is the only format package in this repo that vendors no upstream code at all. It parses into a lossless linear CST whose expression spans tile the source byte-exact, so `TomlDocument.parse(text).stringify()` reproduces the original text exactly for any valid document. There is no separate re-serialization path that can drift from the source. Edits are byte-minimal splices against that CST, so formatting and path-based modification preserve every comment and every byte you did not touch.
+The engine here is written from scratch against the TOML 1.1.0 spec, and it is the only format package in this repo that vendors no upstream code at all. Parsing accepts everything 1.1 added — newlines, comments and trailing commas inside inline tables, optional seconds in times, and the `\e` and `\xHH` string escapes — while `Toml.stringify` deliberately emits 1.0 spellings, which are valid 1.1, so documents this package writes stay readable by 1.0-only consumers. It parses into a lossless linear CST whose expression spans tile the source byte-exact, so `TomlDocument.parse(text).stringify()` reproduces the original text exactly for any valid document. There is no separate re-serialization path that can drift from the source. Edits are byte-minimal splices against that CST, so formatting and path-based modification preserve every comment and every byte you did not touch.
 
 The value model is honest about TOML's types rather than flattening them into JavaScript's. Integers past ±(2^53 − 1) decode to `bigint` instead of silently losing precision, and TOML's four date-time types decode to four calendar-validated value classes instead of a `Date` that cannot represent a local time. TOML has no null, so `Toml.stringify` on a value containing `null` fails with a structured `UnsupportedValue` diagnostic naming the offending path rather than dropping the key. Every fallible entry point carries a typed error built from `TomlDiagnostic`, and nesting-depth guards on both the parse and the stringify side mean hostile input fails through that channel rather than as a stack overflow.
 
@@ -135,7 +135,7 @@ Effect.runPromise(Effect.result(Toml.stringify({ a: null }))).then(console.log);
 
 ## Conformance
 
-The engine runs the [toml-test](https://github.com/toml-lang/toml-test) 1.0.0 compliance corpus — every valid case and every invalid case — to a 100% pass rate with no skip list, and a differential property suite cross-checks it against an independent TOML parser. Both oracles are devDependency-only; neither reaches your runtime.
+The engine runs the [toml-test](https://github.com/toml-lang/toml-test) compliance corpus — its `files-toml-1.1.0` subset, 214 valid cases and 467 invalid ones — to a 100% pass rate with no skip list, and a differential property suite cross-checks it against an independent TOML parser. Both oracles are devDependency-only; neither reaches your runtime.
 
 ## License
 

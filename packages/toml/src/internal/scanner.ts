@@ -45,6 +45,7 @@ const RIGHT_BRACKET = 0x5d;
 const RIGHT_BRACE = 0x7d;
 const LOWER_U = 0x75;
 const UPPER_U = 0x55;
+const LOWER_X = 0x78;
 const BOM = 0xfeff;
 
 const raise = (code: TomlErrorCodeRaw, message: string, offset: number, length: number): never => {
@@ -67,7 +68,7 @@ export const isBareKeyChar = (code: number): boolean =>
 export const skipBom = (source: string): number => (source.charCodeAt(0) === BOM ? 1 : 0);
 
 /**
- * Reject a document carrying U+FFFD REPLACEMENT CHARACTER. TOML 1.0.0 requires
+ * Reject a document carrying U+FFFD REPLACEMENT CHARACTER. TOML requires
  * a valid UTF-8 document, but this engine receives an already-decoded JS
  * string — after Node's lossy utf8 decode, U+FFFD is the only surviving
  * evidence of a malformed byte sequence. The grammar technically admits
@@ -160,6 +161,8 @@ const simpleEscape = (code: number): string | undefined => {
 			return "\f";
 		case 0x72:
 			return "\r";
+		case 0x65:
+			return "\u001b";
 		case QUOTE:
 			return '"';
 		case BACKSLASH:
@@ -171,21 +174,26 @@ const simpleEscape = (code: number): string | undefined => {
 
 const HEX_DIGITS = /^[0-9A-Fa-f]+$/;
 
+const ESCAPE_LETTERS = { 2: "x", 4: "u", 8: "U" } as const;
+
 /**
- * Decode a `\uXXXX` / `\UXXXXXXXX` escape at `backslash`. The code point must
- * be a Unicode scalar value: surrogates and values above U+10FFFF are errors.
+ * Decode a `\xHH` / `\uXXXX` / `\UXXXXXXXX` escape at `backslash`. The code
+ * point must be a Unicode scalar value: surrogates and values above U+10FFFF
+ * are errors. `\xHH` (TOML 1.1) covers U+0000–U+00FF — the escape is a
+ * grammar-sibling of `basic-unescaped`, so the decoded character bypasses the
+ * control-character ban by design.
  */
 const decodeUnicodeEscape = (
 	source: string,
 	backslash: number,
-	width: 4 | 8,
+	width: 2 | 4 | 8,
 ): { readonly codePoint: number; readonly end: number } => {
 	const start = backslash + 2;
 	const hex = source.slice(start, start + width);
 	if (hex.length < width || !HEX_DIGITS.test(hex)) {
 		return raise(
 			"InvalidUnicodeEscape",
-			`\\${width === 4 ? "u" : "U"} escape requires ${width} hexadecimal digits`,
+			`\\${ESCAPE_LETTERS[width]} escape requires ${width} hexadecimal digits`,
 			backslash,
 			width + 2,
 		);
@@ -196,6 +204,10 @@ const decodeUnicodeEscape = (
 	}
 	return { codePoint, end: start + width };
 };
+
+/** The escape width for a unicode-style escape letter, or undefined. */
+const unicodeEscapeWidth = (code: number): 2 | 4 | 8 | undefined =>
+	code === LOWER_X ? 2 : code === LOWER_U ? 4 : code === UPPER_U ? 8 : undefined;
 
 /** Scan a single-line basic string starting at the opening `"`. */
 export const scanBasicString = (source: string, pos: number): ScanResult<string> => {
@@ -214,11 +226,12 @@ export const scanBasicString = (source: string, pos: number): ScanResult<string>
 			out += source.slice(chunkStart, i);
 			const next = source.charCodeAt(i + 1);
 			const mapped = simpleEscape(next);
+			const width = unicodeEscapeWidth(next);
 			if (mapped !== undefined) {
 				out += mapped;
 				i += 2;
-			} else if (next === LOWER_U || next === UPPER_U) {
-				const decoded = decodeUnicodeEscape(source, i, next === LOWER_U ? 4 : 8);
+			} else if (width !== undefined) {
+				const decoded = decodeUnicodeEscape(source, i, width);
 				out += String.fromCodePoint(decoded.codePoint);
 				i = decoded.end;
 			} else {
@@ -327,8 +340,9 @@ export const scanMultilineBasicString = (source: string, pos: number): ScanResul
 				chunkStart = i;
 				continue;
 			}
-			if (next === LOWER_U || next === UPPER_U) {
-				const decoded = decodeUnicodeEscape(source, i, next === LOWER_U ? 4 : 8);
+			const width = unicodeEscapeWidth(next);
+			if (width !== undefined) {
+				const decoded = decodeUnicodeEscape(source, i, width);
 				out += String.fromCodePoint(decoded.codePoint);
 				i = decoded.end;
 				chunkStart = i;
@@ -441,12 +455,16 @@ const scanTokenSpan = (source: string, pos: number): number => {
 	return i;
 };
 
-// G5 classification regexes (anchored, copied verbatim from the grammar reference).
+// G5 classification regexes (anchored). TOML 1.1 makes seconds optional:
+// `partial-time = time-hour ":" time-minute [ ":" time-second [ time-secfrac ] ]`
+// — time-secfrac nests INSIDE the optional seconds group, so `07:32` is valid
+// but `07:32.5` is not. The regexes nest accordingly; they must never chain
+// the seconds and fraction groups as independent optionals.
 const OFFSET_DATE_TIME =
-	/^([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt ]([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]+))?([Zz]|[+-][0-9]{2}:[0-9]{2})$/;
-const LOCAL_DATE_TIME = /^([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt ]([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]+))?$/;
+	/^([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt ]([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]+))?)?([Zz]|[+-][0-9]{2}:[0-9]{2})$/;
+const LOCAL_DATE_TIME = /^([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt ]([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]+))?)?$/;
 const LOCAL_DATE = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/;
-const LOCAL_TIME = /^([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]+))?$/;
+const LOCAL_TIME = /^([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]+))?)?$/;
 
 /**
  * Scan a non-string scalar value token. Stops at whitespace, newlines, `,`,
@@ -567,13 +585,14 @@ export const classifyValueToken = (token: string, offset: number): ScalarValue =
 	const length = Math.max(token.length, 1);
 	let match = OFFSET_DATE_TIME.exec(token);
 	if (match !== null) {
-		const [, y = "", mo = "", d = "", h = "", mi = "", s = "", fraction, offsetText = ""] = match;
+		// TOML 1.1 optional seconds: an absent seconds group materializes as 0.
+		const [, y = "", mo = "", d = "", h = "", mi = "", s, fraction, offsetText = ""] = match;
 		const year = Number(y);
 		const month = Number(mo);
 		const day = Number(d);
 		const hour = Number(h);
 		const minute = Number(mi);
-		const second = Number(s);
+		const second = s === undefined ? 0 : Number(s);
 		validateDate(year, month, day, offset, length);
 		validateTime(hour, minute, second, offset, length);
 		const offsetMinutes = decodeOffsetMinutes(offsetText, offset, length);
@@ -590,13 +609,13 @@ export const classifyValueToken = (token: string, offset: number): ScalarValue =
 	}
 	match = LOCAL_DATE_TIME.exec(token);
 	if (match !== null) {
-		const [, y = "", mo = "", d = "", h = "", mi = "", s = "", fraction] = match;
+		const [, y = "", mo = "", d = "", h = "", mi = "", s, fraction] = match;
 		const year = Number(y);
 		const month = Number(mo);
 		const day = Number(d);
 		const hour = Number(h);
 		const minute = Number(mi);
-		const second = Number(s);
+		const second = s === undefined ? 0 : Number(s);
 		validateDate(year, month, day, offset, length);
 		validateTime(hour, minute, second, offset, length);
 		return new TomlLocalDateTime({ year, month, day, hour, minute, second, nanosecond: decodeNanosecond(fraction) });
@@ -612,10 +631,10 @@ export const classifyValueToken = (token: string, offset: number): ScalarValue =
 	}
 	match = LOCAL_TIME.exec(token);
 	if (match !== null) {
-		const [, h = "", mi = "", s = "", fraction] = match;
+		const [, h = "", mi = "", s, fraction] = match;
 		const hour = Number(h);
 		const minute = Number(mi);
-		const second = Number(s);
+		const second = s === undefined ? 0 : Number(s);
 		validateTime(hour, minute, second, offset, length);
 		return new TomlLocalTime({ hour, minute, second, nanosecond: decodeNanosecond(fraction) });
 	}

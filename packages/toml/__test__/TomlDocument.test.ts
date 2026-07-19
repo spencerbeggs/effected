@@ -15,7 +15,7 @@ import { TomlInteger, TomlKey, TomlKeyValue } from "../src/TomlNode.js";
 const CORPUS_VALID = resolve(import.meta.dirname, "fixtures/toml-test/valid");
 
 // Count recorded in the fixture README — guards against a silently-empty walk.
-const README_VALID_COUNT = 205;
+const README_VALID_COUNT = 214;
 
 /** All `.toml` files under `root`, as sorted paths relative to `root`. */
 function walkTomlFiles(root: string): ReadonlyArray<string> {

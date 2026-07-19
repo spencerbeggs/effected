@@ -35,6 +35,8 @@ const IDEMPOTENCE_DOCS: ReadonlyArray<string> = [
 	's = """\nkeep  \n"""\nafter=1',
 	'\t# indented\n   \nk = {a = 1, b = "x"}\n',
 	"[a.b]\nc.d = 1979-05-27T07:32:00Z\n",
+	// TOML 1.1: an inline table spanning lines, with inner comments and a trailing comma
+	"k = {\n\ta = 1, # one\n\tb = [1, 2],\n}\n",
 ];
 
 describe("TomlFormat", () => {
@@ -194,6 +196,20 @@ describe("TomlFormat", () => {
 				assert.strictEqual(yield* modified("t = {a = 1, b = 2}\n", ["t", "b"], undefined), "t = {a = 1}\n");
 				assert.strictEqual(yield* modified("t = {a = 1}\n", ["t", "a"], undefined), "t = {}\n");
 				assert.strictEqual(yield* modified("t = {a.b = 1, c = 2}\n", ["t", "a", "b"], undefined), "t = {c = 2}\n");
+			}),
+		);
+
+		it.effect("modifies a multi-line inline table in place (TOML 1.1)", () =>
+			Effect.gen(function* () {
+				const doc = "t = {\n\ta = 1, # one\n\tb = 2,\n}\n";
+				// replacing an entry value touches only the value span
+				assert.strictEqual(yield* modified(doc, ["t", "b"], 3), "t = {\n\ta = 1, # one\n\tb = 3,\n}\n");
+				// deleting a non-last entry takes its trailing gap (comment included)
+				assert.strictEqual(yield* modified(doc, ["t", "a"], undefined), "t = {\n\tb = 2,\n}\n");
+				// deleting the last entry leaves the (1.1-legal) trailing comma behind
+				assert.strictEqual(yield* modified(doc, ["t", "b"], undefined), "t = {\n\ta = 1,\n}\n");
+				// deleting the only entry collapses the whole interior
+				assert.strictEqual(yield* modified("t = {\n\ta = 1,\n}\n", ["t", "a"], undefined), "t = {}\n");
 			}),
 		);
 

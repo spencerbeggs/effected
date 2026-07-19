@@ -1,5 +1,5 @@
 /**
- * Zero-dependency TOML 1.0.0 parsing and stringification as Effect schemas.
+ * Zero-dependency TOML 1.1.0 parsing and stringification as Effect schemas.
  *
  * @remarks
  * {@link Toml} is the value-level facade (`parse`/`stringify` and the schema
@@ -13,6 +13,7 @@
  * @packageDocumentation
  */
 
+export type { TomlBoundCodec } from "./Toml.js";
 export { Toml, TomlParseError, TomlStringifyError, TomlStringifyOptions } from "./Toml.js";
 export { TomlLocalDate, TomlLocalDateTime, TomlLocalTime, TomlOffsetDateTime } from "./TomlDateTime.js";
 export {

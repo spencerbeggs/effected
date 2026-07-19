@@ -44,7 +44,7 @@ Effect.runPromise(program).then(console.log);
 // { name: "gateway", port: 8080 }
 ```
 
-Two things to keep in mind. First, `Toml.schema` and `Toml.fromString` are schema-*producing* — bind their results to a `const`, as above, rather than calling them inside a request handler. For the zero-config case there is a pre-bound `Toml.TomlFromString` you can reach for directly. Second, this codec's *encode* direction is canonical TOML emission: comments and layout do not survive a decode-then-encode round trip. When you need to write a change back with its comments intact, do not encode the schema — reach for the edit primitives below.
+Two things to keep in mind. First, `Toml.schema` and `Toml.fromString` are schema-*producing* — bind their results to a `const`, as above, rather than calling them inside a request handler. For the zero-config case there is a pre-bound `Toml.TomlFromString` you can reach for directly. Second, this codec's *encode* direction is canonical TOML emission — deliberately in 1.0 spellings (seconds always present, no `\e`/`\xHH` escapes, single-line inline tables), so emitted documents stay readable by 1.0-only consumers even though parsing accepts the full 1.1.0 grammar — and comments and layout do not survive a decode-then-encode round trip. When you need to write a change back with its comments intact, do not encode the schema — reach for the edit primitives below.
 
 ## Two error channels: parse vs. validate
 
@@ -78,7 +78,7 @@ Effect.runPromise(diagnostics).then(console.log);
 // [ "3:1 DuplicateKey" ]
 ```
 
-TOML 1.0.0 parsing fails at the *first* violation, so `diagnostics` holds one entry today; the array shape exists for parity with `@effected/yaml`'s aggregate contract, not because a second entry ever appears. `Toml.parse` takes no options — TOML has no error-recovery mode or multi-document handling to configure, so there is no options parameter to pass.
+TOML 1.1.0 parsing fails at the *first* violation, so `diagnostics` holds one entry today; the array shape exists for parity with `@effected/yaml`'s aggregate contract, not because a second entry ever appears. `Toml.parse` takes no options — TOML has no error-recovery mode or multi-document handling to configure, so there is no options parameter to pass.
 
 ## Comment-preserving edits at scale
 

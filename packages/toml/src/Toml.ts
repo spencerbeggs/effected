@@ -21,6 +21,13 @@ import { TomlDiagnostic } from "./TomlDiagnostic.js";
  * Options controlling stringify behavior. The only knob is `newline` —
  * omitted, it resolves to `"\n"`.
  *
+ * @remarks
+ * Stringify deliberately emits only TOML 1.0.0 spellings — seconds always
+ * present in times, no `\e`/`\xHH` escapes, single-line inline tables — even
+ * though {@link Toml.parse} accepts the full TOML 1.1.0 grammar. Every 1.0
+ * document is valid 1.1, so this conservative-write/liberal-read asymmetry
+ * keeps emitted documents readable by 1.0-only consumers.
+ *
  * @public
  */
 export class TomlStringifyOptions extends Schema.Class<TomlStringifyOptions>("TomlStringifyOptions")({
@@ -114,6 +121,25 @@ const stringifyOrFail = (value: unknown, options?: TomlStringifyOptions): Effect
 		},
 	});
 
+// ── Bound codec ─────────────────────────────────────────────────────────────
+
+/**
+ * A domain codec pre-bound to its two directions, returned by
+ * {@link Toml.bind}: the composed `schema` (what {@link Toml.schema} returns)
+ * plus `decode` and `encode` functions derived from it once, so callers need
+ * no generic `Schema` machinery at the use site.
+ *
+ * @public
+ */
+export interface TomlBoundCodec<T, RD = never, RE = never> {
+	/** The composed codec decoding a TOML `string` straight into `T`. */
+	readonly schema: Schema.Codec<T, string, RD, RE>;
+	/** Decode TOML text into a validated `T`. */
+	readonly decode: (text: string) => Effect.Effect<T, Schema.SchemaError, RD>;
+	/** Encode a `T` back to canonical TOML text. */
+	readonly encode: (value: T) => Effect.Effect<string, Schema.SchemaError, RE>;
+}
+
 // ── Facade ──────────────────────────────────────────────────────────────────
 
 /**
@@ -125,7 +151,7 @@ const stringifyOrFail = (value: unknown, options?: TomlStringifyOptions): Effect
  * channels — including the hardening guards (nesting-depth caps on both
  * sides, circular-reference detection on encode) that keep malformed or
  * adversarial input on the typed channel instead of surfacing as an
- * unhandled defect. `parse` takes no options: TOML 1.0.0 parsing has no
+ * unhandled defect. `parse` takes no options: TOML 1.1.0 parsing has no
  * knobs.
  *
  * @example
@@ -145,7 +171,7 @@ export class Toml {
 	private constructor() {}
 
 	/**
-	 * Parse a TOML 1.0.0 document into a plain JavaScript value: tables and
+	 * Parse a TOML 1.1.0 document into a plain JavaScript value: tables and
 	 * inline tables become plain objects (`__proto__` lands as an own data
 	 * property), arrays become plain arrays, integers become `number` (or
 	 * `bigint` past 2^53) and date-times become the four `TomlDateTime`
@@ -217,5 +243,49 @@ export class Toml {
 		return Toml.TomlFromString.pipe(
 			Schema.decodeTo(target as unknown as Schema.Codec<T, unknown, RD, RE>),
 		) as unknown as Schema.Codec<T, string, RD, RE>;
+	}
+
+	/**
+	 * Bind a target schema to the TOML codec once, yielding the composed
+	 * schema plus pre-derived `decode`/`encode` directions — the
+	 * {@link Toml.schema} composition without the generic `Schema` machinery
+	 * at every use site. Binds the plain form only: TOML 1.1.0 parsing on
+	 * decode, default stringify options on encode.
+	 *
+	 * Both directions fail with `Schema.SchemaError`, exactly as
+	 * `Schema.decodeEffect`/`Schema.encodeEffect` over {@link Toml.schema}
+	 * would; the target's decoding/encoding service requirements flow through.
+	 *
+	 * @remarks
+	 * Schema-producing: each call composes a fresh schema and derives both
+	 * directions from it. Bind the result to a `const` — that single binding is
+	 * the point.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Toml } from "@effected/toml";
+	 * import { Effect, Schema } from "effect";
+	 *
+	 * const Config = Schema.Struct({ name: Schema.String });
+	 * const config = Toml.bind(Config);
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const value = yield* config.decode('name = "Alice"');
+	 *   const text = yield* config.encode(value);
+	 *   return [value, text] as const;
+	 * });
+	 * ```
+	 *
+	 * @param target - The domain schema decoded values must satisfy.
+	 * @returns A {@link TomlBoundCodec} carrying the composed schema and its
+	 *   two pre-bound directions.
+	 */
+	static bind<T, E, RD = never, RE = never>(target: Schema.Codec<T, E, RD, RE>): TomlBoundCodec<T, RD, RE> {
+		const schema = Toml.schema(target);
+		return {
+			schema,
+			decode: Schema.decodeEffect(schema),
+			encode: Schema.encodeEffect(schema),
+		};
 	}
 }

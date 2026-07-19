@@ -1,4 +1,4 @@
-# toml-test corpus (TOML 1.0.0 subset)
+# toml-test corpus (TOML 1.1.0 subset)
 
 Vendored fixtures from the official language-agnostic TOML compliance test
 suite.
@@ -6,19 +6,22 @@ suite.
 - **Upstream:** [toml-lang/toml-test](https://github.com/toml-lang/toml-test)
 - **Tag:** `v2.2.0`
 - **Commit:** `ce08da1ddb075d1c7596d663c7fcba9a2ae02c5c`
-- **Fetched:** 2026-07-10
+- **Fetched:** 2026-07-19
 
 ## Subset
 
-Upstream's `tests/files-toml-1.0.0` manifest lists exactly which `valid/**`
-and `invalid/**` files belong to the TOML 1.0.0 spec; later files added to
-the corpus target 1.1 drafts and are excluded here. Only the files named in
-that manifest were copied into `valid/` and `invalid/` below.
+Upstream's `tests/files-toml-1.1.0` manifest lists exactly which `valid/**`
+and `invalid/**` files belong to the TOML 1.1.0 spec (released 2025-12-24).
+Only the files named in that manifest were copied into `valid/` and
+`invalid/` below. The 1.1.0 tree is not a superset of the 1.0.0 tree it
+replaced: twelve files are invalid under 1.0 but valid under 1.1 (optional
+seconds, inline-table newlines and trailing commas, `\xHH` byte escapes), so
+the two subsets cannot coexist in one corpus.
 
 ## Counts
 
-- **205** valid `.toml`/`.json` pairs under `valid/`
-- **474** invalid `.toml` files under `invalid/`
+- **214** valid `.toml`/`.json` pairs under `valid/`
+- **467** invalid `.toml` files under `invalid/`
 
 Every `valid/**/*.toml` has a sibling `.json` holding the tagged expected
 value (for example `{"type": "integer", "value": "1"}`); `invalid/**/*.toml`
