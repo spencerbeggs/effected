@@ -473,7 +473,14 @@ class InlineParser implements InlineScanner {
 
 	private position(from: number, to: number): Position {
 		const start = this.offsetAt(from);
-		return this.positionOf(start, Math.max(this.offsetAt(to), start));
+		// `to` is exclusive, so it binds to one past the last included
+		// character's source — not to the next segment's start. The two
+		// disagree only where the subject dropped source text at a segment
+		// boundary (stripped continuation indentation after a line ending):
+		// there the node must end just past the line ending it consumed, the
+		// shape mdast-util emits, pinned by the interop corpus.
+		const end = to > from ? this.offsetAt(to - 1) + 1 : this.offsetAt(to);
+		return this.positionOf(start, Math.max(end, start));
 	}
 
 	/**

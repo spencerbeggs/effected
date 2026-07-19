@@ -16,9 +16,15 @@ export const indentedCodeStart: BlockStart = {
 			return 0;
 		}
 
+		// The node spans from the line's current parse position — BEFORE the
+		// four columns of code indentation are consumed. The indent is part of
+		// the block's source extent (mdast-util starts indented code at the
+		// line start, pinned by the interop corpus); only the value excludes
+		// it.
+		const start = scanner.offset;
 		scanner.advanceOffset(CODE_INDENT, true);
 		scanner.closeUnmatchedBlocks();
-		scanner.addChild("code", scanner.offset);
+		scanner.addChild("code", start);
 		return 2;
 	},
 };

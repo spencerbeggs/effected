@@ -9,7 +9,7 @@
  * `extensions.txt` corpus (including the only official footnote examples).
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 /** Root directory of the vendored CommonMark conformance fixtures. */
@@ -74,3 +74,30 @@ export const loadGfmExtensionsExamples = (): ReadonlyArray<SpecExample> => {
 	const examples = JSON.parse(raw) as ReadonlyArray<RawSpecExample>;
 	return examples.map(({ markdown, html, example, section }) => ({ markdown, html, example, section }));
 };
+
+/** Root directory of the vendored mdast interop fixtures. */
+export const MDAST_FIXTURES_DIR = resolve(import.meta.dirname, "../../fixtures/mdast");
+
+/** One vendored mdast interop fixture: a source and its reference tree. */
+export interface MdastFixturePair {
+	readonly name: string;
+	readonly markdown: string;
+	readonly tree: unknown;
+}
+
+/**
+ * Load the 27 position-complete `.md`/`.json` interop fixture pairs vendored
+ * from `mdast-util-from-markdown@2.0.3` (see `fixtures/mdast/VENDORED.md`).
+ * Each pair carries the fixture's markdown source and the reference mdast
+ * tree the upstream utility produces for it, positions included.
+ */
+export const loadMdastFixturePairs = (): ReadonlyArray<MdastFixturePair> =>
+	readdirSync(MDAST_FIXTURES_DIR)
+		.filter((file) => file.endsWith(".md") && file !== "VENDORED.md")
+		.map((file) => file.slice(0, -3))
+		.sort()
+		.map((name) => ({
+			name,
+			markdown: readFileSync(resolve(MDAST_FIXTURES_DIR, `${name}.md`), "utf8"),
+			tree: JSON.parse(readFileSync(resolve(MDAST_FIXTURES_DIR, `${name}.json`), "utf8")) as unknown,
+		}));

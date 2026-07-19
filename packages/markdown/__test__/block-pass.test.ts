@@ -164,7 +164,11 @@ describe("block pass", () => {
 			const { root } = parseBlocks(source);
 			const [code] = root.children;
 			assert.strictEqual(code?.type, "code");
-			assert.strictEqual(sliceOf(source, code as never), "foo");
+			// The span starts at the line start: the four columns of code
+			// indentation are part of the block's source extent (the interop
+			// corpus pins mdast-util's convention); only the value excludes
+			// them. The end still excludes the trailing blank lines.
+			assert.strictEqual(sliceOf(source, code as never), "    foo");
 			assert.strictEqual(code?.type === "code" ? code.value : "", "foo\n");
 		});
 

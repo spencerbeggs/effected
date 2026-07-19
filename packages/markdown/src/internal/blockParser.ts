@@ -133,11 +133,16 @@ class BlockParser implements BlockScanner {
 		// The index is built from the preprocessor's OWN line table, not from a
 		// second scan of the text: the two disagree about bare `\r`, and a
 		// document with one would otherwise report line numbers off by however
-		// many it contains.
-		this.lineIndex = LineIndex.fromLineStarts(
-			text,
-			this.lines.map((line) => line.start),
-		);
+		// many it contains. One addition the preprocessor deliberately omits:
+		// a text ending in `\n` has a phantom empty final line whose start is
+		// `text.length`, and unist point mapping (vfile, mdast-util) places the
+		// end-of-input offset on it (`line N+1, column 1`) rather than clamping
+		// into the last content line. Only the root's end point can sit there.
+		const starts = this.lines.map((line) => line.start);
+		if (text.endsWith("\n")) {
+			starts.push(text.length);
+		}
+		this.lineIndex = LineIndex.fromLineStarts(text, starts);
 		this.sourceLength = text.length;
 		this.dialect = dialect;
 		this.dialectName = dialectName;
@@ -602,6 +607,14 @@ class BlockParser implements BlockScanner {
 		while (this.tipNode !== undefined) {
 			this.finalizeBlock(this.tipNode, this.lines.length);
 		}
+
+		// The root spans the entire input, trailing line ending included — the
+		// span every ecosystem producer (micromark, mdast-util-from-markdown)
+		// emits for `root`, pinned by the vendored interop corpus, and the
+		// natural whole-document range for the edit layer. Block-level
+		// finalization above ends at the last content character; this widens
+		// only the document node.
+		this.doc.endOffset = this.sourceLength;
 
 		// A real Map: link labels are attacker-controlled, so a `__proto__`
 		// label must be a key and not a prototype write.

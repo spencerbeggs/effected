@@ -14,7 +14,9 @@
  * `MarkdownEdit.applyAll`) carries the cross-package offset-splice parity
  * contract; `Markdown.stringify` serializes trees canonically, and
  * `MarkdownFormat` computes marker-normalization and surgical-replacement
- * edits over it. The mdast projection and the visitor arrive in later phases.
+ * edits over it. {@link Mdast} is the remark-ecosystem interop boundary:
+ * projection to plain mdast JSON and checked decoding back. The visitor
+ * arrives in a later phase.
  *
  * @packageDocumentation
  */
@@ -107,5 +109,7 @@ export {
 	ThematicBreak,
 	ThematicBreakChar,
 } from "./MarkdownNode.js";
+export type { MdastNode } from "./Mdast.js";
+export { Mdast, MdastDecodeError } from "./Mdast.js";
 export { TomlFrontmatter } from "./TomlFrontmatter.js";
 export { YamlFrontmatter } from "./YamlFrontmatter.js";

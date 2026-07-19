@@ -49,14 +49,21 @@ export const extractDefinitions = (block: BlockNode): void => {
 
 		const consumed = block.stringContent.slice(0, reference.length);
 		const startOffset = sourceOffsetAt(block.segments, 0, block.startOffset);
-		const endOffset = sourceOffsetAt(block.segments, reference.length, startOffset);
 		const linesConsumed = (consumed.match(/\n/g) ?? []).length;
+		// The node ends at the definition's last content character. The parse
+		// consumes trailing whitespace and the line ending to validate the
+		// definition, but that consumption is not part of the node's span —
+		// mdast-util ends definitions at content end, pinned by the interop
+		// corpus.
+		const contentLength = consumed.replace(/[ \t\r\n]+$/, "").length;
+		const endOffset = sourceOffsetAt(block.segments, contentLength, startOffset);
+		const contentLines = (consumed.slice(0, contentLength).match(/\n/g) ?? []).length;
 
 		const node = makeBlockNode("definition", startOffset, block.startLine, block.depth);
 		node.parent = parent;
 		node.open = false;
 		node.endOffset = endOffset;
-		node.endLine = block.startLine + Math.max(linesConsumed - 1, 0);
+		node.endLine = block.startLine + contentLines;
 		node.data.definition = {
 			key: reference.key,
 			identifier: reference.identifier,
