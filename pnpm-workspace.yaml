@@ -141,3 +141,32 @@ linkWorkspacePackages: deep
 loglevel: info
 minimumReleaseAgeExclude:
 - '@effect/tsgo-*'
+peerDependencyRules:
+  allowedVersions:
+    '@effect/ai-anthropic@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/ai-openai-compat@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/ai-openai@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/ai-openrouter@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/atom-react@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/atom-solid@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/atom-vue@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/openapi-generator@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/opentelemetry@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/platform-browser@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/platform-bun@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/platform-node-shared@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/platform-node@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-clickhouse@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-d1@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-libsql@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-mssql@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-mysql2@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-pg@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-pglite@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-sqlite-bun@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-sqlite-do@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-sqlite-node@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-sqlite-react-native@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/sql-sqlite-wasm@4.0.0-beta.99>effect': 4.0.0-beta.99
+    '@effect/tsgo@0.24.1>effect': 4.0.0-beta.99
+    '@effect/vitest@4.0.0-beta.99>effect': 4.0.0-beta.99
