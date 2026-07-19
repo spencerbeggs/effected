@@ -10,8 +10,10 @@
  * {@link MarkdownDiagnostic}. Frontmatter is captured raw behind a parse
  * toggle and decoded through the free-standing codecs — `YamlFrontmatter`,
  * `TomlFrontmatter`, `JsonFrontmatter` — each peering optionally on its
- * format package. Edit/format, the mdast projection and the visitor arrive
- * in later phases.
+ * format package. The edit vocabulary (`MarkdownEdit`, `MarkdownRange` and
+ * `MarkdownEdit.applyAll`) carries the cross-package offset-splice parity
+ * contract. Stringify/format, the mdast projection and the visitor arrive in
+ * later phases.
  *
  * @packageDocumentation
  */
@@ -41,6 +43,8 @@ export { JsonFrontmatter } from "./JsonFrontmatter.js";
 export { Markdown, MarkdownDialect, MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";
 export { MarkdownDiagnostic, MarkdownParseErrorCode } from "./MarkdownDiagnostic.js";
 export { MarkdownDocument } from "./MarkdownDocument.js";
+export type { MarkdownPath, MarkdownSegment } from "./MarkdownEdit.js";
+export { MarkdownEdit, MarkdownRange } from "./MarkdownEdit.js";
 export {
 	Blockquote,
 	Break,
