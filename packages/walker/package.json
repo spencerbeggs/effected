@@ -1,6 +1,6 @@
 {
 	"name": "@effected/walker",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"private": true,
 	"description": "Path traversal as Effect primitives: ascend a directory chain to the first matching candidate, or descend a tree expanding a glob against the filesystem.",
 	"keywords": ["path", "traversal", "walk", "find-up", "effect", "effected"],

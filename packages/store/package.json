@@ -1,6 +1,6 @@
 {
 	"name": "@effected/store",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": true,
 	"description": "Durable local state for Effect: a schema-versioned, migrated SQLite store and a TTL cache with tag invalidation, eviction, and a cache event stream.",
 	"keywords": ["sqlite", "store", "cache", "ttl", "migrations", "effect", "effected"],

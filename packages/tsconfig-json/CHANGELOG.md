@@ -1,5 +1,22 @@
 # @effected/tsconfig-json
 
+## 0.2.4
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/jsonc  | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/walker | dependency | updated | 0.2.1 | 0.2.2 |
+
+* | Dependency | Type           | Action  | From          | To            |                                                                       |
+  | ---------- | -------------- | ------- | ------------- | ------------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#122]: https://github.com/spencerbeggs/effected/pull/122
+
 ## 0.2.3
 
 ### Dependencies

@@ -1,5 +1,28 @@
 # @effected/workspaces
 
+## 0.4.1
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From  | To    |
+| ---------------------- | ---------- | ------- | ----- | ----- |
+| @effected/git          | dependency | updated | 0.4.0 | 0.4.1 |
+| @effected/glob         | dependency | updated | 0.1.1 | 0.1.2 |
+| @effected/lockfiles    | dependency | updated | 0.1.4 | 0.1.5 |
+| @effected/npm          | dependency | updated | 0.2.0 | 0.2.1 |
+| @effected/package-json | dependency | updated | 0.3.0 | 0.3.1 |
+| @effected/semver       | dependency | updated | 0.1.0 | 0.1.1 |
+| @effected/walker       | dependency | updated | 0.2.1 | 0.2.2 |
+| @effected/yaml         | dependency | updated | 0.3.1 | 0.4.0 |
+
+* | Dependency | Type           | Action  | From          | To            |                                                                       |
+  | ---------- | -------------- | ------- | ------------- | ------------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#122]: https://github.com/spencerbeggs/effected/pull/122
+
 ## 0.4.0
 
 ### Breaking Changes

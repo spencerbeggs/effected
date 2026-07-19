@@ -1,6 +1,6 @@
 {
 	"name": "@effected/package-json",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"private": true,
 	"description": "package.json parsing, editing, validation and file IO as Effect schemas.",
 	"keywords": ["package.json", "npm", "manifest", "effect", "schema", "validation", "effected"],

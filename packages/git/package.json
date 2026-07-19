@@ -1,6 +1,6 @@
 {
 	"name": "@effected/git",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"private": true,
 	"description": "Typed git introspection over Effect's ChildProcessSpawner: read a repository's state at any ref without checking it out, plus a marked mutating tier.",
 	"keywords": ["git", "ls-tree", "merge-base", "ref", "effect", "effected"],
