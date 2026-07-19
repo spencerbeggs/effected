@@ -86,7 +86,26 @@ extension across both moments: cmark-gfm's autolink literals port as an
 inline construct for www/scheme literals (raw source, offsets intact) and a
 postprocess after `processEmphasis` for email literals (backwards scan, no
 stack left to corrupt). Check the upstream source for this split before
-assuming a single mechanism.
+assuming a single mechanism — and grepping for the construct's name is not
+enough on its own: dispatch branches can live in switch cases that never
+mention it (cmark-gfm's `![^`-never-opens-an-image branch contains no
+"footnote"). Grep for the construct name AND read the dispatch switch for
+every character the construct touches.
+
+**When the upstream extension is a branch inside a construct the base
+dialect already owns, no trigger-table entry can express it — swap a
+parameterized construct instead.** A construct that claims every occurrence
+of its trigger character (cmark-gfm's close-bracket handler emits a literal
+`]` even when nothing matches) makes anything registered after it
+unreachable, and anything registered before it beats the constructs the
+extension must lose to (`[^a](/url)` is a link, not a footnote). The proven
+pattern: export a `makeXConstruct(seam?)` factory from the base construct
+module, keep the base dialect's spelling as the no-seam default, and swap
+the parameterized construct into the extending dialect's table rather than
+appending a new entry — the base dialect stays byte-for-byte unchanged, and
+the seam sits at exactly the upstream branch point (cmark-gfm's footnotes
+needed two: the close-bracket no-match branch and the image opener's `![^`
+peek).
 
 ## Effect-wrapping policy (and the Result-parity pattern)
 
