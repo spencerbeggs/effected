@@ -136,6 +136,12 @@ export interface BlockData {
 	htmlBlockType?: number;
 	/** List and list-item bookkeeping. */
 	listData?: ListData;
+	/**
+	 * A GFM task-list item's checkbox state, set by the task-list block start
+	 * and absent on every item that carried no marker (and under every dialect
+	 * that has no such start).
+	 */
+	checked?: boolean;
 	/** mdast's `spread`, computed for a list and each of its items at finalize. */
 	spread?: boolean;
 	/** A split-out link reference definition (see {@link BlockType}). */
@@ -263,6 +269,17 @@ export interface BlockScanner {
 	advanceOffset(count: number, columns?: boolean): void;
 	/** Jump the scan position to `nextNonspace`. */
 	advanceNextNonspace(): void;
+	/**
+	 * Recompute `nextNonspace`, `nextNonspaceColumn`, `indent`, `indented` and
+	 * `blank` from the scan position.
+	 *
+	 * Upstream's `S_find_first_nonspace`, which the line loop runs before each
+	 * pass over the block starts and `add_text_to_container` runs again before
+	 * it decides what to do with the rest of the line. A construct that
+	 * consumes characters and then STOPS the start scan has to re-establish it
+	 * itself, because the loop it exited will not.
+	 */
+	findNextNonspace(): void;
 	/** Finalize every open block that failed to match this line. */
 	closeUnmatchedBlocks(): void;
 	/** Open a block of `type` as a child of the tip, starting at `offsetInLine`. */

@@ -28,6 +28,7 @@ import {
 	tableRowConstruct,
 	tableRowStart,
 } from "./blocks/table.js";
+import { taskListItemStart } from "./blocks/taskListItem.js";
 import { thematicBreakConstruct, thematicBreakStart } from "./blocks/thematicBreak.js";
 import type { BlockConstruct, BlockDialect, BlockType } from "./blockTypes.js";
 
@@ -70,10 +71,10 @@ const commonmarkDialect: BlockDialect = {
 	],
 };
 
-// GFM's block grammar is CommonMark's plus tables, with task-list items and
-// footnote definitions still to come (P2 Tasks 5-6).
+// GFM's block grammar is CommonMark's plus tables and task-list items, with
+// footnote definitions still to come (P2 Task 6).
 //
-// The two table starts sit LAST, after every CommonMark start, because that is
+// The extension starts sit LAST, after every CommonMark start, because that is
 // where cmark-gfm runs its extensions: `open_new_blocks` tries the core
 // constructs first and only reaches `try_opening_block` when none of them
 // claimed the line. The ordering is load-bearing rather than cosmetic — it is
@@ -104,14 +105,20 @@ const gfmDialect: BlockDialect = {
 		thematicBreakStart,
 		listItemStart,
 		indentedCodeStart,
+		taskListItemStart,
 		tableHeaderStart,
 		tableRowStart,
 	],
-	// commonmark.js's `reMaybeSpecial` fast path knows nothing of tables: a
-	// delimiter row can begin with `|` or `:`, and a table row can begin with
-	// any character at all. cmark-gfm has no such filter, so this restores the
-	// lines it would hide — and only those.
-	mayStartBlock: (rest, container) => container.type === "table" || rest.startsWith("|") || rest.startsWith(":"),
+	// commonmark.js's `reMaybeSpecial` fast path knows nothing of tables or
+	// task lists: a delimiter row can begin with `|` or `:`, a table row can
+	// begin with any character at all, and a task-list checkbox begins with
+	// `[`. cmark-gfm has no such filter, so this restores the lines it would
+	// hide — and only those.
+	mayStartBlock: (rest, container) =>
+		container.type === "table" ||
+		(container.type === "listItem" && rest.startsWith("[")) ||
+		rest.startsWith("|") ||
+		rest.startsWith(":"),
 };
 
 const dialects: ReadonlyMap<MarkdownDialect, BlockDialect> = new Map([

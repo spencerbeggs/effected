@@ -213,6 +213,10 @@ export const listItemConstruct: BlockConstruct = {
 			spread: block.data.spread ?? false,
 			children: flowChildren(children),
 			position: context.position(block.startOffset, block.endOffset),
+			// GFM's task-list start (`gfm` dialect only) is the only writer of
+			// `checked`; an item that carried no checkbox keeps the key ABSENT
+			// rather than false, which is the mdast contract.
+			...(block.data.checked === undefined ? {} : { checked: block.data.checked }),
 		}),
 };
 

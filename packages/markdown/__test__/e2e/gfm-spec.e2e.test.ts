@@ -35,7 +35,6 @@ const SPEC_SECTIONS_GREEN: ReadonlyArray<string> = [
  * The `extensions.txt` sections that run today.
  *
  * Still off, with the P2 task that turns each on:
- *   - "Task lists"                                               → Task 5
  *   - "Footnotes", "When a footnote is used multiple times, we insert
  *     multiple backrefs.", "Footnote reference labels are href escaped"
  *                                                                → Task 6
@@ -59,6 +58,7 @@ const EXTENSIONS_SECTIONS_GREEN: ReadonlyArray<string> = [
 	"Strikethroughs",
 	"Autolinks",
 	"Interop",
+	"Task lists",
 ];
 
 /**
@@ -129,5 +129,5 @@ const runCorpus = (
 
 describe("GFM conformance", () => {
 	runCorpus("spec.txt extension sections", loadGfmSpecExtensionExamples(), SPEC_SECTIONS_GREEN, 21);
-	runCorpus("extensions.txt", loadGfmExtensionsExamples(), EXTENSIONS_SECTIONS_GREEN, 23);
+	runCorpus("extensions.txt", loadGfmExtensionsExamples(), EXTENSIONS_SECTIONS_GREEN, 26);
 });

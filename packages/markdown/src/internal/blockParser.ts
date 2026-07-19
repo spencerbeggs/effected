@@ -186,7 +186,7 @@ class BlockParser implements BlockScanner {
 		this.partiallyConsumedTab = false;
 	}
 
-	private findNextNonspace(): void {
+	findNextNonspace(): void {
 		const line = this.currentLine;
 		let index = this.offset;
 		let cols = this.column;
