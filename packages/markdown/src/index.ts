@@ -12,8 +12,9 @@
  * `TomlFrontmatter`, `JsonFrontmatter` — each peering optionally on its
  * format package. The edit vocabulary (`MarkdownEdit`, `MarkdownRange` and
  * `MarkdownEdit.applyAll`) carries the cross-package offset-splice parity
- * contract. Stringify/format, the mdast projection and the visitor arrive in
- * later phases.
+ * contract; `Markdown.stringify` serializes trees canonically, and
+ * `MarkdownFormat` computes marker-normalization and surgical-replacement
+ * edits over it. The mdast projection and the visitor arrive in later phases.
  *
  * @packageDocumentation
  */
@@ -51,6 +52,13 @@ export { MarkdownDiagnostic, MarkdownParseErrorCode } from "./MarkdownDiagnostic
 export { MarkdownDocument } from "./MarkdownDocument.js";
 export type { MarkdownPath, MarkdownSegment } from "./MarkdownEdit.js";
 export { MarkdownEdit, MarkdownRange } from "./MarkdownEdit.js";
+export type { MarkdownRangeLike } from "./MarkdownFormat.js";
+export {
+	MarkdownFormat,
+	MarkdownFormattingOptions,
+	MarkdownModificationError,
+	MarkdownModificationErrorCode,
+} from "./MarkdownFormat.js";
 export {
 	Blockquote,
 	Break,
