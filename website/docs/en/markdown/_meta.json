@@ -1,0 +1,11 @@
+[
+	{
+		"type": "section-header",
+		"label": "@effected/markdown"
+	},
+	{
+		"type": "file",
+		"name": "index.mdx",
+		"label": "Overview"
+	}
+]
