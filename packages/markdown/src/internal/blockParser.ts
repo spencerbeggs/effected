@@ -28,10 +28,12 @@
 // Imports node classes from `../MarkdownNode.js` (the sanctioned exception to
 // the cycle firewall) and nothing else public.
 
-import type { Definition, Root } from "../MarkdownNode.js";
-import { Point, Position } from "../MarkdownNode.js";
+import type { Definition } from "../MarkdownNode.js";
+import { Frontmatter, Point, Position, Root } from "../MarkdownNode.js";
 import type { MarkdownDialect } from "./blockRegistry.js";
 import { blockDialect } from "./blockRegistry.js";
+import type { FrontmatterCapture } from "./blocks/frontmatter.js";
+import { scanFrontmatter } from "./blocks/frontmatter.js";
 import { isHtmlBlockEnd } from "./blocks/htmlBlock.js";
 import type {
 	BlockConstruct,
@@ -120,9 +122,14 @@ class BlockParser implements BlockScanner {
 
 	private partiallyConsumedTab = false;
 	private lastLineLength = 0;
+	private readonly frontmatterCapture: FrontmatterCapture | null;
 
-	constructor(text: string, dialect: BlockDialect, dialectName: MarkdownDialect) {
+	constructor(text: string, dialect: BlockDialect, dialectName: MarkdownDialect, frontmatter = false) {
 		this.lines = preprocessLines(text);
+		// The capture is an offset-0 pre-scan, not a block start: it may fire
+		// at most once, before any line enters the loop, so it lives outside
+		// the dialect registries entirely (see blocks/frontmatter.ts).
+		this.frontmatterCapture = frontmatter ? scanFrontmatter(this.lines, text) : null;
 		// The index is built from the preprocessor's OWN line table, not from a
 		// second scan of the text: the two disagree about bare `\r`, and a
 		// document with one would otherwise report line numbers off by however
@@ -465,6 +472,31 @@ class BlockParser implements BlockScanner {
 
 	// --- materialization ----------------------------------------------------
 
+	/**
+	 * Prepend the captured frontmatter node, when there is one. The root's
+	 * own span widens to cover the block if the body ended before it — the
+	 * frontmatter-only document, where the block pass saw no lines at all.
+	 */
+	private withFrontmatter(root: Root): Root {
+		const capture = this.frontmatterCapture;
+		if (capture === null) {
+			return root;
+		}
+		const node = Frontmatter.make({
+			type: "frontmatter",
+			format: capture.format,
+			value: capture.value,
+			position: this.position(0, capture.endOffset),
+		});
+		const position =
+			root.position.end.offset >= capture.endOffset ? root.position : this.position(0, capture.endOffset);
+		return Root.make({
+			type: "root",
+			children: [node, ...root.children],
+			position,
+		});
+	}
+
 	private position(startOffset: number, endOffset: number): Position {
 		const start = Math.min(Math.max(startOffset, 0), this.sourceLength);
 		const end = Math.min(Math.max(endOffset, start), this.sourceLength);
@@ -555,8 +587,16 @@ class BlockParser implements BlockScanner {
 	}
 
 	parse(): BlockPassResult {
-		for (const line of this.lines) {
-			this.incorporateLine(line);
+		// A captured frontmatter block never enters the line loop: the pass
+		// starts on the line after the closing fence, with `lineNumber`
+		// pre-advanced so every position downstream stays absolute.
+		const skippedLines = this.frontmatterCapture?.lineCount ?? 0;
+		this.lineNumber = skippedLines;
+		for (let index = skippedLines; index < this.lines.length; index += 1) {
+			const line = this.lines[index];
+			if (line !== undefined) {
+				this.incorporateLine(line);
+			}
 		}
 
 		while (this.tipNode !== undefined) {
@@ -589,10 +629,12 @@ class BlockParser implements BlockScanner {
 
 		this.collectReferences(this.doc, context, definitionNodes, refmap, footnoteLabels);
 
-		const root = this.materializeBlock(this.doc, context, definitionNodes);
-		if (root === undefined || root.type !== "root") {
+		const materialized = this.materializeBlock(this.doc, context, definitionNodes);
+		if (materialized === undefined || materialized.type !== "root") {
 			throw new TypeError("block parser: the document construct did not materialize a root");
 		}
+
+		const root = this.withFrontmatter(materialized);
 
 		return { root, rawInlines, carriers: [], refmap, footnoteLabels };
 	}
@@ -610,5 +652,8 @@ class BlockParser implements BlockScanner {
 // `dialectOf`. The facade always passes its resolved dialect explicitly, so
 // this default only ever serves engine-level callers (tests, mostly) that
 // mean "the substrate".
-export const parseBlocks = (text: string, dialect: MarkdownDialect = "commonmark"): BlockPassResult =>
-	new BlockParser(text, blockDialect(dialect), dialect).parse();
+export const parseBlocks = (
+	text: string,
+	dialect: MarkdownDialect = "commonmark",
+	frontmatter = false,
+): BlockPassResult => new BlockParser(text, blockDialect(dialect), dialect, frontmatter).parse();

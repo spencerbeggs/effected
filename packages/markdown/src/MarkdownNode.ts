@@ -713,19 +713,83 @@ export const ListContent: Schema.Codec<ListContent> = Schema.suspend(() => ListI
  */
 export type ListContent = ListItem;
 
+// --- Frontmatter ------------------------------------------------------------
+
+/**
+ * The frontmatter formats the capture recognizes, keyed by their opening
+ * fence: `---` is yaml, `+++` is toml and `---json` is json.
+ *
+ * @public
+ */
+export const FrontmatterFormat = Schema.Literals(["yaml", "toml", "json"]);
+
+/**
+ * The union of all frontmatter format string literals.
+ *
+ * @public
+ */
+export type FrontmatterFormat = typeof FrontmatterFormat.Type;
+
+/**
+ * Frontmatter — the raw, fidelity-preserving capture of a document's metadata
+ * block. `value` is the source text between the fences, exactly as written
+ * (never inline-parsed, never decoded); `format` records which fence captured
+ * it. The position spans the whole block including both fence lines.
+ *
+ * mdast has no single frontmatter node: it names `yaml` in the readme and
+ * `toml` through the frontmatter extension, and json has no mdast name at
+ * all. This package captures all three through ONE node — the design doc's
+ * "text plus a format marker" — and the `Mdast` projection (P5) maps
+ * `format` onto the mdast type names where they exist. Decoding the value is
+ * the codec modules' job (`YamlFrontmatter`/`TomlFrontmatter`/
+ * `JsonFrontmatter`, P3 Task 2); the engine never looks inside it.
+ *
+ * Only ever the first child of {@link Root}, and only when parsing opted in
+ * via `MarkdownParseOptions.frontmatter` — mdast's "limited to one node, only
+ * as head" constraint is structural here, not validated.
+ *
+ * @public
+ */
+export class Frontmatter extends Schema.Class<Frontmatter>("Frontmatter")({
+	type: Schema.tag("frontmatter"),
+	format: FrontmatterFormat,
+	value: Schema.String,
+	position: Position,
+}) {}
+
+/**
+ * The union of every node that may appear where mdast expects
+ * **frontmatter** content — a one-member union, kept because mdast names the
+ * category (its member there is `Yaml`; ours is the format-agnostic capture).
+ *
+ * @public
+ */
+export const FrontmatterContent: Schema.Codec<FrontmatterContent> = Schema.suspend(() => Frontmatter);
+
+/**
+ * The union of all frontmatter-content node types.
+ *
+ * @public
+ */
+export type FrontmatterContent = Frontmatter;
+
 // --- Root -------------------------------------------------------------------
 
 /**
  * Root — a whole document, and the only node that is never a child.
  *
  * mdast leaves a root's content model open; a parsed markdown document is
- * always flow content, which is what this schema requires.
+ * flow content, optionally headed by one {@link Frontmatter} node — mdast's
+ * `FlowContentFrontmatter` merge, which admits frontmatter at the root and
+ * nowhere else.
  *
  * @public
  */
 export class Root extends Schema.Class<Root>("Root")({
 	type: Schema.tag("root"),
-	children: Schema.Array(Schema.suspend((): Schema.Codec<FlowContent> => FlowContent)),
+	children: Schema.Array(
+		Schema.suspend((): Schema.Codec<Frontmatter | FlowContent> => Schema.Union([Frontmatter, FlowContent])),
+	),
 	position: Position,
 }) {}
 
@@ -735,7 +799,14 @@ export class Root extends Schema.Class<Root>("Root")({
  *
  * @public
  */
-export type MarkdownNode = Root | FlowContent | ListContent | PhrasingContent | RowContent | TableContent;
+export type MarkdownNode =
+	| Root
+	| FrontmatterContent
+	| FlowContent
+	| ListContent
+	| PhrasingContent
+	| RowContent
+	| TableContent;
 
 /**
  * A schema matching any node in the tree.
@@ -743,5 +814,5 @@ export type MarkdownNode = Root | FlowContent | ListContent | PhrasingContent | 
  * @public
  */
 export const MarkdownNode: Schema.Codec<MarkdownNode> = Schema.suspend(() =>
-	Schema.Union([Root, FlowContent, ListContent, PhrasingContent, RowContent, TableContent]),
+	Schema.Union([Root, FrontmatterContent, FlowContent, ListContent, PhrasingContent, RowContent, TableContent]),
 );

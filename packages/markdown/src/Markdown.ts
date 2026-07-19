@@ -38,13 +38,23 @@ export const MarkdownDialect = Schema.Literals(["commonmark", "gfm"]);
 export type MarkdownDialect = typeof MarkdownDialect.Type;
 
 /**
- * Options controlling parse behavior. The only knob is `dialect` — omitted,
- * it resolves to `"gfm"`.
+ * Options controlling parse behavior: `dialect` (omitted, `"gfm"`) and
+ * `frontmatter` (omitted, `false` — capture is opt-in).
+ *
+ * @remarks
+ * Frontmatter capture is OFF by default because it changes how a document
+ * opening with `---` parses: CommonMark reads the fence document
+ * `---\nfoo: bar\n---` as a thematic break and a setext heading, and that
+ * spec-conformant reading must hold unless a consumer opts in. Enabled, the
+ * engine captures `---`/`+++`/`---json` blocks at offset 0 into a raw
+ * `Frontmatter` head node — decoding it is the frontmatter codec modules'
+ * job.
  *
  * @public
  */
 export class MarkdownParseOptions extends Schema.Class<MarkdownParseOptions>("MarkdownParseOptions")({
 	dialect: Schema.optionalKey(MarkdownDialect),
+	frontmatter: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 /**
@@ -79,6 +89,14 @@ export class MarkdownParseError extends Schema.TaggedErrorClass<MarkdownParseErr
 const dialectOf = (options?: MarkdownParseOptions): MarkdownDialect => options?.dialect ?? "gfm";
 
 /**
+ * Whether an options object opts into frontmatter capture. The default —
+ * `false`, a P3 ruling — is spelled exactly once, here: capture changes how
+ * a `---` at offset 0 parses, so the spec-conformant reading is the default
+ * and frontmatter is the consumer's explicit choice.
+ */
+const frontmatterOf = (options?: MarkdownParseOptions): boolean => options?.frontmatter ?? false;
+
+/**
  * Run the block pass, converting the engine's raw carriers into a typed
  * {@link MarkdownParseError} and letting everything else through as a defect.
  *
@@ -93,7 +111,7 @@ export const parsePassResult = (
 	options?: MarkdownParseOptions,
 ): Result.Result<BlockPassResult, MarkdownParseError> => {
 	try {
-		return Result.succeed(parseBlocks(text, dialectOf(options)));
+		return Result.succeed(parseBlocks(text, dialectOf(options), frontmatterOf(options)));
 	} catch (caught) {
 		if (isGuardExceeded(caught)) {
 			return Result.fail(

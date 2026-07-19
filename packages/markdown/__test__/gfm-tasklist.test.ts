@@ -11,12 +11,12 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { parseBlocks } from "../src/internal/blockParser.js";
-import type { FlowContent, ListItem, Text } from "../src/MarkdownNode.js";
+import type { FlowContent, Frontmatter, ListItem, Text } from "../src/MarkdownNode.js";
 
 /** Every list item in a source, in document order, however deeply nested. */
 const itemsOf = (source: string, dialect: "commonmark" | "gfm" = "gfm"): ReadonlyArray<ListItem> => {
 	const found: ListItem[] = [];
-	const walk = (nodes: ReadonlyArray<FlowContent>): void => {
+	const walk = (nodes: ReadonlyArray<Frontmatter | FlowContent>): void => {
 		for (const node of nodes) {
 			if (node.type === "list") {
 				for (const item of node.children) {

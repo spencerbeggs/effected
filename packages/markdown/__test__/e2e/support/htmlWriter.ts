@@ -20,6 +20,7 @@ import type {
 	FlowContent,
 	FootnoteDefinition,
 	FootnoteReference,
+	Frontmatter,
 	Heading,
 	ImageReference,
 	LinkReference,
@@ -149,8 +150,16 @@ export const normalizeLabel = (label: string): string =>
  * {@link collectFootnoteDefinitions} — both need the same "find this leaf
  * anywhere flow content can nest" traversal.
  */
-const walkFlowContainers = (nodes: ReadonlyArray<FlowContent>, visit: (node: FlowContent) => void): void => {
+const walkFlowContainers = (
+	nodes: ReadonlyArray<Frontmatter | FlowContent>,
+	visit: (node: FlowContent) => void,
+): void => {
 	for (const node of nodes) {
+		// A frontmatter head is raw metadata, not flow content — it renders to
+		// nothing and contains nothing to collect.
+		if (node.type === "frontmatter") {
+			continue;
+		}
 		visit(node);
 		switch (node.type) {
 			case "blockquote":
@@ -312,7 +321,9 @@ class HtmlWriter {
 	}
 
 	render(root: Root): string {
-		this.renderFlow(root.children);
+		// Frontmatter renders to nothing — gray-matter and remark both strip
+		// it from output; the head node is metadata, not content.
+		this.renderFlow(root.children.filter((child): child is FlowContent => child.type !== "frontmatter"));
 		this.renderFootnoteSection();
 		return this.buffer;
 	}
