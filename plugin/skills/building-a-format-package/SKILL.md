@@ -204,6 +204,16 @@ same way:
   the oracle side of the comparison, AND pin a tripwire test asserting the
   divergence still exists — a future upstream fix fails the tripwire and
   forces the correction's deletion. Never a skip entry.
+- **Serializer verification is a corpus-wide re-parse equivalence
+  property.** For every corpus example: parse → stringify → parse, then
+  compare the two parses' rendered output through the harness's own writer
+  and normalizer — render-to-render, never stringified-text-to-original-text
+  and never render-to-spec-HTML. Both sides share the parser, so the
+  comparison isolates serializer bugs from parser bugs, reuses the existing
+  harness machinery at no extra cost, and needs no skip list — any failure
+  is a real serializer defect. Genuinely unrepresentable cases get
+  documented KNOWN LIMITATION tests that fail if the limitation is ever
+  silently fixed (the tripwire pattern again), never skips.
 - **Unit fixtures must land in the layer they claim to test.** In a
   multi-pass engine, an innocuous-looking input can be claimed by an
   earlier pass and silently test the wrong thing — a markdown inline
