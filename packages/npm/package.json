@@ -1,6 +1,6 @@
 {
 	"name": "@effected/npm",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"private": true,
 	"description": "Effect service contracts for resolving pnpm catalog: and workspace: dependency specifiers.",
 	"keywords": ["npm", "pnpm", "catalog", "workspace", "resolver", "effect", "schema", "effected"],

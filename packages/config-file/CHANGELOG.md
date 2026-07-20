@@ -1,5 +1,15 @@
 # @effected/config-file
 
+## 0.1.5
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/toml   | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/walker | dependency | updated | 0.2.2 | 0.3.0 |
+| @effected/yaml   | dependency | updated | 0.4.0 | 0.5.0 |
+
 ## 0.1.4
 
 ### Dependencies
