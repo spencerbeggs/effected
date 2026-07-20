@@ -7,7 +7,7 @@
 // is exactly the silent escape `stopAt` exists to refuse.
 
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Path } from "effect";
 import {
 	WORKSPACE_MARKERS,
 	WorkspaceDiscovery,
@@ -201,17 +201,33 @@ describe("WorkspaceRoot.layerTest", () => {
 });
 
 describe("WorkspaceRoot.makeTest — ceiling containment", () => {
+	// makeTest requires `Path` (to normalize the ceiling); build the double with
+	// core's `Path.layer`, the same layer `layerTest` provides internally.
+	const build = (root: string) => Effect.runSync(WorkspaceRoot.makeTest(root).pipe(Effect.provide(Path.layer)));
+
 	it("treats the ceiling itself as containing the root", () => {
-		const double = WorkspaceRoot.makeTest("/repo");
+		const double = build("/repo");
 		assert.strictEqual(Effect.runSync(double.find("/repo", { stopAt: "/repo" })), "/repo");
 	});
 
 	it("does not treat a sibling with a shared prefix as containing the root", () => {
 		// "/repo-other" starts with "/repo" as a raw string but is NOT beneath it;
 		// a naive `startsWith` check would wrongly succeed here.
-		const double = WorkspaceRoot.makeTest("/repo-other");
+		const double = build("/repo-other");
 		const exit = Effect.runSyncExit(double.find("/repo-other/packages/a", { stopAt: "/repo" }));
 		assert.isTrue(Exit.isFailure(exit));
+	});
+
+	it("normalizes a stopAt carrying `..` before comparing, matching the live path", () => {
+		// "/repo/packages/../packages" resolves to "/repo/packages", an ancestor of
+		// the root, so the bounded call succeeds. A raw string compare would never
+		// match that spelling against the root and would wrongly fail — the exact
+		// test/live divergence this double exists to prevent.
+		const double = build("/repo/packages/a");
+		assert.strictEqual(
+			Effect.runSync(double.find("/repo/packages/a", { stopAt: "/repo/packages/../packages" })),
+			"/repo/packages/a",
+		);
 	});
 });
 
@@ -226,7 +242,9 @@ describe("WorkspaceRoot.layerTest — agrees with the live service", () => {
 		it.effect("both resolve the same root, and both refuse the same ceiling", () =>
 			Effect.gen(function* () {
 				const live = yield* WorkspaceRoot;
-				const double = WorkspaceRoot.makeTest("/repo");
+				// The surrounding layer consumes `Path` into the live service, so provide
+				// it locally for the double.
+				const double = yield* WorkspaceRoot.makeTest("/repo").pipe(Effect.provide(Path.layer));
 
 				assert.strictEqual(yield* live.find("/repo/packages/alpha"), yield* double.find("/repo/packages/alpha"));
 

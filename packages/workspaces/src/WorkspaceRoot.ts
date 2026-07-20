@@ -242,29 +242,50 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 	 * here exactly as it would live, with the same
 	 * {@link WorkspaceRootNotFoundError}.
 	 *
+	 * The ceiling is `path.resolve`d through the injected `Path` service before
+	 * the comparison, exactly as the live `make` path does — so a `stopAt`
+	 * carrying `..` segments bounds the double identically to the live service,
+	 * not by raw string. This is why `makeTest` yields an `Effect` requiring
+	 * `Path`: it captures the service once at construction, the same shape as
+	 * `make`. Consumers reach for {@link WorkspaceRoot.layerTest}, which provides
+	 * `Path.layer` internally, so the requirement never surfaces at their call
+	 * site.
+	 *
 	 * `maxDepth` is deliberately NOT modelled: the double does not walk, so it has
 	 * no depth to cap, and pretending otherwise would encode a fiction. A suite
 	 * exercising the depth guard wants the live service over a fixture tree.
 	 *
 	 * @param root - The root every unbounded `find` resolves to.
 	 */
-	static readonly makeTest = (root: string): WorkspaceRootShape => ({
-		find: (cwd: string, options?: FindWorkspaceRootOptions) =>
-			options?.stopAt !== undefined && !isAtOrBelow(root, options.stopAt)
-				? Effect.fail(
-						new WorkspaceRootNotFoundError({
-							searchPath: cwd,
-							markers: WORKSPACE_MARKERS,
-							stopAt: options.stopAt,
-						}),
-					)
-				: Effect.succeed(root),
-	});
+	static readonly makeTest = (root: string): Effect.Effect<WorkspaceRootShape, never, Path.Path> =>
+		Effect.gen(function* () {
+			const path = yield* Path.Path;
+			return {
+				find: (cwd: string, options?: FindWorkspaceRootOptions) =>
+					// Resolve the ceiling through the injected `Path` exactly as the live
+					// `make` path does before the raw string comparison in `isAtOrBelow` —
+					// an unresolved ceiling (`..` segments) would match differently here
+					// than live, the divergence this double exists to prevent.
+					options?.stopAt !== undefined && !isAtOrBelow(root, path.resolve(options.stopAt))
+						? Effect.fail(
+								new WorkspaceRootNotFoundError({
+									searchPath: cwd,
+									markers: WORKSPACE_MARKERS,
+									stopAt: options.stopAt,
+								}),
+							)
+						: Effect.succeed(root),
+			};
+		});
 
 	/**
-	 * The test layer: {@link WorkspaceRoot.makeTest} behind `Layer.succeed`.
+	 * The test layer: {@link WorkspaceRoot.makeTest} with `Path.layer` provided.
 	 *
 	 * @remarks
+	 * `makeTest` requires `Path` to normalize the `stopAt` ceiling; this layer
+	 * supplies core's `Path.layer` internally, so the requirement never reaches a
+	 * consumer — the published type stays `Layer.Layer<WorkspaceRoot>`.
+	 *
 	 * A parameterized layer factory mints a **fresh reference per call**, and
 	 * layers memoize by reference — bind the result to a `const` and reuse it
 	 * rather than calling `layerTest(...)` at each composition site.
@@ -287,5 +308,5 @@ export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootS
 	 * ```
 	 */
 	static readonly layerTest = (root: string): Layer.Layer<WorkspaceRoot> =>
-		Layer.succeed(WorkspaceRoot, WorkspaceRoot.makeTest(root));
+		Layer.effect(WorkspaceRoot, WorkspaceRoot.makeTest(root)).pipe(Layer.provide(Path.layer));
 }

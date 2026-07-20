@@ -65,10 +65,7 @@ const isFaithful = (wire: PersonWire, person: Person): boolean => {
 		const parsed = parsePersonString(wire);
 		return parsed.name === person.name && parsed.email === person.email && parsed.url === person.url;
 	}
-	const rest: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(wire)) {
-		if (!KNOWN_KEYS.has(key)) rest[key] = value;
-	}
+	const rest = restOf(wire);
 	return (
 		(wire.name as unknown) === person.name &&
 		(wire.email as unknown) === person.email &&

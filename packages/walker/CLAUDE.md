@@ -13,9 +13,11 @@ than ported from a `*-effect` repo.
 are no runtime dependencies, but walker does IO. `FileSystem` and `Path` arrive
 through the `R` channel from `effect` core, so the consumer's platform layer is
 the single place POSIX-vs-win32 semantics are chosen. Requiring core services
-costs no dependency. The `@effected/glob` peer is type-and-property only —
-`descend` imports `GlobPattern` as a type and calls `matches()`; no value
-imports, mirroring config-file's peering on the format packages.
+costs no dependency. The `@effected/glob` peer is mostly type-and-property —
+`descend` imports `GlobPattern` as a type and calls `matches()`. The one value
+import is `compileAndExpand` (in `Expand.ts`), which calls
+`GlobPattern.compileResult` and references `GlobPatternError`; the peer was
+already declared, so the dependency graph is unchanged.
 
 Walker needs **no platform package, even in tests** — `Path.layer` and
 `FileSystem.layerNoop` come from core. Do not add `@effect/platform-node`.
