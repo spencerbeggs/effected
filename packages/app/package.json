@@ -1,6 +1,6 @@
 {
 	"name": "@effected/app",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"private": true,
 	"description": "The application control plane for Effect: one layer wiring XDG-namespaced directories, a migrated SQLite store, a TTL cache and a config file to the same place.",
 	"keywords": ["app", "xdg", "sqlite", "store", "cache", "config", "effect", "effected"],

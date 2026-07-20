@@ -1,5 +1,14 @@
 # @effected/app
 
+## 0.1.6
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.1.4 | 0.1.5 |
+| @effected/xdg         | dependency | updated | 0.1.4 | 0.1.5 |
+
 ## 0.1.5
 
 ### Dependencies
