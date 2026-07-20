@@ -19,11 +19,23 @@ Observability row blank.
 
 ## The recipe (do these in order — do not skip to code)
 
-1. **Locate the work on two axes.** Answer both before anything else:
+1. **Locate the work on two axes, then check it can live where you're putting it.**
+   Answer all three before anything else:
    - **Mode** — *greenfield* (new code) or *brownfield* (modifying existing code)?
    - **Altitude** — *pure-tier* (parser / engine / schema library, no runtime
      dependencies — semver/jsonc/yaml kind) or *service-tier* (real services,
      layers, I/O, lifecycle)?
+   - **Placement — does the target package's tier *admit* this capability?**
+     Confirm it before designing, not after. IO or a service dropped into a
+     pure-tier package (semver/jsonc/yaml/glob kind) is a **stop**, not a detail
+     to sort out later. And check the dependency direction against the peer
+     graph: a capability that must import a sibling which already peers on the
+     target closes a cycle. Adding `compileAndExpand` to pure-tier `glob` was
+     both — `walker` peers on `glob`, so it would have closed a `glob → walker →
+     glob` cycle, *and* it does filesystem IO in a pure package; it belonged in
+     `walker`. The repo's `CLAUDE.md` tier tags and the `effected-packages`
+     index are the authority on which package admits what — this was caught by
+     the tier tags, not by any skill, which is the gap this line closes.
 2. **Walk the four pillars** (below), routing into the detailed skill each owns.
    Brownfield: read the existing code through each pillar as an *audit lens*.
 3. **Emit the design summary** — the required-slot block. Greenfield fills the
@@ -86,6 +98,16 @@ check found `effect/unstable/process` already declared its entire surface —
 it was deleted the same day it was built. State the inventory result in the
 design summary ("core declares X → required in R" or "no core contract found
 for X").
+
+**Inventory core *and* the sibling `@effected` packages, not core alone.** In
+this monorepo the likelier duplication is not a core primitive but a *sibling
+kit package that already owns the concept*. Before designing a local primitive,
+consult the `effected-packages` index and grep the relevant sibling's `src`:
+`WorkspaceRoot.find`'s `stopAt` ceiling was about to be re-invented locally
+until a read of `Walker.ascend` found the concept already there with correct
+inclusive semantics. The core grep catches "Effect already provides this"; the
+sibling-package check catches "another kit package already provides this" — run
+both, and state which authority you inventoried against.
 
 The same grep doubles as a **style consult**: the vendored source is the
 paradigm reference, not just the API authority. Read how core writes the
@@ -196,11 +218,21 @@ audit *and* the buy-in.
 
 So: **emit the design summary, treat the parent's instructions as the buy-in, and
 proceed.** The summary is not wasted — it goes in your report, where it is exactly
-what lets the parent (and the reviewer on the PR) check the pillars were walked. Two
-things you still owe: if the summary surfaces a decision that **contradicts or exceeds
-the parent's instructions** — a scope change, a public API change nobody asked for, a
-design risk you cannot resolve — do not proceed on your own authority; report back and
-ask. And put any unresolved item in the Open risks row rather than deciding it silently.
+what lets the parent (and the reviewer on the PR) check the pillars were walked. What
+you still owe splits by the *kind* of surprise the summary turns up:
+
+- A decision that **contradicts** the instructions — a scope change, a design you were
+  steered away from, a risk you cannot resolve — is a **stop**: do not proceed on your
+  own authority; report back and ask.
+- A decision that **exceeds** the instructions **without contradicting** them — the
+  instructed thing, done correctly, carries a consequence nobody named — is **proceed
+  AND flag**, not stop. Making an instructed `workspaceRoot` field *required* is the
+  correct design and *also* breaks decode for previously serialized values: you were
+  told to add the field, not to avoid the break, so proceeding is right — but the break
+  MUST land prominently in your report, never silently. Do the correct thing and surface
+  what it cost.
+
+Put any genuinely unresolved item in the Open risks row rather than deciding it silently.
 
 An interactive session has a real user: wait for them, as step 4 says.
 
