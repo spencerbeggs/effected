@@ -536,6 +536,17 @@ in a test tree — probe with `npx tsx` against a probe file INSIDE the package
 tree instead (see `effect-v4-source-lookup` for why `/tmp` cannot resolve
 `effect`).
 
+**The other producer: a project filter run from the wrong directory.** `vitest
+run --project @effected/walker` invoked from **inside** the package directory
+matches no project — the `--project` filter is resolved **root-relative** — and
+prints `Tests: 0/0 passed (0ms)`, exit 0, looking exactly like a clean run.
+**Run project-filtered vitest from the repo root**, always. You land on this
+path in the first place when the `vitest-agent` MCP `run_tests` tool drops mid-
+session and you fall back to a raw `vitest` invocation; an MCP dropout is the
+cue to be *more* careful about cwd, not less. The tell is the same as every
+`0/0`: read the `Tests:` line, never the exit code — a stale `cd` from three
+commands ago will do this to you silently.
+
 ## Timing gates under coverage lie by an order of magnitude
 
 v8 coverage instrumentation cost a measured **~18×** on parser-heavy code in
