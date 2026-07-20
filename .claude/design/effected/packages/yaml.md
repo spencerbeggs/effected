@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-19
-last-synced: 2026-07-19
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 95
 related:
   - ../architecture.md
@@ -59,7 +59,7 @@ A `Stream<YamlToken>` / `Stream<CstNode>` public interface — the Effect-native
 - **Pure synchronous**: node navigation (`YamlNode.find`, `findAtOffset`, `pathOf`), value extraction (`YamlNode.toValue`, `YamlDocument.toValue`), edit application (`YamlEdit.applyAll`, `YamlFormat.formatToString`/`modifyToString`), the formatting-edit *computation* (`YamlFormat.format`), comment stripping (`Yaml.stripComments`), and semantic equality (`Yaml.equals`/`equalsValue`). These are total functions; an `Effect<_, never>` wrapper is ceremony.
 - **`Effect`** (real typed `E`): `Yaml.parse` / `parseAll` (fail `YamlParseError`), `Yaml.stringify` / `YamlDocument.stringify` (fail `YamlStringifyError`), `YamlFormat.modify` (fail `YamlModificationError`), and the schema decode path.
 - **`Stream`** for the visitor: `YamlVisitor.visit` returns `Stream<YamlVisitorEvent>`; malformed input surfaces as error events in the union, keeping the stream demand-driven and infallible at the type level.
-- **`Result`** (sync escape hatch): `Yaml.parseSync` / `Yaml.stringifySync` return a v4 `Result` for config-time callers that cannot enter the Effect runtime; the same typed failures as their Effect counterparts, materialized synchronously rather than thrown.
+- **`Result`** (sync primitive): `Yaml.parseResult` / `Yaml.stringifyResult` return a v4 `Result` for config-time callers that cannot enter the Effect runtime; the same typed failures as their Effect counterparts, materialized synchronously rather than thrown. The `*Result` spelling is the kit-wide one — see [the sync primitive policy](../formatter-convention.md#decision-6--the-sync-primitive-policy).
 
 The pure/Effect split makes fallible operations legible at the call site — an `Effect` return type *means* "this can produce a domain error."
 
@@ -72,7 +72,7 @@ A namespace object of statics over the parser, stringifier and schema layers. No
 - `parse(text, options?)` → `Effect<unknown, YamlParseError>`. Single-document value parse; error-recovery collects all fatal diagnostics and fails once with the aggregate.
 - `parseAll(text, options?)` → `Effect<ReadonlyArray<unknown>, YamlParseError>`. Multi-document value parse.
 - `stringify(value, options?)` → `Effect<string, YamlStringifyError>`.
-- `parseSync(text, options?)` → `Result<unknown, YamlParseError>` and `stringifySync(value, options?)` → `Result<string, YamlStringifyError>` — the v4-`Result` escape hatches for config-time callers that cannot `await` (a `vitest.config.ts`, say). Pure: they drive the same synchronous engine the Effect variants do and share the `stringifyDefectToError` / `aliasCountExceededError` materialization helpers, so hardening is identical across both — the fail-typed-never-a-defect contract holds. Malformed or adversarial input (fatal diagnostics, duplicate keys, an alias-expansion bomb, a circular reference, depth overflow) returns a `Failure` Result, never throws.
+- `parseResult(text, options?)` → `Result<unknown, YamlParseError>` and `stringifyResult(value, options?)` → `Result<string, YamlStringifyError>` — the v4-`Result` forms for config-time callers that cannot `await` (a `vitest.config.ts`, say). `parseResult` is the package's **single parse path**, with `Yaml.parse` defined in terms of it (`Effect.fromResult` behind the named span) so the two cannot diverge. Pure: they drive the same synchronous engine the Effect variants do and share the `stringifyDefectToError` / `aliasCountExceededError` materialization helpers, so hardening is identical across both — the fail-typed-never-a-defect contract holds. Malformed or adversarial input (fatal diagnostics, duplicate keys, an alias-expansion bomb, a circular reference, depth overflow) returns a `Failure` Result, never throws.
 - `stripComments(text, replaceCh?)` → `string`. Scanner-based, total in both modes: without a `replaceCh`, comment characters are deleted with line breaks kept; with one, offsets are preserved by replacing in place. Pure and quote-aware in both branches.
 - `equals(a, b)` / `equalsValue(a, b)` → `boolean`. Semantic equality (comments/formatting ignored). Any recorded parse error, or a `DuplicateKey` warning, on either side yields `false` — malformed input is never equal to anything, including itself.
 - `schema(Target, options?)`, `fromString(options?)`, `allFromString(options?)`, and the `YamlFromString` default-options schema — see [schema transformation strategy](#schema-transformation-strategy). `fromString` takes **parse** options only; the encode direction uses default stringify options.
@@ -180,7 +180,7 @@ The **explicit-key compact-sequence branch is deliberately untouched** by the op
 
 **The default is `0`, and — as with `indentSequences` — the default is the whole decision.** `0` (and any value `<= 0`) means never wrap. The change lowered the default from `80` to `0`, which is byte-compat-preserving precisely *because* the option was inert: the historic behavior was no-wrap, so defaulting to `0` keeps default output and any explicit `lineWidth: 0` byte-identical, while a positive value opts into folding. The compliance harness stays at 100% for exactly this reason — nothing folds unless a caller asks.
 
-**Value-path-only scope is the documented contract, not a gap** ([issue #105](https://github.com/spencerbeggs/effected/issues/105), resolved 2026-07-17 by documentation — deliberately not by implementing node-path folding). `Yaml.stringify` / `Yaml.stringifySync` are the only entry points that fold; the document/node path (`YamlDocument.stringify` and the `YamlFormat` helpers built on it) threads `lineWidth` into its render context but never reads it, and the schema factories (`fromString` / `schema` / `YamlFromString`) encode with default stringify options, so their output never folds either. The TSDoc on `YamlStringifyOptions.lineWidth` and `YamlDocument.stringify` states the boundary and steers node-path callers that need folding to `Yaml.stringify(doc.toValue(), options)`, and a regression test pins the node path's inertness — so folding cannot land there without forcing the docs to update.
+**Value-path-only scope is the documented contract, not a gap** ([issue #105](https://github.com/spencerbeggs/effected/issues/105), resolved 2026-07-17 by documentation — deliberately not by implementing node-path folding). `Yaml.stringify` / `Yaml.stringifyResult` are the only entry points that fold; the document/node path (`YamlDocument.stringify` and the `YamlFormat` helpers built on it) threads `lineWidth` into its render context but never reads it, and the schema factories (`fromString` / `schema` / `YamlFromString`) encode with default stringify options, so their output never folds either. The TSDoc on `YamlStringifyOptions.lineWidth` and `YamlDocument.stringify` states the boundary and steers node-path callers that need folding to `Yaml.stringify(doc.toValue(), options)`, and a regression test pins the node path's inertness — so folding cannot land there without forcing the docs to update.
 
 ## Multi-document support
 

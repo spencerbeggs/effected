@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Equal, Hash, Option, Schema } from "effect";
+import { Effect, Equal, Hash, Option, Result, Schema } from "effect";
 import { InvalidVersionError, SemVer } from "../src/index.js";
 
 describe("SemVer", () => {
@@ -223,6 +223,53 @@ describe("SemVer", () => {
 	describe("of", () => {
 		it("constructs positionally with validation", () => {
 			assert.strictEqual(SemVer.of(1, 2, 3, ["rc", 1], ["sha"]).toString(), "1.2.3-rc.1+sha");
+		});
+	});
+
+	// `parseResult` is the primitive; `parse` derives from it via
+	// `Effect.fromResult` and adds only the tracing span. Every row is checked
+	// in BOTH directions so the sync path can never become the reason the two
+	// drift — a future edit that re-derives the grammar on one side fails here.
+	describe("Result parity", () => {
+		const rows: ReadonlyArray<readonly [label: string, input: string]> = [
+			["a bare version", "1.2.3"],
+			["a prerelease", "1.2.3-beta.1"],
+			["build metadata", "1.2.3+build.42"],
+			["both", "1.2.3-beta.1+build.42"],
+			["zeros", "0.0.0"],
+			["a v prefix", "v1.2.3"],
+			["a leading zero", "01.2.3"],
+			["an incomplete version", "1.2"],
+			["trailing junk", "1.2.3junk"],
+			["the empty string", ""],
+		];
+
+		for (const [label, input] of rows) {
+			it.effect(`parse and parseResult agree on ${label}`, () =>
+				Effect.gen(function* () {
+					const viaEffect = yield* Effect.result(SemVer.parse(input));
+					assert.deepStrictEqual(SemVer.parseResult(input), viaEffect);
+				}),
+			);
+		}
+
+		it("parseResult succeeds with a real SemVer", () => {
+			const result = SemVer.parseResult("1.2.3-beta.1+build.42");
+			if (Result.isFailure(result)) {
+				return assert.fail("expected a successful parse");
+			}
+			assert.instanceOf(result.success, SemVer);
+			assert.strictEqual(result.success.toString(), "1.2.3-beta.1+build.42");
+		});
+
+		it("parseResult carries the typed failure, not a throw", () => {
+			const result = SemVer.parseResult("01.2.3");
+			if (Result.isSuccess(result)) {
+				return assert.fail("expected a typed parse failure");
+			}
+			assert.instanceOf(result.failure, InvalidVersionError);
+			assert.strictEqual(result.failure.input, "01.2.3");
+			assert.strictEqual(result.failure.position, 0);
 		});
 	});
 });

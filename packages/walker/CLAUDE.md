@@ -42,8 +42,9 @@ watched failing against a deliberately broken implementation:
   `isWorkspaceRoot` reads and parses a `package.json` — so this is not just an
   optimization.
 
-Every upward error channel is `never`. The one typed error in the package is
-`descend`'s `DescendError` — see below.
+Every upward error channel is `never` — including `ascend`'s, whose two
+caller-error guards (`maxDepth`, `stopAt`) are **defects**, not failures. The
+one typed error in the package is `descend`'s `DescendError` — see below.
 
 ## `descend` — the downward glob-file walker
 
@@ -84,6 +85,33 @@ hands in — never re-derived here.
   Correct for config discovery.
 - `ascend` is a bounded `for` loop, not recursion. It terminates at `dirname`'s
   root fixpoint; `maxDepth` (default 256) guards a pathological `Path`.
+- `stopAt` must be **absolute** and is compared in **normalized** form
+  (`path.resolve` on both sides), not by raw string equality; it stays
+  **inclusive**. Raw equality made the ceiling fail **open**: an unnormalized
+  ceiling matched nothing and the ascent ran to the filesystem root with no
+  error to notice it by. Normalization is idempotent, so a caller that resolves
+  first is unaffected. Both sides go through `resolve` — normalizing only the
+  ceiling would desynchronize it from an unnormalized chain element (`/a/b/.`
+  names `/a/b`).
+- A **relative** `stopAt` is a **defect** (`Effect.die`), exactly as an invalid
+  `maxDepth` is, and is never resolved against `process.cwd()`. Resolving one
+  would let the same ceiling name different directories in a hook, a CLI and a
+  test runner — the fail-open class again, through a different door. This is
+  why `ascend` reads `process.cwd()` nowhere. Absoluteness is judged by the
+  injected `Path`, so win32 accepts `C:\repo`. Only the **ceiling** is
+  constrained: a relative `start` still ascends to the relative root, and a test
+  pins that the rejection was not over-applied to `start`.
+- **Never "upgrade" the `stopAt` guard to a typed error.** `@effected/config-file`'s
+  resolver contract absorbs every typed failure into `Option.none()`, so a typed
+  rejection would be swallowed there and re-emerge as a clean-looking "no config
+  found" — the silent wrong answer the guard exists to prevent. `Effect.catch`
+  does not catch defects, so only a defect survives that absorption. A test
+  reconstructs the absorbing caller and pins it. This is the same
+  failure-vs-defect line as `maxDepth`: malformed input fails typed, a
+  statically-wrong caller option dies.
+- Normalization governs the **comparison only** — the returned chain stays the
+  lexical one derived from `start`, because rewriting it would break the
+  lexical contract for every caller that passes no `stopAt` at all.
 - `maxDepth` must be a **positive integer**. Anything else — `< 1`, `NaN`, or a
   non-integer like `2.5` — is a **defect** (`Effect.die`), never a silently-empty
   chain. The guard is `!Number.isInteger(maxDepth) || maxDepth < 1`, because

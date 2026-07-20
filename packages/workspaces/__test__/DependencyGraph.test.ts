@@ -14,6 +14,7 @@ const pkg = (
 		path: `/repo/packages/${name}`,
 		packageJsonPath: `/repo/packages/${name}/package.json`,
 		relativePath: `packages/${name}`,
+		workspaceRoot: "/repo",
 		[kind]: deps,
 	});
 

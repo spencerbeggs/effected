@@ -7,7 +7,7 @@
 // it. The engine throws raw GuardExceeded records at compile time; ONLY this
 // facade materializes them into the typed GlobPatternError.
 
-import { Effect, Schema, SchemaTransformation } from "effect";
+import { Effect, Result, Schema, SchemaTransformation } from "effect";
 import { EXPANSION_MAX, isGuardExceeded } from "./internal/limits.js";
 import type { EngineOptions } from "./internal/minimatch.js";
 import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape } from "./internal/minimatch.js";
@@ -160,17 +160,30 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	}
 
 	/**
-	 * Compile a pattern under the given options — the package's fallible
-	 * boundary. Guard trips (over-length, expansion budget, nesting depth)
-	 * fail typed with {@link GlobPatternError}; invalid options never reach
-	 * here (they throw at `GlobPatternOptions.make`, a wiring defect).
+	 * Compile a pattern under the given options, synchronously — the package's
+	 * fallible boundary in its primitive form. Compilation is pure
+	 * string→predicate work with no IO, no services and no async step, so the
+	 * sync form is the real primitive and {@link GlobPattern.compile} is
+	 * derived from it.
+	 *
+	 * Total: never throws for pattern input. Guard trips (over-length,
+	 * expansion budget, nesting depth) come back as a `Result` failure holding
+	 * {@link GlobPatternError}; invalid *options* never reach here (they throw
+	 * at `GlobPatternOptions.make`, a wiring defect).
 	 *
 	 * The pattern must also compile under DEFAULT options, whatever the
 	 * effective options are — permissive options (say `nobrace` over a brace
 	 * bomb) do not admit a defaults-rejected pattern; the same typed error
 	 * surfaces instead.
+	 *
+	 * @remarks
+	 * For synchronous call sites that cannot host an Effect — a lint-staged
+	 * handler, a config predicate — this removes the
+	 * `Effect.runSync(Effect.result(...))` escape hatch: pair it with
+	 * `Result.isSuccess` and read `.success` directly. Effect call sites should
+	 * prefer {@link GlobPattern.compile}, which carries the tracing span.
 	 */
-	static readonly compile = Effect.fn("GlobPattern.compile")(function* (source: string, options?: GlobPatternOptions) {
+	static compileResult(source: string, options?: GlobPatternOptions): Result.Result<GlobPattern, GlobPatternError> {
 		const engineOptions = toEngineOptions(options);
 		try {
 			// Defaults first (the value invariant), then the effective engine.
@@ -179,13 +192,30 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 			const pattern = new GlobPattern({ source });
 			pattern.#engine = engine;
 			pattern.#engineOptions = engineOptions;
-			return pattern;
+			return Result.succeed(pattern);
 		} catch (e) {
 			if (isGuardExceeded(e)) {
-				return yield* new GlobPatternError({ pattern: source, reason: e.reason, limit: e.limit, actual: e.actual });
+				return Result.fail(
+					new GlobPatternError({ pattern: source, reason: e.reason, limit: e.limit, actual: e.actual }),
+				);
 			}
 			throw e;
 		}
+	}
+
+	/**
+	 * Compile a pattern under the given options — the package's fallible
+	 * boundary, and the form Effect call sites should reach for. Guard trips
+	 * (over-length, expansion budget, nesting depth) fail typed with
+	 * {@link GlobPatternError}; invalid options never reach here (they throw at
+	 * `GlobPatternOptions.make`, a wiring defect).
+	 *
+	 * Defined in terms of {@link GlobPattern.compileResult} — synchronous
+	 * callers can use that variant directly. Same semantics, same errors; this
+	 * form adds only the `GlobPattern.compile` tracing span.
+	 */
+	static readonly compile = Effect.fn("GlobPattern.compile")(function* (source: string, options?: GlobPatternOptions) {
+		return yield* Effect.fromResult(GlobPattern.compileResult(source, options));
 	});
 
 	/**

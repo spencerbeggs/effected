@@ -1,4 +1,15 @@
-import { Effect, Equal, Function as Fn, Hash, Option, Order, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import {
+	Effect,
+	Equal,
+	Function as Fn,
+	Hash,
+	Option,
+	Order,
+	Result,
+	Schema,
+	SchemaIssue,
+	SchemaTransformation,
+} from "effect";
 import { formatVersion, parseVersion } from "./internal/grammar.js";
 import { compareBuild, comparePrereleaseIdentifier } from "./internal/order.js";
 
@@ -112,22 +123,57 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 	// ── Construction ────────────────────────────────────────────────────
 
 	/**
-	 * Parse a strict SemVer 2.0.0 version string.
+	 * Parse a strict SemVer 2.0.0 version string, synchronously, returning a
+	 * `Result` instead of an `Effect`.
 	 *
 	 * Rejects `v`/`V` prefixes, `=` prefixes, leading zeros on numeric
 	 * identifiers and partially consumed input.
+	 *
+	 * @remarks
+	 * {@link SemVer.parse} is defined in terms of this function; the two never
+	 * diverge. Reach for the `Effect` variant inside Effect code — it carries
+	 * the `SemVer.parse` tracing span — and for this one at synchronous
+	 * boundaries.
+	 *
+	 * @example
+	 * ```ts
+	 * import { SemVer } from "@effected/semver";
+	 * import { Result } from "effect";
+	 *
+	 * const ok = SemVer.parseResult("1.2.3");
+	 * if (Result.isSuccess(ok)) {
+	 *   console.log(ok.success.major); // => 1
+	 * }
+	 *
+	 * const bad = SemVer.parseResult("v1.2.3");
+	 * if (Result.isFailure(bad)) {
+	 *   console.log(bad.failure._tag); // => "InvalidVersionError"
+	 * }
+	 * ```
+	 *
+	 * @param input - the version string to parse
+	 * @returns a `Result` succeeding with the parsed {@link SemVer}, or failing
+	 * with {@link InvalidVersionError} when `input` is not a valid version
+	 * string.
+	 */
+	static parseResult(input: string): Result.Result<SemVer, InvalidVersionError> {
+		const result = parseVersion(input);
+		if (!result.ok) {
+			return Result.fail(new InvalidVersionError({ input: result.input, position: result.position }));
+		}
+		return Result.succeed(SemVer.make(result.value));
+	}
+
+	/**
+	 * Parse a strict SemVer 2.0.0 version string. Defined in terms of
+	 * {@link SemVer.parseResult} — synchronous callers can use that variant
+	 * directly.
 	 *
 	 * @param input - the version string to parse
 	 * @returns the parsed {@link SemVer}. Fails with {@link InvalidVersionError}
 	 * when `input` is not a valid version string.
 	 */
-	static readonly parse = Effect.fn("SemVer.parse")(function* (input: string) {
-		const result = parseVersion(input);
-		if (!result.ok) {
-			return yield* new InvalidVersionError({ input: result.input, position: result.position });
-		}
-		return SemVer.make(result.value);
-	});
+	static readonly parse = Effect.fn("SemVer.parse")((input: string) => Effect.fromResult(SemVer.parseResult(input)));
 
 	/**
 	 * Positional convenience constructor: `SemVer.of(1, 2, 3)`.

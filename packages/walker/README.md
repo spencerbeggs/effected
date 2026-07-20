@@ -82,7 +82,7 @@ The predicate can be expensive — reading and parsing a `package.json` to decid
 
 ## Features
 
-- `Walker.ascend(start, options?)` — the directory chain from `start` toward the filesystem root, nearest first. `stopAt` halts the ascent inclusively, `maxDepth` (default 256) caps it. Lexical, not physical: `Path.dirname` does not resolve symlinks, so ascending out of a symlinked directory follows the path you were given.
+- `Walker.ascend(start, options?)` — the directory chain from `start` toward the filesystem root, nearest first. `stopAt` halts the ascent inclusively — it must be absolute, and is matched in normalized form, so a trailing separator or a `.`/`..` segment still stops where it names; a relative ceiling is a defect rather than being resolved against the working directory, exactly as an invalid `maxDepth` is. `maxDepth` (default 256) caps the chain. Lexical, not physical: `Path.dirname` does not resolve symlinks, so ascending out of a symlinked directory follows the path you were given.
 - `Walker.firstMatch(candidates, predicate)` — the first candidate the predicate accepts. Absorbs each predicate failure individually and short-circuits at the first match.
 - `Walker.findUpward(dirs, candidatesFor)` — the first existing path, directory-major: every candidate in the nearest directory is tried before ascending.
 - `Walker.findRoot(dirs, isRoot)` — the nearest directory a marker predicate accepts. `firstMatch` where the candidate expansion is the identity.

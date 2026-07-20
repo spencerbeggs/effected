@@ -130,7 +130,7 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	 * `YamlStringifyOptions.lineWidth` is not honored here: column-based
 	 * scalar folding exists only on the value path, through the entry points
 	 * that accept stringify options ({@link Yaml.stringify} and
-	 * {@link Yaml.stringifySync}). The
+	 * {@link Yaml.stringifyResult}). The
 	 * document/node path threads `lineWidth` into its render context but
 	 * never reads it, so long scalars are emitted unfolded regardless of the
 	 * option. Callers that need folding should render the plain value

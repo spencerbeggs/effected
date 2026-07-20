@@ -287,6 +287,9 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 						path: directory,
 						packageJsonPath,
 						relativePath,
+						// The root the ascent already resolved, carried rather than dropped
+						// for consumers to reconstruct by segment arithmetic.
+						workspaceRoot: root,
 						// The as-read record rides along so consumers reach fields outside
 						// the discovery slice without a second file read.
 						manifestRecord: raw,
@@ -507,6 +510,7 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 	 *         path: "/repo/packages/utils",
 	 *         packageJsonPath: "/repo/packages/utils/package.json",
 	 *         relativePath: "packages/utils",
+	 *         workspaceRoot: "/repo",
 	 *       }),
 	 *     ]),
 	 * });

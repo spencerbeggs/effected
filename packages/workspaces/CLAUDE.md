@@ -17,7 +17,7 @@ Other runtime deps are `workspace:*` edges: `@effected/git`, `@effected/glob`, `
 `src/index.ts` is the only re-exporting module, and the package ships a **second entry**, `@effected/workspaces/node-sync` (`src/node-sync.ts`) — the node-bound preset for the sync entry points (`nodeFileSystem`, `nodePath`, `nodeSyncOps`). It is a separate subpath **deliberately**: the main entry imports nothing platform-shaped, and `index.ts` must never re-export it or `node:` imports leak into every consumer. Fifteen concept modules:
 
 - `WorkspacePackage.ts` — `WorkspacePackage`, `PublishConfig`, `DependencyDiff`, `WorkspaceManifestError`
-- `WorkspaceRoot.ts` — `WorkspaceRoot` service + layer, `WORKSPACE_MARKERS`, `WorkspaceRootNotFoundError`
+- `WorkspaceRoot.ts` — `WorkspaceRoot` service + layer + test double (`makeTest` / `layerTest`), `WorkspaceRootShape`, `WORKSPACE_MARKERS`, `FindWorkspaceRootOptions`, `WorkspaceRootNotFoundError`
 - `PackageManagerName.ts` — `PackageManagerName`, `DetectedPackageManager`, `PackageManagerDetector`, `PackageManagerDetectionError`
 - `WorkspaceDiscovery.ts` — `WorkspaceDiscovery`, `WorkspaceInfo`, three errors, the `workspaceResolver` layer, and the test double (`makeTest` / `layerTest`: empty-workspace defaults derived from the effective `listPackages`; `info` dies unless stubbed)
 - `DependencyGraph.ts` — `DependencyGraph` (a **value class**, not a service), `CyclicDependencyError`
@@ -54,9 +54,46 @@ Every lazy init uses `Effect.cachedInvalidateWithTTL` + `Effect.onExit`-invalida
 
 `GitReader` is **gone** — the module and its `GitCommandError` were deleted. `ChangeDetector` now runs on `@effected/git`'s `Git` service: `changedFiles(root, { base, head, relative: true })` for the committed range, `workingChanges(root, { relative: true })` for `includeUncommitted`, unioned and sorted. Every query uses `relative: true` so paths come back relative to the workspace root — correct even when the workspace is nested inside a larger git repository. A non-repository surfaces as git's own `NotARepositoryError` (not re-wrapped); `ChangeDetectionFailure` carries git's typed errors alongside `ChangeDetectionError` and the discovery failures. `Git` requires core's `ChildProcessSpawner` in `R`, discharged by the consumer's platform layer at the edge; a test provides `Layer.succeed(Git, …)` and needs no repository on disk. Nothing NEW may build a local subprocess seam — go through `@effected/git`.
 
+### The ascent is bounded on request
+
+`find(cwd, options?)` takes `{ stopAt, maxDepth }`, both passed **straight
+through to `Walker.ascend`** — walker already owned both concepts, so nothing
+was reinvented here. `stopAt` is inclusive (the ceiling is itself probed) and is
+`path.resolve`d first: walker compares it to each ancestor by string equality,
+so an unresolved ceiling would never match and would silently degrade to the
+unbounded ascent the option exists to prevent. An unmarked ceiling fails typed
+with `stopAt` recorded on the error, which is what distinguishes "no root
+anywhere above me" from "none below my ceiling". `findWorkspaceRootSync` has
+**not** been given the same bounds — see the surface note below.
+
+`WorkspaceRoot.makeTest(root)` / `layerTest(root)` are the sanctioned double —
+consumers were writing nine copies of
+`Layer.succeed(WorkspaceRoot, { find: () => Effect.succeed("/repo") })`. The
+double **honours `stopAt`**: a hand-rolled `find` that ignores the ceiling makes
+a bounded call pass under test and fail live, which is the very failure `stopAt`
+exists to catch. It deliberately does NOT model `maxDepth` — it never walks, so
+there is no depth to cap and pretending otherwise would encode a fiction.
+`WorkspaceRootShape` is exported so a consumer can type a bespoke double against
+the contract instead of re-deriving it.
+
 ### `WorkspacePackage` is deliberately tolerant
 
 It does **not** embed `@effected/package-json`'s `Package`: that model requires a strict `SemVer`, so one member with an odd version would fail discovery for the whole repo. `WorkspacePackage.manifest` is the opt-in bridge to the strict model — an `Effect.fn` **static** carrying the named span, with a thin instance wrapper (`pkg.manifest()`) that just delegates to it. It deliberately **re-reads** the file, a point-in-time refresh; for tolerant access to fields outside the typed discovery slice (`scripts`, `exports`, …) without a second read, `manifestRecord` captures the as-read `package.json` record (values `unknown`; defaults to `{}` for values serialized before the field existed).
+
+`workspaceRoot` is a **required carried field**, not a derived getter. Discovery
+resolved the root before enumerating and the sync entry point is handed it, so
+dropping it was pure information loss — downstream consumers were reconstructing
+it by counting `relativePath` segments and re-ascending that many `..`.
+
+It is required **on purpose, and it is the one breaking change here**: a
+`WorkspacePackage` serialized before the field existed now fails decode. That
+contradicts the compat posture `manifestRecord` set (old wire values stay
+valid), and the asymmetry is deliberate — `{}` is an honest "no record", but
+there is no honest default root. A placeholder would hand back a wrong absolute
+path that consumers resolve config against, silently reading the wrong
+`.changeset/config.json`, which is the bug the field exists to kill. Both halves
+are asserted in `WorkspacePackage.test.ts`; failing decode is the conservative
+direction because re-running discovery is cheap.
 
 ## Ambient cwd
 
@@ -70,7 +107,7 @@ The deliberate exception is `Workspaces.resolverLayer(options?)`: a **fresh, unm
 
 The one exception is `__test__/integration/self.int.test.ts`, which discovers **this repository** through `@effect/platform-node` (a devDependency). It is the only test that proves the whole stack composes against a real pnpm workspace — and it is what caught the multi-document lockfile bug.
 
-245 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 28 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it); never widen it. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
+262 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 28 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it); never widen it. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
 
 ## Point-in-time surface (as built)
 

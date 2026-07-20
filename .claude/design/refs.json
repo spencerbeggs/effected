@@ -75,9 +75,15 @@
 		},
 		{
 			"source": "packages/glob/CLAUDE.md",
+			"target": ".claude/design/effected/formatter-convention.md",
+			"hash": "7f00c3760e9f34e3cfdf4faec4d565cd3c95b072b9116e8a58598cc92a987140",
+			"recordedAt": "2026-07-20"
+		},
+		{
+			"source": "packages/glob/CLAUDE.md",
 			"target": ".claude/design/effected/packages/glob.md",
-			"hash": "4c5475158da7ce9b2602893db1737d4f194044a3518890b1b2a1d5eaccee88a1",
-			"recordedAt": "2026-07-12"
+			"hash": "e8f288b112fd8cdda2a3181fdbfb7e67b1300d03bf8f179a5f64b1ae1ba5534b",
+			"recordedAt": "2026-07-20"
 		},
 		{
 			"source": "packages/jsonc/CLAUDE.md",
@@ -99,9 +105,15 @@
 		},
 		{
 			"source": "packages/package-json/CLAUDE.md",
+			"target": ".claude/design/effected/formatter-convention.md",
+			"hash": "7f00c3760e9f34e3cfdf4faec4d565cd3c95b072b9116e8a58598cc92a987140",
+			"recordedAt": "2026-07-20"
+		},
+		{
+			"source": "packages/package-json/CLAUDE.md",
 			"target": ".claude/design/effected/packages/package-json.md",
-			"hash": "4bfa66ddd578220fe4ebb17c07af0b9f1cccf9d80d18202abcef0f8105bf65e4",
-			"recordedAt": "2026-07-12"
+			"hash": "c446dfbcc51b16d5e935f588f6d9a8ff699eac37a86363d5f65c72f461d5e474",
+			"recordedAt": "2026-07-20"
 		},
 		{
 			"source": "packages/pnpm-plugin-effect/CLAUDE.md",

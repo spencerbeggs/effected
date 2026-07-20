@@ -70,7 +70,13 @@ export {
 	WorkspacePatternError,
 } from "./WorkspaceDiscovery.js";
 export { type DependencyDiff, PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
-export { WORKSPACE_MARKERS, WorkspaceRoot, WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
+export {
+	type FindWorkspaceRootOptions,
+	WORKSPACE_MARKERS,
+	WorkspaceRoot,
+	WorkspaceRootNotFoundError,
+	type WorkspaceRootShape,
+} from "./WorkspaceRoot.js";
 export {
 	type WorkspaceSnapshotAtFailure,
 	type WorkspaceSnapshotWorktreeFailure,

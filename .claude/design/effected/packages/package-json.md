@@ -3,13 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-17
-last-synced: 2026-07-17
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 92
 related:
   - ../architecture.md
   - ../effect-standards.md
   - ../package-inventory.md
+  - ../formatter-convention.md
   - semver.md
   - jsonc.md
   - yaml.md
@@ -42,7 +43,8 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 - `PackageName.ts`, `License.ts`, `PackageManager.ts`, `Person.ts`, `DevEngines.ts`, `Dependency.ts` — the leaf concepts, each with its statics and errors.
 - `PackageValidator.ts` — the `Context.Service`, `ValidationRule` interface, `defaultRules` and the parameterized `layer({ rules })` factory.
 - `PackageJsonFile.ts` — **the only IO module**: one `Context.Service`, `read` + `write` over core `FileSystem`, and its read/write error tags.
-- `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions, surfaced as write options and `Package.toJsonString`. Holds `KEY_ORDER` and its `sort-package-json@4.0.0` provenance comment — see [formatting](#formatting-byte-agreement-with-the-ecosystem-oracle).
+- `PackageJsonFormat.ts` — the **decode-free** formatting seam: `sortValue` (value→value) and `formatToString` (bytes→bytes), plus `PackageJsonSyntaxError` and `PackageFormatTextOptions`. See [the formatting seam](#the-decode-free-formatting-seam).
+- `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions, shared by the write options, `Package.toJsonString` and `PackageJsonFormat`. Holds `KEY_ORDER` and its `sort-package-json@4.0.0` provenance comment — see [formatting](#formatting-byte-agreement-with-the-ecosystem-oracle).
 - `spdx-expression-parse.d.ts` — the hand-written type shim for the one CJS runtime dependency.
 
 `DependencySpecifier` is **not** defined here — the specifier taxonomy lives in [`@effected/npm`](npm.md) and `index.ts` re-exports it for surface compatibility. The package ships a single entry point (`src/index.ts`); there is no `./schema` subpath, and field codecs are either `@public` consts on their owning concept or `internal/` privates.
@@ -78,7 +80,7 @@ Modeled fields include `name` (`PackageName`), `version` (`SemVer`), `license` (
 - **`PackageName`** — `PackageName` / `ScopedPackageName` / `UnscopedPackageName` brands (a `.check(...)` + `Schema.brand` over the npm name grammar, written with **lookahead-free regexes** so `Schema.toArbitrary` property tests derive) plus statics `isValid` / `scope` / `unscoped` / `isScoped`, attached via `Object.assign` since a `const` and a `namespace` cannot merge in TS. The branded types export explicitly as `string & Brand.Brand<"…">`.
 - **`SpdxLicense`** (`License.ts`) — a brand validating real SPDX expressions via `spdx-expression-parse` (including `UNLICENSED` and `SEE LICENSE IN`).
 - **`PackageManager`** — a class parsing `"pnpm@10.x+sha512.abc"` into `name` / `version` / `integrity`, where `integrity` is a genuine `Schema.Option` field (absence is computed on) typed as [`@effected/npm`'s `IntegrityHash`](npm.md#integrityhash) brand. Because the brand rejects a malformed integrity segment, `PackageManager.FromString` now **fails typed** on malformed integrity rather than round-tripping it as a raw string — real corepack values are unaffected.
-- **`Person`** — a class parsing `"Name <email> (url)"` into structured fields and encoding back, wired into `Package.author`/`contributors`.
+- **`Person`** — a class parsing `"Name <email> (url)"` into structured fields and encoding back, wired into `Package.author`/`contributors`. It carries a `rest` catch-all of its own, on the same wire-transform pattern as `Package`: an object-form author with a `twitter` or `github` key would otherwise lose it on a read→write cycle, which is exactly the silent deletion the [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) forbids and which a schema-derived arbitrary is structurally incapable of generating. `Package` and `Person` are the package's **only** object-shaped models and therefore the only two that need a catch-all; every other leaf is a scalar or a closed shape.
 - **`DevEngine`** — the `DevEngine` class and `devEngines` field schema.
 - **`Dependency`** — **one** class with a `kind` field (`@effected/npm`'s `DependencyKind`) rather than four near-identical tagged classes; the protocol getters are written once, delegating to `DependencySpecifier`. `UnresolvedDependency` is a type + guard.
 
@@ -141,6 +143,19 @@ Sorting alphabetizes the dependency maps for canonical presentation, and **`scri
 ### `PackageIndent` and `"preserve"`
 
 `PackageFormatOptions.indent` is now `PackageIndent` = `number | "tab" | "preserve"`. `"preserve"` reuses the indentation of the source text, backed by an explicit `sourceText` option — and `PackageJsonFile.write` supplies it by **reading the file it is about to overwrite** when the caller gives none. That read is the only way `"preserve"` can mean anything at a write site that holds a decoded `Package` and nothing else; without it the option would silently degrade to a default and quietly re-indent the file.
+
+### The decode-free formatting seam
+
+`PackageJsonFormat` exists because the strict path **hard-fails on legal input**: `Package.decode` raises `PackageDecodeError` on `{"private": true}` and on version-less roots, both perfectly valid manifests. That made the kit unusable as a lint handler and the dogfood consumer routed around it to `sort-package-json`. This package is the only one of the kit's four formatters with a *schema* between text and text, so it is the only one where that could happen at all — the three format packages satisfy the constraint by construction.
+
+Four properties are load-bearing, and they are [the kit formatter convention](../formatter-convention.md#the-rules) rather than local choices:
+
+- **A distinct named entry point, never a `{ strict: false }` flag.** A flag would make the strict path's return type a union of guarantees and hide the choice from both the call site and `grep`.
+- **Two shapes because two hosts exist** — value→value and bytes→bytes — routed through one internal sort so they cannot drift.
+- **The value path only reorders; it never adds or removes a key.** This is what makes `sortValue`'s `T → T` honest, and it is type-enforced: an earlier `stripEmpty` on the value path was rejected by `tsc`, because removing a key makes `T → T` a lie. The option moved to the text path, defaulted **off**. Capabilities that delete are opt-in, always.
+- **Input it cannot handle comes back unchanged**, never partially rewritten.
+
+`formatToString` returns `Result`, not `Effect` — lint hosts are synchronous, and an `Effect` return would force every one of them to build a runtime to format a file. Effect hosts lift with `Effect.fromResult` in one call, so the `Result` serves both. Its options type is deliberately separate from `PackageFormatOptions` (`sourceText` is meaningless when the text *is* the source) and its defaults deliberately diverge from the strict path's; where a default differs, the divergence and its reason are documented on the member, because that is exactly where a silent edit hides.
 
 ### Byte-parity fixtures
 

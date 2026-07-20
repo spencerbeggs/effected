@@ -8,6 +8,7 @@ const base = {
 	path: "/repo/packages/utils",
 	packageJsonPath: "/repo/packages/utils/package.json",
 	relativePath: "packages/utils",
+	workspaceRoot: "/repo",
 };
 
 const utils = WorkspacePackage.make({
@@ -202,6 +203,7 @@ describe("WorkspacePackage.dependencyVersion — inherited names are not depende
 		path: "/repo/packages/a",
 		packageJsonPath: "/repo/packages/a/package.json",
 		relativePath: "packages/a",
+		workspaceRoot: "/repo",
 		private: false,
 		dependencies: { effect: "^4.0.0" },
 		devDependencies: {},
@@ -266,8 +268,28 @@ describe("WorkspacePackage.manifestRecord", () => {
 			path: "/repo/packages/old",
 			packageJsonPath: "/repo/packages/old/package.json",
 			relativePath: "packages/old",
+			workspaceRoot: "/repo",
 		};
 		const decoded = Schema.decodeUnknownSync(WorkspacePackage)(legacy);
 		assert.deepStrictEqual(decoded.manifestRecord, {});
+	});
+
+	it("a value serialized BEFORE workspaceRoot existed fails decode, loudly", () => {
+		// The deliberate exception to the compat posture the test above states, and
+		// the reason it is asserted rather than left implicit: `manifestRecord`
+		// could default to `{}` honestly, but there is no honest default root. A
+		// placeholder would hand back a WRONG absolute path, and every consumer of
+		// this field resolves config against it — an empty string or a guessed root
+		// silently reads the wrong `.changeset/config.json`, which is the exact
+		// class of bug the field was added to eliminate. Failing decode is the
+		// conservative direction: re-run discovery, which is cheap.
+		const preField = {
+			name: "old",
+			version: "1.0.0",
+			path: "/repo/packages/old",
+			packageJsonPath: "/repo/packages/old/package.json",
+			relativePath: "packages/old",
+		};
+		assert.throws(() => Schema.decodeUnknownSync(WorkspacePackage)(preField));
 	});
 });

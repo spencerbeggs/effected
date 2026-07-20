@@ -65,6 +65,18 @@ re-exports below it).
 - **`PackageValidator.ts`** — rule-based validation over a decoded `Package`;
   `layer` (default rules) and the parameterized `layerRules` factory.
 - **`PackageJsonFile.ts`** — the IO surface.
+- **`PackageJsonFormat.ts`** — the decode-free formatter: `PackageJsonFormat`
+  with two statics, `sortValue` (value→value, total, returns its input type
+  `T`) and `formatToString` (text→text, `Result<string, PackageJsonSyntaxError>`),
+  plus `PackageFormatTextOptions`. Named for the kit formatter convention
+  (`@../../.claude/design/effected/formatter-convention.md`) — `JsoncFormatter`,
+  `YamlFormat` and `TomlFormat` spell the same capability the same way.
+  **`sortValue` only ever reorders keys**; it never adds or removes one, which
+  is what lets the return type be `T`. Never add a key-removing option there
+  (`stripEmpty` lives on the text path, defaulted off) — `tsc` rejects it,
+  because removing a key makes `T → T` a lie. A non-object (array, scalar,
+  `null`) returns **unchanged** rather than mangled, so a mistyped `Json` union
+  degrades to identity instead of losing data.
 - **`internal/format.ts`** — private; canonical key order (aligned verbatim to
   `sort-package-json@4.0.0`'s default `sortOrder` — re-baseline the fixtures in
   `__test__/fixtures/` together with `KEY_ORDER` when bumping that reference),
@@ -84,6 +96,13 @@ re-exports below it).
   pattern: "_base" }`. **Never widen it.** An internal type named on a `@public`
   method signature is a different symbol that still forgotten-exports — inline it
   structurally or mark it `@public`.
+- **A `Schema.Class` modeling a sub-object of a round-tripped document needs
+  its own `rest` catch-all**, not just the top-level `Package`. `Person` lacked
+  one, so object-form `author`/`contributors`/`maintainers` silently dropped
+  unknown keys on read→write (`{"name":"Dee","twitter":"@dee"}` re-encoded as
+  `{"name":"Dee"}`). It now collects unknown keys into `rest` and flattens them
+  back on encode, so the on-disk shape never carries a literal `rest` key.
+  Check every new sub-object class against a round-trip test.
 - `Schema.Class` instances are not `Pipeable` in v4; `Package` hand-rolls the
   `pipe` overload block. Preserve it if you touch the class.
 - `parseRange` decodes via `Schema.decodeUnknownExit` — never run an Effect

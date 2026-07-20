@@ -5,7 +5,7 @@
 // inherited glob-core behavioral table with issue #62 INVERTED: ** is real.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { GlobPattern, GlobPatternError, GlobSet } from "../src/index.js";
 
 describe("GlobSet: the workspaces contract (inherited glob-core table)", () => {
@@ -281,4 +281,67 @@ describe("GlobSet: literals key on the effective unescaped path", () => {
 			}
 		}),
 	);
+});
+
+describe("GlobSet.compileResult", () => {
+	it("compiles synchronously without an Effect runtime", () => {
+		const r = GlobSet.compileResult(["packages/*", "!packages/private"]);
+		assert.isTrue(Result.isSuccess(r));
+		if (!Result.isSuccess(r)) return;
+		assert.isTrue(r.success.matches("packages/a"));
+		assert.isFalse(r.success.matches("packages/private"));
+	});
+
+	it("is total: an uncompilable member is a Result failure, never a throw", () => {
+		const r = GlobSet.compileResult(["ok/*", "a".repeat(65_537)]);
+		assert.isTrue(Result.isFailure(r));
+		if (!Result.isFailure(r)) return;
+		assert.instanceOf(r.failure, GlobPatternError);
+		assert.strictEqual(r.failure.reason, "PatternTooLong");
+	});
+
+	it("names the offending member, bang included, exactly as compile does", () => {
+		const patterns = ["ok/*", `!${"{a,b}".repeat(17)}`];
+		const sync = GlobSet.compileResult(patterns);
+		const eff = Effect.runSync(Effect.result(GlobSet.compile(patterns)));
+		assert.isTrue(Result.isFailure(sync));
+		assert.isTrue(Result.isFailure(eff));
+		if (!Result.isFailure(sync) || !Result.isFailure(eff)) return;
+		assert.strictEqual(sync.failure.pattern, `!${"{a,b}".repeat(17)}`);
+		assert.strictEqual(sync.failure.pattern, eff.failure.pattern);
+		assert.strictEqual(sync.failure.reason, eff.failure.reason);
+		assert.strictEqual(sync.failure.limit, eff.failure.limit);
+		assert.strictEqual(sync.failure.actual, eff.failure.actual);
+	});
+
+	// The sync form must never be the reason set semantics drift: same members
+	// in, same matching and same classification out, whichever form built it.
+	it("agrees with compile on matching and on the structural accessors", () => {
+		const patterns = ["tools/cli", "{packages/*,apps/*}", "**/*.ts", "!**/*.d.ts"];
+		const sync = GlobSet.compileResult(patterns);
+		const eff = Effect.runSync(GlobSet.compile(patterns));
+		assert.isTrue(Result.isSuccess(sync));
+		if (!Result.isSuccess(sync)) return;
+
+		for (const candidate of ["tools/cli", "packages/a", "apps/b", "src/x.ts", "src/x.d.ts", "nope"]) {
+			assert.strictEqual(sync.success.matches(candidate), eff.matches(candidate), candidate);
+			assert.strictEqual(sync.success.isExcluded(candidate), eff.isExcluded(candidate), candidate);
+		}
+		assert.deepStrictEqual(sync.success.literals, eff.literals);
+		assert.deepStrictEqual(
+			sync.success.wildcards.map((w) => w.source),
+			eff.wildcards.map((w) => w.source),
+		);
+		assert.deepStrictEqual(
+			sync.success.excludes.map((e) => e.source),
+			eff.excludes.map((e) => e.source),
+		);
+	});
+
+	it("fails on the FIRST uncompilable member", () => {
+		const r = GlobSet.compileResult(["a".repeat(65_537), "{a,b}".repeat(17)]);
+		assert.isTrue(Result.isFailure(r));
+		if (!Result.isFailure(r)) return;
+		assert.strictEqual(r.failure.reason, "PatternTooLong");
+	});
 });

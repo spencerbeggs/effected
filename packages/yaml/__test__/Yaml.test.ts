@@ -234,6 +234,151 @@ describe("Yaml", () => {
 			);
 		});
 
+		describe("quoteStyle", () => {
+			// The `quoteStyle: "double"` expected strings match the `yaml` npm
+			// package's `singleQuote: false` output for the same values; the kit
+			// default ("single") preserves the released byte-compatible form.
+			const double = YamlStringifyOptions.make({ quoteStyle: "double" });
+
+			it.effect("default falls back to single quotes for a scalar requiring quoting", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* Yaml.stringify({ version: "*" }), "version: '*'\n");
+				}),
+			);
+
+			it.effect('"double" falls back to double quotes for a scalar requiring quoting', () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* Yaml.stringify({ version: "*" }, double), 'version: "*"\n');
+				}),
+			);
+
+			it.effect("a scalar that needs no quoting stays plain under either setting", () =>
+				Effect.gen(function* () {
+					const value = { name: "alice", count: 3, flag: true };
+					const expected = "name: alice\ncount: 3\nflag: true\n";
+					assert.strictEqual(yield* Yaml.stringify(value), expected);
+					assert.strictEqual(yield* Yaml.stringify(value, double), expected);
+				}),
+			);
+
+			it.effect("mapping keys requiring quoting honor the option", () =>
+				Effect.gen(function* () {
+					// The pnpm-workspace.yaml shape from the reported regression: the
+					// keys are the scalars that require quoting, not the values.
+					const value = {
+						allowBuilds: { "@parcel/watcher": true },
+						allowedDeprecatedVersions: { "@types/acorn": "*" },
+					};
+					assert.strictEqual(
+						yield* Yaml.stringify(value),
+						"allowBuilds:\n  '@parcel/watcher': true\nallowedDeprecatedVersions:\n  '@types/acorn': '*'\n",
+					);
+					assert.strictEqual(
+						yield* Yaml.stringify(value, double),
+						'allowBuilds:\n  "@parcel/watcher": true\nallowedDeprecatedVersions:\n  "@types/acorn": "*"\n',
+					);
+				}),
+			);
+
+			it.effect("flow-mapping keys honor the option too", () =>
+				Effect.gen(function* () {
+					const value = { "@types/acorn": "*" };
+					const flow = { defaultCollectionStyle: "flow" as const };
+					assert.strictEqual(yield* Yaml.stringify(value, flow), "{'@types/acorn': '*'}\n");
+					assert.strictEqual(
+						yield* Yaml.stringify(value, { ...flow, quoteStyle: "double" }),
+						'{"@types/acorn": "*"}\n',
+					);
+				}),
+			);
+
+			it.effect('an explicit defaultScalarStyle of "single-quoted" still wins', () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* Yaml.stringify({ name: "alice" }, { defaultScalarStyle: "single-quoted", quoteStyle: "double" }),
+						"name: 'alice'\n",
+					);
+				}),
+			);
+
+			it.effect("a value needing YAML escapes stays double-quoted and round-trips", () =>
+				Effect.gen(function* () {
+					// Tabs and control characters cannot be expressed in single-quoted
+					// YAML, so both settings must emit double-quoted output here.
+					const value = { quoted: 'say "hi" now: ok', tabbed: "a\tb: c" };
+					const emitted = yield* Yaml.stringify(value, double);
+					assert.strictEqual(emitted, 'quoted: "say \\"hi\\" now: ok"\ntabbed: "a\\tb: c"\n');
+					assert.deepStrictEqual(yield* Yaml.parse(emitted), value);
+				}),
+			);
+
+			it.effect("a multi-line value still routes to a block scalar under either setting", () =>
+				Effect.gen(function* () {
+					const value = { text: "line one\nline two" };
+					const expected = "text: |-\n  line one\n  line two\n";
+					assert.strictEqual(yield* Yaml.stringify(value), expected);
+					assert.strictEqual(yield* Yaml.stringify(value, double), expected);
+				}),
+			);
+
+			it.effect("round-trips the quoted forms back to the same value", () =>
+				Effect.gen(function* () {
+					const value = { "@types/acorn": "*", "a: b": " lead", numeric: "123" };
+					assert.deepStrictEqual(yield* Yaml.parse(yield* Yaml.stringify(value, double)), value);
+					assert.deepStrictEqual(yield* Yaml.parse(yield* Yaml.stringify(value)), value);
+				}),
+			);
+
+			it("validates the field and reads back off the options class", () => {
+				const options = YamlStringifyOptions.make({ quoteStyle: "double", sortKeys: true });
+				assert.strictEqual(options.quoteStyle, "double");
+				assert.throws(() => YamlStringifyOptions.make({ quoteStyle: "backtick" as unknown as "single" }));
+			});
+		});
+
+		describe("control characters force quoting (regression)", () => {
+			// Released 0.4.0 emitted CR and interior-tab scalars as PLAIN text
+			// because `requiresQuoting`'s control-char loop used `isControlChar`
+			// alone, which excludes TAB (0x09) and CR (0x0D). The CR case was
+			// silent data corruption: `has\rcarriage` round-tripped back as
+			// `has carriage`. Each case asserts BOTH that the scalar is quoted
+			// and that it survives a parse round-trip unchanged.
+			const cases: ReadonlyArray<readonly [label: string, value: string]> = [
+				["carriage return", "has\rcarriage"],
+				["interior tab", "has\ttab"],
+				["leading tab", "\tleading"],
+				["trailing tab", "trailing\t"],
+				["NUL", "has\0nul"],
+				["bell", "has\u0007bell"],
+				["escape", "has\u001bescape"],
+			];
+
+			for (const [label, value] of cases) {
+				it.effect(`quotes and round-trips a scalar containing a ${label}`, () =>
+					Effect.gen(function* () {
+						const text = yield* Yaml.stringify({ key: value });
+						const scalar = text.slice("key: ".length).trimEnd();
+						assert.ok(
+							scalar.startsWith('"') || scalar.startsWith("'"),
+							`expected a quoted scalar for ${label}, got plain: ${JSON.stringify(scalar)}`,
+						);
+						assert.deepStrictEqual(yield* Yaml.parse(text), { key: value });
+					}),
+				);
+			}
+
+			it.effect("a multi-line value containing a tab still uses a block scalar", () =>
+				Effect.gen(function* () {
+					// Guards the fix's scope: TAB is quoted only on the single-line
+					// plain path. Block scalars can carry tabs and must keep doing so.
+					const value = { key: "line one\n\tindented line\n" };
+					const text = yield* Yaml.stringify(value);
+					assert.ok(text.includes("|"), `expected a block scalar, got: ${JSON.stringify(text)}`);
+					assert.deepStrictEqual(yield* Yaml.parse(text), value);
+				}),
+			);
+		});
+
 		describe("lineWidth folding", () => {
 			const long = "the quick brown fox jumps over the lazy dog and keeps running far away into the sunset";
 
@@ -313,22 +458,22 @@ describe("Yaml", () => {
 		});
 	});
 
-	describe("parseSync / stringifySync (synchronous Result escape hatch)", () => {
-		it.effect("parseSync succeeds and matches Yaml.parse on valid input", () =>
+	describe("parseResult / stringifyResult (synchronous Result escape hatch)", () => {
+		it.effect("parseResult succeeds and matches Yaml.parse on valid input", () =>
 			Effect.gen(function* () {
 				const text = "name: Alice\nage: 30\ntags:\n  - a\n  - b";
-				const result = Yaml.parseSync(text);
+				const result = Yaml.parseResult(text);
 				if (!Result.isSuccess(result)) {
-					assert.fail("parseSync must succeed on valid input");
+					assert.fail("parseResult must succeed on valid input");
 				}
 				assert.deepStrictEqual(result.success, yield* Yaml.parse(text));
 			}),
 		);
 
-		it("parseSync returns a Failure with a typed YamlParseError on malformed input, never a throw", () => {
+		it("parseResult returns a Failure with a typed YamlParseError on malformed input, never a throw", () => {
 			let result!: Result.Result<unknown, YamlParseError>;
 			assert.doesNotThrow(() => {
-				result = Yaml.parseSync("a: *missing");
+				result = Yaml.parseResult("a: *missing");
 			});
 			assert.isTrue(Result.isFailure(result));
 			if (!Result.isFailure(result)) return;
@@ -336,23 +481,23 @@ describe("Yaml", () => {
 			assert.isTrue(result.failure.diagnostics.some((d) => d.code === "UndefinedAlias"));
 		});
 
-		it.effect("stringifySync succeeds and matches Yaml.stringify on valid input", () =>
+		it.effect("stringifyResult succeeds and matches Yaml.stringify on valid input", () =>
 			Effect.gen(function* () {
 				const value = { name: "Alice", nested: { list: [1, 2, true, null] } };
-				const result = Yaml.stringifySync(value);
+				const result = Yaml.stringifyResult(value);
 				if (!Result.isSuccess(result)) {
-					assert.fail("stringifySync must succeed on valid input");
+					assert.fail("stringifyResult must succeed on valid input");
 				}
 				assert.strictEqual(result.success, yield* Yaml.stringify(value));
 			}),
 		);
 
-		it("stringifySync returns a Failure with CircularReference on a cycle, never a throw", () => {
+		it("stringifyResult returns a Failure with CircularReference on a cycle, never a throw", () => {
 			const value: Record<string, unknown> = {};
 			value.self = value;
 			let result!: Result.Result<string, YamlStringifyError>;
 			assert.doesNotThrow(() => {
-				result = Yaml.stringifySync(value);
+				result = Yaml.stringifyResult(value);
 			});
 			assert.isTrue(Result.isFailure(result));
 			if (!Result.isFailure(result)) return;
@@ -360,19 +505,19 @@ describe("Yaml", () => {
 			assert.strictEqual(result.failure.diagnostics[0]?.code, "CircularReference");
 		});
 
-		it("stringifySync surfaces a deep-nesting overflow as a typed Failure, never a stack overflow", () => {
+		it("stringifyResult surfaces a deep-nesting overflow as a typed Failure, never a stack overflow", () => {
 			let value: unknown = 1;
 			for (let i = 0; i < 50000; i++) value = [value];
 			let result!: Result.Result<string, YamlStringifyError>;
 			assert.doesNotThrow(() => {
-				result = Yaml.stringifySync(value);
+				result = Yaml.stringifyResult(value);
 			});
 			assert.isTrue(Result.isFailure(result));
 			if (!Result.isFailure(result)) return;
 			assert.strictEqual(result.failure.diagnostics[0]?.code, "NestingDepthExceeded");
 		});
 
-		it("parseSync surfaces an alias 'billion laughs' bomb as a typed Failure, never OOM", () => {
+		it("parseResult surfaces an alias 'billion laughs' bomb as a typed Failure, never OOM", () => {
 			const width = 10;
 			const depth = 8;
 			const lines: string[] = [`a1: &a1 [${Array.from({ length: width }, () => "x").join(", ")}]`];
@@ -382,7 +527,7 @@ describe("Yaml", () => {
 			lines.push(`top: *a${depth}`);
 			let result!: Result.Result<unknown, YamlParseError>;
 			assert.doesNotThrow(() => {
-				result = Yaml.parseSync(lines.join("\n"));
+				result = Yaml.parseResult(lines.join("\n"));
 			});
 			assert.isTrue(Result.isFailure(result));
 			if (!Result.isFailure(result)) return;

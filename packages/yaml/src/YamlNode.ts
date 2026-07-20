@@ -45,6 +45,24 @@ export const CollectionStyle = Schema.Literals(["block", "flow"]);
 export type CollectionStyle = typeof CollectionStyle.Type;
 
 /**
+ * Quote characters available to the stringifier's plain-scalar fallback: the
+ * style a `plain`-styled scalar is rendered in when it turns out to require
+ * quoting. Referenced by the `quoteStyle` field of `YamlStringifyOptions`;
+ * unlike `ScalarStyle` it is a stringify-option vocabulary, never a property
+ * of a composed node.
+ *
+ * @public
+ */
+export const QuoteStyle = Schema.Literals(["single", "double"]);
+
+/**
+ * The union of all fallback quote style string literals.
+ *
+ * @public
+ */
+export type QuoteStyle = typeof QuoteStyle.Type;
+
+/**
  * Block-scalar chomping indicators (`-` strip, default clip, `+` keep).
  * Referenced by the {@link YamlScalar} `chomp` field schema.
  *

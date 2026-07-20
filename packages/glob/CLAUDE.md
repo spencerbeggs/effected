@@ -76,8 +76,15 @@ matches `packages/a/b` (glob-core's issue-#62 rewrite is not carried forward).
   options** on every construction path (`make`, `new`, decode, `FromString`).
   Options refine matching; they never admit defaults-rejected patterns.
   Compiled engine cached in a non-encoded private field, pre-warmed by
-  `compile`, lazy otherwise. `compile`/`GlobSet.compile` carry the only
-  `Effect.fn` spans; `matches` and the getters are span-free.
+  `compile`, lazy otherwise.
+- **The sync `Result` form is the primitive; the `Effect` form derives from
+  it.** `GlobPattern.compileResult` and `GlobSet.compileResult` hold the
+  compilation; each `compile` twin is `Effect.fromResult(...)` behind its
+  existing span and adds nothing else — the span is the whole reason the
+  `Effect` form exists. Never re-derive compilation on the `Effect` side. Kit
+  convention — `@../../.claude/design/effected/formatter-convention.md`,
+  decisions 6 and 6a. `compile`/`GlobSet.compile` carry the only `Effect.fn`
+  spans; `matches` and the getters are span-free.
 - `GlobPatternOptions` — full minimatch surface, schema-validated; invalid
   options throw at `make` (defect). `braceExpandMax` is bounded `[1, 100_000]`
   — caps tighten, never raise (keeps the defaults-compilability invariant).

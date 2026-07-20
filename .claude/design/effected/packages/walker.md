@@ -3,13 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-17
-last-synced: 2026-07-17
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 95
 related:
   - ../effect-standards.md
   - ../package-inventory.md
   - ../releases.md
+  - ../formatter-convention.md
   - config-file.md
   - glob.md
 ---
@@ -18,7 +19,7 @@ related:
 
 ## Overview
 
-`@effected/walker` is path traversal as a small, testable library. Two directions, two concept modules: **upward**, ascend a directory chain toward the filesystem root and return the first candidate satisfying a predicate; **downward**, expand a compiled glob pattern under a directory and return the matching files. The upward walk is the one absorbing traversal loop in the repo — `@effected/config-file`, `@effected/xdg` and `@effected/workspaces` all discover files through it.
+`@effected/walker` is path traversal as a small, testable library. Two directions: **upward**, ascend a directory chain toward the filesystem root and return the first candidate satisfying a predicate; **downward**, expand a compiled glob pattern under a directory and return the matching files. A third module, [`compileAndExpand`](#compileandexpand--the-recipe-seam), owns the compile-plus-expand recipe over the downward walk. The upward walk is the one absorbing traversal loop in the repo — `@effected/config-file`, `@effected/xdg` and `@effected/workspaces` all discover files through it.
 
 It is **boundary tier**: it does IO, reading the filesystem through `effect`-core `FileSystem` and `Path`. A package that does IO through core platform abstractions is boundary by [R4](../effect-standards.md#dependency-policy), and requiring `FileSystem`/`Path` costs walker nothing in dependencies because both are `effect` core in v4.
 
@@ -26,11 +27,11 @@ It is **boundary tier**: it does IO, reading the filesystem through `effect`-cor
 
 **Boundary tier.** `peerDependencies: { effect, @effected/glob }`, and **no runtime dependencies**. `FileSystem` and `Path` arrive via the `R` channel from the consumer's platform layer.
 
-The `@effected/glob` peer is **type-and-property only** — `descend` imports `GlobPattern` as a type and reads its metadata getters and `matches()`; there is no value import, so no engine is pulled into a consumer that never globs. This mirrors config-file's peering on the format packages, and leaves the boundary profile intact: no `@effect/platform-node` devDependency, tested entirely from core layers (see [Testing](#testing)).
+The `@effected/glob` peer was **type-and-property only** until `compileAndExpand`: `descend` imports `GlobPattern` as a type and reads its metadata getters and `matches()`, and that is still all `Descend.ts` does. `Expand.ts` value-imports `GlobPattern.compileResult` and `GlobPatternError`, because owning the compile step is the whole point of that module. The dependency graph is unchanged — the peer was already declared — but the claim to record is narrower now: **`descend` alone is type-only**, so a consumer that imports only `descend` still pulls no engine, while one that imports `compileAndExpand` does. The boundary profile is otherwise intact: no `@effect/platform-node` devDependency, tested entirely from core layers (see [Testing](#testing)).
 
 ## Scope: both directions, one shared discipline
 
-Walker owns **path traversal** and nothing else — no `Context.Service` of its own, and no glob *compilation*. Pattern → matcher is [@effected/glob](../package-inventory.md#the-packages)'s job; walker is **semantics-free** about matching, reading only the compiled pattern's `hasMagic` / `negated` / `enumerationPrefix` / `crossesSegments` and calling `matches`. Dotfile behavior, case folding and every other option ride in on the pattern the caller hands in and are never re-derived here.
+Walker owns **path traversal**, and no `Context.Service` of its own. Pattern → matcher stays [@effected/glob](../package-inventory.md#the-packages)'s job: walker is **semantics-free** about matching, reading only the compiled pattern's `hasMagic` / `negated` / `enumerationPrefix` / `crossesSegments` and calling `matches`. Dotfile behavior, case folding and every other option ride in on the pattern and are never re-derived here — `compileAndExpand` *calls* glob's compiler with options the caller supplies, which is delegation rather than an exception to that rule.
 
 Downward enumeration [used to be out of scope](#the-downward-walk-descend), on the theory that walking *into* a tree was workspaces-specific. It is not: glob is a pure matching engine with no walker, and workspaces' enumerator was internal and package-dir-specific, so "files matching a glob under a directory" had no home. `descend` is that home, and it is the package's second concept module.
 
@@ -38,21 +39,23 @@ The two directions do **not** share an error posture — see [Error handling](#e
 
 ## Module layout
 
-Two concept modules, one per direction, per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept):
+Two directions and one recipe, per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept):
 
 ```text
 packages/walker/
   src/
     Walker.ts            # upward — the Walker namespace object
     Descend.ts           # downward — descend, DescendOptions, DescendError
+    Expand.ts            # the recipe — compileAndExpand, GlobExpansionError
     index.ts             # public surface, re-exports only
   __test__/
     Walker.test.ts
     Descend.test.ts
+    Expand.test.ts
     fixtures.ts
 ```
 
-`descend` is a **bare function**, not a member of the `Walker` namespace object: it is a different algorithm with a different error posture, and folding it into `Walker` would imply it shares the namespace's `never`-channel contract.
+`descend` and `compileAndExpand` are **bare functions**, not members of the `Walker` namespace object: they are different algorithms with a different error posture, and folding either into `Walker` would imply it shares the namespace's `never`-channel contract.
 
 ## Public surface
 
@@ -60,7 +63,7 @@ A `Walker` namespace object with static functions, matching the `Jsonc` / `Confi
 
 ```ts
 export interface AscendOptions {
-  readonly stopAt?: string;   // no `| undefined` — exactOptionalPropertyTypes
+  readonly stopAt?: string;   // absolute; compared resolved. Relative dies.
   readonly maxDepth?: number; // default 256
 }
 
@@ -113,6 +116,17 @@ descend(pattern: GlobPattern, options: DescendOptions):
 
 Per-probe absorption (an unreadable ancestor must not abort the scan) lives in exactly one place — `firstMatch`.
 
+## The `ascend` ceiling fails closed
+
+`stopAt` is compared in **resolved form on both sides** and stays **inclusive**. Raw string equality was a **fail-open** bug: an unnormalized ceiling matched nothing, so the ascent ran to the filesystem root — the unbounded walk the option exists to prevent — with no error to notice it by. Both sides go through `resolve` because normalizing only the ceiling desynchronizes it from an unnormalized chain element (`/a/b/.` names `/a/b`). Normalization is idempotent, so a caller that already resolves is unaffected, and it governs the **comparison only**: the chain returned is still the lexical one derived from `start`, because rewriting it would break the lexical contract for every caller passing no ceiling at all.
+
+A **relative** ceiling is a **defect**, not a typed failure, and is never resolved against `process.cwd()`. Two reasons, and the second is the load-bearing one:
+
+- Resolving it would let the same `stopAt` name different directories in a lint-staged hook, a CLI run from a package directory and a test runner — the fail-open class again, through a different door. This is why `ascend` reads `process.cwd()` nowhere.
+- **Never "upgrade" this to a typed error.** [`@effected/config-file`](config-file.md)'s resolver contract absorbs every typed failure into `Option.none()`, so a typed rejection would be swallowed there and re-emerge as a clean-looking "no config found" — precisely the silent wrong answer the guard exists to close. `Effect.catch` does not catch defects, so only a defect survives that absorption, and a test reconstructs the absorbing caller to pin it.
+
+Only the **ceiling** is constrained: a relative `start` still ascends to the relative root, and a test pins that the rejection was not over-applied. Absoluteness is judged by the injected `Path`, so the win32 layer accepts `C:\repo`.
+
 ## The downward walk (`descend`)
 
 The descent is a **worklist, not a recursion** — it cannot overflow the stack — dequeued by a head index rather than `Array.shift()`, which re-indexes the whole array on every dequeue and turns a large walk quadratic.
@@ -127,6 +141,18 @@ What earns a filesystem read is decided by the pattern's metadata, and two cases
 Zero matches is a **normal glob answer, not an error**: a missing literal path and a missing base directory both read as `[]`. Only files match — a symlink counts when it stat-resolves to a file (`stat` follows links, as node's does), a dangling symlink does not, and a symlinked **directory is never descended** for cycle safety, detected by a `readLink` success-probe. A directory that vanishes between its parent's listing and its own read is a benign race and reads as empty in both `onUnreadable` modes.
 
 Output is sorted by cwd-relative POSIX path — an unsorted enumeration is a reproducibility hazard for every downstream consumer that hashes or diffs it.
+
+## `compileAndExpand` — the recipe seam
+
+`descend` answers "which files match this **compiled** pattern". `compileAndExpand` (in `Expand.ts`) answers "which files match this pattern **source**", and exists because the seam between the two — compile, fold the compile error, expand, fold the descend error — was small enough that every consumer wrote it, and wrote it differently. The dogfood consumer wrote four differently-shaped error folds for one pattern inside a single package, and the fan-out produced a real bug: two divergent `dot` semantics with nothing making the divergence visible. That is the failure this module removes, and it is the same argument the [formatter convention](../formatter-convention.md#why-a-convention-and-not-four-local-answers) makes about unowned seams.
+
+Three decisions carry the design:
+
+- **`options.glob` is required.** Matching semantics — `dot` above all — are what two call sites most easily disagree about, and an optional field invites exactly the divergence above. Required means every call site states its dialect in its own source, so a disagreement is a visible difference between two spellings rather than the absence of one. `GlobPatternOptions.make({})` is how a caller says "the defaults" deliberately.
+- **One error, both causes intact.** `GlobExpansionError` carries the underlying `GlobPatternError | DescendError` in `cause` rather than flattening it to a string, with a derived `stage` getter for callers that only need the phase. A caller catches one tag; a caller that needs the guard's `limit`/`actual` or the descent's `path` still has them. `cause` is also the native `Error` cause, so chaining works unwired.
+- **`FileSystem` and `Path` stay in `R`, deliberately** — even though hand-providing them is the friction this recipe otherwise removes. `FileSystem` *cannot* be provided: a library that picks its own filesystem cannot be tested against a fixture tree. Given that, providing `Path` internally saves the caller no layer and actively breaks win32, joining POSIX-style against a win32 filesystem. The consumer's platform layer stays the single place that choice is made — the same rule as [below](#wiring-services-via-r-not-parameters).
+
+Everything `descend` documents about traversal holds unchanged here, because this delegates to it. Zero matches stays a normal answer: a missing base directory, a pattern climbing above `cwd` and a pattern that simply matches nothing are all `[]`, not failures.
 
 ## Wiring: services via R, not parameters
 
@@ -146,6 +172,7 @@ Both services live in `effect` core in v4, so requiring them via `R` costs walke
 - **Probe failures are absorbed per candidate, inside `firstMatch`.** An `EACCES`, `ENOTDIR` or broken-symlink failure on one candidate is caught (`Effect.catch`) and treated as "this candidate did not match," so the scan continues. Not-found and cannot-look are deliberately indistinguishable: discovery is best-effort.
 - **Defects propagate.** `firstMatch` uses `Effect.catch`, which catches *failures*, not defects. A predicate that `throw`s is programmer error and must surface as a defect. The choice of `catch` over `catchCause` is load-bearing — a refactor to `catchCause` would quietly break this contract.
 - **A non-positive-integer `maxDepth` is a defect.** The guard is `!Number.isInteger(maxDepth) || maxDepth < 1`, not a bare `< 1` (which lets `NaN` and `2.5` through). It can only come from code, so `ascend` raises it as `Effect.die`.
+- **A relative `stopAt` is a defect too**, and is never resolved against `process.cwd()` — see [the ceiling](#the-ascend-ceiling-fails-closed). Same line as `maxDepth`: malformed *input* fails typed, statically-wrong *wiring* dies.
 
 Because the channel is `never`, the walking resolvers in config-file inherit their best-effort guarantee from walker's type rather than from wrapper prose.
 
@@ -193,10 +220,11 @@ The mutation-proven invariants the suite pins:
 - A predicate that fails on candidate 2 still probes candidate 3 (per-candidate absorption).
 - A predicate that dies on candidate 2 propagates the defect (the `catch`-not-`catchCause` boundary).
 - `findRoot` does not let an unreadable ancestor hide a valid root above it.
-- `stopAt` is inclusive — the `stopAt` directory is the last yielded.
+- `stopAt` is inclusive, and stops at the ancestor it *names* rather than the string it is spelled with — an unnormalized ceiling no longer runs past its target.
+- A relative `stopAt` dies, and survives the absorbing config-file caller reconstructed in the suite; a relative `start` still walks.
 - `ascend` terminates at the root fixpoint without hitting `maxDepth`, and `maxDepth` truncates a chain longer than the cap.
 - Nearer directories win — the first match in ascending order is returned.
 
 ## Build
 
-`savvy.build.ts` carries the one narrow suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }`, for the synthesized base of the `DescendError` class factory (effect-api-extractor-bases). **Never widen it** — the pattern is scoped to `_base` precisely so a genuinely forgotten export still fails the gate. Walker declared no classes at all until `DescendError`; this is the only one.
+`savvy.build.ts` carries the one narrow suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }`, for the synthesized bases of the `DescendError` and `GlobExpansionError` class factories (effect-api-extractor-bases). **Never widen it** — the pattern is scoped to `_base` precisely so a genuinely forgotten export still fails the gate. Walker declared no classes at all until `DescendError`; those two are still the only ones.

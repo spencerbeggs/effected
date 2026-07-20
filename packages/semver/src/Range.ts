@@ -1,4 +1,4 @@
-import { Effect, Function as Fn, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Function as Fn, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { Comparator } from "./Comparator.js";
 import { formatRange, parseRange } from "./internal/grammar.js";
 import { normalizeSets } from "./internal/normalize.js";
@@ -89,18 +89,54 @@ export class Range extends Schema.Class<Range>("Range")({
 
 	// ── Construction ────────────────────────────────────────────────────
 
-	/** Parse a range expression and normalize its comparator sets. */
-	static readonly parse = Effect.fn("Range.parse")(function* (input: string) {
+	/**
+	 * Parse a range expression and normalize its comparator sets,
+	 * synchronously, returning a `Result` instead of an `Effect`.
+	 *
+	 * @remarks
+	 * {@link Range.parse} is defined in terms of this function; the two never
+	 * diverge. Reach for the `Effect` variant inside Effect code — it carries
+	 * the `Range.parse` tracing span — and for this one at synchronous
+	 * boundaries.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Range } from "@effected/semver";
+	 * import { Result } from "effect";
+	 *
+	 * const ok = Range.parseResult("^1.0.0");
+	 * if (Result.isSuccess(ok)) {
+	 *   console.log(ok.success.toString()); // => ">=1.0.0 <2.0.0-0"
+	 * }
+	 * ```
+	 *
+	 * @param input - the range expression to parse
+	 * @returns a `Result` succeeding with the parsed {@link Range}, or failing
+	 * with {@link InvalidRangeError}.
+	 */
+	static parseResult(input: string): Result.Result<Range, InvalidRangeError> {
 		const result = parseRange(input);
 		if (!result.ok) {
-			return yield* new InvalidRangeError({ input: result.input, position: result.position });
+			return Result.fail(new InvalidRangeError({ input: result.input, position: result.position }));
 		}
-		return Range.make({
-			sets: normalizeSets(result.value).map((set) =>
-				set.map((c) => Comparator.make({ operator: c.operator, version: SemVer.make(c.version) })),
-			),
-		});
-	});
+		return Result.succeed(
+			Range.make({
+				sets: normalizeSets(result.value).map((set) =>
+					set.map((c) => Comparator.make({ operator: c.operator, version: SemVer.make(c.version) })),
+				),
+			}),
+		);
+	}
+
+	/**
+	 * Parse a range expression and normalize its comparator sets. Defined in
+	 * terms of {@link Range.parseResult} — synchronous callers can use that
+	 * variant directly.
+	 *
+	 * @param input - the range expression to parse
+	 * @returns the parsed {@link Range}. Fails with {@link InvalidRangeError}.
+	 */
+	static readonly parse = Effect.fn("Range.parse")((input: string) => Effect.fromResult(Range.parseResult(input)));
 
 	// ── Matching statics (dual) ─────────────────────────────────────────
 
@@ -156,33 +192,67 @@ export class Range extends Schema.Class<Range>("Range")({
 
 	/**
 	 * Intersect two ranges via a cross-product of their comparator sets,
+	 * keeping only satisfiable combinations, synchronously, returning a
+	 * `Result` instead of an `Effect`. Fails with
+	 * {@link UnsatisfiableConstraintError} when no satisfiable set remains —
+	 * an honest typed failure instead of an unsatisfiable range. Dual API.
+	 *
+	 * @remarks
+	 * {@link Range.intersect} is defined in terms of this function; the two
+	 * never diverge. Reach for the `Effect` variant inside Effect code — it
+	 * carries the `Range.intersect` tracing span — and for this one at
+	 * synchronous boundaries.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Range } from "@effected/semver";
+	 * import { Result } from "effect";
+	 *
+	 * const a = Result.getOrThrow(Range.parseResult("^1.0.0"));
+	 * const b = Result.getOrThrow(Range.parseResult(">=1.5.0"));
+	 * const merged = Range.intersectResult(a, b);
+	 * if (Result.isSuccess(merged)) {
+	 *   console.log(merged.success.toString()); // => ">=1.0.0 <2.0.0-0 >=1.5.0"
+	 * }
+	 * ```
+	 */
+	static readonly intersectResult: {
+		(that: Range): (self: Range) => Result.Result<Range, UnsatisfiableConstraintError>;
+		(self: Range, that: Range): Result.Result<Range, UnsatisfiableConstraintError>;
+	} = Fn.dual(2, (self: Range, that: Range): Result.Result<Range, UnsatisfiableConstraintError> => {
+		const candidates: Array<ComparatorSet> = [];
+
+		for (const setA of self.sets) {
+			for (const setB of that.sets) {
+				const merged = [...setA, ...setB];
+				if (isSetSatisfiable(merged)) {
+					candidates.push(merged);
+				}
+			}
+		}
+
+		if (candidates.length === 0) {
+			return Result.fail(new UnsatisfiableConstraintError({ constraints: [self, that] }));
+		}
+
+		return Result.succeed(Range.make({ sets: candidates }));
+	});
+
+	/**
+	 * Intersect two ranges via a cross-product of their comparator sets,
 	 * keeping only satisfiable combinations. Fails with
 	 * {@link UnsatisfiableConstraintError} when no satisfiable set remains —
 	 * an honest typed failure instead of an unsatisfiable range. Dual API.
+	 *
+	 * Defined in terms of {@link Range.intersectResult} — synchronous callers
+	 * can use that variant directly.
 	 */
 	static readonly intersect: {
 		(that: Range): (self: Range) => Effect.Effect<Range, UnsatisfiableConstraintError>;
 		(self: Range, that: Range): Effect.Effect<Range, UnsatisfiableConstraintError>;
 	} = Fn.dual(
 		2,
-		Effect.fn("Range.intersect")(function* (self: Range, that: Range) {
-			const candidates: Array<ComparatorSet> = [];
-
-			for (const setA of self.sets) {
-				for (const setB of that.sets) {
-					const merged = [...setA, ...setB];
-					if (isSetSatisfiable(merged)) {
-						candidates.push(merged);
-					}
-				}
-			}
-
-			if (candidates.length === 0) {
-				return yield* new UnsatisfiableConstraintError({ constraints: [self, that] });
-			}
-
-			return Range.make({ sets: candidates });
-		}),
+		Effect.fn("Range.intersect")((self: Range, that: Range) => Effect.fromResult(Range.intersectResult(self, that))),
 	);
 
 	/**

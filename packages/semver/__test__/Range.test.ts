@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { InvalidRangeError, Range, SemVer, UnsatisfiableConstraintError } from "../src/index.js";
 
 describe("Range", () => {
@@ -154,6 +154,98 @@ describe("Range", () => {
 				const simplified = Range.simplify(range);
 				assert.strictEqual(simplified.sets.length, 1);
 				assert.strictEqual(simplified.toString(), ">=1.0.0");
+			}),
+		);
+	});
+
+	// `parseResult` and `intersectResult` are the primitives; `parse` and
+	// `intersect` derive from them via `Effect.fromResult` and add only the
+	// tracing span. Both directions are asserted per row so the two forms
+	// cannot drift.
+	describe("Result parity", () => {
+		const parseRows: ReadonlyArray<readonly [label: string, input: string]> = [
+			["a caret range", "^1.0.0"],
+			["a tilde range", "~1.2.3"],
+			["an x-range", "1.x"],
+			["a wildcard", "*"],
+			["a hyphen range", "1.0.0 - 2.0.0"],
+			["a union", "^1.2.0 || >=3.0.0"],
+			["a prerelease bound", ">=1.0.0-rc.1 <2.0.0"],
+			["a bad operator", "~>1.2.3"],
+			["an unparseable operand", "^not-a-version"],
+			["the empty string", ""],
+		];
+
+		for (const [label, input] of parseRows) {
+			it.effect(`parse and parseResult agree on ${label}`, () =>
+				Effect.gen(function* () {
+					const viaEffect = yield* Effect.result(Range.parse(input));
+					assert.deepStrictEqual(Range.parseResult(input), viaEffect);
+				}),
+			);
+		}
+
+		it("parseResult succeeds with a normalized Range", () => {
+			const result = Range.parseResult("^1.0.0");
+			if (Result.isFailure(result)) {
+				return assert.fail("expected a successful parse");
+			}
+			assert.instanceOf(result.success, Range);
+			assert.strictEqual(result.success.toString(), ">=1.0.0 <2.0.0-0");
+		});
+
+		it("parseResult carries the typed failure, not a throw", () => {
+			const result = Range.parseResult("~>1.2.3");
+			if (Result.isSuccess(result)) {
+				return assert.fail("expected a typed parse failure");
+			}
+			assert.instanceOf(result.failure, InvalidRangeError);
+			assert.strictEqual(result.failure.input, "~>1.2.3");
+		});
+
+		const intersectRows: ReadonlyArray<readonly [label: string, a: string, b: string]> = [
+			["overlapping ranges", "^1.0.0", ">=1.5.0"],
+			["identical ranges", "^1.0.0", "^1.0.0"],
+			["a wildcard against a caret", "*", "^2.0.0"],
+			["unions on both sides", "^1.0.0 || ^3.0.0", "^1.2.0 || ^3.1.0"],
+			["disjoint ranges", "^1.0.0", "^2.0.0"],
+			["a fully empty intersection", "<1.0.0", ">=2.0.0"],
+		];
+
+		for (const [label, a, b] of intersectRows) {
+			it.effect(`intersect and intersectResult agree on ${label}`, () =>
+				Effect.gen(function* () {
+					const left = yield* Range.parse(a);
+					const right = yield* Range.parse(b);
+					const viaEffect = yield* Effect.result(Range.intersect(left, right));
+					assert.deepStrictEqual(Range.intersectResult(left, right), viaEffect);
+				}),
+			);
+		}
+
+		// `Range` is a `Schema.Class`, which is not `Pipeable` in v4, so the
+		// data-last forms are applied directly rather than through `.pipe`.
+		it.effect("the data-last forms of both agree too", () =>
+			Effect.gen(function* () {
+				const left = yield* Range.parse("^1.0.0");
+				const right = yield* Range.parse(">=1.5.0");
+				const viaEffect = yield* Effect.result(Range.intersect(right)(left));
+				const viaResult = Range.intersectResult(right)(left);
+				assert.deepStrictEqual(viaResult, viaEffect);
+				assert.deepStrictEqual(viaResult, Range.intersectResult(left, right));
+			}),
+		);
+
+		it.effect("intersectResult carries the typed failure, not a throw", () =>
+			Effect.gen(function* () {
+				const left = yield* Range.parse("^1.0.0");
+				const right = yield* Range.parse("^2.0.0");
+				const result = Range.intersectResult(left, right);
+				if (Result.isSuccess(result)) {
+					return assert.fail("expected a typed intersection failure");
+				}
+				assert.instanceOf(result.failure, UnsatisfiableConstraintError);
+				assert.deepStrictEqual([...result.failure.constraints], [left, right]);
 			}),
 		);
 	});

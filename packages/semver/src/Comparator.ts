@@ -1,4 +1,4 @@
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { formatComparator, parseComparator } from "./internal/grammar.js";
 import { SemVer } from "./SemVer.js";
 
@@ -82,14 +82,53 @@ export class Comparator extends Schema.Class<Comparator>("Comparator")({
 
 	// ── Construction ────────────────────────────────────────────────────
 
-	/** Parse a comparator string (e.g. `">=1.2.3"`). */
-	static readonly parse = Effect.fn("Comparator.parse")(function* (input: string) {
+	/**
+	 * Parse a comparator string (e.g. `">=1.2.3"`), synchronously, returning a
+	 * `Result` instead of an `Effect`.
+	 *
+	 * @remarks
+	 * {@link Comparator.parse} is defined in terms of this function; the two
+	 * never diverge. Reach for the `Effect` variant inside Effect code — it
+	 * carries the `Comparator.parse` tracing span — and for this one at
+	 * synchronous boundaries.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Comparator } from "@effected/semver";
+	 * import { Result } from "effect";
+	 *
+	 * const ok = Comparator.parseResult(">=1.2.3");
+	 * if (Result.isSuccess(ok)) {
+	 *   console.log(ok.success.operator); // => ">="
+	 * }
+	 * ```
+	 *
+	 * @param input - the comparator string to parse
+	 * @returns a `Result` succeeding with the parsed {@link Comparator}, or
+	 * failing with {@link InvalidComparatorError}.
+	 */
+	static parseResult(input: string): Result.Result<Comparator, InvalidComparatorError> {
 		const result = parseComparator(input);
 		if (!result.ok) {
-			return yield* new InvalidComparatorError({ input: result.input, position: result.position });
+			return Result.fail(new InvalidComparatorError({ input: result.input, position: result.position }));
 		}
-		return Comparator.make({ operator: result.value.operator, version: SemVer.make(result.value.version) });
-	});
+		return Result.succeed(
+			Comparator.make({ operator: result.value.operator, version: SemVer.make(result.value.version) }),
+		);
+	}
+
+	/**
+	 * Parse a comparator string (e.g. `">=1.2.3"`). Defined in terms of
+	 * {@link Comparator.parseResult} — synchronous callers can use that variant
+	 * directly.
+	 *
+	 * @param input - the comparator string to parse
+	 * @returns the parsed {@link Comparator}. Fails with
+	 * {@link InvalidComparatorError}.
+	 */
+	static readonly parse = Effect.fn("Comparator.parse")((input: string) =>
+		Effect.fromResult(Comparator.parseResult(input)),
+	);
 
 	// ── Instance ────────────────────────────────────────────────────────
 
