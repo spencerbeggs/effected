@@ -70,9 +70,17 @@ boundary only); **bare `Effect.fn` = stack-frame ergonomics** (fine internally);
 **`fnUntraced` = hot path, no frames**. "Boundaries only" governs *named* spans —
 it does not forbid bare `Effect.fn` inside an engine.
 
-**Pure `Result`-returning siblings of a spanned boundary carry no span.** When
-a public Effect boundary has a synchronous escape-hatch twin (`Fmt.parse`
-spanned, `Fmt.parseResult` pure — the kit's Result-parity pattern), the sync
+**Pure `Result`-returning siblings of a spanned boundary carry no span.** This
+is the kit's **Result-parity rule** — ratified kit-wide policy, not a package
+idiosyncrasy (authoritative statement: the effected repo's
+`formatter-convention.md`, decision 6). Scope test: a public boundary returning
+`Effect` with `R = never`, no async step and no IO — where the wrapper carries
+nothing but a span and the error channel — must expose the sync form as the
+primitive, spelled `*Result` (`Fmt.parseResult` pure, `Fmt.parse` spanned).
+Never `*Sync`: the Effect form is also synchronous, and the kit uses `*Sync`
+for genuinely-blocking-IO facades returning nullables. Interface/adapter seams
+are out of scope — the policy applies to the engine, not every adapter over it
+(a codec implementing an `Effect`-shaped interface stays as it is). The sync
 variant is not an Effect and gets no span, no log, no metric; do not wrap it
 in one to "keep coverage uniform" — the uniform-coverage rule governs the
 *Effect* surface. Two obligations instead: the Effect variant is defined **in
@@ -80,7 +88,7 @@ terms of** the Result variant behind its named span (so tracing sees every
 Effect-path call and the two can never diverge), and the sync variant's TSDoc
 points Effect consumers at the spanned variant. A sync twin whose Effect
 sibling lacks a span, or that quietly grows its own logging, is a review
-finding.
+finding — as is an in-scope boundary with no `*Result` twin at all.
 
 Explicit / nested / edge spans:
 

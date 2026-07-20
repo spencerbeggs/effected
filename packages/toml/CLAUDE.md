@@ -6,7 +6,7 @@ Zero-dependency TOML 1.1.0 parse/edit/format schemas: parse into plain values or
 
 **For the full design:** → `@../../.claude/design/effected/packages/toml.md`
 
-Load when changing the public API, the CST shape, the hardening story, or the jsonc/yaml/toml edit-vocabulary parity convention.
+Load when changing the public API, the CST shape, the hardening story, or the jsonc/yaml/toml/markdown edit-vocabulary parity convention.
 
 ## Architecture: linear CST + semantic pass
 

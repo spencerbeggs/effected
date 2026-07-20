@@ -153,8 +153,11 @@ the full union for ANY guard, because the assertion signature takes a
 line's `exit.cause` is a type error — use `if (Exit.isFailure(exit)) { … }`
 as above, or go through `Exit.getCause(exit)` → `Option<Cause<E>>` and branch
 on `Option.isSome`. The same trap applies to `Result.isSuccess`/
-`Result.isFailure` on the kit's pure Result-returning APIs
-(`Jsonc.parseResult` today; more as the Result-parity pattern spreads):
+`Result.isFailure` on the kit's pure Result-returning APIs — the Result-parity
+rule is settled kit-wide, so these are everywhere: `parseResult`/
+`stringifyResult` across jsonc, yaml, toml and markdown (plus
+`Jsonc.parseTreeResult`), `compileResult` in glob, and `parseResult`/
+`intersectResult` in semver:
 
 ```ts
 const result = Jsonc.parseResult(text);
