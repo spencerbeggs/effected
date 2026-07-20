@@ -1,5 +1,13 @@
 # @effected/workspaces
 
+## 0.5.1
+
+### Dependencies
+
+| Dependency          | Type       | Action  | From  | To    |
+| ------------------- | ---------- | ------- | ----- | ----- |
+| @effected/lockfiles | dependency | updated | 0.1.6 | 0.1.7 |
+
 ## 0.5.0
 
 ### Breaking Changes

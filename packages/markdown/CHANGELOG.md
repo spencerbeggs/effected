@@ -1,5 +1,13 @@
 # @effected/markdown
 
+## 0.2.2
+
+### Dependencies
+
+| Dependency      | Type       | Action  | From  | To    |
+| --------------- | ---------- | ------- | ----- | ----- |
+| @effected/jsonc | dependency | updated | 0.4.0 | 0.5.0 |
+
 ## 0.2.1
 
 ### Dependencies
