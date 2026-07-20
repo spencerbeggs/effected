@@ -194,6 +194,22 @@ const value = yield* Effect.fromResult(Fmt.parseResult(text))  // fails typed wi
 `undefined` at beta.98, so the materialize-with-`.asEffect()` advice below
 does not apply to it either. `Effect.fromResult` is the only bridge.
 
+To read a `Result` **outside** an Effect, narrow with `Result.isSuccess` /
+`Result.isFailure`, then read the value off **`.success` / `.failure`** — not
+`.value`:
+
+```ts
+const r = Fmt.parseResult(text)
+if (Result.isSuccess(r)) use(r.success)   // NOT r.value — undefined, silently
+else report(r.failure)                    // NOT r.left / r.right (v3 Either)
+```
+
+The `Success` variant carries `.success` and the `Failure` variant `.failure`
+(`Result.ts:104,149`); there is no `.value`, and the v3 `Either` `.right` /
+`.left` names are gone. A read through `.value` compiles against `unknown` in
+a loose context and returns `undefined` at runtime with no error — the exact
+silent miss that cost a round-4 consumer a debugging cycle.
+
 No longer yieldable — call the module function:
 
 ```ts
