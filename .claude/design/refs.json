@@ -15,6 +15,12 @@
 		},
 		{
 			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/formatter-convention.md",
+			"hash": "daf51ecc36ce311de8577d41b0066fccb0d3acb8b60d8ba7409e81c21e6f5707",
+			"recordedAt": "2026-07-20"
+		},
+		{
+			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/migration-playbook.md",
 			"hash": "d3321065ed8e5c1036449789cdde5f48addd59678c30b4b8c86d33242b48d00f",
 			"recordedAt": "2026-07-16"
@@ -76,7 +82,7 @@
 		{
 			"source": "packages/glob/CLAUDE.md",
 			"target": ".claude/design/effected/formatter-convention.md",
-			"hash": "7f00c3760e9f34e3cfdf4faec4d565cd3c95b072b9116e8a58598cc92a987140",
+			"hash": "daf51ecc36ce311de8577d41b0066fccb0d3acb8b60d8ba7409e81c21e6f5707",
 			"recordedAt": "2026-07-20"
 		},
 		{
@@ -88,8 +94,8 @@
 		{
 			"source": "packages/jsonc/CLAUDE.md",
 			"target": ".claude/design/effected/packages/jsonc.md",
-			"hash": "8e6ad0248c2484d03c7de59fe837351ff83dd4241a1e7266bdb6587aa5a474c7",
-			"recordedAt": "2026-07-17"
+			"hash": "2531e1740f93fe3487d9b0efe1ba9dc102b79e5e7f9560a5fcd695fe7044f6ce",
+			"recordedAt": "2026-07-20"
 		},
 		{
 			"source": "packages/lockfiles/CLAUDE.md",
@@ -106,7 +112,7 @@
 		{
 			"source": "packages/package-json/CLAUDE.md",
 			"target": ".claude/design/effected/formatter-convention.md",
-			"hash": "7f00c3760e9f34e3cfdf4faec4d565cd3c95b072b9116e8a58598cc92a987140",
+			"hash": "daf51ecc36ce311de8577d41b0066fccb0d3acb8b60d8ba7409e81c21e6f5707",
 			"recordedAt": "2026-07-20"
 		},
 		{
@@ -129,6 +135,12 @@
 		},
 		{
 			"source": "packages/semver/CLAUDE.md",
+			"target": ".claude/design/effected/formatter-convention.md",
+			"hash": "daf51ecc36ce311de8577d41b0066fccb0d3acb8b60d8ba7409e81c21e6f5707",
+			"recordedAt": "2026-07-20"
+		},
+		{
+			"source": "packages/semver/CLAUDE.md",
 			"target": ".claude/design/effected/packages/semver.md",
 			"hash": "b2d70ce9bf3dffc433e929b3538b4a773400fef0e92e4504ac451280800510b1",
 			"recordedAt": "2026-07-12"
@@ -138,6 +150,12 @@
 			"target": ".claude/design/effected/packages/store.md",
 			"hash": "c3ff5556ee29fa2faccfb775815c7941bd914437ca2b28d9b4b798341b1a70a2",
 			"recordedAt": "2026-07-12"
+		},
+		{
+			"source": "packages/toml/CLAUDE.md",
+			"target": ".claude/design/effected/formatter-convention.md",
+			"hash": "daf51ecc36ce311de8577d41b0066fccb0d3acb8b60d8ba7409e81c21e6f5707",
+			"recordedAt": "2026-07-20"
 		},
 		{
 			"source": "packages/toml/CLAUDE.md",

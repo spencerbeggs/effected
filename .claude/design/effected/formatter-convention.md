@@ -25,7 +25,7 @@ related:
 
 A proposal for how `@effected/*` packages expose **formatting** as distinct from **validation**, and what fidelity guarantee a kit formatter makes. It exists because `@effected/package-json` invented a strict/tolerant split locally, under pressure from a real downstream consumer, and the kit must decide before `0.1.0` whether that becomes a convention or four packages each spell it differently later. Nothing has published, so the surface is still free; after `0.1.0` every divergent spelling is permanent.
 
-**Status (2026-07-20): the decisions here are ratified and nearly all of the work has landed** — `package-json`'s `PackageJsonFormat` rename and `Person` catch-all, and the `*Result` primitives across `yaml`, `toml`, `glob` and `semver`. What remains open is `Jsonc.parseTreeResult` and the fidelity obligation of [decision 5](#decision-5--the-fidelity-obligation), which is a testing program rather than a surface change. The recommendations below are kept in their original form because they are the rules new surfaces get checked against; each carries its own landed marker.
+**Status (2026-07-20): the decisions here are ratified and all of the surface work has landed** — `package-json`'s `PackageJsonFormat` rename and `Person` catch-all, the `*Result` primitives across `yaml`, `toml`, `glob` and `semver`, and finally `Jsonc.parseTreeResult` (2026-07-20), which closed the last surface item. What remains open is only the fidelity obligation of [decision 5](#decision-5--the-fidelity-obligation), which is a testing program rather than a surface change. The recommendations below are kept in their original form because they are the rules new surfaces get checked against; each carries its own landed marker.
 
 The headline finding is that the convention is **mostly already satisfied**, and the doc's main work is not new surface but a stated fidelity obligation and a change to how it is tested. `@effected/yaml`, `@effected/toml` and `@effected/jsonc` already expose total, edit-based formatters that degrade to identity on input they cannot parse. `@effected/package-json` is the sole outlier, because it is the only package whose formatting path ran through a schema decode. **Mandating a tolerant twin in the other three would create dead surface**, which is worse than no convention.
 
@@ -214,7 +214,7 @@ Three properties make this cheap and safe. The change is **purely additive** —
 **The policy already exists, and this doc ratifies it rather than minting it.** Its history:
 
 - **Issue #111 / PR #112** established it in `@effected/jsonc`, adding `Jsonc.parseResult` — "a pure synchronous `Result`-returning parse variant" — for a non-Effect config loader avoiding `Effect.runSync(Effect.result(...))` ceremony.
-- **Issue #115** (open) proposes adopting it kit-wide across the format packages, and states the pattern in the same terms this doc does: *"a `*Result` variant per parse entry point, with the Effect variant defined in terms of it behind its existing named span so the two can never diverge."*
+- **Issue #115** (closed by the 2026-07-20 `parseTreeResult` PR) proposes adopting it kit-wide across the format packages, and states the pattern in the same terms this doc does: *"a `*Result` variant per parse entry point, with the Effect variant defined in terms of it behind its existing named span so the two can never diverge."*
 - **`@effected/glob` rediscovered it independently** on 2026-07-20, from a lint-staged handler in `savvy-web/systems` that must be synchronous — with no knowledge of #111, #112 or #115.
 - It is referenced by name as "Result-parity" in two plugin skills (`effect-v4-observability`, `effect-v4-testing`), and carries a settled TSDoc phrasing: *"Defined in terms of `X.parseResult` — synchronous callers can use that variant directly."*
 
@@ -236,9 +236,9 @@ Read from source in the working tree. Signatures are as written, not paraphrased
 
 | Surface | Verdict | #115 | Evidence |
 | --- | --- | --- | --- |
-| `Jsonc.parseResult` / `.stringifyResult` | **Already compliant** — the origin | Done (#111/#112) | `packages/jsonc/src/Jsonc.ts:308,397` — `Result.Result<unknown, JsoncParseError>`; `parse` is `Effect.fromResult(Jsonc.parseResult(...))` |
+| `Jsonc.parseResult` / `.stringifyResult` | **Already compliant** — the origin | Done (#111/#112) | `packages/jsonc/src/Jsonc.ts:308,444` — `Result.Result<unknown, JsoncParseError>`; `parse` is `Effect.fromResult(Jsonc.parseResult(...))` |
 | `Markdown.parseResult` / `.stringifyResult` | **Already compliant** | Not listed | `packages/markdown/src/Markdown.ts:206,246`; `MarkdownDocument.parseResult:395`; both `Effect` forms derive via `Effect.fromResult`. Adopted the pattern without being ticketed |
-| `Jsonc.parseTree` | **Confirmed gap** | In scope | `packages/jsonc/src/Jsonc.ts:345` — `Effect.fn` only; no `parseTreeResult`. Deliberately out of #111's scope |
+| `Jsonc.parseTree` | **Now compliant** — landed 2026-07-20 | Closes #115's final item | `packages/jsonc/src/Jsonc.ts:371,396` — `parseTreeResult` returns `Result.Result<Option.Option<JsoncNode>, JsoncParseError>` immediately above `parseTree`, which derives via `Effect.fromResult` behind its existing `Jsonc.parseTree` span |
 | `Yaml.parseResult` / `.stringifyResult` | **Now compliant** — renamed and the derivation fixed, 2026-07-20 | Closes #115's yaml item, [rescoped](#correction-to-115s-stated-scope) | `packages/yaml/src/Yaml.ts:491,520`; `Yaml.parse` is now `Effect.fromResult(Yaml.parseResult(...))`, so the duplicated engine of [finding 4](#surfaces-that-conflict-with-this-proposal) is gone |
 | `Toml.parseResult` / `.stringifyResult` | **Now compliant** | Closes #115's toml item | `packages/toml/src/Toml.ts:221,274`; both `Effect` forms derive via `Effect.fromResult` behind their existing spans |
 | `GlobPattern.compileResult` / `GlobSet.compileResult` | **Now compliant** — added and renamed 2026-07-20 | Out of scope (not a format package) | `packages/glob/src/GlobPattern.ts:186,217`, `GlobSet.ts:136,163` — derives via `Effect.fromResult` |
@@ -248,7 +248,7 @@ Read from source in the working tree. Signatures are as written, not paraphrased
 
 The two surfaces flagged in #115's comment as unverified — the codecs and `semver`'s comparison boundary — are **both refuted**, on independent grounds, and neither needs a ticket.
 
-**Most of this table closed on 2026-07-20.** `yaml`, `toml`, `glob` and `semver` all landed their `*Result` primitives in one pass, and `yaml`'s derivation defect went with the rename. `Jsonc.parseTree` is the only surface still open, and it is additive — see [the remaining work](#scope-of-the-remaining-work).
+**This table fully closed on 2026-07-20.** `yaml`, `toml`, `glob` and `semver` landed their `*Result` primitives in one pass, `yaml`'s derivation defect went with the rename, and `Jsonc.parseTreeResult` followed the same day — see [the remaining work](#scope-of-the-remaining-work).
 
 ### Why the codecs are refuted
 
@@ -292,7 +292,7 @@ Both renames were of **unpublished** surface, which is why they were cheap; afte
 
 Landed on 2026-07-20: `toml`'s `parseResult`/`stringifyResult`, `semver`'s three `parseResult` statics plus `Range.intersectResult`, `yaml`'s rename and derivation fix, and `glob`'s rename. None of it was behavior change.
 
-One item remains, and it is additive: `jsonc` — `parseTreeResult(text, options?): Result<Option<JsoncNode>, JsoncParseError>`, completing that package's own symmetry (**#115**). Additive surface breaks nothing when added later, which is what makes it safe to take opportunistically.
+The last item, `jsonc`'s `parseTreeResult(text, options?): Result<Option<JsoncNode>, JsoncParseError>`, landed later the same day (2026-07-20), completing that package's own symmetry and closing **#115**'s final item. No surface remains open under this decision.
 
 ## Surfaces that conflict with this proposal
 
@@ -309,7 +309,7 @@ Findings, per the brief. **Not fixed here.**
 2. **Should the total formatters gain a way to signal "could not parse"?** Recommendation: **no change.** Totality is what makes them safe in a lint hook, and `parse` already provides the diagnostic to any host that needs it. Flagged because it is a real ergonomic gap and the decision should be conscious rather than inherited.
 3. ~~**Does the `Person` catch-all fix land in `0.1.0`?**~~ **Resolved 2026-07-20: landed.** [F2](#the-rules) is now assertable for `package-json`.
 4. ~~**Does the `*Sync` → `*Result` rename happen before `0.1.0`?**~~ **Resolved 2026-07-20: yes, and it landed.** See [decision 6a](#decision-6a--which-spelling-the-kit-ratifies).
-5. ~~**Do the remaining gaps gate `0.1.0`?**~~ **Largely moot**: `toml`, `semver`, `yaml` and `glob` all landed with the renames. `jsonc.parseTreeResult` is the only gap left and is additive, so it does not gate.
-6. **Should #115 be updated?** The ticket's yaml premise is factually stale ([see correction](#correction-to-115s-stated-scope)) and its scope no longer matches what shipped — `semver` and `glob` landed outside it, and only `jsonc.parseTree` is still open inside it. #115 should be closed or rescoped to that one item. **Not actioned here** — this doc does not file or edit issues on its own judgment.
+5. ~~**Do the remaining gaps gate `0.1.0`?**~~ **Resolved 2026-07-20: fully moot.** `toml`, `semver`, `yaml` and `glob` landed with the renames, and `jsonc.parseTreeResult` landed the same day. No gap remains to gate.
+6. **Should #115 be updated?** The ticket's yaml premise is factually stale ([see correction](#correction-to-115s-stated-scope)) and its scope no longer matches what shipped — `semver` and `glob` landed outside it. With `Jsonc.parseTreeResult` landed (2026-07-20), nothing inside the ticket remains open; the PR carrying that change closes #115, so no rescoping is needed. **Not actioned here** — this doc does not file or edit issues on its own judgment.
 7. **Is the sync primitive policy a `plugin/skills` rule as well as a design doc?** The Result-parity pattern is already named in `effect-v4-observability` and `effect-v4-testing`, but as an observation about `jsonc` rather than a rule with a scope test. If the policy is ratified, those skills describe it as emerging where it is now settled. Flagged, not resolved — the skills are maintained by `.claude/skills/improve` and were not touched here.
 8. **Is the `toml` oracle pattern worth replicating for `yaml` and `jsonc`?** Not recommended as a mandate. Both would need a reference implementation to differ against, which reintroduces a dependency question ([R1](effect-standards.md#dependency-policy)) for a devDependency-only benefit. The F1–F5 properties are the mandate; an oracle stays a per-package judgment call where a suitable reference exists.

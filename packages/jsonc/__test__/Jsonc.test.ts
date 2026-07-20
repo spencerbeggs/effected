@@ -210,6 +210,74 @@ describe("Jsonc", () => {
 		);
 	});
 
+	describe("parseTreeResult", () => {
+		it("succeeds synchronously with the JsoncNode AST", () => {
+			const result = Jsonc.parseTreeResult('{ "a": [1, 2] }');
+			assert.isTrue(Result.isSuccess(result));
+			if (Result.isSuccess(result)) {
+				assert.isTrue(Option.isSome(result.success));
+				const root = Option.getOrThrow(result.success);
+				assert.instanceOf(root, JsoncNode);
+				assert.strictEqual(root.type, "object");
+				assert.strictEqual(root.children?.length, 1);
+				assert.deepStrictEqual(root.toValue(), { a: [1, 2] });
+			}
+		});
+
+		it("succeeds with Option.none() for empty input with allowEmptyContent", () => {
+			const result = Jsonc.parseTreeResult("", JsoncParseOptions.make({ allowEmptyContent: true }));
+			assert.isTrue(Result.isSuccess(result));
+			if (Result.isSuccess(result)) {
+				assert.isTrue(Option.isNone(result.success));
+			}
+		});
+
+		it("fails with the aggregate JsoncParseError carrying positioned details", () => {
+			const result = Jsonc.parseTreeResult("{ bad }");
+			assert.isTrue(Result.isFailure(result));
+			if (Result.isFailure(result)) {
+				const error = result.failure;
+				assert.instanceOf(error, JsoncParseError);
+				assert.strictEqual(error._tag, "JsoncParseError");
+				assert.isAbove(error.errors.length, 0);
+				assert.strictEqual(error.input, "{ bad }");
+				const detail = error.errors[0];
+				assert.strictEqual(detail.line, 0);
+				assert.isAtLeast(detail.character, 0);
+			}
+		});
+
+		it("bounds hostile deep nesting through the failure side, never a thrown RangeError", () => {
+			const result = Jsonc.parseTreeResult(deeplyNested);
+			assert.isTrue(Result.isFailure(result));
+			if (Result.isFailure(result)) {
+				assert.isTrue(result.failure.errors.some((e) => e.code === "NestingDepthExceeded"));
+			}
+		});
+	});
+
+	describe("parseTree delegates to parseTreeResult", () => {
+		it.effect("succeeds and fails identically to the Result variant", () =>
+			Effect.gen(function* () {
+				const viaEffect = yield* Jsonc.parseTree('{ "a": [1, 2] }');
+				const viaResult = Jsonc.parseTreeResult('{ "a": [1, 2] }');
+				assert.isTrue(Result.isSuccess(viaResult));
+				if (Result.isSuccess(viaResult)) {
+					assert.isTrue(Option.isSome(viaEffect));
+					assert.isTrue(Option.isSome(viaResult.success));
+					assert.isTrue(Equal.equals(Option.getOrThrow(viaEffect), Option.getOrThrow(viaResult.success)));
+				}
+
+				const effectError = yield* Effect.flip(Jsonc.parseTree("{ bad }"));
+				const resultError = Jsonc.parseTreeResult("{ bad }");
+				assert.isTrue(Result.isFailure(resultError));
+				if (Result.isFailure(resultError)) {
+					assert.deepStrictEqual(effectError.errors, resultError.failure.errors);
+				}
+			}),
+		);
+	});
+
 	describe("stripComments", () => {
 		it("removes comments producing valid JSON", () => {
 			assert.strictEqual(Jsonc.stripComments('{ "a": 1 // c\n}'), '{ "a": 1 \n}');

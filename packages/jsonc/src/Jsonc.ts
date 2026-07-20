@@ -22,7 +22,7 @@ import {
 } from "./internal/parser.js";
 import type { SyntaxKind } from "./internal/scanner.js";
 import { createScanner } from "./internal/scanner.js";
-import { JsoncNode } from "./JsoncNode.js";
+import type { JsoncNode } from "./JsoncNode.js";
 
 /**
  * The single public parse-error code vocabulary, appearing as the `code` field
@@ -331,9 +331,60 @@ export class Jsonc {
 	);
 
 	/**
+	 * Parse JSONC into an immutable {@link JsoncNode} AST, synchronously,
+	 * returning a `Result` instead of an `Effect`. `Option.none()` for empty
+	 * input (with `allowEmptyContent`); the aggregate {@link JsoncParseError}
+	 * for malformed input. Pure — parsing is fundamentally synchronous, so
+	 * non-Effect consumers (a plain config loader, a build script) can call
+	 * this directly instead of wrapping
+	 * `Effect.runSync(Effect.result(Jsonc.parseTree(text)))`.
+	 *
+	 * @remarks
+	 * {@link Jsonc.parseTree} is defined in terms of this function; the two
+	 * never diverge. Reach for the `Effect` variant inside Effect code — it
+	 * carries the `Jsonc.parseTree` tracing span — and for this one at
+	 * synchronous boundaries.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Jsonc } from "@effected/jsonc";
+	 * import { Option, Result } from "effect";
+	 *
+	 * const ok = Jsonc.parseTreeResult('{ "port": 3000 // dev\n }');
+	 * if (Result.isSuccess(ok) && Option.isSome(ok.success)) {
+	 *   console.log(ok.success.value.type); // => "object"
+	 * }
+	 *
+	 * const bad = Jsonc.parseTreeResult("{ bad }");
+	 * if (Result.isFailure(bad)) {
+	 *   console.log(bad.failure._tag); // => "JsoncParseError"
+	 * }
+	 * ```
+	 *
+	 * @param text - The JSONC source to parse.
+	 * @param options - Optional {@link JsoncParseOptions}; defaults apply for
+	 *   omitted fields.
+	 * @returns A `Result` succeeding with `Option.some(root)` (or
+	 *   `Option.none()` for empty input), or failing with the aggregate
+	 *   {@link JsoncParseError}.
+	 */
+	static parseTreeResult(
+		text: string,
+		options?: JsoncParseOptions,
+	): Result.Result<Option.Option<JsoncNode>, JsoncParseError> {
+		const { root, errors } = parseTreeInternal(text, toFlags(options));
+		if (errors.length > 0) {
+			return Result.fail(new JsoncParseError({ errors: toDetails(text, errors), input: text }));
+		}
+		return Result.succeed(root !== undefined ? Option.some(root) : Option.none());
+	}
+
+	/**
 	 * Parse JSONC into an immutable {@link JsoncNode} AST. `Option.none()` for
 	 * empty input (with `allowEmptyContent`); the aggregate
-	 * {@link JsoncParseError} for malformed input.
+	 * {@link JsoncParseError} for malformed input. Defined in terms of
+	 * {@link Jsonc.parseTreeResult} — synchronous callers can use that variant
+	 * directly.
 	 *
 	 * @param text - The JSONC source to parse.
 	 * @param options - Optional {@link JsoncParseOptions}; defaults apply for
@@ -342,13 +393,9 @@ export class Jsonc {
 	 *   `Option.none()` for empty input), or fails with the aggregate
 	 *   {@link JsoncParseError}.
 	 */
-	static readonly parseTree = Effect.fn("Jsonc.parseTree")(function* (text: string, options?: JsoncParseOptions) {
-		const { root, errors } = parseTreeInternal(text, toFlags(options));
-		if (errors.length > 0) {
-			return yield* new JsoncParseError({ errors: toDetails(text, errors), input: text });
-		}
-		return root !== undefined ? Option.some(root) : Option.none();
-	});
+	static readonly parseTree = Effect.fn("Jsonc.parseTree")((text: string, options?: JsoncParseOptions) =>
+		Effect.fromResult(Jsonc.parseTreeResult(text, options)),
+	);
 
 	/**
 	 * Stringify a plain JavaScript value as JSON text, synchronously, returning
