@@ -1,5 +1,52 @@
 # @effected/app
 
+## 0.2.0
+
+### Features
+
+* ### effected plugin: sharper planning and testing skill guidance
+
+  The bundled Effect v4 skills gain guidance drained from the round-4 dogfood
+  sweep, so the plugin versions with this release.
+
+  The planning gate now runs a placement check before design begins: it confirms
+  the target package's tier admits the capability, treating IO or a service in a
+  pure-tier package as a stop, and checks the dependency direction against the
+  peer graph so a capability that would close a cycle is caught up front. Its
+  contract inventory now greps the sibling packages rather than core alone,
+  because in this monorepo the likelier duplication is a sibling that already owns
+  the concept. Its delegated-subagent rule separates a decision that contradicts
+  the parent's instructions, which stops and asks, from one that exceeds them
+  without contradicting, which proceeds and flags the consequence in the report.
+
+  The testing skill's zero-collected-tests section gains the wrong-directory
+  producer: a root-relative project filter run from inside a package prints a
+  clean-looking zero and exits zero, so project-filtered runs belong at the repo
+  root. [#130][#130]
+
+- ### effected plugin: Result-parity is taught as the ratified kit rule
+
+  The observability and testing skills described the sync-primitive convention as an emerging pattern observed in `@effected/jsonc`. It has since been ratified kit-wide, and the skills now teach it as policy with a scope test rather than an observation.
+
+  The observability skill states the rule outright: a public boundary returning `Effect` with nothing in `R`, no async step and no IO must expose the sync form as the primitive, spelled `*Result` — never `*Sync`, which the kit reserves for genuinely-blocking-IO facades — with the `Effect` variant defined in terms of it behind its named span. Interface and adapter seams are called out as out of scope, and an in-scope boundary with no `*Result` twin is now named as a review finding alongside the existing span-discipline findings.
+
+  The testing skill's narrowing guidance no longer cites `Jsonc.parseResult` as the lone example: the `Result.isSuccess`/`Result.isFailure` trap now lists the full settled surface — `parseResult`/`stringifyResult` across the format packages, `parseTreeResult`, glob's `compileResult` and semver's `parseResult`/`intersectResult`. [#132][#132]
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.1.5 | 0.1.6 |
+| @effected/xdg         | dependency | updated | 0.1.5 | 0.1.6 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#130]: https://github.com/spencerbeggs/effected/pull/130
+
+[#132]: https://github.com/spencerbeggs/effected/pull/132
+
 ## 0.1.6
 
 ### Dependencies

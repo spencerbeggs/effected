@@ -1,6 +1,6 @@
 {
 	"name": "@effected/markdown",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"private": true,
 	"description": "CommonMark and GFM markdown parse, edit and transform schemas for Effect",
 	"keywords": ["markdown", "commonmark", "gfm", "mdast", "parser", "effect", "schema", "effected"],
