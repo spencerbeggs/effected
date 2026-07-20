@@ -45,7 +45,7 @@ The lesson from (4): depth is not the only DoS vector. When an engine expands re
 ## Conventions
 
 - Parity with `@effected/jsonc` binds `Edit`, `Range`, `Path`, `Segment` and the diagnostic core. `YamlFormattingOptions` is the **one exception** — read the design doc's options-derivation section before assuming parity.
-- `lineWidth` folding is **value-path-only by contract** (#105, resolved by documentation): only `Yaml.stringify` / `Yaml.stringifySync` fold; it is deliberately inert on `YamlDocument.stringify` and the `YamlFormat` helpers, the TSDoc states the boundary, and a regression test pins the node path's inertness. Do not add node-path folding without failing that test and rewriting the docs with it.
+- `lineWidth` folding is **value-path-only by contract** (#105, resolved by documentation): only `Yaml.stringify` / `Yaml.stringifyResult` fold; it is deliberately inert on `YamlDocument.stringify` and the `YamlFormat` helpers, the TSDoc states the boundary, and a regression test pins the node path's inertness. Do not add node-path folding without failing that test and rewriting the docs with it.
 - The engine keeps `new` on its hot composition path; all public surface, tests and doc examples use `X.make(...)`.
 - `savvy.build.ts` carries a narrow suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }` for synthesized class heritage symbols. **Never widen it** — it keeps `issues.json` zero-warning without hiding real forgotten exports.
 
@@ -63,3 +63,7 @@ Never run `node savvy.build.ts --target prod` directly: it skips `build:dev`, em
 ## Known issues
 
 - Per-node comments are captured by the composer but never re-emitted by the stringifier; only a document-level leading comment round-trips. Carried over from v3, not a regression.
+
+  `YamlFormattingOptions.preserveComments` (default `true`) is **not** inert but reaches only the *document-level* comment: `true` keeps a leading `# doc comment`, `false` drops it, and per-node comments are dropped either way. The name overpromises what it delivers.
+
+  **Emitting the captured comments is not a one-line stringifier change** — verified 2026-07-20, do not re-derive. `comment` is a single `Schema.optionalKey(Schema.String)` on `YamlScalar` / `YamlMap` / `YamlSeq` / `YamlPair`, documented as "trailing *or* leading", and it carries **no positional discriminator**. Worse, the composer attributes an own-line comment **backward**: given `a: 1\n\n# section\nb: 2`, `# section` lands on the pair `a`, not on `b`. So emitting `pair.comment` as a trailing `#` comment renders `a: 1 # section` — silently relocating the comment to the wrong line and the wrong construct, which is a worse fidelity bug than dropping it. A real fix needs a leading/trailing split on four exported node classes (a public schema change), composer re-attribution forward to the following node, blank-line preservation, and stringifier emission for every node kind in both block and flow styles — and the re-attribution sits in the path all 1226 conformance fixtures exercise.

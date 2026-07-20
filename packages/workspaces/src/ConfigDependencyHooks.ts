@@ -169,9 +169,13 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * `hooks`-source `CatalogAssemblyError`, never a silent skip.
 	 *
 	 * @remarks
-	 * Node-coupled by design — the `node:fs` / `node:path` / `node:url` imports are
-	 * the sanctioned Node-only overlay, matching the other seams here. Only ever
-	 * wired by `WorkspaceCatalogs.layerWithConfigDependencies`.
+	 * Runtime-coupled by design, not node-exclusive. The `import()` below loads
+	 * **and executes** a config dependency's pnpmfile in-process — code execution,
+	 * not IO, so no `FileSystem` / `Path` service abstracts it. The `node:path` and
+	 * `node:url` imports (`join`, `pathToFileURL`) exist only to build the URL that
+	 * `import()` consumes; node and bun both implement those builtins and dynamic
+	 * import, so this layer runs on either runtime. Only ever wired by
+	 * `WorkspaceCatalogs.layerWithConfigDependencies`.
 	 */
 	static readonly layerLive: Layer.Layer<ConfigDependencyHooks> = Layer.succeed(ConfigDependencyHooks, {
 		inject: (root, configDependencies, seed) =>

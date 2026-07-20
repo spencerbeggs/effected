@@ -528,6 +528,7 @@ const utilsPackage = WorkspacePackage.make({
 	path: "/repo/packages/utils",
 	packageJsonPath: "/repo/packages/utils/package.json",
 	relativePath: "packages/utils",
+	workspaceRoot: "/repo",
 });
 
 const nestedPackage = WorkspacePackage.make({
@@ -536,6 +537,7 @@ const nestedPackage = WorkspacePackage.make({
 	path: "/repo/packages/utils/extra",
 	packageJsonPath: "/repo/packages/utils/extra/package.json",
 	relativePath: "packages/utils/extra",
+	workspaceRoot: "/repo",
 });
 
 // Bound to a const: layerTest is a parameterized layer factory and layers

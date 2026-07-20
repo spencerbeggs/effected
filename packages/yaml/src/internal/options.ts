@@ -3,7 +3,7 @@
 // `YamlFormattingOptions`); the engine takes these plain records so it never
 // imports the facade. Defaults are applied where consumed (`?? default`).
 
-import type { CollectionStyle, ScalarStyle } from "../YamlNode.js";
+import type { CollectionStyle, QuoteStyle, ScalarStyle } from "../YamlNode.js";
 
 /** Parse options as consumed by the composer. All fields optional. */
 export interface ParseOptionsInput {
@@ -34,6 +34,11 @@ export interface StringifyOptionsInput {
 	readonly sortKeys?: boolean | undefined;
 	/** Indent block sequences one level under a mapping key. Default `false`. */
 	readonly indentSequences?: boolean | undefined;
+	/**
+	 * Quote style for a `plain`-styled scalar that requires quoting. Default
+	 * `"single"`. Values needing YAML escapes still render double-quoted.
+	 */
+	readonly quoteStyle?: QuoteStyle | undefined;
 	/** End output with a trailing newline. Default `true`. */
 	readonly finalNewline?: boolean | undefined;
 	/** Ignore per-node styles and force the defaults. Default `false`. */

@@ -37,7 +37,8 @@ export type YamlRangeLike = YamlRange | { readonly offset: number; readonly leng
 
 /**
  * Options controlling formatting behavior: every {@link YamlStringifyOptions}
- * field (derived, not hand-duplicated — including `indentSequences`) plus
+ * field (derived, not hand-duplicated — including `indentSequences` and
+ * `quoteStyle`) plus
  * `preserveComments` (default `true`) and `range` (restrict edits to a
  * region; see the module-level remarks on the `range` parameter vs. this
  * field).
@@ -114,6 +115,7 @@ const toStringifyInput = (options?: YamlStringifyOptions) =>
 				defaultCollectionStyle: options.defaultCollectionStyle,
 				sortKeys: options.sortKeys,
 				indentSequences: options.indentSequences,
+				quoteStyle: options.quoteStyle,
 				finalNewline: options.finalNewline,
 				forceDefaultStyles: options.forceDefaultStyles,
 			};
@@ -333,6 +335,14 @@ export class YamlFormat {
 	 * `options?.range` when both are given; either accepts a plain
 	 * `{ offset, length }` object as well as a {@link YamlRange} instance, so
 	 * callers do not need `YamlRange.make(...)` for the common case.
+	 *
+	 * A plain `<<` mapping key is preserved unquoted, keeping its merge-key
+	 * meaning (`tag:yaml.org,2002:merge`) — quoting it to `'<<'` would produce
+	 * an ordinary string key that merges nothing, changing what the document
+	 * means with no error raised. A key the author quoted explicitly keeps its
+	 * quotes, since that is a literal string key they wrote deliberately. Note
+	 * that {@link Yaml.stringify} is deliberately the other way round for a
+	 * `"<<"` key on a plain JavaScript object.
 	 */
 	static format(text: string, range?: YamlRangeLike, options?: YamlFormattingOptions): ReadonlyArray<YamlEdit> {
 		const formatted = formatDocument(text, options);

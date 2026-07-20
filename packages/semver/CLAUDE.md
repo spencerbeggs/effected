@@ -42,6 +42,15 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
   structured fields; never store a preformatted message.
 - **`Effect.fn("Name.op")` spans on fallible public boundaries only** — `parse`
   statics, `Range.intersect`, every fallible `VersionCache` method.
+- **The sync `Result` form is the primitive; the `Effect` form derives from it.**
+  `SemVer.parseResult`, `Range.parseResult`, `Comparator.parseResult` and
+  `Range.intersectResult` hold the engine; each `Effect` twin is
+  `Effect.fromResult(...)` behind its existing span, so the two cannot drift.
+  Never re-derive the grammar on the `Effect` side. Kit convention —
+  `@../../.claude/design/effected/formatter-convention.md`, decision 6. The
+  comparison statics (`SemVer.compare`, `Range.satisfies`, ...) are out of
+  scope: already plain, total and dual, so a `Result` twin would be dead
+  surface.
 
 ## Gotchas
 

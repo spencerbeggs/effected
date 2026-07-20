@@ -3,7 +3,7 @@
 // bounds, integral-float-to-integer, -0.0, key quoting, canonical layout).
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { renderInlineValue } from "../src/internal/stringifyValue.js";
 import { Toml, TomlParseError, TomlStringifyError, TomlStringifyOptions } from "../src/Toml.js";
 import { TomlLocalDate } from "../src/TomlDateTime.js";
@@ -285,6 +285,94 @@ describe("Toml", () => {
 				assert.deepStrictEqual(value, { port: 8080 });
 			}),
 		);
+	});
+
+	// The sync `Result` forms are the primitives; the `Effect` forms derive
+	// from them via `Effect.fromResult` and add only the tracing span. These
+	// assertions are what stop the two paths from ever drifting: every row is
+	// checked in BOTH directions, so a future edit that re-derives the engine
+	// on one side fails here rather than in a consumer.
+	describe("Result parity", () => {
+		const parseRows: ReadonlyArray<readonly [label: string, text: string]> = [
+			["a representative document", 'title = "x"\n[owner]\nname = "y"\n[[srv]]\nport = 1\n'],
+			["an empty document", ""],
+			["every scalar shape", 'i = 1\nf = 1.5\nb = true\ns = "x"\nd = 1979-05-27\na = [1, 2]\n'],
+			["a big integer past 2^53", "n = 9223372036854775807\n"],
+			["a syntax error", "name = \n"],
+			["a duplicate key", "a = 1\na = 2\n"],
+			["an unterminated string", 'a = "oops\n'],
+			["a nesting-depth bomb", `a = ${"[".repeat(300)}${"]".repeat(300)}\n`],
+		];
+
+		for (const [label, text] of parseRows) {
+			it.effect(`parse and parseResult agree on ${label}`, () =>
+				Effect.gen(function* () {
+					const viaEffect = yield* Effect.result(Toml.parse(text));
+					assert.deepStrictEqual(Toml.parseResult(text), viaEffect);
+				}),
+			);
+		}
+
+		const stringifyRows: ReadonlyArray<readonly [label: string, value: unknown]> = [
+			["a nested table", { title: "x", owner: { name: "y" } }],
+			["an array of tables", { srv: [{ port: 1 }, { port: 2 }] }],
+			["an empty table", {}],
+			["a null value TOML cannot represent", { nope: null }],
+			["an out-of-int64-range bigint", { n: 2n ** 64n }],
+			["a nesting-depth bomb", { a: Array.from({ length: 300 }).reduce<unknown>((acc) => [acc], 1) }],
+		];
+
+		for (const [label, value] of stringifyRows) {
+			it.effect(`stringify and stringifyResult agree on ${label}`, () =>
+				Effect.gen(function* () {
+					const viaEffect = yield* Effect.result(Toml.stringify(value));
+					assert.deepStrictEqual(Toml.stringifyResult(value), viaEffect);
+				}),
+			);
+		}
+
+		it.effect("both forms honor the newline option identically", () =>
+			Effect.gen(function* () {
+				const options = TomlStringifyOptions.make({ newline: "\r\n" });
+				const viaEffect = yield* Effect.result(Toml.stringify({ a: 1, b: 2 }, options));
+				const viaResult = Toml.stringifyResult({ a: 1, b: 2 }, options);
+				assert.deepStrictEqual(viaResult, viaEffect);
+				assert.strictEqual(Result.getOrThrow(viaResult), "a = 1\r\nb = 2\r\n");
+			}),
+		);
+
+		it("parseResult carries the typed failure, not a throw", () => {
+			const result = Toml.parseResult("name = \n");
+			if (Result.isSuccess(result)) {
+				return assert.fail("expected a typed parse failure");
+			}
+			assert.instanceOf(result.failure, TomlParseError);
+			assert.isAtLeast(result.failure.diagnostics.length, 1);
+		});
+
+		it("stringifyResult carries the typed failure, not a throw", () => {
+			const result = Toml.stringifyResult({ nope: null });
+			if (Result.isSuccess(result)) {
+				return assert.fail("expected a typed stringify failure");
+			}
+			assert.instanceOf(result.failure, TomlStringifyError);
+		});
+
+		// The defect firewall is a property of the engine, not of the wrapper:
+		// a non-carrier throw must escape the sync form as a real throw, the
+		// same way it dies through the Effect form (pinned in hostile.test.ts).
+		it("parseResult rethrows a non-engine defect rather than typing it", () => {
+			assert.throws(() => Toml.parseResult(42 as unknown as string), TypeError);
+		});
+
+		it("stringifyResult rethrows a non-engine defect rather than typing it", () => {
+			const evil = {
+				get boom(): number {
+					throw new Error("boom");
+				},
+			};
+			assert.throws(() => Toml.stringifyResult(evil), /boom/);
+		});
 	});
 
 	describe("renderInlineValue", () => {

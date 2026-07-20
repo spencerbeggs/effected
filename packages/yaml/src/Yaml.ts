@@ -24,7 +24,7 @@ import type { RawYamlDocument } from "./internal/raw-document.js";
 import { StringifyDepthExceeded, StringifyFailure, stringifyValue } from "./internal/stringifier.js";
 import { YamlDiagnostic } from "./YamlDiagnostic.js";
 import type { YamlNode } from "./YamlNode.js";
-import { AliasExpansionBudgetExceeded, CollectionStyle, ScalarStyle, nodeToJsValue } from "./YamlNode.js";
+import { AliasExpansionBudgetExceeded, CollectionStyle, QuoteStyle, ScalarStyle, nodeToJsValue } from "./YamlNode.js";
 
 /**
  * Options controlling parse behavior. All fields are omissible; absent fields
@@ -56,8 +56,8 @@ export class YamlParseOptions extends Schema.Class<YamlParseOptions>("YamlParseO
  * Options controlling stringify behavior. All fields are omissible; absent
  * fields resolve to `indent` `2`, `lineWidth` `0`, `defaultScalarStyle`
  * `"plain"`, `defaultCollectionStyle` `"block"`, `sortKeys` `false`,
- * `indentSequences` `false`, `finalNewline` `true` and `forceDefaultStyles`
- * `false`.
+ * `indentSequences` `false`, `quoteStyle` `"single"`, `finalNewline` `true`
+ * and `forceDefaultStyles` `false`.
  *
  * `lineWidth` controls column-based scalar folding. The default `0` (and any
  * value `<= 0`) never wraps, emitting byte-identical output to the historic
@@ -73,6 +73,18 @@ export class YamlParseOptions extends Schema.Class<YamlParseOptions>("YamlParseO
  * kit's byte-compatible legacy form — while `true` indents them one level,
  * matching the `yaml` npm package's default output. Top-level sequences stay
  * at column zero in both modes.
+ *
+ * `quoteStyle` selects the quote character used when a `plain`-styled scalar
+ * (the `defaultScalarStyle` default) turns out to require quoting: `"single"`
+ * (the default) emits `'@parcel/watcher'` — the kit's byte-compatible legacy
+ * form — while `"double"` emits `"@parcel/watcher"`, matching the `yaml` npm
+ * package's `singleQuote: false` output. It is a fallback selector only:
+ * scalars that need no quoting stay plain, and an explicit
+ * `defaultScalarStyle` of `"single-quoted"` or `"double-quoted"` still wins.
+ * On that plain fallback path, values carrying a tab, a carriage return or
+ * any other C0 control character are always emitted double-quoted whichever
+ * `quoteStyle` is set, since only double quotes can escape them into a form
+ * that round-trips exactly.
  *
  * Construct with the validated `YamlStringifyOptions.make({ ... })` static —
  * the kit convention (never `new`). Call sites that take a
@@ -99,7 +111,7 @@ export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("Ya
 	 * (`>`) scalars at approximately that column, never block-literal (`|`).
 	 *
 	 * Takes effect only through {@link Yaml.stringify} and
-	 * {@link Yaml.stringifySync} — the two entry points that accept these
+	 * {@link Yaml.stringifyResult} — the two entry points that accept these
 	 * options on the value path. The schema factories ({@link Yaml.fromString},
 	 * {@link Yaml.schema}, {@link Yaml.YamlFromString}) encode with default
 	 * stringify options (`lineWidth` `0`), so their output never folds. The
@@ -112,6 +124,17 @@ export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("Ya
 	defaultCollectionStyle: Schema.optionalKey(CollectionStyle),
 	sortKeys: Schema.optionalKey(Schema.Boolean),
 	indentSequences: Schema.optionalKey(Schema.Boolean),
+	/**
+	 * Quote style used when a `plain`-styled scalar requires quoting. Default
+	 * `"single"` — the released byte-compatible behavior. `"double"` renders
+	 * the same scalars double-quoted instead, matching the `yaml` npm
+	 * package's `singleQuote: false` output.
+	 *
+	 * Affects only the plain fallback: scalars that need no quoting stay
+	 * plain, and an explicit `defaultScalarStyle` of `"single-quoted"` or
+	 * `"double-quoted"` is unaffected.
+	 */
+	quoteStyle: Schema.optionalKey(QuoteStyle),
 	finalNewline: Schema.optionalKey(Schema.Boolean),
 	forceDefaultStyles: Schema.optionalKey(Schema.Boolean),
 }) {}
@@ -174,6 +197,7 @@ const toStringifyInput = (options?: YamlStringifyOptions): StringifyOptionsInput
 				defaultCollectionStyle: options.defaultCollectionStyle,
 				sortKeys: options.sortKeys,
 				indentSequences: options.indentSequences,
+				quoteStyle: options.quoteStyle,
 				finalNewline: options.finalNewline,
 				forceDefaultStyles: options.forceDefaultStyles,
 			};
@@ -243,7 +267,7 @@ const stringifyDefectToError = (defect: unknown, value: unknown): YamlStringifyE
  * mode (fatal diagnostics, duplicate keys, a "billion laughs" blow-up) yields
  * a `Failure` carrying a typed {@link YamlParseError} — never a throw.
  */
-const parseSyncImpl = (text: string, options?: YamlParseOptions): Result.Result<unknown, YamlParseError> => {
+const parseResultImpl = (text: string, options?: YamlParseOptions): Result.Result<unknown, YamlParseError> => {
 	const doc = composeFirstDocument(text, toParseInput(options));
 	const failures = failureRecords(doc, options?.uniqueKeys ?? true);
 	if (failures.length > 0) {
@@ -268,7 +292,7 @@ const parseSyncImpl = (text: string, options?: YamlParseOptions): Result.Result<
  * recursion budget yields a `Failure` carrying a typed {@link YamlStringifyError},
  * never a thrown defect.
  */
-const stringifySyncImpl = (
+const stringifyResultImpl = (
 	value: unknown,
 	options?: YamlStringifyOptions,
 ): Result.Result<string, YamlStringifyError> => {
@@ -383,18 +407,13 @@ export class Yaml {
 	 * resolved size grows exponentially relative to `maxAliasCount`) also
 	 * fails through {@link YamlParseError} with an `AliasCountExceeded`
 	 * diagnostic, never as an unhandled defect.
+	 *
+	 * Defined in terms of {@link Yaml.parseResult} — synchronous callers can
+	 * use that variant directly.
 	 */
-	static readonly parse = Effect.fn("Yaml.parse")(function* (text: string, options?: YamlParseOptions) {
-		const doc = composeFirstDocument(text, toParseInput(options));
-		const failures = failureRecords(doc, options?.uniqueKeys ?? true);
-		if (failures.length > 0) {
-			return yield* new YamlParseError({ diagnostics: toDiagnostics(text, failures), input: text });
-		}
-		// An empty map lets toValue register anchors incrementally, so aliases
-		// resolve to the most recent anchor at the point of use.
-		const anchors = new Map<string, YamlNode>();
-		return yield* extractDocumentValue(doc.contents, anchors, options?.maxAliasCount ?? 100, text);
-	});
+	static readonly parse = Effect.fn("Yaml.parse")((text: string, options?: YamlParseOptions) =>
+		Effect.fromResult(Yaml.parseResult(text, options)),
+	);
 
 	/**
 	 * Parse a multi-document YAML stream into an array of plain JavaScript
@@ -432,6 +451,15 @@ export class Yaml {
 	 * or on a value nested deeper than the stringifier's recursion budget
 	 * (`NestingDepthExceeded`) — both surface through the typed error channel
 	 * rather than as an unhandled stack-overflow defect.
+	 *
+	 * @remarks
+	 * A `"<<"` object key is emitted **quoted** (`'<<': …`). This is the
+	 * opposite of the document path ({@link YamlFormat.format} and
+	 * `YamlDocument#stringify`), which leaves a parsed plain `<<` key unquoted
+	 * so it keeps its merge-key meaning, and the asymmetry is deliberate: a
+	 * `"<<"` key on a plain JavaScript object is an ordinary string key that
+	 * never carried merge semantics, so emitting it plain would silently turn
+	 * ordinary data into a merge directive.
 	 */
 	static readonly stringify = Effect.fn("Yaml.stringify")(function* (value: unknown, options?: YamlStringifyOptions) {
 		return yield* stringifyOrFail(value, options);
@@ -440,8 +468,14 @@ export class Yaml {
 	/**
 	 * Synchronous single-document parse, returning a `Result` instead of
 	 * an `Effect`. A pure escape hatch for config-time callers that cannot
-	 * `await` an Effect (a `vitest.config.ts` is the motivating case): it runs
-	 * the same engine as {@link Yaml.parse} inline.
+	 * `await` an Effect (a `vitest.config.ts` is the motivating case).
+	 *
+	 * @remarks
+	 * This is the package's single parse path. {@link Yaml.parse} is defined in
+	 * terms of it (`Effect.fromResult` behind the named span), so the two
+	 * variants cannot diverge. Reach for the `Effect` variant inside Effect
+	 * code — it carries the `Yaml.parse` tracing span — and for this one at
+	 * synchronous boundaries.
 	 *
 	 * Preserves the package contract — malformed and adversarial input fails
 	 * typed, never as a defect. Fatal diagnostics, duplicate keys and a
@@ -453,7 +487,7 @@ export class Yaml {
 	 * import { Yaml } from "@effected/yaml";
 	 * import { Result } from "effect";
 	 *
-	 * const result = Yaml.parseSync("name: Alice\nage: 30");
+	 * const result = Yaml.parseResult("name: Alice\nage: 30");
 	 * if (Result.isSuccess(result)) {
 	 *   result.success; // { name: "Alice", age: 30 }
 	 * } else {
@@ -463,8 +497,8 @@ export class Yaml {
 	 *
 	 * @public
 	 */
-	static parseSync(text: string, options?: YamlParseOptions): Result.Result<unknown, YamlParseError> {
-		return parseSyncImpl(text, options);
+	static parseResult(text: string, options?: YamlParseOptions): Result.Result<unknown, YamlParseError> {
+		return parseResultImpl(text, options);
 	}
 
 	/**
@@ -482,7 +516,7 @@ export class Yaml {
 	 * import { Yaml } from "@effected/yaml";
 	 * import { Result } from "effect";
 	 *
-	 * const result = Yaml.stringifySync({ name: "Alice" });
+	 * const result = Yaml.stringifyResult({ name: "Alice" });
 	 * if (Result.isFailure(result)) {
 	 *   result.failure; // YamlStringifyError
 	 * } else {
@@ -492,8 +526,8 @@ export class Yaml {
 	 *
 	 * @public
 	 */
-	static stringifySync(value: unknown, options?: YamlStringifyOptions): Result.Result<string, YamlStringifyError> {
-		return stringifySyncImpl(value, options);
+	static stringifyResult(value: unknown, options?: YamlStringifyOptions): Result.Result<string, YamlStringifyError> {
+		return stringifyResultImpl(value, options);
 	}
 
 	/**

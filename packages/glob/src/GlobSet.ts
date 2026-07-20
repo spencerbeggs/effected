@@ -8,7 +8,7 @@
 // per expanded alternative (the pinned implementation decision), so
 // {tools/cli,packages/*} contributes a literal AND a wildcard.
 
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { GlobPattern, GlobPatternError } from "./GlobPattern.js";
 import { isGuardExceeded } from "./internal/limits.js";
 import { Minimatch, braceExpand } from "./internal/minimatch.js";
@@ -116,24 +116,51 @@ export class GlobSet extends Schema.Class<GlobSet>("GlobSet")(
 	}
 
 	/**
-	 * Compile a pattern set — with {@link GlobPattern.compile}, the package's
-	 * only other fallible boundary. Fails typed on the FIRST uncompilable
-	 * member, with the error's `pattern` field naming the offending source
-	 * pattern (bang included for exclusions).
+	 * Compile a pattern set, synchronously — the primitive form, mirroring
+	 * {@link GlobPattern.compileResult}. Set compilation is pure
+	 * string→predicate work with no IO and no async step, so the sync form is
+	 * the real primitive and {@link GlobSet.compile} is derived from it.
+	 *
+	 * Total: never throws for pattern input. Fails on the FIRST uncompilable
+	 * member, coming back as a `Result` failure whose {@link GlobPatternError}
+	 * names the offending source pattern in `pattern` (bang included for
+	 * exclusions).
+	 *
+	 * @remarks
+	 * For synchronous call sites that cannot host an Effect — a lint-staged
+	 * handler, a config predicate — this removes the
+	 * `Effect.runSync(Effect.result(...))` escape hatch: pair it with
+	 * `Result.isSuccess` and read `.success` directly. Effect call sites should
+	 * prefer {@link GlobSet.compile}, which carries the tracing span.
 	 */
-	static readonly compile = Effect.fn("GlobSet.compile")(function* (patterns: ReadonlyArray<string>) {
+	static compileResult(patterns: ReadonlyArray<string>): Result.Result<GlobSet, GlobPatternError> {
 		for (const pattern of patterns) {
 			const target = exclusionTarget(pattern) ?? pattern;
 			try {
 				new Minimatch(target, {});
 			} catch (e) {
 				if (isGuardExceeded(e)) {
-					return yield* new GlobPatternError({ pattern, reason: e.reason, limit: e.limit, actual: e.actual });
+					return Result.fail(new GlobPatternError({ pattern, reason: e.reason, limit: e.limit, actual: e.actual }));
 				}
 				throw e;
 			}
 		}
-		return new GlobSet({ patterns });
+		return Result.succeed(new GlobSet({ patterns }));
+	}
+
+	/**
+	 * Compile a pattern set — with {@link GlobPattern.compile}, the package's
+	 * only other fallible boundary, and the form Effect call sites should reach
+	 * for. Fails typed on the FIRST uncompilable member, with the error's
+	 * `pattern` field naming the offending source pattern (bang included for
+	 * exclusions).
+	 *
+	 * Defined in terms of {@link GlobSet.compileResult} — synchronous callers
+	 * can use that variant directly. Same semantics, same errors; this form
+	 * adds only the `GlobSet.compile` tracing span.
+	 */
+	static readonly compile = Effect.fn("GlobSet.compile")(function* (patterns: ReadonlyArray<string>) {
+		return yield* Effect.fromResult(GlobSet.compileResult(patterns));
 	});
 
 	/**

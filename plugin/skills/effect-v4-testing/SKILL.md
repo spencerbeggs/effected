@@ -499,6 +499,21 @@ the value:
 Full discipline, the edge-case checklist, and the worked failures →
 **[references/mutation-testing.md](./references/mutation-testing.md)**.
 
+### A big green count is not evidence for a surface the suite never calls
+
+Before trusting a suite as the regression gate for a change, confirm the suite
+actually **calls the surface you changed**. A large passing count creates false
+confidence when the tests reach the implementation by a private path. In
+`@effected/yaml` the 1226 conformance fixtures drive an internal engine facade
+(`__test__/e2e/support/engine.ts`) and never call `Yaml.parse`, so a green 1226
+said nothing about a change to `Yaml.parse`'s derivation — the count measured
+the engine, not the public function. The fix caught it: build a **differential**
+against the prior implementation across the same corpus, and — the step that
+makes it non-vacuous — prove the differential can fail (inject a divergence,
+watch it flag) before trusting a green. A suite that cannot exercise your change
+cannot fail in response to it, which is the same defect as a mutant that cannot
+be pinned, one level up.
+
 ## `0 tests passed` is a FAILED run, not an empty one
 
 A module-level throw — most commonly the `Context.Service` TDZ (see

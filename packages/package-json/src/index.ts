@@ -7,9 +7,13 @@
  * contracts. Leaf concepts (`PackageName`, `DependencySpecifier`,
  * `SpdxLicense`, {@link PackageManager}, {@link Person}, {@link DevEngine},
  * {@link Dependency}) carry their own statics and errors and compose into
- * `Package`'s fields. {@link PackageJsonFile} is the only IO surface, over
- * core `FileSystem` / `Path`; {@link PackageValidator} runs rule-based
- * validation over a decoded `Package`.
+ * `Package`'s fields. `Package` and {@link Person} are the two object-shaped
+ * models, and both carry the `rest` catch-all; the remaining leaves model a
+ * single scalar or a closed shape and so have no unknown keys to preserve.
+ * {@link PackageJsonFile} is the only IO surface, over core `FileSystem` /
+ * `Path`; {@link PackageValidator} runs rule-based validation over a decoded
+ * `Package`; {@link PackageJsonFormat} sorts and formats without decoding, for
+ * hosts that must accept manifests `Package.decode` rejects.
  *
  * @packageDocumentation
  */
@@ -47,6 +51,11 @@ export {
 	PackageJsonReadError,
 	PackageJsonWriteError,
 } from "./PackageJsonFile.js";
+export {
+	type PackageFormatTextOptions,
+	PackageJsonFormat,
+	PackageJsonSyntaxError,
+} from "./PackageJsonFormat.js";
 export { PackageManager } from "./PackageManager.js";
 export {
 	InvalidPackageNameError,

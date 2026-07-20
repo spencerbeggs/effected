@@ -119,10 +119,12 @@ export class WorkspaceManifestError extends Schema.TaggedErrorClass<WorkspaceMan
  *   path: "/repo/packages/utils",
  *   packageJsonPath: "/repo/packages/utils/package.json",
  *   relativePath: "packages/utils",
+ *   workspaceRoot: "/repo",
  * });
  *
  * pkg.isRootWorkspace; // false
  * pkg.unscopedName;    // "utils"
+ * pkg.workspaceRoot;   // "/repo"
  * ```
  *
  * @public
@@ -138,6 +140,21 @@ export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspaceP
 	packageJsonPath: Schema.NonEmptyString,
 	/** POSIX path relative to the workspace root; `"."` for the root package. */
 	relativePath: Schema.String,
+	/**
+	 * Absolute path to the workspace root this package was discovered under.
+	 *
+	 * @remarks
+	 * Carried, not derived. Whoever built this value already knew the root —
+	 * `WorkspaceDiscovery` resolved it before enumerating, and the sync entry
+	 * point is handed it — so dropping it forced every consumer into per-package
+	 * root arithmetic (counting `relativePath` segments and re-ascending that
+	 * many `..`). That reconstruction is exact only while `path` and
+	 * `relativePath` agree, and it re-derives something the kit never had to
+	 * lose.
+	 *
+	 * For the root package this equals `path`, and `relativePath` is `"."`.
+	 */
+	workspaceRoot: Schema.NonEmptyString,
 	/** Whether the package is marked private. */
 	private: Schema.Boolean.pipe(
 		Schema.withDecodingDefaultKey(Effect.succeed(false)),

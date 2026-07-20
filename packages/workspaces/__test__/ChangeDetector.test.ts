@@ -239,6 +239,7 @@ const location = {
 	path: "/repo/packages/p",
 	packageJsonPath: "/repo/packages/p/package.json",
 	relativePath: "packages/p",
+	workspaceRoot: "/repo",
 };
 
 describe("PublishabilityDetector — the default npm semantics", () => {

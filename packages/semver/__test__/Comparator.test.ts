@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Equal, Schema } from "effect";
+import { Effect, Equal, Result, Schema } from "effect";
 import { Comparator, InvalidComparatorError, SemVer } from "../src/index.js";
 
 describe("Comparator", () => {
@@ -86,5 +86,49 @@ describe("Comparator", () => {
 				assert.strictEqual((yield* Comparator.parse("1.2.3")).toString(), "1.2.3");
 			}),
 		);
+	});
+
+	// `parseResult` is the primitive; `parse` derives from it via
+	// `Effect.fromResult` and adds only the tracing span. Both directions are
+	// asserted per row so the two forms cannot drift.
+	describe("Result parity", () => {
+		const rows: ReadonlyArray<readonly [label: string, input: string]> = [
+			["an implicit equals", "1.2.3"],
+			["an explicit equals", "=1.2.3"],
+			["greater-or-equal", ">=1.2.3"],
+			["strictly less", "<1.2.3"],
+			["a prerelease operand", ">=1.2.3-rc.1"],
+			["an unknown operator", "~>1.2.3"],
+			["a missing operand", ">="],
+			["the empty string", ""],
+		];
+
+		for (const [label, input] of rows) {
+			it.effect(`parse and parseResult agree on ${label}`, () =>
+				Effect.gen(function* () {
+					const viaEffect = yield* Effect.result(Comparator.parse(input));
+					assert.deepStrictEqual(Comparator.parseResult(input), viaEffect);
+				}),
+			);
+		}
+
+		it("parseResult succeeds with a real Comparator", () => {
+			const result = Comparator.parseResult(">=1.2.3");
+			if (Result.isFailure(result)) {
+				return assert.fail("expected a successful parse");
+			}
+			assert.instanceOf(result.success, Comparator);
+			assert.strictEqual(result.success.operator, ">=");
+			assert.strictEqual(result.success.version.toString(), "1.2.3");
+		});
+
+		it("parseResult carries the typed failure, not a throw", () => {
+			const result = Comparator.parseResult("~>1.2.3");
+			if (Result.isSuccess(result)) {
+				return assert.fail("expected a typed parse failure");
+			}
+			assert.instanceOf(result.failure, InvalidComparatorError);
+			assert.strictEqual(result.failure.input, "~>1.2.3");
+		});
 	});
 });

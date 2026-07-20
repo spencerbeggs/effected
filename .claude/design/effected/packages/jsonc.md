@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-19
-last-synced: 2026-07-19
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 95
 related:
   - ../architecture.md
@@ -50,7 +50,7 @@ The package-wide rule, and the template for `@effected/yaml`: **pure synchronous
 
 - **Pure synchronous** (no `Effect`): node value extraction (`JsoncNode.toValue`), edit application (`JsoncEdit.applyAll`, `JsoncFormatter.formatToString`), formatting (`JsoncFormatter.format` — computing edits never fails), comment stripping (`Jsonc.stripComments`) and semantic equality (`Jsonc.equals` / `equalsValue`).
 - **`Effect`** (real typed `E`): `Jsonc.parse`, `Jsonc.parseTree`, `Jsonc.stringify`, `JsoncModifier.modify` and the schema decode path.
-- **`Result`** (sync escape hatch): `Jsonc.parseResult` returns a v4 `Result<unknown, JsoncParseError>` for callers outside the Effect runtime — jsonc's counterpart to yaml's [`parseSync` posture](yaml.md#effect-wrapping-policy). `Jsonc.parse` is *defined in terms of it* (`Effect.fromResult` behind the named span), so the two variants cannot diverge; the `@remarks` steer Effect consumers to `parse` for the span. `Jsonc.stringifyResult` is the symmetric twin on the stringify side, with `Jsonc.stringify` defined in terms of it the same way.
+- **`Result`** (sync escape hatch): `Jsonc.parseResult` returns a v4 `Result<unknown, JsoncParseError>` for callers outside the Effect runtime — jsonc's counterpart to yaml's [`parseResult` posture](yaml.md#effect-wrapping-policy). `Jsonc.parse` is *defined in terms of it* (`Effect.fromResult` behind the named span), so the two variants cannot diverge; the `@remarks` steer Effect consumers to `parse` for the span. `Jsonc.stringifyResult` is the symmetric twin on the stringify side, with `Jsonc.stringify` defined in terms of it the same way.
 - **`Stream`** for the visitor: `JsoncVisitor.visit` returns `Stream<JsoncVisitorEvent>`, demand-driven and `Stream.take`-friendly; malformed input surfaces as error events in the union.
 
 `equals` / `equalsValue` are pure total booleans with a hardened contract: inputs with **any** parse errors compare unequal (return `false`) rather than comparing the recovery parser's best-effort output, so malformed input is never equal to anything. They run the recovery parser but short-circuit to `false` whenever either side produced parse errors, comparing recovered values only when both sides parsed cleanly.

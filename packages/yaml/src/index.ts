@@ -39,6 +39,7 @@ export type { YamlRangeLike } from "./YamlFormat.js";
 export { YamlFormat, YamlFormattingOptions, YamlModificationError } from "./YamlFormat.js";
 export {
 	CollectionStyle,
+	QuoteStyle,
 	ScalarChomp,
 	ScalarStyle,
 	YamlAlias,

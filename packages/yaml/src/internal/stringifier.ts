@@ -8,7 +8,7 @@
 // formatting with support for block/flow styles, scalar quoting rules, and
 // round-trip preservation of AST node styles.
 
-import type { CollectionStyle, ScalarStyle, YamlNode } from "../YamlNode.js";
+import type { CollectionStyle, QuoteStyle, ScalarStyle, YamlNode } from "../YamlNode.js";
 import { YamlAlias, YamlMap, YamlPair, YamlScalar, YamlSeq } from "../YamlNode.js";
 import { MAX_NESTING_DEPTH } from "./composer/state.js";
 import {
@@ -152,9 +152,17 @@ function requiresQuoting(s: string, ignoreType = false): boolean {
 	// Ends with whitespace (space/tab) — plain scalars lose trailing whitespace
 	const last = s[s.length - 1];
 	if (last === " " || last === "\t") return true;
-	// C0 control characters (except tab) require quoting
+	// C0 control characters require quoting. `isControlChar` deliberately
+	// excludes TAB (0x09) and CR (0x0D) for its other callers — the block-scalar
+	// and single-quoted-multiline paths, where both are representable — so both
+	// are tested explicitly here. A plain scalar cannot carry either: CR is
+	// normalised away by the parser (silent data corruption on round-trip) and
+	// an interior tab produces text other YAML parsers reject. Only single-line
+	// values reach this point (multi-line returns at the `\n` check above), so
+	// quoting on any TAB is safe for block styles.
 	for (let i = 0; i < s.length; i++) {
-		if (isControlChar(s.charCodeAt(i))) return true;
+		const code = s.charCodeAt(i);
+		if (code === 0x09 || code === 0x0d || isControlChar(code)) return true;
 	}
 	return false;
 }
@@ -241,9 +249,11 @@ function renderSingleQuoted(s: string): string {
  *
  * Multi-line strings are routed to block styles regardless of the requested
  * style (except double-quoted). For single-line strings, plain style delegates
- * to {@link requiresQuoting} and falls back to double-quoted when the value
- * would be ambiguous. Block literal and block folded styles are always
- * accepted for single-line strings even though the output is unusual.
+ * to {@link requiresQuoting} and falls back to `quoteStyle` (single-quoted by
+ * default, double-quoted when the caller asked for it) — or to double-quoted
+ * regardless when the value needs YAML escapes single quotes cannot express.
+ * Block literal and block folded styles are always accepted for single-line
+ * strings even though the output is unusual.
  */
 function renderString(
 	s: string,
@@ -253,6 +263,7 @@ function renderString(
 	canonical = false,
 	explicitChomp?: "strip" | "clip" | "keep",
 	parentPosition?: "block-map-value" | "block-seq-item",
+	quoteStyle: QuoteStyle = "single",
 ): string {
 	if (s.includes("\n")) {
 		// If the value contains C0 control chars (except tab) or carriage
@@ -315,17 +326,20 @@ function renderString(
 	switch (style) {
 		case "plain":
 			if (requiresQuoting(s, ignoreType)) {
-				// Prefer single-quoted when no escape sequences are needed.
-				// Only use double-quoted for chars that need YAML escapes
-				// (tab, CR, control chars). Backslashes are literal in
-				// single-quoted YAML and do NOT need double-quoting.
+				// Chars needing YAML escapes (tab, CR, control chars) force
+				// double-quoted under either quoteStyle — single quotes cannot
+				// express them. Backslashes are literal in single-quoted YAML
+				// and do NOT need double-quoting.
 				if (s.includes("\t") || s.includes("\r")) {
 					return renderDoubleQuoted(s, canonical);
 				}
 				for (let i = 0; i < s.length; i++) {
 					if (isControlChar(s.charCodeAt(i))) return renderDoubleQuoted(s, canonical);
 				}
-				return renderSingleQuoted(s);
+				// Otherwise the caller's fallback preference decides: single-quoted
+				// by default (the released byte-compatible form), double-quoted
+				// when `quoteStyle` asks for it.
+				return quoteStyle === "double" ? renderDoubleQuoted(s, canonical) : renderSingleQuoted(s);
 			}
 			return s;
 		case "single-quoted":
@@ -401,6 +415,8 @@ interface StringifyContext {
 	defaultCollectionStyle: CollectionStyle;
 	sortKeys: boolean;
 	indentSequences: boolean;
+	/** Fallback quote style for plain scalars that require quoting. */
+	quoteStyle: QuoteStyle;
 	forceDefaultStyles: boolean;
 	seen: Set<object>;
 	/**
@@ -423,6 +439,9 @@ function createContext(options?: StringifyOptionsInput): StringifyContext {
 		defaultCollectionStyle: options?.defaultCollectionStyle ?? "block",
 		sortKeys: options?.sortKeys ?? false,
 		indentSequences: options?.indentSequences ?? false,
+		// Default "single" = the released fallback: byte-identical output for every
+		// caller that does not opt into the `yaml`-npm-compatible double-quoted form.
+		quoteStyle: options?.quoteStyle ?? "single",
 		forceDefaultStyles: options?.forceDefaultStyles ?? false,
 		seen: new Set(),
 	};
@@ -459,7 +478,16 @@ function stringifyLines(value: unknown, ctx: StringifyContext, depth: number, al
 	if (typeof value === "string") {
 		// For block scalars the header line and body lines are already split
 		const indentStr = " ".repeat(ctx.indent);
-		const rendered = renderString(value, ctx.defaultScalarStyle, indentStr, false, ctx.forceDefaultStyles);
+		const rendered = renderString(
+			value,
+			ctx.defaultScalarStyle,
+			indentStr,
+			false,
+			ctx.forceDefaultStyles,
+			undefined,
+			undefined,
+			ctx.quoteStyle,
+		);
 		// Column-based folding only fires in block contexts (not flow items, whose
 		// lines are re-joined with spaces) and only for a positive lineWidth. The
 		// folded continuation lines carry `indentStr`, which the block mapping /
@@ -564,9 +592,15 @@ function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContex
 		keys.sort();
 	}
 
+	// Mapping keys render plain-styled, so they take the same `quoteStyle`
+	// fallback as plain values — a key like `@types/acorn` requires quoting and
+	// must honor the caller's preference, not a hardcoded single quote.
+	const renderPlainKey = (k: string): string =>
+		renderString(k, "plain", "", false, false, undefined, undefined, ctx.quoteStyle);
+
 	if (ctx.defaultCollectionStyle === "flow") {
 		const pairs = keys.map((k) => {
-			const keyStr = renderString(k, "plain", "");
+			const keyStr = renderPlainKey(k);
 			// Flow values are re-joined with spaces, so folding must not run here.
 			const valStr = stringifyLines(obj[k], ctx, depth + 1, false).join(" ");
 			return `${keyStr}: ${valStr}`;
@@ -577,7 +611,7 @@ function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContex
 	// Helper: render a mapping key — must be single-line for block mappings,
 	// so multiline keys use double-quoted style with \n escapes
 	const renderKey = (k: string): string =>
-		k.includes("\n") ? renderDoubleQuoted(k, ctx.forceDefaultStyles) : renderString(k, "plain", "");
+		k.includes("\n") ? renderDoubleQuoted(k, ctx.forceDefaultStyles) : renderPlainKey(k);
 
 	// Block style
 	const pad = " ".repeat(ctx.indent);
@@ -895,6 +929,7 @@ function stringifyScalarNodeLines(node: YamlScalar, ctx: StringifyContext): stri
 			ctx.forceDefaultStyles,
 			node.chomp,
 			ctx.parentPosition,
+			ctx.quoteStyle,
 		);
 		lines = rendered.split("\n");
 	} else {
@@ -908,6 +943,48 @@ function stringifyScalarNodeLines(node: YamlScalar, ctx: StringifyContext): stri
 		lines[0] = `&${node.anchor} ${lines[0]}`;
 	}
 	return lines;
+}
+
+/** The YAML merge key. */
+const MERGE_KEY = "<<";
+
+/**
+ * True when a mapping key must be emitted plain because quoting it would
+ * change what the document means.
+ *
+ * The merge key is the only scalar in this position where the plain and
+ * quoted forms resolve to different YAML types: a plain `<<` key resolves to
+ * `tag:yaml.org,2002:merge` and splices the aliased mapping into its parent,
+ * while `'<<'` is an ordinary string key that merges nothing. The difference
+ * is silent — the document still parses and still round-trips — so re-emitting
+ * a merge key quoted is a semantic rewrite of the kind the fidelity obligation
+ * forbids.
+ *
+ * Deliberately narrow. It fires only on a plain-styled scalar carrying no tag
+ * and no anchor, so an author's explicitly quoted `'<<'` (a literal string key
+ * they meant) and any tagged key keep the form they were written in. A key
+ * with no style at all counts as plain: an unstyled `<<` built by hand can
+ * only have been meant as a merge key, and preserving that meaning outranks
+ * normalizing its presentation.
+ */
+function isPlainMergeKey(node: YamlNode | null | undefined): boolean {
+	return (
+		node instanceof YamlScalar &&
+		node.value === MERGE_KEY &&
+		(node.style ?? "plain") === "plain" &&
+		node.tag === undefined &&
+		node.anchor === undefined
+	);
+}
+
+/**
+ * Renders a mapping key, honoring the keys that must stay plain before
+ * falling back to ordinary node rendering. Both the flow and the block
+ * mapping branches route through here so the two cannot disagree.
+ */
+function stringifyMappingKeyLines(node: YamlNode, ctx: StringifyContext, depth: number): string[] {
+	if (isPlainMergeKey(node)) return [MERGE_KEY];
+	return stringifyNodeLines(node, ctx, depth);
 }
 
 /**
@@ -935,7 +1012,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 
 	if (style === "flow") {
 		const pairs = items.map((pair) => {
-			const keyStr = pair.key ? stringifyNodeLines(pair.key, ctx, depth + 1).join(" ") : "null";
+			const keyStr = pair.key ? stringifyMappingKeyLines(pair.key, ctx, depth + 1).join(" ") : "null";
 			const valStr = pair.value ? stringifyNodeLines(pair.value, ctx, depth + 1).join(" ") : "null";
 			return `${keyStr}: ${valStr}`;
 		});
@@ -1063,7 +1140,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 		) {
 			resolvedKeyStr = pair.key.value;
 		} else {
-			resolvedKeyStr = pair.key ? stringifyNodeLines(pair.key, ctx, depth + 1).join(" ") : "null";
+			resolvedKeyStr = pair.key ? stringifyMappingKeyLines(pair.key, ctx, depth + 1).join(" ") : "null";
 		}
 		const keyStr = resolvedKeyStr;
 		// Alias keys need a space before the colon to avoid the alias name

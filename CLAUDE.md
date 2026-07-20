@@ -12,7 +12,7 @@ The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.99`. The m
 
 ## Design Documentation
 
-Eight foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
+Nine foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
 
 - Architecture → `@./.claude/design/effected/architecture.md` — Load when: changing repo structure, build pipeline, tooling, or workspace/catalog setup.
 - Effect standards → `@./.claude/design/effected/effect-standards.md` — Load when: designing or porting a library API, or making dependency/peer-closure decisions.
@@ -21,6 +21,7 @@ Eight foundational design docs live in `.claude/design/effected/` (config: `.cla
 - Roadmap → `@./.claude/design/effected/roadmap.md` — Load when: planning post-migration work, sequencing the `0.1.0` gate, or picking the next workstream.
 - Migration playbook → `@./.claude/design/effected/migration-playbook.md` — Load when: starting or continuing a package migration.
 - Package setup → `@./.claude/design/effected/package-setup.md` — Load when: scaffolding or adding a new workspace package.
+- Formatter convention → `@./.claude/design/effected/formatter-convention.md` — Load when: designing a formatting or parsing entry point, or deciding whether a pure boundary exposes a sync `Result` primitive alongside its `Effect` form.
 - Plugin → `@./.claude/design/effected/plugin.md` — Load when: working in `plugin/` on the "effective" Claude Code plugin.
 
 ### Migration Status

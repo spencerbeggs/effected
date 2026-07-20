@@ -16,6 +16,39 @@ import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect
 export const WORKSPACE_MARKERS: ReadonlyArray<string> = ["pnpm-workspace.yaml", "package.json"];
 
 /**
+ * Options for {@link WorkspaceRoot}'s `find`.
+ *
+ * @remarks
+ * Both bounds are passed straight through to `@effected/walker`'s
+ * `Walker.ascend`; this package does not re-decide either.
+ *
+ * @public
+ */
+export interface FindWorkspaceRootOptions {
+	/**
+	 * A ceiling directory. The ascent stops after probing it, so an unmarked
+	 * `stopAt` fails typed as {@link WorkspaceRootNotFoundError} rather than
+	 * silently escaping into an enclosing repository.
+	 *
+	 * @remarks
+	 * Resolved to an absolute path before comparison, exactly as `cwd` is — a
+	 * relative or non-normalized ceiling that never string-matched an ancestor
+	 * would reintroduce the unbounded ascent it was passed to prevent.
+	 */
+	readonly stopAt?: string;
+	/**
+	 * Hard cap on the number of directories probed.
+	 *
+	 * @remarks
+	 * A non-integer or non-positive value is a **defect**, not a typed failure —
+	 * it is developer wiring, and walker's guard raises it.
+	 *
+	 * @defaultValue 256
+	 */
+	readonly maxDepth?: number;
+}
+
+/**
  * Raised when no workspace root can be found by ascending from a directory.
  *
  * @remarks
@@ -31,11 +64,22 @@ export class WorkspaceRootNotFoundError extends Schema.TaggedErrorClass<Workspac
 		searchPath: Schema.String,
 		/** The marker filenames probed at each ancestor. */
 		markers: Schema.Array(Schema.String),
+		/**
+		 * The resolved ceiling the ascent was bounded by, when one was supplied.
+		 *
+		 * @remarks
+		 * Absent means the ascent ran to the filesystem root. Its presence is what
+		 * lets a caller tell "there is no workspace root anywhere above me" from
+		 * "there is none below the ceiling I set" — two failures that otherwise
+		 * render identically.
+		 */
+		stopAt: Schema.optionalKey(Schema.String),
 	},
 ) {
-	/** Renders the search path and probed markers into a one-line message. */
+	/** Renders the search path, probed markers and any ceiling into a one-line message. */
 	override get message(): string {
-		return `No workspace root above ${this.searchPath} (looked for ${this.markers.join(", ")})`;
+		const bound = this.stopAt === undefined ? "" : ` up to ${this.stopAt}`;
+		return `No workspace root above ${this.searchPath}${bound} (looked for ${this.markers.join(", ")})`;
 	}
 }
 
@@ -73,6 +117,36 @@ const isWorkspaceRoot = (dir: string): Effect.Effect<boolean, never, FileSystem.
 	});
 
 /**
+ * The {@link WorkspaceRoot} service contract.
+ *
+ * @remarks
+ * Named so a consumer can type its own double — or a `Layer.succeed` — against
+ * the contract rather than re-deriving it, exactly as `WorkspaceDiscoveryShape`
+ * does. Prefer {@link WorkspaceRoot.layerTest} to hand-rolling one.
+ *
+ * @public
+ */
+export interface WorkspaceRootShape {
+	/**
+	 * The nearest workspace root at or above `cwd`.
+	 *
+	 * @param cwd - The directory to start the ascent from; resolved to an
+	 *   absolute path first.
+	 * @param options - Optional ascent bounds. Unbounded by default, which
+	 *   walks to the filesystem root and can therefore resolve to an enclosing
+	 *   repository's root; pass `stopAt` when the caller knows the ceiling.
+	 */
+	readonly find: (cwd: string, options?: FindWorkspaceRootOptions) => Effect.Effect<string, WorkspaceRootNotFoundError>;
+}
+
+/** Whether `descendant` is `ancestor` itself or lies beneath it, on POSIX or win32 separators. */
+const isAtOrBelow = (descendant: string, ancestor: string): boolean => {
+	if (descendant === ancestor) return true;
+	const prefix = ancestor.endsWith("/") || ancestor.endsWith("\\") ? ancestor : `${ancestor}/`;
+	return descendant.startsWith(prefix) || descendant.startsWith(prefix.replace(/\/$/, "\\"));
+};
+
+/**
  * Locates the workspace root by ascending from a starting directory.
  *
  * @example
@@ -86,49 +160,153 @@ const isWorkspaceRoot = (dir: string): Effect.Effect<boolean, never, FileSystem.
  * });
  * ```
  *
+ * @example
+ * Bounded: an unmarked fixture directory fails typed instead of escaping into
+ * the enclosing repository.
+ *
+ * ```ts
+ * import { WorkspaceRoot } from "@effected/workspaces";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const roots = yield* WorkspaceRoot;
+ *   return yield* roots.find("/tmp/fixture/packages/a", { stopAt: "/tmp/fixture" });
+ * });
+ * ```
+ *
  * @public
  */
-export class WorkspaceRoot extends Context.Service<
-	WorkspaceRoot,
-	{
-		/**
-		 * The nearest workspace root at or above `cwd`.
-		 *
-		 * @param cwd - The directory to start the ascent from; resolved to an
-		 *   absolute path first.
-		 */
-		readonly find: (cwd: string) => Effect.Effect<string, WorkspaceRootNotFoundError>;
-	}
->()("@effected/workspaces/WorkspaceRoot") {
+export class WorkspaceRoot extends Context.Service<WorkspaceRoot, WorkspaceRootShape>()(
+	"@effected/workspaces/WorkspaceRoot",
+) {
 	/** Builds the service over core `FileSystem` and `Path`. */
-	static readonly make: Effect.Effect<
-		{ readonly find: (cwd: string) => Effect.Effect<string, WorkspaceRootNotFoundError> },
-		never,
-		FileSystem.FileSystem | Path.Path
-	> = Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem;
-		const path = yield* Path.Path;
+	static readonly make: Effect.Effect<WorkspaceRootShape, never, FileSystem.FileSystem | Path.Path> = Effect.gen(
+		function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const path = yield* Path.Path;
 
-		const find = Effect.fn("WorkspaceRoot.find")(function* (cwd: string) {
-			const start = path.resolve(cwd);
-			const chain = yield* Walker.ascend(start);
-			const found = yield* Walker.findRoot(chain, isWorkspaceRoot);
-			if (Option.isNone(found)) {
-				return yield* Effect.fail(new WorkspaceRootNotFoundError({ searchPath: start, markers: WORKSPACE_MARKERS }));
-			}
-			yield* Effect.logDebug("Workspace root found").pipe(Effect.annotateLogs("workspace.root", found.value));
-			return found.value;
-		});
+			const find = Effect.fn("WorkspaceRoot.find")(function* (cwd: string, options?: FindWorkspaceRootOptions) {
+				const start = path.resolve(cwd);
+				// Resolved, not passed through raw: walker compares the ceiling to each
+				// ancestor by string equality, so an unresolved `stopAt` would never
+				// match and would silently degrade to the unbounded ascent this option
+				// exists to prevent.
+				const ceiling = options?.stopAt === undefined ? undefined : path.resolve(options.stopAt);
+				const chain = yield* Walker.ascend(start, {
+					// Conditional spreads, not explicit `undefined`: walker reads these
+					// with `?? default`, and an explicit `undefined` is fine there, but
+					// the house rule keeps optional keys absent when unset.
+					...(ceiling === undefined ? {} : { stopAt: ceiling }),
+					...(options?.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
+				});
+				const found = yield* Walker.findRoot(chain, isWorkspaceRoot);
+				if (Option.isNone(found)) {
+					return yield* Effect.fail(
+						new WorkspaceRootNotFoundError({
+							searchPath: start,
+							markers: WORKSPACE_MARKERS,
+							...(ceiling === undefined ? {} : { stopAt: ceiling }),
+						}),
+					);
+				}
+				yield* Effect.logDebug("Workspace root found").pipe(Effect.annotateLogs("workspace.root", found.value));
+				return found.value;
+			});
 
-		return {
-			find: (cwd: string) =>
-				find(cwd).pipe(Effect.provideService(FileSystem.FileSystem, fs), Effect.provideService(Path.Path, path)),
-		};
-	});
+			return {
+				find: (cwd: string, options?: FindWorkspaceRootOptions) =>
+					find(cwd, options).pipe(
+						Effect.provideService(FileSystem.FileSystem, fs),
+						Effect.provideService(Path.Path, path),
+					),
+			};
+		},
+	);
 
 	/** The live layer. */
 	static readonly layer: Layer.Layer<WorkspaceRoot, never, FileSystem.FileSystem | Path.Path> = Layer.effect(
 		WorkspaceRoot,
 		WorkspaceRoot.make,
 	);
+
+	/**
+	 * A test double resolving every `find` to `root`, with no filesystem.
+	 *
+	 * @remarks
+	 * The nine-copies-of-a-four-line-mock case — a `Layer.succeed` over a `find`
+	 * that ignores its arguments and succeeds with a fixed root is what consumers
+	 * were writing by hand. The difference is that this double **honours
+	 * `stopAt`**: a hand-rolled `find` that ignores the ceiling makes a bounded
+	 * call pass under test and fail against the live service, which is the
+	 * failure mode the option exists to catch. A `root` above the ceiling fails
+	 * here exactly as it would live, with the same
+	 * {@link WorkspaceRootNotFoundError}.
+	 *
+	 * The ceiling is `path.resolve`d through the injected `Path` service before
+	 * the comparison, exactly as the live `make` path does — so a `stopAt`
+	 * carrying `..` segments bounds the double identically to the live service,
+	 * not by raw string. This is why `makeTest` yields an `Effect` requiring
+	 * `Path`: it captures the service once at construction, the same shape as
+	 * `make`. Consumers reach for {@link WorkspaceRoot.layerTest}, which provides
+	 * `Path.layer` internally, so the requirement never surfaces at their call
+	 * site.
+	 *
+	 * `maxDepth` is deliberately NOT modelled: the double does not walk, so it has
+	 * no depth to cap, and pretending otherwise would encode a fiction. A suite
+	 * exercising the depth guard wants the live service over a fixture tree.
+	 *
+	 * @param root - The root every unbounded `find` resolves to.
+	 */
+	static readonly makeTest = (root: string): Effect.Effect<WorkspaceRootShape, never, Path.Path> =>
+		Effect.gen(function* () {
+			const path = yield* Path.Path;
+			return {
+				find: (cwd: string, options?: FindWorkspaceRootOptions) =>
+					// Resolve the ceiling through the injected `Path` exactly as the live
+					// `make` path does before the raw string comparison in `isAtOrBelow` —
+					// an unresolved ceiling (`..` segments) would match differently here
+					// than live, the divergence this double exists to prevent.
+					options?.stopAt !== undefined && !isAtOrBelow(root, path.resolve(options.stopAt))
+						? Effect.fail(
+								new WorkspaceRootNotFoundError({
+									searchPath: cwd,
+									markers: WORKSPACE_MARKERS,
+									stopAt: options.stopAt,
+								}),
+							)
+						: Effect.succeed(root),
+			};
+		});
+
+	/**
+	 * The test layer: {@link WorkspaceRoot.makeTest} with `Path.layer` provided.
+	 *
+	 * @remarks
+	 * `makeTest` requires `Path` to normalize the `stopAt` ceiling; this layer
+	 * supplies core's `Path.layer` internally, so the requirement never reaches a
+	 * consumer — the published type stays `Layer.Layer<WorkspaceRoot>`.
+	 *
+	 * A parameterized layer factory mints a **fresh reference per call**, and
+	 * layers memoize by reference — bind the result to a `const` and reuse it
+	 * rather than calling `layerTest(...)` at each composition site.
+	 *
+	 * Pair it with `WorkspaceDiscovery.layerTest` to stand up the whole discovery
+	 * path without a filesystem; between them there is nothing left for a
+	 * module-level mock of `@effected/workspaces` to do, and a provided layer
+	 * keeps the service graph — and its typed errors — intact.
+	 *
+	 * @example
+	 * ```ts
+	 * import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const TestRoot = WorkspaceRoot.layerTest("/repo");
+	 * const TestDiscovery = WorkspaceDiscovery.layerTest({
+	 *   listPackages: () => Effect.succeed([]),
+	 * });
+	 * // program.pipe(Effect.provide(TestRoot), Effect.provide(TestDiscovery))
+	 * ```
+	 */
+	static readonly layerTest = (root: string): Layer.Layer<WorkspaceRoot> =>
+		Layer.effect(WorkspaceRoot, WorkspaceRoot.makeTest(root)).pipe(Layer.provide(Path.layer));
 }

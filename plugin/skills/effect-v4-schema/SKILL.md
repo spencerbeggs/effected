@@ -52,6 +52,38 @@ Each row is a hard house default; reasoning and worked code in
 | a single-return **ternary chain** in an error's `message` getter | an exhaustive `switch` with no terminal return — tsgo accepts it, but Biome's `useGetterReturn` rejects it (see below) |
 | `Schema.Class` + `Schema.tag("literal")` on an explicitly-named field when the discriminator belongs to a FOREIGN contract | `Schema.TaggedClass` for a foreign discriminator — it hardwires the key `_tag` (see below) |
 
+## A homogeneous-Type union is encode-lossy: keep the Type heterogeneous when the wire form must survive
+
+`Schema.Union([A, A.FromString])` — the reflex for "accept either the object
+or its string shorthand" — **cannot round-trip the input encoding** when both
+members decode to the *same* Type. On encode the union collapses to the
+**first** member that produces that Type, regardless of which branch decoded
+the value. A value parsed from the string form re-encodes as the object form,
+silently. This is the mechanism behind the round-4 `@effected/package-json`
+`Person` data-loss bug (string-form `author` rewritten to object form), and it
+is why `Person.FromValue` carries a `wireForms` WeakMap plus a faithfulness
+check — the union cannot remember which branch a value came from, so the code
+must.
+
+Probed, `packages/package-json`, `effect@4.0.0-beta.99`:
+
+```ts
+const A = Schema.Struct({ name: Schema.String })            // Type {name}, Encoded {name}
+const AFromString = Schema.String.pipe(Schema.decodeTo(A,   // Type {name}, Encoded string
+  SchemaTransformation.transform({ decode: (s) => ({ name: s }), encode: (a) => a.name })))
+const U = Schema.Union([A, AFromString])
+
+const v = Schema.decodeUnknownSync(U)("alice")              // via AFromString → {name:"alice"}
+Schema.encodeUnknownSync(U)(v)                              // → {name:"alice"} (OBJECT), not "alice"
+// round-trips to the string form? false
+```
+
+The rule: **if two union members decode to the same Type, that union cannot
+preserve which encoding an input used.** When wire-form fidelity matters, keep
+the Type heterogeneous (a distinct `_tag` or shape per encoding), or remember
+the original wire form out of band and replay it on encode as `Person` does.
+A "class IS the schema" homogeneous union reads as symmetric and is not.
+
 ## The `message` getter: ternary chain, not an exhaustive switch
 
 Every `TaggedErrorClass` with a multi-reason `message` hits this. A `switch` over

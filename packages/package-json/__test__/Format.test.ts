@@ -162,6 +162,60 @@ describe("canonical top-level key order (sort-package-json@4.0.0)", () => {
 	);
 });
 
+describe("people-field wire form survives the strict format path", () => {
+	it.effect("string-form author is not rewritten to object form", () =>
+		Effect.gen(function* () {
+			const json = yield* decodeAndRender(
+				{ ...minimal, author: "Ann Lee <ann@x.dev> (https://x.dev)" },
+				{ newline: false },
+			);
+			assert.strictEqual(
+				json,
+				'{\n  "name": "my-pkg",\n  "version": "1.0.0",\n  "author": "Ann Lee <ann@x.dev> (https://x.dev)"\n}',
+			);
+		}),
+	);
+
+	it.effect("mixed-form contributors each keep their own encoding", () =>
+		Effect.gen(function* () {
+			const json = yield* decodeAndRender(
+				{ ...minimal, contributors: ["Bo <bo@x.dev>", { name: "Cy", role: "reviewer" }] },
+				{ newline: false },
+			);
+			const parsed = JSON.parse(json) as { contributors: ReadonlyArray<unknown> };
+			assert.deepStrictEqual(parsed.contributors, ["Bo <bo@x.dev>", { name: "Cy", role: "reviewer" }]);
+		}),
+	);
+
+	it.effect("unknown keys on an object-form author are not dropped", () =>
+		Effect.gen(function* () {
+			const json = yield* decodeAndRender({ ...minimal, author: { name: "Dee", twitter: "@dee" } }, { newline: false });
+			const parsed = JSON.parse(json) as { author: Record<string, unknown> };
+			assert.deepStrictEqual(parsed.author, { name: "Dee", twitter: "@dee" });
+		}),
+	);
+
+	it.effect("editing another field leaves the string author encoding alone", () =>
+		Effect.gen(function* () {
+			// The consumer's actual flow: read, change something unrelated, write.
+			const pkg = yield* Package.decode({ ...minimal, author: "Ann Lee <ann@x.dev>" });
+			const bumped = yield* Package.setVersion(pkg, "1.1.0");
+			const parsed = JSON.parse(bumped.toJsonString()) as Record<string, unknown>;
+			assert.strictEqual(parsed.version, "1.1.0");
+			assert.strictEqual(parsed.author, "Ann Lee <ann@x.dev>");
+		}),
+	);
+
+	it.effect("a manifest with a string author round-trips byte-identically", () =>
+		Effect.gen(function* () {
+			const source = '{\n\t"name": "my-pkg",\n\t"version": "1.0.0",\n\t"author": "Ann Lee <ann@x.dev>"\n}\n';
+			const raw = JSON.parse(source) as Record<string, unknown>;
+			const output = yield* decodeAndRender(raw, { indent: "preserve", sourceText: source });
+			assert.strictEqual(output, source);
+		}),
+	);
+});
+
 describe("byte parity with sort-package-json@4.0.0 on real manifests", () => {
 	const fixtures = ["root", "package-json", "semver", "toml", "workspaces"] as const;
 

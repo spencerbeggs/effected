@@ -230,6 +230,7 @@ const readPatternsSync = (options: WorkspacesSyncOptions, root: string): Readonl
 /** Build a `WorkspacePackage` from a directory, or `null` if its manifest is unusable. */
 const readPackageSync = (
 	options: WorkspacesSyncOptions,
+	root: string,
 	directory: string,
 	relativePath: string,
 ): WorkspacePackage | null => {
@@ -262,6 +263,9 @@ const readPackageSync = (
 		path: directory,
 		packageJsonPath,
 		relativePath,
+		// Carried exactly as the Effect enumerator carries it — the two entry
+		// points must not disagree about what a discovered package knows.
+		workspaceRoot: root,
 		private: raw.private === true,
 		dependencies: stringRecord(raw.dependencies) ?? {},
 		devDependencies: stringRecord(raw.devDependencies) ?? {},
@@ -416,10 +420,10 @@ export const getWorkspacePackagesSync = (
 	for (const [relativePath, absolute] of [...included.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
 		if (relativePath === "." || absolute === root) continue;
 		if (globs.excludes.some((exclude: GlobPattern) => exclude.matches(relativePath))) continue;
-		const pkg = readPackageSync(options, absolute, relativePath);
+		const pkg = readPackageSync(options, root, absolute, relativePath);
 		if (pkg !== null) members.push(pkg);
 	}
 
-	const rootPackage = readPackageSync(options, root, ".");
+	const rootPackage = readPackageSync(options, root, root, ".");
 	return rootPackage === null ? members : [rootPackage, ...members];
 };

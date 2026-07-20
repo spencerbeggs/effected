@@ -9,7 +9,7 @@
 // TomlParseError / TomlStringifyError. The dependency edge runs facade →
 // engine only, so `noImportCycles` stays satisfied.
 
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { isRawTomlError } from "./internal/diagnostics.js";
 import { isGuardExceeded } from "./internal/limits.js";
 import { parseExpressions } from "./internal/parser.js";
@@ -75,17 +75,20 @@ export class TomlStringifyError extends Schema.TaggedErrorClass<TomlStringifyErr
  * Run the parser and semantic pass, materializing the engine's raw carriers
  * into the typed error: `RawTomlError` becomes a positioned diagnostic and a
  * `GuardExceeded` depth trip becomes a `NestingDepthExceeded` diagnostic
- * (never an unhandled defect). Anything else is a genuine defect and rethrows.
+ * (never an unhandled defect). Anything else is a genuine defect and rethrows
+ * — synchronously to a `Result` caller, and as a `Die` through the `Effect`
+ * forms, which evaluate this inside the effect.
  */
-const parseOrFail = (text: string): Effect.Effect<unknown, TomlParseError> =>
-	Effect.try({
-		try: () => buildValue(parseExpressions(text)),
-		catch: (defect) => {
-			if (isRawTomlError(defect)) {
-				return new TomlParseError({ diagnostics: [TomlDiagnostic.fromRaw(text, defect.diagnostic)] });
-			}
-			if (isGuardExceeded(defect)) {
-				return new TomlParseError({
+const parseToResult = (text: string): Result.Result<unknown, TomlParseError> => {
+	try {
+		return Result.succeed(buildValue(parseExpressions(text)));
+	} catch (defect) {
+		if (isRawTomlError(defect)) {
+			return Result.fail(new TomlParseError({ diagnostics: [TomlDiagnostic.fromRaw(text, defect.diagnostic)] }));
+		}
+		if (isGuardExceeded(defect)) {
+			return Result.fail(
+				new TomlParseError({
 					diagnostics: [
 						TomlDiagnostic.fromRaw(text, {
 							code: "NestingDepthExceeded",
@@ -94,32 +97,38 @@ const parseOrFail = (text: string): Effect.Effect<unknown, TomlParseError> =>
 							length: 0,
 						}),
 					],
-				});
-			}
-			throw defect;
-		},
-	});
+				}),
+			);
+		}
+		throw defect;
+	}
+};
 
-const stringifyOrFail = (value: unknown, options?: TomlStringifyOptions): Effect.Effect<string, TomlStringifyError> =>
-	Effect.try({
-		try: () => stringifyValue(value, options?.newline ?? "\n"),
-		catch: (defect) => {
-			if (isRawTomlError(defect)) {
-				return new TomlStringifyError({ diagnostic: TomlDiagnostic.fromRaw("", defect.diagnostic) });
-			}
-			if (isGuardExceeded(defect)) {
-				return new TomlStringifyError({
+const stringifyToResult = (
+	value: unknown,
+	options?: TomlStringifyOptions,
+): Result.Result<string, TomlStringifyError> => {
+	try {
+		return Result.succeed(stringifyValue(value, options?.newline ?? "\n"));
+	} catch (defect) {
+		if (isRawTomlError(defect)) {
+			return Result.fail(new TomlStringifyError({ diagnostic: TomlDiagnostic.fromRaw("", defect.diagnostic) }));
+		}
+		if (isGuardExceeded(defect)) {
+			return Result.fail(
+				new TomlStringifyError({
 					diagnostic: TomlDiagnostic.fromRaw("", {
 						code: "NestingDepthExceeded",
 						message: defect.message,
 						offset: 0,
 						length: 0,
 					}),
-				});
-			}
-			throw defect;
-		},
-	});
+				}),
+			);
+		}
+		throw defect;
+	}
+};
 
 // ── Bound codec ─────────────────────────────────────────────────────────────
 
@@ -171,33 +180,115 @@ export class Toml {
 	private constructor() {}
 
 	/**
-	 * Parse a TOML 1.1.0 document into a plain JavaScript value: tables and
-	 * inline tables become plain objects (`__proto__` lands as an own data
-	 * property), arrays become plain arrays, integers become `number` (or
-	 * `bigint` past 2^53) and date-times become the four `TomlDateTime`
-	 * classes. Fails with {@link TomlParseError} at the first violation;
-	 * returns `unknown`, never `any`.
+	 * Parse a TOML 1.1.0 document into a plain JavaScript value, synchronously,
+	 * returning a `Result` instead of an `Effect`: tables and inline tables
+	 * become plain objects (`__proto__` lands as an own data property), arrays
+	 * become plain arrays, integers become `number` (or `bigint` past 2^53) and
+	 * date-times become the four `TomlDateTime` classes. Fails with
+	 * {@link TomlParseError} at the first violation; returns `unknown`, never
+	 * `any`.
 	 *
 	 * A nesting-depth bomb (arrays or inline tables past the engine cap) also
 	 * fails through {@link TomlParseError} with a `NestingDepthExceeded`
 	 * diagnostic, never as an unhandled defect.
+	 *
+	 * @remarks
+	 * {@link Toml.parse} is defined in terms of this function; the two never
+	 * diverge. Reach for the `Effect` variant inside Effect code — it carries
+	 * the `Toml.parse` tracing span — and for this one at synchronous
+	 * boundaries such as a lint-staged handler.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Toml } from "@effected/toml";
+	 * import { Result } from "effect";
+	 *
+	 * const ok = Toml.parseResult('name = "Alice"');
+	 * if (Result.isSuccess(ok)) {
+	 *   console.log(ok.success); // => { name: "Alice" }
+	 * }
+	 *
+	 * const bad = Toml.parseResult("name = ");
+	 * if (Result.isFailure(bad)) {
+	 *   console.log(bad.failure._tag); // => "TomlParseError"
+	 * }
+	 * ```
+	 *
+	 * @param text - The TOML source to parse.
+	 * @returns A `Result` succeeding with the decoded value (`unknown`, never
+	 *   `any`), or failing with {@link TomlParseError}.
 	 */
-	static readonly parse = Effect.fn("Toml.parse")(function* (text: string) {
-		return yield* parseOrFail(text);
-	});
+	static parseResult(text: string): Result.Result<unknown, TomlParseError> {
+		return parseToResult(text);
+	}
 
 	/**
-	 * Stringify a plain JavaScript value as a canonical TOML document: within
-	 * a table, non-table pairs first, then sub-tables as `[dotted.header]`
+	 * Parse a TOML 1.1.0 document into a plain JavaScript value. Defined in
+	 * terms of {@link Toml.parseResult} — synchronous callers can use that
+	 * variant directly.
+	 *
+	 * @param text - The TOML source to parse.
+	 * @returns An `Effect` that succeeds with the decoded value, or fails with
+	 *   {@link TomlParseError}.
+	 */
+	static readonly parse = Effect.fn("Toml.parse")((text: string) => Effect.fromResult(Toml.parseResult(text)));
+
+	/**
+	 * Stringify a plain JavaScript value as a canonical TOML document,
+	 * synchronously, returning a `Result` instead of an `Effect`: within a
+	 * table, non-table pairs first, then sub-tables as `[dotted.header]`
 	 * sections depth-first, then arrays of tables as `[[dotted.header]]`
 	 * sections, a blank line before every header except at document start.
 	 * Fails with {@link TomlStringifyError} on unsupported values (TOML has no
 	 * null), out-of-int64-range `bigint`s, circular references and
 	 * depth-guard trips — all on the typed channel.
+	 *
+	 * @remarks
+	 * {@link Toml.stringify} is defined in terms of this function; the two
+	 * never diverge. Reach for the `Effect` variant inside Effect code — it
+	 * carries the `Toml.stringify` tracing span — and for this one at
+	 * synchronous boundaries.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Toml } from "@effected/toml";
+	 * import { Result } from "effect";
+	 *
+	 * const ok = Toml.stringifyResult({ name: "Alice" });
+	 * if (Result.isSuccess(ok)) {
+	 *   console.log(ok.success); // => 'name = "Alice"\n'
+	 * }
+	 *
+	 * const bad = Toml.stringifyResult({ nope: null });
+	 * if (Result.isFailure(bad)) {
+	 *   console.log(bad.failure._tag); // => "TomlStringifyError"
+	 * }
+	 * ```
+	 *
+	 * @param value - The plain JavaScript value to stringify.
+	 * @param options - Optional {@link TomlStringifyOptions}; `newline`
+	 *   defaults to `"\n"`.
+	 * @returns A `Result` succeeding with the TOML text, or failing with
+	 *   {@link TomlStringifyError}.
 	 */
-	static readonly stringify = Effect.fn("Toml.stringify")(function* (value: unknown, options?: TomlStringifyOptions) {
-		return yield* stringifyOrFail(value, options);
-	});
+	static stringifyResult(value: unknown, options?: TomlStringifyOptions): Result.Result<string, TomlStringifyError> {
+		return stringifyToResult(value, options);
+	}
+
+	/**
+	 * Stringify a plain JavaScript value as a canonical TOML document. Defined
+	 * in terms of {@link Toml.stringifyResult} — synchronous callers can use
+	 * that variant directly.
+	 *
+	 * @param value - The plain JavaScript value to stringify.
+	 * @param options - Optional {@link TomlStringifyOptions}; `newline`
+	 *   defaults to `"\n"`.
+	 * @returns An `Effect` that succeeds with the TOML text, or fails with
+	 *   {@link TomlStringifyError}.
+	 */
+	static readonly stringify = Effect.fn("Toml.stringify")((value: unknown, options?: TomlStringifyOptions) =>
+		Effect.fromResult(Toml.stringifyResult(value, options)),
+	);
 
 	/**
 	 * A `Schema<unknown, string>` decoding a TOML document and encoding values
@@ -217,7 +308,7 @@ export class Toml {
 							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(input), { message: error.message })),
 						),
 					encode: (value: unknown) =>
-						stringifyOrFail(value).pipe(
+						Effect.fromResult(Toml.stringifyResult(value)).pipe(
 							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(value), { message: error.message })),
 						),
 				}),

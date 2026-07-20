@@ -90,6 +90,47 @@ describe("YamlFormat", () => {
 		});
 	});
 
+	describe("quoteStyle", () => {
+		// Exercises the AST (node-path) stringifier: YamlFormattingOptions derives
+		// every YamlStringifyOptions field, quoteStyle included. On this path the
+		// option governs only scalars with no style of their own — a value the
+		// caller just inserted — because composed nodes carry their source style.
+		it.effect("a modify-inserted value requiring quoting follows the option", () =>
+			Effect.gen(function* () {
+				const text = "deps:\n  a: 1\n";
+				assert.strictEqual(yield* YamlFormat.modifyToString(text, ["deps", "a"], "*"), "deps:\n  a: '*'\n");
+				assert.strictEqual(
+					yield* YamlFormat.modifyToString(text, ["deps", "a"], "*", { quoteStyle: "double" }),
+					'deps:\n  a: "*"\n',
+				);
+			}),
+		);
+
+		it.effect("a modify-inserted value needing no quoting stays plain under either setting", () =>
+			Effect.gen(function* () {
+				const text = "deps:\n  a: 1\n";
+				assert.strictEqual(
+					yield* YamlFormat.modifyToString(text, ["deps", "a"], "beta", { quoteStyle: "double" }),
+					"deps:\n  a: beta\n",
+				);
+			}),
+		);
+
+		it("formatting preserves an existing scalar's own quote style rather than restyling it", () => {
+			// Reformatting is not a restyling pass: a single-quoted source scalar
+			// stays single-quoted even under quoteStyle "double".
+			const options = YamlFormattingOptions.make({ quoteStyle: "double" });
+			assert.strictEqual(YamlFormat.formatToString("k: '*'\n", undefined, options), "k: '*'\n");
+		});
+
+		it("YamlFormattingOptions.make constructs a validated instance carrying the derived field", () => {
+			const options = YamlFormattingOptions.make({ quoteStyle: "double", preserveComments: false });
+			assert.instanceOf(options, YamlFormattingOptions);
+			assert.strictEqual(options.quoteStyle, "double");
+			assert.throws(() => YamlFormattingOptions.make({ quoteStyle: "backtick" as unknown as "single" }));
+		});
+	});
+
 	describe("modify — replace", () => {
 		it.effect("updates an existing mapping value", () =>
 			Effect.gen(function* () {
@@ -260,6 +301,70 @@ describe("YamlFormat", () => {
 				const text = "a: 1\n";
 				const out = yield* YamlFormat.modifyToString(text, [], "just a scalar");
 				assert.deepStrictEqual(yield* Yaml.parse(out), "just a scalar");
+			}),
+		);
+	});
+
+	describe("merge key", () => {
+		// A plain `<<` mapping key resolves to `tag:yaml.org,2002:merge` and
+		// splices the aliased mapping into its parent; `'<<'` is an ordinary
+		// string key that merges nothing. Quoting it on re-emission is a silent
+		// semantic rewrite — the document still parses and still round-trips,
+		// which is exactly why nothing caught it.
+		it("leaves a plain merge key unquoted", () => {
+			const text = "base: &base\n  a: 1\nderived:\n  <<: *base\n  b: 2\n";
+			const out = YamlFormat.formatToString(text);
+			assert.include(out, "<<: *base");
+			assert.notInclude(out, "'<<'");
+			assert.notInclude(out, '"<<"');
+		});
+
+		it("leaves a plain merge key unquoted inside a flow mapping", () => {
+			const out = YamlFormat.formatToString("derived: {<<: *base, b: 2}\n");
+			assert.include(out, "<<: *base");
+			assert.notInclude(out, "'<<'");
+		});
+
+		it("leaves a plain merge key unquoted when nested several levels deep", () => {
+			const out = YamlFormat.formatToString("x:\n  y:\n    z:\n      <<: *base\n");
+			assert.include(out, "<<: *base");
+			assert.notInclude(out, "'<<'");
+		});
+
+		it("is idempotent on a document containing a merge key", () => {
+			const text = "base: &base\n  a: 1\nderived:\n  <<: *base\n  b: 2\n";
+			const once = YamlFormat.formatToString(text);
+			assert.strictEqual(YamlFormat.formatToString(once), once);
+		});
+
+		// The carve-out is deliberately narrow: it reads the key's SOURCE style,
+		// so a key the author quoted on purpose keeps the quotes that make it a
+		// literal string key rather than a merge key.
+		it("preserves an explicitly single-quoted '<<' key as a literal string key", () => {
+			const out = YamlFormat.formatToString("derived:\n  '<<': *base\n");
+			assert.include(out, "'<<': *base");
+		});
+
+		it('preserves an explicitly double-quoted "<<" key as a literal string key', () => {
+			const out = YamlFormat.formatToString('derived:\n  "<<": *base\n');
+			assert.include(out, '"<<": *base');
+		});
+
+		// `<<` in value position is an ordinary string either way — plain and
+		// quoted resolve to the same scalar — so the carve-out does not reach it
+		// and the existing conservative quoting stands.
+		it("does not change quoting of `<<` in value position", () => {
+			const out = YamlFormat.formatToString("a: <<\n");
+			assert.include(out, "'<<'");
+		});
+
+		// The value path is the opposite case: a JS object key "<<" is a literal
+		// string key with no merge intent, so emitting it plain would CREATE
+		// merge semantics that the input never had. It stays quoted.
+		it.effect("still quotes a '<<' key on the value path, where there is no merge intent", () =>
+			Effect.gen(function* () {
+				const out = yield* Yaml.stringify({ "<<": 1 });
+				assert.include(out, "'<<'");
 			}),
 		);
 	});

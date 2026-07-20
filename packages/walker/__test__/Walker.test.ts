@@ -1,5 +1,5 @@
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Effect, FileSystem, Option, Path, PlatformError, Ref } from "effect";
+import { Cause, Effect, FileSystem, Option, Path, PlatformError, Ref } from "effect";
 import { Walker } from "../src/Walker.js";
 
 layer(Path.layer)("Walker.ascend", (it) => {
@@ -21,6 +21,137 @@ layer(Path.layer)("Walker.ascend", (it) => {
 		Effect.gen(function* () {
 			const dirs = yield* Walker.ascend("/a/b/c", { stopAt: "/a" });
 			assert.deepStrictEqual(dirs, ["/a/b/c", "/a/b", "/a"]);
+		}),
+	);
+
+	// The ceiling is matched against each directory's RESOLVED form, not by raw
+	// string equality. Under raw equality every one of these ceilings names a real
+	// ancestor of `start` and yet matches nothing, so the ascent runs past it to
+	// the filesystem root — the option failing OPEN, invisibly, into exactly the
+	// unbounded walk it exists to prevent. Callers cannot be asked to remember to
+	// resolve first: forgetting is undetectable from the call site.
+	it.effect("stops at a ceiling with a trailing separator", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascend("/a/b/c", { stopAt: "/a/" });
+			assert.deepStrictEqual(dirs, ["/a/b/c", "/a/b", "/a"]);
+		}),
+	);
+
+	it.effect("stops at a ceiling carrying a dot segment", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascend("/a/b/c", { stopAt: "/a/./b" });
+			assert.deepStrictEqual(dirs, ["/a/b/c", "/a/b"]);
+		}),
+	);
+
+	it.effect("stops at a ceiling carrying a parent segment", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascend("/a/b/c", { stopAt: "/a/b/x/.." });
+			assert.deepStrictEqual(dirs, ["/a/b/c", "/a/b"]);
+		}),
+	);
+
+	// A relative ceiling DIES, never resolved against `process.cwd()`. Resolving
+	// one would make the same ceiling name different directories in a lint-staged
+	// hook, a CLI run from a package directory, and a test runner — the fail-open
+	// class this whole change exists to close, arriving through a different door.
+	// `ascend` therefore reads `process.cwd()` nowhere.
+	//
+	// A DEFECT and not a typed error, deliberately, and this is the test that
+	// pins it: `@effected/config-file`'s resolver contract absorbs every typed
+	// failure into `Option.none()`, so a typed rejection would be swallowed there
+	// and re-emerge as a clean-looking "no config found" — the silent wrong answer
+	// again. `Effect.catch` does not catch defects, so only dying survives that.
+	// `ascend`'s error channel is `never`, so a Failure exit can only be a defect.
+	it.effect("dies on a relative ceiling rather than resolving it against the working directory", () =>
+		Effect.gen(function* () {
+			// `catchCause` reaches the defect without narrowing an Exit union; the
+			// success branch never runs, so anything it yields is unreachable.
+			const defect = yield* Effect.catchCause(Walker.ascend("/a/b/c", { stopAt: "b" }), (cause) =>
+				Effect.succeed(Cause.squash(cause)),
+			);
+			assert.instanceOf(defect, Error);
+			assert.match(defect.message, /stopAt must be an absolute path/);
+			// The ceiling is reported exactly as supplied, not normalized — a
+			// normalized echo would hide which spelling the caller actually passed.
+			assert.match(defect.message, /"b"/);
+			assert.match(defect.message, /"\/a\/b\/c"/);
+		}),
+	);
+
+	// The die must survive the absorption that motivated it. This reconstructs
+	// config-file's `absorb` contract exactly and proves a relative ceiling still
+	// reaches the caller through it — a typed error here would be swallowed and
+	// reported as a clean `Option.none()`.
+	it.effect("survives an absorbing caller that catches every typed failure", () =>
+		Effect.gen(function* () {
+			const absorbed = Effect.catch(Walker.ascend("/a/b/c", { stopAt: "b" }), () => Effect.succeed(["absorbed"]));
+			const exit = yield* Effect.exit(absorbed);
+			assert.strictEqual(exit._tag, "Failure", "a relative ceiling must not be absorbable into a clean result");
+		}),
+	);
+
+	// The shapes most likely to be passed by accident: a bare directory name, a
+	// dot-relative path, a parent-relative path, and the empty string.
+	it.effect("dies on every relative ceiling shape", () =>
+		Effect.gen(function* () {
+			for (const stopAt of ["pkgs", "./pkgs", "../pkgs", ".", "..", ""]) {
+				const exit = yield* Effect.exit(Walker.ascend("/a/b/c", { stopAt }));
+				assert.strictEqual(exit._tag, "Failure", `expected ${JSON.stringify(stopAt)} to be refused`);
+			}
+		}),
+	);
+
+	// Only the CEILING is constrained. A relative `start` with no ceiling must
+	// keep working exactly as it did — over-applying the rejection to `start`
+	// would break every caller that ascends from a relative path.
+	it.effect("still ascends from a relative start when no ceiling is given", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascend("a/b");
+			assert.deepStrictEqual(dirs, ["a/b", "a", "."]);
+		}),
+	);
+
+	// Idempotence, pinned directly: `@effected/workspaces` already resolves its
+	// ceiling at the call site, so resolving again inside `ascend` must be a no-op
+	// for an already-resolved path. If normalization were ever anything but
+	// idempotent, that caller would break silently.
+	it.effect("leaves an already-resolved ceiling unchanged", () =>
+		Effect.gen(function* () {
+			const path = yield* Path.Path;
+			const ceiling = path.resolve("/fixture/repo");
+			assert.strictEqual(ceiling, "/fixture/repo");
+			const dirs = yield* Walker.ascend("/fixture/repo/packages/a", { stopAt: ceiling });
+			assert.deepStrictEqual(dirs, ["/fixture/repo/packages/a", "/fixture/repo/packages", "/fixture/repo"]);
+		}),
+	);
+
+	// The filesystem root as a ceiling, from a start already AT the root: the
+	// degenerate case where the ceiling break and the dirname fixpoint coincide.
+	it.effect("stops sanely when both start and the ceiling are the filesystem root", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* Walker.ascend("/", { stopAt: "/" }), ["/"]);
+			assert.deepStrictEqual(yield* Walker.ascend("/a/b", { stopAt: "/" }), ["/a/b", "/a", "/"]);
+		}),
+	);
+
+	// Normalization changes the COMPARISON, never the chain. The yielded strings
+	// stay the lexical ones derived from `start` — resolving them would quietly
+	// rewrite paths through a symlinked start, breaking `ascend`'s lexical
+	// contract for every caller that does not pass `stopAt` at all.
+	it.effect("yields the chain lexically even when the ceiling needed normalizing", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascend("/a/b/./c", { stopAt: "/a/" });
+			assert.deepStrictEqual(dirs, ["/a/b/./c", "/a/b/.", "/a/b", "/a"]);
+		}),
+	);
+
+	// A ceiling naming no ancestor still runs to the root — the documented
+	// behavior, and the control proving the tests above fail for the RIGHT reason.
+	it.effect("runs to the root when the ceiling names no ancestor", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascend("/a/b/c", { stopAt: "/x/y" });
+			assert.deepStrictEqual(dirs, ["/a/b/c", "/a/b", "/a", "/"]);
 		}),
 	);
 

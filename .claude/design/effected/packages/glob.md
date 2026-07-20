@@ -3,14 +3,15 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-17
-last-synced: 2026-07-17
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 98
 related:
   - ../effect-standards.md
   - ../package-inventory.md
   - ../releases.md
   - ../package-setup.md
+  - ../formatter-convention.md
   - walker.md
 ---
 
@@ -57,7 +58,7 @@ See `src/GlobPattern.ts` and `src/GlobSet.ts`; the index re-exports only.
 
 A `Schema.Class` with one encoded field, `source: string`; the compiled matcher is cached in a non-encoded private instance field (private indexes live outside the schema and are never encoded). Every construction path — `make`, `new`, decode, `FromString` — validates **compilability under default options** via a schema check, so a `GlobPattern` value is always defaults-compilable.
 
-- `GlobPattern.compile(source, options?): Effect<GlobPattern, GlobPatternError>` — the primary constructor and (with `GlobSet.compile`) the package's only fallible boundary, wrapped in `Effect.fn("GlobPattern.compile")`.
+- `GlobPattern.compileResult(source, options?): Result<GlobPattern, GlobPatternError>` — the **primitive**, and (with `GlobSet.compileResult`) the package's only fallible boundary. `GlobPattern.compile` is the same computation derived via `Effect.fromResult` behind `Effect.fn("GlobPattern.compile")`, so the `Effect` form adds a tracing span and nothing else, and the two cannot drift. This is the kit's [sync primitive policy](../formatter-convention.md#decision-6--the-sync-primitive-policy): compilation is pure, synchronous and `R = never`, so a synchronous host — the lint-staged handler that drove this — must not be made to build a runtime to compile a pattern.
 - A `FromString` transformation schema for embedding patterns in config schemas; decode failures surface as `SchemaError`.
 - `matches(candidate: string): boolean` — **total**, pure, no error channel.
 - Metadata getters: `hasMagic`, `negated`, `enumerationPrefix` (the longest literal directory prefix), `crossesSegments` (whether the pattern can match more than one level below `enumerationPrefix` — true iff it contains `**` or a `/` after the first magic segment).
@@ -79,7 +80,7 @@ Both held under a **second, independent consumer**: [`@effected/walker`](walker.
 
 A `Schema.Class` (encoded field `patterns: ReadonlyArray<string>`) with **set** semantics: a leading `!` marks an exclusion, and `matches(candidate) = someInclude && !someExclude`.
 
-- `GlobSet.compile(patterns): Effect<GlobSet, GlobPatternError>`, wrapped in `Effect.fn("GlobSet.compile")`.
+- `GlobSet.compileResult(patterns): Result<GlobSet, GlobPatternError>`, with `GlobSet.compile` derived from it exactly as on `GlobPattern`.
 - Structural accessors serving the enumerator: `literals` (deduped non-magic includes), `wildcards` (magic includes), `excludes`, and `isExcluded(candidate)`.
 
 `GlobSet` pins default options internally — it is the drift-free workspaces contract and takes no options surface. The single-pattern vs set negation distinction is deliberate: minimatch's `!` negates the whole match, while the set treats `!` as exclusion filters applied after positive matching; both exist, at different levels, on purpose. Expansion/classification is pinned **per expanded alternative**: a braced pattern that expands to both a literal and a wildcard contributes each alternative to its own bucket.
@@ -98,7 +99,7 @@ The fs-walk optimizer passes (`optimizationLevel` ≥ 1) are kept behind their o
 
 ## Observability
 
-Pure-tier house rule: named `Effect.fn` spans on the public fallible boundaries only — `GlobPattern.compile` and `GlobSet.compile`. `matches` is infallible and hot: span-free. No metrics, telemetry-agnostic.
+Pure-tier house rule: named `Effect.fn` spans on the public fallible boundaries only — `GlobPattern.compile` and `GlobSet.compile`. The span is now the *entire* content of those two wrappers, the engine having moved down to the `*Result` primitives; that is the point of the derivation, not an erosion of it, since a caller who wants the span still gets it by name. `matches` is infallible and hot: span-free. No metrics, telemetry-agnostic.
 
 ## Testing
 
@@ -120,4 +121,6 @@ Per [package-setup.md](../package-setup.md): scaffolded from a pure sibling (jso
 - The `packages:` enumerator is expressed over `GlobSet`: a `literals` fast-path, `wildcards` driving `readDirectory` from `enumerationPrefix`, and `crossesSegments` triggering the bounded descent that makes `**` real end to end.
 - `WorkspaceSnapshots` ([workspaces.md](workspaces.md)) matches the same compiled set against `git ls-tree` entries from [`@effected/git`](git.md) for at-ref discovery.
 
-[`@effected/walker`](walker.md)'s `descend` is the second consumer, and the first outside workspaces: it peers on glob **type-and-property only** (a type-level `GlobPattern` import, the metadata getters and `matches`), so the boundary holds in the other direction too — the walker that does the IO takes no value dependency on the matcher that does none.
+[`@effected/walker`](walker.md)'s `descend` is the second consumer, and the first outside workspaces: it uses glob **type-and-property only** (a type-level `GlobPattern` import, the metadata getters and `matches`), so the boundary holds in the other direction too — the walker that does the IO takes no value dependency on the matcher that does none.
+
+That is true of `descend`, and **no longer true of the package**: walker's `compileAndExpand` ([walker.md](walker.md#compileandexpand--the-recipe-seam)) value-imports `GlobPattern.compileResult` and `GlobPatternError` to own the compile-plus-expand seam. The peer was already declared so the dependency graph is unchanged, but the type-only characterization now describes one module rather than the consumer. `compileResult` being the primitive is what makes that seam cheap: walker folds a `Result` in place instead of crossing an `Effect` boundary twice to reach the same engine.
