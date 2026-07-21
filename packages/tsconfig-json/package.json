@@ -41,8 +41,8 @@
 		"typescript": "catalog:silk"
 	},
 	"peerDependencies": {
-		"@effected/jsonc": "workspace:*",
-		"@effected/walker": "workspace:*",
+		"@effected/jsonc": "workspace:~",
+		"@effected/walker": "workspace:~",
 		"effect": "catalog:effect"
 	},
 	"engines": {

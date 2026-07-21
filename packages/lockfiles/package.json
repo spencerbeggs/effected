@@ -43,10 +43,10 @@
 		"typescript": "catalog:silk"
 	},
 	"peerDependencies": {
-		"@effected/jsonc": "workspace:*",
-		"@effected/npm": "workspace:*",
-		"@effected/semver": "workspace:*",
-		"@effected/yaml": "workspace:*",
+		"@effected/jsonc": "workspace:~",
+		"@effected/npm": "workspace:~",
+		"@effected/semver": "workspace:~",
+		"@effected/yaml": "workspace:~",
 		"effect": "catalog:effect"
 	},
 	"engines": {

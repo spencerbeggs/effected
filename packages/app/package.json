@@ -43,9 +43,9 @@
 		"typescript": "catalog:silk"
 	},
 	"peerDependencies": {
-		"@effected/config-file": "workspace:*",
-		"@effected/store": "workspace:*",
-		"@effected/xdg": "workspace:*",
+		"@effected/config-file": "workspace:~",
+		"@effected/store": "workspace:~",
+		"@effected/xdg": "workspace:~",
 		"effect": "catalog:effect"
 	},
 	"engines": {

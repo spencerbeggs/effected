@@ -40,7 +40,7 @@
 		"typescript": "catalog:silk"
 	},
 	"peerDependencies": {
-		"@effected/semver": "workspace:*",
+		"@effected/semver": "workspace:~",
 		"effect": "catalog:effect"
 	},
 	"engines": {
