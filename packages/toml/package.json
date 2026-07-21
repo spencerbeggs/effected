@@ -40,7 +40,7 @@
 		"typescript": "catalog:silk"
 	},
 	"peerDependencies": {
-		"effect": "catalog:effect"
+		"effect": "catalog:effect:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"

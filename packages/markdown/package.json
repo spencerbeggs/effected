@@ -47,7 +47,7 @@
 		"@effected/jsonc": "workspace:~",
 		"@effected/toml": "workspace:~",
 		"@effected/yaml": "workspace:~",
-		"effect": "catalog:effect"
+		"effect": "catalog:effect:peers"
 	},
 	"peerDependenciesMeta": {
 		"@effected/jsonc": {

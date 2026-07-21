@@ -25,7 +25,7 @@ Two catalog families and a pnpmfile:
 ```json
 {
  "devDependencies": { "effect": "catalog:effect" },
- "peerDependencies": { "effect": "catalog:effectPeers" }
+ "peerDependencies": { "effect": "catalog:effect:peers" }
 }
 ```
 

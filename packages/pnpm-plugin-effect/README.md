@@ -67,8 +67,8 @@ Libraries want both catalogs: the pinned versions to develop and test against, a
     "@effect/ai-openai": "catalog:effect"
   },
   "peerDependencies": {
-    "effect": "catalog:effectPeers",
-    "@effect/ai-openai": "catalog:effectPeers"
+    "effect": "catalog:effect:peers",
+    "@effect/ai-openai": "catalog:effect:peers"
   }
 }
 ```
