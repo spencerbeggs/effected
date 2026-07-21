@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 92
 related:
   - ../architecture.md
@@ -40,7 +40,7 @@ The tree-shaking property is **measured, not assumed**: bundling a consumer that
 
 **Boundary tier.** All IO goes through core `FileSystem`/`Path`; the package never touches `node:fs`. R2 (the only propagation rule) names tier 3 alone, and every dependency here is a pure-tier `@effected/*` package, so the tier stays boundary.
 
-- `peerDependencies`: `effect` (`catalog:effect`) plus four `workspace:*` edges — `@effected/jsonc`, `@effected/yaml`, `@effected/toml` (the codecs' engines) and `@effected/walker` (the upward-traversal primitives). Each is mirrored in `devDependencies`.
+- `peerDependencies`: `effect` (`catalog:effect`) plus four `workspace:~` edges — `@effected/jsonc`, `@effected/yaml`, `@effected/toml` (the codecs' engines) and `@effected/walker` (the upward-traversal primitives). Each is mirrored in `devDependencies`.
 - `dependencies`: **none external.** The format engines arrive through the `@effected/*` peers; `smol-toml` never enters the tree (`@effected/toml` is a from-scratch engine). The accurate property is **zero external runtime dependencies** — every runtime edge is a pure `@effected/*` package, which is what [R1](../effect-standards.md#dependency-policy) permits.
 - `devDependencies`: the four peers mirrored, plus `@effect/platform-node` (`catalog:effect`) for integration tests that provide a real `FileSystem`.
 

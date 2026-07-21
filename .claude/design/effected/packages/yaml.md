@@ -200,7 +200,7 @@ A pure-tier library needs none — class statics suffice, and a config-file-styl
 
 ## Consumer seam
 
-`@effected/config-file`'s `ConfigCodec` interface is exactly the `Yaml` facade shape, so a one-file `YamlCodec` adapter is trivial (pure→pure, `workspace:*`). The codec lives in `@effected/config-file`, not in `@effected/yaml` — the dependency arrow points *at* yaml, never from it.
+`@effected/config-file`'s `ConfigCodec` interface is exactly the `Yaml` facade shape, so a one-file `YamlCodec` adapter is trivial (pure→pure, `workspace:~`). The codec lives in `@effected/config-file`, not in `@effected/yaml` — the dependency arrow points *at* yaml, never from it.
 
 ## Internal construction
 

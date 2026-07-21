@@ -6,7 +6,7 @@ Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` J
 
 ## Tier
 
-**Pure.** No services, no layers, no IO, no `R` anywhere. Peers: `effect` plus four pure-to-pure `workspace:*` edges — `@effected/jsonc` (bun), `@effected/yaml` (pnpm, yarn), `@effected/semver` (integrity ranges) and `@effected/npm` (the shared `DependencySpecifier`/`DependencyField`/`IntegrityHash` vocabulary) — each mirrored in devDependencies. Zero external runtime dependencies; the text-parsing engines arrive through the sibling packages, so nothing is vendored here.
+**Pure.** No services, no layers, no IO, no `R` anywhere. Peers: `effect` plus four pure-to-pure `workspace:~` edges — `@effected/jsonc` (bun), `@effected/yaml` (pnpm, yarn), `@effected/semver` (integrity ranges) and `@effected/npm` (the shared `DependencySpecifier`/`DependencyField`/`IntegrityHash` vocabulary) — each floating a published patch and mirrored in devDependencies by the plain `workspace:*` (the two specifiers now deliberately differ). Zero external runtime dependencies; the text-parsing engines arrive through the sibling packages, so nothing is vendored here.
 
 ## Public surface
 

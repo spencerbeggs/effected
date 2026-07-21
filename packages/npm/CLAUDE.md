@@ -11,7 +11,7 @@ Load when changing contract shapes, adding a resident concept, or reconciling ag
 
 An **internal package with no source repo** — not migrated from a `*-effect` repo. It was extracted from the `@effected/package-json` port to hold the dependency-resolution contracts that package-json *defines but cannot implement*: resolving a specifier needs workspace and catalog context a package.json-document library has no access to. Contract here, implementation elsewhere.
 
-**Pure tier.** Peers on `effect` plus one pure-to-pure `@effected/semver` `workspace:*` edge (in `peerDependencies` **and** `devDependencies`, never `dependencies` — the pure-tier peer-closure convention), used only to detect ranges in `DependencySpecifier`. Zero *external* runtime deps, no IO. The default layers are `Layer.succeed` over functions returning `Option.none()`. Re-check the tier before adding any dependency.
+**Pure tier.** Peers on `effect` plus one pure-to-pure `@effected/semver` edge — `workspace:~` in `peerDependencies` (so a published patch floats), mirrored by the plain `workspace:*` in `devDependencies`, never `dependencies` — the pure-tier peer-closure convention; the two specifiers now deliberately differ. Used only to detect ranges in `DependencySpecifier`. Zero *external* runtime deps, no IO. The default layers are `Layer.succeed` over functions returning `Option.none()`. Re-check the tier before adding any dependency.
 
 ## Exported surface
 
