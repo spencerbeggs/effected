@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-17
-last-synced: 2026-07-17
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 95
 related:
   - ../effect-standards.md
@@ -36,13 +36,13 @@ Runtime dependencies:
 | Dependency | Why |
 | --- | --- |
 | `@pnpm/catalogs.config` / `.protocol-parser` / `.resolver` / `.types` | pnpm catalog semantics — the tier-3 decision |
-| `@effected/glob` (`workspace:*`) | dependency-pattern matching and the `packages:` enumerator |
-| `@effected/lockfiles` (`workspace:*`) | the pure parsers this package feeds file content to |
-| `@effected/walker` (`workspace:*`) | the upward ascent that finds the workspace root |
-| `@effected/yaml` (`workspace:*`) | `pnpm-workspace.yaml` |
-| `@effected/package-json` (`workspace:*`) | the full-manifest bridge and the corepack `packageManager` codec |
-| `@effected/npm` (`workspace:*`) | the resolver **contracts** this package implements |
-| `@effected/git` (`workspace:*`) | typed git introspection — `ChangeDetector` and `WorkspaceSnapshots` run on its `Git` service |
+| `@effected/glob` (`workspace:~`) | dependency-pattern matching and the `packages:` enumerator |
+| `@effected/lockfiles` (`workspace:~`) | the pure parsers this package feeds file content to |
+| `@effected/walker` (`workspace:~`) | the upward ascent that finds the workspace root |
+| `@effected/yaml` (`workspace:~`) | `pnpm-workspace.yaml` |
+| `@effected/package-json` (`workspace:~`) | the full-manifest bridge and the corepack `packageManager` codec |
+| `@effected/npm` (`workspace:~`) | the resolver **contracts** this package implements |
+| `@effected/git` (`workspace:~`) | typed git introspection — `ChangeDetector` and `WorkspaceSnapshots` run on its `Git` service |
 | `effect` (peer) | core |
 
 There is no `minimatch` dependency — dependency-pattern matching and the enumerator's mini-glob both run on `@effected/glob`'s vendored engine. Subprocess spawning lives entirely behind `@effected/git`'s `ChildProcessSpawner` contract; there is no `node:child_process` anywhere here. Two modules are Node-only, and both are opt-in rather than on the main path. `ConfigDependencyHooks.layerLive` does an in-process dynamic `import()` of a config dependency's pnpmfile — a built-in/dynamic-import, not a dependency, so it does not affect tier, and its TSDoc names it plainly. `src/node-sync.ts` imports `node:fs` / `node:path`, but it is a **separate entry point** (`@effected/workspaces/node-sync`) that the index never re-exports, so nothing reaches it unless a consumer imports the subpath by name — the main entry stays platform-free (see [the escape hatch](#workspacessync--the-escape-hatch)). `WorkspacesSync` itself imports `node:*` not at all: since the 2026-07-16 retrofit its file and path operations are consumer-supplied.

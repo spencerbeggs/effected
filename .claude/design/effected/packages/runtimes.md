@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 95
 related:
   - ../effect-standards.md
@@ -29,8 +29,8 @@ The `runtime-resolver` **binary is not part of the kit** — it ships from the e
 IO through `effect`-core abstractions only (`HttpClient`); the consumer provides the platform layer at the edge. No external runtime dependency.
 
 - `peerDependencies`: `effect`.
-- `dependencies`: `@effected/semver` (`workspace:*`) — all version math.
-- `prepare`: `turbo run build:dev` (required by the `workspace:*` edge — see [package-setup.md](../package-setup.md#cross-package-build-dependencies)).
+- `dependencies`: `@effected/semver` (`workspace:~`) — all version math.
+- `prepare`: `turbo run build:dev` (required by the `workspace:~` edge — see [package-setup.md](../package-setup.md#cross-package-build-dependencies)).
 
 The version math is [@effected/semver](semver.md)'s `SemVer` and `Range` used directly (`Range.test`, `SemVer.compare`), **not** its `VersionCache` service: `VersionCache` is a singleton `Context.Service`, and the resolver needs three independent indices (Node, Bun, Deno) live at once, which a singleton cannot provide without three tags.
 

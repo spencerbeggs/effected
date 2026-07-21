@@ -30,7 +30,7 @@ related:
 The tier is **integrated** not because of that IO (which alone would be boundary) but because of the `spdx-expression-parse` runtime dependency: under [R1](../effect-standards.md#dependency-policy) any runtime import outside `effect` core makes a package tier 3, and this is the only `@effected` package that carries one.
 
 - `peerDependencies`: `effect` only (`catalog:effect`) — no `@effect/platform` peer, since FileSystem is core.
-- `dependencies`: `@effected/semver` (`workspace:*` — `SemVer` instances appear in `Package`'s API, but consumers read the decoded value far more than they construct their own, so a regular dependency rather than a peer); `@effected/npm` (`workspace:*` — the resolver contracts and shared specifier/integrity vocabulary); `spdx-expression-parse` (the runtime dependency that sets the tier).
+- `dependencies`: `@effected/semver` (`workspace:~` — `SemVer` instances appear in `Package`'s API, but consumers read the decoded value far more than they construct their own, so a regular dependency rather than a peer); `@effected/npm` (`workspace:~` — the resolver contracts and shared specifier/integrity vocabulary); `spdx-expression-parse` (the runtime dependency that sets the tier).
 - `devDependencies`: `@effect/platform-node` (`catalog:effect`) for integration tests that provide a real `FileSystem`; the usual `@effect/vitest`, `@types/node`, `typescript`.
 
 Peer closure holds: `effect` has no peers, and `@effected/semver` / `@effected/npm` each declare only `effect`. `@effect/platform-node` stays devDependencies-only; consumers of the file API provide their own platform implementation at the edge.

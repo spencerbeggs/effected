@@ -33,7 +33,7 @@ Resolution lives here rather than in package-json because it fundamentally requi
 - `peerDependencies`: `effect` (`catalog:effect`) plus one pure-to-pure `workspace:~` edge, `@effected/semver`, mirrored in `devDependencies`. The `RangeSpecifier` case validates its range through `@effected/semver`'s `Range.FromString`, which is why the edge exists; it is declared as a peer, not a regular dependency. Closure holds: `effect` has no peers and `@effected/semver` declares only `effect`.
 - `dependencies`: none.
 
-The dependency arrows point mostly **at** this package: `@effected/package-json`, `@effected/lockfiles` and `@effected/workspaces` all depend on it via `workspace:*`.
+The dependency arrows point mostly **at** this package: `@effected/package-json`, `@effected/lockfiles` and `@effected/workspaces` all depend on it via `workspace:~`.
 
 ## Module layout
 
