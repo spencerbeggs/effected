@@ -59,16 +59,38 @@ const AgeMinutes = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.
 
 // Match a package name against a single pattern with pnpm `@pnpm/matcher`
 // semantics: an exact-name match, or a `*`-glob where `*` matches ANY run of
-// characters INCLUDING `/`. All other regex metacharacters are escaped, so
-// `*` is the only wildcard. See the divergence note on `matchesExclude`.
+// characters INCLUDING `/`. Every other character matches literally, so `*`
+// is the only wildcard. See the divergence note on `matchesExclude`.
 const matchesPattern = (name: string, pattern: string): boolean => {
 	if (pattern === name) return true;
 	if (!pattern.includes("*")) return false;
-	// Escape every regex metacharacter EXCEPT `*`, then turn `*` into `.*`
-	// (crosses `/`, unlike minimatch). The class omits `*` so it survives to
-	// the second replace.
-	const source = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-	return new RegExp(`^${source}$`).test(name);
+	// Linear two-pointer wildcard scan (greedy `*` with backtrack-to-star):
+	// `*` matches any run of characters including `/` (crosses `/`, unlike
+	// minimatch); every other character matches literally. No RegExp is built
+	// from the pattern — a config-supplied pattern like `*a*a*a*b` must not be
+	// able to trigger catastrophic regex backtracking against a near-match.
+	let nameIndex = 0;
+	let patternIndex = 0;
+	let starIndex = -1;
+	let retryNameIndex = 0;
+	while (nameIndex < name.length) {
+		if (pattern[patternIndex] === "*") {
+			starIndex = patternIndex;
+			patternIndex += 1;
+			retryNameIndex = nameIndex;
+		} else if (pattern[patternIndex] === name[nameIndex]) {
+			patternIndex += 1;
+			nameIndex += 1;
+		} else if (starIndex !== -1) {
+			patternIndex = starIndex + 1;
+			retryNameIndex += 1;
+			nameIndex = retryNameIndex;
+		} else {
+			return false;
+		}
+	}
+	while (pattern[patternIndex] === "*") patternIndex += 1;
+	return patternIndex === pattern.length;
 };
 
 const matchesExclude = (name: string, patterns: readonly string[]): boolean =>
