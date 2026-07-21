@@ -1,6 +1,6 @@
 {
 	"name": "@effected/workspaces",
-	"version": "0.5.1",
+	"version": "0.5.2",
 	"private": true,
 	"description": "Monorepo workspace tooling as Effect services — root discovery, package enumeration, the dependency graph, package-manager detection, pnpm catalog resolution, lockfile IO and git-based change detection.",
 	"keywords": [
