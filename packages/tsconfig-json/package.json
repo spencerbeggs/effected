@@ -1,6 +1,6 @@
 {
 	"name": "@effected/tsconfig-json",
-	"version": "0.2.7",
+	"version": "0.3.0",
 	"private": true,
 	"description": "Composable tsconfig.json handling for Effect: schemas, extends-chain resolution, and config discovery.",
 	"keywords": ["tsconfig", "typescript", "config", "extends", "resolution", "effect", "schema", "effected"],
