@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-19
-last-synced: 2026-07-19
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 95
 related:
   - ../effect-standards.md
@@ -129,7 +129,7 @@ The toml-test tagged-JSON mapping (`{"type": "datetime-local", "value": …}`) i
 
 ## Consumer seam
 
-`TomlCodec` implements `@effected/config-file`'s `ConfigCodec` over `Toml.parse`/`Toml.stringify`. It lives inside `@effected/config-file` as one of four free-standing codec exports — see [the config-file codecs](config-file.md). `@soda3js/config` therefore consumes `config-file` and `toml`. **Nothing in toml knows about config-file**: the edge is config-file → toml, a `workspace:*` peer, and this package stays a pure, unaware format package.
+`TomlCodec` implements `@effected/config-file`'s `ConfigCodec` over `Toml.parse`/`Toml.stringify`. It lives inside `@effected/config-file` as one of four free-standing codec exports — see [the config-file codecs](config-file.md). `@soda3js/config` therefore consumes `config-file` and `toml`. **Nothing in toml knows about config-file**: the edge is config-file → toml, a `workspace:~` peer, and this package stays a pure, unaware format package.
 
 ## Parity and implementation notes
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 95
 related:
   - ../effect-standards.md
@@ -29,7 +29,7 @@ Three separations are load-bearing: raw-env resolution vs namespaced resolution 
 
 **Boundary tier.** IO happens exclusively through `effect`-core `FileSystem` and `Path`, arriving via the `R` channel from the consumer's platform layer.
 
-- `peerDependencies`: `effect`, `@effected/walker` (`workspace:*`), `@effected/config-file` (`workspace:*`).
+- `peerDependencies`: `effect`, `@effected/walker` (`workspace:~`), `@effected/config-file` (`workspace:~`).
 - `dependencies`: **none**.
 - `devDependencies` mirror the workspace peers, plus the standard build/test set.
 

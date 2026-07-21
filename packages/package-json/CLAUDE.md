@@ -12,8 +12,8 @@ changing the public surface, the `rest` wire transform, or the error taxonomy.
 `src/spdx-expression-parse.d.ts`). Under the three-tier taxonomy any runtime
 import outside `effect` core makes a package integrated — this is the only
 `@effected` package that carries such a dependency. It also depends on
-`@effected/npm` and `@effected/semver` via `workspace:*`; those pure-to-integrated
-`workspace:*` edges are separate from the `spdx` dep that sets the tier.
+`@effected/npm` and `@effected/semver` via `workspace:~`; those pure-to-integrated
+`workspace:~` edges are separate from the `spdx` dep that sets the tier.
 
 It also does IO, and **all of it lives in `src/PackageJsonFile.ts`** — one
 module, one `Context.Service`, two methods (`read`, `write`). Every other module

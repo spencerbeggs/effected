@@ -296,10 +296,10 @@ importers:
   packages/package-json:
     dependencies:
       '@effected/npm':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../npm/dist/dev/pkg
       '@effected/semver':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../semver/dist/dev/pkg
       spdx-expression-parse:
         specifier: ^4.0.0
@@ -350,7 +350,7 @@ importers:
   packages/runtimes:
     dependencies:
       '@effected/semver':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../semver/dist/dev/pkg
     devDependencies:
       '@effect/vitest':
@@ -484,28 +484,28 @@ importers:
   packages/workspaces:
     dependencies:
       '@effected/git':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../git/dist/dev/pkg
       '@effected/glob':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../glob/dist/dev/pkg
       '@effected/lockfiles':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../lockfiles/dist/dev/pkg
       '@effected/npm':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../npm/dist/dev/pkg
       '@effected/package-json':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../package-json/dist/dev/pkg
       '@effected/semver':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../semver/dist/dev/pkg
       '@effected/walker':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../walker/dist/dev/pkg
       '@effected/yaml':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../yaml/dist/dev/pkg
       '@pnpm/catalogs.config':
         specifier: ^1100.0.0

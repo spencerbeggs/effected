@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-13
-updated: 2026-07-16
-last-synced: 2026-07-16
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 95
 related:
   - ../roadmap.md
@@ -41,7 +41,7 @@ The two-layer instinct survives as **internal architecture**: pure schema and co
 
 **Boundary tier.** The package's own surface does file IO (loading, extends resolution, discovery) exclusively through `effect`-core `FileSystem`/`Path`, arriving via the `R` channel; `PlatformError` flows through on IO operations.
 
-- `peerDependencies`: `effect` plus two `workspace:*` edges — `@effected/jsonc` (the JSONC decode engine) and `@effected/walker` (upward traversal for discovery and node_modules resolution). Both mirrored in `devDependencies`.
+- `peerDependencies`: `effect` plus two `workspace:~` edges — `@effected/jsonc` (the JSONC decode engine) and `@effected/walker` (upward traversal for discovery and node_modules resolution). Both mirrored in `devDependencies`.
 - `dependencies`: **none.** Both `@effected/*` edges are what [R1](../effect-standards.md#dependency-policy) permits; `jsonc` is pure tier and `walker` is boundary tier, so the tier stays boundary by R3.
 - **Hard rule: zero `typescript` imports anywhere, including type imports.** The TS-version-coupled enum mappings are owned as plain data (see [the numeric-enum codec](#the-numeric-enum-codec-data-not-typescript)); anything shaped like `ts.CompilerOptions` is typed structurally.
 

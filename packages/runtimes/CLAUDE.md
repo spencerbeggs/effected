@@ -8,7 +8,7 @@ Three resolver services (`NodeResolver`, `BunResolver`, `DenoResolver`), each in
 
 ## Tier: boundary
 
-`peerDependencies` is `effect` alone; `dependencies` is `@effected/semver` (`workspace:*`) and nothing else. **No external runtime dependency, and it must stay that way** — that is the whole reason the `runtime-resolver` binary ships from a separate external repo rather than living here, so this library's consumers never pull in `@effect/platform-node`.
+`peerDependencies` is `effect` alone; `dependencies` is `@effected/semver` (`workspace:~`) and nothing else. **No external runtime dependency, and it must stay that way** — that is the whole reason the `runtime-resolver` binary ships from a separate external repo rather than living here, so this library's consumers never pull in `@effect/platform-node`.
 
 IO goes through `HttpClient` from `effect/unstable/http`, which arrives via the `R` channel; the consumer provides `FetchHttpClient.layer` at the edge, and that layer has no requirements of its own. `layerOffline` requires nothing at all.
 

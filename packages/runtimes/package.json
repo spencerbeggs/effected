@@ -32,7 +32,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effected/semver": "workspace:*"
+		"@effected/semver": "workspace:~"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",

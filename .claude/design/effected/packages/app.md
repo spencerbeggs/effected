@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-20
+last-synced: 2026-07-20
 completeness: 92
 related:
   - ../effect-standards.md
@@ -30,7 +30,7 @@ It is the home for the composition the underlying ports deliberately parked: xdg
 
 **Integrated tier by [R2](../effect-standards.md#dependency-policy) alone**: `@effected/store` is tier 3 (through `@effect/sql-sqlite-node`) and tier 3 propagates. The package has **zero external runtime dependencies of its own** and does no IO the three packages beneath it do not already do — its tier is inherited, not earned.
 
-- `peerDependencies`: `effect` (`catalog:effect`), `@effected/xdg`, `@effected/store`, `@effected/config-file` (each `workspace:*`).
+- `peerDependencies`: `effect` (`catalog:effect`), `@effected/xdg`, `@effected/store`, `@effected/config-file` (each `workspace:~`).
 - `dependencies`: **none.**
 - `devDependencies`: the three workspace peers mirrored, plus `@effect/platform-node` for the real-filesystem integration tests.
 

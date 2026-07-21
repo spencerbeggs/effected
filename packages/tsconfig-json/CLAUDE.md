@@ -6,7 +6,7 @@ tsconfig.json schemas, `extends`-chain resolution and config discovery. The one 
 
 ## Tier: boundary
 
-`effect` is the only non-workspace peer (`catalog:effect` in this manifest); `@effected/jsonc` and `@effected/walker` are `workspace:*` in **both** `peerDependencies` and `devDependencies`. Runtime `dependencies` stays empty — **zero external runtime dependencies**. All IO goes through core `FileSystem`/`Path` in `R`; a `PlatformError` from the underlying IO flows through **untranslated**.
+`effect` is the only non-workspace peer (`catalog:effect` in this manifest); `@effected/jsonc` and `@effected/walker` are `workspace:~` in `peerDependencies` (so a published patch floats), mirrored by the plain `workspace:*` in `devDependencies` — the two specifiers now deliberately differ. Runtime `dependencies` stays empty — **zero external runtime dependencies**. All IO goes through core `FileSystem`/`Path` in `R`; a `PlatformError` from the underlying IO flows through **untranslated**.
 
 **HARD RULE: zero `typescript` imports, including `import type`.** The version-coupled enum mappings live in `TsEnumCodec` as plain data tables; nothing else in the package may know TypeScript's numeric enums exist.
 
