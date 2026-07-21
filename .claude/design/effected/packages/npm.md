@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-07-21
+last-synced: 2026-07-21
 completeness: 93
 related:
   - ../architecture.md
@@ -20,7 +20,7 @@ related:
 
 ## Overview
 
-`@effected/npm` is a **pure-tier** package (no `npm-effect` source repo behind it) that owns three things: the **dependency-resolution contracts** a package.json-document library defines but cannot implement — `CatalogResolver` and `WorkspaceResolver`, resolving pnpm `catalog:` / `workspace:` specifiers to concrete versions — the **cross-cutting npm vocabulary** that flows between the manifest, lockfile and workspace packages: `DependencySpecifier`, the dependency-section literals (`DependencyKind` / `DependencyField`) and `IntegrityHash` — and the **[`Manifest` domain model](#manifest-tolerant-manifest-level-resolution)**, manifest-level resolution built on the per-specifier contracts (2026-07-16, from the systems dogfood feedback).
+`@effected/npm` is a **pure-tier** package (no `npm-effect` source repo behind it) that owns three things: the **dependency-resolution contracts** a package.json-document library defines but cannot implement — `CatalogResolver` and `WorkspaceResolver`, resolving pnpm `catalog:` / `workspace:` specifiers to concrete versions — the **cross-cutting npm vocabulary** that flows between the manifest, lockfile and workspace packages: `DependencySpecifier`, the dependency-section literals (`DependencyKind` / `DependencyField`), `IntegrityHash` and the **[`ReleaseAgeGate`](#releaseagegate-the-release-age-gate-vocabulary)** publish-time gate — and the **[`Manifest` domain model](#manifest-tolerant-manifest-level-resolution)**, manifest-level resolution built on the per-specifier contracts (2026-07-16, from the systems dogfood feedback).
 
 Resolution lives here rather than in package-json because it fundamentally requires workspace/catalog context that a manifest library cannot have; the full rationale is [resolution belongs to @effected/npm](package-json.md#resolution-belongs-to-effectednpm). The vocabulary lives here because these scalars are shared by three or more packages, and a single home stops each from prefix-sniffing its own reimplementation.
 
@@ -46,9 +46,10 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 - `DependencySpecifier.ts` — the branded specifier, its classification statics and the `FromString` codec to the classified union.
 - `DependencySection.ts` — the `DependencyKind` / `DependencyField` literals and their mapping.
 - `IntegrityHash.ts` — the SRI/corepack/yarn integrity brand.
+- `ReleaseAgeGate.ts` — the `ReleaseAgeGate` class and its permissive `PartialReleaseAgeGate` input shape; the pure release-age gate vocabulary (see [ReleaseAgeGate](#releaseagegate-the-release-age-gate-vocabulary)).
 - `index.ts` — the public surface and the composite `Default` layer (`Layer.mergeAll(CatalogResolver.noop, WorkspaceResolver.noop)`), which lives here because merging both no-op layers is the cycle-free home.
 
-Every class factory is written **inline** with the synthesized `_base` heritage symbols suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern), per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), keeping `dist/prod/issues.json` zero-warning. The prod gate's expected suppressed count is **14** (`suppressed: 0` in the prod gate means the build did not run properly).
+Every class factory is written **inline** with the synthesized `_base` heritage symbols suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern), per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), keeping `dist/prod/issues.json` zero-warning. The prod gate's expected suppressed count is **15** (`ReleaseAgeGate`'s `_base` joined the count when the gate landed; `suppressed: 0` in the prod gate means the build did not run properly).
 
 ## Resolver contracts
 
@@ -102,6 +103,20 @@ One concept, owned here as two `Schema.Literals`: `DependencyKind` (the short ki
 ## IntegrityHash
 
 An SRI brand covering **three** textual forms, because lockfile integrity is not all-SRI: npm/pnpm record `sha512-<base64>` SRI, corepack records the `name@version+sha512.hex` pin form, and yarn Berry records `<cachekey>/<hex>` cache checksums. Dropping the yarn form would silently discard integrity the [lockfiles](lockfiles.md) model treats as load-bearing, so the brand covers all three. `algorithmOf` returns `Option.none()` for the yarn form (which names no algorithm); the SRI and corepack forms report theirs.
+
+## ReleaseAgeGate: the release-age gate vocabulary
+
+pnpm's publish-time **release-age gate** is shared npm vocabulary, so it is resident here (2026-07-21, dogfood request from systems relaying silk-update-action, which fails `ERR_PNPM_NO_MATURE_MATCHING_VERSION` without it). pnpm reads two config keys — `minimumReleaseAge` (minutes a published version must age before it is eligible) and `minimumReleaseAgeExclude` (name patterns exempt from the gate) — and refuses to install a version younger than the cutoff. A resolver that picks the highest in-range version with no publish-time awareness picks a version pnpm then rejects; mirroring the gate at resolution time (drop too-young candidates before picking) fixes it.
+
+This is a **schema-first port of the gate vocabulary only.** `ReleaseAgeGate` is a `Schema.Class` — `ageMinutes` (non-negative, finite) and `exclude` (`readonly string[]`) — with:
+
+- **`combine(...contributions)`** (static, variadic, **total**) — assembles the effective gate from partial contributions across sources (inline `pnpm-workspace.yaml`, replayed hooks, `pnpm config get`): **strictest age wins** (clamped `Math.max`, non-finite contributions ignored), exclude sets **union** (deduplicated, insertion order preserved). Zero contributions yield the inert zero gate (`ageMinutes: 0`, `exclude: []`). It never throws — which is why the partial input shape does not clamp.
+- **`matchesExclude(name, patterns)`** (static) plus instance **`isExcluded(name)`** — flat-string `*` matching with **`@pnpm/matcher` parity: `*` crosses `/`**, so a bare `*` matches a scoped name and `@scope/*` matches a whole scope. This is **deliberately NOT `@effected/glob`'s minimatch dialect** (where `*` refuses to cross `/`); pnpm treats the package name as a flat string, and routing through `@effected/glob` would silently change which packages a gate exempts. The divergence is documented in the module's TSDoc — do not "fix" it.
+- **`filterVersions(versions, times, name, now)`** (instance, **pure, caller-supplied clock**) — drops versions younger than the cutoff (`now - ageMinutes * 60000`) and versions with a missing or unparseable timestamp (pnpm's strict posture: an unestablishable age is too young); a version exactly at the cutoff is kept. A no-op when the gate is inert (`ageMinutes <= 0`) or the name is excluded. No error channel; it reads no wall clock.
+
+**`PartialReleaseAgeGate`** is the permissive input: a `Schema.Struct` with `optionalKey` `ageMinutes` / `exclude` and **no non-negative check** — raw values arrive from arbitrary config sources and `combine` is the single clamping authority. A source sets the age, the exclude list, both, or neither.
+
+**Consumer-side config readers are deliberately NOT ported.** `readConfigReleaseAge` / `parsePnpmGate` from the rolldown-pnpm-config reference stay out — reading the gate from `pnpm-workspace.yaml` keys or replayed `updateConfig` hooks is config IO, a boundary/integrated concern. `@effected/workspaces` owns that assembly (`WorkspaceCatalogs.releaseAgeGate`, its `ConfigDependencyHooks` release-age surfacing — [workspaces.md](workspaces.md#configdependencyhooks--the-opt-in-replay-seam)); this pure module is the vocabulary those readers combine into.
 
 ## Vocabulary registry
 
@@ -157,4 +172,4 @@ The lockfiles npm parser normalizes `package-lock.json` into the one `Lockfile` 
 
 ## Testing
 
-`@effect/vitest`, `it.effect`; tests in `__test__/` per concept. The resolver surface is contracts, so those tests are light: the no-op layers return `Option.none()`, a stub-implementation layer proves the contract is implementable, and `DependencyResolutionError` preserves its structured `cause`. The vocabulary tests carry the weight — specifier classification across the protocol set, the `DependencySpecifier` round-trip property, the resolution projections (`catalogNameOf`, `resolveWorkspace`, `WorkspaceSpecifier#resolve`), `DependencyKind`/`DependencyField` mapping, and `IntegrityHash` across all three forms. `__test__/Manifest.test.ts` drives the tolerance boundary (dependency fields fail typed, everything else rides `rest` and round-trips), `needsResolution`, and `resolve()` over stub resolver layers including the `UnresolvedDependencyError` cases.
+`@effect/vitest`, `it.effect`; tests in `__test__/` per concept. The resolver surface is contracts, so those tests are light: the no-op layers return `Option.none()`, a stub-implementation layer proves the contract is implementable, and `DependencyResolutionError` preserves its structured `cause`. The vocabulary tests carry the weight — specifier classification across the protocol set, the `DependencySpecifier` round-trip property, the resolution projections (`catalogNameOf`, `resolveWorkspace`, `WorkspaceSpecifier#resolve`), `DependencyKind`/`DependencyField` mapping, `IntegrityHash` across all three forms, and `ReleaseAgeGate` (`combine`'s strictest-wins/union/totality, `@pnpm/matcher`-parity `matchesExclude`, and `filterVersions`' cutoff/exactly-at-cutoff/missing-timestamp/inert/excluded cases). `__test__/Manifest.test.ts` drives the tolerance boundary (dependency fields fail typed, everything else rides `rest` and round-trips), `needsResolution`, and `resolve()` over stub resolver layers including the `UnresolvedDependencyError` cases.

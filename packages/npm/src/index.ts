@@ -49,6 +49,7 @@ export {
 	ManifestDecodeError,
 	UnresolvedDependencyError,
 } from "./Manifest.js";
+export { PartialReleaseAgeGate, ReleaseAgeGate } from "./ReleaseAgeGate.js";
 export { DependencyResolutionError, WorkspaceResolver } from "./WorkspaceResolver.js";
 
 /**

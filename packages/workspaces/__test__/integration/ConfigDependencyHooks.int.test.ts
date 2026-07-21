@@ -20,6 +20,9 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures")
 const CJS_FIXTURE = join(FIXTURES, "hook-pnpmfile.cjs");
 const MJS_FIXTURE = join(FIXTURES, "hook-pnpmfile.mjs");
 const NESTED_MISSING_FIXTURE = join(FIXTURES, "hook-pnpmfile-nested-missing.mjs");
+const AGE_4320_FIXTURE = join(FIXTURES, "hook-pnpmfile-age-4320.mjs");
+const AGE_1440_FIXTURE = join(FIXTURES, "hook-pnpmfile-age-1440.mjs");
+const AGE_GARBAGE_FIXTURE = join(FIXTURES, "hook-pnpmfile-age-garbage.mjs");
 
 const DEP_NAME = "cfg-fixture";
 // A config dependency shipping ONLY `pnpmfile.mjs` — the pnpm-11-native shape.
@@ -28,6 +31,10 @@ const MJS_DEP_NAME = "cfg-fixture-mjs";
 const NEITHER_DEP_NAME = "cfg-fixture-neither";
 // A config dependency whose `pnpmfile.mjs` has a missing nested import.
 const NESTED_DEP_NAME = "cfg-fixture-nested-missing";
+// Config dependencies whose hooks set pnpm's release-age keys.
+const AGE_4320_DEP_NAME = "cfg-fixture-age-4320";
+const AGE_1440_DEP_NAME = "cfg-fixture-age-1440";
+const AGE_GARBAGE_DEP_NAME = "cfg-fixture-age-garbage";
 const SEED = { default: { effect: "^4.0.0" } } as const;
 
 let root: string;
@@ -51,6 +58,16 @@ beforeAll(() => {
 	const nestedDir = configDepDir(NESTED_DEP_NAME);
 	mkdirSync(nestedDir, { recursive: true });
 	copyFileSync(NESTED_MISSING_FIXTURE, join(nestedDir, "pnpmfile.mjs"));
+	// Config dependencies whose hooks set pnpm's release-age keys.
+	const age4320Dir = configDepDir(AGE_4320_DEP_NAME);
+	mkdirSync(age4320Dir, { recursive: true });
+	copyFileSync(AGE_4320_FIXTURE, join(age4320Dir, "pnpmfile.mjs"));
+	const age1440Dir = configDepDir(AGE_1440_DEP_NAME);
+	mkdirSync(age1440Dir, { recursive: true });
+	copyFileSync(AGE_1440_FIXTURE, join(age1440Dir, "pnpmfile.mjs"));
+	const ageGarbageDir = configDepDir(AGE_GARBAGE_DEP_NAME);
+	mkdirSync(ageGarbageDir, { recursive: true });
+	copyFileSync(AGE_GARBAGE_FIXTURE, join(ageGarbageDir, "pnpmfile.mjs"));
 });
 
 afterAll(() => {
@@ -66,9 +83,11 @@ describe("ConfigDependencyHooks.layerLive — replays the pnpmfile", () => {
 			const result = yield* hooks.inject(root, { [DEP_NAME]: "1.0.0" }, SEED);
 			// The hook injected into the default catalog and a named one, and the seed
 			// survived.
-			assert.strictEqual(result.default?.["hooked-dep"], "^9.9.9");
-			assert.strictEqual(result.default?.effect, "^4.0.0");
-			assert.strictEqual(result.extra?.["extra-dep"], "^1.2.3");
+			assert.strictEqual(result.catalogs.default?.["hooked-dep"], "^9.9.9");
+			assert.strictEqual(result.catalogs.default?.effect, "^4.0.0");
+			assert.strictEqual(result.catalogs.extra?.["extra-dep"], "^1.2.3");
+			// This fixture sets no release-age keys, so it contributes an empty gate.
+			assert.deepStrictEqual(result.releaseAge, {});
 			// The side-effect marker proves the fixture actually executed.
 			assert.isTrue(existsSync(markerPath));
 		}).pipe(
@@ -88,7 +107,7 @@ describe("ConfigDependencyHooks.layerLive — replays the pnpmfile", () => {
 			// the `.mjs` and `.cjs` candidate imports fail ERR_MODULE_NOT_FOUND for the
 			// candidate itself and it is skipped; the seed passes through unchanged.
 			const result = yield* hooks.inject(root, { "absent-dep": "1.0.0" }, SEED);
-			assert.deepStrictEqual(result, SEED);
+			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {} });
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
 });
@@ -103,9 +122,9 @@ describe("ConfigDependencyHooks.layerLive — pnpm 11 .mjs pnpmfile and load dis
 			// and replays it — the DISTINCT `mjs-dep` / `mjsExtra` entries prove it was
 			// the `.mjs` (there is no `.cjs` to have loaded), and the seed survived.
 			const result = yield* hooks.inject(root, { [MJS_DEP_NAME]: "1.0.0" }, SEED);
-			assert.strictEqual(result.default?.["mjs-dep"], "^2.0.0");
-			assert.strictEqual(result.default?.effect, "^4.0.0");
-			assert.strictEqual(result.mjsExtra?.["mjs-extra-dep"], "^3.4.5");
+			assert.strictEqual(result.catalogs.default?.["mjs-dep"], "^2.0.0");
+			assert.strictEqual(result.catalogs.default?.effect, "^4.0.0");
+			assert.strictEqual(result.catalogs.mjsExtra?.["mjs-extra-dep"], "^3.4.5");
 			// The side-effect marker proves the `.mjs` fixture actually executed.
 			assert.isTrue(existsSync(markerPath));
 		}).pipe(
@@ -124,7 +143,7 @@ describe("ConfigDependencyHooks.layerLive — pnpm 11 .mjs pnpmfile and load dis
 			// The directory exists but carries neither candidate, so both imports fail
 			// ERR_MODULE_NOT_FOUND for the candidate itself — the legitimate skip.
 			const result = yield* hooks.inject(root, { [NEITHER_DEP_NAME]: "1.0.0" }, SEED);
-			assert.deepStrictEqual(result, SEED);
+			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {} });
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
 
@@ -162,7 +181,7 @@ describe("ConfigDependencyHooks.layerLive — rejects a traversal name before im
 			// `@scope/pkg` contains a `/` but no `..`; it resolves inside `.pnpm-config`,
 			// finds no pnpmfile, and contributes nothing — the seed passes through.
 			const result = yield* hooks.inject(root, { "@scope/pkg": "1.0.0" }, SEED);
-			assert.deepStrictEqual(result, SEED);
+			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {} });
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
 });
@@ -223,7 +242,7 @@ describe("ConfigDependencyHooks.layerNoop — provably never loads the pnpmfile"
 			const result = yield* hooks.inject(root, { [DEP_NAME]: "1.0.0" }, SEED);
 			// Same root and same declared config dependency as the live test — the ONLY
 			// difference is the layer. The seed is unchanged and the fixture never ran.
-			assert.deepStrictEqual(result, SEED);
+			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {} });
 			assert.isFalse(existsSync(markerPath));
 		}).pipe(
 			Effect.provide(ConfigDependencyHooks.layerNoop),
@@ -233,5 +252,103 @@ describe("ConfigDependencyHooks.layerNoop — provably never loads the pnpmfile"
 				}),
 			),
 		);
+	});
+
+	it.effect("contributes an empty release-age gate — the no-op runs no hooks", () =>
+		Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			// Declaring the age-setting config dependency changes nothing under the
+			// no-op: it runs no hooks, so it contributes no release-age keys.
+			const result = yield* hooks.inject(root, { [AGE_4320_DEP_NAME]: "1.0.0" }, SEED);
+			assert.deepStrictEqual(result.releaseAge, {});
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerNoop)),
+	);
+});
+
+describe("ConfigDependencyHooks.layerLive — surfaces the release-age keys hooks set", () => {
+	it.effect("a hook's numeric minimumReleaseAge and array exclude become the gate contribution", () =>
+		Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			// The `age-1440` fixture sets `minimumReleaseAge: 1440` and
+			// `minimumReleaseAgeExclude: ["@scope/b"]`; both must survive to `releaseAge`
+			// (mapped onto `ageMinutes` / `exclude`), and the catalog seed is unchanged.
+			const result = yield* hooks.inject(root, { [AGE_1440_DEP_NAME]: "1.0.0" }, SEED);
+			assert.deepStrictEqual(result.releaseAge, { ageMinutes: 1440, exclude: ["@scope/b"] });
+			assert.deepStrictEqual(result.catalogs, SEED);
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
+	);
+
+	it.effect("a later hook rewrites an earlier hook's release-age value — last-wins, not max", () =>
+		Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			// Two config deps replayed IN ORDER: `age-4320` (4320) THEN `age-1440`
+			// (1440). Threading is last-wins over one config object exactly as pnpm
+			// replays — so the LATER, LOWER 1440 wins. A strictest-wins merge WITHIN the
+			// replay would have kept 4320, so 1440 is the discriminating result. The
+			// exclude is last-wins too (`@scope/b`, not `@scope/a`).
+			const result = yield* hooks.inject(root, { [AGE_4320_DEP_NAME]: "1.0.0", [AGE_1440_DEP_NAME]: "1.0.0" }, SEED);
+			assert.deepStrictEqual(result.releaseAge, { ageMinutes: 1440, exclude: ["@scope/b"] });
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
+	);
+
+	it.effect("a hook returning garbage release-age values drops them — tolerant, never a typed failure", () =>
+		Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			// The `age-garbage` fixture returns a non-numeric age and a non-array
+			// exclude. A hook's returned DATA is read tolerantly (only a load/replay
+			// mechanism failure is typed), so both are dropped: an empty contribution.
+			const result = yield* hooks.inject(root, { [AGE_GARBAGE_DEP_NAME]: "1.0.0" }, SEED);
+			assert.deepStrictEqual(result.releaseAge, {});
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
+	);
+});
+
+describe("WorkspaceCatalogs.releaseAgeGate — combines inline + hook sources strictest-wins", () => {
+	// The virtual tree is keyed to the REAL temp root: the effect-FileSystem read of
+	// pnpm-workspace.yaml is virtual, while layerLive's node:fs read of the config
+	// dependency's real pnpmfile hits disk under the same root — the same split the
+	// default-layer test above relies on.
+	const treeWith = (inlineAge: number, inlineExclude: readonly string[], dep: string): Tree => ({
+		[`${root}/pnpm-workspace.yaml`]: [
+			"packages:",
+			"  - packages/*",
+			`minimumReleaseAge: ${inlineAge}`,
+			// Emit the exclude block only when non-empty — a bare `key:` line yields a
+			// null value pnpm treats as no excludes.
+			...(inlineExclude.length > 0
+				? ["minimumReleaseAgeExclude:", ...inlineExclude.map((pattern) => `  - "${pattern}"`)]
+				: []),
+			"configDependencies:",
+			`  ${dep}: '1.0.0'`,
+			"",
+		].join("\n"),
+		[`${root}/package.json`]: JSON.stringify({ name: "root", version: "0.0.0", private: true }),
+		[`${root}/packages/a/package.json`]: manifest("@x/a"),
+	});
+
+	it.effect("the hook's stricter age wins and excludes union", () => {
+		const tree = treeWith(1440, ["inline-excl"], AGE_4320_DEP_NAME);
+		const appLayer = Workspaces.layerWithConfigDependencies({ cwd: root }).pipe(Layer.provideMerge(platform(tree)));
+		return Effect.gen(function* () {
+			const catalogs = yield* WorkspaceCatalogs;
+			const gate = yield* catalogs.releaseAgeGate();
+			// Inline 1440 vs hook 4320 → max is the hook's 4320.
+			assert.strictEqual(gate.ageMinutes, 4320);
+			// Excludes union: the inline pattern plus the hook's two, deduped.
+			assert.deepStrictEqual([...gate.exclude].sort(), ["@scope/a", "inline-excl", "typescript"]);
+		}).pipe(Effect.provide(appLayer));
+	});
+
+	it.effect("the inline stricter age wins", () => {
+		const tree = treeWith(10_000, [], AGE_1440_DEP_NAME);
+		const appLayer = Workspaces.layerWithConfigDependencies({ cwd: root }).pipe(Layer.provideMerge(platform(tree)));
+		return Effect.gen(function* () {
+			const catalogs = yield* WorkspaceCatalogs;
+			const gate = yield* catalogs.releaseAgeGate();
+			// Inline 10000 vs hook 1440 → max is the inline 10000.
+			assert.strictEqual(gate.ageMinutes, 10_000);
+			// Only the hook set an exclude here.
+			assert.deepStrictEqual([...gate.exclude], ["@scope/b"]);
+		}).pipe(Effect.provide(appLayer));
 	});
 });

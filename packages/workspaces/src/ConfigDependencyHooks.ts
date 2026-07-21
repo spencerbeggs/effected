@@ -19,15 +19,45 @@
 
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { PartialReleaseAgeGate } from "@effected/npm";
 import { CatalogAssemblyError } from "@effected/npm";
 import { Context, Effect, Layer, Predicate, Result } from "effect";
 import type { CatalogEntries } from "./internal/catalogs.js";
 import { normalize } from "./internal/catalogs.js";
 
-/** The pnpm config surface a `pnpmfile.cjs` `updateConfig` hook reads and rewrites — the catalog slice. */
+/**
+ * The pnpm config surface a `pnpmfile.cjs` `updateConfig` hook reads and
+ * rewrites: the catalog slice, plus the release-age keys pnpm honours
+ * (`minimumReleaseAge` in minutes, `minimumReleaseAgeExclude` as name patterns).
+ * The catalog fields are always present; the release-age fields are `undefined`
+ * until a hook sets them.
+ */
 interface HookConfig {
 	catalog: Record<string, string>;
 	catalogs: Record<string, Record<string, string>>;
+	minimumReleaseAge: number | undefined;
+	minimumReleaseAgeExclude: readonly string[] | undefined;
+}
+
+/**
+ * The result of replaying a workspace's `configDependencies` hooks: the catalogs
+ * the hooks yield, and the release-age gate contribution they leave on the
+ * config (pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude`).
+ *
+ * @remarks
+ * `releaseAge` is a `PartialReleaseAgeGate` — the age, the exclude list,
+ * both, or neither, depending on what the replayed hooks set. It is deliberately
+ * a *partial* contribution: a consumer folds it into an effective gate with
+ * `ReleaseAgeGate.combine` alongside inline `pnpm-workspace.yaml` values. Hooks
+ * that set no release-age keys contribute an empty gate (`{}`).
+ *
+ * @public
+ */
+export interface HookInjection {
+	/** The catalogs the replayed hooks yield, as `catalog name → dependency → range`. */
+	readonly catalogs: Readonly<Record<string, Readonly<Record<string, string>>>>;
+	/** The release-age gate contribution the replayed hooks leave on the config. */
+	readonly releaseAge: PartialReleaseAgeGate;
 }
 
 /**
@@ -36,16 +66,30 @@ interface HookConfig {
  * @remarks
  * `inject` is given the workspace root, the manifest's `configDependencies`
  * (name → version+integrity), and the inline-catalog seed as a plain
- * `catalog name → dependency name → range` record, and produces the catalogs the
- * replayed hooks yield. The default (no-op) implementation returns the seed
- * unchanged and loads nothing.
+ * `catalog name → dependency name → range` record, and produces a
+ * {@link HookInjection}: the catalogs the replayed hooks yield **and** the
+ * release-age gate contribution they leave on the config. The default (no-op)
+ * implementation returns the seed catalogs unchanged, contributes an empty
+ * release-age gate, and loads nothing.
  *
  * @public
  */
 export interface ConfigDependencyHooksShape {
 	/**
 	 * Replay each config dependency's `updateConfig` hook over `seed`, in
-	 * declaration order, and return the resulting catalogs.
+	 * declaration order, and return both the resulting catalogs and the
+	 * release-age gate contribution the hooks leave behind.
+	 *
+	 * @remarks
+	 * The hooks are replayed once over a single threaded config object, exactly
+	 * as pnpm does — so catalogs and the release-age keys
+	 * (`minimumReleaseAge` / `minimumReleaseAgeExclude`) are both read off that
+	 * one final object, and the config-dependency code executes only once. When
+	 * two hooks both set a release-age key the **later hook wins** (it rewrites
+	 * the threaded value); a hook that returns a malformed value for a key leaves
+	 * the prior threaded value in place (tolerant threading, matching the catalog
+	 * slice). A hook failing to load or replay fails typed with a
+	 * `hooks`-source `CatalogAssemblyError`, never a silent skip.
 	 *
 	 * @param root - The workspace root; config dependencies resolve under
 	 *   `<root>/node_modules/.pnpm-config/<name>`.
@@ -57,7 +101,7 @@ export interface ConfigDependencyHooksShape {
 		root: string,
 		configDependencies: Readonly<Record<string, string>>,
 		seed: Readonly<Record<string, Readonly<Record<string, string>>>>,
-	) => Effect.Effect<Readonly<Record<string, Readonly<Record<string, string>>>>, CatalogAssemblyError>;
+	) => Effect.Effect<HookInjection, CatalogAssemblyError>;
 }
 
 /** Whether `value` is a non-null, non-array object. */
@@ -99,17 +143,49 @@ const seedToConfig = (seed: Readonly<Record<string, Readonly<Record<string, stri
 		if (name === "default") catalog = { ...entries };
 		else catalogs[name] = { ...entries };
 	}
-	return { catalog, catalogs };
+	// The seed carries no release-age keys — only a replayed hook sets them.
+	return { catalog, catalogs, minimumReleaseAge: undefined, minimumReleaseAgeExclude: undefined };
 };
 
-/** Read the catalog slice back out of whatever a hook returned, falling back to the prior config. */
+/** A finite number if `value` is one, else the prior threaded value — a garbage age is dropped, not fatal. */
+const finiteNumberOr = (value: unknown, fallback: number | undefined): number | undefined =>
+	typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+/** A string array if `value` is one, else the prior threaded value — a malformed exclude is dropped, not fatal. */
+const stringArrayOr = (value: unknown, fallback: readonly string[] | undefined): readonly string[] | undefined =>
+	Array.isArray(value) && value.every((entry) => typeof entry === "string") ? (value as readonly string[]) : fallback;
+
+/**
+ * Read the catalog slice and the release-age keys back out of whatever a hook
+ * returned, threading the prior config as the fallback.
+ *
+ * @remarks
+ * Tolerant by design, matching this seam's discipline: a hook's returned *data*
+ * is normalized, never a typed failure (only a load/replay *mechanism* failure
+ * raises `CatalogAssemblyError`). A hook that omits a key, or returns a
+ * malformed value for it, leaves the prior threaded value in place; a hook that
+ * sets a well-formed key rewrites it — so across hooks the **last well-formed
+ * write wins**, exactly as pnpm's single mutable config object behaves.
+ */
 const configOf = (value: unknown, fallback: HookConfig): HookConfig => {
 	if (!isObject(value)) return fallback;
 	return {
 		catalog: isObject(value.catalog) ? (value.catalog as Record<string, string>) : fallback.catalog,
 		catalogs: isObject(value.catalogs) ? (value.catalogs as Record<string, Record<string, string>>) : fallback.catalogs,
+		minimumReleaseAge: finiteNumberOr(value.minimumReleaseAge, fallback.minimumReleaseAge),
+		minimumReleaseAgeExclude: stringArrayOr(value.minimumReleaseAgeExclude, fallback.minimumReleaseAgeExclude),
 	};
 };
+
+/**
+ * Project the threaded config's release-age keys into a partial gate
+ * contribution, omitting a key the hooks never set (never an explicit
+ * `undefined` — the fields are `optionalKey`).
+ */
+const releaseAgeOf = (config: HookConfig): PartialReleaseAgeGate => ({
+	...(config.minimumReleaseAge !== undefined ? { ageMinutes: config.minimumReleaseAge } : {}),
+	...(config.minimumReleaseAgeExclude !== undefined ? { exclude: config.minimumReleaseAgeExclude } : {}),
+});
 
 /** Fold the hook config back into the normalized `catalog name → dependency → range` record. */
 const configToEntries = (config: HookConfig): CatalogEntries => {
@@ -158,7 +234,7 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * the default catalog path provably executes no config-dependency code.
 	 */
 	static readonly layerNoop: Layer.Layer<ConfigDependencyHooks> = Layer.succeed(ConfigDependencyHooks, {
-		inject: (_root, _configDependencies, seed) => Effect.succeed(seed),
+		inject: (_root, _configDependencies, seed) => Effect.succeed({ catalogs: seed, releaseAge: {} }),
 	});
 
 	/**
@@ -181,7 +257,7 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 		inject: (root, configDependencies, seed) =>
 			Effect.gen(function* () {
 				const names = Object.keys(configDependencies);
-				if (names.length === 0) return seed;
+				if (names.length === 0) return { catalogs: seed, releaseAge: {} };
 
 				let config = seedToConfig(seed);
 				for (const name of names) {
@@ -241,7 +317,7 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 						catch: (cause) => new CatalogAssemblyError({ source: "hooks", path: name, cause }),
 					});
 				}
-				return configToEntries(config);
+				return { catalogs: configToEntries(config), releaseAge: releaseAgeOf(config) };
 			}),
 	});
 }

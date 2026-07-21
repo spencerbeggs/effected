@@ -15,7 +15,7 @@ tsconfig.json schemas, `extends`-chain resolution and config discovery. The one 
 - `CompilerOptions` — string-level literal-union schemas: case-insensitive decode, canonical-lowercase encode; typed live option set plus passthrough so unknown **and** dead options survive.
 - `TsconfigJson` — the document schema, the `TsconfigJsonFromString` JSONC codec (bound once at module top level) and `TsconfigParseError`. **Every parse is JSONC** via `@effected/jsonc`; there is no JSON-strict path.
 - `ResolvedTsconfig` — the pure merge engine: E4 per-field semantics, path-option absolutization, final-phase `${configDir}` substitution, `pathsBase` provenance. No `FileSystem`, no `Path` service.
-- `TsEnumCodec` — string↔numeric data maps (including the `node18`=101 / `node20`=102 gaps) and the `lib` normalizer. `encodeCompilerOptions` feeds the external `type-registry-effect` package's `TsEnvironment` (the former `@effected/ts-vfs`, now outside this kit) and emits `lib` in the **file-name form** (`lib.esnext.d.ts`) — verified against typescript 6.0.3's `pathForLibFile`, which joins the entry verbatim onto the lib directory.
+- `TsEnumCodec` — string↔numeric data maps (including the `node18`=101 / `node20`=102 gaps) and the `lib` normalizer. `encodeCompilerOptions` returns the exported `ProgrammaticCompilerOptions` (values `ProgrammaticCompilerOptionsValue`) — a structural transcription of typescript 6.0.3's `CompilerOptionsValue` that keeps the zero-`typescript`-imports rule (one documented internal assertion), feeds the external `type-registry-effect` package's `TsEnvironment` (the former `@effected/ts-vfs`, now outside this kit), and emits `lib` in the **file-name form** (`lib.esnext.d.ts`) — verified against typescript 6.0.3's `pathForLibFile`, which joins the entry verbatim onto the lib directory.
 - `PortableTsconfig` — an **allow-list** filter (never a deny-list), forced `composite: false` / `noEmit: true`, and a `$schema` stamp.
 - `JsxConfig` — a pure projection from decoded compiler options to the JSX transform a bundler can configure: `react-jsx` / `react-jsxdev` → the `automatic` runtime (`importSource` defaulting to `"react"`, tsc's own default), `react` → `classic`; `preserve`, `react-native` and an absent `jsx` → `Option.none()`. The classic factory options stay on `CompilerOptions`.
 - `TsconfigLoader` — `load` / `resolve` / `compilerOptions` (a thin projection of `resolve` down to the merged options), each an `Effect.fn` with a named span (`TsconfigLoader.load` etc.): depth-first `extends` with **per-branch** cycle stacks (diamonds are legal), `MAX_EXTENDS_DEPTH = 32`, and `TsconfigExtendsError` with reasons `not-found` / `cycle` / `depth` / `empty`.
@@ -47,7 +47,7 @@ Target probing uses `fs.exists`, which is true for a directory, where tsc's `hos
 
 ## Testing and building
 
-Tests live in `__test__/` (155 passing), use `@effect/vitest`, and assert with `assert.*` — **never** `expect`.
+Tests live in `__test__/` (158 passing), use `@effect/vitest`, and assert with `assert.*` — **never** `expect`.
 
 ```bash
 pnpm vitest run packages/tsconfig-json

@@ -34,7 +34,11 @@ export {
 	ChangeDetector,
 	type ChangeDetectorShape,
 } from "./ChangeDetector.js";
-export { ConfigDependencyHooks, type ConfigDependencyHooksShape } from "./ConfigDependencyHooks.js";
+export {
+	ConfigDependencyHooks,
+	type ConfigDependencyHooksShape,
+	type HookInjection,
+} from "./ConfigDependencyHooks.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";
 export {
 	LockfileReadError,

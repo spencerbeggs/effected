@@ -438,3 +438,73 @@ describe("WorkspaceCatalogs — the pnpm inline path hard-fails, like the bun pa
 		);
 	});
 });
+
+// ── the effective release-age gate, inline source (no-op hooks) ─────────────
+
+const inlineGateTree: Tree = {
+	"/repo/pnpm-workspace.yaml": [
+		"packages:",
+		"  - 'packages/*'",
+		"minimumReleaseAge: 1440",
+		"minimumReleaseAgeExclude:",
+		'  - "@x/*"',
+		"  - typescript",
+		"catalog:",
+		"  effect: ^4.0.0",
+		"",
+	].join("\n"),
+	"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),
+	"/repo/packages/a/package.json": manifest("@x/a"),
+};
+
+const malformedGateTree: Tree = {
+	"/repo/pnpm-workspace.yaml": ["packages:", "  - 'packages/*'", 'minimumReleaseAge: "soon"', ""].join("\n"),
+	"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),
+};
+
+describe("WorkspaceCatalogs.releaseAgeGate — the inline pnpm-workspace.yaml source", () => {
+	layer(workspacesOver(inlineGateTree))((it) => {
+		it.effect("surfaces the inline minimumReleaseAge and minimumReleaseAgeExclude", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const gate = yield* catalogs.releaseAgeGate();
+				assert.strictEqual(gate.ageMinutes, 1440);
+				assert.deepStrictEqual([...gate.exclude], ["@x/*", "typescript"]);
+			}),
+		);
+	});
+
+	layer(workspacesOver(withLockfileAndInline))((it) => {
+		it.effect("is the inert zero gate when no release-age keys are declared", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const gate = yield* catalogs.releaseAgeGate();
+				assert.strictEqual(gate.ageMinutes, 0);
+				assert.deepStrictEqual([...gate.exclude], []);
+			}),
+		);
+	});
+
+	layer(workspacesOver(npmWorkspace))((it) => {
+		it.effect("is the inert zero gate for a workspace with no pnpm-workspace.yaml", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const gate = yield* catalogs.releaseAgeGate();
+				assert.strictEqual(gate.ageMinutes, 0);
+				assert.deepStrictEqual([...gate.exclude], []);
+			}),
+		);
+	});
+
+	layer(workspacesOver(malformedGateTree))((it) => {
+		it.effect("a malformed inline minimumReleaseAge fails typed as CatalogAssemblyError", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const error = yield* Effect.flip(catalogs.releaseAgeGate());
+				assert.instanceOf(error, CatalogAssemblyError);
+				assert.strictEqual(error.source, "manifest");
+				assert.strictEqual(error.path, "pnpm-workspace.yaml");
+			}),
+		);
+	});
+});
