@@ -6,7 +6,13 @@
 // inline `pnpm-workspace.yaml` catalogs, which win.
 
 import type { Lockfile } from "@effected/lockfiles";
-import { CatalogAssemblyError, CatalogResolver, DependencyResolutionError } from "@effected/npm";
+import {
+	CatalogAssemblyError,
+	CatalogResolver,
+	DependencyResolutionError,
+	PartialReleaseAgeGate,
+	ReleaseAgeGate,
+} from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
@@ -210,6 +216,43 @@ const configDependenciesOf = (document: unknown): Record<string, string> => {
 	return out;
 };
 
+/**
+ * The inline release-age gate contribution of a parsed `pnpm-workspace.yaml`
+ * document — pnpm's top-level `minimumReleaseAge` (minutes) and
+ * `minimumReleaseAgeExclude` (name patterns) keys, mapped onto
+ * `@effected/npm`'s `PartialReleaseAgeGate` field names
+ * (`ageMinutes` / `exclude`).
+ *
+ * @remarks
+ * **Hard-fail by design**, the same posture as the live catalog-block reader:
+ * a present-but-malformed value (a non-numeric `minimumReleaseAge`, a
+ * `minimumReleaseAgeExclude` that is not a string array) fails typed as a
+ * `CatalogAssemblyError` rather than being silently dropped, because a
+ * silently-ignored gate is the "install refuses a too-young version the
+ * resolver already picked" bug this vocabulary exists to prevent. An absent or
+ * explicitly `null` key contributes nothing; the permissive
+ * `PartialReleaseAgeGate` accepts any finite `ageMinutes` (negatives and
+ * fractions included) — `ReleaseAgeGate.combine` is the single clamping
+ * authority, exactly as on the hook path.
+ */
+const inlineReleaseAge = (document: unknown): Effect.Effect<PartialReleaseAgeGate, CatalogAssemblyError> => {
+	if (!isObject(document)) return Effect.succeed({});
+	const raw: Record<string, unknown> = {};
+	if (document.minimumReleaseAge !== undefined && document.minimumReleaseAge !== null) {
+		raw.ageMinutes = document.minimumReleaseAge;
+	}
+	if (document.minimumReleaseAgeExclude !== undefined && document.minimumReleaseAgeExclude !== null) {
+		raw.exclude = document.minimumReleaseAgeExclude;
+	}
+	if (Object.keys(raw).length === 0) return Effect.succeed({});
+	return Schema.decodeUnknownEffect(PartialReleaseAgeGate)(raw).pipe(
+		Effect.catchTag(
+			"SchemaError",
+			(cause) => new CatalogAssemblyError({ source: "manifest", path: "pnpm-workspace.yaml", cause }),
+		),
+	);
+};
+
 /** A hard-fail catalog-assembly failure naming the malformed part of a `workspaces` field. */
 const malformed = (source: "manifest" | "catalog", path: string, detail: string): CatalogAssemblyError =>
 	new CatalogAssemblyError({ source, path, cause: new Error(detail) });
@@ -341,6 +384,12 @@ const validatePnpmWorkspaceCatalogs = (document: unknown): Effect.Effect<void, C
  */
 export type CatalogAssemblyFailure = CatalogAssemblyError | WorkspaceRootNotFoundError;
 
+/** The single assembly pass's two outputs, memoized together. */
+interface Assembled {
+	readonly catalogs: CatalogSet;
+	readonly releaseAgeGate: ReleaseAgeGate;
+}
+
 /**
  * The {@link WorkspaceCatalogs} service shape.
  *
@@ -354,6 +403,20 @@ export interface WorkspaceCatalogsShape {
 		dependency: string,
 		specifier: string,
 	) => Effect.Effect<Option.Option<string>, CatalogAssemblyFailure>;
+	/**
+	 * The effective pnpm release-age gate for the workspace, combined
+	 * strictest-wins from the inline `pnpm-workspace.yaml` keys
+	 * (`minimumReleaseAge` / `minimumReleaseAgeExclude`) and the replayed
+	 * config-dependency hooks. Assembled from the same single read and hook
+	 * replay as `set`, and memoized with it.
+	 *
+	 * @remarks
+	 * Under the default layer (no-op hooks) only inline values contribute; under
+	 * {@link WorkspaceCatalogs.layerWithConfigDependencies} the replayed hooks
+	 * contribute too. A workspace with no pnpm-workspace.yaml (a bun/npm
+	 * workspace) has no release-age keys, so the gate is the inert zero gate.
+	 */
+	readonly releaseAgeGate: () => Effect.Effect<ReleaseAgeGate, CatalogAssemblyFailure>;
 }
 
 /**
@@ -438,7 +501,11 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					}),
 				);
 
-			const assemble: Effect.Effect<CatalogSet, CatalogAssemblyFailure> = Effect.gen(function* () {
+			// The single assembly pass produces BOTH the catalog set and the effective
+			// release-age gate off one root discovery, one inline read, and one hook
+			// replay — so the config-dependency hooks (which execute arbitrary code)
+			// run exactly once, and both outputs share the same memo.
+			const assemble: Effect.Effect<Assembled, CatalogAssemblyFailure> = Effect.gen(function* () {
 				const root = yield* Effect.suspend(() => roots.find(options?.cwd ?? process.cwd()));
 
 				// The lockfile is a RECORD of what was installed; an absent or
@@ -457,6 +524,11 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 
 				let inline: CatalogSet;
 				let injected: CatalogSet;
+				// The release-age gate contributions: inline pnpm-workspace.yaml keys and
+				// the replayed hooks. Both empty on the bun/package.json path (release-age
+				// is a pnpm feature and config dependencies live only in pnpm-workspace.yaml).
+				let inlineGate: PartialReleaseAgeGate = {};
+				let hookGate: PartialReleaseAgeGate = {};
 				if (hasPnpmWorkspace) {
 					const text = yield* fs
 						.readFileString(workspaceYaml)
@@ -474,11 +546,16 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					// it and read as an ABSENT catalog. Absent/empty catalogs still yield empty.
 					yield* validatePnpmWorkspaceCatalogs(document);
 					inline = CatalogSet.fromCatalogs(inlineCatalogs(catalogBlocksOf(document)));
+					// The inline release-age keys, hard-failing on a malformed value the same
+					// way the catalog blocks do.
+					inlineGate = yield* inlineReleaseAge(document);
 					// The opt-in hook replay, seeded by the inline catalogs and merged on
 					// top. The default layer's no-op hooks return the seed untouched, so
-					// this executes no config-dependency code.
-					const injectedEntries = yield* hooks.inject(root, configDependenciesOf(document), inline.entries);
-					injected = CatalogSet.fromCatalogs(injectedEntries);
+					// this executes no config-dependency code. It surfaces both the injected
+					// catalogs and the hooks' release-age contribution from one replay.
+					const injection = yield* hooks.inject(root, configDependenciesOf(document), inline.entries);
+					injected = CatalogSet.fromCatalogs(injection.catalogs);
+					hookGate = injection.releaseAge;
 				} else {
 					const manifestPath = path.join(root, "package.json");
 					// The presence probe must distinguish genuine absence from a probe
@@ -487,7 +564,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					// return lockfile-only catalogs — the "every dependency looks newly
 					// added" bug on the bun branch. `probeExists` already does this.
 					const hasManifest = yield* probeExists(manifestPath);
-					if (!hasManifest) return fromLockfile;
+					if (!hasManifest) return { catalogs: fromLockfile, releaseAgeGate: ReleaseAgeGate.combine() };
 					const text = yield* fs
 						.readFileString(manifestPath)
 						.pipe(
@@ -499,13 +576,17 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				}
 
 				const assembled = CatalogSet.merge(fromLockfile, inline, injected);
+				// Strictest-wins across the two sources: max age (clamped non-negative),
+				// exclude sets unioned — `ReleaseAgeGate.combine` is the single authority.
+				const releaseAgeGate = ReleaseAgeGate.combine(inlineGate, hookGate);
 				yield* Effect.logDebug("Catalogs assembled").pipe(
 					Effect.annotateLogs({
 						"workspace.root": root,
 						"workspace.catalogs": Object.keys(assembled.entries).join(","),
+						"workspace.releaseAgeMinutes": releaseAgeGate.ageMinutes,
 					}),
 				);
-				return assembled;
+				return { catalogs: assembled, releaseAgeGate };
 			});
 
 			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(assemble, Duration.infinity);
@@ -513,14 +594,16 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 
 			return {
 				set: Effect.fn("WorkspaceCatalogs.set")(function* () {
-					return yield* memo;
+					return (yield* memo).catalogs;
 				}),
 				resolveSpecifier: Effect.fn("WorkspaceCatalogs.resolveSpecifier")(function* (
 					dependency: string,
 					specifier: string,
 				) {
-					const catalogs = yield* memo;
-					return catalogs.resolveSpecifier(dependency, specifier);
+					return (yield* memo).catalogs.resolveSpecifier(dependency, specifier);
+				}),
+				releaseAgeGate: Effect.fn("WorkspaceCatalogs.releaseAgeGate")(function* () {
+					return (yield* memo).releaseAgeGate;
 				}),
 			};
 		});

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-13
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-07-21
+last-synced: 2026-07-21
 completeness: 95
 related:
   - ../roadmap.md
@@ -133,13 +133,21 @@ Nearest-tsconfig upward search over [@effected/walker](walker.md), with the file
 
 One pure module owns the version-coupled string↔numeric mappings **as plain data**: `ScriptTarget`, `ModuleKind` (including the 101/102 `node18`/`node20` gaps that not all TypeScript versions export), `ModuleResolutionKind`, `JsxEmit`, `ModuleDetectionKind`, `NewLineKind`, plus the lib-reference normalizer (`lib.esnext.d.ts` ↔ `esnext`).
 
-- The **encode** direction feeds an external Twoslash/virtual-TS environment: output shaped like `ts.CompilerOptions` but typed structurally, with no `typescript` type import.
+- The **encode** direction feeds an external Twoslash/virtual-TS environment: output shaped like `ts.CompilerOptions` but typed structurally, with no `typescript` type import (see [the typed encode return](#the-typed-encode-return-programmaticcompileroptions)).
 - The **decode** direction absorbs numeric configs coming out of TS APIs during consumers' transition off direct config-API usage.
 
 When TypeScript adds an enum member, the change here is a data edit and a test fixture, not a dependency bump. Two whole-object helpers:
 
 - **`decodeCompilerOptions` returns `Record<string, unknown>`, not `CompilerOptions.Type`** — passthrough-honest. A numeric value with no table entry (a future TS enum member) is left as-is rather than errored; callers wanting the validated shape decode through the schema afterwards.
 - **The `lib` encode direction emits the file-name form** (`lib.esnext.d.ts`), not the short name — verified against the installed TypeScript (`pathForLibFile` joins each `options.lib` entry onto the lib directory as a literal file name). A virtual-TS environment hands the options straight through to `ts.createProgram`, so consumers get the one form the real compiler resolves. The decode direction and `normalizeLibReference` emit the short form.
+
+### The typed encode return: ProgrammaticCompilerOptions
+
+`encodeCompilerOptions` returns the exported structural types **`ProgrammaticCompilerOptions`** / **`ProgrammaticCompilerOptionsValue`**, not the old `Record<string, unknown>` (2026-07-21, closes [#120](https://github.com/spencerbeggs/effected/issues/120)) — so a consumer handing the result to `@typescript/vfs`'s `createVirtualTypeScriptEnvironment` or to `ts.createProgram` no longer ends the pipeline with a cast. The types are a **verbatim structural transcription of `typescript@6.0.3`'s `CompilerOptionsValue`** (minus the compiler-internal `TsConfigSourceFile`, an AST node unreachable from JSON), cited in TSDoc — the package's **zero-`typescript` rule is preserved**, nothing is imported. The six enum-family keys are typed `number` (optional), sound because a decoded `CompilerOptions.Type` restricts each spelling to the tables' covered literals (verified full coverage), so the "unknown string passes through unencoded" branch is unreachable for well-typed input; `lib` is typed `string[]`.
+
+One **documented internal assertion** lives at `encodeCompilerOptions`'s return, bridging the codec's `unknown`/`readonly` internal record to the tsc-assignable value union — owned once here rather than re-cast at every call site, exactly as `ts.CompilerOptions`'s own index signature makes the identical unproven claim about passthrough values. Runtime behavior is unchanged; only the declared return narrows. `decodeCompilerOptions` is untouched. A compile-time assignability test (`__test__/TsEnumCodec.assignability.test.ts`) pins the result assignable to a **cited structural replica** of `ts.CompilerOptions` (no `typescript` import).
+
+The free assignability targets the **TS6 / `@typescript/vfs` consumer specifically**: `typescript@7.0.2`'s `CompilerOptions` dropped its index signature while keeping nominal enums, so the structural-subset argument is against the TS6 shape the encode target's consumer pins — worth recording as the version-coupled nuance it is.
 
 ## Portable tsconfig
 
@@ -163,6 +171,7 @@ Per the [testing standards](../effect-standards.md#testing-standards): `@effect/
 - **Data-driven tsc-parity tests** for the extends lookup rules, recorded from the TypeScript-source verification.
 - **Hostile inputs** — cycles, deep chains, malformed JSONC, dunder keys — each failing with its typed error, never a defect.
 - **Round-trip properties on the document schema**, including unknown-key preservation through decode and re-encode.
+- **A compile-time assignability test** (`TsEnumCodec.assignability.test.ts`) proving `encodeCompilerOptions`'s `ProgrammaticCompilerOptions` return assignable to a cited structural replica of `ts.CompilerOptions` (no `typescript` import).
 
 ## Evidence base and consumers
 

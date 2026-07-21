@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-07-21
+last-synced: 2026-07-21
 completeness: 95
 related:
   - ../effect-standards.md
@@ -96,7 +96,7 @@ Module-per-concept.
 | `src/WorkspaceCatalogs.ts` | `CatalogSet` class, `WorkspaceCatalogs` service + layer, the `catalogResolver` layer |
 | `src/WorkspaceSnapshots.ts` | `WorkspaceSnapshots` service + layers, the snapshot error unions |
 | `src/WorkspaceStateSnapshot.ts` | `WorkspaceStateSnapshot` and `PackageStateSnapshot` value classes |
-| `src/ConfigDependencyHooks.ts` | `ConfigDependencyHooks` contract service, `layerLive`, `layerNoop` |
+| `src/ConfigDependencyHooks.ts` | `ConfigDependencyHooks` contract service, `layerLive`, `layerNoop`, the `HookInjection` result type (`catalogs` + `releaseAge`) |
 | `src/LockfileReader.ts` | `LockfileReader` service + layer (the IO half of `@effected/lockfiles`), `LockfileReadError` |
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetectorShape`, `PublishabilityDetector` service + default layer |
 | `src/Workspaces.ts` | The composite layers, `resolverLayer`, `resolveManifest` |
@@ -172,6 +172,8 @@ Root resolution is one concern, applied uniformly: every root-consuming layer is
 
 `CatalogSet` is the immutable, fully-normalized catalog collection with the one resolution semantic (constructors plus `merge` and `rangeOf`). It carries statics for its three sources: `fromLockfile`, `fromBunBlocks` and `fromManifestWorkspaces`. `WorkspaceCatalogs` assembles it with pnpm's precedence and memoizes. **`internal/catalogs.ts` is the only module that imports `@pnpm/catalogs.*`** — the tier-3 blast radius is one file.
 
+**`WorkspaceCatalogs.releaseAgeGate(): Effect<ReleaseAgeGate, CatalogAssemblyFailure>`** (2026-07-21) assembles the workspace's effective pnpm release-age gate. It folds the inline `pnpm-workspace.yaml` `minimumReleaseAge` / `minimumReleaseAgeExclude` keys and the hook contributions ([ConfigDependencyHooks](#configdependencyhooks--the-opt-in-replay-seam)) through `ReleaseAgeGate.combine` (strictest-wins — [npm.md](npm.md#releaseagegate-the-release-age-gate-vocabulary)), reusing **the same single memoized `assemble` pass** as `set` — one root discovery, one YAML read, one hook replay, both outputs (`CatalogSet` and `ReleaseAgeGate`) memoized together, so the config-dependency code runs exactly once. Present-but-malformed inline release-age values **hard-fail** as `CatalogAssemblyError(source: "manifest")` — the same load-bearing posture as a malformed inline catalog block (a silently-ignored gate is the "install refuses a too-young version the resolver already picked" bug); absent keys contribute nothing. Under the default layer (no-op hooks) the gate sees inline values only; under `layerWithConfigDependencies` it sees both. A bun/npm workspace (no `pnpm-workspace.yaml`) has no release-age keys, so the gate is inert. There is **deliberately no top-level `Workspaces.releaseAgeGate` convenience** — the service method is the surface.
+
 The reader is **PM-aware**. File presence picks the reader: `pnpm-workspace.yaml` present → the pnpm path; absent → the root `package.json` `workspaces.catalog` / `catalogs` path (bun's analogue). The catalog readers **hard-fail by design** because their output is load-bearing for diffing — a silently-empty read is the "every dependency looks added" bug:
 
 - A present-but-malformed `workspaces` shape (a number, a string, an object with malformed `packages`/`catalog`/`catalogs`) fails with `CatalogAssemblyError`. An absent field, or one explicitly `null`, yields empty.
@@ -224,6 +226,11 @@ Mechanics follow the house rules: caching per `(root, ref)` via `Effect.cachedIn
 - **Failure is typed, never silent.** A config dependency that fails to load or replay fails with a `"hooks"`-source `CatalogAssemblyError`.
 - **Security guard:** `layerLive` rejects a config-dependency name containing a `..` path segment **before** building the `import()` target, so a malicious `configDependencies` entry cannot escape the intended directory.
 
+**`inject` returns a structured `HookInjection`, not bare catalogs** (2026-07-21; breaking pre-`0.1.0`, accepted). The replay now surfaces pnpm's release-age keys alongside the catalogs: `HookInjection { catalogs, releaseAge: PartialReleaseAgeGate }`, exported from the index. A **sibling method** would re-execute config-dependency code — the whole point of the seam is that one replay over one mutable config object yields both outputs, exactly as pnpm replays hooks. `layerNoop` returns `{ catalogs: seed, releaseAge: {} }`.
+
+- **Release-age keys thread last-hook-wins.** `minimumReleaseAge` / `minimumReleaseAgeExclude` are read off the one final threaded config object, so when two hooks both set a key the later write wins — pnpm's single-mutable-config-object behavior.
+- **A malformed release-age value is tolerantly dropped**, keeping the prior threaded value — matching the catalog slice's tolerant `configOf`. `CatalogAssemblyError` stays reserved for a load/replay *mechanism* failure, not a hook's returned *data*. The `releaseAge` contribution is a `PartialReleaseAgeGate` because a consumer folds it into an effective gate with `ReleaseAgeGate.combine` alongside the inline values ([npm.md](npm.md#releaseagegate-the-release-age-gate-vocabulary)); hooks setting no release-age keys contribute an empty gate.
+
 ## Error handling
 
 The package's own `Schema.TaggedErrorClass` types with **structured** fields:
@@ -275,6 +282,7 @@ Mutation-proven edges:
 - A bun or npm workspace read at a ref must not collapse to the root package alone; `at("HEAD")` and `worktree()` agree on a clean tree (which also pins the unconditional inline-bun-catalog read).
 - The double-default rejection (`workspaces.catalog` plus `workspaces.catalogs.default`), checked structurally.
 - Hook replay through the opt-in layer against a fixture pnpmfile; the default layer provably never loads it.
+- Release-age assembly: inline `minimumReleaseAge` / `minimumReleaseAgeExclude` folded through `ReleaseAgeGate.combine`, a malformed inline value hard-failing typed; hook-injected release-age via fixture pnpmfiles (`age-1440`, `age-4320` strictest-wins, `age-garbage` tolerantly dropped); the default no-op layer sees inline only.
 - TTL-cache discipline: a failed `at(ref)` init is retried, not memoized.
 
 ## Build
