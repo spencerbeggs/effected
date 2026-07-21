@@ -1,5 +1,15 @@
 # @effected/pnpm-plugin-effect
 
+## 0.3.0
+
+### Features
+
+* Adds `catalog:effect:peers` with generated peerDependency rules.
+
+### Minor Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.2.0
 
 ### Features
