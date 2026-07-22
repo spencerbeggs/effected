@@ -43,7 +43,9 @@ jobs:
         run: pnpm --filter @effected/runtimes exec tsx lib/scripts/generate-defaults.ts
 
       - name: Format generated files
-        run: pnpm lint:fix
+        # Scope Biome to the only files the generator writes, so an unrelated
+        # unfixable lint diagnostic elsewhere in the repo cannot abort this job.
+        run: pnpm exec biome check --write packages/runtimes/src/internal/defaults/
 
       - name: Check for changes
         id: changes
