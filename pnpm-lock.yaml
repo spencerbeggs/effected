@@ -403,6 +403,18 @@ importers:
       effect:
         specifier: catalog:effect
         version: 4.0.0-beta.99
+      oxc-parser:
+        specifier: ^0.141.0
+        version: 0.141.0
+      spdx-exceptions:
+        specifier: 2.5.0
+        version: 2.5.0
+      spdx-expression-parse:
+        specifier: 4.0.0
+        version: 4.0.0
+      spdx-license-ids:
+        specifier: 3.0.23
+        version: 3.0.23
       typescript:
         specifier: catalog:silk
         version: 7.0.2
