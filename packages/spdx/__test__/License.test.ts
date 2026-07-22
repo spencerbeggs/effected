@@ -68,6 +68,14 @@ describe("License", () => {
 		const bad = License.parseResult("NOT-A-LICENSE");
 		assert.isTrue(Result.isFailure(bad));
 	});
+	it("of constructs from typed parts", () => {
+		const mit = License.of("MIT");
+		assert.strictEqual(mit.id, "MIT");
+		assert.isFalse(mit.deprecated);
+		const gpl = License.of("GPL-3.0", true);
+		assert.strictEqual(gpl.id, "GPL-3.0");
+		assert.isTrue(gpl.deprecated);
+	});
 	it("catalog holds resolved license domain objects", () => {
 		const mit = License.catalog.get("MIT");
 		assert.isDefined(mit);

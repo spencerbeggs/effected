@@ -100,6 +100,24 @@ export class LicenseException extends Schema.Class<LicenseException>("LicenseExc
 		Effect.fromResult(LicenseException.parseResult(id)),
 	);
 
+	/**
+	 * Construct a {@link LicenseException} directly from already-typed parts:
+	 * `LicenseException.of("Classpath-exception-2.0")`. This is the field-level
+	 * convenience constructor, a thin wrapper over the inherited `make` — it does
+	 * **not** consult the catalog and does **not** validate that `id` is a known
+	 * exception identifier. Reach for {@link LicenseException.parse} or
+	 * {@link LicenseException.parseResult} when the `id` is untrusted and must be
+	 * validated.
+	 *
+	 * @param id - the SPDX exception short identifier
+	 * @param deprecated - whether `id` is a deprecated identifier; defaults to
+	 * `false`
+	 * @returns the constructed {@link LicenseException}
+	 */
+	static of(id: string, deprecated = false): LicenseException {
+		return LicenseException.make({ id, deprecated });
+	}
+
 	// ── Display ─────────────────────────────────────────────────────────
 
 	/** The identifier string. */

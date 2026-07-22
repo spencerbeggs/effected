@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { InvalidSpdxExpressionError } from "../src/License.js";
 import { SpdxExpression, isValidExpression } from "../src/SpdxExpression.js";
 
@@ -29,6 +29,10 @@ describe("SpdxExpression", () => {
 			Effect.gen(function* () {
 				const exit = yield* Effect.exit(SpdxExpression.parse(s));
 				assert.isTrue(Exit.isFailure(exit));
+				if (Exit.isFailure(exit)) {
+					// discriminate a typed failure from a defect
+					assert.isFalse(Cause.hasDies(exit.cause));
+				}
 			}),
 		);
 		it(`invalidates ${JSON.stringify(s)} synchronously`, () => assert.isFalse(isValidExpression(s)));
@@ -44,6 +48,14 @@ describe("SpdxExpression", () => {
 		Effect.gen(function* () {
 			const expr = yield* SpdxExpression.parse("(MIT OR Apache-2.0)");
 			assert.strictEqual(expr.toString(), "(MIT OR Apache-2.0)");
+		}),
+	);
+	it.effect("FromString decodes a string to the AST that re-serializes to canonical form", () =>
+		Effect.gen(function* () {
+			const ast = yield* Schema.decodeUnknownEffect(SpdxExpression.FromString)("(MIT OR Apache-2.0)");
+			assert.strictEqual(ast._tag, "Or");
+			// the decoded AST is the same tree the sync parser produces
+			assert.strictEqual(ast.toString(), "(MIT OR Apache-2.0)");
 		}),
 	);
 	it.effect("preserves the + marker", () =>

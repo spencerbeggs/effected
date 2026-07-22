@@ -205,7 +205,14 @@ const FromString: Schema.Codec<SpdxExpression, string> = Schema.String.pipe(
  * @public
  */
 export const SpdxExpression = {
-	/** The recursive tagged-union `Schema` for the AST. */
+	/**
+	 * The recursive tagged-union `Schema` for the AST.
+	 *
+	 * @remarks
+	 * The `MAX_NESTING_DEPTH` cap guards STRING parsing only (via {@link SpdxExpression.parse}
+	 * and {@link SpdxExpression.FromString}); decoding an already-built POJO directly through
+	 * this raw `Schema` is not depth-capped.
+	 */
 	Schema: SpdxExpressionUnion,
 	/**
 	 * A `Schema.Codec` from a raw expression string to the AST and back. Decoding

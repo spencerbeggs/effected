@@ -37,6 +37,14 @@ describe("LicenseException", () => {
 		assert.isTrue(Result.isSuccess(LicenseException.parseResult("Classpath-exception-2.0")));
 		assert.isTrue(Result.isFailure(LicenseException.parseResult("Not-An-Exception")));
 	});
+	it("of constructs from typed parts", () => {
+		const e = LicenseException.of("Classpath-exception-2.0");
+		assert.strictEqual(e.id, "Classpath-exception-2.0");
+		assert.isFalse(e.deprecated);
+		const dep = LicenseException.of("Nokia-Qt-exception-1.1", true);
+		assert.strictEqual(dep.id, "Nokia-Qt-exception-1.1");
+		assert.isTrue(dep.deprecated);
+	});
 	it("reuses the shared error from License", () => {
 		// same error class as License, not a parallel type
 		const licErr = License.parseResult("NOT-A-LICENSE");

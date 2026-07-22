@@ -157,6 +157,23 @@ export class License extends Schema.Class<License>("License")({
 	 */
 	static readonly parse = Effect.fn("License.parse")((id: string) => Effect.fromResult(License.parseResult(id)));
 
+	/**
+	 * Construct a {@link License} directly from already-typed parts:
+	 * `License.of("MIT")`. This is the field-level convenience constructor, a thin
+	 * wrapper over the inherited `make` — it does **not** consult the catalog and
+	 * does **not** validate that `id` is a known identifier or a well-formed
+	 * reference. Reach for {@link License.parse} or {@link License.parseResult}
+	 * when the `id` is untrusted and must be validated.
+	 *
+	 * @param id - the SPDX short identifier or `LicenseRef`/`DocumentRef` reference
+	 * @param deprecated - whether `id` is a deprecated identifier; defaults to
+	 * `false`
+	 * @returns the constructed {@link License}
+	 */
+	static of(id: string, deprecated = false): License {
+		return License.make({ id, deprecated });
+	}
+
 	// ── Display ─────────────────────────────────────────────────────────
 
 	/** The identifier string. */
