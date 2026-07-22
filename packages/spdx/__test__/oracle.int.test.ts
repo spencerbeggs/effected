@@ -27,6 +27,10 @@ const CORPUS = [
 	"",
 	"GPL-3.0",
 	"Apache-2.0 WITH Bogus-exception",
+	"DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2",
+	"MIT and BSD-3-Clause",
+	"MIT or Apache-2.0",
+	"GPL-2.0-or-later with Bison-exception-2.2",
 ];
 
 describe("differential oracle: @effected/spdx vs spdx-expression-parse", () => {

@@ -56,6 +56,8 @@ const VALID = [
 	"MIT AND BSD-3-Clause",
 	"GPL-2.0-or-later WITH Bison-exception-2.2",
 	"LicenseRef-Proprietary",
+	"DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2",
+	"MIT and BSD-3-Clause",
 	"(MIT AND (Apache-2.0 OR BSD-3-Clause))",
 ];
 const INVALID = ["NOPE-1.0", "MIT AND", "(MIT", "MIT OR OR Apache-2.0", ""];

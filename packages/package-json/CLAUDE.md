@@ -7,7 +7,9 @@ changing the public surface, the `rest` wire transform, or the error taxonomy.
 
 ## Tier: boundary
 
-**Boundary tier**, because it does IO but takes no external runtime dependency.
+**Boundary tier**, driven by the IO boundary. It carries no third-party runtime
+dependency — its `dependencies` are `workspace:~` edges to pure `@effected`
+packages plus the `effect` peer — so it never rises to integrated.
 All IO **lives in `src/PackageJsonFile.ts`** — one module, one `Context.Service`,
 two methods (`read`, `write`). Every other module is pure. Keep it that way: if a
 change wants to read or write, route it through `PackageJsonFile` or leave it to
