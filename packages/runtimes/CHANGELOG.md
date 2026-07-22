@@ -1,5 +1,17 @@
 # @effected/runtimes
 
+## 0.1.4
+
+### Maintenance
+
+* Refreshed the bundled offline snapshot data used by `layerOffline` and the `layer` auto-fallback, picking up newly released Deno versions. [#152][#152]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#152]: https://github.com/spencerbeggs/effected/pull/152
+
 ## 0.1.3
 
 ### Bug Fixes
