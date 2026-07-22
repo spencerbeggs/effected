@@ -63,3 +63,13 @@ pnpm build --filter @effected/runtimes
 ```
 
 Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.
+
+## Regenerating the bundled defaults
+
+`pnpm --filter @effected/runtimes exec tsx lib/scripts/generate-defaults.ts` refreshes the three offline snapshots in `src/internal/defaults/`. It fetches the live feeds through the package's own `internal/feeds.ts` layers — the same tag-strip/skip/parse rules the library uses at runtime, never duplicated — and splices only each exported const's initializer byte-span via `oxc-parser`, leaving headers, imports and TSDoc untouched (the `@effected/spdx` generate-data pattern).
+
+Every record is filtered through `tryParseSemVer` before writing, so a snapshot holds only resolvable versions, and records stay in feed order — no re-sort. The script refuses to write when any feed returns empty: a failed fetch must never wipe the offline fallback.
+
+`oxc-parser` is a script-only devDependency and must never be imported from `src/**`; `tsx` comes from the `@savvy-web/silk` toolchain, not a per-package dependency. The script touches the network, so it is never run by the test suite.
+
+CI runs it daily via `.github/workflows/update-runtime-defaults.yml`, which opens an auto-merging PR carrying a `patch` changeset under a `## Maintenance` heading.
