@@ -1,6 +1,6 @@
 {
 	"name": "@effected/spdx",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "SPDX license expressions as Effect Schema classes",
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/spdx#readme",

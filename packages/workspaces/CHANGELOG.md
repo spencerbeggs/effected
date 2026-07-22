@@ -1,5 +1,13 @@
 # @effected/workspaces
 
+## 0.6.1
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From  | To    |
+| ---------------------- | ---------- | ------- | ----- | ----- |
+| @effected/package-json | dependency | updated | 0.4.2 | 0.5.0 |
+
 ## 0.6.0
 
 ### Breaking Changes
