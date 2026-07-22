@@ -71,7 +71,7 @@ The field layout is settled: the AST `LicenseNode` is a distinct node from the c
 
 ### The sync primitive
 
-Per the kit's [sync-primitive policy](../formatter-convention.md#decision-6--the-sync-primitive-policy), this pure boundary exposes a **sync `Result` primitive** alongside its Effect form: `License.parseResult` (`Result`) beside `License.parse` (`Effect`), and `SpdxExpression.isValidExpression` (`boolean`) beside its Effect `parse`, with the Effect forms derived from the sync ones behind their spans so the two cannot drift. Synchronous consumers (lint hooks, non-Effect callers) need the sync form; package-json's own license validation calls `isValidExpression`.
+Per the kit's [sync-primitive policy](../formatter-convention.md#decision-6--the-sync-primitive-policy), this pure boundary exposes a **sync `Result` primitive** alongside its Effect form: `License.parseResult` (`Result`) beside `License.parse` (`Effect`), and the standalone `isValidExpression` (`boolean`) beside `SpdxExpression.parse` (`Effect`), with the Effect forms derived from the sync ones behind their spans so the two cannot drift. Synchronous consumers (lint hooks, non-Effect callers) need the sync form; package-json's own license validation calls `isValidExpression`.
 
 ## Error set
 
