@@ -207,8 +207,6 @@ loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/tsgo-*"
   - prettier@3.9.6
-overrides:
-  rspress-plugin-api-extractor: file:../rspress-plugin-api-extractor/package/dist/prod/npm/pkg
 peerDependencyRules:
   allowedVersions:
     "@effect/ai-anthropic@4.0.0-beta.99>effect": 4.0.0-beta.99
