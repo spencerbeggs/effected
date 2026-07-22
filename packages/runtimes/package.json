@@ -39,6 +39,7 @@
 		"@savvy-web/bundler": "^2.0.7",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
+		"oxc-parser": "^0.141.0",
 		"typescript": "catalog:silk"
 	},
 	"peerDependencies": {
