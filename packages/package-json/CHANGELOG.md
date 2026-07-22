@@ -1,5 +1,23 @@
 # @effected/package-json
 
+## 0.5.0
+
+### Features
+
+* ### License validation moves to `@effected/spdx`
+
+  `isValidSpdx` and the `License` schema now validate compound SPDX expressions through `@effected/spdx`'s `isValidExpression` instead of the foreign `spdx-expression-parse` runtime dependency, which has been dropped. The `UNLICENSED` and `SEE LICENSE IN` special cases are unchanged, and validation is now a kit-internal boundary — `@effected/package-json` delegates SPDX validity to a sibling package rather than a third-party parser.
+
+### Dependencies
+
+| Dependency     | Type       | Action  | From  | To    |
+| -------------- | ---------- | ------- | ----- | ----- |
+| @effected/spdx | dependency | updated | 0.0.0 | 0.1.0 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.4.2
 
 ### Dependencies
