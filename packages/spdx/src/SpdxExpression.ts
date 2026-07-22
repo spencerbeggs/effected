@@ -6,7 +6,7 @@ import { InvalidSpdxExpressionError } from "./License.js";
 /**
  * The structural shape the AST instances and their encoded POJOs share: every
  * variant carries `_tag` plus its own field names. Because the class instances
- * and the encoded form produced by {@link SpdxExpression.FromString}'s encode
+ * and the encoded form produced by {@link (SpdxExpression:variable).FromString}'s encode
  * side are structurally identical, ONE serializer walks either representation.
  */
 type SpdxNode =
@@ -21,7 +21,7 @@ type SpdxNode =
  * the canonical, fully-parenthesized SPDX string. This is the single source of
  * truth for canonical form: every node's `toString` and the codec encode side
  * both route through it, so the instance method and
- * {@link SpdxExpression.FromString}'s encode can never drift.
+ * {@link (SpdxExpression:variable).FromString}'s encode can never drift.
  */
 function serialize(node: SpdxNode): string {
 	switch (node._tag) {
@@ -55,7 +55,7 @@ export class LicenseNode extends Schema.TaggedClass<LicenseNode>()("License", {
 	/** Whether the trailing `+` "or later" marker is present. */
 	plus: Schema.Boolean,
 }) {
-	/** The canonical string form: the id, suffixed with `+` when {@link LicenseNode.plus} is set. */
+	/** The canonical string form: the id, suffixed with `+` when `plus` is set. */
 	override toString(): string {
 		return serialize(this);
 	}
@@ -84,7 +84,7 @@ export class LicenseRefNode extends Schema.TaggedClass<LicenseRefNode>()("Licens
 /**
  * A `license WITH exception` node. Per the SPDX order of precedence, `WITH`
  * binds only to a simple license (never a reference or a compound expression),
- * so {@link WithExceptionNode.license} is always a {@link LicenseNode}.
+ * so `license` is always a {@link LicenseNode}.
  *
  * @public
  */
@@ -102,7 +102,7 @@ export class WithExceptionNode extends Schema.TaggedClass<WithExceptionNode>()("
 
 /**
  * The conjunction (`AND`) of two sub-expressions. Recursive: its children are
- * any {@link SpdxExpression}, expressed via `Schema.suspend`.
+ * any {@link (SpdxExpression:type)}, expressed via `Schema.suspend`.
  *
  * @public
  */
@@ -120,7 +120,7 @@ export class AndNode extends Schema.TaggedClass<AndNode>()("And", {
 
 /**
  * The disjunction (`OR`) of two sub-expressions. Recursive: its children are
- * any {@link SpdxExpression}, expressed via `Schema.suspend`.
+ * any {@link (SpdxExpression:type)}, expressed via `Schema.suspend`.
  *
  * @public
  */
@@ -179,7 +179,7 @@ function materialize(raw: RawExpression): SpdxExpression {
 /**
  * Validate and parse an SPDX license expression synchronously, returning a
  * `Result`. This is the package's sync primitive: {@link isValidExpression},
- * the Effect {@link SpdxExpression.parse}, and {@link SpdxExpression.FromString}
+ * the Effect {@link (SpdxExpression:variable).parse}, and {@link (SpdxExpression:variable).FromString}
  * all derive from it, so the four surfaces can never disagree.
  *
  * Every malformation — a bad token, an unbalanced parenthesis, a dangling
@@ -187,16 +187,21 @@ function materialize(raw: RawExpression): SpdxExpression {
  * depth cap — fails with {@link InvalidSpdxExpressionError} on the failure
  * channel; the parser never throws.
  */
-function parseResult(input: string): Result.Result<SpdxExpression, InvalidSpdxExpressionError> {
+// A `const` arrow rather than a hoisted `function` declaration: as the
+// `SpdxExpression.parseResult` facade member, the const's structural type
+// inlines into the facade's emitted `.d.ts` (like `parse` and `FromString`),
+// whereas a named `function` would be referenced as `typeof parseResult` and
+// leak an un-exported symbol (ae-forgotten-export) onto the `@public` surface.
+const parseResult = (input: string): Result.Result<SpdxExpression, InvalidSpdxExpressionError> => {
 	const raw = parseRaw(input);
 	return raw === undefined ? Result.fail(new InvalidSpdxExpressionError({ input })) : Result.succeed(materialize(raw));
-}
+};
 
 /**
  * Whether `input` is a syntactically and catalog-valid SPDX license expression.
  * The synchronous, allocation-light predicate for non-Effect callers (lint
  * hooks, config-time checks); it shares its engine with
- * {@link SpdxExpression.parse}, so a `true` here guarantees a successful parse.
+ * {@link (SpdxExpression:variable).parse}, so a `true` here guarantees a successful parse.
  *
  * @example
  * ```ts
@@ -250,8 +255,8 @@ export const SpdxExpression = {
 	 * The recursive tagged-union `Schema` for the AST.
 	 *
 	 * @remarks
-	 * The `MAX_NESTING_DEPTH` cap guards STRING parsing only (via {@link SpdxExpression.parse}
-	 * and {@link SpdxExpression.FromString}); decoding an already-built POJO directly through
+	 * The `MAX_NESTING_DEPTH` cap guards STRING parsing only (via {@link (SpdxExpression:variable).parse}
+	 * and {@link (SpdxExpression:variable).FromString}); decoding an already-built POJO directly through
 	 * this raw `Schema` is not depth-capped.
 	 */
 	Schema: SpdxExpressionUnion,
@@ -264,13 +269,13 @@ export const SpdxExpression = {
 	/**
 	 * Parse an SPDX license expression, failing with
 	 * {@link InvalidSpdxExpressionError} on any malformed or unknown input.
-	 * Derived from {@link SpdxExpression.parseResult} behind the
+	 * Derived from {@link (SpdxExpression:variable).parseResult} behind the
 	 * `SpdxExpression.parse` span, so the Effect and sync forms cannot drift.
 	 */
 	parse: parseEffect,
 	/**
 	 * The synchronous `Result`-returning parser — the single source of truth the
-	 * Effect {@link SpdxExpression.parse} and {@link isValidExpression} derive
+	 * Effect {@link (SpdxExpression:variable).parse} and {@link isValidExpression} derive
 	 * from. Reach for it at synchronous boundaries.
 	 */
 	parseResult,

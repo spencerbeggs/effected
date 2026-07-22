@@ -1,7 +1,53 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Equal, Exit, Schema } from "effect";
+import * as fc from "effect/testing/FastCheck";
 import { InvalidSpdxExpressionError } from "../src/License.js";
-import { SpdxExpression, isValidExpression } from "../src/SpdxExpression.js";
+import type { SpdxExpression as SpdxExpressionAst } from "../src/SpdxExpression.js";
+import {
+	AndNode,
+	LicenseNode,
+	LicenseRefNode,
+	OrNode,
+	SpdxExpression,
+	WithExceptionNode,
+	isValidExpression,
+} from "../src/SpdxExpression.js";
+
+// A generative round-trip arbitrary built from the KNOWN SPDX id set, used
+// instead of `Schema.toArbitrary(SpdxExpression.Schema)`. `toArbitrary` exists
+// and runs on the recursive union, but every leaf's `id`/`ref`/`exception` is a
+// bare `Schema.String`, so it emits identifiers that no grammar recognizes
+// (e.g. `"__+ WITH ?.Rf\4aV"`) — decode∘encode can never be identity on those.
+// Constraining the leaves to real ids and well-formed reference idstrings makes
+// the round-trip invariant meaningful: encode yields a canonical SPDX string
+// that re-decodes to an equal AST.
+const KNOWN_LICENSES = ["MIT", "Apache-2.0", "BSD-3-Clause", "ISC", "GPL-2.0-or-later", "MPL-2.0"];
+const KNOWN_EXCEPTIONS = ["Classpath-exception-2.0", "Bison-exception-2.2", "GCC-exception-2.0"];
+const idstring = fc.stringMatching(/^[A-Za-z0-9.-]{1,12}$/);
+const licenseNode = fc
+	.record({ id: fc.constantFrom(...KNOWN_LICENSES), plus: fc.boolean() })
+	.map(({ id, plus }) => LicenseNode.make({ id, plus }));
+const licenseRefNode = fc
+	.record({ documentRef: fc.option(idstring, { nil: undefined }), ref: idstring })
+	.map(({ documentRef, ref }) =>
+		// Conditional spread — never pass an explicit `undefined` for `optionalKey`.
+		documentRef !== undefined ? LicenseRefNode.make({ documentRef, ref }) : LicenseRefNode.make({ ref }),
+	);
+const withExceptionNode = fc
+	.record({
+		id: fc.constantFrom(...KNOWN_LICENSES),
+		plus: fc.boolean(),
+		exception: fc.constantFrom(...KNOWN_EXCEPTIONS),
+	})
+	.map(({ id, plus, exception }) => WithExceptionNode.make({ license: LicenseNode.make({ id, plus }), exception }));
+const spdxExpressionArb: fc.Arbitrary<SpdxExpressionAst> = fc.letrec<{ expr: SpdxExpressionAst }>((tie) => ({
+	expr: fc.oneof(
+		{ maxDepth: 4, depthIdentifier: "spdx" },
+		fc.oneof(licenseNode, licenseRefNode, withExceptionNode),
+		fc.tuple(tie("expr"), tie("expr")).map(([left, right]) => AndNode.make({ left, right })),
+		fc.tuple(tie("expr"), tie("expr")).map(([left, right]) => OrNode.make({ left, right })),
+	),
+})).expr;
 
 const VALID = [
 	"MIT",
@@ -106,6 +152,18 @@ describe("SpdxExpression", () => {
 			if (Exit.isFailure(exit)) {
 				assert.isFalse(Cause.hasDies(exit.cause));
 			}
+		}),
+	);
+	// FromString round-trips: decode∘encode is identity on generated expressions.
+	// encode serializes the AST to canonical form; decode re-parses it to an
+	// equal AST, and re-encoding that AST reproduces the same string.
+	it.effect.prop("FromString round-trips decode(encode(e))", [spdxExpressionArb], ([e]) =>
+		Effect.gen(function* () {
+			const encoded = yield* Schema.encodeUnknownEffect(SpdxExpression.FromString)(e);
+			const decoded = yield* Schema.decodeUnknownEffect(SpdxExpression.FromString)(encoded);
+			assert.isTrue(Equal.equals(decoded, e), `expected ${decoded.toString()} to equal ${e.toString()}`);
+			const reEncoded = yield* Schema.encodeUnknownEffect(SpdxExpression.FromString)(decoded);
+			assert.strictEqual(reEncoded, encoded);
 		}),
 	);
 });
