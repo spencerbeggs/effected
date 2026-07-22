@@ -1,0 +1,46 @@
+{
+	"name": "@effected/spdx",
+	"version": "0.0.0",
+	"private": true,
+	"description": "SPDX license expressions as Effect Schema classes",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/spdx#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/spdx"
+	},
+	"license": "MIT",
+	"sideEffects": false,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build:dev": "node savvy.build.ts --target dev",
+		"build:prod": "node savvy.build.ts --target prod",
+		"prepare": "turbo run build:dev",
+		"types:check": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@effect/vitest": "catalog:effect",
+		"@savvy-web/bundler": "^2.0.7",
+		"@types/node": "catalog:silk",
+		"effect": "catalog:effect",
+		"typescript": "catalog:silk"
+	},
+	"peerDependencies": {
+		"effect": "catalog:effect:peers"
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist/dev/pkg",
+		"linkDirectory": true,
+		"targets": {
+			"npm": true
+		}
+	}
+}
