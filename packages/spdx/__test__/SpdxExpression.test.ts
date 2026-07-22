@@ -58,6 +58,28 @@ describe("SpdxExpression", () => {
 			assert.strictEqual(ast.toString(), "(MIT OR Apache-2.0)");
 		}),
 	);
+	// A TRUE codec round-trip: encode must yield the canonical SPDX string (the
+	// regression is encode returning "[object Object]"), and decode∘encode must
+	// be identity across a leaf `+`, an OR compound, a WITH, and a nested case.
+	for (const s of [
+		"(MIT OR Apache-2.0)",
+		"Apache-2.0+",
+		"GPL-2.0-or-later WITH Bison-exception-2.2",
+		"(MIT AND (Apache-2.0 OR BSD-3-Clause))",
+	]) {
+		it.effect(`FromString encode round-trips ${s}`, () =>
+			Effect.gen(function* () {
+				const ast = yield* Schema.decodeUnknownEffect(SpdxExpression.FromString)(s);
+				const encoded = yield* Schema.encodeEffect(SpdxExpression.FromString)(ast);
+				// encode emits the canonical string the input already is
+				assert.strictEqual(encoded, s);
+				// decode∘encode is identity: the string re-decodes and re-encodes to itself
+				const reAst = yield* Schema.decodeUnknownEffect(SpdxExpression.FromString)(encoded);
+				const reEncoded = yield* Schema.encodeEffect(SpdxExpression.FromString)(reAst);
+				assert.strictEqual(reEncoded, encoded);
+			}),
+		);
+	}
 	it.effect("preserves the + marker", () =>
 		Effect.gen(function* () {
 			const expr = yield* SpdxExpression.parse("Apache-2.0+");

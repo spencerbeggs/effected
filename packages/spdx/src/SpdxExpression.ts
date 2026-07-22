@@ -4,6 +4,43 @@ import { parse as parseRaw } from "./internal/parser.js";
 import { InvalidSpdxExpressionError } from "./License.js";
 
 /**
+ * The structural shape the AST instances and their encoded POJOs share: every
+ * variant carries `_tag` plus its own field names. Because the class instances
+ * and the encoded form produced by {@link SpdxExpression.FromString}'s encode
+ * side are structurally identical, ONE serializer walks either representation.
+ */
+type SpdxNode =
+	| { readonly _tag: "License"; readonly id: string; readonly plus: boolean }
+	| { readonly _tag: "LicenseRef"; readonly documentRef?: string; readonly ref: string }
+	| { readonly _tag: "WithException"; readonly license: SpdxNode; readonly exception: string }
+	| { readonly _tag: "And"; readonly left: SpdxNode; readonly right: SpdxNode }
+	| { readonly _tag: "Or"; readonly left: SpdxNode; readonly right: SpdxNode };
+
+/**
+ * Serialize a tagged SPDX AST node — a class instance OR its encoded POJO — to
+ * the canonical, fully-parenthesized SPDX string. This is the single source of
+ * truth for canonical form: every node's `toString` and the codec encode side
+ * both route through it, so the instance method and
+ * {@link SpdxExpression.FromString}'s encode can never drift.
+ */
+function serialize(node: SpdxNode): string {
+	switch (node._tag) {
+		case "License":
+			return node.plus ? `${node.id}+` : node.id;
+		case "LicenseRef": {
+			const prefix = node.documentRef !== undefined ? `DocumentRef-${node.documentRef}:` : "";
+			return `${prefix}LicenseRef-${node.ref}`;
+		}
+		case "WithException":
+			return `${serialize(node.license)} WITH ${node.exception}`;
+		case "And":
+			return `(${serialize(node.left)} AND ${serialize(node.right)})`;
+		case "Or":
+			return `(${serialize(node.left)} OR ${serialize(node.right)})`;
+	}
+}
+
+/**
  * A simple-license leaf of an SPDX expression: a license identifier with the
  * trailing `+` ("or later") marker. This is the expression-level license node —
  * distinct from, and a finer altitude than, the catalog `License` class in
@@ -20,7 +57,7 @@ export class LicenseNode extends Schema.TaggedClass<LicenseNode>()("License", {
 }) {
 	/** The canonical string form: the id, suffixed with `+` when {@link LicenseNode.plus} is set. */
 	override toString(): string {
-		return this.plus ? `${this.id}+` : this.id;
+		return serialize(this);
 	}
 }
 
@@ -40,8 +77,7 @@ export class LicenseRefNode extends Schema.TaggedClass<LicenseRefNode>()("Licens
 }) {
 	/** The canonical string form, re-attaching the `DocumentRef-…:` prefix when present. */
 	override toString(): string {
-		const prefix = this.documentRef !== undefined ? `DocumentRef-${this.documentRef}:` : "";
-		return `${prefix}LicenseRef-${this.ref}`;
+		return serialize(this);
 	}
 }
 
@@ -60,7 +96,7 @@ export class WithExceptionNode extends Schema.TaggedClass<WithExceptionNode>()("
 }) {
 	/** The canonical string form: the license, then `WITH`, then the exception id. */
 	override toString(): string {
-		return `${this.license.toString()} WITH ${this.exception}`;
+		return serialize(this);
 	}
 }
 
@@ -78,7 +114,7 @@ export class AndNode extends Schema.TaggedClass<AndNode>()("And", {
 }) {
 	/** The canonical, fully-parenthesized string form `(left AND right)`. */
 	override toString(): string {
-		return `(${this.left.toString()} AND ${this.right.toString()})`;
+		return serialize(this);
 	}
 }
 
@@ -96,7 +132,7 @@ export class OrNode extends Schema.TaggedClass<OrNode>()("Or", {
 }) {
 	/** The canonical, fully-parenthesized string form `(left OR right)`. */
 	override toString(): string {
-		return `(${this.left.toString()} OR ${this.right.toString()})`;
+		return serialize(this);
 	}
 }
 
@@ -192,7 +228,12 @@ const FromString: Schema.Codec<SpdxExpression, string> = Schema.String.pipe(
 					? Effect.succeed(result.success)
 					: Effect.fail(new SchemaIssue.InvalidValue(Option.some(input), { message: result.failure.message }));
 			},
-			encode: (expression: SpdxExpression) => Effect.succeed(expression.toString()),
+			// `decodeTo`'s encode runs the union's encode FIRST, so `expression` is
+			// the tagged POJO (a plain `Object`, not a class instance) — calling
+			// `.toString()` on it would hit `Object.prototype.toString`. The
+			// structural `serialize` walks that POJO by `_tag`, the same routine the
+			// instance `toString` uses, so encode round-trips to canonical form.
+			encode: (expression: SpdxExpression) => Effect.succeed(serialize(expression)),
 		}),
 	),
 );
