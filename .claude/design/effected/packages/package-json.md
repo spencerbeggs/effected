@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-07-22
+last-synced: 2026-07-22
 completeness: 92
 related:
   - ../architecture.md
@@ -15,25 +15,26 @@ related:
   - jsonc.md
   - yaml.md
   - npm.md
+  - spdx.md
 ---
 
 # @effected/package-json design
 
 ## Overview
 
-`@effected/package-json` is package.json parsing, editing, validation and file IO as Effect schemas — the kit's one **integrated-tier** manifest library and its reference for the pure/IO boundary discipline. The `Package` rich `Schema.Class` is the domain model with computed getters, immutable-mutation statics, a round-trip-fidelity `rest` catch-all and semantic field decoding (`version`→`SemVer`, `packageManager`, `person`, SPDX `license`, branded names). All IO is confined to a single module, `PackageJsonFile`, over core `FileSystem` / `Path`.
+`@effected/package-json` is package.json parsing, editing, validation and file IO as Effect schemas — a **boundary-tier** manifest library and the kit's reference for the pure/IO boundary discipline. The `Package` rich `Schema.Class` is the domain model with computed getters, immutable-mutation statics, a round-trip-fidelity `rest` catch-all and semantic field decoding (`version`→`SemVer`, `packageManager`, `person`, SPDX `license`, branded names). All IO is confined to a single module, `PackageJsonFile`, over core `FileSystem` / `Path`.
 
 ## Tier and dependencies
 
-**Integrated tier — one package, IO confined to a single module.** In v4 the fs split motivation evaporates because `FileSystem`/`Path` live in `effect` core: a pure core and a hypothetical fs package would have the identical peer closure (`effect`), so splitting would only isolate ~115 lines of IO behind paired versioning for no gain. `sideEffects: false` lets bundlers tree-shake the fs code out of pure usage.
+**Boundary tier — one package, IO confined to a single module.** In v4 the fs split motivation evaporates because `FileSystem`/`Path` live in `effect` core: a pure core and a hypothetical fs package would have the identical peer closure (`effect`), so splitting would only isolate ~115 lines of IO behind paired versioning for no gain. `sideEffects: false` lets bundlers tree-shake the fs code out of pure usage.
 
-The tier is **integrated** not because of that IO (which alone would be boundary) but because of the `spdx-expression-parse` runtime dependency: under [R1](../effect-standards.md#dependency-policy) any runtime import outside `effect` core makes a package tier 3, and this is the only `@effected` package that carries one.
+The tier is **boundary**, set by the file IO in `PackageJsonFile.ts` and nothing more: the package carries no runtime dependency outside `effect` core. It was integrated until `spdx-expression-parse` — its one foreign runtime dependency — was removed by delegating SPDX-expression validity to [`@effected/spdx`](spdx.md), a pure `@effected` package reached via `workspace:~`. A `workspace:~` edge to a pure package does not re-lift the tier ([R2 propagates only tier-3](../effect-standards.md#dependency-policy)), exactly as the existing `@effected/semver` and `@effected/npm` edges do not.
 
 - `peerDependencies`: `effect` only (`catalog:effect`) — no `@effect/platform` peer, since FileSystem is core.
-- `dependencies`: `@effected/semver` (`workspace:~` — `SemVer` instances appear in `Package`'s API, but consumers read the decoded value far more than they construct their own, so a regular dependency rather than a peer); `@effected/npm` (`workspace:~` — the resolver contracts and shared specifier/integrity vocabulary); `spdx-expression-parse` (the runtime dependency that sets the tier).
+- `dependencies`: `@effected/semver` (`workspace:~` — `SemVer` instances appear in `Package`'s API, but consumers read the decoded value far more than they construct their own, so a regular dependency rather than a peer); `@effected/npm` (`workspace:~` — the resolver contracts and shared specifier/integrity vocabulary); `@effected/spdx` (`workspace:~` — SPDX-expression validity for the `license` field).
 - `devDependencies`: `@effect/platform-node` (`catalog:effect`) for integration tests that provide a real `FileSystem`; the usual `@effect/vitest`, `@types/node`, `typescript`.
 
-Peer closure holds: `effect` has no peers, and `@effected/semver` / `@effected/npm` each declare only `effect`. `@effect/platform-node` stays devDependencies-only; consumers of the file API provide their own platform implementation at the edge.
+Peer closure holds: `effect` has no peers, and `@effected/semver` / `@effected/npm` / `@effected/spdx` each declare only `effect`. `@effect/platform-node` stays devDependencies-only; consumers of the file API provide their own platform implementation at the edge.
 
 ## Module layout
 
@@ -45,7 +46,6 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 - `PackageJsonFile.ts` — **the only IO module**: one `Context.Service`, `read` + `write` over core `FileSystem`, and its read/write error tags.
 - `PackageJsonFormat.ts` — the **decode-free** formatting seam: `sortValue` (value→value) and `formatToString` (bytes→bytes), plus `PackageJsonSyntaxError` and `PackageFormatTextOptions`. See [the formatting seam](#the-decode-free-formatting-seam).
 - `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions, shared by the write options, `Package.toJsonString` and `PackageJsonFormat`. Holds `KEY_ORDER` and its `sort-package-json@4.0.0` provenance comment — see [formatting](#formatting-byte-agreement-with-the-ecosystem-oracle).
-- `spdx-expression-parse.d.ts` — the hand-written type shim for the one CJS runtime dependency.
 
 `DependencySpecifier` is **not** defined here — the specifier taxonomy lives in [`@effected/npm`](npm.md) and `index.ts` re-exports it for surface compatibility. The package ships a single entry point (`src/index.ts`); there is no `./schema` subpath, and field codecs are either `@public` consts on their owning concept or `internal/` privates.
 
@@ -78,7 +78,7 @@ Modeled fields include `name` (`PackageName`), `version` (`SemVer`), `license` (
 ### Leaf concepts
 
 - **`PackageName`** — `PackageName` / `ScopedPackageName` / `UnscopedPackageName` brands (a `.check(...)` + `Schema.brand` over the npm name grammar, written with **lookahead-free regexes** so `Schema.toArbitrary` property tests derive) plus statics `isValid` / `scope` / `unscoped` / `isScoped`, attached via `Object.assign` since a `const` and a `namespace` cannot merge in TS. The branded types export explicitly as `string & Brand.Brand<"…">`.
-- **`SpdxLicense`** (`License.ts`) — a brand validating real SPDX expressions via `spdx-expression-parse` (including `UNLICENSED` and `SEE LICENSE IN`).
+- **`SpdxLicense`** (`License.ts`) — a brand validating the `license` field, delegating core SPDX-expression validity to [`@effected/spdx`](spdx.md)'s `isValidExpression` and keeping only the npm-specific `UNLICENSED` and `SEE LICENSE IN <file>` cases, which are npm semantics rather than SPDX grammar.
 - **`PackageManager`** — a class parsing `"pnpm@10.x+sha512.abc"` into `name` / `version` / `integrity`, where `integrity` is a genuine `Schema.Option` field (absence is computed on) typed as [`@effected/npm`'s `IntegrityHash`](npm.md#integrityhash) brand. Because the brand rejects a malformed integrity segment, `PackageManager.FromString` now **fails typed** on malformed integrity rather than round-tripping it as a raw string — real corepack values are unaffected.
 - **`Person`** — a class parsing `"Name <email> (url)"` into structured fields and encoding back, wired into `Package.author`/`contributors`. It carries a `rest` catch-all of its own, on the same wire-transform pattern as `Package`: an object-form author with a `twitter` or `github` key would otherwise lose it on a read→write cycle, which is exactly the silent deletion the [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) forbids and which a schema-derived arbitrary is structurally incapable of generating. `Package` and `Person` are the package's **only** object-shaped models and therefore the only two that need a catch-all; every other leaf is a scalar or a closed shape.
 - **`DevEngine`** — the `DevEngine` class and `devEngines` field schema.

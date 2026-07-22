@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-07-18
-last-synced: 2026-07-18
+updated: 2026-07-22
+last-synced: 2026-07-22
 completeness: 88
 related:
   - architecture.md
@@ -29,6 +29,7 @@ related:
   - packages/app.md
   - packages/tsconfig-json.md
   - packages/git.md
+  - packages/spdx.md
   - packages/pnpm-plugin-effect.md
   - packages/markdown.md
 ---
@@ -37,7 +38,7 @@ related:
 
 ## Overview
 
-The current `@effected/*` package set and where each package came from. The kit ships **eighteen publishable packages**: seventeen libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). Tier definitions are in [effect-standards.md](effect-standards.md); the release gate and consumer mapping are in [releases.md](releases.md); post-`0.1.0` work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
+The current `@effected/*` package set and where each package came from. The kit ships **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). Tier definitions are in [effect-standards.md](effect-standards.md); the release gate and consumer mapping are in [releases.md](releases.md); post-`0.1.0` work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
 
 The kit's scope is closed by the five consuming applications in [releases.md](releases.md), not by the number of `*-effect` source repos. A source repo is not by itself a commitment to migrate it: `json-schema-effect` fell off under that test (see [Off the roadmap](#off-the-roadmap)).
 
@@ -50,7 +51,7 @@ Provenance is one of: **port** (redesigned from a v3 `*-effect` source repo unde
 | `@effected/semver` | pure | port of `semver-effect`; the DX exemplar | [packages/semver.md](packages/semver.md) |
 | `@effected/jsonc` | pure | port of `jsonc-effect` | [packages/jsonc.md](packages/jsonc.md) |
 | `@effected/yaml` | pure | port of `yaml-effect`; largest package in the repo | [packages/yaml.md](packages/yaml.md) |
-| `@effected/package-json` | integrated | port of `package-json-effect`; IO confined to one `PackageJsonFile.ts` module | [packages/package-json.md](packages/package-json.md) |
+| `@effected/package-json` | boundary | port of `package-json-effect`; IO confined to one `PackageJsonFile.ts` module, SPDX validity delegated to `@effected/spdx` | [packages/package-json.md](packages/package-json.md) |
 | `@effected/npm` | pure | extraction from `package-json`; holds the `CatalogResolver`/`WorkspaceResolver` contracts and the dependency-resolution vocabulary | [packages/npm.md](packages/npm.md) |
 | `@effected/config-file` | boundary | port of `config-file-effect`; carries the four codecs as free-standing named exports | [packages/config-file.md](packages/config-file.md) |
 | `@effected/walker` | boundary | extraction from `config-file`; upward path traversal | [packages/walker.md](packages/walker.md) |
@@ -63,6 +64,7 @@ Provenance is one of: **port** (redesigned from a v3 `*-effect` source repo unde
 | `@effected/runtimes` | boundary | port of `runtime-resolver` (the library half); resolve Node/Bun/Deno versions | [packages/runtimes.md](packages/runtimes.md) |
 | `@effected/tsconfig-json` | boundary | invention; read/resolve/construct tsconfig.json with zero `typescript` imports | [packages/tsconfig-json.md](packages/tsconfig-json.md) |
 | `@effected/git` | boundary | invention; typed git introspection plus a marked mutating tier over core's `ChildProcessSpawner` | [packages/git.md](packages/git.md) |
+| `@effected/spdx` | pure | invention; vendored SPDX license expressions as pure schemas; consumed by `package-json` | [packages/spdx.md](packages/spdx.md) |
 | `@effected/app` | integrated | invention; thin composition over `xdg` + `config-file` + `store` | [packages/app.md](packages/app.md) |
 | `@effected/pnpm-plugin-effect` | companion — no tier | invention; publishes the `effect`/`effectPeers` catalogs | [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md) |
 
@@ -81,7 +83,7 @@ The `jsonc`, `yaml` and `toml` **format** packages remain independent — they a
 
 ## In flight (post-`0.1.0`)
 
-Packages under active development that are **not part of the eighteen-package `0.1.0` gate set** and do not ship with it.
+Packages under active development that are **not part of the nineteen-package `0.1.0` gate set** and do not ship with it.
 
 - `@effected/markdown` — invention; CommonMark + GFM as pure Effect Schema schemas, the kit's typed communication layer with AI agents. A post-`0.1.0` workstream whose first identified consumer is `rspress-plugin-api-extractor` (see [packages/markdown.md](packages/markdown.md)). **P1 (CommonMark core) is complete in tree** at `packages/markdown` on `feat/markdown` (2026-07-18); phases P2-P6 are pending. Pure tier when it ships.
 

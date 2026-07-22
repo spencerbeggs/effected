@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-07-22
+last-synced: 2026-07-22
 completeness: 96
 related:
   - ../effect-standards.md
@@ -45,7 +45,7 @@ pnpm lockfiles name workspace packages by importer *path* with version `"0.0.0"`
 
 `LockfileIntegrity.compare(lockfile, manifests)` takes the manifests as values and returns the report **infallibly** — a plain function, no Effect, no error channel. Unparseable ranges/versions and `workspace:`/`link:`/`file:` specifiers are skipped (constraint checking is best-effort by design), so totality costs no behavior. The method is named `compare`, not `check`, because every v4 `Schema.Class` already carries a reserved `static check(...)` for attaching schema checks — a naming constraint domain statics must dodge.
 
-The manifest input is a minimal structural schema, `WorkspaceManifest` (`name` plus the four optional dependency records) — deliberately *not* `@effected/package-json`'s types, which live in an integrated-tier package this one must not depend on. Structural typing lets workspaces pass values derived from either.
+The manifest input is a minimal structural schema, `WorkspaceManifest` (`name` plus the four optional dependency records) — deliberately *not* `@effected/package-json`'s types, which live in a heavier boundary-tier package (file IO in `PackageJsonFile.ts`) this pure package stays decoupled from. Structural typing lets workspaces pass values derived from either.
 
 Range satisfaction goes through `@effected/semver`; parse failures on either side skip the row. Integrity keeps every resolved version per name, so a constraint is satisfied when *any* parseable resolved version matches (never dependent on lockfile entry order), and an unsatisfied row reports all candidates.
 
@@ -100,7 +100,7 @@ The `importers` field records each workspace importer's *declared* dependencies 
 
 The pnpm, bun and npm transforms populate `importers` off a shared dependency-sections table; **yarn always yields `[]`**, documented behavior since yarn never records importers. `withImporterNames` deliberately does not touch importers — they stay keyed by importer path, the join key. Construction uses conditional spreads for the optional `version`, since v4's validating constructors throw on an explicit `undefined` for an `optionalKey` field.
 
-The specifier taxonomy comes from `@effected/npm` rather than `@effected/package-json`: that package is integrated tier, and R2 would propagate integration into this pure package. See the [npm vocabulary registry](npm.md#vocabulary-registry) for what this package keeps and discards from each lockfile format.
+The specifier taxonomy comes from `@effected/npm` rather than `@effected/package-json`: `@effected/npm` is the pure vocabulary package built to be shared, whereas `@effected/package-json` is a heavier boundary-tier package this pure one stays clear of. See the [npm vocabulary registry](npm.md#vocabulary-registry) for what this package keeps and discards from each lockfile format.
 
 ## Hardening
 

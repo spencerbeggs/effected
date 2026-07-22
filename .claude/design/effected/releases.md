@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-16
-last-synced: 2026-07-16
+updated: 2026-07-22
+last-synced: 2026-07-22
 completeness: 85
 related:
   - architecture.md
@@ -12,6 +12,8 @@ related:
   - effect-standards.md
   - roadmap.md
   - packages/toml.md
+  - packages/package-json.md
+  - packages/spdx.md
   - packages/store.md
   - packages/lockfiles.md
   - packages/xdg.md
@@ -56,14 +58,14 @@ The release criterion is "the kit can replace the business logic of these five."
 
 ## The gate
 
-The gate is the union of what those consumers need, and it is met. The kit ships **eighteen publishable packages**: seventeen libraries plus the `pnpm-plugin-effect` companion.
+The gate is the union of what those consumers need, and it is met. The kit ships **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion.
 
 | Package | Tier | Why it is on the gate |
 | --- | --- | --- |
 | `@effected/semver` | pure | `rspress-plugin-api-extractor`; the DX exemplar |
 | `@effected/jsonc` | pure | `config-file`'s JSONC codec; parse/edit/format |
 | `@effected/yaml` | pure | `config-file`'s YAML codec |
-| `@effected/package-json` | integrated | manifest schemas and file IO for `workspaces` |
+| `@effected/package-json` | boundary | manifest schemas and file IO for `workspaces`; SPDX validity delegated to `@effected/spdx` |
 | `@effected/npm` | pure | dependency-resolution contracts `workspaces` implements |
 | `@effected/config-file` | boundary | `vitest-agent` and `@soda3js/config`; carries the four codecs (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`) |
 | `@effected/walker` | boundary | `config-file`, `xdg` and `workspaces` all traverse paths |
@@ -76,6 +78,7 @@ The gate is the union of what those consumers need, and it is met. The kit ships
 | `@effected/runtimes` | boundary | a migration target; takes only `@effected/semver` and core `HttpClient` |
 | `@effected/tsconfig-json` | boundary | `rspress-plugin-api-extractor`'s tsconfig path and the `@savvy-web/bundler` port; owns the version-coupled enum mappings as data |
 | `@effected/git` | boundary | typed git introspection plus a marked mutating tier over core's `ChildProcessSpawner`; consumers are `workspaces` and `savvy-web/systems` |
+| `@effected/spdx` | pure | vendored SPDX license expressions as pure schemas; `package-json` delegates its `license` validation to it, dropping the kit's last foreign runtime dependency |
 | `@effected/app` | integrated | the composition layer over `xdg` + `config-file` + `store`; nothing may depend on it |
 | `@effected/pnpm-plugin-effect` | companion — no tier | not a library, but on the gate: it hands consumers the `effect` catalogs the kit was built against |
 
