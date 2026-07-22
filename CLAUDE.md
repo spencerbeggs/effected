@@ -26,7 +26,7 @@ Nine foundational design docs live in `.claude/design/effected/` (config: `.clau
 
 ### Migration Status
 
-**The migration program is complete (2026-07-12).** All seventeen library packages were merged, ending with `@effected/app` (PR #73). Two have since been extracted back to their own external repos and dropped from the kit: `runtime-resolver-cli` (now the `runtime-resolver` repo) and `ts-vfs` (now the `type-registry-effect` repo). With the new `@effected/tsconfig-json`, the kit is **18 publishable packages**; the full set is listed below and in `package-inventory.md`. `@effected/runtime-resolver` was renamed `@effected/runtimes` (b3490cf7). `@effected/json-schema` is off the roadmap entirely. New packages follow the migration playbook: design doc first, then port.
+**The migration program is complete (2026-07-12).** All seventeen library packages were merged, ending with `@effected/app` (PR #73). Two have since been extracted back to their own external repos and dropped from the kit: `runtime-resolver-cli` (now the `runtime-resolver` repo) and `ts-vfs` (now the `type-registry-effect` repo). With the new `@effected/tsconfig-json` and `@effected/spdx`, the kit is **19 publishable packages**; the full set is listed below and in `package-inventory.md`. `@effected/runtime-resolver` was renamed `@effected/runtimes` (b3490cf7). `@effected/json-schema` is off the roadmap entirely. New packages follow the migration playbook: design doc first, then port.
 
 **The config-file consolidation is done.** `@effected/config-file` absorbed the three codec packages; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — and `ConfigCodec` is the interface only. **Never collect them into a namespace object**: referencing one reaches every codec and drags every parsing engine into a JSON-only consumer's bundle; tree-shaking dies silently. A namespace object is a barrel with different syntax; do not reintroduce one. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
@@ -47,7 +47,8 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `semver` — strict SemVer 2.0.0 schemas; the repo's DX north star (pure).
 - `jsonc` — zero-dependency JSONC parse/edit/format schemas (pure).
 - `yaml` — zero-dependency YAML 1.2 parse/edit/format schemas; largest package in the repo (pure).
-- `package-json` — package.json schemas, validation and file IO (integrated).
+- `package-json` — package.json schemas, validation and file IO; delegates core SPDX validity to `@effected/spdx` (boundary).
+- `spdx` — SPDX license identifiers, exceptions and license expressions as Effect Schema classes; vendors the SPDX datasets as devDep-generated TypeScript (pure).
 - `tsconfig-json` — tsconfig.json schemas, `extends`-chain resolution and config discovery; the one new (non-migration) `0.1.0` gate package (boundary).
 - `npm` — dependency-resolution contracts for `catalog:` / `workspace:` specifiers (pure).
 - `config-file` — composable config file loading: codec × resolver × strategy, with the four codecs (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`) as free-standing named exports (boundary). Zero *external* runtime dependencies; it peers on the `jsonc`, `yaml` and `toml` format packages.

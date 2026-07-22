@@ -1,24 +1,15 @@
 {
-	"name": "@effected/package-json",
-	"version": "0.4.2",
+	"name": "@effected/spdx",
+	"version": "0.0.0",
 	"private": true,
-	"description": "package.json parsing, editing, validation and file IO as Effect schemas.",
-	"keywords": ["package.json", "npm", "manifest", "effect", "schema", "validation", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/package-json#readme",
-	"bugs": {
-		"url": "https://github.com/spencerbeggs/effected/issues"
-	},
+	"description": "SPDX license expressions as Effect Schema classes",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/spdx#readme",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/spencerbeggs/effected.git",
-		"directory": "packages/package-json"
+		"directory": "packages/spdx"
 	},
 	"license": "MIT",
-	"author": {
-		"name": "C. Spencer Beggs",
-		"email": "spencer@beggs.codes",
-		"url": "https://spencerbeg.gs"
-	},
 	"sideEffects": false,
 	"type": "module",
 	"exports": {
@@ -31,17 +22,15 @@
 		"prepare": "turbo run build:dev",
 		"types:check": "tsc --noEmit"
 	},
-	"dependencies": {
-		"@effected/npm": "workspace:~",
-		"@effected/semver": "workspace:~",
-		"@effected/spdx": "workspace:~"
-	},
 	"devDependencies": {
-		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
 		"@savvy-web/bundler": "^2.0.7",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
+		"oxc-parser": "^0.141.0",
+		"spdx-exceptions": "2.5.0",
+		"spdx-expression-parse": "4.0.0",
+		"spdx-license-ids": "3.0.23",
 		"typescript": "catalog:silk"
 	},
 	"peerDependencies": {

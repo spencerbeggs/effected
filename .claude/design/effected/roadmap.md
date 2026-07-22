@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-07-19
-last-synced: 2026-07-19
+updated: 2026-07-22
+last-synced: 2026-07-22
 completeness: 88
 related:
   - releases.md
@@ -16,6 +16,8 @@ related:
   - packages/app.md
   - packages/tsconfig-json.md
   - packages/git.md
+  - packages/spdx.md
+  - packages/package-json.md
   - packages/markdown.md
 ---
 
@@ -23,7 +25,9 @@ related:
 
 ## Overview
 
-The migration program is complete and the `0.1.0` gate is met: the kit ships eighteen publishable packages (seventeen libraries plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library)) as an explicit pre-release. This doc records what comes after `0.1.0`. The decisions below are settled, recorded with their reasoning so they are not re-litigated; each new package gets its own spec → plan → implement cycle per the [migration playbook](migration-playbook.md). [releases.md](releases.md)'s gate table and [package-inventory.md](package-inventory.md) stay authoritative for the shipped set.
+The migration program is complete and the `0.1.0` gate is met: the kit ships nineteen publishable packages (eighteen libraries plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library)) as an explicit pre-release. This doc records what comes after `0.1.0`. The decisions below are settled, recorded with their reasoning so they are not re-litigated; each new package gets its own spec → plan → implement cycle per the [migration playbook](migration-playbook.md). [releases.md](releases.md)'s gate table and [package-inventory.md](package-inventory.md) stay authoritative for the shipped set.
+
+The nineteenth package, **`@effected/spdx`** (pure, invention), landed after the gate was first declared and joined it: it vendors the SPDX license and exception datasets as pure schemas so [`@effected/package-json`](packages/package-json.md) can delegate its `license` validation and drop `spdx-expression-parse`, the kit's last foreign runtime dependency. That delegation retiered package-json from integrated to boundary. It followed the design-doc-first playbook cycle; [packages/spdx.md](packages/spdx.md) is authoritative.
 
 The consumer ports — including `rspress-plugin-api-extractor`, the one representative consumer once chosen to prove the gate before publishing — run as post-`0.1.0` dogfooding against real published packages, with the [pre-release framing](releases.md#versioning) as the safety valve. Publishing early gets consumers onto real `@effected/*` packages sooner and surfaces integration problems as they actually arise.
 

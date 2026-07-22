@@ -2,9 +2,9 @@
 // SPDX expressions plus the `UNLICENSED` and `SEE LICENSE IN` special cases)
 // and the `InvalidSpdxLicenseError` the concept raises.
 
+import { isValidExpression } from "@effected/spdx";
 import type { Brand } from "effect";
 import { Schema } from "effect";
-import spdxParse from "spdx-expression-parse";
 
 /**
  * Indicates that a string is not a valid SPDX license identifier or expression.
@@ -35,12 +35,7 @@ export class InvalidSpdxLicenseError extends Schema.TaggedErrorClass<InvalidSpdx
 export const isValidSpdx = (value: string): boolean => {
 	if (value === "UNLICENSED") return true;
 	if (value.startsWith("SEE LICENSE IN ") && value.length > "SEE LICENSE IN ".length) return true;
-	try {
-		spdxParse(value);
-		return true;
-	} catch {
-		return false;
-	}
+	return isValidExpression(value);
 };
 
 /**
