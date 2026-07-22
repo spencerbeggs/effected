@@ -34,10 +34,10 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
-		"@savvy-web/bundler": "^2.0.5",
+		"@savvy-web/bundler": "^2.0.6",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
-		"rolldown-pnpm-config": "^0.5.0",
+		"rolldown-pnpm-config": "^0.5.1",
 		"typescript": "catalog:silk"
 	},
 	"engines": {

@@ -51,7 +51,7 @@
 		"@effected/toml": "workspace:*",
 		"@effected/walker": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@savvy-web/bundler": "^2.0.5",
+		"@savvy-web/bundler": "^2.0.6",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
 		"typescript": "catalog:silk"
