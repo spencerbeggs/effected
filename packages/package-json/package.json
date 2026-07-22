@@ -34,7 +34,7 @@
 	"dependencies": {
 		"@effected/npm": "workspace:~",
 		"@effected/semver": "workspace:~",
-		"spdx-expression-parse": "^4.0.0"
+		"@effected/spdx": "workspace:~"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
