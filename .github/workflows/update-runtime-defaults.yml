@@ -1,0 +1,105 @@
+name: Update Runtime Defaults
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily at 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: update-runtime-defaults
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update-defaults:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: spencerbeggs
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Runtime
+        id: runtime
+        uses: savvy-web/silk-runtime-action@v1
+
+      - name: Generate defaults
+        env:
+          # The generator's GitHubAuth.layer reads GITHUB_TOKEN from config; feed it
+          # the App token (not the ambient Actions secret of the same name).
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: pnpm --filter @effected/runtimes exec tsx lib/scripts/generate-defaults.ts
+
+      - name: Format generated files
+        # Scope Biome to the only files the generator writes, so an unrelated
+        # unfixable lint diagnostic elsewhere in the repo cannot abort this job.
+        run: pnpm exec biome check --write packages/runtimes/src/internal/defaults/
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet -- packages/runtimes/src/internal/defaults/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write changeset
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          printf '%s\n' \
+            '---' \
+            '"@effected/runtimes": patch' \
+            '---' \
+            '' \
+            '## Maintenance' \
+            '' \
+            '- Refreshed the bundled Node.js, Bun and Deno version defaults from the upstream release feeds' \
+            > .changeset/update-runtime-defaults.md
+
+      - name: Build and test
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          pnpm build --filter @effected/runtimes
+          # Smoke-check the package's own tests on the regenerated data. Coverage is
+          # disabled: this repo's vitest config enforces global coverage thresholds
+          # that a single-package subset run cannot meet, which would abort the job.
+          pnpm vitest run packages/runtimes --coverage.enabled=false
+
+      - name: Open auto-merging PR
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BOT_NAME: ${{ steps.app-token.outputs.app-slug }}[bot]
+          BOT_EMAIL: ${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
+
+          git switch -c chore/update-runtime-defaults
+          git add packages/runtimes/src/internal/defaults/ .changeset/update-runtime-defaults.md
+          git commit --signoff -m "chore(runtimes): refresh bundled runtime version defaults"
+          git push --force origin chore/update-runtime-defaults
+
+          gh pr create \
+            --base main \
+            --head chore/update-runtime-defaults \
+            --title "chore(runtimes): refresh bundled runtime version defaults" \
+            --body "Automated daily refresh of the bundled Node.js, Bun and Deno version snapshots from the upstream release feeds." \
+            || echo "::notice::PR already open for chore/update-runtime-defaults"
+
+          gh pr merge chore/update-runtime-defaults --auto --squash

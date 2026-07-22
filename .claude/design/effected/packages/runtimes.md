@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-07-22
+last-synced: 2026-07-22
 completeness: 95
 related:
   - ../effect-standards.md
@@ -14,6 +14,7 @@ related:
   - ../roadmap.md
   - semver.md
   - git.md
+  - spdx.md
 ---
 
 # @effected/runtimes design
@@ -172,9 +173,26 @@ The engine consumes untrusted JSON from three network feeds. There is no recursi
 - **A server-supplied `retry-after` is bounded before it becomes a sleep.** It is honored as the retry delay, capped at 60s, and a negative value is discarded in favour of the exponential schedule. The rate-limit backoff (`internal/http.ts`) uses `Schedule.exponential` under `Schedule.passthrough` with `Schedule.modifyDelay` reading the failure's `retryAfter` from the passed-through `output`.
 - **A `403` is classified, not assumed.** GitHub returns `403` for an exhausted rate limit *and* for permission and resource failures. Classification uses the documented signals — `x-ratelimit-remaining: 0` for the primary limit, `retry-after` for the secondary — and a `403` with neither stays a `NetworkError` carrying the status, so it is not retried. A `429` is definitionally a rate limit. Classification is from status and headers, never body-message inspection.
 
+## Bundled defaults regeneration
+
+`lib/scripts/generate-defaults.ts` refreshes the three offline snapshots under `internal/defaults/` (see [Module layout](#module-layout)) by fetching the live feeds through the package's own `internal/feeds.ts` — the same tag-strip/skip/parse rules the runtime resolvers use, single-sourced rather than reimplemented as a standalone client. It is a devDep script, not library surface: run by hand or by CI, never by the test suite, because it performs network IO.
+
+It rewrites each snapshot by parsing the target file with `oxc-parser` and splicing only the byte-span of each exported const's initializer, leaving headers, imports, TSDoc and type annotations untouched — the same technique [@effected/spdx](spdx.md#vendored-data-and-regeneration)'s `generate-data.ts` uses for its vendored license data. Records are written in feed order; the script never re-sorts, so the generated diff reflects only what upstream actually changed.
+
+Two invariants keep a bad fetch from corrupting the fallback the Auto and Offline strategies depend on:
+
+- **Every record is filtered through the library's own `tryParseSemVer` before writing**, so a snapshot holds only resolvable versions — the same rule the runtime resolvers apply to live data, reused rather than reimplemented for generated data.
+- **A zero-length result from any feed — either release list or the Node schedule — refuses the write outright.** A failed or truncated fetch must never overwrite a good offline snapshot with an empty one; the script dies loudly instead of committing silently wrong data.
+
+`oxc-parser` is a **script-only devDependency**: nothing under `src/**` imports it, and the [tier and dependencies](#tier-and-dependencies) boundary — `@effected/semver` alone — is unchanged. `tsx`, the runner that executes the script, comes from the `@savvy-web/silk` toolchain rather than being a package-local dependency.
+
+`.github/workflows/update-runtime-defaults.yml` runs the generator daily. When it produces a diff, the workflow writes a `patch` changeset under a `## Maintenance` heading and opens an auto-merging PR carrying both the regenerated snapshots and the changeset. The workflow's build-and-test step runs with `--coverage.enabled=false`: this repo's vitest config enforces global coverage thresholds that a single-package subset run cannot meet, and that mismatch would abort the job for a reason unrelated to whether the regenerated data is correct.
+
 ## Testing
 
 `@effect/vitest` throughout; `it.effect` the default; `assert.*`, never `expect`; tests in `__test__/`, organized by seam.
+
+`lib/scripts/generate-defaults.ts` has no suite entry and the test suite must never invoke it — it performs live network IO. It is verified functionally instead, on the [@effected/spdx](spdx.md#vendored-data-and-regeneration) `generate-data.ts` precedent: run it against the live feeds and confirm the diff touches only the snapshot bodies, that a second run is idempotent, and that the package builds and its suite stays green on the regenerated data.
 
 Suite-boundary seams:
 
