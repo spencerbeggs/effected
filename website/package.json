@@ -17,7 +17,7 @@
 		"@types/react-dom": "catalog:silk",
 		"react": "catalog:silk",
 		"react-dom": "catalog:silk",
-		"rspress-plugin-api-extractor": "^0.6.2",
+		"rspress-plugin-api-extractor": "^0.7.1",
 		"rspress-plugin-mermaid": "^1.0.1"
 	}
 }
