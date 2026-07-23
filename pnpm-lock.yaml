@@ -642,8 +642,8 @@ importers:
         specifier: catalog:silk
         version: 19.2.8(react@19.2.8)
       rspress-plugin-api-extractor:
-        specifier: ^0.6.2
-        version: 0.6.4(@effected/config-file@0.1.7(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/toml@0.3.0(effect@4.0.0-beta.99))(@effected/walker@0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/walker@0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@rspress/core@2.0.18(@rspack/core@2.1.5(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.1.1)(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@9.4.0)
+        specifier: ^0.7.1
+        version: 0.7.1(@effected/config-file@0.1.7(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/toml@0.3.0(effect@4.0.0-beta.99))(@effected/walker@0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/walker@0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@rspress/core@2.0.18(@rspack/core@2.1.5(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.1.1)(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@9.4.0)
       rspress-plugin-mermaid:
         specifier: ^1.0.1
         version: 1.0.1(@rspress/core@2.0.18(@rspack/core@2.1.5(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(supports-color@9.4.0)
@@ -4561,8 +4561,8 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
-  rspress-plugin-api-extractor@0.6.4:
-    resolution: {integrity: sha512-JIUVgVIXBwrphCr91eZKNh1GoGWbNMP4CLL5Jj9xbaHw6m5BPjhY5emmplnKIambpg/0jkiXixCVge9wISegHw==}
+  rspress-plugin-api-extractor@0.7.1:
+    resolution: {integrity: sha512-yubTGjsi2C2hyD+6T4v6zu5Nsd+7oL3JEQMEkx7CoM2kZ7fURYE4oh78jqCEVuSA7uDDOJ2qTlOz5mGtBP34xQ==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@rspress/core': ^2.0.0
@@ -10314,7 +10314,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  rspress-plugin-api-extractor@0.6.4(@effected/config-file@0.1.7(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/toml@0.3.0(effect@4.0.0-beta.99))(@effected/walker@0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/walker@0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@rspress/core@2.0.18(@rspack/core@2.1.5(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.1.1)(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@9.4.0):
+  rspress-plugin-api-extractor@0.7.1(@effected/config-file@0.1.7(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/toml@0.3.0(effect@4.0.0-beta.99))(@effected/walker@0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/yaml@0.5.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@effected/jsonc@0.5.0(effect@4.0.0-beta.99))(@effected/walker@0.3.1(@effected/glob@0.2.0(effect@4.0.0-beta.99))(effect@4.0.0-beta.99))(@rspress/core@2.0.18(@rspack/core@2.1.5(@swc/helpers@0.5.23))(@types/mdast@4.0.4)(@types/react@19.2.17)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.1.1)(@types/react@19.2.17)(@typescript/native-preview@7.0.0-dev.20260707.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@9.4.0):
     dependencies:
       '@effect/platform-node': 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@9.4.0))
       '@effect/sql-sqlite-node': 4.0.0-beta.99(effect@4.0.0-beta.99)
