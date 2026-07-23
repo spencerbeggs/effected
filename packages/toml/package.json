@@ -33,7 +33,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
-		"@savvy-web/bundler": "^2.0.7",
+		"@savvy-web/bundler": "^2.0.8",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
 		"smol-toml": "1.7.0",
