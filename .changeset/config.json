@@ -21,7 +21,7 @@
 	"access": "restricted",
 	"baseBranch": "main",
 	"updateInternalDependencies": "patch",
-	"ignore": [],
+	"ignore": ["docs"],
 	"privatePackages": {
 		"tag": true,
 		"version": true
