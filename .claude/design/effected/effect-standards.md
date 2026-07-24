@@ -91,7 +91,7 @@ The consequence for this kit is a standing rule: **we are in the business of bus
 
 Three operating rules fall out:
 
-1. **Before designing any seam or contract, grep `.repos/effect-smol` for the core contract first.** If core declares the service, require it in `R`; the seam already exists.
+1. **Before designing any seam or contract, grep `.repos/effect` for the core contract first.** If core declares the service, require it in `R`; the seam already exists.
 2. **A direct `node:` import in library code is a code smell, most of the time.** The sanctioned exceptions are documented Node-only overlays — a default layer or a sync escape hatch (`WorkspacesSync`) — never a contract or a business-logic path.
 3. **Platform packages are legitimate devDependencies for integration tests** (the `workspaces` `self.int.test.ts` precedent) and legitimate dependencies only in applications and app-edge packages (the runtimes CLI split).
 
@@ -99,7 +99,7 @@ Learned the expensive way: a design once invented a `Command`/`CommandRunner` vo
 
 ### The vendored source is the style oracle, not just the API authority
 
-`.repos/effect-smol` settles more than existence and signatures: **it is the paradigm reference.** The core source is written with unusual care — one concept per module with a `@since`-annotated public surface, contracts as `Context.Service` classes with a `make` that derives the rich surface from one primitive (`ChildProcessSpawner.make(spawn)`), branded scalars for domain numbers (`ExitCode`, `ProcessId`), `dual` data-first/data-last combinators, values that are themselves `Effect`s where yielding is the natural verb, and doc comments whose examples compile. When designing a kit module, read how core writes the *analogous* module and match its paradigms — naming, factoring, where options objects go, how errors are shaped. The more the kit's constructs read like core's, the cheaper every consumer's mental model gets, and the easier our pieces compose with the ecosystem's. Divergence is allowed but must be a recorded decision with a reason, not a habit.
+`.repos/effect` settles more than existence and signatures: **it is the paradigm reference.** The core source is written with unusual care — one concept per module with a `@since`-annotated public surface, contracts as `Context.Service` classes with a `make` that derives the rich surface from one primitive (`ChildProcessSpawner.make(spawn)`), branded scalars for domain numbers (`ExitCode`, `ProcessId`), `dual` data-first/data-last combinators, values that are themselves `Effect`s where yielding is the natural verb, and doc comments whose examples compile. When designing a kit module, read how core writes the *analogous* module and match its paradigms — naming, factoring, where options objects go, how errors are shaped. The more the kit's constructs read like core's, the cheaper every consumer's mental model gets, and the easier our pieces compose with the ecosystem's. Divergence is allowed but must be a recorded decision with a reason, not a habit.
 
 ## Schema standards
 

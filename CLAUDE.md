@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 This is **effected**, a pnpm monorepo (npm org `@effected`) building an **Effect v4 app kit**: a coherent set of libraries designed v4-first, not a lift-and-shift of Spencer's older `*-effect` repos. Scope is closed by five consuming applications, not by how many source repos remain.
 
-The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.99`. The monorepo holds libraries only — applications stay in external repos.
+The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.101`. The monorepo holds libraries only — applications stay in external repos.
 
 **Nothing publishes to npm until the whole kit ships together at `0.1.0`.** `1.0.0` waits for Effect v4 GA. Do not release a package on its own.
 
@@ -37,7 +37,7 @@ Remaining `0.1.0` work is sequenced in `roadmap.md`; `package-inventory.md` and 
 - `packages/` — the workspace packages (see below).
 - `plugin/` — "effective", a Claude Code plugin (11 skills, 3 agents) dogfooded during migrations; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
-- `.repos/effect-smol` — read-only vendored Effect v4 source (see below).
+- `.repos/effect` — read-only vendored Effect v4 source (see below).
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
 
 ### Package context files
@@ -64,15 +64,15 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier** (a category, not a fourth tier — see `effect-standards.md`). It **publishes with the kit at `0.1.0`** — on the release gate, not an exception. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
 - `git` — typed git introspection (a read tier of show/ls-tree/ref probes/merge-base/diffs/status) plus a marked mutating tier (checkout, fetch, submodules, sparse checkout, config, add), over core's ChildProcessSpawner required in R (boundary).
 
-### .repos/effect-smol
+### .repos/effect
 
-A git submodule of Effect-TS/effect, pinned to the tag matching the `effect` catalog (`effect@4.0.0-beta.99`) and managed by silk's repos tooling. It has tracked the main Effect-TS/effect monorepo since 2026-07-19, when effect-smol was archived and v4 development moved back there — same layout, directory name kept. Declared in `.gitmodules`; described by the manifest `.repos/config.json` (url / ref / purpose / sparse / orientation / notes). Vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
+A git submodule of Effect-TS/effect, pinned to the tag matching the `effect` catalog (`effect@4.0.0-beta.101`) and managed by silk's repos tooling. It has tracked the main Effect-TS/effect monorepo since 2026-07-19, when the old effect-smol repo was archived and v4 development moved back there; the local path was `.repos/effect-smol` until 2026-07-24 and is now `.repos/effect`, matching what a consuming repo would vendor. Declared in `.gitmodules`; described by the manifest `.repos/config.json` (url / ref / purpose / sparse / orientation / notes). Vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
 
 Sparse checkout: only `packages/effect`, `packages/vitest`, `migration`, `ai-docs`, `LLMS.md` and `MIGRATION.md` are materialized.
 
-**Never write to `.repos/effect-smol` by any means, with any tool** — the silk plugin's PreToolUse guards deny writes under `.repos/**`. Only the manifest `.repos/config.json` is legitimately editable (notes / orientation / sparse).
+**Never write to `.repos/effect` by any means, with any tool** — the silk plugin's PreToolUse guards deny writes under `.repos/**`. Only the manifest `.repos/config.json` is legitimately editable (notes / orientation / sparse).
 
-Re-pin when the catalog bumps, **in the same commit**: `savvy repos pin effect-smol --ref effect@<new-tag>` (or the `repos_manage` MCP tool, action `pin`). It stages the gitlink and manifest and returns a ready-made commit message; review any `staleNoteIds` it flags. Full recipe: [architecture.md](.claude/design/effected/architecture.md)'s re-pin section.
+Re-pin when the catalog bumps, **in the same commit**: `savvy repos pin effect effect@<new-tag>` (or the `repos_manage` MCP tool, action `pin`). Both arguments are **positional** — there is no `--ref` flag, and passing one fails with `Unrecognized flag: --ref`. It stages the gitlink and manifest and returns a ready-made commit message; review any `staleNoteIds` it flags. Full recipe: [architecture.md](.claude/design/effected/architecture.md)'s re-pin section.
 
 Fresh clones, CI runners and new worktrees start with an **empty** `.repos/` checkout — run `savvy repos sync` (or `repos_manage` action `sync`) once before relying on vendored content.
 
@@ -119,9 +119,11 @@ Biome, commitlint, lint-staged and markdownlint all take their presets from `@sa
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml` (`catalog:effect`, `catalog:effectPeers`, `catalog:silk`, plus the `effect3` / `effect3Peers` v3 interop catalogs), managed via `packages/pnpm-plugin-effect`.
 
-**`catalog:effect` uses the `lock` strategy: exact beta pins (`4.0.0-beta.99`), never a caret.** A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect-smol` submodule, the authority on what v4 exports. Under `lock` every consumer resolves that one pinned version, so `catalog:effectPeers` holds the same exact beta, not a caret floor. The `effect3` / `effect3Peers` interop catalogs track the latest Effect **v3** (caret-ranged, not synced to the vendored tree) for dual-version testing, and drop at the plugin's `1.0.0`.
+**`catalog:effect` uses the `lock` strategy: exact beta pins (`4.0.0-beta.101`), never a caret.** A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports. Under `lock` every consumer resolves that one pinned version, so `catalog:effectPeers` holds the same exact beta, not a caret floor. The `effect3` / `effect3Peers` interop catalogs track the latest Effect **v3** (caret-ranged, not synced to the vendored tree) for dual-version testing, and drop at the plugin's `1.0.0`.
 
-**`pnpm peers check` reports exactly one known issue**: the registry-published `@effected/jsonc@0.2.0` (inside the `@savvy-web` toolchain graph) peers on exactly `effect 4.0.0-beta.98` while the catalog installs `4.0.0-beta.99`; it clears when the toolchain chain republishes against the current beta. The `@effect` satellite-drift warning class is permanently retired: `pnpm-plugin-effect` generates a version-qualified `peerDependencyRules.allowedVersions` table from the lock catalog (regenerated by the package's `pnpm:export` flow, 2026-07-19), so a satellite one beta ahead or behind the pin no longer warns while genuine v3 complaints stay live. The regenerated table so far only binds this repo's own checkout — it reaches external consumers, the `@savvy-web` toolchain graph carrying the known issue among them, only once `pnpm-plugin-effect` publishes and the toolchain adopts that release, both still pending. Do not silence the known issue or tolerate a second: **any other warning is a genuine closure defect to fix upstream.**
+**`pnpm peers check` reports one known issue class, currently with several occupants** (state as of the 2026-07-24 beta.101 advance). All of them are the *toolchain* graph, not this workspace: the registry-published `@effected/*` artifacts the `@savvy-web` build tooling and `vitest-agent` depend on (`semver@0.2.0`, `jsonc@0.5.0`, `walker@0.3.1`, `glob@0.2.0`, `config-file@0.1.7`, `toml@0.3.0`, `yaml@0.5.0`) peer on exactly `effect 4.0.0-beta.99` while the catalog now installs `4.0.0-beta.101`, and `@effect/platform-node-shared@4.0.0-beta.101` inside that same sub-graph sees the beta.99 it resolves against. Both directions of the mismatch are the **same** cause and clear together once the toolchain republishes against the current beta — which is why beta.99 and beta.101 legitimately coexist in the tree right now. This is expected, not a defect to chase.
+
+The `@effect` satellite-drift warning class is permanently retired: `pnpm-plugin-effect` generates a version-qualified `peerDependencyRules.allowedVersions` table from the lock catalog (regenerated by the package's `pnpm:export` flow), so a satellite one beta ahead or behind the pin no longer warns while genuine v3 complaints stay live. The regenerated table so far only binds this repo's own checkout — it reaches external consumers, the `@savvy-web` toolchain graph among them, only once `pnpm-plugin-effect` publishes and the toolchain adopts that release, both still pending. Do not silence these, and do not read their presence as license to tolerate an unrelated one: **a warning outside the toolchain graph is a genuine closure defect to fix upstream.**
 
 **Always check the lockfile diff after an install** — a plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from it.
 

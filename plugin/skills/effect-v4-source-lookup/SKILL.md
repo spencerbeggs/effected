@@ -27,7 +27,7 @@ Two source roots, and they do not settle the same rungs. **Always use the absolu
 form** — the probe protocol below has you `cd` into a package, and every relative
 path breaks the moment you do.
 
-- **`$SRC`** — a vendored `effect-smol` checkout, a `git submodule` under `.repos/`
+- **`$SRC`** — a vendored Effect checkout, a `git submodule` under `.repos/`
   pinned to the exact `effect` release tag the workspace compiles against. Serves
   rungs **1 and 2**. Present when this plugin runs from the `effected` monorepo
   (after `savvy repos sync` on a fresh clone or worktree); absent elsewhere.
@@ -72,7 +72,7 @@ diff <(node -p 'require("'"$SRC"'/packages/effect/package.json").version') \
 
 ```bash
 # Rungs 1+2 — the vendored tree, if this project has one.
-SRC="${EFFECT_SMOL_SRC:-${CLAUDE_PROJECT_DIR}/.repos/effect-smol}"
+SRC="${EFFECT_SMOL_SRC:-${CLAUDE_PROJECT_DIR}/.repos/effect}"
 test -d "$SRC/packages/effect/src" || SRC=""
 
 # Rung 2 — the installed source. Resolve it, then GATE ON THE VERSION.
@@ -212,5 +212,5 @@ This is the **only file in `plugin/` that names the path** — the agents refere
 skill, never the directory. Keep it that way:
 
 ```bash
-test "$(grep -rl '\.repos/effect-smol' plugin/ | wc -l)" -eq 1
+test "$(grep -rl '\.repos/effect' plugin/ | wc -l)" -eq 1
 ```

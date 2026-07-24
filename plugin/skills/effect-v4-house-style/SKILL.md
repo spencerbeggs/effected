@@ -45,6 +45,19 @@ these before inventing a local convention.
 - **No floating functions.** Instance methods are canonical; cross-cutting
   operations are `Function.dual` statics on the owning class that mirror the
   instance method's exact name (`SemVer.gt` wraps `self.gt(that)`).
+- **`Schema.Class` member placement — one rule.** Anything that **produces or
+  classifies** a value is a `static`: constructors and parsers (`parse` /
+  `parseResult` — `make` is reserved, see `effect-v4-schema`), decoders,
+  combinators over the type, and stateless taxonomy/predicates on raw inputs.
+  Anything that **operates on an already-decoded instance** is an instance
+  method. Worked precedents in the kit: `Manifest` (static `schema`/`decode`,
+  instance `resolve()`/`toRecord()`) and `ReleaseAgeGate` (static
+  `combine`/`matchesExclude`, instance `isExcluded`/`filterVersions`). Note
+  `matchesExclude` appears in both shapes deliberately — the static takes the
+  patterns as an argument, the instance method reads `this.exclude`; when both
+  are useful, the instance method delegates to the static rather than
+  duplicating it. Two implementation agents each had to infer this rule by
+  reading `Manifest`, which is why it is written down here.
 - **Service shape interfaces are `<Concept>Shape`** (`VersionCacheShape`,
   `ConfigFileShape<A>`). **Options records are `<Concept>Options`**, all
   fields `readonly`, non-obvious defaults documented per field.

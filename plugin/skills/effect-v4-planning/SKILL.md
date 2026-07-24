@@ -89,7 +89,7 @@ The baseline failure this fixes: agents produce a good error by instinct but nev
 
 **Contract inventory — the gate that runs before any service is modeled.**
 Before designing any service, seam, or vocabulary, grep the vendored core
-(`.repos/effect-smol/packages/effect/src`, **including `effect/unstable/*`**)
+(`.repos/effect/packages/effect/src`, **including `effect/unstable/*`**)
 for an existing contract. If core declares it, **require it in `R`** — do not
 re-declare it, re-implement it, or wrap it in a parallel vocabulary; the app
 provides the platform layer at the edge. Evidence for why this is a hard gate:

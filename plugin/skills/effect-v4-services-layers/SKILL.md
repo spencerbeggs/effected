@@ -274,7 +274,7 @@ in one layer). That split fixes the house default:
   business-logic path.
 
 Before designing any service or seam, grep the vendored core
-(`.repos/effect-smol/packages/effect/src`, including `unstable/`) for an
+(`.repos/effect/packages/effect/src`, including `unstable/`) for an
 existing contract. The cautionary tale is one day old: a parallel
 subprocess vocabulary (`Command`/`CommandRunner` plus a hand-rolled
 `node:child_process` layer) survived four review gates in this repo before a

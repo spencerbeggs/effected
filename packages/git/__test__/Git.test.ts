@@ -1093,10 +1093,10 @@ describe("Git", () => {
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {
 					const git = yield* Git;
-					return yield* git.submoduleUpdate(cwd, { init: true, depth: 1, paths: [".repos/effect-smol"] });
+					return yield* git.submoduleUpdate(cwd, { init: true, depth: 1, paths: [".repos/effect"] });
 				});
 				yield* run(program, (args) => {
-					assert.deepStrictEqual(args, ["submodule", "update", "--init", "--depth", "1", "--", ".repos/effect-smol"]);
+					assert.deepStrictEqual(args, ["submodule", "update", "--init", "--depth", "1", "--", ".repos/effect"]);
 					return { exit: 0 };
 				});
 			}),

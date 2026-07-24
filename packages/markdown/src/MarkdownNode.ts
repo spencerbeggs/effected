@@ -77,11 +77,18 @@ export class Position extends Schema.Class<Position>("Position")({
 // constructs in one line — `Text.make({ value: "shipped" })`. Constructor
 // defaults apply only to `make`, never to decode or encode.
 //
-// Known limitation (effect@4.0.0-beta.99, tripwired in frontmatter.test.ts):
-// the default makes `make` lose the field's nested plain-object construction
-// — an explicit `position` must be a `Position` instance, not a literal. The
-// type level still admits the literal; upstream's `recurDefaults` replaces
-// the class construction link instead of appending to it.
+// Resolved at effect@4.0.0-beta.101 (Effect-TS/effect#6491): `recurDefaults`
+// now appends the default link instead of replacing the field's class
+// construction link, so an explicit `position` may be a plain literal again —
+// `make` promotes it to real `Position`/`Point` instances. The beta.99
+// tripwire in frontmatter.test.ts is retired.
+//
+// Consequence of the same fix: the field's construction link always runs, so
+// `make` RE-CONSTRUCTS a nested class value rather than passing it through by
+// reference. `Text.make({ position: p }).position !== p` (structurally equal,
+// distinct instance). Nothing here depends on that identity — `Position` is an
+// immutable value class with structural equality — but never assert a
+// synthesized node's position by reference.
 const NodePosition = Position.pipe(Schema.withConstructorDefault(Effect.succeed(Position.synthetic)));
 
 /**

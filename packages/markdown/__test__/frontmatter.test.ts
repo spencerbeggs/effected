@@ -232,27 +232,26 @@ describe("frontmatter capture", () => {
 			assert.strictEqual(node.format, "yaml");
 		});
 
-		// Known-limitation tripwire (effect@4.0.0-beta.99): `withConstructorDefault`
-		// on the `position` field makes `SchemaParser.recurDefaults` REPLACE the
-		// class field's construction link with the default link, so an explicit
-		// plain-object position — admitted by `~type.make.in` at the type level,
-		// and constructed fine before the default landed — now throws in `make`.
-		// Decode is untouched (plain positions still admit at the mdast
-		// boundary). If this test goes red, upstream fixed the replacement to
-		// append: delete this pin and re-widen the previous test to the plain
-		// literal.
-		it("make no longer constructs a plain-object position (upstream recurDefaults limitation)", () => {
-			assert.throws(() =>
-				Frontmatter.make({
-					type: "frontmatter",
-					format: "yaml",
-					value: "a: 1",
-					position: {
-						start: { line: 1, column: 1, offset: 0 },
-						end: { line: 3, column: 4, offset: 12 },
-					},
-				}),
-			);
+		// Re-widened at effect@4.0.0-beta.101: Effect-TS/effect#6491 is fixed
+		// (`SchemaParser.recurDefaults` now APPENDS the default link instead of
+		// replacing the field's class-construction link), so a constructor
+		// -defaulted class field again accepts the plain-object literal its
+		// `~type.make.in` always admitted. The beta.99 tripwire that pinned the
+		// throwing behavior is deleted; this asserts the promotion instead.
+		it("make accepts a plain-object position and promotes it to instances", () => {
+			const node = Frontmatter.make({
+				type: "frontmatter",
+				format: "yaml",
+				value: "a: 1",
+				position: {
+					start: { line: 1, column: 1, offset: 0 },
+					end: { line: 3, column: 4, offset: 12 },
+				},
+			});
+			assert.instanceOf(node.position, Position);
+			assert.instanceOf(node.position.start, Point);
+			assert.instanceOf(node.position.end, Point);
+			assert.strictEqual(node.position.end.offset, 12);
 		});
 	});
 });

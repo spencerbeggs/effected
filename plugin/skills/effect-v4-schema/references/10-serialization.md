@@ -1,9 +1,9 @@
 <!--
-Vendored from the Effect canonical Schema guide (effect-smol, packages/effect/SCHEMA.md, main branch).
+Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
-Source: https://github.com/Effect-TS/effect-smol/blob/main/packages/effect/SCHEMA.md
+Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 -->
 
 # Serialization
