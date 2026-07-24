@@ -182,16 +182,18 @@ Still yield directly (no call needed): `Effect`, `Option` (fails
 
 **`Result` is NOT on that list.** `yield* Result.fail("boom")` inside
 `Effect.gen` dies as a **defect** — `Fiber.runLoop: Not a valid effect:
-failure("boom")` — and the success case dies identically (probed beta.98;
-`Result`'s `[Symbol.iterator]` serves `Result.gen` only, `internal/result.ts:22`).
-The bridge is **`Effect.fromResult`** (`Effect.ts:1781`):
+failure("boom")` — and the success case dies identically, as
+`Not a valid effect: success(42)` (re-probed beta.99; `Result`'s
+`[Symbol.iterator]` serves `Result.gen` only, `internal/result.ts:22`). Note the
+success case fails too: this is not "errors need a bridge", it is "`Result` is
+not an Effect at all". The bridge is **`Effect.fromResult`** (`Effect.ts:1781`):
 
 ```ts
 const value = yield* Effect.fromResult(Fmt.parseResult(text))  // fails typed with the Result's E
 ```
 
 `Result` also has **no `.asEffect()`** — `Result.fail("x").asEffect` is
-`undefined` at beta.98, so the materialize-with-`.asEffect()` advice below
+`undefined` at beta.99, so the materialize-with-`.asEffect()` advice below
 does not apply to it either. `Effect.fromResult` is the only bridge.
 
 To read a `Result` **outside** an Effect, narrow with `Result.isSuccess` /

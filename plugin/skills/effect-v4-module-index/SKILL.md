@@ -11,7 +11,7 @@ are and spend their space on patterns — and so no one designs a capability cor
 already ships (the `effect-v4-planning` contract-inventory gate).
 
 **Where things live.** Every row's source is
-`.repos/effect-smol/packages/effect/src/<Name>.ts` (testing modules under
+`.repos/effect/packages/effect/src/<Name>.ts` (testing modules under
 `src/testing/`, unstable namespaces under `src/unstable/<ns>/`). The vendored
 submodule is pinned to the installed beta and is the authority on existence,
 signatures, and — read alongside a probe — semantics (`effect-v4-source-lookup`

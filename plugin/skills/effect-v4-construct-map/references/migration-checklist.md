@@ -9,11 +9,11 @@ compiles clean and behaves differently.
 
 Every item: **grep** for the v3 pattern → what it **becomes** → the gotcha.
 Sources: the official migration notes (`migration/*.md`, `MIGRATION.md` in the
-vendored effect-smol tree) cross-checked against the @effected migration
+vendored Effect tree) cross-checked against the @effected migration
 program's recorded scars. The machine-readable import map
 (`migration/v3-to-v4.md`, 290 mapped modules) is the authority when an import
 is not listed here — grep it directly (or read it in the upstream
-Effect-TS/effect-smol repo if no vendored tree is present).
+Effect-TS/effect repo if no vendored tree is present).
 
 ## 1. Dependencies and imports
 

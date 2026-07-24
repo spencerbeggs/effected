@@ -30,7 +30,7 @@ Four catalogs, consumed by every `@effected/*` package:
 - **`catalog:effectPeers`** — the same v4 package set as the advertised peer range. Under `lock` its `peer` inputs equal the pinned versions, so it holds the same exact beta, not a caret floor.
 - **`catalog:effect3` / `catalog:effect3Peers`** — the latest Effect **v3** releases, under the `interop` strategy (caret-ranged, downlevelled to the widest safe floor), for testing a package against both v3 and v4 in one workspace. Transitional: removed at this plugin's `1.0.0` once Effect `4.0.0` ships.
 
-Currently `effect` pins `4.0.0-beta.98` — **exact, never a caret**. A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `.repos/effect-smol` submodule that is meant to be the authority on what v4 exports. `@effect/tsgo` is the one asymmetric entry in the v4 catalog, caret on both sides: `range ^0.19.0` in `effect`, `peer ^0.16.2` in `effectPeers`. No workspace package consumes it anymore — d0599438 moved every package to `tsc --noEmit` with `typescript` (`catalog:silk`) — but the catalog entries remain; do not reintroduce it as a typechecker devDependency.
+Currently `effect` pins `4.0.0-beta.98` — **exact, never a caret**. A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `.repos/effect` submodule that is meant to be the authority on what v4 exports. `@effect/tsgo` is the one asymmetric entry in the v4 catalog, caret on both sides: `range ^0.19.0` in `effect`, `peer ^0.16.2` in `effectPeers`. No workspace package consumes it anymore — d0599438 moved every package to `tsc --noEmit` with `typescript` (`catalog:silk`) — but the catalog entries remain; do not reintroduce it as a typechecker devDependency.
 
 ## Maintenance scripts (human-run only)
 
@@ -64,4 +64,4 @@ The v3/v4 peer-resolution defect is fixed in pnpm 11.12.0; there is no expected-
 
 - A plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from the lockfile. **Always check the lockfile diff after an install.**
 - Source `package.json` is `"private": true`. Never set it false — `publishConfig` (`directory: dist/dev/pkg`, `linkDirectory: true`) produces the publishable manifest at build time.
-- Never write to `.repos/effect-smol` (read-only vendored Effect source).
+- Never write to `.repos/effect` (read-only vendored Effect source).

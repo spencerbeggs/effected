@@ -16,9 +16,39 @@ are indexed in `effect-v4-module-index`; this skill owns how to use them.)
 **Migrating a plain-Vitest Effect repo? Adopt `@effect/vitest` — don't stay on
 plain Vitest.** A repo whose tests are plain Vitest (no `@effect/vitest`) is not
 "nothing to migrate on the testing axis"; the move is to add `@effect/vitest`
-(it's in `catalog:effect`, pinned to the same beta as `effect` — `pnpm add -D
-@effect/vitest` resolves the catalog pin) and route Effect-returning tests
-through `it.effect`. `@effect/vitest` re-exports Vitest, so it is a drop-in
+and route Effect-returning tests through `it.effect`.
+
+**Install it by exact version, matching your `effect` pin:**
+
+```bash
+pnpm add -D @effect/vitest@4.0.0-beta.99   # the SAME beta as your `effect`
+```
+
+**Never `pnpm add -D @effect/vitest` bare, and never `@beta`.** The v4 line is
+published only under prerelease versions mirroring `effect`'s own beta
+numbering; neither default resolves to it (checked 2026-07-24):
+
+| Specifier | Resolves to | Peers on |
+| --- | --- | --- |
+| bare / `@latest` | `0.30.0` | `effect@^3.22.0` — **the v3 line** |
+| `@beta` | `4.0.0-beta.101` | `effect@^4.0.0-beta.101` — ahead of a beta.99 pin |
+| `@4.0.0-beta.99` | `4.0.0-beta.99` | `effect@^4.0.0-beta.99` ✅ |
+
+The bare form is the dangerous one: it installs the **v3-line** package with no
+peer warning at all, and fails only at runtime on the first `it.effect` call,
+with a message that never mentions `@effect/vitest`, v3-vs-v4, or versions:
+
+```text
+Cannot find module '.../@effect/vitest/.../node_modules/effect/dist/Arbitrary.js'
+```
+
+That reads as a broken install, not a version-line mismatch — budget for a long
+misdiagnosis if you skip the pin. Confirm with `npm view @effect/vitest dist-tags`
+before believing any resolution. **Inside this monorepo** the dependency comes
+from `catalog:effect`, which already pins the matching beta — the trap is
+real in any repo that consumes `effect` directly without that catalog.
+
+`@effect/vitest` re-exports Vitest, so it is a drop-in
 entrypoint: existing plain `it()` tests keep working unchanged, and only the
 Effect-bearing ones move to `it.effect` to unlock the typed-error assertions and
 false-green protections below. (Effect's own test helpers — `TestClock`,

@@ -26,29 +26,41 @@ describe("Position.synthetic", () => {
 	});
 });
 
+// Asserted by VALUE, not by reference. Through effect@4.0.0-beta.99 a nested
+// `Schema.Class` field short-circuited on an instance check, so `make` passed
+// the very same object through and `strictEqual` held. The beta.101 fix for
+// Effect-TS/effect#6491 makes the field's own construction link always run, so
+// `make` now re-constructs nested class fields — a structurally equal but
+// distinct instance, for the default and for an explicit value alike (probed:
+// a field with NO constructor default re-constructs too, so this is `make`'s
+// nested-field semantics, not anything about the default). `Position` is an
+// immutable value class with structural equality, so identity was never the
+// contract worth pinning; these assert the value and the promotion instead.
 describe("make fills the synthetic position", () => {
 	it("constructs a Text fragment in one line", () => {
 		const text = Text.make({ value: "shipped" });
 		assert.instanceOf(text, Text);
 		assert.strictEqual(text.value, "shipped");
-		assert.strictEqual(text.position, Position.synthetic);
+		assert.deepStrictEqual(text.position, Position.synthetic);
 	});
 
 	it("constructs Paragraph and Heading fragments in one line", () => {
 		const paragraph = Paragraph.make({ children: [Text.make({ value: "p" })] });
-		assert.strictEqual(paragraph.position, Position.synthetic);
+		assert.deepStrictEqual(paragraph.position, Position.synthetic);
 		const heading = Heading.make({ depth: 2, children: [Text.make({ value: "t" })] });
 		assert.strictEqual(heading.depth, 2);
-		assert.strictEqual(heading.position, Position.synthetic);
+		assert.deepStrictEqual(heading.position, Position.synthetic);
 	});
 
-	it("still honors an explicit position by identity", () => {
+	it("still honors an explicit position over the default", () => {
 		const explicit = Position.make({
 			start: Point.make({ line: 2, column: 3, offset: 9 }),
 			end: Point.make({ line: 2, column: 8, offset: 14 }),
 		});
 		const text = Text.make({ value: "placed", position: explicit });
-		assert.strictEqual(text.position, explicit);
+		assert.deepStrictEqual(text.position, explicit);
+		// the point of the test: the default did NOT win
+		assert.notDeepEqual(text.position, Position.synthetic);
 	});
 });
 

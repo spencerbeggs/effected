@@ -101,14 +101,14 @@ describe("GitCommand", () => {
 
 	it("submoduleUpdate composes --init, --depth and a -- pathspec", () => {
 		assertGitCommand(GitCommand.submoduleUpdate(), ["submodule", "update"]);
-		assertGitCommand(GitCommand.submoduleUpdate(true, 1, [".repos/effect-smol"]), [
+		assertGitCommand(GitCommand.submoduleUpdate(true, 1, [".repos/effect"]), [
 			"submodule",
 			"update",
 			"--init",
 			"--depth",
 			"1",
 			"--",
-			".repos/effect-smol",
+			".repos/effect",
 		]);
 	});
 

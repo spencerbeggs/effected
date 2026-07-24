@@ -29,7 +29,7 @@ A parallel **`effect3`** catalog tracks Effect v3 for cross-version testing; see
 
 The catalog strategy is declared in [`savvy.build.ts`](../../../../packages/pnpm-plugin-effect/savvy.build.ts) via `rolldown-pnpm-config`'s `PnpmConfigPlugin`. Each package entry carries a `range` (the pinned version for the catalog), a `peer` (the input to the floor computation) and a `strategy`. Memberships, versions and strategies all live in `savvy.build.ts` — read it rather than a transcription that rots on every beta bump. Three facts are load-bearing:
 
-- **The `effect` (v4) catalog pins exact, never a caret.** A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `.repos/effect-smol` submodule that is authoritative on what v4 exports.
+- **The `effect` (v4) catalog pins exact, never a caret.** A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `.repos/effect` submodule that is authoritative on what v4 exports.
 - **The `effect` catalog uses the `lock` strategy.** Every consumer resolves to the same pinned version on install, so the whole graph holds one Effect v4 beta rather than each consumer re-deriving a range.
 - **The `effect3` catalog uses the `interop` strategy**, which downlevels peers to the widest safe floor — see [The effect3 interop catalog](#the-effect3-interop-catalog).
 

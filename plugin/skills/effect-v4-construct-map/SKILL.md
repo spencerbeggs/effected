@@ -20,7 +20,7 @@ beats an hour of type-error archaeology — see
 
 ## The consolidated core — check here before inventing anything
 
-The official orientation (`MIGRATION.md` in the vendored effect-smol source):
+The official orientation (`MIGRATION.md` in the vendored Effect source):
 functionality from `@effect/platform`, `@effect/rpc`, `@effect/cluster` and
 others now lives **directly in `effect`**. The packages that remain separate
 are platform-, provider-, or technology-specific implementations only —
@@ -50,7 +50,7 @@ The mappings this split makes non-guessable:
 | `NodeContext.layer` | **`NodeServices.layer`** (`@effect/platform-node`) | provides `ChildProcessSpawner \| Crypto \| FileSystem \| Path \| Stdio \| Terminal` |
 
 **The rule this section exists for:** before designing any service, seam, or
-vocabulary, grep the vendored core (`.repos/effect-smol/packages/effect/src`,
+vocabulary, grep the vendored core (`.repos/effect/packages/effect/src`,
 including `unstable/`) for an existing contract. If core declares it, require
 it in `R` and let the app provide the platform layer — do not re-declare or
 re-implement it. A parallel subprocess vocabulary survived four review gates
