@@ -1,5 +1,29 @@
 # @effected/runtimes
 
+## 0.1.5
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/semver | dependency | updated | 0.2.0 | 0.2.1 |
+
+* | Dependency | Type           | Action  | From          | To             |                                                                       |
+  | ---------- | -------------- | ------- | ------------- | -------------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Maintenance
+
+* Refreshed the bundled Node.js, Bun and Deno version defaults from the upstream release feeds [#158][#158]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/apps/spencerbeggs) for their contributions!
+
+[#158]: https://github.com/spencerbeggs/effected/pull/158
+
+[#162]: https://github.com/spencerbeggs/effected/pull/162
+
 ## 0.1.4
 
 ### Maintenance

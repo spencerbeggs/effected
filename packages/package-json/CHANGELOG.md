@@ -1,5 +1,23 @@
 # @effected/package-json
 
+## 0.5.1
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/npm    | dependency | updated | 0.3.0 | 0.3.1 |
+| @effected/semver | dependency | updated | 0.2.0 | 0.2.1 |
+| @effected/spdx   | dependency | updated | 0.1.0 | 0.1.1 |
+
+* | Dependency | Type           | Action  | From          | To             |                                                                       |
+  | ---------- | -------------- | ------- | ------------- | -------------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#162]: https://github.com/spencerbeggs/effected/pull/162
+
 ## 0.5.0
 
 ### Features
