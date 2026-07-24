@@ -20,7 +20,9 @@ import { Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
 import { CatalogAssemblyError } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, Layer, Option } from "effect";
+import { importerVersionsOf } from "./internal/importerVersions.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
+import type { ImporterVersions } from "./WorkspaceCatalogs.js";
 import { CatalogSet, WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
 import type { WorkspaceDiscoveryFailure } from "./WorkspaceDiscovery.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
@@ -150,6 +152,24 @@ const bunInlineCatalogs = (manifest: Record<string, unknown>): CatalogSet => {
 };
 
 /**
+ * What one parse of a manager's lockfile contributes to a snapshot: the catalogs
+ * it records, and each importer's resolved versions.
+ *
+ * @remarks
+ * Both come from the SAME parse deliberately. Reading the lockfile twice — once
+ * for catalogs, once for importer versions — would let the two halves disagree
+ * if the file changed between reads, and would double the git object reads
+ * `at(ref)` performs per snapshot.
+ */
+interface LockfileRecord {
+	readonly catalogs: CatalogSet;
+	readonly importerVersions: ImporterVersions;
+}
+
+/** The contribution of an absent or malformed lockfile: nothing, on both counts. */
+const EMPTY_LOCKFILE_RECORD: LockfileRecord = { catalogs: CatalogSet.empty(), importerVersions: {} };
+
+/**
  * Reads workspace state at a git ref with no checkout, and the live worktree.
  *
  * @remarks
@@ -187,25 +207,32 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 			const discovery = yield* WorkspaceDiscovery;
 			const catalogsService = yield* WorkspaceCatalogs;
 
-			/** The catalog set a manager's lockfile records at the ref, or empty when absent/malformed. */
-			const lockfileCatalogs = (
+			/**
+			 * What a manager's lockfile records at the ref: its catalog set and its
+			 * importer versions, from ONE parse. Empty on both counts when the
+			 * lockfile is absent or malformed.
+			 */
+			const lockfileRecord = (
 				root: string,
 				ref: string,
 				format: "pnpm" | "bun",
-			): Effect.Effect<CatalogSet, GitCommandError | NotARepositoryError | UnknownRefError> =>
+			): Effect.Effect<LockfileRecord, GitCommandError | NotARepositoryError | UnknownRefError> =>
 				// `./`-prefixed so git resolves the lockfile relative to `cwd` (the
 				// workspace root), NOT the git repo top-level — see `computeAt`.
 				git.show(root, ref, `./${filenameFor(format)}`).pipe(
 					Effect.flatMap((content) =>
 						Option.match(content, {
-							onNone: () => Effect.succeed(CatalogSet.empty()),
+							onNone: () => Effect.succeed(EMPTY_LOCKFILE_RECORD),
 							onSome: (text) =>
 								LockfileModel.parse(text, { format }).pipe(
-									Effect.map(CatalogSet.fromLockfile),
+									Effect.map((lockfile) => ({
+										catalogs: CatalogSet.fromLockfile(lockfile),
+										importerVersions: importerVersionsOf(lockfile),
+									})),
 									// A malformed lockfile at the ref is a broken RECORD, not a
 									// broken source of truth — degrade to no catalogs, exactly as
 									// the live WorkspaceCatalogs does for an unreadable lockfile.
-									Effect.catch(() => Effect.succeed(CatalogSet.empty())),
+									Effect.catch(() => Effect.succeed(EMPTY_LOCKFILE_RECORD)),
 								),
 						}),
 					),
@@ -232,7 +259,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 
 					let patterns: ReadonlyArray<string>;
 					let inline: CatalogSet;
-					let fromLockfile: CatalogSet;
+					let recorded: LockfileRecord;
 
 					if (Option.isSome(pnpmWorkspaceText)) {
 						const document = yield* Yaml.parse(pnpmWorkspaceText.value).pipe(
@@ -245,7 +272,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						// the root manifest's `workspaces` field, matching live `readPatterns`.
 						patterns = pnpmPatterns.length > 0 ? pnpmPatterns : manifestPatternsOf(rootManifest);
 						inline = yield* CatalogSet.fromWorkspaceYaml(pnpmWorkspaceText.value);
-						fromLockfile = yield* lockfileCatalogs(root, ref, "pnpm");
+						recorded = yield* lockfileRecord(root, ref, "pnpm");
 					} else {
 						// c594ff1: with no `pnpm-workspace.yaml`, the workspace globs come
 						// from the root `package.json` `workspaces` field. WITHOUT this, a
@@ -262,12 +289,12 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						// tolerant: an npm/yarn array-form `workspaces` yields empty. The
 						// lockfile half degrades the absent `bun.lock` to empty on `Option.none`.
 						inline = bunInlineCatalogs(rootManifest);
-						fromLockfile = yield* lockfileCatalogs(root, ref, "bun");
+						recorded = yield* lockfileRecord(root, ref, "bun");
 					}
 
 					// Precedence follows the live assembler: lockfile record first, inline
 					// declaration wins.
-					const catalogs = CatalogSet.merge(fromLockfile, inline);
+					const catalogs = CatalogSet.merge(recorded.catalogs, inline);
 
 					const globs = yield* GlobSet.compile(patterns).pipe(
 						Effect.mapError(
@@ -307,7 +334,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						if (Option.isSome(member)) packages.push(member.value);
 					}
 
-					return WorkspaceStateSnapshot.make({ packages, catalogs });
+					return WorkspaceStateSnapshot.make({ packages, catalogs, importerVersions: recorded.importerVersions });
 				});
 
 			// Per-`(root, ref)` memo of the success-only invalidating cell. A failed
@@ -344,6 +371,11 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 				// second manifest/lockfile read.
 				const packages = yield* discovery.listPackages();
 				const catalogs = yield* catalogsService.set();
+				// Off the SAME memoized assemble pass as `set()` — no second lockfile
+				// read. Symmetry with `at(ref)` is the point: both sides of a diff must
+				// answer an unresolvable `catalog:` specifier the same way, or the
+				// fallback would manufacture a bogus row on every run.
+				const importerVersions = yield* catalogsService.importerVersions();
 				const snapshotPackages = packages.map((pkg) =>
 					PackageStateSnapshot.make({
 						name: pkg.name,
@@ -355,7 +387,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						optionalDependencies: pkg.optionalDependencies,
 					}),
 				);
-				return WorkspaceStateSnapshot.make({ packages: snapshotPackages, catalogs });
+				return WorkspaceStateSnapshot.make({ packages: snapshotPackages, catalogs, importerVersions });
 			});
 
 			return { at, worktree };

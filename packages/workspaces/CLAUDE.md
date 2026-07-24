@@ -24,7 +24,7 @@ Other runtime deps are `workspace:~` edges: `@effected/git`, `@effected/glob`, `
 - `ChangeDetector.ts` — `ChangeDetector`, `ChangeDetectionOptions`, `ChangeDetectionError`, `ChangeDetectionFailure`
 - `WorkspaceSnapshots.ts` — `WorkspaceSnapshots` (`at(ref)` / `worktree()`), plus the `WorkspaceSnapshotAtFailure` / `WorkspaceSnapshotWorktreeFailure` unions
 - `WorkspaceStateSnapshot.ts` — `WorkspaceStateSnapshot`, `PackageStateSnapshot`
-- `WorkspaceCatalogs.ts` — `CatalogSet`, `WorkspaceCatalogs` (with `releaseAgeGate()`), the `catalogResolver` layer, the `CatalogAssemblyFailure` type union
+- `WorkspaceCatalogs.ts` — `CatalogSet`, `WorkspaceCatalogs` (with `releaseAgeGate()` and `importerVersions()`), `ImporterVersions`, the `catalogResolver` layer, the `CatalogAssemblyFailure` type union
 - `ConfigDependencyHooks.ts` — `ConfigDependencyHooks` contract, `HookInjection`, `layerNoop` / `layerLive`
 - `LockfileReader.ts` — `LockfileReader`, `LockfileReadError`
 - `Publishability.ts` — `PublishabilityDetector`, `PublishTarget`
@@ -107,7 +107,7 @@ The deliberate exception is `Workspaces.resolverLayer(options?)`: a **fresh, unm
 
 The one exception is `__test__/integration/self.int.test.ts`, which discovers **this repository** through `@effect/platform-node` (a devDependency). It is the only test that proves the whole stack composes against a real pnpm workspace — and it is what caught the multi-document lockfile bug.
 
-273 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 28 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it); never widen it. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
+289 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 28 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it); never widen it. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
 
 ## Point-in-time surface (as built)
 
@@ -117,7 +117,19 @@ The v3 deferrals are now shipped (piece 3, 2026-07-15); `silk-update-action` and
 
 `at(ref)` reads workspace state at a git ref with **no checkout**, entirely over `Git`: package dirs come from `Git.lsTree` matched against the compiled `@effected/glob` set (no directory descent), manifests via `Git.show`. Every workspace-relative path handed to `Git.show` is **`./`-prefixed** (the manifest, the `pnpm-workspace.yaml`, each member `./<dir>/package.json`, and the lockfile) so git resolves it relative to `cwd` — the resolved workspace root — aligning with `Git.lsTree`, which already emits cwd-relative paths. A **bare** path resolves relative to the git repo TOP-LEVEL, so a workspace root nested inside a larger repo would read the OUTER manifest and drop or misread its members; `__test__/integration/WorkspaceSnapshotsNested.int.test.ts` is the nested-repo regression guard. `Git.show`'s contract is unchanged — the `./` is this reader's explicit choice, not a service change. When `pnpm-workspace.yaml` is absent at the ref, patterns and catalogs fall back to the root `package.json` `workspaces` field (c594ff1) — without it a bun/npm workspace collapses to the root package alone and a diff reads every dependency as newly added. Results cache per `(resolved root, ref)` via `Effect.cachedInvalidateWithTTL` at `Duration.infinity`, invalidated on any non-success exit (never bare `Effect.cached`). `worktree()` reads the live tree over the **one shared** `WorkspaceDiscovery` + `WorkspaceCatalogs` path — no second read.
 
-`WorkspaceStateSnapshot` is a serializable value (`packages`, `catalogs`) with lazy `#private` indexes: `versions`, `package(name)`, `resolve(dependency, specifier)` (classified through `@effected/npm`'s `DependencySpecifier`, never prefix-sniffed), and the snapshot-scoped `catalogResolver` / `workspaceResolver` / `resolvers` layers answering `@effected/npm`'s contracts as of that snapshot. `PackageStateSnapshot` is the narrower per-member slice. Failure unions: `WorkspaceSnapshotAtFailure` (git errors + `CatalogAssemblyError` from the inline source + `WorkspaceRootNotFoundError`; a malformed *lockfile* at the ref degrades to no catalogs) and `WorkspaceSnapshotWorktreeFailure` (never touches git).
+`WorkspaceStateSnapshot` is a serializable value (`packages`, `catalogs`, `importerVersions`) with lazy `#private` indexes: `versions`, `package(name)`, `resolve(dependency, specifier)` (classified through `@effected/npm`'s `DependencySpecifier`, never prefix-sniffed), `resolveIn(importerPath, dependency, specifier)`, and the snapshot-scoped `catalogResolver` / `workspaceResolver` / `resolvers` layers answering `@effected/npm`'s contracts as of that snapshot. `PackageStateSnapshot` is the narrower per-member slice. Failure unions: `WorkspaceSnapshotAtFailure` (git errors + `CatalogAssemblyError` from the inline source + `WorkspaceRootNotFoundError`; a malformed *lockfile* at the ref degrades to no catalogs) and `WorkspaceSnapshotWorktreeFailure` (never touches git).
+
+### A hook-injected catalog resolves through the lockfile IMPORTERS, not a hook replay
+
+A `catalog:` specifier injected by a pnpm config-dependency pnpmfile hook (`"effect": "catalog:effect:peers"`) is recorded in **neither** committed source a snapshot reads: the workspace declares no such catalog, and pnpm does not record a **peer-only** catalog in the lockfile's `catalogs:` block. Both sides of a before/after diff then resolved it to the same raw string, so a genuine beta bump produced no row and no changeset — reproduced in `type-registry-effect` (Actions run 30130459942).
+
+The fix is `internal/importerVersions.ts`: when the catalog set cannot answer a `catalog:` specifier, fall back to the version that ref's **own lockfile importer entry** recorded. Three things about it are load-bearing:
+
+- **Never replay the hook to fix this.** `WorkspaceSnapshots.at(ref)` reads through `git show` with no checkout and can never execute a past ref's pnpmfile, so `layerWithConfigDependencies` fixes only the worktree side. The asymmetry manufactures a bogus `from: "catalog:effect:peers"` → `to: "<version>"` row on **every** run. Both lockfiles are committed, which is the whole reason this shape was chosen.
+- **The join is by dependency NAME, across every dependency field.** pnpm writes a peer into the importer block only when it is also installed, so the concrete version for a `catalog:effect:peers` peer lives on that importer's `devDependencies` row. Joining by field, or by matching the recorded specifier, finds nothing.
+- **Importer versions are raw and MUST be normalized.** `@effected/lockfiles` stores `ImporterDependency.version` verbatim, peer suffix included (`4.0.0-beta.101(effect@4.0.0-beta.101)(ioredis@5.11.1(...))`). Unstripped, that whole chain lands in a consumer's dependency table as the version. `link:`/`file:` entries are skipped — a filesystem edge is not a version.
+
+`resolve` is workspace-wide and has no importer context, so it answers only when **every** importer recording that dependency agrees; divergence yields `Option.none()` rather than a wrong answer. `resolveIn(importerPath, …)` is the precise form for callers that know the importer (`PackageStateSnapshot.relativePath`, `"."` for root). The fallback fires for `catalog:` specifiers **only** — a plain range is already its own answer.
 
 ### Catalog assembly is PM-aware
 

@@ -11,6 +11,7 @@
 
 import { CatalogResolver, DependencySpecifier, WorkspaceResolver } from "@effected/npm";
 import { Effect, Exit, Layer, Option, Schema } from "effect";
+import { unanimousVersionOf } from "./internal/importerVersions.js";
 import { CatalogSet } from "./WorkspaceCatalogs.js";
 
 // A frozen, prototype-free empty map shared as the default for every absent
@@ -106,6 +107,18 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	packages: Schema.Array(PackageStateSnapshot),
 	/** The catalog set assembled at this moment. */
 	catalogs: CatalogSet,
+	/**
+	 * Each importer's dependency-name → resolved-version map, as the manager's
+	 * lockfile recorded it at this moment.
+	 *
+	 * @remarks
+	 * Defaults to `{}`, so a `WorkspaceStateSnapshot` serialized before this field
+	 * existed still decodes — and an empty index simply makes the `catalog:`
+	 * fallback in {@link WorkspaceStateSnapshot.resolve} inert, which is exactly
+	 * the behavior those older values were captured under. Only pnpm records
+	 * importer versions; bun and npm yield an empty index.
+	 */
+	importerVersions: Schema.optionalKey(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String))),
 }) {
 	#versionIndex: ReadonlyMap<string, string> | undefined;
 	#packageIndex: ReadonlyMap<string, PackageStateSnapshot> | undefined;
@@ -149,17 +162,72 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * unparseable string — is `Option.none()`, because there is no indirection to
 	 * resolve. Total.
 	 *
+	 * A `catalog:` specifier the catalog set cannot resolve falls back to this
+	 * snapshot's `importerVersions` — but only to a version
+	 * **every** importer recording that dependency agrees on. A catalog injected
+	 * by a config-dependency pnpmfile hook appears in no committed catalog source,
+	 * so without this fallback both sides of a before/after diff resolve it to the
+	 * same raw string and a real version movement produces no row. When importers
+	 * disagree there is no single correct answer, so this stays `Option.none()`
+	 * rather than inventing one; {@link WorkspaceStateSnapshot.resolveIn} answers
+	 * precisely for callers that know which importer is asking.
+	 *
 	 * @param dependency - The dependency's package name (what `workspace:` /
 	 *   `catalog:` resolve for).
 	 * @param specifier - The raw specifier string.
 	 */
 	resolve(dependency: string, specifier: string): Option.Option<string> {
+		return this.#resolveWith(dependency, specifier, () =>
+			Option.fromUndefinedOr(unanimousVersionOf(this.importerVersions ?? {}, dependency)),
+		);
+	}
+
+	/**
+	 * The concrete range or version a specifier resolved to AS OF this snapshot,
+	 * scoped to the importer that declared it.
+	 *
+	 * @remarks
+	 * Identical to {@link WorkspaceStateSnapshot.resolve} except in how an
+	 * unresolvable `catalog:` specifier falls back: this consults **only**
+	 * `importerPath`'s own recorded versions, so a monorepo whose packages hold
+	 * different versions of one dependency still gets an exact answer where
+	 * `resolve` must abstain. Prefer this whenever the caller knows the importer —
+	 * a consumer iterating `packages` has `relativePath` in hand, which is the
+	 * importer key (`"."` for the root package).
+	 *
+	 * An unknown `importerPath`, or one recording nothing for `dependency`, is
+	 * `Option.none()`. Total.
+	 *
+	 * @param importerPath - The importer's path relative to the workspace root,
+	 *   `"."` for the root package — `PackageStateSnapshot.relativePath`.
+	 * @param dependency - The dependency's package name.
+	 * @param specifier - The raw specifier string.
+	 */
+	resolveIn(importerPath: string, dependency: string, specifier: string): Option.Option<string> {
+		return this.#resolveWith(dependency, specifier, () =>
+			Option.fromUndefinedOr(this.importerVersions?.[importerPath]?.[dependency]),
+		);
+	}
+
+	/**
+	 * The shared resolution path: classify, answer from the captured state, and
+	 * consult `onUnresolvedCatalog` only for a `catalog:` specifier the catalog set
+	 * could not answer. A plain range is already its own answer and must keep
+	 * resolving to `Option.none()` so the caller falls back to the raw string.
+	 */
+	#resolveWith(
+		dependency: string,
+		specifier: string,
+		onUnresolvedCatalog: () => Option.Option<string>,
+	): Option.Option<string> {
 		const exit = Schema.decodeUnknownExit(DependencySpecifier.FromString)(specifier);
 		if (!Exit.isSuccess(exit)) return Option.none();
 		const classified = exit.value;
 		switch (classified._tag) {
-			case "catalog":
-				return this.catalogs.rangeOf(dependency, classified.name);
+			case "catalog": {
+				const fromCatalogs = this.catalogs.rangeOf(dependency, classified.name);
+				return Option.isSome(fromCatalogs) ? fromCatalogs : onUnresolvedCatalog();
+			}
 			case "workspace":
 				return Option.fromUndefinedOr(this.#versions().get(dependency));
 			default:

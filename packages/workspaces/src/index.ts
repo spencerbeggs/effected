@@ -58,6 +58,7 @@ export { PublishTarget, PublishabilityDetector, type PublishabilityDetectorShape
 export {
 	type CatalogAssemblyFailure,
 	CatalogSet,
+	type ImporterVersions,
 	WorkspaceCatalogs,
 	type WorkspaceCatalogsOptions,
 	type WorkspaceCatalogsShape,
