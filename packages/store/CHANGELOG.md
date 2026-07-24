@@ -1,5 +1,18 @@
 # @effected/store
 
+## 0.1.2
+
+### Dependencies
+
+* | Dependency              | Type           | Action  | From          | To             |                                                                       |
+  | ----------------------- | -------------- | ------- | ------------- | -------------- | --------------------------------------------------------------------- |
+  | @effect/sql-sqlite-node | dependency     | updated | 4.0.0-beta.99 | 4.0.0-beta.101 |                                                                       |
+  | effect                  | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#162]: https://github.com/spencerbeggs/effected/pull/162
+
 ## 0.1.1
 
 ### Dependencies

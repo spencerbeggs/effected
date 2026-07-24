@@ -1,5 +1,24 @@
 # @effected/lockfiles
 
+## 0.1.10
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/jsonc  | dependency | updated | 0.5.0 | 0.5.1 |
+| @effected/npm    | dependency | updated | 0.3.0 | 0.3.1 |
+| @effected/semver | dependency | updated | 0.2.0 | 0.2.1 |
+| @effected/yaml   | dependency | updated | 0.5.0 | 0.5.1 |
+
+* | Dependency | Type           | Action  | From          | To             |                                                                       |
+  | ---------- | -------------- | ------- | ------------- | -------------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#162]: https://github.com/spencerbeggs/effected/pull/162
+
 ## 0.1.9
 
 ### Dependencies
