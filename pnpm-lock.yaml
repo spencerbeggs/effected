@@ -340,8 +340,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-beta.101
       rolldown-pnpm-config:
-        specifier: ^0.5.1
-        version: 0.5.1(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(rolldown@1.2.0)
+        specifier: ^0.5.2
+        version: 0.5.2(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(rolldown@1.2.0)
       typescript:
         specifier: catalog:silk
         version: 7.0.2
@@ -901,13 +901,6 @@ packages:
     engines: {node: '>=18.0.0'}
     peerDependencies:
       effect: ^4.0.0-beta.101
-      ioredis: ^5.7.0
-
-  '@effect/platform-node@4.0.0-beta.99':
-    resolution: {integrity: sha512-jnK2KMW4W50AEOKK+Tgvab3YPHBxa3ApLQE8BCad+LH57JOziKzOjqtEpAgJgmao3t77x1UESK4JraaHJDHaYA==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      effect: ^4.0.0-beta.99
       ioredis: ^5.7.0
 
   '@effect/sql-sqlite-node@4.0.0-beta.101':
@@ -3075,9 +3068,6 @@ packages:
   effect@4.0.0-beta.101:
     resolution: {integrity: sha512-HjowumlIo+orthn4jMlEJPuzIYPBV+uq/XiciHWhiedLsXQpWHdNJHO5d59BVDP5s1LPuvERcktwFqRXnJqnhA==}
 
-  effect@4.0.0-beta.99:
-    resolution: {integrity: sha512-hP1C61uzINfLl/4kKMwcqksxd34s4sQ3VSjsWjhGrkx9CRlXaqnfOK9dpTEKynQ6rA7wU9rb3c+48eDYw7uzxA==}
-
   electron-to-chromium@1.5.395:
     resolution: {integrity: sha512-7zt9Aw+SrmxLWLN0zhaTWZQiCdryLVrYTq5R7iZakLvi2UQPYMMsROYV/2qVCzMeCiSXHwKOU+sZ4zOVVlrtKA==}
 
@@ -4547,8 +4537,8 @@ packages:
       vue-tsc:
         optional: true
 
-  rolldown-pnpm-config@0.5.1:
-    resolution: {integrity: sha512-QbzxRxJ9CiuuBCHSIytLNY2c+azZG0xVpAATUysbdkfMpSBfRzp6Dt3Z81fS9rIq08E9Yu4FdxSt4e03wQqhCg==}
+  rolldown-pnpm-config@0.5.2:
+    resolution: {integrity: sha512-FAplNxQh1vzioAkPcbt5RicRWRvNLRbRvBTSgW9k/xNAHD+NPbV907gu2tI5SWLTDY4eok2LUhMJb5cEq5sb2Q==}
     engines: {node: '>=24.11.0'}
     hasBin: true
     peerDependencies:
@@ -5629,30 +5619,10 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node-shared@4.0.0-beta.101(effect@4.0.0-beta.99)':
-    dependencies:
-      '@types/ws': 8.18.1
-      effect: 4.0.0-beta.99
-      ws: 8.21.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
   '@effect/platform-node@4.0.0-beta.101(effect@4.0.0-beta.101)(ioredis@5.11.1(supports-color@9.4.0))':
     dependencies:
       '@effect/platform-node-shared': 4.0.0-beta.101(effect@4.0.0-beta.101)
       effect: 4.0.0-beta.101
-      ioredis: 5.11.1(supports-color@9.4.0)
-      mime: 4.1.0
-      undici: 8.8.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@effect/platform-node@4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@9.4.0))':
-    dependencies:
-      '@effect/platform-node-shared': 4.0.0-beta.101(effect@4.0.0-beta.99)
-      effect: 4.0.0-beta.99
       ioredis: 5.11.1(supports-color@9.4.0)
       mime: 4.1.0
       undici: 8.8.0
@@ -5710,11 +5680,6 @@ snapshots:
       '@effected/semver': 0.2.1(effect@4.0.0-beta.101)
       effect: 4.0.0-beta.101
 
-  '@effected/npm@0.3.1(@effected/semver@0.2.1(effect@4.0.0-beta.101))(effect@4.0.0-beta.99)':
-    dependencies:
-      '@effected/semver': 0.2.1(effect@4.0.0-beta.101)
-      effect: 4.0.0-beta.99
-
   '@effected/npm@0.3.1(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-beta.101)':
     dependencies:
       '@effected/semver': link:packages/semver/dist/dev/pkg
@@ -5730,10 +5695,6 @@ snapshots:
   '@effected/semver@0.2.1(effect@4.0.0-beta.101)':
     dependencies:
       effect: 4.0.0-beta.101
-
-  '@effected/semver@0.2.1(effect@4.0.0-beta.99)':
-    dependencies:
-      effect: 4.0.0-beta.99
 
   '@effected/spdx@0.1.1(effect@4.0.0-beta.101)':
     dependencies:
@@ -5833,10 +5794,6 @@ snapshots:
   '@effected/yaml@0.5.1(effect@4.0.0-beta.101)':
     dependencies:
       effect: 4.0.0-beta.101
-
-  '@effected/yaml@0.5.1(effect@4.0.0-beta.99)':
-    dependencies:
-      effect: 4.0.0-beta.99
 
   '@emnapi/core@1.11.1':
     dependencies:
@@ -8267,19 +8224,6 @@ snapshots:
       uuid: 14.0.1
       yaml: 2.9.0
 
-  effect@4.0.0-beta.99:
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      fast-check: 4.9.0
-      find-my-way-ts: 0.1.6
-      ini: 7.0.0
-      kubernetes-types: 1.30.0
-      msgpackr: 2.0.4
-      multipasta: 0.2.8
-      toml: 4.3.0
-      uuid: 14.0.1
-      yaml: 2.9.0
-
   electron-to-chromium@1.5.395: {}
 
   elkjs@0.9.3: {}
@@ -10296,13 +10240,13 @@ snapshots:
     transitivePeerDependencies:
       - oxc-resolver
 
-  rolldown-pnpm-config@0.5.1(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(rolldown@1.2.0):
+  rolldown-pnpm-config@0.5.2(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(rolldown@1.2.0):
     dependencies:
-      '@effect/platform-node': 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1(supports-color@9.4.0))
-      '@effected/npm': 0.3.1(@effected/semver@0.2.1(effect@4.0.0-beta.101))(effect@4.0.0-beta.99)
-      '@effected/semver': 0.2.1(effect@4.0.0-beta.99)
-      '@effected/yaml': 0.5.1(effect@4.0.0-beta.99)
-      effect: 4.0.0-beta.99
+      '@effect/platform-node': 4.0.0-beta.101(effect@4.0.0-beta.101)(ioredis@5.11.1(supports-color@9.4.0))
+      '@effected/npm': 0.3.1(@effected/semver@0.2.1(effect@4.0.0-beta.101))(effect@4.0.0-beta.101)
+      '@effected/semver': 0.2.1(effect@4.0.0-beta.101)
+      '@effected/yaml': 0.5.1(effect@4.0.0-beta.101)
+      effect: 4.0.0-beta.101
       ink: 7.1.1(@types/react@19.2.17)(react@19.2.8)
       ink-tab: 5.2.0(@types/react@19.2.17)(ink@7.1.1(@types/react@19.2.17)(react@19.2.8))(react@19.2.8)
       oxc-parser: 0.141.0
