@@ -73,7 +73,7 @@ The rich `Schema.Class` — the single best DX pattern in the repo:
 - **`rest`** catch-all preserving unknown top-level fields across a read/edit/write cycle (see [the wire transform](#the-rest-catch-all-and-extend-story)).
 - **`toJsonString(options?)`** — the pure serialization path, first-class rather than only reachable through the writer.
 
-Modeled fields include `name` (`PackageName`), `version` (`SemVer`), `license` (`SpdxLicense`), `packageManager` (`PackageManager`), `author`/`contributors` (`Person`), `repository` (`Repository`), `bugs` (`Bugs`), `homepage`, the dependency/format field codecs and `rest`. `publishConfig` is modeled as an **open `Schema.Record`** rather than a typed open struct — a typed open struct runs in v4 but does not annotate cleanly for a zero-warning `issues.json`. Round-trip fidelity is fully preserved; the only cost is that typed `publishConfig.access` field access is dropped (consumers read it off the open record). `repository` was modeled the same way until 2026-07-25 and is now a typed [`Repository`](#the-location-fields-repository-bugs-and-homepage) — the annotation problem does not arise for a `Schema.Class` with its own codec.
+Modeled fields include `name` (`PackageName`), `version` (`SemVer`), `license` (`SpdxLicense`), `packageManager` (`PackageManager`), `author`/`contributors`/`maintainers` (`Person`), `repository` (`Repository`), `bugs` (`Bugs`), `homepage`, `keywords`, the dependency/format field codecs and `rest`. `publishConfig` is modeled as an **open `Schema.Record`** rather than a typed open struct — a typed open struct runs in v4 but does not annotate cleanly for a zero-warning `issues.json`. Round-trip fidelity is fully preserved; the only cost is that typed `publishConfig.access` field access is dropped (consumers read it off the open record). `repository` was modeled the same way until 2026-07-25 and is now a typed [`Repository`](#the-location-fields-repository-bugs-and-homepage) — the annotation problem does not arise for a `Schema.Class` with its own codec.
 
 ### Leaf concepts
 
@@ -106,6 +106,27 @@ The recognized forms go beyond what the hand-roll handled, which is the "improve
 Both are object-shaped, so both carry a `rest` catch-all and round-trip their wire form, on `Person`'s WeakMap-provenance pattern. The replay is guarded on the value still matching its provenance, and that guard is **load-bearing rather than defensive**: `Schema.Class` instances are not frozen at runtime (probed), so a mutated instance keeps a provenance entry that no longer describes it, and an unguarded replay writes the *original* repository back to the manifest. A surviving mutant is what surfaced it — the guard was written, the test for it was not.
 
 `RepositoryField` remains exported and is now `@deprecated`: `Package.repository` decodes through `Repository.FromValue`, but the raw union stays named for any consumer that was matching on it. No in-kit consumer read `.repository`, so the retype is additive in practice as well as in principle.
+
+### The compliance field set, and what each one serves
+
+The scope widened (2026-07-25, Spencer) from the three location fields to **every manifest field the CycloneDX 1.6 + NTIA-minimum-elements mapping reads**. The list below is derived from [`@effected/sbom`](sbom.md)'s `SbomMetadataSource.fromPackage` mapping, not from a general sweep of npm's documentation, so each field is here because something consumes it:
+
+| Field | Status | CycloneDX 1.6 target | NTIA element |
+| --- | --- | --- | --- |
+| `name`, `version` | existed | `component.name` / `.version`, and the `purl` both derive | 2, 3, 4 |
+| `description` | existed | `component.description` | — |
+| `license` | existed | `component.licenses` | — |
+| `author` | existed | `component.author` / `metadata.authors` | 6 (author of SBOM data) |
+| `contributors` | existed | `component.authors` | 6 |
+| **`maintainers`** | **added** | `metadata.supplier.contact`, `component.authors` | 1 (supplier name), 6 |
+| **`keywords`** | **added** | `component.tags` | — |
+| `repository` | added (above) | `externalReferences[vcs]` | — |
+| `bugs` | added (above) | `externalReferences[issue-tracker]` | — |
+| `homepage` | added (above) | `externalReferences[website]` / `[documentation]` | — |
+
+`maintainers` and `keywords` are plain additive fields — `Array(Person.FromValue)` and `Array(String)` — needing no new machinery, and both were already present in `internal/format.ts`'s `KEY_ORDER` (checked), so canonical sorting places them correctly with no change there. `maintainers` closes a documentation/code drift the package carried: its own CLAUDE.md warned that object-form `author`/`contributors`/**`maintainers`** must not drop unknown keys, but `maintainers` was never a modeled field, so nothing enforced it.
+
+**`funding` was evaluated and deliberately NOT added.** npm documents it, but CycloneDX 1.6 has **no `funding` external-reference type** — verified by enumerating `ExternalReferenceType` in the published library and grepping `bom-1.6.SNAPSHOT.schema.json`, not from memory. A field with no target in the mapping would be exactly the arbitrary growth this table exists to prevent; it earns its place the day a consumer names a target for it.
 
 **`Person` needed nothing.** Its `FromValue` already covers every case the consumer's `parseAuthor` handles — the object form, the `"Name <email> (url)"` shorthand, and the degenerate address-only string — with wire fidelity the hand-roll lacks. The one input where the two could plausibly disagree (an email-only shorthand) is now pinned by a test, which is what makes "delete the hand-roll" evidence-backed rather than assumed.
 

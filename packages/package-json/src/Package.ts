@@ -242,6 +242,8 @@ export class Package extends Schema.Class<Package>("Package")({
 	license: Schema.optionalKey(SpdxLicense),
 	author: Schema.optionalKey(Person.FromValue),
 	contributors: Schema.optionalKey(Schema.Array(Person.FromValue)),
+	maintainers: Schema.optionalKey(Schema.Array(Person.FromValue)),
+	keywords: Schema.optionalKey(Schema.Array(Schema.String)),
 	repository: Schema.optionalKey(Repository.FromValue),
 	bugs: Schema.optionalKey(Bugs.FromValue),
 	homepage: Schema.optionalKey(Schema.String),
