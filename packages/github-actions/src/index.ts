@@ -5,6 +5,7 @@ export {
 	GitHubContext,
 	RunnerContext,
 } from "./ActionEnvironment.js";
+export { ActionInput } from "./ActionInput.js";
 export { ActionOutputError, ActionOutputs, type ActionOutputsShape } from "./ActionOutputs.js";
 export { ActionState, ActionStateError, type ActionStateShape } from "./ActionState.js";
 export { BlobEnvelope, BlobEnvelopeError } from "./BlobEnvelope.js";

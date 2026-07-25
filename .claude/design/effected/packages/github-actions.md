@@ -363,7 +363,31 @@ export class DetachedProcess {
 
 **v1 answer: this package does the fd-level spawn itself**, on `node:child_process` with `stdio: ["ignore", fd, fd]`, because it is the one package permitted to. That keeps `@effected/commands` clean of a Node-specific escape hatch and gives the consumer a working detached log today. The upstream issue stays a candidate; if core grows fd routing, `DetachedProcess.spawn` becomes a thin adapter over it and the `node:child_process` import disappears. Recorded so the eventual removal is a known follow-up rather than an archaeology exercise.
 
+## `OidcTokenIssuer`, and why the claims are decoded but not verified
+
+Lives here rather than in `@effected/sbom` because it reads `ACTIONS_ID_TOKEN_REQUEST_TOKEN` / `ACTIONS_ID_TOKEN_REQUEST_URL`, which exist only when a workflow declares `id-token: write` (spec §5).
+
+```ts
+export interface OidcTokenIssuerShape {
+  readonly token: (audience?: string) => Effect.Effect<Redacted.Redacted<string>, OidcTokenError>;
+  /** The token's claims, decoded. */
+  readonly claims: (audience?: string) => Effect.Effect<OidcClaims, OidcTokenError>;
+}
+```
+
+**Decoded claims are a typed value on the surface, not a nullable hand-parse at the call site.** This is the fix for [spec §2.3](../../plans/2026-07-25-github-split-master.md), the structurally-untestable provenance path: the source's `OidcTokenIssuerTest` returns a synthetic non-JWT, so a consumer's `decodeJwtClaims` yields `null`, so `attest.provenance` is *never reached* — four separate comments in silk-release-action apologize for it. With claims on the issuer's surface, a test double returns **real decodable claims** and the provenance path becomes reachable. `@effected/sbom` consumes it as `claims()` → `SlsaProvenance.forGitHubWorkflow`, so this is the seam between the two packages.
+
+**The decode deliberately does NOT verify the JWT signature, and that is not an oversight.** Three reasons, recorded so a future agent does not "fix" it:
+
+1. The token comes from the runner's **own token-service endpoint over TLS** — the transport is the trust boundary, and the process asking for the token is the process that received it.
+2. The claims populate a **provenance predicate**, not a trust decision. Nothing branches on them for authorization; they are recorded as attested facts about the workflow that ran.
+3. Verifying would require a **JWKS fetch**, turning a pure decode into a network call — which would make the claims surface non-pure, untestable without a fixture server, and dependent on GitHub's key endpoint being reachable at attestation time.
+
+If a consumer ever needs a *verified* token, that is a different operation with a different name and a different error channel, not an option on this one.
+
 ## Errors
+
+**Audit every ported error channel for whether it can actually fire.** A general finding from the source read: the package has at least two error channels that are structurally unreachable — a pure body wrapped in `Effect.try`, so the `catch` arm is dead. A channel that cannot fire is worse than no channel: it forces every caller to handle a case that does not exist, and it makes the type a lie about the operation. When porting a member, either demonstrate the failure path with a test or delete it from the signature.
 
 One typed error per concept module, `Schema.TaggedErrorClass`, sized to what callers actually read — the spec's §7 finding that `GitHubClientError` demanded five mandatory fields while readers used one or two applies here too.
 
@@ -413,6 +437,30 @@ Per program decision 9, recorded per concept:
 - **`WorkspaceDetector`, `PackageManagerAdapter`, `ChangesetAnalyzer`** — the kit already owns all three.
 - **`GithubMarkdown`** — a string builder with no Actions coupling; it belongs to whichever consumer wants it, or to `@effected/markdown` if a second one does.
 - **`ActionInputError`** — dissolved into `ConfigError`.
+
+## As built — milestone (a), partial (2026-07-25)
+
+Seven units green against `effect@4.0.0-beta.101`: `WorkflowCommand`, `ActionEnvironment`, `ActionOutputs`, `ActionState`, `Secret`, `BlobEnvelope`, `ActionInput`. 101 tests, `tsc --noEmit` clean, biome clean. **Remaining in (a): `ActionLogger`, `DryRun`, `CacheKey`.** Milestones (b)–(e) untouched.
+
+### Deltas from the design
+
+- **`BlobEnvelope`'s magic is `"EFBS"`, not `"EBS1"`.** A version digit inside the magic is a second version channel, and two version channels can disagree. The magic identifies the *family*; the version byte identifies the *revision*. Approved 2026-07-25.
+- **`ActionEnvironment.repo` is deferred to milestone (d)**, because it returns `@effected/github`'s `RepoRef` and (a) is deliberately github-independent. `github` (the context) carries `repository` as a string, so nothing is blocked meanwhile.
+- **`ActionOutputs.setFailed` emits the annotation but does not set the exit code.** That belongs to `Action.run`, so an action that reports a failure and then recovers is not doomed by a side effect it cannot undo.
+- **Runner-file delimiters are derived, not random.** GitHub's toolkit uses a random UUID and accepts a collision chance; deriving (`EFFECTED_EOF`, extended with `_` until absent from the value) makes collision *impossible* rather than improbable, needs no `Crypto` in `R`, and is deterministic under test. A value containing the delimiter would otherwise terminate its block early — a value-controlled injection into the runner's own file.
+- **`ActionsConfigProvider` subsumption CONFIRMED**, not assumed. Diffed against `runtime/ActionsConfigProvider.ts`: path joined with `_`, spaces → `_`, uppercased, empty-string-is-absent. All four preserved, and a test resolves each input against *only* its expected variable so the derivation is proven rather than restated. Dashes are **not** translated, which is the whole point.
+
+### v4 API corrections found while building
+
+1. **`Effect.withConfigProvider` does not exist.** `ConfigProvider.ConfigProvider` is a `Context.Reference` (`ConfigProvider.ts:296`); override with `Effect.provideService`, or install with `ConfigProvider.layer(provider)`.
+2. **`FiberRef` does not exist.** `Context.Reference` (`Context.ts:1335`) is the v4 spelling, and it is what makes `withEnv` fiber-local.
+3. **Core `Crypto` is RNG only** — no digest, no HMAC (confirmed again in `Crypto.ts`). `CacheKey.hashFiles` and SigV4 must use `node:crypto`.
+
+### Testing notes the successor needs
+
+- **Interleaving tests must use `Latch`, never `Effect.sleep`.** Under `it.effect`'s virtual `TestClock` a sleep hangs to the 5000ms vitest timeout. Observed and fixed here.
+- **The two-latch requirement is load-bearing.** A single-latch interleaving *passed against a deliberately-wrong global save/restore implementation*, because save/restore is LIFO-correct whenever two overrides nest properly. The discriminating order forces one fiber to read **while the other's override is still applied and unrestored**. Any future concurrency test in this package needs that shape.
+- Mutants killed so far: the `withEnv` global-mutation mutant (by the two-latch test), and the dash-translating `inputVariable` mutant (by three tests, including the underscored-spelling test flipping to Success — the bug's exact signature).
 
 ## Settled at the Phase 3 checkpoint
 
