@@ -27,8 +27,9 @@ when changing the pipeline seams, the error set, or the codec boundaries.
   `upwardWalk`, `workspaceRoot`, `gitRoot`, `systemEtc`)
 - `src/MergeStrategy.ts` — `MergeStrategy` (`firstMatch`, `layeredMerge`),
   `ConfigSource`, `NonEmptySources`
-- `src/ConfigFile.ts` — `ConfigFile` (`Service`, `layer`, `testLayer`),
-  `ConfigFileShape`, `ConfigFileOptions`, `ConfigFileTestOptions`, and five
+- `src/ConfigFile.ts` — `ConfigFile` (`Service`, `layer`, `testLayer`, `read`),
+  `ConfigFileShape`, `ConfigFileOptions`, `ConfigFileTestOptions`,
+  `ConfigReadOptions`, and five
   errors: `ConfigFileNotFoundError`, `ConfigFileReadError`,
   `ConfigFileWriteError`, `ConfigDefaultPathMissingError`,
   `ConfigValidationError`
@@ -53,6 +54,16 @@ Three orthogonal seams, composed by `ConfigFile.layer`:
   one unreadable tier never aborts the chain.
 - **Strategy** — many sources → one value. Cannot fail; the empty case raises
   `ConfigFileNotFoundError` before a strategy is consulted.
+
+`ConfigFile.read(path, { schema, codec })` is the **one-shot** escape from all
+three seams: read + decode + validate one explicit path, no service, no layer,
+no tag, only `FileSystem` in `R`, schema per CALL rather than per layer. Keep it
+read-only and discovery-free — wanting a resolver chain or a write path means
+reaching for `ConfigFile.layer`, not growing this. **Never add extension-based
+codec inference to it**: the codec is an explicit argument precisely so a
+JSON-only consumer never references the JSONC/YAML/TOML modules, and a
+"convenience" that picked one by file extension would reach all four and
+silently undo the tree-shaking rule below.
 
 `ConfigFile.Service<Self, A>()(id)` is a per-schema `Context.Service` factory.
 `ConfigFile.layer` is a layer-*returning function*: bind its result to a const
@@ -138,7 +149,7 @@ now expressed over `Walker.ascend`, `Walker.findUpward` and `Walker.findRoot`.
 
 ## Testing and building
 
-Tests live in `__test__/` (13 files, 146 passing), use `@effect/vitest`, and
+Tests live in `__test__/` (14 files, 154 passing), use `@effect/vitest`, and
 assert with `assert.*` — **never** `expect`.
 
 ```bash

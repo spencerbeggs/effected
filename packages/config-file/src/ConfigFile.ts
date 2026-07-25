@@ -653,8 +653,84 @@ const testLayer = <Self, A, I>(
 	);
 
 /**
- * The config file service: a per-schema service factory and its layers.
+ * Options for {@link ConfigFile.read}.
  *
  * @public
  */
-export const ConfigFile = { Service, layer, testLayer } as const;
+export interface ConfigReadOptions<A, I> {
+	/** The schema the document is decoded through. */
+	readonly schema: Schema.Codec<A, I>;
+	/**
+	 * How file content becomes an unknown document.
+	 *
+	 * @remarks
+	 * An explicit argument, never inferred from the file extension or defaulted
+	 * to JSON. Naming the codec at the call site is what keeps the
+	 * free-standing-codec tree-shaking guarantee: a consumer that only ever
+	 * passes `JsonCodec` never references the JSONC, YAML or TOML modules, so
+	 * their engines stay out of the bundle.
+	 */
+	readonly codec: ConfigCodec;
+}
+
+/**
+ * Read, decode and validate one explicit path — no service, no layer, no tag.
+ *
+ * @remarks
+ * The one-shot form. {@link ConfigFile.layer} binds schema and codec at layer
+ * construction, which is the right model for a config file an application
+ * *has* — several candidate locations, `save`/`update`, migrations, events —
+ * and heavy for a call site that decodes one known path once, where it costs a
+ * service subclass, a layer bound to a const and a provide at the boundary.
+ * Unlike the service, `read` takes its schema per call, so one call site can
+ * read several unrelated files without a service class each.
+ *
+ * It is deliberately read-only and discovery-free: there is no resolver chain
+ * and no write path. Reach for {@link ConfigFile.layer} the moment either is
+ * wanted, rather than growing this.
+ *
+ * The error channel is `ConfigReadError` — the same narrowed union
+ * {@link ConfigFileShape.loadFrom} carries, with causes and schema issues held
+ * structurally rather than flattened into a message.
+ *
+ * @example
+ * ```ts
+ * import { ConfigFile, JsonCodec } from "@effected/config-file";
+ *
+ * const config = yield* ConfigFile.read(inputs.configFile, {
+ *   schema: MyConfig,
+ *   codec: JsonCodec,
+ * });
+ * ```
+ *
+ * @public
+ */
+const read = <A, I>(
+	path: string,
+	options: ConfigReadOptions<A, I>,
+): Effect.Effect<A, ConfigReadError, FileSystem.FileSystem> =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+
+		const raw = yield* fs
+			.readFileString(path)
+			.pipe(Effect.mapError((cause) => new ConfigFileReadError({ path, cause })));
+
+		const parsed = yield* options.codec.parse(raw);
+
+		return yield* Schema.decodeUnknownEffect(options.schema)(parsed).pipe(
+			// The same boundary normalization the service performs: never leak a
+			// SchemaError outward, and carry its issue tree rather than a string.
+			Effect.catchTag("SchemaError", (error) =>
+				Effect.fail(new ConfigValidationError({ path: Option.some(path), issue: error.issue })),
+			),
+		);
+	}).pipe(Effect.withSpan("ConfigFile.read", { attributes: { path } }));
+
+/**
+ * The config file service: a per-schema service factory, its layers, and the
+ * one-shot {@link ConfigFile.read}.
+ *
+ * @public
+ */
+export const ConfigFile = { Service, layer, testLayer, read } as const;
