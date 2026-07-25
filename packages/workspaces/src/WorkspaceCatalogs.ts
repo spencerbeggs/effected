@@ -18,10 +18,32 @@ import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Platf
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
+import { importerVersionsOf } from "./internal/importerVersions.js";
 import type { LockfileReadFailure } from "./LockfileReader.js";
 import { LockfileReader } from "./LockfileReader.js";
 import type { WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
+
+/**
+ * Each importer's dependency-name → resolved-version map, keyed by importer path
+ * (`"."` for the root package — the same keys `WorkspaceDiscovery.importerMap()`
+ * uses, and the same value `PackageStateSnapshot.relativePath` carries).
+ *
+ * @remarks
+ * What a manager's lockfile records as actually installed, as opposed to what a
+ * manifest declares. It answers a `catalog:` specifier no committed catalog
+ * source declares — the shape a pnpm config-dependency pnpmfile hook produces —
+ * which would otherwise resolve to nothing on both sides of a diff and hide a
+ * real version movement.
+ *
+ * Versions are normalized: pnpm's peer-disambiguation suffix
+ * (`1.2.3(effect@4.0.0)`) is stripped, and `link:` / `file:` entries are omitted
+ * because a filesystem edge is not a version. Only pnpm records importer
+ * versions; bun and npm yield an empty index.
+ *
+ * @public
+ */
+export type ImporterVersions = Readonly<Record<string, Readonly<Record<string, string>>>>;
 
 /**
  * An immutable, fully-normalized catalog collection — the one catalog
@@ -388,6 +410,7 @@ export type CatalogAssemblyFailure = CatalogAssemblyError | WorkspaceRootNotFoun
 interface Assembled {
 	readonly catalogs: CatalogSet;
 	readonly releaseAgeGate: ReleaseAgeGate;
+	readonly importerVersions: ImporterVersions;
 }
 
 /**
@@ -417,6 +440,19 @@ export interface WorkspaceCatalogsShape {
 	 * workspace) has no release-age keys, so the gate is the inert zero gate.
 	 */
 	readonly releaseAgeGate: () => Effect.Effect<ReleaseAgeGate, CatalogAssemblyFailure>;
+	/**
+	 * Each importer's dependency-name → resolved-version map, as the manager's
+	 * lockfile records it. Read from the same single lockfile read as `set`, and
+	 * memoized with it.
+	 *
+	 * @remarks
+	 * Feeds `WorkspaceStateSnapshot`'s fallback for a `catalog:` specifier no
+	 * committed catalog source declares — the shape a config-dependency pnpmfile
+	 * hook produces. Only pnpm records importer versions; a bun or npm workspace
+	 * yields an empty index, and an absent or unreadable lockfile contributes
+	 * nothing rather than failing.
+	 */
+	readonly importerVersions: () => Effect.Effect<ImporterVersions, CatalogAssemblyFailure>;
 }
 
 /**
@@ -511,10 +547,19 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				// The lockfile is a RECORD of what was installed; an absent or
 				// unreadable one is not a catalog failure, it just contributes nothing.
 				// PM-aware: whichever extension (pnpm or bun) the lockfile carries.
-				const fromLockfile = yield* lockfiles.read().pipe(
-					Effect.map(CatalogSet.fromLockfile),
-					Effect.catch((_failure: LockfileReadFailure) => Effect.succeed(CatalogSet.empty())),
+				// Both catalog and importer-version outputs come off this ONE read, the
+				// same "one pass, several outputs" discipline `releaseAgeGate` follows.
+				const lockfileOutputs = yield* lockfiles.read().pipe(
+					Effect.map((lockfile) => ({
+						catalogs: CatalogSet.fromLockfile(lockfile),
+						importerVersions: importerVersionsOf(lockfile),
+					})),
+					Effect.catch((_failure: LockfileReadFailure) =>
+						Effect.succeed({ catalogs: CatalogSet.empty(), importerVersions: {} as ImporterVersions }),
+					),
 				);
+				const fromLockfile = lockfileOutputs.catalogs;
+				const importerVersions = lockfileOutputs.importerVersions;
 
 				// File presence picks the inline reader, the same rule the glob
 				// enumerator uses: pnpm-workspace.yaml → the pnpm path (config
@@ -564,7 +609,8 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					// return lockfile-only catalogs — the "every dependency looks newly
 					// added" bug on the bun branch. `probeExists` already does this.
 					const hasManifest = yield* probeExists(manifestPath);
-					if (!hasManifest) return { catalogs: fromLockfile, releaseAgeGate: ReleaseAgeGate.combine() };
+					if (!hasManifest)
+						return { catalogs: fromLockfile, releaseAgeGate: ReleaseAgeGate.combine(), importerVersions };
 					const text = yield* fs
 						.readFileString(manifestPath)
 						.pipe(
@@ -586,7 +632,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 						"workspace.releaseAgeMinutes": releaseAgeGate.ageMinutes,
 					}),
 				);
-				return { catalogs: assembled, releaseAgeGate };
+				return { catalogs: assembled, releaseAgeGate, importerVersions };
 			});
 
 			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(assemble, Duration.infinity);
@@ -604,6 +650,9 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				}),
 				releaseAgeGate: Effect.fn("WorkspaceCatalogs.releaseAgeGate")(function* () {
 					return (yield* memo).releaseAgeGate;
+				}),
+				importerVersions: Effect.fn("WorkspaceCatalogs.importerVersions")(function* () {
+					return (yield* memo).importerVersions;
 				}),
 			};
 		});

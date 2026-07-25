@@ -328,3 +328,78 @@ describe("WorkspaceStateSnapshot — snapshot-scoped resolver layers", () => {
 		}).pipe(Effect.provide(resolveSnapshot.resolvers)),
 	);
 });
+
+// ── at(ref) and worktree() must answer a hook-injected catalog IDENTICALLY ───
+//
+// The symmetry requirement is the whole reason the lockfile-importer fallback
+// was chosen over replaying the ref's pnpmfile. `at(ref)` reads through
+// `git show` with no checkout and can never execute a past ref's config
+// dependency, so any fix that resolves the injected catalog on ONLY the
+// worktree side manufactures a bogus row — `from: "catalog:effect:peers"`,
+// `to: "4.0.0-beta.101"` — on every single run. Both sides read a committed
+// lockfile, so both must land on the same concrete version.
+
+const HOOK_LOCK = `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.101
+
+packages: {}
+`;
+
+// The peer is declared through a catalog NO committed source defines: the
+// workspace declares no catalogs, and the lockfile records no `catalogs:` block.
+const hookManifest = JSON.stringify({
+	name: "root",
+	version: "1.0.0",
+	peerDependencies: { effect: "catalog:effect:peers" },
+	devDependencies: { effect: "catalog:effect" },
+});
+
+const hookTree: Tree = {
+	"/repo/package.json": hookManifest,
+	"/repo/pnpm-workspace.yaml": "packages: []\n",
+	"/repo/pnpm-lock.yaml": HOOK_LOCK,
+};
+
+const hookRefTrees: RefTrees = {
+	HEAD: {
+		"package.json": hookManifest,
+		"pnpm-workspace.yaml": "packages: []\n",
+		"pnpm-lock.yaml": HOOK_LOCK,
+	},
+};
+
+describe("WorkspaceSnapshots — hook-injected catalog symmetry", () => {
+	layer(snapshotsLayer(scriptGit(hookRefTrees), hookTree))((it) => {
+		it.effect("at(ref) and worktree() resolve the injected catalog to the same version", () =>
+			Effect.gen(function* () {
+				const snapshots = yield* WorkspaceSnapshots;
+				const atRef = yield* snapshots.at("HEAD");
+				const live = yield* snapshots.worktree();
+
+				const fromRef = atRef.resolve("effect", "catalog:effect:peers");
+				const fromLive = live.resolve("effect", "catalog:effect:peers");
+
+				assert.deepStrictEqual(fromRef, Option.some("4.0.0-beta.101"));
+				// Asymmetry here is the bogus-row bug: the two sides MUST agree.
+				assert.deepStrictEqual(fromLive, fromRef);
+			}),
+		);
+
+		it.effect("the importer index reaches both snapshots", () =>
+			Effect.gen(function* () {
+				const snapshots = yield* WorkspaceSnapshots;
+				const atRef = yield* snapshots.at("HEAD");
+				const live = yield* snapshots.worktree();
+				assert.strictEqual(atRef.importerVersions?.["."]?.effect, "4.0.0-beta.101");
+				assert.strictEqual(live.importerVersions?.["."]?.effect, "4.0.0-beta.101");
+			}),
+		);
+	});
+});
