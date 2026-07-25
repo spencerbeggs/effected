@@ -111,6 +111,9 @@ importers:
 
   packages/commands:
     devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-beta.101(effect@4.0.0-beta.101)(ioredis@5.11.1(supports-color@9.4.0))
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.101(effect@4.0.0-beta.101)(vitest@4.1.10)

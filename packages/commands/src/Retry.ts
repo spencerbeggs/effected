@@ -1,0 +1,120 @@
+import type { Schedule } from "effect";
+import { Duration, PlatformError, Schedule as Sched } from "effect";
+import type { CommandFailedError } from "./Run.js";
+
+/**
+ * Substrings that mark a failure as a transport hiccup rather than a verdict.
+ *
+ * @remarks
+ * Matched case-insensitively against captured stderr, captured stdout (npm and
+ * friends route real errors there) and an absorbed spawn failure's message.
+ * Exported so a caller extends the set through
+ * {@link Retry.transient}'s `also` rather than forking the list.
+ *
+ * @public
+ */
+export const TRANSIENT_PATTERNS: ReadonlyArray<string> = [
+	"EAI_AGAIN",
+	"ECONNABORTED",
+	"ECONNREFUSED",
+	"ECONNRESET",
+	"EHOSTUNREACH",
+	"ENETUNREACH",
+	"ENOTFOUND",
+	"EPIPE",
+	"ETIMEDOUT",
+	"fetch failed",
+	"socket hang up",
+];
+
+/** Everything a classifier may read from one failure, lowercased once. */
+const haystack = (error: CommandFailedError): string => {
+	const parts = [error.stderr ?? "", error.stdout ?? ""];
+	if (error.cause instanceof PlatformError.PlatformError) {
+		parts.push(error.cause.message);
+	}
+	return parts.join("\n").toLowerCase();
+};
+
+/** Whether `error` matches any of `patterns`. */
+const matches = (error: CommandFailedError, patterns: ReadonlyArray<string>): boolean => {
+	const text = haystack(error);
+	return patterns.some((pattern) => text.includes(pattern.toLowerCase()));
+};
+
+/**
+ * Whether a failure looks like a transport hiccup worth retrying.
+ *
+ * @remarks
+ * Two classifications are structural rather than textual, and both matter more
+ * than the pattern list:
+ *
+ * - **A missing executable is never transient.** Retrying cannot install a
+ *   tool, so `kind: "spawn"` with {@link CommandFailedError.notFound} is
+ *   permanent however many attempts remain.
+ * - **A timeout is not transient by default.** A command that hangs
+ *   deterministically would burn its entire ceiling on every attempt; a caller
+ *   who knows better opts in via {@link Retry.transient}'s `while`.
+ *
+ * Any other spawn failure (a busy or momentarily locked binary) *is* treated as
+ * transient — that condition does clear.
+ *
+ * @public
+ */
+const isTransient = (error: CommandFailedError): boolean => {
+	if (error.kind === "timeout") return false;
+	if (error.kind === "spawn") return !error.notFound;
+	return matches(error, TRANSIENT_PATTERNS);
+};
+
+/**
+ * A ready-made policy for `Effect.retry`: transient failures only, on a jittered
+ * exponential backoff, with a bounded attempt budget.
+ *
+ * @remarks
+ * This is vocabulary, not a runner — the caller keeps control of composition:
+ *
+ * ```ts
+ * Run.text(command).pipe(Effect.retry(Retry.transient()))
+ * ```
+ *
+ * A caller needing to repair state between attempts (resetting a working tree,
+ * say) composes `Effect.retryOrElse` or `Effect.tapError` itself; that reset is
+ * domain logic and does not belong in a retry policy.
+ *
+ * @public
+ */
+const transient = (options?: {
+	/** Retries after the first attempt. Defaults to 2 (three attempts total). */
+	readonly times?: number | undefined;
+	/** Extra patterns treated as transient, in addition to {@link TRANSIENT_PATTERNS}. */
+	readonly also?: ReadonlyArray<string> | undefined;
+}): {
+	readonly while: (error: CommandFailedError) => boolean;
+	readonly schedule: Schedule.Schedule<Duration.Duration>;
+	readonly times: number;
+} => {
+	const extra = options?.also ?? [];
+	return {
+		while: (error: CommandFailedError) => isTransient(error) || (error.kind !== "timeout" && matches(error, extra)),
+		schedule: Sched.jittered(Sched.exponential(Duration.millis(200))),
+		times: options?.times ?? 2,
+	};
+};
+
+/**
+ * Transience classification for command failures, and the retry policy built
+ * on it.
+ *
+ * @remarks
+ * Resurrects the `execWithRetry` helper the v3 action packages lost — as
+ * composable vocabulary rather than a retrying runner, because core's
+ * `Effect.retry` already accepts `{ while, schedule, times }`.
+ *
+ * @public
+ */
+export const Retry = {
+	isTransient,
+	transient,
+	TRANSIENT_PATTERNS,
+} as const;
