@@ -22,3 +22,9 @@ export {
 	SbomMetadata,
 	Supplier,
 } from "./SbomDocument.js";
+export {
+	type ComponentInput,
+	type CopyrightYears,
+	type SbomMetadataOptions,
+	SbomMetadataSource,
+} from "./SbomMetadataSource.js";

@@ -10,6 +10,7 @@
 // 1.6 ONLY. There is no 1.5 path, no dual-emission branch and no version
 // option — a settled ruling, not an omission.
 
+import { License, isValidExpression } from "@effected/spdx";
 import { Schema } from "effect";
 
 /** The BOM format discriminator. CycloneDX requires this exact string. */
@@ -185,6 +186,31 @@ const compact = <T extends Record<string, unknown>>(value: T): Record<string, un
 	return out;
 };
 
+/**
+ * The `licenses` array in one of the three shapes CycloneDX permits.
+ *
+ * A manifest's `license` field is an SPDX **expression** field: `MIT`,
+ * `MIT OR Apache-2.0` and `UNLICENSED` are all legal values of it, and the
+ * specification renders them three different ways — `license.id` is constrained
+ * to the SPDX identifier enumeration, an expression goes in a one-element
+ * `{ expression }` tuple, and anything else is a named license. Emitting every
+ * value as an id produces a document that looks right and validates wrong.
+ *
+ * The identifier-versus-expression question is `@effected/spdx`'s to answer:
+ * the kit's one SPDX engine, never a local regex.
+ */
+const licensesJson = (licenses: ReadonlyArray<string>): ReadonlyArray<Record<string, unknown>> => {
+	// The expression tuple is exclusive — the schema caps it at one element — so
+	// it is only available when the component carries a single license.
+	const [only] = licenses;
+	if (licenses.length === 1 && only !== undefined && !License.isKnownId(only) && isValidExpression(only)) {
+		return [{ expression: only }];
+	}
+	return licenses.map((license) =>
+		License.isKnownId(license) ? { license: { id: license } } : { license: { name: license } },
+	);
+};
+
 const contactJson = (contact: Contact): Record<string, unknown> =>
 	compact({ name: contact.name, email: contact.email, phone: contact.phone });
 
@@ -201,7 +227,7 @@ const componentJson = (component: Component): Record<string, unknown> =>
 		copyright: component.copyright,
 		authors: component.authors?.map(contactJson),
 		// `licenses` is an array of single-key wrappers, never bare strings.
-		licenses: component.licenses?.map((license) => ({ license: { id: license } })),
+		licenses: component.licenses === undefined ? undefined : licensesJson(component.licenses),
 		purl: component.purl,
 		externalReferences: component.externalReferences?.map((reference) => ({
 			url: reference.url,

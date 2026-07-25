@@ -17,11 +17,15 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
+import { License, isValidExpression } from "@effected/spdx";
 import { Component, Contact, ExternalReference, Sbom, SbomMetadata, Supplier } from "../src/index.js";
 
 interface JsonSchema {
 	readonly properties?: Record<string, { readonly enum?: ReadonlyArray<string> }>;
 	readonly required?: ReadonlyArray<string>;
+	readonly oneOf?: ReadonlyArray<JsonSchema>;
+	readonly items?: ReadonlyArray<JsonSchema>;
+	readonly maxItems?: number;
 	readonly definitions: Record<string, JsonSchema>;
 }
 
@@ -158,6 +162,82 @@ describe("CycloneDX 1.6 conformance — derived from the vendored schema", () =>
 		const documentKeys = new Set(Object.keys(SCHEMA.properties ?? {}));
 		for (const key of Object.keys(document)) {
 			assert.isTrue(documentKeys.has(key), `${key} is not a CycloneDX document property`);
+		}
+	});
+});
+
+/** The `licenses` array a single-component document emits for these license strings. */
+const licensesOf = (...licenses: ReadonlyArray<string>): ReadonlyArray<Record<string, unknown>> => {
+	const document = Sbom.generate({
+		root: Component.make({ type: "library", name: "x", licenses }),
+		components: [],
+	});
+	const emitted = JSON.parse(Sbom.toJson(document)) as {
+		metadata: { component: { licenses?: ReadonlyArray<Record<string, unknown>> } };
+	};
+	return emitted.metadata.component.licenses ?? [];
+};
+
+describe("licenses — the three shapes the schema permits, chosen by @effected/spdx", () => {
+	// A manifest's `license` field is an SPDX EXPRESSION field: `MIT`,
+	// `MIT OR Apache-2.0` and `UNLICENSED` are all legal values of it, and the
+	// specification renders them through three different JSON shapes. Emitting
+	// every one as `{ license: { id } }` produces a document that looks right
+	// and fails validation, because `license.id` is constrained to the SPDX
+	// identifier enumeration. The id-versus-expression question is answered by
+	// `@effected/spdx` — the kit's one SPDX engine — never by a local regex.
+
+	it("the schema's license object offers exactly an id branch and a name branch", () => {
+		const branches = (definition("license").oneOf ?? []).flatMap((branch) => branch.required ?? []);
+		assert.deepStrictEqual(branches, ["id", "name"]);
+	});
+
+	it("renders a catalog identifier through the id branch", () => {
+		assert.isTrue(License.isKnownId("MIT"), "the oracle must agree MIT is a catalog identifier");
+		assert.deepStrictEqual<unknown>(licensesOf("MIT"), [{ license: { id: "MIT" } }]);
+	});
+
+	it("renders an expression through the expression tuple, never as an id", () => {
+		// The discriminating case. `MIT OR Apache-2.0` is not an SPDX identifier,
+		// so `{ license: { id: "MIT OR Apache-2.0" } }` is invalid against the
+		// identifier enumeration the schema references.
+		assert.isFalse(License.isKnownId("MIT OR Apache-2.0"));
+		assert.isTrue(isValidExpression("MIT OR Apache-2.0"));
+
+		const expressionBranch = (definition("licenseChoice").oneOf ?? [])[1];
+		assert.strictEqual(expressionBranch?.maxItems, 1, "the schema's expression branch is a one-element tuple");
+		assert.deepStrictEqual(expressionBranch?.items?.[0]?.required, ["expression"]);
+
+		const emitted = licensesOf("MIT OR Apache-2.0");
+		assert.lengthOf(emitted, 1);
+		assert.deepStrictEqual<unknown>(emitted, [{ expression: "MIT OR Apache-2.0" }]);
+	});
+
+	it("renders a string that is neither identifier nor expression as a named license", () => {
+		// npm's own non-SPDX values: `UNLICENSED` and `SEE LICENSE IN <file>`.
+		assert.isFalse(isValidExpression("UNLICENSED"));
+		assert.deepStrictEqual<unknown>(licensesOf("UNLICENSED"), [{ license: { name: "UNLICENSED" } }]);
+		assert.deepStrictEqual<unknown>(licensesOf("SEE LICENSE IN LICENSE.txt"), [
+			{ license: { name: "SEE LICENSE IN LICENSE.txt" } },
+		]);
+	});
+
+	it("never mixes an expression into a multi-entry list", () => {
+		// The schema's two branches are exclusive: a list of license objects, OR a
+		// single-element expression tuple. A second entry rules the tuple out, so
+		// an expression that cannot be an id degrades to a named license.
+		const emitted = licensesOf("MIT", "MIT OR Apache-2.0");
+		assert.lengthOf(emitted, 2);
+		assert.deepStrictEqual<unknown>(emitted, [{ license: { id: "MIT" } }, { license: { name: "MIT OR Apache-2.0" } }]);
+	});
+
+	it("emits only keys the schema's license object defines", () => {
+		const known = new Set(Object.keys(definition("license").properties ?? {}));
+		for (const entry of licensesOf("MIT")) {
+			const license = entry.license as Record<string, unknown>;
+			for (const key of Object.keys(license)) {
+				assert.isTrue(known.has(key), `license.${key} is not in the CycloneDX license definition`);
+			}
 		}
 	});
 });
