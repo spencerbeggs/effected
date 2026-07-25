@@ -5,6 +5,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { IntegrityHash } from "./IntegrityHash.js";
 import { NpmExecutor } from "./NpmExecutor.js";
 import { PublishError } from "./PublishError.js";
+import { classifyRegistry } from "./RegistryKind.js";
 
 /** npm prints its transparency-log URL on this notice line. */
 const PROVENANCE_URL = /https:\/\/search\.sigstore\.dev\/\?logIndex=\d+/;
@@ -107,13 +108,21 @@ export interface DryRunOutcome {
 	readonly output: string;
 }
 
-/** Options shared by the packing operations. */
+/**
+ * Options shared by the packing operations.
+ *
+ * @public
+ */
 export interface PackOptions {
 	/** Which npm runs the command. Defaults to {@link NpmExecutor.ambient}. */
 	readonly executor?: NpmExecutor | undefined;
 }
 
-/** Options for uploading a tarball. */
+/**
+ * Options for uploading a tarball.
+ *
+ * @public
+ */
 export interface PublishOptions extends PackOptions {
 	/** The registry to publish to. Required — a defaulted registry is how packages land in the wrong place. */
 	readonly registry: string;
@@ -307,6 +316,13 @@ const make = Effect.fnUntraced(function* () {
 		options: PublishOptions,
 	) {
 		yield* Effect.annotateCurrentSpan({ tarball: tarballPath, registry: options.registry });
+		// Provenance is an npm-registry feature. Passing `--provenance` to GitHub
+		// Packages or a custom registry fails the publish outright, so a caller
+		// who asks for it against a non-npm target gets the publish without it
+		// rather than a failed release — the v3 behavior, kept because a release
+		// pipeline publishing to three registries should not lose two of them to
+		// one flag.
+		const provenance = options.provenance === true && classifyRegistry(options.registry) === "npm";
 		const args = [
 			"publish",
 			tarballPath,
@@ -314,7 +330,7 @@ const make = Effect.fnUntraced(function* () {
 			options.registry,
 			...(options.tag === undefined ? [] : ["--tag", options.tag]),
 			...(options.access === undefined ? [] : ["--access", options.access]),
-			...(options.provenance === true ? ["--provenance"] : []),
+			...(provenance ? ["--provenance"] : []),
 		];
 		const output = yield* npm(args, {
 			executor: options.executor ?? NpmExecutor.ambient,

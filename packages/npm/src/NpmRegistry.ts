@@ -293,7 +293,11 @@ const notStubbed = (method: string) => () =>
 		),
 	);
 
-/** One seeded version's registry-visible facts. */
+/**
+ * One seeded version's registry-visible facts.
+ *
+ * @public
+ */
 export interface SeededVersion {
 	/** Published integrity, if any. */
 	readonly integrity?: string | undefined;

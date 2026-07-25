@@ -233,7 +233,9 @@ describe("PackagePublish.publishTarball", () => {
 			yield* full.run(
 				Effect.flatMap(publisher, (p) =>
 					p.publishTarball("/tmp/t.tgz", {
-						registry: "https://r.example",
+						// The public registry, because `--provenance` is npm-only —
+						// see the pair of provenance tests below.
+						registry: "https://registry.npmjs.org",
 						tag: "next",
 						access: "public",
 						provenance: true,
@@ -247,6 +249,32 @@ describe("PackagePublish.publishTarball", () => {
 				"--access",
 				"public",
 			]);
+		}),
+	);
+
+	it.effect("drops --provenance for a NON-npm registry rather than failing the publish", () =>
+		// npm rejects `--provenance` against GitHub Packages. A release publishing
+		// to three registries should not lose two of them to one flag.
+		Effect.gen(function* () {
+			const h = harness({ script: () => ({ stdout: "ok", exit: 0 }) });
+			yield* h.run(
+				Effect.flatMap(publisher, (p) =>
+					p.publishTarball("/tmp/t.tgz", { registry: "https://npm.pkg.github.com", provenance: true }),
+				),
+			);
+			assert.notInclude(publishArgs(h), "--provenance");
+		}),
+	);
+
+	it.effect("keeps --provenance for the public npm registry", () =>
+		Effect.gen(function* () {
+			const h = harness({ script: () => ({ stdout: "ok", exit: 0 }) });
+			yield* h.run(
+				Effect.flatMap(publisher, (p) =>
+					p.publishTarball("/tmp/t.tgz", { registry: "https://registry.npmjs.org", provenance: true }),
+				),
+			);
+			assert.include(publishArgs(h), "--provenance");
 		}),
 	);
 
