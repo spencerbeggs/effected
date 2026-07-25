@@ -1,11 +1,11 @@
 ---
-status: draft
+status: active
 module: effected
 category: architecture
 created: 2026-07-25
 updated: 2026-07-25
 last-synced: 2026-07-25
-completeness: 60
+completeness: 95
 related:
   - ../effect-standards.md
   - ../package-inventory.md
@@ -307,8 +307,80 @@ The decisions log rules that `@effected/archive` is built at **first need**, exp
 
 The trigger is recorded rather than discharged: if a consumer needs the kit to **produce** the artifact whose digest it attests — reproducibly, so two builds agree — that is the moment `@effected/archive` gets designed. Phase 5's `PackagePublish` is the likeliest place, since `npm pack` determinism is the same question one layer down.
 
+## As built (2026-07-25)
+
+The package shipped in three milestones against this design. Everything above held; what follows is what the implementation added, corrected or decided, and it is the authoritative record where the two disagree.
+
+### Module map, as built
+
+Nine source modules, one per concept, `src/index.ts` re-exporting only — as designed, with one omission.
+
+**`src/internal/` does not exist.** The design gave it three jobs and all three evaporated: the JSON normalizer sits inline in `SbomDocument.ts` (it is that module's own serializer), git-URL normalization moved to `@effected/package-json`'s `Repository.browseUrl`, and purl encoding is `SbomMetadataSource.npmPurl` — **public**, because a caller assembling its own components, or naming an in-toto subject, needs the same encoder. A one-function private directory was ceremony.
+
+### The purl was wrong in the source, and the spec settled it
+
+`encodeURIComponent(name)` — the predecessor's encoder — collapses a scope's separating slash to `%2F`. The package-url specification's own npm roundtrip vector is `pkg:npm/%40angular/animation@12.3.1`: **the scope is the purl namespace**, its `@` percent-encoded, the slash literal. Its type definition says so outright ("the npm scope @ sign prefix is always percent encoded"). Fetched from `package-url/purl-spec` (`tests/types/npm-test.json`, `types/npm-definition.json`) rather than reasoned about, and pinned to that vector.
+
+Versions pass through verbatim: every character semver permits is a legal RFC 3986 path character (`+` is a sub-delim), so encoding them would produce a longer string meaning the same thing and matching no published example.
+
+### A license is an expression field — three shapes, and the spdx edge is what picks
+
+**A defect found in the emitter and fixed.** `component.licenses` rendered every entry as `{ license: { id } }`, but CycloneDX constrains `license.id` to the SPDX identifier enumeration. A `package.json` `license` is an *expression* field, so `MIT OR Apache-2.0` — an ordinary value, and exactly what manifest derivation feeds it — produced a document that looked right and failed validation. The schema offers three shapes and the emitter now picks between them:
+
+| Input | Emitted | Chosen by |
+| --- | --- | --- |
+| a catalog identifier (`MIT`) | `[{ license: { id } }]` | `License.isKnownId` |
+| an expression (`MIT OR Apache-2.0`) | `[{ expression }]` — the schema's one-element tuple | `isValidExpression` |
+| anything else (`UNLICENSED`, `SEE LICENSE IN …`) | `[{ license: { name } }]` | neither |
+
+The branches are exclusive (`maxItems: 1` on the expression tuple), so an expression among several entries degrades to a named license rather than producing an invalid document. This is where the [`@effected/spdx` edge](#kit-edges) becomes real: before it, the dependency was declared and unused.
+
+### `SbomMetadataSource`, and what a manifest cannot say
+
+Seven members: `npmPurl`, `componentFor`, `rootComponent`, `externalReferences`, `fromPackage`, `formatCopyright`, `merge`. All total, all pure.
+
+- **`supplier`, `authors` and `timestamp` are explicit-only.** A manifest says who wrote the software; it never says which organization supplied it, who assembled the BOM, or when. Deriving any of them would fabricate three of the seven NTIA elements. Publisher resolution (`explicit → supplier → author`) *is* ported, which is what keeps element 6 satisfiable from a manifest alone.
+- **`formatCopyright` takes the year as an argument.** The predecessor defaulted it to `new Date().getFullYear()`, which made its output untestable and its purity a claim rather than a property. The [no-ambient-environment rule](#slsaprovenance--the-predicate-typed) applied to time.
+- **An unrecognized `repository` emits no `vcs` reference.** `externalReference.url` is a URL; passing `owner/name` through would validate and mislead. Normalization is `Repository.browseUrl`'s — including the `git+ssh://` form the predecessor's regex chain left with its scheme intact.
+- **`merge` is field-wise with no precedence opinion.** Which side is the override is the consumer's release policy, as designed.
+- **`Package` is imported as a TYPE only**, so `@effected/package-json`'s IO module never joins this package's runtime graph. The reachability suite asserts the resulting edge set exactly.
+
+### NTIA element 5 could not be ported as written
+
+v3's dependency-relationship check was `sbom.components !== undefined` — against a field this model declares **required**, so it is a check that cannot fail. That is the third can't-fire construct found in the source package, after `generate`/`serialize` and `SlsaError`.
+
+As built, the element asks for a **declared subject**: `metadata.component` present, with the component count as its value. A list of components with nothing saying what they are components *of* relates nothing to anything, which is what the element is about; an empty list still passes, because "this package has no dependencies" is an assertion rather than a gap. Element 7 additionally requires the timestamp to **parse** — a field holding `last tuesday` records nothing.
+
+### SLSA provenance: two classes, one fixture
+
+`SlsaBuildDefinition` and `SlsaRunDetails` are `Schema.Class`es; their internals are inline `Schema.Struct`s rather than ten more exported nested classes. The compatibility claim is pinned by `__test__/fixtures/actions-attest-provenance.json`, transcribed from `actions/toolkit`'s own `buildSLSAProvenancePredicate` (`@actions/attest@3.2.0`, commit `0be0a6ef`) and asserted with a **deep-equal**, so an extra field fails as loudly as a missing one.
+
+One divergence from upstream, in our favour: it reads `process.env.GITHUB_SERVER_URL` with no default, so an unset variable writes the literal string `undefined` into every URL it builds. `serverUrl` is a required field here, and a test sets the ambient variable to a decoy to prove the output does not move.
+
+The fixture's claims give `workflowRef` and `jobWorkflowRef` **different** values (a reusable workflow in another repository). Upstream builds the builder id from one and the workflow path from the other; with them equal, a constructor that confuses the two passes every assertion — a survived mutant found exactly that.
+
+### Signing
+
+`SigstoreSigner.layer` (public-good) and `layerWith(options)`, where the options bag carries `fulcioBaseUrl` / `rekorBaseUrl` (the staging e2e) **and** `signer` / `witnesses` (the test seam) — one entry point rather than two. `SigningError.kind` is chosen by reading `@sigstore/sign`'s own `InternalError.code` (`CA_*`, `TLOG_*`, `TSA_*`, `IDENTITY_TOKEN_*`); an unattributable failure is `bundle`, literally "the bundle did not get built", rather than guessed into a step. `describeSigstoreError` has no successor, as designed.
+
+`SigstoreBundle.mediaType` is **carried through from the builder**, not declared as a literal — `toDSSEBundle` picks v0.2 or v0.3 depending on whether a certificate chain is present, and a literal would quietly lie. The v0.3 constant this package exports is checked against `@sigstore/bundle`'s own `BUNDLE_V03_MEDIA_TYPE` in the signer's test file, which is the one place allowed to import it.
+
+Two facts that only surfaced by running it, both now pinned: an **unwitnessed bundle has no `tlogEntries` key at all** (protobuf JSON omits empty repeated fields), and the stub signer receives the DSSE **pre-authentication encoding** rather than the payload — which is the discriminating proof that the real builder ran.
+
+### The reachability walker, and a trap worth naming
+
+The suite follows the Phase 2 precedent, with a control (the signer *does* reach `@sigstore/*`) and an honest exemption for the entry point, which re-exports the signer.
+
+**Its comment-stripping order is load-bearing and the inherited order was wrong.** Stripping block comments before line comments lets the token `` `@sigstore/*` `` in prose open a block comment, deleting everything from that word to the end of the next doc comment — imports included. A module importing `effect` was reported as importing nothing: an under-reporting walker makes a confinement test pass for the wrong reason. Line comments come out first here. Sibling packages that copied the walker have the opposite order and are safe only while no prose in them contains `/*`.
+
+### Verification
+
+123 tests; `types:check` and Biome clean; `pnpm build --filter @effected/sbom` reports `buildOk: true` with zero warnings and 20 suppressed `_base` forgotten-exports. **Fifty-six mutants were run against the implementation and all but two went red on the first pass**; both survivors were real test weaknesses rather than false alarms — `merge` precedence asserted on one field of four, and the provenance fixture's two workflow refs set equal — and both were fixed rather than waived.
+
+One API-gate lesson repeated here: two `@public` input interfaces spell their shared members out twice rather than extend a private base, because an internal type named on a public signature is a forgotten export and a named alias is still a named symbol.
+
 ## Open questions
 
-1. **Does `@effected/package-json` get `repository` normalization and the `bugs`/`homepage` fields as part of this phase, or as a separate change first?** The work is small and separable and serves consumers with no SBOM interest. Recommendation: **separate, and first** — it keeps this package's diff about SBOMs, and a package-json improvement should not need an SBOM review. Needs a scheduling call, not a design one.
+1. ~~**Does `@effected/package-json` get `repository` normalization and the `bugs`/`homepage` fields as part of this phase, or as a separate change first?**~~ **SETTLED as recommended:** separate and first, landed before this package (2026-07-25). The derivation consumes `Person.FromValue`, `Repository.browseUrl`, `Bugs.url`, `homepage`, `maintainers` and `keywords`, and hand-rolls none of them.
 2. ~~**Should `SbomDocument` target CycloneDX 1.6 or 1.5?**~~ **SETTLED (Spencer, 2026-07-25): 1.6 only.** The emitter ships **no 1.5 path** — one target version, no dual-emission branch and no version option. v3's 1.5 output is superseded rather than supported. This also unlocks `component.tags` and the plural `component.authors`, both of which the [metadata mapping](#the-metadata-derivation-split) now reads.
-3. **Does anything need the CycloneDX `dependencies` graph, or is a flat component list sufficient?** NTIA element 5 ("dependency relationship") is satisfied by the flat list plus the root's `dependsOn` in v3's shape, but a real transitive graph is more useful and `@effected/lockfiles` could supply one. Deferred deliberately: no consumer has asked, and the flat form is NTIA-sufficient.
+3. **Does anything need the CycloneDX `dependencies` graph, or is a flat component list sufficient?** NTIA element 5 ("dependency relationship") is satisfied by the flat list plus the root's `dependsOn` in v3's shape, but a real transitive graph is more useful and `@effected/lockfiles` could supply one. **Still deferred at implementation** — no consumer has asked, and the flat form is NTIA-sufficient. As built, element 5 asks for a declared root rather than for a graph, so adding one later is additive: a `dependencies` array plus a stronger check, with no change to what the element means.
