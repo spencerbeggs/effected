@@ -220,7 +220,9 @@ const make = Effect.fnUntraced(function* () {
 			options.executor.command(args).pipe(
 				Effect.map((command) => {
 					const withCwd = options.cwd === undefined ? command : ChildProcess.setCwd(command, options.cwd);
-					return options.env === undefined ? withCwd : ChildProcess.setEnv(withCwd, options.env);
+					// Run.extendEnv, not core setEnv: a bare setEnv spawns npm with ONLY the
+					// caller's vars — no PATH, so the executable itself fails to resolve.
+					return options.env === undefined ? withCwd : Run.extendEnv(withCwd, options.env);
 				}),
 				Effect.flatMap((command) => Run.collect(command)),
 				Effect.catch((cause) =>

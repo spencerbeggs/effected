@@ -68,10 +68,10 @@ The release-age gate vocabulary (`ReleaseAgeGate` / `PartialReleaseAgeGate`) lan
 
 ## Testing and building
 
-Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`. Provide layers via top-level `layer(...)` grouping, not per-test `Effect.provide`. Each contract has a **stub-implementation layer** test proving it is implementable — the pattern real consumers follow. Stubs build `Option` results with `Option.fromUndefinedOr`; `Option.fromNullable` is gone in v4. Currently 165 tests across 11 files.
+Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`. Provide layers via top-level `layer(...)` grouping, not per-test `Effect.provide`. Each contract has a **stub-implementation layer** test proving it is implementable — the pattern real consumers follow. Stubs build `Option` results with `Option.fromUndefinedOr`; `Option.fromNullable` is gone in v4. Currently 166 tests across 11 files.
 
 ```bash
-pnpm vitest run packages/npm          # 165 tests
+pnpm vitest run packages/npm          # 166 tests
 pnpm build --filter @effected/npm     # dev + prod
 ```
 

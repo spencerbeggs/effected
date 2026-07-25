@@ -317,6 +317,9 @@ describe("PackagePublish.publishTarball", () => {
 			const env = h.spawner.spawns[0]?.env ?? {};
 			assert.strictEqual(env.ACTIONS_ID_TOKEN_REQUEST_URL, "");
 			assert.strictEqual(env.ACTIONS_ID_TOKEN_REQUEST_TOKEN, "");
+			// The override must EXTEND the parent environment, not replace it — a
+			// hermetic env has no PATH, so npm itself would fail to resolve.
+			assert.strictEqual(h.spawner.spawns[0]?.extendEnv, true);
 		}),
 	);
 

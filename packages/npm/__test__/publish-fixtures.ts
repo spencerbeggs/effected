@@ -12,6 +12,7 @@ export interface SpawnRecord {
 	readonly args: ReadonlyArray<string>;
 	readonly cwd: string | undefined;
 	readonly env: Record<string, string | undefined> | undefined;
+	readonly extendEnv: boolean | undefined;
 }
 
 export interface ScriptedSpawner {
@@ -38,6 +39,7 @@ export const scripted = (script: (command: string, args: ReadonlyArray<string>) 
 					args: command.args,
 					cwd: command.options.cwd,
 					env: command.options.env,
+					extendEnv: command.options.extendEnv,
 				});
 				const result = script(command.command, command.args);
 				if (result instanceof PlatformError.PlatformError) return Effect.fail(result);
