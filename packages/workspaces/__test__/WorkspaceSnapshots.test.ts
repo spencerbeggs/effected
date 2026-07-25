@@ -14,8 +14,9 @@ import { manifest, platform, rootManifest } from "./fixtures.js";
 
 // ── A scripted `Git` over a per-ref, root-relative content map ──────────────
 //
-// No repository on disk: `show` and `lsTree` read from the map, every other
-// method fails loudly as a defect so a test proves nothing else is touched.
+// No repository on disk: `show` and `lsTree` read from the map; `Git.layerTest`
+// makes every other method die with a named defect, so a test proves nothing
+// else is touched.
 
 type RefTrees = Readonly<Record<string, Readonly<Record<string, string>>>>;
 
@@ -25,7 +26,7 @@ const scriptGit = (
 		readonly lsTree?: Git["Service"]["lsTree"];
 	} = {},
 ): Layer.Layer<Git> =>
-	Layer.succeed(Git, {
+	Git.layerTest({
 		show: (_cwd: string, ref: string, path: string) => {
 			// The reader passes `<ref>:./<path>` to make git resolve relative to cwd;
 			// with the fixture map keyed root-relative and cwd == root, that is exactly
@@ -42,30 +43,6 @@ const scriptGit = (
 						LsTreeEntry.make({ mode: "100644", type: "blob", oid: "0".repeat(40), path }),
 					),
 				)),
-		refExists: () => Effect.die("Git.refExists not scripted"),
-		mergeBase: () => Effect.die("Git.mergeBase not scripted"),
-		changedFiles: () => Effect.die("Git.changedFiles not scripted"),
-		workingChanges: () => Effect.die("Git.workingChanges not scripted"),
-		revParse: () => Effect.die("Git.revParse not scripted"),
-		checkout: () => Effect.die("Git.checkout not scripted"),
-		nameStatus: () => Effect.die("Git.nameStatus not scripted"),
-		unstagedChanges: () => Effect.die("Git.unstagedChanges not scripted"),
-		stagedChanges: () => Effect.die("Git.stagedChanges not scripted"),
-		untrackedFiles: () => Effect.die("Git.untrackedFiles not scripted"),
-		defaultBranch: () => Effect.die("Git.defaultBranch not scripted"),
-		currentBranch: () => Effect.die("Git.currentBranch not scripted"),
-		repoRoot: () => Effect.die("Git.repoRoot not scripted"),
-		commitInfo: () => Effect.die("Git.commitInfo not scripted"),
-		configGet: () => Effect.die("Git.configGet not scripted"),
-		remoteUrl: () => Effect.die("Git.remoteUrl not scripted"),
-		status: () => Effect.die("Git.status not scripted"),
-		fetch: () => Effect.die("Git.fetch not scripted"),
-		fetchAny: () => Effect.die("Git.fetchAny not scripted"),
-		submoduleUpdate: () => Effect.die("Git.submoduleUpdate not scripted"),
-		submoduleAdd: () => Effect.die("Git.submoduleAdd not scripted"),
-		sparseCheckoutSet: () => Effect.die("Git.sparseCheckoutSet not scripted"),
-		configSet: () => Effect.die("Git.configSet not scripted"),
-		add: () => Effect.die("Git.add not scripted"),
 	});
 
 /**
