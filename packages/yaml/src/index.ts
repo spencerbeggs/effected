@@ -37,6 +37,7 @@ export type { YamlPath, YamlSegment } from "./YamlEdit.js";
 export { YamlEdit, YamlRange } from "./YamlEdit.js";
 export type { YamlRangeLike } from "./YamlFormat.js";
 export { YamlFormat, YamlFormattingOptions, YamlModificationError } from "./YamlFormat.js";
+export type { YamlAliasEncoded, YamlMapEncoded, YamlScalarEncoded, YamlSeqEncoded } from "./YamlNode.js";
 export {
 	CollectionStyle,
 	QuoteStyle,

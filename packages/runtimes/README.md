@@ -23,7 +23,7 @@ Resolve semver-compatible Node.js, Bun and Deno versions from the live release f
 
 Every answer carries an honest `source`. A resolver that fetches live data, silently fails, serves a snapshot and reports `source: "api"` is worse than one that never had a snapshot — you cannot tell a fresh answer from a stale one, and a CI job pinning its toolchain will happily install a version that was current last quarter. Here the field is set by whichever strategy actually populated the index: `"api"` when the feed answered, `"cache"` when the snapshot did, including when the automatic strategy fell back to it, and the fallback logs a warning on the way through.
 
-The freshness policy is a layer, not a flag, and the types follow: `layerOffline` has no error channel and no requirements, because a snapshot read cannot fail and does no IO. `layerFresh` fails with `FreshnessError` and nothing else, because you chose it to say a snapshot is not an acceptable substitute. A single resolver switching on a strategy enum would union all three error channels together and force the offline layer to advertise a failure it cannot have.
+The freshness policy is a layer, not a flag, and the layers are lazy: building one performs no IO, the first `resolve` fetches the feed, and every later resolve shares that population. The types follow: `layerOffline` requires nothing, because a snapshot read needs no transport. Under `layerFresh`, `resolve` fails with `FreshnessError`, because you chose it to say a snapshot is not an acceptable substitute — and because the fetch happens at resolve time, that failure arrives where you can catch it, retry it or fall back, not buried in layer construction.
 
 There is no HTTP client in the dependency tree either. The v3 library carried Octokit and `@octokit/auth-app` to fund exactly two REST GETs; this one goes through `HttpClient` from `effect/unstable/http` and lets you supply the transport. `@effected/semver` is the only runtime dependency, and it is first-party.
 
@@ -76,11 +76,13 @@ No credentials are needed for Node: both feeds it reads — nodejs.org's release
 
 Each of the three resolvers exposes the same three layer **constants**:
 
-| Layer | Behavior | Fails with | Requires |
-| ----- | -------- | ---------- | -------- |
+| Layer | Behavior | `resolve` fails with | Requires |
+| ----- | -------- | -------------------- | -------- |
 | `layer` | Fetch live; on failure fall back to the bundled snapshot, log a warning and report `source: "cache"` | never | the resolver's transport |
 | `layerFresh` | Live data or nothing | `FreshnessError` | the resolver's transport |
 | `layerOffline` | The bundled snapshot only. No IO. | never | nothing |
+
+Every layer is **lazy**: building it performs no IO, so merging all three resolvers costs nothing until you actually resolve one. The first `resolve` fetches the feed, and later and concurrent resolves share that one population for the layer's lifetime — including the automatic strategy's snapshot fallback, which counts as a successful population and is not re-fetched. Only a *failed* population is not memoized: a `layerFresh` resolve that fails with `FreshnessError` leaves the next resolve free to retry. The lazy timing is also why `FreshnessError` sits in `resolve`'s error channel rather than the layer's — building `layerFresh` cannot fail; resolving through it can.
 
 The transport differs by runtime, and that is not an accident:
 
@@ -137,7 +139,7 @@ The Node schedule is keyed by release *line*, not by major — `nodejs/Release` 
 | `InvalidRangeError` | The semver range is malformed. Raised by `@effected/semver` and imported from there. | A typo in a range is a typo, not a not-found. Report it as one. |
 | `NoMatchingVersionError` | The range is fine and nothing matched it. Carries `runtime`, `constraint` and the `phases` searched. | Widen the range, or accept more phases. |
 | `UnresolvableDefaultError` | An explicit `defaultVersion` was asked for and nothing matched it. Carries `runtime` and `defaultVersion`. | Distinct from the above, because Node's default otherwise falls back to the LTS pick — silently dropping it would hand you LTS as though you had asked for it. |
-| `FreshnessError` | `layerFresh` could not reach the feed. Carries `runtime` and the structural `cause`. | Retry, or fall back to `layer` and accept a snapshot. |
+| `FreshnessError` | A `resolve` under `layerFresh` could not reach the feed. Carries `runtime` and the structural `cause`. | Retry the resolve (a failed fetch is not memoized), or fall back to `layer` and accept a snapshot. |
 | `RateLimitError` | GitHub's rate limit is exhausted. Carries `limit`, `remaining` and, when GitHub said, `retryAfter` in seconds. | Authenticate, or back off by `retryAfter`. A `403` is classified from the response headers, never guessed from the body. |
 | `AuthenticationError` | GitHub rejected the credential. Carries `method` — `"token"` or `"anonymous"`. | Check the token, or supply one. |
 | `NetworkError` | The request failed, or returned a status that is neither auth nor rate limit. Carries `url`, the `status` where there was one, and the structural `cause`. | A permission `403` lands here and is not retried. |

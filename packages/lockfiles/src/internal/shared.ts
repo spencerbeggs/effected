@@ -46,10 +46,36 @@ export const toIntegrityHash = (
 const decodeSpecifier = Schema.decodeUnknownExit(DependencySpecifier.FromString);
 
 /**
+ * Split pnpm's peer-disambiguation suffix off a recorded string: everything
+ * from the first `(` on is suffix, since package names and versions never
+ * contain `(`. Handles both shapes pnpm records — a bare version
+ * (`"1.0.0(effect@4.0.0)"`, importer entries) and a `name@version` snapshot key
+ * (`"fdir@6.5.0(picomatch@4.0.4)"`). A string with no `(` — including
+ * `link:...` / `file:...` resolutions — passes through untouched. So does a
+ * protocol-bearing string (a `:` ahead of the first `(`), where a parenthesis
+ * is path or URL text rather than a peer suffix: pnpm attaches suffixes to
+ * registry versions only. This is the single stripping implementation — do not
+ * hand-roll an `indexOf("(")` split elsewhere.
+ *
+ * @internal
+ */
+export const splitPeerSuffix = (raw: string): { readonly plain: string; readonly peerSuffix?: string } => {
+	const parenIndex = raw.indexOf("(");
+	if (parenIndex === -1) return { plain: raw };
+	if (raw.lastIndexOf(":", parenIndex) !== -1) return { plain: raw };
+	return { plain: raw.slice(0, parenIndex), peerSuffix: raw.slice(parenIndex) };
+};
+
+/**
  * Build one {@link ImporterDependency}, decoding the raw specifier string into
  * the `@effected/npm` `ClassifiedSpecifier` tagged union. Returns `undefined`
  * — a skip, never a throw — when the name is empty or the specifier does not
  * classify (e.g. an empty specifier), per the total-string-surgery discipline.
+ *
+ * A pnpm-recorded version is normalized through {@link splitPeerSuffix}: the
+ * `version` field carries the plain version and the split-off peer chain lands
+ * in `peerSuffix`. A version that is *only* a peer chain (empty plain part) is
+ * treated as no concrete version — a skip of both fields, never a throw.
  *
  * @internal
  */
@@ -62,11 +88,17 @@ const buildImporterDependency = (
 	if (name === "") return undefined;
 	const exit = decodeSpecifier(specifier);
 	if (Exit.isFailure(exit)) return undefined;
+	const resolved = version !== undefined && version !== "" ? splitPeerSuffix(version) : undefined;
 	return ImporterDependency.make({
 		name,
 		specifier: exit.value,
 		depType,
-		...(version !== undefined && version !== "" ? { version } : {}),
+		...(resolved !== undefined && resolved.plain !== ""
+			? {
+					version: resolved.plain,
+					...(resolved.peerSuffix !== undefined ? { peerSuffix: resolved.peerSuffix } : {}),
+				}
+			: {}),
 	});
 };
 

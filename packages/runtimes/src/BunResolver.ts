@@ -76,20 +76,38 @@ export class BunResolver extends Context.Service<
 	{
 		readonly resolve: (
 			options?: BunResolverOptions,
-		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
+		) => Effect.Effect<
+			ResolvedVersions,
+			InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError | FreshnessError
+		>;
 	}
 >()("@effected/runtimes/BunResolver") {
-	/** Try GitHub, fall back to the bundled snapshot. */
+	/**
+	 * Try GitHub, fall back to the bundled snapshot.
+	 *
+	 * Lazy: building the layer performs no IO. The feed is fetched by the first
+	 * `resolve` and shared by every later (and concurrent) one; a fallback to
+	 * the snapshot is memoized like any other successful population.
+	 */
 	static readonly layer: Layer.Layer<BunResolver, never, GitHubClient> = mk(this, (index, live, offline) =>
 		populateAuto(index, "bun", live, offline),
 	);
 
-	/** GitHub or nothing. Fails with `FreshnessError` when it cannot be reached. */
-	static readonly layerFresh: Layer.Layer<BunResolver, FreshnessError, GitHubClient> = mk(this, (index, live) =>
+	/**
+	 * GitHub or nothing.
+	 *
+	 * Lazy: building the layer performs no IO, so an unreachable feed surfaces
+	 * as a `FreshnessError` from `resolve`, not from layer acquisition. A failed
+	 * fetch is not memoized — the next `resolve` retries; a successful one is.
+	 */
+	static readonly layerFresh: Layer.Layer<BunResolver, never, GitHubClient> = mk(this, (index, live) =>
 		populateFresh(index, "bun", live),
 	);
 
-	/** The bundled snapshot only. Performs no IO and requires nothing. */
+	/**
+	 * The bundled snapshot only. Requires nothing and performs no IO — the
+	 * snapshot is decoded lazily by the first `resolve`, like the live layers.
+	 */
 	static readonly layerOffline: Layer.Layer<BunResolver> = mk(this, (index, _live, offline) =>
 		populateOffline(index, offline),
 	);
@@ -104,14 +122,14 @@ export class BunResolver extends Context.Service<
  * initializer `this` *is* the class, which is why `Layer.effect(this, ...)` is
  * the idiomatic v4 spelling.
  */
-function mk<E, RIn>(
+function mk<E extends FreshnessError, RIn>(
 	tag: Context.Key<BunResolver, GitHubRuntimeShape>,
 	strategy: (
 		index: ReleaseIndex<BunRelease>,
 		live: Effect.Effect<ReadonlyArray<BunRelease>, GitHubError, GitHubClient>,
 		offline: Effect.Effect<ReadonlyArray<BunRelease>>,
 	) => Effect.Effect<void, E, RIn>,
-): Layer.Layer<BunResolver, E, RIn> {
+): Layer.Layer<BunResolver, never, RIn> {
 	return build(
 		{
 			tag,

@@ -179,6 +179,39 @@ export class YamlAlias extends Schema.TaggedClass<YamlAlias>()("YamlAlias", {
 }
 
 /**
+ * The encoded (plain-object) form of a {@link YamlScalar} — the class fields
+ * without the instance methods. Named so the recursive {@link (YamlNode:variable)}
+ * codec can state its encoded side without a circular type annotation.
+ *
+ * @public
+ */
+export interface YamlScalarEncoded extends Schema.Codec.Encoded<typeof YamlScalar> {}
+
+/**
+ * The encoded (plain-object) form of a {@link YamlMap}. See
+ * {@link YamlScalarEncoded} for why the encoded forms are named interfaces.
+ *
+ * @public
+ */
+export interface YamlMapEncoded extends Schema.Codec.Encoded<typeof YamlMap> {}
+
+/**
+ * The encoded (plain-object) form of a {@link YamlSeq}. See
+ * {@link YamlScalarEncoded} for why the encoded forms are named interfaces.
+ *
+ * @public
+ */
+export interface YamlSeqEncoded extends Schema.Codec.Encoded<typeof YamlSeq> {}
+
+/**
+ * The encoded (plain-object) form of a {@link YamlAlias}. See
+ * {@link YamlScalarEncoded} for why the encoded forms are named interfaces.
+ *
+ * @public
+ */
+export interface YamlAliasEncoded extends Schema.Codec.Encoded<typeof YamlAlias> {}
+
+/**
  * A discriminated-union schema covering all four YAML AST value node types:
  * {@link YamlScalar}, {@link YamlMap}, {@link YamlSeq} and {@link YamlAlias}.
  * Defined lazily via `Schema.suspend` to break the recursive reference chain
@@ -192,9 +225,10 @@ export class YamlAlias extends Schema.TaggedClass<YamlAlias>()("YamlAlias", {
  *
  * @public
  */
-export const YamlNode: Schema.Schema<YamlScalar | YamlMap | YamlSeq | YamlAlias> = Schema.suspend(() =>
-	Schema.Union([YamlScalar, YamlMap, YamlSeq, YamlAlias]),
-);
+export const YamlNode: Schema.Codec<
+	YamlScalar | YamlMap | YamlSeq | YamlAlias,
+	YamlScalarEncoded | YamlMapEncoded | YamlSeqEncoded | YamlAliasEncoded
+> = Schema.suspend(() => Schema.Union([YamlScalar, YamlMap, YamlSeq, YamlAlias]));
 
 /**
  * The union of all YAML AST value node types.
@@ -210,8 +244,8 @@ export type YamlNode = YamlScalar | YamlMap | YamlSeq | YamlAlias;
  * @public
  */
 export class YamlPair extends Schema.TaggedClass<YamlPair>()("YamlPair", {
-	key: Schema.suspend((): Schema.Schema<YamlNode> => YamlNode),
-	value: Schema.NullOr(Schema.suspend((): Schema.Schema<YamlNode> => YamlNode)),
+	key: Schema.suspend((): typeof YamlNode => YamlNode),
+	value: Schema.NullOr(Schema.suspend((): typeof YamlNode => YamlNode)),
 	comment: Schema.optionalKey(Schema.String),
 }) {}
 
@@ -226,7 +260,7 @@ export class YamlPair extends Schema.TaggedClass<YamlPair>()("YamlPair", {
  * @public
  */
 export class YamlMap extends Schema.TaggedClass<YamlMap>()("YamlMap", {
-	items: Schema.Array(Schema.suspend((): Schema.Schema<YamlPair> => YamlPair)),
+	items: Schema.Array(Schema.suspend((): typeof YamlPair => YamlPair)),
 	tag: Schema.optionalKey(Schema.String),
 	anchor: Schema.optionalKey(Schema.String),
 	style: CollectionStyle,
@@ -263,7 +297,7 @@ export class YamlMap extends Schema.TaggedClass<YamlMap>()("YamlMap", {
  * @public
  */
 export class YamlSeq extends Schema.TaggedClass<YamlSeq>()("YamlSeq", {
-	items: Schema.Array(Schema.suspend((): Schema.Schema<YamlNode> => YamlNode)),
+	items: Schema.Array(Schema.suspend((): typeof YamlNode => YamlNode)),
 	tag: Schema.optionalKey(Schema.String),
 	anchor: Schema.optionalKey(Schema.String),
 	style: CollectionStyle,

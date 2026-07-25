@@ -22,9 +22,11 @@ The package's signature DX idea, and the shape most worth not breaking. Each res
 
 - `layer` — auto: fetch live, fall back to the bundled snapshot **and say so**.
 - `layerFresh` — live data or a typed `FreshnessError`.
-- `layerOffline` — the snapshot. No IO, no failure, no requirements.
+- `layerOffline` — the snapshot. No IO, no requirements.
 
-`internal/strategy.ts` is one function per strategy taking a loader, and each is **typed exactly**. That precision is the point: a single function switching on a strategy kind would union all three error channels together and force `layerOffline` to advertise a failure it cannot have.
+**Every layer is lazy** (issue #151): acquisition performs no IO, so merging all three resolvers fetches nothing. The first `resolve` runs the population behind `internal/once.ts` — a `Semaphore(1)` + `Ref` run-once gate chosen over `Effect.cached`, which memoizes the whole Exit and would let one transient failure (or an interrupted first resolve) poison the layer for its lifetime. Success is memoized, including the auto strategy's snapshot fallback; a failed `populateFresh` is **not** — the next resolve retries. Concurrent first resolves serialize on the gate and share one fetch. Do not replace the gate with `Effect.cached`, and do not move the fetch back into `Layer.effect`.
+
+The lazy timing moves the strategy's error channel into `resolve`: the layers never fail, and `resolve`'s error union carries `FreshnessError` on all three resolvers (one `Context.Service` shape per resolver, so `layer`/`layerOffline` advertise it without ever producing it — the accepted cost of a shared shape). `internal/strategy.ts` is still one function per strategy taking a loader, each **typed exactly**: only `populateFresh` can fail, `populateAuto` falls back instead, and the requirement channels stay per-strategy so `layerOffline` requires nothing.
 
 The requirement channels differ, and it is not an accident: **Node needs only `HttpClient`** (nodejs.org's dist index and the `schedule.json` on `raw.githubusercontent.com` are both unauthenticated), while **Bun and Deno need `GitHubClient`** (authenticated REST). So `NodeResolver` works with zero GitHub credentials. `internal/githubRuntime.ts` is the layer builder those two share — Bun and Deno are the same resolver pointed at a different repository, which v3 expressed as six layers differing by a string.
 

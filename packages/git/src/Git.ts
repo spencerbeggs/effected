@@ -1224,6 +1224,18 @@ export interface GitShape {
 }
 
 /**
+ * The default for every {@link Git.makeTest} method a test did not stub: a
+ * defect naming the method, so an unexercised call fails loudly instead of
+ * succeeding with a lie or failing with a dishonest typed error.
+ */
+const notStubbed = (method: string) => () =>
+	Effect.die(
+		new Error(
+			`Git.makeTest: ${method}() was called but not stubbed — no honest default exists for a test double; pass a \`${method}\` override.`,
+		),
+	);
+
+/**
  * Typed git introspection over core's `ChildProcessSpawner`: read a
  * repository's state at any ref without checking it out, plus the mutating
  * tier (`checkout`, `fetch`, `fetchAny`, `submoduleUpdate`, `submoduleAdd`,
@@ -1255,4 +1267,94 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 			return make(spawner);
 		}),
 	);
+
+	/**
+	 * An in-memory test double of the service shape: stub only the methods the
+	 * test exercises, every other method **dies** with a defect naming itself.
+	 *
+	 * @remarks
+	 * Unlike `WorkspaceDiscovery.makeTest`, **no method here has an honest
+	 * default** — the shape is twenty-six unrelated git operations, and a
+	 * fabricated answer for any of them (an empty tree, a made-up sha, a silent
+	 * no-op `checkout`) would leak into consumer logic as fact. So every
+	 * unstubbed method fails loudly as a defect
+	 * (`Git.makeTest: <name>() was called but not stubbed`) rather than
+	 * succeeding with a lie or failing with a dishonest typed error — which is
+	 * also what makes the double a proof that a test touches *nothing but* the
+	 * methods it stubbed.
+	 *
+	 * The double deliberately models **none** of the live service's semantics:
+	 * no stderr classification, no option-injection guard (an option-like ref a
+	 * stub accepts would be refused live), no `LC_ALL=C` pinning, no timeout,
+	 * and no `./`-vs-bare path resolution on `show` — a stub answers exactly
+	 * what it is told and nothing else. A suite exercising any of those wants
+	 * `Git.layer` over a mocked `ChildProcessSpawner` (or real git) instead.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Git } from "@effected/git";
+	 * import { Effect, Option } from "effect";
+	 *
+	 * const double = Git.makeTest({
+	 *   show: (_cwd, _ref, path) =>
+	 *     Effect.succeed(path === "./package.json" ? Option.some("{}") : Option.none()),
+	 * });
+	 * // `double.show(...)` answers; `double.status(...)` dies, named.
+	 * ```
+	 */
+	static readonly makeTest = (overrides: Partial<GitShape> = {}): GitShape => ({
+		show: notStubbed("show"),
+		lsTree: notStubbed("lsTree"),
+		refExists: notStubbed("refExists"),
+		mergeBase: notStubbed("mergeBase"),
+		changedFiles: notStubbed("changedFiles"),
+		workingChanges: notStubbed("workingChanges"),
+		revParse: notStubbed("revParse"),
+		checkout: notStubbed("checkout"),
+		fetch: notStubbed("fetch"),
+		fetchAny: notStubbed("fetchAny"),
+		submoduleUpdate: notStubbed("submoduleUpdate"),
+		submoduleAdd: notStubbed("submoduleAdd"),
+		sparseCheckoutSet: notStubbed("sparseCheckoutSet"),
+		configSet: notStubbed("configSet"),
+		add: notStubbed("add"),
+		nameStatus: notStubbed("nameStatus"),
+		unstagedChanges: notStubbed("unstagedChanges"),
+		stagedChanges: notStubbed("stagedChanges"),
+		untrackedFiles: notStubbed("untrackedFiles"),
+		defaultBranch: notStubbed("defaultBranch"),
+		currentBranch: notStubbed("currentBranch"),
+		repoRoot: notStubbed("repoRoot"),
+		configGet: notStubbed("configGet"),
+		remoteUrl: notStubbed("remoteUrl"),
+		commitInfo: notStubbed("commitInfo"),
+		status: notStubbed("status"),
+		...overrides,
+	});
+
+	/**
+	 * The test layer: {@link Git.makeTest} behind `Layer.succeed`, so a suite
+	 * provides only the methods it exercises.
+	 *
+	 * @remarks
+	 * A parameterized layer factory mints a **fresh reference per call**, and
+	 * layers memoize by reference — bind the result to a `const` and reuse it
+	 * rather than calling `layerTest(...)` at each composition site.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Git, LsTreeEntry } from "@effected/git";
+	 * import { Effect } from "effect";
+	 *
+	 * const TestGit = Git.layerTest({
+	 *   lsTree: () =>
+	 *     Effect.succeed([
+	 *       LsTreeEntry.make({ mode: "100644", type: "blob", oid: "0".repeat(40), path: "package.json" }),
+	 *     ]),
+	 * });
+	 * // program.pipe(Effect.provide(TestGit))
+	 * ```
+	 */
+	static readonly layerTest = (overrides: Partial<GitShape> = {}): Layer.Layer<Git> =>
+		Layer.succeed(Git, Git.makeTest(overrides));
 }

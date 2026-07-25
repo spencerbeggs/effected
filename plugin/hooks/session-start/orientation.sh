@@ -3,7 +3,9 @@ set -euo pipefail
 
 # SessionStart hook (no matcher — fires on all starts including resume/compact):
 # brief the main agent that the "effected" plugin ships Effect v4 skills and
-# three specialist subagents, and that it should delegate Effect work to them.
+# three specialist subagents, and that it should delegate Effect work to them
+# where subagent dispatch is available — and load the same skills inline where
+# it is not.
 #
 # Contract: reads the SessionStart envelope on stdin (drained, unused), writes
 # an additionalContext briefing to stdout as hookSpecificOutput JSON.
@@ -66,6 +68,10 @@ Available via the Skill tool (several also auto-load on trigger):
 - effect-v4-construct-map — the comprehensive v3→v4 migration reference, plus
   the ordered migration checklist (references/migration-checklist.md): deps,
   silent behavior changes, blocking removals, then the mechanical renames.
+- building-a-format-package — the shared architecture of every @effected
+  format package (jsonc/yaml/toml/markdown): the module-per-concept surface,
+  the own-the-engine policy, the cross-package parity contract, and the
+  conformance-corpus harness.
 - effect-api-extractor-bases — inline class factories + the narrow _base
   suppression for a zero-warning API (no @public X_base const).
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the
@@ -73,9 +79,12 @@ Available via the Skill tool (several also auto-load on trigger):
 </skills>
 
 <agents>
-Prefer delegating a whole Effect task to one of these specialists via the Agent
-tool over hand-rolling it inline — each arrives with the relevant skills
-preloaded and carries the discipline end to end:
+When subagent dispatch is available and permitted in this session, prefer
+delegating a whole Effect task to one of these specialists via the Agent tool
+over hand-rolling it inline — each arrives with the relevant skills preloaded
+and carries the discipline end to end. When it is not, load the matching skills
+directly and apply the same discipline inline; the skills are the substance,
+the agents are the delivery mechanism. The specialists:
 - effect-developer — writing NEW Effect v4 code (schemas, services, layers,
   typed errors, CLIs). Delegate feature implementation here.
 - effect-reviewer — REVIEWING v4 code for idiom, error-channel, and API-surface
@@ -87,9 +96,10 @@ preloaded and carries the discipline end to end:
 </agents>
 
 When a task is substantially "write / review / migrate Effect code," dispatch
-the matching agent rather than doing it inline with the skills — they enforce
-the verify-against-installed-beta, typed-error-channel, and hardening
-disciplines that are easy to drop when working freehand.
+the matching agent rather than doing it inline — when dispatch is permitted;
+otherwise load the same skills and do it inline. Either way what matters is the
+verify-against-installed-beta, typed-error-channel, and hardening disciplines
+they carry, which are easy to drop when working freehand.
 
 <dogfood_feedback>
 The effected plugin AND the @effected packages are actively dogfooding. Two

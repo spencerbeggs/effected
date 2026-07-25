@@ -63,8 +63,18 @@ const importerDependencyArb: FastCheck.Arbitrary<ImporterDependency> = FastCheck
 	specifier: specifierArb,
 	depType: depField,
 	version: FastCheck.option(FastCheck.constantFrom("1.0.0", "5.9.3"), { nil: undefined }),
-}).map(({ name, specifier, depType, version }) =>
-	ImporterDependency.make({ name, specifier, depType, ...(version !== undefined ? { version } : {}) }),
+	peerSuffix: FastCheck.option(
+		FastCheck.constantFrom("(effect@4.0.0-beta.101)", "(ioredis@5.11.1(supports-color@8.1.1))"),
+		{ nil: undefined },
+	),
+}).map(({ name, specifier, depType, version, peerSuffix }) =>
+	ImporterDependency.make({
+		name,
+		specifier,
+		depType,
+		...(version !== undefined ? { version } : {}),
+		...(peerSuffix !== undefined ? { peerSuffix } : {}),
+	}),
 );
 
 const lockfileImporterArb: FastCheck.Arbitrary<LockfileImporter> = FastCheck.record({

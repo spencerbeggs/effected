@@ -47,16 +47,25 @@ describe("ReleaseAgeGate.combine", () => {
 		assert.strictEqual(gate.ageMinutes, 0);
 	});
 
-	it("unions and deduplicates the exclude sets, preserving insertion order", () => {
-		const gate = ReleaseAgeGate.combine({ exclude: ["a", "b"] }, { exclude: ["b", "c"] });
-		assert.deepStrictEqual(gate.exclude, ["a", "b", "c"]);
+	it("unions and deduplicates the exclude sets in sorted order", () => {
+		// Insertion order (c, b, a, d) differs from sorted order so a
+		// regression back to insertion-order preservation fails this test.
+		const gate = ReleaseAgeGate.combine({ exclude: ["c", "b"] }, { exclude: ["b", "a", "d"] });
+		assert.deepStrictEqual(gate.exclude, ["a", "b", "c", "d"]);
+	});
+
+	it("returns the same sorted union regardless of contribution order", () => {
+		const forward = ReleaseAgeGate.combine({ exclude: ["zeta", "@scope/*"] }, { exclude: ["alpha"] });
+		const reversed = ReleaseAgeGate.combine({ exclude: ["alpha"] }, { exclude: ["zeta", "@scope/*"] });
+		assert.deepStrictEqual(forward.exclude, ["@scope/*", "alpha", "zeta"]);
+		assert.deepStrictEqual(forward.exclude, reversed.exclude);
 	});
 
 	it("combines age and exclude from many sources", () => {
 		const gate = ReleaseAgeGate.combine(
-			{ ageMinutes: 60, exclude: ["@my/pkg"] },
+			{ ageMinutes: 60, exclude: ["@other/*"] },
 			{ ageMinutes: 1440 },
-			{ exclude: ["@other/*", "@my/pkg"] },
+			{ exclude: ["@my/pkg", "@other/*"] },
 		);
 		assert.strictEqual(gate.ageMinutes, 1440);
 		assert.deepStrictEqual(gate.exclude, ["@my/pkg", "@other/*"]);
