@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-20
-last-synced: 2026-07-20
-completeness: 93
+updated: 2026-07-25
+last-synced: 2026-07-25
+completeness: 95
 related:
   - architecture.md
   - package-inventory.md
@@ -24,6 +24,8 @@ Design standards every `@effected/*` library must follow. These are enforced at 
 ## DX north star
 
 The developer-experience exemplar is [`@effected/semver`](../../../packages/semver) for its class-based API: static and instance methods on domain classes, no floating functions. In Effect v4 the domain model class and the schema are the same artifact (`Schema.Class`), so the class-based DX is the ecosystem norm, not a house deviation. The kind-based folder layout its v3 source used (`errors/`, `schemas/`, `services/`, `layers/`, `utils/`) is superseded by the module-per-concept layout below.
+
+The second half of the same standard is the **sync-primitive policy**, which applies to every pure boundary in the kit and not only to format packages: a public boundary whose `Effect` wrapper carries nothing but a span exposes the sync `Result` form as the primitive (`X.parseResult`) and derives the `Effect` form from it. It is stated in full, with the naming ratification and the scope test, in [formatter-convention.md's decision 6](formatter-convention.md#decision-6--the-sync-primitive-policy) — pointed at from here because designers outside the format packages were not finding it there.
 
 ## Module layout (module-per-concept)
 
@@ -95,7 +97,9 @@ Three operating rules fall out:
 2. **A direct `node:` import in library code is a code smell, most of the time.** The sanctioned exceptions are documented Node-only overlays — a default layer or a sync escape hatch (`WorkspacesSync`) — never a contract or a business-logic path.
 3. **Platform packages are legitimate devDependencies for integration tests** (the `workspaces` `self.int.test.ts` precedent) and legitimate dependencies only in applications and app-edge packages (the runtimes CLI split).
 
-Learned the expensive way: a design once invented a `Command`/`CommandRunner` vocabulary and a backend seam for what core already declares, and it survived several review gates because reviewers checked the code against the brief instead of the brief against core. `@effected/git` simply requires the core `ChildProcessSpawner` in `R`. See [roadmap.md's commands entry](roadmap.md#effectedcommands).
+Learned the expensive way, over two attempts, and the lesson is **two separate failure modes: re-declaring a core concept, and implementing one.** Clearing the first does not clear the second. The first `@effected/commands` design invented a `Command`/`CommandRunner` vocabulary for what core already declares, and it survived several review gates because reviewers checked the code against the brief instead of the brief against core. The second imported core's vocabulary faithfully and deleted every invented type — it passed the re-declaration check outright — and was still removed, because it shipped a **backend** for a contract core already implements. A reviewer holding a single "don't reinvent core" rule would have approved it, which is why both modes are named here rather than compressed into one.
+
+The general form, and the invariant `@effected/commands` ships under: **every subprocess concept is core's, and no implementation of one is.** `@effected/git` is the same invariant from the consuming end — it simply requires the core `ChildProcessSpawner` in `R`. See [roadmap.md's commands entry](roadmap.md#effectedcommands).
 
 ### The vendored source is the style oracle, not just the API authority
 
@@ -123,6 +127,10 @@ Learned the expensive way: a design once invented a `Command`/`CommandRunner` vo
 - Layers are memoized BY REFERENCE: bind layers to constants; avoid layer-producing functions unless genuinely parameterized.
 - No redundant accessor wrapper functions per service method.
 - Libraries in this repo export services + layers; consumers (apps) compose them and provide platform implementations at the edge.
+- **A swappable contract gets no ambient default inside a composite layer** — the requirement surfaces in the consuming operation's `R` instead, and the composer provides it. That is the safe choice (a default baked into a composite reverts to policy nobody chose the moment merge order changes, silently) and the ergonomic one (consumers that never reach the operation never supply the policy). `@effected/workspaces`' `PublishabilityDetector` is the exemplar: every composite requires it in `R`, so composing `Workspaces.layer` means naming `PublishabilityDetector.layerNpm` or your own.
+- **Every shipped implementation of a swappable contract is exported as a value as well as a layer.** A consumer composing *around* the default cannot use a layer at all without re-entering the tag it is replacing, so the implementation has to be callable directly — `PublishabilityDetector.npm` beside `PublishabilityDetector.layerNpm`.
+- **A layer-family static belongs to the module owning the dependency it needs, not the module declaring the service.** This is the bundle-confinement corollary of [no barrel re-exports](#no-barrel-re-exports): a layer variant homed on the service's module makes that variant's dependency reachable from every importer of the service. Precedents: `GitHubApp.clientLayer` (the app-authenticated `GitHubClient` layer, homed with the JWT engine) and `Workspaces.localExecLayer` (implementing `@effected/commands`' `LocalExec`, homed with the discovery graph).
+- **Resolve a dependency once at construction when it is stable; read it per call when varying it is the point.** The wrong choice is silent in both directions, and the per-call side is the one that bites: construction-time resolution left a scoped `Repo.provide` override compiling and doing nothing in the `github` port, caught by a test rather than by the compiler.
 
 ## Error handling standards
 
@@ -133,6 +141,7 @@ Learned the expensive way: a design once invented a `Command`/`CommandRunner` vo
 - Normalize `SchemaError` to domain errors at the boundary via `Effect.catchTag("SchemaError", ...)`; never leak `SchemaError` deep into application logic.
 - Recovery operators: `catchTag`/`catchTags` for tagged recovery, `catchIf` for predicates, `match` to fold, `sandbox`/`catchCause`/`matchCause` to distinguish failure vs defect vs interrupt, `onInterrupt` for cleanup.
 - Keep `_tag` names stable and descriptive; never collapse errors to `string`/`unknown` early.
+- **Every declared error channel is demonstrated fireable by a test, or deleted from the signature.** A channel that cannot fire forces every caller to handle a case that does not exist, and makes the type lie in the one direction the compiler cannot check. Ported code is where they accumulate: three can't-fire channels turned up in one source package during the github-split port, each one a residue of something the port changed underneath it — a validated construction that made formatting total, and an owned emitter that removed the library whose failures the channel modelled.
 
 ## Observability standards
 
@@ -159,6 +168,12 @@ Apply the guard at **every independent recursive surface**, not just the main pa
 - Property-based tests: `it.effect.prop` with FastCheck arbitraries; Schema inputs via `Schema.toArbitrary` (top-level `it.prop` does NOT support Schema inputs).
 - `assert.*` for uniform explicit checks; `flakyTest` only for genuinely flaky integration conditions.
 - Tests live in `__test__/` per repo convention (unit `*.test.ts`, `e2e/`, `integration/`).
+
+### The oracle for a ported algorithm is external
+
+When an implementation and a remembered constant disagree, **neither one is the oracle.** Climb to the published intermediates instead: AWS documents the canonical-request hash and the signing-key derivation for its SigV4 examples, so the port exports those internal steps and pins them against the published values. The remembered end-to-end signature turned out to belong to a different example, and pinning it would have shipped a signer whose only symptom was a rejection at the far end. Where the artifact has a published schema, the schema is the oracle — `@effected/sbom` validates its emitted CycloneDX 1.6 against the published JSON schema vendored as a test fixture, which is what makes owning the emitter instead of taking the library a defensible trade rather than a hopeful one.
+
+**Never pin your own output as the fixture.** A snapshot of what the code currently emits asserts only that it has not changed, which is the one property that was never in doubt. This is the correctness counterpart of the fidelity rules in [formatter-convention.md](formatter-convention.md#decision-5--the-fidelity-obligation): those constrain what a round trip must preserve, this constrains what a fixture is allowed to be evidence of.
 
 ## Peer-dependency discipline
 
