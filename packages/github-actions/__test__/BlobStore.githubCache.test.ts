@@ -82,7 +82,7 @@ describe("GitHubCacheBlobStore", () => {
 			// The finalized size is the size of the FRAMED bytes. Reporting the
 			// caller's body length instead produces an entry the backend accepts and
 			// then serves truncated.
-			assert.strictEqual(calls[1]?.body["size_bytes"], String(uploaded?.byteLength));
+			assert.strictEqual(calls[1]?.body.size_bytes, String(uploaded?.byteLength));
 			assert.isAbove(uploaded?.byteLength ?? 0, 3);
 		}),
 	);

@@ -1,10 +1,10 @@
 ---
-status: draft
+status: current
 module: effected
 category: architecture
 created: 2026-07-25
 updated: 2026-07-25
-completeness: 85
+completeness: 100
 related:
   - ../effect-standards.md
   - ../roadmap.md
@@ -86,10 +86,11 @@ Module-per-concept, no barrels, `src/index.ts` re-exports only.
 | `src/Artifact.ts` | the Actions artifact protocol | `@azure/storage-blob` |
 | `src/BlobEnvelope.ts` | **pure**: the schema-versioned metadata frame | — |
 | `src/BlobStore.ts` | the `BlobStore` service + the S3 backend | — |
-| `src/BlobStore.githubCache.ts` | the Actions-cache Twirp v2 backend | `@azure/storage-blob` |
+| `src/BlobStore.githubCache.ts` | `GitHubCacheBlobStore` — the Actions-cache Twirp v2 backend | `@azure/storage-blob` |
+| `src/BlobTransfer.ts` | **pure**: the transport seam the three Azure modules take as an argument | — |
 | `src/ToolInstaller.ts` | download / extract / cache a toolchain | — |
 | `src/DetachedProcess.ts` | detached spawn, readiness probe, the bare-pid reap guard | `node:child_process` |
-| `src/internal/` | the workflow-command writer, the runner-file writer, SigV4, the Twirp client | — |
+| `src/internal/` | SigV4, the Twirp client, the results-backend reader | — |
 
 Twenty modules against the source package's eleven runtime services. The growth is deliberate: framing (`BlobEnvelope`), cache-key derivation (`CacheKey`), the secret seam (`Secret`) and detached-process lifecycle (`DetachedProcess`) were all **consumer-side hand-rolls** the survey found, not new inventions.
 
@@ -438,16 +439,13 @@ Per program decision 9, recorded per concept:
 - **`GithubMarkdown`** — a string builder with no Actions coupling; it belongs to whichever consumer wants it, or to `@effected/markdown` if a second one does.
 - **`ActionInputError`** — dissolved into `ConfigError`.
 
-## As built — milestones (a) and (b), plus `BlobStore` (2026-07-25)
+## As built — complete (2026-07-25)
 
-Fourteen units green against `effect@4.0.0-beta.101`: `WorkflowCommand`, `ActionEnvironment`, `ActionOutputs`, `ActionState`, `Secret`, `BlobEnvelope`, `ActionInput`, `ActionLogger`, `DryRun`, `CacheKey`, `DetachedProcess`, `OidcTokenIssuer`, `ToolInstaller`, `BlobStore` (+ the SigV4 signer). **213 tests**, `tsc --noEmit` clean, biome clean.
+Every module in the map is built against `effect@4.0.0-beta.101`: **298 tests**, `tsc --noEmit` clean, biome clean, and a **zero-warning build** — 27 suppressed `_base` entries and nothing else.
 
-**Remaining: `ActionCache`, `Artifact`, `BlobStore.githubCache` and the Azure reachability test (the rest of (c)); `GitHubToken`, `Action.run`/`ActionRuntime` (d); the build gate and `packages/github-actions/CLAUDE.md` (e).** Nothing else depends on the three remaining (c) modules, which is why the handoff boundary is there.
+It arrived over three sessions. The first two produced fourteen units — `WorkflowCommand`, `ActionEnvironment`, `ActionOutputs`, `ActionState`, `Secret`, `BlobEnvelope`, `ActionInput`, `ActionLogger`, `DryRun`, `CacheKey`, `DetachedProcess`, `OidcTokenIssuer`, `ToolInstaller`, `BlobStore` (+ the SigV4 signer) — at 213 tests. The third closed it: `internal/twirp`, `internal/actionsResults`, `BlobTransfer`, `BlobStore.githubCache`, `ActionCache`, `Artifact`, `CacheKey.matchingFiles`/`hashMatching`, the Azure reachability suite, `GitHubToken`, and `Action`/`ActionRuntime`.
 
-**No open dependency decisions. Both edges are in place and installed:**
-
-- **`@effected/glob` (`workspace:~`) — approved and installed 2026-07-25.** `CacheKey.hashMatching` over `GlobSet` is successor work and is **unblocked**. See [below](#cachekey-shipped-in-two-halves).
-- **`@azure/storage-blob` — verified linked** at `packages/github-actions/node_modules/@azure/storage-blob`. The storage tier stalls on nothing.
+Both dependency questions are closed: **`@effected/glob` is taken** (the recommended option below), and `@azure/storage-blob` is confined to three modules and measured.
 
 ### Deltas from the design
 
@@ -464,6 +462,13 @@ Fourteen units green against `effect@4.0.0-beta.101`: `WorkflowCommand`, `Action
 - **`ProcessId` is core's brand.** See [the vocabulary correction](#processid-belongs-to-core).
 - **`ToolInstaller.download` is core `HttpClient`, not `node:https`**, and streams to disk rather than buffering. `extractTar`/`extractZip` require core `ChildProcessSpawner` in `R` — no spawner backend here, per the commands invariant. The Windows branch reads `RUNNER_OS`, not `process.platform`.
 - **`Secret` gained `forSigning`.** See [the two invariant catches](#the-declassification-invariant-earned-its-keep-twice).
+- **The GitHub-cache backend is `GitHubCacheBlobStore.layer`, not `BlobStore.layerGitHubCache`.** Putting the static on the service class would make `@azure/storage-blob` reachable from every module that reads a blob — the layer-static-belongs-to-the-module-owning-the-dependency rule (`GitHubApp.clientLayer`'s precedent), applied here for a confinement reason rather than a stylistic one.
+- **The three Azure modules take their transport as an argument.** `FileBlobTransfer` / `DataBlobTransfer` + `BlobTransferError`, with `layerWith(transfer)` beside each `layer`. See [the transport seam](#the-transport-seam-and-what-it-buys).
+- **`Artifact` drops `FindBy`.** Every path through it in the source package is a typed "not yet implemented" failure — the parameter has never had behavior. Porting one is porting a lie; adding it later is additive, whereas removing it later would not be. The rest of the surface is ported conservatively per the ruling, with the `Artifact` prefix dropped from every member.
+- **`ActionCache.save`/`restore` accept a `CacheKey` as well as a `string`,** and a `CacheKey` supplies its own restore-key ladder. The ladder is the part every consumer re-derives and gets subtly wrong; passing the key passes the ladder with it.
+- **`ActionRuntime.layer` excludes the cache, artifact and blob services.** See [the runtime's exclusion](#actionruntime-excludes-the-heavy-three).
+- **`ActionRuntime` does not install `ActionInput`'s `ConfigProvider`.** See [the probe that removed it](#the-config-provider-the-runtime-does-not-install).
+- **`ActionEnvironment.repo` did not land.** It would have returned `@effected/github`'s `RepoRef`, putting an edge to `github` — and therefore octokit — on the graph of the lightest module in the package, which currently reaches `effect` and nothing else. `GitHubContext.repository` is already the `owner/repo` string and `RepoRef.parseResult` is a pure sync call, so a consumer that wants the coordinate spends one line for it. Recorded as a deliberate non-port rather than an omission.
 
 ### `CacheKey`, shipped in two halves
 
@@ -477,7 +482,11 @@ Three properties earned their tests, and each is a way the obvious implementatio
 
 `hashFiles` is **byte-compatible with `@actions/glob`**: sorted, de-duplicated, and each file's SHA-256 fed into the accumulator as **binary, not hex**. A hex-fed accumulator produces a perfectly plausible digest that never matches a cache entry written by any other action; the test pins the digest as a literal and the wrong-way value (`e11ab1a1…`) is what the mutant produced.
 
-**Not built — `hashMatching({ workspace, patterns })`. Unblocked successor work, with the design settled.**
+**Built as two statics, not one.** `CacheKey.matchingFiles({ workspace, patterns })` answers with the sorted absolute paths a pattern set matches; `CacheKey.hashMatching` is that fed to `hashFiles`. Splitting them is what lets a caller reuse the discovery — `ActionCache.save` takes literal paths — and it is the pairing every consumer otherwise writes by hand, whose two halves have to agree about ordering and about what counts as a file.
+
+Two behaviors earned tests, and one of them is a real trap: **candidates are matched by their path relative to the workspace** (which is what makes "never hash a file outside the workspace" structural rather than remembered), and **directories are excluded by an explicit `stat`**. A directory called `notes.txt` matches `**/*.txt` and is not a file; without the check it reaches `hashFiles`, which fails on the read — so the difference is a working cache key versus a failing action. The mutant that loosens the check is what proves the test discriminates.
+
+A glob that will not compile is a typed `CacheKeyError { reason: "badPattern" }` rather than a `GlobPatternError` leaking from a dependency onto this package's surface — which is why `CacheKeyError.path` became `optionalKey` and gained a sibling `pattern`.
 
 The doc originally said "`hashFiles` over a compiled `@effected/glob` pattern set". Checking the real surfaces changes the shape of that sentence: **`@effected/glob` is a matcher, not a walker** — pure string→predicate by construction (pure tier), so it cannot supply file *discovery*. So the module is two halves, not one:
 
@@ -542,36 +551,105 @@ Fixed by carrying the offending value on the issue. Mutation-verified: reverting
 - **A semantics-preserving mutant is reported, not papered over.** `Buffer.from(x, "base64url")` → `"base64"` changes nothing, because Node's plain base64 decoder accepts the url alphabet and unpadded input (probed, with a control producing `-` and `_`). The strict spelling stays because `atob` is not forgiving, and a test now exercises the alphabet — but no honest test kills that mutant.
 - Mutants killed so far: the `withEnv` global-mutation mutant; the dash-translating `inputVariable` mutant; the `ActionLogger` buffer-as-global mutant, its Warn/Error threshold, its `RUNNER_DEBUG` bypass and its group flush; the `ActionInput` swallowed-default mutant; `CacheKey`'s hex-fed digest, catch-everything ladder rung and dropped sort; the `pid < 0` guard; the `?audience=` join; and the naive tool-cache install (two invariants).
 
-### Successor brief
+### The transport seam, and what it buys
 
-Read `packages/github-actions/CLAUDE.md` first — it carries the invariants in operational form. Then, per remaining unit:
+The three Azure-touching modules take their transport as an argument — `FileBlobTransfer` (whole files, for the cache and artifacts), `DataBlobTransfer` (buffers, for the blob store) — with `layerWith(transfer)` beside each `layer`, and the real Azure client wired into `layer`.
 
-**`GitHubToken`** (start here; it is the cross-package seam). `@effected/github`'s `GitHubApp` is committed and its shape members carry `Touches:` TSDoc written for exactly this table, so the member-usage contract can be transcribed rather than inferred — build the partial `GitHubApp.layerTest` stubs straight off those lines (`provision` needs `token` + `identity`; `dispose` needs `revoke` alone). Facts worth having before you open the file, several confirmed with that package's implementer:
+The reasoning is the same one that made `@effected/sbom` drive the **real** `DSSEBundleBuilder` through a stub signer: **what this package owns is the protocol, and the protocol is not the transport.** The RPC sequence, the conflict handling, the version derivation, the retry policy and the envelope framing are all on this side of the pre-signed URL; the `PUT` is not. Taking the transport as an argument is what makes the first group *execute* in a test rather than be described by one — the cache suite tars real files with real `tar`, deletes them, and restores them, which is a claim about the filesystem that no in-memory double could make.
 
-- **Use `token()`, not `scopedToken()`. If the bridge reaches for `scopedToken`, that is the bug.** `scopedToken` and `clientLayer` revoke on scope close, and no scope can span the `pre`/`main`/`post` process boundary; `token()` mints and hands back, which is the only lifetime that survives it.
-- **In `main`, rebuild from the persisted token with `GitHubClient.layerFromToken` — not through `GitHubApp`.** That path links no JWT signer, which keeps `main`'s bundle off the App arm entirely.
-- **`InstallationToken` is JSON-encodable on purpose**, and its `Redacted` deliberately does **not** survive encoding, because `GITHUB_STATE` is plaintext by GitHub's protocol. **Masking is this package's job**, not `github`'s — go through `ActionState.saveSecret` / `Secret.forRunnerFile`.
-- **`TokenPermissions.fromGitHub(token.permissions)` is pure.** The permission check needs no service; the source package's requiring one just to compare was unnecessary.
-- **Decide the expiry posture deliberately.** Installation tokens live ~1 hour, and a client rebuilt in `main` from a persisted token **cannot re-mint** — the App credentials live in `pre`'s process. Record the ruling either way: document "~1h contract; long phases re-provision" as v1, or design the carry-credentials-into-`main` variant. Do not discover this at minute 61.
+It also settles a duplication question that looks like sloppiness and is not: **each of the three carries its own ~15-line Azure adapter.** Hoisting them into a shared `internal/azureTransfer.ts` is exactly the move the confinement rule forbids, and the reachability suite asserts the resulting edge sets exactly — including that `internal/twirp.ts` reaches `effect` and `effect/unstable/http` and nothing else.
 
-- The shape is `token`, `scopedToken`, `revoke`, `identity`, `installations`. `identity` takes an optional `installationToken`, and supplying it matters: `GET /users/{slug}[bot]` **rejects an app JWT**, so without one the lookup runs unauthenticated against a 60-per-hour-per-IP limit.
-- `GitHubApp.clientLayer` already mints, rotates and revokes on scope close. `GitHubToken.clientLayer` is a *different* thing — it builds a client from the token **persisted in `ActionState`** by an earlier phase, because `post` is a separate process holding no scope from `main`.
-- The token is masked **before** it is persisted, via `Secret.forRunnerFile`, so the ordering is structural rather than remembered.
-- `dispose` uses `getOptional`, so a `post` with no `pre` is a no-op rather than an error.
-- Identity resolution **degrades**: a `GET /app` hiccup logs a warning and yields a token without identity fields; the commit identity falls back to `github-actions[bot]`.
-- `ActionEnvironment.repo` lands here too — it returns `github`'s `RepoRef`, which is why it was deferred out of (a).
+The same seam is the recorded way to run the opt-in integration tests: point the real protocol at a local blob endpoint.
 
-**`ActionCache` / `Artifact` / `BlobStore.githubCache`.** `@azure/storage-blob` **is** linked in `packages/github-actions/node_modules` (verified) — no install needed. Build all three together with the reachability test, since the confinement rule is what shapes them: no shared `internal/` helper may import Azure, and the three are separate named exports, never a namespace object. `Artifact` is provisional by ruling — port the surface conservatively and resist narrowing it against no call site.
+### The Twirp client decides retryability structurally
 
-**`Action.run`.** `ActionOutputs.setFailed` deliberately does not set the exit code; that is this unit's job. Flush `ActionLogger` buffers on **every** exit path including a defect — an unhandled defect inside a buffer swallowed the output in the source package. How much of the source's failure rendering survives is still an open call, but whatever survives arrives with tests.
+`internal/twirp.ts` owns one RPC, one conflict sentinel and one retry policy, and **applies the retry itself** so no protocol can ship without it. Its failure value is structural — `transport` / `status` / `malformed`, with the status when there was one — rather than the predecessor's formatted string, which was tested for the substrings `"HTTP 503"` and `"ECONNRESET"`. Under that scheme rewording a message was a silent policy change.
 
-**The build gate is already clean** — `issues.json` reports zero warnings with 21 suppressed `_base` entries, and `savvy.build.ts` already carries the narrow suppression. If a new module breaks it, the two failure modes seen here were a `{@link}` to a non-exported symbol and an internal named type on a `@public` signature; only structural inlining fixes the second.
+Two smaller corrections travelled with it:
+
+- **Both field spellings are read** (`signedUploadUrl` *and* `signed_upload_url`). The backend is an internal GitHub protocol whose two halves disagree; the predecessor's cache layer read snake_case only. The failure mode of guessing wrong is "the cache silently never hits", which is the hardest cache failure to notice.
+- **A non-retryable failure never sleeps**, which is what keeps every ordinary failure test clock-free. Only the one test that proves a `503` *is* retried needs a virtual clock.
+
+### The results backend is only reachable from a `uses:` step
+
+`ACTIONS_RESULTS_URL` and `ACTIONS_RUNTIME_TOKEN` are injected into action execution contexts and **not** into `run:` shell steps, so identical code works from a bundled action and fails when a workflow invokes it with `node ./main.js`. All three services report that as `misconfigured` **naming the absent variable**, because nothing else in the environment distinguishes the two cases.
+
+They read the variables **per call, through `ActionEnvironment`** — not at layer construction. Resolving at construction would make merely *composing* the layer fail outside Actions, including for an action that never touches the cache. What *is* resolved once at construction is the `ActionEnvironment` service itself, so every member's `R` stays `never` (the same fix `ActionEnvironment.payload` got).
+
+**The runtime token is never declassified.** It arrives from the environment as plaintext, is wrapped in `Redacted` at the read, and leaves only through `HttpClientRequest.bearerToken` — which accepts a `Redacted` directly (verified in the vendored source). The artifact backend ids are decoded from the plaintext *before* the wrap. So the declassification seam needed no new member and `Redacted.value` still appears only in `Secret.ts`.
+
+### `ActionRuntime` excludes the heavy three
+
+`ActionRuntime.layer` provides `ActionEnvironment`, `ActionLogger` (plus the workflow-command `Logger`), `ActionOutputs`, `ActionState`, `NodeServices` and an `HttpClient`. It deliberately does **not** provide `ActionCache`, `Artifact` or the GitHub-cache `BlobStore`.
+
+Folding them in would put `@azure/storage-blob` in the bundle of every action that merely sets an output — which is the confinement invariant restated as a composition decision rather than an import rule. Their requirements are all satisfied by the runtime, so a consumer that wants one writes `Action.run(program, { layer: ActionCache.layer })` and nothing else; `ActionRunOptions.layer` is typed `Layer<R, never, ActionServices>` precisely so that compiles with no further wiring. The reachability suite asserts `Action.ts` reaches `@effect/platform-node`, `effect` and `effect/unstable/http` — and no more.
+
+The wiring inside is `provideMerge`, not a flat `mergeAll`: `ActionState` needs `ActionOutputs` (it masks before it persists) and `ActionOutputs` needs `ActionEnvironment`. Merged as siblings they never see each other and the layer does not build.
+
+### The config provider the runtime does not install
+
+`ActionRuntime` was first written with `ActionInput.layer()` in it, on the reasonable assumption that the `INPUT_` provider is what makes inputs resolve. **A mutant removing it survived**, so the assumption was probed rather than defended, at beta.101 from inside the package:
+
+- the ambient provider **is** environment-backed and resolves `INPUT_MY-GREETING` exactly as this one does;
+- it already reads `""` as **absent**, so `Config.withDefault` fires for an input the workflow omitted — the behavior that motivated the custom provider in the first place;
+- it does **not** uppercase a config path, which is the one axis on which the two differ.
+
+That last point turns the line from redundant into actively costly: installing this provider uppercases *every* config path in the program, silently changing the resolution of any `Config` a consumer wrote that is not an input. So the line came out rather than being documented as load-bearing. `ActionInput.layer(env)` stays exported for what it was built for — resolving inputs from an explicit record in a test, without mutating the process — and the end-to-end omitted-input test stays as the thing that fails if core's empty-string semantics ever move, with reinstating the line as the recorded fix.
+
+The general lesson is worth more than the line: **a surviving mutant is a question about the code, not about the test.** The answer here was that the code was unnecessary.
+
+### The token bridge's one-hour contract — RULED
+
+Installation tokens live about an hour, and a `main` phase rebuilt from a persisted token **cannot re-mint one**. The [checkpoint left this open](#githubtoken-the-bridge-and-its-member-usage); it is now ruled, in the conservative direction:
+
+**Document the hour; never carry the credentials forward.** The credential that could re-mint is the app's private key, and persisting *that* through `GITHUB_STATE` — a plaintext file by GitHub's protocol — would trade a one-hour token for a permanent one. Instead:
+
+- `GitHubToken.read` (and therefore `clientLayer`) fails typed with `GitHubTokenError { reason: "expired" }`, naming the expiry. `InstallationToken.isExpired` already existed and the predecessor read it nowhere, so a long `main` phase simply started answering `401` with no explanation — the single hardest failure in this lifecycle to diagnose from a workflow log.
+- The skew is a minute by default and adjustable, because the check and the request it guards are not the same instant.
+- A phase that can outlive the hour calls `provision` itself. That is a documented contract, not a workaround.
+- `dispose` skips revoking an already-expired token. GitHub has stopped accepting it, so the request would fail and the only thing it could accomplish is turning a successful run into a failed one on the way out.
+
+`provision` is an `acquireUseRelease` whose release arm **revokes on any failure** — scope verification, identity, persistence — because a workflow retrying a failing `pre` would otherwise leave an hour of unreferenced write tokens behind, each one a live credential nobody is tracking. The revoke is `Effect.ignore`d: the action is already failing for a reason the caller needs to see, and replacing it with "revocation failed" would hide it.
+
+The member-usage table lives in the module's TSDoc and is **executable**: one test supplies exactly the documented members and succeeds, another supplies one fewer and dies. That is what makes it a contract rather than a comment.
+
+### `Action.run`'s failure rendering — RULED against the call sites
+
+The [checkpoint left the depth open](#settled-at-the-phase-3-checkpoint). Decided against what the consumers actually do: every one of them calls exactly `Action.run(program, { layer })`, and **nobody calls `formatCause`** (silk-runtime-action's `formatCauseDetail` is its own function over its own errors). So:
+
+- **Kept:** one `::error::` line carrying `[Tag]: message` — what a human scanning a workflow log for the first red line needs — and the exit code, which is the piece `ActionOutputs.setFailed` deliberately leaves alone.
+- **Kept, behind `::debug::`:** the full `Cause.pretty` render, span trace included. Genuinely useful, genuinely noisy, and the runner already owns the switch.
+- **Dropped:** splicing a JS stack into the *visible* error. In a bundled action it points at one line of `dist/main.js`.
+- **Dropped:** the three nested `try`/`catch` swallow blocks. One last-resort guard at the promise boundary does the same job — and `Action.run` never rejects, because an action entry point that rejected would produce an unhandled rejection *and* a failed step, of which only the first is legible.
+
+`Action.run` also does **not** wrap the program in a log buffer. The predecessor did, and an unhandled defect inside the buffer swallowed the whole transcript: the run failed and printed nothing. `ActionLogger.withBuffer` flushes on every exit path including a defect, so buffering is opt-in and visible at the call site.
+
+### `Artifact` shipped, minus one parameter
+
+Ported conservatively per the ruling — the surface keeps the source's shape, with the stuttering `Artifact` prefix dropped from every member and `get` returning `Option`. One deliberate subtraction: **`FindBy` is not ported.** Every path through it in the source is a typed "not yet implemented" failure, so the parameter has never had behavior; porting one is porting a lie, and adding it later is additive whereas removing it later would not be.
+
+Facts the protocol pinned that are easy to get wrong, each with a test: `CreateArtifact`'s `version` is **7** (a protocol version, unrelated to the `v4` in `actions/upload-artifact@v4` — which is the obvious wrong guess); `FinalizeArtifact` hashes the **stored zip**, streamed rather than read, because an artifact is the one payload here with no upper bound on size; entries are stored **relative to `rootDirectory`**, or a download rebuilds a tree named after the runner that produced it; and a conflict on create is a **failure**, unlike the cache, because a run may hold one artifact per name.
+
+### Testing notes carried forward
+
+- **The `settle` helper for retry tests.** A forked fiber plus a bounded `TestClock.adjust` loop, polling `fiber.pollUnsafe()`. Bounded rather than `while (true)`: a fiber blocked on something that is not a sleep would otherwise hang to the vitest timeout with no clue why.
+- **A fake `fetch` must decode the request body through `Response`, not `String(init.body)`.** The body arrives as bytes; stringifying a `Uint8Array` yields `123,34,…`, which throws in `JSON.parse`, which inside a fake `fetch` surfaces as a *transport fault*, which the client then **retries**, which hangs the virtual clock. One misread fixture presented as ten unrelated timeouts in modules that had nothing wrong with them.
+- **A test that sets `process.exitCode` must restore it.** `Action.run` sets it by design, and leaving it set fails the **vitest process** rather than the test — a green suite whose exit code says otherwise.
+- Mutants killed in the closing session: the Twirp retry removed; the snake_case field fallback dropped; the finalized size taken from the body instead of the frame; the cache entry version computed over **sorted** paths; `matchedKey` ignored on restore; zip entries stored absolute; the `matchingFiles` directory filter loosened; Azure imported by `internal/twirp.ts`; mask-after-persist ordering; the revoke-on-failure release arm; the expiry check in `read`; `dispose` revoking an expired token; `identity` called without the installation token; `process.exitCode = 1`; and the workflow `Logger` dropped from the runtime.
+- **A second semantics-preserving mutant, reported rather than papered over:** replacing `Artifact`'s `expiresAt` conditional spread with `expiresAt: undefined` changes nothing, because `JSON.stringify` drops undefined properties before the body reaches the wire. The conditional spread stays (house idiom, and honest about intent), and a sharper mutant — always computing an expiry — *is* killed.
+
+### Where a successor would start
+
+The package is complete; what is left is adoption. Two things a first consumer will exercise that nothing here could:
+
+- **`Artifact` is provisional by ruling.** It was ported without a call site to shape it against, so the first consumer to adopt it is the one whose feedback reshapes it — including whether the cross-run lookup comes back.
+- **The two integration paths are opt-in and unexecuted in CI**: a real Actions-cache round trip and a real S3-compatible round trip. The transport seam is how both are pointed at something local.
 
 ## Settled at the Phase 3 checkpoint
 
 Ruled 2026-07-25; recorded so they are not reopened.
 
 1. **`Artifact` ships in v1.** See [the Artifact section](#artifact--ships-in-v1-and-the-name-collision-that-nearly-sank-it) for the search evidence and the `GitHubArtifactMetadata` name collision behind it. The surface is ported conservatively and treated as provisional until a first real consumer reshapes it.
-2. **`ToolInstaller`'s possible `@effected/runtimes` edge is an implementation-time call.** The overlap may be shallow — `runtimes` resolves *versions*, `ToolInstaller` installs *files* — so the decision is made against the consumer's actual runtime descriptors, not in the abstract. The edge is free under [R3](../effect-standards.md#dependency-policy) if it is taken.
+2. **`ToolInstaller`'s possible `@effected/runtimes` edge — NOT TAKEN.** The overlap turned out to be exactly as shallow as the checkpoint suspected: `runtimes` resolves *versions* and answers with a download URL; `ToolInstaller` takes a URL and installs *files*. Nothing in the installer wants a version resolver, and a consumer that wants both composes them in three lines. The edge stays free under [R3](../effect-standards.md#dependency-policy) if a real call site ever asks for it.
 3. **`#144`'s `writeDirAtomic` — RULED 2026-07-25: the watch item FIRES.** Confirmed against the real extraction path rather than assumed, and proven by mutating the naive implementation back in. See [the as-built ruling](#144-is-ruled-stage-then-swap).
-4. **How much of `Action.run`'s failure rendering survives is an implementation-time call.** The source formats causes, strips stack frames and emits an Effect span trace as `::debug::`. It is genuinely useful, genuinely fiddly, and the one part of the port with no test coverage today — so whatever survives arrives with tests.
+4. **`Action.run`'s failure rendering — RULED**, against the consumers' real call sites rather than in the abstract. See [the ruling](#actionruns-failure-rendering--ruled-against-the-call-sites); it arrived with tests, as required.

@@ -15,7 +15,7 @@ adding a module.
 **`github` talks to the GitHub API; this package talks to the runner.** Nothing
 here reads `process.env.GITHUB_REPOSITORY` on `github`'s behalf, and nothing
 there imports a workflow command. The two meet at exactly two seams, both of
-which live here: the token bridge (`GitHubToken`, unbuilt) and the `Logger` that
+which live here: the token bridge (`GitHubToken`) and the `Logger` that
 maps `Effect.log*` onto workflow commands (`ActionLogger.logger`, built).
 
 `RepoRef`, `InstallationToken`, `BotIdentity` and `GitHubClient` are canonical
@@ -197,12 +197,54 @@ Azure.** It may be imported by `ActionCache.ts`, `Artifact.ts` and
 the Actions-cache Twirp protocol hands back an Azure blob URL.
 
 No shared helper in `internal/` may import it — an internal helper is exactly how
-a heavy import leaks into a light module's graph. The three are separate named
-re-exports in `index.ts`, **never** gathered into a namespace object.
+a heavy import leaks into a light module's graph. That is why each of the three
+carries its **own** ~15-line Azure adapter instead of sharing one: the
+duplication *is* the invariant. The three are separate named re-exports in
+`index.ts`, **never** gathered into a namespace object.
 
-**Measured, not asserted**: the reachability test needs a control (bundle
-`ActionCache` and assert Azure *is* present), and the walker must **strip
-comments** before following imports, or `@example` blocks register phantom edges.
+**`ActionRuntime.layer` excludes all three, for the same reason.** Folding the
+cache into the default runtime would put a blob-storage client in the bundle of
+every action that merely sets an output. Their requirements are all satisfied by
+the runtime, so taking one costs one line:
+`Action.run(program, { layer: ActionCache.layer })`.
 
-This test is owed and unwritten — it belongs with the three modules, which are
-also unbuilt.
+**Measured, not asserted** — `__test__/reachability.test.ts` walks the runtime
+import graph with a control (the three *do* reach Azure), exact edge-set
+assertions for the light modules, and its own discriminating test for the
+comment stripper. The stripper takes **line comments first, then blocks**: prose
+containing `@azure/*` opens a block comment as far as a regex is concerned, so
+stripping blocks first eats the imports that follow — failing in the safe
+direction, which for a confinement test is the worst one.
+
+## The transport seam
+
+The three Azure modules take their transport as an argument: `FileBlobTransfer`
+(whole files, for the cache and artifacts) and `DataBlobTransfer` (buffers, for
+the blob store), with `layerWith(transfer)` beside each `layer`. The protocol —
+the RPC sequence, conflict handling, version derivation, retry policy and
+framing — is what this package owns and what the tests execute; the pre-signed
+`PUT` is not. Same shape as `@effected/sbom`'s `SigstoreSigner.layerWith`, and
+it is also how an integration test points the real protocol at a local endpoint.
+
+Twirp retry lives **inside** `internal/twirp.ts`, keyed on a *structured*
+failure (`transport` / `status` / `malformed`), so no protocol can ship without
+it and a reworded message is not a silent policy change. Both field spellings
+(`signedUploadUrl` and `signed_upload_url`) are read: the backend's two halves
+disagree, and guessing wrong presents as "the cache silently never hits".
+
+## The token bridge's one-hour contract
+
+An installation token lives about an hour and **no later phase can re-mint one**
+— the credential that could is the app's private key, and persisting *that*
+through `GITHUB_STATE` would trade a one-hour token for a permanent one. So
+`GitHubToken.read` fails typed (`GitHubTokenError`, `reason: "expired"`) rather
+than handing back a token that answers `401` with no explanation, and a phase
+that can outlive the hour calls `provision` itself. `dispose` skips revoking an
+already-expired token: GitHub has stopped accepting it, so the request could
+only turn a successful run into a failed one on the way out.
+
+`provision` is an `acquireUseRelease` whose release arm **revokes** — a workflow
+retrying a failing `pre` would otherwise leave an hour of unreferenced write
+tokens behind. Its member-usage table is in the module's TSDoc and is
+**executable**: one test supplies exactly the documented members and passes,
+another supplies one fewer and dies.
