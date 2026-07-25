@@ -183,6 +183,16 @@ describe("bundle reachability", () => {
 		// `export const Stores = { cache, artifact, blob }` makes every consumer of
 		// any of them reachable to Azure, silently. The entry point re-exports
 		// free-standing names, and no light module may import a heavy one.
+		// Deliberately RAW source, not the stripped `code` the walker uses, and
+		// that is safe in the direction that matters: this is a `notInclude`, so
+		// a specifier appearing only in a comment fails the test — a spurious
+		// ALARM, never a silent pass. Over-strict is the correct bias for a
+		// confinement check.
+		//
+		// It sees only DIRECT imports, so a two-hop leak (light → mid → heavy)
+		// would slip past it. That case is covered by the transitive
+		// `assert.isFalse(reachesAzure(entry))` over the same LIGHT_MODULES
+		// above — do not delete that test on the assumption this one subsumes it.
 		for (const entry of LIGHT_MODULES) {
 			const source = readFileSync(resolve(SRC, entry), "utf8");
 			for (const heavy of ["./ActionCache.js", "./Artifact.js", "./BlobStore.githubCache.js"]) {

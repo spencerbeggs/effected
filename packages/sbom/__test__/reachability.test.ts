@@ -182,6 +182,15 @@ describe("bundle reachability", () => {
 		// to Fulcio's HTTP stack silently. The entry point re-exports free-standing
 		// names; nothing may re-export the signer from a module a pure consumer
 		// imports.
+		// Deliberately RAW source, not the stripped `code` the walker uses, and
+		// safe in the direction that matters: this is a `notInclude`, so a
+		// specifier appearing only in a comment fails the test — a spurious
+		// ALARM, never a silent pass. Over-strict is the correct bias here.
+		//
+		// It sees only DIRECT imports, so a two-hop leak (pure → mid → signer)
+		// would slip past. That case is covered by the transitive
+		// `reachesSigstore` assertions over the same PURE_MODULES above — do not
+		// delete those on the assumption this one subsumes them.
 		for (const entry of PURE_MODULES) {
 			const source = readFileSync(resolve(SRC, entry), "utf8");
 			assert.notInclude(source, "./SigstoreSigner.js", `${entry} imports the signer module`);
