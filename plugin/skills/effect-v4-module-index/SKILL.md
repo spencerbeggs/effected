@@ -1,6 +1,6 @@
 ---
 name: effect-v4-module-index
-description: The routing map for Effect v4 core — every module in one table, what it is, when to reach for it, and where to read it in the vendored source. Use FIRST when asking "what module do I reach for", "does Effect have a Sink/Pool/Trie/pattern-matcher", "what is Sink/Channel/Deferred/RcMap for", "where does X live in the source", or before designing ANY capability (the contract-inventory gate greps this map's territory). Rows route; they do not teach — patterns live in the other effect-v4-* skills, and the source is the authority on signatures and semantics.
+description: The routing map for Effect v4 core — every module in one table, what it is, when to reach for it, and where to read it in the vendored source. Use FIRST when asking "what module do I reach for", "does Effect have a Sink/Pool/Trie/pattern-matcher", "what is Sink/Channel/Deferred/RcMap for", "where does X live in the source", or before designing ANY capability (the contract-inventory gate greps this map's territory). Opens with a routing-by-task table for the ones people miss by name — spawning a subprocess, a TTL cache with in-flight de-duplication, writing to stdout from a library. Rows route; they do not teach — patterns live in the other effect-v4-* skills, and the source is the authority on signatures and semantics.
 ---
 
 # Effect v4 module index
@@ -22,6 +22,18 @@ anything module-shaped, read how core writes the analogous module.
 `effect/unstable/*` namespaces may break in minor releases and graduate to
 top level as they stabilize.
 
+## Routing by task
+
+The module tables below are keyed by *name*. These rows are keyed by what you
+were about to go build, because each one has been reached for by its task
+phrasing and missed on its module name.
+
+| You want to… | Reach for | Note |
+| --- | --- | --- |
+| **spawn a subprocess / run a command / shell out** | `effect/unstable/process` — `ChildProcess` (command values) + `ChildProcessSpawner` (the service) | NOT `unstable/cli`'s `Command`, which is the CLI *declaration*. Core declares the contract and ships **no layer**: require `ChildProcessSpawner` in `R`, let the app provide `NodeServices.layer`. Never hand-roll `node:child_process`. |
+| **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:178`). Do not build a promise-map de-duplicator beside it. |
+| **write to stdout/stderr, or read argv/stdin, from a library** | core `Stdio` — require `Stdio` in `R` | `Stdio.layerTest(impl)` (`Stdio.ts:133`) takes a `Partial<Stdio>` and lets you echo-test the output **with no platform package installed**. The real implementation still comes from `@effect/platform-*` at the app edge. Do not `console.log` from library code to dodge the wiring. |
+
 ## Core modules
 
 | Module | What it is | When to reach for it |
@@ -31,7 +43,7 @@ top level as they stabilize.
 | `BigInt` | helpers over native `bigint`: arithmetic, comparison, safe parsing to `Option` | working with `bigint` values and needing safe parse/aggregate/order |
 | `Boolean` | helpers over `boolean`: logical ops, lazy branching, ordering, reducing | combining booleans or choosing between lazy branches |
 | `Brand` | compile-time nominal tags on structurally-identical values, optionally validating | keeping `Positive`/`UserId`-style values from mixing without runtime cost |
-| `Cache` | concurrent cache of Effect lookup results with capacity/TTL and in-flight sharing | memoizing an effectful lookup by key with dedupe/expiry |
+| `Cache` | concurrent cache of Effect lookup results with capacity/TTL and in-flight sharing (`make` = fixed TTL, `makeWith` = per-entry TTL from the `Exit`) | memoizing an effectful lookup by key with dedupe/expiry — this is the whole feature; do not hand-roll an in-flight promise map |
 | `Cause` | full structured failure record: typed errors, defects, interruptions, annotations | inspecting or formatting why an Effect failed without collapsing it |
 | `Channel` | low-level bidirectional streaming primitive underlying Stream and Sink | implementing custom stream operators; app code uses Stream/Sink instead |
 | `ChannelSchema` | schema encode/decode adapters wrapping a Channel's typed boundaries | crossing a channel boundary with schema-typed input/output |
@@ -135,7 +147,7 @@ top level as they stabilize.
 | `ScopedRef` | current value plus the scope owning it; swaps acquire/release atomically | hold a swappable resource handle (client/connection) with clean replacement |
 | `Semaphore` | permit pool limiting concurrent access to a shared resource | bound concurrency around an effect via acquire/release of permits |
 | `Sink` | stream consumer folding/collecting a `Stream`'s output into one result | terminating a Stream: collect, fold, count, or search its elements |
-| `Stdio` | argv and stdin/stdout/stderr of the CURRENT process as an Effect service | standard-IO access (not spawning); contract, platform layer provides |
+| `Stdio` | argv and stdin/stdout/stderr of the CURRENT process as an Effect service | standard-IO access (not spawning); contract, platform layer provides — but core ships `Stdio.layerTest(Partial<Stdio>)` for echo-testing without one |
 | `Stream` | effectful source emitting many values over time with error/requirements | model pull-based/streaming data: queues, callbacks, files, paginated sources |
 | `String` | pipe-friendly helpers over TypeScript `string` values | functional string ops: trim/case/slice/replace/Option-returning search |
 | `Struct` | immutable helpers over plain TypeScript objects (pick/omit/rename) | transform object shapes functionally and derive comparisons |

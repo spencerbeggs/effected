@@ -43,7 +43,7 @@ Each row is a hard house default; reasoning and worked code in
 | pin `transformOrFail`'s type params explicitly when a union codec's members carry instance methods — `SchemaTransformation.transformOrFail<(typeof Classified)["Encoded"], string>({...})` | relying on inference after adding an instance method to a `Schema.TaggedClass` union member — `transformOrFail` unifies one `T` from decode-out and encode-in, and `decodeTo` pins both to the union's **Encoded** side, which no longer satisfies the method-bearing instance type; the existing codec breaks at the declaration site (hit on beta.98 adding a method to a `DependencySpecifier.FromString` member) |
 | return an **`Effect`** from both `transformOrFail` callbacks, failing with `SchemaIssue.InvalidValue(Option.some(value), { message })` ([contract](#transformorfails-callback-contract)) | return a `Result` (or a bare value) from a `transformOrFail` callback — the signature demands `Effect<T, SchemaIssue.Issue, R>` (`SchemaTransformation.ts:286`); a `Result` is not an Effect and will not bridge itself |
 | a `FromString` `Schema.Codec<Self, string>` static (string = the encoded form of the same schema) | a second parser divorced from the schema |
-| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction |
+| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction (`Schema.ts:9548` is a *function*; `Schema.Error` at `:9471` is the same trap — full list of the call-not-value family in **`effect-v4-construct-map`**) |
 | `Schema.decodeUnknownEffect` / `encodeUnknownEffect` in Effect flows | `*Sync` outside a genuine sync boundary |
 | `Schema.DurationFromMillis` / `Schema.DateTimeUtcFromString` (composed with `Schema.fromJsonString` for byte stores) when the value must **serialize** | `Schema.Duration` / `Schema.DateTimeUtc` in a persisted or wire schema — both are `declare` schemas with **no JSON encoding** (`Schema.ts:10575,11972`), so they round-trip in memory and fail at the serialization boundary; the ts-vfs cache metadata hit exactly this |
 | annotate recursive `Schema.suspend` refs `Schema.Codec<T>` (services default `never`) | `Schema.Schema<T>` as the suspend annotation — it compiles at the declaration but leaves `DecodingServices` `unknown`, so every decode entrypoint rejects the schema (`unknown is not assignable to never`, probed beta.94); a schema nobody decodes directly hides the trap until a consumer tries |
@@ -339,7 +339,9 @@ source + the beta-skew warning).
 ## Related skills
 
 - **`effect-v4-construct-map`** — the flat v3→v4 rename tables. Reach for it when a
-  v3 Schema name doesn't resolve in beta.101.
+  v3 Schema name doesn't resolve in beta.101, and for the **call-not-value** list
+  (`Schema.Defect()`, `Schema.Error()`, `TestClock.layer()`) — names that exist,
+  type-check uncalled, and fail somewhere else.
 - **`effect-api-extractor-bases`** — the anonymous-base / `ae-forgotten-export`
   discipline for `Schema.Class` and `Context.Service`.
 - **`effect-v4-services-layers`** — the sibling for `Context.Service` and Layers.

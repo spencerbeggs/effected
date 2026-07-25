@@ -1,11 +1,11 @@
 ---
 name: effected-packages
-description: The @effected package index — what each of the kit's 18 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML, semver math, glob matching, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, git introspection, or runtime-version resolution. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/.
+description: The @effected package index — what each of the kit's 20 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML/Markdown, semver math, SPDX license expressions, glob matching, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, git introspection, or runtime-version resolution. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/.
 ---
 
 # The @effected package index
 
-`@effected/*` is an Effect v4-first app kit: 18 packages designed against the
+`@effected/*` is an Effect v4-first app kit: 20 packages designed against the
 v4 line (never lift-and-shifted from v3), released together, with every
 `effect` dependency pinned to one exact beta via pnpm catalogs. Before
 designing lockfile/config/glob/semver/path/state/workspace/git capability by
@@ -30,10 +30,12 @@ against its services, or test code that uses it.
 | `@effected/jsonc` | JSONC parse/edit/format schemas, AST, comment-preserving edits, visitor stream | reading or editing JSON-with-comments (tsconfig, VS Code-style config) | pure | [jsonc.md](./references/jsonc.md) |
 | `@effected/yaml` | YAML 1.2 parse/edit/format schemas, error-tolerant AST, edits, visitor | any YAML read/write/transform | pure | [yaml.md](./references/yaml.md) |
 | `@effected/toml` | TOML 1.0.0 parse/edit/format schemas, lossless CST, date-time value classes | any TOML read/write/transform | pure | [toml.md](./references/toml.md) |
+| `@effected/markdown` | CommonMark 0.31.2 + GFM parse/edit/format as pure schemas: mdast-shaped nodes with byte offsets, offset-splice edits, node-level modify, `Mdast` projection both ways, `Stream` visitor, frontmatter codecs | reading, editing, querying or rewriting markdown — instead of `remark`/`mdast-util-*`/`gray-matter` | pure | the package's own `CLAUDE.md` |
+| `@effected/spdx` | SPDX license IDs, exceptions and license *expressions* as Schema classes, with a hardened depth-capped expression parser and vendored SPDX datasets | validating or parsing a license field / expression (`MIT OR Apache-2.0 WITH …`) | pure | the package's own `CLAUDE.md` |
 | `@effected/glob` | full minimatch dialect as pure string→predicate schemas (`GlobPattern`, `GlobSet`) | matching path strings against globs without touching the fs | pure | [glob.md](./references/glob.md) |
 | `@effected/npm` | resolver CONTRACTS for `catalog:`/`workspace:` specifiers + shared dependency vocabulary | typing dependency specifiers; needing the resolver seam | pure | [npm.md](./references/npm.md) |
 | `@effected/lockfiles` | bun/npm/pnpm/yarn lockfile parsers → one `Lockfile` model + pure integrity checking | reading any lockfile; lockfile-vs-manifest drift checks | pure | [lockfiles.md](./references/lockfiles.md) |
-| `@effected/package-json` | package.json schemas, `Package` model, validation, file IO service | reading/editing/validating package.json | integrated | [package-json.md](./references/package-json.md) |
+| `@effected/package-json` | package.json schemas, `Package` model, validation, file IO service | reading/editing/validating package.json | boundary | [package-json.md](./references/package-json.md) |
 | `@effected/tsconfig-json` | tsconfig schemas, tsc-parity `extends` resolution, nearest-config discovery | loading/resolving/discovering tsconfig files | boundary | [tsconfig-json.md](./references/tsconfig-json.md) |
 | `@effected/config-file` | codec × resolver × strategy config loading, 4 codecs, encryption/migration decorators | any app/tool config-file loading | boundary | [config-file.md](./references/config-file.md) |
 | `@effected/walker` | upward directory traversal (`ascend`, `firstMatch`, `findUpward`, `findRoot`) | find-nearest-file/marker-based root discovery | boundary | [walker.md](./references/walker.md) |
@@ -44,6 +46,18 @@ against its services, or test code that uses it.
 | `@effected/workspaces` | monorepo discovery, dependency graph, PM detection, catalogs, change detection, snapshots | any monorepo/workspace introspection | integrated | [workspaces.md](./references/workspaces.md) |
 | `@effected/app` | the application control plane: one layer wiring XDG dirs + Store + Cache + config | wiring an APPLICATION's local state in one move | integrated | [app.md](./references/app.md) |
 | `@effected/pnpm-plugin-effect` | pnpm catalogs pinning the Effect ecosystem (companion — config, not code) | setting up Effect version pinning in a pnpm workspace | — | [pnpm-plugin-effect.md](./references/pnpm-plugin-effect.md) |
+
+**Two rows have no `references/` file yet** — `markdown` and `spdx`. Read the
+package's own `CLAUDE.md` for depth on those; it is the authority either way.
+Two facts about them that change how you depend on them:
+
+- **`@effected/markdown` peers on `@effected/yaml` / `@effected/toml` /
+  `@effected/jsonc` *optionally*** (`peerDependenciesMeta`), consumed only by the
+  three frontmatter codec modules. Parsing markdown pulls in none of them. Note
+  also that **markdown→HTML and HTML→markdown are permanently out of scope**: to
+  render, project via `Mdast` and hand the plain-mdast tree to a renderer.
+- **`@effected/package-json` delegates license validity to `@effected/spdx`** —
+  do not re-validate an SPDX expression yourself downstream of it.
 
 ## The two warnings every consumer inherits
 
@@ -56,15 +70,6 @@ against its services, or test code that uses it.
   itself is exactly its intended consumer. It is the application control plane;
   a library taking it as a dependency drags integrated tier into every consumer,
   so libraries compose `xdg`/`store`/`config-file` directly.
-
-## In flight (designed, not yet shipped)
-
-- **`@effected/markdown`** — CommonMark + GFM parse/edit/format with mdast
-  interop and schema-decoded frontmatter; pure tier. Designed 2026-07-18,
-  design doc at `.claude/design/effected/packages/markdown.md`; implementation
-  phased P1-P6. Do **not** hand-roll markdown parsing or reach for
-  remark/mdast dependencies in kit code in the interim — check the design doc
-  and the package's progress first.
 
 ## Cross-cutting facts
 

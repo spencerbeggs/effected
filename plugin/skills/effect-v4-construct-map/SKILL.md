@@ -109,6 +109,34 @@ far from the mistake.
 - **`@effect/cli`** — dead on the v4 line. The CLI framework is
   `effect/unstable/cli` in core. See `effect-v4-cli`.
 
+## These look like values but are calls
+
+A distinct, nastier family: the name **does** exist, so nothing in the rename
+tables catches it, and it is spelled exactly like the value you want. It is a
+**factory with an optional (or no) argument**, so the uncalled reference is a
+perfectly good expression — the mistake surfaces far away, as a construction
+throw or a service that was never provided.
+
+Every row verified at rung 2 against the vendored source at
+`effect@4.0.0-beta.101`:
+
+| Write | Not | Source |
+| --- | --- | --- |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9548` — `export function Defect(options?: ErrorOptions): Defect`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.Error()` | `Schema.Error` | `Schema.ts:9471` — `export function Error(options?: ErrorOptions): Error`. Same shape, same optional-`options` trap, one page away in the same module. |
+| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:379` — `export const layer: (options?: TestClock.Options) => Layer.Layer<TestClock>`. **A function returning a Layer**, unlike almost every other `layer` in core. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` / `Schema.Literal("a","b")` | `Schema.ts:4851` — takes ONE array argument. (The variadic `Schema.Literal` trap is separate and worse: it keeps only the first literal at runtime. See the rename table above.) |
+
+**The discriminator is the optional argument.** `Schema.Cause(e, d)`
+(`Schema.ts:9339`) and `Schema.Exit(...)` (`:9610`) are factories too, but their
+arguments are required, so forgetting to call them is an immediate type error.
+Only the zero-or-optional-arg factories type-check uncalled.
+
+**And do not over-correct: `layer` is usually a value.** `TestConsole.layer` is a
+plain `Layer.Layer<TestConsole>` (`testing/TestConsole.ts:289`), so
+`TestConsole.layer()` is an error. The pair sits in the same directory and reads
+identically. Check the declaration; do not pattern-match on the name.
+
 ## Related skills
 
 - **`effect-v4-schema`** — Class-vs-Struct, codecs, `optionalKey`, derived tooling.

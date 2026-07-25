@@ -394,3 +394,66 @@ Effect.runPromise(program.pipe(Effect.provide(DatabaseTest)));
 Keep test wiring explicit and close to the production composition style —
 the Live/Test difference should be one swapped layer at the edge, nothing
 deeper.
+
+### `Layer.mock`'s optionality is earned, not given — and one plain member revokes it
+
+`Layer.mock(Service, impl)` takes `PartialEffectful<S>`, not `Partial<S>`
+(`Layer.ts:2262`). That type is not "everything optional" — it splits the shape
+on one predicate:
+
+```ts
+// Layer.ts:2190 — a member is OPTIONAL iff it matches AnyEffectOrStream; else REQUIRED
+export type PartialEffectful<A extends object> = Types.Simplify<
+  & { [K in keyof A as A[K] extends AnyEffectOrStream ? K : never]?: A[K] }
+  & { [K in keyof A as A[K] extends AnyEffectOrStream ? never : K]: A[K] }
+>
+// Layer.ts:2199 — AnyEffectOrStream = Effect | Stream | Channel, or a function returning one
+```
+
+So **any non-effectful member is required in every single mock**: a sync
+function, a plain data property, a generic passthrough whose return type does
+not resolve to `Effect`/`Stream`/`Channel`. Add one and every existing
+`Layer.mock` call site must now spell out that member — the partial mock has
+silently degraded to `Layer.succeed` with extra ceremony. The type system
+reports it as "missing property" errors scattered across the test suite, far
+from the service shape that caused them.
+
+**House rule: no non-effectful members on a service shape.** A service is an IO
+contract. A pure helper belongs on a static, a namespace, or a plain exported
+function next to the pure class that owns the algorithm — never inside the
+`Context.Service` shape. That keeps every member effect-valued, which keeps
+every member optional, which keeps `Layer.mock` doing the one job it exists for.
+
+> **The wrong fix: wrapping the pure helper in `Effect.succeed` to satisfy the
+> rule.** It does buy back optionality — and it is the anti-pattern, not the
+> remedy. It makes every caller pay a `yield*` for a computation that cannot
+> fail, cannot suspend and needs no runtime; it hides a pure function inside an
+> IO contract where nobody will find it; and it makes the thing untestable
+> without a layer, which is exactly the cost the pure-core/effectful-edge split
+> (see `effect-v4-planning`, pillar 1) exists to avoid. **Move the member off
+> the shape. Do not decorate it into compliance.**
+
+### `dual` belongs on pure classes, never on a service shape
+
+`Function.dual` (the kit imports it as `Fn`) gives a combinator both the
+data-first and data-last spelling — `Package.addDependency(pkg, name, spec)`
+*and* `pkg.pipe(Package.addDependency(name, spec))`. That is the right shape on
+a **pure** class: `@effected/package-json`'s `Package` and `@effected/semver`'s
+`Range` / `SemVer` all use it, and they are pure Schema classes with no layer
+anywhere near them.
+
+Putting a dual member on a `Context.Service` shape costs more than it looks:
+
+- A dual member's declared type is an **overload pair**. Any override — in a
+  `Layer.mock` implementation, in a `Partial<Shape>` test-stub argument, in a
+  hand-written fake — must satisfy **both** overloads, not just the one the test
+  calls. The one-line stub that works for every other member
+  (`layerTest({ read: () => Effect.succeed(x) })`) stops compiling, and the fix
+  is to hand-write the full overloaded signature in the test.
+- It is also a non-effectful member by the rule above whenever the data-last
+  branch returns a function rather than an `Effect`, so it is `Layer.mock`-
+  required on top of being overload-shaped.
+
+The two rules compose into one design instruction: **service shapes carry plain,
+single-signature, effect-returning methods. Everything cleverer lives on the
+pure class.**

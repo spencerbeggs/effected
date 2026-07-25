@@ -1,59 +1,53 @@
 ---
 name: effect-v4-testing
-description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result, providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, and the mutate-the-edges discipline for proving a suite can fail. Covers the sharp edges (no it.scoped, it.prop throws on a Schema) and the FALSE GREENS that only surface at test time — a `0 tests passed` run that exits 0, TestClock starting at the epoch so clock reads return 1970, TestConsole.logLines accumulating across invocations, an eagerly-recording layerNoop stub, and Exit.isFailure failing to narrow inside assert.isTrue.
+description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail. Covers the sharp edges (no it.scoped, it.prop throws on a Schema, vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `0 tests passed` run that exits 0, TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch.
 ---
 
 # Effect v4 testing with `@effect/vitest`
 
 `@effect/vitest` re-exports Vitest, so it is the single entrypoint for test
-APIs. Effect programs run through `it.effect`, never through a bare `it()` that
-calls `Effect.runSync`/`runPromise`. Our house test files
-(`packages/jsonc/__test__/Jsonc.test.ts`, `packages/yaml/__test__/Yaml.test.ts`)
-are the canonical shapes; this skill is why they look the way they do. (The
-`effect/testing/*` modules — TestClock, TestConsole, TestSchema, FastCheck —
-are indexed in `effect-v4-module-index`; this skill owns how to use them.)
+APIs — with one exception (`vi.mock`, below). Effect programs run through
+`it.effect`, never through a bare `it()` that calls `Effect.runSync`/
+`runPromise`. Our house test files (`packages/jsonc/__test__/Jsonc.test.ts`,
+`packages/yaml/__test__/Yaml.test.ts`) are the canonical shapes; this skill is
+why they look the way they do. (The `effect/testing/*` modules — TestClock,
+TestConsole, TestSchema, FastCheck — are indexed in `effect-v4-module-index`;
+this skill owns how to use them.)
 
-**Migrating a plain-Vitest Effect repo? Adopt `@effect/vitest` — don't stay on
-plain Vitest.** A repo whose tests are plain Vitest (no `@effect/vitest`) is not
-"nothing to migrate on the testing axis"; the move is to add `@effect/vitest`
-and route Effect-returning tests through `it.effect`.
+**Migrating a plain-Vitest Effect repo? Adopt `@effect/vitest`.** A repo whose
+tests are plain Vitest is not "nothing to migrate on the testing axis": add
+`@effect/vitest` and route Effect-returning tests through `it.effect`. The
+conversion has its own traps →
+**[references/migrating-a-repo.md](./references/migrating-a-repo.md)**.
 
-**Install it by exact version, matching your `effect` pin:**
-
-```bash
-pnpm add -D @effect/vitest@4.0.0-beta.99   # the SAME beta as your `effect`
-```
-
-**Never `pnpm add -D @effect/vitest` bare, and never `@beta`.** The v4 line is
-published only under prerelease versions mirroring `effect`'s own beta
-numbering; neither default resolves to it (checked 2026-07-24):
+**Install it by exact version, matching your `effect` pin** — never bare, never
+`@beta`. The v4 line is published only under prerelease versions mirroring
+`effect`'s own beta numbering; neither default resolves to it (checked
+2026-07-24):
 
 | Specifier | Resolves to | Peers on |
 | --- | --- | --- |
 | bare / `@latest` | `0.30.0` | `effect@^3.22.0` — **the v3 line** |
 | `@beta` | `4.0.0-beta.101` | `effect@^4.0.0-beta.101` — ahead of a beta.99 pin |
-| `@4.0.0-beta.99` | `4.0.0-beta.99` | `effect@^4.0.0-beta.99` ✅ |
+| `@4.0.0-beta.101` | `4.0.0-beta.101` | `effect@^4.0.0-beta.101` ✅ |
 
 The bare form is the dangerous one: it installs the **v3-line** package with no
 peer warning at all, and fails only at runtime on the first `it.effect` call,
-with a message that never mentions `@effect/vitest`, v3-vs-v4, or versions:
+with a message that never mentions `@effect/vitest`, v3-vs-v4, or versions —
+`Cannot find module '.../@effect/vitest/.../node_modules/effect/dist/Arbitrary.js'`.
+That reads as a broken install, not a version-line mismatch. Confirm with
+`npm view @effect/vitest dist-tags` before believing any resolution. **Inside
+this monorepo** the dependency comes from `catalog:effect`, which already pins
+the matching beta.
 
-```text
-Cannot find module '.../@effect/vitest/.../node_modules/effect/dist/Arbitrary.js'
-```
-
-That reads as a broken install, not a version-line mismatch — budget for a long
-misdiagnosis if you skip the pin. Confirm with `npm view @effect/vitest dist-tags`
-before believing any resolution. **Inside this monorepo** the dependency comes
-from `catalog:effect`, which already pins the matching beta — the trap is
-real in any repo that consumes `effect` directly without that catalog.
-
-`@effect/vitest` re-exports Vitest, so it is a drop-in
-entrypoint: existing plain `it()` tests keep working unchanged, and only the
-Effect-bearing ones move to `it.effect` to unlock the typed-error assertions and
-false-green protections below. (Effect's own test helpers — `TestClock`,
-`TestConsole`, `FastCheck` — live in core `effect/testing/*` regardless of the
-test framework.)
+**`vi.mock` is the one import that must NOT come from `@effect/vitest`.** Vitest
+hoists `vi.mock(...)` above all imports, so a `vi` bound through the re-export
+is not yet initialized and the file dies at load with `Cannot access
+'__vi_import_1__' before initialization` — a message naming neither `vi` nor
+`@effect/vitest`. Write `import { vi } from "vitest"` in any file calling
+`vi.mock`. `vi.fn` / `vi.spyOn` are ordinary runtime calls and work fine through
+the re-export (measured across 24 files); importing `vi` from `"vitest"`
+uniformly is cheap insurance, not a requirement.
 
 ## The default runner: `it.effect` + `Effect.gen`
 
@@ -73,43 +67,35 @@ describe("Jsonc", () => {
 ```
 
 - **`it.effect` runs the returned Effect** and provides the default test
-  environment (`TestClock` + `TestConsole`). Its type is
-  `Tester<R | Scope.Scope>` — it already carries a `Scope`, so scoped effects
-  (`Effect.acquireRelease`, scoped layers) run **directly** under `it.effect`.
-- **There is no `it.scoped`** in `@effect/vitest@4.0.0-beta.94` — the Tester
-  surface is `skip`/`skipIf`/`runIf`/`only`/`each`/`fails`/`prop`. Do not reach
-  for it; scoped resources need no separate tester.
+  environment — `TestEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())`
+  (`packages/vitest/src/internal/internal.ts:42`). Its type is
+  `Tester<R | Scope.Scope>`, so scoped effects (`Effect.acquireRelease`, scoped
+  layers) run **directly** under `it.effect`.
+- **There is no `it.scoped`** (still true at beta.101). The Tester surface is
+  `skip`/`skipIf`/`runIf`/`only`/`each`/`fails`/`prop`
+  (`packages/vitest/src/index.ts:56-59` for the two conditional forms) —
+  **`it.effect.skipIf(cond)` and `it.effect.runIf(cond)` exist and are
+  well-typed**; reach for them instead of hand-rolling a conditional `describe`.
 - **`it.live`** (`Tester<Scope.Scope | R>`) opts into the real `Clock` and live
-  runtime services with no test-env overrides. Use only when a test genuinely
-  needs wall-clock behavior; the default stays `it.effect`.
+  runtime services. Use only when a test genuinely needs wall-clock behavior.
 - **`it.effect` takes a Vitest timeout as its third argument** —
-  `it.effect(name, self, timeout?: number | TestOptions)` (`@effect/vitest`
-  `dist/index.d.ts:33`). The trap: any real-time elapsed assertion above
-  Vitest's default 5000ms is **dead code** without it — Vitest aborts the test
-  before the assertion runs, and the failure reads "Test timed out in 5000ms",
-  not your bound. A wall-clock ceiling and the test's timeout must be
-  calibrated together; whichever is lower is the effective bound (the toml
-  scale suite shipped a 30s `assert.isBelow` under the 5s default and CI
-  red-flagged the *same* test twice before the timeout argument was added).
+  `it.effect(name, self, timeout?: number | TestOptions)`. Any real-time elapsed
+  assertion above Vitest's 5000ms default is dead code without it (see
+  [references/false-greens.md](./references/false-greens.md)).
 - **Never** `it("...", () => Effect.runPromise(program))`. Plain `it()` is fine
-  only for genuinely non-Effect pure code (`Jsonc.stripComments`, `Yaml.equals`)
-  — anything that yields an Effect uses `it.effect`.
+  only for genuinely non-Effect pure code (`Jsonc.stripComments`, `Yaml.equals`).
 - **Never launder an Effect into a fixture with `Effect.runSync`.** If a test
   input comes from an Effect (a parse, a decode), the test *is* an `it.effect`
   and you `yield*` it. If you only need a domain value to assert other behavior,
-  build it with `X.make` from structured fields. A pure `it()` whose input is
-  `Effect.runSync(X.parse(input))` is the same smell as `runPromise` in the
-  body — it hides an execution the runner rule exists to surface. Both roads
-  lead away from `runSync`.
-- **Assert with `assert.*`**, not `expect`, inside Effect programs — it reads
-  uniformly in generator bodies. House usage: `assert.deepStrictEqual`,
-  `assert.strictEqual`, `assert.isTrue`, `assert.instanceOf`, `assert.include`,
-  `assert.isAbove`.
+  build it with `X.make` from structured fields.
+- **`yield* import(...)` breaks** — it throws `(intermediate value) is not
+  iterable`, naming neither the import nor the yield. A dynamic import inside
+  `Effect.gen` is `yield* Effect.promise(() => import("./thing.js"))`. A bulk
+  `await` → `yield*` rewrite produces the broken form mechanically.
 
 ## Asserting on typed errors
 
-A test for the failure channel must not let the error escape as a defect. Two
-verified patterns:
+A test for the failure channel must not let the error escape as a defect.
 
 **`Effect.flip`** — swaps channels so the typed error becomes the success value.
 This is our house pattern:
@@ -128,36 +114,41 @@ it.effect("fails with an aggregate JsoncParseError", () =>
 **`Effect.result`** — never fails; returns a `Result` you narrow with
 `Result.isSuccess`/`Result.isFailure` (the v4 replacement for the removed
 `Either`). Reach for it when one program must assert on *both* channels, or to
-prove an input does not throw at all:
+prove an input does not throw at all.
 
-```ts
-const result = yield* Effect.result(Yaml.parse(doc));
-assert.isTrue(result._tag === "Success", `${doc} should parse`);
-```
-
-**`Effect.exit`** — the full `Exit` (including defects and interrupts) when you
+**`Effect.exit`** — the full `Exit` (defects and interrupts included) when you
 must inspect a `Cause`. Signatures (verified): `Effect.flip: Effect<A,E,R> =>
 Effect<E,A,R>`, `Effect.result: Effect<A,E,R> => Effect<Result<A,E>,never,R>`,
 `Effect.exit: Effect<A,E,R> => Effect<Exit<A,E>,never,R>`.
 
-This is the same invariant the parser-hardening skill enforces: malformed input
-fails through the typed channel, never as an unhandled defect. `Effect.flip`
-and `Effect.result` are how you *prove* it in a test.
+**`Effect.flip` is WRONG for a defect.** It swaps only the *typed* channel, so a
+defect escapes it and the test errors instead of asserting. Defects go through
+`Effect.exit`, **with an explicit throw/fail on the non-failure branch**:
 
-The invariant has a second half those two cannot prove: **genuine defects must
-NOT be swallowed into the typed channel** (a catch-all that masks a programmer
-error as a domain error passes every flip-based test). Asserting a Die takes
-the exit apart (`Cause.isDieReason`/`isFailReason` and `.cause.reasons`
-verified against beta.94 `Cause.d.ts`/`Exit.d.ts`; working example:
+```ts
+const exit = yield* Effect.exit(subject);
+if (Exit.isFailure(exit)) {
+  assert.include(Cause.pretty(exit.cause), "the expected message");
+} else {
+  assert.fail("expected a defect, but the effect succeeded");
+}
+```
+
+**A narrowing `if` with no `else` asserts nothing on the other path.** A bare
+`if (Exit.isFailure(exit)) { …assert… }` passes silently on success — found six
+separate times in one migration. Treat it as its own anti-pattern, not an
+Exit-specific one.
+
+This is the same invariant the parser-hardening skill enforces: malformed input
+fails through the typed channel, never as an unhandled defect. Its second half —
+**genuine defects must NOT be swallowed into the typed channel** — is what a
+flip-based test cannot prove (working example:
 `packages/toml/__test__/hostile.test.ts` "defect passthrough"):
 
 ```ts
 const exit = yield* Effect.exit(program);
-// `assert.isTrue(Exit.isFailure(exit))` does NOT narrow `exit` — assert helpers
-// are not type predicates, so `exit.cause` below would not compile under tsgo.
-// Narrow with a real `if`, and fail explicitly on the other branch.
 if (!Exit.isFailure(exit)) {
- assert.fail("expected a defect, got a success");
+  assert.fail("expected a defect, got a success");
 }
 assert.isFalse(exit.cause.reasons.some(Cause.isFailReason)); // NOT a typed Fail
 const die = exit.cause.reasons.find(Cause.isDieReason);
@@ -165,75 +156,36 @@ assert.instanceOf(die?.defect, Error);          // the ORIGINAL error, unmasked
 assert.notInstanceOf(die?.defect, MyTypedError); // not laundered into E
 ```
 
-When you only need the coarse verdict — "the cause carries a Die and no Fail" —
-`Cause.hasDies(exit.cause)` / `Cause.hasFails(exit.cause)` are the one-line
-spellings (both verified at beta.97; the `@effected/git` `available`
-defect-passthrough test is the working example). Reach for the full
-`reasons.find(Cause.isDieReason)` form above only when the assertion must also
-inspect the ORIGINAL defect value.
-
 The no-Fail-reason line is the discriminating assertion — without it, an
-implementation that wraps the defect in a typed error still passes.
+implementation that wraps the defect in a typed error still passes. When you
+only need the coarse verdict, `Cause.hasDies(exit.cause)` /
+`Cause.hasFails(exit.cause)` are the one-line spellings (verified at beta.97;
+the `@effected/git` `available` test is the working example).
 
-**Assert helpers are never type predicates — narrow with a real `if`.** The
-rule is general, not Exit-specific: `assert.isTrue(guard(x))` leaves `x` at
-the full union for ANY guard, because the assertion signature takes a
-`boolean`, not a type predicate. Verified under tsgo for `Exit.isFailure`:
-`assert.isTrue(Exit.isFailure(exit))` leaves `exit` unnarrowed, so the next
-line's `exit.cause` is a type error — use `if (Exit.isFailure(exit)) { … }`
-as above, or go through `Exit.getCause(exit)` → `Option<Cause<E>>` and branch
-on `Option.isSome`. The same trap applies to `Result.isSuccess`/
-`Result.isFailure` on the kit's pure Result-returning APIs — the Result-parity
-rule is settled kit-wide, so these are everywhere: `parseResult`/
-`stringifyResult` across jsonc, yaml, toml and markdown (plus
-`Jsonc.parseTreeResult`), `compileResult` in glob, and `parseResult`/
-`intersectResult` in semver:
-
-```ts
-const result = Jsonc.parseResult(text);
-// assert.isTrue(Result.isSuccess(result)) — does NOT narrow; result.success below fails tsgo
-if (!Result.isSuccess(result)) {
-  assert.fail("expected a successful parse");
-}
-assert.deepStrictEqual(result.success, { port: 3000 });
-```
+**Assert helpers are never type predicates — narrow with a real `if`.** The rule
+is general: `assert.isTrue(guard(x))` leaves `x` at the full union for ANY
+guard, because the signature takes a `boolean`, not a type predicate. Verified
+under tsgo for `Exit.isFailure`; the same trap applies to `Result.isSuccess`/
+`Result.isFailure` on the kit's pure Result-returning APIs — `parseResult`/
+`stringifyResult` across jsonc, yaml, toml and markdown, `compileResult` in
+glob, `parseResult`/`intersectResult` in semver.
 
 **`assert.deepStrictEqual` vs literal-typed encodes.** Comparing an encoded
-value that carries literal types (`type: "root"`) against an untyped
-plain-object fixture fails to COMPILE: chai's `<T>(actual: T, expected: T)`
-unifies `T` from the first argument, and the fixture's `type` widens to
-`string`. The pattern is an explicit type argument with a comment:
-
-```ts
-// fixture is untyped JSON; literal-typed encode needs the explicit <unknown>
-assert.deepStrictEqual<unknown>(encoded, fixture);
-```
-
-Any encode round-trip against plain-object fixtures hits this.
+value carrying literal types (`type: "root"`) against an untyped plain-object
+fixture fails to COMPILE — chai's `<T>(actual: T, expected: T)` unifies `T` from
+the first argument. Every encode round-trip against plain fixtures hits this;
+the pattern is an explicit type argument, `assert.deepStrictEqual<unknown>(encoded, fixture)`.
 
 ## Providing test / mock layers
 
-`layer(...)` applies to **any service in a test's `R` — owned or consumed**.
-Its signature (`@effect/vitest` `dist/index.d.ts:155`) takes any
-`Layer.Layer<R, E>`; nothing requires the package under test to declare the
-service. A package that owns no services but *consumes* `Path.Path` or
-`FileSystem.FileSystem` through its `R` channel is exactly the package that
-needs suite-boundary layers — do not read "has services" as a gate. (This
-skill previously did, and the walker migration plan was consequently written
-with per-test `.pipe(Effect.provide(Path.layer))` on every test — the very
-pattern the rule forbids.)
-
-Provide services at the **suite boundary** with `layer(...)`, not with
-per-test `.pipe(Effect.provide(L))`. The top-level `layer` builds the layer once
-per group, memoizes it via a `MemoMap`, keeps the scope open for the group, and
-closes it in `afterAll`:
+`layer(...)` applies to **any service in a test's `R` — owned or consumed**. Its
+signature takes any `Layer.Layer<R, E>`; nothing requires the package under test
+to declare the service. A package that owns no services but *consumes*
+`Path.Path` or `FileSystem.FileSystem` through `R` is exactly the package that
+needs suite-boundary layers.
 
 ```ts
 import { layer } from "@effect/vitest";
-
-class Foo extends Context.Service<Foo, string>()("Foo") {
-  static readonly layer = Layer.succeed(Foo)("foo");
-}
 
 describe("foo", () => {
   layer(Foo.layer)((it) => {
@@ -244,45 +196,65 @@ describe("foo", () => {
 });
 ```
 
-- The `layer` block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`); use
-  its `it.effect` normally — the service is already in the environment.
-- **`MethodsNonLive` has no `.live`** — `it.live` does not exist inside a
-  `layer(...)` block (verified against the beta.97 vitest source: `layer`'s
-  callback is typed `MethodsNonLive<R>`; only the top-level `Methods` adds
-  `live`). A wall-clock test that also needs the group's layer goes **outside**
-  the block as a top-level `it.live(...)` with the layer provided directly via
-  `.pipe(Effect.provide(TheLayer))`. Discovered live when a real-sleep
-  interruption test could not be written inside the group.
-- Nest extra deps with `it.layer(BarLayer)("nested", (it) => { … })`. The nested
-  form takes **`timeout` only** (no `memoMap`, no `excludeTestServices`) and
-  reuses the parent's memo map.
-- **A mock service is a `Context.Service` with a test `Layer`**
-  (an in-memory or stub implementation) provided via `layer(...)` — swap
-  `Live` → `Test` at this boundary, not inside test bodies.
-- `layer(L, { excludeTestServices: true })` runs the group **without** the
-  `TestClock`/`TestConsole` overrides (keep live behavior for that group).
-- **Build-once means shared-state-across-tests — the whole group, not just
-  `TestConsole`.** Because the layer is built once per group, every stateful
-  resource in it is cumulative across the group's tests: `TestClock.adjust`
-  advances a clock the *next* test inherits, an in-memory store (`:memory:`
-  SQLite, a `Ref`, a `PubSub`) keeps its rows and subscribers, and a TTL that
-  expired in test 3 is still expired in test 4. The `TestConsole.logLines`
-  accumulation this skill already lists is one instance of this rule, not the
-  rule. Write group tests against **distinct keys/specs per test**, or flush
-  explicitly before asserting counts (the ts-vfs `TypeCache` suite pre-flushes
-  its prune test for exactly this reason — it was bitten first).
+### `layer()` memoizes; plain `Effect.provide` does NOT. That asymmetry is the whole decision
 
-**Testing a boundary-tier package that does real IO needs no platform
-package.** `Path.layer` and `FileSystem.layerNoop(partial)` both come from
-`effect` core (Path.ts:870; FileSystem.ts:1040 — and there is **no**
-`FileSystem.layer` in core, only `layerNoop`), so a package like
-`@effected/walker` tests filesystem behavior with zero `@effect/platform-node`
-devDependency:
+The top-level `layer` builds its layer once per group through a `MemoMap`
+(`packages/vitest/src/internal/internal.ts:239,241`), keeps the scope open for
+the group, and closes it in `afterAll`. A per-test `.pipe(Effect.provide(L))`
+carries no memo map and rebuilds per test.
+
+**So per-test provide is the SAFE default, and collapsing a suite onto a
+suite-boundary `layer()` is the RISKY move** — not the neutral or obviously
+better one. Read the build-once rule as "every stateful resource in that layer
+is cumulative across the group": `TestClock.adjust` advances a clock the *next*
+test inherits, an in-memory store (`:memory:` SQLite, a `Ref`, a `PubSub`) keeps
+its rows and subscribers, a TTL that expired in test 3 is still expired in test
+4, and `TestConsole.logLines` keeps accumulating.
+
+The pre-flight before collapsing, in order:
+
+1. **Is the layer's state in-memory or on-disk?** On-disk is safe — filesystem
+   `beforeEach` hooks still run. In-memory (a `Ref`, a cache, a counter, a
+   `calls` recorder) is not: three tests asserting a stub call count once read
+   **4, 5 and 6 instead of 1**, green throughout.
+2. **Is the layer constant?** Necessary, not sufficient.
+3. **Is the service stateful, with that state's lifetime under test?** If so, a
+   shared instance dissolves the boundary under test while staying green — a
+   never-self-expiring per-root cache made two "second read is cached" tests
+   assert nothing. Grep candidates: `refresh()`, cache, memoization, "second
+   call returns cached".
+4. **Is the layer genuinely stateless** (`Logger.layer([])`)? Then memoization
+   is unobservable and collapsing is free.
+5. **Does the test drive the clock?** A clock-driving test must NOT live inside
+   a `layer()` block — the group shares one `TestClock` and `adjust` is
+   cumulative across its tests.
+
+Worked failures → [references/migrating-a-repo.md](./references/migrating-a-repo.md).
+Where you must vary state per test, keep the per-test provide, or write group
+tests against **distinct keys/specs per test** and flush explicitly before
+asserting counts.
+
+Other `layer(...)` mechanics (unchanged at beta.101):
+
+- The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`).
+- **`MethodsNonLive` has no `.live`.** A wall-clock test that also needs the
+  group's layer goes **outside** the block as a top-level `it.live(...)` with
+  `.pipe(Effect.provide(TheLayer))`.
+- Nest extra deps with `it.layer(BarLayer)("nested", (it) => { … })` — the
+  nested form takes **`timeout` only** (no `memoMap`, no `excludeTestServices`)
+  and reuses the parent's memo map.
+- `layer(L, { excludeTestServices: true })` runs the group **without** the
+  `TestClock`/`TestConsole` overrides.
+- A mock service is a `Context.Service` with a test `Layer`, swapped
+  `Live` → `Test` at this boundary, never inside test bodies.
+
+**Testing a boundary-tier package that does real IO needs no platform package.**
+`Path.layer` and `FileSystem.layerNoop(partial)` both come from `effect` core
+(Path.ts:870; FileSystem.ts:1040 — there is **no** `FileSystem.layer` in core,
+only `layerNoop`), so `@effected/walker` tests filesystem behavior with zero
+`@effect/platform-node` devDependency:
 
 ```ts
-import { layer } from "@effect/vitest";
-import { Effect, FileSystem, Path } from "effect";
-
 layer(Path.layer)("path ops", (it) => {
   it.effect("Path is in R, no Effect.provide in the body", () =>
     Effect.gen(function* () {
@@ -296,24 +268,32 @@ layer(FileSystem.layerNoop({ exists: (p) => Effect.succeed(p === "/a/.rc") }))(
 ```
 
 A suite-boundary layer cannot vary per test, so a suite with several filesystem
-fixtures needs **one `layer(...)` block per distinct fixture** — that is the
-house shape in `packages/walker/__test__/`. For service and layer design, see
+fixtures needs **one `layer(...)` block per distinct fixture** — the house shape
+in `packages/walker/__test__/`. For service and layer design, see
 `effect-v4-services-layers`.
+
+**Every stub effect goes through `Effect.suspend`.** A recorder that pushes
+eagerly logs calls that never executed — `layerNoop({ readFileString: (p) => {
+calls.push(p); … } })` records a read that was only *described*. Worked probe →
+[references/false-greens.md](./references/false-greens.md).
+
+### Faulting ONE method of a real layer
+
+For "behaves like the real service except this one method fails on demand",
+`layerNoop` is the wrong tool (it stubs everything) and there is no
+`FileSystem.layerWith` / `Layer.mapService` at beta.101. The house recipe is
+`Layer.effect` + spread the base + `Layer.provide(base)` — with
+`Layer.updateService` (`Layer.ts:1999`) as the shorter form when the subject is
+itself a layer, and `Layer.mock` (`Layer.ts:2262`) for partial stubs that die
+loudly on an unimplemented method. Full scaffold and the three ways to get the
+spread wrong → **[references/fault-injection.md](./references/fault-injection.md)**.
 
 ## Property testing with `it.effect.prop`
 
 Feed a Schema (or class — the class *is* the schema) directly as an arbitrary;
-`it.effect.prop` converts it via `Schema.toArbitrary`. This is our house
-property-test tool:
+`it.effect.prop` converts it via `Schema.toArbitrary`:
 
 ```ts
-const Sample = Schema.Struct({
-  name: Schema.String,
-  count: Schema.Int,
-  enabled: Schema.Boolean,
-  tags: Schema.Array(Schema.String),
-});
-
 it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
   Effect.gen(function* () {
     const text = yield* Yaml.stringify(value);
@@ -323,10 +303,12 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
 ```
 
 - **Schema conversion is `it.effect.prop`-only.** The top-level `it.prop`
-  (non-Effect body) accepts a `Schema` *in its type* but **throws at runtime** on
-  a Schema input — it only takes explicit `FastCheck` arbitraries. If a property
-  needs a hand-built arbitrary, import `FastCheck` from `effect/testing` and pass
-  it to the top-level `it.prop`:
+  (non-Effect body) accepts a `Schema` in its *type* but **throws
+  `Schemas are not supported yet`** at runtime — for both the array and record
+  forms (`packages/vitest/src/internal/internal.ts:179,195`). That message is
+  new at beta.101; older betas died with an opaque fast-check "expecting an
+  Arbitrary" error instead. Hand-built arbitraries go to the top-level
+  `it.prop`:
 
   ```ts
   import { FastCheck } from "effect/testing";
@@ -335,81 +317,61 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
     ([a, b]) => a + b === b + a);
   ```
 
-  Feed a Schema instead and you must use `it.effect.prop`.
-- **Schemas go in the ARRAY form only — the named-record form is broken in
-  beta.94.** `it.effect.prop("…", { n: Schema.Number }, ({ n }) => …)`
-  type-accepts a Schema but dies at collection with fast-check's
-  `Invalid parameter encountered at index 0: expecting an Arbitrary`: the
-  internals convert the Schema via `toArbitrary` and then unconditionally
-  overwrite the converted value with the raw Schema
-  (`@effect/vitest@4.0.0-beta.94` `dist/internal/internal.js:92-98`), so
-  `fc.record` receives the Schema itself. The error never names Schema, so it
-  reads like a caller mistake — it is not. Raw `FastCheck` arbitraries still
-  work in record form; Schemas require the array form (`[Schema.Number]`,
-  destructure positionally). Surfaced by the `@effected/glob` port; re-probe
-  on each catalog bump in case the upstream fix lands.
+- **The named-record form of `it.effect.prop` is FIXED at beta.101.** It used to
+  overwrite the converted arbitrary with the raw Schema; `internal.ts:151` now
+  reads `result[key] = Schema.isSchema(arb) ? Schema.toArbitrary(arb) : arb`, so
+  both `[Schema]` and `{ n: Schema }` convert correctly. The array-form-only
+  workaround this skill carried for beta.94 is retired.
 - **`isPattern` regexes must be lookahead-free.** `Schema.toArbitrary` derives
   generators from `.check(...)` constraints, and fast-check's `stringMatching`
   throws `Assertions of kind Lookahead not implemented yet`. Rewrite
-  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`. See
-  `effect-v4-schema` for making field models canonical so round-trip
-  properties do not lie.
+  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`.
 - **`fc.fullUnicodeString` / `fc.fullUnicode` do not exist** in the FastCheck
-  bundled with `effect/testing` at beta.98 (`typeof` is `undefined` — probed
-  2026-07-18). The v4 spelling for hostile-unicode strings (lone surrogates,
-  astral planes, U+0000) is `FastCheck.string({ unit: "binary" })`; plain
+  bundled with `effect/testing` (probed 2026-07-18). The v4 spelling for
+  hostile-unicode strings is `FastCheck.string({ unit: "binary" })`; plain
   `FastCheck.string()` stays BMP-safe and misses exactly the inputs a
   never-throws property exists to find.
 
 ## Time-dependent logic: `TestClock`
 
-**`it.effect` ALWAYS installs a virtual `TestClock`. This is not opt-in.** Any
-`Effect.sleep` / `Effect.delay` / `Effect.timeout` in a test body will **never
-advance on its own** — the test hangs until vitest's 5000ms timeout kills it,
-with no message pointing at the clock. If a test hangs for exactly five seconds,
-suspect wall-clock time before you suspect your code.
+**`it.effect` ALWAYS installs a virtual `TestClock`. This is not opt-in.**
+
+### The hang: a small REAL delay anywhere under the test, usually in `src`
+
+The expensive failure is not in the test file. It is a test with **no
+`TestClock` reference at all**, quietly relying on a 1–10ms real delay, which
+stops advancing the moment it runs under `it.effect` and hangs to the vitest
+timeout with no message pointing at the clock. In one conversion every file that
+already hand-wired `TestClock` converted cleanly; every genuine hang came from
+files that never mention it — and **in three of four cases the sleep lived in
+`src`, not the test**.
+
+**Any `Effect.sleep`, retry schedule, timeout or polling interval anywhere under
+the test — however small — needs either a driven clock or `it.live`.** Grep the
+implementation, not only the test:
+
+```text
+Effect\.sleep|Effect\.timeout|Schedule\.|Effect\.retry|Effect\.repeat|baseDelay|intervalMs|setTimeout\(
+```
+
+If a test hangs for exactly five seconds, suspect wall-clock time before you
+suspect your code.
 
 ### …and it starts at the EPOCH, so clock *reads* return 1970
 
-The hang is the loud half. The quiet half: **`it.effect` starts the `TestClock`
-at time zero**, so anything that *reads* the clock computes against
-**1970-01-01T00:00:00.000Z**. Probed on beta.94 — `DateTime.now` inside a bare
-`it.effect` is exactly the epoch.
+The quiet half: `it.effect` starts the `TestClock` at time zero, so anything
+that *reads* the clock computes against **1970-01-01T00:00:00.000Z** (probed on
+beta.94 — `DateTime.now` inside a bare `it.effect` is exactly the epoch).
+Nothing hangs, nothing errors: a CLI resolved **zero** Node versions because
+against a 1970 "now" every release was still unreleased; any "newer than N days"
+/ TTL / cache-expiry check inverts. If a time-dependent test passes but the
+*value* looks absurd, suspect the epoch. Set the clock explicitly with
+`TestClock.setTime(...)` whenever the code under test reads time.
 
-Nothing hangs. Nothing errors. The code just answers as if it were 1970:
-
-- a CLI resolved **zero** Node versions, because against a 1970 "now" every
-  release was still *unreleased*;
-- any "is this newer than N days" / TTL / cache-expiry check inverts;
-- a freshness filter silently keeps everything, or drops everything.
-
-If a time-dependent test passes but the *value* looks absurd — an empty result
-set, or nothing ever expiring — suspect the epoch before you suspect your logic.
-Set the clock explicitly (`TestClock.setTime(...)`) whenever the code under test
-*reads* time rather than merely sleeping.
-
-Either drive the clock with `TestClock.adjust`, or **restructure the test to
-need no time at all**. For an interrupt, prefer a failing sibling over a timeout:
-
-```ts
-// Interrupts the first effect, clock-free. `Effect.never` is not clock-backed.
-yield* Effect.exit(
-  Effect.all([codec.stringify(value), Effect.fail("x")], { concurrency: 2 }),
-)
-```
-
-Note what that `Effect.all` reports: the **sibling's `Fail`** on the aggregate
-cause, not the interrupt (`hasFails` true, `hasInterrupts` false). Asserting
-`Cause.hasInterrupts` on the outer exit would pass for the wrong reason. Assert
-on the *observable consequence* instead — that the interrupted resource still
-works afterward.
-
-Drive virtual time so schedules, timeouts, and retries resolve deterministically
-instead of waiting on the wall clock:
+### Driving it
 
 ```ts
 import { TestClock } from "effect/testing";
-import { Effect, Fiber } from "effect";
 
 it.effect("a sleeping fiber wakes when the clock advances", () =>
   Effect.gen(function* () {
@@ -423,104 +385,70 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
 - `TestClock.adjust(duration)` moves virtual time forward and runs everything
   scheduled up to the new time; `TestClock.setTime(timestamp)` jumps to an
   absolute time. Both return `Effect<void>`.
-- Time helpers live under the **`effect/testing`** subpath in v4 — import
-  `TestClock`, `TestConsole`, `FastCheck` from there, not from `@effect/vitest`
-  or a standalone `@effect/*` package. (`effect/testing` exports exactly
-  `FastCheck`, `TestClock`, `TestConsole`, `TestSchema`.)
-- No time-dependent package exists in the repo yet — this is the shape to use
-  when one lands; verify the exact signatures against the installed beta when
-  you first reach for it.
+- Time helpers live under the **`effect/testing`** subpath — `TestClock`,
+  `TestConsole`, `FastCheck`, `TestSchema`, not `@effect/vitest`.
+- **Do not manually provide `TestClock.layer()` under `it.effect`.** They
+  compose — `Clock` is a `Context.Reference` (`Clock.ts:111`) and
+  `TestClock.layer()` merely sets it (`TestClock.ts:379`), so an inner provide
+  shadows the runner's; `TestClock.adjust` is `Effect<void>` with `R = never`,
+  resolving through `fiber.getRef(Clock.Clock)` (`TestClock.ts:412`), so it
+  drives whatever clock is ambient. Nothing breaks, but drop the provide: a
+  nested TestClock captures its `liveClock` at build time via `Clock.clockWith`
+  (`TestClock.ts:235`), so under `it.effect` the inner clock's "live" clock **is
+  the outer TestClock** — `withLive` returns virtual time and the
+  too-long-without-advancing warning fiber can never fire.
+- **Never call `TestClock.adjust` under `it.live`.** That `as TestClock` cast is
+  unchecked — it is undefined behavior, not a type error.
+- **A clock-driving test must not share a `layer()` group** — the group's clock
+  is shared, so `adjust` is cumulative.
 
-## `TestConsole.logLines` ACCUMULATES for the whole test
+Or **restructure the test to need no time at all**. For an interrupt, prefer a
+failing sibling over a timeout — `Effect.exit(Effect.all([subject,
+Effect.fail("x")], { concurrency: 2 }))` interrupts the subject clock-free
+(`Effect.never` is not clock-backed). Note what that reports: the **sibling's
+`Fail`** on the aggregate cause, not the interrupt (`hasFails` true,
+`hasInterrupts` false), so asserting `Cause.hasInterrupts` would pass for the
+wrong reason. Assert on the *observable consequence* — that the interrupted
+resource still works afterward.
 
-`TestConsole.logLines` is cumulative and is **never drained by reading it**.
-Probed on beta.94: two reads across one test returned 2 lines then 4 lines, and
-the second read still contained the first run's output.
+## `it.effect` also intercepts CONSOLE output — including `Effect.log*`
 
-That makes this a false green:
+`TestEnv` installs `TestConsole` alongside the clock, so a test spying on the
+real `console.log` to capture Effect's output silently captures **nothing**.
 
-```ts
-// BOTH assertions read the FIRST run's output. The second cannot fail.
-yield* runCli(["--target", "a"]);
-assert.include(JSON.stringify(yield* TestConsole.logLines), "a");
-yield* runCli(["--target", "b"]);
-assert.include(JSON.stringify(yield* TestConsole.logLines), "a"); // still passes!
-```
+The sharp edge: **auditing for `Console.*` call sites is insufficient.**
+Effect's default logger writes through the same ref —
+`options.fiber.getRef(effect.ConsoleRef)` at `packages/effect/src/Logger.ts:273`,
+and again at `:310` and `:354` — so `Effect.log` / `logWarning` / `logError` are
+intercepted identically. One repo's audit cleared a package by grepping
+`Console.*` and missed three live `Effect.logWarning` sites.
 
-Any test that invokes a CLI (or any logging subject) **twice** is asserting
-against a growing buffer. Either put each invocation in its **own `it.effect`**,
-or snapshot the length before the second call and assert only on the new tail.
+Only three emit paths are genuinely immune: direct `console.*`, direct
+`process.stdout.write` / `process.stderr.write`, and a **replaced** logger set
+(`Logger.layer([...])` without `mergeWithExisting`) writing to one of those.
 
-## A `layerNoop` stub records at effect CONSTRUCTION time
+It fails silently, and it produced two vacuous passes — "expect no output in
+quiet mode" tests that pass unconditionally because the sink `TestConsole`
+drained is always empty. **A test whose only assertions are negative is the
+vacuous-pass shape**; where a positive sibling exists, it is the cheap proof the
+sink is live.
 
-A recorder that pushes eagerly logs calls **that never executed**:
-
-```ts
-// WRONG — pushes when the effect is BUILT, not when it runs.
-FileSystem.layerNoop({
- readFileString: (p) => { calls.push(p); return Effect.succeed(""); },
-});
-
-// RIGHT — the push happens only if the effect actually runs.
-FileSystem.layerNoop({
- readFileString: (p) => Effect.suspend(() => { calls.push(p); return Effect.succeed(""); }),
-});
-```
-
-Probed on beta.94: a service that builds its effects once (at layer construction,
-or anywhere the effect is constructed but not yielded) made the eager recorder
-log `/never-executed` for a read that never happened; the `Effect.suspend` version
-recorded nothing. **Wrap every recorder in `Effect.suspend`** — otherwise a test
-asserting "the file was read" passes against a code path that was only *described*,
-never run.
-
-## Draining a `PubSub` under `it.effect`
-
-Three sharp edges, all clock-adjacent:
-
-- **`PubSub.takeAll` suspends on an empty subscription.** Its return type is
-  `Effect<NonEmptyArray<A>>` — that *is* the proof. Under the virtual clock it
-  hangs to the vitest timeout. Use `PubSub.takeUpTo(sub, n)`, which returns what
-  is there.
-- **`PubSub.subscribe` requires a `Scope`**, and there is no `it.scoped`. Pipe
-  `Effect.scoped` **before** `Effect.provide`.
-- **`Effect.fork` does not exist** — it is `forkChild` / `forkScoped` /
-  `forkIn` / `forkDetach`. And `Stream.fromQueue` rejects a `Subscription`.
-
-The clock-free drain: subscribe, run the operation, then `takeUpTo`.
-
-```ts
-it.effect("emits the events", () =>
-  Effect.gen(function* () {
-    const svc = yield* ConfigEvents;
-    const sub = yield* PubSub.subscribe(svc.events);
-    yield* runTheOperation;
-    const events = yield* PubSub.takeUpTo(sub, Number.MAX_SAFE_INTEGER);
-    assert.deepStrictEqual(events.map((e) => e.event._tag), ["Discovered", "Loaded"]);
-  }).pipe(Effect.scoped, Effect.provide(layers)),
-);
-```
-
-If the service resolves its dependency from the **caller's** context at call
-time, that layer must be `Layer.mergeAll`'d into the test's context, not buried
-under `Layer.provide` beneath the service's own layer.
+`TestConsole.logLines` is also cumulative and is never drained by reading it, so
+any test that invokes a CLI twice asserts against a growing buffer →
+[references/false-greens.md](./references/false-greens.md).
 
 ## A test that cannot fail is worse than no test — mutate the edges
 
 A green suite proves nothing about the properties no test can observe. Over one
 migration (`@effected/walker`), **eight** distinct mutants each survived a fully
-green suite. In a later session, mutation turned up three more tests that were
-green, plausible, and **structurally incapable of failing**.
+green suite; a later session turned up three more tests that were green,
+plausible, and **structurally incapable of failing**.
 
 The discipline: **capture a baseline** (`git status --porcelain > /tmp/baseline`),
-then break the implementation in the way the property forbids (with the editor —
-never `git checkout`/`git stash`, other work lives in the tree), watch that exact
-test go red, revert, and confirm the status matches the **baseline** — not that it
-is empty. Unrelated uncommitted work is normal; the check is that you left the
-tree exactly as you found it.
-
-Run the mutant to **find out**, not to watch it go red. Three rules carry most of
-the value:
+break the implementation in the way the property forbids (with the editor —
+never `git checkout`/`git stash`, other work lives in the tree), watch that
+exact test go red, revert, and confirm the status matches the **baseline** — not
+that it is empty.
 
 - **The assertion must DISCRIMINATE** — confirm the test fails *for the right
   reason*, not merely that it fails.
@@ -532,84 +460,40 @@ the value:
 Full discipline, the edge-case checklist, and the worked failures →
 **[references/mutation-testing.md](./references/mutation-testing.md)**.
 
-### A big green count is not evidence for a surface the suite never calls
+## Other false greens, in one place
 
-Before trusting a suite as the regression gate for a change, confirm the suite
-actually **calls the surface you changed**. A large passing count creates false
-confidence when the tests reach the implementation by a private path. In
-`@effected/yaml` the 1226 conformance fixtures drive an internal engine facade
-(`__test__/e2e/support/engine.ts`) and never call `Yaml.parse`, so a green 1226
-said nothing about a change to `Yaml.parse`'s derivation — the count measured
-the engine, not the public function. The fix caught it: build a **differential**
-against the prior implementation across the same corpus, and — the step that
-makes it non-vacuous — prove the differential can fail (inject a divergence,
-watch it flag) before trusting a green. A suite that cannot exercise your change
-cannot fail in response to it, which is the same defect as a mutant that cannot
-be pinned, one level up.
+`0 tests passed` is a FAILED run that exits 0 (three distinct producers,
+including one bad file zeroing a whole package); `TestConsole.logLines`
+accumulation; the eager `layerNoop` recorder; `PubSub.takeAll` hanging on an
+empty subscription; timing gates lying by ~18× under coverage; a big green count
+for a surface the suite never calls. Each with its probe →
+**[references/false-greens.md](./references/false-greens.md)**.
 
-## `0 tests passed` is a FAILED run, not an empty one
-
-A module-level throw — most commonly the `Context.Service` TDZ (see
-`effect-v4-services-layers`) — is swallowed by the agent reporter, which prints
-`0 tests passed` and **exits 0**. It typechecks clean, so nothing else warns you.
-
-**Zero collected tests is never a pass.** Read the Tests line, not the exit code.
-If a file you just touched reports no tests, it did not run: import it directly
-and look at the throw before you believe anything else the suite says.
-
-**The sharper form: ONE broken file zeroes the whole package.** A single test
-file with a load-time error — even a scratch/debug file — silently zeroes the
-entire package run: `Tests: 0/0 passed`, exit 0, and hundreds of sibling tests
-vanish with it. The `--reporter=json` output is equally empty
-(`numTotalTests: 0`, zero suites), so the reporter offers no cause. The tell is
-a package you KNOW has a nonzero suite reporting `0/0`; the remedy is bisecting
-the test files for the one that fails to load (observed 2026-07-18: a 400-test
-package zeroed by one bad scratch file). Never leave scratch `*.test.ts` files
-in a test tree — probe with `npx tsx` against a probe file INSIDE the package
-tree instead (see `effect-v4-source-lookup` for why `/tmp` cannot resolve
-`effect`).
-
-**The other producer: a project filter run from the wrong directory.** `vitest
-run --project @effected/walker` invoked from **inside** the package directory
-matches no project — the `--project` filter is resolved **root-relative** — and
-prints `Tests: 0/0 passed (0ms)`, exit 0, looking exactly like a clean run.
-**Run project-filtered vitest from the repo root**, always. You land on this
-path in the first place when the `vitest-agent` MCP `run_tests` tool drops mid-
-session and you fall back to a raw `vitest` invocation; an MCP dropout is the
-cue to be *more* careful about cwd, not less. The tell is the same as every
-`0/0`: read the `Tests:` line, never the exit code — a stale `cd` from three
-commands ago will do this to you silently.
-
-## Timing gates under coverage lie by an order of magnitude
-
-v8 coverage instrumentation cost a measured **~18×** on parser-heavy code in
-this repo (63ms clean vs 1126ms instrumented for the same parse; a 4.9s
-pathological case took 114s). A raw-millisecond performance assertion is
-therefore meaningless under coverage: it fails in CI for reasons unrelated to
-the code. The house pattern is **calibrated budgets** — time a small
-calibration input through the same code path, divide by its clean-run
-baseline, and scale every budget by that factor. A genuine algorithmic
-regression still fails (quadratic outruns any constant factor), while
-instrumentation and slow hardware scale both sides together.
+**Zero collected tests is never a pass. Read the Tests line, not the exit code.**
 
 ## House conventions
 
 - Tests live in each package's `__test__/` directory (`*.test.ts`), never
   co-located in `src/`.
 - Construct domain values via the schema's `X.make`, never `new`.
-- **Assert with `assert.*` from `@effect/vitest`, never `expect`.** Every test
-  file in this monorepo does. `expect(x).toEqual(y)` → `assert.deepStrictEqual`;
-  `toBe` → `assert.strictEqual`; `toBeInstanceOf` → `assert.instanceOf`;
-  `toBe(true)` → `assert.isTrue`; `toHaveLength` → `assert.lengthOf`.
+- **In this monorepo, assert with `assert.*` from `@effect/vitest`, never
+  `expect`** — the root `CLAUDE.md` mandates it and every test file here obeys.
+  `expect(x).toEqual(y)` → `assert.deepStrictEqual`; `toBe` →
+  `assert.strictEqual`; `toBeInstanceOf` → `assert.instanceOf`; `toBe(true)` →
+  `assert.isTrue`; `toHaveLength` → `assert.lengthOf`.
+  **This is house convention, not a technical constraint.** `@effect/vitest`
+  re-exports Vitest and `expect` works unchanged inside `it.effect`; nothing
+  about it is broken. In a repo whose house style is `expect`, do **not** sweep
+  it — that triples a diff for zero behavior change. Follow the host repo.
 - Keep the boundary honest: assert that the package's own error escapes
   (`error._tag === "JsoncParseError"`), and that the schema path surfaces a
   `SchemaError` — the two must not drift.
-- **A test that cannot fail is worse than no test** — see the mutation section
-  above. Two more historical cases beyond the walker eight: a
-  prototype-pollution guard whose payload could never mutate the asserted
-  object, and a `@ts-expect-error` in a file the tsconfig silently excluded.
+- **A test that cannot fail is worse than no test.** Two historical cases beyond
+  the walker eight: a prototype-pollution guard whose payload could never mutate
+  the asserted object, and a `@ts-expect-error` in a file the tsconfig silently
+  excluded.
 
-> **Version note.** Every signature above was verified against
-> `@effect/vitest@4.0.0-beta.94` on `effect@4.0.0-beta.94`. If the `effect`
-> catalog bumps, re-verify the `layer` options bag and the
-> `it.prop`-throws-on-Schema behavior first — those are the most likely to shift.
+> **Version note.** Verified against `@effect/vitest@4.0.0-beta.101` on
+> `effect@4.0.0-beta.101` (2026-07-25), with older probes dated inline. If the
+> `effect` catalog bumps, re-verify the `layer` options bag and the
+> `it.prop`-throws-on-Schema behavior first — those shift most often.
