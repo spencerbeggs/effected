@@ -130,6 +130,42 @@ Duplicating them here is the re-declaration that killed the previous package.
 What is left: `timeout` (**no default** — an install and a `rev-parse` cannot
 share one), `redact`, `maxOutputBytes`.
 
+### The test doubles do NOT default the same way, on purpose
+
+`ToolDiscovery.makeTest` follows the kit convention: every unstubbed member
+**dies** naming itself, because none of them has an honest default — a
+fabricated `ResolvedTool` would leak into consumer logic as fact.
+
+`LocalExec.makeTest` deliberately does **not**. Its one member has a correct,
+real answer for the unstubbed case: `Option.none()` *is* the global-only wiring,
+not a fabrication. Dying there would force every consumer test to stub a member
+it does not care about, to assert something the double already knows. Recorded
+as an accepted exception to the die-loudly rule (2026-07-25) — the test for
+whether a default is admissible is "would a real implementation legitimately
+answer this?", not "is it convenient".
+
+### Biome edges in this package
+
+Two rules false-positive on Effect idioms here. Both fixes are narrow; neither
+disables a rule globally.
+
+- **`Sink.forEach` trips `lint/suspicious/useIterableCallbackReturn`.** Biome
+  pattern-matches the *name* against `Array#forEach` and demands the callback
+  return nothing, but a `Sink` callback returns an `Effect`. Fix: a
+  `biome-ignore` line directly above the call with the reason spelled out (see
+  `__test__/Run.test.ts`). Do not restructure the sink to satisfy it.
+- **An exhaustive `switch` inside a getter trips `lint/suspicious/useGetterReturn`.**
+  Biome cannot prove a `switch` over a literal union is exhaustive, so it sees a
+  path with no return. Fix: an if-chain with the final variant as the tail
+  return — the shape `CommandOutputError.message` now uses. Prefer that for any
+  literal-union message getter.
+
+Two more worth knowing, both hit while writing this package: `useImportType`
+fires on a symbol used **only** in a type position (`LocalExecError` appears
+solely in the `ToolResolutionFailure` union), and the Biome LSP only sees files
+you have touched — run `biome_check` over the whole package before handing work
+off, or a formatting-only diff bounces the pre-commit hook.
+
 ### `collectTee` is a separate combinator, not an option
 
 Only it requires core `Stdio` in `R`, and **an option cannot vary the `R`
