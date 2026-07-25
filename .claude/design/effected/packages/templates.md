@@ -1,10 +1,11 @@
 ---
-status: draft
+status: current
 module: effected
 category: architecture
 created: 2026-07-25
 updated: 2026-07-25
-completeness: 60
+last-synced: 2026-07-25
+completeness: 92
 related:
   - ../effect-standards.md
   - ../roadmap.md
@@ -158,8 +159,8 @@ export class SectionId extends Schema.Class<SectionId>("SectionId")({
 }) {
   /** Build a `Section` for this identity. */
   section(content: string): Section;
-  /** Identity comparison: case-insensitive key, exact style. */
-  matches(that: SectionId): boolean;
+  // As built: `matches` was dropped — identity comparison is `Equal.equals`,
+  // which the nested-equality probe confirmed is deep and exact.
 }
 
 /** An identity plus the content the owner wants in it. */
@@ -176,7 +177,7 @@ export class Section extends Schema.Class<Section>("Section")({
 Three decisions:
 
 - **`commentStyle` is required, with no default.** v3 defaults it to `"#"`. A defaulted comment style means a caller who forgets it writes `#` markers into a TypeScript file — a syntax error in the user's file, produced silently by an omitted argument. One word at the call site buys that away.
-- **The key is stored verbatim and compared case-insensitively.** The rendered marker uppercases it (`# --- BEGIN SAVVY-LINT MANAGED SECTION ---`), preserving on-disk compatibility with every file v3 already wrote, while the schema stays canonical — an uppercasing *transformation* would break the encoded-side round-trip the [schema standards](../effect-standards.md#schema-standards) require. Two declared sections whose keys differ only in case are the same section, which is a [`duplicateSection` parse failure](#errors), not a silent second block.
+- **The key is stored, rendered and compared verbatim** (ruled 2026-07-25; this reverses the case-insensitive proposal originally drafted here). A file already carrying `SAVVY-LINT` markers is managed by declaring the key `"SAVVY-LINT"`. Rendering verbatim and matching exactly go together: an uppercasing renderer with case-sensitive keys would let two distinct keys produce one marker, and an uppercasing *transformation* on the schema would break the encoded-side round-trip the [schema standards](../effect-standards.md#schema-standards) require. If adoption ever hits a genuinely mixed-case corpus, a normalization option is the additive fix.
 - **`read` returns the caller's key, not the on-disk spelling.** `read(path, id)` answers with `id.key`; returning the file's casing would make `Equal.equals(read(...), expected)` fail for a purely cosmetic difference.
 
 **No custom `Equal`/`Hash`.** v3 overrode both on `SectionBlock` to compare *normalized* content — trimmed and whitespace-collapsed. That is a silent-no-op generator: a template change that only alters indentation compares equal, reports `Unchanged`, and never reaches the file. v4 uses the schema class's structural equality, with exactly one normalization, [line endings](#line-endings-are-the-invariant-v3-did-not-have), which exists to *preserve* idempotency rather than defeat drift detection.
@@ -481,8 +482,73 @@ One integration suite (`__test__/integration/`) drives the real `@effect/platfor
 
 `savvy.build.ts` carries the one narrow suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }` for the synthesized bases of the schema class factories ([effect-api-extractor-bases](../effect-standards.md#api-extractor--effect-class-factories)). Never widen it. Gate on a cold `pnpm build --filter @effected/templates`, never the raw script.
 
-## Open questions
+## As built (2026-07-25)
 
-1. **Should `duplicateSection` be a parse failure or a repair?** Failing typed is the safe default and this doc takes it, but a consumer facing a file that v3 already corrupted has no path forward except hand-editing. An alternative is a `sync`-only repair that collapses duplicates into the first slot and reports it in the outcome. Deferred until a real corrupted file shows up.
-2. **Does the marker phrase belong on the dialect or the section?** This doc puts it on the dialect (one phrase per service instance), which means a consumer cannot manage two differently-phrased families in one document. That seems right; a second phrase in one file is a strong smell. Recorded in case a consumer proves otherwise.
-3. **Should `SectionKey` case-insensitivity be dropped at `1.0`?** It exists to keep v3-written `SAVVY-LINT` markers readable. Once no v3 files remain in the wild, exact matching is simpler and one fewer rule to remember.
+Implemented against `effect@4.0.0-beta.101`. 128 tests, `tsc --noEmit` clean, biome clean, and a zero-warning `issues.json` (`warnings: 0, errors: 0, suppressed: 10`, all `*_base`). What follows is where the build diverged from the design above, and what it learned.
+
+### Rulings folded in
+
+The five open questions were [ruled on 2026-07-25](../../../plans/2026-07-25-github-split-decisions-log.md): duplicates fail typed with no repair mode, declared-order normalization is the contract, one marker phrase per dialect, and `@savvy-web/templates` stands as the content home. The fifth changes this document: **`SectionKey` is case-sensitive from day one.** The case-insensitive matching described earlier existed only to keep v3-written `SAVVY-LINT` markers readable; consumers instead declare the exact key present in their files. Markers therefore render the key **verbatim** rather than uppercased — the two go together, since an uppercasing renderer plus case-sensitive keys would let two distinct keys produce one marker.
+
+### Corrections to the design
+
+- **`SectionReconciliation` is a plain interface, not a `Schema.Class`.** It holds `ReadonlyArray<SyncOutcome>`, and `SyncOutcome` is a `Data.TaggedEnum` rather than a schema, so the class form would have been schema-shaped in name only.
+- **`SectionKey` is a checked string, not branded.** A brand makes the Type nominal, which forces every call site through a decode step just to write `SectionId.make({ key: "example-tool", … })`. The validation a brand would carry is already enforced at construction — `Schema.Class.make` validates `.check(...)` constraints and throws, confirmed by mutation.
+- **`SectionRenderError` gained a third reason, `duplicateDeclaration`.** Declaring one identity twice in a single `syncAll` states two intentions for one block, and any choice between them is a guess — the same argument that makes `duplicateSection` fail on the document side. The design had the guard on only one side.
+- **EOL canonicalization happens at parse time**, not inside equality. Parsed section content is normalized as it is scanned, and the declared side is normalized in `check`/`reconcile`. Putting it in a custom `Equal` would have made `Equal.equals` dishonest for a consumer comparing two sections directly.
+- **`SectionDialect.matchers()` returns a structurally-inlined type.** See [Build](#build-1).
+
+### The nested-equality probe
+
+The design's one implementation precondition — does `Schema.Class` equality recurse into a field whose type is another `Schema.Class`? — was probed before any comparison code was written. **It does**, and deeply: through `optionalKey` fields and through `Schema.Array` element classes, with `Hash` agreeing wherever `Equal` does. 14/14 cases as expected, five of them returning `false`, so the probe discriminates rather than passing vacuously.
+
+The discriminating case is the one that mattered: same key with a *different* nested `CommentStyle` compares `false`, so equality does not ignore the nested field. Had it ignored it, a `//` section would have compared equal to a `#` section and `syncAll` would have silently merged two different-language blocks. The design's "no custom `Equal`/`Hash`" delta therefore stands as written, and drift detection is plain `Equal.equals` on `Section`.
+
+### What the tests caught
+
+Four defects that a green suite would otherwise have shipped, recorded because each names a class of mistake rather than a typo:
+
+1. **CRLF was downgraded on every pass.** The end-marker match *consumed* the trailing `\r`, so the span held a CR the canonical render never re-emits; each reconciliation stripped one and the document never reached a fixed point. The `\r` is now a **lookahead**.
+2. **A stateful-regex hazard.** The scanners carry `g`, and `regex.test` advances the shared `lastIndex`, so a second call on the same content answered differently from the first. Now `matchAll`, which clones internally.
+3. **A NUL collision that was documented but not enforced.** `CommentStyle.id` separates its fields with NUL and the doc comment claimed NUL could not appear in a delimiter — but the check allowed it, so `{prefix: "a\0b"}` and `{prefix: "a", suffix: "b"}` keyed the same entry. The delimiter now rejects all control characters.
+4. **`FileSystem.readFileString` strips a leading BOM.** Verified against `@effect/platform-node@4.0.0-beta.101`: reading through it made the first sync silently delete a user's BOM — a direct violation of the text-preservation promise. The service reads `fs.readFile` and decodes with `ignoreBOM: true`. **This is the finding that justified the integration suite**, and no in-memory double could have produced it.
+
+### Mutation results
+
+Six mutants; four died immediately, two exposed tests that could not fail:
+
+- **Dropping EOL normalization in `check` left the suite fully green.** The CRLF tests only covered LF declared content against a CRLF document, never the case that matters — a *caller* supplying CRLF content, which without normalization reports drift forever and rewrites on every run. Both the `check` and `reconcile` paths now have that case.
+- **The ordering property could not fail.** Its generated documents contain no pre-existing sections, so every section was created and appended and the reassignment path — where ordering normalization actually lives — was never exercised. A second property now reconciles once to create, then re-declares in reversed order against the result.
+
+Both gaps were the same shape: a test that exercises only the easy path of a two-path algorithm. That is the thing to look for when mutating this package.
+
+### Testing posture, as built
+
+Pure suites use plain `it` with no layers at all — the split paying for itself, since the reconciliation scenarios that cost the v3 suite a filesystem are string literals here. Service suites use `it.effect` over an in-memory `FileSystem` built fresh per test and provided at the test boundary.
+
+Two double-related traps are worth recording. `FileSystem.layerNoop` fails **unimplemented** members with a typed `NotFound`, which this package reads as "the file is absent" — so a double implementing only `readFileString` would make every test silently see an empty document instead of its fixture; the double implements `readFile`, the method the service actually calls. And every fake operation is wrapped in `Effect.suspend`, so it observes the map as of when the effect runs rather than when it was constructed.
+
+The integration suite (`__test__/integration/`) covers exactly what a fake cannot settle: the tag `NodeFileSystem` reports for a missing file — asserted against `readFile`, the method the service calls, since pinning it on a method the code does not use would prove nothing — plus real CRLF bytes, a real unchanged-means-unchanged mtime, the BOM, and a read failure that is *not* `NotFound` (reading a directory), which proves the degrade is not over-applied.
+
+### Build
+
+The narrow `_base` suppression landed as designed, covering ten synthesized class-heritage symbols. Two lessons about its boundary:
+
+- **`MarkerMatcher` had to be inlined structurally.** An internal type named on an `@internal` method of a `@public` class still fails the gate, and `@internal` does not help — nor does demoting the interface to a named `type` alias, because an alias is still a named symbol. Inlining the shape at its use sites is the sanctioned fix, and the suppression stayed scoped to `_base`.
+- **`{@link X}` is ambiguous for a `Data.TaggedEnum`**, where one name is both a type and a const. Backticks are the only correct form.
+
+### Deferred
+
+Nothing in v1 scope is outstanding. The [out-of-scope list](#deliberately-out-of-scope) is unchanged, and the consumer migration (`@savvy-web/silk-effects` → this package plus `@savvy-web/templates`) is downstream work.
+
+## Settled questions
+
+All five open questions were [ruled on 2026-07-25](../../../plans/2026-07-25-github-split-decisions-log.md) and are recorded here so they are not re-litigated.
+
+1. **`duplicateSection` fails typed; there is no repair mode.** Repair mutates a user's file on an ambiguity, which is a policy call this package does not get to make. A v3-corrupted file is hand-fixed once. If adoption demands it, a `sync` option is the additive fix.
+2. **Declared-order normalization is the contract**, not a softenable side effect. It is what makes "the preamble precedes the tool block" enforceable.
+3. **The marker phrase lives on the dialect** — one phrase family per document keeps parsing unambiguous, and two families in one file is out of scope.
+4. **`SectionKey` is case-sensitive from day one**, and markers render the key verbatim. See [the identity rules](#sectionkey-sectionid-section).
+5. **`@savvy-web/templates` stands as the content home.** Whether downstream ships it as a new package or keeps the content in `silk-effects` is downstream's call and does not affect this design.
+
+One question the implementation *raised* and answered rather than deferring: declaring one identity twice in a single call is now `duplicateDeclaration`, the caller-side twin of ruling 1.
