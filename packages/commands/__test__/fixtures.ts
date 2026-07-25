@@ -15,6 +15,8 @@ export type ScriptResult =
 export interface SpawnRecord {
 	readonly command: string;
 	readonly args: ReadonlyArray<string>;
+	/** The CommandOptions exactly as the spawner received them — env/extendEnv assertions read these. */
+	readonly options: ChildProcess.CommandOptions;
 	/** Set when the handle's `unref` effect actually RAN (not merely was built). */
 	unrefed: boolean;
 }
@@ -63,7 +65,12 @@ export const scripted = (script: (command: string, args: ReadonlyArray<string>) 
 			}
 			return Effect.suspend(() => {
 				const result = script(command.command, command.args);
-				const record: SpawnRecord = { command: command.command, args: command.args, unrefed: false };
+				const record: SpawnRecord = {
+					command: command.command,
+					args: command.args,
+					options: command.options,
+					unrefed: false,
+				};
 				spawns.push(record);
 				if (result instanceof PlatformError.PlatformError) {
 					return Effect.fail(result);

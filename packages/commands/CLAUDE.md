@@ -46,8 +46,8 @@ helper. `Run` is **free functions**, not a service, for exactly this reason.
 - `Retry.ts` — `isTransient` / `transient()` / `TRANSIENT_PATTERNS`. Vocabulary
   for `Effect.retry({ while, schedule, times })`, **not** a retrying runner.
 - `Run.ts` — `collect` / `collectTee` / `text` / `lines` / `json` / `exitCode` /
-  `succeeds` / `stream` / `detach`, `CommandOutput`, `CommandFailedError`,
-  `CommandOutputError`.
+  `succeeds` / `stream` / `detach` / `extendEnv`, `CommandOutput`,
+  `CommandFailedError`, `CommandOutputError`.
 - `Tool.ts` — `Tool`, the `VersionProbe` union (`VersionFlag` / `VersionJson` /
   `VersionNone`), `ToolSource`, `MismatchPolicy`.
 - `ToolDiscovery.ts` — the service + layer, `ResolvedTool`, the three tool
@@ -130,6 +130,20 @@ Duplicating them here is the re-declaration that killed the previous package.
 What is left: `timeout` (**no default** — an install and a `rev-parse` cannot
 share one), `redact`, `maxOutputBytes`.
 
+**The `extendEnv` trap.** Core's `setEnv` merges into `options.env` but never
+sets `extendEnv`, and the Node spawner resolves the child environment as
+`extendEnv ? { ...process.env, ...env } : env` — so a command built with bare
+`setEnv({ SOME_VAR: x })` spawns a child whose ENTIRE environment is that one
+variable: no `PATH`, no `HOME`, silent at the type level, "tool cannot find its
+own binary" at runtime. **`Run.extendEnv` is the blessed path for "add env vars
+without losing the parent environment"**: it merges like `setEnv` (new values
+win) AND forces `extendEnv: true` — deliberately, even over a construction-time
+`false`, because inheriting the parent env is its whole purpose. It composes
+public `ChildProcess.make`/`pipeTo` (no re-declaration). A hermetic env is what
+bare `setEnv`/construction options are for. The unit suite carries a CONTROL
+pinning the core behavior itself — if it fails, a core beta changed `setEnv`
+and the combinator's raison d'être needs re-evaluating.
+
 ### The test doubles do NOT default the same way, on purpose
 
 `ToolDiscovery.makeTest` follows the kit convention: every unstubbed member
@@ -174,8 +188,8 @@ requirement.
 
 ## Testing
 
-111 tests in `__test__/`: 103 unit (Redaction 17, Run 31, Retry 12, LocalExec
-10, ToolDiscovery 33) and 8 e2e. `@effect/vitest`, `it.effect`, `assert.*` —
+118 tests in `__test__/`: 108 unit (Redaction 17, Run 36, Retry 12, LocalExec
+10, ToolDiscovery 33) and 10 e2e. `@effect/vitest`, `it.effect`, `assert.*` —
 never `expect`.
 
 - Unit: `__test__/fixtures.ts` scripts a `ChildProcessSpawner` via

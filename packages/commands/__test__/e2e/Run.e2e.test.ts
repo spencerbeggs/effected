@@ -116,6 +116,32 @@ describe("Run against real processes", () => {
 	);
 });
 
+describe("environment extension against a real spawn", () => {
+	// One probe script serves both halves: it reports whether the child saw the
+	// marker AND whether it saw a PATH. The pair is what discriminates — either
+	// test alone would pass under the wrong env-resolution behavior.
+	const probe =
+		"process.stdout.write((process.env.EFFECTED_MARKER ?? 'no-marker') + ':' + (process.env.PATH ? 'has-path' : 'no-path'))";
+
+	it.effect("Run.extendEnv gives the child the new variable WITHOUT losing the parent PATH", () =>
+		Effect.gen(function* () {
+			const output = yield* live(Run.text(node(probe).pipe(Run.extendEnv({ EFFECTED_MARKER: "x" }))));
+			assert.strictEqual(output, "x:has-path");
+		}),
+	);
+
+	it.effect("bare core setEnv strips the parent environment — the platform trap Run.extendEnv exists for", () =>
+		// This empirically pins the resolveEnvironment behavior the combinator
+		// compensates for: setEnv never sets extendEnv, so the child's WHOLE
+		// environment is the one variable. The spawn itself still works because
+		// `node` is invoked by absolute path, not through PATH lookup.
+		Effect.gen(function* () {
+			const output = yield* live(Run.text(node(probe).pipe(ChildProcess.setEnv({ EFFECTED_MARKER: "x" }))));
+			assert.strictEqual(output, "x:no-path");
+		}),
+	);
+});
+
 describe("Run.detach lifecycle", () => {
 	it.effect(
 		"an unref'd child SURVIVES its scope closing",

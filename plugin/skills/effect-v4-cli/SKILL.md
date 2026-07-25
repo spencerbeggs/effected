@@ -65,7 +65,7 @@ modules (`unstable/process/index.ts`):
 
 | you want | v4 |
 | --- | --- |
-| `@effect/platform/Command` (build a command value) | **`effect/unstable/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:583,670,702,766,804`) |
+| `@effect/platform/Command` (build a command value) | **`effect/unstable/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:583,670,702,766,804`). **Warning:** `setEnv` never sets `extendEnv`, so the child's env is ONLY what you pass — it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`) |
 | `@effect/platform/CommandExecutor` (run it) | **`effect/unstable/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:241`) |
 
 > **Do not hand-roll a `node:child_process` layer or a parallel

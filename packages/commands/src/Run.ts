@@ -1,5 +1,5 @@
 import type { Duration, Redacted } from "effect";
-import { Effect, PlatformError, Schema, Stdio, Stream } from "effect";
+import { Effect, Function as Fn, PlatformError, Schema, Stdio, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { OutputTooLarge, collectBounded } from "./internal/capture.js";
 import { REDACTED, Redaction } from "./Redaction.js";
@@ -27,7 +27,10 @@ const MAX_MESSAGE_CHARS = 2000;
  * kill signals are all `ChildProcess.CommandOptions` fields with core
  * combinators (`ChildProcess.setCwd`, `ChildProcess.setEnv`) — this package
  * consumes core's command vocabulary rather than re-declaring it. What remains
- * here is what a `Command` value cannot express.
+ * here is what a `Command` value cannot express. One caveat on that routing:
+ * bare `ChildProcess.setEnv` replaces the child's WHOLE environment (it never
+ * sets `extendEnv`, so the child loses `PATH` and `HOME`) — to add variables on
+ * top of the parent environment, use `Run.extendEnv`.
  *
  * @public
  */
@@ -396,6 +399,41 @@ const stream = (
 	).pipe(Stream.mapError((error) => CommandFailedError.spawn(command, error)));
 
 /**
+ * Adds environment variables to a command WITHOUT losing the parent
+ * environment: merges `env` over any existing command environment (new values
+ * win, matching core's `ChildProcess.setEnv`) and sets `extendEnv: true`.
+ *
+ * @remarks
+ * This combinator exists because of a core trap: `ChildProcess.setEnv` merges
+ * into `options.env` but never sets `extendEnv`, and the Node spawner resolves
+ * the child environment as `extendEnv ? { ...process.env, ...env } : env` — so
+ * a command built with bare `setEnv({ SOME_VAR: x })` spawns a child whose
+ * ENTIRE environment is that one variable: no `PATH`, no `HOME`. The failure is
+ * silent at the type level and surfaces as "spawned tool cannot find its own
+ * binary" at runtime.
+ *
+ * Deliberately forces `extendEnv: true` even where construction set it `false`
+ * — inheriting the parent environment is this combinator's entire purpose. A
+ * caller who wants a hermetic environment uses core's `setEnv` or construction
+ * options (`ChildProcess.make(cmd, args, { env, extendEnv: false })`) directly.
+ *
+ * For a pipeline, applies to every command in the pipeline (mirroring core's
+ * `setEnv`), preserving the pipe's own options. Composes core's public
+ * vocabulary (`ChildProcess.make`, `ChildProcess.pipeTo`) — it re-declares
+ * nothing.
+ */
+const extendEnv: {
+	(env: Record<string, string>): (self: ChildProcess.Command) => ChildProcess.Command;
+	(self: ChildProcess.Command, env: Record<string, string>): ChildProcess.Command;
+} = Fn.dual(2, (self: ChildProcess.Command, env: Record<string, string>): ChildProcess.Command => {
+	if (ChildProcess.isStandardCommand(self)) {
+		const merged = self.options.env === undefined ? env : { ...self.options.env, ...env };
+		return ChildProcess.make(self.command, self.args, { ...self.options, env: merged, extendEnv: true });
+	}
+	return ChildProcess.pipeTo(extendEnv(self.left, env), extendEnv(self.right, env), self.options);
+});
+
+/**
  * Structured running of core `ChildProcess.Command` values.
  *
  * @remarks
@@ -422,6 +460,7 @@ export const Run = {
 	succeeds,
 	stream,
 	detach,
+	extendEnv,
 	DEFAULT_MAX_OUTPUT_BYTES,
 	REDACTED,
 } as const;

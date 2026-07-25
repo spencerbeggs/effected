@@ -450,6 +450,79 @@ describe("Run.detach", () => {
 	);
 });
 
+describe("Run.extendEnv", () => {
+	it.effect("the spawner receives the merged env AND extendEnv true", () =>
+		Effect.gen(function* () {
+			const spawner = scripted(() => ({ stdout: "ok", exit: 0 }));
+			const command = ChildProcess.make("tool", ["x"], { env: { FROM_CONSTRUCTION: "a" } }).pipe(
+				Run.extendEnv({ FROM_COMBINATOR: "b" }),
+			);
+			yield* Effect.provide(Run.collect(command), spawner.layer);
+			const record = spawner.spawns[0];
+			assert.deepStrictEqual(record?.options.env, { FROM_CONSTRUCTION: "a", FROM_COMBINATOR: "b" });
+			assert.strictEqual(record?.options.extendEnv, true);
+		}),
+	);
+
+	it("combinator values win over construction-time env values", () => {
+		// Data-first call shape, so both halves of the dual signature are pinned.
+		const command = Run.extendEnv(ChildProcess.make("tool", [], { env: { NODE_ENV: "construction" } }), {
+			NODE_ENV: "combinator",
+		});
+		if (!ChildProcess.isStandardCommand(command)) {
+			assert.fail("expected a standard command");
+		}
+		assert.deepStrictEqual(command.options.env, { NODE_ENV: "combinator" });
+	});
+
+	it("forces extendEnv true even where construction set it false — the documented contract", () => {
+		// Inheriting the parent environment is the combinator's entire purpose;
+		// a caller who wants a hermetic env uses core's setEnv/options directly.
+		const command = ChildProcess.make("tool", [], { env: { A: "1" }, extendEnv: false }).pipe(
+			Run.extendEnv({ B: "2" }),
+		);
+		if (!ChildProcess.isStandardCommand(command)) {
+			assert.fail("expected a standard command");
+		}
+		assert.strictEqual(command.options.extendEnv, true);
+	});
+
+	it("a pipeline gets the env on BOTH sides, with the pipe's own options preserved", () => {
+		const piped = ChildProcess.pipeTo(
+			ChildProcess.make("producer", [], { env: { LEFT_ONLY: "l" } }),
+			ChildProcess.make("consumer", []),
+			{ from: "stderr" },
+		).pipe(Run.extendEnv({ SHARED: "s" }));
+		if (!ChildProcess.isPipedCommand(piped)) {
+			assert.fail("expected a piped command");
+		}
+		assert.deepStrictEqual(piped.options, { from: "stderr" });
+		if (!ChildProcess.isStandardCommand(piped.left) || !ChildProcess.isStandardCommand(piped.right)) {
+			assert.fail("expected standard commands on both sides");
+		}
+		assert.deepStrictEqual(piped.left.options.env, { LEFT_ONLY: "l", SHARED: "s" });
+		assert.strictEqual(piped.left.options.extendEnv, true);
+		assert.deepStrictEqual(piped.right.options.env, { SHARED: "s" });
+		assert.strictEqual(piped.right.options.extendEnv, true);
+	});
+
+	it.effect("CONTROL: bare core setEnv reaches the spawner with extendEnv UNSET — the trap itself", () =>
+		Effect.gen(function* () {
+			// This pins the core behavior Run.extendEnv exists to compensate for:
+			// ChildProcess.setEnv merges options.env but never sets extendEnv, so the
+			// Node spawner resolves the child environment to ONLY these variables
+			// (no PATH, no HOME). If a future core beta makes this assertion fail,
+			// setEnv started extending — re-evaluate this combinator's raison d'être.
+			const spawner = scripted(() => ({ stdout: "ok", exit: 0 }));
+			const command = ChildProcess.make("tool", []).pipe(ChildProcess.setEnv({ MARKER: "x" }));
+			yield* Effect.provide(Run.collect(command), spawner.layer);
+			const record = spawner.spawns[0];
+			assert.deepStrictEqual(record?.options.env, { MARKER: "x" });
+			assert.isUndefined(record?.options.extendEnv);
+		}),
+	);
+});
+
 describe("Run over core Command combinators", () => {
 	it.effect("honours cwd and env applied with core's own combinators", () =>
 		Effect.gen(function* () {

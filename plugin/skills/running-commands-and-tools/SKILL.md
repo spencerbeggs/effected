@@ -131,7 +131,14 @@ export interface RunOptions {
 
 (`Run.ts:34-57`.) `cwd`, `env`, `extendEnv`, `stdin`, `shell` and kill signals are core
 `ChildProcess.CommandOptions` fields with core combinators — build them with `ChildProcess.make`,
-`ChildProcess.setCwd`, `ChildProcess.setEnv`, never re-declare them on `RunOptions`. `timeout` has
+`ChildProcess.setCwd`, `ChildProcess.setEnv`, never re-declare them on `RunOptions`. **One trap in
+that routing: bare `ChildProcess.setEnv` never sets `extendEnv`, and the Node spawner resolves the
+child env as `extendEnv ? { ...process.env, ...env } : env` — so `setEnv({ VAR: x })` alone spawns
+a child whose ENTIRE environment is that one variable (no `PATH`, no `HOME`; "tool cannot find its
+own binary" at runtime).** A hermetic env is almost never what an action wants — route "add env
+vars on top of the parent environment" through `Run.extendEnv({ VAR: x })`, which merges like
+`setEnv` (new values win) and forces `extendEnv: true`, recursing into pipelines. Reserve bare
+`setEnv`/construction options for a deliberately hermetic environment. `timeout` has
 **no default**: an `npm install` and a `git rev-parse` cannot share a ceiling, and expiry folds into
 `CommandFailedError { kind: "timeout" }` rather than widening every caller's error channel with
 core's `Cause.TimeoutError`. `redact` and `maxOutputBytes` are covered below and in Trap 2's
