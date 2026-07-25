@@ -60,10 +60,31 @@ const sameRest = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? {}) ==
 // A remembered wire value is replayed only while it still describes the person
 // faithfully. A person whose fields were changed after decoding re-encodes
 // canonically instead of emitting stale text.
+// Whether the shorthand grammar can carry this person at all. It has no syntax
+// for extra keys, so a person holding a meaningful `rest` cannot be written as
+// one. An EMPTY rest carries no information and does not disqualify anything.
+//
+// Two callers, deliberately the same predicate: the faithfulness guard (a
+// remembered shorthand never describes a person that has since gained keys) and
+// the re-encode fallback (an edited person re-emits shorthand only if it still
+// fits). Splitting them would let a person be refused the replay yet handed back
+// as shorthand, dropping the very keys the refusal detected.
+const isShorthandExpressible = (person: Person): boolean =>
+	person.rest === undefined || Object.keys(person.rest).length === 0;
+
 const isFaithful = (wire: PersonWire, person: Person): boolean => {
 	if (typeof wire === "string") {
 		const parsed = parsePersonString(wire);
-		return parsed.name === person.name && parsed.email === person.email && parsed.url === person.url;
+		return (
+			parsed.name === person.name &&
+			parsed.email === person.email &&
+			parsed.url === person.url &&
+			// Without this clause the three named fields match, the wire replays,
+			// and any added keys are silently dropped on write — the same
+			// stale-provenance corruption the rest of this guard prevents, reached
+			// through the one field the shorthand cannot express.
+			isShorthandExpressible(person)
+		);
 	}
 	const rest = restOf(wire);
 	return (
@@ -199,7 +220,17 @@ export class Person extends Schema.Class<Person>("Person")({
 				// remembered object verbatim.
 				encode: (person: Person): Person | string => {
 					const wire = wireForms.get(person);
-					return typeof wire === "string" && isFaithful(wire, person) ? wire : person;
+					if (typeof wire !== "string") return person;
+					if (isFaithful(wire, person)) return wire;
+					// Edited since it was decoded. Re-emit the shorthand SHAPE rather
+					// than upgrading to the object form: a manifest that wrote
+					// `"Ann <ann@x.dev>"` should not silently become
+					// `{"name":"Ann","email":"new@x.dev"}` because one field changed.
+					// Shape fidelity is what this package promises; the object form is
+					// the fallback only when the shorthand genuinely cannot carry the
+					// value (it gained keys), where preserving data outranks preserving
+					// shape.
+					return isShorthandExpressible(person) ? serializePerson(person) : person;
 				},
 			}),
 		),
