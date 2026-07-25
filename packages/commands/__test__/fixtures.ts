@@ -72,9 +72,7 @@ export const scripted = (script: (command: string, args: ReadonlyArray<string>) 
 					ChildProcessSpawner.makeHandle({
 						pid: ChildProcessSpawner.ProcessId(4242),
 						exitCode:
-							result.hang === true
-								? Effect.never
-								: Effect.succeed(ChildProcessSpawner.ExitCode(result.exit ?? 0)),
+							result.hang === true ? Effect.never : Effect.succeed(ChildProcessSpawner.ExitCode(result.exit ?? 0)),
 						isRunning: Effect.succeed(false),
 						kill: () => Effect.void,
 						stdin: Sink.drain,

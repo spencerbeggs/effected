@@ -62,7 +62,7 @@ export class ExecContext extends Schema.Class<ExecContext>("ExecContext")({
 		return this.withPrefix(command, this.prefix);
 	}
 
-	/** As {@link ExecContext.apply}, using {@link ExecContext.dlxPrefix}. */
+	/** As {@link ExecContext.apply}, using `dlxPrefix` — the fetch-and-run launcher. */
 	applyDlx(command: ChildProcess.StandardCommand): ChildProcess.Command {
 		return this.withPrefix(command, this.dlxPrefix);
 	}
