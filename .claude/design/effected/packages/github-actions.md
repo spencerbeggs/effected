@@ -49,7 +49,7 @@ Two consequences follow, and both are licences the rest of the kit does not have
 - **A `node:` import is sanctioned here.** The [require-in-R default](../effect-standards.md#the-consolidated-core-and-the-require-in-r-default) calls a direct `node:` import a code smell *most of the time*; the documented exception is a Node-only overlay, and this whole package is one. It is used for four things core cannot do: `node:crypto` for SHA-256 and HMAC (see below), `node:process.kill` for [reaping a bare pid](#detached-processes-and-the-bare-pid-guard), `node:child_process` for the [fd-level detached spawn](#the-fd-routing-gap), and `node:zlib`/`node:stream` in the cache and artifact codecs.
 - **`NodeServices.layer` may be composed directly** in this package's default runtime, rather than left to the consumer. That is the point of `Action.run`.
 
-**Core `Crypto` does not cover hashing.** Verified against `.repos/effect` at beta.101: `effect/Crypto` exposes `random`, `randomBoolean`, `randomInt`, `randomUUIDv4`, `randomUUIDv7` — random-number generation only, with no digest or HMAC. So `hashFiles`, the S3 SigV4 signer and the cache-key derivation all use `node:crypto`, and **no `@aws-sdk/*` dependency is needed for SigV4** — the source package already proves this with a ~100-line `internal/sigv4.ts` over `node:crypto`. Recorded because "put it on core `Crypto`" is the obvious wrong guess.
+**Core `Crypto` covers digests but not HMAC.** Corrected against `.repos/effect` at beta.101 (2026-07-25): `effect/Crypto` exposes random primitives, UUIDs and SHA digests (`Crypto.digest`, `DigestAlgorithm` SHA-1/256/384/512) — but no HMAC, signing or key derivation. So `hashFiles`, the S3 SigV4 signer and the cache-key derivation all use `node:crypto`, and **no `@aws-sdk/*` dependency is needed for SigV4** — the source package already proves this with a ~100-line `internal/sigv4.ts` over `node:crypto`. Recorded because "put it on core `Crypto`" is the obvious wrong guess.
 
 What is deliberately **not** a dependency: any `@actions/*` package. The source package does not use them either — it implements the cache, artifact and tool-cache protocols directly against their HTTP APIs. That stays, because `@actions/cache` alone drags a dependency tree larger than this package.
 
@@ -331,7 +331,7 @@ The one deliberate change from the source is **dropping the `Artifact` prefix fr
 
 `ActionCache`'s key ladder is consumer-visible logic that every consumer re-derives, so it becomes its own concept module: `hashFiles` over a compiled [`@effected/glob`](glob.md) pattern set, the primary-key/restore-key ladder, and branch-aware derivation.
 
-**`hashFiles` homes here, and the reason is the `Crypto` gap.** The survey left the home open ("glob is pure in the kit; hashFiles needs FS+hash"). It cannot live in `glob` (pure — [R1](../effect-standards.md#dependency-policy) forbids the dependency and it does no IO) and it cannot live in `walker` (boundary — hashing is not traversal, and core exposes no digest, so it would need an external dependency and be pushed to integrated). Here it is free, because this package is integrated already and may use `node:crypto`.
+**`hashFiles` homes here, and the reason is the `Crypto` gap.** The survey left the home open ("glob is pure in the kit; hashFiles needs FS+hash"). It cannot live in `glob` (pure — [R1](../effect-standards.md#dependency-policy) forbids the dependency and it does no IO) and it cannot live in `walker` (boundary — hashing is not traversal; core does expose `Crypto.digest`, but the restore-key derivation also wants the HMAC-adjacent machinery this package already carries). Here it is free, because this package is integrated already and may use `node:crypto`.
 
 Recorded escalation: **if a second, non-Actions consumer wants `hashFiles`, it moves** — either into a small `@effected/hash` package, or back into `walker` once core grows a digest contract. It is not a permanent home, it is the honest one today.
 
@@ -533,7 +533,7 @@ The signer was first checked against a remembered "GET Object" signature (`f0e8b
 
 1. **`Effect.withConfigProvider` does not exist.** `ConfigProvider.ConfigProvider` is a `Context.Reference` (`ConfigProvider.ts:296`); override with `Effect.provideService`, or install with `ConfigProvider.layer(provider)`.
 2. **`FiberRef` does not exist.** `Context.Reference` (`Context.ts:1335`) is the v4 spelling, and it is what makes `withEnv` and the log buffer fiber-local.
-3. **Core `Crypto` is RNG only** — no digest, no HMAC (confirmed again in `Crypto.ts`). `CacheKey.hashFiles` and SigV4 use `node:crypto`.
+3. **Core `Crypto` has digests but no HMAC** (corrected 2026-07-25 — an earlier note here claimed RNG-only). SigV4's signing-key chain is HMAC, so it needs `node:crypto` regardless; `hashFiles` could use `Crypto.digest` but shares `node:crypto` since this package is licensed for it.
 4. **`Config.withDefault` reads the *issue*, not the combinator.** See the `ActionInput` defect below — this is the sharpest of the four.
 5. `Duration.Input`, not `Duration.DurationInput`; `Effect.sleep` takes it directly. A branded `Schema` has no `makeUnsafe`.
 
