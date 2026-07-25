@@ -82,24 +82,81 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          BOT_NAME: ${{ steps.app-token.outputs.app-slug }}[bot]
-          BOT_EMAIL: ${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com
+          REPO: ${{ github.repository }}
+          BRANCH: chore/update-runtime-defaults
+          BASE_BRANCH: main
+          HEADLINE: "chore(runtimes): refresh bundled runtime version defaults"
+          # DCO only requires a well-formed trailer; keep the exact identity the
+          # previous `git commit --signoff` produced under this App.
+          SIGNOFF: "Signed-off-by: ${{ steps.app-token.outputs.app-slug }}[bot] <${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com>"
         run: |
           set -euo pipefail
 
-          git config user.name "$BOT_NAME"
-          git config user.email "$BOT_EMAIL"
+          # The commit is created through the GraphQL API, not `git commit` plus
+          # `git push`: GitHub signs commits it creates on the caller's behalf, so
+          # the bot's commits land verified. Locally made ones are unsigned (#159).
 
-          git switch -c chore/update-runtime-defaults
-          git add packages/runtimes/src/internal/defaults/ .changeset/update-runtime-defaults.md
-          git commit --signoff -m "chore(runtimes): refresh bundled runtime version defaults"
-          git push --force origin chore/update-runtime-defaults
+          # Stage exactly the paths this job owns, then read the staged status back:
+          # that picks up the untracked changeset file alongside the regenerated
+          # defaults, and normalizes both into a path list.
+          git add -- packages/runtimes/src/internal/defaults/ .changeset/update-runtime-defaults.md
+
+          additions='[]'
+          while IFS= read -r -d '' path; do
+            additions=$(jq -c --arg path "$path" --arg contents "$(base64 -w0 <"$path")" \
+              '. + [{path: $path, contents: $contents}]' <<<"$additions")
+          done < <(git diff --cached --name-only -z --diff-filter=d)
+
+          deletions='[]'
+          while IFS= read -r -d '' path; do
+            deletions=$(jq -c --arg path "$path" '. + [{path: $path}]' <<<"$deletions")
+          done < <(git diff --cached --name-only -z --diff-filter=D)
+
+          if [ "$additions" = '[]' ] && [ "$deletions" = '[]' ]; then
+            echo "::notice::Nothing staged for $BRANCH"
+            exit 0
+          fi
+
+          # createCommitOnBranch cannot force-push, so reset the branch pointer to
+          # the current base tip first — the old `git push --force` semantics of one
+          # fresh commit on top of main. Moving a ref creates no commit, so nothing
+          # unsigned enters history.
+          base_oid=$(gh api "repos/$REPO/git/ref/heads/$BASE_BRANCH" --jq '.object.sha')
+
+          if gh api "repos/$REPO/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$REPO/git/refs/heads/$BRANCH" \
+              -f sha="$base_oid" -F force=true >/dev/null
+          else
+            gh api -X POST "repos/$REPO/git/refs" \
+              -f ref="refs/heads/$BRANCH" -f sha="$base_oid" >/dev/null
+          fi
+
+          jq -n \
+            --arg repo "$REPO" \
+            --arg branch "$BRANCH" \
+            --arg oid "$base_oid" \
+            --arg headline "$HEADLINE" \
+            --arg body "$SIGNOFF" \
+            --argjson additions "$additions" \
+            --argjson deletions "$deletions" \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid url } } }",
+              variables: {
+                input: {
+                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                  message: { headline: $headline, body: $body },
+                  expectedHeadOid: $oid,
+                  fileChanges: { additions: $additions, deletions: $deletions }
+                }
+              }
+            }' \
+            | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.url'
 
           gh pr create \
-            --base main \
-            --head chore/update-runtime-defaults \
-            --title "chore(runtimes): refresh bundled runtime version defaults" \
+            --base "$BASE_BRANCH" \
+            --head "$BRANCH" \
+            --title "$HEADLINE" \
             --body "Automated daily refresh of the bundled Node.js, Bun and Deno version snapshots from the upstream release feeds." \
-            || echo "::notice::PR already open for chore/update-runtime-defaults"
+            || echo "::notice::PR already open for $BRANCH"
 
-          gh pr merge chore/update-runtime-defaults --auto --squash
+          gh pr merge "$BRANCH" --auto --squash
