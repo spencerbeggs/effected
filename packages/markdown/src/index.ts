@@ -53,8 +53,14 @@ export {
 	MarkdownStringifyError,
 } from "./Markdown.js";
 export { MarkdownDiagnostic, MarkdownParseErrorCode } from "./MarkdownDiagnostic.js";
-export type { DocumentHeading, DocumentLink, DocumentSection, LinkBearingNode } from "./MarkdownDocument.js";
-export { MarkdownDocument } from "./MarkdownDocument.js";
+export type {
+	DocumentHeading,
+	DocumentLink,
+	LinkBearingNode,
+	SectionHeadingMatch,
+	SectionQueryOptions,
+} from "./MarkdownDocument.js";
+export { DocumentSection, MarkdownDocument } from "./MarkdownDocument.js";
 export type { MarkdownPath, MarkdownSegment } from "./MarkdownEdit.js";
 export { MarkdownEdit, MarkdownRange } from "./MarkdownEdit.js";
 export type { MarkdownRangeLike } from "./MarkdownFormat.js";
