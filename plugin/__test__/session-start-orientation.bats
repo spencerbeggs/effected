@@ -55,19 +55,19 @@ _run_hook() {
 		found=$((found + 1))
 	done
 	# Guard against a silently-empty glob reading as a pass.
-	[ "$found" -ge 14 ] || {
-		echo "expected at least 14 skills on disk, found $found" >&2
+	[ "$found" -ge 27 ] || {
+		echo "expected at least 27 skills on disk, found $found" >&2
 		return 1
 	}
 }
 
-@test "happy path: additionalContext names all three agents" {
+@test "happy path: additionalContext names all four agents" {
 	run _run_hook "$FIXTURES/sessionstart.startup.json"
 	[ "$status" -eq 0 ]
 
 	local ctx
 	ctx="$(echo "$output" | jq -r '.hookSpecificOutput.additionalContext')"
-	for agent in effect-developer effect-reviewer effect-migrator; do
+	for agent in effect-developer effect-reviewer effect-migrator action-engineer; do
 		echo "$ctx" | grep -qF -- "- $agent" || {
 			echo "missing agent bullet: $agent" >&2
 			return 1

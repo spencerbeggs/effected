@@ -39,7 +39,7 @@ _tools_block() {
 }
 
 @test "every agent declares a non-empty skills block" {
-	for agent in effect-developer effect-migrator effect-reviewer; do
+	for agent in effect-developer effect-migrator effect-reviewer action-engineer; do
 		run _skills_block "$AGENTS/$agent.md"
 		[ "$status" -eq 0 ]
 		[ -n "$output" ] || {
@@ -61,7 +61,7 @@ _tools_block() {
 @test "no skill name leaks into an agent's tools block" {
 	# A skill in tools: is the exact bug this file exists to catch — it would
 	# still satisfy any test that merely greps the file for the skill name.
-	for agent in effect-developer effect-migrator effect-reviewer; do
+	for agent in effect-developer effect-migrator effect-reviewer action-engineer; do
 		for skill in "$PLUGIN_ROOT"/skills/*/; do
 			name="$(basename "$skill")"
 			if _tools_block "$AGENTS/$agent.md" | grep -qx -- "$name"; then

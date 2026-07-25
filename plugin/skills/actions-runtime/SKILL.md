@@ -88,7 +88,7 @@ carries `ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal`
 separate `@effect/platform-node` mention at the call site.
 
 Not in the union: `ActionCache`, `Artifact`, `GitHubCacheBlobStore` — see
-[below](#actioncache-artifact-and-blobstore-one-line-not-a-default).
+"one line, not a default" below.
 
 ## `ActionRuntime.layer`: a bound constant, never a factory
 
