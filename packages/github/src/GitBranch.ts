@@ -1,7 +1,24 @@
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
+import type { GitHubGraphQLError } from "./GraphQL.js";
+import { GraphQLDocument } from "./GraphQL.js";
 import { Repo } from "./Repo.js";
+
+const CreateLinkedBranch = GraphQLDocument.make({
+	name: "createLinkedBranch",
+	document: `mutation ($issueId: ID!, $name: String!, $oid: GitObjectID!, $repositoryId: ID!) {
+  createLinkedBranch(input: { issueId: $issueId, name: $name, oid: $oid, repositoryId: $repositoryId }) {
+    linkedBranch { id }
+  }
+}`,
+	response: Schema.Struct({}),
+})<{
+	readonly issueId: string;
+	readonly name: string;
+	readonly oid: string;
+	readonly repositoryId: string;
+}>();
 
 /**
  * What {@link GitBranchShape.upsert} did.
@@ -50,6 +67,23 @@ export interface GitBranchShape {
 	readonly reset: (name: string, sha: string) => Effect.Effect<void, GitHubError, Repo>;
 	/** Delete the branch. */
 	readonly delete: (name: string) => Effect.Effect<void, GitHubError, Repo>;
+	/**
+	 * Create a branch **linked to an issue**, as the GitHub UI's "create a branch"
+	 * button does.
+	 *
+	 * @remarks
+	 * The one operation in this package with **no REST equivalent** — GitHub
+	 * exposes `createLinkedBranch` only through GraphQL, which is why the document
+	 * is owned here rather than left in a consumer. A linked branch shows up on the
+	 * issue and closes it when the branch's pull request merges; a branch created
+	 * with {@link GitBranchShape.create} does neither.
+	 */
+	readonly createLinked: (input: {
+		readonly issueNodeId: string;
+		readonly repositoryNodeId: string;
+		readonly name: string;
+		readonly sha: string;
+	}) => Effect.Effect<void, GitHubGraphQLError, Repo>;
 }
 
 /**
@@ -81,6 +115,7 @@ export class GitBranch extends Context.Service<GitBranch, GitBranchShape>()("@ef
 		shaOption: overrides.shaOption ?? (() => unstubbed("shaOption")),
 		reset: overrides.reset ?? (() => unstubbed("reset")),
 		delete: overrides.delete ?? (() => unstubbed("delete")),
+		createLinked: overrides.createLinked ?? (() => unstubbed("createLinked")),
 	});
 
 	/** {@link GitBranch.makeTest} behind a `Layer`. */
@@ -197,6 +232,21 @@ const make = (client: GitHubClient["Service"]): GitBranchShape => {
 			return ref.object.sha;
 		}),
 		shaOption,
+		createLinked: Effect.fn("GitBranch.createLinked")(function* (input: {
+			readonly issueNodeId: string;
+			readonly repositoryNodeId: string;
+			readonly name: string;
+			readonly sha: string;
+		}) {
+			const short = shortName(input.name);
+			yield* Effect.annotateCurrentSpan({ branch: short });
+			yield* client.graphql(CreateLinkedBranch, {
+				issueId: input.issueNodeId,
+				repositoryId: input.repositoryNodeId,
+				name: short,
+				oid: input.sha,
+			});
+		}),
 		delete: Effect.fn("GitBranch.delete")(function* (branch: string) {
 			const { owner, repo } = yield* Repo;
 			const short = yield* rejectEmpty("GitBranch.delete", branch);

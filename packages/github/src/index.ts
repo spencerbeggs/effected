@@ -1,3 +1,4 @@
+export { ArtifactMetadata, type ArtifactMetadataShape, StorageRecordInput } from "./ArtifactMetadata.js";
 export { Attestation, AttestationListEntry, AttestationRecord, type AttestationShape } from "./Attestation.js";
 export {
 	Annotation,
@@ -84,6 +85,14 @@ export type {
 	Route as RestRoute,
 } from "./Rest.js";
 export { PageOptions } from "./Rest.js";
+export {
+	ExtraPermission,
+	PermissionGap,
+	PermissionLevel,
+	PermissionResult,
+	TokenPermissionError,
+	TokenPermissions,
+} from "./TokenPermissions.js";
 export {
 	type PollOptions,
 	WorkflowDispatch,
