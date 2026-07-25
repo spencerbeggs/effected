@@ -62,18 +62,27 @@ const importerDependencyArb: FastCheck.Arbitrary<ImporterDependency> = FastCheck
 	name: FastCheck.constantFrom("lodash", "chalk", "@scope/x", "typescript"),
 	specifier: specifierArb,
 	depType: depField,
-	version: FastCheck.option(FastCheck.constantFrom("1.0.0", "5.9.3"), { nil: undefined }),
-	peerSuffix: FastCheck.option(
-		FastCheck.constantFrom("(effect@4.0.0-beta.101)", "(ioredis@5.11.1(supports-color@8.1.1))"),
+	// A suffix only ever splits off a concrete version, so it is generated as part
+	// of the version rather than beside it: an entry with a peerSuffix and no
+	// version is a state the parser cannot emit, and sampling it would spend cases
+	// on unreachable shapes.
+	resolution: FastCheck.option(
+		FastCheck.record({
+			version: FastCheck.constantFrom("1.0.0", "5.9.3"),
+			peerSuffix: FastCheck.option(
+				FastCheck.constantFrom("(effect@4.0.0-beta.101)", "(ioredis@5.11.1(supports-color@8.1.1))"),
+				{ nil: undefined },
+			),
+		}),
 		{ nil: undefined },
 	),
-}).map(({ name, specifier, depType, version, peerSuffix }) =>
+}).map(({ name, specifier, depType, resolution }) =>
 	ImporterDependency.make({
 		name,
 		specifier,
 		depType,
-		...(version !== undefined ? { version } : {}),
-		...(peerSuffix !== undefined ? { peerSuffix } : {}),
+		...(resolution !== undefined ? { version: resolution.version } : {}),
+		...(resolution?.peerSuffix !== undefined ? { peerSuffix: resolution.peerSuffix } : {}),
 	}),
 );
 
