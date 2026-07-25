@@ -190,6 +190,27 @@ Every internal `@effected/*` edge — peer and regular dependency alike — uses
 
 The graph must stay **acyclic**. Every package releases together (see [releases.md](releases.md)), so a cycle is not caught by a publish order that fails — it simply becomes permanent. The kit can carry as many small packages as the seams justify; what it cannot carry is a back-edge. In practice every edge runs from boundary toward pure, or from pure toward more-pure, and an edge that wants to run the other way is a sign the shared thing belongs in a third package. When `@effected/config-file` hit this during its port, the fix was not a new package but relocating the error classes it was reaching backwards for.
 
+### One resolved copy is a correctness requirement, not hygiene
+
+The dedupe-onto-one-copy concern above is not confined to this repo's internal edges — it binds every consumer, and it is sharper than a duplication-bloat argument. A `Context.Service` tag is an **identity**. Two resolved copies of the same `@effected` package are two distinct tags, so a layer built from one copy does not satisfy a requirement expressed by the other. The type system is right to reject it; the diagnostic just does not say so.
+
+Reported from the savvy-web-systems dogfood loop after `@effected/workspaces@0.7.0` (2026-07-25). Four packages in that repo declared `^0.6.2`; only the one consuming the changed API was bumped. Because a caret on a `0.x` version locks the minor (`^0.6.2` is `>=0.6.2 <0.7.0-0`), the others stayed behind, and the install produced 0.7.0 and 0.6.2 side by side. What surfaced was not a version error:
+
+```text
+Layer<… , never, ChildProcessSpawner | … | WorkspaceSnapshots>
+  is not assignable to
+Layer<McpServices, never, ChildProcessSpawner | FileSystem | Path>
+```
+
+`WorkspaceSnapshots` read as an unmet requirement in a graph whose own `layerWithGit` provides it — the provided tag came from 0.6.2, the required one from 0.7.0. The reporter checked the `.d.ts` diff first and confirmed **no `Layer` declaration changed between the two versions**, which is what pointed at duplicate identity rather than a signature change.
+
+Two consequences worth holding onto:
+
+- **Upgrading is per-repo, not per-package.** Bump *every* package declaring an `@effected` dependency, not only the one consuming the changed API, and confirm a single resolved copy afterward. While the kit is pre-`1.0`, every minor is this trap, because caret ranges on `0.x` do not carry across it.
+- **Read this diagnostic as a resolution question first.** A service that appears unprovided while a layer visibly provides it is duplicate identity until proven otherwise. Chasing it as a signature change costs a `.d.ts` diff that will come back clean.
+
+This is the consumer-side half of why internal edges float on `workspace:~`: the same one-copy property the kit maintains for itself has to hold in the consumer's tree, and there the only lever is the declared range.
+
 ## Toolchain constraints
 
 ### API Extractor × Effect class factories
