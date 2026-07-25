@@ -166,11 +166,13 @@ Why this over the alternatives:
 - **Over keeping the default and documenting the ordering**: documentation does not fix a silent revert. The failure mode is a correct-looking composition that publishes to the wrong registry.
 - **Over `Layer.mock` / shadowing helpers**: those address tests, not production policy.
 
-The cost is one explicit line for the common case, which is the point — it makes "npm semantics" a **choice** rather than an ambient default nobody knew they had:
+**As built, the R-hole lives at the consuming operation, not the composite** — nothing inside a composite consumes a detector, so the composites neither provide nor require one (`layer()`/`layerWithConfigDependencies()` stay at `R = FileSystem | Path`) and the requirement surfaces where a program actually asks a publishability question (`VersioningStrategy.detect` requires `PublishabilityDetector | WorkspaceDiscovery`). The cost is one explicit line for programs that ask, which is the point — it makes "npm semantics" a **choice** rather than an ambient default nobody knew they had:
 
 ```ts
-const WorkspacesLayer = Workspaces.layer().pipe(Layer.provide(PublishabilityDetector.layerNpm));
+Effect.provide(program, Layer.mergeAll(Workspaces.layer(), PublishabilityDetector.layerNpm))
 ```
+
+Both merge orders are safe — the composite supplies no default to shadow, so the old last-wins hazard is structurally gone (a regression test pins a caller's detector observed through the composite in both orders). One diagnostic consequence for migrators (round-1 finding): a missing detector fails to close `R` at the downstream consumer that names it, which can be far from the layer-wiring site the old composite-level error would have pointed at.
 
 ### (c) The npm rules stay here, as one implementation among peers — and as a value
 
@@ -386,6 +388,8 @@ Release tags are strict SemVer 2 and immutable. **Tracking tags are the delibera
 **`@effected/semver` was consciously declined**, matching the call [markdown.md](markdown.md) records for its `$schema` version grammar. The tracking-tag grammar is not SemVer, and the derivation needs only the three numeric segments plus the presence of a prerelease — roughly fifteen lines. A dependency edge for that is disproportionate. It earns itself the day something here needs real semver *comparison* (say, "is this release the newest matching `v1`"), which no caller asks for: choosing what a tracking tag should point at is the consumer's, made where the tag is moved.
 
 `strategy.tagsFor(releases, options?)` folds the two together and is what collapses the consumer's ~110-line `determineTagStrategy` + `isMonorepoForTagging` to two lines. Under `single`/`fixed-group` it returns exactly one tag carrying the **first** release's version; a lockstep batch shares a version by construction, so the choice is visible only on a batch that should not exist. Whether a batch actually agreed is a property of that batch, not of the workspace, so the v3 `isFixedVersioning` flag is deliberately **not** ported — it stays the caller's one-line check.
+
+Round-1 adoption notes (2026-07-25): the unscoped-`v` default above **silently renames tags for a no-prefix convention** — no compile error signals it, so the consumer maps carry a prominent warning and `versionPrefix: ""` is the Savvy-policy spelling; whether `""` should become the default is an open candidate in the decisions log. And `classify({ packages: [] })` is the **canonical "nothing publishable" value** at fallback call sites — a named `empty` constructor was requested and declined for now (one more name for a value the type already expresses); revisit if a second consumer asks.
 
 ### PublishabilityDetector
 

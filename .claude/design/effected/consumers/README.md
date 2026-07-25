@@ -51,6 +51,41 @@ The program replaces `@savvy-web/github-action-effects` wholesale and upstreams 
 | **decision pending** | The replacement's package or shape is not yet settled; the row names the open question. |
 | **stays local** | Deliberately not absorbed. Policy, domain logic or one tool's layout. |
 
+## Migration warnings (dogfood round 1, savvy-web/systems)
+
+Cross-cutting hazards the first real adoption hit or flagged. Every remaining
+migration should read these before touching the corresponding surface; none of
+them produce a compile error.
+
+1. **`ReleaseTag` defaults to a `v` version prefix on unscoped names.**
+   `ReleaseTag.scoped` emits `cli@v1.2.3` where Savvy's convention (strict
+   SemVer, no prefix) expects `cli@1.2.3`; scoped names are byte-identical. A
+   tagging consumer upgrades into silently different tag names. Pass
+   `versionPrefix: ""` to match Savvy policy. Concrete customer:
+   silk-release-action's determine-tag-strategy flow.
+2. **`SectionId` keys render into markers verbatim.** Any case-normalization
+   (or other canonicalization) that lived in old marker-formatting code must
+   move to id *construction*, or emitted markers match nothing on disk —
+   `check` reports every section absent and `sync` appends a second copy of
+   every managed block beside the untouched original. Silent duplication; only
+   a suite that round-trips real files catches it.
+3. **Adding env vars to a command goes through `Run.extendEnv`** — bare core
+   `ChildProcess.setEnv` strips the parent environment (no `PATH`); see the
+   commands package docs.
+4. **Kit errors carry structured fields plus a `message` getter, no prose
+   `reason`.** An adapter wrapping a kit error into a reason-style consumer
+   error is lossy by construction (a rendered message stringified back into a
+   structured field). Prefer letting the kit error flow, or match on its
+   fields.
+5. **A missing `PublishabilityDetector` diagnoses at the consuming
+   operation, not at a composite.** The `Workspaces` composites neither provide
+   nor require a detector; `R` fails to close wherever the program actually
+   asks a publishability question (`VersioningStrategy.detect`), which can be
+   far from the layer-wiring site a migrator expects.
+6. **`VersioningStrategy.classify({ packages: [] })` is the canonical
+   "nothing publishable" value** at fallback call sites — there is no separate
+   `empty` constructor.
+
 ## Document shape
 
 Each map carries:

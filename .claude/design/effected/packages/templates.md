@@ -162,6 +162,13 @@ export class SectionId extends Schema.Class<SectionId>("SectionId")({
   // As built: `matches` was dropped — identity comparison is `Equal.equals`,
   // which the nested-equality probe confirmed is deep and exact.
 }
+// MIGRATION WARNING (dogfood round 1): keys render into markers VERBATIM.
+// A predecessor whose marker-formatting code normalized case (silk uppercased
+// `toolName`) must move that normalization to SectionId construction, or the
+// emitted markers match nothing on disk: `check` reports every section absent
+// and `sync` appends a second copy of every managed block beside the original.
+// Silent duplication, no compile error; only round-tripping real files catches
+// it. The downstream fix is one documented line at id construction.
 
 /** An identity plus the content the owner wants in it. */
 export class Section extends Schema.Class<Section>("Section")({
