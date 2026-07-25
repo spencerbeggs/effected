@@ -8,7 +8,9 @@ Monorepo workspace tooling as Effect services: workspace root discovery, package
 
 **Integrated**, and the `@pnpm/catalogs.*` quartet is why. Those four packages *are* pnpm's catalog semantics, versioned to pnpm majors; reimplementing them means owning a moving spec with no oracle. They are confined to `src/internal/catalogs.ts` — **the only module that may import them**, so the tier-3 blast radius is one file.
 
-Other runtime deps are `workspace:~` edges: `@effected/git`, `@effected/glob`, `@effected/lockfiles`, `@effected/walker`, `@effected/yaml`, `@effected/package-json`, `@effected/npm`. `effect` is a peer.
+Other runtime deps are `workspace:~` edges: `@effected/commands`, `@effected/git`, `@effected/glob`, `@effected/lockfiles`, `@effected/walker`, `@effected/yaml`, `@effected/package-json`, `@effected/npm`. `effect` is a peer.
+
+**The `@effected/commands` edge points at a CONTRACT, and its direction is load-bearing.** `commands` is boundary tier and must stay there: a `commands` → `workspaces` edge would make it integrated and, through the planned `npm` → `commands` edge, drag `npm`, `lockfiles` (**pure**) and `package-json` up a tier too. So `commands` declares `LocalExec` and we implement it (`Workspaces.localExecLayer`) — the `@effected/npm` `CatalogResolver` precedent. Taking a boundary-tier edge costs us nothing under R2 (we are already integrated for `@pnpm/catalogs.*`). **Never invert this**: nothing in `commands` may import this package.
 
 **`minimatch` is not a dependency and must not become one.** Both v3 call sites — `WorkspacePackage.matchesDependency` and the `packages:` enumerator — run on `@effected/glob`'s vendored engine.
 
@@ -30,7 +32,7 @@ Other runtime deps are `workspace:~` edges: `@effected/git`, `@effected/glob`, `
 - `Publishability.ts` — `PublishabilityDetector`, `PublishTarget`
 - `ReleaseTag.ts` — `ReleaseTag`, `TagStyle`, `TagFormatOptions`, plus the floating-alias family `TrackingTag` / `TrackingTagOptions` and the recognizer `classifyTag` / `TagClassification` (all **value classes**, not services; a leaf importing nothing else here)
 - `VersioningStrategy.ts` — `VersioningStrategy` (a **value class**: `classify` / `detect` / `tagsFor`), `VersioningStrategyType`, `ClassifyOptions`, `VersioningDetectOptions`, `PackageRelease`
-- `Workspaces.ts` — the composite layers (`layer`, `layerWithConfigDependencies`, `layerWithGit`, `resolvers`) plus the one-call manifest path (`resolverLayer`, `resolveManifest`)
+- `Workspaces.ts` — the composite layers (`layer`, `layerWithConfigDependencies`, `layerWithGit`, `resolvers`), the one-call manifest path (`resolverLayer`, `resolveManifest`) and `localExecLayer` (the `@effected/commands` `LocalExec` contract)
 - `WorkspacesSync.ts` — `findWorkspaceRootSync`, `getWorkspacePackagesSync` over consumer-supplied `SyncFileSystem` / `SyncPath` ops
 - `node-sync.ts` — the node-bound ops preset (`node:fs` / `node:path`), published only under the `./node-sync` subpath
 
@@ -55,6 +57,18 @@ Every lazy init uses `Effect.cachedInvalidateWithTTL` + `Effect.onExit`-invalida
 ### Change detection runs on `@effected/git`, not a local git seam
 
 `GitReader` is **gone** — the module and its `GitCommandError` were deleted. `ChangeDetector` now runs on `@effected/git`'s `Git` service: `changedFiles(root, { base, head, relative: true })` for the committed range, `workingChanges(root, { relative: true })` for `includeUncommitted`, unioned and sorted. Every query uses `relative: true` so paths come back relative to the workspace root — correct even when the workspace is nested inside a larger git repository. A non-repository surfaces as git's own `NotARepositoryError` (not re-wrapped); `ChangeDetectionFailure` carries git's typed errors alongside `ChangeDetectionError` and the discovery failures. `Git` requires core's `ChildProcessSpawner` in `R`, discharged by the consumer's platform layer at the edge; a test provides `Layer.succeed(Git, …)` and needs no repository on disk. Nothing NEW may build a local subprocess seam — go through `@effected/git`.
+
+### `localExecLayer`: None is success, and only a BROKEN manifest is an error
+
+`Workspaces.localExecLayer` maps this package's error taxonomy onto `LocalExec`'s `None`-is-success convention, and the split is not arbitrary — it falls out of `PackageManagerDetector`'s own two errors:
+
+- **no workspace root** → `Option.none()`
+- **`PackageManagerDetectionError`** (no evidence, detector refused to guess) → `Option.none()`
+- **`WorkspaceManifestError`** (manifest present but unreadable/unparseable) → `LocalExecError`
+
+The distinction is absent-vs-broken. Reporting `None` for a corrupt manifest tells the caller "no local tooling here" when the truth is "your repo is damaged"; failing for a bare directory forces every non-monorepo consumer to catch an error to learn an ordinary fact. All three rows are mutation-pinned **in both directions** in `__test__/LocalExec.test.ts`.
+
+`directory` is the resolved **workspace root**, not the caller's cwd — resolving that root is why this layer exists rather than `LocalExec.layerFor`. And the argv prefixes come from `LocalExec.prefixes(name)`: **never hard-code an exec/dlx prefix here**, the table lives in `commands` and the tests assert against it so the two cannot drift.
 
 ### Tracking tags never float onto a prerelease
 
@@ -127,7 +141,7 @@ The deliberate exception is `Workspaces.resolverLayer(options?)`: a **fresh, unm
 
 The one exception is `__test__/integration/self.int.test.ts`, which discovers **this repository** through `@effect/platform-node` (a devDependency). It is the only test that proves the whole stack composes against a real pnpm workspace — and it is what caught the multi-document lockfile bug.
 
-365 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 31 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it; `ReleaseTag`'s, `VersioningStrategy`'s and `TrackingTag`'s arrived with Phase 1c); never widen it. The narrow scoping is load-bearing, not ceremony: `VersioningStrategy.tagsFor` named a module-private interface on a `@public` signature and the build flagged it as a genuine `ae-forgotten-export` the `_base` pattern correctly refused to mask — the fix was exporting the type (`PackageRelease`), never widening the pattern. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
+374 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 31 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it; `ReleaseTag`'s, `VersioningStrategy`'s and `TrackingTag`'s arrived with Phase 1c); never widen it. The narrow scoping is load-bearing, not ceremony: `VersioningStrategy.tagsFor` named a module-private interface on a `@public` signature and the build flagged it as a genuine `ae-forgotten-export` the `_base` pattern correctly refused to mask — the fix was exporting the type (`PackageRelease`), never widening the pattern. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
 
 ## Point-in-time surface (as built)
 

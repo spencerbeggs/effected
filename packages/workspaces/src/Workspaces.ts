@@ -7,6 +7,7 @@
 // filesystem, `layerWithGit` additionally needs core's `ChildProcessSpawner`
 // (behind `@effected/git`'s `Git` service) to run git.
 
+import { ExecContext, LocalExec, LocalExecError } from "@effected/commands";
 import { Git } from "@effected/git";
 import type {
 	CatalogAssemblyError,
@@ -17,10 +18,11 @@ import type {
 	WorkspaceResolver,
 } from "@effected/npm";
 import type { FileSystem, Path } from "effect";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChangeDetector } from "./ChangeDetector.js";
 import { LockfileReader } from "./LockfileReader.js";
+import type { DetectedPackageManager } from "./PackageManagerName.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
 import { PublishabilityDetector } from "./Publishability.js";
 import { WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
@@ -262,6 +264,106 @@ const resolveManifest: (
 });
 
 /**
+ * This package's implementation of `@effected/commands`' `LocalExec` contract:
+ * how to run a project-local binary here.
+ *
+ * @remarks
+ * **An inverted contract, the `@effected/npm` `CatalogResolver` precedent.**
+ * Tool discovery needs package-manager detection and workspace-root
+ * resolution, both of which live here — but a direct edge from
+ * `@effected/commands` to this package would make that boundary-tier package
+ * integrated, and through the planned `npm` → `commands` edge would drag
+ * `npm`, `lockfiles` (pure!) and `package-json` up a tier with it. So
+ * `commands` declares the narrow contract and we ship the layer.
+ *
+ * **The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` is the
+ * one home of the four managers' `exec`/`dlx` prefixes; this layer detects
+ * *which* manager owns the directory and asks `commands` what that manager's
+ * argv looks like. Neither package reimplements the other's half.
+ *
+ * **`None` is success.** Outside any workspace — and inside one whose manager
+ * cannot be identified — the answer is `Option.none()`: "there is no
+ * project-local way to run tools here" is an ordinary fact, not an
+ * exceptional one, and a consumer running in a bare directory should not have
+ * to catch an error to learn it. The contract's typed `LocalExecError` is
+ * reserved for **mechanism** failure — a manifest that exists but cannot be
+ * read or parsed, which means something is broken rather than absent. That is
+ * npm's resolver convention, adopted verbatim.
+ *
+ * `directory` is the resolved **workspace root**, not the caller's cwd: a
+ * project-local launcher has to run where the workspace is.
+ *
+ * A consumer with no monorepo never needs this layer, and therefore never
+ * installs this package — `LocalExec.layerNone` and `LocalExec.layerFor` are
+ * one-liners in `@effected/commands`.
+ *
+ * **Bind the result to a `const`** — a parameterized layer factory mints a
+ * fresh reference per call and layers memoize by reference.
+ *
+ * @example
+ * ```ts
+ * import { ToolDiscovery } from "@effected/commands";
+ * import { Workspaces } from "@effected/workspaces";
+ * import { Layer } from "effect";
+ *
+ * const AppLayer = ToolDiscovery.layer.pipe(
+ *   Layer.provide(Workspaces.localExecLayer()),
+ *   Layer.provide(Workspaces.layer()),
+ *   Layer.provide(NodeServices.layer),
+ * );
+ * ```
+ *
+ * @public
+ */
+const localExecLayer = (options?: {
+	readonly cwd?: string;
+}): Layer.Layer<LocalExec, never, PackageManagerDetector | WorkspaceRoot> =>
+	Layer.effect(
+		LocalExec,
+		Effect.gen(function* () {
+			const roots = yield* WorkspaceRoot;
+			const detector = yield* PackageManagerDetector;
+
+			const context = Effect.gen(function* () {
+				// `Effect.suspend` inside `find` is not enough — the ambient read has
+				// to happen per call, not at layer construction, so a `process.chdir`
+				// between provide and first use is honoured. The house `{ cwd }`
+				// convention, applied here too.
+				const cwd = options?.cwd ?? globalThis.process?.cwd?.() ?? "/";
+
+				const root = yield* roots.find(cwd).pipe(Effect.asSome, Effect.orElseSucceed(Option.none<string>));
+				if (Option.isNone(root)) return Option.none<ExecContext>();
+
+				const detected = yield* detector.detect(root.value).pipe(
+					Effect.asSome,
+					// A detection REFUSAL is not a mechanism failure: the detector
+					// found no evidence and declined to guess, which is exactly "no
+					// identifiable project-local launcher" — the None case. A
+					// WorkspaceManifestError is different in kind and must escape.
+					Effect.catchTag("PackageManagerDetectionError", () => Effect.succeed(Option.none<DetectedPackageManager>())),
+					// Everything left is a broken manifest. Wrap it in the contract's
+					// error, preserving the original structurally rather than
+					// flattening it to a message.
+					Effect.mapError((cause) => new LocalExecError({ directory: root.value, cause })),
+				);
+				if (Option.isNone(detected)) return Option.none<ExecContext>();
+
+				const { prefix, dlxPrefix } = LocalExec.prefixes(detected.value.name);
+				return Option.some(
+					ExecContext.make({
+						label: detected.value.name,
+						prefix,
+						dlxPrefix,
+						directory: root.value,
+					}),
+				);
+			});
+
+			return { context };
+		}),
+	);
+
+/**
  * The composite layers.
  *
  * @public
@@ -270,6 +372,7 @@ export const Workspaces = {
 	layer,
 	layerWithConfigDependencies,
 	layerWithGit,
+	localExecLayer,
 	resolveManifest,
 	resolverLayer,
 	resolvers,

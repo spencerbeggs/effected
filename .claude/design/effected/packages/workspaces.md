@@ -43,6 +43,7 @@ Runtime dependencies:
 | `@effected/package-json` (`workspace:~`) | the full-manifest bridge and the corepack `packageManager` codec |
 | `@effected/npm` (`workspace:~`) | the resolver **contracts** this package implements |
 | `@effected/git` (`workspace:~`) | typed git introspection — `ChangeDetector` and `WorkspaceSnapshots` run on its `Git` service |
+| `@effected/commands` (`workspace:~`) | the `LocalExec` **contract** this package implements — a boundary-tier edge, so [R2](../effect-standards.md#dependency-policy) does not propagate anything |
 | `effect` (peer) | core |
 
 There is no `minimatch` dependency — dependency-pattern matching and the enumerator's mini-glob both run on `@effected/glob`'s vendored engine. Subprocess spawning lives entirely behind `@effected/git`'s `ChildProcessSpawner` contract; there is no `node:child_process` anywhere here. Two modules are Node-only, and both are opt-in rather than on the main path. `ConfigDependencyHooks.layerLive` does an in-process dynamic `import()` of a config dependency's pnpmfile — a built-in/dynamic-import, not a dependency, so it does not affect tier, and its TSDoc names it plainly. `src/node-sync.ts` imports `node:fs` / `node:path`, but it is a **separate entry point** (`@effected/workspaces/node-sync`) that the index never re-exports, so nothing reaches it unless a consumer imports the subpath by name — the main entry stays platform-free (see [the escape hatch](#workspacessync--the-escape-hatch)). `WorkspacesSync` itself imports `node:*` not at all: since the 2026-07-16 retrofit its file and path operations are consumer-supplied.
@@ -65,6 +66,28 @@ Two conveniences sit on top (2026-07-16, dogfood items 2 and 4):
 
 - **`Workspaces.resolverLayer(options?)`** — `Layer<CatalogResolver | WorkspaceResolver, never, FileSystem | Path>`: `resolvers` pre-wired over `layerWithConfigDependencies(options)`, so the two contracts need only a platform from the consumer. It is **deliberately a parameterized layer function, and the fresh layer per call is the feature**: layers memoize by reference, so each call mints an unmemoized layer whose root discovery re-runs — including a per-call `process.cwd()` read when `options.cwd` is omitted. A build tool that changes directory between manifests gets a correct re-discovery each time precisely because nothing is shared across calls; a consumer that wants sharing binds one call's result to a `const`. Catalog assembly takes the hook-replay path — compose `resolvers` with `layer()` yourself if config-dependency code must not run in process.
 - **`Workspaces.resolveManifest(manifest, options?)`** — the one-shot 90% path: `manifest.resolve()` (npm's `Manifest`, [npm.md](npm.md#manifest-tolerant-manifest-level-resolution)) provided with a fresh `resolverLayer(options)` per call. Consumers processing many manifests check the pure `manifest.needsResolution` first and skip the call — and catalog assembly — entirely when nothing needs resolving.
+
+## Implementing @effected/commands' LocalExec contract
+
+The second inverted contract this package fills, on the same reasoning as [npm's resolvers](#implementing-effectednpms-resolver-contracts). [@effected/commands](commands.md) needs package-manager detection and workspace-root resolution for its tool discovery, and both live here — but a direct `commands` → `workspaces` edge would make that **boundary-tier** package integrated, and through the planned `npm` → `commands` edge would drag `npm`, `lockfiles` (pure!) and `package-json` up a tier with it. So `commands` declares the narrow `LocalExec` contract and **`@effected/workspaces` ships `Workspaces.localExecLayer(options?)`**, a `Layer<LocalExec, never, PackageManagerDetector | WorkspaceRoot>`.
+
+**The R2 direction is what makes this safe.** The `@effected/commands` edge is a `workspace:~` dependency on a *boundary* package, and [R2](../effect-standards.md#dependency-policy) taxes only tier-3 edges — so taking it changes nothing about this package's tier (already integrated, for `@pnpm/catalogs.*`) and costs a consumer nothing extra. The inversion exists to protect `commands` and its dependents, not us.
+
+**The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` in `commands` is the one home of the four managers' `exec`/`dlx` prefixes; this layer detects *which* manager owns the directory and asks `commands` what that manager's argv looks like. The tests assert against that same static rather than a copy, so the two packages cannot silently drift apart on the table.
+
+**`None` is success, and the boundary is where the value is.** The contract reserves its typed `LocalExecError` for **mechanism** failure, so the mapping from this package's error taxonomy is:
+
+| Condition | Answer | Why |
+| --- | --- | --- |
+| No workspace root above `cwd` | `Option.none()` | "No project-local way to run tools here" is an ordinary fact; a bare directory should not have to catch an error to learn it. |
+| `PackageManagerDetectionError` | `Option.none()` | The detector found no evidence and [refused to guess](#the-standalone-and-declaration-tiers). No identifiable launcher is the same honest absence. |
+| `WorkspaceManifestError` | `LocalExecError` | A manifest that exists but cannot be read or parsed is **broken**, not absent. Reporting `None` here would tell a caller "no local tooling" when the truth is "your repository is damaged". |
+
+That split falls straight out of the detector's own two-error taxonomy, which is why it is stated rather than invented. All three rows are mutation-pinned in both directions — turning either `None` row into an error, and degrading the error row into `None`, each fails its own test.
+
+`directory` on the resulting `ExecContext` is the resolved **workspace root**, not the caller's cwd: a project-local launcher has to run where the workspace is, and resolving that root is the reason this layer exists rather than `LocalExec.layerFor`. The `{ cwd }` option follows the house [ambient-cwd convention](#ambient-cwd-is-an-explicit-option), read per call rather than at layer construction.
+
+A consumer with no monorepo never needs this layer and therefore never installs this package: `LocalExec.layerNone` and `LocalExec.layerFor(manager)` are one-liners in `commands`. That asymmetry is the entire payoff of the inversion.
 
 ## The packages: enumerator
 
@@ -101,7 +124,7 @@ Module-per-concept.
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetectorShape`, `PublishabilityDetector` service + default layer |
 | `src/ReleaseTag.ts` | `TagStyle`, `TagFormatOptions`, the `ReleaseTag` value class, the `TrackingTag` alias family with `TrackingTagOptions`, and `classifyTag` / `TagClassification` — a leaf importing nothing else here |
 | `src/VersioningStrategy.ts` | `VersioningStrategyType`, `ClassifyOptions`, `VersioningDetectOptions`, `PackageRelease`, the `VersioningStrategy` value class (`classify`, `detect`, `tagsFor`) |
-| `src/Workspaces.ts` | The composite layers, `resolverLayer`, `resolveManifest` |
+| `src/Workspaces.ts` | The composite layers, `resolverLayer`, `resolveManifest`, `localExecLayer` |
 | `src/WorkspacesSync.ts` | The synchronous escape hatch over consumer-supplied ops (`SyncFileSystem`, `SyncPath`, `WorkspacesSyncOptions`) |
 | `src/node-sync.ts` | **A second package entry** (`@effected/workspaces/node-sync`) — `nodeSyncOps` over `node:fs` / `node:path`; the only module here that imports `node:*` |
 | `src/internal/` | `traverse.ts` (the traversal state machine), `enumerate.ts` (the Effect enumerator over it), `patterns.ts` (`packages:` pattern reading), `catalogs.ts` (the `@pnpm/catalogs.*` boundary), `limits.ts` |
