@@ -94,43 +94,64 @@ and nothing else. So it is a *semantic* switch for trusted data, never a
 *performance* one: a depth-20 recursive build measured 2671 ms with
 `disableChecks: true` against 2711 ms without it — inside the noise.
 
-### Recursive `Schema.Class` construction is exponential in depth
+### Recursive `Schema.Class` construction is exponential in **depth**
 
 Constructing a recursive `Schema.Class` tree node-by-node — the shape every parser
 AST takes — re-validates the whole subtree at each level, so the cost **doubles per
-level**. Measured on `effect@4.0.0-beta.97`, a left-spine tree:
+level**. Still true on `effect@4.0.0-beta.101`; a left-spine tree, all four
+construction paths:
 
-| Depth | `new Node(...)` |
+| Depth | `new Node` | `Node.make` | `new TNode` | `TNode.make` |
+| --- | --- | --- | --- | --- |
+| 10 | 33.5 ms | 5.3 ms | 11.9 ms | 5.4 ms |
+| 14 | 162.7 ms | 57.2 ms | 110.2 ms | 86.8 ms |
+| 16 | 640.4 ms | 206.7 ms | 363.1 ms | 340.8 ms |
+| 18 | 1741.6 ms | 846.1 ms | 1489.0 ms | 1877.2 ms |
+| 20 | **5906.0 ms** | **3583.2 ms** | **8803.8 ms** | **5663.4 ms** |
+
+`X.make(...)` is no better than `new`, `TaggedClass` is no better than `Class`, and
+`disableChecks` does not help (above). A parser that materializes a recursive
+`Schema.Class` AST is therefore exponential in nesting depth on a document a user
+can hand you — this is what the `@effected/jsonc` parse-tree fix hit.
+
+**Scope it correctly: the cost is nesting depth, nothing else.** Neither call count
+nor breadth is affected, so a report that `X.make` "is linear" is measuring one of
+those and does not contradict the above:
+
+| Shape | Cost |
 | --- | --- |
-| 10 | 9.6 ms |
-| 14 | 52.7 ms |
-| 16 | 171.3 ms |
-| 18 | 674.5 ms |
-| 20 | **2711.4 ms** |
-
-`X.make(...)` is no better, and `disableChecks` does not help (above). A parser that
-materializes a recursive `Schema.Class` AST is therefore quadratic-to-exponential in
-nesting depth on a document a user can hand you — this is what the `@effected/jsonc`
-parse-tree fix hit.
+| N independent flat `.make(...)` calls | **linear** — 100 000 calls in 19.5 ms |
+| one node with N children, depth 1 | **linear** — 10 000 children in 27.4 ms |
+| left spine of depth N | **exponential** — see the table |
 
 **The fix: bypass the constructor on the internal build path only.** Validate once at
 the boundary, then materialize nodes against the prototype:
 
 ```ts
-const Proto = Object.getPrototypeOf(new Node({ tag: "x", children: [] }));
+const Proto = Object.getPrototypeOf(Node.make({ tag: "x", children: [] }));
 const node = (props: NodeProps): Node => Object.assign(Object.create(Proto), props);
 ```
 
 This is faithful, not a hack: `Data.Class`'s constructor *is*
 `super(); Object.assign(this, props)` (`Data.ts:57`), so the bypass reproduces it
 exactly. The prototype carries the methods and the `Equal`/`Hash` implementations —
-a probe confirmed `Equal.equals(bypassBuilt, constructorBuilt) === true`. Depth 1000
-builds in 0.1 ms.
+re-probed at beta.101, `Equal.equals(bypassBuilt, constructorBuilt) === true` and
+`bypassBuilt instanceof Node === true`. Depth 1000 builds in 0.11 ms.
+
+**Gotcha for `TaggedClass`: you must write `_tag` yourself.** The constructor
+synthesizes it; `Object.assign` does not. Omit it and you get a silently broken node —
+`_tag === undefined`, so `Equal.equals` is `false` and every `_tag` match falls
+through. Passing `{ _tag: "TNode", ...props }` restores `Equal.equals === true`.
 
 Constraints on using it: the props must already be valid (you validated at the
 boundary, or you built them yourself), and it stays **internal** — public
 constructors keep validating. `yaml` and `toml` will meet this the moment either
 materializes a recursive `Schema.Class` AST.
+
+*Evidence: runtime probe against the installed beta, `resolved effect:
+4.0.0-beta.101`, Node 26, left-spine build per depth. Supersedes the beta.97 table
+(depth 20 was 2711.4 ms); the behavior did not change, the machine and the sample
+did.*
 
 ## Fields & optionality
 
