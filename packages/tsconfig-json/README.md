@@ -104,6 +104,47 @@ const compilerOptions = TsconfigLoaderSync.compilerOptions("./tsconfig.json", op
 
 `load` and `resolve` have the same synchronous forms. Failures are the async pipeline's own typed errors thrown as themselves — `TsconfigParseError`, `TsconfigExtendsError` or a `PlatformError` wrapping whatever your `readFile` threw — never a fiber-failure wrapper.
 
+## TypeScript 7 and the classic compiler API
+
+TypeScript 7's native `tsc` ships a version-only stub as its `.` export — there is no JS compiler API behind it. A package that drives the typechecker as a library (`@typescript/vfs`, the language service, the Program API) can neither type against nor runtime-load a TypeScript 7 install, and the obvious fix of pinning the dev `typescript` back to 6 forfeits the native `tsc` and leaves toolchain peers on `^7` unmet. The recipe that keeps both starts here, because this package is what removes the compile-time half of the dependency.
+
+1. Type against the tsconfig JSON form, not the compiler. Public option types use `CompilerOptions.Type` — `{ target: "es2022" }`, strings all the way down — so nothing in `src` or the tests imports `typescript`, not even as a type. The dev `typescript` stays on 7, native `tsc --noEmit` still runs the typecheck, and the toolchain's `^7` peer stays satisfied.
+2. Convert at a single runtime seam. `TsEnumCodec.encodeCompilerOptions` maps the string form to the numeric enums a real compiler expects and returns `ProgrammaticCompilerOptions`, the shape a `ts.CompilerOptions`-typed API takes without a cast. Only that one call site knows a compiler exists.
+3. Alias a classic install for the test runtime, where the JS API is genuinely needed: a dev-only `"typescript-classic": "npm:typescript@^6.0.3"` plus a vitest `resolve.alias` mapping `typescript` to it. The consumer-facing peer stays an optional `^6` — runtime-only, for callers of the compiler-touching module.
+4. Pass `tsLibDirectory` explicitly when you drive `@typescript/vfs`. It locates `lib.*.d.ts` through `require.resolve("typescript")`, which under this setup resolves the TypeScript 7 install, and that install has no lib directory: the map comes back **empty**, silently, with no error to follow. Derive the directory from the module you actually loaded.
+
+```json
+{
+  "devDependencies": {
+    "typescript-classic": "npm:typescript@^6.0.3"
+  }
+}
+```
+
+```ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  resolve: { alias: { typescript: "typescript-classic" } },
+});
+```
+
+```ts
+import { dirname } from "node:path";
+import { TsEnumCodec } from "@effected/tsconfig-json";
+import { createDefaultMapFromNodeModules } from "@typescript/vfs";
+import ts from "typescript";
+
+const fsMap = createDefaultMapFromNodeModules(
+  TsEnumCodec.encodeCompilerOptions({ target: "es2023", lib: ["esnext"] }),
+  ts,
+  dirname(ts.sys.getExecutingFilePath()),
+);
+
+console.log(fsMap.size);
+// the lib files the loaded compiler ships; drop the third argument and this is 0
+```
+
 ## Features
 
 - `TsconfigJson` / `TsconfigJsonFromString` — the document schema and its JSONC string codec. Comments and trailing commas are legal in every parse; there is no JSON-strict path.
