@@ -24,7 +24,12 @@ import type { PageSource } from "./paginate.js";
 
 /** How a transport is built. */
 export interface TransportOptions {
-	readonly token: Redacted.Redacted<string>;
+	/**
+	 * The bearer credential. Absent means **unauthenticated**, which GitHub
+	 * serves at 60 requests per hour per IP — the only call that legitimately
+	 * wants it is the bot-user lookup, which rejects an app JWT.
+	 */
+	readonly token?: Redacted.Redacted<string> | undefined;
 	readonly retry: RetryPolicy;
 	readonly baseUrl?: string | undefined;
 	readonly userAgent?: string | undefined;
@@ -77,7 +82,7 @@ const makeOctokit = (options: TransportOptions): Octokit =>
 	new Octokit({
 		// The one deliberate unwrap in this package: octokit needs the string.
 		// Nothing downstream re-exposes it — errors, spans and logs never carry it.
-		auth: Redacted.value(options.token),
+		...(options.token !== undefined ? { auth: Redacted.value(options.token) } : {}),
 		...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
 		...(options.userAgent !== undefined ? { userAgent: options.userAgent } : {}),
 		...(options.fetch !== undefined ? { request: { fetch: options.fetch } } : {}),

@@ -194,7 +194,7 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 	 * module — rather than as a third static here.
 	 */
 	static readonly layerFromToken = (options: GitHubClientOptions): Layer.Layer<GitHubClient> =>
-		Layer.effect(this, makeFromOptions(options));
+		Layer.effect(this, makeClientShape(options));
 
 	/**
 	 * A client authenticated from configuration, `GITHUB_TOKEN` by default.
@@ -216,7 +216,7 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 			this,
 			Effect.gen(function* () {
 				const token = yield* Config.redacted(options.name ?? "GITHUB_TOKEN");
-				return yield* makeFromOptions({ ...options, token });
+				return yield* makeClientShape({ ...options, token });
 			}),
 		);
 
@@ -268,8 +268,19 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 		Layer.succeed(GitHubClient, makeFixture(fixtures));
 }
 
-/** Builds the live shape over a constructed transport. */
-const makeFromOptions = (options: GitHubClientOptions): Effect.Effect<GitHubClientShape> =>
+/**
+ * Builds the live shape over a constructed transport.
+ *
+ * @remarks
+ * Exported for `GitHubApp`, which builds clients of its own — one speaking as
+ * the app (JWT), one as an installation, and one unauthenticated for the bot-user
+ * lookup that rejects an app JWT. Not part of the public surface.
+ *
+ * @internal
+ */
+export const makeClientShape = (
+	options: Omit<GitHubClientOptions, "token"> & { readonly token?: Redacted.Redacted<string> | undefined },
+): Effect.Effect<GitHubClientShape> =>
 	Effect.gen(function* () {
 		const transport = yield* makeTransport({
 			token: options.token,

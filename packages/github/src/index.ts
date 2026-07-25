@@ -1,3 +1,15 @@
+export {
+	type AppCredentials,
+	AppIdentity,
+	BotIdentity,
+	GitHubApp,
+	GitHubAppError,
+	type GitHubAppOptions,
+	type GitHubAppShape,
+	Installation,
+	InstallationToken,
+	type TokenRequest,
+} from "./GitHubApp.js";
 export { GitHubClient, type GitHubClientOptions, type GitHubClientShape, type GitHubFixtures } from "./GitHubClient.js";
 export { GitHubError, GitHubErrorKind } from "./GitHubError.js";
 export { GitHubGraphQLError, GraphQLDocument, GraphQLErrorEntry } from "./GraphQL.js";
