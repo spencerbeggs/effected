@@ -32,6 +32,12 @@ backend.
 
 ## Three source modules
 
+`GitCommand` is a static class with a private constructor, not an `as const`
+namespace object — an `as const` object's member types are inferred in the
+built `.d.ts` and lose their TSDoc entirely, while a class's `static readonly`
+declarations keep it (the `@effected/commands` precedent, `11a121e0`). Call
+syntax is unaffected (`GitCommand.show(...)`).
+
 - `GitCommand.ts` — 24 pure constructors returning core
   `ChildProcess.StandardCommand` values. Read tier: `show`, `lsTree`,
   `refExists`, `mergeBase`, `changedFiles`, `unstagedChanges`,

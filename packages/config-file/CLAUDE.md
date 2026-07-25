@@ -42,6 +42,18 @@ when changing the pipeline seams, the error set, or the codec boundaries.
 - `src/ConfigProvider.ts` — `asConfigProvider`, `layerConfigProvider`,
   `LayerConfigProviderOptions`
 
+`ConfigFile`, `ConfigMigration` and `ConfigResolver` are static classes with a
+private constructor, not `as const` namespace objects — an `as const` object's
+member types are inferred in the built `.d.ts` and lose their TSDoc entirely,
+while a class's `static readonly` declarations keep it (the `@effected/commands`
+precedent, `11a121e0`). `MergeStrategy` and `EncryptedCodecKey` stay `as const`
+objects: both share a name with a same-file generic interface/type declared
+without a default type parameter (`MergeStrategy<A>`, `type EncryptedCodecKey`),
+and merging a class into either is a TS2300/TS2428 compile error — confirmed
+against the installed TypeScript, not assumed. `VersionAccess` also stays `as
+const`: its one member is a data value, not a function, so there is no member
+TSDoc for the class form to preserve.
+
 ## Architecture: codec × resolver × strategy
 
 Three orthogonal seams, composed by `ConfigFile.layer`:

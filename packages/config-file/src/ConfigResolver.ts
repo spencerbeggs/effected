@@ -30,6 +30,7 @@ const absorb = <R>(
 
 const cwdOf = (given: string | undefined): string => given ?? globalThis.process?.cwd?.() ?? "/";
 
+// Implementation of ConfigResolver.explicitPath; the public contract lives on the static.
 const explicitPath = (target: string): ConfigResolver<FileSystem.FileSystem | Path.Path> => ({
 	name: "explicit",
 	resolve: absorb(
@@ -40,6 +41,7 @@ const explicitPath = (target: string): ConfigResolver<FileSystem.FileSystem | Pa
 	),
 });
 
+// Implementation of ConfigResolver.staticDir; the public contract lives on the static.
 const staticDir = (options: {
 	readonly dir: string;
 	readonly filename: string;
@@ -55,6 +57,7 @@ const staticDir = (options: {
 	),
 });
 
+// Implementation of ConfigResolver.upwardWalk; the public contract lives on the static.
 const upwardWalk = (options: {
 	readonly filename: string;
 	readonly cwd?: string;
@@ -128,18 +131,21 @@ const isWorkspaceRoot = (
 		return false;
 	});
 
+// Implementation of ConfigResolver.gitRoot; the public contract lives on the static.
 const gitRoot = (options: {
 	readonly filename: string;
 	readonly cwd?: string;
 	readonly subpaths?: ReadonlyArray<string>;
 }): ConfigResolver<FileSystem.FileSystem | Path.Path> => rootAnchored("git", isGitRoot, options);
 
+// Implementation of ConfigResolver.workspaceRoot; the public contract lives on the static.
 const workspaceRoot = (options: {
 	readonly filename: string;
 	readonly cwd?: string;
 	readonly subpaths?: ReadonlyArray<string>;
 }): ConfigResolver<FileSystem.FileSystem | Path.Path> => rootAnchored("workspace", isWorkspaceRoot, options);
 
+// Implementation of ConfigResolver.systemEtc; the public contract lives on the static.
 const systemEtc = (options: {
 	readonly app: string;
 	readonly filename: string;
@@ -169,11 +175,38 @@ const systemEtc = (options: {
  *
  * @public
  */
-export const ConfigResolver = {
-	explicitPath,
-	staticDir,
-	upwardWalk,
-	workspaceRoot,
-	gitRoot,
-	systemEtc,
-} as const;
+export class ConfigResolver {
+	private constructor() {}
+
+	/** Resolves to `target` when it exists on disk, or `Option.none()` when it does not — no walking, no filename convention. */
+	static readonly explicitPath = explicitPath;
+
+	/** Resolves `path.join(dir, filename)` when it exists on disk, or `Option.none()` when it does not. */
+	static readonly staticDir = staticDir;
+
+	/**
+	 * Ascends from `cwd` (or the process cwd) toward `stopAt`, resolving the
+	 * first `subpaths/filename` combination found at each level.
+	 */
+	static readonly upwardWalk = upwardWalk;
+
+	/**
+	 * Ascends from `cwd` to the nearest workspace root — a directory with a
+	 * `pnpm-workspace.yaml`, or a `package.json` carrying a `workspaces` field —
+	 * then resolves the first `subpaths/filename` combination found under it.
+	 */
+	static readonly workspaceRoot = workspaceRoot;
+
+	/**
+	 * Ascends from `cwd` to the nearest git root — a directory containing a
+	 * `.git` entry, directory or file (the latter for a worktree) — then
+	 * resolves the first `subpaths/filename` combination found under it.
+	 */
+	static readonly gitRoot = gitRoot;
+
+	/**
+	 * Resolves `<dir>/<app>/<filename>` under the system config root (`/etc` by
+	 * default). Always `Option.none()` on Windows, where `/etc` has no meaning.
+	 */
+	static readonly systemEtc = systemEtc;
+}
