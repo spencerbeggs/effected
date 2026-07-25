@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Ref, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import { Repo } from "./Repo.js";
@@ -112,6 +112,30 @@ export class CheckRunRef extends Schema.Class<CheckRunRef>("CheckRunRef")({
 }) {}
 
 /**
+ * Conclude the surrounding {@link CheckRunShape.withCheckRun} explicitly.
+ *
+ * @remarks
+ * **Recording, not sending.** The call stores the verdict; the bracket's
+ * finalizer writes it exactly once, on whichever path `use` leaves by. That is
+ * what makes an explicit conclusion survive a later failure or an interrupt,
+ * and what keeps the completion a single request no matter how many times this
+ * is called. Calling it twice keeps the **last** verdict.
+ *
+ * Its error channel is `never` because the finalizer owns the reporting: a
+ * caller that could observe a failed `complete` here would have to decide what
+ * to do about it while already on the way out.
+ *
+ * Omit `output` to conclude without touching the run's rendered output —
+ * whatever the last {@link CheckRunShape.update} wrote stays.
+ *
+ * @public
+ */
+export type ConcludeCheckRun = (
+	conclusion: (typeof CheckConclusion.literals)[number],
+	output?: CheckRunOutput,
+) => Effect.Effect<void>;
+
+/**
  * Check runs.
  *
  * @public
@@ -129,17 +153,46 @@ export interface CheckRunShape {
 		output?: CheckRunOutput,
 	) => Effect.Effect<void, GitHubError, Repo>;
 	/**
-	 * Run `use` inside a check run, completing it either way.
+	 * Run `use` inside a check run, concluding it however `use` exits.
 	 *
 	 * @remarks
-	 * `use` keeps its own `R`, unlike the version this replaces, whose callback
-	 * was `R`-less and so forced consumers to build self-contained layers just to
-	 * use the bracket.
+	 * **Every exit reaches a terminal state.** Left to itself the bracket
+	 * concludes `"success"` on success, `"failure"` on a typed failure or a
+	 * defect, and `"cancelled"` on an interrupt. A run left `in_progress` is
+	 * never reaped by GitHub and blocks branch protection until someone deletes
+	 * it by hand, so the finalizer is exit-aware rather than a `tap`/`tapError`
+	 * pair — which fires on the first two only.
+	 *
+	 * **`use` can override that verdict**, which is how the other four
+	 * conclusions are reachable. `conclude` records one; a recorded verdict
+	 * **wins on every exit path**, including failure and interruption, because
+	 * how a check ran and how the surrounding program ended are different
+	 * questions. A findings-derived `"neutral"` is the motivating case: the work
+	 * ran fine and the result is advisory.
+	 *
+	 * Only the success path can fail the effect on the conclusion's behalf.
+	 * Neither an interrupt nor an existing failure is replaced by whatever went
+	 * wrong while reporting it.
+	 *
+	 * `use` keeps its own `R` and its own `A`, unlike the version this replaces,
+	 * whose callback was `R`-less and so forced consumers to build
+	 * self-contained layers just to use the bracket.
+	 *
+	 * @example
+	 * ```ts
+	 * check.withCheckRun("lint", sha, (id, conclude) =>
+	 *   Effect.gen(function* () {
+	 *     const findings = yield* lint();
+	 *     yield* conclude(deriveConclusion(findings), report(findings));
+	 *     return findings;
+	 *   }),
+	 * );
+	 * ```
 	 */
 	readonly withCheckRun: <A, E, R>(
 		name: string,
 		headSha: string,
-		use: (id: number) => Effect.Effect<A, E, R>,
+		use: (id: number, conclude: ConcludeCheckRun) => Effect.Effect<A, E, R>,
 	) => Effect.Effect<A, E | GitHubError, R | Repo>;
 }
 
@@ -191,6 +244,70 @@ const wireOutput = (output: CheckRunOutput) => {
 				}
 			: {}),
 	};
+};
+
+/** A verdict `use` recorded through {@link ConcludeCheckRun}. */
+interface RecordedConclusion {
+	readonly conclusion: (typeof CheckConclusion.literals)[number];
+	readonly output: CheckRunOutput | undefined;
+}
+
+/**
+ * What the bracket concludes when `use` recorded nothing.
+ *
+ * @remarks
+ * **Exit-aware, because a `tap`/`tapError` pair is not.** Those two fire on
+ * success and on a *typed* failure; an interrupted `use` — a cancelled
+ * workflow, a job timeout, a losing branch of a race — and a defect hit
+ * neither, and the run stayed `in_progress` forever. GitHub never reaps such a
+ * run, so it blocks branch protection until a human deletes it by hand.
+ */
+const defaultConclusion = <A, E>(name: string, exit: Exit.Exit<A, E>): RecordedConclusion => {
+	if (Exit.isSuccess(exit)) {
+		return {
+			conclusion: "success",
+			output: CheckRunOutput.make({ title: name, summary: "Completed successfully." }),
+		};
+	}
+	const cancelled = Cause.hasInterruptsOnly(exit.cause);
+	return {
+		conclusion: cancelled ? "cancelled" : "failure",
+		output: CheckRunOutput.make({
+			title: name,
+			summary: cancelled ? "Cancelled before completion." : "Failed.",
+		}),
+	};
+};
+
+/**
+ * Conclude a bracketed run: the verdict `use` recorded, or the exit's default.
+ *
+ * @remarks
+ * **`recorded` wins on every exit path**, including failure and interruption.
+ * How the *check* ran and how the surrounding *program* ended are different
+ * questions, and only `use` knows the first one — a findings-derived
+ * `"neutral"` must not be overwritten by a `"cancelled"` just because the job
+ * was torn down afterwards.
+ *
+ * `Effect.onExit` runs its finalizer **uninterruptibly**, which is what lets
+ * the concluding request survive the interrupt that triggered it.
+ *
+ * Only the success path keeps the error channel: failing to record a success
+ * is a real failure the caller should see. On the other paths the call is
+ * ignored, because neither an interrupt nor an existing failure should be
+ * replaced by whatever went wrong while reporting it — and that choice is the
+ * **exit's**, independent of whose verdict is being written.
+ */
+const concludeFor = <A, E>(
+	name: string,
+	id: number,
+	exit: Exit.Exit<A, E>,
+	recorded: RecordedConclusion | undefined,
+	complete: CheckRunShape["complete"],
+): Effect.Effect<void, GitHubError, Repo> => {
+	const settled = recorded ?? defaultConclusion(name, exit);
+	const write = complete(id, settled.conclusion, settled.output);
+	return Exit.isSuccess(exit) ? write : Effect.ignore(write);
 };
 
 const refOf = (raw: { id: number; name: string; html_url?: string | null; status: string }): CheckRunRef =>
@@ -255,15 +372,18 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 			});
 		}),
 
-		withCheckRun: <A, E, R>(name: string, headSha: string, use: (id: number) => Effect.Effect<A, E, R>) =>
+		withCheckRun: <A, E, R>(
+			name: string,
+			headSha: string,
+			use: (id: number, conclude: ConcludeCheckRun) => Effect.Effect<A, E, R>,
+		) =>
 			Effect.gen(function* () {
 				const run = yield* create(name, headSha);
-				return yield* use(run.id).pipe(
-					Effect.tap(() =>
-						complete(run.id, "success", CheckRunOutput.make({ title: name, summary: "Completed successfully." })),
-					),
-					Effect.tapError(() =>
-						Effect.ignore(complete(run.id, "failure", CheckRunOutput.make({ title: name, summary: "Failed." }))),
+				const recorded = yield* Ref.make<RecordedConclusion | undefined>(undefined);
+				const conclude: ConcludeCheckRun = (conclusion, output) => Ref.set(recorded, { conclusion, output });
+				return yield* use(run.id, conclude).pipe(
+					Effect.onExit((exit) =>
+						Effect.flatMap(Ref.get(recorded), (chosen) => concludeFor(name, run.id, exit, chosen, complete)),
 					),
 				);
 			}),

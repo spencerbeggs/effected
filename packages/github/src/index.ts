@@ -8,6 +8,7 @@ export {
 	CheckRunOutput,
 	CheckRunRef,
 	type CheckRunShape,
+	type ConcludeCheckRun,
 } from "./CheckRun.js";
 export { type BranchOutcome, GitBranch, type GitBranchShape } from "./GitBranch.js";
 export {

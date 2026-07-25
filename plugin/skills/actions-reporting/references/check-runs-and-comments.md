@@ -18,65 +18,122 @@ import { CheckRun, CheckRunOutput } from "@effected/github";
 readonly withCheckRun: <A, E, R>(
  name: string,
  headSha: string,
- use: (id: number) => Effect.Effect<A, E, R>,
+ use: (id: number, conclude: ConcludeCheckRun) => Effect.Effect<A, E, R>,
 ) => Effect.Effect<A, E | GitHubError, R | Repo>;
 ```
 
-(`CheckRunShape`, `packages/github/src/CheckRun.ts:139-143`.) `use` keeps its
-own `R` — unlike the version this replaces, whose callback was `R`-less and
-forced consumers to build self-contained layers just to use the bracket
-(`CheckRun.ts:135-138`).
+`use` keeps its own `R` **and** its own `A` — unlike the version this replaces,
+whose callback was `R`-less and forced consumers to build self-contained layers
+just to use the bracket.
 
-Implementation (`CheckRun.ts:258-269`):
+Implementation (`CheckRun.ts:375-389`, with the finalizer at `:250-311`):
 
 ```ts
-withCheckRun: <A, E, R>(name: string, headSha: string, use: (id: number) => Effect.Effect<A, E, R>) =>
- Effect.gen(function* () {
-  const run = yield* create(name, headSha);
-  return yield* use(run.id).pipe(
-   Effect.tap(() =>
-    complete(run.id, "success", CheckRunOutput.make({ title: name, summary: "Completed successfully." })),
-   ),
-   Effect.tapError(() =>
-    Effect.ignore(complete(run.id, "failure", CheckRunOutput.make({ title: name, summary: "Failed." }))),
-   ),
-  );
- }),
+Effect.gen(function* () {
+ const run = yield* create(name, headSha);
+ const recorded = yield* Ref.make<RecordedConclusion | undefined>(undefined);
+ const conclude: ConcludeCheckRun = (conclusion, output) => Ref.set(recorded, { conclusion, output });
+ return yield* use(run.id, conclude).pipe(
+  Effect.onExit((exit) =>
+   Effect.flatMap(Ref.get(recorded), (chosen) => concludeFor(name, run.id, exit, chosen, complete)),
+  ),
+ );
+})
 ```
 
-**Read this literally, because the two conclusions it produces are the
-only two it can produce.** `Effect.tap` completes the run `"success"` when
-`use` succeeds; `Effect.tapError` completes it `"failure"` (ignoring any
-error completing has) when `use` fails typed. There is no path from
-`withCheckRun` to `"neutral"`, `"cancelled"`, `"timed_out"`,
-`"action_required"` or `"skipped"` — reach for `CheckRun.complete` directly
-and pass one of those `CheckConclusion` literals if your findings warrant it
-(`CheckConclusion`, `CheckRun.ts:7-15`).
+**The bracket always reaches a terminal state, and it takes an exit-aware
+finalizer to do it.** Left to itself, `concludeFor` reads the `Exit`:
 
-**`withCheckRun` does not clean up on interruption.** The bracket is
-`Effect.gen` + `.pipe(Effect.tap, Effect.tapError)`, not
-`Effect.acquireUseRelease` or an `Effect.onExit` handler — so an interrupted
-`use` (the process killed, a sibling fiber failing a `Effect.all` it ran
-under) leaves the check run **`in_progress`** on GitHub with no completion
-call ever made. If a caller needs a check run that always reaches a terminal
-state, it needs its own `Effect.onExit`/`Effect.ensuring` around
-`withCheckRun`, or to call `create`/`complete` explicitly and handle the
-interruption case itself. This is stated plainly because the bracket shape
-invites the assumption that it behaves like `acquireUseRelease` — it does
-not, and nothing in the type signature says so.
+| `use` exits | Default conclusion | Error channel |
+| --- | --- | --- |
+| success | `"success"` | **not** ignored — failing to record a success is a real failure |
+| typed failure, or a defect | `"failure"` | ignored |
+| interrupt only (`Cause.hasInterruptsOnly`) | `"cancelled"` | ignored |
+
+`Effect.onExit` runs its finalizer **uninterruptibly**
+(`internal/effect.ts`'s `onExitPrimitive` clears `fiber.interruptible` unless
+told otherwise), which is what lets the concluding `PATCH` survive the very
+interrupt that triggered it.
+
+### `conclude`: the other four conclusions
+
+The defaults answer "how did the *program* end". `conclude` answers "how did
+the *check* go", which is a different question and the only one `use` can
+answer:
+
+```ts
+type ConcludeCheckRun = (
+ conclusion: (typeof CheckConclusion.literals)[number],
+ output?: CheckRunOutput,
+) => Effect.Effect<void>;
+```
+
+That is how `"neutral"`, `"timed_out"`, `"action_required"` and `"skipped"`
+become reachable without dropping to a raw `create`/`complete` pair. The
+motivating case is a **findings-derived** verdict, where `"neutral"` means *ran,
+advisory output, does not block branch protection* and a `strict-warnings`
+input escalates it to `"failure"`:
+
+```ts
+check.withCheckRun("lint", sha, (id, conclude) =>
+ Effect.gen(function* () {
+  const findings = yield* lint();
+  yield* conclude(deriveConclusion(findings, strictWarnings), report(findings));
+  return findings;
+ }),
+);
+```
+
+Four properties, each pinned by a test:
+
+1. **It records; it does not send.** The verdict goes in a `Ref` and the
+   finalizer writes it — so the completion stays **one** request however many
+   times you call `conclude`, and the **last** verdict wins.
+2. **A recorded verdict wins on every exit path**, failure and interruption
+   included. A findings-derived `"neutral"` is not overwritten by `"cancelled"`
+   because the job was torn down afterwards.
+3. **`use`'s own `A` is untouched.** `conclude` is a second parameter, not a
+   return-value contract — which is also why existing `(id) => …` callbacks
+   still compile.
+4. **Its error channel is `never`.** The finalizer owns reporting; a caller that
+   could observe a failed `complete` there would have to decide what to do about
+   it while already on the way out.
+
+Omit `output` to conclude without touching the rendered output — whatever the
+last `update` wrote stays.
+
+**Both halves of this replace real defects, fixed 2026-07-25.** The bracket used
+to be a `Effect.tap` / `Effect.tapError` pair, which fires on success and on a
+*typed* failure only — so an interrupted `use` (a cancelled workflow, a job
+timeout, a losing branch of a race) and a defect both left the check run
+**`in_progress` forever**. GitHub never reaps such a run, so it blocks branch
+protection until someone deletes it by hand. And the four non-default
+conclusions were unreachable through the bracket at all, so a findings-derived
+verdict meant dropping to a raw `create`/`complete` pair.
+
+Nine tests now pin the bracket (`__test__/resources2.test.ts:99-305`, seven of
+them added by this fix) with two discriminating
+mutants: reverting to the `tap` form fails the interruption and defect tests
+while leaving the success and typed-failure tests green, and restricting the
+recorded verdict to the success path fails exactly the two precedence tests.
+Both mutants matter — the first proves the finalizer is exit-aware, the second
+proves the precedence is real rather than incidental.
 
 ### The explicit calls
 
+Still the right tool when you need the run's `id` or `htmlUrl` **outside** the
+bracket's scope, or when the run outlives the effect that created it.
+
 | Member | Signature | Note |
 | --- | --- | --- |
-| `create(name, headSha)` | `Effect<CheckRunRef, GitHubError, Repo>` | Starts `in_progress` (`CheckRun.ts:200-212`) |
-| `get(id)` | `Effect<CheckRunRef, GitHubError, Repo>` | (`CheckRun.ts:236-245`) |
-| `update(id, output)` | `Effect<void, GitHubError, Repo>` | Output truncated on the way out (`CheckRun.ts:247-256`) |
-| `complete(id, conclusion, output?)` | `Effect<void, GitHubError, Repo>` | `output` optional; truncated when present (`CheckRun.ts:214-230`) |
+| `create(name, headSha)` | `Effect<CheckRunRef, GitHubError, Repo>` | Starts `in_progress` (`CheckRun.ts:317-329`) |
+| `get(id)` | `Effect<CheckRunRef, GitHubError, Repo>` | (`CheckRun.ts:353-362`) |
+| `update(id, output)` | `Effect<void, GitHubError, Repo>` | Output truncated on the way out (`CheckRun.ts:364-373`) |
+| `complete(id, conclusion, output?)` | `Effect<void, GitHubError, Repo>` | `output` optional; truncated when present (`CheckRun.ts:331-347`) |
 
 `CheckRunRef` is `{ id, name, url, status }` (`CheckRun.ts:106-112`); `url`
 falls back to `""` when GitHub's `html_url` is absent (`refOf`,
-`CheckRun.ts:196-197`).
+`CheckRun.ts:313-314`).
 
 ### `CheckRunOutput`: automatic truncation, not a caller's job
 
@@ -105,7 +162,7 @@ U+FFFD, and a four-byte code point split at the wrong offset can produce
 
 **You never call `truncated()` yourself in the ordinary path.**
 `CheckRun.update` and `.complete` call it through `wireOutput`
-(`CheckRun.ts:175-194`) on every request, so truncation is automatic. Call
+(`CheckRun.ts:228-247`) on every request, so truncation is automatic. Call
 `.truncated()` directly only when you need the cut value before sending it —
 logging what will actually reach GitHub, for instance.
 
@@ -124,7 +181,7 @@ class Annotation extends Schema.Class<Annotation>("Annotation")({
 
 (`CheckRun.ts:17-35`.) On the wire, `startLine`/`endLine` become
 `start_line`/`end_line` and `level` becomes `annotation_level`
-(`wireOutput`, `CheckRun.ts:181-192`) — the same readable-vocabulary /
+(`wireOutput`, `CheckRun.ts:236-245`) — the same readable-vocabulary /
 wire-abbreviation split `ActionLogger.annotated` follows for workflow-command
 annotations, kept consistent across both packages.
 

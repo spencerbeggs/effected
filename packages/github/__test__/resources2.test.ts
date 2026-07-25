@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect, Fiber, Layer, Option } from "effect";
+import { Duration, Effect, Exit, Fiber, Latch, Layer, Option } from "effect";
 import { FastCheck, TestClock } from "effect/testing";
 import { Attestation } from "../src/Attestation.js";
 import { Annotation, CheckRun, CheckRunOutput } from "../src/CheckRun.js";
@@ -125,6 +125,181 @@ describe("CheckRun", () => {
 				),
 			);
 			assert.strictEqual(error, "boom");
+			assert.strictEqual(JSON.parse(script.calls[1]?.body ?? "{}").conclusion, "failure");
+		}),
+	);
+
+	it.effect("withCheckRun concludes as cancelled when `use` is interrupted", () =>
+		Effect.gen(function* () {
+			// A check run left `in_progress` is never reaped by GitHub: it blocks
+			// branch protection until someone deletes it by hand. So the finalizer
+			// has to be exit-aware, not a `tap`/`tapError` pair — those fire on
+			// success and typed failure only, and an interrupted job (a cancelled
+			// workflow, a timeout, a failing sibling in a race) hits neither.
+			const { script, base } = harness([
+				{ status: 201, body: { id: 7, name: "n", status: "in_progress", html_url: "u" } },
+				{ status: 200, body: { id: 7, name: "n", status: "completed", html_url: "u" } },
+			]);
+			const started = yield* Latch.make();
+			const fiber = yield* Effect.forkChild(
+				Effect.provide(
+					Effect.flatMap(CheckRun, (check) =>
+						// Open the latch from INSIDE `use`, so the interrupt below cannot
+						// land before the run has been created — otherwise the test could
+						// pass by never having started one.
+						check.withCheckRun("build", "sha", () => Effect.flatMap(started.open, () => Effect.never)),
+					),
+					CheckRun.layer.pipe(Layer.provideMerge(base)),
+				),
+			);
+			yield* started.await;
+			yield* Fiber.interrupt(fiber);
+
+			assert.lengthOf(script.calls, 2, "the run was concluded rather than left in_progress");
+			const body = JSON.parse(script.calls[1]?.body ?? "{}");
+			assert.strictEqual(body.conclusion, "cancelled");
+			assert.strictEqual(body.status, "completed");
+		}),
+	);
+
+	it.effect("an explicit conclusion replaces the success default", () =>
+		Effect.gen(function* () {
+			const { script, base } = harness([
+				{ status: 201, body: { id: 7, name: "n", status: "in_progress", html_url: "u" } },
+				{ status: 200, body: { id: 7, name: "n", status: "completed", html_url: "u" } },
+			]);
+			const value = yield* Effect.provide(
+				Effect.flatMap(CheckRun, (check) =>
+					check.withCheckRun("build", "sha", (id, conclude) =>
+						Effect.gen(function* () {
+							// The shape a findings-derived conclusion takes: the work computes
+							// the verdict, then hands it to the bracket.
+							yield* conclude("neutral");
+							return id * 2;
+						}),
+					),
+				),
+				CheckRun.layer.pipe(Layer.provideMerge(base)),
+			);
+			assert.strictEqual(value, 14, "`use`'s own value is untouched by concluding");
+			assert.lengthOf(script.calls, 2, "concluded exactly once — recorded, then written by the finalizer");
+			assert.strictEqual(JSON.parse(script.calls[1]?.body ?? "{}").conclusion, "neutral");
+		}),
+	);
+
+	it.effect("an explicit conclusion carries its own output", () =>
+		Effect.gen(function* () {
+			const { script, base } = harness([
+				{ status: 201, body: { id: 7, name: "n", status: "in_progress", html_url: "u" } },
+				{ status: 200, body: { id: 7, name: "n", status: "completed", html_url: "u" } },
+			]);
+			yield* Effect.provide(
+				Effect.flatMap(CheckRun, (check) =>
+					check.withCheckRun("build", "sha", (_id, conclude) =>
+						conclude(
+							"action_required",
+							CheckRunOutput.make({ title: "Needs a maintainer", summary: "Two advisory warnings." }),
+						),
+					),
+				),
+				CheckRun.layer.pipe(Layer.provideMerge(base)),
+			);
+			const body = JSON.parse(script.calls[1]?.body ?? "{}");
+			assert.strictEqual(body.conclusion, "action_required");
+			assert.strictEqual(body.output.title, "Needs a maintainer");
+			assert.strictEqual(body.output.summary, "Two advisory warnings.");
+		}),
+	);
+
+	it.effect("an explicit conclusion wins over the FAILURE default", () =>
+		Effect.gen(function* () {
+			// Precedence on the failure path: the work decided the run was skipped,
+			// then failed for an unrelated reason. "skipped" is the verdict about the
+			// check; the failure is the verdict about the program.
+			const { script, base } = harness([
+				{ status: 201, body: { id: 7, name: "n", status: "in_progress", html_url: "u" } },
+				{ status: 200, body: { id: 7, name: "n", status: "completed", html_url: "u" } },
+			]);
+			const error = yield* Effect.flip(
+				Effect.provide(
+					Effect.flatMap(CheckRun, (check) =>
+						check.withCheckRun("build", "sha", (_id, conclude) =>
+							Effect.flatMap(conclude("skipped"), () => Effect.fail("boom" as const)),
+						),
+					),
+					CheckRun.layer.pipe(Layer.provideMerge(base)),
+				),
+			);
+			assert.strictEqual(error, "boom", "the failure still propagates");
+			assert.strictEqual(JSON.parse(script.calls[1]?.body ?? "{}").conclusion, "skipped");
+		}),
+	);
+
+	it.effect("an explicit conclusion wins over the CANCELLED default", () =>
+		Effect.gen(function* () {
+			const { script, base } = harness([
+				{ status: 201, body: { id: 7, name: "n", status: "in_progress", html_url: "u" } },
+				{ status: 200, body: { id: 7, name: "n", status: "completed", html_url: "u" } },
+			]);
+			const started = yield* Latch.make();
+			const fiber = yield* Effect.forkChild(
+				Effect.provide(
+					Effect.flatMap(CheckRun, (check) =>
+						check.withCheckRun("build", "sha", (_id, conclude) =>
+							Effect.gen(function* () {
+								// A watchdog that has already decided the run timed out, then
+								// waits to be torn down. The interrupt must not overwrite it.
+								yield* conclude("timed_out");
+								yield* started.open;
+								yield* Effect.never;
+							}),
+						),
+					),
+					CheckRun.layer.pipe(Layer.provideMerge(base)),
+				),
+			);
+			yield* started.await;
+			yield* Fiber.interrupt(fiber);
+			assert.strictEqual(JSON.parse(script.calls[1]?.body ?? "{}").conclusion, "timed_out");
+		}),
+	);
+
+	it.effect("the last conclusion recorded is the one written", () =>
+		Effect.gen(function* () {
+			const { script, base } = harness([
+				{ status: 201, body: { id: 7, name: "n", status: "in_progress", html_url: "u" } },
+				{ status: 200, body: { id: 7, name: "n", status: "completed", html_url: "u" } },
+			]);
+			yield* Effect.provide(
+				Effect.flatMap(CheckRun, (check) =>
+					check.withCheckRun("build", "sha", (_id, conclude) =>
+						Effect.flatMap(conclude("neutral"), () => conclude("failure")),
+					),
+				),
+				CheckRun.layer.pipe(Layer.provideMerge(base)),
+			);
+			assert.lengthOf(script.calls, 2, "two conclude calls still produce ONE completion");
+			assert.strictEqual(JSON.parse(script.calls[1]?.body ?? "{}").conclusion, "failure");
+		}),
+	);
+
+	it.effect("a defect in `use` still concludes the run", () =>
+		Effect.gen(function* () {
+			// `tapError` fires on the typed error channel only, so a defect used to
+			// leave the run open exactly as an interrupt did.
+			const { script, base } = harness([
+				{ status: 201, body: { id: 7, name: "n", status: "in_progress", html_url: "u" } },
+				{ status: 200, body: { id: 7, name: "n", status: "completed", html_url: "u" } },
+			]);
+			const exit = yield* Effect.exit(
+				Effect.provide(
+					Effect.flatMap(CheckRun, (check) =>
+						check.withCheckRun("build", "sha", () => Effect.die(new Error("kaboom"))),
+					),
+					CheckRun.layer.pipe(Layer.provideMerge(base)),
+				),
+			);
+			assert.isTrue(Exit.isFailure(exit));
 			assert.strictEqual(JSON.parse(script.calls[1]?.body ?? "{}").conclusion, "failure");
 		}),
 	);

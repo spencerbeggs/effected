@@ -138,18 +138,22 @@ reporting picture.
 
 ## The check-run sink (`@effected/github`)
 
-`CheckRun.withCheckRun(name, headSha, use)` is the bracket form: create, run
-`use`, complete either way. `CheckRun.create` / `.update` / `.complete` /
-`.get` are the explicit calls for anything the bracket does not fit —
-multiple updates across a long-running job, or a conclusion the bracket
-never produces (`neutral`, `cancelled`, `timed_out`, `action_required`,
-`skipped`: `CheckConclusion`, `CheckRun.ts:7-15`). `CheckRunOutput`'s
+`CheckRun.withCheckRun(name, headSha, use)` is the bracket form, and it
+**always** reaches a terminal state: `use` gets `(id, conclude)`, and the
+bracket concludes `success` / `failure` / `cancelled` from the `Exit` unless
+`use` recorded a verdict through `conclude`, which wins on every exit path.
+That is how the other four conclusions (`neutral`, `timed_out`,
+`action_required`, `skipped`: `CheckConclusion`, `CheckRun.ts:7-15`) are
+reachable — a findings-derived `neutral` is the motivating case.
+`CheckRun.create` / `.update` / `.complete` / `.get` remain the explicit calls
+for what the bracket does not fit: multiple updates across a long-running job,
+or a run whose id must escape the bracket's scope. `CheckRunOutput`'s
 `summary`/`text` fields are **automatically** truncated to GitHub's
 65535-**byte** cap on every `update`/`complete` call, and its `annotations`
 array to 50 entries — verified in source, not carried over as a remembered
 number (`CheckRunOutput.LIMIT_BYTES`/`MAX_ANNOTATIONS`, `CheckRun.ts:58-61`;
-applied by `wireOutput`, `CheckRun.ts:175-194`). `withCheckRun` does **not**
-handle interruption — full detail, the exact gap, and the `PullRequestComment`
+applied by `wireOutput`, `CheckRun.ts:228-247`). Full detail, the conclusion
+surface and the `PullRequestComment`
 recipes: [references/check-runs-and-comments.md](references/check-runs-and-comments.md).
 
 **Load when:** creating, updating or completing a check run, or reading/
