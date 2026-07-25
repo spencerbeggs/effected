@@ -535,6 +535,25 @@ Fixed by carrying the offending value on the issue. Mutation-verified: reverting
 - **A semantics-preserving mutant is reported, not papered over.** `Buffer.from(x, "base64url")` → `"base64"` changes nothing, because Node's plain base64 decoder accepts the url alphabet and unpadded input (probed, with a control producing `-` and `_`). The strict spelling stays because `atob` is not forgiving, and a test now exercises the alphabet — but no honest test kills that mutant.
 - Mutants killed so far: the `withEnv` global-mutation mutant; the dash-translating `inputVariable` mutant; the `ActionLogger` buffer-as-global mutant, its Warn/Error threshold, its `RUNNER_DEBUG` bypass and its group flush; the `ActionInput` swallowed-default mutant; `CacheKey`'s hex-fed digest, catch-everything ladder rung and dropped sort; the `pid < 0` guard; the `?audience=` join; and the naive tool-cache install (two invariants).
 
+### Successor brief
+
+Read `packages/github-actions/CLAUDE.md` first — it carries the invariants in operational form. Then, per remaining unit:
+
+**`GitHubToken`** (start here; it is the cross-package seam). `@effected/github`'s `GitHubApp` is committed and its shape members carry `Touches:` TSDoc written for exactly this table, so the member-usage contract can be transcribed rather than inferred. Facts worth having before you open the file:
+
+- The shape is `token`, `scopedToken`, `revoke`, `identity`, `installations`. `identity` takes an optional `installationToken`, and supplying it matters: `GET /users/{slug}[bot]` **rejects an app JWT**, so without one the lookup runs unauthenticated against a 60-per-hour-per-IP limit.
+- `GitHubApp.clientLayer` already mints, rotates and revokes on scope close. `GitHubToken.clientLayer` is a *different* thing — it builds a client from the token **persisted in `ActionState`** by an earlier phase, because `post` is a separate process holding no scope from `main`.
+- The token is masked **before** it is persisted, via `Secret.forRunnerFile`, so the ordering is structural rather than remembered.
+- `dispose` uses `getOptional`, so a `post` with no `pre` is a no-op rather than an error.
+- Identity resolution **degrades**: a `GET /app` hiccup logs a warning and yields a token without identity fields; the commit identity falls back to `github-actions[bot]`.
+- `ActionEnvironment.repo` lands here too — it returns `github`'s `RepoRef`, which is why it was deferred out of (a).
+
+**`ActionCache` / `Artifact` / `BlobStore.githubCache`.** `@azure/storage-blob` **is** linked in `packages/github-actions/node_modules` (verified) — no install needed. Build all three together with the reachability test, since the confinement rule is what shapes them: no shared `internal/` helper may import Azure, and the three are separate named exports, never a namespace object. `Artifact` is provisional by ruling — port the surface conservatively and resist narrowing it against no call site.
+
+**`Action.run`.** `ActionOutputs.setFailed` deliberately does not set the exit code; that is this unit's job. Flush `ActionLogger` buffers on **every** exit path including a defect — an unhandled defect inside a buffer swallowed the output in the source package. How much of the source's failure rendering survives is still an open call, but whatever survives arrives with tests.
+
+**The build gate is already clean** — `issues.json` reports zero warnings with 21 suppressed `_base` entries, and `savvy.build.ts` already carries the narrow suppression. If a new module breaks it, the two failure modes seen here were a `{@link}` to a non-exported symbol and an internal named type on a `@public` signature; only structural inlining fixes the second.
+
 ## Settled at the Phase 3 checkpoint
 
 Ruled 2026-07-25; recorded so they are not reopened.
