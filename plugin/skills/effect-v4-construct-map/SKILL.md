@@ -85,6 +85,8 @@ mis-guess silently survives. Full context in the reference files.
 | `Exit.causeOption` | `Exit.getCause` → `Option<Cause<E>>` | |
 | `Schedule.compose` | **Gone.** `Effect.retry(fx, { schedule, times, while })` | the limit is a key, not a composed schedule |
 | `Context.Tag` / `Effect.Service` | `Context.Service<Self, Shape>()("id")` | type params FIRST, then the id |
+| `FiberRef` | **`Context.Reference`** (`Context.ts:1335`); the built-in runtime keys live in `References.ts` | there is no `FiberRef.ts` on the v4 line. Concurrency, log level, tracer settings are all `Context.Reference`s now, set with `Effect.provideService` |
+| `DateTime.unsafeMake` | **`DateTime.makeUnsafe`** (`DateTime.ts:656`) | the whole `unsafe*` → `*Unsafe` suffix flip. And the safe form changed shape: `DateTime.make` returns **`Option`** (`:787`), not a throwing constructor |
 | `Layer.scoped` | `Layer.effect` | it already handles resource-owning layers |
 | `Schema.Schema<A, I>` | `Schema.Codec<A, I>` | `Schema.Schema` takes ONE arg now |
 | `Schema.transform(...)` | `from.pipe(Schema.decodeTo(to, SchemaTransformation.transform(...)))` | the top-level callable does **not exist** — it throws |
@@ -108,6 +110,43 @@ far from the mistake.
 - **`NodeContext`** in `@effect/platform-node` — the aggregate is `NodeServices`.
 - **`@effect/cli`** — dead on the v4 line. The CLI framework is
   `effect/unstable/cli` in core. See `effect-v4-cli`.
+- **`Effect.withConfigProvider`** — gone, with no replacement of that name.
+  `ConfigProvider.ConfigProvider` is a **`Context.Reference`**
+  (`ConfigProvider.ts:296`), so overriding the provider is ordinary service
+  provision:
+  `Effect.provideService(effect, ConfigProvider.ConfigProvider, provider)`.
+  Reach for the v3 name and you get `undefined is not a function` at the call
+  site — which reads like a bad import, not a rename.
+
+## The `Config.withDefault` trap: a default swallows validation failures
+
+`Config.withDefault` and `Config.option` fall back for **missing data only** —
+but "missing" is judged from the **issue**, not from whether the key was there.
+`isMissingDataOnly` (`Config.ts:298`) classifies an `InvalidValue` or
+`InvalidType` as *missing* whenever its `actual` is `Option.none()`
+(`Config.ts:304`):
+
+```ts
+case "InvalidType":
+case "InvalidValue":
+  return Option.isNone(issue.actual) || (Option.isSome(issue.actual) && issue.actual.value === undefined)
+```
+
+So a **hand-built** `SchemaIssue` that omits its `actual` is indistinguishable
+from an absent key, and **every validation failure is silently swallowed by any
+default downstream**. The value the user actually supplied is never reported and
+never rejected.
+
+This shipped as a live defect: an action input written `dry-run: yes` failed
+validation, classified as missing, fell back to the boolean default — `false` —
+and the rehearsal performed real mutations. The fix was one field: carry
+`Option.some(rawValue)` in the issue.
+
+> **Always populate `actual` in a hand-built `SchemaIssue` under `Config`.** It
+> is not cosmetic diagnostic detail; it is the discriminator between "you did not
+> set this" and "what you set is wrong." Getting it wrong is API semantics, not a
+> typo, so nothing in the types or the tests points at it — a config test that
+> only exercises the *absent* case passes either way.
 
 ## These look like values but are calls
 

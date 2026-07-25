@@ -31,7 +31,7 @@ phrasing and missed on its module name.
 | You want to… | Reach for | Note |
 | --- | --- | --- |
 | **spawn a subprocess / run a command / shell out** | `effect/unstable/process` — `ChildProcess` (command values) + `ChildProcessSpawner` (the service) | NOT `unstable/cli`'s `Command`, which is the CLI *declaration*. Core declares the contract and ships **no layer**: require `ChildProcessSpawner` in `R`, let the app provide `NodeServices.layer`. Never hand-roll `node:child_process`. |
-| **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:178`). Do not build a promise-map de-duplicator beside it. |
+| **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:178`). Do not build a promise-map de-duplicator beside it — but read the two `Cache` sharp corners below before choosing a TTL. |
 | **write to stdout/stderr, or read argv/stdin, from a library** | core `Stdio` — require `Stdio` in `R` | `Stdio.layerTest(impl)` (`Stdio.ts:133`) takes a `Partial<Stdio>` and lets you echo-test the output **with no platform package installed**. The real implementation still comes from `@effect/platform-*` at the app edge. Do not `console.log` from library code to dodge the wiring. |
 
 ## Core modules
@@ -55,7 +55,7 @@ phrasing and missed on its module name.
 | `Console` | Effect wrapper over console (log/group/count/table/timer) as a swappable service | logging/console side effects you want swappable in tests |
 | `Context` | typed map of service implementations keyed by Service/Reference | building or reading the service environment `R` of effects |
 | `Cron` | recurring calendar schedule from cron expressions or field constraints | matching dates or computing next/previous scheduled occurrences |
-| `Crypto` | platform-independent crypto service contract (random bytes, UUID, SHA digests) | secure random/UUID/hashing; contract, platform layer provides implementation |
+| `Crypto` | platform-independent crypto service contract: secure random bytes/numbers/shuffle, UUIDv4+v7, and `digest` over `SHA-1/256/384/512` — **and nothing else** (no HMAC, no signing, no key derivation; `Crypto.ts:76-154`) | secure random/UUID/hashing; contract, platform layer provides implementation. For HMAC or signing, `node:crypto` or a platform package — see the sharp corner below |
 | `Data` | constructors for immutable value classes, tagged classes/unions, typed errors | defining `_tag`-carrying domain values and errors with structural equality |
 | `DateTime` | absolute instants plus optional time-zone-aware date-times and arithmetic | zone-aware timestamps, date math, and formatting |
 | `Deferred` | one-time set-once async variable many fibers can await | cross-fiber coordination on a single result/signal |
@@ -220,6 +220,41 @@ section.
   needs `Option`.
 - Testing utilities live in core under `effect/testing/*` — no separate
   test-support package.
+- **"Core has `Crypto`" is a dependency decision, so read the shape first.** At
+  beta.101 the contract covers secure random, UUIDv4/v7 and SHA **digests** —
+  and stops there. There is **no HMAC, no signing, no key derivation, no
+  `subtle`-style surface**. A design that reads the module name and concludes
+  "hashing is handled" is right; one that concludes "crypto is handled" and then
+  needs an HMAC (request signing, a SigV4-style derivation, a webhook signature)
+  discovers mid-implementation that it must reach for `node:crypto` or a platform
+  package after all — after the tier and peer decisions were already made on the
+  wrong premise.
+- **Core `Cache` is interrupt-clean, unlike `Effect.cached`.** Interrupting the
+  only awaiter **discards** the in-flight entry and the next `get` re-runs the
+  lookup; concurrent gets still de-dupe to one lookup. So the `Effect.cached`
+  poisoning trap (a memoized `Exit` carrying an interrupt, permanently outside
+  the declared error channel) does **not** transfer here. Probed at beta.101 with
+  a poisoning control that fired.
+- **…but a default-TTL `Cache` memoizes a FAILED lookup for the process
+  lifetime.** `defaultTimeToLive` is `Duration.infinity` (`Cache.ts:307`), and
+  the cache "stores successful **and failed** lookup results" (`Cache.ts:4`).
+  One transient network blip is therefore permanent. Wherever failures are
+  transient, make the TTL exit-dependent — the `timeToLive` option takes
+  `(exit, key)` for exactly this (`Cache.ts:107`):
+
+  ```ts
+  Cache.makeWith(lookup, {
+   capacity: 1000,
+   timeToLive: (exit) => (Exit.isSuccess(exit) ? "1 hour" : Duration.zero),
+  })
+  ```
+
+- `HttpClientRequest.bearerToken` accepts a **`Redacted` directly**
+  (`token: string | Redacted.Redacted`, `unstable/http/HttpClientRequest.ts:362`;
+  `basicAuth` likewise). A runtime token flows into request construction with **no
+  declassification step at all** — which is what lets a package keep its
+  secret-handling seam to one module instead of granting every request builder an
+  exception to it. Do not reach for `Redacted.value` here.
 
 ## How the skills divide the territory
 

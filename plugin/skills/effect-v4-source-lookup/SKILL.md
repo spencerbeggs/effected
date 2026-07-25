@@ -164,6 +164,43 @@ The same caution applies to the aliased-import direction: this kit writes
 `import { Function as Fn } from "effect"`, so `grep 'Function.dual'` misses every
 real call site, which all read `Fn.dual`.
 
+### The ladder is not Effect-specific: third-party `.d.ts` earns the same climb
+
+Every rule above is written about `effect` because that is where the cost lands
+most often, but the *reason* — a confident summary of an API nobody read — has
+nothing to do with which package it is. A dependency's shipped `.d.ts` (or `src`,
+where it ships one) is a rung-2 source in exactly the same sense, and it settles
+the same class of question.
+
+The concrete case: an evidence pack recommended octokit's
+`RestEndpointMethodTypes` for typing a REST surface, on a plausible reading of
+its docs. **Reading octokit's own types overturned it** — the already-typed
+`request` surface in core was the right seam, and the recommendation would have
+bought a large generated type map for nothing. Nobody had read the `.d.ts`; the
+summary was reasonable and wrong.
+
+> **Rule: before designing against a third-party type surface, read the surface.**
+> Reach for `node_modules/<pkg>/dist/**/*.d.ts` (or its `src`) the same way you
+> reach for `$EFFECT_SRC`. "The docs say" is rung 1 for someone else's package
+> too — prescriptive, not exhaustive, and silent about removals.
+
+### When two reads of one file disagree, settle it against the committed blob
+
+A second-order failure, and it is a *reasoning* failure rather than a lookup one:
+you read a file early in a session, read it again later, and the two reads do not
+match. The temptation is to pick the read that supports the conclusion you have
+already drawn — and it is always available, because one of them does.
+
+Neither read is evidence. A working tree changes under you: another agent edits
+it, an earlier step in your own session wrote to it, a formatter ran. **Settle it
+against the committed blob** — `git show HEAD:path/to/file` — and then, if the
+working tree differs, treat that as its own finding to explain rather than
+noise to discard.
+
+The rule generalizes past files: **when two observations of the same thing
+disagree, the tie-break must be a third source, never the one that suits the
+conclusion.** Picking is how a stale read gets laundered into a verified fact.
+
 ### Worked example: the three rungs disagree
 
 `Context.Key`, checked against `effect@4.0.0-beta.94`:

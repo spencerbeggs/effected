@@ -203,6 +203,32 @@ Read the consequences off the row you are actually in:
 > trusted-path construction against the self-recursive row above — not a rescue
 > from quadratic blowup.
 
+## Class-factory equality is deep and structural — but instances are not frozen
+
+`Equal.equals` on two class-factory instances recurses. It is not reference
+equality, and it is not shallow: it walks **nested `Schema.Class` fields**,
+`Schema.optionalKey` fields (a present key and an absent one compare **unequal**,
+which is the discrimination `exactOptionalPropertyTypes` semantics need), and
+`Schema.Array`-of-class fields element by element. **`Hash` agrees wherever
+`Equal` agrees**, so these instances are safe as `HashMap`/`HashSet` keys with no
+custom `[Hash.symbol]`.
+
+Probed at `effect@4.0.0-beta.101`, 14/14 including discriminating controls — a
+one-field difference at each nesting depth compared unequal, so the probe could
+fail and did not. **Do not pay for this probe again**, and do not hand-write a
+recursive comparator for a class tree: `Equal.equals` already is one. (The
+sibling fact — a *foreign* nested field is re-constructed by `make`, so `!==` by
+reference — is the table above; deep `Equal.equals` is exactly what rescues it.)
+
+**But nothing is frozen.** A `Schema.Class` instance is a plain object at
+runtime; `Schema.ts` calls `Object.freeze` nowhere. Validation happens at
+construction and never again, so a mutated instance keeps **stale derived and
+provenance state** — a cached hash, a `_tag`-adjacent invariant, the wire-form
+bookkeeping the `Person` codec below relies on — while still satisfying its type.
+Guard anything that **replays a value onto the wire, or caches keyed on instance
+identity**: treat instances as immutable by discipline, and rebuild with
+`make` rather than assigning a field, because the type system will not stop you.
+
 ## A homogeneous-Type union is encode-lossy: keep the Type heterogeneous when the wire form must survive
 
 `Schema.Union([A, A.FromString])` — the reflex for "accept either the object
