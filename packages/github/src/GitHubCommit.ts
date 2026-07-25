@@ -1,0 +1,264 @@
+import { Context, Effect, Layer, Option, Schema, Stream } from "effect";
+import { GitHubClient } from "./GitHubClient.js";
+import type { GitHubError } from "./GitHubError.js";
+import type { PageSource } from "./internal/paginate.js";
+import { paginate } from "./internal/paginate.js";
+import { Repo } from "./Repo.js";
+import type { PageOptions } from "./Rest.js";
+
+/**
+ * A commit, projected to what callers read.
+ *
+ * @public
+ */
+export class CommitSummary extends Schema.Class<CommitSummary>("CommitSummary")({
+	/** The commit sha. */
+	sha: Schema.String,
+	/** The full commit message, untrimmed — this package does not decide what "the message" means. */
+	message: Schema.String,
+	/** The author's name as git recorded it, or `"Unknown"` when GitHub reports none. */
+	author: Schema.String,
+	/** The GitHub login of the authoring account, when GitHub could attribute one. */
+	authorLogin: Schema.optionalKey(Schema.String),
+	/** The web URL for the commit. */
+	url: Schema.String,
+}) {
+	/** The message's first line. */
+	get subject(): string {
+		return this.message.split("\n", 1)[0] ?? "";
+	}
+}
+
+/**
+ * How a file changed in a commit or a comparison.
+ *
+ * @public
+ */
+export const FileStatus = Schema.Literals([
+	"added",
+	"removed",
+	"modified",
+	"renamed",
+	"copied",
+	"changed",
+	"unchanged",
+]);
+
+/**
+ * One changed file.
+ *
+ * @public
+ */
+export class CommitFile extends Schema.Class<CommitFile>("CommitFile")({
+	/** Repository-relative path, after any rename. */
+	path: Schema.String,
+	/** What happened to it. */
+	status: FileStatus,
+	/** Lines added. */
+	additions: Schema.Int,
+	/** Lines removed. */
+	deletions: Schema.Int,
+	/** The path before a rename or copy. */
+	previousPath: Schema.optionalKey(Schema.String),
+}) {}
+
+/**
+ * The result of comparing two refs.
+ *
+ * @public
+ */
+export class CommitComparison extends Schema.Class<CommitComparison>("CommitComparison")({
+	/** How head relates to base. */
+	status: Schema.Literals(["diverged", "ahead", "behind", "identical"]),
+	/** Commits head has that base does not. */
+	aheadBy: Schema.Int,
+	/** Commits base has that head does not. */
+	behindBy: Schema.Int,
+	/** The commits in the range. */
+	commits: Schema.Array(CommitSummary),
+	/** The files that differ, subject to GitHub's own 300-file cap on this endpoint. */
+	files: Schema.Array(CommitFile),
+}) {}
+
+/**
+ * Reading commits.
+ *
+ * @public
+ */
+export interface GitHubCommitShape {
+	/** One commit. */
+	readonly get: (ref: string) => Effect.Effect<CommitSummary, GitHubError, Repo>;
+	/** Commits on a ref, newest first. */
+	readonly list: (options?: {
+		readonly ref?: string | undefined;
+		readonly path?: string | undefined;
+		readonly page?: PageOptions | undefined;
+	}) => Effect.Effect<ReadonlyArray<CommitSummary>, GitHubError, Repo>;
+	/**
+	 * Compare two refs.
+	 *
+	 * @remarks
+	 * GitHub paginates this **by commit**, while the single-commit read paginates
+	 * **by file** at 300 per page — so a one-commit comparison is permanently
+	 * truncated at 300 files no matter what you pass. That is GitHub's constraint,
+	 * recorded here rather than discovered later.
+	 */
+	readonly compare: (base: string, head: string) => Effect.Effect<CommitComparison, GitHubError, Repo>;
+	/** The files one commit touched, paginated by file. */
+	readonly changedFiles: (
+		ref: string,
+		options?: { readonly page?: PageOptions | undefined },
+	) => Effect.Effect<ReadonlyArray<CommitFile>, GitHubError, Repo>;
+}
+
+/**
+ * Commits, as GitHub reports them.
+ *
+ * @public
+ */
+export class GitHubCommit extends Context.Service<GitHubCommit, GitHubCommitShape>()("@effected/github/GitHubCommit") {
+	static readonly layer: Layer.Layer<GitHubCommit, never, GitHubClient> = Layer.effect(
+		this,
+		Effect.map(GitHubClient, (client) => make(client)),
+	);
+
+	/** An in-memory double; unstubbed members die naming themselves. */
+	static readonly makeTest = (overrides: Partial<GitHubCommitShape> = {}): GitHubCommitShape => ({
+		get: overrides.get ?? (() => unstubbed("get")),
+		list: overrides.list ?? (() => unstubbed("list")),
+		compare: overrides.compare ?? (() => unstubbed("compare")),
+		changedFiles: overrides.changedFiles ?? (() => unstubbed("changedFiles")),
+	});
+
+	/** {@link GitHubCommit.makeTest} behind a `Layer`. */
+	static readonly layerTest = (overrides: Partial<GitHubCommitShape> = {}): Layer.Layer<GitHubCommit> =>
+		Layer.succeed(GitHubCommit, GitHubCommit.makeTest(overrides));
+}
+
+const unstubbed = (member: string): never => {
+	throw new Error(`GitHubCommit.makeTest: ${member}() was called but not stubbed — pass an override.`);
+};
+
+/**
+ * The minimum of a commit payload this projection reads.
+ *
+ * @remarks
+ * `author.login` is **optional**, not required, because GitHub answers with an
+ * empty object — typed `Record<string, never>` — for a commit it cannot
+ * attribute to an account. A hand-written `{ login: string } | null` compiles
+ * against the happy path and is rejected by the generated types, which is how
+ * this was caught rather than shipped.
+ */
+interface RawCommit {
+	readonly sha: string;
+	readonly html_url: string;
+	readonly commit: { readonly message: string; readonly author?: { readonly name?: string | null } | null };
+	readonly author?: { readonly login?: string } | null;
+}
+
+const summarize = (raw: RawCommit): CommitSummary =>
+	CommitSummary.make({
+		sha: raw.sha,
+		message: raw.commit.message,
+		author: raw.commit.author?.name ?? "Unknown",
+		...(raw.author?.login !== undefined ? { authorLogin: raw.author.login } : {}),
+		url: raw.html_url,
+	});
+
+interface RawFile {
+	readonly filename: string;
+	readonly status: string;
+	readonly additions: number;
+	readonly deletions: number;
+	readonly previous_filename?: string | undefined;
+}
+
+const fileOf = (raw: RawFile): CommitFile =>
+	CommitFile.make({
+		path: raw.filename,
+		status: raw.status as CommitFile["status"],
+		additions: raw.additions,
+		deletions: raw.deletions,
+		...(raw.previous_filename !== undefined ? { previousPath: raw.previous_filename } : {}),
+	});
+
+const make = (client: GitHubClient["Service"]): GitHubCommitShape => ({
+	get: Effect.fn("GitHubCommit.get")(function* (ref: string) {
+		const { owner, repo } = yield* Repo;
+		yield* Effect.annotateCurrentSpan({ owner, repo, ref });
+		const commit = yield* client.request("GET /repos/{owner}/{repo}/commits/{ref}", { owner, repo, ref });
+		return summarize(commit);
+	}),
+
+	list: Effect.fn("GitHubCommit.list")(function* (options?: {
+		readonly ref?: string | undefined;
+		readonly path?: string | undefined;
+		readonly page?: PageOptions | undefined;
+	}) {
+		const { owner, repo } = yield* Repo;
+		yield* Effect.annotateCurrentSpan({ owner, repo, ref: options?.ref ?? "" });
+		const commits = yield* client.paginate(
+			"GET /repos/{owner}/{repo}/commits",
+			{
+				owner,
+				repo,
+				...(options?.ref !== undefined ? { sha: options.ref } : {}),
+				...(options?.path !== undefined ? { path: options.path } : {}),
+			},
+			options?.page,
+		);
+		return commits.map(summarize);
+	}),
+
+	compare: Effect.fn("GitHubCommit.compare")(function* (base: string, head: string) {
+		const { owner, repo } = yield* Repo;
+		yield* Effect.annotateCurrentSpan({ owner, repo, base, head });
+		const comparison = yield* client.request("GET /repos/{owner}/{repo}/compare/{basehead}", {
+			owner,
+			repo,
+			basehead: `${base}...${head}`,
+		});
+		return CommitComparison.make({
+			status: comparison.status,
+			aheadBy: comparison.ahead_by,
+			behindBy: comparison.behind_by,
+			commits: comparison.commits.map(summarize),
+			files: (comparison.files ?? []).map(fileOf),
+		});
+	}),
+
+	changedFiles: Effect.fn("GitHubCommit.changedFiles")(function* (
+		ref: string,
+		options?: { readonly page?: PageOptions | undefined },
+	) {
+		const { owner, repo } = yield* Repo;
+		yield* Effect.annotateCurrentSpan({ owner, repo, ref });
+		// This endpoint pages by FILE, not by commit — 300 per page, up to 3000 —
+		// so octokit does not list it as a paginating route at all: its payload is
+		// a commit object, not an array. The traversal is therefore a custom
+		// `PageSource` handed to the SAME engine every other paginated read uses,
+		// which is exactly what that seam exists for. There is still one pagination
+		// implementation in this package.
+		const perPage = options?.page?.perPage ?? 100;
+		const source = (): PageSource<CommitFile> => {
+			let page = 0;
+			let finished = false;
+			return {
+				next: Effect.suspend(() => {
+					if (finished) return Effect.succeed(Option.none<ReadonlyArray<CommitFile>>());
+					page += 1;
+					return client
+						.request("GET /repos/{owner}/{repo}/commits/{ref}", { owner, repo, ref, page, per_page: perPage })
+						.pipe(
+							Effect.map((commit) => {
+								const files = commit.files ?? [];
+								if (files.length < perPage) finished = true;
+								return files.length === 0 ? Option.none<ReadonlyArray<CommitFile>>() : Option.some(files.map(fileOf));
+							}),
+						);
+				}),
+			};
+		};
+		return yield* Stream.runCollect(paginate(source, options?.page?.maxPages));
+	}),
+});

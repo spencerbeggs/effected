@@ -19,6 +19,16 @@ export interface Reply {
 /** What the scripted fetch recorded about one call. */
 export interface Recorded {
 	readonly url: string;
+	/**
+	 * The path, percent-decoded.
+	 *
+	 * @remarks
+	 * octokit encodes every path parameter with `encodeURIComponent`, so a ref
+	 * like `heads/main` goes on the wire as `heads%2Fmain` — which GitHub accepts,
+	 * and which octokit's own resource methods send too, but which makes a raw-URL
+	 * assertion read as a bug when it is not. Assertions use this.
+	 */
+	readonly path: string;
 	readonly method: string;
 	readonly headers: Record<string, string>;
 	readonly body: string | undefined;
@@ -51,6 +61,7 @@ export const scriptedFetch = (replies: ReadonlyArray<Reply>): ScriptedFetch => {
 		const request = new Request(input as URL | globalThis.Request | string, init);
 		calls.push({
 			url: request.url,
+			path: decodeURIComponent(new URL(request.url).pathname),
 			method: request.method,
 			headers: Object.fromEntries(request.headers.entries()),
 			body: init?.body === undefined || init.body === null ? undefined : String(init.body),
