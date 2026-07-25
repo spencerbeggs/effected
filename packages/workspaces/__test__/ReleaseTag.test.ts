@@ -1,0 +1,87 @@
+// `ReleaseTag` is a pure value class, so these are plain `it()` tests — there is
+// no Effect to run. The formats asserted here are NOT a fresh design: they
+// reproduce, byte for byte, what silk-release-action actually cuts today. Git
+// tag history is not an API, and pre-1.0 breaking-change freedom covers code,
+// not a consumer's existing tag continuity. Changing any literal string in this
+// file breaks tag naming for every consumer repo — do that deliberately or not
+// at all.
+
+import { assert, describe, it } from "@effect/vitest";
+import { ReleaseTag } from "../src/index.js";
+
+describe("ReleaseTag.single", () => {
+	it("is the bare version — no prefix", () => {
+		const tag = ReleaseTag.single("1.0.0");
+		assert.strictEqual(tag.value, "1.0.0");
+		assert.strictEqual(tag.style, "single");
+		assert.strictEqual(tag.version, "1.0.0");
+	});
+
+	it("carries no packageName — a single tag names the release, not a package", () => {
+		const tag = ReleaseTag.single("1.0.0");
+		// `optionalKey` means genuinely absent, not present-and-undefined.
+		assert.isFalse("packageName" in tag);
+		assert.isUndefined(tag.packageName);
+	});
+
+	it("honours an explicit versionPrefix", () => {
+		assert.strictEqual(ReleaseTag.single("1.0.0", { versionPrefix: "v" }).value, "v1.0.0");
+	});
+
+	it("keeps `version` bare even when the tag string is prefixed", () => {
+		// The prefix is presentation. A consumer diffing versions must not have to
+		// strip it back off.
+		const tag = ReleaseTag.single("1.0.0", { versionPrefix: "v" });
+		assert.strictEqual(tag.version, "1.0.0");
+		assert.strictEqual(tag.value, "v1.0.0");
+	});
+});
+
+describe("ReleaseTag.scoped", () => {
+	it("a scoped package name takes NO v prefix", () => {
+		const tag = ReleaseTag.scoped("@scope/pkg", "1.0.0");
+		assert.strictEqual(tag.value, "@scope/pkg@1.0.0");
+		assert.strictEqual(tag.style, "scoped");
+		assert.strictEqual(tag.packageName, "@scope/pkg");
+		assert.strictEqual(tag.version, "1.0.0");
+	});
+
+	it("an UNSCOPED package name takes a v prefix — the inherited asymmetry", () => {
+		// This is the odd one, and it is deliberate: silk-release-action emits
+		// `pkg@v1.0.0` for an unscoped name and `@scope/pkg@1.0.0` for a scoped one.
+		// silk-effects emitted `pkg@1.0.0` for both, and lost. Reproducing the live
+		// behavior costs nothing; normalizing it silently renames tags.
+		const tag = ReleaseTag.scoped("pkg", "1.0.0");
+		assert.strictEqual(tag.value, "pkg@v1.0.0");
+		assert.strictEqual(tag.version, "1.0.0");
+	});
+
+	it("versionPrefix overrides the scoped default in both directions", () => {
+		assert.strictEqual(ReleaseTag.scoped("pkg", "1.0.0", { versionPrefix: "" }).value, "pkg@1.0.0");
+		assert.strictEqual(ReleaseTag.scoped("@scope/pkg", "1.0.0", { versionPrefix: "v" }).value, "@scope/pkg@v1.0.0");
+	});
+
+	it("only a LEADING @ makes a name scoped", () => {
+		// A name containing `@` elsewhere is not scoped. `includes("@")` would be the
+		// wrong test, and this pins it.
+		assert.strictEqual(ReleaseTag.scoped("weird@name", "1.0.0").value, "weird@name@v1.0.0");
+	});
+});
+
+describe("ReleaseTag — formatting is total", () => {
+	it("an empty version is refused at CONSTRUCTION, not through an error channel", () => {
+		// v3 carried a `TagFormatError` whose only cause was an empty version.
+		// `Schema.NonEmptyString` catches it in `make`, so formatting has no error
+		// channel at all and every call site sheds an arm. A bad version here is
+		// developer wiring, not untrusted input — a thrown defect is the right shape.
+		// Matched on the message so the assertion discriminates: a bare
+		// `assert.throws` also passes when the static does not exist at all, which
+		// is exactly the vacuous green this file must not ship.
+		assert.throws(() => ReleaseTag.single(""), /length of at least 1/);
+		assert.throws(() => ReleaseTag.scoped("pkg", ""), /length of at least 1/);
+	});
+
+	it("an empty package name is refused too", () => {
+		assert.throws(() => ReleaseTag.scoped("", "1.0.0"), /length of at least 1/);
+	});
+});

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-21
-last-synced: 2026-07-21
+updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -99,6 +99,8 @@ Module-per-concept.
 | `src/ConfigDependencyHooks.ts` | `ConfigDependencyHooks` contract service, `layerLive`, `layerNoop`, the `HookInjection` result type (`catalogs` + `releaseAge`) |
 | `src/LockfileReader.ts` | `LockfileReader` service + layer (the IO half of `@effected/lockfiles`), `LockfileReadError` |
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetectorShape`, `PublishabilityDetector` service + default layer |
+| `src/ReleaseTag.ts` | `TagStyle`, `TagFormatOptions`, the `ReleaseTag` value class, the `TrackingTag` alias family with `TrackingTagOptions`, and `classifyTag` / `TagClassification` — a leaf importing nothing else here |
+| `src/VersioningStrategy.ts` | `VersioningStrategyType`, `ClassifyOptions`, `VersioningDetectOptions`, `PackageRelease`, the `VersioningStrategy` value class (`classify`, `detect`, `tagsFor`) |
 | `src/Workspaces.ts` | The composite layers, `resolverLayer`, `resolveManifest` |
 | `src/WorkspacesSync.ts` | The synchronous escape hatch over consumer-supplied ops (`SyncFileSystem`, `SyncPath`, `WorkspacesSyncOptions`) |
 | `src/node-sync.ts` | **A second package entry** (`@effected/workspaces/node-sync`) — `nodeSyncOps` over `node:fs` / `node:path`; the only module here that imports `node:*` |
@@ -140,6 +142,19 @@ Three `Context.Service` classes, each with its layer in the same file.
 
 `PackageManagerDetector` uses a priority chain where **lockfile evidence is the primary signal** — it is what says which manager actually ran: `pnpm-workspace.yaml`, then `bun.lock`/`bun.lockb` plus a manifest field naming bun, then `yarn.lock` plus a manifest field naming yarn, then a `workspaces` field for npm. The manifest conjunction on bun and yarn disambiguates a stray `yarn.lock` in an npm repo.
 
+#### The standalone and declaration tiers
+
+Those four markers answer "which manager runs this **workspace**". Most repos are not workspaces, and until 2026-07-25 a single-package repo — a `pnpm-lock.yaml`, no `workspaces` field — was **undetectable**, failing typed. That gap is why silk-release-action carried *three* competing hand-rolled detections with two different silent defaults (`"npm"` in `main.ts`, `"pnpm"` in `detect-repo-type.ts`, plus an input-narrowing helper that is not detection at all). Two tiers close it:
+
+- **Standalone** — `pnpm-lock.yaml` → pnpm, a bun lockfile plus a manifest naming bun → bun, `yarn.lock` plus a manifest naming yarn → yarn, `package-lock.json` → npm. The conjunctions **mirror the workspace tier exactly** rather than inventing a looser second rule inside one service: a pnpm or npm lockfile is written by exactly one manager and stands alone, while a stray `yarn.lock` is as common in a single-package repo as in a workspace.
+- **Declaration** — no lockfile at all, but `packageManager` or `devEngines.packageManager` names one of the four. A fresh clone before its first install has no lockfile to read and its manifest still says plainly what is meant to run. Weaker evidence, so it is consulted last.
+
+Both tiers run **after every workspace marker has missed**, which makes the widening **strictly additive**: no input that already resolved can change its answer, and a stray `package-lock.json` cannot turn a pnpm workspace into an npm repo. A regression test pins that ordering, because reordering the tiers is the obvious and wrong "simplification".
+
+**The detector still refuses to guess.** Nothing matching is `PackageManagerDetectionError`, never a fabricated default — and the proof that this is the right contract is that the two consumer reimplementations both invented a default here and invented *different* ones. Choosing one is policy, not detection, and a library that makes the choice silently guarantees some caller is wrong. A consumer wanting a default writes `Effect.orElseSucceed` where a reader can see it. `CHECKED` grew to ten markers so the error still names everything it tried.
+
+> **Open, deliberately not changed:** within the workspace tier the npm `workspaces` field is still consulted *before* any standalone lockfile, so a repo with both `workspaces` and a `pnpm-lock.yaml` reports npm. Reordering so lockfile evidence outranks the `workspaces` field would be a behavior change to an already-shipped path rather than an additive one; it is recorded here rather than made silently.
+
 #### The two fields that declare a manager
 
 Corepack reads **both** the top-level `packageManager` and `devEngines.packageManager`, and they are not interchangeable. `packageManager` is not deprecated; `devEngines` is a validation and fallback layer over it. Corepack validates the two against each other when both are present and falls back to `devEngines.packageManager` when the top-level field is absent. The detector implements:
@@ -153,6 +168,44 @@ Both fields' versions normalize through `@effected/package-json`'s `PackageManag
 **A malformed manifest hint is ignored, never fatal.** A non-object `devEngines`, a non-object or array `devEngines.packageManager`, a `name` containing `@`, or an unusable version cannot turn a detectable workspace into a detection failure. A manifest that is *present but unreadable or unparseable* is different — it fails with a typed `WorkspaceManifestError`, because a corrupt root manifest is a real problem, not a missing hint. `detect`'s error channel is `PackageManagerDetectionError | WorkspaceManifestError`.
 
 `PackageManagerName` is this package's own literal (`"npm" | "pnpm" | "yarn" | "bun"`). It is structurally identical to `@effected/lockfiles`' `LockfileFormat` and assigns freely to it (which `LockfileReader` relies on), but they are different concepts sharing a carrier, and the name avoids colliding with `@effected/package-json`'s `PackageManager` (the corepack spec class) in a consumer's import list.
+
+### VersioningStrategy and ReleaseTag
+
+Two pure value classes (2026-07-25, github-split Phase 1c) answering the release-shaped questions the workspace model already holds the facts for: *how does this workspace version*, and *what is the git tag called*. They replace `@savvy-web/silk-effects`' `VersioningStrategy` / `TagStrategy` services and silk-release-action's parallel `determine-tag-strategy.ts`.
+
+**Neither is a service, and the kit-wide rule is what settles it** — a service shape carries only effectful members, and both halves here are total pure functions. The v3 originals wrapped classification and formatting in `Effect` with `never` error channels purely to fit a service shape, which is precisely the shape that rule exists to prevent. There is nothing to swap: the two genuinely swappable inputs (`WorkspaceDiscovery`, `PublishabilityDetector`) are already services with their own doubles.
+
+`VersioningStrategy.classify({ packages, fixedGroups? })` is total: `single` (≤ 1 publishable package), `fixed-group` (one group covers the whole publishable set), else `independent`. Two properties are load-bearing and easy to lose: names are **de-duplicated before counting**, or `["a", "a"]` misclassifies a one-package repo as independent and cuts per-package tags for it; and lockstep requires **one single group** to cover the set — two groups covering it between them mean the packages move separately, so a naive "are there any fixed groups?" test is wrong. A group naming non-publishable or nonexistent packages still counts, because groups describe the whole repo rather than the publishable slice.
+
+**`fixedGroups` is a plain argument, never read from a file.** Fixed groups are a release tool's concept — changesets writes them to `.changeset/config.json` — and a workspace-model package that read that file would be adopting one tool's schema and one tool's release policy. A `VersionGroups` contract service (the `CatalogResolver` shape) is the recorded escalation if a second group source ever appears; today there is one, and it lives outside the kit.
+
+`VersioningStrategy.detect(options?)` is the one `Effect.fn`, over `WorkspaceDiscovery | PublishabilityDetector`: enumerate, keep what publishes somewhere, classify. Asking publishability through the service is the point — a consumer honouring a release tool's ignore list swaps the layer rather than filtering afterwards, which is what silk-release-action already does.
+
+`ReleaseTag` is a leaf module importing nothing else in the package. `single` and `scoped` **reproduce production byte for byte**: `1.2.3`, `@scope/pkg@1.2.3`, and `pkg@v1.2.3` for an unscoped name, with `versionPrefix` as the explicit override. The scoped/unscoped `v` asymmetry is **inherited, not designed** — the two v3 implementations disagreed about it and one contradicted its own doc comment, so the kit had to pick, and the one that actually cuts releases won. Git tag history is not an API: pre-1.0 breaking-change freedom covers our code, not a consumer's existing tags. Only a **leading** `@` makes a name scoped, so `weird@name` is not a scope.
+
+**v3's `TagFormatError` is gone.** Its only cause was an empty version, which `Schema.NonEmptyString` now catches during `make`, so formatting is total and every call site sheds an error arm. A bad version reaching these statics is developer wiring rather than untrusted input, so it dies as a defect — the `matchesDependency` posture.
+
+#### TrackingTag — the floating alias family
+
+Release tags are strict SemVer 2 and immutable. **Tracking tags are the deliberately-not-SemVer alias family**: `v1` and `v1.2`, re-pointed at whatever release is newest in that line. This is the GitHub Actions distribution convention — a consumer writes `uses: owner/repo@v1` and gets the newest 1.x.
+
+`TrackingTag` is **its own concept, not a third `TagStyle`**, and the reason is that it is derived *from* a version rather than being a way of formatting one: a release tag names one immutable version, while a tracking tag carries a truncated number that is not a version at all. Folding them together would put a mutable pointer and an immutable name behind one type. It lives in `ReleaseTag.ts` because the classifier below has to know both families, so splitting the modules would force one to import the other anyway.
+
+`TrackingTag.forVersion(version, options?)` derives the set, broadest first, with `packageName` for a monorepo's `@scope/pkg@v1` and `precision: "major"` to skip the minor alias. Three properties are load-bearing:
+
+- **A prerelease derives NOTHING**, and the override (`includePrerelease`) is off by default. Anyone depending on `owner/repo@v1` is asking for the newest *stable* 1.x; re-pointing that alias at `1.0.0-beta.3` ships a prerelease to every such consumer with no signal. Pinned by tests and by two mutants (removing the guard, and treating `+build` as a prerelease).
+- **Build metadata is not a prerelease.** `+build` carries no precedence meaning in SemVer, so `1.2.3+sha.abc` is the stable `1.2.3` and derives normally. Stripping build *before* testing for `-` is what makes that correct; the obvious wrong implementation treats any `-`-or-`+` suffix as prerelease, and its own mutant pins it.
+- **Derivation is total and never throws.** A version that is not `X.Y.Z` derives nothing, because this is a query about a version rather than a validation of one — and `WorkspacePackage.version` is deliberately tolerant, so odd versions reach here routinely.
+
+0.x versions **do** derive aliases. Floating `v0` across 0.x minors is a genuine hazard, but which aliases to publish is policy decided where tags are moved, not something a derivation should quietly withhold.
+
+**Moving a git tag is not this package's business.** The module derives, formats and parses; re-pointing is a consumer concern over `@effected/git`. That omission is what keeps `ReleaseTag.ts` a pure leaf.
+
+`classifyTag(tag)` answers the recognition half: given any tag string, is it a release tag, a tracking alias, or neither? The families are told apart by **segment count, not by the `v` prefix** — three numeric segments is a version (`1.0.0` and `v1.0.0` are both release tags), one or two is a truncated alias. The `v` *is* required on an alias: a bare `1` is neither valid SemVer nor the convention, and accepting it would make the classifier guess. `unrecognized` is a real answer rather than a failure, because a repository's tags include `latest`, branch names and whatever else humans wrote. Round-tripping is a tested property in both directions — every tag `ReleaseTag` and `TrackingTag` format classifies back to its own family with fields intact — which is what makes the classifier trustworthy rather than a parallel guess that can drift from the producers.
+
+**`@effected/semver` was consciously declined**, matching the call [markdown.md](markdown.md) records for its `$schema` version grammar. The tracking-tag grammar is not SemVer, and the derivation needs only the three numeric segments plus the presence of a prerelease — roughly fifteen lines. A dependency edge for that is disproportionate. It earns itself the day something here needs real semver *comparison* (say, "is this release the newest matching `v1`"), which no caller asks for: choosing what a tracking tag should point at is the consumer's, made where the tag is moved.
+
+`strategy.tagsFor(releases, options?)` folds the two together and is what collapses the consumer's ~110-line `determineTagStrategy` + `isMonorepoForTagging` to two lines. Under `single`/`fixed-group` it returns exactly one tag carrying the **first** release's version; a lockstep batch shares a version by construction, so the choice is visible only on a batch that should not exist. Whether a batch actually agreed is a property of that batch, not of the workspace, so the v3 `isFixedVersioning` flag is deliberately **not** ported — it stays the caller's one-line check.
 
 ### PublishabilityDetector
 
@@ -299,4 +352,6 @@ Mutation-proven edges:
 
 ## Build
 
-Standard per [package-setup.md](../package-setup.md). `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized class-factory bases; the gate is a zero-warning `dist/prod/issues.json` with only `*_base` symbols suppressed. The prod gate's expected suppressed count is **28** (`suppressed: 0` in the prod gate means the build did not run properly).
+Standard per [package-setup.md](../package-setup.md). `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized class-factory bases; the gate is a zero-warning `dist/prod/issues.json` with only `*_base` symbols suppressed. The prod gate's expected suppressed count is **31** — 28 plus `ReleaseTag_base`, `VersioningStrategy_base` and `TrackingTag_base` (`suppressed: 0` in the prod gate means the build did not run properly).
+
+The `_base` suppression is scoped to `_base` and nothing else, and Phase 1c demonstrated why: `VersioningStrategy.tagsFor` originally named a module-private `Release` interface on a `@public` signature, and the build reported it as a genuine `ae-forgotten-export` that the narrow pattern correctly did **not** mask. That is real surface a consumer must construct, so it was made `@public` as `PackageRelease` rather than suppressed — the policy's stated boundary, working as intended.

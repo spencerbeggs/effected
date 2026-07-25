@@ -131,7 +131,20 @@ export class PackageManagerDetectionError extends Schema.TaggedErrorClass<Packag
 }
 
 /** The markers probed, in priority order. Exposed on the error so the contract is not prose-only. */
-const CHECKED = ["pnpm-workspace.yaml", "bun.lock", "bun.lockb", "yarn.lock", "package.json#workspaces"] as const;
+const CHECKED = [
+	// The workspace tier: which manager runs this WORKSPACE.
+	"pnpm-workspace.yaml",
+	"bun.lock",
+	"bun.lockb",
+	"yarn.lock",
+	"package.json#workspaces",
+	// The standalone tier: which manager runs this single-package repo.
+	"pnpm-lock.yaml",
+	"package-lock.json",
+	// The declaration tier: which manager is MEANT to run, before any install.
+	"package.json#packageManager",
+	"package.json#devEngines.packageManager",
+] as const;
 
 /**
  * Every failure {@link PackageManagerDetector} can surface: no manager could be
@@ -321,6 +334,62 @@ export class PackageManagerDetector extends Context.Service<
 				});
 			}
 
+			// ── the standalone tier ────────────────────────────────────────────
+			//
+			// Every workspace marker has missed, so this is not a workspace. Most
+			// repos are not: before this tier existed, a single-package repo with a
+			// pnpm-lock.yaml and no `workspaces` field was undetectable, and
+			// consumers answered the question themselves — three times, with two
+			// different silent defaults.
+			//
+			// It runs LAST on purpose, so it is strictly additive: no input that
+			// already resolved can change its answer, and a stray package-lock.json
+			// cannot turn a pnpm workspace into an npm repo.
+			//
+			// The conjunctions mirror the workspace tier exactly rather than
+			// inventing a looser second rule inside one service: a pnpm or npm
+			// lockfile is written by exactly one manager and stands alone, while a
+			// yarn or bun lockfile still needs the manifest to name its manager,
+			// because a stray yarn.lock is as common here as in a workspace.
+			if (yield* has(root, "pnpm-lock.yaml")) {
+				return DetectedPackageManager.make({ name: "pnpm", version: versionFor(hints, "pnpm"), runtime: "node" });
+			}
+
+			if (bunLock && namesManager(hints, "bun")) {
+				return DetectedPackageManager.make({ name: "bun", version: versionFor(hints, "bun"), runtime: "bun" });
+			}
+
+			if ((yield* has(root, "yarn.lock")) && namesManager(hints, "yarn")) {
+				return DetectedPackageManager.make({ name: "yarn", version: versionFor(hints, "yarn"), runtime: "node" });
+			}
+
+			if (yield* has(root, "package-lock.json")) {
+				return DetectedPackageManager.make({ name: "npm", version: versionFor(hints, "npm"), runtime: "node" });
+			}
+
+			// ── the declaration tier ───────────────────────────────────────────
+			//
+			// No lockfile at all. A fresh clone before its first install has none to
+			// read, but its manifest still says plainly which manager is meant to
+			// run — weaker evidence than a lockfile, which is why it is consulted
+			// last, but evidence nonetheless.
+			const declared = declaredName(hints);
+			if (Option.isSome(declared)) {
+				const name = declared.value;
+				if (name === "pnpm" || name === "npm" || name === "yarn" || name === "bun") {
+					return DetectedPackageManager.make({
+						name,
+						version: versionFor(hints, name),
+						runtime: name === "bun" ? "bun" : "node",
+					});
+				}
+			}
+
+			// Nothing matched, and the package REFUSES TO GUESS. Both consumer
+			// reimplementations invented a default at this point and invented
+			// different ones — "npm" in one, "pnpm" in the other — which is the
+			// proof that the choice is policy, not detection. A caller who wants a
+			// default writes `Effect.orElseSucceed` where a reader can see it.
 			return yield* Effect.fail(new PackageManagerDetectionError({ root, checked: CHECKED }));
 		});
 

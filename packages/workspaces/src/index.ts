@@ -56,6 +56,22 @@ export {
 } from "./PackageManagerName.js";
 export { PublishTarget, PublishabilityDetector, type PublishabilityDetectorShape } from "./Publishability.js";
 export {
+	ReleaseTag,
+	type TagClassification,
+	type TagFormatOptions,
+	TagStyle,
+	TrackingTag,
+	type TrackingTagOptions,
+	classifyTag,
+} from "./ReleaseTag.js";
+export {
+	type ClassifyOptions,
+	type PackageRelease,
+	type VersioningDetectOptions,
+	VersioningStrategy,
+	VersioningStrategyType,
+} from "./VersioningStrategy.js";
+export {
 	type CatalogAssemblyFailure,
 	CatalogSet,
 	type ImporterVersions,
