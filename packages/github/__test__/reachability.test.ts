@@ -32,7 +32,17 @@ const runtimeSpecifiers = (source: string): ReadonlyArray<string> => {
 	// Doc comments carry `@example` blocks with real import statements in them.
 	// Stripping comments first is what stops this walker from "finding" an edge
 	// that only exists in prose — which it did, on the first run.
-	const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\n)\s*\/\/.*/g, "$1");
+	//
+	// LINE comments must go FIRST, and the ordering is load-bearing rather than
+	// stylistic. Prose containing a `/*`-bearing token — a glob like `src/*`, or
+	// a scope like `@octokit/*` — opens a block comment as far as a regex is
+	// concerned. Stripping blocks first therefore deletes everything from that
+	// word to the end of the NEXT doc comment, imports included, and reports a
+	// module as importing less than it does. That fails SILENTLY in the
+	// permissive direction, which for a confinement test means passing for the
+	// wrong reason. Blocks cannot nest, so once the fake openers are gone a real
+	// `/*` inside a real block comment is harmless.
+	const code = source.replace(/(^|\n)\s*\/\/.*/g, "$1").replace(/\/\*[\s\S]*?\*\//g, "");
 	const pattern = /(?:^|\n)\s*(?:import|export)\b([^;]*?)\bfrom\s*["']([^"']+)["']/g;
 	for (const match of code.matchAll(pattern)) {
 		const clause = match[1] ?? "";
@@ -69,6 +79,26 @@ const reachableBareImports = (entry: string): ReadonlySet<string> => {
 const SIGNER = "universal-github-app-jwt";
 
 describe("bundle reachability", () => {
+	it("the walker does not lose imports after a /*-bearing token in prose", () => {
+		// The discriminating case for the comment stripper, and the reason LINE
+		// comments are removed first. `@octokit/*` in a doc comment opens a
+		// phantom block comment; stripping blocks first ran that phantom to the
+		// close of the NEXT doc comment and ate every import between. The walker
+		// then reported FEWER edges than exist — and every assertion in this file
+		// is of the form "does not reach", so a lost edge is a false PASS.
+		// The token must sit in a LINE comment: inside a block comment a `/*` is
+		// swallowed by its own comment and is harmless, so a fixture built that
+		// way passes with or without the fix.
+		const fixture = [
+			"// Prose naming a scope like @octokit/* and a glob like src/* here.",
+			'import { Octokit } from "@octokit/core";',
+			"/** A real doc comment, whose close is the phantom's close. */",
+			'import { sign } from "universal-github-app-jwt";',
+			"export const x = [Octokit, sign];",
+		].join("\n");
+		assert.deepStrictEqual([...runtimeSpecifiers(fixture)], ["@octokit/core", "universal-github-app-jwt"]);
+	});
+
 	it("the App module DOES reach the JWT signer", () => {
 		// The control. Without it, the assertion below could pass because the
 		// walker is broken rather than because the edge is absent.
