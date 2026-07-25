@@ -73,6 +73,17 @@ Effect.runPromise(Yaml.stringify({ port: 3000, hosts: ["a", "b"] })).then(consol
 // - b
 ```
 
+Both directions have a synchronous counterpart that returns a `Result` for callers that cannot await an Effect, a `vitest.config.ts` being the motivating case. `Yaml.parse` is defined in terms of `Yaml.parseResult`, so the two forms cannot disagree about what a document means:
+
+```ts
+import { Yaml } from "@effected/yaml";
+import { Result } from "effect";
+
+const result = Yaml.parseResult("port: 3000 # dev server");
+console.log(Result.isSuccess(result) ? result.success : result.failure);
+// { port: 3000 }
+```
+
 ## Hostile input fails typed
 
 An alias bomb — nested anchors whose expansion multiplies at every level — is bounded by an expansion budget and surfaces as a `YamlParseError`, not as an out-of-memory kill:
@@ -99,6 +110,7 @@ Collection nesting past the depth cap behaves the same way, yielding a `NestingD
 
 - `Yaml.parse` / `Yaml.parseAll` — error-recovery parsing of a single document or a `---`-separated stream into plain values, resolving anchors and aliases and aggregating every diagnostic into one `YamlParseError`.
 - `Yaml.stringify` — serialize a plain value back to YAML, failing typed with `YamlStringifyError` on circular references or on excessively deep nesting.
+- `Yaml.parseResult` / `Yaml.stringifyResult` — the pure synchronous counterparts, returning a `Result` instead of an `Effect` for config-time callers that cannot await; each runs the same engine call as its `Effect` variant, so the two forms cannot diverge, and a fatal diagnostic, a duplicate key, an alias bomb or a circular reference still fails typed rather than throwing.
 - `Yaml.stripComments` — quote-aware comment removal that keeps line numbers stable, or every byte offset stable when given a replacement character.
 - `Yaml.equals` / `Yaml.equalsValue` — semantic equality that ignores comments, whitespace, formatting and mapping key order while keeping sequence order significant.
 - `Yaml.schema` / `Yaml.fromString` / `Yaml.YamlFromString` / `Yaml.allFromString` — string→domain schema factories that decode a single document or a whole stream into a validated Effect `Schema` value.

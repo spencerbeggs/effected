@@ -134,7 +134,21 @@ A specifier the workspace cannot answer fails typed as `UnresolvedDependencyErro
 
 ## The synchronous escape hatch
 
-Vitest's config-time project discovery cannot await. Two functions exist for exactly that case, and they run synchronously over file and path operations you supply — the module itself imports nothing platform-shaped, and Node's built-ins satisfy the operations one-liner each:
+Vitest's config-time project discovery cannot await. Two functions exist for exactly that case, and they run synchronously over file and path operations you supply. On Node you do not have to write them: the `@effected/workspaces/node-sync` subpath exports `nodeSyncOps`, the ready-made `node:fs` and `node:path` bindings, so adopting the sync path is one extra import.
+
+```ts
+import { findWorkspaceRootSync, getWorkspacePackagesSync } from "@effected/workspaces";
+import { nodeSyncOps } from "@effected/workspaces/node-sync";
+
+const root = findWorkspaceRootSync(process.cwd(), nodeSyncOps);
+const packages = root === null ? [] : getWorkspacePackagesSync(root, nodeSyncOps);
+// root: the workspace root path, or null when none is found above the cwd
+// packages: the discovered workspace packages, empty when there is no root
+```
+
+Both entry points take their path positionally, so the bag usually passes through verbatim; spread it to add `getWorkspacePackagesSync`'s traversal extras — `{ ...nodeSyncOps, maxDepth }`. The bindings are a separate subpath deliberately: the main entry imports nothing platform-shaped, and re-exporting them from it would drag `node:*` into every consumer, including the ones supplying their own operations. `nodePath` is the running platform's `node:path`, so on Windows the paths handed back are win32 paths.
+
+Write the operations yourself when Node's built-ins are not the platform you mean — a Bun or Deno binding, a test fake, or `node:path/win32` to pin a dialect rather than follow the running platform. Each one is a one-liner:
 
 ```ts
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -157,7 +171,7 @@ const packages = root === null ? [] : getWorkspacePackagesSync(root, options);
 // packages: the discovered workspace packages, empty when there is no root
 ```
 
-Windows correctness is the operations you pass — `node:path` on Windows is already win32-appropriate. Both entry points drive one traversal state machine (the same dequeue order, depth rule, visit budget and `node_modules` prune), so the sync and Effect surfaces can never disagree about what a pattern means. The one deliberate difference is at a bound: the Effect enumerator fails typed, the sync one truncates. Prefer the Effect API everywhere you can run one.
+Windows correctness is therefore the operations you pass, and nothing else. Both entry points drive one traversal state machine (the same dequeue order, depth rule, visit budget and `node_modules` prune), so the sync and Effect surfaces can never disagree about what a pattern means. The one deliberate difference is at a bound: the Effect enumerator fails typed, the sync one truncates. Prefer the Effect API everywhere you can run one.
 
 ## Error handling
 
@@ -220,6 +234,7 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 - `ChangeDetector` — git-range change detection over `@effected/git`'s `Git` service; swap the layer to mock it with no repository.
 - `PublishabilityDetector` — whether a package publishes and to where, as a `PublishTarget` (registry, directory, access, provenance). The default layer implements npm's semantics; swap the layer if yours differ.
 - `findWorkspaceRootSync` / `getWorkspacePackagesSync` — the synchronous escape hatch for config-time callers that cannot await, over file and path operations you supply.
+- `@effected/workspaces/node-sync` — a second entry point holding the Node bindings for those operations (`nodeFileSystem`, `nodePath` and the `nodeSyncOps` bag), kept off the main entry so `node:*` never reaches a consumer that supplies its own.
 
 ## License
 
