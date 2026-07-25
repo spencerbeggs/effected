@@ -89,6 +89,138 @@ That split falls straight out of the detector's own two-error taxonomy, which is
 
 A consumer with no monorepo never needs this layer and therefore never installs this package: `LocalExec.layerNone` and `LocalExec.layerFor(manager)` are one-liners in `commands`. That asymmetry is the entire payoff of the inversion.
 
+## Publishability as a contract seam (draft)
+
+Drafted 2026-07-25 at Spencer's request, ahead of the systems dogfood. **Design only — nothing below is built.** The claim under review: `PublishabilityDetector` is described in its own source comment as the package's headline swappable service ("standard npm semantics are the default, and an organization with its own publish rules replaces the layer"), and the downstream evidence says that swap does not currently work the way the comment promises.
+
+### Current state: what silk-effects actually has to do
+
+`@savvy-web/silk-effects` is the real consumer, and it performs **three** distinct contortions to impose its own policy.
+
+**1. The default implementation is unreachable except through the tag it occupies.** `SilkPublishability.ts:454` reads:
+
+```ts
+const vanilla = yield* Effect.provide(PublishabilityDetector, PublishabilityDetector.layer);
+```
+
+Silk's adaptive detector has a `mode: "vanilla"` branch that wants *our* npm semantics. Because those semantics exist only as a `Layer` bound to `PublishabilityDetector` — the very tag silk is replacing — it must build that layer and provide it to the tag **inside** its own implementation of that tag, purely to get a function it could otherwise have called. This is the highest-value thing to fix and the cheapest: the rules should be reachable as a value.
+
+**2. The composite bakes the default in, so the graph is threaded twice.** `Workspaces.ts:102` ends:
+
+```ts
+return Layer.mergeAll(roots, detector, discovery, lockfiles, catalogs, PublishabilityDetector.layer);
+```
+
+so `Workspaces.layer()` / `layerWithGit()` always provide npm semantics. Silk's composition (`changesets/services/deps-regen.ts:645-651`) therefore passes `kitGraph` **twice** — once as the base, and once *into* its own override, which needs discovery to work — and relies on `Layer.provide` shadowing to beat the default the base is still supplying:
+
+```ts
+const kitGraph = Workspaces.layerWithGit(options);
+return DepsRegenLive.pipe(
+  Layer.provide(ConfigInspectorLive.pipe(Layer.provide(Layer.mergeAll(ChangesetConfigReaderLive, kitGraph)))),
+  Layer.provide(PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(Layer.mergeAll(ConfigGraph, kitGraph)))),
+  Layer.provide(ConfigGraph),
+  Layer.provide(kitGraph),          // still carrying the default detector
+);
+```
+
+**3. The override is silently order-dependent, in the dangerous direction.** Probed against `effect@4.0.0-beta.101`:
+
+| Composition | Resolves to |
+| --- | --- |
+| `mergeAll(composite, custom)` | **CUSTOM** ✅ |
+| `mergeAll(custom, composite)` | **DEFAULT** ❌ |
+| `custom.pipe(Layer.provideMerge(composite))` | **CUSTOM** ✅ |
+
+Last-wins. So `Layer.mergeAll(myDetector, Workspaces.layer())` — which reads in English as "my detector, plus the workspace services" — **silently reverts to npm semantics**. There is no type error and no warning. For a service that decides *whether a package publishes and to which registry*, a silent revert to "publishes to the public npm registry with `access: public`" is the worst available failure mode, and it is one word-order away at every call site.
+
+That third point is what turns this from an ergonomics complaint into a correctness one.
+
+### (a) The shape stays; the empty array is the open question, not the answer type
+
+`detect(pkg) => Effect<ReadonlyArray<PublishTarget>>` is right and should not become a richer classification **yet**. Every consumer surveyed asks exactly one question of it — `targets.length > 0`:
+
+- our `VersioningStrategy.detect` (`VersioningStrategy.ts:165-172`),
+- silk's `listPublishablePackageNames` (`changesets/utils/publishability.ts:44-48`).
+
+Nothing reads a reason, so a reason channel would be speculative API against this package's ships-on-evidence discipline. **But the conflation is real and worth recording**: silk's adaptive detector returns `[]` for three different facts — the package is changeset-ignored, the repo's mode is `none`, or the package genuinely does not publish. A user asking "why didn't my package release?" cannot be answered from the contract's output.
+
+**Trigger to revisit:** the first consumer that must *explain* an exclusion rather than act on it. The additive shape then is a second method (`explain(pkg) => Effect<Exclusion>`), not a change to `detect` — `detect`'s totality is what makes it cheap to call in a loop over every package.
+
+The `never` error channel also stays. Silk's config lookups are fallible and it folds them ("degrade or die", already documented on the shape); that cost is deliberate and buys every consumer a total question.
+
+### (b) Remove the default from the composites; require it in R
+
+**Recommendation: `Workspaces.layer()` and `layerWithGit()` stop providing `PublishabilityDetector` and start requiring it**, exactly as [`ToolDiscovery.layer` requires `LocalExec`](commands.md) and as [npm's resolver contracts](npm.md#resolver-contracts) are required rather than defaulted.
+
+```ts
+// before — the default is invisible and beats a naively-ordered override
+Layer.Layer<WorkspacesServices, never, FileSystem | Path>
+
+// after — the choice is in the type, and unmade wiring does not compile
+Layer.Layer<WorkspacesServices, never, FileSystem | Path | PublishabilityDetector>
+```
+
+Why this over the alternatives:
+
+- **Over an options bag** (`Workspaces.layer({ publishability })`): a layer passed as an option still hides the decision inside a call, and its own `R` would have to be threaded through the composite's signature. The R-hole states the requirement in the one place a reader already looks.
+- **Over keeping the default and documenting the ordering**: documentation does not fix a silent revert. The failure mode is a correct-looking composition that publishes to the wrong registry.
+- **Over `Layer.mock` / shadowing helpers**: those address tests, not production policy.
+
+The cost is one explicit line for the common case, which is the point — it makes "npm semantics" a **choice** rather than an ambient default nobody knew they had:
+
+```ts
+const WorkspacesLayer = Workspaces.layer().pipe(Layer.provide(PublishabilityDetector.layerNpm));
+```
+
+### (c) The npm rules stay here, as one implementation among peers — and as a value
+
+They are genuine npm semantics and belong in the package that models npm workspaces; nothing is gained by exiling them. Two changes make them a peer rather than a default:
+
+- **Rename `PublishabilityDetector.layer` → `layerNpm`.** A static called `layer` reads as "the" layer; once no composite provides it automatically, the name should say which policy it is. Add `layerNone` (publishes nothing) for the CI-dry-run and test cases silk currently expresses with `mode: "none"`.
+- **Expose the rules as a value: `PublishabilityDetector.npm: PublishabilityDetectorShape`**, with `layerNpm = Layer.succeed(PublishabilityDetector, PublishabilityDetector.npm)`. This is the direct fix for contortion #1 — silk's vanilla branch becomes `yield* PublishabilityDetector.npm.detect(pkg)`, deleting the `Effect.provide`-inside-the-override entirely.
+
+That last point generalizes beyond this seam: **any shipped implementation of a swappable contract should be reachable as a value, not only as a layer bound to the tag it occupies.** A consumer composing *around* the default cannot use a layer without re-entering the tag it is replacing.
+
+### Worked before/after, on silk's real composition
+
+```ts
+// BEFORE — kitGraph threaded twice; the base still supplies a default that the
+// override must out-shadow; the "vanilla" branch re-instantiates our layer.
+const kitGraph = Workspaces.layerWithGit(options);
+return DepsRegenLive.pipe(
+  Layer.provide(ConfigInspectorLive.pipe(Layer.provide(Layer.mergeAll(ChangesetConfigReaderLive, kitGraph)))),
+  Layer.provide(PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(Layer.mergeAll(ConfigGraph, kitGraph)))),
+  Layer.provide(ConfigGraph),
+  Layer.provide(kitGraph),
+);
+
+// AFTER — one graph, one provide, no shadowing. The detector is a dependency of
+// the composite rather than a competitor to it.
+const detector = PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(ConfigGraph));
+const kitGraph = Workspaces.layerWithGit(options).pipe(Layer.provide(detector));
+return DepsRegenLive.pipe(Layer.provide(ConfigGraph), Layer.provide(kitGraph));
+```
+
+The detector still needs workspace services in its own right (it reads `pkg.packageJsonPath`), but it takes them from `FileSystem` + `ChangesetConfig`, not from the composite — so the cycle that forced the double-threading disappears.
+
+### (d) Migration cost
+
+| Site | Cost |
+| --- | --- |
+| `VersioningStrategy.detect` | **None.** Already requires `PublishabilityDetector` in `R`; it never resolved a default. |
+| `Workspaces.layer` / `layerWithGit` | Signature change: `RIn` gains `PublishabilityDetector`. Internal only — `compose` drops one merge member. |
+| In-kit tests composing the composite | One `Layer.provide(PublishabilityDetector.layerNpm)` each. |
+| Releases tooling / `@effected/app` | Same one line, at the edge where the platform layer already goes. |
+| silk-effects | **Net deletion**: the double-threaded `kitGraph`, the shadowing reliance, and the `Effect.provide`-inside-the-override all go. |
+
+Pre-1.0, and the only breaking part is a required-service addition the compiler reports at every site.
+
+### Open questions
+
+1. **`layerNpm` vs keeping `layer` as an alias.** Renaming is the honest signal; an alias softens the break but preserves the "there is a default" reading this design is trying to kill. Recommend the clean rename.
+2. **Should `layerNone` ship?** It is one line and expresses silk's `mode: "none"` and any dry-run consumer, but no in-kit consumer needs it today.
+3. **Does `@effected/app` compose this?** If it does, it should default to `layerNpm` explicitly rather than inherit — worth checking during implementation.
+
 ## The packages: enumerator
 
 `internal/enumerate.ts` compiles the `packages:` list once with `GlobSet.compile` and enumerates the workspace, fixing a class of degradation where a trailing `/**` silently collapses to `/*` so a nested package goes undiscovered with no diagnostic. `GlobSet` exposes `literals` / `wildcards` / `excludes` and `GlobPattern` exposes `enumerationPrefix` / `crossesSegments` specifically for this enumerator:
