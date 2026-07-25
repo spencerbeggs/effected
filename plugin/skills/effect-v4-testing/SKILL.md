@@ -1,6 +1,6 @@
 ---
 name: effect-v4-testing
-description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail. Covers the sharp edges (no it.scoped, it.prop throws on a Schema, vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `0 tests passed` run that exits 0, TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch.
+description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail. Covers the sharp edges (no it.scoped, it.prop throws on a Schema, vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `0 tests passed` run that exits 0, TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch. Also covers structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, and the reporter fields — unhandledErrors, a stray process.exitCode — that make a green suite lie.
 ---
 
 # Effect v4 testing with `@effect/vitest`
@@ -49,9 +49,8 @@ before initialization` — naming neither `vi` nor `@effect/vitest`. Write
 assertion leaves through the *error channel*, so the `finally` does not run the
 way the shape suggests, and a `vi.spyOn` on a process global that outlives its
 test poisons its neighbours — false reds first, false greens later. Acquire and
-release spies instead: `Effect.acquireUseRelease(Effect.sync(() => vi.spyOn(…)),
-use, (spy) => Effect.sync(() => spy.mockRestore()))`
-([references/false-greens.md](./references/false-greens.md)).
+release spies with `Effect.acquireUseRelease` instead →
+[references/false-greens.md](./references/false-greens.md).
 
 ## The default runner: `it.effect` + `Effect.gen`
 
@@ -89,19 +88,17 @@ describe("Jsonc", () => {
   only for genuinely non-Effect pure code (`Jsonc.stripComments`, `Yaml.equals`).
 - **Never launder an Effect into a fixture with `Effect.runSync`.** If a test
   input comes from an Effect (a parse, a decode), the test *is* an `it.effect`
-  and you `yield*` it. If you only need a domain value to assert other behavior,
-  build it with `X.make` from structured fields.
+  and you `yield*` it; if you only need a domain value, build it with `X.make`.
 - **`yield* import(...)` breaks** — it throws `(intermediate value) is not
   iterable`, naming neither the import nor the yield. A dynamic import inside
-  `Effect.gen` is `yield* Effect.promise(() => import("./thing.js"))`. A bulk
+  `Effect.gen` is `yield* Effect.promise(() => import("./thing.js"))`; a bulk
   `await` → `yield*` rewrite produces the broken form mechanically.
 
 ## Asserting on typed errors
 
 A test for the failure channel must not let the error escape as a defect.
-
-**`Effect.flip`** — swaps channels so the typed error becomes the success value.
-This is our house pattern:
+**`Effect.flip`** — swaps channels so the typed error becomes the success value
+— is our house pattern:
 
 ```ts
 it.effect("fails with an aggregate JsoncParseError", () =>
@@ -135,7 +132,7 @@ if (Exit.isFailure(exit)) {
 
 **A narrowing `if` with no `else` asserts nothing on the other path.** A bare
 `if (Exit.isFailure(exit)) { …assert… }` passes silently on success — found six
-separate times in one migration. Treat it as its own anti-pattern, not an
+separate times in one migration. It is its own anti-pattern, not an
 Exit-specific one.
 
 Its second half — **genuine defects must NOT be swallowed into the typed
@@ -175,8 +172,7 @@ the first argument. The pattern is an explicit type argument:
 `layer(...)` applies to **any service in a test's `R` — owned or consumed**. Its
 signature takes any `Layer.Layer<R, E>`; nothing requires the package under test
 to declare the service. A package that owns no services but *consumes*
-`Path.Path` or `FileSystem.FileSystem` through `R` is exactly the package that
-needs suite-boundary layers.
+`Path.Path` or `FileSystem.FileSystem` needs suite-boundary layers most.
 
 ```ts
 import { layer } from "@effect/vitest";
@@ -220,12 +216,12 @@ The pre-flight before collapsing, in order:
 
 Worked failures → [references/migrating-a-repo.md](./references/migrating-a-repo.md).
 Where state must vary per test, keep the per-test provide, or use **distinct
-keys/specs per test** and flush explicitly before asserting counts.
+keys per test** and flush explicitly before asserting counts.
 
 Other `layer(...)` mechanics (unchanged at beta.101):
 
-- The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`).
-- **`MethodsNonLive` has no `.live`.** A wall-clock test that also needs the
+- The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
+  **`MethodsNonLive` has no `.live`** — a wall-clock test that also needs the
   group's layer goes **outside** the block as a top-level `it.live(...)` with
   `.pipe(Effect.provide(TheLayer))`.
 - Nest extra deps with `it.layer(BarLayer)("nested", (it) => { … })` — the
@@ -255,17 +251,17 @@ layer(FileSystem.layerNoop({ exists: (p) => Effect.succeed(p === "/a/.rc") }))(
 ```
 
 **`layerNoop` fails every member you did not override with a typed `NotFound`**
-(`FileSystem.ts:912`, `:961`), which a package that reads `NotFound` as
+(`FileSystem.ts:912`, `:961`), which a package reading `NotFound` as
 domain-level "absent" treats as a legitimate answer — so the stub silently
 supplies **empty fixtures** the moment the code switches which read method it
 calls. Override every read the code could reach, and assert fixture *contents*
-somewhere, not just success. Same tier: **`readFileString` strips a leading
-BOM** (`FileSystem.ts:789` decodes through `TextDecoder`, whose default is
-`ignoreBOM: false`) → [references/false-greens.md](./references/false-greens.md).
+somewhere. Same tier: **`readFileString` strips a leading BOM**
+(`FileSystem.ts:789` decodes through `TextDecoder`, default `ignoreBOM: false`)
+→ [references/false-greens.md](./references/false-greens.md).
 
-A suite-boundary layer cannot vary per test, so a suite with several filesystem
-fixtures needs **one `layer(...)` block per distinct fixture** — the house shape
-in `packages/walker/__test__/`.
+A suite-boundary layer cannot vary per test, so several filesystem fixtures need
+**one `layer(...)` block per fixture** — the house shape in
+`packages/walker/__test__/`.
 
 **Every stub effect goes through `Effect.suspend`.** A recorder that pushes
 eagerly logs calls that never executed — `layerNoop({ readFileString: (p) => {
@@ -280,8 +276,8 @@ For "behaves like the real service except this one method fails on demand",
 `Layer.effect` + spread the base + `Layer.provide(base)` — with
 `Layer.updateService` (`Layer.ts:1999`) as the shorter form when the subject is
 itself a layer, and `Layer.mock` (`Layer.ts:2262`) for partial stubs that die
-loudly on an unimplemented method. Full scaffold and the three ways to get the
-spread wrong → **[references/fault-injection.md](./references/fault-injection.md)**.
+loudly. Full scaffold and the three ways to get the spread wrong →
+**[references/fault-injection.md](./references/fault-injection.md)**.
 
 ## Property testing with `it.effect.prop`
 
@@ -338,30 +334,26 @@ implementation, not only the test:
 Effect\.sleep|Effect\.timeout|Schedule\.|Effect\.retry|Effect\.repeat|baseDelay|intervalMs|setTimeout\(
 ```
 
-If a test hangs for exactly five seconds, suspect wall-clock time before you
-suspect your code.
+If a test hangs for exactly five seconds, suspect wall-clock time first.
 
 **A hang can also come from the test double.** A fake `fetch` that records
 `String(init.body)` mangles a byte body into `123,34,…`, which throws in
 `JSON.parse`, surfaces as a *transport fault*, gets retried, and hangs the
-virtual clock — once as **ten unrelated timeouts** across three suites. Decode
-with `new Response(init.body).text()`.
+virtual clock — once as **ten unrelated timeouts**. Decode with
+`new Response(init.body).text()`.
 
 ### …and it starts at the EPOCH, so clock *reads* return 1970
 
 The quiet half: `it.effect` starts the `TestClock` at time zero, so anything
 that *reads* the clock computes against **1970-01-01T00:00:00.000Z** (probed on
-beta.94 — `DateTime.now` inside a bare `it.effect` is exactly the epoch).
-Nothing hangs, nothing errors: a CLI resolved **zero** Node versions because
-against a 1970 "now" every release was still unreleased; any "newer than N
-days" / TTL / cache-expiry check inverts. Set the clock explicitly with
-`TestClock.setTime(...)` whenever the code under test reads time.
+beta.94 — `DateTime.now` inside a bare `it.effect` is exactly the epoch). A CLI
+resolved **zero** Node versions because against a 1970 "now" every release was
+still unreleased; any TTL or "newer than N days" check inverts. Set the clock
+with `TestClock.setTime(...)` whenever the code under test reads time.
 
 ### Driving it
 
 ```ts
-import { TestClock } from "effect/testing";
-
 it.effect("a sleeping fiber wakes when the clock advances", () =>
   Effect.gen(function* () {
     const fiber = yield* Effect.forkChild(Effect.sleep("1 second"));
@@ -373,9 +365,9 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
 
 - `TestClock.adjust(duration)` moves virtual time forward and runs everything
   scheduled up to the new time; `TestClock.setTime(timestamp)` jumps to an
-  absolute time. Both return `Effect<void>`.
-- Time helpers live under the **`effect/testing`** subpath — `TestClock`,
-  `TestConsole`, `FastCheck`, `TestSchema`, not `@effect/vitest`.
+  absolute time. Both return `Effect<void>`. All the time helpers live under the
+  **`effect/testing`** subpath — `TestClock`, `TestConsole`, `FastCheck`,
+  `TestSchema`, not `@effect/vitest`.
 - **Do not manually provide `TestClock.layer()` under `it.effect`.** They
   compose — `Clock` is a `Context.Reference` (`Clock.ts:111`), `TestClock.layer()`
   merely sets it (`TestClock.ts:379`), and `adjust` drives whatever clock is
@@ -384,10 +376,10 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
   build time (`TestClock.ts:235`), so its "live" clock **is** the outer
   TestClock — `withLive` returns virtual time and the
   too-long-without-advancing warning fiber can never fire.
-- **Never call `TestClock.adjust` under `it.live`.** That `as TestClock` cast is
-  unchecked — it is undefined behavior, not a type error.
-- **A clock-driving test must not share a `layer()` group** — the group's clock
-  is shared, so `adjust` is cumulative.
+- **Never call `TestClock.adjust` under `it.live`** — that `as TestClock` cast is
+  unchecked, so it is undefined behavior, not a type error. And **a
+  clock-driving test must not share a `layer()` group**: `adjust` is cumulative
+  across the group's shared clock.
 
 Or **restructure the test to need no time at all**. For an interrupt, prefer a
 failing sibling over a timeout — `Effect.exit(Effect.all([subject,
@@ -399,27 +391,23 @@ wrong reason. Assert on the *observable consequence* — that the interrupted
 resource still works afterward.
 
 **Stage an interleaving with latches, not sleeps** — a sleep under the virtual
-clock hangs instead of interleaving — and a *leak* test needs **two** of them.
-A single-latch test passes against a save/restore-a-shared-global
-implementation, because save/restore is LIFO-correct whenever the overrides
-nest; the discriminating shape forces one fiber to READ while the other's
-override is applied and unrestored →
-[references/false-greens.md](./references/false-greens.md).
+clock hangs instead of interleaving — and a *leak* test needs **two** of them. A
+single-latch test passes against a save/restore-a-shared-global implementation,
+because save/restore is LIFO-correct whenever the overrides nest; the
+discriminating shape forces one fiber to READ while the other's override is
+applied and unrestored → [references/false-greens.md](./references/false-greens.md).
 
 ## `it.effect` also intercepts CONSOLE output — including `Effect.log*`
 
 `TestEnv` installs `TestConsole` alongside the clock, so a test spying on the
-real `console.log` to capture Effect's output silently captures **nothing**.
-
-The sharp edge: **auditing for `Console.*` call sites is insufficient.**
-Effect's default logger writes through the same ref —
-`options.fiber.getRef(effect.ConsoleRef)` at `Logger.ts:273`, `:310` and `:354`
-— so `Effect.log` / `logWarning` / `logError` are intercepted identically. One
-repo's audit cleared a package by grepping `Console.*` and missed three live
-`Effect.logWarning` sites. Only direct `console.*`, direct
-`process.stdout.write` / `stderr.write`, and a **replaced** logger set
-(`Logger.layer([...])` without `mergeWithExisting`) writing to one of those are
-immune.
+real `console.log` to capture Effect's output silently captures **nothing** —
+and **auditing for `Console.*` call sites is insufficient**, because Effect's
+default logger writes through the same ref (`Logger.ts:273`, `:310`, `:354` all
+read `options.fiber.getRef(effect.ConsoleRef)`). One repo's audit cleared a
+package by grepping `Console.*` and missed three live `Effect.logWarning`
+sites. Only direct `console.*`, direct `process.stdout.write` / `stderr.write`,
+and a **replaced** logger set (`Logger.layer([...])` without
+`mergeWithExisting`) writing to one of those are immune.
 
 It fails silently, and it produced two vacuous passes — "no output in quiet
 mode" tests that pass unconditionally because the drained sink is always empty.
@@ -449,14 +437,14 @@ that it is empty.
 - **A semantics-preserving perf fix cannot be pinned** — report it as
   fixed-but-unpinned rather than inventing a test that proves nothing.
 - **A surviving mutant is a question about the CODE**, not only about the test.
-  Ask whether the mutated behavior was ever required before writing an
-  assertion that pins an accident; deleting the code is a legitimate answer.
+  Ask whether the mutated behavior was ever required before writing an assertion
+  that pins an accident; deleting the code is a legitimate answer.
 - **Sweeping many mutants, assert the on-disk state every run** — one stale
   restore turns every later result into nonsense that looks like data. When two
   reads of one file disagree, settle it against the committed blob
   (`git show HEAD:<path>`), never by taking the read that suits the conclusion.
 
-Full discipline, the edge-case checklist, and the worked failures →
+Full discipline, the checklist and the worked failures →
 **[references/mutation-testing.md](./references/mutation-testing.md)**.
 
 ### Structural checks over source text
@@ -467,16 +455,15 @@ over source text, and those assertions fail silently where ordinary ones shout.
 **Raw source is SAFE for a `notInclude` check (a comment mention is a spurious
 alarm) and DANGEROUS for an `include` one (a comment mention passes).** Strip
 comments — LINE comments **before** block comments — remove module specifiers,
-match on a word boundary, and give the stripper its own discriminating test the
-moment it is load-bearing. Each rule with the mutant that proved it →
-**[references/structural-checks.md](./references/structural-checks.md)**.
+match on a word boundary, and give the stripper its own discriminating test once
+it is load-bearing → **[references/structural-checks.md](./references/structural-checks.md)**.
 
 ## Other false greens, in one place
 
-`0 tests passed` is a FAILED run that exits 0 (three producers — including one
-bad file zeroing a whole package, and the `cd <pkg> && tsc && vitest --project`
-chain that poisons only its vitest half while the typecheck half genuinely
-passes); `TestConsole.logLines` accumulation; the eager `layerNoop` recorder;
+`0 tests passed` is a FAILED run that exits 0 (three producers — one bad file
+zeroing a whole package, and the `cd <pkg> && tsc && vitest --project` chain
+that poisons only its vitest half while the typecheck half genuinely passes);
+`TestConsole.logLines` accumulation; the eager `layerNoop` recorder;
 `PubSub.takeAll` hanging on an empty subscription; timing gates lying by ~18×
 under coverage; a green suite that fails the vitest **process** because a test
 left `process.exitCode` set; a big green count for a surface the suite never
@@ -510,4 +497,4 @@ and 15 green tests carried a live defect that only that field showed.
 > **Version note.** Verified against `@effect/vitest@4.0.0-beta.101` on
 > `effect@4.0.0-beta.101` (2026-07-25), with older probes dated inline. If the
 > `effect` catalog bumps, re-verify the `layer` options bag and the
-> `it.prop`-throws-on-Schema behavior first — those shift most often.
+> `it.prop`-throws-on-Schema behavior first.
