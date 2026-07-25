@@ -140,6 +140,10 @@ export const ActionInput: {
 
 **`ActionInput` is grouped statics, not a namespace object over engines.** Every member reaches `Config` and nothing else — the [`MergeStrategy` carve-out](../effect-standards.md#no-barrel-re-exports) exactly.
 
+**`ActionsConfigProvider` is subsumed, and the subsumption must be confirmed rather than assumed.** The source package exports a bare `ConfigProvider` that maps a config path to `INPUT_<NAME>`; two silk-release-action test files install it directly. Everything it does is folded into this module — the provider becomes an implementation detail behind the accessors, which is what removes the opportunity to spell a variable name wrongly. **At implementation, diff its behavior against the accessors before deleting it** (empty-string-is-absent, the space-to-underscore rule, and the fact that dashes are *not* translated), and record the result here. A subsumption claim that was never checked is how a footgun survives a port.
+
+**Implementation note (v4):** there is no `Effect.withConfigProvider`. `ConfigProvider.ConfigProvider` is a `Context.Reference` (verified `ConfigProvider.ts:296`), so installing a provider — in the accessors' tests or in `Action.run` — is `Effect.provideService(effect, ConfigProvider.ConfigProvider, provider)`. The v3 name is the first thing a porter will reach for.
+
 ## `ActionLogger` and the workflow-command protocol
 
 `WorkflowCommand.ts` is **pure**: it renders `::name key=value::message` strings with the required escaping, and nothing else. It is the one piece of this package a non-Actions consumer might legitimately want, and keeping it pure means it is testable without a runner.
