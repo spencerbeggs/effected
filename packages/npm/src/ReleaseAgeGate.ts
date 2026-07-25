@@ -138,7 +138,9 @@ export class ReleaseAgeGate extends Schema.Class<ReleaseAgeGate>("ReleaseAgeGate
 	 * Combine partial contributions from multiple sources into one effective
 	 * gate: **strictest age wins** (the maximum of the contributed ages,
 	 * clamped to be non-negative) and the exclude sets **union** (deduplicated,
-	 * insertion order preserved). A contribution's absent field adds nothing; a
+	 * lexicographically sorted — a canonical wire form, so the combined gate is
+	 * deterministic regardless of the order contributions arrive in). A
+	 * contribution's absent field adds nothing; a
 	 * negative or non-finite contributed age is ignored by the clamp. With no
 	 * contributions (or only empty ones) the result is the inert zero gate
 	 * (`ageMinutes: 0`, `exclude: []`).
@@ -154,7 +156,7 @@ export class ReleaseAgeGate extends Schema.Class<ReleaseAgeGate>("ReleaseAgeGate
 			.map((contribution) => contribution.ageMinutes)
 			.filter((age): age is number => typeof age === "number" && Number.isFinite(age));
 		const ageMinutes = ages.length > 0 ? Math.max(0, ...ages) : 0;
-		const exclude = [...new Set(contributions.flatMap((contribution) => contribution.exclude ?? []))];
+		const exclude = [...new Set(contributions.flatMap((contribution) => contribution.exclude ?? []))].sort();
 		return ReleaseAgeGate.make({ ageMinutes, exclude });
 	}
 
