@@ -24,7 +24,6 @@ import { ChangeDetector } from "./ChangeDetector.js";
 import { LockfileReader } from "./LockfileReader.js";
 import type { DetectedPackageManager } from "./PackageManagerName.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
-import { PublishabilityDetector } from "./Publishability.js";
 import { WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
@@ -57,8 +56,7 @@ export type WorkspacesServices =
 	| PackageManagerDetector
 	| WorkspaceDiscovery
 	| LockfileReader
-	| WorkspaceCatalogs
-	| PublishabilityDetector;
+	| WorkspaceCatalogs;
 
 /**
  * Every service that needs only a filesystem: root, package-manager detection,
@@ -99,7 +97,16 @@ const compose = (
 	);
 	const catalogs = catalogsFactory(options).pipe(Layer.provide(roots), Layer.provide(lockfiles));
 
-	return Layer.mergeAll(roots, detector, discovery, lockfiles, catalogs, PublishabilityDetector.layer);
+	// PublishabilityDetector is deliberately ABSENT from this merge. Supplying a
+	// default here made the npm-semantics choice invisible and, because
+	// `Layer.mergeAll` is last-wins, made the natural spelling of an override —
+	// `Layer.mergeAll(myDetector, Workspaces.layer())` — silently lose to it.
+	// For the service that decides whether a package publishes and where, a
+	// silent revert to "publishes to the public registry" is the worst failure
+	// available. It is required in `R` instead: one explicit
+	// `Layer.provide(PublishabilityDetector.layerNpm)` for the common case, and
+	// wiring that forgets to choose does not compile.
+	return Layer.mergeAll(roots, detector, discovery, lockfiles, catalogs);
 };
 
 const layer = (

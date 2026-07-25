@@ -242,8 +242,8 @@ const location = {
 	workspaceRoot: "/repo",
 };
 
-describe("PublishabilityDetector — the default npm semantics", () => {
-	layer(PublishabilityDetector.layer)((it) => {
+describe("PublishabilityDetector — the npm semantics", () => {
+	layer(PublishabilityDetector.layerNpm)((it) => {
 		it.effect("a private package with no publishConfig.access publishes nowhere", () =>
 			Effect.gen(function* () {
 				const detector = yield* PublishabilityDetector;

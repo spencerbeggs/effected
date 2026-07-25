@@ -29,7 +29,7 @@ Other runtime deps are `workspace:~` edges: `@effected/commands`, `@effected/git
 - `WorkspaceCatalogs.ts` — `CatalogSet`, `WorkspaceCatalogs` (with `releaseAgeGate()` and `importerVersions()`), `ImporterVersions`, the `catalogResolver` layer, the `CatalogAssemblyFailure` type union
 - `ConfigDependencyHooks.ts` — `ConfigDependencyHooks` contract, `HookInjection`, `layerNoop` / `layerLive`
 - `LockfileReader.ts` — `LockfileReader`, `LockfileReadError`
-- `Publishability.ts` — `PublishabilityDetector`, `PublishTarget`
+- `Publishability.ts` — `PublishabilityDetector`, `PublishTarget` (see [the seam rules](#publishability-has-no-ambient-default))
 - `ReleaseTag.ts` — `ReleaseTag`, `TagStyle`, `TagFormatOptions`, plus the floating-alias family `TrackingTag` / `TrackingTagOptions` and the recognizer `classifyTag` / `TagClassification` (all **value classes**, not services; a leaf importing nothing else here)
 - `VersioningStrategy.ts` — `VersioningStrategy` (a **value class**: `classify` / `detect` / `tagsFor`), `VersioningStrategyType`, `ClassifyOptions`, `VersioningDetectOptions`, `PackageRelease`
 - `Workspaces.ts` — the composite layers (`layer`, `layerWithConfigDependencies`, `layerWithGit`, `resolvers`), the one-call manifest path (`resolverLayer`, `resolveManifest`) and `localExecLayer` (the `@effected/commands` `LocalExec` contract)
@@ -53,6 +53,39 @@ pnpm 11 emits `pnpm-lock.yaml` as **two YAML documents** when the workspace uses
 ### `Effect.cached` would brick every layer
 
 Every lazy init uses `Effect.cachedInvalidateWithTTL` + `Effect.onExit`-invalidate-on-non-success, **not** `Effect.cached`. `Effect.cached` memoizes the first `Exit` *including an interrupt*, so an init interrupted by an unrelated timeout permanently poisons the layer with a cause outside its declared error channel. Success is memoized; failures and interrupts are retried.
+
+### Publishability has no ambient default
+
+**No composite provides `PublishabilityDetector`.** `Workspaces.layer`,
+`layerWithGit` and `layerWithConfigDependencies` all **require** it in `R`, so
+the common case is one explicit line:
+
+```ts
+const WorkspacesLayer = Workspaces.layer().pipe(Layer.provide(PublishabilityDetector.layerNpm));
+```
+
+That is a correctness fix, not ergonomics. When the composite supplied npm
+semantics itself, `Layer.mergeAll` being **last-wins** meant the natural
+spelling of an override — `Layer.mergeAll(myDetector, Workspaces.layer())` —
+resolved to the *default*, with no type error. For the service deciding whether
+a package publishes and to which registry, silently reverting to "publishes to
+the public npm registry, access public" is the worst failure available. It is
+pinned by the "the order that used to silently lose" test in
+`__test__/Workspaces.test.ts`; re-baking a detector into `compose` fails it.
+
+Two rules follow, and the second generalizes past this package:
+
+- **A swappable contract gets no ambient default.** Ship named policies
+  (`layerNpm`, `layerNone`) and require the choice. A default that a consumer
+  must out-shadow is a default that will sometimes win by accident.
+- **Ship each implementation as a VALUE, not only as a layer** —
+  `PublishabilityDetector.npm` is a `PublishabilityDetectorShape`, and
+  `layerNpm` is `Layer.succeed` over it. A consumer composing *around* a policy
+  cannot reach it through a layer without re-entering the tag it is replacing:
+  `@savvy-web/silk-effects` had to write
+  `Effect.provide(PublishabilityDetector, PublishabilityDetector.layer)` **inside
+  its own implementation of that tag** purely to call these rules. Candidate
+  house rule for `effect-standards.md`.
 
 ### Change detection runs on `@effected/git`, not a local git seam
 

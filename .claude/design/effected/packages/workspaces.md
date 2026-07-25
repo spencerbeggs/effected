@@ -89,9 +89,9 @@ That split falls straight out of the detector's own two-error taxonomy, which is
 
 A consumer with no monorepo never needs this layer and therefore never installs this package: `LocalExec.layerNone` and `LocalExec.layerFor(manager)` are one-liners in `commands`. That asymmetry is the entire payoff of the inversion.
 
-## Publishability as a contract seam (draft)
+## Publishability as a contract seam
 
-Drafted 2026-07-25 at Spencer's request, ahead of the systems dogfood. **Design only — nothing below is built.** The claim under review: `PublishabilityDetector` is described in its own source comment as the package's headline swappable service ("standard npm semantics are the default, and an organization with its own publish rules replaces the layer"), and the downstream evidence says that swap does not currently work the way the comment promises.
+Designed and **built** 2026-07-25 at Spencer's request, ahead of the systems dogfood. As-built notes are [at the end of this section](#as-built). The claim under review: `PublishabilityDetector` is described in its own source comment as the package's headline swappable service ("standard npm semantics are the default, and an organization with its own publish rules replaces the layer"), and the downstream evidence says that swap does not currently work the way the comment promises.
 
 ### Current state: what silk-effects actually has to do
 
@@ -217,9 +217,32 @@ Pre-1.0, and the only breaking part is a required-service addition the compiler 
 
 ### Open questions
 
-1. **`layerNpm` vs keeping `layer` as an alias.** Renaming is the honest signal; an alias softens the break but preserves the "there is a default" reading this design is trying to kill. Recommend the clean rename.
-2. **Should `layerNone` ship?** It is one line and expresses silk's `mode: "none"` and any dry-run consumer, but no in-kit consumer needs it today.
-3. **Does `@effected/app` compose this?** If it does, it should default to `layerNpm` explicitly rather than inherit — worth checking during implementation.
+All three were ruled on at the implementation checkpoint and are recorded with their answers.
+
+1. **`layerNpm` vs an alias** — **clean rename, no alias.** An alias preserves the "there is a default" reading the change exists to kill. Pre-1.0, compiler-guided, one in-kit call site: the break was free.
+2. **`layerNone`** — **ships now.** silk's changeset `mode: "none"` is a real downstream consumer arriving with the dogfood, not speculation.
+3. **`@effected/app`** — **moot, verified.** It composes `xdg` + `store` + `config-file` and takes no `@effected/workspaces` edge; a grep for the composites across `packages/*/src` finds no consumer outside this package.
+
+### As built
+
+`PublishabilityDetector` now exposes its policies as **values** (`npm`, `none`) with layers built over them (`layerNpm`, `layerNone`); the bare `layer` static is gone. `compose` no longer merges a detector, and `WorkspacesServices` no longer lists it among the services the composite provides.
+
+**One correction to the design above, found by probing rather than assuming.** The design said the composites' signatures would *gain* `PublishabilityDetector` in `RIn`. They do not, and should not: nothing **inside** the composite consumes a detector — it simply stops providing one. Their `RIn` stays `FileSystem | Path`. The requirement surfaces in the **consumer's** `R` (`VersioningStrategy.detect` already declared it) and is enforced wherever `R` must be closed:
+
+```text
+Effect<VersioningStrategy, WorkspaceDiscoveryFailure, PublishabilityDetector>
+  is not assignable to
+Effect<VersioningStrategy, WorkspaceDiscoveryFailure, never>
+```
+
+That is strictly better than what was designed. A consumer that uses discovery, catalogs or lockfiles and never asks a publishability question is never made to supply a publish policy, and the diagnostic names the operation that actually needs it rather than the composite. Worth knowing when reading the section above: the *mechanism* is "the composite provides nothing", not "the composite requires it".
+
+**The seam has a named regression test.** `__test__/Workspaces.test.ts` pins a caller's detector as the one observed through the composite in **both** merge orders, plus `layerNpm` / `layerNone` and the value-reachability case. The load-bearing one is "merged BEFORE it — the order that used to silently lose": re-baking the default into `compose` fails exactly that test, with the custom registry replaced by `https://registry.npmjs.org/` — the silent revert, reproduced on demand.
+
+Two things the implementation confirmed that the design only argued:
+
+- **No existing test covered the seam.** Removing the default from every composite broke nothing except one `PublishabilityDetector.layer` reference in `ChangeDetector.test.ts`. The swap the package advertised as its headline example had no coverage at all, which is how the ordering hazard survived.
+- **The compiler found every site.** One `tsc --noEmit` enumerated the whole migration: the `WorkspacesServices` union, the composite's return type, and the single test reference. Nothing needed searching for.
 
 ## The packages: enumerator
 
