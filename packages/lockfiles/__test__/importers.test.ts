@@ -1,7 +1,9 @@
 // Per-format importer extraction: the `Lockfile.importers` field and the
 // `lockfile.importer(path)` keyed lookup. pnpm records `{ specifier, version }`
-// per importer dependency; bun and npm record a specifier only (the resolved
-// version lives on package entries); yarn records no importers at all.
+// per importer dependency — the parser splits pnpm's peer-disambiguation
+// suffix off the version into `peerSuffix`; bun and npm record a specifier
+// only (the resolved version lives on package entries); yarn records no
+// importers at all.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -54,6 +56,61 @@ describe("Lockfile.importers", () => {
 				assert.strictEqual(lodash?.specifier._tag, "catalog");
 				assert.strictEqual(lodash?.specifier.raw, "catalog:");
 				assert.strictEqual(lodash?.version, "4.17.23");
+			}),
+		);
+
+		it.effect("v2: a peer-suffixed version splits into a plain version and peerSuffix", () =>
+			Effect.gen(function* () {
+				const lockfile = yield* parseFixture("pnpm/v2/pnpm-lock.yaml", "pnpm");
+				const utils = Option.getOrThrow(lockfile.importer("packages/utils"));
+				const platform = utils.dependencies.find((d) => d.name === "@effect/platform");
+				assert.strictEqual(platform?.version, "0.96.0");
+				assert.strictEqual(platform?.peerSuffix, "(effect@3.21.0)");
+			}),
+		);
+
+		it.effect("peer-disambiguation suffixes split off; link:/file: resolutions pass through verbatim", () =>
+			Effect.gen(function* () {
+				// The exact literal from issue #165, nested-suffix chain included.
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .:",
+					"    dependencies:",
+					"      '@effect/experimental':",
+					"        specifier: 4.0.0-beta.101",
+					"        version: 4.0.0-beta.101(effect@4.0.0-beta.101)(ioredis@5.11.1(supports-color@8.1.1))",
+					"      effect:",
+					"        specifier: 4.0.0-beta.101",
+					"        version: 4.0.0-beta.101",
+					"      '@local/utils':",
+					"        specifier: workspace:*",
+					"        version: link:packages/utils",
+					"      vendored:",
+					"        specifier: file:vendor/vendored",
+					"        version: file:vendor/vendored",
+					"",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const root = Option.getOrThrow(lockfile.importer("."));
+
+				const experimental = root.dependencies.find((d) => d.name === "@effect/experimental");
+				assert.strictEqual(experimental?.version, "4.0.0-beta.101");
+				assert.strictEqual(experimental?.peerSuffix, "(effect@4.0.0-beta.101)(ioredis@5.11.1(supports-color@8.1.1))");
+
+				// A suffix-free entry keeps its version and records no peerSuffix key.
+				const effect = root.dependencies.find((d) => d.name === "effect");
+				assert.strictEqual(effect?.version, "4.0.0-beta.101");
+				assert.isFalse(Object.hasOwn(effect ?? {}, "peerSuffix"));
+
+				// Non-version resolutions pass through untouched, no suffix field.
+				const linked = root.dependencies.find((d) => d.name === "@local/utils");
+				assert.strictEqual(linked?.version, "link:packages/utils");
+				assert.isFalse(Object.hasOwn(linked ?? {}, "peerSuffix"));
+
+				const vendored = root.dependencies.find((d) => d.name === "vendored");
+				assert.strictEqual(vendored?.version, "file:vendor/vendored");
+				assert.isFalse(Object.hasOwn(vendored ?? {}, "peerSuffix"));
 			}),
 		);
 	});

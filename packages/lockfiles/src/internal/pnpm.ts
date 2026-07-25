@@ -8,6 +8,7 @@ import {
 	extractWorkspaceDeps,
 	framingFailure,
 	importerDependencies,
+	splitPeerSuffix,
 	toIntegrityHash,
 	validationFailure,
 } from "./shared.js";
@@ -114,7 +115,9 @@ const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, Parse
 			if (importerPath === "") continue; // a nameless importer cannot be modeled; skip, never throw
 
 			// pnpm records `{ specifier, version }` per importer dependency; a blank
-			// version means the section carries only a specifier.
+			// version means the section carries only a specifier. The recorded
+			// version may carry a peer-disambiguation suffix — the shared builder
+			// splits it (splitPeerSuffix) into `version` + `peerSuffix`.
 			importers.push(
 				LockfileImporter.make({
 					path: importerPath,
@@ -169,10 +172,10 @@ const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, Parse
 		if (raw.packages) {
 			for (const [key, pkg] of Object.entries(raw.packages)) {
 				// Keys may carry a peer-resolution suffix — "fdir@6.5.0(picomatch@4.0.4)" —
-				// whose inner "@" would corrupt the split; names never contain "(", so
-				// everything from the first "(" is suffix.
-				const parenIndex = key.indexOf("(");
-				const bare = parenIndex === -1 ? key : key.slice(0, parenIndex);
+				// whose inner "@" would corrupt the split; splitPeerSuffix (the one
+				// stripping implementation, shared with the importer path) drops
+				// everything from the first "(".
+				const { plain: bare } = splitPeerSuffix(key);
 				const atIndex = bare.lastIndexOf("@");
 				if (atIndex <= 0) continue; // malformed "name@version" keys are skipped, never thrown on
 				const name = bare.slice(0, atIndex);

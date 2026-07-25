@@ -24,7 +24,7 @@ Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` J
 
 `WorkspaceDependency.DependencyType` was **removed**; `WorkspaceDependency.depType` and `ImporterDependency.depType` now type against `@effected/npm`'s kit-wide `DependencyField`, and `ResolvedPackage.integrity` against its `IntegrityHash` (SRI/corepack/yarn `10c0/` forms; an *absent* integrity is omitted, a *present but unparseable* one fails the parse typed at `stage: "validation"`).
 
-`LockfileImporter` (one importer's declared deps, keyed by path) and `ImporterDependency` (`name`, a `DependencySpecifier.FromString` `specifier`, optional pnpm-only `version`, `DependencyField` `depType`) are new leaf classes. `Lockfile.importers` defaults to `[]`; `lockfile.importer(path): Option<LockfileImporter>` resolves one through a lazy `#private` path index — the `packagesNamed` precedent. yarn records no importers (always `[]`); `withImporterNames` leaves them untouched (keyed on path, not name).
+`LockfileImporter` (one importer's declared deps, keyed by path) and `ImporterDependency` (`name`, a `DependencySpecifier.FromString` `specifier`, optional pnpm-only `version` — always the **plain** version, peer-disambiguation suffix split off into the optional `peerSuffix` (the raw parenthesized chain); `link:`/`file:` resolutions pass through verbatim — and a `DependencyField` `depType`) are new leaf classes. The suffix split is `splitPeerSuffix` in `src/internal/shared.ts`, the single stripping implementation shared with the pnpm `packages:` key parser. `Lockfile.importers` defaults to `[]`; `lockfile.importer(path): Option<LockfileImporter>` resolves one through a lazy `#private` path index — the `packagesNamed` precedent. yarn records no importers (always `[]`); `withImporterNames` leaves them untouched (keyed on path, not name).
 
 `Lockfile.parse(content, { format })` is the package's **only fallible boundary** (one `Effect.fn` span, no logging, no metrics). Everything else is total: `withImporterNames`, `packagesNamed` and `importer` (both lazy `#private` indexes), `workspacePackages`, `LockfileIntegrity.compare`.
 
@@ -62,10 +62,10 @@ Per-format raw schemas and transforms are **private** in `src/internal/{bun,npm,
 
 ## Testing and building
 
-Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`. 83 tests across five families: per-format fixture tests (`Lockfile.test.ts` over `__test__/fixtures/{pnpm,npm,yarn,bun}/v*`), seam-repair tests (`withImporterNames` in `Lockfile.test.ts`, `LockfileIntegrity.test.ts`), the importer surface (`importers.test.ts` — `Lockfile.importers`, `importer(path)`), the hostility suite (`hostile.test.ts`) and codec round-trips (`roundtrip.property.test.ts`, `it.effect.prop` over `Schema.toArbitrary`).
+Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`. 92 tests across five families: per-format fixture tests (`Lockfile.test.ts` over `__test__/fixtures/{pnpm,npm,yarn,bun}/v*`), seam-repair tests (`withImporterNames` in `Lockfile.test.ts`, `LockfileIntegrity.test.ts`), the importer surface (`importers.test.ts` — `Lockfile.importers`, `importer(path)`), the hostility suite (`hostile.test.ts`) and codec round-trips (`roundtrip.property.test.ts`, `it.effect.prop` over `Schema.toArbitrary`).
 
 ```bash
-pnpm vitest run packages/lockfiles          # 83 tests, from the repo root
+pnpm vitest run packages/lockfiles          # 92 tests, from the repo root
 pnpm build --filter @effected/lockfiles     # from the repo root
 ```
 
