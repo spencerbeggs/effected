@@ -1,5 +1,5 @@
 ---
-status: draft
+status: current
 module: effected
 category: architecture
 created: 2026-07-18
@@ -21,7 +21,7 @@ related:
 
 `@effected/markdown` is CommonMark + GFM as pure Effect Schema schemas: parse, edit, validate and transform markdown documents. Markdown is the kit's communication layer with AI agents — skills, CLAUDE.md-style context files, knowledge documents — and this package makes that layer typed and programmable. Markdown→HTML and HTML→markdown are explicitly **out of scope as product features**; HTML exists only as test-harness machinery for the conformance corpus. The package carries the full-parity ambition of its format siblings [jsonc](jsonc.md), [yaml](yaml.md) and [toml](toml.md): parse, edit, format and a shared surface contract, not a read-only projection ("full kit" was chosen over read-only scope).
 
-The real identified consumer is rspress-plugin-api-extractor, which currently uses `mdast-util-from-markdown`, `mdast-util-to-hast` and `gray-matter`; the `Mdast` projection plus the frontmatter codecs replace that stack incrementally. This is a **post-`0.1.0` workstream, not a release gate**. This document is the migration-playbook step-2 gate: the package does not exist yet, and no scaffolding lands before this design is settled.
+The real identified consumer is rspress-plugin-api-extractor, which currently uses `mdast-util-from-markdown`, `mdast-util-to-hast` and `gray-matter`; the `Mdast` projection plus the frontmatter codecs replace that stack incrementally. This is a **post-`0.1.0` workstream, not a release gate**. The package is in tree and published (first at `0.2.0`, 2026-07-19); phases P1-P5 are complete and the section finders landed in the 2026-07-25 github-split program. P6 — the docs pass and the rspress-plugin-api-extractor swap — is consumer-side work, not package work.
 
 ## Headline decisions
 

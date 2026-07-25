@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-22
-last-synced: 2026-07-22
+updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 85
 related:
   - architecture.md
@@ -22,13 +22,19 @@ related:
   - packages/app.md
   - packages/tsconfig-json.md
   - packages/git.md
+  - packages/npm.md
+  - packages/commands.md
+  - packages/github.md
+  - consumers/README.md
 ---
 
 # Release criteria
 
 ## Overview
 
-The kit is not released package-by-package. Every package publishes together at `0.1.0`, pinned against one `effect` beta, and `1.0.0` waits for Effect v4 GA. `0.1.0` ships as an explicit **pre-release**: nothing here claims stability, and consumer ports proceed against real published packages as post-`0.1.0` dogfooding rather than being gated behind a synthetic proof.
+The kit did not release package-by-package on its way in: every package published together at `0.1.0`, pinned against one `effect` beta, and `1.0.0` waits for Effect v4 GA. `0.1.0` shipped as an explicit **pre-release**: nothing here claims stability, and consumer ports proceed against real published packages as post-`0.1.0` dogfooding rather than being gated behind a synthetic proof.
+
+That first wave was the gate. **Since it, releases go out in changeset-driven waves** — a subset of packages at a time, whatever the pending changesets name — and a package that was never on the gate joins the stream the same way any version bump does. `@effected/markdown` is the worked example: never a gate package, first published at `0.2.0` in the 2026-07-19 wave.
 
 ## Versioning
 
@@ -58,7 +64,7 @@ The release criterion is "the kit can replace the business logic of these five."
 
 ## The gate
 
-The gate is the union of what those consumers need, and it is met. The kit ships **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion.
+The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion — a historical set, and the table below is the record of why each one had to exist before the kit could publish at all. The kit is now twenty-five publishable packages ([package-inventory.md](package-inventory.md)); what came after the gate is [below](#the-github-split-wave).
 
 | Package | Tier | Why it is on the gate |
 | --- | --- | --- |
@@ -66,7 +72,7 @@ The gate is the union of what those consumers need, and it is met. The kit ships
 | `@effected/jsonc` | pure | `config-file`'s JSONC codec; parse/edit/format |
 | `@effected/yaml` | pure | `config-file`'s YAML codec |
 | `@effected/package-json` | boundary | manifest schemas and file IO for `workspaces`; SPDX validity delegated to `@effected/spdx` |
-| `@effected/npm` | pure | dependency-resolution contracts `workspaces` implements |
+| `@effected/npm` | boundary | dependency-resolution contracts `workspaces` implements; it was pure until the 2026-07-25 registry/publish services and stays boundary under a [recorded guardrail](packages/npm.md#the-tier-ruling-pure--boundary-deliberately-with-a-guardrail) |
 | `@effected/config-file` | boundary | `vitest-agent` and `@soda3js/config`; carries the four codecs (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`) |
 | `@effected/walker` | boundary | `config-file`, `xdg` and `workspaces` all traverse paths |
 | `@effected/glob` | pure | `workspaces` uses it instead of a `minimatch` runtime dep |
@@ -85,6 +91,14 @@ The gate is the union of what those consumers need, and it is met. The kit ships
 ### `@effected/toml` is a full-parity format package
 
 `@effected/toml` is a full-parity sibling to `@effected/jsonc` and `@effected/yaml` — parse, stringify, Schema, lossless CST, edit-in-place, formatter, visitor — on a from-scratch Effect-native engine targeting TOML 1.0.0, with `smol-toml` appearing only as a devDependency test oracle. The gate consumer `@soda3js/config` needs only parse/stringify: the consumer contract defines the minimum the package must satisfy, not its bound. [packages/toml.md](packages/toml.md) is authoritative.
+
+### The github-split wave
+
+Five packages arrived after the gate and have not published yet: `commands`, `templates`, `github`, `github-actions` and `sbom`, from the [github-split program](package-inventory.md#the-github-split-packages). The reason is mechanical rather than editorial — **the program ran without changesets by design**, so nothing has named them for a release; they ship when changesets do. The pre-release contract above covers them unchanged: `unstable`, consumers pinning exact versions.
+
+They did not enter through this document's criterion, because that criterion is the union of what the five applications need and it was met without them. Their scope is closed instead by the program's six consumer repos — the five savvy-web action repos plus claude-code-marketplace-manager — of which only silk-update-action appears among the five applications above; savvy-web/systems, which does, is the source monorepo the program takes its code from rather than one of the six. All are mapped in [consumers/](consumers/README.md).
+
+The lasting point for a reader deciding what a future release contains: **gate membership is history, not a filter.** It answered "what must exist before the kit publishes at all", and that question is closed.
 
 ### Not on the gate
 

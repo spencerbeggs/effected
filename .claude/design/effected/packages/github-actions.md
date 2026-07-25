@@ -4,6 +4,7 @@ module: effected
 category: architecture
 created: 2026-07-25
 updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 100
 related:
   - ../effect-standards.md

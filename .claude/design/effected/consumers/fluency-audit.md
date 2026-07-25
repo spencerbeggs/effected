@@ -44,13 +44,14 @@ The five below are the master plan's, in its order.
 | --- | --- | --- | --- | --- | --- |
 | 1 | Octokit typing | yes | yes | yes | **PASS** |
 | 2 | Branch upsert | yes | yes | yes | **PASS** |
-| 3 | Layer wiring | yes | yes | n/a | **PROVISIONAL** — see the case |
+| 3 | Layer wiring | yes | yes | n/a | **PASS** |
 | 4 | Error construction | yes | yes | yes | **PASS** |
 | 5 | Env-scoped effects | yes | yes | yes | **PASS — and it fixes a documented defect** |
 
-Four pass outright. Case 3 is provisional **not** because the wiring failed but
-because one of its two halves — `github-actions`' `Action.run` — is still being
-built; the part that shipped is verified and the part that has not is marked.
+**All five pass.** Case 3 was provisional in this document's first revision,
+pending `Action.run`; it was re-scored **upward** once that landed, because the
+self-contained-layer constraint that shaped its "before" turned out to be gone
+rather than merely relocated. The re-score is recorded inside the case.
 
 ---
 
@@ -345,55 +346,99 @@ be allowed to travel upward.
    (`packages/npm/src/NpmRegistry.ts:342`), not a shelled `npm view`, so
    `CommandRunnerLive` drops out of that branch entirely.
 
-**After (PROVISIONAL):**
+4. **The self-contained constraint is gone.** This is the one that collapses the
+   rest. `Action.run`'s options are
+   `readonly layer?: Layer.Layer<R, never, ActionServices>`
+   (`packages/github-actions/src/Action.ts:98`) — the extra layer **may require
+   anything the runtime provides**, and the runner feeds it in
+   (`Layer.provide(extra, ActionRuntime.layer)`, `:199`). And
+   `ActionRuntime.layer` is `Layer<ActionServices>` with **no requirements of its
+   own** (`:58`), because it composes `NodeServices.layer` and
+   `FetchHttpClient.layer` internally (`:81`). A consumer therefore never
+   mentions the platform at all — both `NodeServices` sub-provides in the before
+   are not relocated, they are **deleted**.
+
+   The whole of the old constraint was **one `never`** in that option's third
+   type parameter. Twenty-one lines of consumer wiring, a duplicated
+   platform-backed `ActionOutputs`, and a five-line comment explaining why the
+   requirement could not travel upward, all followed from a single type argument
+   — which is worth holding onto as a general lesson about where a `R` channel's
+   width actually gets decided.
+
+**After:**
 
 ```ts
-const platform = NodeServices.layer;
-const actionsBase = Layer.mergeAll(ActionState.layer, ActionOutputs.layer).pipe(Layer.provide(platform));
-
-const githubClient = GitHubClient.layerFromToken({ token });          // token from the bridge
+// The whole of the wiring.
+const githubClient = GitHubToken.clientLayer().pipe(Layer.orDie);
 const npm = Layer.mergeAll(
-  NpmRegistry.layer.pipe(Layer.provide(FetchHttpClient.layer)),
-  PackagePublish.layer.pipe(Layer.provide(Layer.mergeAll(platform, Workspaces.localExecLayer()))),
+  NpmRegistry.layer,
+  PackagePublish.layer.pipe(Layer.provide(Workspaces.localExecLayer())),
 );
 
-const AppLayer = Layer.mergeAll(githubClient, npm, actionsBase, Repo.layerFromConfig()).pipe(
-  Layer.provide(platform),
-);
+await Action.run(main, {
+  layer: Layer.mergeAll(githubClient, npm, Repo.layerFromConfig().pipe(Layer.orDie)),
+});
 ```
 
-### Verdict — Case 3: **PROVISIONAL**
+Everything else is satisfied by `ActionServices`, which is
+`ActionEnvironment | ActionLogger | ActionOutputs | ActionState | NodeServices | HttpClient`
+(`Action.ts:21-26`): `NpmRegistry` needs `HttpClient`; `PackagePublish` needs
+`FileSystem | Crypto | ChildProcessSpawner`, all three inside `NodeServices`
+(`ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal`, verified
+in `@effect/platform-node`'s `NodeServices.d.ts` at beta.101). The **only**
+requirement left over is `LocalExec` — which is the seam that keeps
+`@effected/commands` out of the monorepo-tier dependency graph, so paying one
+line for it here is the design working, not leaking.
 
-**Shorter: yes** (21 lines → 10). **Clearer: yes** — one platform layer provided
-once, no sub-provide that exists to mask a secret. **Cast-free: n/a** — this
-case never had casts.
+### Verdict — Case 3: **PASS**
 
-**Why it is not a PASS.** The composition above cannot be executed end to end
-today, because `@effected/github-actions`' `Action.run` — the entry point whose
-"`layer` option must be self-contained" constraint *shaped the whole before* — is
-still being built (Phase 3 is in flight; `Action.ts` is not among the committed
-sources). The three claims that make the rewrite work are each verified against
-shipped code, and are the load-bearing ones:
+**Shorter: yes** — 21 lines → 7, and more to the point **two `NodeServices`
+sub-provides → zero**. **Clearer: yes** — the platform is the runtime's business,
+and the five-line comment explaining why a masking requirement could not travel
+upward has nothing left to explain. **Cast-free: n/a** — this case never had
+casts; the other two criteria carry the verdict.
 
-- `PackagePublish.layer`'s requirement list contains no Actions service —
-  **verified**, `PackagePublish.ts:425-429`.
-- `NpmRegistry.layer` requires only `HttpClient` — **verified**,
-  `NpmRegistry.ts:342`.
-- `Workspaces.localExecLayer` exists and satisfies `commands`' `LocalExec` —
-  **verified**, `packages/workspaces/src/Workspaces.ts:325,382`.
+The three questions the provisional verdict left open are all answered by
+committed source:
 
-**What the closer must confirm when `Action.run` lands:**
+1. **Self-contained constraint: relaxed** — `Layer<R, never, ActionServices>`,
+   `Action.ts:98`. Re-scored upward, as the provisional said it should be if this
+   turned out to be the case.
 
-1. Whether `Action.run` still demands a **self-contained** layer. If it does, the
-   `platform` provide stays inside the composition as written. If it accepts a
-   layer with `R`, the composition gets shorter again and this verdict should be
-   re-scored upward, not merely re-marked.
-2. Where the App token enters. `GitHubClient.layerFromToken({ token })` above
-   assumes the bridge hands over a `Redacted` in `main` — which is the shape
-   `github`'s side supports, but the bridge's own surface is Phase 3's to fix.
-3. That nothing in the final wiring reintroduces an `ActionOutputs` sub-provide
-   for masking. The hoist is the point of the case; a regression here is the
-   thing this audit exists to catch.
+   This case now has a **regression test on the other side of the seam**
+   (`packages/github-actions/__test__/Action.test.ts:207`, *"takes a layer
+   requiring the PLATFORM and ActionOutputs, with no sub-provide"*), which cites
+   this audit by name and reconstructs the exact shape of the before: a
+   publish-like layer requiring `FileSystem` **and** `ActionOutputs`, handed
+   straight to the runner, asserting both that the mask reached the runner and
+   that the platform reached the layer. Its discriminating mutant is
+   **type-level** — narrowing the option's third parameter back to `never` fails
+   compilation rather than failing an assertion, which is the right shape for a
+   regression whose original was a type constraint rather than a behaviour.
+2. **The App token enters `main` via the persisted token** —
+   `GitHubToken.clientLayer()` builds with `GitHubClient.layerFromToken`
+   (`GitHubToken.ts:288-301`), and its docstring gives the reason the App path is
+   wrong there: *"the App path links a JWT signer and needs the private key,
+   neither of which a later phase has or should have."* That is exactly the
+   composition the provisional assumed.
+3. **No `ActionOutputs` sub-provide anywhere.** Masking moved to the persist
+   path — `ActionState.save` calls `setSecret` before it writes
+   (`ActionState.ts:116`), as does `Secret` (`Secret.ts:61,78`). `ActionOutputs`
+   is a member of `ActionServices`, so it is provided by the runtime rather than
+   sub-provided by a consumer. `GitHubToken`'s member-usage table
+   (`GitHubToken.ts:160-169`) documents `provision` → `setSecret` explicitly.
+
+**One constraint worth recording, which none of the three questions covered.**
+`ActionRunOptions.layer` fixes `E` at `never`, so a layer that can fail at
+construction cannot be passed directly. Both `GitHubToken.clientLayer()`
+(`E = ActionStateError | GitHubTokenError`) and `Repo.layerFromConfig()`
+(`E = ConfigError | InvalidRepoRefError`) need `Layer.orDie` or explicit
+handling. **The `Layer.orDie` from the before therefore survives** — but for a
+better reason: it used to be there because a *wire-failure* error type was the
+wrong shape for "no token configured", and it is now a deliberate "a missing
+token is fatal at boot" choice against an honest error. A consumer that would
+rather report the expiry than die has the typed error to catch, which is what
+`GitHubToken.read`'s expired-token failure exists for (`GitHubToken.ts:153`).
 
 ---
 
@@ -624,8 +669,11 @@ keying of the old double broke twice in production tests.
 - **No consumer repo has been migrated.** Every "after" is written against
   shipped APIs and reviewed for type-correctness by reading the committed
   signatures; none has been compiled inside a consumer, because the consumers
-  are read-only for this program.
-- **Case 3 is genuinely incomplete**, and marked so rather than rounded up.
+  are read-only for this program. That is the honest limit of a five-for-five
+  scoreboard: it says the surfaces compose as designed, not that a migration has
+  been executed.
 - **Runtime behaviour is unverified against live GitHub.** The kit's own suites
   drive the real client against scripted HTTP; no case here was executed against
   api.github.com.
+- **Case 4 carries a migration caveat**, stated in the case: consumers catching a
+  resource-specific error tag will catch `GitHubError` after the port.

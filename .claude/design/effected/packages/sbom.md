@@ -1,5 +1,5 @@
 ---
-status: active
+status: current
 module: effected
 category: architecture
 created: 2026-07-25
