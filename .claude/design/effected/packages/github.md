@@ -1,10 +1,11 @@
 ---
-status: draft
+status: current
 module: effected
 category: architecture
 created: 2026-07-25
 updated: 2026-07-25
-completeness: 60
+last-synced: 2026-07-25
+completeness: 90
 related:
   - ../effect-standards.md
   - ../package-inventory.md
@@ -822,8 +823,11 @@ moment a method appears, it is a service and the rule applies.
 Every service below: `Context.Service<Self, Shape>()("@effected/github/<Name>")`, every member an
 `Effect`/`Stream` or a function returning one, `static readonly layer` using `this`, plus
 `makeTest(overrides?: Partial<Shape>)` and `layerTest(overrides?)` where anything unstubbed **dies
-loudly**. All require `GitHubClient | Repo`; `GitTag` additionally reaches `@effected/semver`.
-Signatures are abridged to the shape and the decisions; `E` is `GitHubError` unless noted.
+loudly**. Signatures are abridged to the shape and the decisions; `E` is `GitHubError` unless noted.
+
+**As built**, each resource `layer` requires only `GitHubClient` and each *method* requires `Repo` —
+see [as-built correction 1](#as-built--where-implementation-corrected-the-design). `GitTag`
+additionally reaches `@effected/semver`.
 
 **`GitBranch`** — `create(name, sha)`, **`upsert(name, sha)`**, `exists(name) → boolean`,
 `sha(name) → string`, `reset(name, sha)`, `delete(name)`. `exists` degrades 404 to `false` (the
@@ -1214,6 +1218,68 @@ Each line is something the old package shipped and a reviewer might ask after.
 12. **ProjectV2 stays with silk-sync-action.** `GraphQLDocument` is the mechanism and is owned here;
     a ProjectV2 schema is content and belongs to the one consumer that has it.
 
+## As built — where implementation corrected the design
+
+Recorded 2026-07-25, after the package was implemented and tested. Everything
+else in this document describes what shipped; these five are the places building
+it produced a different answer than designing it did.
+
+1. **`Repo` is resolved per call, not once at layer construction.** The design
+   said resource layers resolve `GitHubClient | Repo` at construction, giving
+   each method `R = never`. Built that way, **`Repo.provide(other)` silently does
+   nothing** — the resource already holds the repository it was built with, so
+   the multi-repository story would have been decorative. A test caught it. The
+   client stays resolved at construction; `Repo` is read per call and appears in
+   every resource method's `R`, which costs one context read and makes the
+   scoped override real. The general rule this refines: **resolve a dependency
+   once when it is stable, per call when varying it is the point.**
+2. **Pagination is built on octokit's own iterator, not a hand-rolled Link
+   walk.** Reading the plugin's source settled two things the design could not:
+   its `next()` advances the cursor **only on success**, so wrapping it in the
+   retry re-requests a failed page rather than skipping it; and it carries three
+   behaviors we would otherwise have reimplemented — the compare endpoint's
+   `total_commits` continuation, the search-shaped `{ total_count, items }`
+   normalization, and the 409-on-empty-repository case. `maxPages` and header
+   capture stay on our side.
+3. **`GitHubCommit.changedFiles` builds a custom `PageSource`.** Its route is not
+   in `PaginatingEndpoints` — the payload is a commit object, not an array — even
+   though it pages **by file** at 300 per page. It therefore constructs pages
+   from `client.request` with `page`/`per_page` and hands them to the same
+   `internal/paginate` engine, which is exactly what that seam is for. There is
+   still one pagination implementation.
+4. **`GitHubError` lives in its own module**, not in `GitHubClient.ts`, because
+   the retry policy needs the error's shape and the client needs the policy.
+   `Resilience` ended up importing **no** error class at all: it declares a
+   structural `RetryableFailure { retryable, retryAfterMillis? }`, so one policy
+   serves both the REST and the GraphQL error and every policy decision is
+   testable against a two-field literal.
+5. **Two routes are not in the generated map**, and both use `requestDecoded`
+   with an owned schema: release-asset upload (`POST …/releases/{id}/assets`,
+   omitted by octokit's generator because it takes a raw binary body on
+   `uploads.github.com`) and the attestation reads (pinned
+   `X-GitHub-Api-Version`, so the live contract differs from the description).
+
+Three smaller facts the build and the generated types taught us, all now
+comments at their sites: a `static readonly layer` must wrap its factory in an
+arrow or throw `Cannot access 'make' before initialization` at import time with
+a clean typecheck; a commit's `author` can be `Record<string, never>` rather
+than `null`; and the artifact-metadata endpoint has **no `version` field**,
+which the previous package sent.
+
+### The API Extractor watch item, answered
+
+Naming third-party generic types (`Endpoints[R]["parameters"]`) on a `@public`
+signature is **fine**: API Extractor resolves a declared dependency's types as
+externals and emits real imports in the `.d.ts`. No suppression, no inlining.
+The build's only `ae-forgotten-export`s are the synthesized `_base` symbols, all
+in the suppressed bucket.
+
+Three `{@link}` rules the build enforced, worth knowing before writing TSDoc
+here: a link resolves only to symbols **the entry point exports**, under **the
+name it exports them by** (a renamed export breaks the module-local spelling); a
+schema-declared `Schema.Class` field is not a linkable member (use backticks);
+and a module-local `const` is not linkable at all.
+
 ## Open questions
 
 Three, and only these — everything else above is a ruling with its reasoning attached.
@@ -1227,13 +1293,13 @@ Three, and only these — everything else above is a ruling with its reasoning a
    `github` has no attestation surface and Phase 4 owns an octokit call. **Recommendation: keep as
    designed**, revisit at the Phase 4 checkpoint when the bundle shape is concrete. Flagged because
    it is cheaper to move before implementation than after.
-2. **Should `PullRequestInfo`'s four optional fields become required?** They are `optionalKey`
-   today with a comment saying they are "absent from test fixtures that do not set it" — a domain
-   model widened to accommodate hand-written doubles, which partial mocks make unnecessary. Making
-   them required is more honest but changes what a consumer must handle. **Recommendation: require
-   `mergedAt` as `Option` and keep the rest optional**, decided at implementation against the real
-   response types now that they are typed — but it is a visible API shape, so it is Spencer's call
-   if he wants it settled at the checkpoint.
+2. ~~**Should `PullRequestInfo`'s four optional fields become required?**~~ **CLOSED** as
+   recommended: `mergedAt` is `Schema.Option(Schema.DateTimeUtcFromString)` — whether a pull request
+   has merged is a fact GitHub always reports, so an optional key would model a gap in our fixtures
+   rather than one in the domain — and `body`, `mergeCommitSha` and the rest stay `optionalKey`.
+   Implementation note: the projection **constructs** the `Option` rather than decoding it, because
+   the Type side is `Option<DateTime.Utc>` while GitHub's wire form is a nullable ISO string, and a
+   codec bridging them would describe GitHub's encoding as if it were ours.
 3. **Is `GitHubApp.clientLayer` the right name?** It is a `layer`-family static producing a
    *different* service's layer, and the alternatives each cost something: `GitHubApp.layerClient`
    (matches the `layerFromX` prefix convention but reads as "a layer of clients"),
