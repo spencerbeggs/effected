@@ -6,7 +6,7 @@ import { Effect, Layer, Path } from "effect";
 import { badFilename } from "./internal/filename.js";
 
 /**
- * Options for {@link (AppCache:variable).layer}.
+ * Options for {@link AppCache.layer}.
  *
  * @public
  */
@@ -22,20 +22,7 @@ export interface AppCacheOptions extends CacheOptions {
 	readonly filename?: string;
 }
 
-/**
- * Build the cache-directory database layer: `AppDirs.ensureCache`, then
- * `Cache.layerSqlite` at `<cache dir>/<filename>`.
- *
- * @remarks
- * The same ensure-before-open ordering as `AppStore.layer`, and it matters
- * *more* here: the cache directory is the one an operator is most likely to
- * have deleted between runs. `options` is optional because every
- * `CacheOptions` field is.
- *
- * This is a layer-returning function: bind the result to a `const` and reuse
- * that binding, or memoization by reference is lost and the database is
- * opened twice.
- */
+// Implementation of AppCache.layer; the public contract lives on the static.
 const layer = (options?: AppCacheOptions): Layer.Layer<Cache, AppDirsError | CacheError, AppDirs | Path.Path> =>
 	Layer.unwrap(
 		Effect.gen(function* () {
@@ -57,4 +44,22 @@ const layer = (options?: AppCacheOptions): Layer.Layer<Cache, AppDirsError | Cac
  *
  * @public
  */
-export const AppCache = { layer } as const;
+export class AppCache {
+	private constructor() {}
+
+	/**
+	 * Build the cache-directory database layer: `AppDirs.ensureCache`, then
+	 * `Cache.layerSqlite` at `<cache dir>/<filename>`.
+	 *
+	 * @remarks
+	 * The same ensure-before-open ordering as `AppStore.layer`, and it matters
+	 * *more* here: the cache directory is the one an operator is most likely to
+	 * have deleted between runs. `options` is optional because every
+	 * `CacheOptions` field is.
+	 *
+	 * This is a layer-returning function: bind the result to a `const` and reuse
+	 * that binding, or memoization by reference is lost and the database is
+	 * opened twice.
+	 */
+	static readonly layer = layer;
+}

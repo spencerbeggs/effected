@@ -6,7 +6,7 @@ import { Effect, Layer, Path } from "effect";
 import { badFilename } from "./internal/filename.js";
 
 /**
- * Options for {@link (AppStore:variable).layer}.
+ * Options for {@link AppStore.layer}.
  *
  * @public
  */
@@ -22,23 +22,7 @@ export interface AppStoreOptions extends StoreOptions {
 	readonly filename?: string;
 }
 
-/**
- * Build the state-directory database layer: `AppDirs.ensureState`, then
- * `Store.layerSqlite` at `<state dir>/<filename>`.
- *
- * @remarks
- * The ensure-before-open ordering is the load-bearing glue.
- * `SqliteClient.layer` has no error channel and **defects** on a missing
- * parent directory; `AppDirs.ensureState` is a `mkdir -p` on a **typed**
- * `AppDirsError` channel. Running the ensure inside `Layer.unwrap`, before the
- * store layer is built, converts a defect surface into a typed one — "the
- * state directory could not be created" is an expected, recoverable boundary
- * failure and it stays on `E`. Nothing is `orDie`d.
- *
- * This is a layer-returning function: bind the result to a `const` and reuse
- * that binding, or memoization by reference is lost and the database is
- * opened twice.
- */
+// Implementation of AppStore.layer; the public contract lives on the static.
 const layer = (
 	options: AppStoreOptions,
 ): Layer.Layer<Store, AppDirsError | StoreError | StoreMigrationError, AppDirs | Path.Path> =>
@@ -61,4 +45,25 @@ const layer = (
  *
  * @public
  */
-export const AppStore = { layer } as const;
+export class AppStore {
+	private constructor() {}
+
+	/**
+	 * Build the state-directory database layer: `AppDirs.ensureState`, then
+	 * `Store.layerSqlite` at `<state dir>/<filename>`.
+	 *
+	 * @remarks
+	 * The ensure-before-open ordering is the load-bearing glue.
+	 * `SqliteClient.layer` has no error channel and **defects** on a missing
+	 * parent directory; `AppDirs.ensureState` is a `mkdir -p` on a **typed**
+	 * `AppDirsError` channel. Running the ensure inside `Layer.unwrap`, before the
+	 * store layer is built, converts a defect surface into a typed one — "the
+	 * state directory could not be created" is an expected, recoverable boundary
+	 * failure and it stays on `E`. Nothing is `orDie`d.
+	 *
+	 * This is a layer-returning function: bind the result to a `const` and reuse
+	 * that binding, or memoization by reference is lost and the database is
+	 * opened twice.
+	 */
+	static readonly layer = layer;
+}

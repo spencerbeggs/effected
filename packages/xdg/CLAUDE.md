@@ -61,6 +61,11 @@ Three consequences, and they are why the design holds together:
 - **Every join goes through `Path.Path`**, never string interpolation. v3 built
   every path with `${home}/Library/...`, which emits forward slashes on Windows.
 
+`XdgConfig` is a static class with a private constructor, not an `as const`
+namespace object — an `as const` object's member types are inferred in the
+built `.d.ts` and lose their TSDoc entirely, while a class's `static readonly`
+declarations keep it. Call syntax is unaffected (`XdgConfig.resolver(...)`).
+
 ## Absorption is per candidate — the one real bug fixed
 
 `XdgConfig.resolver` searches the whole config search path (`~/.config/<ns>`,

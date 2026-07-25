@@ -24,7 +24,7 @@ import { AppStore } from "./AppStore.js";
 export type AppError = XdgEnvError | AppDirsError | StoreError | StoreMigrationError | CacheError;
 
 /**
- * Options for {@link (App:variable).layer}.
+ * Options for {@link App.layer}.
  *
  * @remarks
  * The `AppDirsOptions` fields — `namespace`, `native`, `fallbackDir`, `dirs` —
@@ -41,7 +41,7 @@ export interface AppOptions extends AppDirsOptions {
 }
 
 /**
- * Options for {@link (App:variable).layerTest}.
+ * Options for {@link App.layerTest}.
  *
  * @public
  */
@@ -68,26 +68,7 @@ const testPaths = (): XdgPaths =>
 		dataDirs: ["/usr/local/share", "/usr/share"],
 	});
 
-/**
- * Build the application control plane: namespaced directories, the state
- * database and the cache database, all pointed at the same place.
- *
- * @remarks
- * Composition is `AppDirs.layer(options)` `provideMerge` `Xdg.layer`, with the
- * {@link AppStore} and {@link AppCache} glue `provideMerge`d over the result,
- * so all four services come out and only `FileSystem` and `Path` stay in `R` —
- * the two the consumer's platform layer supplies once, at the edge.
- *
- * `App.layer` always provides **both** databases: an application that wants
- * only one composes `AppStore.layer` or `AppCache.layer` directly and never
- * opens the other file. Passing no `cache` options still opens `cache.db`,
- * because `CacheOptions` are all-optional and absence means defaults.
- *
- * This is a layer-returning function: bind the result to a `const` once and
- * reuse that binding. Calling it inline at two provide sites opens two
- * databases — two connections onto one file, two migration ledgers, and two
- * independent `CacheEvent` PubSubs whose subscribers each see half the events.
- */
+// Implementation of App.layer; the public contract lives on the static.
 const layer = (
 	options: AppOptions,
 ): Layer.Layer<Xdg | AppDirs | Store | Cache, AppError, FileSystem.FileSystem | Path.Path> => {
@@ -97,22 +78,7 @@ const layer = (
 	return Layer.provideMerge(databases, dirs);
 };
 
-/**
- * The hermetic control plane: fixed XDG paths, `:memory:` databases, and the
- * platform layers provided internally.
- *
- * @remarks
- * `Xdg.layerFrom` over a synthetic default {@link XdgPaths}, `Store.layerTest`
- * and `Cache.layerTest`, with `Path.layer` and `FileSystem.layerNoop` provided
- * **internally** via `Layer.provide` — not merged into the output, not
- * exposed. A consumer's first test needs no platform package at all.
- *
- * The documented limit: code paths that actually exercise `ensure*` **die**
- * against `FileSystem.layerNoop` — it is a stub, not a working filesystem.
- * `layerTest` is for testing logic that *uses* the control plane; a test of
- * real directory behaviour uses {@link (App:variable).layer} with a
- * temp-directory `HOME`.
- */
+// Implementation of App.layerTest; the public contract lives on the static.
 const layerTest = (options: AppTestOptions): Layer.Layer<Xdg | AppDirs | Store | Cache, AppError> => {
 	const dirs = Layer.provideMerge(
 		AppDirs.layer({ namespace: options.namespace }),
@@ -131,4 +97,46 @@ const layerTest = (options: AppTestOptions): Layer.Layer<Xdg | AppDirs | Store |
  *
  * @public
  */
-export const App = { layer, layerTest } as const;
+export class App {
+	private constructor() {}
+
+	/**
+	 * Build the application control plane: namespaced directories, the state
+	 * database and the cache database, all pointed at the same place.
+	 *
+	 * @remarks
+	 * Composition is `AppDirs.layer(options)` `provideMerge` `Xdg.layer`, with the
+	 * {@link AppStore} and {@link AppCache} glue `provideMerge`d over the result,
+	 * so all four services come out and only `FileSystem` and `Path` stay in `R` —
+	 * the two the consumer's platform layer supplies once, at the edge.
+	 *
+	 * `App.layer` always provides **both** databases: an application that wants
+	 * only one composes `AppStore.layer` or `AppCache.layer` directly and never
+	 * opens the other file. Passing no `cache` options still opens `cache.db`,
+	 * because `CacheOptions` are all-optional and absence means defaults.
+	 *
+	 * This is a layer-returning function: bind the result to a `const` once and
+	 * reuse that binding. Calling it inline at two provide sites opens two
+	 * databases — two connections onto one file, two migration ledgers, and two
+	 * independent `CacheEvent` PubSubs whose subscribers each see half the events.
+	 */
+	static readonly layer = layer;
+
+	/**
+	 * The hermetic control plane: fixed XDG paths, `:memory:` databases, and the
+	 * platform layers provided internally.
+	 *
+	 * @remarks
+	 * `Xdg.layerFrom` over a synthetic default `XdgPaths`, `Store.layerTest`
+	 * and `Cache.layerTest`, with `Path.layer` and `FileSystem.layerNoop` provided
+	 * **internally** via `Layer.provide` — not merged into the output, not
+	 * exposed. A consumer's first test needs no platform package at all.
+	 *
+	 * The documented limit: code paths that actually exercise `ensure*` **die**
+	 * against `FileSystem.layerNoop` — it is a stub, not a working filesystem.
+	 * `layerTest` is for testing logic that *uses* the control plane; a test of
+	 * real directory behaviour uses {@link App.layer} with a temp-directory
+	 * `HOME`.
+	 */
+	static readonly layerTest = layerTest;
+}
