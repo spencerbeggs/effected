@@ -11,6 +11,18 @@
  * @packageDocumentation
  */
 
+export {
+	CYCLONEDX_BOM_PREDICATE,
+	IN_TOTO_STATEMENT_V1,
+	InTotoStatement,
+	type InTotoStatementInput,
+	InTotoSubject,
+	type InTotoSubjectInput,
+	InvalidSha256DigestError,
+	type PredicateType,
+	Sha256Digest,
+} from "./InTotoStatement.js";
+export { NtiaElement, NtiaElementId, NtiaReport } from "./NtiaReport.js";
 export { Sbom, type SbomInput, type SbomJsonOptions, SbomWriteError } from "./Sbom.js";
 export {
 	Component,
@@ -28,3 +40,11 @@ export {
 	type SbomMetadataOptions,
 	SbomMetadataSource,
 } from "./SbomMetadataSource.js";
+export {
+	GITHUB_BUILD_TYPE,
+	type GitHubWorkflowProvenance,
+	SLSA_PROVENANCE_V1,
+	SlsaBuildDefinition,
+	SlsaProvenance,
+	SlsaRunDetails,
+} from "./SlsaProvenance.js";
