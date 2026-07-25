@@ -1,6 +1,6 @@
 ---
 name: effect-api-extractor-bases
-description: Use when API Extractor reports ae-forgotten-export for the anonymous base of an Effect class factory (Schema.Class, TaggedClass, TaggedErrorClass, Opaque, Context.Service) under the silk bundler — and for the OTHER ae-*/tsdoc-* diagnostics a package build surfaces, ae-unresolved-link above all ({@link} selector rules for merged value+type names, namespace-object members, inherited members, and cross-package symbols, where backticks are the only correct form), plus how to read issues.json without being fooled. The house policy for bases is to write the factory INLINE and suppress the synthesized X_base warning narrowly via savvy.build.ts meta.tsdoc.suppressWarnings [{ messageId ae-forgotten-export, pattern _base }] — no @public base const, no hand-written annotation. Yields a zero-warning issues.json with the base warnings in the suppressed bucket.
+description: Use when API Extractor reports ae-forgotten-export for the anonymous base of an Effect class factory (Schema.Class, TaggedClass, TaggedErrorClass, Opaque, Context.Service) under the silk bundler — and for the OTHER ae-*/tsdoc-* diagnostics a package build surfaces, ae-unresolved-link above all ({@link} selector rules for merged value+type names, namespace-object members, inherited members, schema-declared Schema.Class fields, and cross-package symbols, where backticks are the only correct form), plus how to read issues.json without being fooled. The house policy for bases is to write the factory INLINE and suppress the synthesized X_base warning narrowly via savvy.build.ts meta.tsdoc.suppressWarnings [{ messageId ae-forgotten-export, pattern _base }] — no @public base const, no hand-written annotation. Yields a zero-warning issues.json with the base warnings in the suppressed bucket.
 ---
 
 # API Extractor × Effect class factories
@@ -223,7 +223,7 @@ this form warnings-clean. Expect the mistake to recur: `Jsonc`,
 `Walker` all use this export shape, and the failure is invisible to `pnpm test`
 and `types:check` — it only surfaces in the **prod** build's `issues.json`.
 
-**Backtick spans remain correct for two cases**, where no selector helps:
+**Backtick spans remain correct for three cases**, where no selector helps:
 
 1. **Inherited members** — `{@link SemVer.make}` where `make` comes from the
    synthesized base. There is no selector for a member the declaration does not
@@ -235,6 +235,17 @@ and `types:check` — it only surfaces in the **prod** build's `issues.json`.
    `{@link (ConfigCodec:interface)}` still gets `ae-unresolved-link`. Write
    `` `ConfigCodec` ``. Expect this on **every** adapter package that plugs
    into a seam it does not own.
+3. **A `Schema.Class` FIELD** — `{@link ReleaseAgeGate.exclude}` or
+   `{@link WorkspaceCatalogs.set}`, where the member is a schema-declared field
+   rather than a hand-written class member. API Extractor does not see fields
+   declared in the factory's field object as class members at all, so **no
+   selector form fixes it** — `{@link (ReleaseAgeGate:class).exclude}` stays
+   `ae-unresolved-link` too. Write `` `ReleaseAgeGate.exclude` ``. This one is a
+   reliable trap: two agents hit it independently in PR #139, each burning a
+   full build cycle before reaching the same answer. Note the asymmetry with the
+   inherited-member case above — there the *declaration* does not own the
+   member; here the class does own it, but only through the factory, which is
+   the same dead end from API Extractor's side.
 
 **A note on reading `issues.json`.** Its `file` names the source, but its `line`
 indexes the **generated `.d.ts`**. Locate a `tsdoc-*` or `ae-unresolved-link`
