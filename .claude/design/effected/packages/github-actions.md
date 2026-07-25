@@ -444,7 +444,10 @@ Fourteen units green against `effect@4.0.0-beta.101`: `WorkflowCommand`, `Action
 
 **Remaining: `ActionCache`, `Artifact`, `BlobStore.githubCache` and the Azure reachability test (the rest of (c)); `GitHubToken`, `Action.run`/`ActionRuntime` (d); the build gate and `packages/github-actions/CLAUDE.md` (e).** Nothing else depends on the three remaining (c) modules, which is why the handoff boundary is there.
 
-**One open dependency decision:** `CacheKey.hashMatching` — the pattern-facing half of `hashFiles` — is unbuilt pending a call on taking `@effected/glob` as a dependency (it needs an install). See [below](#cachekey-shipped-in-two-halves).
+**No open dependency decisions. Both edges are in place and installed:**
+
+- **`@effected/glob` (`workspace:~`) — approved and installed 2026-07-25.** `CacheKey.hashMatching` over `GlobSet` is successor work and is **unblocked**. See [below](#cachekey-shipped-in-two-halves).
+- **`@azure/storage-blob` — verified linked** at `packages/github-actions/node_modules/@azure/storage-blob`. The storage tier stalls on nothing.
 
 ### Deltas from the design
 
@@ -474,12 +477,16 @@ Three properties earned their tests, and each is a way the obvious implementatio
 
 `hashFiles` is **byte-compatible with `@actions/glob`**: sorted, de-duplicated, and each file's SHA-256 fed into the accumulator as **binary, not hex**. A hex-fed accumulator produces a perfectly plausible digest that never matches a cache entry written by any other action; the test pins the digest as a literal and the wrong-way value (`e11ab1a1…`) is what the mutant produced.
 
-**Not built — `hashMatching({ workspace, patterns })`, and the reason is a correction to the design.** The doc says "`hashFiles` over a compiled `@effected/glob` pattern set". Checking the real surfaces changes that sentence: **`@effected/glob` is a matcher, not a walker** — pure string→predicate by construction (pure tier), so it cannot supply file *discovery*. Core `FileSystem.readDirectory(path, { recursive: true })` is the walk, and it is the better half of the deal, because it makes the whole of `hashMatching` testable through `FileSystem.layerNoop`. That leaves one open question — what matches the patterns:
+**Not built — `hashMatching({ workspace, patterns })`. Unblocked successor work, with the design settled.**
 
-- **Take `@effected/glob`** (needs an install; free under R3). Full minimatch dialect, which is what `@actions/glob` uses, so a workflow author's `!**/node_modules/**` behaves as it does in every other cache step. **Recommended.**
-- **`node:fs.globSync`**, as the source package does. Zero install, sanctioned import — but it welds discovery and matching into one non-stubbable call, and node's glob dialect is not minimatch. A pattern divergence surfaces as a silent cache-key difference from every other action in the same workflow, which is the worst failure mode a cache key has.
+The doc originally said "`hashFiles` over a compiled `@effected/glob` pattern set". Checking the real surfaces changes the shape of that sentence: **`@effected/glob` is a matcher, not a walker** — pure string→predicate by construction (pure tier), so it cannot supply file *discovery*. So the module is two halves, not one:
 
-Walking from the workspace root makes v3's "skip files outside the workspace" rule **structural** rather than a remembered check, whichever is chosen.
+- **The walk is core `FileSystem.readDirectory(path, { recursive: true })`**, and it is the better half of the deal: it makes the whole of `hashMatching` testable through `FileSystem.layerNoop`, with no temp directory and no real IO.
+- **The matching is `@effected/glob`'s `GlobSet`**, taken as a `workspace:~` dependency (**approved and installed 2026-07-25**; free under R3). The alternative — `node:fs.globSync`, as the source package uses — was rejected on a correctness argument rather than a weight one: it welds discovery and matching into one non-stubbable call, and **node's glob dialect is not minimatch**, which is what `@actions/glob` uses. A dialect divergence surfaces as a *silent cache-key difference* from every other action in the same workflow — a permanent miss that reports nothing, which is the worst failure mode a cache key has.
+
+Walking from the workspace root also makes v3's "skip files outside the workspace" rule **structural** rather than a remembered check.
+
+The three byte-compatibility details each earn their own test, because a cache written by an existing `actions/cache` step must stay hittable: sorted absolute paths, the per-file digest fed to the accumulator as **binary not hex**, and files outside the workspace root skipped.
 
 ### `#144` is ruled: stage then swap
 
@@ -539,7 +546,13 @@ Fixed by carrying the offending value on the issue. Mutation-verified: reverting
 
 Read `packages/github-actions/CLAUDE.md` first — it carries the invariants in operational form. Then, per remaining unit:
 
-**`GitHubToken`** (start here; it is the cross-package seam). `@effected/github`'s `GitHubApp` is committed and its shape members carry `Touches:` TSDoc written for exactly this table, so the member-usage contract can be transcribed rather than inferred. Facts worth having before you open the file:
+**`GitHubToken`** (start here; it is the cross-package seam). `@effected/github`'s `GitHubApp` is committed and its shape members carry `Touches:` TSDoc written for exactly this table, so the member-usage contract can be transcribed rather than inferred — build the partial `GitHubApp.layerTest` stubs straight off those lines (`provision` needs `token` + `identity`; `dispose` needs `revoke` alone). Facts worth having before you open the file, several confirmed with that package's implementer:
+
+- **Use `token()`, not `scopedToken()`. If the bridge reaches for `scopedToken`, that is the bug.** `scopedToken` and `clientLayer` revoke on scope close, and no scope can span the `pre`/`main`/`post` process boundary; `token()` mints and hands back, which is the only lifetime that survives it.
+- **In `main`, rebuild from the persisted token with `GitHubClient.layerFromToken` — not through `GitHubApp`.** That path links no JWT signer, which keeps `main`'s bundle off the App arm entirely.
+- **`InstallationToken` is JSON-encodable on purpose**, and its `Redacted` deliberately does **not** survive encoding, because `GITHUB_STATE` is plaintext by GitHub's protocol. **Masking is this package's job**, not `github`'s — go through `ActionState.saveSecret` / `Secret.forRunnerFile`.
+- **`TokenPermissions.fromGitHub(token.permissions)` is pure.** The permission check needs no service; the source package's requiring one just to compare was unnecessary.
+- **Decide the expiry posture deliberately.** Installation tokens live ~1 hour, and a client rebuilt in `main` from a persisted token **cannot re-mint** — the App credentials live in `pre`'s process. Record the ruling either way: document "~1h contract; long phases re-provision" as v1, or design the carry-credentials-into-`main` variant. Do not discover this at minute 61.
 
 - The shape is `token`, `scopedToken`, `revoke`, `identity`, `installations`. `identity` takes an optional `installationToken`, and supplying it matters: `GET /users/{slug}[bot]` **rejects an app JWT**, so without one the lookup runs unauthenticated against a 60-per-hour-per-IP limit.
 - `GitHubApp.clientLayer` already mints, rotates and revokes on scope close. `GitHubToken.clientLayer` is a *different* thing — it builds a client from the token **persisted in `ActionState`** by an earlier phase, because `post` is a separate process holding no scope from `main`.
