@@ -104,19 +104,34 @@ describe("tier guardrail: the pure vocabulary does not reach IO", () => {
 
 describe("tier guardrail: the entrypoint exports individually", () => {
 	it("index.ts declares no namespace object over the surface", () => {
-		const source = read("index.ts");
+		// Stripped, so the prohibition can be WRITTEN DOWN in this file's own
+		// prose without failing the check that enforces it. (The package context
+		// file already spells `export * as` out in exactly that way.)
+		const code = stripComments(read("index.ts"));
 		// `export * as X from` is the namespace-object form; a bundler cannot see
 		// through it, so one import of the vocabulary would retain every service.
 		assert.notMatch(
-			source,
+			code,
 			/export\s+\*\s+as\s/,
 			"index.ts must not export a namespace object — it defeats tree-shaking for every consumer",
 		);
 	});
 
 	it("index.ts exports the services by name", () => {
-		const source = read("index.ts");
-		assert.include(source, "NpmRegistry");
-		assert.include(source, "PackagePublish");
+		// This assertion had THREE ways to pass without the export existing, all of
+		// them the false-PASS direction, and a mutant (delete the export, leave a
+		// comment naming it) survived the first two fixes:
+		//
+		// 1. a COMMENT naming `NpmRegistry` — closed by stripping comments;
+		// 2. the module SPECIFIER `from "./NpmRegistry.js"`, which contains the
+		//    name — closed by removing specifiers before matching;
+		// 3. a neighbouring identifier that merely CONTAINS the name, here
+		//    `type NpmRegistryShape` — closed by matching on a word boundary
+		//    rather than as a substring.
+		//
+		// Only all three together make the test fail when the export is gone.
+		const code = stripComments(read("index.ts")).replace(/from\s*["'][^"']+["']/g, "");
+		assert.match(code, /\bNpmRegistry\b/, "index.ts must export NpmRegistry by name");
+		assert.match(code, /\bPackagePublish\b/, "index.ts must export PackagePublish by name");
 	});
 });
