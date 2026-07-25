@@ -37,8 +37,8 @@ Scope is closed by six consumers — the five in the spec plus **silk-runtime-ac
     "@azure/storage-blob": "^12.33.0"
   },
   "peerDependencies": {
-    "effect": "catalog:effectPeers",
-    "@effect/platform-node": "catalog:effectPeers"   // NOT optional
+    "effect": "catalog:effect:peers",
+    "@effect/platform-node": "catalog:effect:peers"   // NOT optional
   }
 }
 ```
