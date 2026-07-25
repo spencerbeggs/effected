@@ -59,31 +59,11 @@ const replaceAll = (text: string, values: ReadonlyArray<string>): string => {
 	return out;
 };
 
-/**
- * Replaces every occurrence of every secret's value in `text` with
- * {@link REDACTED}.
- *
- * @remarks
- * Exact, literal matching — no pattern compilation, no encoding-aware search. A
- * secret that reaches the text base64-encoded, URL-encoded, or split across a
- * line break is **not** found; declare the encoded form as a secret too if that
- * is a real risk.
- *
- * A secret composed only of the placeholder's own characters (`*`, `**`, `***`)
- * cannot be fully removed, because the replacement reintroduces it. That is a
- * documented limitation, not a defect.
- *
- * @public
- */
+// Implementation of Redaction.apply; the public contract lives on the static.
 const apply = (text: string, secrets: ReadonlyArray<Redacted.Redacted<string>>): string =>
 	secrets.length === 0 ? text : replaceAll(text, prepare(secrets));
 
-/**
- * {@link apply} over each entry of an argv array. An entry is redacted whether
- * it *is* a secret or merely *contains* one (`--url=https://u:s3cr3t@host`).
- *
- * @public
- */
+// Implementation of Redaction.applyArgs; the public contract lives on the static.
 const applyArgs = (
 	args: ReadonlyArray<string>,
 	secrets: ReadonlyArray<Redacted.Redacted<string>>,
@@ -99,18 +79,7 @@ const isSecretName = (name: string, extra: ReadonlySet<string>): boolean => {
 	return SECRET_FLAGS.has(lower) || extra.has(lower) || AUTH_KEY.test(name);
 };
 
-/**
- * Heuristic backstop: redact any argv value that is introduced by a known
- * secret-bearing flag or npm auth key, in either the separated
- * (`--token abc`) or inline (`--token=abc`) form.
- *
- * @remarks
- * This catches secrets the caller forgot to declare; it cannot catch a flag
- * nobody listed. Prefer {@link applyArgs} with the actual `Redacted` values —
- * this runs *in addition*, never instead.
- *
- * @public
- */
+// Implementation of Redaction.scrubArgs; the public contract lives on the static.
 const scrubArgs = (
 	args: ReadonlyArray<string>,
 	options?: { readonly flags?: ReadonlyArray<string> | undefined },
@@ -147,9 +116,44 @@ const scrubArgs = (
  *
  * @public
  */
-export const Redaction = {
-	apply,
-	applyArgs,
-	scrubArgs,
-	SECRET_FLAGS,
-} as const;
+export class Redaction {
+	private constructor() {}
+
+	/**
+	 * Replaces every occurrence of every secret's value in `text` with
+	 * {@link REDACTED}.
+	 *
+	 * @remarks
+	 * Exact, literal matching — no pattern compilation, no encoding-aware search. A
+	 * secret that reaches the text base64-encoded, URL-encoded, or split across a
+	 * line break is **not** found; declare the encoded form as a secret too if that
+	 * is a real risk.
+	 *
+	 * A secret composed only of the placeholder's own characters (`*`, `**`, `***`)
+	 * cannot be fully removed, because the replacement reintroduces it. That is a
+	 * documented limitation, not a defect.
+	 */
+	static readonly apply = apply;
+
+	/**
+	 * {@link Redaction.apply} over each entry of an argv array. An entry is
+	 * redacted whether it *is* a secret or merely *contains* one
+	 * (`--url=https://u:s3cr3t@host`).
+	 */
+	static readonly applyArgs = applyArgs;
+
+	/**
+	 * Heuristic backstop: redact any argv value that is introduced by a known
+	 * secret-bearing flag or npm auth key, in either the separated
+	 * (`--token abc`) or inline (`--token=abc`) form.
+	 *
+	 * @remarks
+	 * This catches secrets the caller forgot to declare; it cannot catch a flag
+	 * nobody listed. Prefer {@link Redaction.applyArgs} with the actual
+	 * `Redacted` values — this runs *in addition*, never instead.
+	 */
+	static readonly scrubArgs = scrubArgs;
+
+	/** Flags treated as secret-bearing by {@link Redaction.scrubArgs}. See {@link SECRET_FLAGS}. */
+	static readonly SECRET_FLAGS = SECRET_FLAGS;
+}

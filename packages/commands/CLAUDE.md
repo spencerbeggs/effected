@@ -54,6 +54,14 @@ helper. `Run` is **free functions**, not a service, for exactly this reason.
   errors, the evidence cache.
 - `internal/capture.ts` — bounded stream capture. Not exported.
 
+`Run`, `Redaction` and `Retry` are static classes with a private constructor,
+not `as const` namespace objects — an `as const` object's member types are
+inferred in the built `.d.ts` and lose their TSDoc entirely, while a class's
+`static readonly` declarations keep it. Call syntax is unaffected
+(`Run.collect(...)`); each internal implementation stays a plain function or
+const, carrying only a one-line pointer comment, with the full contract TSDoc
+living on the static.
+
 ## The things that will bite you
 
 ### `{ concurrency: "unbounded" }` in `collectRaw` is load-bearing

@@ -311,17 +311,20 @@ const annotate = (command: ChildProcess.Command): Effect.Effect<void> => {
 	return Effect.annotateCurrentSpan({ command: described.command, argc: described.args.length });
 };
 
+// Implementation of Run.collect; the public contract lives on the static.
 const collect = Effect.fn("Run.collect")(function* (command: ChildProcess.Command, options?: RunOptions) {
 	yield* annotate(command);
 	return yield* collectClassified(command, options, undefined);
 });
 
+// Implementation of Run.collectTee; the public contract lives on the static.
 const collectTee = Effect.fn("Run.collectTee")(function* (command: ChildProcess.Command, options?: RunOptions) {
 	yield* annotate(command);
 	const stdio = yield* Stdio.Stdio;
 	return yield* collectClassified(command, options, stdio);
 });
 
+// Implementation of Run.text; the public contract lives on the static.
 const text = Effect.fn("Run.text")(function* (command: ChildProcess.Command, options?: RunOptions) {
 	yield* annotate(command);
 	const output = yield* collectClassified(command, options, undefined);
@@ -329,6 +332,7 @@ const text = Effect.fn("Run.text")(function* (command: ChildProcess.Command, opt
 	return checked.stdout.trim();
 });
 
+// Implementation of Run.lines; the public contract lives on the static.
 const lines = Effect.fn("Run.lines")(function* (command: ChildProcess.Command, options?: RunOptions) {
 	yield* annotate(command);
 	const output = yield* collectClassified(command, options, undefined);
@@ -339,6 +343,7 @@ const lines = Effect.fn("Run.lines")(function* (command: ChildProcess.Command, o
 		.filter((line) => line.length > 0);
 });
 
+// Implementation of Run.json; the public contract lives on the static.
 const json = Effect.fn("Run.json")(function* <A, I>(
 	command: ChildProcess.Command,
 	schema: Schema.Codec<A, I>,
@@ -357,12 +362,14 @@ const json = Effect.fn("Run.json")(function* <A, I>(
 	);
 });
 
+// Implementation of Run.exitCode; the public contract lives on the static.
 const exitCode = Effect.fn("Run.exitCode")(function* (command: ChildProcess.Command, options?: RunOptions) {
 	yield* annotate(command);
 	const output = yield* collectClassified(command, options, undefined);
 	return output.exitCode;
 });
 
+// Implementation of Run.succeeds; the public contract lives on the static.
 const succeeds = Effect.fn("Run.succeeds")(function* (command: ChildProcess.Command, options?: RunOptions) {
 	yield* annotate(command);
 	return yield* collectClassified(command, options, undefined).pipe(
@@ -371,6 +378,7 @@ const succeeds = Effect.fn("Run.succeeds")(function* (command: ChildProcess.Comm
 	);
 });
 
+// Implementation of Run.detach; the public contract lives on the static.
 const detach = Effect.fn("Run.detach")(function* (command: ChildProcess.Command) {
 	yield* annotate(command);
 	return yield* Effect.scoped(
@@ -387,7 +395,7 @@ const detach = Effect.fn("Run.detach")(function* (command: ChildProcess.Command)
 	).pipe(Effect.catch((error) => Effect.fail(CommandFailedError.spawn(command, error))));
 });
 
-/** Decoded stdout lines as they arrive, for output too large or too long-lived to collect. */
+// Implementation of Run.stream; the public contract lives on the static.
 const stream = (
 	command: ChildProcess.Command,
 	options?: { readonly includeStderr?: boolean | undefined },
@@ -398,30 +406,7 @@ const stream = (
 		),
 	).pipe(Stream.mapError((error) => CommandFailedError.spawn(command, error)));
 
-/**
- * Adds environment variables to a command WITHOUT losing the parent
- * environment: merges `env` over any existing command environment (new values
- * win, matching core's `ChildProcess.setEnv`) and sets `extendEnv: true`.
- *
- * @remarks
- * This combinator exists because of a core trap: `ChildProcess.setEnv` merges
- * into `options.env` but never sets `extendEnv`, and the Node spawner resolves
- * the child environment as `extendEnv ? { ...process.env, ...env } : env` — so
- * a command built with bare `setEnv({ SOME_VAR: x })` spawns a child whose
- * ENTIRE environment is that one variable: no `PATH`, no `HOME`. The failure is
- * silent at the type level and surfaces as "spawned tool cannot find its own
- * binary" at runtime.
- *
- * Deliberately forces `extendEnv: true` even where construction set it `false`
- * — inheriting the parent environment is this combinator's entire purpose. A
- * caller who wants a hermetic environment uses core's `setEnv` or construction
- * options (`ChildProcess.make(cmd, args, { env, extendEnv: false })`) directly.
- *
- * For a pipeline, applies to every command in the pipeline (mirroring core's
- * `setEnv`), preserving the pipe's own options. Composes core's public
- * vocabulary (`ChildProcess.make`, `ChildProcess.pipeTo`) — it re-declares
- * nothing.
- */
+// Implementation of Run.extendEnv; the public contract lives on the static.
 const extendEnv: {
 	(env: Record<string, string>): (self: ChildProcess.Command) => ChildProcess.Command;
 	(self: ChildProcess.Command, env: Record<string, string>): ChildProcess.Command;
@@ -450,17 +435,117 @@ const extendEnv: {
  *
  * @public
  */
-export const Run = {
-	collect,
-	collectTee,
-	text,
-	lines,
-	json,
-	exitCode,
-	succeeds,
-	stream,
-	detach,
-	extendEnv,
-	DEFAULT_MAX_OUTPUT_BYTES,
-	REDACTED,
-} as const;
+export class Run {
+	private constructor() {}
+
+	/**
+	 * Spawns `command`, collects stdout and stderr concurrently, and resolves
+	 * with the {@link CommandOutput} once the process exits.
+	 *
+	 * @remarks
+	 * A non-zero exit is a *result* here, not a failure — see {@link Run}'s
+	 * remarks for the split against {@link Run.text}, {@link Run.lines} and
+	 * {@link Run.json}.
+	 */
+	static readonly collect = collect;
+
+	/**
+	 * Like {@link Run.collect}, but also tees each stream to the `Stdio` in `R`
+	 * as it arrives, for a caller that wants live output alongside the captured
+	 * {@link CommandOutput}.
+	 */
+	static readonly collectTee = collectTee;
+
+	/**
+	 * Runs `command` and resolves with trimmed stdout on a zero exit.
+	 *
+	 * @remarks
+	 * A non-zero exit is a typed failure here — {@link CommandFailedError} —
+	 * unlike {@link Run.collect}, {@link Run.exitCode} and {@link Run.succeeds},
+	 * which treat it as a result.
+	 */
+	static readonly text = text;
+
+	/**
+	 * Runs `command` and resolves with stdout split into trimmed, non-empty
+	 * lines on a zero exit.
+	 *
+	 * @remarks
+	 * A non-zero exit is a typed failure here — {@link CommandFailedError} —
+	 * matching {@link Run.text} and {@link Run.json}.
+	 */
+	static readonly lines = lines;
+
+	/**
+	 * Runs `command`, parses stdout as JSON and decodes it against `schema` on
+	 * a zero exit.
+	 *
+	 * @remarks
+	 * Fails with {@link CommandOutputError} when stdout is not JSON or does not
+	 * decode; a non-zero exit fails with {@link CommandFailedError}, matching
+	 * {@link Run.text} and {@link Run.lines}.
+	 */
+	static readonly json = json;
+
+	/**
+	 * Runs `command` and resolves with its exit code alone.
+	 *
+	 * @remarks
+	 * A non-zero exit is a *result* here, not a failure — see {@link Run}'s
+	 * remarks for the split against {@link Run.text}, {@link Run.lines} and
+	 * {@link Run.json}.
+	 */
+	static readonly exitCode = exitCode;
+
+	/**
+	 * Runs `command` and resolves with whether it exited zero, collapsing a
+	 * spawn or other classified failure to `false` rather than propagating it.
+	 */
+	static readonly succeeds = succeeds;
+
+	/** Decoded stdout lines as they arrive, for output too large or too long-lived to collect. */
+	static readonly stream = stream;
+
+	/**
+	 * Spawns `command` and resolves with its pid without waiting for exit.
+	 *
+	 * @remarks
+	 * Unrefs the child **before** this scope closes, so it survives the
+	 * caller's scope closing — the Node backend's release skips the kill for an
+	 * unref'd child, and reversing that order kills it with the scope instead.
+	 * Fails with {@link CommandFailedError} if the process never starts.
+	 */
+	static readonly detach = detach;
+
+	/**
+	 * Adds environment variables to a command WITHOUT losing the parent
+	 * environment: merges `env` over any existing command environment (new values
+	 * win, matching core's `ChildProcess.setEnv`) and sets `extendEnv: true`.
+	 *
+	 * @remarks
+	 * This combinator exists because of a core trap: `ChildProcess.setEnv` merges
+	 * into `options.env` but never sets `extendEnv`, and the Node spawner resolves
+	 * the child environment as `extendEnv ? { ...process.env, ...env } : env` — so
+	 * a command built with bare `setEnv({ SOME_VAR: x })` spawns a child whose
+	 * ENTIRE environment is that one variable: no `PATH`, no `HOME`. The failure is
+	 * silent at the type level and surfaces as "spawned tool cannot find its own
+	 * binary" at runtime.
+	 *
+	 * Deliberately forces `extendEnv: true` even where construction set it `false`
+	 * — inheriting the parent environment is this combinator's entire purpose. A
+	 * caller who wants a hermetic environment uses core's `setEnv` or construction
+	 * options (`ChildProcess.make(cmd, args, { env, extendEnv: false })`) directly.
+	 *
+	 * For a pipeline, applies to every command in the pipeline (mirroring core's
+	 * `setEnv`), preserving the pipe's own options. Composes core's public
+	 * vocabulary (`ChildProcess.make`, `ChildProcess.pipeTo`) — it re-declares
+	 * nothing.
+	 */
+	static readonly extendEnv = extendEnv;
+
+	/** Default ceiling on captured bytes per stream. See {@link DEFAULT_MAX_OUTPUT_BYTES}. */
+	static readonly DEFAULT_MAX_OUTPUT_BYTES = DEFAULT_MAX_OUTPUT_BYTES;
+
+	/** The placeholder written in place of a redacted secret. See {@link REDACTED}. */
+	static readonly REDACTED = REDACTED;
+}
