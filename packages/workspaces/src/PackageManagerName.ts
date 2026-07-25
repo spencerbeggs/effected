@@ -156,6 +156,21 @@ const CHECKED = [
 export type PackageManagerDetectionFailure = PackageManagerDetectionError | WorkspaceManifestError;
 
 /**
+ * The {@link PackageManagerDetector} service shape.
+ *
+ * @remarks
+ * Exported so a consumer can type a bespoke double against the contract without
+ * reaching into the class — the `WorkspaceDiscoveryShape` /
+ * `PublishabilityDetectorShape` convention.
+ *
+ * @public
+ */
+export interface PackageManagerDetectorShape {
+	/** Detect the package manager at a workspace root. */
+	readonly detect: (root: string) => Effect.Effect<DetectedPackageManager, PackageManagerDetectionFailure>;
+}
+
+/**
  * Detects which package manager owns a workspace root.
  *
  * @remarks
@@ -196,13 +211,9 @@ export type PackageManagerDetectionFailure = PackageManagerDetectionError | Work
  *
  * @public
  */
-export class PackageManagerDetector extends Context.Service<
-	PackageManagerDetector,
-	{
-		/** Detect the package manager at a workspace root. */
-		readonly detect: (root: string) => Effect.Effect<DetectedPackageManager, PackageManagerDetectionFailure>;
-	}
->()("@effected/workspaces/PackageManagerDetector") {
+export class PackageManagerDetector extends Context.Service<PackageManagerDetector, PackageManagerDetectorShape>()(
+	"@effected/workspaces/PackageManagerDetector",
+) {
 	/** Builds the service over core `FileSystem` and `Path`. */
 	static readonly make: Effect.Effect<
 		{ readonly detect: (root: string) => Effect.Effect<DetectedPackageManager, PackageManagerDetectionFailure> },
@@ -404,4 +415,61 @@ export class PackageManagerDetector extends Context.Service<
 		PackageManagerDetector,
 		PackageManagerDetector.make,
 	);
+
+	/**
+	 * The sanctioned in-memory double.
+	 *
+	 * @remarks
+	 * **`detect` has no honest default, so an unstubbed call dies** — the
+	 * `WorkspaceDiscovery.info` posture, for the same reason. A stand-in that
+	 * answered `"pnpm"` would hand a consumer a fact nothing established, and it
+	 * would contradict the very service it stands in for: the live detector's
+	 * defining property is that it [refuses to
+	 * guess](https://github.com/spencerbeggs/effected) when no evidence matches.
+	 * A double that guesses is worse than no double.
+	 *
+	 * Failing typed would be the subtler mistake: `PackageManagerDetectionError`
+	 * reads as a legitimate "no manager here" answer, so a consumer would branch
+	 * on it and proceed, never learning that the test simply forgot to stub.
+	 *
+	 * @param overrides - Members to supply; anything omitted dies on use.
+	 *
+	 * @example
+	 * ```ts
+	 * import { DetectedPackageManager, PackageManagerDetector } from "@effected/workspaces";
+	 * import { Effect, Option } from "effect";
+	 *
+	 * const TestDetector = PackageManagerDetector.layerTest({
+	 *   detect: () =>
+	 *     Effect.succeed(
+	 *       DetectedPackageManager.make({ name: "pnpm", version: Option.none(), runtime: "node" }),
+	 *     ),
+	 * });
+	 * ```
+	 */
+	static readonly makeTest = (overrides: Partial<PackageManagerDetectorShape> = {}): PackageManagerDetectorShape => ({
+		detect: () =>
+			Effect.die(
+				new Error(
+					"PackageManagerDetector.makeTest: detect() was called but not stubbed — no honest default DetectedPackageManager exists for a test double; pass a `detect` override.",
+				),
+			),
+		...overrides,
+	});
+
+	/**
+	 * {@link PackageManagerDetector.makeTest} behind `Layer.succeed`.
+	 *
+	 * @remarks
+	 * A parameterized layer factory mints a **fresh reference per call**, and
+	 * layers memoize by reference — bind the result to a `const` and reuse it
+	 * rather than calling `layerTest(...)` at each composition site.
+	 *
+	 * Pairs with `WorkspaceRoot.layerTest` and `WorkspaceDiscovery.layerTest` to
+	 * stand up the whole discovery path with no filesystem at all.
+	 */
+	static readonly layerTest = (
+		overrides: Partial<PackageManagerDetectorShape> = {},
+	): Layer.Layer<PackageManagerDetector> =>
+		Layer.succeed(PackageManagerDetector, PackageManagerDetector.makeTest(overrides));
 }

@@ -20,7 +20,7 @@ Other runtime deps are `workspace:~` edges: `@effected/commands`, `@effected/git
 
 - `WorkspacePackage.ts` — `WorkspacePackage`, `PublishConfig`, `DependencyDiff`, `WorkspaceManifestError`
 - `WorkspaceRoot.ts` — `WorkspaceRoot` service + layer + test double (`makeTest` / `layerTest`), `WorkspaceRootShape`, `WORKSPACE_MARKERS`, `FindWorkspaceRootOptions`, `WorkspaceRootNotFoundError`
-- `PackageManagerName.ts` — `PackageManagerName`, `DetectedPackageManager`, `PackageManagerDetector`, `PackageManagerDetectionError`
+- `PackageManagerName.ts` — `PackageManagerName`, `DetectedPackageManager`, `PackageManagerDetector` (+ `makeTest` / `layerTest`), `PackageManagerDetectorShape`, `PackageManagerDetectionError`
 - `WorkspaceDiscovery.ts` — `WorkspaceDiscovery`, `WorkspaceInfo`, three errors, the `workspaceResolver` layer, and the test double (`makeTest` / `layerTest`: empty-workspace defaults derived from the effective `listPackages`; `info` dies unless stubbed)
 - `DependencyGraph.ts` — `DependencyGraph` (a **value class**, not a service), `CyclicDependencyError`
 - `ChangeDetector.ts` — `ChangeDetector`, `ChangeDetectionOptions`, `ChangeDetectionError`, `ChangeDetectionFailure`
@@ -84,6 +84,8 @@ Two related traps: **`+build` is NOT a prerelease** (`1.2.3+sha.abc` is the stab
 
 Its chain runs three tiers: the workspace markers, then a standalone tier (`pnpm-lock.yaml`, `package-lock.json`, and the bun/yarn lockfiles under the **same** manifest conjunction the workspace tier uses), then a declaration tier (`packageManager` / `devEngines.packageManager` with no lockfile at all — a fresh clone before its first install). Nothing matching is `PackageManagerDetectionError`.
 
+`PackageManagerDetector.makeTest` / `layerTest` is the sanctioned double, and **an unstubbed `detect` DIES** — never fabricates, never fails typed. The reason is the same rule one level up: a double that answered `"pnpm"` would contradict the very property this service exists to have. Failing typed is the subtler wrong shape, because `PackageManagerDetectionError` looks like a legitimate "no manager here" answer a consumer branches on, so the forgotten stub never surfaces. Both are mutation-pinned in `__test__/PackageManagerDetectorDouble.test.ts`.
+
 **Adding a fallback default is the tempting wrong fix.** silk-release-action did it twice and picked *different* defaults each time — `"npm"` in `main.ts`, `"pnpm"` in `detect-repo-type.ts` — which is the proof that the choice is policy, not detection: whichever a library picks, some caller is silently wrong. A consumer that wants one writes `Effect.orElseSucceed` at its own call site, visibly.
 
 The standalone and declaration tiers run **last**, so the widening is strictly additive — no previously-resolving input can change its answer, and a stray `package-lock.json` cannot turn a pnpm workspace into an npm repo. `__test__/PackageManagerDetector.test.ts` pins that ordering; reordering the tiers is the obvious and wrong "simplification".
@@ -141,7 +143,7 @@ The deliberate exception is `Workspaces.resolverLayer(options?)`: a **fresh, unm
 
 The one exception is `__test__/integration/self.int.test.ts`, which discovers **this repository** through `@effect/platform-node` (a devDependency). It is the only test that proves the whole stack composes against a real pnpm workspace — and it is what caught the multi-document lockfile bug.
 
-374 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 31 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it; `ReleaseTag`'s, `VersioningStrategy`'s and `TrackingTag`'s arrived with Phase 1c); never widen it. The narrow scoping is load-bearing, not ceremony: `VersioningStrategy.tagsFor` named a module-private interface on a `@public` signature and the build flagged it as a genuine `ae-forgotten-export` the `_base` pattern correctly refused to mask — the fix was exporting the type (`PackageRelease`), never widening the pattern. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
+380 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 31 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it; `ReleaseTag`'s, `VersioningStrategy`'s and `TrackingTag`'s arrived with Phase 1c); never widen it. The narrow scoping is load-bearing, not ceremony: `VersioningStrategy.tagsFor` named a module-private interface on a `@public` signature and the build flagged it as a genuine `ae-forgotten-export` the `_base` pattern correctly refused to mask — the fix was exporting the type (`PackageRelease`), never widening the pattern. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
 
 ## Point-in-time surface (as built)
 

@@ -112,7 +112,7 @@ Module-per-concept.
 | `src/index.ts` | Re-exports only |
 | `src/WorkspacePackage.ts` | `WorkspacePackage` class (getters, dependency queries, `dependencyDiff`, `matchesDependency` over `@effected/glob`, `manifest` bridging to `@effected/package-json`), `DependencyDiff` |
 | `src/WorkspaceRoot.ts` | `WorkspaceRoot` service + layer (over `@effected/walker`), `WorkspaceRootNotFoundError` |
-| `src/PackageManagerName.ts` | The `PackageManagerName` literal, `DetectedPackageManager`, `PackageManagerDetector` service + layer, `PackageManagerDetectionError` |
+| `src/PackageManagerName.ts` | The `PackageManagerName` literal, `DetectedPackageManager`, `PackageManagerDetector` service + layer + the `makeTest` / `layerTest` double, `PackageManagerDetectorShape`, `PackageManagerDetectionError` |
 | `src/WorkspaceDiscovery.ts` | `WorkspaceInfo`, `WorkspaceDiscovery` service + layer, the `makeTest` / `layerTest` test double, the `workspaceResolver` layer, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError` |
 | `src/DependencyGraph.ts` | `DependencyGraph` **value class** (graph + topological sort + cycles), `CyclicDependencyError` |
 | `src/ChangeDetector.ts` | `ChangeDetectionOptions`, `ChangeDetector` service + layer (over `@effected/git`'s `Git`), `ChangeDetectionError` |
@@ -177,6 +177,8 @@ Both tiers run **after every workspace marker has missed**, which makes the wide
 **The detector still refuses to guess.** Nothing matching is `PackageManagerDetectionError`, never a fabricated default — and the proof that this is the right contract is that the two consumer reimplementations both invented a default here and invented *different* ones. Choosing one is policy, not detection, and a library that makes the choice silently guarantees some caller is wrong. A consumer wanting a default writes `Effect.orElseSucceed` where a reader can see it. `CHECKED` grew to ten markers so the error still names everything it tried.
 
 > **Open, deliberately not changed:** within the workspace tier the npm `workspaces` field is still consulted *before* any standalone lockfile, so a repo with both `workspaces` and a `pnpm-lock.yaml` reports npm. Reordering so lockfile evidence outranks the `workspaces` field would be a behavior change to an already-shipped path rather than an additive one; it is recorded here rather than made silently.
+
+**The detector's double** (2026-07-25) completes the three-service set: `PackageManagerDetector.makeTest(overrides?)` / `layerTest(overrides?)` over the now-exported `PackageManagerDetectorShape`, matching `WorkspaceRoot` and `WorkspaceDiscovery`. **`detect` has no honest default and dies** — the `WorkspaceDiscovery.info` posture, and here the reasoning is sharper than "no default exists": a double that answered `"pnpm"` would contradict the defining property of the service it stands in for, which is that the live detector *refuses to guess*. Failing typed would be the subtler mistake, because `PackageManagerDetectionError` reads as a legitimate "no manager here" answer that a consumer branches on and proceeds past, never learning the test simply forgot to stub. Both wrong shapes are mutation-pinned. Together with the other two `layerTest`s, the whole discovery path now stands up with no filesystem at all.
 
 #### The two fields that declare a manager
 
