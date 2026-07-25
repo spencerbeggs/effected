@@ -68,7 +68,7 @@ const REASON_PROSE: Record<(typeof SCAN_FAILURE_REASONS)[number], string> = {
  *
  * @remarks
  * A plain interface rather than a `Schema.Class`: `outcomes` holds
- * {@link SyncOutcome} values, which are a `Data.TaggedEnum` and therefore not
+ * `SyncOutcome` values, which are a `Data.TaggedEnum` and therefore not
  * a schema, so the class form would be schema-shaped in name only.
  *
  * @public

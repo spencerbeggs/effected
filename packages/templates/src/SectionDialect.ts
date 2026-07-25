@@ -55,19 +55,16 @@ const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]
 /** Inter-token whitespace is tolerated on read, normalized on write. */
 const GAP = "[ \\t]+";
 
-/** A compiled scanner for one comment style. */
-export interface MarkerMatcher {
-	readonly style: CommentStyle;
-	readonly regex: RegExp;
-}
-
 /**
  * Compiled matchers are cached per dialect instance. A `WeakMap` rather than
  * a field keeps `SectionDialect` a pure schema class — v3 hung a non-schema
  * private field off its definition class and had to hand-copy it on every
  * derivation.
  */
-const matcherCache = new WeakMap<SectionDialect, ReadonlyArray<MarkerMatcher>>();
+const matcherCache = new WeakMap<
+	SectionDialect,
+	ReadonlyArray<{ readonly style: CommentStyle; readonly regex: RegExp }>
+>();
 
 /**
  * The marker vocabulary: what phrase delimits a managed section, and which
@@ -164,7 +161,7 @@ export class SectionDialect extends Schema.Class<SectionDialect>("SectionDialect
 	 *
 	 * @internal
 	 */
-	matchers(): ReadonlyArray<MarkerMatcher> {
+	matchers(): ReadonlyArray<{ readonly style: CommentStyle; readonly regex: RegExp }> {
 		const cached = matcherCache.get(this);
 		if (cached !== undefined) {
 			return cached;

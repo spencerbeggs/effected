@@ -25,7 +25,7 @@ export type SyncOutcome = Data.TaggedEnum<{
 }>;
 
 /**
- * Constructors and matchers for {@link SyncOutcome} — e.g.
+ * Constructors and matchers for `SyncOutcome` — e.g.
  * `SyncOutcome.Created({ section })`, `SyncOutcome.$is("Updated")`.
  *
  * @public
@@ -53,7 +53,7 @@ export type CheckOutcome = Data.TaggedEnum<{
 }>;
 
 /**
- * Constructors and matchers for {@link CheckOutcome} — e.g.
+ * Constructors and matchers for `CheckOutcome` — e.g.
  * `CheckOutcome.Absent({ id })`, `CheckOutcome.$is("Drifted")`.
  *
  * @public
