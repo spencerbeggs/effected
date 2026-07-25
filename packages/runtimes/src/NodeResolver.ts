@@ -10,6 +10,7 @@ import type { HttpClient } from "effect/unstable/http";
 import type { GitHubError } from "./GitHub.js";
 import { nodeDefaults, nodeScheduleDefaults } from "./internal/defaults/node.js";
 import { buildNodeReleases, fetchNodeReleases, fetchNodeSchedule } from "./internal/feeds.js";
+import { once } from "./internal/once.js";
 import * as ReleaseIndex from "./internal/releaseIndex.js";
 import { resolveWith } from "./internal/resolve.js";
 import { populateAuto, populateFresh, populateOffline } from "./internal/strategy.js";
@@ -73,13 +74,19 @@ export class NodeResolver extends Context.Service<
 	{
 		readonly resolve: (
 			options?: NodeResolverOptions,
-		) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
+		) => Effect.Effect<
+			ResolvedVersions,
+			InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError | FreshnessError
+		>;
 	}
 >()("@effected/runtimes/NodeResolver") {
 	/**
 	 * Try the live feeds, fall back to the bundled snapshot.
 	 *
-	 * A fallback is recorded as `source: "cache"` and logged, so a caller can
+	 * Lazy: building the layer performs no IO. The feeds are fetched by the
+	 * first `resolve` and shared by every later (and concurrent) one; a
+	 * fallback to the snapshot is memoized like any other successful
+	 * population, recorded as `source: "cache"` and logged, so a caller can
 	 * always tell a live answer from a snapshot.
 	 */
 	static readonly layer: Layer.Layer<NodeResolver, never, HttpClient.HttpClient> = build(this, (index, live, offline) =>
@@ -87,15 +94,19 @@ export class NodeResolver extends Context.Service<
 	);
 
 	/**
-	 * Live feeds or nothing. Fails with `FreshnessError` when they cannot be reached.
+	 * Live feeds or nothing.
+	 *
+	 * Lazy: building the layer performs no IO, so unreachable feeds surface as
+	 * a `FreshnessError` from `resolve`, not from layer acquisition. A failed
+	 * fetch is not memoized — the next `resolve` retries; a successful one is.
 	 */
-	static readonly layerFresh: Layer.Layer<NodeResolver, FreshnessError, HttpClient.HttpClient> = build(
-		this,
-		(index, live) => populateFresh(index, "node", live),
+	static readonly layerFresh: Layer.Layer<NodeResolver, never, HttpClient.HttpClient> = build(this, (index, live) =>
+		populateFresh(index, "node", live),
 	);
 
 	/**
-	 * The bundled snapshot only. Performs no IO and requires nothing.
+	 * The bundled snapshot only. Requires nothing and performs no IO — the
+	 * snapshot is decoded lazily by the first `resolve`, like the live layers.
 	 */
 	static readonly layerOffline: Layer.Layer<NodeResolver> = build(this, (index, _live, offline) =>
 		populateOffline(index, offline),
@@ -127,28 +138,38 @@ type Load = Effect.Effect<ReadonlyArray<NodeRelease>, InvalidScheduleDateError |
 interface NodeResolverShape {
 	readonly resolve: (
 		options?: NodeResolverOptions,
-	) => Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError>;
+	) => Effect.Effect<
+		ResolvedVersions,
+		InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError | FreshnessError
+	>;
 }
 
 /**
- * Assemble a Node resolver layer around a strategy.
+ * Assemble a **lazy** Node resolver layer around a strategy.
  *
- * The strategy's own error and requirement channels flow straight out into the
- * layer's, so `layerOffline` genuinely requires nothing and `layer` genuinely
- * cannot fail — no casts, and the types say what is true.
+ * Acquisition performs no IO: it builds the empty index, captures the
+ * strategy's requirements from the layer scope, and gates the strategy behind
+ * a run-once memo (see `internal/once.ts`). The first `resolve` runs the
+ * population; concurrent first resolves share it; success is memoized for the
+ * layer's lifetime while a failure (only the fresh strategy can produce one)
+ * is retried by the next resolve.
+ *
+ * The strategy's requirement channel still flows straight out into the
+ * layer's, so `layerOffline` genuinely requires nothing, and its error channel
+ * flows into `resolve`'s — no casts, and the types say what is true.
  *
  * The tag arrives as `this`: a static initializer runs while the module-scope
  * `NodeResolver` binding is still in its temporal dead zone, so naming the class
  * here throws at import time.
  */
-function build<E, RIn>(
+function build<E extends FreshnessError, RIn>(
 	tag: Context.Key<NodeResolver, NodeResolverShape>,
 	strategy: (
 		index: ReleaseIndex.ReleaseIndex<NodeRelease>,
 		live: Load,
 		offline: Effect.Effect<ReadonlyArray<NodeRelease>>,
 	) => Effect.Effect<void, E, RIn>,
-): Layer.Layer<NodeResolver, E, RIn> {
+): Layer.Layer<NodeResolver, never, RIn> {
 	return Layer.effect(
 		tag,
 		Effect.gen(function* () {
@@ -176,10 +197,11 @@ function build<E, RIn>(
 				Effect.orDie,
 			);
 
-			yield* strategy(index, live, offline);
+			const populate = yield* once(strategy(index, live, offline));
 
 			return {
 				resolve: Effect.fn("NodeResolver.resolve")(function* (options?: NodeResolverOptions) {
+					yield* populate;
 					const range = options?.range ?? "*";
 					const phases = options?.phases ?? DEFAULT_PHASES;
 					const now = options?.date ?? (yield* DateTime.now);
