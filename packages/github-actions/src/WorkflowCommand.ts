@@ -73,8 +73,20 @@ const escapeProperty = (value: string): string => escapeMessage(value).replaceAl
 export class WorkflowCommand {
 	private constructor() {}
 
-	/** Render an arbitrary command. The primitive every other member uses. */
-	static render(name: string, properties: CommandProperties, message: string): string {
+	/**
+	 * Render an arbitrary command. The primitive every other member uses.
+	 *
+	 * @remarks
+	 * The property type is written out structurally rather than as the module's
+	 * `CommandProperties` alias: an internal named type on a `@public` signature
+	 * fails the API Extractor gate, and neither an `@internal` tag nor a second
+	 * alias helps — only inlining does.
+	 */
+	static render(
+		name: string,
+		properties: Readonly<Record<string, string | number | boolean | undefined>>,
+		message: string,
+	): string {
 		const rendered = Object.entries(properties)
 			.filter((entry): entry is [string, string | number | boolean] => entry[1] !== undefined)
 			.map(([key, value]) => `${key}=${escapeProperty(String(value))}`)

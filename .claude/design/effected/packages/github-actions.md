@@ -4,7 +4,7 @@ module: effected
 category: architecture
 created: 2026-07-25
 updated: 2026-07-25
-completeness: 70
+completeness: 85
 related:
   - ../effect-standards.md
   - ../roadmap.md
@@ -438,9 +438,13 @@ Per program decision 9, recorded per concept:
 - **`GithubMarkdown`** — a string builder with no Actions coupling; it belongs to whichever consumer wants it, or to `@effected/markdown` if a second one does.
 - **`ActionInputError`** — dissolved into `ConfigError`.
 
-## As built — milestone (a), partial (2026-07-25)
+## As built — milestones (a) and (b), plus `BlobStore` (2026-07-25)
 
-Seven units green against `effect@4.0.0-beta.101`: `WorkflowCommand`, `ActionEnvironment`, `ActionOutputs`, `ActionState`, `Secret`, `BlobEnvelope`, `ActionInput`. 101 tests, `tsc --noEmit` clean, biome clean. **Remaining in (a): `ActionLogger`, `DryRun`, `CacheKey`.** Milestones (b)–(e) untouched.
+Fourteen units green against `effect@4.0.0-beta.101`: `WorkflowCommand`, `ActionEnvironment`, `ActionOutputs`, `ActionState`, `Secret`, `BlobEnvelope`, `ActionInput`, `ActionLogger`, `DryRun`, `CacheKey`, `DetachedProcess`, `OidcTokenIssuer`, `ToolInstaller`, `BlobStore` (+ the SigV4 signer). **213 tests**, `tsc --noEmit` clean, biome clean.
+
+**Remaining: `ActionCache`, `Artifact`, `BlobStore.githubCache` and the Azure reachability test (the rest of (c)); `GitHubToken`, `Action.run`/`ActionRuntime` (d); the build gate and `packages/github-actions/CLAUDE.md` (e).** Nothing else depends on the three remaining (c) modules, which is why the handoff boundary is there.
+
+**One open dependency decision:** `CacheKey.hashMatching` — the pattern-facing half of `hashFiles` — is unbuilt pending a call on taking `@effected/glob` as a dependency (it needs an install). See [below](#cachekey-shipped-in-two-halves).
 
 ### Deltas from the design
 
@@ -449,18 +453,87 @@ Seven units green against `effect@4.0.0-beta.101`: `WorkflowCommand`, `ActionEnv
 - **`ActionOutputs.setFailed` emits the annotation but does not set the exit code.** That belongs to `Action.run`, so an action that reports a failure and then recovers is not doomed by a side effect it cannot undo.
 - **Runner-file delimiters are derived, not random.** GitHub's toolkit uses a random UUID and accepts a collision chance; deriving (`EFFECTED_EOF`, extended with `_` until absent from the value) makes collision *impossible* rather than improbable, needs no `Crypto` in `R`, and is deterministic under test. A value containing the delimiter would otherwise terminate its block early — a value-controlled injection into the runner's own file.
 - **`ActionsConfigProvider` subsumption CONFIRMED**, not assumed. Diffed against `runtime/ActionsConfigProvider.ts`: path joined with `_`, spaces → `_`, uppercased, empty-string-is-absent. All four preserved, and a test resolves each input against *only* its expected variable so the derivation is proven rather than restated. Dashes are **not** translated, which is the whole point.
+- **`ActionLogger.layerSilent` is a constant, not the `layerSilent()` the design writes.** A no-arg layer factory mints a fresh layer per call and defeats memoization for nothing.
+- **Log annotations use the readable `AnnotationProperties` vocabulary** (`startLine`, `startColumn`), not v3's wire names (`line`, `col`). `ActionLogger.annotated(properties, effect)` is how they are set, so a caller never spells an annotation key — the same reasoning that makes `ActionInput` safe.
+- **`withBuffer` reads step-debug through `ActionEnvironment.isDebug`**, not `process.env.RUNNER_DEBUG`; `ActionLogger.layer` therefore requires `ActionEnvironment`.
+- **`DryRun.guard`'s fallback is required, not optional.** A mutation whose result the caller uses must say what a rehearsal produces instead, and the type is the place to force that.
+- **`DetachedProcess`'s `ReadinessTimeout` is folded into `DetachedProcessError`** as `reason: "notReady"`, per one typed error per concept module.
+- **`ProcessId` is core's brand.** See [the vocabulary correction](#processid-belongs-to-core).
+- **`ToolInstaller.download` is core `HttpClient`, not `node:https`**, and streams to disk rather than buffering. `extractTar`/`extractZip` require core `ChildProcessSpawner` in `R` — no spawner backend here, per the commands invariant. The Windows branch reads `RUNNER_OS`, not `process.platform`.
+- **`Secret` gained `forSigning`.** See [the two invariant catches](#the-declassification-invariant-earned-its-keep-twice).
+
+### `CacheKey`, shipped in two halves
+
+**Built:** `CacheKey` as a `Schema.Class` over validated segments with a derived `restoreKeys` ladder, `of`, `forBranch`, and `hashFiles(files)` over core `FileSystem` + `node:crypto`.
+
+Three properties earned their tests, and each is a way the obvious implementation is wrong:
+
+- **Every rung ends in the separator.** GitHub matches restore keys as bare prefixes, so `Linux-pnpm` would also match `Linux-pnpmx-…` from an unrelated cache.
+- **A one-segment key gets no rung at all.** An empty prefix matches every cache in the repository.
+- **`forBranch` orders `os → scope → branch → hash`**, so the first fallback stays on the branch. Reversed, a feature branch warms itself from `main` and never finds its own cache.
+
+`hashFiles` is **byte-compatible with `@actions/glob`**: sorted, de-duplicated, and each file's SHA-256 fed into the accumulator as **binary, not hex**. A hex-fed accumulator produces a perfectly plausible digest that never matches a cache entry written by any other action; the test pins the digest as a literal and the wrong-way value (`e11ab1a1…`) is what the mutant produced.
+
+**Not built — `hashMatching({ workspace, patterns })`, and the reason is a correction to the design.** The doc says "`hashFiles` over a compiled `@effected/glob` pattern set". Checking the real surfaces changes that sentence: **`@effected/glob` is a matcher, not a walker** — pure string→predicate by construction (pure tier), so it cannot supply file *discovery*. Core `FileSystem.readDirectory(path, { recursive: true })` is the walk, and it is the better half of the deal, because it makes the whole of `hashMatching` testable through `FileSystem.layerNoop`. That leaves one open question — what matches the patterns:
+
+- **Take `@effected/glob`** (needs an install; free under R3). Full minimatch dialect, which is what `@actions/glob` uses, so a workflow author's `!**/node_modules/**` behaves as it does in every other cache step. **Recommended.**
+- **`node:fs.globSync`**, as the source package does. Zero install, sanctioned import — but it welds discovery and matching into one non-stubbable call, and node's glob dialect is not minimatch. A pattern divergence surfaces as a silent cache-key difference from every other action in the same workflow, which is the worst failure mode a cache key has.
+
+Walking from the workspace root makes v3's "skip files outside the workspace" rule **structural** rather than a remembered check, whichever is chosen.
+
+### `#144` is ruled: stage then swap
+
+**The watch item fires.** `ToolInstaller.cacheDir`/`cacheFile` stage into a temp directory **under the cache root** and `rename` into place. Two invariants, both tested, and both confirmed by mutating the naive "make the destination, then copy into it" implementation back in — it fails both:
+
+- a failed install leaves **nothing** at the cache path. The naive form leaves an empty directory, and `find` reports an empty directory as a **hit**, so every later run uses a tool that is not there and never re-downloads it;
+- a re-install **replaces** rather than merges, so the previous version's files do not survive inside the new one.
+
+The staging directory lives under the cache root deliberately: a rename across filesystems is not atomic and often not permitted, so `os.tmpdir()` would silently degrade the guarantee to a copy.
+
+### `ProcessId` belongs to core
+
+Caught while reading `unstable/process` for `ToolInstaller`: **core already owns `ProcessId`** (`ChildProcessSpawner`), so declaring one here was the re-declaring-a-core-concept half of the commands invariant. It now decodes to *core's* brand and `DetachedProcess.spawn` returns core's type.
+
+What justifies the module keeping a `ProcessId` export is what core does **not** have: a *validating* constructor. Core's is `Brand.nominal`, which applies no runtime check, so `ChildProcessSpawner.ProcessId(0)` succeeds. That is right for a pid the spawner just produced and wrong for one that has been through `GITHUB_STATE` as text. Verified with a type-level probe **and a control that fails to compile** (annotating the decode as `ExitCode` errors), so "interchangeable with core's" is a checked claim rather than a comment.
+
+### The declassification invariant earned its keep, twice
+
+The structural test over `src/` is not ceremony — it caught two real leaks that a review would plausibly have waved through.
+
+1. **`OidcTokenIssuer.claims` unwrapped its own token.** The obvious implementation calls `token()` then `Redacted.value`s it to decode. Restructured instead: a private `issue()` returns the raw JWT, `token` wraps it, `claims` reads it, and `Redacted.value` appears nowhere in the module.
+2. **SigV4 needs the raw secret for its HMAC.** Rather than granting an exception, `Secret.forSigning` was added — the seam already existed for exactly this shape — so `BlobStore.layerS3` requires `ActionOutputs` and **masks both credentials once at layer construction**, not per request. Worth having even though the key is never written anywhere: a signing key leaks through something nobody audited (a debug log of outgoing headers, a serialized error, a stack trace holding the closure), and the runner's filter redacts all of those.
+
+**And the test itself had a phantom-edge bug**, found the same way the reachability walkers found theirs: a raw text scan reads TSDoc as code, so a module whose comment *explains* that it does not unwrap a secret was reported as unwrapping one. It now strips comments first, keeps its non-empty control, and has a third test for the stripper — which is load-bearing once the scan depends on it, and a blinded scan is a silent false green.
+
+### SigV4 is verified against AWS's published values, not against itself
+
+The signer was first checked against a remembered "GET Object" signature (`f0e8bdb8…`). It did not match — the situation where **you cannot tell which side is wrong**. Climbing to values AWS actually publishes settled it: the canonical-request hash `7344ae5b…` and the signing-key derivation `f4780e2d…` both reproduce exactly, so the algorithm is right and the remembered constant belonged to a different example.
+
+`canonicalize` and `signingKey` are exported from the internal module for exactly this reason — so the fixture is an **external** oracle rather than this implementation's own output. Pinning the computed signature would have been a regression test that ratified whatever was written.
 
 ### v4 API corrections found while building
 
 1. **`Effect.withConfigProvider` does not exist.** `ConfigProvider.ConfigProvider` is a `Context.Reference` (`ConfigProvider.ts:296`); override with `Effect.provideService`, or install with `ConfigProvider.layer(provider)`.
-2. **`FiberRef` does not exist.** `Context.Reference` (`Context.ts:1335`) is the v4 spelling, and it is what makes `withEnv` fiber-local.
-3. **Core `Crypto` is RNG only** — no digest, no HMAC (confirmed again in `Crypto.ts`). `CacheKey.hashFiles` and SigV4 must use `node:crypto`.
+2. **`FiberRef` does not exist.** `Context.Reference` (`Context.ts:1335`) is the v4 spelling, and it is what makes `withEnv` and the log buffer fiber-local.
+3. **Core `Crypto` is RNG only** — no digest, no HMAC (confirmed again in `Crypto.ts`). `CacheKey.hashFiles` and SigV4 use `node:crypto`.
+4. **`Config.withDefault` reads the *issue*, not the combinator.** See the `ActionInput` defect below — this is the sharpest of the four.
+5. `Duration.Input`, not `Duration.DurationInput`; `Effect.sleep` takes it directly. A branded `Schema` has no `makeUnsafe`.
+
+### A latent defect in `ActionInput`, found by the error-channel audit
+
+`ActionInput`'s `configError` built `SchemaIssue.InvalidValue(Option.none(), …)`. `Config.withDefault` and `Config.option` fall back for **missing data only**, and `isMissingDataOnly` (`Config.ts:304`) classifies an `InvalidValue` whose `actual` is `None` **as missing**. So every validation failure in `boolean`, `list`, `pairs` and `schema` was **silently swallowed by any default**: `dry-run: yes` resolved to `false`, and the action would have performed every mutation the workflow author meant to rehearse.
+
+Fixed by carrying the offending value on the issue. Mutation-verified: reverting to `Option.none()` fails the new `DryRun` test with the literal message `false` — the swallowed default itself. **This is a v4 semantics trap, not a typo**: nothing about `withDefault`'s signature suggests the fallback depends on how the failure was *constructed*.
 
 ### Testing notes the successor needs
 
-- **Interleaving tests must use `Latch`, never `Effect.sleep`.** Under `it.effect`'s virtual `TestClock` a sleep hangs to the 5000ms vitest timeout. Observed and fixed here.
-- **The two-latch requirement is load-bearing.** A single-latch interleaving *passed against a deliberately-wrong global save/restore implementation*, because save/restore is LIFO-correct whenever two overrides nest properly. The discriminating order forces one fiber to read **while the other's override is still applied and unrestored**. Any future concurrency test in this package needs that shape.
-- Mutants killed so far: the `withEnv` global-mutation mutant (by the two-latch test), and the dash-translating `inputVariable` mutant (by three tests, including the underscored-spelling test flipping to Success — the bug's exact signature).
+- **Interleaving tests must use `Latch`, never `Effect.sleep`.** Under `it.effect`'s virtual `TestClock` a sleep hangs to the 5000ms vitest timeout.
+- **The two-latch requirement is load-bearing.** A single-latch interleaving *passed against a deliberately-wrong global save/restore implementation*, because save/restore is LIFO-correct whenever two overrides nest properly. The discriminating order forces one fiber to read **while the other's override is still applied and unrestored**. `ActionLogger`'s buffering test uses three latches for the same reason.
+- **A spy on a process global must be released on the failure path.** `vi.spyOn(process, "kill")` restored in a `try`/`finally` inside `Effect.gen` **leaks when an assertion fails**, because the failure leaves through the error channel. Under one mutant two tests went red and the second was pure pollution — a false red; by the same mechanism a leaked spy produces a false *green* in a later test. `Effect.acquireUseRelease` is the fix.
+- **`unhandledErrors` catches what assertions cannot.** A `ChildProcess` with no `error` listener re-throws the event, so a missing binary would have reported `spawnFailed` correctly *and then killed the action*. All 15 tests were green while that was live; only vitest-agent's `unhandledErrors` field showed it.
+- **Real IO where the claim is about the filesystem.** `ToolInstaller` tests run under `NodeServices.layer` with real `tar`: stage-then-swap is a statement about what the filesystem contains after a partial failure, and an in-memory double would only assert the double.
+- **A semantics-preserving mutant is reported, not papered over.** `Buffer.from(x, "base64url")` → `"base64"` changes nothing, because Node's plain base64 decoder accepts the url alphabet and unpadded input (probed, with a control producing `-` and `_`). The strict spelling stays because `atob` is not forgiving, and a test now exercises the alphabet — but no honest test kills that mutant.
+- Mutants killed so far: the `withEnv` global-mutation mutant; the dash-translating `inputVariable` mutant; the `ActionLogger` buffer-as-global mutant, its Warn/Error threshold, its `RUNNER_DEBUG` bypass and its group flush; the `ActionInput` swallowed-default mutant; `CacheKey`'s hex-fed digest, catch-everything ladder rung and dropped sort; the `pid < 0` guard; the `?audience=` join; and the naive tool-cache install (two invariants).
 
 ## Settled at the Phase 3 checkpoint
 
@@ -468,5 +541,5 @@ Ruled 2026-07-25; recorded so they are not reopened.
 
 1. **`Artifact` ships in v1.** See [the Artifact section](#artifact--ships-in-v1-and-the-name-collision-that-nearly-sank-it) for the search evidence and the `GitHubArtifactMetadata` name collision behind it. The surface is ported conservatively and treated as provisional until a first real consumer reshapes it.
 2. **`ToolInstaller`'s possible `@effected/runtimes` edge is an implementation-time call.** The overlap may be shallow — `runtimes` resolves *versions*, `ToolInstaller` installs *files* — so the decision is made against the consumer's actual runtime descriptors, not in the abstract. The edge is free under [R3](../effect-standards.md#dependency-policy) if it is taken.
-3. **`#144`'s `writeDirAtomic` is an implementation-time call.** Extraction into a tool-cache directory is a stage-then-swap shape, so the watch item probably fires — but it is confirmed against the extraction path when that path is written, not assumed now.
+3. **`#144`'s `writeDirAtomic` — RULED 2026-07-25: the watch item FIRES.** Confirmed against the real extraction path rather than assumed, and proven by mutating the naive implementation back in. See [the as-built ruling](#144-is-ruled-stage-then-swap).
 4. **How much of `Action.run`'s failure rendering survives is an implementation-time call.** The source formats causes, strips stack frames and emits an Effect span trace as `::debug::`. It is genuinely useful, genuinely fiddly, and the one part of the port with no test coverage today — so whatever survives arrives with tests.

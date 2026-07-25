@@ -49,7 +49,9 @@ const stripComment = (line: string): string => {
  * @remarks
  * Inputs are **never** read from `process.env` directly. Every accessor names
  * the input the way the workflow author wrote it and lets this module derive
- * the runner's variable name — see {@link inputVariable} for why that matters.
+ * the runner's variable name — see `inputVariable` for why that matters. (A
+ * `{@link}` cannot reach it: it is internal, so it is not exported from the
+ * entrypoint and the reference would not resolve.)
  *
  * `lines`, `list` and `pairs` exist because the `@actions/core`-faithful
  * newline split was not enough for real consumers: two of them reinvented

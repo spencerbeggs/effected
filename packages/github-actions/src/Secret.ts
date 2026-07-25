@@ -80,6 +80,26 @@ export class Secret {
 		});
 
 	/**
+	 * Declassify one secret for an in-process use that needs the raw bytes.
+	 *
+	 * @remarks
+	 * Request signing is the case this exists for: an HMAC cannot be computed
+	 * over a `Redacted`, so a signing key has to become a string somewhere, and
+	 * the point of this module is that "somewhere" is here and nowhere else.
+	 *
+	 * It masks even though the value is never *written* anywhere, and that is
+	 * deliberate rather than superstitious: a signing key that leaks does so
+	 * through something nobody audited — a debug log of outgoing headers, a
+	 * serialized error, a stack trace carrying the closure. Registering it with
+	 * the runner's filter costs one call and makes every one of those redacted.
+	 *
+	 * Call it **once, at layer construction**, not per operation: masking is
+	 * idempotent but a workflow command per request is noise in the log.
+	 */
+	static readonly forSigning = (secret: Redacted.Redacted<string>): Effect.Effect<string, never, ActionOutputs> =>
+		Secret.forRunnerFile(secret);
+
+	/**
 	 * The far side of a handoff: re-wrap a plaintext environment variable.
 	 *
 	 * @remarks

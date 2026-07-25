@@ -10,6 +10,7 @@ export { ActionLogger, type ActionLoggerShape } from "./ActionLogger.js";
 export { ActionOutputError, ActionOutputs, type ActionOutputsShape } from "./ActionOutputs.js";
 export { ActionState, ActionStateError, type ActionStateShape } from "./ActionState.js";
 export { BlobEnvelope, BlobEnvelopeError } from "./BlobEnvelope.js";
+export { type Blob, BlobStore, BlobStoreError, type BlobStoreShape, type S3Config } from "./BlobStore.js";
 export { CacheKey, CacheKeyError } from "./CacheKey.js";
 export {
 	DetachedProcess,
