@@ -1,10 +1,10 @@
 ---
-status: draft
+status: current
 module: effected
 category: architecture
 created: 2026-07-25
 updated: 2026-07-25
-completeness: 60
+completeness: 90
 related:
   - ../effect-standards.md
   - ../roadmap.md
@@ -435,6 +435,28 @@ Build: `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "a
 - **`@effected/workspaces`** — implements `LocalExec` (`Workspaces.localExecLayer`); takes the only inbound edge.
 - **`@effected/github-actions`** (Phase 3) and the six consumer repos — the `CommandRunner` replacement: git plumbing through `@effected/git` where a typed method exists, everything else through `Run`. It also owns the two halves of `silk-runtime-action`'s detached-server lifecycle this package declines (pid reaping, readiness polling) and inherits `Run.detach` for the spawn half.
 - **`silk-runtime-action`** — the sixth consumer ([survey](../../../plans/2026-07-25-silk-runtime-action-survey.md)): package-manager cache-dir interrogation through `Run.text` / `Run.json`, the detached turbo-cache server through `Run.detach`, and the deletion of its hand-rolled `node:child_process` spawn.
+
+## As built (2026-07-25)
+
+Implemented on `feat/upstream`: five source modules plus `internal/capture.ts`, 103 unit tests and 8 e2e tests, `tsc --noEmit` clean, and a prod `issues.json` of **0 warnings / 0 errors / 15 suppressed** (all synthesized `_base` symbols; the narrow house suppression). Two genuine `ae-unresolved-link` warnings were **fixed rather than suppressed** — a schema-declared `Schema.Class` field and a member of a service *shape interface* are both un-linkable by `{@link}` selector, so they became backticks.
+
+**Where the build departed from the design, and why.**
+
+- **`collect` returns `CommandFailedError | CommandOutputError`, not `CommandFailedError` alone.** The design said both "collect fails with `CommandFailedError`" and "the capture bound fails as `CommandOutputError`", which cannot both hold. Resolved toward the latter: an overflow is genuinely "the command ran, its output is unusable", which is what `CommandOutputError` means and where `notJson`/`schema` already live.
+- **`ToolRefusedError` is a third tool error.** The design said an option-like tool name "fails typed" without naming the error. `ToolNotFoundError` would have been a lie (the tool may well exist) and reusing a `kind` discriminant on it would have blurred absence with refusal, so refusal is its own tag — the `@effected/git` `kind: "refused"` reasoning, expressed as a separate error because this package's not-found error carries a `searched` list that a refusal has no answer for.
+- **The evidence cache is keyed by `(name, version probe)`, not by name.** Probing `biome --version` and `biome -V` are different probes; keying by name alone would have handed one Tool's evidence to a Tool that asks a different question. The key is a `Schema.Class`, whose structural `Equal`/`Hash` the cache's `MutableHashMap` uses — verified at beta.101 including nested union members — so the key carries the probe itself and the lookup needs no side table. (The first implementation used a name key plus a `Map` side table; it worked and read badly, and the probe replaced it.)
+- **Absence is not memoized.** Designed as `Exit.isSuccess ? infinity : zero`; as built, `Duration.infinity` requires a success **that found the tool somewhere**. "Not found" is a *successful* lookup carrying negative evidence, so the designed rule would have made a tool installed mid-process — an action that provisions a runtime and then uses it — permanently absent. Found by a test written from the design's own intent, which failed against the design's own TTL rule.
+- **`LocalExec.makeTest` defaults honestly instead of dying loudly.** The kit's `makeTest` convention is that an unstubbed member dies. Here the contract has exactly one member whose *correct, real* answer is `Option.none()` ("no project-local context"), so the double defaults to it and a test that does not care about local resolution gets global-only behavior. `ToolDiscovery.makeTest` keeps the loud default, because none of its members has an honest one.
+- **`Tool.named(name, overrides?)`** is the ergonomic constructor (`Tool.make` remains, from the schema class). Named rather than `of` because it reads as a sentence at the call site.
+
+**Facts established by probe, worth not re-deriving:**
+
+- Core `Cache` does **not** share `Effect.cached`'s interrupt-poisoning property. A control reproducing the poisoning on `Effect.cached` ran first, so the negative result is meaningful: an interrupted lookup is discarded and re-run (`lookups: 2`), where `Effect.cached` returns the memoized interrupt forever.
+- Core `Cache` **does** memoize a *failed* lookup for the entry's TTL by default — the reason the `timeToLive` function is load-bearing rather than decorative.
+- Two concurrent `Cache.get`s for one key run **one** lookup. This is the measured basis for choosing `Cache` over `Ref` + `Map`, which was an assertion in the design.
+- The Node backend's `acquireRelease` release checks an `isReferenced` flag and **skips the kill** for an unref'd child, which is what makes `Run.detach` possible without a backend of our own.
+
+**Mutation-tested claims** (each mutant run, observed red, reverted): the `unref` ordering in `detach`; success-path output redaction; the capture byte bound; the pre-spawn option-injection guard; and `{ concurrency: "unbounded" }` — which deadlocks for real under the e2e backpressure test, confirming that test discriminates rather than merely passing.
 
 ## Decisions recorded
 
