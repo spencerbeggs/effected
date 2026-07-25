@@ -11,6 +11,7 @@
  * @packageDocumentation
  */
 
+export { IdentityToken, IdentityTokenError, type IdentityTokenShape } from "./IdentityToken.js";
 export {
 	CYCLONEDX_BOM_PREDICATE,
 	IN_TOTO_STATEMENT_V1,
@@ -40,6 +41,15 @@ export {
 	type SbomMetadataOptions,
 	SbomMetadataSource,
 } from "./SbomMetadataSource.js";
+export { IN_TOTO_PAYLOAD_TYPE, SIGSTORE_BUNDLE_V0_3_MEDIA_TYPE, SigstoreBundle } from "./SigstoreBundle.js";
+export {
+	SIGSTORE_OIDC_AUDIENCE,
+	SigningError,
+	SigningErrorKind,
+	SigstoreSigner,
+	type SigstoreSignerOptions,
+	type SigstoreSignerShape,
+} from "./SigstoreSigner.js";
 export {
 	GITHUB_BUILD_TYPE,
 	type GitHubWorkflowProvenance,
