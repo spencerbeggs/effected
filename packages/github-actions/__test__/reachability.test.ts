@@ -74,6 +74,7 @@ const AZURE_MODULES = ["ActionCache.ts", "Artifact.ts", "BlobStore.githubCache.t
 
 /** Everything else a consumer can name. */
 const LIGHT_MODULES = [
+	"Action.ts",
 	"ActionEnvironment.ts",
 	"ActionInput.ts",
 	"ActionLogger.ts",
@@ -83,6 +84,7 @@ const LIGHT_MODULES = [
 	"BlobStore.ts",
 	"BlobTransfer.ts",
 	"CacheKey.ts",
+	"GitHubToken.ts",
 	"DetachedProcess.ts",
 	"DryRun.ts",
 	"OidcTokenIssuer.ts",
@@ -155,6 +157,15 @@ describe("bundle reachability", () => {
 		// the one piece of this package a non-Actions consumer might legitimately
 		// want, and it stays a pure string renderer so it costs nothing to take.
 		assert.deepStrictEqual([...reachableBareImports("WorkflowCommand.ts")], []);
+		// The default runtime does NOT reach Azure, and that is the reason the
+		// cache, artifact and blob services are left out of it: folding them in
+		// would put a blob-storage client in the bundle of every action that
+		// merely sets an output.
+		assert.deepStrictEqual([...reachableBareImports("Action.ts")].sort(), [
+			"@effect/platform-node",
+			"effect",
+			"effect/unstable/http",
+		]);
 	});
 
 	it("no shared internal helper reaches Azure", () => {

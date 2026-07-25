@@ -6,10 +6,9 @@ runner it is executing inside.
 Design doc: [`.claude/design/effected/packages/github-actions.md`](../../.claude/design/effected/packages/github-actions.md).
 Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 3).
 
-**Status: partial.** Milestones (a) and (b) plus `BlobStore` are green — 213
-tests. `ActionCache`, `Artifact`, `BlobStore.githubCache`, `GitHubToken` and
-`Action.run` are **not built**. The design doc's as-built section is the
-authority on what exists and why; read it before adding a module.
+**Status: complete** (2026-07-25) — 298 tests, zero-warning build. The design
+doc's as-built section is the authority on what exists and why; read it before
+adding a module.
 
 ## The line against @effected/github
 
@@ -89,6 +88,22 @@ straight to the destination leaves a partial tool behind on failure, and `find`
 reports a partial directory as a hit — so every later run uses a broken
 toolchain and never re-downloads it. The staging directory must stay under the
 cache root: a cross-filesystem rename is not atomic.
+
+### The results backend is only reachable from a `uses:` step
+
+`ActionCache`, `Artifact` and `GitHubCacheBlobStore` all speak the Twirp v2
+protocol at `ACTIONS_RESULTS_URL` with `ACTIONS_RUNTIME_TOKEN`. The runner
+injects both into **action** execution contexts and **not** into `run:` shell
+steps, so identical code works from a bundled action and fails when a workflow
+invokes it with `node ./main.js`. Every one of the three reports that as
+`misconfigured` **naming the absent variable**, because nothing else
+distinguishes the two cases.
+
+The runtime token is wrapped in `Redacted` at the read and leaves only through
+`HttpClientRequest.bearerToken`, which accepts a `Redacted` directly — so the
+declassification seam is never involved and `Redacted.value` still appears only
+in `Secret.ts`. The artifact backend ids come from that token's own `scp`
+claim, decoded from the plaintext it arrives as, before it is wrapped.
 
 ### Nothing is read from `process.env` except by `ActionEnvironment`
 

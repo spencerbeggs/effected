@@ -1,3 +1,10 @@
+export {
+	Action,
+	type ActionRunOptions,
+	ActionRuntime,
+	type ActionServices,
+	describeCause,
+} from "./Action.js";
 export { ActionCache, ActionCacheError, type ActionCacheShape } from "./ActionCache.js";
 export {
 	ActionEnvironment,
@@ -34,6 +41,13 @@ export {
 	type ReadinessOptions,
 } from "./DetachedProcess.js";
 export { DryRun, type DryRunShape } from "./DryRun.js";
+export {
+	type ClientLayerOptions,
+	GitHubToken,
+	GitHubTokenError,
+	type ProvisionOptions,
+	type ReadOptions,
+} from "./GitHubToken.js";
 export { OidcClaims, OidcTokenError, OidcTokenIssuer, type OidcTokenIssuerShape } from "./OidcTokenIssuer.js";
 export { Secret } from "./Secret.js";
 export {
