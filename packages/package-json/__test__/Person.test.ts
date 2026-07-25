@@ -141,4 +141,18 @@ describe("Person wire-form preservation", () => {
 			assert.isTrue(result._tag === "Failure");
 		}),
 	);
+
+	// The degenerate shorthand: an address with no name. silk-release-action's
+	// `parseAuthor` hand-roll returns `{ name: undefined, email }` here because
+	// its `^([^<(]+)` name pattern needs at least one leading character. Pinning
+	// the equivalent behavior is what makes "delete the hand-roll" an
+	// evidence-backed claim rather than an assumption — it is the one input
+	// where the two implementations could plausibly disagree.
+	it.effect("an email-only shorthand yields an empty name, not a failure", () =>
+		Effect.gen(function* () {
+			const person = yield* Schema.decodeUnknownEffect(Person.FromValue)("<dee@example.com>");
+			assert.strictEqual(person.email, "dee@example.com");
+			assert.strictEqual(person.name, "");
+		}),
+	);
 });

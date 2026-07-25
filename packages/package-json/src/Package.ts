@@ -16,6 +16,7 @@ import { InvalidSpdxLicenseError, SpdxLicense, isValidSpdx } from "./License.js"
 import { PackageManager } from "./PackageManager.js";
 import { InvalidPackageNameError, PackageName } from "./PackageName.js";
 import { Person } from "./Person.js";
+import { Bugs, Repository } from "./Repository.js";
 
 // ── Field codecs ────────────────────────────────────────────────────────────
 // Exported @public as reusable field schemas: they compose the `Package` model
@@ -87,9 +88,12 @@ export const PeerDependenciesMetaField = Schema.Record(
 );
 
 /**
- * The `repository` field: a shorthand string or an object (with `type` / `url` /
- * `directory` and any extensions preserved). Not meant to be referenced
- * directly.
+ * The `repository` field's raw wire shape: a shorthand string or an object.
+ *
+ * @deprecated Superseded by {@link Repository.FromValue}, which decodes both
+ * encodings into a typed {@link Repository} with normalization getters and
+ * round-trips the original form. Kept as a named type for consumers that were
+ * matching on the raw union; it is no longer what `Package.repository` uses.
  *
  * @public
  */
@@ -238,7 +242,9 @@ export class Package extends Schema.Class<Package>("Package")({
 	license: Schema.optionalKey(SpdxLicense),
 	author: Schema.optionalKey(Person.FromValue),
 	contributors: Schema.optionalKey(Schema.Array(Person.FromValue)),
-	repository: Schema.optionalKey(RepositoryField),
+	repository: Schema.optionalKey(Repository.FromValue),
+	bugs: Schema.optionalKey(Bugs.FromValue),
+	homepage: Schema.optionalKey(Schema.String),
 	dependencies: DependencyMapField,
 	devDependencies: DependencyMapField,
 	peerDependencies: DependencyMapField,
