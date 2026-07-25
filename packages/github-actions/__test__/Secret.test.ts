@@ -116,6 +116,18 @@ describe("Secret", () => {
 	describe("the declassification invariant", () => {
 		const srcRoot = new URL("../src/", import.meta.url).pathname;
 
+		/**
+		 * Strip comments before scanning.
+		 *
+		 * @remarks
+		 * A raw text scan reads TSDoc as code: a module whose comment *explains*
+		 * that it does not unwrap a secret gets reported as unwrapping one. That
+		 * happened — `OidcTokenIssuer` documents the invariant it obeys and failed
+		 * this test for saying so. It is the same phantom-edge problem the bundle
+		 * reachability walkers hit with `@example` imports, and it has the same fix.
+		 */
+		const stripComments = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
 		const unwrappingModules = (): ReadonlyArray<string> => {
 			const found: Array<string> = [];
 			const walk = (dir: string) => {
@@ -123,7 +135,10 @@ describe("Secret", () => {
 					const path = join(dir, entry.name);
 					if (entry.isDirectory()) {
 						walk(path);
-					} else if (entry.name.endsWith(".ts") && readFileSync(path, "utf8").includes("Redacted.value")) {
+					} else if (
+						entry.name.endsWith(".ts") &&
+						stripComments(readFileSync(path, "utf8")).includes("Redacted.value")
+					) {
 						found.push(entry.name);
 					}
 				}
@@ -141,8 +156,16 @@ describe("Secret", () => {
 
 		it("the guard can fail — it is asserting on a non-empty set", () => {
 			// Without this control, the assertion above would pass just as well if
-			// the package had stopped using Redacted entirely.
+			// the package had stopped using Redacted entirely — or if the comment
+			// stripper had blinded the scan.
 			assert.isAbove(unwrappingModules().length, 0);
+		});
+
+		it("the comment stripper removes comments and only comments", () => {
+			// The stripper is now load-bearing for the invariant above, so it gets its
+			// own discriminating test rather than being trusted.
+			assert.notInclude(stripComments("/** mentions Redacted.value in TSDoc */\nconst a = 1;"), "Redacted.value");
+			assert.include(stripComments("// a note\nconst t = Redacted.value(s);"), "Redacted.value");
 		});
 	});
 });
