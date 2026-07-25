@@ -106,7 +106,7 @@ export class Supplier extends Schema.Class<Supplier>("Supplier")({
  *
  * @remarks
  * `bomRef` is spelled **`bom-ref`** in the emitted JSON; the rename happens in
- * {@link SbomDocument.toJson}. Emitting `bomRef` produces a document that looks
+ * `Sbom.toJson`. Emitting `bomRef` produces a document that looks
  * correct and validates wrong, which is why a test pins the key name.
  *
  * @public

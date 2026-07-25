@@ -143,22 +143,25 @@ export class InTotoSubject extends Schema.Class<InTotoSubject>("InTotoSubject")(
 	}
 }
 
-/** Everything a statement needs beyond its subjects. */
-interface StatementPredicate {
-	/** What the statement asserts. */
-	readonly predicateType: PredicateType;
-	/** The assertion's body — a {@link (SlsaProvenance:class)}, a BOM, or a caller's own shape. */
-	readonly predicate: unknown;
-}
-
 /**
  * Input to {@link (InTotoStatement:class).of}.
  *
+ * @remarks
+ * The two predicate members are spelled out here and again on
+ * {@link InTotoSubjectInput} rather than shared through a base interface: an
+ * internal type named on a `@public` signature is a forgotten export, and a
+ * named alias is still a named symbol. Structural duplication is the only form
+ * the API gate accepts.
+ *
  * @public
  */
-export interface InTotoStatementInput extends StatementPredicate {
+export interface InTotoStatementInput {
 	/** The artifacts the statement is about. */
 	readonly subject: ReadonlyArray<InTotoSubject>;
+	/** What the statement asserts. */
+	readonly predicateType: PredicateType;
+	/** The assertion's body — a `SlsaProvenance`, a BOM, or a caller's own shape. */
+	readonly predicate: unknown;
 }
 
 /**
@@ -171,11 +174,15 @@ export interface InTotoStatementInput extends StatementPredicate {
  *
  * @public
  */
-export interface InTotoSubjectInput extends StatementPredicate {
+export interface InTotoSubjectInput {
 	/** How the single subject is identified. */
 	readonly name: string;
 	/** Its SHA-256 digest. */
 	readonly digest: Sha256Digest;
+	/** What the statement asserts. */
+	readonly predicateType: PredicateType;
+	/** The assertion's body — a `SlsaProvenance`, a BOM, or a caller's own shape. */
+	readonly predicate: unknown;
 }
 
 /**

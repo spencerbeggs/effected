@@ -104,7 +104,11 @@ export interface ComponentInput {
 	readonly type?: ComponentType;
 }
 
-/** The years a copyright statement spans. */
+/**
+ * The years a copyright statement spans.
+ *
+ * @public
+ */
 export interface CopyrightYears {
 	/** The first year of the range. Omit for a single-year statement. */
 	readonly startYear?: number;
