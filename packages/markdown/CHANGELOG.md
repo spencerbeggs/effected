@@ -1,5 +1,13 @@
 # @effected/markdown
 
+## 0.2.5
+
+### Dependencies
+
+| Dependency     | Type       | Action  | From  | To    |
+| -------------- | ---------- | ------- | ----- | ----- |
+| @effected/yaml | dependency | updated | 0.5.1 | 0.6.0 |
+
 ## 0.2.4
 
 ### Bug Fixes

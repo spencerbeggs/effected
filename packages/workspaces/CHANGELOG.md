@@ -1,5 +1,41 @@
 # @effected/workspaces
 
+## 0.8.0
+
+### Features
+
+* ### Test doubles for the three remaining services
+
+  `WorkspaceCatalogs`, `WorkspaceSnapshots` and `LockfileReader` gain `makeTest` and `layerTest`, matching `WorkspaceRoot` and `WorkspaceDiscovery`. Every service in the package now ships one, so a consumer extends the double instead of implementing the shape by hand.
+
+  ```ts
+  const layer = WorkspaceCatalogs.layerTest({
+    set: () => Effect.succeed(catalogSet),
+  });
+  ```
+
+  An unstubbed method dies with a named message rather than returning an empty value — an empty catalog set reads as a legitimate answer and makes every dependency look newly added. Where a method is honestly derivable from a supplied override it derives using the live logic, so a stubbed `set` answers `resolveSpecifier` and a stubbed `read` answers `resolvedVersion`.
+
+### Documentation
+
+* The README covers the `@effected/workspaces/node-sync` subpath and its `nodeSyncOps` preset, so the synchronous escape hatch no longer reads as though the operations must be hand-written [#175][#175]
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From   | To    |
+| ---------------------- | ---------- | ------- | ------ | ----- |
+| @effected/git          | dependency | updated | 0.4.2  | 0.5.0 |
+| @effected/lockfiles    | dependency | updated | 0.1.10 | 0.2.0 |
+| @effected/npm          | dependency | updated | 0.3.1  | 0.4.0 |
+| @effected/package-json | dependency | updated | 0.5.1  | 0.5.2 |
+| @effected/yaml         | dependency | updated | 0.5.1  | 0.6.0 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#175]: https://github.com/spencerbeggs/effected/pull/175
+
 ## 0.7.0
 
 ### Features

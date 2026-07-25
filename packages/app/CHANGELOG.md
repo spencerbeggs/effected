@@ -1,5 +1,26 @@
 # @effected/app
 
+## 0.3.1
+
+### Documentation
+
+* The plugin's session-start guidance qualifies its delegation preference on subagent dispatch being available and permitted, and directs the constrained case to load the matching skills inline
+* The API Extractor skill records that links to schema-declared class fields never resolve, whatever selector is used, and must be written as prose instead
+* The schema skill's recursive-construction cost warning is re-measured against the current beta and scoped to nesting depth, so a breadth or call-count measurement is no longer mistaken for a contradiction [#175][#175]
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.1.8 | 0.1.9 |
+| @effected/xdg         | dependency | updated | 0.1.8 | 0.1.8 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#175]: https://github.com/spencerbeggs/effected/pull/175
+
 ## 0.3.0
 
 ### Bug Fixes

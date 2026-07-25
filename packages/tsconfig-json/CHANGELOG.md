@@ -1,5 +1,17 @@
 # @effected/tsconfig-json
 
+## 0.3.2
+
+### Documentation
+
+* The README documents the TypeScript 7 and classic-compiler-API recipe: keeping compile-time independence through `CompilerOptions.Type` and `TsEnumCodec`, the dev-only `typescript-classic` npm alias for the runtime that genuinely needs the JS compiler API, and the `tsLibDirectory` gotcha where `@typescript/vfs` otherwise returns a silently empty lib map [#175][#175]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#175]: https://github.com/spencerbeggs/effected/pull/175
+
 ## 0.3.1
 
 ### Dependencies
