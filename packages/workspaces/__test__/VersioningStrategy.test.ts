@@ -133,7 +133,9 @@ describe("VersioningStrategy.tagsFor", () => {
 		const tags = VersioningStrategy.classify({ packages: ["@acme/cli", "helper"] }).tagsFor(releases);
 		assert.deepStrictEqual(
 			tags.map((tag) => tag.value),
-			["@acme/cli@1.2.3", "helper@v1.2.3"],
+			// The default versionPrefix is "" uniformly (strict SemVer,
+			// 2026-07-25) — no scoped/unscoped asymmetry.
+			["@acme/cli@1.2.3", "helper@1.2.3"],
 		);
 	});
 

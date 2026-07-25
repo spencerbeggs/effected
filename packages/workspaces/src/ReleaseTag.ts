@@ -5,12 +5,14 @@
 // keeping it here rather than on a git-shaped service is what lets a release
 // planner compute its tags before it has decided to talk to anything.
 //
-// The formats below reproduce what silk-release-action actually cuts today,
-// byte for byte, including the scoped/unscoped `v` asymmetry. That asymmetry is
-// inherited, not designed: two v3 implementations disagreed about it (and one
-// contradicted its own documentation), so the kit had to pick, and the one that
-// ships releases won. Git tag history is not an API — pre-1.0 breaking-change
-// freedom covers our code, not a consumer's existing tags.
+// The default version prefix is "" uniformly — strict SemVer, chosen
+// deliberately (2026-07-25, Spencer's call) rather than inherited. v3
+// disagreed with itself about a scoped/unscoped `v` asymmetry (two
+// implementations differed, and one contradicted its own documentation); this
+// kit does not reproduce that asymmetry. A tool that needs GitHub's
+// `v<semver>` release-tag convention passes `versionPrefix: "v"` explicitly.
+// Git tag history is not an API — pre-1.0 breaking-change freedom covers our
+// code, not a consumer's existing tags.
 
 import { Schema } from "effect";
 
@@ -43,15 +45,14 @@ export interface TagFormatOptions {
 	 * The prefix on the version segment.
 	 *
 	 * @remarks
-	 * Omit it and the defaults reproduce production: `""` for a single tag and
-	 * for a scoped tag on a `@scope/`-prefixed name, `"v"` for a scoped tag on
-	 * an unscoped name. Pass `""` or `"v"` explicitly to override either.
+	 * Defaults to `""` uniformly, for both {@link ReleaseTag.single} and
+	 * {@link ReleaseTag.scoped} — strict SemVer, deliberately chosen. Pass
+	 * `"v"` for the GitHub release-tag convention (`v1.2.3`), which tools such
+	 * as `actions/checkout`'s ref resolution and third-party changelog
+	 * generators expect.
 	 */
 	readonly versionPrefix?: string;
 }
-
-/** Only a LEADING `@` makes a name scoped — `weird@name` is not a scope. */
-const isScopedName = (name: string): boolean => name.startsWith("@");
 
 /**
  * The numeric core of a SemVer version, plus whether it carries a prerelease.
@@ -319,7 +320,8 @@ export const classifyTag = (tag: string): TagClassification => {
  *
  * ReleaseTag.single("1.2.3").value;               // "1.2.3"
  * ReleaseTag.scoped("@acme/cli", "1.2.3").value;  // "@acme/cli@1.2.3"
- * ReleaseTag.scoped("cli", "1.2.3").value;        // "cli@v1.2.3"
+ * ReleaseTag.scoped("cli", "1.2.3").value;        // "cli@1.2.3"
+ * ReleaseTag.scoped("cli", "1.2.3", { versionPrefix: "v" }).value; // "cli@v1.2.3"
  * ```
  *
  * @public
@@ -350,15 +352,16 @@ export class ReleaseTag extends Schema.Class<ReleaseTag>("ReleaseTag")({
 	}
 
 	/**
-	 * A per-package tag: `@scope/pkg@1.2.3` for a scoped name, `pkg@v1.2.3` for
-	 * an unscoped one.
+	 * A per-package tag: `<packageName>@<version>` — `@scope/pkg@1.2.3` for a
+	 * scoped name, `pkg@1.2.3` for an unscoped one, uniformly, unless
+	 * `options.versionPrefix` says otherwise.
 	 *
 	 * @param packageName - The package being released. Must not be empty.
 	 * @param version - The version being released. Must not be empty.
 	 * @param options - Formatting overrides.
 	 */
 	static scoped(packageName: string, version: string, options?: TagFormatOptions): ReleaseTag {
-		const prefix = options?.versionPrefix ?? (isScopedName(packageName) ? "" : "v");
+		const prefix = options?.versionPrefix ?? "";
 		return ReleaseTag.make({
 			value: `${packageName}@${prefix}${version}`,
 			packageName,

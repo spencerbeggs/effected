@@ -46,25 +46,33 @@ describe("ReleaseTag.scoped", () => {
 		assert.strictEqual(tag.version, "1.0.0");
 	});
 
-	it("an UNSCOPED package name takes a v prefix — the inherited asymmetry", () => {
-		// This is the odd one, and it is deliberate: silk-release-action emits
-		// `pkg@v1.0.0` for an unscoped name and `@scope/pkg@1.0.0` for a scoped one.
-		// silk-effects emitted `pkg@1.0.0` for both, and lost. Reproducing the live
-		// behavior costs nothing; normalizing it silently renames tags.
+	it("an UNSCOPED package name takes NO v prefix either — the default is uniform", () => {
+		// Strict SemVer, deliberately (2026-07-25, Spencer's call): the default
+		// is `""` for both scoped and unscoped names. This diverges from
+		// silk-release-action's live `pkg@v1.0.0` on purpose — pre-1.0
+		// breaking-change freedom covers our own tags, not a consumer's
+		// existing history. A tool that needs the `v<semver>` convention
+		// passes `versionPrefix: "v"` explicitly.
 		const tag = ReleaseTag.scoped("pkg", "1.0.0");
-		assert.strictEqual(tag.value, "pkg@v1.0.0");
+		assert.strictEqual(tag.value, "pkg@1.0.0");
 		assert.strictEqual(tag.version, "1.0.0");
 	});
 
-	it("versionPrefix overrides the scoped default in both directions", () => {
-		assert.strictEqual(ReleaseTag.scoped("pkg", "1.0.0", { versionPrefix: "" }).value, "pkg@1.0.0");
+	it('explicit versionPrefix "v" adds the prefix for BOTH scoped and unscoped names', () => {
+		assert.strictEqual(ReleaseTag.scoped("pkg", "1.0.0", { versionPrefix: "v" }).value, "pkg@v1.0.0");
 		assert.strictEqual(ReleaseTag.scoped("@scope/pkg", "1.0.0", { versionPrefix: "v" }).value, "@scope/pkg@v1.0.0");
+	});
+
+	it('explicit versionPrefix "" is just the default, spelled out', () => {
+		assert.strictEqual(ReleaseTag.scoped("pkg", "1.0.0", { versionPrefix: "" }).value, "pkg@1.0.0");
+		assert.strictEqual(ReleaseTag.scoped("@scope/pkg", "1.0.0", { versionPrefix: "" }).value, "@scope/pkg@1.0.0");
 	});
 
 	it("only a LEADING @ makes a name scoped", () => {
 		// A name containing `@` elsewhere is not scoped. `includes("@")` would be the
-		// wrong test, and this pins it.
-		assert.strictEqual(ReleaseTag.scoped("weird@name", "1.0.0").value, "weird@name@v1.0.0");
+		// wrong test, and this pins it. Scoping no longer affects the default
+		// prefix, but the packageName/version split still runs off the last `@`.
+		assert.strictEqual(ReleaseTag.scoped("weird@name", "1.0.0").value, "weird@name@1.0.0");
 	});
 });
 

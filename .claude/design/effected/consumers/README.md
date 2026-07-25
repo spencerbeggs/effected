@@ -57,11 +57,14 @@ Cross-cutting hazards the first real adoption hit or flagged. Every remaining
 migration should read these before touching the corresponding surface; none of
 them produce a compile error.
 
-1. **`ReleaseTag` defaults to a `v` version prefix on unscoped names.**
-   `ReleaseTag.scoped` emits `cli@v1.2.3` where Savvy's convention (strict
-   SemVer, no prefix) expects `cli@1.2.3`; scoped names are byte-identical. A
-   tagging consumer upgrades into silently different tag names. Pass
-   `versionPrefix: ""` to match Savvy policy. Concrete customer:
+1. **`ReleaseTag` defaults to strict SemVer — no `v` prefix — as of
+   2026-07-25.** The round-1 finding (unscoped names silently gained
+   `cli@v1.2.3` under the inherited default) drove a default flip: all names
+   now emit `cli@1.2.3` / `@scope/pkg@1.2.3` uniformly, matching Savvy
+   convention with zero options. A consumer whose EXISTING tags carry the
+   GitHub-style `v` (or whose tooling requires `v<semver>`) must pass
+   `versionPrefix: "v"` explicitly, or its tag names silently change — the
+   hazard survives the flip, mirrored. Concrete customer:
    silk-release-action's determine-tag-strategy flow.
 2. **`SectionId` keys render into markers verbatim.** Any case-normalization
    (or other canonicalization) that lived in old marker-formatting code must
