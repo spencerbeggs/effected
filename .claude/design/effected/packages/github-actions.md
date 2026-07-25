@@ -438,6 +438,7 @@ Per program decision 9, recorded per concept:
 - **`WorkspaceDetector`, `PackageManagerAdapter`, `ChangesetAnalyzer`** — the kit already owns all three.
 - **`GithubMarkdown`** — a string builder with no Actions coupling; it belongs to whichever consumer wants it, or to `@effected/markdown` if a second one does.
 - **`ActionInputError`** — dissolved into `ConfigError`.
+- **`Artifact`'s `FindBy` (the cross-run / cross-repo lookup)** — RULED out of v1 (2026-07-25). **A parameter whose only behavior has ever been a typed refusal is a ported lie:** every path through `findBy` in the source package fails with "not yet implemented", so porting it would ship a surface that answers no question. `Artifact` is already [provisional by ruling](#artifact--ships-in-v1-and-the-name-collision-that-nearly-sank-it), and adding the parameter back when a consumer produces a real cross-run lookup is **additive**, whereas shipping it and later removing it would not be. If it returns, the design doc's sketch is the shape it takes: `{ token, workflowRunId, repositoryOwner, repositoryName }` with **`token: Redacted.Redacted<string>`** rather than the source's `string`, because it is a credential and this package has a seam for declassifying one.
 
 ## As built — complete (2026-07-25)
 
@@ -464,7 +465,7 @@ Both dependency questions are closed: **`@effected/glob` is taken** (the recomme
 - **`Secret` gained `forSigning`.** See [the two invariant catches](#the-declassification-invariant-earned-its-keep-twice).
 - **The GitHub-cache backend is `GitHubCacheBlobStore.layer`, not `BlobStore.layerGitHubCache`.** Putting the static on the service class would make `@azure/storage-blob` reachable from every module that reads a blob — the layer-static-belongs-to-the-module-owning-the-dependency rule (`GitHubApp.clientLayer`'s precedent), applied here for a confinement reason rather than a stylistic one.
 - **The three Azure modules take their transport as an argument.** `FileBlobTransfer` / `DataBlobTransfer` + `BlobTransferError`, with `layerWith(transfer)` beside each `layer`. See [the transport seam](#the-transport-seam-and-what-it-buys).
-- **`Artifact` drops `FindBy`.** Every path through it in the source package is a typed "not yet implemented" failure — the parameter has never had behavior. Porting one is porting a lie; adding it later is additive, whereas removing it later would not be. The rest of the surface is ported conservatively per the ruling, with the `Artifact` prefix dropped from every member.
+- **`Artifact` drops `FindBy`** — approved 2026-07-25 and recorded in [deliberately not ported](#deliberately-not-ported), where the reasoning and the shape it would return in belong. The rest of the surface is ported conservatively per the ruling, with the stuttering `Artifact` prefix dropped from every member.
 - **`ActionCache.save`/`restore` accept a `CacheKey` as well as a `string`,** and a `CacheKey` supplies its own restore-key ladder. The ladder is the part every consumer re-derives and gets subtly wrong; passing the key passes the ladder with it.
 - **`ActionRuntime.layer` excludes the cache, artifact and blob services.** See [the runtime's exclusion](#actionruntime-excludes-the-heavy-three).
 - **`ActionRuntime` does not install `ActionInput`'s `ConfigProvider`.** See [the probe that removed it](#the-config-provider-the-runtime-does-not-install).
@@ -585,6 +586,20 @@ They read the variables **per call, through `ActionEnvironment`** — not at lay
 Folding them in would put `@azure/storage-blob` in the bundle of every action that merely sets an output — which is the confinement invariant restated as a composition decision rather than an import rule. Their requirements are all satisfied by the runtime, so a consumer that wants one writes `Action.run(program, { layer: ActionCache.layer })` and nothing else; `ActionRunOptions.layer` is typed `Layer<R, never, ActionServices>` precisely so that compiles with no further wiring. The reachability suite asserts `Action.ts` reaches `@effect/platform-node`, `effect` and `effect/unstable/http` — and no more.
 
 The wiring inside is `provideMerge`, not a flat `mergeAll`: `ActionState` needs `ActionOutputs` (it masks before it persists) and `ActionOutputs` needs `ActionEnvironment`. Merged as siblings they never see each other and the layer does not build.
+
+### `Action.run`'s layer option is NOT self-contained — the audit's Case 3, discharged
+
+The [fluency audit](../consumers/fluency-audit.md)'s Case 3 was left PROVISIONAL on this module, with three things for the closer to confirm. All three, answered:
+
+**1. Does `Action.run` still demand a self-contained layer? No — and the audit re-scores upward.** `ActionRunOptions.layer` is typed `Layer.Layer<R, never, ActionServices>`: the caller's layer may require **anything the runtime provides**, which is the platform, the HTTP client and every runner service. The composition in the audit therefore loses its own `platform` provide as well as its sub-provides — the platform is provided once, at the boundary, by `Action.run` itself.
+
+The predecessor's option was `Layer<R, never, never>`, and that single `never` is what produced the five-line comment in `silk-release-action/src/main.ts` explaining why a requirement "could not be allowed to travel upward". It could; the type just said otherwise.
+
+**2. Where does the App token enter in `main`?** Exactly where the audit assumed: `GitHubToken.clientLayer()` reads the token an earlier phase persisted in `ActionState` and builds `GitHubClient.layerFromToken` from it. Not through `GitHubApp` — that path links a JWT signer and needs the private key, which `main` neither has nor should have. The `Redacted` never leaves the bridge as a string.
+
+**3. Nothing reintroduces an `ActionOutputs` sub-provide for masking** — asserted, not promised. `__test__/Action.test.ts` runs a `PackagePublish`-shaped layer that requires **both** `FileSystem` (the platform) and `ActionOutputs` (to mask), passes it straight to `Action.run` with no sub-provide, and asserts that `::add-mask::s3cret` reaches the runner. Narrowing the option back to `Layer<R, never, never>` makes that test **fail to compile**, which is the mutant that proves it discriminates.
+
+The masking hoist itself is upstream and survives untouched: nothing in this package requires `ActionOutputs` on a consumer's behalf, and `Secret.forRunnerFile` declares the requirement in its own `R` where the boundary satisfies it once.
 
 ### The config provider the runtime does not install
 

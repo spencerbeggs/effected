@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Config, Context, Effect, Layer, Schema } from "effect";
+import { Cause, Config, Context, Effect, FileSystem, Layer, Schema } from "effect";
 import { vi } from "vitest";
-import { Action, ActionEnvironment, ActionInput, ActionRuntime, describeCause } from "../src/index.js";
+import { Action, ActionEnvironment, ActionInput, ActionOutputs, ActionRuntime, describeCause } from "../src/index.js";
 
 class Extra extends Context.Service<Extra, { readonly describe: Effect.Effect<string, unknown> }>()("test/Extra") {}
 
@@ -200,6 +200,39 @@ describe("Action.run", () => {
 				{ layer: extra },
 			);
 			assert.isTrue(lines.some((line) => line.includes("job=test-job")));
+			assert.notStrictEqual(process.exitCode, 1);
+		});
+	});
+
+	it("takes a layer requiring the PLATFORM and ActionOutputs, with no sub-provide", async () => {
+		await captured(async (lines) => {
+			// The regression this exists to catch, from the fluency audit's Case 3:
+			// a publish helper that masks a registry token used to force a SECOND
+			// `NodeServices`-backed `ActionOutputs` inside the consumer's own
+			// composition — with a five-line comment explaining that `Action.run`'s
+			// layer option "must be self-contained" — purely so `setSecret` could be
+			// reached. It is not self-contained: `ActionRunOptions.layer` is typed
+			// `Layer<R, never, ActionServices>`, so a layer may require anything the
+			// runtime provides and the platform is provided ONCE, at the boundary.
+			const publishLike = Layer.effect(
+				Extra,
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					const outputs = yield* ActionOutputs;
+					return {
+						describe: Effect.as(outputs.setSecret("s3cret"), typeof fs.readFile === "function" ? "masked" : "no fs"),
+					};
+				}),
+			);
+			await Action.run(
+				Effect.gen(function* () {
+					const service = yield* Extra;
+					yield* Effect.logWarning(`publish=${yield* service.describe}`);
+				}),
+				{ layer: publishLike },
+			);
+			assert.include(lines, "::add-mask::s3cret", "the mask reached the runner with no sub-provide");
+			assert.include(lines, "::warning::publish=masked", "and the platform reached the layer");
 			assert.notStrictEqual(process.exitCode, 1);
 		});
 	});
