@@ -1,3 +1,13 @@
+export { Attestation, AttestationListEntry, AttestationRecord, type AttestationShape } from "./Attestation.js";
+export {
+	Annotation,
+	AnnotationLevel,
+	CheckConclusion,
+	CheckRun,
+	CheckRunOutput,
+	CheckRunRef,
+	type CheckRunShape,
+} from "./CheckRun.js";
 export { type BranchOutcome, GitBranch, type GitBranchShape } from "./GitBranch.js";
 export {
 	CommitRef,
@@ -31,6 +41,8 @@ export {
 } from "./GitHubCommit.js";
 export { GitHubContent, type GitHubContentShape } from "./GitHubContent.js";
 export { GitHubError, GitHubErrorKind } from "./GitHubError.js";
+export { GitHubIssue, type GitHubIssueShape, IssueInfo, LinkedIssue } from "./GitHubIssue.js";
+export { GitHubRelease, type GitHubReleaseShape, ReleaseAsset, ReleaseInfo } from "./GitHubRelease.js";
 export {
 	GitHubRepository,
 	type GitHubRepositoryShape,
@@ -47,6 +59,19 @@ export {
 	versionFromTag,
 } from "./GitTag.js";
 export { GitHubGraphQLError, GraphQLDocument, GraphQLErrorEntry } from "./GraphQL.js";
+export {
+	MergeMethod,
+	PullRequest,
+	PullRequestInfo,
+	type PullRequestShape,
+	type UpsertedPullRequest,
+} from "./PullRequest.js";
+export {
+	CommentMarker,
+	CommentRecord,
+	PullRequestComment,
+	type PullRequestCommentShape,
+} from "./PullRequestComment.js";
 export { InvalidRepoRefError, Repo, RepoRef } from "./Repo.js";
 export { RateLimitSnapshot, RetryPolicy, type RetryableFailure } from "./Resilience.js";
 export type {
@@ -59,3 +84,9 @@ export type {
 	Route as RestRoute,
 } from "./Rest.js";
 export { PageOptions } from "./Rest.js";
+export {
+	type PollOptions,
+	WorkflowDispatch,
+	type WorkflowDispatchShape,
+	WorkflowRunStatus,
+} from "./WorkflowDispatch.js";

@@ -44,11 +44,24 @@ export interface ScriptedFetch {
 	readonly queryOf: (index: number) => URLSearchParams;
 }
 
-const toResponse = (reply: Reply): Response =>
-	new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
+/**
+ * A `Response` that knows its own URL.
+ *
+ * @remarks
+ * A manually constructed `Response` has `url === ""`, and octokit reads that
+ * back for the search-shaped endpoints — its paginator does `new URL(response.url)`
+ * whenever the payload carries a `total_count`, which throws `TypeError: Invalid
+ * URL` on an empty string. Real fetch responses always carry one, so the failure
+ * is purely an artifact of the double; defining the property removes it.
+ */
+const toResponse = (reply: Reply, url: string): Response => {
+	const response = new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
 		status: reply.status,
 		headers: { "content-type": "application/json", ...reply.headers },
 	});
+	Object.defineProperty(response, "url", { value: url });
+	return response;
+};
 
 /**
  * A `fetch` that answers with `replies` in order, repeating the last one once
@@ -71,7 +84,7 @@ export const scriptedFetch = (replies: ReadonlyArray<Reply>): ScriptedFetch => {
 		if (init?.signal?.aborted === true) {
 			throw new DOMException("aborted", "AbortError");
 		}
-		return toResponse(reply);
+		return toResponse(reply, request.url);
 	};
 	return {
 		fetch,
