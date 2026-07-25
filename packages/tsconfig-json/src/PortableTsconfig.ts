@@ -172,16 +172,7 @@ export interface PortableTsconfig {
 	readonly compilerOptions: Record<string, unknown>;
 }
 
-/**
- * Project a {@link (ResolvedTsconfig:interface)} or a bare
- * `CompilerOptions.Type` down to a {@link (PortableTsconfig:interface)}: copy
- * only the allow-listed type-semantics options, force `composite: false` and
- * `noEmit: true` regardless of what the source declared, and stamp `$schema`.
- * Every other key — including every unknown passthrough key the source
- * preserved for forward tolerance — is dropped; this is an allow-list, not a
- * deny-list, so an option this package does not yet classify never leaks onto
- * the portable shape by accident.
- */
+// Implementation of PortableTsconfig.make; the public contract lives on the static.
 const make = (input: ResolvedTsconfig | CompilerOptions.Type): PortableTsconfig => {
 	const source: Record<string, unknown> = isResolvedTsconfig(input) ? input.compilerOptions : input;
 	const compilerOptions: Record<string, unknown> = {};
@@ -195,10 +186,26 @@ const make = (input: ResolvedTsconfig | CompilerOptions.Type): PortableTsconfig 
 };
 
 /**
- * The portable-tsconfig filter: {@link (PortableTsconfig:variable).make}
+ * The portable-tsconfig filter: {@link (PortableTsconfig:class).make}
  * narrows a resolved or bare compiler-options object to the allow-listed,
  * machine-independent subset described on {@link (PortableTsconfig:interface)}.
  *
  * @public
  */
-export const PortableTsconfig = { make } as const;
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: deliberate — the class carries only statics and a private constructor, so it contributes no instance members to the merge; the interface (above) remains the sole shape of a PortableTsconfig data value.
+export class PortableTsconfig {
+	private constructor() {}
+
+	/**
+	 * Project a {@link (ResolvedTsconfig:interface)} or a bare
+	 * `CompilerOptions.Type` down to a {@link (PortableTsconfig:interface)}:
+	 * copy only the allow-listed type-semantics options, force
+	 * `composite: false` and `noEmit: true` regardless of what the source
+	 * declared, and stamp `$schema`. Every other key — including every
+	 * unknown passthrough key the source preserved for forward tolerance —
+	 * is dropped; this is an allow-list, not a deny-list, so an option this
+	 * package does not yet classify never leaks onto the portable shape by
+	 * accident.
+	 */
+	static readonly make = make;
+}
