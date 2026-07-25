@@ -23,6 +23,8 @@ export class BlobStoreError extends Schema.TaggedErrorClass<BlobStoreError>()("B
 	key: Schema.optionalKey(Schema.String),
 	/** The HTTP status, when the store answered. */
 	status: Schema.optionalKey(Schema.Number),
+	/** What is wrong, when the reason alone does not say. */
+	detail: Schema.optionalKey(Schema.String),
 	/** The underlying failure, preserved structurally. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
@@ -31,9 +33,11 @@ export class BlobStoreError extends Schema.TaggedErrorClass<BlobStoreError>()("B
 			case "unreachable":
 				return `The blob store could not be reached${this.key === undefined ? "" : ` for "${this.key}"`}`;
 			case "refused":
-				return `The blob store refused "${this.key}" with status ${this.status}`;
+				return `The blob store refused "${this.key}"${this.status === undefined ? "" : ` with status ${this.status}`}${
+					this.detail === undefined ? "" : `: ${this.detail}`
+				}`;
 			default:
-				return "The blob store is misconfigured";
+				return `The blob store is misconfigured${this.detail === undefined ? "" : `: ${this.detail}`}`;
 		}
 	}
 }

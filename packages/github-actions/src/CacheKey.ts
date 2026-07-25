@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { Effect, FileSystem, Option, Schema } from "effect";
+import { GlobSet } from "@effected/glob";
+import { Effect, FileSystem, Option, Path, Schema } from "effect";
 
 /**
  * Raised when a cache key cannot be derived from the filesystem.
@@ -8,18 +9,23 @@ import { Effect, FileSystem, Option, Schema } from "effect";
  */
 export class CacheKeyError extends Schema.TaggedErrorClass<CacheKeyError>()("CacheKeyError", {
 	/**
-	 * `readFailed` — a file that was going to be hashed could not be read. There
-	 * is deliberately only one reason: key *derivation* is pure and total once
-	 * the bytes are in hand, so the only thing that can go wrong is the reading.
+	 * `readFailed` — a file or directory that was going to be hashed could not be
+	 * read. `badPattern` — a glob pattern would not compile. Key *derivation*
+	 * itself is pure and total once the bytes are in hand, so these are the only
+	 * two things that can go wrong.
 	 */
-	reason: Schema.Literals(["readFailed"]),
+	reason: Schema.Literals(["readFailed", "badPattern"]),
 	/** The path being read when it went wrong. */
-	path: Schema.String,
+	path: Schema.optionalKey(Schema.String),
+	/** The pattern that would not compile. */
+	pattern: Schema.optionalKey(Schema.String),
 	/** The underlying failure, preserved structurally. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
-		return `Could not read "${this.path}" while deriving a cache key`;
+		return this.reason === "readFailed"
+			? `Could not read "${this.path}" while deriving a cache key`
+			: `"${this.pattern}" is not a usable glob pattern`;
 	}
 }
 
@@ -173,5 +179,95 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")({
 			accumulator.update(createHash("sha256").update(bytes).digest());
 		}
 		return Option.some(accumulator.digest("hex"));
+	});
+
+	/**
+	 * Every file under `workspace` that the pattern set matches.
+	 *
+	 * @remarks
+	 * Discovery and matching are **two different jobs**, and separating them is
+	 * what makes this testable and correct. The walk is core
+	 * `FileSystem.readDirectory(recursive)`; the matching is `@effected/glob`'s
+	 * full minimatch dialect — the same dialect `@actions/glob` uses, so a workflow
+	 * author's `!**\/node_modules/**` behaves here exactly as it does in every
+	 * other cache step in the same workflow. `node:fs.globSync` would have welded
+	 * the two together behind one non-stubbable call *and* changed the dialect,
+	 * and a dialect divergence surfaces as a silent cache-key difference — the
+	 * worst failure mode a cache key has.
+	 *
+	 * Candidates are matched by their path **relative to the workspace**, which
+	 * is what makes "never hash a file outside the workspace" structural rather
+	 * than a rule someone has to remember. Directories are excluded: a directory
+	 * called `notes.txt` matches `**\/*.txt` and is not a file, and hashing it
+	 * would fail rather than being ignored.
+	 *
+	 * The answer is sorted, so a caller cannot make its key depend on the order
+	 * the filesystem happened to report.
+	 */
+	static readonly matchingFiles = Effect.fn("CacheKey.matchingFiles")(function* (options: {
+		/** The directory to walk. Nothing outside it is ever considered. */
+		readonly workspace: string;
+		/** Include patterns, with a leading `!` marking an exclusion. */
+		readonly patterns: ReadonlyArray<string>;
+	}) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const set = yield* GlobSet.compile(options.patterns).pipe(
+			Effect.mapError((cause) => new CacheKeyError({ reason: "badPattern", pattern: cause.pattern, cause })),
+		);
+		const entries = yield* fs
+			.readDirectory(options.workspace, { recursive: true })
+			.pipe(Effect.mapError((cause) => new CacheKeyError({ reason: "readFailed", path: options.workspace, cause })));
+
+		const matched: Array<string> = [];
+		for (const entry of entries) {
+			// The walk reports platform separators; the dialect is posix. A Windows
+			// runner would otherwise match nothing at all.
+			if (!set.matches(entry.replaceAll("\\", "/"))) {
+				continue;
+			}
+			const absolute = path.join(options.workspace, entry);
+			const info = yield* fs
+				.stat(absolute)
+				.pipe(Effect.mapError((cause) => new CacheKeyError({ reason: "readFailed", path: absolute, cause })));
+			if (info.type === "File") {
+				matched.push(absolute);
+			}
+		}
+		return matched.sort() as ReadonlyArray<string>;
+	});
+
+	/**
+	 * Hash every file under `workspace` that the pattern set matches.
+	 *
+	 * @remarks
+	 * {@link CacheKey.matchingFiles} into {@link CacheKey.hashFiles}, which is
+	 * the pairing every consumer writes by hand — and the pairing whose two
+	 * halves have to agree about ordering and about what counts as a file for the
+	 * digest to match anything anyone else computed.
+	 *
+	 * `Option.none()` when nothing matched, for the same reason `hashFiles` gives:
+	 * "no files" is not a digest, it is the signal that the patterns are wrong,
+	 * and folding it into a key silently caches against a constant.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CacheKey } from "@effected/github-actions";
+	 * import { Effect, Option } from "effect";
+	 *
+	 * const key = Effect.gen(function* () {
+	 *   const hash = yield* CacheKey.hashMatching({
+	 *     workspace: "/home/runner/work/repo/repo",
+	 *     patterns: ["**\/pnpm-lock.yaml", "!**\/node_modules/**"],
+	 *   });
+	 *   return CacheKey.of("Linux", "pnpm-store", Option.getOrElse(hash, () => "empty"));
+	 * });
+	 * ```
+	 */
+	static readonly hashMatching = Effect.fn("CacheKey.hashMatching")(function* (options: {
+		readonly workspace: string;
+		readonly patterns: ReadonlyArray<string>;
+	}) {
+		return yield* CacheKey.hashFiles(yield* CacheKey.matchingFiles(options));
 	});
 }

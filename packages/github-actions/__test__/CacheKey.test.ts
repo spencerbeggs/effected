@@ -1,4 +1,9 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
+import type { Path } from "effect";
 import { Effect, FileSystem, Option } from "effect";
 import { systemError } from "effect/PlatformError";
 import { CacheKey, CacheKeyError } from "../src/index.js";
@@ -145,6 +150,109 @@ describe("CacheKey", () => {
 					assert.instanceOf(error, CacheKeyError);
 					assert.strictEqual(error.reason, "readFailed");
 					assert.strictEqual(error.path, "/w/gone.txt");
+				}),
+			),
+		);
+	});
+
+	describe("hashing what a pattern set matches", () => {
+		// Real filesystem, real walk: the claims here are about what is on disk and
+		// what a recursive read reports, and a stubbed directory listing would only
+		// assert the stub.
+		const workspace = () => {
+			const root = mkdtempSync(join(tmpdir(), "effected-cachekey-"));
+			mkdirSync(join(root, "packages", "a"), { recursive: true });
+			mkdirSync(join(root, "node_modules", "dep"), { recursive: true });
+			writeFileSync(join(root, "pnpm-lock.yaml"), "lock\n");
+			writeFileSync(join(root, "packages", "a", "pnpm-lock.yaml"), "inner\n");
+			writeFileSync(join(root, "node_modules", "dep", "pnpm-lock.yaml"), "vendored\n");
+			writeFileSync(join(root, "readme.md"), "docs\n");
+			return root;
+		};
+
+		const walking = <A, E>(use: (root: string) => Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>) => {
+			const root = workspace();
+			return use(root).pipe(
+				Effect.provide(NodeServices.layer),
+				Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+			);
+		};
+
+		it.effect("matches relative to the workspace, and honours an exclusion", () =>
+			walking((root) =>
+				Effect.gen(function* () {
+					const matched = yield* CacheKey.matchingFiles({
+						workspace: root,
+						patterns: ["**/pnpm-lock.yaml", "!**/node_modules/**"],
+					});
+					// Matching against the RELATIVE path is what makes "never reach outside
+					// the workspace" structural. Matching absolute paths would also make
+					// every pattern depend on where the runner happened to check out.
+					assert.deepStrictEqual(
+						matched.map((file) => file.slice(root.length + 1)),
+						["packages/a/pnpm-lock.yaml", "pnpm-lock.yaml"],
+					);
+				}),
+			),
+		);
+
+		it.effect("excludes a directory whose name matches the pattern", () =>
+			walking((root) =>
+				Effect.gen(function* () {
+					// A directory called `notes.txt` matches `**\/*.txt` and is not a file.
+					// Without the check it reaches `hashFiles`, which fails on the read —
+					// so this is the difference between a working cache key and a failing
+					// action.
+					mkdirSync(join(root, "notes.txt"));
+					writeFileSync(join(root, "notes.txt", "inner.txt"), "inner\n");
+					const matched = yield* CacheKey.matchingFiles({ workspace: root, patterns: ["*.txt", "**/*.txt"] });
+					assert.deepStrictEqual(
+						matched.map((file) => file.slice(root.length + 1)),
+						["notes.txt/inner.txt"],
+					);
+				}),
+			),
+		);
+
+		it.effect("is exactly hashFiles over what it matched", () =>
+			walking((root) =>
+				Effect.gen(function* () {
+					const matched = yield* CacheKey.matchingFiles({ workspace: root, patterns: ["**/pnpm-lock.yaml"] });
+					assert.deepStrictEqual(
+						yield* CacheKey.hashMatching({ workspace: root, patterns: ["**/pnpm-lock.yaml"] }),
+						yield* CacheKey.hashFiles(matched),
+					);
+				}),
+			),
+		);
+
+		it.effect("reports nothing rather than a digest when the patterns match nothing", () =>
+			walking((root) =>
+				Effect.gen(function* () {
+					assert.isTrue(Option.isNone(yield* CacheKey.hashMatching({ workspace: root, patterns: ["**/*.absent"] })));
+				}),
+			),
+		);
+
+		it.effect("fails typed, naming the pattern, when one will not compile", () =>
+			walking((root) =>
+				Effect.gen(function* () {
+					const hostile = "x".repeat(70_000);
+					const error = yield* Effect.flip(CacheKey.matchingFiles({ workspace: root, patterns: [hostile] }));
+					assert.instanceOf(error, CacheKeyError);
+					assert.strictEqual(error.reason, "badPattern");
+					assert.strictEqual(error.pattern, hostile);
+				}),
+			),
+		);
+
+		it.effect("fails typed, naming the workspace, when it cannot be walked", () =>
+			walking((root) =>
+				Effect.gen(function* () {
+					const absent = join(root, "not-here");
+					const error = yield* Effect.flip(CacheKey.matchingFiles({ workspace: absent, patterns: ["**"] }));
+					assert.strictEqual(error.reason, "readFailed");
+					assert.strictEqual(error.path, absent);
 				}),
 			),
 		);

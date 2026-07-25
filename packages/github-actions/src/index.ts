@@ -1,3 +1,4 @@
+export { ActionCache, ActionCacheError, type ActionCacheShape } from "./ActionCache.js";
 export {
 	ActionEnvironment,
 	ActionEnvironmentError,
@@ -9,8 +10,21 @@ export { ActionInput } from "./ActionInput.js";
 export { ActionLogger, type ActionLoggerShape } from "./ActionLogger.js";
 export { ActionOutputError, ActionOutputs, type ActionOutputsShape } from "./ActionOutputs.js";
 export { ActionState, ActionStateError, type ActionStateShape } from "./ActionState.js";
+export {
+	Artifact,
+	ArtifactError,
+	type ArtifactItem,
+	type ArtifactRef,
+	type ArtifactShape,
+	type DownloadOptions,
+	type DownloadResult,
+	type UploadOptions,
+	type UploadResult,
+} from "./Artifact.js";
 export { BlobEnvelope, BlobEnvelopeError } from "./BlobEnvelope.js";
+export { GitHubCacheBlobStore } from "./BlobStore.githubCache.js";
 export { type Blob, BlobStore, BlobStoreError, type BlobStoreShape, type S3Config } from "./BlobStore.js";
+export { BlobTransferError, type DataBlobTransfer, type FileBlobTransfer } from "./BlobTransfer.js";
 export { CacheKey, CacheKeyError } from "./CacheKey.js";
 export {
 	DetachedProcess,
