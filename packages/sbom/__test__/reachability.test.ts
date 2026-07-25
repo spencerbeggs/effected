@@ -82,6 +82,27 @@ const PURE_MODULES = [
 ];
 
 describe("bundle reachability", () => {
+	it("the walker does not lose imports after a /*-bearing token in prose", () => {
+		// The stripper's own regression test, self-contained rather than relying on
+		// the real sources. Every other assertion here happens to discriminate only
+		// because this package's prose contains `@sigstore/*` in a line comment;
+		// reword those comments and the ordering bug becomes undetectable again,
+		// with the suite still green. This fixture cannot be reworded away.
+		//
+		// The token must sit in a LINE comment. Inside a block comment a `/*` is
+		// swallowed by its own container and cannot open anything, so a
+		// block-comment fixture passes with or without the fix — a fixture that
+		// proves nothing, which is the trap this test exists to avoid.
+		const fixture = [
+			"// Prose naming a scope like @sigstore/* and a glob like src/* here.",
+			'import { Schema } from "effect";',
+			"/** A real doc comment, whose close is the phantom comment's close. */",
+			'import { License } from "@effected/spdx";',
+			"export const x = [Schema, License];",
+		].join("\n");
+		assert.deepStrictEqual([...runtimeSpecifiers(fixture)], ["effect", "@effected/spdx"]);
+	});
+
 	it("the signer DOES reach @sigstore/*", () => {
 		// The control. Without it, every assertion below could pass because the
 		// walker is broken rather than because the edge is absent — the classic
