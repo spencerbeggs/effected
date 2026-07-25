@@ -18,8 +18,20 @@ import { Config, ConfigProvider, Effect, Option, Schema, SchemaIssue } from "eff
  */
 export const inputVariable = (name: string): string => `INPUT_${name.replaceAll(" ", "_").toUpperCase()}`;
 
-const configError = (message: string): Config.ConfigError =>
-	new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue(Option.none(), { message })));
+/**
+ * A validation failure for an input that is present but unusable.
+ *
+ * @remarks
+ * `actual` carries the offending value, and that is load-bearing rather than
+ * decorative: `Config.withDefault` and `Config.option` fall back only for
+ * *missing data*, and their `isMissingDataOnly` check reads an `InvalidValue`
+ * whose `actual` is `None` as missing (`Config.ts:304`). An error built without
+ * it would therefore be **swallowed by a default** — so `dry-run: yes` would
+ * quietly become `false` and the action would perform the mutations the author
+ * meant to rehearse.
+ */
+const configError = (message: string, actual: unknown): Config.ConfigError =>
+	new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue(Option.some(actual), { message })));
 
 /** YAML 1.2 core-schema booleans, which is what the runner documents. */
 const TRUE = new Set(["true", "True", "TRUE"]);
@@ -85,6 +97,7 @@ export class ActionInput {
 					configError(
 						`Input "${name}" does not meet the YAML 1.2 core schema for booleans. ` +
 							"Supported: true | True | TRUE | false | False | FALSE",
+						raw,
 					),
 				);
 			}),
@@ -141,9 +154,9 @@ export class ActionInput {
 						if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
 							return Effect.succeed<ReadonlyArray<string>>(parsed as ReadonlyArray<string>);
 						}
-						return Effect.fail(configError(`Input "${name}" is a JSON array but not an array of strings`));
+						return Effect.fail(configError(`Input "${name}" is a JSON array but not an array of strings`, raw));
 					} catch {
-						return Effect.fail(configError(`Input "${name}" looks like JSON but could not be parsed`));
+						return Effect.fail(configError(`Input "${name}" looks like JSON but could not be parsed`, raw));
 					}
 				}
 				const entries = trimmed
@@ -174,7 +187,7 @@ export class ActionInput {
 					}
 					const split = stripped.indexOf("=");
 					if (split === -1) {
-						return Effect.fail(configError(`Input "${name}" has a line that is not \`key=value\`: "${stripped}"`));
+						return Effect.fail(configError(`Input "${name}" has a line that is not \`key=value\`: "${stripped}"`, raw));
 					}
 					result[stripped.slice(0, split).trim()] = stripped.slice(split + 1).trim();
 				}
@@ -191,10 +204,10 @@ export class ActionInput {
 				try {
 					parsed = JSON.parse(raw);
 				} catch {
-					return Effect.fail(configError(`Input "${name}" is not valid JSON`));
+					return Effect.fail(configError(`Input "${name}" is not valid JSON`, raw));
 				}
 				return Schema.decodeUnknownEffect(schema)(parsed).pipe(
-					Effect.mapError(() => configError(`Input "${name}" did not satisfy its schema`)),
+					Effect.mapError(() => configError(`Input "${name}" did not satisfy its schema`, parsed)),
 				);
 			}),
 		);
