@@ -169,6 +169,12 @@ interface LockfileRecord {
 /** The contribution of an absent or malformed lockfile: nothing, on both counts. */
 const EMPTY_LOCKFILE_RECORD: LockfileRecord = { catalogs: CatalogSet.empty(), importerVersions: {} };
 
+/** A defect naming the unstubbed test-double method — a test-wiring mistake, not a typed failure. */
+const unstubbed = (method: string): Effect.Effect<never> =>
+	Effect.die(
+		new Error(`WorkspaceSnapshots.makeTest: ${method}() was called but not stubbed — pass a \`${method}\` override.`),
+	);
+
 /**
  * Reads workspace state at a git ref with no checkout, and the live worktree.
  *
@@ -404,4 +410,67 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 		options?: WorkspaceSnapshotsOptions,
 	): Layer.Layer<WorkspaceSnapshots, never, Git | WorkspaceRoot | WorkspaceDiscovery | WorkspaceCatalogs> =>
 		Layer.effect(WorkspaceSnapshots, WorkspaceSnapshots.make(options));
+
+	/**
+	 * A test double satisfying the full {@link WorkspaceSnapshotsShape} with no
+	 * git, filesystem, discovery, or catalog assembly.
+	 *
+	 * @remarks
+	 * There are **no honest defaults and no derivations** here: `at(ref)` and
+	 * `worktree()` are two independent reads of two different sources (a git ref
+	 * vs. the live tree), so neither can be honestly derived from the other, and
+	 * a fabricated empty {@link WorkspaceStateSnapshot} on either side of a
+	 * before/after diff reads as every dependency newly added or removed — the
+	 * exact silent-empty failure class this package documents on the live paths.
+	 * Both methods therefore **die** with an instructive defect until stubbed; a
+	 * test-wiring mistake fails loudly as a defect rather than succeeding with a
+	 * lie.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CatalogSet, WorkspaceSnapshots, WorkspaceStateSnapshot } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const empty = WorkspaceStateSnapshot.make({
+	 *   packages: [],
+	 *   catalogs: CatalogSet.empty(),
+	 *   importerVersions: {},
+	 * });
+	 * const double = WorkspaceSnapshots.makeTest({
+	 *   at: () => Effect.succeed(empty),
+	 *   worktree: () => Effect.succeed(empty),
+	 * });
+	 * ```
+	 */
+	static readonly makeTest = (overrides: Partial<WorkspaceSnapshotsShape> = {}): WorkspaceSnapshotsShape => ({
+		at: () => unstubbed("at"),
+		worktree: () => unstubbed("worktree"),
+		...overrides,
+	});
+
+	/**
+	 * The test layer: {@link WorkspaceSnapshots.makeTest} behind `Layer.succeed`,
+	 * so a suite provides only the methods it exercises.
+	 *
+	 * @remarks
+	 * A parameterized layer factory mints a **fresh reference per call**, and
+	 * layers memoize by reference — bind the result to a `const` and reuse it
+	 * rather than calling `layerTest(...)` at each composition site.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CatalogSet, WorkspaceSnapshots, WorkspaceStateSnapshot } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const TestSnapshots = WorkspaceSnapshots.layerTest({
+	 *   worktree: () =>
+	 *     Effect.succeed(
+	 *       WorkspaceStateSnapshot.make({ packages: [], catalogs: CatalogSet.empty(), importerVersions: {} }),
+	 *     ),
+	 * });
+	 * // program.pipe(Effect.provide(TestSnapshots))
+	 * ```
+	 */
+	static readonly layerTest = (overrides: Partial<WorkspaceSnapshotsShape> = {}): Layer.Layer<WorkspaceSnapshots> =>
+		Layer.succeed(WorkspaceSnapshots, WorkspaceSnapshots.makeTest(overrides));
 }

@@ -107,6 +107,12 @@ export interface LockfileReaderOptions {
 	readonly cwd?: string;
 }
 
+/** A defect naming the unstubbed test-double method — a test-wiring mistake, not a typed failure. */
+const unstubbed = (method: string): Effect.Effect<never> =>
+	Effect.die(
+		new Error(`LockfileReader.makeTest: ${method}() was called but not stubbed — pass a \`${method}\` override.`),
+	);
+
 /**
  * Reads and parses the workspace's lockfile.
  *
@@ -252,4 +258,79 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 		never,
 		WorkspaceRoot | PackageManagerDetector | WorkspaceDiscovery | FileSystem.FileSystem | Path.Path
 	> => Layer.effect(LockfileReader, LockfileReader.make(options));
+
+	/**
+	 * A test double satisfying the full {@link LockfileReaderShape} with no
+	 * filesystem, root walk, or package-manager detection.
+	 *
+	 * @remarks
+	 * There is **no honest default lockfile**: an empty one that looks like a
+	 * legitimate answer is indistinguishable from "this workspace resolves
+	 * nothing" — the silent-empty failure class this package documents on the
+	 * live paths — so `read` **dies** with an instructive defect until stubbed.
+	 *
+	 * The one derivation mirrors `WorkspaceDiscovery.makeTest`'s
+	 * derived-from-the-primary rule: when a `read` override is supplied,
+	 * `resolvedVersion` answers as the live service does — the **first** entry
+	 * of `lockfile.packagesNamed(name)` in lockfile order, `Option.none()` on a
+	 * miss — so the two stay consistent by construction. `integrity` is **not**
+	 * derivable: the live method compares the lockfile against the workspace
+	 * manifests discovery enumerates, and the double has no discovery to ask, so
+	 * it dies unless stubbed.
+	 *
+	 * `refresh` defaults to `Effect.void` honestly: the live contract is "drop
+	 * the memoized read so the next call re-reads", and this double memoizes
+	 * nothing — every `read()` call re-invokes the override — so there is
+	 * nothing to drop and the no-op is truthful, the same reasoning as
+	 * `WorkspaceDiscovery.makeTest`'s `refresh`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Lockfile } from "@effected/lockfiles";
+	 * import { LockfileReader } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const double = LockfileReader.makeTest({
+	 *   read: () =>
+	 *     Effect.succeed(
+	 *       Lockfile.make({ format: "pnpm", lockfileVersion: "9.0", packages: [], workspaceDependencies: [] }),
+	 *     ),
+	 * });
+	 * // `resolvedVersion` now answers consistently from that lockfile.
+	 * ```
+	 */
+	static readonly makeTest = (overrides: Partial<LockfileReaderShape> = {}): LockfileReaderShape => {
+		const read = overrides.read;
+		return {
+			read: () => unstubbed("read"),
+			resolvedVersion:
+				read !== undefined
+					? (packageName: string) =>
+							Effect.map(read(), (lockfile) => Option.fromUndefinedOr(lockfile.packagesNamed(packageName)[0]))
+					: () => unstubbed("resolvedVersion"),
+			integrity: () => unstubbed("integrity"),
+			refresh: () => Effect.void,
+			...overrides,
+		};
+	};
+
+	/**
+	 * The test layer: {@link LockfileReader.makeTest} behind `Layer.succeed`, so
+	 * a suite provides only the methods it exercises.
+	 *
+	 * @remarks
+	 * A parameterized layer factory mints a **fresh reference per call**, and
+	 * layers memoize by reference — bind the result to a `const` and reuse it
+	 * rather than calling `layerTest(...)` at each composition site.
+	 *
+	 * @example
+	 * ```ts
+	 * import { LockfileReader } from "@effected/workspaces";
+	 *
+	 * const TestLockfiles = LockfileReader.layerTest();
+	 * // program.pipe(Effect.provide(TestLockfiles)) — dies loudly if touched.
+	 * ```
+	 */
+	static readonly layerTest = (overrides: Partial<LockfileReaderShape> = {}): Layer.Layer<LockfileReader> =>
+		Layer.succeed(LockfileReader, LockfileReader.makeTest(overrides));
 }

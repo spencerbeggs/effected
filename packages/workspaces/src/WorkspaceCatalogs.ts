@@ -406,6 +406,12 @@ const validatePnpmWorkspaceCatalogs = (document: unknown): Effect.Effect<void, C
  */
 export type CatalogAssemblyFailure = CatalogAssemblyError | WorkspaceRootNotFoundError;
 
+/** A defect naming the unstubbed test-double method — a test-wiring mistake, not a typed failure. */
+const unstubbed = (method: string): Effect.Effect<never> =>
+	Effect.die(
+		new Error(`WorkspaceCatalogs.makeTest: ${method}() was called but not stubbed — pass a \`${method}\` override.`),
+	);
+
 /** The single assembly pass's two outputs, memoized together. */
 interface Assembled {
 	readonly catalogs: CatalogSet;
@@ -690,6 +696,77 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options)).pipe(
 			Layer.provide(ConfigDependencyHooks.layerLive),
 		);
+
+	/**
+	 * A test double satisfying the full {@link WorkspaceCatalogsShape} with no
+	 * filesystem, lockfile read, or hook replay.
+	 *
+	 * @remarks
+	 * There is **no honest default catalog set**: an empty `CatalogSet` that
+	 * looks like a legitimate answer is the "every dependency looks newly added"
+	 * failure class the live assembler hard-fails to prevent, so every method
+	 * **dies** with an instructive defect until stubbed — a test-wiring mistake
+	 * fails loudly as a defect rather than succeeding with a lie or failing with
+	 * a dishonest typed error.
+	 *
+	 * The one derivation mirrors `WorkspaceDiscovery.makeTest`'s
+	 * derived-from-the-primary rule: when a `set` override is supplied,
+	 * `resolveSpecifier` answers from that `CatalogSet`'s own
+	 * {@link CatalogSet.resolveSpecifier} — exactly what the live service runs
+	 * over its assembled set — so the two stay consistent by construction.
+	 * `releaseAgeGate` and `importerVersions` are **not** derivable from a
+	 * catalog set (the gate comes from release-age keys and hook contributions,
+	 * the importer index from the lockfile's importer blocks — neither is in a
+	 * `CatalogSet`) and always die unless stubbed.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CatalogSet, WorkspaceCatalogs } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const double = WorkspaceCatalogs.makeTest({
+	 *   set: () => Effect.succeed(CatalogSet.fromCatalogs({ default: { effect: "4.0.0" } })),
+	 * });
+	 * // `resolveSpecifier` now answers consistently from that set.
+	 * ```
+	 */
+	static readonly makeTest = (overrides: Partial<WorkspaceCatalogsShape> = {}): WorkspaceCatalogsShape => {
+		const set = overrides.set;
+		return {
+			set: () => unstubbed("set"),
+			resolveSpecifier:
+				set !== undefined
+					? (dependency: string, specifier: string) =>
+							Effect.map(set(), (catalogs) => catalogs.resolveSpecifier(dependency, specifier))
+					: () => unstubbed("resolveSpecifier"),
+			releaseAgeGate: () => unstubbed("releaseAgeGate"),
+			importerVersions: () => unstubbed("importerVersions"),
+			...overrides,
+		};
+	};
+
+	/**
+	 * The test layer: {@link WorkspaceCatalogs.makeTest} behind `Layer.succeed`,
+	 * so a suite provides only the methods it exercises.
+	 *
+	 * @remarks
+	 * A parameterized layer factory mints a **fresh reference per call**, and
+	 * layers memoize by reference — bind the result to a `const` and reuse it
+	 * rather than calling `layerTest(...)` at each composition site.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CatalogSet, WorkspaceCatalogs } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const TestCatalogs = WorkspaceCatalogs.layerTest({
+	 *   set: () => Effect.succeed(CatalogSet.empty()),
+	 * });
+	 * // program.pipe(Effect.provide(TestCatalogs))
+	 * ```
+	 */
+	static readonly layerTest = (overrides: Partial<WorkspaceCatalogsShape> = {}): Layer.Layer<WorkspaceCatalogs> =>
+		Layer.succeed(WorkspaceCatalogs, WorkspaceCatalogs.makeTest(overrides));
 
 	/**
 	 * The real implementation of `@effected/npm`'s `CatalogResolver` contract —
