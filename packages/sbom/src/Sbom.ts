@@ -55,15 +55,7 @@ export class SbomWriteError extends Schema.TaggedErrorClass<SbomWriteError>()("S
 	}
 }
 
-/**
- * Assemble a CycloneDX 1.6 document.
- *
- * @remarks
- * **Total** — no error channel, because there is nothing here that can fail.
- * Components are sorted by name so two runs over the same inputs produce the
- * same bytes: an SBOM's digest becomes an attestation subject, and a document
- * that reordered itself between runs would change that digest for no reason.
- */
+// Implementation of Sbom.generate; the public contract lives on the static.
 const generate = (input: SbomInput): SbomDocument =>
 	SbomDocument.make({
 		bomFormat: BOM_FORMAT,
@@ -92,24 +84,11 @@ const metadataWithRoot = (input: SbomInput): SbomMetadata =>
 		...(input.metadata?.supplier !== undefined && { supplier: input.metadata.supplier }),
 	});
 
-/**
- * Serialize a document to canonical CycloneDX 1.6 JSON.
- *
- * @remarks
- * **Total.** Absent optional fields are omitted rather than emitted as `null`,
- * and `bomRef` becomes the specification's hyphenated `bom-ref`.
- */
+// Implementation of Sbom.toJson; the public contract lives on the static.
 const toJson = (document: SbomDocument, options?: SbomJsonOptions): string =>
 	JSON.stringify(documentJson(document), null, options?.space ?? 2);
 
-/**
- * Write a document to `path` as canonical JSON.
- *
- * @remarks
- * The one fallible member. It does not create parent directories — a caller
- * that wants one creates it, so the failure mode stays "the path you gave me
- * is not writable" rather than "something was created somewhere".
- */
+// Implementation of Sbom.write; the public contract lives on the static.
 const write = Effect.fn("Sbom.write")(function* (document: SbomDocument, path: string, options?: SbomJsonOptions) {
 	const fs = yield* FileSystem.FileSystem;
 	yield* fs
@@ -130,4 +109,36 @@ const write = Effect.fn("Sbom.write")(function* (document: SbomDocument, path: s
  *
  * @public
  */
-export const Sbom = { generate, toJson, write } as const;
+export class Sbom {
+	private constructor() {}
+
+	/**
+	 * Assemble a CycloneDX 1.6 document.
+	 *
+	 * @remarks
+	 * **Total** — no error channel, because there is nothing here that can fail.
+	 * Components are sorted by name so two runs over the same inputs produce the
+	 * same bytes: an SBOM's digest becomes an attestation subject, and a document
+	 * that reordered itself between runs would change that digest for no reason.
+	 */
+	static readonly generate = generate;
+
+	/**
+	 * Serialize a document to canonical CycloneDX 1.6 JSON.
+	 *
+	 * @remarks
+	 * **Total.** Absent optional fields are omitted rather than emitted as `null`,
+	 * and `bomRef` becomes the specification's hyphenated `bom-ref`.
+	 */
+	static readonly toJson = toJson;
+
+	/**
+	 * Write a document to `path` as canonical JSON.
+	 *
+	 * @remarks
+	 * The one fallible member. It does not create parent directories — a caller
+	 * that wants one creates it, so the failure mode stays "the path you gave me
+	 * is not writable" rather than "something was created somewhere".
+	 */
+	static readonly write = write;
+}

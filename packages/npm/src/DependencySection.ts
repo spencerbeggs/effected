@@ -67,13 +67,18 @@ const FIELD_TO_KIND = Object.fromEntries(
  *
  * @public
  */
-export const DependencySection = {
+export class DependencySection {
+	private constructor() {}
+
 	/** The short-kind literal schema (`prod` … `optional`). */
-	Kind: DependencyKind,
+	static readonly Kind = DependencyKind;
+
 	/** The manifest field-name literal schema (`dependencies` … `optionalDependencies`). */
-	Field: DependencyField,
-	/** The manifest field name a kind is declared under. */
-	fieldOf: (kind: DependencyKind): DependencyField => KIND_TO_FIELD[kind],
-	/** The short kind for a manifest field name. */
-	kindOf: (field: DependencyField): DependencyKind => FIELD_TO_KIND[field],
-} as const;
+	static readonly Field = DependencyField;
+
+	/** The manifest field name a kind is declared under. See {@link DependencySection.Kind}. */
+	static readonly fieldOf = (kind: DependencyKind): DependencyField => KIND_TO_FIELD[kind];
+
+	/** The short kind for a manifest field name. See {@link DependencySection.Field}. */
+	static readonly kindOf = (field: DependencyField): DependencyKind => FIELD_TO_KIND[field];
+}

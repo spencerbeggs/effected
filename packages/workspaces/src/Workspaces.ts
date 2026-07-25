@@ -58,29 +58,9 @@ export type WorkspacesServices =
 	| LockfileReader
 	| WorkspaceCatalogs;
 
-/**
- * Every service that needs only a filesystem: root, package-manager detection,
- * discovery, lockfile reading, catalogs and publishability.
- *
- * @remarks
- * Requires core `FileSystem` and `Path`, which the consumer provides at the
- * edge (`@effect/platform-node`, `@effect/platform-bun`, or a test's
- * `FileSystem.layerNoop`).
- *
- * **Bind the result to a `const`.** This is a parameterized factory and layers
- * memoize by reference, so calling it twice builds everything twice.
- *
- * @example
- * ```ts
- * import { Workspaces } from "@effected/workspaces";
- * import { Layer } from "effect";
- *
- * const WorkspacesLayer = Workspaces.layer();
- * const AppLayer = Layer.provide(WorkspacesLayer, PlatformLayer);
- * ```
- *
- * @public
- */
+// Shared composition helper for Workspaces.layer and
+// Workspaces.layerWithConfigDependencies; the public contracts live on those
+// statics.
 const compose = (
 	options: WorkspacesOptions | undefined,
 	catalogsFactory: (
@@ -109,25 +89,13 @@ const compose = (
 	return Layer.mergeAll(roots, detector, discovery, lockfiles, catalogs);
 };
 
+// Implementation of Workspaces.layer; the public contract lives on the static.
 const layer = (
 	options?: WorkspacesOptions,
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
 	compose(options, WorkspaceCatalogs.layer);
 
-/**
- * The git-free composite plus {@link ChangeDetector} and
- * {@link WorkspaceSnapshots}, over `@effected/git`'s `Git` service.
- *
- * @remarks
- * The extra requirement is core's `ChildProcessSpawner` (behind `Git`), which
- * is why it is a separate layer rather than a flag: a consumer that never
- * detects changes or reads at a ref should not have to be able to spawn a
- * subprocess. The consumer provides `ChildProcessSpawner` once at the edge
- * (`@effect/platform-node`'s `NodeServices.layer`); a test provides
- * `Layer.succeed(Git, …)` and needs no repository on disk.
- *
- * @public
- */
+// Implementation of Workspaces.layerWithGit; the public contract lives on the static.
 const layerWithGit = (
 	options?: WorkspacesOptions,
 ): Layer.Layer<
@@ -145,120 +113,23 @@ const layerWithGit = (
 	);
 };
 
-/**
- * The two `@effected/npm` resolver contracts, implemented for real.
- *
- * @remarks
- * Provide this alongside `@effected/package-json`'s `Package.resolve` and a
- * manifest's `catalog:` and `workspace:` specifiers resolve against the actual
- * workspace instead of the no-op layers' `Option.none()`.
- *
- * @example
- * ```ts
- * import { Package } from "@effected/package-json";
- * import { Workspaces } from "@effected/workspaces";
- * import { Layer } from "effect";
- *
- * const WorkspacesLayer = Workspaces.layer();
- * const Resolvers = Workspaces.resolvers.pipe(Layer.provide(WorkspacesLayer));
- * ```
- *
- * @public
- */
+// Implementation of Workspaces.resolvers; the public contract lives on the static.
 const resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver, never, WorkspaceCatalogs | WorkspaceDiscovery> =
 	Layer.mergeAll(WorkspaceCatalogs.catalogResolver, WorkspaceDiscovery.workspaceResolver);
 
-/**
- * The git-free composite, but with catalog assembly that **replays config
- * dependency `pnpmfile.cjs` hooks** — {@link WorkspaceCatalogs.layerWithConfigDependencies}
- * in place of the default no-op catalogs layer.
- *
- * @remarks
- * Identical requirement set to {@link Workspaces.layer}; the only difference is
- * that config-dependency code is executed in process. Opt in deliberately — the
- * default {@link Workspaces.layer} never executes config-dependency code.
- *
- * **Bind the result to a `const`.**
- *
- * @public
- */
+// Implementation of Workspaces.layerWithConfigDependencies; the public contract lives on the static.
 const layerWithConfigDependencies = (
 	options?: WorkspacesOptions,
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
 	compose(options, WorkspaceCatalogs.layerWithConfigDependencies);
 
-/**
- * The one-call resolver factory: {@link Workspaces.resolvers} pre-wired over
- * {@link Workspaces.layerWithConfigDependencies}, so the two `@effected/npm`
- * contracts (`CatalogResolver`, `WorkspaceResolver`) need only a platform
- * (`FileSystem` + `Path`) from the consumer.
- *
- * @remarks
- * This is deliberately a **parameterized layer function, and the fresh layer
- * per call is the feature**: layers memoize by reference, so each call mints
- * an unmemoized layer whose root discovery re-runs — including a per-call
- * `process.cwd()` read when `options.cwd` is omitted. A build tool that
- * changes directory between manifests gets a correct re-discovery each time
- * precisely because nothing is shared across calls. When you *want* sharing,
- * bind one call's result to a `const` and provide that; the memoization rule
- * is unchanged, this factory just refuses to hide it.
- *
- * Catalog assembly replays config-dependency `pnpmfile` hooks (the
- * `layerWithConfigDependencies` path) — the semantics a real pnpm install
- * has. Compose {@link Workspaces.resolvers} with {@link Workspaces.layer}
- * yourself if config-dependency code must not run in process.
- *
- * @example
- * ```ts
- * import { Workspaces } from "@effected/workspaces";
- * import { Effect } from "effect";
- *
- * const program = doSomethingWithResolvers.pipe(
- *   Effect.provide(Workspaces.resolverLayer()),
- * );
- * ```
- *
- * @public
- */
+// Implementation of Workspaces.resolverLayer; the public contract lives on the static.
 const resolverLayer = (
 	options?: WorkspacesOptions,
 ): Layer.Layer<CatalogResolver | WorkspaceResolver, never, FileSystem.FileSystem | Path.Path> =>
 	resolvers.pipe(Layer.provide(layerWithConfigDependencies(options)));
 
-/**
- * Resolve every `catalog:` and `workspace:` specifier in one `Manifest`
- * against the real workspace, in one call — the 90% path. Decode stays at the
- * consumer's edge: build the `Manifest` with `Manifest.decode` (from
- * `@effected/npm`), hand it here, and get a new `Manifest` back with concrete
- * ranges; `toRecord()` returns to the wire shape.
- *
- * @remarks
- * Composes `manifest.resolve()` with a fresh {@link Workspaces.resolverLayer}
- * per call, so the workspace root is re-discovered from `options.cwd` (or the
- * current `process.cwd()`) on every invocation. Consumers processing many
- * manifests should check `manifest.needsResolution` first and skip the call
- * entirely when no dependency field carries a `catalog:`/`workspace:`
- * specifier — that predicate is pure and avoids catalog assembly altogether.
- *
- * A specifier the workspace cannot answer fails typed as
- * `UnresolvedDependencyError`; assembly and mechanism failures surface as
- * `CatalogAssemblyError` / `DependencyResolutionError`.
- *
- * @example
- * ```ts
- * import { Manifest } from "@effected/npm";
- * import { Workspaces } from "@effected/workspaces";
- * import { Effect } from "effect";
- *
- * const program = Effect.gen(function* () {
- *   const manifest = yield* Manifest.decode({ dependencies: { effect: "catalog:" } });
- *   const resolved = manifest.needsResolution ? yield* Workspaces.resolveManifest(manifest) : manifest;
- *   return resolved.toRecord();
- * });
- * ```
- *
- * @public
- */
+// Implementation of Workspaces.resolveManifest; the public contract lives on the static.
 const resolveManifest: (
 	manifest: Manifest,
 	options?: WorkspacesOptions,
@@ -270,58 +141,7 @@ const resolveManifest: (
 	return yield* manifest.resolve().pipe(Effect.provide(resolverLayer(options)));
 });
 
-/**
- * This package's implementation of `@effected/commands`' `LocalExec` contract:
- * how to run a project-local binary here.
- *
- * @remarks
- * **An inverted contract, the `@effected/npm` `CatalogResolver` precedent.**
- * Tool discovery needs package-manager detection and workspace-root
- * resolution, both of which live here — but a direct edge from
- * `@effected/commands` to this package would make that boundary-tier package
- * integrated, and through the planned `npm` → `commands` edge would drag
- * `npm`, `lockfiles` (pure!) and `package-json` up a tier with it. So
- * `commands` declares the narrow contract and we ship the layer.
- *
- * **The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` is the
- * one home of the four managers' `exec`/`dlx` prefixes; this layer detects
- * *which* manager owns the directory and asks `commands` what that manager's
- * argv looks like. Neither package reimplements the other's half.
- *
- * **`None` is success.** Outside any workspace — and inside one whose manager
- * cannot be identified — the answer is `Option.none()`: "there is no
- * project-local way to run tools here" is an ordinary fact, not an
- * exceptional one, and a consumer running in a bare directory should not have
- * to catch an error to learn it. The contract's typed `LocalExecError` is
- * reserved for **mechanism** failure — a manifest that exists but cannot be
- * read or parsed, which means something is broken rather than absent. That is
- * npm's resolver convention, adopted verbatim.
- *
- * `directory` is the resolved **workspace root**, not the caller's cwd: a
- * project-local launcher has to run where the workspace is.
- *
- * A consumer with no monorepo never needs this layer, and therefore never
- * installs this package — `LocalExec.layerNone` and `LocalExec.layerFor` are
- * one-liners in `@effected/commands`.
- *
- * **Bind the result to a `const`** — a parameterized layer factory mints a
- * fresh reference per call and layers memoize by reference.
- *
- * @example
- * ```ts
- * import { ToolDiscovery } from "@effected/commands";
- * import { Workspaces } from "@effected/workspaces";
- * import { Layer } from "effect";
- *
- * const AppLayer = ToolDiscovery.layer.pipe(
- *   Layer.provide(Workspaces.localExecLayer()),
- *   Layer.provide(Workspaces.layer()),
- *   Layer.provide(NodeServices.layer),
- * );
- * ```
- *
- * @public
- */
+// Implementation of Workspaces.localExecLayer; the public contract lives on the static.
 const localExecLayer = (options?: {
 	readonly cwd?: string;
 }): Layer.Layer<LocalExec, never, PackageManagerDetector | WorkspaceRoot> =>
@@ -375,12 +195,202 @@ const localExecLayer = (options?: {
  *
  * @public
  */
-export const Workspaces = {
-	layer,
-	layerWithConfigDependencies,
-	layerWithGit,
-	localExecLayer,
-	resolveManifest,
-	resolverLayer,
-	resolvers,
-} as const;
+export class Workspaces {
+	private constructor() {}
+
+	/**
+	 * Every service that needs only a filesystem: root, package-manager
+	 * detection, discovery, lockfile reading, catalogs and publishability.
+	 *
+	 * @remarks
+	 * Requires core `FileSystem` and `Path`, which the consumer provides at the
+	 * edge (`@effect/platform-node`, `@effect/platform-bun`, or a test's
+	 * `FileSystem.layerNoop`).
+	 *
+	 * **Bind the result to a `const`.** This is a parameterized factory and
+	 * layers memoize by reference, so calling it twice builds everything twice.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Workspaces } from "@effected/workspaces";
+	 * import { Layer } from "effect";
+	 *
+	 * const WorkspacesLayer = Workspaces.layer();
+	 * const AppLayer = Layer.provide(WorkspacesLayer, PlatformLayer);
+	 * ```
+	 */
+	static readonly layer = layer;
+
+	/**
+	 * The git-free composite, but with catalog assembly that **replays config
+	 * dependency `pnpmfile.cjs` hooks** —
+	 * {@link WorkspaceCatalogs.layerWithConfigDependencies} in place of the
+	 * default no-op catalogs layer.
+	 *
+	 * @remarks
+	 * Identical requirement set to {@link Workspaces.layer}; the only
+	 * difference is that config-dependency code is executed in process. Opt in
+	 * deliberately — the default {@link Workspaces.layer} never executes
+	 * config-dependency code.
+	 *
+	 * **Bind the result to a `const`.**
+	 */
+	static readonly layerWithConfigDependencies = layerWithConfigDependencies;
+
+	/**
+	 * The git-free composite plus {@link ChangeDetector} and
+	 * {@link WorkspaceSnapshots}, over `@effected/git`'s `Git` service.
+	 *
+	 * @remarks
+	 * The extra requirement is core's `ChildProcessSpawner` (behind `Git`),
+	 * which is why it is a separate layer rather than a flag: a consumer that
+	 * never detects changes or reads at a ref should not have to be able to
+	 * spawn a subprocess. The consumer provides `ChildProcessSpawner` once at
+	 * the edge (`@effect/platform-node`'s `NodeServices.layer`); a test
+	 * provides `Layer.succeed(Git, …)` and needs no repository on disk.
+	 */
+	static readonly layerWithGit = layerWithGit;
+
+	/**
+	 * This package's implementation of `@effected/commands`' `LocalExec`
+	 * contract: how to run a project-local binary here.
+	 *
+	 * @remarks
+	 * **An inverted contract, the `@effected/npm` `CatalogResolver`
+	 * precedent.** Tool discovery needs package-manager detection and
+	 * workspace-root resolution, both of which live here — but a direct edge
+	 * from `@effected/commands` to this package would make that boundary-tier
+	 * package integrated, and through the planned `npm` → `commands` edge
+	 * would drag `npm`, `lockfiles` (pure!) and `package-json` up a tier with
+	 * it. So `commands` declares the narrow contract and we ship the layer.
+	 *
+	 * **The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` is
+	 * the one home of the four managers' `exec`/`dlx` prefixes; this layer
+	 * detects *which* manager owns the directory and asks `commands` what that
+	 * manager's argv looks like. Neither package reimplements the other's
+	 * half.
+	 *
+	 * **`None` is success.** Outside any workspace — and inside one whose
+	 * manager cannot be identified — the answer is `Option.none()`: "there is
+	 * no project-local way to run tools here" is an ordinary fact, not an
+	 * exceptional one, and a consumer running in a bare directory should not
+	 * have to catch an error to learn it. The contract's typed
+	 * `LocalExecError` is reserved for **mechanism** failure — a manifest that
+	 * exists but cannot be read or parsed, which means something is broken
+	 * rather than absent. That is npm's resolver convention, adopted
+	 * verbatim.
+	 *
+	 * `directory` is the resolved **workspace root**, not the caller's cwd: a
+	 * project-local launcher has to run where the workspace is.
+	 *
+	 * A consumer with no monorepo never needs this layer, and therefore never
+	 * installs this package — `LocalExec.layerNone` and `LocalExec.layerFor`
+	 * are one-liners in `@effected/commands`.
+	 *
+	 * **Bind the result to a `const`** — a parameterized layer factory mints a
+	 * fresh reference per call and layers memoize by reference.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ToolDiscovery } from "@effected/commands";
+	 * import { Workspaces } from "@effected/workspaces";
+	 * import { Layer } from "effect";
+	 *
+	 * const AppLayer = ToolDiscovery.layer.pipe(
+	 *   Layer.provide(Workspaces.localExecLayer()),
+	 *   Layer.provide(Workspaces.layer()),
+	 *   Layer.provide(NodeServices.layer),
+	 * );
+	 * ```
+	 */
+	static readonly localExecLayer = localExecLayer;
+
+	/**
+	 * Resolve every `catalog:` and `workspace:` specifier in one `Manifest`
+	 * against the real workspace, in one call — the 90% path. Decode stays at
+	 * the consumer's edge: build the `Manifest` with `Manifest.decode` (from
+	 * `@effected/npm`), hand it here, and get a new `Manifest` back with
+	 * concrete ranges; `toRecord()` returns to the wire shape.
+	 *
+	 * @remarks
+	 * Composes `manifest.resolve()` with a fresh {@link Workspaces.resolverLayer}
+	 * per call, so the workspace root is re-discovered from `options.cwd` (or
+	 * the current `process.cwd()`) on every invocation. Consumers processing
+	 * many manifests should check `manifest.needsResolution` first and skip
+	 * the call entirely when no dependency field carries a
+	 * `catalog:`/`workspace:` specifier — that predicate is pure and avoids
+	 * catalog assembly altogether.
+	 *
+	 * A specifier the workspace cannot answer fails typed as
+	 * `UnresolvedDependencyError`; assembly and mechanism failures surface as
+	 * `CatalogAssemblyError` / `DependencyResolutionError`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Manifest } from "@effected/npm";
+	 * import { Workspaces } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const manifest = yield* Manifest.decode({ dependencies: { effect: "catalog:" } });
+	 *   const resolved = manifest.needsResolution ? yield* Workspaces.resolveManifest(manifest) : manifest;
+	 *   return resolved.toRecord();
+	 * });
+	 * ```
+	 */
+	static readonly resolveManifest = resolveManifest;
+
+	/**
+	 * The one-call resolver factory: {@link Workspaces.resolvers} pre-wired
+	 * over {@link Workspaces.layerWithConfigDependencies}, so the two
+	 * `@effected/npm` contracts (`CatalogResolver`, `WorkspaceResolver`) need
+	 * only a platform (`FileSystem` + `Path`) from the consumer.
+	 *
+	 * @remarks
+	 * This is deliberately a **parameterized layer function, and the fresh
+	 * layer per call is the feature**: layers memoize by reference, so each
+	 * call mints an unmemoized layer whose root discovery re-runs — including
+	 * a per-call `process.cwd()` read when `options.cwd` is omitted. A build
+	 * tool that changes directory between manifests gets a correct
+	 * re-discovery each time precisely because nothing is shared across
+	 * calls. When you *want* sharing, bind one call's result to a `const` and
+	 * provide that; the memoization rule is unchanged, this factory just
+	 * refuses to hide it.
+	 *
+	 * Catalog assembly replays config-dependency `pnpmfile` hooks (the
+	 * `layerWithConfigDependencies` path) — the semantics a real pnpm install
+	 * has. Compose {@link Workspaces.resolvers} with {@link Workspaces.layer}
+	 * yourself if config-dependency code must not run in process.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Workspaces } from "@effected/workspaces";
+	 * import { Effect } from "effect";
+	 *
+	 * const program = doSomethingWithResolvers.pipe(
+	 *   Effect.provide(Workspaces.resolverLayer()),
+	 * );
+	 * ```
+	 */
+	static readonly resolverLayer = resolverLayer;
+
+	/**
+	 * The two `@effected/npm` resolver contracts, implemented for real.
+	 *
+	 * @remarks
+	 * Provide this alongside `@effected/package-json`'s `Package.resolve` and
+	 * a manifest's `catalog:` and `workspace:` specifiers resolve against the
+	 * actual workspace instead of the no-op layers' `Option.none()`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Package } from "@effected/package-json";
+	 * import { Workspaces } from "@effected/workspaces";
+	 * import { Layer } from "effect";
+	 *
+	 * const WorkspacesLayer = Workspaces.layer();
+	 * const Resolvers = Workspaces.resolvers.pipe(Layer.provide(WorkspacesLayer));
+	 * ```
+	 */
+	static readonly resolvers = resolvers;
+}

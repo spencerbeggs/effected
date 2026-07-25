@@ -63,6 +63,13 @@ sharper teeth.
 - `SbomMetadataSource.ts` — manifest → CycloneDX derivation: `npmPurl`,
   `componentFor`, `rootComponent`, `externalReferences`, `fromPackage`,
   `formatCopyright`, `merge`.
+
+`Sbom` and `SbomMetadataSource` are static classes with a private constructor,
+not `as const` namespace objects — an `as const` object's member types are
+inferred in the built `.d.ts` and lose their TSDoc; `static readonly` keeps
+it. Call syntax is unaffected (`Sbom.generate(...)`), and the conversion
+stayed within each file — no new imports, so the reachability wall holds.
+
 - `NtiaReport.ts` — the seven minimum elements as a report.
 - `InTotoStatement.ts` — `Sha256Digest`, `InTotoSubject`, `InTotoStatement`.
 - `SlsaProvenance.ts` — the typed SLSA Provenance v1 predicate.

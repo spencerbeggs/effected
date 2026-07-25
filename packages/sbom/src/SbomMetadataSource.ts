@@ -45,14 +45,7 @@ const purlSegments = (name: string): string => {
 	return `${encodeURIComponent(name.slice(0, separator))}/${encodeURIComponent(name.slice(separator + 1))}`;
 };
 
-/**
- * The canonical npm package URL for a name and optional version.
- *
- * @remarks
- * The NTIA's "unique identifier" element, and the identifier an in-toto subject
- * names. Exposed because a caller assembling its own components — or a
- * statement subject — needs the same encoding this module applies.
- */
+// Implementation of SbomMetadataSource.npmPurl; the public contract lives on the static.
 const npmPurl = (name: string, version?: string): string => {
 	const path = purlSegments(name);
 	return version === undefined ? `pkg:npm/${path}` : `pkg:npm/${path}@${version}`;
@@ -134,19 +127,7 @@ const supplierUrl = (options: SbomMetadataOptions | undefined): string | undefin
 const documentationUrl = (pkg: Package, options: SbomMetadataOptions | undefined): string | undefined =>
 	options?.documentationUrl ?? pkg.homepage;
 
-/**
- * The manifest's outward links, as CycloneDX external references.
- *
- * @remarks
- * Four of the specification's 43 types, one per manifest field: `vcs` ←
- * `repository`, `issue-tracker` ← `bugs`, `documentation` ← `homepage`,
- * `website` ← the supplier's first URL.
- *
- * A `repository` value the package-json model cannot interpret produces **no**
- * reference rather than a passed-through string: CycloneDX's
- * `externalReference.url` is a URL, and emitting `owner/name` there is a
- * document that validates and misleads.
- */
+// Implementation of SbomMetadataSource.externalReferences; the public contract lives on the static.
 const externalReferences = (pkg: Package, options?: SbomMetadataOptions): ReadonlyArray<ExternalReference> => {
 	const references: Array<ExternalReference> = [];
 
@@ -171,15 +152,7 @@ const externalReferences = (pkg: Package, options?: SbomMetadataOptions): Readon
 	return references;
 };
 
-/**
- * A component entry for one resolved dependency.
- *
- * @remarks
- * The caller assembles the component list — the kit has no second merge rule
- * for sibling packages released in the same wave, because which versions are
- * in flight is release planning and `@effected/workspaces` already knows it.
- * This is the mapping that would otherwise be re-derived at every call site.
- */
+// Implementation of SbomMetadataSource.componentFor; the public contract lives on the static.
 const componentFor = (input: ComponentInput): Component =>
 	Component.make({
 		type: input.type ?? "library",
@@ -191,13 +164,7 @@ const componentFor = (input: ComponentInput): Component =>
 		...(input.license !== undefined && { licenses: [input.license] }),
 	});
 
-/**
- * The root component the BOM is about, derived from its own manifest.
- *
- * @remarks
- * `publisher` resolves explicit → supplier name → the manifest's author, which
- * is what lets NTIA element 6 be satisfied from a manifest alone.
- */
+// Implementation of SbomMetadataSource.rootComponent; the public contract lives on the static.
 const rootComponent = (pkg: Package, options?: SbomMetadataOptions): Component => {
 	const version = pkg.version.toString();
 	const references = externalReferences(pkg, options);
@@ -220,19 +187,7 @@ const rootComponent = (pkg: Package, options?: SbomMetadataOptions): Component =
 	});
 };
 
-/**
- * Document-level metadata for a manifest.
- *
- * @remarks
- * The root component is **not** on the returned value: `Sbom.generate` threads
- * its `root` argument onto the metadata itself, so setting it here would only
- * be overwritten. Build the root with {@link SbomMetadataSource.rootComponent}
- * and pass both.
- *
- * When the caller supplies a supplier with no contacts, the manifest's
- * maintainers fill them — the one derivation that crosses from manifest
- * vocabulary into supplier vocabulary, and only where the caller left a hole.
- */
+// Implementation of SbomMetadataSource.fromPackage; the public contract lives on the static.
 const fromPackage = (pkg: Package, options?: SbomMetadataOptions): SbomMetadata => {
 	const supplier = options?.supplier;
 	const contacts = supplier?.contact ?? authorsOf(pkg);
@@ -252,27 +207,13 @@ const fromPackage = (pkg: Package, options?: SbomMetadataOptions): SbomMetadata 
 	});
 };
 
-/**
- * A copyright statement for a holder and a year, or a span of years.
- *
- * @remarks
- * The year is an **argument**. The predecessor defaulted it to
- * `new Date().getFullYear()`, which made its output untestable and its purity a
- * claim rather than a property; the ambient read belongs at the caller's edge.
- */
+// Implementation of SbomMetadataSource.formatCopyright; the public contract lives on the static.
 const formatCopyright = (holder: string, years: CopyrightYears): string =>
 	years.startYear === undefined || years.startYear === years.year
 		? `Copyright ${years.year} ${holder}`
 		: `Copyright ${years.startYear}-${years.year} ${holder}`;
 
-/**
- * Field-wise metadata merge: every field the override carries wins.
- *
- * @remarks
- * A helper, not a policy. Which side is the override — a config file over
- * inferred values, or the reverse — is the consumer's precedence rule, and a
- * library that decided it would be encoding one repository's release policy.
- */
+// Implementation of SbomMetadataSource.merge; the public contract lives on the static.
 const merge = (base: SbomMetadata, override: SbomMetadata): SbomMetadata => {
 	const timestamp = override.timestamp ?? base.timestamp;
 	const authors = override.authors ?? base.authors;
@@ -300,12 +241,90 @@ const merge = (base: SbomMetadata, override: SbomMetadata): SbomMetadata => {
  *
  * @public
  */
-export const SbomMetadataSource = {
-	npmPurl,
-	componentFor,
-	rootComponent,
-	externalReferences,
-	fromPackage,
-	formatCopyright,
-	merge,
-} as const;
+export class SbomMetadataSource {
+	private constructor() {}
+
+	/**
+	 * The canonical npm package URL for a name and optional version.
+	 *
+	 * @remarks
+	 * The NTIA's "unique identifier" element, and the identifier an in-toto
+	 * subject names. Exposed because a caller assembling its own components —
+	 * or a statement subject — needs the same encoding this module applies.
+	 */
+	static readonly npmPurl = npmPurl;
+
+	/**
+	 * A component entry for one resolved dependency.
+	 *
+	 * @remarks
+	 * The caller assembles the component list — the kit has no second merge
+	 * rule for sibling packages released in the same wave, because which
+	 * versions are in flight is release planning and `@effected/workspaces`
+	 * already knows it. This is the mapping that would otherwise be
+	 * re-derived at every call site.
+	 */
+	static readonly componentFor = componentFor;
+
+	/**
+	 * The root component the BOM is about, derived from its own manifest.
+	 *
+	 * @remarks
+	 * `publisher` resolves explicit → supplier name → the manifest's author,
+	 * which is what lets NTIA element 6 be satisfied from a manifest alone.
+	 */
+	static readonly rootComponent = rootComponent;
+
+	/**
+	 * The manifest's outward links, as CycloneDX external references.
+	 *
+	 * @remarks
+	 * Four of the specification's 43 types, one per manifest field: `vcs` ←
+	 * `repository`, `issue-tracker` ← `bugs`, `documentation` ← `homepage`,
+	 * `website` ← the supplier's first URL.
+	 *
+	 * A `repository` value the package-json model cannot interpret produces
+	 * **no** reference rather than a passed-through string: CycloneDX's
+	 * `externalReference.url` is a URL, and emitting `owner/name` there is a
+	 * document that validates and misleads.
+	 */
+	static readonly externalReferences = externalReferences;
+
+	/**
+	 * Document-level metadata for a manifest.
+	 *
+	 * @remarks
+	 * The root component is **not** on the returned value: `Sbom.generate`
+	 * threads its `root` argument onto the metadata itself, so setting it
+	 * here would only be overwritten. Build the root with
+	 * {@link SbomMetadataSource.rootComponent} and pass both.
+	 *
+	 * When the caller supplies a supplier with no contacts, the manifest's
+	 * maintainers fill them — the one derivation that crosses from manifest
+	 * vocabulary into supplier vocabulary, and only where the caller left a
+	 * hole.
+	 */
+	static readonly fromPackage = fromPackage;
+
+	/**
+	 * A copyright statement for a holder and a year, or a span of years.
+	 *
+	 * @remarks
+	 * The year is an **argument**. The predecessor defaulted it to
+	 * `new Date().getFullYear()`, which made its output untestable and its
+	 * purity a claim rather than a property; the ambient read belongs at the
+	 * caller's edge.
+	 */
+	static readonly formatCopyright = formatCopyright;
+
+	/**
+	 * Field-wise metadata merge: every field the override carries wins.
+	 *
+	 * @remarks
+	 * A helper, not a policy. Which side is the override — a config file over
+	 * inferred values, or the reverse — is the consumer's precedence rule,
+	 * and a library that decided it would be encoding one repository's
+	 * release policy.
+	 */
+	static readonly merge = merge;
+}
