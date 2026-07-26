@@ -18,12 +18,18 @@ For the general Effect v4 service/layer rules this package follows —
 see `effect-v4-services-layers`; this skill carries only the
 `github-actions`-specific instance of each.
 
-**Program-level config and input reads go through `ActionInput`, never a
-bare `Config.*` call.** The runner's `INPUT_` derivation only exists inside
-`ActionInput`'s accessors — a bare `Config.string(name)` reads a variable
-name the runner never publishes, and a test that stubs its own
-`ConfigProvider` will not catch it. See `actions-inputs-outputs` for the
-mangling rule and the false-green it produced in production.
+**Program-level config and input reads go through `ActionInput` — the
+blessed typed surface.** And since the 2026-07-25 ruling, the runtime also
+defends the bare path: `ActionRuntime.layer` installs
+`ActionInput.layerDefault`, so under `Action.run` a bare `Config.string(name)`
+resolves a flat name through the runner's `INPUT_` derivation first and the
+ambient lookup unchanged second — the false-green class (every bare read
+falling back to its `withDefault`) is dead at the root, not merely documented.
+The accessors stay preferred because they carry the parsing and the typed
+`ConfigError`s; the provider only stops a side-step from silently missing.
+A suite that **bypasses the runtime** and stubs its own `ConfigProvider`
+still resolves plain names only — see `actions-inputs-outputs` for the
+mangling rule and `testing-actions` for that trap.
 
 ## `Action.run`
 
@@ -34,32 +40,32 @@ await Action.run(program, { layer: ActionCache.layer });
 ```
 
 `Action.run<E, R = never>(program: Effect.Effect<void, E, ActionServices | R>, options: ActionRunOptions<R> = {})`
-(`packages/github-actions/src/Action.ts:189-199`). It composes the runtime,
+(`packages/github-actions/src/Action.ts:191-201`). It composes the runtime,
 runs `program` to `Effect.exit`, and:
 
 - **Never rejects.** The returned `Promise<void>` always resolves. A rejecting
   entry point would produce a failed step *and* an unhandled rejection, and
-  only the first is legible in a workflow log (`Action.ts:148-158`).
+  only the first is legible in a workflow log (`Action.ts:150-160`).
 - **Sets `process.exitCode = 1` on any failure** — typed or a defect — which
   is the one piece `ActionOutputs.setFailed` deliberately leaves alone, so an
   action that reports a failure and then recovers is not doomed by a side
-  effect it cannot undo (`Action.ts:143-146`, confirmed by
+  effect it cannot undo (`Action.ts:145-148`, confirmed by
   `ActionOutputs.ts` never touching `exitCode`).
 - **Does not wrap `program` in a log buffer.** The predecessor did, and an
   unhandled defect inside the buffer swallowed the whole transcript — the run
-  failed and printed nothing (`Action.ts:150-154`). `ActionLogger.withBuffer`
+  failed and printed nothing (`Action.ts:152-156`). `ActionLogger.withBuffer`
   is opt-in and flushes on every exit path including a defect.
 - **Renders one `::error::` line** — `Action failed: [Tag]: message` via
   `describeCause` — and puts the full `Cause.pretty` render behind `::debug::`,
   which the runner shows only when step debugging is on
-  (`Action.ts:159-166,204-217`). The predecessor spliced a JS stack into the
+  (`Action.ts:161-168,206-219`). The predecessor spliced a JS stack into the
   *visible* error, which in a bundled action points at one line of
   `dist/main.js`.
 - **Has a last-resort catch** around `Effect.runPromise` itself: if rendering
-  the failure fails, `process.exitCode = 1` still gets set (`Action.ts:221-226`).
+  the failure fails, `process.exitCode = 1` still gets set (`Action.ts:223-228`).
   A green step for a crashed action is the worst outcome available here.
 
-`Action.test.ts` (`packages/github-actions/__test__/Action.test.ts:79-258`) is
+`Action.test.ts` (`packages/github-actions/__test__/Action.test.ts:87-343`) is
 the executable spec for all of this — read it before changing any of the above.
 
 ### `describeCause` / `describeError`
@@ -68,10 +74,10 @@ the executable spec for all of this — read it before changing any of the above
 export const describeCause = (cause: Cause.Cause<unknown>): string
 ```
 
-(`Action.ts:114-125`, exported standalone and as `Action.describeCause`). One
+(`Action.ts:116-127`, exported standalone and as `Action.describeCause`). One
 `[Tag]: message` line for a typed failure or a `Cause.pretty` fallback for an
 interruption; a defect is prefixed `[defect]` so the two are told apart at a
-glance (`Action.ts:119-124`). Reuse it — do not re-derive a failure-rendering
+glance (`Action.ts:121-126`). Reuse it — do not re-derive a failure-rendering
 convention per consumer; the audience is a human scanning a workflow log for
 the first red line, not a stack trace.
 
@@ -87,9 +93,9 @@ export type ActionServices =
   | HttpClient.HttpClient;
 ```
 
-(`Action.ts:21-27`). Spelled out rather than inferred, on purpose: a program
+(`Action.ts:22-28`). Spelled out rather than inferred, on purpose: a program
 written against `ActionServices` is a program `Action.run` can run, and the
-compiler says so before the runner does (`Action.ts:14-17`). `NodeServices`
+compiler says so before the runner does (`Action.ts:15-18`). `NodeServices`
 carries `ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal`
 — so any of those six resolve for free inside `ActionServices`, with no
 separate `@effect/platform-node` mention at the call site.
@@ -104,6 +110,7 @@ static readonly layer: Layer.Layer<ActionServices> = Layer.mergeAll(
   ActionLogger.layer,
   ActionLogger.layerLogger,
   ActionState.layer,
+  ActionInput.layerDefault,
 ).pipe(
   Layer.provideMerge(ActionOutputs.layer),
   Layer.provideMerge(ActionEnvironment.layer),
@@ -111,14 +118,14 @@ static readonly layer: Layer.Layer<ActionServices> = Layer.mergeAll(
 );
 ```
 
-(`Action.ts:58-82`). It is a class field holding one layer value, not a
+(`Action.ts:59-84`). It is a class field holding one layer value, not a
 `static layer()` function — a layer-returning function mints a fresh
 reference per call, and layers memoize by reference, so a factory here would
 rebuild the environment snapshot at every composition site
 (`effect-v4-services-layers`'s memoization section is the general form of
-this; `Action.ts:53-57` states the package-specific reason). The test that
+this; `Action.ts:54-58` states the package-specific reason). The test that
 pins it: `ActionRuntime.layer === ActionRuntime.layer`
-(`Action.test.ts:252-257`).
+(`Action.test.ts:337-342`).
 
 ### The `provideMerge` chain is load-bearing, not stylistic
 
@@ -141,29 +148,41 @@ output visible to what needs it — merged as siblings, `ActionState` and
 `ActionOutputs` would never see each other and the layer would not build
 (`Action.ts:75-78`).
 
-### Why `ActionInput.layer()` is deliberately NOT installed
+### The config provider the runtime installs — and the one it still does not
 
-The comment at `Action.ts:64-73` is a probe result, not a preference, and
-carrying only the conclusion loses the reasoning that keeps it correct:
+Two different providers, two different fates; conflating them re-ships a bug
+in one direction or the other.
 
-> `ActionInput` mangles the variable name itself, and at beta.101 the ambient
-> provider resolves that exact variable with the same
-> empty-string-is-absent semantics — so installing ours buys nothing for
-> inputs, while its uppercasing silently changes the resolution of every
-> OTHER `Config` a program reads.
+**Installed (ruled 2026-07-25): `ActionInput.layerDefault`.** A live action
+shipped a false green — every bare `Config` read fell back to its
+`withDefault`, because the runner publishes `INPUT_<MANGLED>` and a
+plain-named lookup finds nothing. The installed provider
+(`ActionInput.providerOver` over the ambient lookup) resolves a **flat,
+single-segment** name by trying its `INPUT_` derivation first, then the name
+unchanged; nested and numeric paths pass through untouched. The pinned
+consequences (`Action.test.ts:194-263`): an input **shadows** an env var of
+the same bare name in any casing of the read; an unsupplied input (`""`)
+does not shadow; a caller-supplied `ConfigProvider` in the `layer` option
+wins (the extra layer's context merges last, `Action.ts:201`); and
+`ActionInput.*` accessors are untouched — their `INPUT_` names re-mangle to
+`INPUT_INPUT_…`, never match, and fall through to the ambient lookup they
+always used.
 
-A mutant that removed the line survived, which turned "obviously load-bearing"
-into a question the code had to answer: the ambient provider already reads
-`INPUT_MY-GREETING` correctly and already treats `""` as absent (which is
-what makes `Config.withDefault` fire for an omitted input). Installing
-`ActionInput.layer()` would additionally uppercase *every* `Config` path in
-the program — the one axis the two providers differ on — so it came out
-rather than being kept as ceremony. `ActionInput.layer(env)` stays exported
-for what it was built for: resolving inputs from an explicit record in a
-test, without mutating `process.env`. If core's empty-string semantics ever
-move, the end-to-end omitted-input test in `Action.test.ts:168-184` is what
-fails, and reinstating the line is the recorded fix — do not reinstate it
-pre-emptively.
+**Still NOT installed: `ActionInput.layer()`**, the record-backed test
+double. The original probe result stands — it mangles *every* config path
+(join with `_`, uppercase), silently changing the resolution of any `Config`
+a consumer wrote that is not an input. It stays exported for what it was
+built for: resolving inputs from an explicit record in a test, without
+mutating `process.env`. The installed provider exists precisely because the
+ambient default resolves `INPUT_MY-GREETING` and treats `""` as absent on
+its own — the end-to-end omitted-input test (`Action.test.ts:176-192`) is
+still what fails if core's empty-string semantics ever move.
+
+The ambient half of `layerDefault` is the provider explicitly installed when
+the layer builds — how a test injects a deterministic environment beneath
+`ActionRuntime.layer` (`Action.test.ts:324-335`) — and otherwise a **fresh**
+`ConfigProvider.fromEnv()`, because v4 caches the reference's default once
+per process and a stale snapshot would resurrect the missed-input class.
 
 ## The headline: `ActionRunOptions.layer` may require anything the runtime provides
 
@@ -173,7 +192,7 @@ export interface ActionRunOptions<R> {
 }
 ```
 
-(`Action.ts:90-99`). The third type parameter is `ActionServices`, not
+(`Action.ts:92-101`). The third type parameter is `ActionServices`, not
 `never`. That single type argument is the whole of Case 3 in the fluency
 audit (`.claude/design/effected/consumers/fluency-audit.md`), and it is worth
 carrying the before/after honestly rather than the summary.
@@ -217,14 +236,14 @@ await Action.run(main, {
 Both `NodeServices` sub-provides are **deleted, not relocated** — a consumer
 never mentions the platform at all. `Action.run` provides `ActionRuntime.layer`
 once, at the boundary (`Layer.provide(extra, ActionRuntime.layer)`,
-`Action.ts:199`), and every requirement the extra layer names against
+`Action.ts:201`), and every requirement the extra layer names against
 `ActionServices` — the platform, the HTTP client, every runner service — is
 already satisfied there. This is not a relaxation that happened to help; it
 is the type argument that decides how wide a consumer's `R` channel is
 allowed to be (`effect-v4-services-layers`'s composition-operators section is
 the general form).
 
-`Action.test.ts:207-238` is the regression test on this exact shape — a
+`Action.test.ts:279-322` is the regression test on this exact shape — a
 layer requiring both `FileSystem` (the platform) and `ActionOutputs` (to
 mask), handed to `Action.run` with **no sub-provide**, asserting that
 `::add-mask::s3cret` reaches the runner. Its discriminating mutant is
@@ -257,7 +276,7 @@ and reading it does not require going through `clientLayer` at all.
 `ActionRuntime.layer` deliberately excludes `ActionCache`, `Artifact` and
 `GitHubCacheBlobStore` — the only three modules that import
 `@azure/storage-blob`. Folding them in would put a blob-storage client in the
-bundle of every action that merely sets an output (`Action.ts:37-42`). Their
+bundle of every action that merely sets an output (`Action.ts:38-43`). Their
 requirements are already satisfied by the runtime — `ActionCache.layer`'s `R`
 is `ActionEnvironment | HttpClient | FileSystem | Path | ChildProcessSpawner`
 (`ActionCache.ts:369-377`), and every one of those five is either in

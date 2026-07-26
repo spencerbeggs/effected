@@ -614,6 +614,21 @@ That last point turns the line from redundant into actively costly: installing t
 
 The general lesson is worth more than the line: **a surviving mutant is a question about the code, not about the test.** The answer here was that the code was unnecessary.
 
+Every finding above still holds — but the conclusion drawn from them ("install nothing") was superseded the same week by a ruling, recorded next. What changed is not the probe; it is that a **different** provider went in, one that does not have the uppercasing cost the probe found.
+
+### The config provider the runtime DOES install — RULED (2026-07-25)
+
+A live action shipped a **false green**: every bare `Config.string("dry-run")` read fell back to its `withDefault`, because the runner exposes inputs as `INPUT_<MANGLED>` variables (uppercase, spaces→underscores, dashes survive) and a plain-named lookup finds nothing. Spencer ruled that `Action.run` must install an `ActionInput`-aware `ConfigProvider` as the default — "prevent trying to side-step the framework": a program that bypasses `ActionInput.*` should degrade to the right answer, not to the default.
+
+The installed provider is `ActionInput.providerOver(ambient)`, built via `ActionInput.layerDefault` and composed into `ActionRuntime.layer` — so production `Action.run` and test programs composed over the runtime layer see identical resolution. It is **not** the record-backed `ActionInput.provider` the previous section probed; the semantics are deliberately narrower:
+
+- A **flat, single string-segment** path — the only shape the runner could actually have set — first tries the `INPUT_` derivation of the name (through the same `inputVariable` that owns the mangling; the rule exists in exactly one place), then the name unchanged through the ambient provider. Nested and numeric paths pass through **untouched** — no path semantics the runner does not have, and none of the uppercasing cost the probe found.
+- **The shadowing trade, pinned by test:** a workflow input named like an env var shadows it for bare reads, in any casing of the read (the derivation uppercases). An unsupplied input (`""`) does not shadow — the attempt resolves through the ambient provider, whose empty-is-absent rule drops it.
+- **`ActionInput.*` accessors are unchanged:** they read `INPUT_<MANGLED>` names, whose re-mangled attempt (`INPUT_INPUT_…`) never matches, so they fall through to the ambient lookup they always used.
+- **A caller-supplied `ConfigProvider` in the `layer` option wins**, by normal precedence: the extra layer's context merges last in `Action.run`'s composition (`Context.mergeAll` is last-wins), pinned by a test that sees the caller's value with the input variable set.
+
+The ambient half is whatever provider is **explicitly installed** when the layer builds — how a test injects a deterministic environment beneath the runtime — and otherwise a **fresh** `ConfigProvider.fromEnv()` rather than the reference's default: v4 caches that default once per process (`Context.ts`'s `defaultValueCacheKey`), and a snapshot taken before the runner's variables were visible would resurrect exactly the missed-input class the ruling kills. An action's environment is fixed before its process starts, so production cannot tell the difference; a test mutating `process.env` around `Action.run` can, and the existing `Action.test.ts` env fixture only worked because the first `Config` read in the file happened to land after the mutation.
+
 ### The token bridge's one-hour contract — RULED
 
 Installation tokens live about an hour, and a `main` phase rebuilt from a persisted token **cannot re-mint one**. The [checkpoint left this open](#githubtoken-the-bridge-and-its-member-usage); it is now ruled, in the conservative direction:

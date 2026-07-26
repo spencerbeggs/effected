@@ -1,5 +1,5 @@
 import type { Layer, Redacted } from "effect";
-import { Config, ConfigProvider, Effect, Option, Schema, SchemaIssue } from "effect";
+import { Config, ConfigProvider, Context, Effect, Option, Schema, SchemaIssue } from "effect";
 
 /**
  * The variable name the runner publishes an input under.
@@ -63,6 +63,15 @@ const stripComment = (line: string): string => {
  * These are grouped statics over one concept reaching nothing but `Config` —
  * not a namespace object over engines.
  *
+ * **The absence contract, shared by every accessor:** the runner writes `""`
+ * for an input the workflow left out, and the provider reads an empty string
+ * as absent — so *unset* and *empty* are the same case, **missing data**, and
+ * the read fails rather than yielding an empty value. `Config.withDefault`
+ * falls back for exactly that class, which makes
+ * `.pipe(Config.withDefault(…))` the idiom for every optional input. What a
+ * default never swallows is a *present but malformed* value — see
+ * {@link ActionInput.boolean}.
+ *
  * @example
  * ```ts
  * import { ActionInput } from "@effected/github-actions";
@@ -79,12 +88,22 @@ const stripComment = (line: string): string => {
 export class ActionInput {
 	private constructor() {}
 
-	/** A required string input. */
+	/**
+	 * A required string input.
+	 *
+	 * @remarks
+	 * Fails as *missing data* when the input is absent **or set to the empty
+	 * string** — the runner writes `""` for an unsupplied input, and both the
+	 * runtime's provider and {@link ActionInput.provider} read that as absent.
+	 * Every accessor on this class shares the rule, so an **optional** input
+	 * needs `Config.withDefault` (or `Config.option`) at the call site or the
+	 * read fails outright.
+	 */
 	static string(name: string): Config.Config<string> {
 		return Config.string(inputVariable(name));
 	}
 
-	/** A boolean input, per the runner's documented YAML 1.2 core schema. */
+	/** A boolean input, per the runner's documented YAML 1.2 core schema. Absent or `""` is missing data — wrap with `Config.withDefault` for an optional flag. */
 	static boolean(name: string): Config.Config<boolean> {
 		return Config.string(inputVariable(name)).pipe(
 			Config.mapOrFail((raw) => {
@@ -106,12 +125,25 @@ export class ActionInput {
 		);
 	}
 
-	/** An integer input. */
+	/**
+	 * An integer input.
+	 *
+	 * @remarks
+	 * Unset and `""` both fail as **missing data**; for an optional input,
+	 * `.pipe(Config.withDefault(n))`.
+	 */
 	static integer(name: string): Config.Config<number> {
 		return Config.int(inputVariable(name));
 	}
 
-	/** A secret input, kept redacted. */
+	/**
+	 * A secret input, kept redacted.
+	 *
+	 * @remarks
+	 * Unset and `""` both fail as **missing data**; `Config.option` is the
+	 * usual shape for an optional secret, since there is rarely a meaningful
+	 * default to redact.
+	 */
 	static redacted(name: string): Config.Config<Redacted.Redacted<string>> {
 		return Config.redacted(inputVariable(name));
 	}
@@ -123,6 +155,9 @@ export class ActionInput {
 	 * The `@actions/core`-faithful shape: blank lines are dropped and each entry
 	 * is trimmed, because a YAML block scalar carries the workflow's own
 	 * indentation.
+	 *
+	 * Absent or `""` fails as missing data (see {@link ActionInput.string}) —
+	 * `Config.withDefault([])` is load-bearing for an optional multiline input.
 	 */
 	static lines(name: string): Config.Config<ReadonlyArray<string>> {
 		return Config.string(inputVariable(name)).pipe(
@@ -162,6 +197,12 @@ export class ActionInput {
 	 * A `#` that is not the first character of a trimmed item — a trailing or
 	 * mid-value `#` — is left alone; unlike {@link ActionInput.pairs}, `list`
 	 * has no trailing-comment rule, only a whole-line one.
+	 *
+	 * Absent or `""` fails as **missing data** (see {@link ActionInput.string}),
+	 * so `Config.withDefault([])` is load-bearing at every optional-input call
+	 * site — omitting an optional multi-value input otherwise fails the read
+	 * outright. A *whitespace-only* value (a block scalar holding only a
+	 * newline) is present, and parses to `[]`.
 	 */
 	static list(name: string): Config.Config<ReadonlyArray<string>> {
 		return Config.string(inputVariable(name)).pipe(
@@ -200,6 +241,9 @@ export class ActionInput {
 	 *
 	 * @remarks
 	 * Only the **first** `=` splits, so a value may contain one.
+	 *
+	 * Absent or `""` fails as missing data (see {@link ActionInput.string}) —
+	 * `Config.withDefault({})` is the idiom for an optional pairs input.
 	 */
 	static pairs(name: string): Config.Config<Record<string, string>> {
 		return Config.string(inputVariable(name)).pipe(
@@ -272,4 +316,76 @@ export class ActionInput {
 	static layer(env?: Readonly<Record<string, string | undefined>>): Layer.Layer<never> {
 		return ConfigProvider.layer(ActionInput.provider(env));
 	}
+
+	/**
+	 * Inputs-first resolution layered over an existing provider.
+	 *
+	 * @remarks
+	 * A bare `Config.string("dry-run")` resolves a **flat** name — one string
+	 * segment — by first trying the variable the runner would have published for
+	 * an input of that name (the `INPUT_` derivation this module owns), and only
+	 * then trying the name unchanged through `ambient`. Anything the runner
+	 * could not have set as an input — a nested path, a numeric segment — is
+	 * passed to `ambient` untouched, so no path semantics are invented that the
+	 * runner does not have.
+	 *
+	 * This exists because a live action shipped a **false green**: every bare
+	 * `Config` read fell back to its `withDefault` because the runner exposes
+	 * inputs as `INPUT_<MANGLED>` variables and a plain-named lookup finds
+	 * nothing. Under this provider a bare read resolves through the same
+	 * derivation `ActionInput.string` uses, so side-stepping the typed accessors
+	 * degrades to the right answer instead of to the default.
+	 *
+	 * The documented trade: a workflow input named like an environment variable
+	 * **shadows it** for bare reads — and because the derivation uppercases,
+	 * any casing of the name sees the input. An unsupplied input does not
+	 * shadow: the runner writes `""` for it, and the ambient provider's
+	 * empty-is-absent rule (which the attempt resolves through) drops it. The
+	 * `ActionInput` accessors themselves are unaffected — they read
+	 * `INPUT_<MANGLED>` names, whose re-mangled form (`INPUT_INPUT_…`) never
+	 * matches, so they fall through to the ambient lookup they always used.
+	 */
+	static providerOver(ambient: ConfigProvider.ConfigProvider): ConfigProvider.ConfigProvider {
+		return ConfigProvider.orElse(
+			ConfigProvider.make((path) => {
+				const name = path.length === 1 ? path[0] : undefined;
+				// The attempt resolves through `ambient` rather than reading an
+				// environment of its own, so there is exactly one source of values and
+				// exactly one spelling of the derivation (`inputVariable`).
+				return typeof name === "string" ? ambient.load([inputVariable(name)]) : Effect.succeed(undefined);
+			}),
+			ambient,
+		);
+	}
+
+	/**
+	 * The provider the default action runtime installs: {@link ActionInput.providerOver}
+	 * composed over the ambient environment lookup.
+	 *
+	 * @remarks
+	 * Installed by `ActionRuntime.layer`, and therefore by `Action.run` — a bare
+	 * `Config` read inside an action resolves through the runner's `INPUT_`
+	 * derivation instead of silently missing. A caller-supplied
+	 * `ConfigProvider` layer still wins by normal layer precedence.
+	 *
+	 * The ambient half is whatever provider is **explicitly installed** when the
+	 * layer builds — which is how a test injects a deterministic environment by
+	 * providing `ConfigProvider.layer(ConfigProvider.fromEnv({ env }))` beneath
+	 * the runtime. When none is installed, a **fresh** `ConfigProvider.fromEnv()`
+	 * is built rather than reading the reference's default: v4 caches that
+	 * default once per process, and a snapshot taken before the runner's
+	 * variables are visible would resurrect exactly the missed-input class this
+	 * layer exists to kill. An action's environment is fixed before the process
+	 * starts, so production cannot tell the difference; a test mutating
+	 * `process.env` around `Action.run` can.
+	 *
+	 * A bound constant rather than a factory: layers memoize by reference.
+	 */
+	static readonly layerDefault: Layer.Layer<never> = ConfigProvider.layer(
+		Effect.map(Effect.context<never>(), (context) =>
+			ActionInput.providerOver(
+				Context.getOrUndefined(context, ConfigProvider.ConfigProvider) ?? ConfigProvider.fromEnv(),
+			),
+		),
+	);
 }

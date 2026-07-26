@@ -22,24 +22,35 @@ this skill carries only the Actions-specific instance of those rules.
 
 ## Inputs: `Config`, not a service
 
-**Every action input read MUST go through `ActionInput.*`. A bare
-`Config.string("some-input")` is the false-green this skill exists to name.**
-A real action shipped exactly this: `Config.string("dry-run")` typechecks,
-compiles clean, and passes a test suite that injects its own
+**Every action input read goes through `ActionInput.*` — the blessed typed
+surface. A bare `Config.string("some-input")` is the false-green this skill
+exists to name.** A real action shipped exactly this: `Config.string("dry-run")`
+typechecks, compiles clean, and passes a test suite that injects its own
 `ConfigProvider` keyed by the plain input name — because the test's provider
 never has to agree with the runner's own key derivation. Under the real
 runner the variable is `INPUT_DRY-RUN`, not `DRY-RUN` or `DRY_RUN`, so the
 bare read found nothing; `Config.withDefault(false)` (see the trap below)
 silently supplied the default; and a `dry-run: true` workflow dispatch
-executed its mutations for real. **The fix is never "spell `INPUT_` by
-hand" — it is "call `ActionInput.boolean("dry-run")` and let this module own
-the mangling."**
+executed its mutations for real.
+
+**Since the 2026-07-25 ruling, that class is dead at the root under
+`Action.run`**: the runtime installs `ActionInput.layerDefault`, whose
+provider resolves a bare flat name through the `INPUT_` derivation first and
+the ambient lookup unchanged second (`ActionInput.ts:304-346`) — so a
+side-stepped read degrades to the right answer instead of to the default.
+The accessors stay the rule, not a relic: they carry the parsing (`boolean`,
+`list`, `pairs`, `schema`) and the typed `ConfigError`s the provider cannot.
+And the suite-level trap survives outside the runtime: a test that injects
+its own plain-named `ConfigProvider` and never composes `ActionRuntime.layer`
+still resolves nothing the runner would — **the fix is never "spell `INPUT_`
+by hand" — it is "call `ActionInput.boolean("dry-run")` and let this module
+own the mangling."**
 
 There is no `ActionInputs` service and `ActionInputError` **does not
 survive** — an input failure is a `Config.ConfigError`
 (`packages/github-actions/CLAUDE.md`, "Errors"). `ActionInput` is a static
 namespace of `Config.Config<A>` factories
-(`packages/github-actions/src/ActionInput.ts:79-252`):
+(`packages/github-actions/src/ActionInput.ts:79-347`):
 
 | Accessor | Returns | Notes |
 | --- | --- | --- |
@@ -73,7 +84,7 @@ asked the runner's real key to resolve at all. Read every input through
 `ActionInput` — no caller spells `INPUT_*` itself.
 
 An **empty string reads as absent**, both for `ActionInput`'s accessors and
-for `ActionInput.provider` (`ActionInput.ts:225-226`, `:233-234`): the runner
+for `ActionInput.provider` (`ActionInput.ts:248-249`, `:256-257`): the runner
 sets an unsupplied optional input to `""`, and treating that as present
 would make every unset optional input look supplied.
 
@@ -88,21 +99,36 @@ const program = Effect.gen(function* () {
 });
 ```
 
-### `ActionInput.layer()` is deliberately not in the default runtime
+### Two providers: `layerDefault` is in the runtime, `layer()` never is
+
+`ActionInput.layerDefault` (`ActionInput.ts:340-346`) **is** composed into
+`ActionRuntime.layer` since the 2026-07-25 ruling. Its provider,
+`ActionInput.providerOver(ambient)` (`ActionInput.ts:304-315`), touches only
+a **flat, single string-segment** name — the only shape the runner could have
+set — trying `inputVariable(name)` through the ambient provider first, then
+the name unchanged; nested and numeric paths pass through untouched. The
+pinned consequences: a supplied input **shadows** an env var of the same
+bare name in any casing of the read (the derivation uppercases); an
+unsupplied input (`""`) does not shadow, because the attempt resolves
+through the ambient provider's empty-is-absent rule; and the `ActionInput.*`
+accessors are unchanged — their `INPUT_` names re-mangle to `INPUT_INPUT_…`,
+never match, and fall through to the ambient lookup they always used
+(`__test__/ActionInput.test.ts`, "providerOver — the runtime's default
+resolution").
 
 `ActionInput.layer(env?)` installs `ActionInput.provider` — a
 `ConfigProvider` that joins a path with `_`, replaces spaces with underscores
-and uppercases the whole (`ActionInput.ts:231-236`, `:249-251`). It is
-**never** composed into `ActionRuntime.layer`. Per the probe recorded in
-`packages/github-actions/src/Action.ts:64-73`: `ActionInput`'s own
-`inputVariable` already fully mangles the key before any `Config` read
-happens, and at beta.101 the ambient default `ConfigProvider` resolves that
-exact variable with the same empty-string-is-absent semantics — so
-installing `ActionInput.layer()` in production buys nothing for inputs,
-while its uppercasing would silently re-mangle the key of every **other**
-`Config` the program reads. It stays exported for the one case it was built
-for: resolving inputs from an explicit record in a test, without mutating
-`process.env`.
+and uppercases the whole (`ActionInput.ts:254-259`, `:272-274`). It is
+**never** composed into `ActionRuntime.layer`, and the original probe result
+still holds: `ActionInput`'s own `inputVariable` already fully mangles the
+key before any `Config` read happens, and at beta.101 the ambient default
+`ConfigProvider` resolves that exact variable with the same
+empty-string-is-absent semantics — so installing it in production buys
+nothing for inputs, while its uppercasing would silently re-mangle the key
+of every **other** `Config` the program reads. That cost is exactly why the
+ruling shipped a *different*, narrower provider instead of this one. It
+stays exported for the one case it was built for: resolving inputs from an
+explicit record in a test, without mutating `process.env`.
 
 ```ts
 // Test-only — never composed into a running action's default layer:

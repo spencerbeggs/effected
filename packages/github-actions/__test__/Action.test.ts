@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Config, Context, Effect, FileSystem, Layer, Schema } from "effect";
+import { Cause, Config, ConfigProvider, Context, Effect, FileSystem, Layer, Schema } from "effect";
 import { vi } from "vitest";
 import { Action, ActionEnvironment, ActionInput, ActionOutputs, ActionRuntime, describeCause } from "../src/index.js";
 
@@ -26,6 +26,14 @@ const RUNNER_ENV: Readonly<Record<string, string>> = {
 	"INPUT_MY-GREETING": "hello",
 	// What the runner writes for an input the workflow did NOT supply.
 	INPUT_OMITTED: "",
+	// The false-green reproduction: a bare Config read of "dry-run" must reach
+	// this variable through the installed provider.
+	"INPUT_DRY-RUN": "from-input",
+	// The shadowing pair: an input and an env var with the same bare name.
+	INPUT_SHADOWED: "from-input",
+	SHADOWED: "from-env",
+	// A plain variable with no corresponding input, for the fallback.
+	PLAIN_VAR: "from-env",
 };
 
 const captured = async (run: (lines: ReadonlyArray<string>) => Promise<void>): Promise<void> => {
@@ -175,11 +183,75 @@ describe("Action.run", () => {
 			);
 			// The runner writes `""` for every input a workflow left out, and an
 			// empty string that read as PRESENT would make every optional input look
-			// supplied and no default ever fire. Asserted end to end rather than
-			// against `ActionInput.provider` in isolation, because the runtime
-			// deliberately does not install that provider — this is the test that
-			// fails if the semantics it relies on ever move.
+			// supplied and no default ever fire. Asserted end to end because the
+			// runtime's installed provider deliberately resolves the accessor's
+			// variable through the AMBIENT half — this is the test that fails if
+			// the empty-is-absent semantics it relies on ever move.
 			assert.include(lines, "::warning::omitted=fallback");
+		});
+	});
+
+	it("resolves a bare Config read through the INPUT_ derivation — the false-green class, dead at the root", async () => {
+		await captured(async (lines) => {
+			await Action.run(
+				Effect.gen(function* () {
+					// The exact shipped defect: a bare read with a default. Before the
+					// runtime installed the provider, the plain-named lookup found
+					// nothing, the default fired, and a rehearsal flag silently read as
+					// its fallback on every run.
+					const dryRun = yield* Config.string("dry-run").pipe(Config.withDefault("defaulted"));
+					yield* Effect.logWarning(`dry-run=${dryRun}`);
+				}),
+			);
+			assert.include(lines, "::warning::dry-run=from-input", "the default must NOT fire");
+			assert.notStrictEqual(process.exitCode, 1);
+		});
+	});
+
+	it("still resolves a plain env var with no corresponding input", async () => {
+		await captured(async (lines) => {
+			await Action.run(
+				Effect.gen(function* () {
+					yield* Effect.logWarning(`plain=${yield* Config.string("PLAIN_VAR")}`);
+				}),
+			);
+			// The fallback half of the installed provider is the ambient lookup
+			// unchanged — a program reading ordinary configuration is untouched.
+			assert.include(lines, "::warning::plain=from-env");
+			assert.notStrictEqual(process.exitCode, 1);
+		});
+	});
+
+	it("an input shadows an env var of the same bare name — pinned, not accidental", async () => {
+		await captured(async (lines) => {
+			await Action.run(
+				Effect.gen(function* () {
+					// Both INPUT_SHADOWED and SHADOWED are set. The input wins for a
+					// bare read in ANY casing, because the derivation uppercases; that
+					// is the documented trade for killing the false-green class.
+					yield* Effect.logWarning(`upper=${yield* Config.string("SHADOWED")}`);
+					yield* Effect.logWarning(`lower=${yield* Config.string("shadowed")}`);
+				}),
+			);
+			assert.include(lines, "::warning::upper=from-input");
+			assert.include(lines, "::warning::lower=from-input");
+		});
+	});
+
+	it("a caller-supplied ConfigProvider in the extra layer wins", async () => {
+		await captured(async (lines) => {
+			await Action.run(
+				Effect.gen(function* () {
+					const dryRun = yield* Config.string("dry-run").pipe(Config.withDefault("defaulted"));
+					yield* Effect.logWarning(`dry-run=${dryRun}`);
+				}),
+				// Normal layer precedence: the extra layer's context merges LAST in
+				// `Action.run`'s composition, so this replaces the installed provider
+				// wholesale. INPUT_DRY-RUN is set in the environment — seeing
+				// "from-caller" rather than "from-input" is what proves the override.
+				{ layer: ConfigProvider.layer(ConfigProvider.fromUnknown({ "dry-run": "from-caller" })) },
+			);
+			assert.include(lines, "::warning::dry-run=from-caller");
 		});
 	});
 
@@ -248,6 +320,19 @@ describe("Action.run", () => {
 			assert.strictEqual(process.exitCode, 1);
 		});
 	});
+
+	it.effect("programs composed over ActionRuntime.layer see the identical resolution", () =>
+		Effect.gen(function* () {
+			// The same provider `Action.run` installs, reached through the layer a
+			// test composes directly — with the ambient environment injected as a
+			// provider BENEATH the runtime, so nothing touches the process.
+			assert.strictEqual(yield* Config.string("dry-run").pipe(Config.withDefault("defaulted")), "x");
+			assert.strictEqual(yield* Config.string("PLAIN_VAR"), "y");
+		}).pipe(
+			Effect.provide(ActionRuntime.layer),
+			Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: { "INPUT_DRY-RUN": "x", PLAIN_VAR: "y" } }))),
+		),
+	);
 
 	it("exposes the runtime as a bound layer, not a factory", () => {
 		// A layer-returning function mints a fresh layer per call and layers

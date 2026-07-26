@@ -3,6 +3,7 @@ import { Cause, Effect, Exit, Layer, Option, Result } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import { FetchHttpClient } from "effect/unstable/http";
 import { ActionEnvironment } from "./ActionEnvironment.js";
+import { ActionInput } from "./ActionInput.js";
 import { ActionLogger } from "./ActionLogger.js";
 import { ActionOutputs } from "./ActionOutputs.js";
 import { ActionState } from "./ActionState.js";
@@ -61,16 +62,17 @@ export class ActionRuntime {
 		// values with the same contents are different layers and memoize separately.
 		ActionLogger.layerLogger,
 		ActionState.layer,
-		// `ActionInput.layer()` is deliberately NOT installed here, and the reason
-		// is a probe rather than a preference. `ActionInput` mangles the variable
-		// name itself, and at beta.101 the ambient provider resolves that exact
-		// variable with the same empty-string-is-absent semantics — so installing
-		// ours buys nothing for inputs, while its uppercasing silently changes the
-		// resolution of every OTHER `Config` a program reads. It stays exported for
-		// the case it was built for: resolving inputs from an explicit record in a
-		// test, without mutating the process. If core's provider ever stops reading
-		// `""` as absent, the omitted-input test below is what fails, and
-		// reinstating this line is the fix.
+		// The inputs-first config provider, NOT the record-backed test double
+		// (`ActionInput.layer()`, which replaces the environment lookup wholesale
+		// and stays exported for resolving inputs from an explicit record in a
+		// test). This one changes bare `Config` reads only: a flat name tries the
+		// runner's INPUT_ derivation first and then falls back to the ambient
+		// lookup unchanged. It is here because a live action shipped a false
+		// green — every bare read fell back to its `withDefault` because the
+		// runner publishes INPUT_<MANGLED> and a plain-named lookup finds
+		// nothing. A caller-supplied provider in the `layer` option still wins:
+		// the extra layer's context merges last in `Action.run`'s composition.
+		ActionInput.layerDefault,
 	).pipe(
 		// `provideMerge` rather than a flat `mergeAll`, and the difference is the
 		// whole wiring: `ActionState` needs `ActionOutputs` (it masks before it

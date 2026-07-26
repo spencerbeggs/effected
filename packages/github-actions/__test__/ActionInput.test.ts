@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { Config } from "effect";
-import { Effect, Redacted, Schema } from "effect";
+import { Config, ConfigProvider, Effect, Redacted, Schema } from "effect";
 import { ActionInput } from "../src/index.js";
 
 /** Read a config against a fixed runner environment. */
@@ -243,6 +242,104 @@ describe("ActionInput", () => {
 					assert.strictEqual(value, "resolved", `${input} should resolve via ${expected}`);
 				}
 			}),
+		);
+	});
+
+	describe("providerOver — the runtime's default resolution", () => {
+		/** Read a bare config through the inputs-first provider over a fixed env. */
+		const readBare = <A>(config: Config.Config<A>, env: Record<string, string>) =>
+			Effect.provide(config, ConfigProvider.layer(ActionInput.providerOver(ConfigProvider.fromEnv({ env }))));
+
+		const readBareFails = <A>(config: Config.Config<A>, env: Record<string, string>) =>
+			Effect.map(Effect.exit(readBare(config, env)), (exit) => {
+				assert.strictEqual(exit._tag, "Failure", "expected the bare read to miss");
+			});
+
+		it.effect("resolves a bare flat name through the INPUT_ derivation first", () =>
+			Effect.gen(function* () {
+				// The false-green class at its root: the runner publishes
+				// INPUT_DRY-RUN (dashes survive), and a bare Config.string("dry-run")
+				// used to find nothing and fall back to its default.
+				assert.strictEqual(yield* readBare(Config.string("dry-run"), { "INPUT_DRY-RUN": "x" }), "x");
+			}),
+		);
+
+		it.effect("any casing of the bare name sees the input, because the derivation uppercases", () =>
+			Effect.gen(function* () {
+				for (const spelling of ["dry-run", "DRY-RUN", "Dry-Run"]) {
+					assert.strictEqual(
+						yield* readBare(Config.string(spelling), { "INPUT_DRY-RUN": "x" }),
+						"x",
+						`${spelling} should reach INPUT_DRY-RUN`,
+					);
+				}
+			}),
+		);
+
+		it.effect("falls back to the ambient lookup unchanged when no input matches", () =>
+			Effect.gen(function* () {
+				// The plain variable resolves exactly as it would without the
+				// provider…
+				assert.strictEqual(yield* readBare(Config.string("PLAIN_VAR"), { PLAIN_VAR: "y" }), "y");
+				// …and the fallback stays case-SENSITIVE: only the attempt
+				// uppercases. A lowercase read gained no new spelling.
+				yield* readBareFails(Config.string("plain_var"), { PLAIN_VAR: "y" });
+			}),
+		);
+
+		it.effect("a supplied input SHADOWS an env var of the same name — the documented trade", () =>
+			Effect.gen(function* () {
+				const env = { INPUT_FOO: "from-input", FOO: "from-env" };
+				assert.strictEqual(yield* readBare(Config.string("FOO"), env), "from-input");
+				assert.strictEqual(yield* readBare(Config.string("foo"), env), "from-input");
+			}),
+		);
+
+		it.effect("an unsupplied input ('') does not shadow", () =>
+			Effect.gen(function* () {
+				// The runner writes "" for every input the workflow left out; the
+				// attempt resolves through the ambient provider, whose
+				// empty-is-absent rule drops it, so the real variable still wins.
+				assert.strictEqual(yield* readBare(Config.string("FOO"), { INPUT_FOO: "", FOO: "from-env" }), "from-env");
+			}),
+		);
+
+		it.effect("a nested path passes through untouched — no invented runner semantics", () =>
+			Effect.gen(function* () {
+				// The runner can only set flat INPUT_<MANGLED> variables, so the
+				// attempt applies to single-segment names only. A join-then-mangle
+				// implementation would resolve INPUT_A_B here and fail this test.
+				const nested = Config.string("B").pipe(Config.nested("A"));
+				assert.strictEqual(yield* readBare(nested, { A_B: "base", INPUT_A_B: "from-input" }), "base");
+			}),
+		);
+
+		it.effect("ActionInput accessors resolve identically under it", () =>
+			Effect.gen(function* () {
+				// The accessor reads INPUT_DRY-RUN; the attempt re-mangles that to
+				// INPUT_INPUT_DRY-RUN, misses, and the fallback resolves the real
+				// variable — so the typed surface is unchanged by the installation.
+				assert.strictEqual(yield* readBare(ActionInput.string("dry-run"), { "INPUT_DRY-RUN": "x" }), "x");
+				// And an omitted input still reads as absent, so a default is a
+				// default.
+				assert.strictEqual(
+					yield* readBare(ActionInput.string("omitted").pipe(Config.withDefault("fallback")), { INPUT_OMITTED: "" }),
+					"fallback",
+				);
+			}),
+		);
+
+		it.effect("layerDefault composes over the provider explicitly installed beneath it", () =>
+			Effect.gen(function* () {
+				// How a test injects a deterministic environment without touching the
+				// process: install an ambient provider under the runtime and let
+				// layerDefault pick it up at build.
+				assert.strictEqual(yield* Config.string("dry-run"), "x");
+				assert.strictEqual(yield* Config.string("PLAIN_VAR"), "y");
+			}).pipe(
+				Effect.provide(ActionInput.layerDefault),
+				Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: { "INPUT_DRY-RUN": "x", PLAIN_VAR: "y" } }))),
+			),
 		);
 	});
 });
