@@ -88,6 +88,43 @@ describe("ActionInput", () => {
 			}),
 		);
 
+		it.effect("accepts a Markdown '*' bullet list, not just '-'", () =>
+			Effect.gen(function* () {
+				// Before the union grammar, a "*" bullet kept its marker as part of
+				// the value ("* a" survived intact) instead of being stripped.
+				const value = yield* readOk(ActionInput.list("paths"), { INPUT_PATHS: "* a\n* b\n" });
+				assert.deepStrictEqual([...value], ["a", "b"]);
+			}),
+		);
+
+		it.effect("strips mixed '-' and '*' bullets in the same input", () =>
+			Effect.gen(function* () {
+				const value = yield* readOk(ActionInput.list("paths"), { INPUT_PATHS: "- a\n* b\n- c\n* d\n" });
+				assert.deepStrictEqual([...value], ["a", "b", "c", "d"]);
+			}),
+		);
+
+		it.effect("drops full-line '#' comments interleaved with values", () =>
+			Effect.gen(function* () {
+				const value = yield* readOk(ActionInput.list("paths"), {
+					INPUT_PATHS: "# a comment\n- a\n# another comment\n- b\n",
+				});
+				assert.deepStrictEqual([...value], ["a", "b"]);
+			}),
+		);
+
+		it.effect("treats a bulleted '- #tag' as the value '#tag', not a dropped comment", () =>
+			Effect.gen(function* () {
+				// The discriminating case: the comment check runs on the untouched,
+				// still-bulleted line, so only a line whose FIRST character (before
+				// any bullet is stripped) is "#" is a comment. "- #tag" starts with
+				// "-", not "#", so it survives the comment filter, and only the
+				// bullet marker is then stripped, leaving "#tag" as the value.
+				const value = yield* readOk(ActionInput.list("paths"), { INPUT_PATHS: "- #tag\n- b\n" });
+				assert.deepStrictEqual([...value], ["#tag", "b"]);
+			}),
+		);
+
 		it.effect("accepts comma-separated values", () =>
 			Effect.gen(function* () {
 				const value = yield* readOk(ActionInput.list("paths"), { INPUT_PATHS: "a, b ,c" });

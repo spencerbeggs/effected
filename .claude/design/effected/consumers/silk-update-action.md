@@ -67,7 +67,7 @@ Recorded so the migration does not re-solve solved problems.
 
 | Local file | What it hand-rolls | Effected construct | Status |
 | --- | --- | --- | --- |
-| `src/utils/input.ts` | `parseMultiValueInput` — JSON arrays, newline/bullet lists with `*` markers and `#` comments, and comma-separated values | `ActionInput.list` (and `.pairs` where relevant) — one implementation, one test suite (`@effected/github-actions`) | Phase 3 pending |
+| `src/utils/input.ts` | `parseMultiValueInput` — JSON arrays, newline/bullet lists with `*` markers and `#` comments, and comma-separated values | `ActionInput.list` (`@effected/github-actions`) now covers the union grammar directly — `-`/`*` bullets and full-line `#` comments, as of 2026-07-26 — so the local `parseMultiValueInput` can be deleted outright on next refresh, not merely swapped alongside `.pairs` | Phase 3 pending |
 | `src/services/release-age.ts` | `getPublishTimes` shelling `npm view <pkg> time --json` and hand-filtering `created`/`modified` | `NpmRegistry.publishTimes(name, target?)` returning typed `PublishTime` values (`@effected/npm`) | Phase 5 pending |
 | `src/services/catalog-config-deps.test.ts` | A `registry(packages)` factory building a **per-package-keyed** `Layer.succeed(NpmRegistry, …)`, with a comment saying the shipped `NpmRegistryTest` cannot serve two versions of one package as distinct tarballs | `NpmRegistry.layerTest` seeded by `(registry, name, version)` (`@effected/npm`) | Phase 5 pending — this is the exact break the model widening fixes |
 | `src/program.inner.test.ts`, `src/services/{lockfile,peer-sync,regular-deps}.test.ts` | **7** `Layer.succeed(WorkspaceDiscovery, {...})` stubs across 4 files | `WorkspaceDiscovery.layerTest(overrides?)` — already shipped | shipped |

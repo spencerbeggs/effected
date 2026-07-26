@@ -136,12 +136,32 @@ export class ActionInput {
 	}
 
 	/**
-	 * A list input, accepting the three shapes workflow authors actually write.
+	 * A list input, accepting the shapes workflow authors actually write.
 	 *
 	 * @remarks
-	 * A JSON array (`["a","b"]`), a bullet list (`- a`), or comma- and
-	 * newline-separated values. Each was reinvented in a consumer; accepting all
-	 * three means a workflow author's first guess works.
+	 * A JSON array (`["a","b"]`), a bullet list (`- a` or `* a`), or comma- and
+	 * newline-separated values, with full-line `#` comments dropped — any
+	 * combination of these in the same input. Each shape was reinvented
+	 * independently by a consumer (one a bullet-list-and-JSON parser, the other
+	 * comment-stripping); accepting the union means a workflow author's first
+	 * guess works and nothing either prior consumer relied on regresses.
+	 *
+	 * Parsing order, applied per newline/comma-separated item after trimming:
+	 *
+	 * 1. **Comment lines are dropped first.** A trimmed item whose first
+	 *    character is `#` is a full-line comment and is discarded entirely,
+	 *    before any bullet marker is considered. This means `- #tag` is a
+	 *    value, not a comment: the check runs on the untouched, still-bulleted
+	 *    item, and `-` is not `#`.
+	 * 2. **Only then is a leading bullet marker stripped** — `- ` or `* `
+	 *    (dash-or-asterisk followed by a space), mirroring the indentation a
+	 *    YAML block scalar carries in. So `- #tag` becomes the value `#tag`.
+	 * 3. Blank results (an empty line, or a comment line) are dropped from the
+	 *    final list.
+	 *
+	 * A `#` that is not the first character of a trimmed item — a trailing or
+	 * mid-value `#` — is left alone; unlike {@link ActionInput.pairs}, `list`
+	 * has no trailing-comment rule, only a whole-line one.
 	 */
 	static list(name: string): Config.Config<ReadonlyArray<string>> {
 		return Config.string(inputVariable(name)).pipe(
@@ -164,8 +184,11 @@ export class ActionInput {
 				const entries = trimmed
 					.split(/[\n,]/)
 					.map((item) => item.trim())
-					// A leading "- " is a YAML bullet, not part of the value.
-					.map((item) => (item.startsWith("- ") ? item.slice(2).trim() : item))
+					// A line whose first character is "#" is a full-line comment,
+					// dropped before a bullet marker is considered.
+					.filter((item) => !item.startsWith("#"))
+					// A leading "- " or "* " is a YAML/Markdown bullet, not part of the value.
+					.map((item) => (item.startsWith("- ") || item.startsWith("* ") ? item.slice(2).trim() : item))
 					.filter((item) => item !== "");
 				return Effect.succeed<ReadonlyArray<string>>(entries);
 			}),
