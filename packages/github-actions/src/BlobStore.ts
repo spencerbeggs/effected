@@ -197,7 +197,12 @@ const unimplemented = (member: string): never => {
 const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClient.HttpClient | ActionOutputs> =>
 	Effect.gen(function* () {
 		const http = yield* HttpClient.HttpClient;
-		const endpoint = (config.endpoint ?? `https://s3.${config.region}.amazonaws.com`).replace(/\/+$/, "");
+		// Trailing slashes stripped without a regex: the anchored `/\/+$/` form
+		// backtracks quadratically on slash runs (CodeQL js/polynomial-redos).
+		let endpoint = config.endpoint ?? `https://s3.${config.region}.amazonaws.com`;
+		while (endpoint.endsWith("/")) {
+			endpoint = endpoint.slice(0, -1);
+		}
 		const host = new URL(endpoint).host;
 
 		// Declassified ONCE, here, through the package's only declassification
