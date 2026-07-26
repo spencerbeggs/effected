@@ -1,5 +1,28 @@
 # @effected/tsconfig-json
 
+## 0.3.3
+
+### Refactoring
+
+* `PortableTsconfig`, `ResolvedTsconfig`, `TsEnumCodec`, `TsconfigDiscovery`,
+  `TsconfigLoader` and `TsconfigLoaderSync` are now static classes with a
+  private constructor rather than `as const` namespace objects. Call syntax is
+  unchanged (`TsconfigLoader.resolve(...)`); each member's TSDoc now ships in
+  the built `.d.ts`, where an `as const` object's inferred member types
+  previously dropped it. [#180][#180]
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/walker | dependency | updated | 0.3.2 | 0.3.3 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#180]: https://github.com/spencerbeggs/effected/pull/180
+
 ## 0.3.2
 
 ### Documentation

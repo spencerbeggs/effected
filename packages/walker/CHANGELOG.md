@@ -1,5 +1,20 @@
 # @effected/walker
 
+## 0.3.3
+
+### Refactoring
+
+* `Walker` is now a static class with a private constructor rather than an
+  `as const` namespace object. Call syntax is unchanged (`Walker.ascend(...)`);
+  each member's TSDoc now ships in the built `.d.ts`, where an `as const`
+  object's inferred member types previously dropped it. [#180][#180]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#180]: https://github.com/spencerbeggs/effected/pull/180
+
 ## 0.3.2
 
 ### Dependencies

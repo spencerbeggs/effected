@@ -1,5 +1,27 @@
 # @effected/xdg
 
+## 0.1.9
+
+### Refactoring
+
+* `XdgConfig` is now a static class with a private constructor rather than an
+  `as const` namespace object. Call syntax is unchanged (`XdgConfig.resolver(...)`);
+  each member's TSDoc now ships in the built `.d.ts`, where an `as const`
+  object's inferred member types previously dropped it. [#180][#180]
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.1.9 | 0.2.0 |
+| @effected/walker      | dependency | updated | 0.3.2 | 0.3.3 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#180]: https://github.com/spencerbeggs/effected/pull/180
+
 ## 0.1.8
 
 ### Dependencies
