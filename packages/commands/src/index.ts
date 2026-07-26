@@ -39,6 +39,8 @@ export { REDACTED, Redaction, SECRET_FLAGS } from "./Redaction.js";
 export { Retry, TRANSIENT_PATTERNS } from "./Retry.js";
 export type { RunOptions } from "./Run.js";
 export { CommandFailedError, CommandOutput, CommandOutputError, DEFAULT_MAX_OUTPUT_BYTES, Run } from "./Run.js";
+export type { ScriptResult, SpawnRecord, SpawnScript } from "./ScriptedSpawner.js";
+export { ScriptedSpawner } from "./ScriptedSpawner.js";
 export { MismatchPolicy, Tool, ToolSource, VersionFlag, VersionJson, VersionNone, VersionProbe } from "./Tool.js";
 export type { ToolDiscoveryShape, ToolResolutionFailure } from "./ToolDiscovery.js";
 export {

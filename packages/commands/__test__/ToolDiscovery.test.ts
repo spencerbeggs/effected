@@ -2,6 +2,8 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
 import { ChildProcess } from "effect/unstable/process";
 import { ExecContext, LocalExec } from "../src/LocalExec.js";
+import type { ScriptResult } from "../src/ScriptedSpawner.js";
+import { ScriptedSpawner } from "../src/ScriptedSpawner.js";
 import { Tool, VersionFlag, VersionJson, VersionNone } from "../src/Tool.js";
 import {
 	ResolvedTool,
@@ -10,8 +12,6 @@ import {
 	ToolRefusedError,
 	ToolVersionMismatchError,
 } from "../src/ToolDiscovery.js";
-import type { ScriptResult } from "./fixtures.js";
-import { notFound, scripted } from "./fixtures.js";
 
 /** A local context: `pnpm exec <tool>` in /repo. */
 const pnpmLocal = LocalExec.layerContext(
@@ -25,9 +25,9 @@ const pnpmLocal = LocalExec.layerContext(
 const world = (options: { readonly global?: string | undefined; readonly local?: string | undefined }) => {
 	return (command: string, _args: ReadonlyArray<string>): ScriptResult => {
 		if (command === "pnpm") {
-			return options.local === undefined ? notFound("pnpm") : { stdout: options.local, exit: 0 };
+			return options.local === undefined ? ScriptedSpawner.notFound("pnpm") : { stdout: options.local, exit: 0 };
 		}
-		return options.global === undefined ? notFound(command) : { stdout: options.global, exit: 0 };
+		return options.global === undefined ? ScriptedSpawner.notFound(command) : { stdout: options.global, exit: 0 };
 	};
 };
 
@@ -37,7 +37,7 @@ const run = <A, E>(
 	script: (command: string, args: ReadonlyArray<string>) => ScriptResult,
 	local: Layer.Layer<LocalExec> = pnpmLocal,
 ) => {
-	const spawner = scripted(script);
+	const spawner = ScriptedSpawner.make(script);
 	const layer = ToolDiscovery.layer.pipe(Layer.provide(Layer.mergeAll(spawner.layer, local)));
 	return { effect: Effect.provide(program, layer), spawner };
 };
@@ -375,7 +375,7 @@ describe("ToolDiscovery — caching", () => {
 					const second = yield* discovery.resolve(Tool.named("biome"));
 					return { first, second };
 				}),
-				(command) => (alive ? { stdout: "1.0.0", exit: 0 } : notFound(command)),
+				(command) => (alive ? { stdout: "1.0.0", exit: 0 } : ScriptedSpawner.notFound(command)),
 			);
 			const { first, second } = yield* harness.effect;
 			assert.instanceOf(first, ToolNotFoundError);

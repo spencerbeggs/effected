@@ -5,8 +5,8 @@ import { TestClock } from "effect/testing";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChildProcess } from "effect/unstable/process";
 import { CommandFailedError, CommandOutput, CommandOutputError, Run } from "../src/Run.js";
-import type { ScriptResult } from "./fixtures.js";
-import { notFound, permissionDenied, scripted } from "./fixtures.js";
+import type { ScriptResult } from "../src/ScriptedSpawner.js";
+import { ScriptedSpawner } from "../src/ScriptedSpawner.js";
 
 const cmd = (executable = "tool", args: ReadonlyArray<string> = []) => ChildProcess.make(executable, args);
 
@@ -14,7 +14,7 @@ const cmd = (executable = "tool", args: ReadonlyArray<string> = []) => ChildProc
 const withScript = <A, E>(
 	program: () => Effect.Effect<A, E, ChildProcessSpawner.ChildProcessSpawner>,
 	script: (command: string, args: ReadonlyArray<string>) => ScriptResult,
-): Effect.Effect<A, E> => Effect.provide(program(), scripted(script).layer);
+): Effect.Effect<A, E> => Effect.provide(program(), ScriptedSpawner.make(script).layer);
 
 describe("Run.collect", () => {
 	it.effect("returns stdout, stderr and exit code", () =>
@@ -52,7 +52,7 @@ describe("Run.collect", () => {
 			const error = yield* Effect.flip(
 				withScript(
 					() => Run.collect(cmd("missing")),
-					() => notFound("missing"),
+					() => ScriptedSpawner.notFound("missing"),
 				),
 			);
 			assert.instanceOf(error, CommandFailedError);
@@ -70,7 +70,7 @@ describe("Run.collect", () => {
 			const error = yield* Effect.flip(
 				withScript(
 					() => Run.collect(cmd("blocked")),
-					() => permissionDenied("blocked"),
+					() => ScriptedSpawner.permissionDenied("blocked"),
 				),
 			);
 			if (error instanceof CommandFailedError) {
@@ -285,7 +285,7 @@ describe("Run.exitCode", () => {
 			const error = yield* Effect.flip(
 				withScript(
 					() => Run.exitCode(cmd("x")),
-					() => notFound("x"),
+					() => ScriptedSpawner.notFound("x"),
 				),
 			);
 			assert.instanceOf(error, CommandFailedError);
@@ -321,7 +321,7 @@ describe("Run.succeeds", () => {
 			assert.isFalse(
 				yield* withScript(
 					() => Run.succeeds(cmd("missing")),
-					() => notFound("missing"),
+					() => ScriptedSpawner.notFound("missing"),
 				),
 			);
 		}),
@@ -425,7 +425,7 @@ describe("Run.stream", () => {
 describe("Run.detach", () => {
 	it.effect("unrefs the handle and returns the pid", () =>
 		Effect.gen(function* () {
-			const spawner = scripted(() => ({ exit: 0 }));
+			const spawner = ScriptedSpawner.make(() => ({ exit: 0 }));
 			const pid = yield* Effect.provide(Run.detach(cmd("server")), spawner.layer);
 			assert.strictEqual(Number(pid), 4242);
 			// The invariant the helper exists to encode: unref RAN. Without it the
@@ -439,7 +439,7 @@ describe("Run.detach", () => {
 			const error = yield* Effect.flip(
 				withScript(
 					() => Run.detach(cmd("missing")),
-					() => notFound("missing"),
+					() => ScriptedSpawner.notFound("missing"),
 				),
 			);
 			assert.instanceOf(error, CommandFailedError);
@@ -453,7 +453,7 @@ describe("Run.detach", () => {
 describe("Run.extendEnv", () => {
 	it.effect("the spawner receives the merged env AND extendEnv true", () =>
 		Effect.gen(function* () {
-			const spawner = scripted(() => ({ stdout: "ok", exit: 0 }));
+			const spawner = ScriptedSpawner.make(() => ({ stdout: "ok", exit: 0 }));
 			const command = ChildProcess.make("tool", ["x"], { env: { FROM_CONSTRUCTION: "a" } }).pipe(
 				Run.extendEnv({ FROM_COMBINATOR: "b" }),
 			);
@@ -513,7 +513,7 @@ describe("Run.extendEnv", () => {
 			// Node spawner resolves the child environment to ONLY these variables
 			// (no PATH, no HOME). If a future core beta makes this assertion fail,
 			// setEnv started extending — re-evaluate this combinator's raison d'être.
-			const spawner = scripted(() => ({ stdout: "ok", exit: 0 }));
+			const spawner = ScriptedSpawner.make(() => ({ stdout: "ok", exit: 0 }));
 			const command = ChildProcess.make("tool", []).pipe(ChildProcess.setEnv({ MARKER: "x" }));
 			yield* Effect.provide(Run.collect(command), spawner.layer);
 			const record = spawner.spawns[0];

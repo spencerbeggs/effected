@@ -4,7 +4,7 @@ import { TestClock } from "effect/testing";
 import { ChildProcess } from "effect/unstable/process";
 import { Retry } from "../src/Retry.js";
 import { CommandFailedError, CommandOutput } from "../src/Run.js";
-import { notFound, permissionDenied } from "./fixtures.js";
+import { ScriptedSpawner } from "../src/ScriptedSpawner.js";
 
 const command = ChildProcess.make("npm", ["publish"]);
 
@@ -31,11 +31,11 @@ describe("Retry.isTransient", () => {
 	});
 
 	it("a MISSING EXECUTABLE is never transient — retrying cannot install it", () => {
-		assert.isFalse(Retry.isTransient(CommandFailedError.spawn(command, notFound("npm"))));
+		assert.isFalse(Retry.isTransient(CommandFailedError.spawn(command, ScriptedSpawner.notFound("npm"))));
 	});
 
 	it("a non-NotFound spawn failure IS transient — a busy or locked binary can clear", () => {
-		assert.isTrue(Retry.isTransient(CommandFailedError.spawn(command, permissionDenied("npm"))));
+		assert.isTrue(Retry.isTransient(CommandFailedError.spawn(command, ScriptedSpawner.permissionDenied("npm"))));
 	});
 
 	it("a timeout is NOT transient by default", () => {
