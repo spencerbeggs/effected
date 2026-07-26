@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-25
-last-synced: 2026-07-25
+updated: 2026-07-26
+last-synced: 2026-07-26
 completeness: 85
 related:
   - architecture.md
@@ -94,7 +94,9 @@ The gate is the union of what those consumers need, and it is met. The gate set 
 
 ### The github-split wave
 
-Five packages arrived after the gate and have not published yet: `commands`, `templates`, `github`, `github-actions` and `sbom`, from the [github-split program](package-inventory.md#the-github-split-packages). The reason is mechanical rather than editorial — **the program ran without changesets by design**, so nothing has named them for a release; they ship when changesets do. The pre-release contract above covers them unchanged: `unstable`, consumers pinning exact versions.
+Five packages arrived after the gate and published for the first time in the **2026-07-26 wave** (release PR #181, cut from the `feat: build the github and actions package suite` squash, PR #180): `@effected/commands` `0.1.0`, `@effected/templates` `0.1.0`, `@effected/github` `0.1.0`, `@effected/github-actions` `0.1.0` and `@effected/sbom` `0.1.0`, from the [github-split program](package-inventory.md#the-github-split-packages). Until then the reason was mechanical rather than editorial — **the program ran without changesets by design**, so nothing had named them for a release; they shipped once changesets did. The pre-release contract above covers them unchanged: `unstable`, consumers pinning exact versions.
+
+The same wave was sixteen packages in total, the largest since the gate. Alongside the five first releases: six minors — `@effected/workspaces` `0.9.0` (breaking: the publishability seam drops the bare layer for value policies, and `ReleaseTag`'s `versionPrefix` default changes to `""`), `@effected/npm` `0.5.0`, `@effected/package-json` `0.6.0`, `@effected/markdown` `0.3.0`, `@effected/config-file` `0.2.0` and `@effected/app` `0.4.0` (`plugin.json` moved to `0.4.0` in lockstep — the plugin's twelve-skill actions suite rode this bump) — and five patches: `@effected/git` `0.5.1`, `@effected/tsconfig-json` `0.3.3`, `@effected/walker` `0.3.3`, `@effected/xdg` `0.1.9` (static-class declaration conversions) and `@effected/lockfiles` `0.2.1` (a dependency cascade). `@effected/semver`, `@effected/jsonc`, `@effected/yaml`, `@effected/toml`, `@effected/glob`, `@effected/spdx`, `@effected/store`, `@effected/runtimes` and `@effected/pnpm-plugin-effect` were untouched and resolve at their existing versions.
 
 They did not enter through this document's criterion, because that criterion is the union of what the five applications need and it was met without them. Their scope is closed instead by the program's six consumer repos — the five savvy-web action repos plus claude-code-marketplace-manager — of which only silk-update-action appears among the five applications above; savvy-web/systems, which does, is the source monorepo the program takes its code from rather than one of the six. All are mapped in [consumers/](consumers/README.md).
 

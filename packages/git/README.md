@@ -85,14 +85,14 @@ const contentAt = (cwd: string, ref: string, path: string) =>
 
 ## Features
 
-Twenty-five service methods: eighteen that read repository state and seven that mutate it, all funneled through the same one-step classification.
+Twenty-six service methods: eighteen that read repository state and eight that mutate it, all funneled through the same one-step classification.
 
 - Content and trees: `Git.show(cwd, ref, path)` — file content at a ref, `Option.none` when the path is absent there — and `Git.lsTree(cwd, ref)` with an optional pathspec, returning typed `LsTreeEntry` values (mode, type, oid, path), NUL-parsed.
 - Diffs: `Git.changedFiles(cwd, { base, head })` — paths changed across a range — and `Git.nameStatus`, which types each change as added, modified, deleted, renamed, copied and more, carries `oldPath` on renames, and takes either a `base...head` range or the working tree versus a single ref.
 - Working tree: `Git.unstagedChanges`, `Git.stagedChanges`, `Git.untrackedFiles` and `Git.workingChanges` (their deduplicated union), plus `Git.status` as typed porcelain `StatusEntry` values.
 - Probes: `Git.refExists` (`true`/`false`, including `false` for refs that do not resolve at all), `Git.mergeBase` and `Git.revParse` (resolved SHAs), `Git.repoRoot`, and the `Option`-answering `Git.defaultBranch` (unset remote HEAD → `Option.none`, remote prefix stripped), `Git.currentBranch` (detached HEAD → `Option.none`), `Git.configGet` and `Git.remoteUrl`.
 - Commits: `Git.commitInfo(cwd, ref?)` — a typed `CommitInfo` with the sha, the `%G?` signature verdict and the raw, untrimmed message.
-- Mutating tier, each method marked as such: `Git.checkout` (with a detach option), `Git.fetch` (remote, ref, depth, tag), `Git.submoduleUpdate`, `Git.submoduleAdd`, `Git.sparseCheckoutSet` (explicit cone flag), `Git.configSet` and `Git.add`. Nothing here serializes concurrent access — the caller owns that, per working tree.
+- Mutating tier, each method marked as such: `Git.checkout` (with a detach option), `Git.fetch` (remote, ref, depth, tag), `Git.fetchAny` (tries the tag form first, falls back to the plain form on `UnknownRefError` or `GitCommandError`), `Git.submoduleUpdate`, `Git.submoduleAdd`, `Git.sparseCheckoutSet` (explicit cone flag), `Git.configSet` and `Git.add`. Nothing here serializes concurrent access — the caller owns that, per working tree.
 - `GitCommand.*` — all 24 invocations as pure, inspectable `Command` values.
 - Errors: `GitCommandError`, `NotARepositoryError`, `UnknownRefError` — classification happens once, inside the service. A ref the remote does not have surfaces as `UnknownRefError` too, the typed signal a tag-then-branch fetch fallback branches on with `Effect.orElse`.
 

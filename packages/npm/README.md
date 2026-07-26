@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers. `CatalogResolver.rangeOf` turns a package name plus an optional catalog name into the configured range; `WorkspaceResolver.versionOf` turns a workspace package name into its concrete version. Both are `Context.Service` contracts, both ship a no-op default layer that resolves nothing, and neither one reads a file. The package is the seam: a library that needs to *expand* a specifier depends on this, and something that can actually see the workspace supplies the implementation. On top of the contracts sit the kit's shared dependency vocabulary — `DependencySpecifier`, `DependencySection`, `IntegrityHash` — and `Manifest`, a tolerant manifest model that resolves every `catalog:` and `workspace:` specifier through the contracts in one call.
+Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers, plus the npm registry and publish surface built on top of them. `CatalogResolver.rangeOf` turns a package name plus an optional catalog name into the configured range; `WorkspaceResolver.versionOf` turns a workspace package name into its concrete version. Both are `Context.Service` contracts, both ship a no-op default layer that resolves nothing, and neither one reads a file. The package is the seam: a library that needs to *expand* a specifier depends on this, and something that can actually see the workspace supplies the implementation. On top of the contracts sit the kit's shared dependency vocabulary — `DependencySpecifier`, `DependencySection`, `IntegrityHash` — and `Manifest`, a tolerant manifest model that resolves every `catalog:` and `workspace:` specifier through the contracts in one call. `NpmRegistry` and `PackagePublish` round out the package with the registry reads and pack/publish workflow a release tool needs, over core `HttpClient` and `@effected/commands`.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 beta. Packages graduate to
@@ -39,7 +39,7 @@ Requires Node.js >=24.11.0.
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
-`effect` v4 is the only peer dependency and the only dependency of any kind. Defining a contract runs no effect and touches no filesystem: the default layers are `Layer.succeed` over functions that return `Option.none()`.
+`effect` v4 and `@effected/semver` are peer dependencies; `@effected/commands` arrives as an ordinary dependency, behind `PackagePublish`. Defining the resolver contracts runs no effect and touches no filesystem — their default layers are `Layer.succeed` over functions that return `Option.none()` — but `NpmRegistry` needs a `HttpClient` and `PackagePublish` needs `FileSystem`, `Crypto` and a `ChildProcessSpawner`, each supplied at the edge from `@effect/platform-node` or `@effect/platform-bun`.
 
 ## Quick start
 
@@ -121,6 +121,26 @@ Effect.runPromise(Effect.provide(program, Default)).then(console.log);
 
 `needsResolution` is a pure getter: check it first and skip resolution entirely (and whatever catalog assembly backs the resolvers) when no dependency field carries a `catalog:` or `workspace:` specifier. `resolve()` projects every such specifier through the contracts and returns a new `Manifest`, applying pnpm's publish-time semantics — the alias form `workspace:<name>@<range>` resolves the *target* package's version and becomes the `npm:<name>@<range>` alias pnpm publishes. At the manifest level a specifier the resolvers answer `Option.none()` for fails typed as `UnresolvedDependencyError`, naming the field, the dependency and the reason: an unmatched entry is an ordinary answer for a resolver, but it means the manifest cannot be projected.
 
+## Registry reads and publishing
+
+`NpmRegistry` replaces every shelled `npm view`, reading over core `HttpClient` instead. The registry is a per-call argument rather than baked into the layer, so one program can probe two registries for the same package, and an absent package or version is `Option.none()` rather than an error:
+
+```ts
+import { NpmRegistry } from "@effected/npm";
+import { FetchHttpClient } from "effect/unstable/http";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const registry = yield* NpmRegistry;
+  return yield* registry.version("effect", "4.0.0-beta.101");
+});
+
+Effect.runPromise(program.pipe(Effect.provide(NpmRegistry.layer), Effect.provide(FetchHttpClient.layer)));
+// Option.some(PublishedVersion) when that version is on the registry, Option.none() otherwise
+```
+
+`PackagePublish` runs the rest of a release through `@effected/commands`' `Run`: `pack` writes the tarball and reports both its npm integrity and a local sha256 (the attestation subject), `publishTarball` uploads bytes packed earlier, and `dryRun` reports packability without contacting a registry. Every step fails typed as `PublishError`, routed by `kind`, rather than throwing on a non-zero npm exit. `NpmExecutor.ambient` runs the runner's own npm; `NpmExecutor.dlx("npm@11")` fetches a pinned one through the project's launcher, which is what OIDC trusted publishing needs on runners that still ship npm 10.x. `classifyRegistry` tells npm, GitHub Packages, JSR and a custom registry apart as a `RegistryKind`, since provenance and auth differ by kind.
+
 ## Who consumes this
 
 `@effected/package-json` is the reason the package exists. `Package.resolve` walks all four dependency maps, expands every `catalog:` and `workspace:` specifier through these two services, and leaves untouched any specifier the resolvers answered `None` for. `@effected/lockfiles` came second, which is why the specifier and integrity vocabulary lives here rather than in package-json. `@effected/workspaces` sits on the other side of the seam and provides the implementations that read a real pnpm workspace — its `Workspaces.resolveManifest` runs `Manifest.resolve()` for you over a freshly discovered workspace. Nothing in this package points outward at any of them.
@@ -136,6 +156,11 @@ Effect.runPromise(Effect.provide(program, Default)).then(console.log);
 - `DependencySection` — the kit-wide dependency vocabulary: `DependencyKind`, `DependencyField` and the mapping between them.
 - `IntegrityHash` — a brand over the three textual integrity forms (SRI, corepack, yarn), with `algorithmOf`.
 - `ReleaseAgeGate` / `PartialReleaseAgeGate` — pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` gate as pure vocabulary: `combine` merges contributions from multiple config sources strictest-age-wins, and `filterVersions` / `isExcluded` drop candidate versions younger than the cutoff against a caller-supplied clock, so a resolver never picks a version pnpm would reject. `matchesExclude` is pnpm's flat-`*` matcher, deliberately not `@effected/glob`'s dialect. `PartialReleaseAgeGate` is the permissive inbound form each source contributes.
+- `NpmRegistry` — registry reads over `HttpClient`: `version`, `versions`, `distTags` and `publishTimes`, each taking a per-call `RegistryTarget`; `layerTest` and the fully-working `layerSeeded` are the test doubles.
+- `PackagePublish` — the pack/publish workflow over `@effected/commands`: `setupAuth`, `pack`, `publishTarball` and `dryRun`, with `PackedTarball` carrying both npm's integrity and a local sha256 digest.
+- `NpmExecutor` — `ambient` or `dlx(spec)`, the launcher choice a pinned, OIDC-capable npm needs on runners that ship an older one.
+- `PublishError` — the publish-workflow failure, routed by `kind: auth | pack | publish | output | digest | executor`.
+- `RegistryKind` / `classifyRegistry` — classify a registry URL as `npm`, `github-packages`, `jsr` or `custom`, since provenance and auth differ by kind.
 
 The surface grows when a consumer proves it needs more, not before.
 

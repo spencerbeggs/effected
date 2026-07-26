@@ -192,7 +192,33 @@ Effect.runPromise(program).then(console.log);
 // [ "./CHANGELOG.md", "https://example.com/docs" ]
 ```
 
-`headings` lists every heading wherever it sits, including inside blockquotes and list items. `sections` are delimited by root-level headings only, and each section's range spans its subsections, so the edit layer can splice a whole section out in one edit.
+`headings` lists every heading wherever it sits, including inside blockquotes and list items. `sections` are delimited by root-level headings only, and each section's range spans its subsections, so the edit layer can splice a whole section out in one edit. `firstSection` and `sectionByHeading` find one `DocumentSection` without scanning `sections` yourself — the second matches on an exact trimmed heading string, a `RegExp`, or a predicate, and both accept `{ depth }` to restrict to one heading level:
+
+```ts
+import { MarkdownDocument } from "@effected/markdown";
+import { Effect } from "effect";
+
+const source = `# Changelog
+
+## 1.2.3
+
+Fixed a bug.
+
+## 1.2.2
+
+Initial release.
+`;
+
+const program = Effect.gen(function* () {
+  const doc = yield* MarkdownDocument.parse(source);
+  return doc.sectionByHeading("1.2.3", { depth: 2 })?.body.trim();
+});
+
+Effect.runPromise(program).then(console.log);
+// Fixed a bug.
+```
+
+`DocumentSection.body` is the section without its heading, and it is deliberately untrimmed — exactly the bytes `bodyRange` describes — so callers write `.body.trim()` when they want the tidy form.
 
 For anything the accessors do not cover, `find` and `findAll` walk the whole tree in document pre-order. A string selector matches the node's `type` and narrows the result — `doc.findAll("heading")` is `ReadonlyArray<Heading>`, `doc.find("table")` is `Table | undefined` — and a type-guard predicate narrows the same way. The nodes come back by identity, so `doc.findAll("heading")[1]` addresses the second heading for `MarkdownFormat.modify` without raw child indexing.
 
@@ -234,7 +260,7 @@ if (Result.isSuccess(parsed)) {
 ## Features
 
 - `Markdown` — `parse`/`stringify` as `Effect`s with typed `MarkdownParseError`/`MarkdownStringifyError` channels, the pure `parseResult`/`stringifyResult` twins for synchronous callers, and the `MarkdownFromString` two-way codec.
-- `MarkdownDocument` — source, tree, diagnostics and the link-definition index, plus the derived `headings`, `sections` and `links` accessors, the `find`/`findAll` tree queries over type-narrowed selectors, and the `frontmatter` capture.
+- `MarkdownDocument` — source, tree, diagnostics and the link-definition index, plus the derived `headings`, `sections` and `links` accessors, the `firstSection`/`sectionByHeading` finders over a `DocumentSection` (heading, depth, range, body), the `find`/`findAll` tree queries over type-narrowed selectors, and the `frontmatter` capture.
 - The mdast-shaped node classes — the CommonMark types plus GFM's `delete`, `table`, `tableRow`, `tableCell`, `footnoteDefinition`, `footnoteReference` and task-list `checked`, each carrying unist positions with byte offsets and this package's fidelity fields. `position` defaults to the zero-width synthetic sentinel, so a replacement fragment constructs in one line — `Text.make({ value: "shipped" })`.
 - `MarkdownEdit` / `MarkdownRange` (with `applyAll`) — the non-mutating text-edit vocabulary, field-identical to `@effected/jsonc`'s, `@effected/yaml`'s and `@effected/toml`'s.
 - `MarkdownFormat` — `format`/`formatToString` compute conservative marker-normalization edits; `modify`/`modifyToString` replace a node by identity through the canonical stringifier.

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-07-25
-last-synced: 2026-07-25
+updated: 2026-07-26
+last-synced: 2026-07-26
 completeness: 88
 related:
   - architecture.md
@@ -44,7 +44,7 @@ related:
 
 ## Overview
 
-The current `@effected/*` package set and where each package came from. The kit is **twenty-five publishable packages** — twenty-four libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). Twenty have published; the five from the [github-split program](#the-github-split-packages) are built and unpublished. Tier definitions are in [effect-standards.md](effect-standards.md); the release history and consumer mapping are in [releases.md](releases.md); post-`0.1.0` work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
+The current `@effected/*` package set and where each package came from. The kit is **twenty-five publishable packages** — twenty-four libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). All twenty-five have published: the five from the [github-split program](#the-github-split-packages) joined the release stream in the 2026-07-26 wave ([releases.md](releases.md#the-github-split-wave)), closing the last unpublished gap. Tier definitions are in [effect-standards.md](effect-standards.md); the release history and consumer mapping are in [releases.md](releases.md); post-`0.1.0` work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
 
 The kit's scope is closed by the consuming applications in [releases.md](releases.md), not by the number of `*-effect` source repos. A source repo is not by itself a commitment to migrate it: `json-schema-effect` fell off under that test (see [Off the roadmap](#off-the-roadmap)).
 
@@ -52,7 +52,7 @@ The kit's scope is closed by the consuming applications in [releases.md](release
 
 Provenance is one of: **port** (redesigned from a v3 `*-effect` source repo under `/Users/spencer/workspaces/spencerbeggs/`, or from a `@savvy-web/*` package), **extraction** (carved out of another package during its port), **part-port** (one service generalized out of a source package, the rest invented) or **invention** (new, scoped by a consumer survey rather than a source repo).
 
-The twenty published packages — nineteen of them were the `0.1.0` gate set ([releases.md](releases.md#the-gate)), and `markdown` joined the release stream afterwards, which is the precedent for how a package that was never on the gate ships:
+All twenty-five published packages — nineteen of them were the `0.1.0` gate set ([releases.md](releases.md#the-gate)); `markdown` joined the release stream in the 2026-07-19 wave, and the github-split five joined it in the 2026-07-26 wave (sixteen packages, release PR #181) — the second worked example of how a package that was never on the gate ships:
 
 | Package | Tier | Provenance | Design doc |
 | --- | --- | --- | --- |
@@ -75,6 +75,11 @@ The twenty published packages — nineteen of them were the `0.1.0` gate set ([r
 | `@effected/spdx` | pure | invention; vendored SPDX license expressions as pure schemas; consumed by `package-json` | [packages/spdx.md](packages/spdx.md) |
 | `@effected/app` | integrated | invention; thin composition over `xdg` + `config-file` + `store` | [packages/app.md](packages/app.md) |
 | `@effected/markdown` | pure | invention; CommonMark + GFM as pure schemas, the kit's typed communication layer with AI agents | [packages/markdown.md](packages/markdown.md) |
+| `@effected/commands` | boundary | part-port of `@savvy-web/silk-effects`' `ToolDiscovery` plus invention; tool discovery and structured running over core's `ChildProcessSpawner` | [packages/commands.md](packages/commands.md) |
+| `@effected/templates` | boundary | port of `@savvy-web/silk-effects`' `ManagedSection`; managed `BEGIN`/`END` blocks in user-owned files | [packages/templates.md](packages/templates.md) |
+| `@effected/github` | integrated | port-with-redesign of `@savvy-web/github-action-effects`' GitHub half; owns the octokit runtime | [packages/github.md](packages/github.md) |
+| `@effected/github-actions` | integrated | port-with-redesign of the same package's Actions half; the runner-side runtime | [packages/github-actions.md](packages/github-actions.md) |
+| `@effected/sbom` | integrated | port-with-redesign of the same package's `Attest` knot; owned CycloneDX 1.6 emitter plus Sigstore signing | [packages/sbom.md](packages/sbom.md) |
 | `@effected/pnpm-plugin-effect` | companion — no tier | invention; publishes the `effect`/`effectPeers` catalogs | [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md) |
 
 Tiers classify libraries by dependency surface; the companion is not a library and carries no tier. Notable structural facts that recur across the kit:
@@ -93,15 +98,7 @@ The `jsonc`, `yaml` and `toml` **format** packages remain independent — they a
 
 ## The github-split packages
 
-Five packages are in tree, built, tested and documented, and **not yet published** — the [github-split program](releases.md#the-github-split-wave) ran without changesets by design, so they carry no release yet. Nothing else distinguishes them: they are complete packages awaiting a release wave.
-
-| Package | Tier | Provenance | Design doc |
-| --- | --- | --- | --- |
-| `@effected/commands` | boundary | part-port of `@savvy-web/silk-effects`' `ToolDiscovery` plus invention; tool discovery and structured running over core's `ChildProcessSpawner` | [packages/commands.md](packages/commands.md) |
-| `@effected/templates` | boundary | port of `@savvy-web/silk-effects`' `ManagedSection`; managed `BEGIN`/`END` blocks in user-owned files | [packages/templates.md](packages/templates.md) |
-| `@effected/github` | integrated | port-with-redesign of `@savvy-web/github-action-effects`' GitHub half; owns the octokit runtime | [packages/github.md](packages/github.md) |
-| `@effected/github-actions` | integrated | port-with-redesign of the same package's Actions half; the runner-side runtime | [packages/github-actions.md](packages/github-actions.md) |
-| `@effected/sbom` | integrated | port-with-redesign of the same package's `Attest` knot; owned CycloneDX 1.6 emitter plus Sigstore signing | [packages/sbom.md](packages/sbom.md) |
+Five packages joined the kit through the [github-split program](releases.md#the-github-split-wave) — `commands`, `templates`, `github`, `github-actions` and `sbom`, listed with the rest of the published set in the main table above. They sat unpublished only because the program ran without changesets by design; the **2026-07-26 wave** (release PR #181, sixteen packages) named them and they published at `0.1.0` each, alongside eleven extended packages. [releases.md](releases.md#the-github-split-wave) carries the wave's exact versions.
 
 The program (2026-07-25, plan `2026-07-25-github-split-master.md`; plans are local-only, so cite by name) replaces `@savvy-web/github-action-effects` wholesale and upstreams the mechanism half of `@savvy-web/silk-effects`. Its consumer migration maps and the Phase 6 fluency audit are under [consumers/](consumers/README.md).
 

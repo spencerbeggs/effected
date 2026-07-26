@@ -8,7 +8,7 @@ This is **effected**, a pnpm monorepo (npm org `@effected`) building an **Effect
 
 The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.101`. The monorepo holds libraries only — applications stay in external repos.
 
-**The kit ships in coordinated waves, never one package at a time.** The `0.1.0` gate shipped as an explicit pre-release on 2026-07-16 (18 packages, PR #3) and every wave since has gone out the same way (latest: 11 packages, 2026-07-25). **Do not release a package on its own.** Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. The five github-split packages still sit at `0.0.0` — unreleased, they ship in a later wave.
+**The kit ships in coordinated waves, never one package at a time.** The `0.1.0` gate shipped as an explicit pre-release on 2026-07-16 (18 packages, PR #3) and every wave since has gone out the same way (latest: 16 packages, 2026-07-26, PR #181). **Do not release a package on its own.** Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. The five github-split packages — `commands`, `templates`, `github`, `github-actions` and `sbom` — published for the first time in that wave; nothing in the kit still sits at `0.0.0`.
 
 ## Design Documentation
 

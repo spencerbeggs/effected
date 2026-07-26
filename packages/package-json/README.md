@@ -209,8 +209,9 @@ Every failure is a `Schema.TaggedErrorClass` routed with `Effect.catchTag`. Caus
 - `PackageJsonFile` — the IO surface: `read` and `write` over core `FileSystem` / `Path`, with the platform implementation supplied at the edge.
 - `PackageValidator` — rule-based validation aggregating every failure, with the default rule set, a parameterized `layerRules` factory, and the publish-gate rules `noUnresolvedDepsRule` and `noLocalDepsRule`.
 - `Package.resolve` — `catalog:` and `workspace:` expansion over the `@effected/npm` contracts with pnpm's publish-time projection (alias form included), as an explicit step that `write` never performs for you.
-- `PackageName`, `DependencySpecifier`, `Dependency`, `SpdxLicense`, `PackageManager`, `Person`, `DevEngine` — the leaf concepts, each owning its own statics, brand and error, usable independently of `Package`.
-- Field schemas (`DependencyMapField`, `BinField`, `ExportsField`, `RepositoryField`, `PublishConfigField`, `PeerDependenciesMetaField`, `StringMapField`) exported for subclasses that extend the model.
+- `PackageName`, `DependencySpecifier`, `Dependency`, `SpdxLicense`, `PackageManager`, `Person`, `Repository`, `Bugs`, `DevEngine` — the leaf concepts, each owning its own statics, brand and error, usable independently of `Package`. `Repository` and `Bugs` decode the `repository` and `bugs` fields from either their shorthand or object form, the same way `Person` does for `author`, `contributors` and `maintainers`; `Repository` also exposes `browseUrl` and `gitUrl` getters that normalize a shorthand or SSH form to `https://`.
+- `Package` also types `keywords`, `maintainers` and `homepage` directly, alongside the existing `author` and `contributors`.
+- Field schemas (`DependencyMapField`, `BinField`, `ExportsField`, `PublishConfigField`, `PeerDependenciesMetaField`, `StringMapField`) exported for subclasses that extend the model. `RepositoryField` is exported too but deprecated: `Package.repository` now decodes through `Repository.FromValue`, which round-trips the original shorthand or object form; `RepositoryField` remains only for consumers still matching on the raw union.
 
 ## License
 

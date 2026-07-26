@@ -98,6 +98,25 @@ export const SettingsLive = ConfigFile.layer(SettingsConfig, {
 });
 ```
 
+## Reading one known path
+
+Not every caller has a config file — some just have one path a caller already vouched for, such as a CLI's `--config` flag. `ConfigFile.read` is the one-shot escape from the service, the layer and the resolver chain: read, decode and validate a single path, with the schema and codec named per call rather than bound to a service class:
+
+```ts
+import { ConfigFile, JsonCodec } from "@effected/config-file";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect, Schema } from "effect";
+
+class MyConfig extends Schema.Class<MyConfig>("MyConfig")({ port: Schema.Number }) {}
+
+const program = ConfigFile.read("./app.config.json", { schema: MyConfig, codec: JsonCodec });
+
+Effect.runPromise(program.pipe(Effect.provide(NodeFileSystem.layer))).then(console.log);
+// MyConfig { port: 3000 }
+```
+
+It is deliberately read-only and discovery-free — no resolver chain, no `save`/`update`. Reach for `ConfigFile.layer` the moment either is wanted.
+
 ## Errors
 
 Every failure is a tagged error you route on with `Effect.catchTag`. The tags exist so that recovery can differ:
@@ -166,6 +185,7 @@ export const secret = EncryptedCodec(migrating, EncryptedCodecKey.fromPassphrase
 ## Features
 
 - `ConfigFile.Service` / `ConfigFile.layer` / `ConfigFile.testLayer` — a per-schema service class and its layers. `testLayer` seeds files into a temp directory and wires the *real* implementation over them, so tests exercise the actual pipeline rather than a stub that can drift from it.
+- `ConfigFile.read` — the one-shot escape from the service: read, decode and validate one explicit path, schema and codec named per call, with no resolver chain and no write path.
 - `ConfigResolver` — `explicitPath`, `staticDir`, `upwardWalk`, `workspaceRoot`, `gitRoot` and `systemEtc`. A resolver's error channel is `never` by contract: every filesystem failure becomes `Option.none()`, so one unreadable tier never aborts the chain.
 - `MergeStrategy` — `firstMatch` and `layeredMerge`, combining discovered sources in priority order.
 - `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec` — JSON, JSONC, YAML and TOML in the box, exported free-standing so an unused format's engine is tree-shaken away.

@@ -28,14 +28,14 @@ Every entrypoint takes content as a **string**. The package performs no IO at al
 ## Install
 
 ```bash
-npm install @effected/lockfiles @effected/jsonc @effected/semver @effected/yaml effect
+npm install @effected/lockfiles @effected/jsonc @effected/npm @effected/semver @effected/yaml effect
 ```
 
 ```bash
-pnpm add @effected/lockfiles @effected/jsonc @effected/semver @effected/yaml effect
+pnpm add @effected/lockfiles @effected/jsonc @effected/npm @effected/semver @effected/yaml effect
 ```
 
-Requires Node.js >=24.11.0. `effect` v4, `@effected/jsonc`, `@effected/semver` and `@effected/yaml` are peer dependencies — the JSONC and YAML engines and the SemVer range checker all arrive through those siblings, so nothing outside `effect` and `@effected/*` reaches your tree. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not.
+Requires Node.js >=24.11.0. `effect` v4, `@effected/jsonc`, `@effected/npm`, `@effected/semver` and `@effected/yaml` are peer dependencies — the JSONC and YAML engines, the shared dependency-specifier vocabulary and the SemVer range checker all arrive through those siblings, so nothing outside `effect` and `@effected/*` reaches your tree. Package managers that install peers automatically will pull them in; add them to your manifest explicitly if yours does not.
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
@@ -103,7 +103,7 @@ yarn defines no document framing at all, so multi-document `yarn.lock` content f
 - `LockfileIntegrity.compare(lockfile, manifests)` — total, pure integrity checking with no error channel; the report carries `valid`, `missingWorkspaces`, `extraWorkspaces` and `unsatisfiedConstraints`. Constraint checking is best-effort by design: `workspace:` / `link:` / `file:` specifiers and rows whose range does not parse as SemVer are skipped.
 - `WorkspaceManifest` — the manifest input shape for integrity checking: a package name plus four optional dependency records. Deliberately a plain value rather than a strict manifest model, so consumers can derive it from anything.
 - `ResolvedPackage` — name, version, optional integrity hash, workspace flag and relative path, dependency map.
-- `WorkspaceDependency` and `DependencyType` — a `from`/`to` edge between workspace packages with its dependency type and constraint.
+- `WorkspaceDependency` — a `from`/`to` edge between workspace packages, with `depType` spelled in `@effected/npm`'s `DependencyField` vocabulary and its declared constraint.
 - `PnpmExtension` and `BunExtension` — format-specific data such as pnpm catalogs and bun trusted dependencies, preserved on the model's optional `extension` field.
 
 ## License

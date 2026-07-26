@@ -232,7 +232,9 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 - `WorkspaceCatalogs` — pnpm catalog assembly and `catalog:` resolution, on pnpm's own catalog packages; `releaseAgeGate()` assembles the effective `@effected/npm` `ReleaseAgeGate` from inline `pnpm-workspace.yaml` release-age keys and replayed hook contributions, strictest-wins, in the same pass as the catalogs.
 - `LockfileReader` — locate and parse the workspace's lockfile through `@effected/lockfiles`.
 - `ChangeDetector` — git-range change detection over `@effected/git`'s `Git` service; swap the layer to mock it with no repository.
-- `PublishabilityDetector` — whether a package publishes and to where, as a `PublishTarget` (registry, directory, access, provenance). The default layer implements npm's semantics; swap the layer if yours differ.
+- `PublishabilityDetector` — whether a package publishes and to where, as a `PublishTarget` (registry, directory, access, provenance). No composite provides one: pick `PublishabilityDetector.layerNpm` (standard npm semantics) or `.layerNone` (nothing publishes) and provide it explicitly.
+- `ReleaseTag` / `TrackingTag` — release-tag formatting (`ReleaseTag.single` / `.scoped`, strict SemVer by default with no `v` prefix) and the floating major/minor alias derivation GitHub Actions-style consumers expect (`v1`, `v1.2`), plus `classifyTag` to tell a release tag from a tracking alias.
+- `VersioningStrategy` — classify a workspace as `single`, `fixed-group` or `independent` from package names and fixed groups, or detect it live against `PublishabilityDetector`, and produce the release tags for a batch with `tagsFor`.
 - `findWorkspaceRootSync` / `getWorkspacePackagesSync` — the synchronous escape hatch for config-time callers that cannot await, over file and path operations you supply.
 - `@effected/workspaces/node-sync` — a second entry point holding the Node bindings for those operations (`nodeFileSystem`, `nodePath` and the `nodeSyncOps` bag), kept off the main entry so `node:*` never reaches a consumer that supplies its own.
 
