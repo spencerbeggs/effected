@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-21
-last-synced: 2026-07-21
+updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 93
 related:
   - ../architecture.md
@@ -172,7 +172,7 @@ The lockfiles npm parser normalizes `package-lock.json` into the one `Lockfile` 
 
 ## Phase 5 extension
 
-Designed and **built** 2026-07-25 for [Phase 5 of the GitHub/Actions split](../../../plans/2026-07-25-github-split-master.md#phases). Adds three service-side modules — `NpmRegistry` (registry reads over core `HttpClient`), `PackagePublish` (the npm CLI through [`@effected/commands`](commands.md)) and the `RegistryKind` classifier — replacing `@savvy-web/github-action-effects`' services of the same names. As-built deltas are recorded [at the end of this section](#as-built-2026-07-25).
+Designed and **built** 2026-07-25 for Phase 5 of the GitHub/Actions split (`2026-07-25-github-split-master.md`). Adds three service-side modules — `NpmRegistry` (registry reads over core `HttpClient`), `PackagePublish` (the npm CLI through [`@effected/commands`](commands.md)) and the `RegistryKind` classifier — replacing `@savvy-web/github-action-effects`' services of the same names. As-built deltas are recorded [at the end of this section](#as-built-2026-07-25).
 
 ### The tier ruling: pure → boundary, deliberately, with a guardrail
 
@@ -188,7 +188,7 @@ That split is the recorded alternative for this decision. It was considered and 
 
 ### Consumer evidence, and the shape it dictates
 
-The mandate's per-`(package, version)` keying comes from a shipped test double breaking twice ([spec §7](../../../plans/2026-07-25-github-split-master.md)). Reading both sites, the diagnosis is **one dimension wider than the mandate states**:
+The mandate's per-`(package, version)` keying comes from a shipped test double breaking twice (spec §7 (`2026-07-25-github-split-master.md`)). Reading both sites, the diagnosis is **one dimension wider than the mandate states**:
 
 - `silk-update-action/src/services/catalog-config-deps.test.ts:85-92` — the double carries one tarball URL *per package*, so it cannot serve two **versions** of one package. The three-way merge that needs base-vs-next tarballs is untestable; the test hand-rolls its own stub.
 - `silk-release-action/src/release/publish.test.ts:1321-1330` — `getPublishedIntegrity` keys by package name alone, so it cannot return different answers for two **registries**. The test's own comment records the workaround, then abandons it for a custom layer.
@@ -270,7 +270,7 @@ const packed = yield* Run.json(
 
 `Run.json` parses **and** schema-decodes, so `notJson` and `schema` failures stay distinguishable — v3 folded both into a `reason` string. A non-zero `npm` exit is already a typed `CommandFailedError`; `dryRun` deliberately catches it and reports `ok: false`, because a failed dry run is a valid answer rather than an error (v3 got this right and it is preserved).
 
-**Token masking is hoisted, and the `.npmrc` write is kept.** v3's `setupAuth` calls `ActionOutputs.setSecret` — an Actions edge inside a publish library, the [spec §5 smell](../../../plans/2026-07-25-github-split-master.md). Here `setupAuth` takes a `Redacted` and masks nothing; the caller (`@effected/github-actions`) masks. What is **not** dropped is writing `_authToken` into an npmrc rather than passing it on argv: `Redaction` protects this kit's error messages, not the operating system's process table, so keeping the token off argv stays the security-correct choice. The npmrc path is a **caller-supplied argument** — resolving `~/.npmrc` needs `os.homedir()`, and a boundary package may not `node:` import.
+**Token masking is hoisted, and the `.npmrc` write is kept.** v3's `setupAuth` calls `ActionOutputs.setSecret` — an Actions edge inside a publish library, the spec §5 smell (`2026-07-25-github-split-master.md`). Here `setupAuth` takes a `Redacted` and masks nothing; the caller (`@effected/github-actions`) masks. What is **not** dropped is writing `_authToken` into an npmrc rather than passing it on argv: `Redaction` protects this kit's error messages, not the operating system's process table, so keeping the token off argv stays the security-correct choice. The npmrc path is a **caller-supplied argument** — resolving `~/.npmrc` needs `os.homedir()`, and a boundary package may not `node:` import.
 
 **`publishIdempotent` is not ported.** v3 deprecates it in its own TSDoc: the fused probe-then-publish hardcoded the wrong registry and could not recover from a partial multi-registry publish. The composition it replaced — `pack` once, then per target `NpmRegistry.version(...)` → compare `integrity` → `publishTarball` — is what `silk-release-action` already does by hand and reads better than the fused call. Consumer composition, not a method.
 

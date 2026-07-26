@@ -4,11 +4,9 @@ module: effected
 category: migration
 created: 2026-07-25
 updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 85
 related:
-  - ../../plans/2026-07-25-github-split-master.md
-  - ../../plans/2026-07-25-github-split-decisions-log.md
-  - ../../plans/2026-07-25-silk-runtime-action-survey.md
   - ../packages/commands.md
   - ../packages/templates.md
   - ../packages/github.md
@@ -23,7 +21,7 @@ related:
 
 ## Overview
 
-One document per downstream repository affected by the [github-split program](../../plans/2026-07-25-github-split-master.md). Each map records **what** a repo will eventually replace with `@effected` constructs and **where** that code lives today — the old construct, the paths that use it, the replacement's package and name, and the phase that ships it.
+One document per downstream repository affected by the github-split program (`2026-07-25-github-split-master.md`). Each map records **what** a repo will eventually replace with `@effected` constructs and **where** that code lives today — the old construct, the paths that use it, the replacement's package and name, and the phase that ships it.
 
 These are **not** code rewrites. Exact call-site rewrites go stale the moment either side moves; the what-and-where survives. When a phase ships, update the status column here rather than pasting the new code. The five worked rewrites that *are* code live in the Phase 6 fluency audit, deliberately, because they are the acceptance gate rather than the migration record.
 

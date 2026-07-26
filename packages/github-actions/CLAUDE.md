@@ -3,7 +3,7 @@
 The GitHub Actions **runtime**: the services an action needs to talk to the
 runner it is executing inside.
 
-Design doc: [`.claude/design/effected/packages/github-actions.md`](../../.claude/design/effected/packages/github-actions.md).
+**Design doc:** `@../../.claude/design/effected/packages/github-actions.md`
 Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 3).
 
 **Status: complete** (2026-07-25) — 298 tests, zero-warning build. The design
@@ -129,6 +129,20 @@ Inputs go through `ActionInput` (which owns the `INPUT_` mangling — GitHub
 uppercases and replaces **spaces**, and leaves **dashes alone**); log
 annotations go through `ActionLogger.annotated`. Both exist because a consumer
 spelled a name wrong and shipped it.
+
+**`Action.run` installs `ActionInput.providerOver(ambient)` as the default
+`ConfigProvider`** (via `ActionInput.layerDefault`, composed into
+`ActionRuntime.layer`), so a bare `Config.string("dry-run")` that side-steps the
+accessors degrades to the right answer instead of silently taking its default —
+a live action shipped that false green. **Do not remove it**: the design doc's
+earlier "the runtime does not install a provider" probe is superseded by the
+2026-07-25 ruling below it. Only flat single-segment paths get the `INPUT_`
+derivation; nested and numeric paths pass through untouched.
+
+**Absence is one rule across every accessor**: a missing input and an input set
+to `""` are both *missing data*, because the runner writes `""` for an input the
+workflow omitted. An **optional** input therefore needs `Config.withDefault` (or
+`Config.option`) at the call site, or the read fails outright.
 
 ## Errors
 

@@ -8,7 +8,6 @@ last-synced: 2026-07-25
 completeness: 90
 related:
   - README.md
-  - ../../plans/2026-07-25-github-split-master.md
   - ../packages/github.md
   - ../packages/github-actions.md
   - ../packages/npm.md
@@ -32,9 +31,8 @@ bar:
 "after" is written against APIs verified to exist at this repo's HEAD. Where an
 API is cited, it was read out of the committed source, not from memory.
 
-**A note on the source of the five cases.** The master plan's
-[acceptance gate](../../../plans/2026-07-25-github-split-master.md#acceptance-gate-phase-6)
-lists them; the external spec has no heading called "the fluency test" — its
+**A note on the source of the five cases.** The acceptance gate in the master
+plan (`2026-07-25-github-split-master.md`) lists them; the external spec has no heading called "the fluency test" — its
 [§7 table](https://github.com/savvy-web/systems) is the evidence behind them.
 The five below are the master plan's, in its order.
 

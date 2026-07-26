@@ -22,10 +22,18 @@ these before inventing a local convention.
   namespace object collecting cross-module implementations — is forbidden:
   a namespace object that gathers implementations pulling different engines
   kills tree-shaking silently (measured in this kit: 506 bytes vs 129.4 kB).
-- **Grouped statics are the sanctioned exception**: same-module variants of
-  one concept may ship as `export const X = { a, b } as const` (e.g.
-  `MergeStrategy = { firstMatch, layeredMerge }`). The line is *same module,
-  one concept* — never cross-module, never one-per-engine.
+- **Grouped statics are the sanctioned exception, and their form is a static
+  class**: same-module variants of one concept ship as
+  `export class X { private constructor() {} static readonly a = a; … }`,
+  never as an `as const` object — an `as const` object's member types are
+  inferred in the built `.d.ts`, which silently drops every member's TSDoc
+  (kit-wide conversion, 2026-07-25: 19 containers across 11 packages). The
+  line is *same module, one concept* — never cross-module, never
+  one-per-engine. The only legitimate `as const` holdouts are name
+  collisions: a class cannot merge with a same-named type alias
+  (`SpdxExpression`, `EncryptedCodecKey`) or a generic interface without a
+  default type parameter (`MergeStrategy`); a same-named *data* interface
+  merges fine (`ResolvedTsconfig`).
 - **`src/internal/` holds the engine; `index.ts` never exports from it.**
   Composition-only packages own no `internal/` at all — "no engine, only
   composition" is a legitimate shape.
@@ -70,9 +78,11 @@ these before inventing a local convention.
   and is not a namespace object.
 - **String codecs are class statics named `FromString`**, explicitly typed
   `Schema.Codec<Self, string>` (the annotation breaks circular inference).
-- Static-namespace facades: a `class X { private constructor() {} }` for
-  schema/parse facades, a plain `{ ... } as const` object for layer-factory
-  facades. Either is acceptable; do not invent a third shape.
+- Static-namespace facades: `class X { private constructor() {} }` with
+  `static readonly` members, for schema/parse AND layer-factory facades
+  alike — the `as const` object form was retired kit-wide (member TSDoc does
+  not survive into the built `.d.ts`; see the grouped-statics rule above for
+  the collision-blocked holdouts). Do not invent a third shape.
 
 ## Typed error taxonomy
 

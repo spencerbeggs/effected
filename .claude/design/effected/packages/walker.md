@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -44,7 +44,7 @@ Two directions and one recipe, per the [module-per-concept standard](../effect-s
 ```text
 packages/walker/
   src/
-    Walker.ts            # upward — the Walker namespace object
+    Walker.ts            # upward — the Walker static class
     Descend.ts           # downward — descend, DescendOptions, DescendError
     Expand.ts            # the recipe — compileAndExpand, GlobExpansionError
     index.ts             # public surface, re-exports only
@@ -55,11 +55,11 @@ packages/walker/
     fixtures.ts
 ```
 
-`descend` and `compileAndExpand` are **bare functions**, not members of the `Walker` namespace object: they are different algorithms with a different error posture, and folding either into `Walker` would imply it shares the namespace's `never`-channel contract.
+`descend` and `compileAndExpand` are **bare functions**, not statics on the `Walker` class: they are different algorithms with a different error posture, and folding either into `Walker` would imply it shares that class's `never`-channel contract.
 
 ## Public surface
 
-A `Walker` namespace object with static functions, matching the `Jsonc` / `ConfigResolver` convention (the file name is the API name).
+A `Walker` static class (private constructor, `static readonly` members), matching the `Jsonc` / `ConfigResolver` convention — the file name is the API name, and the [house container form](../effect-standards.md#a-sanctioned-grouped-statics-container-is-a-static-class-not-an-as-const-object-2026-07-25) it was converted to on 2026-07-25 with call syntax unchanged.
 
 ```ts
 export interface AscendOptions {
@@ -92,7 +92,7 @@ findRoot<E, R>(
 
 `start` is **required**. Walker never reads `process.cwd()` — a traversal library that silently defaults to the process working directory cannot be tested or reasoned about, so the caller who knows where "here" is passes it in. `descend`'s `cwd` is required for the same reason.
 
-Downward, a bare function alongside the namespace:
+Downward, a bare function alongside the class:
 
 ```ts
 export interface DescendOptions {

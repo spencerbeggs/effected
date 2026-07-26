@@ -3,7 +3,7 @@
 Typed GitHub REST and GraphQL over octokit's core request surface, with GitHub
 App authentication and resource services.
 
-Design doc: [`.claude/design/effected/packages/github.md`](../../.claude/design/effected/packages/github.md).
+**Design doc:** `@../../.claude/design/effected/packages/github.md`
 Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 2).
 
 ## Tier and dependencies

@@ -11,8 +11,6 @@ related:
   - ../roadmap.md
   - github.md
   - commands.md
-  - ../../plans/2026-07-25-github-split-master.md
-  - ../../plans/2026-07-25-silk-runtime-action-survey.md
 ---
 
 # @effected/github-actions design
@@ -25,11 +23,11 @@ The line against `@effected/github` is sharp and worth stating first, because th
 
 It is ported from `@savvy-web/github-action-effects`. That package is **already on Effect v4** (it imports `effect/unstable/http` and uses the v4 `Context.Service` form), so this is a redesign rather than a version migration: the deltas below are about shape, testability and dependency confinement, not about v3 API renames.
 
-Scope is closed by six consumers — the five in the spec plus **silk-runtime-action**, whose [survey](../../plans/2026-07-25-silk-runtime-action-survey.md) added `BlobStore`, detached-process lifecycle and the cross-process secret handoff to the requirements.
+Scope is closed by six consumers — the five in the spec plus **silk-runtime-action**, whose survey (`2026-07-25-silk-runtime-action-survey.md`, local-only) added `BlobStore`, detached-process lifecycle and the cross-process secret handoff to the requirements.
 
 ## Tier and dependencies
 
-**Integrated tier by construction, and the one place in the kit where `@effect/platform-node` is a required peer** ([master plan](../../plans/2026-07-25-github-split-master.md) decision 10). A GitHub Action always compiles into a Node process on a GitHub-provided runner; there is no second platform to abstract over, and pretending otherwise would cost every consumer a layer they can only satisfy one way.
+**Integrated tier by construction, and the one place in the kit where `@effect/platform-node` is a required peer** (master plan decision 10). A GitHub Action always compiles into a Node process on a GitHub-provided runner; there is no second platform to abstract over, and pretending otherwise would cost every consumer a layer they can only satisfy one way.
 
 ```jsonc
 {
@@ -126,23 +124,33 @@ The cost is honest and must be documented: a variable exported by `ActionOutputs
 Inputs are read through a `ConfigProvider` that owns the `INPUT_` name mangling, never through `process.env` directly. This closes a documented production bug: silk-release-action read `process.env["INPUT_SBOM_CONFIG"]` and silently got nothing, because GitHub's real variable is `INPUT_SBOM-CONFIG` — the runner uppercases and replaces **spaces** with underscores, and leaves dashes alone (spec §5). A `Config`-backed accessor makes that class of bug unrepresentable, because no consumer spells the variable name.
 
 ```ts
-export const ActionInput: {
-  readonly string: (name: string) => Config.Config<string>;
-  readonly boolean: (name: string) => Config.Config<boolean>;   // YAML 1.2 core schema
-  readonly integer: (name: string) => Config.Config<number>;
-  readonly redacted: (name: string) => Config.Config<Redacted.Redacted<string>>;
-  readonly lines: (name: string) => Config.Config<ReadonlyArray<string>>;
-  readonly list: (name: string) => Config.Config<ReadonlyArray<string>>;
-  readonly pairs: (name: string) => Config.Config<Record<string, string>>;
-  readonly schema: <A, I>(name: string, schema: Schema.Codec<A, I>) => Config.Config<A>;
-};
+export class ActionInput {
+  private constructor() {}
+
+  static string(name: string): Config.Config<string>;
+  static boolean(name: string): Config.Config<boolean>;   // YAML 1.2 core schema
+  static integer(name: string): Config.Config<number>;
+  static redacted(name: string): Config.Config<Redacted.Redacted<string>>;
+  static lines(name: string): Config.Config<ReadonlyArray<string>>;
+  static list(name: string): Config.Config<ReadonlyArray<string>>;
+  static pairs(name: string): Config.Config<Record<string, string>>;
+  static schema<A, I>(name: string, schema: Schema.Codec<A, I>): Config.Config<A>;
+
+  // The provider half — see the two as-built rulings below.
+  static provider(env?: Readonly<Record<string, string | undefined>>): ConfigProvider.ConfigProvider;
+  static layer(env?: Readonly<Record<string, string | undefined>>): Layer.Layer<never>;
+  static providerOver(ambient: ConfigProvider.ConfigProvider): ConfigProvider.ConfigProvider;
+  static readonly layerDefault: Layer.Layer<never>;
+}
 ```
 
-`lines` is the `@actions/core`-faithful newline split. `list` and `pairs` are the two shapes consumers reinvented — silk-update-action parses JSON arrays, bullet lists and comma-separated values; silk-sync-action strips comments and parses `key=value` (spec §5). Both are now one implementation with one set of tests, rather than two divergent ones with none.
+`lines` is the `@actions/core`-faithful newline split. `list` and `pairs` are the two shapes consumers reinvented — silk-update-action parses JSON arrays, bullet lists and comma-separated values; silk-sync-action strips comments and parses `key=value` (spec §5). Both are now one implementation with one set of tests, rather than two divergent ones with none; `list` absorbed the whole union grammar rather than shipping a variant per shape (2026-07-25).
 
-**`ActionInput` is grouped statics, not a namespace object over engines.** Every member reaches `Config` and nothing else — the [`MergeStrategy` carve-out](../effect-standards.md#no-barrel-re-exports) exactly.
+**Absence is one rule across every accessor**: a missing input and an input set to `""` are both *missing data*, because the runner writes `""` for an input the workflow omitted. An **optional** input therefore needs `Config.withDefault` (or `Config.option`) at the call site or the read fails outright — the single contract worth reading before any member below.
 
-**`ActionsConfigProvider` is subsumed, and the subsumption must be confirmed rather than assumed.** The source package exports a bare `ConfigProvider` that maps a config path to `INPUT_<NAME>`; two silk-release-action test files install it directly. Everything it does is folded into this module — the provider becomes an implementation detail behind the accessors, which is what removes the opportunity to spell a variable name wrongly. **At implementation, diff its behavior against the accessors before deleting it** (empty-string-is-absent, the space-to-underscore rule, and the fact that dashes are *not* translated), and record the result here. A subsumption claim that was never checked is how a footgun survives a port.
+**`ActionInput` is grouped statics, not a namespace object over engines** — every accessor reaches `Config` and nothing heavier, which is the [sanctioned carve-out](../effect-standards.md#no-barrel-re-exports) exactly. It carries that group in the house form: a **static class with a private constructor**, so every member's TSDoc survives into the built declarations ([the container rule](../effect-standards.md#a-sanctioned-grouped-statics-container-is-a-static-class-not-an-as-const-object-2026-07-25)).
+
+**`ActionsConfigProvider` is subsumed, and the subsumption must be confirmed rather than assumed.** The source package exports a bare `ConfigProvider` that maps a config path to `INPUT_<NAME>`; two silk-release-action test files install it directly. Everything it does is folded into this module — the provider becomes an implementation detail behind the accessors, which is what removes the opportunity to spell a variable name wrongly. **At implementation, diff its behavior against the accessors before deleting it** (empty-string-is-absent, the space-to-underscore rule, and the fact that dashes are *not* translated), and record the result here. A subsumption claim that was never checked is how a footgun survives a port. **Discharged:** all three axes were probed against the installed beta rather than assumed, and the two findings that came out of it — what the *ambient* provider already does, and what the runtime therefore installs — are ruled [below](#the-config-provider-the-runtime-does-not-install).
 
 **Implementation note (v4):** there is no `Effect.withConfigProvider`. `ConfigProvider.ConfigProvider` is a `Context.Reference` (verified `ConfigProvider.ts:296`), so installing a provider — in the accessors' tests or in `Action.run` — is `Effect.provideService(effect, ConfigProvider.ConfigProvider, provider)`. The v3 name is the first thing a porter will reach for.
 
@@ -159,7 +167,7 @@ Two friction fixes:
 
 ## Secrets: the declassification seam
 
-This is the [Phase 3 design question the decisions log records](../../plans/2026-07-25-github-split-decisions-log.md) (decision 14), and the survey's second unique need: silk-runtime-action degrades `Redacted` values to plaintext `TURBOGHA_*` env vars for a detached child, and re-wraps them on the far side.
+This is the Phase 3 design question the decisions log records as decision 14, and the survey's second unique need: silk-runtime-action degrades `Redacted` values to plaintext `TURBOGHA_*` env vars for a detached child, and re-wraps them on the far side.
 
 **`Redacted` cannot survive serialization, by design.** That is not a defect to work around; it is the whole value of the type. So the design does not try to make it serializable. It makes **declassification explicit, auditable and impossible to do quietly** — one module, `Secret.ts`, is the only place in the package where a secret becomes a string.
 
@@ -225,7 +233,7 @@ Three behaviors carried deliberately from the source, because each was load-bear
 
 ## `BlobStore` and the metadata channel
 
-The headline of the [silk-runtime-action survey](../../plans/2026-07-25-silk-runtime-action-survey.md). Today `BlobStore` is `get`/`put`/`has` over raw `Uint8Array`, with **no metadata channel** — so the consumer hand-rolls a binary frame (`[4B tagLen][4B durationMs][tag][body]`) and namespaces keys by a `v2` prefix to represent a format change. Both are framing concerns leaking into a consumer, and both are what this design absorbs.
+The headline of the silk-runtime-action survey (`2026-07-25-silk-runtime-action-survey.md`). Today `BlobStore` is `get`/`put`/`has` over raw `Uint8Array`, with **no metadata channel** — so the consumer hand-rolls a binary frame (`[4B tagLen][4B durationMs][tag][body]`) and namespaces keys by a `v2` prefix to represent a format change. Both are framing concerns leaking into a consumer, and both are what this design absorbs.
 
 ### The envelope is a pure, schema-versioned module
 
@@ -355,13 +363,13 @@ export class DetachedProcess {
 }
 ```
 
-**The bare-pid guard is why reaping lives here** ([decisions log](../../plans/2026-07-25-github-split-decisions-log.md) decision 10): killing crosses a process boundary, no `ChildProcess` handle survives the phase boundary, and `node:process.kill` is required — which a boundary package may not import. The guard itself is the load-bearing part: **`process.kill(0)` signals the entire process group and `process.kill(-1)` signals every process the user owns.** A pid round-tripped through `GITHUB_STATE` that decodes to `0` — an absent key, a truncated file, a `Number("")` — would, unguarded, kill the runner. So `reap` refuses any `pid <= 0` as a typed failure, and `ProcessId` is validated on the way *out* of `ActionState` as well as on the way in. This guard sits beside the `ActionState` that can produce the bad value, which is the whole reason it is here rather than in `commands`.
+**The bare-pid guard is why reaping lives here** (decisions-log decision 10): killing crosses a process boundary, no `ChildProcess` handle survives the phase boundary, and `node:process.kill` is required — which a boundary package may not import. The guard itself is the load-bearing part: **`process.kill(0)` signals the entire process group and `process.kill(-1)` signals every process the user owns.** A pid round-tripped through `GITHUB_STATE` that decodes to `0` — an absent key, a truncated file, a `Number("")` — would, unguarded, kill the runner. So `reap` refuses any `pid <= 0` as a typed failure, and `ProcessId` is validated on the way *out* of `ActionState` as well as on the way in. This guard sits beside the `ActionState` that can produce the bad value, which is the whole reason it is here rather than in `commands`.
 
 `awaitReady` is the spec's missing "poll-until-domain-predicate" (spec §7): silk-router-action hand-rolls it with an `Effect.suspend` footgun explained in a comment, and silk-runtime-action hand-rolls a second copy as `fetch` + `Schedule.spaced(150ms) × 40`.
 
 ### The fd-routing gap
 
-[Decision 11](../../plans/2026-07-25-github-split-decisions-log.md) records the upstream limitation: core cannot route a detached child's stdio to a **file descriptor** — `CommandOptions.stdout` maps to an in-process pipe, which defeats detachment, and `additionalFds` are pipes too.
+Decision 11 (`2026-07-25-github-split-decisions-log.md`) records the upstream limitation: core cannot route a detached child's stdio to a **file descriptor** — `CommandOptions.stdout` maps to an in-process pipe, which defeats detachment, and `additionalFds` are pipes too.
 
 **v1 answer: this package does the fd-level spawn itself**, on `node:child_process` with `stdio: ["ignore", fd, fd]`, because it is the one package permitted to. That keeps `@effected/commands` clean of a Node-specific escape hatch and gives the consumer a working detached log today. The upstream issue stays a candidate; if core grows fd routing, `DetachedProcess.spawn` becomes a thin adapter over it and the `node:child_process` import disappears. Recorded so the eventual removal is a known follow-up rather than an archaeology exercise.
 
@@ -377,7 +385,7 @@ export interface OidcTokenIssuerShape {
 }
 ```
 
-**Decoded claims are a typed value on the surface, not a nullable hand-parse at the call site.** This is the fix for [spec §2.3](../../plans/2026-07-25-github-split-master.md), the structurally-untestable provenance path: the source's `OidcTokenIssuerTest` returns a synthetic non-JWT, so a consumer's `decodeJwtClaims` yields `null`, so `attest.provenance` is *never reached* — four separate comments in silk-release-action apologize for it. With claims on the issuer's surface, a test double returns **real decodable claims** and the provenance path becomes reachable. `@effected/sbom` consumes it as `claims()` → `SlsaProvenance.forGitHubWorkflow`, so this is the seam between the two packages.
+**Decoded claims are a typed value on the surface, not a nullable hand-parse at the call site.** This is the fix for spec §2.3 (`2026-07-25-github-split-master.md`), the structurally-untestable provenance path: the source's `OidcTokenIssuerTest` returns a synthetic non-JWT, so a consumer's `decodeJwtClaims` yields `null`, so `attest.provenance` is *never reached* — four separate comments in silk-release-action apologize for it. With claims on the issuer's surface, a test double returns **real decodable claims** and the provenance path becomes reachable. `@effected/sbom` consumes it as `claims()` → `SlsaProvenance.forGitHubWorkflow`, so this is the seam between the two packages.
 
 **The decode deliberately does NOT verify the JWT signature, and that is not an oversight.** Three reasons, recorded so a future agent does not "fix" it:
 

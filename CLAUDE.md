@@ -35,7 +35,7 @@ Remaining `0.1.0` work is sequenced in `roadmap.md`; `package-inventory.md` and 
 ## Repository Layout
 
 - `packages/` — the workspace packages (see below).
-- `plugin/` — "effected", a Claude Code plugin (15 skills, 3 agents) dogfooded during migrations; in development.
+- `plugin/` — "effected", a Claude Code plugin (27 skills, 4 agents) dogfooded during package work; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
 - `.repos/effect` — read-only vendored Effect v4 source (see below).
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.

@@ -4,7 +4,7 @@ Managed sections: delimited `BEGIN`/`END` blocks inside files whose surrounding
 content belongs to the user. A tool owns the block, the user owns everything
 else, and neither destroys the other.
 
-Design doc: `@./.claude/design/effected/packages/templates.md`. Read it before
+Design doc: `@../../.claude/design/effected/packages/templates.md`. Read it before
 changing behavior — the deltas from the v3 `ManagedSection` port are recorded
 there with their reasoning.
 

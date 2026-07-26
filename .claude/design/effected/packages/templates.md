@@ -10,7 +10,6 @@ related:
   - ../effect-standards.md
   - ../roadmap.md
   - ../formatter-convention.md
-  - ../../plans/2026-07-25-github-split-master.md
   - walker.md
   - git.md
   - markdown.md
@@ -26,7 +25,7 @@ The mechanism has two halves and the split is the design's spine. The **pure hal
 
 v1 scope is **managed sections only**, per [roadmap.md](../roadmap.md#effectedtemplates). Whole-file templating is [deliberately out of scope](#deliberately-out-of-scope).
 
-The package is ported from `@savvy-web/silk-effects`' `ManagedSection` service (`src/services/ManagedSection.ts`, plus `SectionBlock`, `SectionDefinition`, `CommentStyle` and `SectionResults`), which is Phase 1b of the [GitHub/Actions split](../../plans/2026-07-25-github-split-master.md). It is a **mechanism port, not a package move** — see [Division of labor](#division-of-labor-mechanism-here-content-elsewhere).
+The package is ported from `@savvy-web/silk-effects`' `ManagedSection` service (`src/services/ManagedSection.ts`, plus `SectionBlock`, `SectionDefinition`, `CommentStyle` and `SectionResults`), which is Phase 1b of the GitHub/Actions split (`2026-07-25-github-split-master.md`). It is a **mechanism port, not a package move** — see [Division of labor](#division-of-labor-mechanism-here-content-elsewhere).
 
 ## Division of labor: mechanism here, content elsewhere
 
@@ -322,7 +321,7 @@ export interface ManagedSectionOptions {
 
 The shape is an **exported interface**, following [`GitShape`](git.md#git--the-service-read-tier): a consumer can type a function against `ManagedSectionShape` without naming the service class, and the surface is a reviewable declaration rather than whatever the implementation returned.
 
-`layer` resolves `FileSystem` once at construction, so every member's `R` is `never`. `layerWith(options)` is the parameterized variant per the [layer-statics rule](../../plans/2026-07-25-github-split-master.md#non-negotiables-kit-wide-from-the-specs-probe-findings--house-standards) (`static layer(options)` spelled as a distinct name so the zero-config `layer` stays a **const**, memoizable by reference; a `layer()` that must be called mints a fresh reference per call and defeats memoization).
+`layer` resolves `FileSystem` once at construction, so every member's `R` is `never`. `layerWith(options)` is the parameterized variant per the master plan's layer-statics rule (`static layer(options)` spelled as a distinct name so the zero-config `layer` stays a **const**, memoizable by reference; a `layer()` that must be called mints a fresh reference per call and defeats memoization).
 
 Members read, run the pure core, and write back **only when the text changed** — the no-op write is not merely wasteful, it churns mtimes and makes every `sync` look like a change to a file watcher.
 
@@ -495,7 +494,7 @@ Implemented against `effect@4.0.0-beta.101`. 128 tests, `tsc --noEmit` clean, bi
 
 ### Rulings folded in
 
-The five open questions were [ruled on 2026-07-25](../../../plans/2026-07-25-github-split-decisions-log.md): duplicates fail typed with no repair mode, declared-order normalization is the contract, one marker phrase per dialect, and `@savvy-web/templates` stands as the content home. The fifth changes this document: **`SectionKey` is case-sensitive from day one.** The case-insensitive matching described earlier existed only to keep v3-written `SAVVY-LINT` markers readable; consumers instead declare the exact key present in their files. Markers therefore render the key **verbatim** rather than uppercased — the two go together, since an uppercasing renderer plus case-sensitive keys would let two distinct keys produce one marker.
+The five open questions were ruled on 2026-07-25 (`2026-07-25-github-split-decisions-log.md`): duplicates fail typed with no repair mode, declared-order normalization is the contract, one marker phrase per dialect, and `@savvy-web/templates` stands as the content home. The fifth changes this document: **`SectionKey` is case-sensitive from day one.** The case-insensitive matching described earlier existed only to keep v3-written `SAVVY-LINT` markers readable; consumers instead declare the exact key present in their files. Markers therefore render the key **verbatim** rather than uppercased — the two go together, since an uppercasing renderer plus case-sensitive keys would let two distinct keys produce one marker.
 
 ### Corrections to the design
 
@@ -550,7 +549,7 @@ Nothing in v1 scope is outstanding. The [out-of-scope list](#deliberately-out-of
 
 ## Settled questions
 
-All five open questions were [ruled on 2026-07-25](../../../plans/2026-07-25-github-split-decisions-log.md) and are recorded here so they are not re-litigated.
+All five open questions were ruled on 2026-07-25 (`2026-07-25-github-split-decisions-log.md`) and are recorded here so they are not re-litigated.
 
 1. **`duplicateSection` fails typed; there is no repair mode.** Repair mutates a user's file on an ambiguity, which is a policy call this package does not get to make. A v3-corrupted file is hand-fixed once. If adoption demands it, a `sync` option is the additive fix.
 2. **Declared-order normalization is the contract**, not a softenable side effect. It is what makes "the preamble precedes the tool block" enforceable.

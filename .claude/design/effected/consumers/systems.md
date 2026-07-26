@@ -4,11 +4,10 @@ module: effected
 category: migration
 created: 2026-07-25
 updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 90
 related:
   - README.md
-  - ../../plans/2026-07-25-github-split-master.md
-  - ../../plans/2026-07-25-github-split-decisions-log.md
   - ../packages/commands.md
   - ../packages/templates.md
   - ../packages/workspaces.md

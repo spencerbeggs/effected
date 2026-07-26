@@ -19,7 +19,7 @@ related:
 
 ## Overview
 
-`@effected/sbom` owns the **software-supply-chain artifact** half of the old `Attest` knot: producing a CycloneDX SBOM, validating it against the NTIA minimum elements, and signing an in-toto statement into a Sigstore DSSE bundle. It is **Phase 4** of the [GitHub/Actions split program](../../../plans/2026-07-25-github-split-master.md), and it is the phase where program decision 5's three-way split lands its middle piece: the attestation **REST surface** is [`@effected/github`](github.md)'s `Attestation`, the **pipeline** that mints-signs-builds-attests is consumer composition, and **signing plus SBOM** are here.
+`@effected/sbom` owns the **software-supply-chain artifact** half of the old `Attest` knot: producing a CycloneDX SBOM, validating it against the NTIA minimum elements, and signing an in-toto statement into a Sigstore DSSE bundle. It is **Phase 4** of the GitHub/Actions split program (`2026-07-25-github-split-master.md`), and it is the phase where program decision 5's three-way split lands its middle piece: the attestation **REST surface** is [`@effected/github`](github.md)'s `Attestation`, the **pipeline** that mints-signs-builds-attests is consumer composition, and **signing plus SBOM** are here.
 
 Two properties shape every decision below.
 

@@ -4,11 +4,10 @@ module: effected
 category: migration
 created: 2026-07-25
 updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 90
 related:
   - README.md
-  - ../../plans/2026-07-25-github-split-master.md
-  - ../../plans/2026-07-25-silk-runtime-action-survey.md
   - ../packages/github-actions.md
   - ../packages/commands.md
   - ../packages/glob.md
@@ -20,7 +19,7 @@ related:
 
 `/Users/spencer/workspaces/savvy-web/silk-runtime-action` provisions a job's toolchain — Node, Bun, Deno and a raw Biome binary — restores the dependency cache, and stands up an embedded Turbo remote-cache server backed by either the Actions cache or an S3-compatible bucket.
 
-**Blast radius.** Ten src files and six test files import `@savvy-web/github-action-effects`. This is the **sixth consumer**, missed by the original six-repo spec and surveyed separately ([survey digest](../../plans/2026-07-25-silk-runtime-action-survey.md)); it is the only repo that touches the **runner-local half** of the package exclusively — no GitHub API services, no SBOM, no publishing. It is also the reason `BlobStore` survives the split at all.
+**Blast radius.** Ten src files and six test files import `@savvy-web/github-action-effects`. This is the **sixth consumer**, missed by the original six-repo spec and surveyed separately in `2026-07-25-silk-runtime-action-survey.md`; it is the only repo that touches the **runner-local half** of the package exclusively — no GitHub API services, no SBOM, no publishing. It is also the reason `BlobStore` survives the split at all.
 
 Four capabilities here exist nowhere else in the consumer set, and each one drove a Phase 3 design decision: the detached long-lived child process with a pid that outlives its phase, a secret-carrying config handoff across a process boundary, `ToolInstaller` as a real toolchain provisioner, and the `ActionCache` restore-key ladder.
 

@@ -24,7 +24,7 @@ GraphQL endpoints, plus the resource services that turn raw endpoints into domai
 (branches, commits, tags, contents, issues, releases, pull requests, comments, check runs,
 workflow dispatch, attestations). It replaces the GitHub half of
 `@savvy-web/github-action-effects@3.1.0` and is **Phase 2** of the
-[GitHub/Actions split program](../../../plans/2026-07-25-github-split-master.md) — the deepest
+GitHub/Actions split program (`2026-07-25-github-split-master.md`) — the deepest
 design in it, because everything downstream (`github-actions`, `sbom`, the five consumer repos)
 sits on this surface.
 
@@ -142,7 +142,7 @@ types removed**, with no capability lost against what any of the six consumers e
 
 ## Bundle reachability
 
-The [tree-shakability non-negotiable](../../../plans/2026-07-25-github-split-master.md#non-negotiables-kit-wide-from-the-specs-probe-findings--house-standards)
+The tree-shakability non-negotiable (`2026-07-25-github-split-master.md`)
 is a measured, paying invariant. This is how the package structurally honors it.
 
 | A consumer that imports… | links | does **not** link |
@@ -980,7 +980,7 @@ export class TokenPermissions extends Schema.Class<TokenPermissions>("TokenPermi
 }
 ```
 
-This is the [pure-core / effectful-edge](../../../plans/2026-07-25-github-split-decisions-log.md)
+This is the pure-core / effectful-edge (`2026-07-25-github-split-decisions-log.md`)
 question the templates round flagged as the highest-leverage design question and no skill asks:
 *is any of this pure, and can it be tested without a layer?* Here the answer was yes and the old
 design had wrapped it in a service anyway — which is also why its test double was the heaviest of
