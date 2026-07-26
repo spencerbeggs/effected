@@ -166,6 +166,42 @@ U+FFFD, and a four-byte code point split at the wrong offset can produce
 `.truncated()` directly only when you need the cut value before sending it —
 logging what will actually reach GitHub, for instance.
 
+```ts
+import { CheckRunOutput } from "@effected/github";
+
+const output = CheckRunOutput.make({
+ title: "lint",
+ summary: "3 findings.",
+ // text and annotations are optionalKey — omit the key entirely to leave
+ // them unset. Do NOT pass an explicit `undefined` for either (see below).
+});
+```
+
+**There is no `truncated` field on this schema — do not go looking for one.**
+`truncated()` is the instance *method* above, not a constructor input; `make`
+takes exactly `title`, `summary`, and the two `optionalKey` fields `text` and
+`annotations`. The real trap sits one level up, and it is this package's
+general v4 constructor rule, not something special to check runs: `text` and
+`annotations` being `optionalKey` means the **key** may be omitted, not that
+the value may be `undefined` — `CheckRunOutput.make({ title, summary, text:
+maybeUndefinedString })` throws at construction the moment
+`maybeUndefinedString` actually is `undefined`, and the thrown error names a
+schema issue, not "you passed `text: undefined`." Build the object with a
+conditional spread instead:
+
+```ts
+CheckRunOutput.make({
+ title,
+ summary,
+ ...(renderedText === undefined ? {} : { text: renderedText }),
+});
+```
+
+This is the same conditional-spread discipline `CheckRunOutput.truncated()`
+itself follows internally (`CheckRun.ts:75-81`) and that `effect-v4-idioms`
+states generally — check runs are simply where a caller is most likely to
+have an optional `text`/`annotations` value in hand already.
+
 ### `Annotation`
 
 ```ts

@@ -88,6 +88,12 @@ them produce a compile error.
 6. **`VersioningStrategy.classify({ packages: [] })` is the canonical
    "nothing publishable" value** at fallback call sites — there is no separate
    `empty` constructor.
+7. **`Run.text` trims — leading and trailing — and that silently corrupts
+   column-oriented output.** `git status --porcelain`'s leading-space status
+   column is exactly this shape; a caller that substring-parses `Run.text`'s
+   return value reads the wrong path for every entry whose status column was
+   a space. Parse fixed-column, whitespace-significant output from
+   `Run.collect`'s untrimmed `CommandOutput.stdout` instead.
 
 ## Document shape
 

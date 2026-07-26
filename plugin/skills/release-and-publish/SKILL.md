@@ -104,6 +104,18 @@ entirely once `NpmRegistry` replaces the old shelled reads
   existed. Point at `testing-actions` for the octokit-side test harness this
   pairs with.
 
+**Migrating a v3 `NpmRegistryTest.empty()` call: reach for `layerSeeded`, not
+`layerTest`.** `NpmRegistry.layerTest()` with no overrides dies loudly **by
+design** on the first unstubbed member — `version`/`versions`/`distTags`/
+`publishTimes` all have `notStubbed` defaults (`NpmRegistry.ts:288-294,353-
+359`), because no honest default exists for a fabricated registry read. A v3
+suite that called `NpmRegistryTest.empty()` wanted a *working* empty
+registry — every package absent, no version anywhere — not a double that
+dies the instant it is asked a question. The v4 equivalent is
+`NpmRegistry.layerSeeded({ registries: {} })` (`NpmRegistry.ts:405-407`): a
+real, working double whose every lookup answers "not found" (`Option.none()`,
+`[]`, `{}`) rather than throwing.
+
 ## Publishing — `PackagePublish` and `NpmExecutor`
 
 `PackagePublish` (`packages/npm/src/PackagePublish.ts:421`) runs `npm` through

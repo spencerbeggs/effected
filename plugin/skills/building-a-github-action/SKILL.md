@@ -81,6 +81,14 @@ XDG paths, git introspection, managed file sections — consult
 | `ErrorAccumulator` | **no kit successor, by decision** — it is core composition: `Effect.partition(items, f)` returns `[failures, successes]` and never fails (`.repos/effect/packages/effect/src/Effect.ts:556`), and `Effect.all(effects, { mode: "result" })` is the same idea per-effect |
 | an ANSI / colour API | does not exist and must not be invented — GitHub's log viewer colours the workflow commands itself |
 | the nine `*Test` doubles and the `./testing` subpath | gone — every service ships `makeTest` / `layerTest` from its own module |
+| `Action.resolveLogLevel` | **no successor by that name** — `ActionEnvironment.isDebug` (`Effect.Effect<boolean>`, reading `RUNNER_DEBUG === "1"`) is what a program reaches for instead; see `actions-runtime` |
+
+**A bare `Config.*` read on an action input is a false green, not a shortcut.**
+It typechecks, and a test suite that injects its own `ConfigProvider` can
+pass against it, because the runner's `INPUT_` key derivation never enters
+either path. Read inputs through `ActionInput` only — see
+`actions-inputs-outputs` for the mangling rule and the production incident it
+traces to.
 
 **The bundler and the scaffold are not here.** `@savvy-web/github-action-builder`,
 `action.config.ts`, rsbuild externals, the committed `dist/`, `action.yml`

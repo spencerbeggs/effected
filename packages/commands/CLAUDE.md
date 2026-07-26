@@ -81,6 +81,12 @@ one stream does not discriminate. **Do not delete that e2e test.**
 non-zero exit as a typed `CommandFailedError`. The split is deliberate; do not
 "fix" either half.
 
+`Run.text` also **trims** the result — leading and trailing whitespace, not
+just a trailing newline. That silently corrupts fixed-column output whose
+columns start with whitespace (`git status --porcelain`'s leading-space status
+column). Parse that kind of output from `Run.collect`'s untrimmed
+`CommandOutput.stdout`, never from `Run.text`'s return value.
+
 ### Absence is a spawn failure, never an exit code
 
 `ToolDiscovery` decides presence by whether the process **ran**. A tool whose

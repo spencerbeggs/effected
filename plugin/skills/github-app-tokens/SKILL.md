@@ -122,7 +122,11 @@ export interface GitHubAppShape {
 
 `GitHubApp.makeTest`/`layerTest` (`packages/github/src/GitHubApp.ts:290-301`)
 die naming the member for anything unstubbed — build a partial double from
-the shape above, not from a stack trace.
+the shape above, not from a stack trace. **A double built for
+`GitHubToken.provision` specifically must stub `token`, `identity` and
+`revoke`** — those three, exactly, per the member-usage table below; stubbing
+fewer dies partway through a run, stubbing `scopedToken` or `installations`
+as well stubs members `provision` never calls.
 
 ### `TokenPermissions` — a pure class, not a service
 
@@ -263,6 +267,41 @@ stretch a persisted token.
 (`packages/github/src/GitHubApp.ts:138`) because the check and the request it
 guards are not the same instant. `read`'s `options.skew` overrides it per
 call; `dispose` calls it with `Duration.zero` — see below.
+
+### `ProvisionOptions`: what's required, and the field that isn't `permissions`
+
+```ts
+// packages/github-actions/src/GitHubToken.ts:37-59
+export interface ProvisionOptions {
+ readonly appId: string;                                          // required
+ readonly privateKey: Redacted.Redacted<string>;                   // required
+ readonly installationId?: number | undefined;
+ readonly owner?: string | undefined;
+ readonly required?: Readonly<Record<string, PermissionLevel>> | undefined;
+ readonly stateKey?: string | undefined;
+}
+```
+
+`appId` and `privateKey` carry no `?` — `provision` cannot discover
+credentials on its own, so a caller must already hold both. **The
+scope-verification field is named `required`, not `permissions`** —
+`permissions` is the name of the field on the *minted token*
+(`InstallationToken.permissions`, what GitHub actually granted); `required`
+is what the caller is asking `TokenPermissions.assertSufficient` to check the
+grant against (`GitHubToken.ts:222`). The two are compared, never conflated:
+a double or a migration script that writes `permissions` on `ProvisionOptions`
+compiles to nothing — the field is silently absent, `options.required` reads
+`undefined`, and `provision` skips scope verification entirely rather than
+failing to find it.
+
+**For a migrant from a predecessor that read its own App-auth inputs**
+(`app-id`, `private-key`, `owner`) **directly**: `GitHubToken.provision` takes
+those values as plain fields on `ProvisionOptions` rather than reading
+`ActionInput` itself, so the input-reading step moves into the calling
+action's `pre.ts` — resolve `ActionInput.string("app-id")`,
+`ActionInput.redacted("private-key")`, etc., and pass the results into
+`provision({ appId, privateKey, ... })`. `GitHubToken` is Actions-agnostic
+about *how* credentials arrive; `pre.ts` is what makes it Actions-shaped.
 
 ### `provision`: mint, verify, mask, persist — and revoke on any failure
 

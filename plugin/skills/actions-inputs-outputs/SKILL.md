@@ -22,6 +22,19 @@ this skill carries only the Actions-specific instance of those rules.
 
 ## Inputs: `Config`, not a service
 
+**Every action input read MUST go through `ActionInput.*`. A bare
+`Config.string("some-input")` is the false-green this skill exists to name.**
+A real action shipped exactly this: `Config.string("dry-run")` typechecks,
+compiles clean, and passes a test suite that injects its own
+`ConfigProvider` keyed by the plain input name — because the test's provider
+never has to agree with the runner's own key derivation. Under the real
+runner the variable is `INPUT_DRY-RUN`, not `DRY-RUN` or `DRY_RUN`, so the
+bare read found nothing; `Config.withDefault(false)` (see the trap below)
+silently supplied the default; and a `dry-run: true` workflow dispatch
+executed its mutations for real. **The fix is never "spell `INPUT_` by
+hand" — it is "call `ActionInput.boolean("dry-run")` and let this module own
+the mangling."**
+
 There is no `ActionInputs` service and `ActionInputError` **does not
 survive** — an input failure is a `Config.ConfigError`
 (`packages/github-actions/CLAUDE.md`, "Errors"). `ActionInput` is a static
@@ -46,13 +59,18 @@ Every one of these is keyed by `inputVariable(name)`
 export const inputVariable = (name: string): string => `INPUT_${name.replaceAll(" ", "_").toUpperCase()}`;
 ```
 
-**GitHub uppercases and replaces spaces — dashes are left alone.** The input
-`sbom-config` arrives as `INPUT_SBOM-CONFIG`, not `INPUT_SBOM_CONFIG`
-(`ActionInput.ts:8-10`; asserted directly in
+**GitHub uppercases and replaces SPACES with underscores — DASHES SURVIVE.**
+The input `sbom-config` arrives as `INPUT_SBOM-CONFIG`, not
+`INPUT_SBOM_CONFIG` (`ActionInput.ts:8-10`; asserted directly in
 `__test__/ActionInput.test.ts:18-31`, including a regression case named for
 "the bug that shipped": a consumer once read
-`process.env["INPUT_SBOM_CONFIG"]` directly and silently got nothing). Read
-every input through `ActionInput` — no caller spells `INPUT_*` itself.
+`process.env["INPUT_SBOM_CONFIG"]` directly and silently got nothing). The
+same rule for a multi-word action name: `upgrade-runtime-node` arrives as
+`INPUT_UPGRADE-RUNTIME-NODE`. A hand-written test key of
+`INPUT_UPGRADE_RUNTIME_NODE` — underscores where the dashes belong — reads
+nothing, and a test built that way passes for the wrong reason: it never
+asked the runner's real key to resolve at all. Read every input through
+`ActionInput` — no caller spells `INPUT_*` itself.
 
 An **empty string reads as absent**, both for `ActionInput`'s accessors and
 for `ActionInput.provider` (`ActionInput.ts:225-226`, `:233-234`): the runner

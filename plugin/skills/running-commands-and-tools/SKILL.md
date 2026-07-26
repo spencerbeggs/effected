@@ -145,6 +145,21 @@ core's `Cause.TimeoutError`. `redact` and `maxOutputBytes` are covered below and
 neighbor, the capture bound (`CommandOutputError { kind: "tooLarge" }` on overflow — a memory-
 exhaustion guard, not a re-declaration).
 
+### Trap 6 — `Run.text` trims; that silently corrupts column-oriented output
+
+`Run.text` returns `checked.stdout.trim()` (`Run.ts:328-333`) — trimmed
+**leading and trailing** whitespace, not just a trailing newline. That is the
+right shape for "the value of one line of output" and the wrong shape for
+anything whose columns start with whitespace: `git status --porcelain`'s
+leading-space status column is exactly this shape (`" M path/to/file"` — the
+leading space is the "unmodified in the index" status, not padding).
+`Run.text` silently eats it, and a caller that substring-parses the result
+into status and path reads the wrong path for every entry whose status
+column was a space. Route fixed-column, whitespace-significant output through
+`Run.collect` instead — its `CommandOutput.stdout` is untrimmed — and parse
+`output.stdout` directly, never `Run.text`'s return value, whenever column
+position carries meaning.
+
 ## Errors: `CommandFailedError` and `CommandOutputError`
 
 `CommandFailedError` (`kind: "nonZero" | "spawn" | "timeout"`) is "the command could not be run, or

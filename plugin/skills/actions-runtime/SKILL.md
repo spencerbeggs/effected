@@ -18,6 +18,13 @@ For the general Effect v4 service/layer rules this package follows —
 see `effect-v4-services-layers`; this skill carries only the
 `github-actions`-specific instance of each.
 
+**Program-level config and input reads go through `ActionInput`, never a
+bare `Config.*` call.** The runner's `INPUT_` derivation only exists inside
+`ActionInput`'s accessors — a bare `Config.string(name)` reads a variable
+name the runner never publishes, and a test that stubs its own
+`ConfigProvider` will not catch it. See `actions-inputs-outputs` for the
+mangling rule and the false-green it produced in production.
+
 ## `Action.run`
 
 ```ts

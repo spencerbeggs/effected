@@ -763,6 +763,18 @@ build on without reaching inside:
 | revoke in `post` | `GitHubApp.revoke(token)` | `revoke` |
 | render a committer identity | `BotIdentity.forApp(...)` / `InstallationToken.botIdentity()` | — (pure) |
 
+**As-built clarification (round-1 handoff under-specified this):**
+`GitHubApp`'s own `TokenRequest` (this package) carries only
+`installationId?`/`owner?` beside the `AppCredentials` pair — no scope field,
+because this package never verifies permissions itself. Scope verification
+lives one level up, in `@effected/github-actions`' `GitHubToken.provision`,
+whose `ProvisionOptions` requires `appId`/`privateKey` explicitly (no
+discovery) and names the scope-check field `required`, **not**
+`permissions` — `permissions` is reserved for what `InstallationToken`
+reports GitHub actually granted. Do not read the two packages' options
+shapes as sharing a field set; only `appId`/`privateKey`/`installationId`/
+`owner` are common between them.
+
 That member-usage column is the spec's explicit ask (spec §6, "`UnimplementedError` roulette") and
 it is documented **here, per exported member**, so a partial mock in github-actions can be built
 from the table rather than from a stack trace.

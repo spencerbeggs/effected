@@ -226,6 +226,26 @@ fail." *(Reporter behaviour, not package API. Recorded from the `github` and
 `github-actions` builds, both of which test `Config` failures; the claim rests
 on those observations, not on vitest-agent's own source.)*
 
+## The newest discriminating mutant: a suite that injects its own `ConfigProvider`
+
+A test that provides its own `ConfigProvider` — to stub an action's inputs
+without touching `process.env` — replaces exactly the seam a bare `Config`
+read breaks in production. That is not a hypothetical: a real action's
+`Config.string("dry-run")` compiled clean and passed a suite keyed by the
+plain input name, because the test's provider and the production read agreed
+with each other and never had to agree with the runner. Under the runner the
+key is `INPUT_DRY-RUN`; the bare read found nothing; `Config.withDefault`
+swallowed the absence (the trap `actions-inputs-outputs` names); and a
+`dry-run: true` dispatch ran live.
+
+**At least one test per action must exercise
+`ActionInput.layer({ "INPUT_MY-INPUT-NAME": "…" })` with the RUNNER-MANGLED
+key — dashes intact, spaces turned to underscores — never the input's plain
+name and never a hand-underscored guess.** A suite that only ever stubs a
+custom `ConfigProvider` keyed by the plain name cannot fail this way no
+matter how the input is misread; the discriminating case is the one where
+the test's key and the production mangling must actually agree.
+
 ## Mutate the edges before declaring green
 
 The general discipline — baseline, mutate, watch red, revert, confirm against
