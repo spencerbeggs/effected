@@ -103,7 +103,16 @@ export class ActionInput {
 		return Config.string(inputVariable(name));
 	}
 
-	/** A boolean input, per the runner's documented YAML 1.2 core schema. Absent or `""` is missing data — wrap with `Config.withDefault` for an optional flag. */
+	/**
+	 * A boolean input, per the runner's documented YAML 1.2 core schema.
+	 *
+	 * @remarks
+	 * Absent or `""` is **missing data** — wrap with `Config.withDefault` for
+	 * an optional flag. A **present but malformed** value (`yes`, `on`, `1`) is
+	 * a different class: it fails carrying its `actual`, deliberately, so a
+	 * default does NOT swallow it — the shipped defect this guards against was
+	 * a malformed `dry-run` quietly reading as `false`.
+	 */
 	static boolean(name: string): Config.Config<boolean> {
 		return Config.string(inputVariable(name)).pipe(
 			Config.mapOrFail((raw) => {
@@ -265,7 +274,16 @@ export class ActionInput {
 		);
 	}
 
-	/** A JSON-valued input, decoded through a schema. */
+	/**
+	 * A JSON-valued input, decoded through a schema.
+	 *
+	 * @remarks
+	 * Absent or `""` fails as **missing data** before any JSON parsing runs
+	 * (see {@link ActionInput.string}) — `Config.withDefault` or
+	 * `Config.option` for an optional input. A present value that is not valid
+	 * JSON, or does not satisfy the schema, fails carrying its `actual` and is
+	 * never swallowed by a default.
+	 */
 	static schema<A, I>(name: string, schema: Schema.Codec<A, I>): Config.Config<A> {
 		return Config.string(inputVariable(name)).pipe(
 			Config.mapOrFail((raw) => {

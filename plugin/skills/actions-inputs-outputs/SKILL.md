@@ -36,7 +36,7 @@ executed its mutations for real.
 **Since the 2026-07-25 ruling, that class is dead at the root under
 `Action.run`**: the runtime installs `ActionInput.layerDefault`, whose
 provider resolves a bare flat name through the `INPUT_` derivation first and
-the ambient lookup unchanged second (`ActionInput.ts:304-346`) — so a
+the ambient lookup unchanged second (`ActionInput.ts:366-408`) — so a
 side-stepped read degrades to the right answer instead of to the default.
 The accessors stay the rule, not a relic: they carry the parsing (`boolean`,
 `list`, `pairs`, `schema`) and the typed `ConfigError`s the provider cannot.
@@ -50,18 +50,18 @@ There is no `ActionInputs` service and `ActionInputError` **does not
 survive** — an input failure is a `Config.ConfigError`
 (`packages/github-actions/CLAUDE.md`, "Errors"). `ActionInput` is a static
 namespace of `Config.Config<A>` factories
-(`packages/github-actions/src/ActionInput.ts:79-347`):
+(`packages/github-actions/src/ActionInput.ts:88-409`):
 
 | Accessor | Returns | Notes |
 | --- | --- | --- |
-| `ActionInput.string(name)` | `Config.Config<string>` | `Config.string(inputVariable(name))` (`ActionInput.ts:83-85`) |
-| `ActionInput.boolean(name)` | `Config.Config<boolean>` | YAML 1.2 core schema: `true\|True\|TRUE\|false\|False\|FALSE` only (`ActionInput.ts:88-107`) |
-| `ActionInput.integer(name)` | `Config.Config<number>` | `Config.int(inputVariable(name))` (`ActionInput.ts:110-112`) |
-| `ActionInput.redacted(name)` | `Config.Config<Redacted.Redacted<string>>` | `Config.redacted(inputVariable(name))` (`ActionInput.ts:115-117`) |
-| `ActionInput.lines(name)` | `Config.Config<ReadonlyArray<string>>` | Splits on `\n`, trims, drops blanks (`ActionInput.ts:127-136`) |
-| `ActionInput.list(name)` | `Config.Config<ReadonlyArray<string>>` | Accepts a JSON array, a YAML bullet list, or comma/newline-separated values (`ActionInput.ts:146-173`) |
-| `ActionInput.pairs(name)` | `Config.Config<Record<string, string>>` | One `key=value` per line, `#` comments stripped, splits on the **first** `=` only (`ActionInput.ts:181-199`) |
-| `ActionInput.schema(name, schema)` | `Config.Config<A>` | JSON-parses the raw string, then decodes through `schema` (`ActionInput.ts:202-216`) |
+| `ActionInput.string(name)` | `Config.Config<string>` | `Config.string(inputVariable(name))` (`ActionInput.ts:102-104`) |
+| `ActionInput.boolean(name)` | `Config.Config<boolean>` | YAML 1.2 core schema: `true\|True\|TRUE\|false\|False\|FALSE` only (`ActionInput.ts:116-135`) |
+| `ActionInput.integer(name)` | `Config.Config<number>` | `Config.int(inputVariable(name))` (`ActionInput.ts:144-146`) |
+| `ActionInput.redacted(name)` | `Config.Config<Redacted.Redacted<string>>` | `Config.redacted(inputVariable(name))` (`ActionInput.ts:156-158`) |
+| `ActionInput.lines(name)` | `Config.Config<ReadonlyArray<string>>` | Splits on `\n`, trims, drops blanks (`ActionInput.ts:171-180`) |
+| `ActionInput.list(name)` | `Config.Config<ReadonlyArray<string>>` | Accepts a JSON array, a YAML bullet list, or comma/newline-separated values (`ActionInput.ts:216-245`) |
+| `ActionInput.pairs(name)` | `Config.Config<Record<string, string>>` | One `key=value` per line, `#` comments stripped, splits on the **first** `=` only (`ActionInput.ts:257-275`) |
+| `ActionInput.schema(name, schema)` | `Config.Config<A>` | JSON-parses the raw string, then decodes through `schema` (`ActionInput.ts:287-301`) |
 
 Every one of these is keyed by `inputVariable(name)`
 (`ActionInput.ts:19`):
@@ -84,7 +84,7 @@ asked the runner's real key to resolve at all. Read every input through
 `ActionInput` — no caller spells `INPUT_*` itself.
 
 An **empty string reads as absent**, both for `ActionInput`'s accessors and
-for `ActionInput.provider` (`ActionInput.ts:248-249`, `:256-257`): the runner
+for `ActionInput.provider` (`ActionInput.ts:309-311`, `:318-319`): the runner
 sets an unsupplied optional input to `""`, and treating that as present
 would make every unset optional input look supplied.
 
@@ -101,9 +101,9 @@ const program = Effect.gen(function* () {
 
 ### Two providers: `layerDefault` is in the runtime, `layer()` never is
 
-`ActionInput.layerDefault` (`ActionInput.ts:340-346`) **is** composed into
+`ActionInput.layerDefault` (`ActionInput.ts:402-408`) **is** composed into
 `ActionRuntime.layer` since the 2026-07-25 ruling. Its provider,
-`ActionInput.providerOver(ambient)` (`ActionInput.ts:304-315`), touches only
+`ActionInput.providerOver(ambient)` (`ActionInput.ts:366-377`), touches only
 a **flat, single string-segment** name — the only shape the runner could have
 set — trying `inputVariable(name)` through the ambient provider first, then
 the name unchanged; nested and numeric paths pass through untouched. The
@@ -118,7 +118,7 @@ resolution").
 
 `ActionInput.layer(env?)` installs `ActionInput.provider` — a
 `ConfigProvider` that joins a path with `_`, replaces spaces with underscores
-and uppercases the whole (`ActionInput.ts:254-259`, `:272-274`). It is
+and uppercases the whole (`ActionInput.ts:316-321`, `:334-336`). It is
 **never** composed into `ActionRuntime.layer`, and the original probe result
 still holds: `ActionInput`'s own `inputVariable` already fully mangles the
 key before any `Config` read happens, and at beta.101 the ambient default
