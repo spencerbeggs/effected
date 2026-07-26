@@ -8,6 +8,7 @@ export type {
 	ConfigFileTestOptions,
 	ConfigLoadError,
 	ConfigReadError,
+	ConfigReadOptions,
 	ConfigSaveError,
 	ConfigUpdateError,
 	ConfigWriteError,

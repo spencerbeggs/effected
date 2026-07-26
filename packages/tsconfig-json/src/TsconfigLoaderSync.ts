@@ -178,34 +178,15 @@ const runWith = <A, E>(
 	throw Cause.squash(exit.cause);
 };
 
-/**
- * {@link TsconfigLoader.load}, synchronously: read and decode one config file
- * through the consumer-supplied operations. Throws `TsconfigParseError` or a
- * `PlatformError` — the async pipeline's exact typed failures.
- *
- * @public
- */
+// Implementation of TsconfigLoaderSync.load; the public contract lives on the static.
 const load = (configPath: string, options: TsconfigLoaderSyncOptions): TsconfigJson.Type =>
 	runWith(options, TsconfigLoader.load(configPath));
 
-/**
- * {@link TsconfigLoader.resolve}, synchronously: the full load -\> extends -\>
- * merge -\> `${configDir}` pipeline through the consumer-supplied operations.
- * Throws `TsconfigParseError`, `TsconfigExtendsError` or a `PlatformError` —
- * the async pipeline's exact typed failures.
- *
- * @public
- */
+// Implementation of TsconfigLoaderSync.resolve; the public contract lives on the static.
 const resolve = (configPath: string, options: TsconfigLoaderSyncOptions): ResolvedTsconfig =>
 	runWith(options, TsconfigLoader.resolve(configPath));
 
-/**
- * {@link TsconfigLoader.compilerOptions}, synchronously: resolve the full
- * `extends` chain and project out the merged `compilerOptions`. Throws the
- * same typed failures as {@link TsconfigLoaderSync.resolve}.
- *
- * @public
- */
+// Implementation of TsconfigLoaderSync.compilerOptions; the public contract lives on the static.
 const compilerOptions = (configPath: string, options: TsconfigLoaderSyncOptions): CompilerOptions.Type =>
 	resolve(configPath, options).compilerOptions;
 
@@ -238,4 +219,30 @@ const compilerOptions = (configPath: string, options: TsconfigLoaderSyncOptions)
  *
  * @public
  */
-export const TsconfigLoaderSync = { load, resolve, compilerOptions } as const;
+export class TsconfigLoaderSync {
+	private constructor() {}
+
+	/**
+	 * {@link TsconfigLoader.load}, synchronously: read and decode one config
+	 * file through the consumer-supplied operations. Throws
+	 * `TsconfigParseError` or a `PlatformError` — the async pipeline's exact
+	 * typed failures.
+	 */
+	static readonly load = load;
+
+	/**
+	 * {@link TsconfigLoader.resolve}, synchronously: the full load -\>
+	 * extends -\> merge -\> `${configDir}` pipeline through the
+	 * consumer-supplied operations. Throws `TsconfigParseError`,
+	 * `TsconfigExtendsError` or a `PlatformError` — the async pipeline's exact
+	 * typed failures.
+	 */
+	static readonly resolve = resolve;
+
+	/**
+	 * {@link TsconfigLoader.compilerOptions}, synchronously: resolve the full
+	 * `extends` chain and project out the merged `compilerOptions`. Throws
+	 * the same typed failures as {@link TsconfigLoaderSync.resolve}.
+	 */
+	static readonly compilerOptions = compilerOptions;
+}

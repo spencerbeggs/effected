@@ -121,6 +121,86 @@ The migration notes document the *recommended path*, not the surface. They are e
 
 So: **a removal is never settled by rung 1.** If the docs are silent on a symbol, that is not evidence the symbol is fine. Go to rung 2.
 
+### A bare existence-grep false-negatives on built-in names
+
+Rung 2 is usually one grep: `grep -n 'export const Foo\|export function Foo'`.
+That grep **lies about names that collide with a TS/JS built-in**, and it lies in
+the dangerous direction — it reports *absent* for a symbol that exists, which
+reads as "removed in v4" and sends you off to invent a replacement.
+
+The mechanism is that a module cannot declare `const Array` beside its own uses
+of the global `Array` type, so core defines the symbol under a private name and
+renames it in an `export {}` block:
+
+```ts
+// Schema.ts:4512 — the real definition, under a name you did not grep for
+const ArraySchema = Struct_.lambda<ArrayLambda>((schema) => …)
+
+// Schema.ts:4516 — the export, in a block your grep pattern never matches
+export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4535
+```
+
+`Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns
+nothing. The confirmed occurrences of this pattern at beta.101 —
+`Schema.ts:4535`, `Equivalence.ts:622`, `Order.ts:578`, `Config.ts:828` — are all
+`Array`, but treat the *class* of names as suspect, not just that one:
+`Array`, `Record`, `Map`, `Set`, `Error`, `Date`, `Number`, `String`, `Object`,
+`Symbol`, `Function`, `Boolean`. (Some of them do grep normally —
+`Schema.Record` is a plain `export function Record` at `Schema.ts:3830` — which
+is exactly why the inconsistency catches people.)
+
+**When a built-in-colliding name greps as absent, do not conclude it was
+removed.** Settle it one of these ways instead:
+
+- **Read the module's export list**, `export {}` blocks included — not just
+  `export const` / `export function` lines.
+- **Grep for the use site, not the declaration**: `grep -rn 'Schema\.Array('`
+  across this kit's `packages/*/src` proves the call compiles today against the
+  installed beta.
+- **Ask the runtime**, from inside a package on the v4 catalog:
+  `node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.Array)"`.
+
+The same caution applies to the aliased-import direction: this kit writes
+`import { Function as Fn } from "effect"`, so `grep 'Function.dual'` misses every
+real call site, which all read `Fn.dual`.
+
+### The ladder is not Effect-specific: third-party `.d.ts` earns the same climb
+
+Every rule above is written about `effect` because that is where the cost lands
+most often, but the *reason* — a confident summary of an API nobody read — has
+nothing to do with which package it is. A dependency's shipped `.d.ts` (or `src`,
+where it ships one) is a rung-2 source in exactly the same sense, and it settles
+the same class of question.
+
+The concrete case: an evidence pack recommended octokit's
+`RestEndpointMethodTypes` for typing a REST surface, on a plausible reading of
+its docs. **Reading octokit's own types overturned it** — the already-typed
+`request` surface in core was the right seam, and the recommendation would have
+bought a large generated type map for nothing. Nobody had read the `.d.ts`; the
+summary was reasonable and wrong.
+
+> **Rule: before designing against a third-party type surface, read the surface.**
+> Reach for `node_modules/<pkg>/dist/**/*.d.ts` (or its `src`) the same way you
+> reach for `$EFFECT_SRC`. "The docs say" is rung 1 for someone else's package
+> too — prescriptive, not exhaustive, and silent about removals.
+
+### When two reads of one file disagree, settle it against the committed blob
+
+A second-order failure, and it is a *reasoning* failure rather than a lookup one:
+you read a file early in a session, read it again later, and the two reads do not
+match. The temptation is to pick the read that supports the conclusion you have
+already drawn — and it is always available, because one of them does.
+
+Neither read is evidence. A working tree changes under you: another agent edits
+it, an earlier step in your own session wrote to it, a formatter ran. **Settle it
+against the committed blob** — `git show HEAD:path/to/file` — and then, if the
+working tree differs, treat that as its own finding to explain rather than
+noise to discard.
+
+The rule generalizes past files: **when two observations of the same thing
+disagree, the tie-break must be a third source, never the one that suits the
+conclusion.** Picking is how a stale read gets laundered into a verified fact.
+
 ### Worked example: the three rungs disagree
 
 `Context.Key`, checked against `effect@4.0.0-beta.94`:

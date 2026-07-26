@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-20
-last-synced: 2026-07-20
-completeness: 92
+updated: 2026-07-25
+last-synced: 2026-07-25
+completeness: 93
 related:
   - ../architecture.md
   - ../effect-standards.md
@@ -104,6 +104,20 @@ const layer = ConfigFile.layer(AppConfig, {
 Options are supplied to `ConfigFile.layer`, **not baked into the factory**, for two reasons: resolver requirements must flow into the layer's `R` (below), and the scoped `Test` layer needs to vary options freely against the same service identity.
 
 The service surface is `load` / `loadFrom` / `loadOrDefault` / `discover` / `save` / `write` / `update` / `validate`, keeping the `save` (default path + `mkdir -p`) versus `write` (explicit path, no mkdir) distinction, with `update` = load → transform → save. `loadOrDefault` returns its `defaultValue` as-is, applying neither the schema nor a configured `validate` to it. `discover` **aborts** on a found-but-corrupt low-priority source rather than skipping it — silently continuing would run the pipeline on a different, wrong configuration than the one closest to the caller's intent.
+
+### ConfigFile.read — the one-shot form (Phase 1c, 2026-07-25)
+
+`ConfigFile.read(path, { schema, codec })` reads, decodes and validates one explicit path with **no service class, no layer and no tag**, requiring only `FileSystem` in `R`. It is the shape the `@savvy-web/github-action-effects` `ConfigLoader` absorption needed and the only thing the existing surface genuinely lacked.
+
+The service binds schema and codec at *layer construction*, which is right for a config file an application **has** — several candidate locations, `save`/`update`, migrations, events — and heavy for a call site decoding one known path once, where it costs a service subclass, a layer bound to a const and a provide at the boundary. `read` takes its schema **per call**, so one call site can read several unrelated files without a service class each; that is the difference `loadFrom` cannot express.
+
+Three properties keep it from growing into a second pipeline:
+
+- **Read-only and discovery-free.** No resolver chain, no write path. Wanting either means reaching for `ConfigFile.layer`, not extending this.
+- **The codec is an explicit argument**, never inferred from a file extension and never defaulted to JSON. Naming it at the call site is what preserves the [free-standing-codec guarantee](#the-load-bearing-constraint-free-standing-named-exports-never-a-namespace-object): a consumer that only ever passes `JsonCodec` never references the JSONC, YAML or TOML modules, so their engines stay out of the bundle. A convenience that picked a codec by extension would reach all four and silently undo the constraint the whole package is organized around.
+- **The error channel is exactly `ConfigReadError`** — `ConfigFileReadError | ConfigCodecError | ConfigValidationError`, the same union `loadFrom` carries, with the schema issue tree held structurally. The path is recorded as `Option.some(path)` on a validation failure, because a one-shot read always knows where it read from (unlike `validate`, which decodes an in-memory value and has none).
+
+This is the whole of the `ConfigLoader` absorption. Its `loadJson`/`loadJsonc`/`loadYaml` are `read` under the three codecs; its `exists` is core `fs.exists` and is deliberately **not** replaced — wrapping it was a member a config library should not have owned. `ConfigDiscovery` is not absorbed either: it has no consumer among the program's six repos, and its two-tier `lib/configs/{name}` → `{cwd}/{name}` search is one tool's layout, expressible as two `ConfigResolver.staticDir` entries wherever it is wanted.
 
 A deferred DX idea: a `ConfigFile.Service<Self>()(id, schema)` form taking the schema on the class and inferring `A` from it, deleting the duplicate `schema` option and the `typeof X.Type` ceremony. It is a small cycle rather than a patch — the schema would move to the class-definition site while the rest of the options stay on `layer`, and the inference needs probing against the covariant `Context.Key` shape — so it is not folded in yet.
 

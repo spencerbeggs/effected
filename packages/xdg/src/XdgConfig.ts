@@ -5,27 +5,7 @@ import { AppDirs } from "./AppDirs.js";
 import { NativeDirs } from "./NativeDirs.js";
 import { CurrentPlatform, Xdg } from "./Xdg.js";
 
-/**
- * Search the app's XDG config search path for `filename`.
- *
- * @remarks
- * Probes the app's own config directory first, then each `$XDG_CONFIG_DIRS`
- * entry namespaced — `~/.config/myapp/rc`, then `/etc/xdg/myapp/rc`. v3 probed
- * only the first of those; the system search path is half the XDG spec and it
- * was missing.
- *
- * The scan runs through `Walker.firstMatch`, so a failure on one candidate means
- * "this candidate did not match" and the search continues to the next. That is a
- * bug fixed, not a refactor: v3 wrapped the whole resolver in a single
- * `catchAll`, so an unreadable `/etc/xdg` aborted the probe and hid a perfectly
- * readable `~/.config`. Not-found and cannot-look stay indistinguishable to the
- * caller, which is the resolver contract — `resolve`'s error channel is `never`.
- *
- * Place it **before** `nativeResolver` in a chain, so an existing
- * `~/.config/<app>` still wins over the OS-native directory.
- *
- * @public
- */
+// Implementation of XdgConfig.resolver; the public contract lives on the static.
 const resolver = (options: {
 	readonly filename: string;
 }): ConfigResolver<AppDirs | FileSystem.FileSystem | Path.Path> => ({
@@ -39,24 +19,7 @@ const resolver = (options: {
 	}),
 });
 
-/**
- * Probe the OS-native config directory for `filename`.
- *
- * @remarks
- * Resolves the native config directory for `namespace`
- * (`~/Library/Application Support/<ns>` on macOS, `%APPDATA%\<ns>` on Windows)
- * and checks whether `filename` is there. On Linux and everywhere else
- * {@link NativeDirs.resolve} yields `Option.none()`, so this resolver returns
- * `Option.none()` without probing at all — the XDG resolver already owns
- * `~/.config` there.
- *
- * Takes `namespace` rather than reading it off {@link AppDirs}: the native
- * directory is a property of the OS convention, not of however the app happened
- * to configure its XDG directories, and a caller may well probe a *different*
- * namespace than the one their `AppDirs` was built for.
- *
- * @public
- */
+// Implementation of XdgConfig.nativeResolver; the public contract lives on the static.
 const nativeResolver = (options: {
 	readonly namespace: string;
 	readonly filename: string;
@@ -79,31 +42,7 @@ const nativeResolver = (options: {
 	}),
 });
 
-/**
- * The default save target for a config file: `<app config dir>/<filename>`.
- *
- * @remarks
- * Drops straight into `ConfigFileOptions.defaultPath`, whose slot is typed
- * `Effect<string, never, RR>`. That infallible channel is the whole reason
- * {@link AppDirs} resolves at layer-construction time: with v3's per-access
- * resolution this could fail, and a consumer had to `orDie` it into the slot.
- *
- * It does **not** create the directory — `ConfigFile.save` already `mkdir -p`s
- * the parent of whatever path it is given.
- *
- * @example
- * ```ts
- * const layer = ConfigFile.layer(AppConfig, {
- * 	schema: AppShape,
- * 	codec: JsonCodec,
- * 	strategy: MergeStrategy.firstMatch<AppShape>(),
- * 	resolvers: [XdgConfig.resolver({ filename: "config.json" })],
- * 	defaultPath: XdgConfig.savePath("config.json"),
- * });
- * ```
- *
- * @public
- */
+// Implementation of XdgConfig.savePath; the public contract lives on the static.
 const savePath = (filename: string): Effect.Effect<string, never, AppDirs | Path.Path> =>
 	Effect.gen(function* () {
 		const appDirs = yield* AppDirs;
@@ -116,4 +55,70 @@ const savePath = (filename: string): Effect.Effect<string, never, AppDirs | Path
  *
  * @public
  */
-export const XdgConfig = { resolver, nativeResolver, savePath } as const;
+export class XdgConfig {
+	private constructor() {}
+
+	/**
+	 * Search the app's XDG config search path for `filename`.
+	 *
+	 * @remarks
+	 * Probes the app's own config directory first, then each `$XDG_CONFIG_DIRS`
+	 * entry namespaced — `~/.config/myapp/rc`, then `/etc/xdg/myapp/rc`. v3 probed
+	 * only the first of those; the system search path is half the XDG spec and it
+	 * was missing.
+	 *
+	 * The scan runs through `Walker.firstMatch`, so a failure on one candidate means
+	 * "this candidate did not match" and the search continues to the next. That is a
+	 * bug fixed, not a refactor: v3 wrapped the whole resolver in a single
+	 * `catchAll`, so an unreadable `/etc/xdg` aborted the probe and hid a perfectly
+	 * readable `~/.config`. Not-found and cannot-look stay indistinguishable to the
+	 * caller, which is the resolver contract — `resolve`'s error channel is `never`.
+	 *
+	 * Place it **before** {@link XdgConfig.nativeResolver} in a chain, so an
+	 * existing `~/.config/<app>` still wins over the OS-native directory.
+	 */
+	static readonly resolver = resolver;
+
+	/**
+	 * Probe the OS-native config directory for `filename`.
+	 *
+	 * @remarks
+	 * Resolves the native config directory for `namespace`
+	 * (`~/Library/Application Support/<ns>` on macOS, `%APPDATA%\<ns>` on Windows)
+	 * and checks whether `filename` is there. On Linux and everywhere else
+	 * {@link NativeDirs.resolve} yields `Option.none()`, so this resolver returns
+	 * `Option.none()` without probing at all — the XDG resolver already owns
+	 * `~/.config` there.
+	 *
+	 * Takes `namespace` rather than reading it off {@link AppDirs}: the native
+	 * directory is a property of the OS convention, not of however the app happened
+	 * to configure its XDG directories, and a caller may well probe a *different*
+	 * namespace than the one their `AppDirs` was built for.
+	 */
+	static readonly nativeResolver = nativeResolver;
+
+	/**
+	 * The default save target for a config file: `<app config dir>/<filename>`.
+	 *
+	 * @remarks
+	 * Drops straight into `ConfigFileOptions.defaultPath`, whose slot is typed
+	 * `Effect<string, never, RR>`. That infallible channel is the whole reason
+	 * {@link AppDirs} resolves at layer-construction time: with v3's per-access
+	 * resolution this could fail, and a consumer had to `orDie` it into the slot.
+	 *
+	 * It does **not** create the directory — `ConfigFile.save` already `mkdir -p`s
+	 * the parent of whatever path it is given.
+	 *
+	 * @example
+	 * ```ts
+	 * const layer = ConfigFile.layer(AppConfig, {
+	 * 	schema: AppShape,
+	 * 	codec: JsonCodec,
+	 * 	strategy: MergeStrategy.firstMatch<AppShape>(),
+	 * 	resolvers: [XdgConfig.resolver({ filename: "config.json" })],
+	 * 	defaultPath: XdgConfig.savePath("config.json"),
+	 * });
+	 * ```
+	 */
+	static readonly savePath = savePath;
+}

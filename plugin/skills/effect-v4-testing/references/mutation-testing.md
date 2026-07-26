@@ -57,6 +57,50 @@ Suite strength is not predictable by grepping `__test__/` — a mutation in one
 module may be caught by tests that never name it, because a shared test layer
 routes through it. Only the mutant tells you.
 
+### Sweeping many mutants: assert the on-disk state on EVERY run
+
+A scripted sweep — apply mutant, run, revert, repeat — has one failure mode the
+single-mutant loop does not: a **stale restore**. If one revert lands
+imperfectly, every subsequent run measures a file that is neither the original
+nor the intended mutant, and the results are nonsense that looks like data. It
+happened in the github-actions sweep, and the sweep was correctly **re-run**
+rather than reported.
+
+So each iteration asserts what is actually on disk before it trusts its own
+result: read the target file back and confirm it contains the mutation (before
+the run) and matches the baseline (after the revert). `git status --porcelain`
+compared against the captured baseline is the outer check; the per-file read is
+the inner one, and the inner one is what catches a revert that restored the
+wrong bytes.
+
+### A surviving mutant is a question about the CODE, not the test
+
+The reflex on a survivor is to strengthen the test. Ask first whether the
+mutated behaviour was ever **required** — a mutant nothing can observe is
+sometimes telling you the code path has no consumer, and the honest resolution
+is to delete or narrow the code rather than to invent an assertion that pins an
+accident. That question was worth asking of a `layer` static in the
+github-actions work; it is worth asking every time, before writing a test whose
+only purpose is to make a mutant die.
+
+Two legitimate outcomes besides "strengthen the test": **remove the code** the
+mutant proved nobody needs, and **report it as unpinnable** (see below). Only
+the third outcome — a test written for the sake of having one — is always
+wrong.
+
+### When two reads of one file disagree, settle against the committed blob
+
+A sweep runs greps constantly, and sooner or later two of them contradict each
+other about the same file — one says the export is there, one says it is gone.
+That is not a puzzle to reason about; it means the working tree changed between
+the reads (a half-applied mutant, a concurrent edit, a stale revert). **Settle
+it against the committed blob** — `git show HEAD:<path>` — and re-read the
+working tree fresh, then reconcile the difference deliberately.
+
+The rule exists because the alternative is so easy: pick whichever read
+supports the conclusion you already reached, and continue. That is not a
+judgement call, it is a coin flip recorded as evidence.
+
 ### Mutation is DISCOVERY, not confirmation
 
 Do not run the mutant expecting to watch it go red. Run it to **find out** — in

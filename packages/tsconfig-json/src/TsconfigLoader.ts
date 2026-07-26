@@ -98,14 +98,7 @@ const loadAbs = (
 		return yield* decodeConfig(text).pipe(Effect.mapError((cause) => TsconfigParseError.make({ path: abs, cause })));
 	});
 
-/**
- * Read one config file and decode it through {@link TsconfigJsonFromString}. A
- * decode failure is wrapped in a {@link TsconfigParseError} carrying the file's
- * absolute path; a `PlatformError` from the read flows through untranslated. No
- * `extends` resolution — {@link TsconfigLoader.resolve} drives that.
- *
- * @public
- */
+// Implementation of TsconfigLoader.load; the public contract lives on the static.
 const load = Effect.fn("TsconfigLoader.load")(function* (configPath: string) {
 	const path = yield* Path.Path;
 	return yield* loadAbs(normalizeSlashes(path.resolve(configPath)));
@@ -181,19 +174,7 @@ const collect = (
 		return layers;
 	});
 
-/**
- * Resolve a tsconfig.json and its full `extends` chain into a
- * {@link (ResolvedTsconfig:interface)}: load and decode each config, absolutize its path
- * options (E5), resolve `extends` depth-first with per-branch cycle and depth
- * guards (E1-E3, E6), fold the chain own-config-last (E4), then substitute a
- * leading `${configDir}` once against the top config's directory (E5 final
- * phase). `configPath` + `extendedPaths` come back base-most first, own config
- * last. Every failure is a typed error — `TsconfigParseError` (a malformed file,
- * carrying that file's path), `TsconfigExtendsError` (a broken chain), or a
- * `PlatformError` from IO — never a defect.
- *
- * @public
- */
+// Implementation of TsconfigLoader.resolve; the public contract lives on the static.
 const resolve = Effect.fn("TsconfigLoader.resolve")(function* (configPath: string) {
 	const path = yield* Path.Path;
 	const topAbs = normalizeSlashes(path.resolve(configPath));
@@ -211,14 +192,7 @@ const resolve = Effect.fn("TsconfigLoader.resolve")(function* (configPath: strin
 	return ResolvedTsconfig.substituteConfigDir(acc, path.dirname(topAbs));
 });
 
-/**
- * Resolve a tsconfig.json's full `extends` chain and project out the merged
- * `compilerOptions` — a thin projection of {@link TsconfigLoader.resolve} for
- * the common "just give me the effective options" query. Same pipeline, same
- * typed failures.
- *
- * @public
- */
+// Implementation of TsconfigLoader.compilerOptions; the public contract lives on the static.
 const compilerOptions = Effect.fn("TsconfigLoader.compilerOptions")(function* (configPath: string) {
 	const resolved = yield* resolve(configPath);
 	return resolved.compilerOptions satisfies CompilerOptions.Type;
@@ -232,4 +206,37 @@ const compilerOptions = Effect.fn("TsconfigLoader.compilerOptions")(function* (c
  *
  * @public
  */
-export const TsconfigLoader = { load, resolve, compilerOptions } as const;
+export class TsconfigLoader {
+	private constructor() {}
+
+	/**
+	 * Read one config file and decode it through {@link TsconfigJsonFromString}.
+	 * A decode failure is wrapped in a {@link TsconfigParseError} carrying the
+	 * file's absolute path; a `PlatformError` from the read flows through
+	 * untranslated. No `extends` resolution — {@link TsconfigLoader.resolve}
+	 * drives that.
+	 */
+	static readonly load = load;
+
+	/**
+	 * Resolve a tsconfig.json and its full `extends` chain into a
+	 * {@link (ResolvedTsconfig:interface)}: load and decode each config,
+	 * absolutize its path options (E5), resolve `extends` depth-first with
+	 * per-branch cycle and depth guards (E1-E3, E6), fold the chain
+	 * own-config-last (E4), then substitute a leading `${configDir}` once
+	 * against the top config's directory (E5 final phase). `configPath` +
+	 * `extendedPaths` come back base-most first, own config last. Every
+	 * failure is a typed error — `TsconfigParseError` (a malformed file,
+	 * carrying that file's path), `TsconfigExtendsError` (a broken chain), or
+	 * a `PlatformError` from IO — never a defect.
+	 */
+	static readonly resolve = resolve;
+
+	/**
+	 * Resolve a tsconfig.json's full `extends` chain and project out the
+	 * merged `compilerOptions` — a thin projection of
+	 * {@link TsconfigLoader.resolve} for the common "just give me the
+	 * effective options" query. Same pipeline, same typed failures.
+	 */
+	static readonly compilerOptions = compilerOptions;
+}

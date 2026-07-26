@@ -15,7 +15,7 @@ import { Effect, Layer } from "effect";
 import { badFilename } from "./internal/filename.js";
 
 /**
- * Options for {@link (AppConfig:variable).layer}.
+ * Options for {@link AppConfig.layer}.
  *
  * @public
  */
@@ -59,25 +59,7 @@ export interface AppConfigOptions<A, I> {
 	readonly native?: boolean;
 }
 
-/**
- * Build the xdg-flavored config layer for a `ConfigFile.Service` class.
- *
- * @remarks
- * Wraps `ConfigFile.layer(tag, …)` with the resolver chain xdg documents, in
- * xdg's documented order — `XdgConfig.resolver`, then
- * `XdgConfig.nativeResolver` — and with `defaultPath:
- * XdgConfig.savePath(filename)`, which fits config-file's infallible
- * `defaultPath` slot without an `orDie` because xdg resolves at
- * layer-construction time.
- *
- * **The namespace is never a parameter.** It is read from the ambient
- * {@link AppDirs} service at layer build time, so it is typed exactly once, in
- * `App.layer` — the two-strings drift where an app passes `"myapp"` to
- * `App.layer` and `"my-app"` to its config preset cannot happen.
- *
- * This is a layer-returning function: bind the result to a `const` and reuse
- * that binding, or two provide sites mint two independent service instances.
- */
+// Implementation of AppConfig.layer; the public contract lives on the static.
 const layer = <Self, A, I>(
 	tag: Context.Key<Self, ConfigFileShape<A>>,
 	options: AppConfigOptions<A, I>,
@@ -125,4 +107,26 @@ const layer = <Self, A, I>(
  *
  * @public
  */
-export const AppConfig = { layer } as const;
+export class AppConfig {
+	private constructor() {}
+
+	/**
+	 * Build the xdg-flavored config layer for a `ConfigFile.Service` class.
+	 *
+	 * @remarks
+	 * Wraps `ConfigFile.layer(tag, …)` with the resolver chain xdg documents, in
+	 * xdg's documented order — `XdgConfig.resolver`, then `XdgConfig.nativeResolver`
+	 * — and with `defaultPath: XdgConfig.savePath(filename)`, which fits
+	 * config-file's infallible `defaultPath` slot without an `orDie` because xdg
+	 * resolves at layer-construction time.
+	 *
+	 * **The namespace is never a parameter.** It is read from the ambient
+	 * `AppDirs` service at layer build time, so it is typed exactly once, in
+	 * `App.layer` — the two-strings drift where an app passes `"myapp"` to
+	 * `App.layer` and `"my-app"` to its config preset cannot happen.
+	 *
+	 * This is a layer-returning function: bind the result to a `const` and reuse
+	 * that binding, or two provide sites mint two independent service instances.
+	 */
+	static readonly layer = layer;
+}

@@ -1,0 +1,294 @@
+import { spawn as spawnChild } from "node:child_process";
+import { closeSync, openSync } from "node:fs";
+import type { Duration } from "effect";
+import { Effect, Schema } from "effect";
+import { ChildProcessSpawner } from "effect/unstable/process";
+
+/**
+ * Raised when a detached child cannot be started, waited for, or reaped.
+ *
+ * @public
+ */
+export class DetachedProcessError extends Schema.TaggedErrorClass<DetachedProcessError>()("DetachedProcessError", {
+	/**
+	 * `logUnavailable` — the log file could not be opened, so there is nowhere
+	 * for the child's output to go. `spawnFailed` — the child did not start.
+	 * `invalidPid` — a non-positive pid was handed to {@link DetachedProcess.reap};
+	 * see there for why this is the most important value in the module.
+	 * `signalFailed` — the signal was refused, e.g. the process belongs to
+	 * another user. `notReady` — the readiness probe never held.
+	 */
+	reason: Schema.Literals(["logUnavailable", "spawnFailed", "invalidPid", "signalFailed", "notReady"]),
+	/** The pid involved, when one is. */
+	pid: Schema.optionalKey(Schema.Number),
+	/** The path involved, when one is. */
+	path: Schema.optionalKey(Schema.String),
+	/** The underlying failure, preserved structurally. */
+	cause: Schema.optionalKey(Schema.Defect()),
+}) {
+	override get message(): string {
+		switch (this.reason) {
+			case "logUnavailable":
+				return `Could not open the detached log file "${this.path}"`;
+			case "spawnFailed":
+				return "The detached child did not start";
+			case "invalidPid":
+				return `Refusing to signal pid ${this.pid}: a non-positive pid targets a process group, not a process`;
+			case "signalFailed":
+				return `Could not signal pid ${this.pid}`;
+			default:
+				return "The detached child never became ready";
+		}
+	}
+}
+
+/**
+ * The schema a pid crosses the phase boundary through.
+ *
+ * @remarks
+ * A pid is persisted in `GITHUB_STATE` by `main` and read back by `post`, which
+ * means it makes the round trip as **text**. This is the boundary check on the
+ * way back in: a truncated file, an absent key or a `Number("")` all decode to
+ * `0`, and `0` is not a process — it is the current process's whole group.
+ * Refusing it here means the bad value never reaches {@link DetachedProcess.reap}
+ * in the first place, and reap's own guard is the second of two defenses rather
+ * than the only one.
+ *
+ * **The brand is core's**, from `ChildProcessSpawner` — the subprocess
+ * vocabulary belongs to core and this package does not get to re-declare it.
+ * What core does not have is a *validating* way to reconstruct one: its
+ * constructor is `Brand.nominal`, which applies no runtime check, so
+ * `ChildProcessSpawner.ProcessId(0)` succeeds. That is exactly right for a pid
+ * the spawner just produced, and exactly wrong for a pid that has been through a
+ * text file. This schema is that missing check, and it decodes to core's type so
+ * the two are interchangeable.
+ *
+ * @example
+ * ```ts
+ * import { ActionState, DetachedProcess, ProcessId } from "@effected/github-actions";
+ * import { Effect } from "effect";
+ *
+ * const post = Effect.gen(function* () {
+ *   const pid = yield* (yield* ActionState).get("server-pid", ProcessId);
+ *   return yield* DetachedProcess.reap(pid);
+ * });
+ * ```
+ *
+ * @public
+ */
+export const ProcessId = Schema.Number.pipe(
+	Schema.check(
+		Schema.makeFilter((value) =>
+			Number.isInteger(value) && value > 0 ? undefined : "Expected a positive integer process id",
+		),
+	),
+	Schema.brand("ProcessId"),
+);
+
+/**
+ * How a detached child is started.
+ *
+ * @public
+ */
+export interface DetachedSpawnOptions {
+	/** The executable. */
+	readonly command: string;
+	/** Its arguments. */
+	readonly args?: ReadonlyArray<string> | undefined;
+	/**
+	 * Where the child's stdout and stderr go, opened for append.
+	 *
+	 * @remarks
+	 * A file **descriptor**, not a pipe. An in-process pipe would keep the parent
+	 * attached to the child and defeat the detachment, which is the upstream
+	 * limitation this module exists to work around — core's `CommandOptions.stdout`
+	 * maps to a pipe, and so do its additional fds. If core grows fd routing this
+	 * becomes a thin adapter over it.
+	 */
+	readonly logFile: string;
+	/** The working directory. */
+	readonly cwd?: string | undefined;
+	/**
+	 * Environment additions.
+	 *
+	 * @remarks
+	 * **Merged over the parent's environment, not substituted for it.** A bare
+	 * environment costs the child `PATH`, which usually means it cannot find its
+	 * own runtime and dies before writing a word to the log — a failure that
+	 * looks like a spawn bug and is not. Secrets belong here only via
+	 * `Secret.forChildEnv`, which masks them on the way out.
+	 */
+	readonly env?: Readonly<Record<string, string>> | undefined;
+}
+
+/**
+ * How long to wait for a child to become ready.
+ *
+ * @public
+ */
+export interface ReadinessOptions {
+	/** Time between probes. Defaults to 150 milliseconds. */
+	readonly interval?: Duration.Input | undefined;
+	/** How many times to retry after the first probe. Defaults to 40. */
+	readonly attempts?: number | undefined;
+}
+
+/** Whether a thrown value is a Node errno error with the given code. */
+const isErrno = (cause: unknown, code: string): boolean =>
+	typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === code;
+
+/**
+ * A long-lived child that outlives the phase that started it.
+ *
+ * @remarks
+ * The shape an action needs is three separate things, because the child
+ * survives the process that spawned it: `main` starts it and persists the pid,
+ * `main` or `post` waits on a domain predicate rather than on time, and `post`
+ * — a **different process**, holding no handle to the child — signals the pid
+ * it read back out of `GITHUB_STATE`.
+ *
+ * That last step is why this lives here rather than in a command runner. There
+ * is no `ChildProcess` to `.kill()`; there is only a number that has been
+ * through a text file. See {@link DetachedProcess.reap}.
+ *
+ * @example
+ * ```ts
+ * import { DetachedProcess } from "@effected/github-actions";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const pid = yield* DetachedProcess.spawn({
+ *     command: "node",
+ *     args: ["server.js"],
+ *     logFile: "/tmp/server.log",
+ *   });
+ *   yield* DetachedProcess.awaitReady(healthCheck);
+ *   return pid;
+ * });
+ * ```
+ *
+ * @public
+ */
+export class DetachedProcess {
+	private constructor() {}
+
+	/**
+	 * Start a detached child with its output routed to a log file.
+	 *
+	 * @remarks
+	 * The parent closes its own copy of the descriptor immediately — the child
+	 * holds a duplicate, so the log keeps filling after the action's process
+	 * exits, which is the entire point.
+	 */
+	static readonly spawn = Effect.fn("DetachedProcess.spawn")(function* (options: DetachedSpawnOptions) {
+		const descriptor = yield* Effect.try({
+			try: () => openSync(options.logFile, "a"),
+			catch: (cause) => new DetachedProcessError({ reason: "logUnavailable", path: options.logFile, cause }),
+		});
+
+		const pid = yield* Effect.try({
+			try: () => {
+				try {
+					const child = spawnChild(options.command, [...(options.args ?? [])], {
+						...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+						env: { ...process.env, ...options.env },
+						detached: true,
+						stdio: ["ignore", descriptor, descriptor],
+					});
+					// A `ChildProcess` with no `error` listener re-throws the event, so a
+					// missing binary would take down the ACTION rather than failing this
+					// call — the emit is asynchronous and lands after the guard below has
+					// already reported the failure properly. The parent has deliberately
+					// let go of this child, so there is nothing left for it to do with
+					// the event except not die of it.
+					child.on("error", () => {});
+					child.unref();
+					if (child.pid === undefined) {
+						throw new Error(`"${options.command}" produced no process id`);
+					}
+					return child.pid;
+				} finally {
+					closeSync(descriptor);
+				}
+			},
+			catch: (cause) => new DetachedProcessError({ reason: "spawnFailed", cause }),
+		});
+
+		yield* Effect.annotateCurrentSpan({ pid });
+		// Core's nominal constructor: no runtime check, which is correct here
+		// because the operating system just handed us the number.
+		return ChildProcessSpawner.ProcessId(pid);
+	});
+
+	/**
+	 * Poll a predicate until it holds.
+	 *
+	 * @remarks
+	 * A domain predicate rather than a sleep: "the server answers" is the thing
+	 * being waited for, and any fixed delay is simultaneously too long on a fast
+	 * runner and too short on a slow one. Two consumers hand-rolled this, one of
+	 * them around an `Effect.suspend` footgun it had to explain in a comment.
+	 *
+	 * A probe *failure* is propagated rather than treated as "not ready" — a
+	 * probe that cannot run is a different situation from a child that is not up
+	 * yet, and silently retrying the first is how a misconfigured probe becomes a
+	 * timeout six seconds later with nothing to show for it.
+	 */
+	static readonly awaitReady = Effect.fn("DetachedProcess.awaitReady")(function* <E, R>(
+		probe: Effect.Effect<boolean, E, R>,
+		options?: ReadinessOptions,
+	) {
+		const interval = options?.interval ?? "150 millis";
+		const attempts = options?.attempts ?? 40;
+		const poll = (remaining: number): Effect.Effect<void, E | DetachedProcessError, R> =>
+			Effect.flatMap(probe, (ready) => {
+				if (ready) {
+					return Effect.void;
+				}
+				if (remaining <= 0) {
+					return Effect.fail(new DetachedProcessError({ reason: "notReady" }));
+				}
+				return Effect.flatMap(Effect.sleep(interval), () => poll(remaining - 1));
+			});
+		return yield* poll(attempts);
+	});
+
+	/**
+	 * Signal a pid that came back across the phase boundary.
+	 *
+	 * @remarks
+	 * **The guard is the reason this function exists.** `process.kill(0, …)`
+	 * signals the caller's entire process group and `process.kill(-1, …)` signals
+	 * every process the user owns — so on a GitHub runner, an unguarded reap of a
+	 * pid that decoded to `0` takes down the job that is running it. The value is
+	 * exactly the one most likely to be wrong: it is what an absent state key, a
+	 * truncated state file or a `Number("")` all produce.
+	 *
+	 * A non-positive pid therefore fails **typed and before any signal is sent**.
+	 * The parameter is a plain `number` rather than a {@link ProcessId} on purpose:
+	 * the value arrives as text from another process, so the type system stopped
+	 * applying the moment it crossed that boundary, and a guard that only a
+	 * well-typed caller can trip is not a guard.
+	 *
+	 * Returns `false` for a process that is already gone, because a `post` phase
+	 * finding its child already dead is the normal ending, not a failure.
+	 */
+	static readonly reap = Effect.fn("DetachedProcess.reap")(function* (pid: number, signal: NodeJS.Signals = "SIGTERM") {
+		yield* Effect.annotateCurrentSpan({ pid });
+		if (!Number.isInteger(pid) || pid <= 0) {
+			return yield* Effect.fail(new DetachedProcessError({ reason: "invalidPid", pid }));
+		}
+		return yield* Effect.suspend(() => {
+			try {
+				process.kill(pid, signal);
+				return Effect.succeed(true);
+			} catch (cause) {
+				// ESRCH is "no such process", which for a `post` phase means the child
+				// has already exited — the normal ending, not a failure.
+				return isErrno(cause, "ESRCH")
+					? Effect.succeed(false)
+					: Effect.fail(new DetachedProcessError({ reason: "signalFailed", pid, cause }));
+			}
+		});
+	});
+}

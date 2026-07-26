@@ -27,8 +27,9 @@ when changing the pipeline seams, the error set, or the codec boundaries.
   `upwardWalk`, `workspaceRoot`, `gitRoot`, `systemEtc`)
 - `src/MergeStrategy.ts` — `MergeStrategy` (`firstMatch`, `layeredMerge`),
   `ConfigSource`, `NonEmptySources`
-- `src/ConfigFile.ts` — `ConfigFile` (`Service`, `layer`, `testLayer`),
-  `ConfigFileShape`, `ConfigFileOptions`, `ConfigFileTestOptions`, and five
+- `src/ConfigFile.ts` — `ConfigFile` (`Service`, `layer`, `testLayer`, `read`),
+  `ConfigFileShape`, `ConfigFileOptions`, `ConfigFileTestOptions`,
+  `ConfigReadOptions`, and five
   errors: `ConfigFileNotFoundError`, `ConfigFileReadError`,
   `ConfigFileWriteError`, `ConfigDefaultPathMissingError`,
   `ConfigValidationError`
@@ -40,6 +41,18 @@ when changing the pipeline seams, the error set, or the codec boundaries.
   `ConfigEncryptionError`
 - `src/ConfigProvider.ts` — `asConfigProvider`, `layerConfigProvider`,
   `LayerConfigProviderOptions`
+
+`ConfigFile`, `ConfigMigration` and `ConfigResolver` are static classes with a
+private constructor, not `as const` namespace objects — an `as const` object's
+member types are inferred in the built `.d.ts` and lose their TSDoc entirely,
+while a class's `static readonly` declarations keep it (the `@effected/commands`
+precedent, `11a121e0`). `MergeStrategy` and `EncryptedCodecKey` stay `as const`
+objects: both share a name with a same-file generic interface/type declared
+without a default type parameter (`MergeStrategy<A>`, `type EncryptedCodecKey`),
+and merging a class into either is a TS2300/TS2428 compile error — confirmed
+against the installed TypeScript, not assumed. `VersionAccess` also stays `as
+const`: its one member is a data value, not a function, so there is no member
+TSDoc for the class form to preserve.
 
 ## Architecture: codec × resolver × strategy
 
@@ -53,6 +66,16 @@ Three orthogonal seams, composed by `ConfigFile.layer`:
   one unreadable tier never aborts the chain.
 - **Strategy** — many sources → one value. Cannot fail; the empty case raises
   `ConfigFileNotFoundError` before a strategy is consulted.
+
+`ConfigFile.read(path, { schema, codec })` is the **one-shot** escape from all
+three seams: read + decode + validate one explicit path, no service, no layer,
+no tag, only `FileSystem` in `R`, schema per CALL rather than per layer. Keep it
+read-only and discovery-free — wanting a resolver chain or a write path means
+reaching for `ConfigFile.layer`, not growing this. **Never add extension-based
+codec inference to it**: the codec is an explicit argument precisely so a
+JSON-only consumer never references the JSONC/YAML/TOML modules, and a
+"convenience" that picked one by file extension would reach all four and
+silently undo the tree-shaking rule below.
 
 `ConfigFile.Service<Self, A>()(id)` is a per-schema `Context.Service` factory.
 `ConfigFile.layer` is a layer-*returning function*: bind its result to a const
@@ -138,7 +161,7 @@ now expressed over `Walker.ascend`, `Walker.findUpward` and `Walker.findRoot`.
 
 ## Testing and building
 
-Tests live in `__test__/` (13 files, 146 passing), use `@effect/vitest`, and
+Tests live in `__test__/` (14 files, 154 passing), use `@effect/vitest`, and
 assert with `assert.*` — **never** `expect`.
 
 ```bash

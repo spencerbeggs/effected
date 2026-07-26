@@ -169,12 +169,82 @@ false green:
 > file that imports it. A suite that collects zero tests is not a passing suite.
 > See `effect-v4-testing`.
 
+**A second trigger, which fires on a class *declaration* too: a static that reads
+a module-local `make` declared further down the file.** The rule above covers the
+class's own name; this one covers anything the static initializer touches
+eagerly:
+
+```ts
+// THROWS at import: "Cannot access 'make' before initialization" — and typechecks clean
+export class Repo extends Context.Service<Repo, Shape>()("Repo") {
+ static readonly layer = Layer.effect(this, Effect.map(Dep, make));
+}
+const make = (dep: Dep): Shape => ({ … });   // ← evaluated AFTER the class body
+
+// Fine — the arrow defers the read to layer-BUILD time:
+ static readonly layer = Layer.effect(this, Effect.map(Dep, (dep) => make(dep)));
+```
+
+`Effect.map(Dep, make)` reads `make` while the static initializer runs — import
+time; `(dep) => make(dep)` reads it when the layer is built. Same false green.
+The arrow is correct in both declaration orders, so write it unconditionally.
+
+### Resolve a dependency once at construction — only when it is stable
+
+A service built with `Effect.gen` resolves whatever it `yield*`s **when the layer
+is built**. Right for a pool, a client, a decoded config; wrong for anything a
+caller is meant to vary. **Stable ⇒ resolve in `make`** and every call shares the
+instance. **Varying it is the point ⇒ read it per call**, keeping it in the
+method's `R`, so a caller's `Effect.provideService(op, Dep, other)` reaches the
+code that uses it.
+
+Getting this backwards is **silent**. A `Repo` resolved at construction made
+`Repo.provide(…)` decorative: the wrapper compiled, ran, and changed nothing,
+because the service had already captured the ambient instance. Nothing in the
+types distinguishes the two — only a test that provides a *different* instance
+and asserts the difference does. (Caught that way in the github work.)
+
 Name the primary layer **`layer`** (e.g. `Database.layer`), never v3's
 `Default` / `Live`. Use suffixes for variants (`layerTest`). The one exception
 is the `index.ts` composite convenience export that merges two concept modules'
 primary layers — `Default` is the idiomatic name there (see **Cycle-avoidance**
 below); it is not a service's own primary layer, so it does not violate this
 rule.
+
+### A layer static belongs to the module owning the dependency, not the service
+
+**Statics on one class share one module**, and a module is the unit of
+reachability — so a layer variant needing something the service's own module must
+not reach moves out:
+
+> A layer-family static belongs to the module that **owns the dependency it
+> needs**, not to the module that **declares the service**.
+
+Three uses in the kit: `GitHubApp.clientLayer` (confines the JWT signer),
+`Workspaces.localExecLayer` (builds `@effected/commands`' service, so `commands`
+keeps zero `@effected/*` edges), `GitHubCacheBlobStore.layer` (confines
+`@azure/storage-blob`). Such a static is named for its **variant**, not `layer`.
+Test: *would putting this static on the service class make a dependency reachable
+from a consumer that does not use it?*
+
+### Swappable contracts: no ambient default, and ship values too
+
+When the implementation is a **policy choice** the consumer must make, two rules:
+
+1. **No ambient default in the composite layer.** `Layer.mergeAll` is
+   **last-wins**, so `Layer.mergeAll(myDetector, Pkg.layer())` — the natural
+   spelling of an override — silently loses to a merged-in default. Leave the
+   requirement in `R`: wiring that forgets to choose does not compile, and
+   consumers who never call the operation never supply a policy.
+2. **Ship every implementation as a VALUE as well as a layer** (`static readonly
+   npm: Shape` beside `static readonly layerNpm = Layer.succeed(this, this.npm)`).
+   A consumer composing *around* the default cannot use a layer without
+   re-entering the tag it is replacing; given the value, the wrapper is one
+   delegating `Layer.succeed`.
+
+Reasoning and the `PublishabilityDetector` precedent:
+[references/service-design.md](./references/service-design.md), which also
+carries the layer-static and value-only-service rules in full.
 
 ### Composition operators
 
@@ -214,32 +284,12 @@ wiring, blocks test substitution, and spawns many small runtimes. For
 several entry points (HTTP handlers, consumers, cron), build one
 `ManagedRuntime.make(AppLayer)` and run each entry against it.
 
-### Heterogeneous requirement unions: annotate the collection up front
-
-When a wrapper collects several values that are generic in a requirements
-union — an array of resolvers, a list of layers feeding one generic
-parameter — TypeScript pins the type parameter from the **first** element and
-rejects the later, wider elements instead of widening the union:
-
-```ts
-declare const takeChain: <RR>(rs: ReadonlyArray<ConfigResolver<RR>>) => RR;
-takeChain([
-  XdgConfig.resolver({ filename }),       // RR pinned: AppDirs | FileSystem | Path
-  XdgConfig.nativeResolver({ ... }),      // ERROR — Xdg not assignable; the union never widens
-]);
-
-// Fix: state the full union where the collection is BUILT:
-const chain: ReadonlyArray<ConfigResolver<AppDirs | Xdg | FileSystem.FileSystem | Path.Path>> = [ ... ];
-takeChain(chain);                         // compiles
-```
-
-The annotation looks redundant — each element is individually assignable to
-it — but deleting it re-breaks inference at the call site; leave a comment
-saying so. Probed 2026-07-12 from inside `packages/app` against
-`effect@4.0.0-beta.97` (control `Effect.catchAll` failed to compile; the bare
-two-element chain failed on its second element; the annotated chain compiled
-clean). Surfaced by `AppConfig.layer` wrapping `ConfigFile.layer` in the
-`@effected/app` port.
+**Heterogeneous requirement unions need an up-front annotation.** Collecting
+several values generic in a requirements union (an array of resolvers, a list of
+layers feeding one generic parameter) pins the type parameter from the **first**
+element; the later, wider elements are rejected rather than widening the union.
+Annotate the collection where it is built —
+[references/edge-cases.md](./references/edge-cases.md).
 
 > **Type helpers are top-level.** `Layer.Success<typeof L>` and
 > `Layer.Error<typeof L>` are module-level type exports (v4 source
@@ -273,37 +323,20 @@ in one layer). That split fixes the house default:
   default layer or a sync escape hatch — never a contract or a
   business-logic path.
 
-Before designing any service or seam, grep the vendored core
-(`.repos/effect/packages/effect/src`, including `unstable/`) for an
-existing contract. The cautionary tale is one day old: a parallel
-subprocess vocabulary (`Command`/`CommandRunner` plus a hand-rolled
-`node:child_process` layer) survived four review gates in this repo before a
-source check found `effect/unstable/process` already declared all of it — the
-package was deleted the same day it was built.
+Before designing any service or seam, grep the core source — `unstable/`
+included — for an existing contract (`effect-v4-source-lookup` resolves the
+tree). A parallel subprocess vocabulary (`Command`/`CommandRunner` plus a
+hand-rolled `node:child_process` layer) survived four review gates in this repo
+before a source check found `effect/unstable/process` already declared all of it.
 
 ## Sync facades: per-call service values, not layers
 
-When a library exposes a synchronous escape hatch over consumer-supplied ops
-(build-tool plugin hooks, config-time contexts), build service **values** and
-provide them per call — do not reach for a Layer:
-
-- `FileSystem.makeNoop({ exists, readFileString })` overrides only the ops the
-  pipeline uses; every non-overridden member fails **typed `NotFound`** (core
-  behavior, `FileSystem.ts` at beta.98) — document that asymmetry if your
-  hand-rolled counterparts throw defects instead.
-- Core `Path` has **no `makeNoop`/`layerNoop` analog** (beta.98) — hand-roll a
-  `Path.Path` value (`Path.Path.of` with `[Path.TypeId]`), back the members you
-  use with the consumer's ops, and throw an informative defect from the rest.
-- Wire with `Effect.provideService` per call. No Layer means no
-  memoize-by-reference trap when consecutive calls carry different ops.
-- Run with `Effect.runSyncExit` and unwrap the Exit honestly:
-  `Cause.findErrorOption` → throw the typed error as itself;
-  `Cause.findDefect` (returns a `Result`) → rethrow the defect. Never leak a
-  fiber-failure wrapper to a sync caller.
-
-Worked example: `@effected/tsconfig-json`'s `TsconfigLoaderSync` (probed
-beta.98). The async pipeline stays the single implementation; the facade only
-adapts ops and unwraps.
+A synchronous escape hatch over consumer-supplied ops (build-tool plugin hooks,
+config-time contexts) takes service **values** provided per call with
+`Effect.provideService` — never a Layer, so consecutive calls carrying different
+ops cannot hit the memoize-by-reference trap below. The `FileSystem.makeNoop` /
+hand-rolled-`Path` recipe and the honest `runSyncExit` unwrap:
+[references/edge-cases.md](./references/edge-cases.md).
 
 ## Memoization: layers build once, by reference
 
@@ -394,3 +427,77 @@ Effect.runPromise(program.pipe(Effect.provide(DatabaseTest)));
 Keep test wiring explicit and close to the production composition style —
 the Live/Test difference should be one swapped layer at the edge, nothing
 deeper.
+
+### `Layer.mock`'s optionality is earned, not given — and one plain member revokes it
+
+`Layer.mock(Service, impl)` takes `PartialEffectful<S>`, not `Partial<S>`
+(`Layer.ts:2262`). That type is not "everything optional" — it splits the shape
+on one predicate:
+
+```ts
+// Layer.ts:2190 — a member is OPTIONAL iff it matches AnyEffectOrStream; else REQUIRED
+export type PartialEffectful<A extends object> = Types.Simplify<
+  & { [K in keyof A as A[K] extends AnyEffectOrStream ? K : never]?: A[K] }
+  & { [K in keyof A as A[K] extends AnyEffectOrStream ? never : K]: A[K] }
+>
+// Layer.ts:2199 — AnyEffectOrStream = Effect | Stream | Channel, or a function returning one
+```
+
+So **any non-effectful member is required in every single mock**: a sync
+function, a plain data property, a generic passthrough whose return type does
+not resolve to `Effect`/`Stream`/`Channel`. Add one and every existing
+`Layer.mock` call site must now spell out that member — the partial mock has
+silently degraded to `Layer.succeed` with extra ceremony. The type system
+reports it as "missing property" errors scattered across the test suite, far
+from the service shape that caused them.
+
+**House rule: no non-effectful members on a service shape.** A service is an IO
+contract. A pure helper belongs on a static, a namespace, or a plain exported
+function next to the pure class that owns the algorithm — never inside the
+`Context.Service` shape. That keeps every member effect-valued, which keeps
+every member optional, which keeps `Layer.mock` doing the one job it exists for.
+
+> **The wrong fix: wrapping the pure helper in `Effect.succeed` to satisfy the
+> rule.** It does buy back optionality — and it is the anti-pattern, not the
+> remedy. It makes every caller pay a `yield*` for a computation that cannot
+> fail, cannot suspend and needs no runtime; it hides a pure function inside an
+> IO contract where nobody will find it; and it makes the thing untestable
+> without a layer, which is exactly the cost the pure-core/effectful-edge split
+> (see `effect-v4-planning`, pillar 1) exists to avoid. **Move the member off
+> the shape. Do not decorate it into compliance.**
+
+**The one bounded exception: a shape that is entirely ONE immutable value.** The
+rule targets **mixed** shapes, where a pure member revokes the *methods'*
+optionality. A service whose whole contract is data — a resolved environment
+record, a set of discovered paths — has no behaviour to mock, so nothing
+degrades: `Layer.succeed` is the correct and complete double, and `Layer.mock`
+was never the tool. Apply the criterion, do not pattern-match it: *the entire
+shape is one immutable value with no mockable behaviour* — not "mostly data",
+not "the methods are trivial". The boundary is sharp: **the moment a method
+appears, it is a service again**, and the rule above reapplies retroactively to
+every field. Say so in the service's TSDoc when you declare one.
+
+### `dual` belongs on pure classes, never on a service shape
+
+`Function.dual` (the kit imports it as `Fn`) gives a combinator both the
+data-first and data-last spelling — `Package.addDependency(pkg, name, spec)`
+*and* `pkg.pipe(Package.addDependency(name, spec))`. That is the right shape on
+a **pure** class: `@effected/package-json`'s `Package` and `@effected/semver`'s
+`Range` / `SemVer` all use it, and they are pure Schema classes with no layer
+anywhere near them.
+
+Putting a dual member on a `Context.Service` shape costs more than it looks:
+
+- A dual member's declared type is an **overload pair**. Any override — in a
+  `Layer.mock` implementation, in a `Partial<Shape>` test-stub argument, in a
+  hand-written fake — must satisfy **both** overloads, not just the one the test
+  calls. The one-line stub that works for every other member
+  (`layerTest({ read: () => Effect.succeed(x) })`) stops compiling, and the fix
+  is to hand-write the full overloaded signature in the test.
+- It is also a non-effectful member by the rule above whenever the data-last
+  branch returns a function rather than an `Effect`, so it is `Layer.mock`-
+  required on top of being overload-shaped.
+
+The two rules compose into one design instruction: **service shapes carry plain,
+single-signature, effect-returning methods. Everything cleverer lives on the
+pure class.**

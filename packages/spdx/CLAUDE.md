@@ -18,6 +18,8 @@ SPDX license identifiers, exceptions and license expressions as Effect Schema cl
 
 `SpdxExpression` is a recursive tagged-union AST built with `Schema.suspend`, carrying a `FromString` codec, an Effect `parse`, the sync `isValidExpression`, and a canonical fully-parenthesized `.toString()`. The parser is hardened and depth-capped: malformed or unknown input fails through `InvalidSpdxExpressionError`, never as a defect.
 
+The `SpdxExpression` facade stays an `as const` object, NOT a static class: `export type SpdxExpression = LicenseNode | ... | OrNode` (the AST union) already claims that name as a type alias, and a type alias cannot merge with a class (only an interface can) — `export class SpdxExpression` would be a duplicate-identifier error. This is one of the three recorded holdouts in the kit's static-class-conversion sweep — with `@effected/config-file`'s `MergeStrategy` and `EncryptedCodecKey`, all three the same cause, a class cannot merge with a same-named type ([the container rule](../../.claude/design/effected/effect-standards.md#a-sanctioned-grouped-statics-container-is-a-static-class-not-an-as-const-object-2026-07-25)); the facade's member TSDoc is consequently still exposed to the `as const` inference loss in the built `.d.ts`.
+
 ## Conventions and gotchas
 
 - **`parse` / `parseResult`, never `make`.** `Schema.Class` reserves `make`, so the validating constructors take these names. The sync `Result` form is the primitive; the `Effect` twin derives from it — kit convention, `@../../.claude/design/effected/formatter-convention.md`.

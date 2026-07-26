@@ -1,11 +1,11 @@
 ---
-status: draft
+status: current
 module: effected
 category: architecture
 created: 2026-07-18
-updated: 2026-07-20
-last-synced: 2026-07-20
-completeness: 85
+updated: 2026-07-25
+last-synced: 2026-07-25
+completeness: 86
 related:
   - ../effect-standards.md
   - ../package-inventory.md
@@ -21,7 +21,7 @@ related:
 
 `@effected/markdown` is CommonMark + GFM as pure Effect Schema schemas: parse, edit, validate and transform markdown documents. Markdown is the kit's communication layer with AI agents — skills, CLAUDE.md-style context files, knowledge documents — and this package makes that layer typed and programmable. Markdown→HTML and HTML→markdown are explicitly **out of scope as product features**; HTML exists only as test-harness machinery for the conformance corpus. The package carries the full-parity ambition of its format siblings [jsonc](jsonc.md), [yaml](yaml.md) and [toml](toml.md): parse, edit, format and a shared surface contract, not a read-only projection ("full kit" was chosen over read-only scope).
 
-The real identified consumer is rspress-plugin-api-extractor, which currently uses `mdast-util-from-markdown`, `mdast-util-to-hast` and `gray-matter`; the `Mdast` projection plus the frontmatter codecs replace that stack incrementally. This is a **post-`0.1.0` workstream, not a release gate**. This document is the migration-playbook step-2 gate: the package does not exist yet, and no scaffolding lands before this design is settled.
+The real identified consumer is rspress-plugin-api-extractor, which currently uses `mdast-util-from-markdown`, `mdast-util-to-hast` and `gray-matter`; the `Mdast` projection plus the frontmatter codecs replace that stack incrementally. This is a **post-`0.1.0` workstream, not a release gate**. The package is in tree and published (first at `0.2.0`, 2026-07-19); phases P1-P5 are complete and the section finders landed in the 2026-07-25 github-split program. P6 — the docs pass and the rspress-plugin-api-extractor swap — is consumer-side work, not package work.
 
 ## Headline decisions
 
@@ -118,7 +118,7 @@ parse = block pass → inline pass → mdast-shaped node tree with offsets and f
 One concern per file, mirroring [yaml's layout](yaml.md#module-layout); `src/index.ts` is the sole barrel:
 
 - `src/Markdown.ts` — the facade: `parse`/`stringify` (`Effect`, typed `E`) and the `MarkdownFromString` schema. **P1 (2026-07-18):** `MarkdownFromString` ships as a two-way codec whose encode fails typed until P4 drops `stringify` into the existing lambda — probed at beta.98, zero signature change later.
-- `src/MarkdownDocument.ts` — the lossless unit: source text + tree + frontmatter + diagnostics, plus navigation accessors (headings, sections, links — the OKF-informed surface) and the `find`/`findAll` tree queries.
+- `src/MarkdownDocument.ts` — the lossless unit: source text + tree + frontmatter + diagnostics, plus navigation accessors (headings, sections, links — the OKF-informed surface), the `find`/`findAll` tree queries and the `firstSection`/`sectionByHeading` finders over `DocumentSection` (a value class, not a Schema class).
 - `src/MarkdownNode.ts` — the node Schema classes, co-located in one file to break the recursive-AST cycle: `Schema.suspend`, no parent pointers, recursive references typed `Schema.Codec<T>`. Also owns `Position` (with the public `synthetic` sentinel) and the `MarkdownNodeType` / `MarkdownNodeOfType` selector vocabulary.
 - `src/Mdast.ts` — projection to and from plain mdast JSON; the remark-ecosystem interop boundary.
 - `src/MarkdownEdit.ts` — the `Edit`/`Range`/`Path`/`Segment` parity vocabulary plus `applyAll`.
@@ -168,6 +168,24 @@ Standing goals: an **empty skip map** (the toml precedent — zero skips); the d
 **2026-07-19:** the frontmatter round-trip property's json leg now runs on `Jsonc.stringify` — it used `JSON.stringify` only because `@effected/jsonc` shipped no public stringify at P3, and that gap is closed ([jsonc.md](jsonc.md#jsonc-facade)). All three legs now round-trip through the real codecs, so the property proves the shipped surface rather than a stand-in.
 
 The `$schema` contract adds its own unit and property coverage: declaration shape classification across the four variants, version grammar validation (one to three integer segments, junk rejected as a typed error), the last-`@` split including scoped names, day-one exact-match resolution against the registry and the prefix-selector-parses-but-unresolvable vs unknown-name distinction (`SchemaVersionUnresolvable` vs `SchemaNameUnknown`).
+
+## Section extraction (Phase 1c, 2026-07-25)
+
+Added for the github-split program. **The sectioning itself already existed** — the P5 `sections` accessor delimits on root-level headings only and runs each section to the next equal-or-shallower heading — so this is a finder layer over it, never a second sectioning implementation. Three pieces were missing:
+
+- **`DocumentSection` became a value class** (from a plain interface), gaining `text` — the heading's plain-text content, using the same derivation `DocumentHeading.text` already had but which was module-private and therefore unreachable from a section — plus `bodyRange` (the heading's end offset to the section's end) and lazy `source` / `body` slices over the document text it now holds a reference to. It is deliberately **not** a `Schema.Class`: it is a navigation projection rather than a serializable domain model, so it adds no `_base` symbol and no api-extractor suppression. The interface-to-class change is breaking in principle and free in practice — the package is unpublished.
+- **`MarkdownDocument.firstSection(options?)` and `sectionByHeading(match, options?)`**, shaped after `find`/`findAll`: document order, first match, `undefined` on none, synchronous with the same thrown-defect depth posture as the other navigation getters.
+- `SectionQueryOptions` and `SectionHeadingMatch` are exported, the latter because it is named on a `@public` signature.
+
+Three semantics are committed, each chosen against a specific failure:
+
+1. **A string matches the trimmed heading text EXACTLY, never as a substring.** `"1.2.3"` must not match a `## 1.2.30` heading — and in a changelog `1.2.30` is *newer*, so it sits earlier in the document and a substring implementation returns it first. That is a silent wrong-release publication, and it is the discriminating test for the whole surface (a substring mutant is killed by exactly it).
+2. **`depth` is equality, not a maximum.** `firstSection({ depth: 2 })` is "the first H2 section", the changelog idiom; a maximum would return the H1 title. A depth *range* is a different question and belongs in a predicate.
+3. **`body` is untrimmed**, exactly the bytes `bodyRange` describes, so the string and the offsets can never disagree. A lossless package that publishes a span's offsets and hands back a different span is lying about it; callers write `.trim()` visibly.
+
+A `RegExp` is tested against the same trimmed text with `lastIndex` reset first, so reusing one `/g/` pattern across sections cannot skip matches — reusing a pattern object is the natural call-site shape, so the reset belongs in the implementation rather than in a caveat.
+
+The motivating consumer is silk-release-action's `extract-release-notes.ts`, a hand-rolled `/^##\s/` line scan. Two of its defects are fixed **by construction** rather than by a fix: an ATX H2 marker inside a fenced or indented code block cannot open a section (it is a `code` node), and a setext H2 (`1.0.0` over `-----`) is found, where `/^## /` never matched one at all. `bodyRange` starting at the heading *node's* end is what keeps setext correct — the node span covers the underline, so the body never begins mid-`-----`. Both are named regression tests.
 
 ## Consumer seam
 

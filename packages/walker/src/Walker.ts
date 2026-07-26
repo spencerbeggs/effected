@@ -51,30 +51,7 @@ export interface AscendOptions {
 	readonly maxDepth?: number;
 }
 
-/**
- * Ascend from `start` toward the filesystem root, yielding each directory,
- * nearest first.
- *
- * @remarks
- * Lexical, not physical: `Path.dirname` does not resolve symlinks, so ascending
- * out of a symlinked directory follows the path you were given rather than the
- * real filesystem parent. That is deliberate — config discovery wants the file
- * nearest the path the user named.
- *
- * Bounded twice over: `dirname` is a fixpoint at the root, and `maxDepth` guards
- * a pathological `Path` implementation that never reaches one.
- *
- * `stopAt` is compared in normalized form — see {@link AscendOptions.stopAt}.
- * Raw string equality made the ceiling fail OPEN: an unnormalized ceiling
- * matched nothing and the ascent ran silently to the filesystem root, which is
- * the unbounded walk the option exists to prevent, with no error to notice it
- * by. A relative ceiling **dies** for the same reason — resolving one against
- * `process.cwd()` would reintroduce the silent-wrong-walk failure through a
- * different door. See {@link AscendOptions.stopAt} for why that is a defect
- * rather than a typed error; the error channel stays `never`.
- *
- * @public
- */
+// Implementation of Walker.ascend; the public contract lives on the static.
 const ascend = (start: string, options?: AscendOptions): Effect.Effect<ReadonlyArray<string>, never, Path.Path> =>
 	Effect.gen(function* () {
 		const path = yield* Path.Path;
@@ -111,22 +88,7 @@ const ascend = (start: string, options?: AscendOptions): Effect.Effect<ReadonlyA
 		return dirs;
 	});
 
-/**
- * The first candidate whose `predicate` reports true, or `Option.none()`.
- *
- * @remarks
- * Each predicate is absorbed **individually**: a failure on one candidate is
- * treated as "this candidate did not match" and the scan continues. One
- * unreadable ancestor must never abort the walk, or a permission error deep in
- * the tree would hide a valid root above it. Not-found and cannot-look are
- * therefore indistinguishable to the caller; discovery is best-effort.
- *
- * `Effect.catch` catches failures, **not defects**. A predicate that throws is
- * programmer error and surfaces as a defect. Do not change this to
- * `Effect.catchCause` — the distinction is load-bearing.
- *
- * @public
- */
+// Implementation of Walker.firstMatch; the public contract lives on the static.
 const firstMatch = <E, R>(
 	candidates: ReadonlyArray<string>,
 	predicate: (candidate: string) => Effect.Effect<boolean, E, R>,
@@ -139,16 +101,7 @@ const firstMatch = <E, R>(
 		return Option.none();
 	});
 
-/**
- * The first existing path among the candidates `candidatesFor` produces for each
- * directory in `dirs`, scanned in order. Nearer directories win.
- *
- * @remarks
- * Candidates materialize up front, bounded by `dirs.length × candidatesFor`'s
- * output — a few hundred strings under the default `maxDepth`.
- *
- * @public
- */
+// Implementation of Walker.findUpward; the public contract lives on the static.
 const findUpward = (
 	dirs: ReadonlyArray<string>,
 	candidatesFor: (dir: string) => ReadonlyArray<string>,
@@ -160,16 +113,7 @@ const findUpward = (
 		return yield* firstMatch(candidates, (candidate) => fs.exists(candidate));
 	});
 
-/**
- * The first directory in `dirs` that `isRoot` accepts.
- *
- * @remarks
- * `firstMatch` over the directories themselves — the candidate expansion is the
- * identity. `isRoot` is a caller-supplied marker test (a `.git` entry, a
- * `pnpm-workspace.yaml`), and its failures are absorbed per directory.
- *
- * @public
- */
+// Implementation of Walker.findRoot; the public contract lives on the static.
 const findRoot = <E, R>(
 	dirs: ReadonlyArray<string>,
 	isRoot: (dir: string) => Effect.Effect<boolean, E, R>,
@@ -180,4 +124,66 @@ const findRoot = <E, R>(
  *
  * @public
  */
-export const Walker = { ascend, firstMatch, findUpward, findRoot } as const;
+export class Walker {
+	private constructor() {}
+
+	/**
+	 * Ascend from `start` toward the filesystem root, yielding each directory,
+	 * nearest first.
+	 *
+	 * @remarks
+	 * Lexical, not physical: `Path.dirname` does not resolve symlinks, so ascending
+	 * out of a symlinked directory follows the path you were given rather than the
+	 * real filesystem parent. That is deliberate — config discovery wants the file
+	 * nearest the path the user named.
+	 *
+	 * Bounded twice over: `dirname` is a fixpoint at the root, and `maxDepth` guards
+	 * a pathological `Path` implementation that never reaches one.
+	 *
+	 * `stopAt` is compared in normalized form — see {@link AscendOptions.stopAt}.
+	 * Raw string equality made the ceiling fail OPEN: an unnormalized ceiling
+	 * matched nothing and the ascent ran silently to the filesystem root, which is
+	 * the unbounded walk the option exists to prevent, with no error to notice it
+	 * by. A relative ceiling **dies** for the same reason — resolving one against
+	 * `process.cwd()` would reintroduce the silent-wrong-walk failure through a
+	 * different door. See {@link AscendOptions.stopAt} for why that is a defect
+	 * rather than a typed error; the error channel stays `never`.
+	 */
+	static readonly ascend = ascend;
+
+	/**
+	 * The first candidate whose `predicate` reports true, or `Option.none()`.
+	 *
+	 * @remarks
+	 * Each predicate is absorbed **individually**: a failure on one candidate is
+	 * treated as "this candidate did not match" and the scan continues. One
+	 * unreadable ancestor must never abort the walk, or a permission error deep in
+	 * the tree would hide a valid root above it. Not-found and cannot-look are
+	 * therefore indistinguishable to the caller; discovery is best-effort.
+	 *
+	 * `Effect.catch` catches failures, **not defects**. A predicate that throws is
+	 * programmer error and surfaces as a defect. Do not change this to
+	 * `Effect.catchCause` — the distinction is load-bearing.
+	 */
+	static readonly firstMatch = firstMatch;
+
+	/**
+	 * The first existing path among the candidates `candidatesFor` produces for each
+	 * directory in `dirs`, scanned in order. Nearer directories win.
+	 *
+	 * @remarks
+	 * Candidates materialize up front, bounded by `dirs.length × candidatesFor`'s
+	 * output — a few hundred strings under the default `maxDepth`.
+	 */
+	static readonly findUpward = findUpward;
+
+	/**
+	 * The first directory in `dirs` that `isRoot` accepts.
+	 *
+	 * @remarks
+	 * `firstMatch` over the directories themselves — the candidate expansion is the
+	 * identity. `isRoot` is a caller-supplied marker test (a `.git` entry, a
+	 * `pnpm-workspace.yaml`), and its failures are absorbed per directory.
+	 */
+	static readonly findRoot = findRoot;
+}

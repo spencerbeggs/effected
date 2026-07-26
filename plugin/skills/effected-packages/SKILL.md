@@ -1,11 +1,11 @@
 ---
 name: effected-packages
-description: The @effected package index — what each of the kit's 18 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML, semver math, glob matching, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, git introspection, or runtime-version resolution. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/.
+description: The @effected package index — what each of the kit's 25 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML/Markdown, semver math, SPDX license expressions, glob matching, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, git introspection, runtime-version resolution, running commands or discovering CLI tools, managed sections in generated files, the GitHub REST/GraphQL API, the GitHub Actions runtime, or SBOM generation and signing. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/.
 ---
 
 # The @effected package index
 
-`@effected/*` is an Effect v4-first app kit: 18 packages designed against the
+`@effected/*` is an Effect v4-first app kit: 25 packages designed against the
 v4 line (never lift-and-shifted from v3), released together, with every
 `effect` dependency pinned to one exact beta via pnpm catalogs. Before
 designing lockfile/config/glob/semver/path/state/workspace/git capability by
@@ -30,20 +30,84 @@ against its services, or test code that uses it.
 | `@effected/jsonc` | JSONC parse/edit/format schemas, AST, comment-preserving edits, visitor stream | reading or editing JSON-with-comments (tsconfig, VS Code-style config) | pure | [jsonc.md](./references/jsonc.md) |
 | `@effected/yaml` | YAML 1.2 parse/edit/format schemas, error-tolerant AST, edits, visitor | any YAML read/write/transform | pure | [yaml.md](./references/yaml.md) |
 | `@effected/toml` | TOML 1.0.0 parse/edit/format schemas, lossless CST, date-time value classes | any TOML read/write/transform | pure | [toml.md](./references/toml.md) |
+| `@effected/markdown` | CommonMark 0.31.2 + GFM parse/edit/format as pure schemas: mdast-shaped nodes with byte offsets, offset-splice edits, node-level modify, `Mdast` projection both ways, `Stream` visitor, frontmatter codecs, section finders (`firstSection` / `sectionByHeading`) | reading, editing, querying or rewriting markdown — instead of `remark`/`mdast-util-*`/`gray-matter` | pure | the package's own `CLAUDE.md` |
+| `@effected/spdx` | SPDX license IDs, exceptions and license *expressions* as Schema classes, with a hardened depth-capped expression parser and vendored SPDX datasets | validating or parsing a license field / expression (`MIT OR Apache-2.0 WITH …`) | pure | the package's own `CLAUDE.md` |
 | `@effected/glob` | full minimatch dialect as pure string→predicate schemas (`GlobPattern`, `GlobSet`) | matching path strings against globs without touching the fs | pure | [glob.md](./references/glob.md) |
-| `@effected/npm` | resolver CONTRACTS for `catalog:`/`workspace:` specifiers + shared dependency vocabulary | typing dependency specifiers; needing the resolver seam | pure | [npm.md](./references/npm.md) |
+| `@effected/npm` | resolver CONTRACTS for `catalog:`/`workspace:` specifiers + shared dependency vocabulary, **plus** `NpmRegistry` (reads over `HttpClient`) and `PackagePublish` (the npm CLI over `commands`) | typing dependency specifiers; reading a registry; packing/publishing | boundary | [npm.md](./references/npm.md) |
 | `@effected/lockfiles` | bun/npm/pnpm/yarn lockfile parsers → one `Lockfile` model + pure integrity checking | reading any lockfile; lockfile-vs-manifest drift checks | pure | [lockfiles.md](./references/lockfiles.md) |
-| `@effected/package-json` | package.json schemas, `Package` model, validation, file IO service | reading/editing/validating package.json | integrated | [package-json.md](./references/package-json.md) |
+| `@effected/package-json` | package.json schemas, `Package` model, validation, file IO service; `repository`/`bugs`/`homepage`/`maintainers`/`keywords` now typed | reading/editing/validating package.json | boundary | [package-json.md](./references/package-json.md) |
 | `@effected/tsconfig-json` | tsconfig schemas, tsc-parity `extends` resolution, nearest-config discovery | loading/resolving/discovering tsconfig files | boundary | [tsconfig-json.md](./references/tsconfig-json.md) |
-| `@effected/config-file` | codec × resolver × strategy config loading, 4 codecs, encryption/migration decorators | any app/tool config-file loading | boundary | [config-file.md](./references/config-file.md) |
+| `@effected/config-file` | codec × resolver × strategy config loading, 4 codecs, encryption/migration decorators, one-shot `ConfigFile.read(path, { schema, codec })` | any app/tool config-file loading | boundary | [config-file.md](./references/config-file.md) |
 | `@effected/walker` | upward directory traversal (`ascend`, `firstMatch`, `findUpward`, `findRoot`) | find-nearest-file/marker-based root discovery | boundary | [walker.md](./references/walker.md) |
 | `@effected/xdg` | XDG Base Directory resolution: `Xdg`, `AppDirs`, native dirs, config resolvers | platform-correct config/data/cache/state paths | boundary | [xdg.md](./references/xdg.md) |
 | `@effected/git` | typed git introspection (show/ls-tree/refs/merge-base/diff/rev-parse) + checkout | reading repo state at any ref without checkout | boundary | [git.md](./references/git.md) |
 | `@effected/runtimes` | Node/Bun/Deno version resolution from live feeds with offline snapshot | resolving runtime versions against ranges/phases | boundary | [runtimes.md](./references/runtimes.md) |
+| `@effected/commands` | `Run` combinators over core `ChildProcess.Command` (collect/text/lines/json/detach, typed failure, redaction, transient retry) + `ToolDiscovery` + the `LocalExec` contract `workspaces` implements | running any subprocess, or asking whether a CLI tool is installed and which copy to use | boundary | the package's own `CLAUDE.md` |
+| `@effected/templates` | managed sections: delimited BEGIN/END blocks inside user-editable files, with reconcile/sync/check and a parameterized marker + comment style | writing generated content into a file a human also edits | boundary | the package's own `CLAUDE.md` |
 | `@effected/store` | migrated SQLite `Store` + TTL `Cache` with tags/eviction/events | durable local state or an on-disk cache | integrated | [store.md](./references/store.md) |
-| `@effected/workspaces` | monorepo discovery, dependency graph, PM detection, catalogs, change detection, snapshots | any monorepo/workspace introspection | integrated | [workspaces.md](./references/workspaces.md) |
+| `@effected/workspaces` | monorepo discovery, dependency graph, PM detection, catalogs, change detection, snapshots, versioning/tag strategies; implements `npm`'s resolvers and `commands`' `LocalExec` | any monorepo/workspace introspection | integrated | [workspaces.md](./references/workspaces.md) |
+| `@effected/github` | typed GitHub REST + GraphQL over octokit's core request surface, App auth, resources (branches/tags/commits/releases/PRs/checks), pagination, one error taxonomy | any GitHub API call — the route literal types params AND response, no casts | integrated | the package's own `CLAUDE.md` |
+| `@effected/github-actions` | the Actions RUNTIME: inputs/outputs/state/env, workflow commands, logger, cache, artifacts, tool installer, OIDC, the `GitHubToken` bridge | writing a GitHub Action — talking to the runner, not the API | integrated | the package's own `CLAUDE.md` |
+| `@effected/sbom` | owned CycloneDX 1.6 emitter, Sigstore signing, in-toto/SLSA provenance, NTIA minimum-elements validation | generating, signing or attesting an SBOM | integrated | the package's own `CLAUDE.md` |
 | `@effected/app` | the application control plane: one layer wiring XDG dirs + Store + Cache + config | wiring an APPLICATION's local state in one move | integrated | [app.md](./references/app.md) |
 | `@effected/pnpm-plugin-effect` | pnpm catalogs pinning the Effect ecosystem (companion — config, not code) | setting up Effect version pinning in a pnpm workspace | — | [pnpm-plugin-effect.md](./references/pnpm-plugin-effect.md) |
+
+**Seven rows have no `references/` file yet** — `markdown`, `spdx`, and the five
+github-split packages (`commands`, `templates`, `github`, `github-actions`,
+`sbom`). Read the package's own `CLAUDE.md` for depth on those; it is the
+authority either way, and `references/` files for the five are a later pass.
+Facts about them that change how you depend on them:
+
+- **`@effected/markdown` peers on `@effected/yaml` / `@effected/toml` /
+  `@effected/jsonc` *optionally*** (`peerDependenciesMeta`), consumed only by the
+  three frontmatter codec modules. Parsing markdown pulls in none of them. Note
+  also that **markdown→HTML and HTML→markdown are permanently out of scope**: to
+  render, project via `Mdast` and hand the plain-mdast tree to a renderer.
+- **`@effected/package-json` delegates license validity to `@effected/spdx`** —
+  do not re-validate an SPDX expression yourself downstream of it.
+- **`@effected/commands` owns no subprocess vocabulary.** Commands are core
+  `ChildProcess.Command` values built with core's own constructors; `Run` adds
+  the outcome (collected output, typed failure), the policy (timeout,
+  redaction, transience) and the tool. It ships no spawner backend — you provide
+  a platform layer at the edge, as with any boundary package.
+- **`@effected/github-actions` is the ONE package in the kit with a required
+  `@effect/platform-node` peer.** An action always compiles into Node on a
+  GitHub runner, so there is no second platform to abstract over. Its
+  `@azure/storage-blob` dependency is confined to three modules and asserted by
+  a reachability test — import `ActionOutputs` and you cannot link Azure.
+- **`@effected/github` deliberately omits `@octokit/rest` and
+  `@octokit/auth-app`.** The former is a second spelling of the endpoint types;
+  the latter makes ~492 KB of OAuth machinery reachable from a package that only
+  mints installation tokens. Do not reintroduce either.
+- **`@effected/workspaces` publishability has NO ambient default.** Every
+  composite (`Workspaces.layer`, `layerWithGit`, …) *requires*
+  `PublishabilityDetector` — provide `PublishabilityDetector.layerNpm` for npm
+  semantics, `layerNone`, or your own policy. It used to supply npm semantics
+  itself, and because `Layer.mergeAll` is last-wins, the natural spelling of an
+  override (`Layer.mergeAll(mine, Workspaces.layer())`) silently lost to it.
+  Each shipped policy is also reachable as a **value**
+  (`PublishabilityDetector.npm`), so a policy that wraps npm semantics does not
+  have to re-enter the tag it is replacing.
+
+## Local-build dogfood state (2026-07-25)
+
+**Twenty of the twenty-five are published; five are not.** `commands`,
+`templates`, `github`, `github-actions` and `sbom` are **built and unreleased at
+`0.0.0`** — they came out of the github-split program and ship in a later
+coordinated wave. Until a wave names them, consume them **from the local
+`effected` checkout**, not from the registry. Everything published is `0.x` and
+unstable; the kit releases in waves, never one package at a time.
+
+Three standing directives for a downstream repo rebuilding against this kit:
+
+- **The dogfood main agent runs Fable and orchestrates** — it delegates rather
+  than implements: reasoning-heavy work to opus, mechanical work to sonnet.
+- **No branching and no changesets in downstream repos during the rebuild.**
+  Work lands on the working branch; release bookkeeping comes later, once the
+  rebuild settles.
+- **The five unreleased packages resolve from the local checkout.** A downstream
+  manifest points at it (a workspace link or a `file:`/`overrides:` entry) until
+  the release wave lands — do not add a registry range for them.
 
 ## The two warnings every consumer inherits
 
@@ -56,15 +120,6 @@ against its services, or test code that uses it.
   itself is exactly its intended consumer. It is the application control plane;
   a library taking it as a dependency drags integrated tier into every consumer,
   so libraries compose `xdg`/`store`/`config-file` directly.
-
-## In flight (designed, not yet shipped)
-
-- **`@effected/markdown`** — CommonMark + GFM parse/edit/format with mdast
-  interop and schema-decoded frontmatter; pure tier. Designed 2026-07-18,
-  design doc at `.claude/design/effected/packages/markdown.md`; implementation
-  phased P1-P6. Do **not** hand-roll markdown parsing or reach for
-  remark/mdast dependencies in kit code in the interim — check the design doc
-  and the package's progress first.
 
 ## Cross-cutting facts
 

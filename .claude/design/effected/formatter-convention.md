@@ -3,9 +3,9 @@ status: draft
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-07-20
-last-synced: 2026-07-20
-completeness: 84
+updated: 2026-07-25
+last-synced: 2026-07-25
+completeness: 85
 related:
   - effect-standards.md
   - releases.md
@@ -208,6 +208,8 @@ static readonly parse = Effect.fn("X.parse")((text: string) =>
 ```
 
 Three properties make this cheap and safe. The change is **purely additive** — the `Effect` signature is unchanged, so no consumer breaks. The span is **preserved**, so observability is not traded away. And the two forms **cannot drift**, because one is defined in terms of the other rather than re-deriving the engine ([P2](#the-rules) applied to a second axis).
+
+**The payoff shows up across a package boundary, which is the part easiest to miss.** `@effected/github`'s `GitTag.latestSemver` (`packages/github/src/GitTag.ts`) is a single pass over the tag stream, filtering and comparing inside one `Effect.sync`, *because* `@effected/semver` ships `parseResult` and `compare` synchronously; with only the `Effect` forms available the same operation was 35 lines of one Effect per candidate comparison. A sync primitive on a pure boundary is not a convenience for non-Effect hosts alone — it is what lets an effectful consumer keep its own loop flat.
 
 ### This is not a new rule — it is a consistency finding
 

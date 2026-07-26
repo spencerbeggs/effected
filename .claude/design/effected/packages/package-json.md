@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-22
-last-synced: 2026-07-22
+updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 92
 related:
   - ../architecture.md
@@ -41,7 +41,7 @@ Peer closure holds: `effect` has no peers, and `@effected/semver` / `@effected/n
 Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept). Each concept file owns its `Schema.Class` model(s), the errors that concept raises and — if it is a service — the `Context.Service` class plus its layer(s). See `src/`:
 
 - `Package.ts` — the core model, computed getters, dual mutation statics, `copyWith`, `resolve`, the wire transform and `.extend()` story, `PackageDecodeError`, and the reusable `@public` field codecs (`BinField`, `DependencyMapField`, `ExportsField`, `PublishConfigField`, `RepositoryField`, `StringMapField`, `PeerDependenciesMetaField`).
-- `PackageName.ts`, `License.ts`, `PackageManager.ts`, `Person.ts`, `DevEngines.ts`, `Dependency.ts` — the leaf concepts, each with its statics and errors.
+- `PackageName.ts`, `License.ts`, `PackageManager.ts`, `Person.ts`, `Repository.ts`, `DevEngines.ts`, `Dependency.ts` — the leaf concepts, each with its statics and errors. `Repository.ts` holds both location models (`Repository` and `Bugs`): they share the shorthand-or-object encoding and the wire-provenance machinery, so splitting them would duplicate it.
 - `PackageValidator.ts` — the `Context.Service`, `ValidationRule` interface, `defaultRules` and the parameterized `layer({ rules })` factory.
 - `PackageJsonFile.ts` — **the only IO module**: one `Context.Service`, `read` + `write` over core `FileSystem`, and its read/write error tags.
 - `PackageJsonFormat.ts` — the **decode-free** formatting seam: `sortValue` (value→value) and `formatToString` (bytes→bytes), plus `PackageJsonSyntaxError` and `PackageFormatTextOptions`. See [the formatting seam](#the-decode-free-formatting-seam).
@@ -73,16 +73,62 @@ The rich `Schema.Class` — the single best DX pattern in the repo:
 - **`rest`** catch-all preserving unknown top-level fields across a read/edit/write cycle (see [the wire transform](#the-rest-catch-all-and-extend-story)).
 - **`toJsonString(options?)`** — the pure serialization path, first-class rather than only reachable through the writer.
 
-Modeled fields include `name` (`PackageName`), `version` (`SemVer`), `license` (`SpdxLicense`), `packageManager` (`PackageManager`), `author`/`contributors` (`Person`), `repository`, the dependency/format field codecs and `rest`. `publishConfig` is modeled as an **open `Schema.Record`** and `repository` as a `Union([String, Record])` rather than typed open structs — a typed open struct runs in v4 but does not annotate cleanly for a zero-warning `issues.json`. Round-trip fidelity is fully preserved; the only cost is that typed `publishConfig.access` field access is dropped (consumers read it off the open record).
+Modeled fields include `name` (`PackageName`), `version` (`SemVer`), `license` (`SpdxLicense`), `packageManager` (`PackageManager`), `author`/`contributors`/`maintainers` (`Person`), `repository` (`Repository`), `bugs` (`Bugs`), `homepage`, `keywords`, the dependency/format field codecs and `rest`. `publishConfig` is modeled as an **open `Schema.Record`** rather than a typed open struct — a typed open struct runs in v4 but does not annotate cleanly for a zero-warning `issues.json`. Round-trip fidelity is fully preserved; the only cost is that typed `publishConfig.access` field access is dropped (consumers read it off the open record). `repository` was modeled the same way until 2026-07-25 and is now a typed [`Repository`](#the-location-fields-repository-bugs-and-homepage) — the annotation problem does not arise for a `Schema.Class` with its own codec.
 
 ### Leaf concepts
 
 - **`PackageName`** — `PackageName` / `ScopedPackageName` / `UnscopedPackageName` brands (a `.check(...)` + `Schema.brand` over the npm name grammar, written with **lookahead-free regexes** so `Schema.toArbitrary` property tests derive) plus statics `isValid` / `scope` / `unscoped` / `isScoped`, attached via `Object.assign` since a `const` and a `namespace` cannot merge in TS. The branded types export explicitly as `string & Brand.Brand<"…">`.
 - **`SpdxLicense`** (`License.ts`) — a brand validating the `license` field, delegating core SPDX-expression validity to [`@effected/spdx`](spdx.md)'s `isValidExpression` and keeping only the npm-specific `UNLICENSED` and `SEE LICENSE IN <file>` cases, which are npm semantics rather than SPDX grammar.
 - **`PackageManager`** — a class parsing `"pnpm@10.x+sha512.abc"` into `name` / `version` / `integrity`, where `integrity` is a genuine `Schema.Option` field (absence is computed on) typed as [`@effected/npm`'s `IntegrityHash`](npm.md#integrityhash) brand. Because the brand rejects a malformed integrity segment, `PackageManager.FromString` now **fails typed** on malformed integrity rather than round-tripping it as a raw string — real corepack values are unaffected.
-- **`Person`** — a class parsing `"Name <email> (url)"` into structured fields and encoding back, wired into `Package.author`/`contributors`. It carries a `rest` catch-all of its own, on the same wire-transform pattern as `Package`: an object-form author with a `twitter` or `github` key would otherwise lose it on a read→write cycle, which is exactly the silent deletion the [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) forbids and which a schema-derived arbitrary is structurally incapable of generating. `Package` and `Person` are the package's **only** object-shaped models and therefore the only two that need a catch-all; every other leaf is a scalar or a closed shape.
+- **`Person`** — a class parsing `"Name <email> (url)"` into structured fields and encoding back, wired into `Package.author`/`contributors`. It carries a `rest` catch-all of its own, on the same wire-transform pattern as `Package`: an object-form author with a `twitter` or `github` key would otherwise lose it on a read→write cycle, which is exactly the silent deletion the [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) forbids and which a schema-derived arbitrary is structurally incapable of generating. `Package`, `Person`, `Repository` and `Bugs` are the package's object-shaped models and therefore the ones that need a catch-all; every other leaf is a scalar or a closed shape. **Any new object-shaped model inherits the obligation** — this list grew once already (2026-07-25) and the rule, not the enumeration, is what governs.
+- **`Repository`** and **`Bugs`** (`Repository.ts`) — see [the location fields](#the-location-fields-repository-bugs-and-homepage).
 - **`DevEngine`** — the `DevEngine` class and `devEngines` field schema.
 - **`Dependency`** — **one** class with a `kind` field (`@effected/npm`'s `DependencyKind`) rather than four near-identical tagged classes; the protocol getters are written once, delegating to `DependencySpecifier`. `UnresolvedDependency` is a type + guard.
+
+### The location fields: `repository`, `bugs` and `homepage`
+
+Added 2026-07-25, as prework for [`@effected/sbom`](sbom.md) but standalone on its own merit. The gap was found by an SBOM design survey and is older than that phase: silk-release-action hand-rolls `parseRepository` / `parseBugs` because `repository` was typed `Union([String, Record])` — untyped and unnormalized — and `bugs` and `homepage` were absent from the model entirely.
+
+**`Repository`** carries the reference **verbatim** in `url` and exposes normalization as derived getters, `browseUrl` and `gitUrl`. That split is the point: reading a manifest never rewrites the field, so the [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) holds, while a caller that wants a link asks for one. Both getters return `Option`, because `repository` is caller data and a value we cannot interpret is a **missing answer rather than a failure** — the same posture the kit takes on absence everywhere else.
+
+The recognized forms go beyond what the hand-roll handled, which is the "improve on it" half of the gap-fill:
+
+| Form | Example | Hand-roll |
+| --- | --- | --- |
+| bare shorthand | `effected/kit` | **missed** — returned unchanged, so callers got a non-URL |
+| host shorthand | `github:` / `gitlab:` / `bitbucket:` / `gist:` | **missed** entirely |
+| `git+https://`, `git://`, scp-like `git@host:path` | | handled |
+| `git+ssh://git@host/path` | | **missed** — its `git@host:` rewrite only matched the scp form |
+| object form | `{ type, url, directory }` | url only |
+
+**`Bugs`** accepts npm's string or object encoding; `url` is optional because an **email-only entry is legal** and a model that required a URL would reject valid manifests. `homepage` is a plain `Schema.String` — there is nothing to model.
+
+Both are object-shaped, so both carry a `rest` catch-all and round-trip their wire form, on `Person`'s WeakMap-provenance pattern. The replay is guarded on the value still matching its provenance, and that guard is **load-bearing rather than defensive**: `Schema.Class` instances are not frozen at runtime (probed), so a mutated instance keeps a provenance entry that no longer describes it, and an unguarded replay writes the *original* repository back to the manifest. A surviving mutant is what surfaced it — the guard was written, the test for it was not.
+
+`RepositoryField` remains exported and is now `@deprecated`: `Package.repository` decodes through `Repository.FromValue`, but the raw union stays named for any consumer that was matching on it. No in-kit consumer read `.repository`, so the retype is additive in practice as well as in principle.
+
+### The compliance field set, and what each one serves
+
+The scope widened (2026-07-25, Spencer) from the three location fields to **every manifest field the CycloneDX 1.6 + NTIA-minimum-elements mapping reads**. The list below is derived from [`@effected/sbom`](sbom.md)'s `SbomMetadataSource.fromPackage` mapping, not from a general sweep of npm's documentation, so each field is here because something consumes it:
+
+| Field | Status | CycloneDX 1.6 target | NTIA element |
+| --- | --- | --- | --- |
+| `name`, `version` | existed | `component.name` / `.version`, and the `purl` both derive | 2, 3, 4 |
+| `description` | existed | `component.description` | — |
+| `license` | existed | `component.licenses` | — |
+| `author` | existed | `component.author` / `metadata.authors` | 6 (author of SBOM data) |
+| `contributors` | existed | `component.authors` | 6 |
+| **`maintainers`** | **added** | `metadata.supplier.contact`, `component.authors` | 1 (supplier name), 6 |
+| **`keywords`** | **added** | `component.tags` | — |
+| `repository` | added (above) | `externalReferences[vcs]` | — |
+| `bugs` | added (above) | `externalReferences[issue-tracker]` | — |
+| `homepage` | added (above) | `externalReferences[website]` / `[documentation]` | — |
+
+`maintainers` and `keywords` are plain additive fields — `Array(Person.FromValue)` and `Array(String)` — needing no new machinery, and both were already present in `internal/format.ts`'s `KEY_ORDER` (checked), so canonical sorting places them correctly with no change there. `maintainers` closes a documentation/code drift the package carried: its own CLAUDE.md warned that object-form `author`/`contributors`/**`maintainers`** must not drop unknown keys, but `maintainers` was never a modeled field, so nothing enforced it.
+
+**`funding` was evaluated and deliberately NOT added.** npm documents it, but CycloneDX 1.6 has **no `funding` external-reference type** — verified by enumerating `ExternalReferenceType` in the published library and grepping `bom-1.6.SNAPSHOT.schema.json`, not from memory. A field with no target in the mapping would be exactly the arbitrary growth this table exists to prevent; it earns its place the day a consumer names a target for it.
+
+**`Person` needed nothing.** Its `FromValue` already covers every case the consumer's `parseAuthor` handles — the object form, the `"Name <email> (url)"` shorthand, and the degenerate address-only string — with wire fidelity the hand-roll lacks. The one input where the two could plausibly disagree (an email-only shorthand) is now pinned by a test, which is what makes "delete the hand-roll" evidence-backed rather than assumed.
 
 ## The `rest` catch-all and `.extend()` story
 

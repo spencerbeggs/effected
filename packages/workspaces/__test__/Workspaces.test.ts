@@ -6,10 +6,10 @@
 // factory's FileSystem/Path requirement is discharged without a platform
 // package, exactly like every other suite here.
 
-import { assert, describe, layer } from "@effect/vitest";
+import { assert, describe, it, layer } from "@effect/vitest";
 import { CatalogResolver, Manifest, UnresolvedDependencyError, WorkspaceResolver } from "@effected/npm";
 import { Effect, Layer, Option } from "effect";
-import { Workspaces } from "../src/index.js";
+import { PublishTarget, PublishabilityDetector, WorkspacePackage, Workspaces } from "../src/index.js";
 import type { Tree } from "./fixtures.js";
 import { platform } from "./fixtures.js";
 
@@ -113,4 +113,117 @@ describe("Workspaces.resolverLayer", () => {
 			}),
 		);
 	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The publishability seam.
+//
+// `Workspaces.layer()` deliberately does NOT provide a `PublishabilityDetector`;
+// it requires one. The reason is a silent-revert hazard rather than taste: when
+// the composite supplied npm semantics itself, `Layer.mergeAll` being last-wins
+// meant the natural spelling of an override —
+// `Layer.mergeAll(myDetector, Workspaces.layer())` — resolved to the DEFAULT,
+// with no type error. For the service that decides whether a package publishes
+// and to which registry, silently reverting to "publishes to the public npm
+// registry, access public" is the worst failure available.
+//
+// These tests pin the fix from the outside: a caller's detector is the one
+// observed through the composite, in BOTH merge orders, because there is no
+// default left to shadow it.
+// ─────────────────────────────────────────────────────────────────────────────
+const CUSTOM_REGISTRY = "https://npm.internal.test/";
+
+/** A detector nothing in this package would ever produce by accident. */
+const customDetector = Layer.succeed(PublishabilityDetector, {
+	detect: (pkg: WorkspacePackage) =>
+		Effect.succeed([
+			PublishTarget.make({
+				name: pkg.name,
+				registry: CUSTOM_REGISTRY,
+				directory: ".",
+				access: "restricted",
+				provenance: false,
+			}),
+		]),
+});
+
+/** Resolves whichever detector is in context and reports its registry. */
+const observedRegistry = Effect.gen(function* () {
+	const detector = yield* PublishabilityDetector;
+	const targets = yield* detector.detect(
+		WorkspacePackage.make({
+			name: "@x/a",
+			version: "1.2.3",
+			path: "/repo/packages/a",
+			packageJsonPath: "/repo/packages/a/package.json",
+			relativePath: "packages/a",
+			workspaceRoot: "/repo",
+		}),
+	);
+	return targets[0]?.registry;
+});
+
+describe("Workspaces.layer — the publishability seam", () => {
+	it.effect("a caller's detector is observed when merged AFTER the composite", () =>
+		Effect.gen(function* () {
+			const composed = Layer.mergeAll(Workspaces.layer(), customDetector);
+			assert.strictEqual(
+				yield* observedRegistry.pipe(Effect.provide(composed), Effect.provide(platform(TREE))),
+				CUSTOM_REGISTRY,
+			);
+		}),
+	);
+
+	it.effect("and when merged BEFORE it — the order that used to silently lose", () =>
+		// This is the regression. With a default baked into the composite, this
+		// spelling resolved to npm semantics and published to the wrong registry
+		// with no diagnostic. It passes now because the composite supplies no
+		// detector at all, so there is nothing to shadow the caller's.
+		Effect.gen(function* () {
+			const composed = Layer.mergeAll(customDetector, Workspaces.layer());
+			assert.strictEqual(
+				yield* observedRegistry.pipe(Effect.provide(composed), Effect.provide(platform(TREE))),
+				CUSTOM_REGISTRY,
+			);
+		}),
+	);
+
+	it.effect("layerNpm is opt-in and still yields npm semantics", () =>
+		Effect.gen(function* () {
+			const composed = Layer.mergeAll(Workspaces.layer(), PublishabilityDetector.layerNpm);
+			assert.strictEqual(
+				yield* observedRegistry.pipe(Effect.provide(composed), Effect.provide(platform(TREE))),
+				"https://registry.npmjs.org/",
+			);
+		}),
+	);
+
+	it.effect("layerNone publishes nothing", () =>
+		Effect.gen(function* () {
+			const composed = Layer.mergeAll(Workspaces.layer(), PublishabilityDetector.layerNone);
+			assert.strictEqual(
+				yield* observedRegistry.pipe(Effect.provide(composed), Effect.provide(platform(TREE))),
+				undefined,
+			);
+		}),
+	);
+
+	it.effect("the npm rules are reachable as a VALUE, without entering the tag", () =>
+		// The contortion this deletes: silk had to write
+		// `Effect.provide(PublishabilityDetector, PublishabilityDetector.layer)`
+		// inside its own implementation of that tag to reach these rules.
+		Effect.gen(function* () {
+			const targets = yield* PublishabilityDetector.npm.detect(
+				WorkspacePackage.make({
+					name: "@x/a",
+					version: "1.2.3",
+					path: "/repo/packages/a",
+					packageJsonPath: "/repo/packages/a/package.json",
+					relativePath: "packages/a",
+					workspaceRoot: "/repo",
+				}),
+			);
+			assert.strictEqual(targets[0]?.registry, "https://registry.npmjs.org/");
+		}),
+	);
 });

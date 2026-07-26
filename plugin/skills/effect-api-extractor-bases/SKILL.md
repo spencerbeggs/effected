@@ -130,6 +130,34 @@ this on `X.fromRaw` / `X.of` / codec-adapter statics that bridge the internal
 engine to the public classes — exactly where an internal record type sneaks
 onto a `@public` signature.
 
+**Three escapes that look like they should work and do not.** Two build cycles
+were burned re-discovering this, so it is worth stating outright:
+
+| Attempted escape | Result |
+| --- | --- |
+| Mark the *method* `@internal` and leave it on the `@public` class | **Still fails.** The gate follows the class's release tag; an `@internal` method of a `@public` class is still reachable rollup surface. |
+| Mark the *referenced type* `@internal` | **Still fails**, and differently — now you get `ae-incompatible-release-tags` instead. `@internal` never resolves an `ae-forgotten-export`; it only relabels the problem. |
+| Extract the shape to a named `type` alias and use that | **Still fails.** An alias is a named symbol like any other, so it forgotten-exports under its own name. Naming the thing is precisely what you cannot do. |
+
+Only two things actually work: **inline the type structurally** (no name exists,
+so nothing can be forgotten), or **export it** and accept it as public API. There
+is no third option, and the effort spent looking for one is unrecoverable.
+
+### The positive counterpart: third-party generics are free
+
+The mirror-image fear — that naming a *dependency's* generic type on a `@public`
+signature will forgotten-export it — is unfounded. **API Extractor resolves
+declared-dependency third-party types as externals and emits real `import`
+statements in the `.d.ts`**: no `ae-forgotten-export`, no inlining, no
+re-export ceremony. Confirmed at `@effected/github`'s first build with octokit's
+`Endpoints[R]` on a `@public` signature.
+
+The condition is that the package be a **declared dependency** (it must be
+resolvable from the emitted `.d.ts`, which a `devDependency` or a transitive
+package is not). Given that, write the precise third-party type rather than
+widening to `unknown` or hand-copying its shape — the gate does not charge you
+for it.
+
 ### …nor does it cover a type in the class factory's GENERIC
 
 The same gap bites one step earlier, in the **heritage clause itself**. An
@@ -167,6 +195,28 @@ exported, or the gate goes red. Applies equally to `Schema.Class<Self, Fields>`
 and every other class factory that takes a type argument.
 
 ## TSDoc `{@link}` traps
+
+**The one rule the cases below are instances of:**
+
+> `{@link}` resolves **only to symbols the entry point exports, under the name it
+> exports them by**. Everything else is a backtick span.
+
+Four ways a name fails that test, all confirmed in this repo's builds:
+
+- **A schema-declared `Schema.Class` field** — the class owns it, but only
+  through the factory, which API Extractor does not see through.
+- **A module-local renamed at export** — `class Route` exported as
+  `export { Route as RestRoute }` resolves as `{@link RestRoute}` and **never**
+  as `{@link Route}`, no matter that `Route` is the name in the file you are
+  writing the comment in. Confirmed twice at the `@effected/github` build.
+- **A member of a const-only namespace object** — link through the exported
+  const (`{@link Walker.ascend}`), never the bare member.
+- **A module-private const** — never exported, so nothing resolves; backticks.
+
+The diagnostic distinguishes the fixable case from the unfixable one, so read it
+rather than pattern-matching: *"ambiguous… add a TSDoc member reference
+selector"* means a selector will work (below); *"does not have an export"* means
+no selector ever will.
 
 **Merged value + type names: use a member-reference selector, not a backtick.**
 
@@ -246,6 +296,28 @@ and `types:check` — it only surfaces in the **prod** build's `issues.json`.
    inherited-member case above — there the *declaration* does not own the
    member; here the class does own it, but only through the factory, which is
    the same dead end from API Extractor's side.
+
+## `tsdoc-at-sign-in-word`: never markdown-link a scoped package
+
+A scoped package name in TSDoc must be backticked. That much is known — the trap
+is that **a markdown link hides a second, unbackticked copy inside its URL**, and
+that copy is the one that trips:
+
+```ts
+/** See [@effected/config-file](https://npmjs.com/package/@effected/config-file). */
+//     ^ backticked? no — but even fixing the label leaves the URL's copy
+```
+
+The label being wrapped in `[...]` is not backticking, and the `@effected` inside
+the parenthesized URL is bare text as far as the TSDoc parser is concerned.
+Worse, the diagnostic **reports at the NEXT declaration's line**, so the reported
+position points at an innocent symbol below the comment — the same off-by-a-
+declaration behaviour as the `issues.json` note below, compounded.
+
+**The rule: backticks only. Never markdown-link a scoped package name in TSDoc**
+— not in the label, not in the URL. If the URL genuinely matters, put the bare
+URL on its own (`{@link https://…}` or plain text) and name the package in a
+backtick span beside it.
 
 **A note on reading `issues.json`.** Its `file` names the source, but its `line`
 indexes the **generated `.d.ts`**. Locate a `tsdoc-*` or `ae-unresolved-link`

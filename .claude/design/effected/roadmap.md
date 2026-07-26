@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-07-22
-last-synced: 2026-07-22
+updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 88
 related:
   - releases.md
@@ -19,13 +19,20 @@ related:
   - packages/spdx.md
   - packages/package-json.md
   - packages/markdown.md
+  - packages/commands.md
+  - packages/templates.md
+  - packages/github.md
+  - packages/github-actions.md
+  - packages/sbom.md
+  - packages/npm.md
+  - consumers/README.md
 ---
 
 # Roadmap
 
 ## Overview
 
-The migration program is complete and the `0.1.0` gate is met: the kit ships nineteen publishable packages (eighteen libraries plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library)) as an explicit pre-release. This doc records what comes after `0.1.0`. The decisions below are settled, recorded with their reasoning so they are not re-litigated; each new package gets its own spec → plan → implement cycle per the [migration playbook](migration-playbook.md). [releases.md](releases.md)'s gate table and [package-inventory.md](package-inventory.md) stay authoritative for the shipped set.
+The migration program is complete and the `0.1.0` gate was met by nineteen publishable packages (eighteen libraries plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library)), shipped as an explicit pre-release. The kit is now twenty-five publishable packages: `markdown` published after the gate, and the five [github-split](#the-github-split-program-2026-07-25) packages are built and awaiting a release wave ([releases.md](releases.md#the-github-split-wave)). This doc records what comes after `0.1.0`. The decisions below are settled, recorded with their reasoning so they are not re-litigated; each new package gets its own spec → plan → implement cycle per the [migration playbook](migration-playbook.md). [releases.md](releases.md)'s gate table and [package-inventory.md](package-inventory.md) stay authoritative for the shipped set.
 
 The nineteenth package, **`@effected/spdx`** (pure, invention), landed after the gate was first declared and joined it: it vendors the SPDX license and exception datasets as pure schemas so [`@effected/package-json`](packages/package-json.md) can delegate its `license` validation and drop `spdx-expression-parse`, the kit's last foreign runtime dependency. That delegation retiered package-json from integrated to boundary. It followed the design-doc-first playbook cycle; [packages/spdx.md](packages/spdx.md) is authoritative.
 
@@ -35,19 +42,29 @@ The consumer ports — including `rspress-plugin-api-extractor`, the one represe
 
 Core's `effect/unstable/workflow` (durable workflows: `Workflow`, `Activity`, `DurableClock`/`DurableDeferred`/`DurableQueue`, `WorkflowEngine`) is a strong abstraction for **applications** — long-running, resumable, multi-step operations with retry semantics. It is not kit-library surface, but the consumer ports should evaluate it where the shape fits: DepsRegen's plan/execute phases, silk-update-action's multi-step update runs and any future release automation are the natural candidates. Evidence-driven like everything here: adopt it where a consumer's port genuinely has durable multi-step state, never speculatively.
 
+## The github-split program (2026-07-25)
+
+A seven-phase program that replaces `@savvy-web/github-action-effects` (42 services, ~360 flat exports, five incompatible test-double conventions) and upstreams the mechanism half of `@savvy-web/silk-effects`. Phases 1-5 landed five packages — `commands`, `templates`, `github`, `github-actions`, `sbom` — plus the `@effected/npm` registry/publish extension that [retiered it to boundary](packages/npm.md#the-tier-ruling-pure--boundary-deliberately-with-a-guardrail), and extensions to `workspaces`, `config-file`, `package-json` and `markdown`. Phase 6 closed the wave with the fluency audit and a documentation reconciliation. The five packages are **unpublished**: the program ran without changesets by design, so they ship when changesets name them ([releases.md](releases.md#the-github-split-wave)). Phase 7 — rewriting the savvy-web `github-actions` Claude Code plugin's skill suite into this repo's [plugin](plugin.md) against the new surfaces — **landed 2026-07-25**: twelve actions-suite skills and the `action-engineer` agent, with the old plugin replaced rather than moved. **The program is complete.**
+
+The program plan is `2026-07-25-github-split-master.md`, with a decisions log and the silk-runtime-action survey beside it; plans are local-only and gitignored, so cite them by name. What survives the plans is documentation: one migration map per consumer repo under [consumers/](consumers/README.md), and the [fluency audit](consumers/fluency-audit.md) — the five known-bad call sites rewritten against the shipped APIs, which was the program's acceptance gate. Two of those maps' repos, silk-update-action and savvy-web/systems, are also `0.1.0` gate consumers; the other five are new to the kit's orbit.
+
+Two program decisions bind future work rather than just this wave. **`@effect/platform-node` is a required peer in exactly one package**, `github-actions`, because a GitHub Action has one platform and pretending otherwise taxes every consumer — the licence is scoped to that overlay and does not generalize to the next Node-shaped package. And **the contract-inversion pattern is now the kit's default answer to a tier-dragging edge**: `commands` declares `LocalExec` and `workspaces` implements it, the second use of the shape `@effected/npm`'s resolvers established.
+
 ## Post-0.1.0 packages
 
-In priority order.
+In priority order. `markdown` has shipped and `commands` and `templates` are built and awaiting a release wave; the rest are open.
 
 ### `@effected/commands`
 
-A generalization of silk-effects' ToolDiscovery service: resolve CLI tools globally on PATH vs locally via the detected package manager's exec (pnpm/npm/yarn/bun), configurable version extraction, source constraints and version-mismatch policies, plus structured command running over core's `effect/unstable/process`. This pattern has been reinvented repeatedly across Spencer's repos; it earns a package. Peers on `@effected/workspaces` for package-manager detection and workspace-root resolution. Port note: the v3 code calls `process.cwd()` directly; the v4 design must parameterize that.
+A generalization of silk-effects' ToolDiscovery service: resolve CLI tools globally on PATH vs locally via the detected package manager's exec (pnpm/npm/yarn/bun), configurable version extraction, source constraints and version-mismatch policies, plus structured command running over core's `effect/unstable/process`. This pattern has been reinvented repeatedly across Spencer's repos; it earns a package. **Designed and built 2026-07-25** ([packages/commands.md](packages/commands.md)) as Phase 1a of the github-split program: the contract-inversion option was **chosen** — `commands` declares the narrow `LocalExec` contract and `@effected/workspaces` ships the layer implementing it, so `commands` stays boundary tier with zero `@effected` edges and zero runtime deps, and the R2 chain that a direct workspaces edge would have dragged through `npm`, `lockfiles` and `package-json` never forms. The v3 `process.cwd()` coupling is discharged structurally: `commands` never touches a path or an ambient cwd; the cwd question lives in workspaces' layer.
 
-This is not a gate package, and it owns no platform seam. Core declares `ChildProcessSpawner`, `@effect/platform-node`'s `NodeServices.layer` provides it, and requiring a core-declared service in `R` costs a consumer nothing ([R3](effect-standards.md#dependency-policy), the walker/xdg `FileSystem` pattern) — so `@effected/git` requires the spawner in `R` directly and nothing on the gate needs this package. The contract-inversion option (commands owns the tool-resolution contract, workspaces implements it) remains available as a design choice but is not forced.
+This is not a gate package, and it owns no platform seam. Core declares `ChildProcessSpawner`, `@effect/platform-node`'s `NodeServices.layer` provides it, and requiring a core-declared service in `R` costs a consumer nothing ([R3](effect-standards.md#dependency-policy), the walker/xdg `FileSystem` pattern) — so `@effected/git` requires the spawner in `R` directly and nothing on the gate needs this package.
 
 ### `@effected/templates`
 
-v1 scope is **managed sections only**, ported from silk-effects' ManagedSection: delimited BEGIN/END managed-section blocks inside user-editable files, with a parameterized marker phrase and comment-style set, read/isManaged/write/sync/check/remove, and the `syncMany` document-reconciliation algorithm (splitting a document into spans and section placeholders, reassigning declared blocks to existing slots in document order and placing missing blocks relative to sibling anchors). Whole-file templating joins later only when a v4 consumer demands a concrete shape.
+**Designed and built 2026-07-25** ([packages/templates.md](packages/templates.md)) as Phase 1b of the github-split program. v1 scope is **managed sections only**, ported from silk-effects' ManagedSection: delimited BEGIN/END managed-section blocks inside user-editable files, with a parameterized marker phrase and comment-style set, read/isManaged/write/sync/check/remove, and the `syncMany` document-reconciliation algorithm. Whole-file templating joins later only when a v4 consumer demands a concrete shape.
+
+The port drew a line worth keeping for the next one: **the mechanism upstreams, the content and policy do not.** Section keys, comment-style choices and what a block says stay with the consumer, so no silk vocabulary appears in the package — not in a type name, not in a default.
 
 ### The config companion
 
@@ -59,7 +76,7 @@ Naming: recommended `@effected/plugin`. `@effected/config` is rejected because i
 
 `rspress-plugin-api-extractor` already parses and emits markdown via `mdast-util-from-markdown`, `mdast-util-to-hast` and `gray-matter`, so a low-level markdown package has a real identified consumer rather than a speculative one. It is not a release gate: the plugin can keep its `mdast` dependencies and swap everything else.
 
-The package now exists on `feat/markdown` with implementation phases P1-P5 complete (2026-07-19): CommonMark plus the gfm dialect with full conformance, frontmatter with the codec modules and the schema resolver, edit/format with canonical stringify, and the mdast projection, visitor and navigation surface — 3516 tests. P6 (docs and adoption, the rspress-plugin-api-extractor swap) remains before the package's story closes; details in [packages/markdown.md](packages/markdown.md).
+**The package has shipped** (pure tier): implementation phases P1-P5 complete 2026-07-19 — CommonMark plus the gfm dialect with full conformance, frontmatter with the codec modules and the schema resolver, edit/format with canonical stringify, and the mdast projection, visitor and navigation surface — first published at `0.2.0` in that day's release wave, with the github-split program's section finders since. What remains is **P6, and it is consumer-side**: the docs pass and the `rspress-plugin-api-extractor` swap, which is a consumer port rather than package work. Details in [packages/markdown.md](packages/markdown.md).
 
 ### `@effected/vfs`
 
@@ -69,7 +86,7 @@ Out of the ts-vfs work: the TypeScript-specific part it exercised (a `Vfs` keyed
 
 Recorded 2026-07-19 as findings from the `@effected/markdown` implementation sprint (P1-P5 on `feat/markdown`, see [packages/markdown.md](packages/markdown.md)), in execution order.
 
-1. **Effect beta nosebleed policy** — advance the effect catalogs to the newest beta (currently `.99`) promptly after each phase of major work: the effect team publishes caret peer ranges, so live applications already resolve the newest beta and the kit should test against what consumers actually run. The advance is the user-run `pnpm pnpm:up`/`pnpm pnpm:export` flow with the `.repos/effect` re-pin in the same commit and a full-kit verification after.
+1. **Effect beta nosebleed policy** — advance the effect catalogs to the newest beta (the catalog pins `.101` as of 2026-07-24) promptly after each phase of major work: the effect team publishes caret peer ranges, so live applications already resolve the newest beta and the kit should test against what consumers actually run. The advance is the user-run `pnpm pnpm:up`/`pnpm pnpm:export` flow with the `.repos/effect` re-pin in the same commit and a full-kit verification after.
 2. **`Jsonc.stringify` and frontmatter completion** — add a canonical stringify to `@effected/jsonc` for surface parity with yaml and toml (design-doc pass on [packages/jsonc.md](packages/jsonc.md) first), then complete the markdown frontmatter story: replace the `JSON.stringify` fallback in the round-trip property and lift `MarkdownFormat.modify`'s frontmatter refusal so frontmatter updates flow through the edit layer.
 3. **Edit-parity hardening** — backport toml's `applyAll` overlap guard to jsonc and yaml, standardize the format range-filter posture (three postures are currently documented across the four format packages) and promote the parity contract in [effect-standards.md](effect-standards.md) from shape-identical to behavior-identical.
 4. **TOML 1.1 investigation** — a design-doc note in [packages/toml.md](packages/toml.md) enumerating the 1.1 delta set (draft spec — verify release status first) against the engine, shaped as a dialect/version option per the markdown dialect-registry pattern; implement when 1.1 tags a release or behind a draft flag on application demand.
@@ -86,6 +103,7 @@ External repos. These are **pull, not push** — they proceed whenever their inp
 - **@savvy-web/bundler** (savvy-web/systems) — its TS usage is syntactic parser plus config API only, no type checker. `tsconfig-json` replaces `meta/tsconfig-resolver.ts`; the `dts/` AST walkers wrap plain `typescript` calls in Effect.
 - **vitest-agent**, **@soda3js/config** and the **runtime-resolver CLI re-ship**.
 - **silk-update-action** and **savvy-web/systems** (DepsRegen, plus the `savvy` CLI and MCP adapters over it) — the two consumers that scoped workspaces' point-in-time functionality; they migrate off `workspaces-effect`.
+- **The github-split consumers** — silk-release-action, silk-sync-action, silk-router-action, silk-runtime-action and claude-code-marketplace-manager, all pinned at `@savvy-web/github-action-effects@3.x` and migrating deliberately. Nothing forces a synchronized cutover; the per-repo maps in [consumers/](consumers/README.md) record what each replaces and carry the status column that moves as they land.
 
 ## The TypeScript 5→6→7 posture
 

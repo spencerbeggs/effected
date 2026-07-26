@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-21
-last-synced: 2026-07-21
+updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 93
 related:
   - ../architecture.md
@@ -169,6 +169,163 @@ The lockfiles npm parser normalizes `package-lock.json` into the one `Lockfile` 
 | entry `hasInstallScript` | discarded | Trigger: a security/audit consumer |
 | entry `bin`, `license`, `engines`, `os`, `cpu`, `funding` | discarded | manifest mirrors; package-json is the source of truth |
 | hidden lockfile (`node_modules/.package-lock.json`) | out of scope | a performance artifact of npm; `Lockfile.parse` takes content and does not care where it came from |
+
+## Phase 5 extension
+
+Designed and **built** 2026-07-25 for Phase 5 of the GitHub/Actions split (`2026-07-25-github-split-master.md`). Adds three service-side modules — `NpmRegistry` (registry reads over core `HttpClient`), `PackagePublish` (the npm CLI through [`@effected/commands`](commands.md)) and the `RegistryKind` classifier — replacing `@savvy-web/github-action-effects`' services of the same names. As-built deltas are recorded [at the end of this section](#as-built-2026-07-25).
+
+### The tier ruling: pure → boundary, deliberately, with a guardrail
+
+**This package becomes boundary tier.** Not by [R2](../effect-standards.md#dependency-policy) — the new `@effected/commands` edge is boundary and carries zero runtime dependencies, and boundary does not propagate — but by **[R4](../effect-standards.md#dependency-policy)**: the package now performs IO itself, through core-declared contracts (`HttpClient`, `ChildProcessSpawner`, `FileSystem`, `Path`, `Crypto`) required in `R`. That is the walker/xdg/`@effected/git` shape, and it is what "boundary" means.
+
+**Nothing downstream moves.** `@effected/lockfiles` stays **pure** and `@effected/package-json` stays **boundary**: R3 is explicit that a boundary dependency does not propagate, because the IO is discharged by the application's platform layer at the edge. A consumer that only wants `IntegrityHash` pays no install beyond `@effected/commands`, which itself has zero runtime dependencies.
+
+**The tree-shaking obligation is real and is met by the existing rule.** `@effected/lockfiles` imports `IntegrityHash` from this package's entrypoint; that import must not link `Run` or `HttpClient`. It does not, provided the two new services stay **free-standing named exports** — the [config-file codec precedent](../effect-standards.md#no-barrel-re-exports): a bundler sees through a re-export barrel, but a namespace object is a single live binding that retains every member's graph. So: **never group `NpmRegistry` and `PackagePublish` into an `Npm` namespace object**, and never collect the vocabulary and the services behind one const. This is the same hazard the four codecs measured, one package over.
+
+**The guardrail, and it is the important half.** This extension is admissible *only while it stays core-contracts-plus-commands*. The moment either service takes a non-core runtime dependency — an npm client library, a tarball reader, a registry SDK — the package becomes **integrated**, and then R2 *does* propagate: `lockfiles` (pure) and `package-json` (boundary) both move with it, and every consumer of those pays. If that day comes the answer is not "accept integrated npm" but **split the services into their own package** (`@effected/npm-registry`), leaving the contracts and vocabulary pure here.
+
+That split is the recorded alternative for this decision. It was considered and rejected *now* because the new services' densest dependency is this package's own vocabulary — `IntegrityHash`, `ReleaseAgeGate`, `DependencySpecifier` — so splitting today buys a package boundary between two halves that talk constantly, to protect a tier distinction that R3 already protects. The trigger to revisit is the guardrail above, not taste.
+
+### Consumer evidence, and the shape it dictates
+
+The mandate's per-`(package, version)` keying comes from a shipped test double breaking twice (spec §7 (`2026-07-25-github-split-master.md`)). Reading both sites, the diagnosis is **one dimension wider than the mandate states**:
+
+- `silk-update-action/src/services/catalog-config-deps.test.ts:85-92` — the double carries one tarball URL *per package*, so it cannot serve two **versions** of one package. The three-way merge that needs base-vs-next tarballs is untestable; the test hand-rolls its own stub.
+- `silk-release-action/src/release/publish.test.ts:1321-1330` — `getPublishedIntegrity` keys by package name alone, so it cannot return different answers for two **registries**. The test's own comment records the workaround, then abandons it for a custom layer.
+
+So the model is keyed by **`(registry, package, version)`**, and `registry` is a **per-call argument, never baked into the layer** — the publish flow probes two registries for one package inside a single program (`publish.ts:505-540`), which is precisely what a layer-baked registry cannot express. The old service half-knew this (`getPublishedIntegrity` requires a `registry` option while its siblings default it); the extension makes it uniform.
+
+### `NpmRegistry` — reads over core `HttpClient`
+
+Replaces every shelled `npm view`. Verified against `.repos/effect`: `HttpClient.get(url)` requires `HttpClient` in `R`, `HttpClientResponse.schemaJson` decodes a body through a schema, and `HttpClientError`'s `StatusCodeError` carries the response — so a 404 is detected **structurally**, not by matching `npm error code E404` on stderr as the v3 layer does.
+
+```ts
+/** A registry to read from. Per call, never layer-baked. */
+export interface RegistryTarget {
+  readonly registry: string;                              // defaults to the public registry
+  readonly token?: Redacted.Redacted<string> | undefined; // read auth, when required
+}
+
+export interface NpmRegistryShape {
+  /** One published version's metadata, or None when that version is not on that registry. */
+  readonly version: (name: string, version: string, target?: RegistryTarget) =>
+    Effect.Effect<Option.Option<PublishedVersion>, RegistryReadError>;
+  /** Every published version, newest last. */
+  readonly versions: (name: string, target?: RegistryTarget) =>
+    Effect.Effect<ReadonlyArray<string>, RegistryReadError>;
+  /** The dist-tag map (`latest`, `next`, …). */
+  readonly distTags: (name: string, target?: RegistryTarget) =>
+    Effect.Effect<Record<string, string>, RegistryReadError>;
+  /** Publish timestamps per version — the endpoint that replaces `npm view <pkg> time --json`. */
+  readonly publishTimes: (name: string, target?: RegistryTarget) =>
+    Effect.Effect<ReadonlyArray<PublishTime>, RegistryReadError>;
+}
+
+export class PublishedVersion extends Schema.Class<PublishedVersion>("PublishedVersion")({
+  name: Schema.String,
+  version: Schema.String,
+  integrity: Schema.optionalKey(IntegrityHash),   // this package's own brand
+  tarball: Schema.optionalKey(Schema.String),
+  publishedAt: Schema.optionalKey(Schema.DateTimeUtc),
+}) {}
+```
+
+Four things this fixes, each traceable to a call site:
+
+- **`publishTimes` is the publish-time endpoint the mandate asks for.** `silk-update-action/src/services/release-age.ts:191-218` shells `npm view <pkg> time --json`, `JSON.parse`s it, and filters out the `created`/`modified` keys by hand — then swallows every failure into `{}` with a log line. As a registry read it is one typed call, and the result feeds `ReleaseAgeGate.filterVersions` (already resident here) without an adapter. **The `created`/`modified` split becomes the schema's job**, which is why `PublishTime` is a class rather than a bare record: the registry's `time` object mixes per-version timestamps with two non-version keys, and every consumer that reads it raw re-derives that exclusion.
+- **404 is `Option.none()`, not an error** — extending this package's existing `None`-is-success convention from the resolver contracts to registry reads, so the whole package answers absence one way. The v3 `isE404` stderr regex disappears with the shell-out.
+- **`integrity` is `IntegrityHash`**, not `string`. The brand already lives here and already covers the SRI form the registry stores; typing it is free and kills a compare-two-strings-and-hope at the publish call site.
+- **Errors sized to the reads that exist.** v3's `NpmRegistryError` carries `operation: "view" | "search" | "versions"` — `"search"` is never produced — and a `reason: string` that consumers matched on. The replacement is one `RegistryReadError` with `kind: Schema.Literals(["transport", "status", "decode"])`, the package name, the registry, an optional `status`, and `cause: Schema.Defect()`. No prose routing surface.
+
+### `PackagePublish` — the npm CLI through `@effected/commands`
+
+```ts
+export interface PackagePublishShape {
+  /** Write a registry auth line to an npmrc. Returns nothing; masking is the CALLER's job. */
+  readonly setupAuth: (options: {
+    readonly registry: string;
+    readonly token: Redacted.Redacted<string>;
+    readonly npmrcPath: string;
+  }) => Effect.Effect<void, PublishError>;
+  /** `npm pack --json` → the tarball and its digests. */
+  readonly pack: (packageDir: string, options?: PackOptions) => Effect.Effect<PackedTarball, PublishError>;
+  /** `npm publish <tarball>` — uploads bytes packed earlier, never re-packs. */
+  readonly publishTarball: (tarball: string, options: PublishOptions) => Effect.Effect<PublishOutcome, PublishError>;
+  /** `npm publish --dry-run` — packability and sizing only; a failed dry run is a RESULT. */
+  readonly dryRun: (packageDir: string, options?: PackOptions) => Effect.Effect<DryRunOutcome, PublishError>;
+}
+```
+
+**The executor dispatch collapses into `LocalExec`.** v3 repeats a `packageManager?: "npm" | "pnpm" | "yarn" | "bun"` option on five method signatures, whose only job is choosing between `npm`, `pnpm dlx npm@11`, `yarn npm` and `bun x npm` — because OIDC trusted publishing needs a *fresh* npm, not the runner's bundled one. `@effected/commands` already models exactly this: `ExecContext.applyDlx` is "fetch-and-run a package binary", so `ChildProcess.make("npm@11", args).pipe(...)` through `applyDlx` **is** `pnpm dlx npm@11 args`. The extension therefore carries one `NpmExecutor` value (`ambient` | `dlx(spec)`) instead of five repeated options, and the package-manager knowledge stays in the one package that owns it.
+
+**Every invocation goes through `Run`, and the fluent shape is settled:**
+
+```ts
+const packed = yield* Run.json(
+  ChildProcess.make("npm", ["pack", "--json"]).pipe(ChildProcess.setCwd(packageDir)),
+  PackJson,
+  { timeout: "5 minutes" },
+);
+```
+
+`Run.json` parses **and** schema-decodes, so `notJson` and `schema` failures stay distinguishable — v3 folded both into a `reason` string. A non-zero `npm` exit is already a typed `CommandFailedError`; `dryRun` deliberately catches it and reports `ok: false`, because a failed dry run is a valid answer rather than an error (v3 got this right and it is preserved).
+
+**Token masking is hoisted, and the `.npmrc` write is kept.** v3's `setupAuth` calls `ActionOutputs.setSecret` — an Actions edge inside a publish library, the spec §5 smell (`2026-07-25-github-split-master.md`). Here `setupAuth` takes a `Redacted` and masks nothing; the caller (`@effected/github-actions`) masks. What is **not** dropped is writing `_authToken` into an npmrc rather than passing it on argv: `Redaction` protects this kit's error messages, not the operating system's process table, so keeping the token off argv stays the security-correct choice. The npmrc path is a **caller-supplied argument** — resolving `~/.npmrc` needs `os.homedir()`, and a boundary package may not `node:` import.
+
+**`publishIdempotent` is not ported.** v3 deprecates it in its own TSDoc: the fused probe-then-publish hardcoded the wrong registry and could not recover from a partial multi-registry publish. The composition it replaced — `pack` once, then per target `NpmRegistry.version(...)` → compare `integrity` → `publishTarball` — is what `silk-release-action` already does by hand and reads better than the fused call. Consumer composition, not a method.
+
+### Module map
+
+Three new modules; the existing five are untouched.
+
+| Module | Owns |
+| --- | --- |
+| `src/NpmRegistry.ts` | the service + layer, `RegistryTarget`, `PublishedVersion`, `PublishTime`, `RegistryReadError` |
+| `src/PackagePublish.ts` | the service + layer, `PackedTarball`, `PublishOutcome`, `DryRunOutcome`, `PublishError` |
+| `src/NpmExecutor.ts` | the ambient-vs-dlx executor value over `LocalExec` |
+
+Both services follow the kit's non-negotiables: all-effectful shapes, `static readonly layer` using `this`, `makeTest`/`layerTest` with unstubbed members dying loudly, `Effect.fn` named spans on public boundaries (attributes: package name, registry host, version — never a token, never argv).
+
+### Testing
+
+The double is the point of this phase. `NpmRegistry.makeTest` seeds a map keyed by **`(registry, name, version)`**, so the two call sites that hand-rolled stubs can delete them:
+
+```ts
+const registry = NpmRegistry.layerTest({
+  versions: { "https://registry.npmjs.org/": { "pkg": ["1.0.0", "1.1.0"] } },
+  integrity: { "https://npm.pkg.github.com/": { "pkg@1.1.0": "sha512-…" } },
+});
+```
+
+Reads run against a stubbed `HttpClient` (core-declared, no platform package) for the layer's own tests; `PackagePublish` runs against `@effected/commands`' scripted-spawner fixture, which already records argv — so "the token never reached argv" is an assertion, not a hope.
+
+### Open questions
+
+All three were ruled on at the Phase 5 checkpoint and are recorded here with their answers.
+
+1. **npmrc path resolution** — **caller-supplied**, as proposed. Resolving `~` needs `node:os`, which a boundary package may not import; the `@effected/xdg` alternative stays available if a consumer asks twice.
+2. **`NpmRegistry` read auth** — **kept, optional**. No surveyed call site reads a private registry, but the field costs nothing and a private-registry read is a plausible next ask.
+3. **Packument caching** — **deferred** until a consumer's call pattern shows the waste. `versions`, `distTags` and `publishTimes` each fetch the same document; core `Cache` keyed `(registry, name)` is the fix when it is wanted, with the failure/absence TTL rules the commands work established.
+
+### As built (2026-07-25)
+
+Three source modules plus a shared error module, 65 new tests (165 for the package), `tsc --noEmit` clean, and a prod `issues.json` of **0 warnings / 0 errors / 23 suppressed** (was 15; the eight new class factories account for the difference). Three genuine `ae-missing-release-tag` warnings on exported interfaces were **fixed, not suppressed**.
+
+**The tier flip is real and is now enforced by a test.** The package is **boundary** by [R4](../effect-standards.md#dependency-policy) — it performs IO itself through `HttpClient`, `ChildProcessSpawner`, `FileSystem` and `Crypto` in `R`. `@effected/lockfiles` stays **pure** and `@effected/package-json` stays **boundary** under R3. `__test__/reachability.test.ts` asserts both halves of the guardrail from the source graph: the eight vocabulary modules import neither service nor `@effected/commands`, and `index.ts` declares no `export * as` namespace object. It is proven discriminating (adding an `@effected/commands` import to `IntegrityHash.ts` fails it), and it exists because the guardrail was otherwise only prose in a design doc.
+
+**Deltas from the draft, each with its reason:**
+
+- **`RegistryKind` + `classifyRegistry` are new** (scope addition from the consumer survey). The v3 helpers `isNpmRegistry` / `isGitHubPackagesRegistry` / `isJsrRegistry` / `isCustomRegistry` are replaced by **one** classification rather than four predicates, so a consumer `switch`es exhaustively instead of composing booleans that can disagree — v3 had one call site asking two in sequence and another negating a third to mean "everything else". The domain match is exact-or-subdomain with a leading dot, because a bare `endsWith` classifies `evil-npmjs.org` as the public registry and that classification decides whether a token is sent.
+- **`getRegistryDisplayName` is deliberately dropped.** It is display-only, and the evidence says a library-canonical string serves nobody: `report.ts` renders "GitHub Packages" while `registry-label.ts` renders "github" from the same input. Consumers switch on `RegistryKind` and choose their own words.
+- **`--provenance` is filtered to npm registries.** Carried from v3 (`isNpmRegistry` gated the flag) and now enforced by the classifier: npm rejects the flag against GitHub Packages, and a release publishing to three registries should not lose two of them to one flag.
+- **`PublishError` lives in its own module** — both `NpmExecutor` and `PackagePublish` raise it and the former is imported by the latter, so a shared leaf is the only cycle-free home. Same reasoning as `DependencyResolutionError` and `CatalogAssemblyError`.
+- **A sixth error kind, `"digest"`.** When `npm pack` **succeeds** but the tarball cannot be read back for hashing, reporting `kind: "pack"` sends a reader hunting npm's output for an error npm never produced.
+- **`NpmExecutor.dlx` fails typed with no launcher**, rather than degrading to the ambient npm — degrading reintroduces the exact OIDC failure the pinned spec exists to avoid, invisibly.
+- **`PublishedVersion` carries no `publishedAt`.** The draft had one; the version endpoint does not serve a timestamp (the packument's `time` object does), so the field would have been permanently absent. `publishTimes` is the answer.
+- **`layerSeeded` ships alongside `layerTest`.** The kit rule is `layerTest(Partial<Shape>)` with unstubbed members dying loudly; the draft sketched a *seeded* double. Those are different tools, so both exist: `layerTest` for stubs, `layerSeeded(RegistrySeed)` for a working fake registry keyed `(registry, name, version)` — the shape the two broken v3 call sites were hand-rolling.
+- **Service `R` is discharged at construction.** `Run.collect` requires `ChildProcessSpawner` and `NpmExecutor.command` requires `LocalExec`; both are resolved in `make` and provided with `Effect.provideService`, so every method's `R` is `never` (the `@effected/git` shape). The next kit service built over `commands` will hit this identically.
+
+**Mutation-tested claims** (each mutant run, observed red, reverted): the scoped-package URL encoding; 404-as-absence; the seeded double's registry axis; the npmrc auth-key trailing slash; a failed dry run staying a result; `dlx` degrading silently; the lookalike-domain guard; and the reachability test itself.
 
 ## Testing
 

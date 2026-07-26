@@ -14,16 +14,7 @@ export interface FindNearestOptions {
 	readonly stopAt?: string;
 }
 
-/**
- * Find the nearest `tsconfig.json` (or `options.filename`) at or above
- * `start`, ascending toward the filesystem root. Absence — nowhere on the
- * chain, or every candidate unreadable — is `Option.none()`, never an error;
- * discovery is best-effort per `Walker.findUpward`'s absorption posture, and a
- * permission-denied probe on one directory does not hide a config file above
- * it.
- *
- * @public
- */
+// Implementation of TsconfigDiscovery.findNearest; the public contract lives on the static.
 const findNearest = (
 	start: string,
 	options?: FindNearestOptions,
@@ -40,4 +31,16 @@ const findNearest = (
  *
  * @public
  */
-export const TsconfigDiscovery = { findNearest } as const;
+export class TsconfigDiscovery {
+	private constructor() {}
+
+	/**
+	 * Find the nearest `tsconfig.json` (or `options.filename`) at or above
+	 * `start`, ascending toward the filesystem root. Absence — nowhere on the
+	 * chain, or every candidate unreadable — is `Option.none()`, never an
+	 * error; discovery is best-effort per `Walker.findUpward`'s absorption
+	 * posture, and a permission-denied probe on one directory does not hide a
+	 * config file above it.
+	 */
+	static readonly findNearest = findNearest;
+}

@@ -192,35 +192,15 @@ const TABLES: Record<EnumFamily, FamilyTable> = {
 	fallbackPolling: FALLBACK_POLLING,
 };
 
-/**
- * Encodes a family's canonical (or alias) string spelling to its numeric
- * form. `Option.none()` for a string with no table entry — never guessed.
- *
- * @public
- */
+// Implementation of TsEnumCodec.encode; the public contract lives on the static.
 const encode = (family: EnumFamily, value: string): Option.Option<number> =>
 	Option.fromNullishOr(TABLES[family].forward.get(value));
 
-/**
- * Decodes a family's numeric value to its canonical string spelling.
- * `Option.none()` for a numeric value with no table entry (a future TS enum
- * member) — never guessed.
- *
- * @public
- */
+// Implementation of TsEnumCodec.decode; the public contract lives on the static.
 const decode = (family: EnumFamily, value: number): Option.Option<string> =>
 	Option.fromNullishOr(TABLES[family].reverse.get(value));
 
-/**
- * Normalizes any spelling of a `lib` reference — the plain short name
- * (`esnext`), the on-disk file name (`lib.esnext.d.ts`), or an absolute path
- * to one (`/…/typescript/lib/lib.dom.iterable.d.ts`) — to the canonical
- * lowercase short name (`esnext`, `dom.iterable`). Strips a leading
- * directory, the `lib.` prefix and the `.d.ts` suffix; idempotent on an
- * already-short name.
- *
- * @public
- */
+// Implementation of TsEnumCodec.normalizeLibReference; the public contract lives on the static.
 const normalizeLibReference = (lib: string): string => {
 	const base = (lib.split("/").pop() ?? lib).toLowerCase();
 	const withoutPrefix = base.startsWith("lib.") ? base.slice(4) : base;
@@ -281,7 +261,7 @@ export type ProgrammaticCompilerOptionsValue =
 	| undefined;
 
 /**
- * The shape {@link (TsEnumCodec:variable).encodeCompilerOptions} returns: the
+ * The shape {@link TsEnumCodec.encodeCompilerOptions} returns: the
  * numeric-enum-encoded `compilerOptions` a virtual-TS environment and the
  * TypeScript compiler API consume programmatically.
  *
@@ -322,24 +302,7 @@ export interface ProgrammaticCompilerOptions {
 	readonly lib?: string[];
 }
 
-/**
- * Encodes a decoded `compilerOptions` object into the numeric-enum-shaped
- * {@link ProgrammaticCompilerOptions} form `ts.CompilerOptions` (and
- * `@typescript/vfs`'s `TsEnvironment`) expect: every R1.6 enum family becomes
- * its numeric value, and `lib` entries become the file-name form
- * (`lib.esnext.d.ts`) — see the module banner for the evidence. Every other key
- * (booleans, strings, arrays, unknown passthrough keys) is copied through
- * untouched.
- *
- * The return carries this package's single narrowing from the codec's internal
- * `Record<string, unknown>` (whose values include the schema's `unknown`
- * passthrough and its `readonly` arrays) to {@link ProgrammaticCompilerOptions}
- * — see that type's docs for why the package owns this one assertion instead of
- * leaving every consumer to cast. Runtime behavior is unchanged; only the
- * declared return type narrows.
- *
- * @public
- */
+// Implementation of TsEnumCodec.encodeCompilerOptions; the public contract lives on the static.
 const encodeCompilerOptions = (options: CompilerOptions.Type): ProgrammaticCompilerOptions => {
 	const source: Readonly<Record<string, unknown>> = options;
 	const result: Record<string, unknown> = { ...source };
@@ -363,20 +326,7 @@ const encodeCompilerOptions = (options: CompilerOptions.Type): ProgrammaticCompi
 	return result as ProgrammaticCompilerOptions;
 };
 
-/**
- * Decodes a numeric-enum-shaped `compilerOptions` object (as produced by
- * {@link (TsEnumCodec:variable).encodeCompilerOptions} or read off a live
- * `ts.CompilerOptions`) back into the string-enum shape this package's
- * schemas use: every R1.6 enum family becomes its canonical string, and
- * `lib` entries become the short form. A numeric value with no table entry —
- * a future TS enum member — is left as-is (passthrough, never an error) —
- * which is why the return type stays the wider `Record<string, unknown>`
- * rather than {@link (CompilerOptions:variable).Type}: an unmappable
- * passthrough value would violate that narrower type's contract. Every other
- * key is copied through untouched.
- *
- * @public
- */
+// Implementation of TsEnumCodec.decodeCompilerOptions; the public contract lives on the static.
 const decodeCompilerOptions = (numeric: Readonly<Record<string, unknown>>): Record<string, unknown> => {
 	const result: Record<string, unknown> = { ...numeric };
 
@@ -403,10 +353,64 @@ const decodeCompilerOptions = (numeric: Readonly<Record<string, unknown>>): Reco
  *
  * @public
  */
-export const TsEnumCodec = {
-	encode,
-	decode,
-	normalizeLibReference,
-	encodeCompilerOptions,
-	decodeCompilerOptions,
-} as const;
+export class TsEnumCodec {
+	private constructor() {}
+
+	/**
+	 * Encodes a family's canonical (or alias) string spelling to its numeric
+	 * form. `Option.none()` for a string with no table entry — never guessed.
+	 */
+	static readonly encode = encode;
+
+	/**
+	 * Decodes a family's numeric value to its canonical string spelling.
+	 * `Option.none()` for a numeric value with no table entry (a future TS
+	 * enum member) — never guessed.
+	 */
+	static readonly decode = decode;
+
+	/**
+	 * Normalizes any spelling of a `lib` reference — the plain short name
+	 * (`esnext`), the on-disk file name (`lib.esnext.d.ts`), or an absolute
+	 * path to one (`/…/typescript/lib/lib.dom.iterable.d.ts`) — to the
+	 * canonical lowercase short name (`esnext`, `dom.iterable`). Strips a
+	 * leading directory, the `lib.` prefix and the `.d.ts` suffix; idempotent
+	 * on an already-short name.
+	 */
+	static readonly normalizeLibReference = normalizeLibReference;
+
+	/**
+	 * Encodes a decoded `compilerOptions` object into the
+	 * numeric-enum-shaped {@link ProgrammaticCompilerOptions} form
+	 * `ts.CompilerOptions` (and `@typescript/vfs`'s `TsEnvironment`) expect:
+	 * every R1.6 enum family becomes its numeric value, and `lib` entries
+	 * become the file-name form (`lib.esnext.d.ts`) — see the module banner
+	 * for the evidence. Every other key (booleans, strings, arrays, unknown
+	 * passthrough keys) is copied through untouched.
+	 *
+	 * @remarks
+	 * The return carries this package's single narrowing from the codec's
+	 * internal `Record<string, unknown>` (whose values include the schema's
+	 * `unknown` passthrough and its `readonly` arrays) to
+	 * {@link ProgrammaticCompilerOptions} — see that type's docs for why the
+	 * package owns this one assertion instead of leaving every consumer to
+	 * cast. Runtime behavior is unchanged; only the declared return type
+	 * narrows.
+	 */
+	static readonly encodeCompilerOptions = encodeCompilerOptions;
+
+	/**
+	 * Decodes a numeric-enum-shaped `compilerOptions` object (as produced by
+	 * {@link TsEnumCodec.encodeCompilerOptions} or read off a live
+	 * `ts.CompilerOptions`) back into the string-enum shape this package's
+	 * schemas use: every R1.6 enum family becomes its canonical string, and
+	 * `lib` entries become the short form. A numeric value with no table
+	 * entry — a future TS enum member — is left as-is (passthrough, never an
+	 * error) — which is why the return type stays the wider
+	 * `Record<string, unknown>` rather than
+	 * {@link (CompilerOptions:namespace).Type}: an unmappable passthrough
+	 * value would violate that narrower type's contract. Every other key is
+	 * copied through untouched.
+	 */
+	static readonly decodeCompilerOptions = decodeCompilerOptions;
+}

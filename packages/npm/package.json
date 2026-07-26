@@ -31,6 +31,9 @@
 		"prepare": "turbo run build:dev",
 		"types:check": "tsc --noEmit"
 	},
+	"dependencies": {
+		"@effected/commands": "workspace:~"
+	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@effected/semver": "workspace:*",

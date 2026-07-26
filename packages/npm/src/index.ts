@@ -49,6 +49,34 @@ export {
 	ManifestDecodeError,
 	UnresolvedDependencyError,
 } from "./Manifest.js";
+export { NpmExecutor } from "./NpmExecutor.js";
+// Free-standing named exports, never gathered into a namespace object: a
+// consumer that imports only the pure vocabulary (IntegrityHash, the
+// specifier) must not link the HTTP client this module reaches. A namespace
+// object is one live binding and would retain the whole graph — the
+// config-file codec hazard, one package over.
+export {
+	DEFAULT_REGISTRY,
+	NpmRegistry,
+	type NpmRegistryShape,
+	PublishTime,
+	PublishedVersion,
+	RegistryReadError,
+	type RegistrySeed,
+	type RegistryTarget,
+	type SeededVersion,
+} from "./NpmRegistry.js";
+export {
+	type DryRunOutcome,
+	type PackOptions,
+	PackagePublish,
+	type PackagePublishShape,
+	PackedTarball,
+	type PublishOptions,
+	type PublishOutcome,
+} from "./PackagePublish.js";
+export { PublishError } from "./PublishError.js";
+export { RegistryKind, classifyRegistry } from "./RegistryKind.js";
 export { PartialReleaseAgeGate, ReleaseAgeGate } from "./ReleaseAgeGate.js";
 export { DependencyResolutionError, WorkspaceResolver } from "./WorkspaceResolver.js";
 

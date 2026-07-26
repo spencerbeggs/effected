@@ -91,7 +91,7 @@ const watch = Effect.gen(function* () {
  const events = yield* ConfigEvents;
  const subscription = yield* PubSub.subscribe(events.events);
  const cfg = yield* AppConfig;
- yield* Effect.fork(cfg.load);
+ yield* Effect.forkChild(cfg.load);
  const event = yield* PubSub.take(subscription);
  return event.event._tag; // e.g. "Discovered", then "Parsed", then "Loaded"
 }).pipe(Effect.scoped);

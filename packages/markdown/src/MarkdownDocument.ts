@@ -59,14 +59,107 @@ export interface DocumentHeading {
  * `children` include its subsections — the list is flat, in document order,
  * with `depth` carrying the hierarchy.
  *
+ * Instances come from {@link MarkdownDocument.sections} and the two finders;
+ * there is no reason to construct one directly.
+ *
  * @public
  */
-export interface DocumentSection {
+export class DocumentSection {
+	/** The heading that opens the section. */
 	readonly heading: Heading;
+	/** The heading's depth, and the section's. */
 	readonly depth: HeadingDepth;
+	/** The whole section including its heading — spliceable by `MarkdownEdit`. */
 	readonly range: MarkdownRange;
+	/** The root-level blocks after the heading, subsections included. */
 	readonly children: ReadonlyArray<FlowContent>;
+	/**
+	 * The heading's plain-text content.
+	 *
+	 * @remarks
+	 * The same derivation as {@link DocumentHeading.text}: text and inline-code
+	 * values concatenated, image `alt` where present, a hard break as one space,
+	 * nothing for raw HTML or footnote references. So `## **1.2.3**` reads
+	 * `1.2.3`.
+	 */
+	readonly text: string;
+	/**
+	 * The section WITHOUT its heading: from the heading's end offset to the
+	 * section's end.
+	 *
+	 * @remarks
+	 * This is the span a "give me the release notes under this version" reader
+	 * wants, and the one that is fiddly to derive by hand.
+	 */
+	readonly bodyRange: MarkdownRange;
+
+	/** The document source these ranges index into. */
+	readonly #documentSource: string;
+
+	constructor(options: {
+		readonly heading: Heading;
+		readonly depth: HeadingDepth;
+		readonly range: MarkdownRange;
+		readonly children: ReadonlyArray<FlowContent>;
+		readonly text: string;
+		readonly bodyRange: MarkdownRange;
+		readonly documentSource: string;
+	}) {
+		this.heading = options.heading;
+		this.depth = options.depth;
+		this.range = options.range;
+		this.children = options.children;
+		this.text = options.text;
+		this.bodyRange = options.bodyRange;
+		this.#documentSource = options.documentSource;
+	}
+
+	/** The section's source text, heading included. */
+	get source(): string {
+		return this.#documentSource.slice(this.range.offset, this.range.offset + this.range.length);
+	}
+
+	/**
+	 * The section's source text without its heading.
+	 *
+	 * @remarks
+	 * **Untrimmed, deliberately.** It is exactly the bytes {@link
+	 * DocumentSection.bodyRange} describes, so the string and the offsets can
+	 * never disagree — a package that publishes a span's offsets and then hands
+	 * back a different span is lying about it. Callers that want the tidy form
+	 * write `.body.trim()`, visibly.
+	 */
+	get body(): string {
+		return this.#documentSource.slice(this.bodyRange.offset, this.bodyRange.offset + this.bodyRange.length);
+	}
 }
+
+/**
+ * Narrowing options for {@link MarkdownDocument.firstSection} and
+ * {@link MarkdownDocument.sectionByHeading}.
+ *
+ * @public
+ */
+export interface SectionQueryOptions {
+	/**
+	 * Restrict to sections opened by a heading of exactly this depth.
+	 *
+	 * @remarks
+	 * Equality, not a maximum: `{ depth: 2 }` is "the H2 sections", which is the
+	 * changelog idiom. A depth *range* is a different question and belongs in a
+	 * predicate.
+	 */
+	readonly depth?: HeadingDepth;
+}
+
+/**
+ * How {@link MarkdownDocument.sectionByHeading} decides a section matches: an
+ * exact trimmed-text string, a `RegExp`, or a predicate over the text and the
+ * section.
+ *
+ * @public
+ */
+export type SectionHeadingMatch = string | RegExp | ((text: string, section: DocumentSection) => boolean);
 
 /**
  * The node types {@link MarkdownDocument.links} collects: the nodes that
@@ -277,14 +370,75 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 				}
 			}
 			const start = block.position.start.offset;
-			sections.push({
-				heading: block,
-				depth: block.depth,
-				range: MarkdownRange.make({ offset: start, length: boundary - start }),
-				children: blocks.slice(index + 1, end).filter((child): child is FlowContent => child.type !== "frontmatter"),
-			});
+			const bodyStart = block.position.end.offset;
+			sections.push(
+				new DocumentSection({
+					heading: block,
+					depth: block.depth,
+					range: MarkdownRange.make({ offset: start, length: boundary - start }),
+					children: blocks.slice(index + 1, end).filter((child): child is FlowContent => child.type !== "frontmatter"),
+					text: phrasingText(block.children),
+					// The body starts where the heading NODE ends, which is what makes
+					// this correct for setext headings too: their node span covers the
+					// underline, so the body never begins mid-`---`.
+					bodyRange: MarkdownRange.make({ offset: bodyStart, length: Math.max(0, boundary - bodyStart) }),
+					documentSource: this.source,
+				}),
+			);
 		}
 		return sections;
+	}
+
+	/**
+	 * The first section in document order, optionally restricted by heading
+	 * depth.
+	 *
+	 * @remarks
+	 * `firstSection({ depth: 2 })` is "the newest entry" for a changelog whose
+	 * releases are H2s under an H1 title. Like the other navigation accessors
+	 * this recomputes {@link MarkdownDocument.sections}; a caller scanning one
+	 * document repeatedly should bind `document.sections` once instead.
+	 *
+	 * @param options - Depth restriction.
+	 * @returns The first matching section, or `undefined`.
+	 */
+	firstSection(options?: SectionQueryOptions): DocumentSection | undefined {
+		const depth = options?.depth;
+		return this.sections.find((section) => depth === undefined || section.depth === depth);
+	}
+
+	/**
+	 * The first section whose heading matches, in document order.
+	 *
+	 * @remarks
+	 * A **string matches the trimmed heading text exactly** — never a substring.
+	 * That is a deliberate refusal of the obvious convenience: `"1.2.3"` would
+	 * otherwise match a `## 1.2.30` heading, and in a changelog (where `1.2.30`
+	 * sorts newer and therefore sits *earlier*) that silently publishes the
+	 * wrong release. A `RegExp` is tested against the same trimmed text, and its
+	 * `lastIndex` is reset first so a `/g/` pattern cannot skip sections. A
+	 * predicate receives the raw {@link DocumentSection.text} plus the section
+	 * itself and decides freely.
+	 *
+	 * @param match - A string, a RegExp, or a predicate.
+	 * @param options - Depth restriction, applied before matching.
+	 * @returns The first matching section, or `undefined`.
+	 */
+	sectionByHeading(match: SectionHeadingMatch, options?: SectionQueryOptions): DocumentSection | undefined {
+		const depth = options?.depth;
+		const matches: (section: DocumentSection) => boolean =
+			typeof match === "string"
+				? (section) => section.text.trim() === match
+				: match instanceof RegExp
+					? (section) => {
+							// A `/g/` or `/y/` regex carries `lastIndex` between calls, so
+							// reusing one across sections would test from the wrong offset
+							// and skip matches.
+							match.lastIndex = 0;
+							return match.test(section.text.trim());
+						}
+					: (section) => match(section.text, section);
+		return this.sections.find((section) => (depth === undefined || section.depth === depth) && matches(section));
 	}
 
 	/**

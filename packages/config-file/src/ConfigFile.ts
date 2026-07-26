@@ -267,16 +267,7 @@ export interface ConfigFileOptions<A, I, RR> {
 	readonly events?: Context.Key<ConfigEvents, ConfigEventsShape>;
 }
 
-/**
- * Create a uniquely-keyed service class for one config schema.
- *
- * @example
- * ```ts
- * class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("app/Config") {}
- * ```
- *
- * @public
- */
+// Implementation of ConfigFile.Service; the public contract lives on the static.
 const Service =
 	<Self, A>() =>
 	<const Id extends string>(id: Id) =>
@@ -512,21 +503,7 @@ const makeImpl = <A, I, RR>(
 	};
 };
 
-/**
- * Build the live layer for a config service class.
- *
- * @remarks
- * Resolver requirements flow into the layer's `R` type. v3 cast them away with
- * `as Effect.Effect<Option<string>>`, making `Layer<Service, never, FileSystem>`
- * a claim rather than a proof.
- *
- * `ConfigFile.layer` is a layer-RETURNING function, not a layer: calling it
- * twice builds two independent service instances. Bind its result to a const
- * and provide that const, per the memoization discipline — do not call
- * `ConfigFile.layer(...)` inline at each provide site.
- *
- * @public
- */
+// Implementation of ConfigFile.layer; the public contract lives on the static.
 const layer = <Self, A, I, RR = never>(
 	tag: Context.Key<Self, ConfigFileShape<A>>,
 	options: ConfigFileOptions<A, I, RR>,
@@ -547,7 +524,7 @@ const layer = <Self, A, I, RR = never>(
  *
  * @remarks
  * Deliberately has no `resolvers`: `testLayer` synthesizes one
- * {@link (ConfigResolver:variable).staticDir} per seeded file, in `files`
+ * {@link (ConfigResolver:class).staticDir} per seeded file, in `files`
  * insertion order, so the first key wins under
  * {@link (MergeStrategy:variable).firstMatch}.
  *
@@ -577,39 +554,7 @@ export interface ConfigFileTestOptions<A, I> {
 	readonly validate?: (value: A) => Effect.Effect<A, ConfigValidationError>;
 }
 
-/**
- * A scoped layer that seeds `files` into a temp directory, wires the **real**
- * live implementation over them, and removes the directory when the scope
- * closes.
- *
- * @remarks
- * Deliberately not a mock. It delegates to the very same `makeImpl` that
- * {@link ConfigFile.layer} uses, so tests exercise the actual codec, resolver
- * and merge pipeline rather than a parallel implementation that can drift from
- * it. A stubbed test layer would make every downstream test a claim about the
- * stub instead of about the code under test.
- *
- * Platform-agnostic: the consumer supplies the `FileSystem` layer, and the temp
- * directory is created through `FileSystem.makeTempDirectory` rather than
- * `node:fs`.
- *
- * `Layer.scoped` does not exist in v4. `Layer.effect` types its layer as
- * `Layer<I, E, Exclude<R, Scope>>`, so an `Effect.addFinalizer` inside it binds
- * to the layer's own scope and runs on release without surfacing `Scope` in the
- * layer's requirements.
- *
- * @example
- * ```ts
- * const TestConfig = ConfigFile.testLayer(AppConfig, {
- * 	schema: AppShape,
- * 	codec: JsonCodec,
- * 	strategy: MergeStrategy.firstMatch<AppShape>(),
- * 	files: { ".apprc": `{"port":4242}` },
- * }).pipe(Layer.provide(NodeServices.layer));
- * ```
- *
- * @public
- */
+// Implementation of ConfigFile.testLayer; the public contract lives on the static.
 const testLayer = <Self, A, I>(
 	tag: Context.Key<Self, ConfigFileShape<A>>,
 	options: ConfigFileTestOptions<A, I>,
@@ -653,8 +598,145 @@ const testLayer = <Self, A, I>(
 	);
 
 /**
- * The config file service: a per-schema service factory and its layers.
+ * Options for {@link ConfigFile.read}.
  *
  * @public
  */
-export const ConfigFile = { Service, layer, testLayer } as const;
+export interface ConfigReadOptions<A, I> {
+	/** The schema the document is decoded through. */
+	readonly schema: Schema.Codec<A, I>;
+	/**
+	 * How file content becomes an unknown document.
+	 *
+	 * @remarks
+	 * An explicit argument, never inferred from the file extension or defaulted
+	 * to JSON. Naming the codec at the call site is what keeps the
+	 * free-standing-codec tree-shaking guarantee: a consumer that only ever
+	 * passes `JsonCodec` never references the JSONC, YAML or TOML modules, so
+	 * their engines stay out of the bundle.
+	 */
+	readonly codec: ConfigCodec;
+}
+
+// Implementation of ConfigFile.read; the public contract lives on the static.
+const read = <A, I>(
+	path: string,
+	options: ConfigReadOptions<A, I>,
+): Effect.Effect<A, ConfigReadError, FileSystem.FileSystem> =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+
+		const raw = yield* fs
+			.readFileString(path)
+			.pipe(Effect.mapError((cause) => new ConfigFileReadError({ path, cause })));
+
+		const parsed = yield* options.codec.parse(raw);
+
+		return yield* Schema.decodeUnknownEffect(options.schema)(parsed).pipe(
+			// The same boundary normalization the service performs: never leak a
+			// SchemaError outward, and carry its issue tree rather than a string.
+			Effect.catchTag("SchemaError", (error) =>
+				Effect.fail(new ConfigValidationError({ path: Option.some(path), issue: error.issue })),
+			),
+		);
+	}).pipe(Effect.withSpan("ConfigFile.read", { attributes: { path } }));
+
+/**
+ * The config file service: a per-schema service factory, its layers, and the
+ * one-shot {@link ConfigFile.read}.
+ *
+ * @public
+ */
+export class ConfigFile {
+	private constructor() {}
+
+	/**
+	 * Create a uniquely-keyed service class for one config schema.
+	 *
+	 * @example
+	 * ```ts
+	 * class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("app/Config") {}
+	 * ```
+	 */
+	static readonly Service = Service;
+
+	/**
+	 * Build the live layer for a config service class.
+	 *
+	 * @remarks
+	 * Resolver requirements flow into the layer's `R` type. v3 cast them away with
+	 * `as Effect.Effect<Option<string>>`, making `Layer<Service, never, FileSystem>`
+	 * a claim rather than a proof.
+	 *
+	 * `ConfigFile.layer` is a layer-RETURNING function, not a layer: calling it
+	 * twice builds two independent service instances. Bind its result to a const
+	 * and provide that const, per the memoization discipline — do not call
+	 * `ConfigFile.layer(...)` inline at each provide site.
+	 */
+	static readonly layer = layer;
+
+	/**
+	 * A scoped layer that seeds `files` into a temp directory, wires the **real**
+	 * live implementation over them, and removes the directory when the scope
+	 * closes.
+	 *
+	 * @remarks
+	 * Deliberately not a mock. It delegates to the very same `makeImpl` that
+	 * {@link ConfigFile.layer} uses, so tests exercise the actual codec, resolver
+	 * and merge pipeline rather than a parallel implementation that can drift from
+	 * it. A stubbed test layer would make every downstream test a claim about the
+	 * stub instead of about the code under test.
+	 *
+	 * Platform-agnostic: the consumer supplies the `FileSystem` layer, and the temp
+	 * directory is created through `FileSystem.makeTempDirectory` rather than
+	 * `node:fs`.
+	 *
+	 * `Layer.scoped` does not exist in v4. `Layer.effect` types its layer as
+	 * `Layer<I, E, Exclude<R, Scope>>`, so an `Effect.addFinalizer` inside it binds
+	 * to the layer's own scope and runs on release without surfacing `Scope` in the
+	 * layer's requirements.
+	 *
+	 * @example
+	 * ```ts
+	 * const TestConfig = ConfigFile.testLayer(AppConfig, {
+	 * 	schema: AppShape,
+	 * 	codec: JsonCodec,
+	 * 	strategy: MergeStrategy.firstMatch<AppShape>(),
+	 * 	files: { ".apprc": `{"port":4242}` },
+	 * }).pipe(Layer.provide(NodeServices.layer));
+	 * ```
+	 */
+	static readonly testLayer = testLayer;
+
+	/**
+	 * Read, decode and validate one explicit path — no service, no layer, no tag.
+	 *
+	 * @remarks
+	 * The one-shot form. {@link ConfigFile.layer} binds schema and codec at layer
+	 * construction, which is the right model for a config file an application
+	 * *has* — several candidate locations, `save`/`update`, migrations, events —
+	 * and heavy for a call site that decodes one known path once, where it costs a
+	 * service subclass, a layer bound to a const and a provide at the boundary.
+	 * Unlike the service, `read` takes its schema per call, so one call site can
+	 * read several unrelated files without a service class each.
+	 *
+	 * It is deliberately read-only and discovery-free: there is no resolver chain
+	 * and no write path. Reach for {@link ConfigFile.layer} the moment either is
+	 * wanted, rather than growing this.
+	 *
+	 * The error channel is `ConfigReadError` — the same narrowed union
+	 * {@link ConfigFileShape.loadFrom} carries, with causes and schema issues held
+	 * structurally rather than flattened into a message.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ConfigFile, JsonCodec } from "@effected/config-file";
+	 *
+	 * const config = yield* ConfigFile.read(inputs.configFile, {
+	 *   schema: MyConfig,
+	 *   codec: JsonCodec,
+	 * });
+	 * ```
+	 */
+	static readonly read = read;
+}

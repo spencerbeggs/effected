@@ -135,7 +135,10 @@ describe("PackageManagerDetector — npm", () => {
 	});
 });
 
-describe("PackageManagerDetector — nothing to go on", () => {
+describe("PackageManagerDetector — NO EVIDENCE AT ALL", () => {
+	// The genuine no-evidence case: a manifest that declares nothing, and not a
+	// single lockfile. Distinct from the standalone-repo cases below, which have
+	// evidence but no workspace.
 	layer(detectorOver({ "/repo/package.json": JSON.stringify({ name: "solo", version: "1.0.0" }) }))((it) => {
 		it.effect("fails typed, listing the markers it probed", () =>
 			Effect.gen(function* () {
@@ -145,6 +148,194 @@ describe("PackageManagerDetector — nothing to go on", () => {
 				assert.strictEqual(error.root, "/repo");
 				assert.include(error.checked, "pnpm-workspace.yaml");
 				assert.include(error.checked, "yarn.lock");
+				// The standalone probes are part of the contract too, so they belong
+				// on the error that reports having tried them.
+				assert.include(error.checked, "pnpm-lock.yaml");
+				assert.include(error.checked, "package-lock.json");
+			}),
+		);
+	});
+});
+
+// ── standalone repos: evidence, but no workspace ──────────────────────────
+//
+// The chain above answers "which manager runs this WORKSPACE". Most repos are
+// not workspaces, and before these tiers existed a single-package repo — a
+// pnpm-lock.yaml, no `workspaces` field — was undetectable, which is why one
+// consumer carried three competing hand-rolled detections with two different
+// silent defaults. The tiers are strictly additive: they run after every
+// workspace marker has missed, so no input that previously succeeded can change
+// its answer.
+
+describe("PackageManagerDetector — standalone pnpm repo", () => {
+	layer(
+		detectorOver({
+			"/repo/pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+			"/repo/package.json": corepack("pnpm@10.33.0+sha512.abc"),
+		}),
+	)((it) => {
+		it.effect("a pnpm lockfile with no workspace is still pnpm", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				const detected = yield* detector.detect("/repo");
+				assert.strictEqual(detected.name, "pnpm");
+				assert.deepStrictEqual(detected.version, Option.some("10.33.0"));
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — standalone pnpm repo with no manifest hint", () => {
+	layer(
+		detectorOver({
+			"/repo/pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+			"/repo/package.json": JSON.stringify({ name: "solo", version: "1.0.0" }),
+		}),
+	)((it) => {
+		it.effect("the lockfile alone is sufficient — this is the case that used to fail", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				// Only pnpm writes a pnpm-lock.yaml, so no manifest conjunction is
+				// needed — the same reasoning that makes pnpm-workspace.yaml sufficient.
+				const detected = yield* detector.detect("/repo");
+				assert.strictEqual(detected.name, "pnpm");
+				assert.isTrue(Option.isNone(detected.version));
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — standalone npm repo", () => {
+	layer(
+		detectorOver({
+			"/repo/package-lock.json": "{}",
+			"/repo/package.json": JSON.stringify({ name: "solo", version: "1.0.0" }),
+		}),
+	)((it) => {
+		it.effect("a package-lock.json with no workspace is npm", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				const detected = yield* detector.detect("/repo");
+				assert.strictEqual(detected.name, "npm");
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — standalone yarn repo", () => {
+	layer(detectorOver({ "/repo/yarn.lock": "", "/repo/package.json": corepack("yarn@4.5.0") }))((it) => {
+		it.effect("a yarn lockfile plus a yarn declaration is yarn, workspace or not", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				const detected = yield* detector.detect("/repo");
+				assert.strictEqual(detected.name, "yarn");
+				assert.deepStrictEqual(detected.version, Option.some("4.5.0"));
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — standalone bun repo", () => {
+	layer(detectorOver({ "/repo/bun.lockb": "", "/repo/package.json": corepack("bun@1.2.0") }))((it) => {
+		it.effect("a bun lockfile plus a bun declaration is bun, on the bun runtime", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				const detected = yield* detector.detect("/repo");
+				assert.strictEqual(detected.name, "bun");
+				assert.strictEqual(detected.runtime, "bun");
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — a STRAY yarn.lock in a standalone repo", () => {
+	layer(
+		detectorOver({
+			"/repo/yarn.lock": "",
+			"/repo/package.json": JSON.stringify({ name: "solo", version: "1.0.0" }),
+		}),
+	)((it) => {
+		it.effect("the manifest conjunction holds in the standalone tier too", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				// A stray yarn.lock is the classic false signal, and it is exactly as
+				// common in a single-package repo as in a workspace. The standalone tier
+				// mirrors the workspace tier's conjunction rather than inventing a
+				// second, looser rule inside one service.
+				const error = yield* Effect.flip(detector.detect("/repo"));
+				assert.instanceOf(error, PackageManagerDetectionError);
+			}),
+		);
+	});
+});
+
+// ── the manifest-only tier: declared, but not yet installed ────────────────
+
+describe("PackageManagerDetector — declared but never installed", () => {
+	layer(detectorOver({ "/repo/package.json": corepack("pnpm@10.33.0") }))((it) => {
+		it.effect("a packageManager declaration with no lockfile anywhere is honest evidence", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				// A fresh clone before the first install has no lockfile of its own to
+				// read, but the manifest says plainly which manager is meant to run.
+				const detected = yield* detector.detect("/repo");
+				assert.strictEqual(detected.name, "pnpm");
+				assert.deepStrictEqual(detected.version, Option.some("10.33.0"));
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — devEngines alone, no lockfile", () => {
+	layer(
+		detectorOver({
+			"/repo/package.json": manifestWith({ devEngines: { packageManager: { name: "bun", version: "1.2.0" } } }),
+		}),
+	)((it) => {
+		it.effect("devEngines is a declaration too, and carries the runtime with it", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				const detected = yield* detector.detect("/repo");
+				assert.strictEqual(detected.name, "bun");
+				assert.strictEqual(detected.runtime, "bun");
+				assert.deepStrictEqual(detected.version, Option.some("1.2.0"));
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — a manifest naming a manager we do not know", () => {
+	layer(detectorOver({ "/repo/package.json": corepack("cnpm@9.0.0") }))((it) => {
+		it.effect("refuses rather than falling back to npm", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				// THE REFUSAL CONTRACT. Both consumer reimplementations invented a
+				// default here and they invented DIFFERENT ones — one "npm", one "pnpm"
+				// — which is precisely why a library must not make this call. A caller
+				// that wants a default writes `Effect.orElseSucceed` where a reader can
+				// see it.
+				const error = yield* Effect.flip(detector.detect("/repo"));
+				assert.instanceOf(error, PackageManagerDetectionError);
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — the workspace tier still wins", () => {
+	layer(
+		detectorOver({
+			"/repo/pnpm-workspace.yaml": "packages: []\n",
+			"/repo/package-lock.json": "{}",
+			"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),
+		}),
+	)((it) => {
+		it.effect("standalone probes run only after every workspace marker has missed", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				// If the standalone tier ran first, this stray package-lock.json would
+				// turn a pnpm workspace into an npm repo.
+				const detected = yield* detector.detect("/repo");
+				assert.strictEqual(detected.name, "pnpm");
 			}),
 		);
 	});

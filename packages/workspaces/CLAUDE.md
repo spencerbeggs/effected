@@ -8,7 +8,9 @@ Monorepo workspace tooling as Effect services: workspace root discovery, package
 
 **Integrated**, and the `@pnpm/catalogs.*` quartet is why. Those four packages *are* pnpm's catalog semantics, versioned to pnpm majors; reimplementing them means owning a moving spec with no oracle. They are confined to `src/internal/catalogs.ts` — **the only module that may import them**, so the tier-3 blast radius is one file.
 
-Other runtime deps are `workspace:~` edges: `@effected/git`, `@effected/glob`, `@effected/lockfiles`, `@effected/walker`, `@effected/yaml`, `@effected/package-json`, `@effected/npm`. `effect` is a peer.
+Other runtime deps are `workspace:~` edges: `@effected/commands`, `@effected/git`, `@effected/glob`, `@effected/lockfiles`, `@effected/walker`, `@effected/yaml`, `@effected/package-json`, `@effected/npm`. `effect` is a peer.
+
+**The `@effected/commands` edge points at a CONTRACT, and its direction is load-bearing.** `commands` is boundary tier and must stay there: a `commands` → `workspaces` edge would make it integrated and, through the planned `npm` → `commands` edge, drag `npm`, `lockfiles` (**pure**) and `package-json` up a tier too. So `commands` declares `LocalExec` and we implement it (`Workspaces.localExecLayer`) — the `@effected/npm` `CatalogResolver` precedent. Taking a boundary-tier edge costs us nothing under R2 (we are already integrated for `@pnpm/catalogs.*`). **Never invert this**: nothing in `commands` may import this package.
 
 **`minimatch` is not a dependency and must not become one.** Both v3 call sites — `WorkspacePackage.matchesDependency` and the `packages:` enumerator — run on `@effected/glob`'s vendored engine.
 
@@ -18,7 +20,7 @@ Other runtime deps are `workspace:~` edges: `@effected/git`, `@effected/glob`, `
 
 - `WorkspacePackage.ts` — `WorkspacePackage`, `PublishConfig`, `DependencyDiff`, `WorkspaceManifestError`
 - `WorkspaceRoot.ts` — `WorkspaceRoot` service + layer + test double (`makeTest` / `layerTest`), `WorkspaceRootShape`, `WORKSPACE_MARKERS`, `FindWorkspaceRootOptions`, `WorkspaceRootNotFoundError`
-- `PackageManagerName.ts` — `PackageManagerName`, `DetectedPackageManager`, `PackageManagerDetector`, `PackageManagerDetectionError`
+- `PackageManagerName.ts` — `PackageManagerName`, `DetectedPackageManager`, `PackageManagerDetector` (+ `makeTest` / `layerTest`), `PackageManagerDetectorShape`, `PackageManagerDetectionError`
 - `WorkspaceDiscovery.ts` — `WorkspaceDiscovery`, `WorkspaceInfo`, three errors, the `workspaceResolver` layer, and the test double (`makeTest` / `layerTest`: empty-workspace defaults derived from the effective `listPackages`; `info` dies unless stubbed)
 - `DependencyGraph.ts` — `DependencyGraph` (a **value class**, not a service), `CyclicDependencyError`
 - `ChangeDetector.ts` — `ChangeDetector`, `ChangeDetectionOptions`, `ChangeDetectionError`, `ChangeDetectionFailure`
@@ -27,8 +29,10 @@ Other runtime deps are `workspace:~` edges: `@effected/git`, `@effected/glob`, `
 - `WorkspaceCatalogs.ts` — `CatalogSet`, `WorkspaceCatalogs` (with `releaseAgeGate()` and `importerVersions()`), `ImporterVersions`, the `catalogResolver` layer, the `CatalogAssemblyFailure` type union
 - `ConfigDependencyHooks.ts` — `ConfigDependencyHooks` contract, `HookInjection`, `layerNoop` / `layerLive`
 - `LockfileReader.ts` — `LockfileReader`, `LockfileReadError`
-- `Publishability.ts` — `PublishabilityDetector`, `PublishTarget`
-- `Workspaces.ts` — the composite layers (`layer`, `layerWithConfigDependencies`, `layerWithGit`, `resolvers`) plus the one-call manifest path (`resolverLayer`, `resolveManifest`)
+- `Publishability.ts` — `PublishabilityDetector`, `PublishTarget` (see [the seam rules](#publishability-has-no-ambient-default))
+- `ReleaseTag.ts` — `ReleaseTag`, `TagStyle`, `TagFormatOptions`, plus the floating-alias family `TrackingTag` / `TrackingTagOptions` and the recognizer `classifyTag` / `TagClassification` (all **value classes**, not services; a leaf importing nothing else here)
+- `VersioningStrategy.ts` — `VersioningStrategy` (a **value class**: `classify` / `detect` / `tagsFor`), `VersioningStrategyType`, `ClassifyOptions`, `VersioningDetectOptions`, `PackageRelease`
+- `Workspaces.ts` — the composite layers (`layer`, `layerWithConfigDependencies`, `layerWithGit`, `resolvers`), the one-call manifest path (`resolverLayer`, `resolveManifest`) and `localExecLayer` (the `@effected/commands` `LocalExec` contract). `Workspaces` itself is a static class with a private constructor, not an `as const` namespace object — an `as const` object's member types are inferred in the built `.d.ts` and lose their TSDoc; `static readonly` keeps it, and call syntax is unaffected.
 - `WorkspacesSync.ts` — `findWorkspaceRootSync`, `getWorkspacePackagesSync` over consumer-supplied `SyncFileSystem` / `SyncPath` ops
 - `node-sync.ts` — the node-bound ops preset (`node:fs` / `node:path`), published only under the `./node-sync` subpath
 
@@ -50,9 +54,74 @@ pnpm 11 emits `pnpm-lock.yaml` as **two YAML documents** when the workspace uses
 
 Every lazy init uses `Effect.cachedInvalidateWithTTL` + `Effect.onExit`-invalidate-on-non-success, **not** `Effect.cached`. `Effect.cached` memoizes the first `Exit` *including an interrupt*, so an init interrupted by an unrelated timeout permanently poisons the layer with a cause outside its declared error channel. Success is memoized; failures and interrupts are retried.
 
+### Publishability has no ambient default
+
+**No composite provides `PublishabilityDetector`.** `Workspaces.layer`,
+`layerWithGit` and `layerWithConfigDependencies` all **require** it in `R`, so
+the common case is one explicit line:
+
+```ts
+const WorkspacesLayer = Workspaces.layer().pipe(Layer.provide(PublishabilityDetector.layerNpm));
+```
+
+That is a correctness fix, not ergonomics. When the composite supplied npm
+semantics itself, `Layer.mergeAll` being **last-wins** meant the natural
+spelling of an override — `Layer.mergeAll(myDetector, Workspaces.layer())` —
+resolved to the *default*, with no type error. For the service deciding whether
+a package publishes and to which registry, silently reverting to "publishes to
+the public npm registry, access public" is the worst failure available. It is
+pinned by the "the order that used to silently lose" test in
+`__test__/Workspaces.test.ts`; re-baking a detector into `compose` fails it.
+
+Two rules follow, and the second generalizes past this package:
+
+- **A swappable contract gets no ambient default.** Ship named policies
+  (`layerNpm`, `layerNone`) and require the choice. A default that a consumer
+  must out-shadow is a default that will sometimes win by accident.
+- **Ship each implementation as a VALUE, not only as a layer** —
+  `PublishabilityDetector.npm` is a `PublishabilityDetectorShape`, and
+  `layerNpm` is `Layer.succeed` over it. A consumer composing *around* a policy
+  cannot reach it through a layer without re-entering the tag it is replacing:
+  `@savvy-web/silk-effects` had to write
+  `Effect.provide(PublishabilityDetector, PublishabilityDetector.layer)` **inside
+  its own implementation of that tag** purely to call these rules. Candidate
+  house rule for `effect-standards.md`.
+
 ### Change detection runs on `@effected/git`, not a local git seam
 
 `GitReader` is **gone** — the module and its `GitCommandError` were deleted. `ChangeDetector` now runs on `@effected/git`'s `Git` service: `changedFiles(root, { base, head, relative: true })` for the committed range, `workingChanges(root, { relative: true })` for `includeUncommitted`, unioned and sorted. Every query uses `relative: true` so paths come back relative to the workspace root — correct even when the workspace is nested inside a larger git repository. A non-repository surfaces as git's own `NotARepositoryError` (not re-wrapped); `ChangeDetectionFailure` carries git's typed errors alongside `ChangeDetectionError` and the discovery failures. `Git` requires core's `ChildProcessSpawner` in `R`, discharged by the consumer's platform layer at the edge; a test provides `Layer.succeed(Git, …)` and needs no repository on disk. Nothing NEW may build a local subprocess seam — go through `@effected/git`.
+
+### `localExecLayer`: None is success, and only a BROKEN manifest is an error
+
+`Workspaces.localExecLayer` maps this package's error taxonomy onto `LocalExec`'s `None`-is-success convention, and the split is not arbitrary — it falls out of `PackageManagerDetector`'s own two errors:
+
+- **no workspace root** → `Option.none()`
+- **`PackageManagerDetectionError`** (no evidence, detector refused to guess) → `Option.none()`
+- **`WorkspaceManifestError`** (manifest present but unreadable/unparseable) → `LocalExecError`
+
+The distinction is absent-vs-broken. Reporting `None` for a corrupt manifest tells the caller "no local tooling here" when the truth is "your repo is damaged"; failing for a bare directory forces every non-monorepo consumer to catch an error to learn an ordinary fact. All three rows are mutation-pinned **in both directions** in `__test__/LocalExec.test.ts`.
+
+`directory` is the resolved **workspace root**, not the caller's cwd — resolving that root is why this layer exists rather than `LocalExec.layerFor`. And the argv prefixes come from `LocalExec.prefixes(name)`: **never hard-code an exec/dlx prefix here**, the table lives in `commands` and the tests assert against it so the two cannot drift.
+
+### Tracking tags never float onto a prerelease
+
+`TrackingTag.forVersion("1.0.0-beta.3")` returns `[]`, and that is the point of the function, not an edge case. Anyone depending on `owner/repo@v1` is asking for the newest **stable** 1.x; re-pointing `v1` at a beta ships a prerelease to every such consumer silently. `includePrerelease: true` exists for callers who genuinely mean it and should be rare.
+
+Two related traps: **`+build` is NOT a prerelease** (`1.2.3+sha.abc` is the stable 1.2.3 and derives normally, so build metadata must be stripped *before* the `-` test — the obvious wrong version treats any `-`-or-`+` suffix as prerelease), and **derivation is total** (junk yields `[]`, never a throw — `WorkspacePackage.version` is deliberately tolerant, so odd versions arrive here routinely). Each has its own mutation-pinned test.
+
+`classifyTag` tells the two families apart by **segment count, not the `v`**: three numeric segments is a version, one or two is an alias. The `v` is required on an alias — accepting a bare `1` would make the classifier guess, which is the one thing it exists not to do. `unrecognized` is a real answer; a repo's tags include `latest` and branch names.
+
+**`@effected/semver` is deliberately not a dependency here.** The tracking grammar is not semver and the derivation needs ~15 lines (three numeric segments + is there a prerelease). Take the edge only if something needs real semver *comparison*; formatting and recognition do not.
+
+### `PackageManagerDetector` REFUSES to guess — do not give it a default
+
+Its chain runs three tiers: the workspace markers, then a standalone tier (`pnpm-lock.yaml`, `package-lock.json`, and the bun/yarn lockfiles under the **same** manifest conjunction the workspace tier uses), then a declaration tier (`packageManager` / `devEngines.packageManager` with no lockfile at all — a fresh clone before its first install). Nothing matching is `PackageManagerDetectionError`.
+
+`PackageManagerDetector.makeTest` / `layerTest` is the sanctioned double, and **an unstubbed `detect` DIES** — never fabricates, never fails typed. The reason is the same rule one level up: a double that answered `"pnpm"` would contradict the very property this service exists to have. Failing typed is the subtler wrong shape, because `PackageManagerDetectionError` looks like a legitimate "no manager here" answer a consumer branches on, so the forgotten stub never surfaces. Both are mutation-pinned in `__test__/PackageManagerDetectorDouble.test.ts`.
+
+**Adding a fallback default is the tempting wrong fix.** silk-release-action did it twice and picked *different* defaults each time — `"npm"` in `main.ts`, `"pnpm"` in `detect-repo-type.ts` — which is the proof that the choice is policy, not detection: whichever a library picks, some caller is silently wrong. A consumer that wants one writes `Effect.orElseSucceed` at its own call site, visibly.
+
+The standalone and declaration tiers run **last**, so the widening is strictly additive — no previously-resolving input can change its answer, and a stray `package-lock.json` cannot turn a pnpm workspace into an npm repo. `__test__/PackageManagerDetector.test.ts` pins that ordering; reordering the tiers is the obvious and wrong "simplification".
 
 ### The ascent is bounded on request
 
@@ -107,7 +176,7 @@ The deliberate exception is `Workspaces.resolverLayer(options?)`: a **fresh, unm
 
 The one exception is `__test__/integration/self.int.test.ts`, which discovers **this repository** through `@effect/platform-node` (a devDependency). It is the only test that proves the whole stack composes against a real pnpm workspace — and it is what caught the multi-document lockfile bug.
 
-289 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 28 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it); never widen it. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
+386 tests across `__test__/`. `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the 31 synthesized error/schema-class bases in the prod `issues.json` (`CatalogAssemblyError`'s base moved out with it; `ReleaseTag`'s, `VersioningStrategy`'s and `TrackingTag`'s arrived with Phase 1c); never widen it. The narrow scoping is load-bearing, not ceremony: `VersioningStrategy.tagsFor` named a module-private interface on a `@public` signature and the build flagged it as a genuine `ae-forgotten-export` the `_base` pattern correctly refused to mask — the fix was exporting the type (`PackageRelease`), never widening the pattern. Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
 
 ## Point-in-time surface (as built)
 

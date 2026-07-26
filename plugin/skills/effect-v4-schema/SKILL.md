@@ -43,7 +43,7 @@ Each row is a hard house default; reasoning and worked code in
 | pin `transformOrFail`'s type params explicitly when a union codec's members carry instance methods — `SchemaTransformation.transformOrFail<(typeof Classified)["Encoded"], string>({...})` | relying on inference after adding an instance method to a `Schema.TaggedClass` union member — `transformOrFail` unifies one `T` from decode-out and encode-in, and `decodeTo` pins both to the union's **Encoded** side, which no longer satisfies the method-bearing instance type; the existing codec breaks at the declaration site (hit on beta.98 adding a method to a `DependencySpecifier.FromString` member) |
 | return an **`Effect`** from both `transformOrFail` callbacks, failing with `SchemaIssue.InvalidValue(Option.some(value), { message })` ([contract](#transformorfails-callback-contract)) | return a `Result` (or a bare value) from a `transformOrFail` callback — the signature demands `Effect<T, SchemaIssue.Issue, R>` (`SchemaTransformation.ts:286`); a `Result` is not an Effect and will not bridge itself |
 | a `FromString` `Schema.Codec<Self, string>` static (string = the encoded form of the same schema) | a second parser divorced from the schema |
-| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction |
+| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction (`Schema.ts:9548` is a *function*; `Schema.Error` at `:9471` is the same trap — full list of the call-not-value family in **`effect-v4-construct-map`**) |
 | `Schema.decodeUnknownEffect` / `encodeUnknownEffect` in Effect flows | `*Sync` outside a genuine sync boundary |
 | `Schema.DurationFromMillis` / `Schema.DateTimeUtcFromString` (composed with `Schema.fromJsonString` for byte stores) when the value must **serialize** | `Schema.Duration` / `Schema.DateTimeUtc` in a persisted or wire schema — both are `declare` schemas with **no JSON encoding** (`Schema.ts:10575,11972`), so they round-trip in memory and fail at the serialization boundary; the ts-vfs cache metadata hit exactly this |
 | annotate recursive `Schema.suspend` refs `Schema.Codec<T>` (services default `never`) | `Schema.Schema<T>` as the suspend annotation — it compiles at the declaration but leaves `DecodingServices` `unknown`, so every decode entrypoint rejects the schema (`unknown is not assignable to never`, probed beta.94); a schema nobody decodes directly hides the trap until a consumer tries |
@@ -203,6 +203,32 @@ Read the consequences off the row you are actually in:
 > trusted-path construction against the self-recursive row above — not a rescue
 > from quadratic blowup.
 
+## Class-factory equality is deep and structural — but instances are not frozen
+
+`Equal.equals` on two class-factory instances recurses. It is not reference
+equality, and it is not shallow: it walks **nested `Schema.Class` fields**,
+`Schema.optionalKey` fields (a present key and an absent one compare **unequal**,
+which is the discrimination `exactOptionalPropertyTypes` semantics need), and
+`Schema.Array`-of-class fields element by element. **`Hash` agrees wherever
+`Equal` agrees**, so these instances are safe as `HashMap`/`HashSet` keys with no
+custom `[Hash.symbol]`.
+
+Probed at `effect@4.0.0-beta.101`, 14/14 including discriminating controls — a
+one-field difference at each nesting depth compared unequal, so the probe could
+fail and did not. **Do not pay for this probe again**, and do not hand-write a
+recursive comparator for a class tree: `Equal.equals` already is one. (The
+sibling fact — a *foreign* nested field is re-constructed by `make`, so `!==` by
+reference — is the table above; deep `Equal.equals` is exactly what rescues it.)
+
+**But nothing is frozen.** A `Schema.Class` instance is a plain object at
+runtime; `Schema.ts` calls `Object.freeze` nowhere. Validation happens at
+construction and never again, so a mutated instance keeps **stale derived and
+provenance state** — a cached hash, a `_tag`-adjacent invariant, the wire-form
+bookkeeping the `Person` codec below relies on — while still satisfying its type.
+Guard anything that **replays a value onto the wire, or caches keyed on instance
+identity**: treat instances as immutable by discipline, and rebuild with
+`make` rather than assigning a field, because the type system will not stop you.
+
 ## A homogeneous-Type union is encode-lossy: keep the Type heterogeneous when the wire form must survive
 
 `Schema.Union([A, A.FromString])` — the reflex for "accept either the object
@@ -339,7 +365,9 @@ source + the beta-skew warning).
 ## Related skills
 
 - **`effect-v4-construct-map`** — the flat v3→v4 rename tables. Reach for it when a
-  v3 Schema name doesn't resolve in beta.101.
+  v3 Schema name doesn't resolve in beta.101, and for the **call-not-value** list
+  (`Schema.Defect()`, `Schema.Error()`, `TestClock.layer()`) — names that exist,
+  type-check uncalled, and fail somewhere else.
 - **`effect-api-extractor-bases`** — the anonymous-base / `ae-forgotten-export`
   discipline for `Schema.Class` and `Context.Service`.
 - **`effect-v4-services-layers`** — the sibling for `Context.Service` and Layers.

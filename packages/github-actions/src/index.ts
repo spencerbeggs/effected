@@ -1,0 +1,59 @@
+export {
+	Action,
+	type ActionRunOptions,
+	ActionRuntime,
+	type ActionServices,
+	describeCause,
+} from "./Action.js";
+export { ActionCache, ActionCacheError, type ActionCacheShape } from "./ActionCache.js";
+export {
+	ActionEnvironment,
+	ActionEnvironmentError,
+	type ActionEnvironmentShape,
+	GitHubContext,
+	RunnerContext,
+} from "./ActionEnvironment.js";
+export { ActionInput } from "./ActionInput.js";
+export { ActionLogger, type ActionLoggerShape } from "./ActionLogger.js";
+export { ActionOutputError, ActionOutputs, type ActionOutputsShape } from "./ActionOutputs.js";
+export { ActionState, ActionStateError, type ActionStateShape } from "./ActionState.js";
+export {
+	Artifact,
+	ArtifactError,
+	type ArtifactItem,
+	type ArtifactRef,
+	type ArtifactShape,
+	type DownloadOptions,
+	type DownloadResult,
+	type UploadOptions,
+	type UploadResult,
+} from "./Artifact.js";
+export { BlobEnvelope, BlobEnvelopeError } from "./BlobEnvelope.js";
+export { GitHubCacheBlobStore } from "./BlobStore.githubCache.js";
+export { type Blob, BlobStore, BlobStoreError, type BlobStoreShape, type S3Config } from "./BlobStore.js";
+export { BlobTransferError, type DataBlobTransfer, type FileBlobTransfer } from "./BlobTransfer.js";
+export { CacheKey, CacheKeyError } from "./CacheKey.js";
+export {
+	DetachedProcess,
+	DetachedProcessError,
+	type DetachedSpawnOptions,
+	ProcessId,
+	type ReadinessOptions,
+} from "./DetachedProcess.js";
+export { DryRun, type DryRunShape } from "./DryRun.js";
+export {
+	type ClientLayerOptions,
+	GitHubToken,
+	GitHubTokenError,
+	type ProvisionOptions,
+	type ReadOptions,
+} from "./GitHubToken.js";
+export { OidcClaims, OidcTokenError, OidcTokenIssuer, type OidcTokenIssuerShape } from "./OidcTokenIssuer.js";
+export { Secret } from "./Secret.js";
+export {
+	type ExtractOptions,
+	ToolInstaller,
+	ToolInstallerError,
+	type ToolInstallerShape,
+} from "./ToolInstaller.js";
+export { type AnnotationProperties, WorkflowCommand } from "./WorkflowCommand.js";

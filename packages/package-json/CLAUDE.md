@@ -103,6 +103,32 @@ re-exports below it).
   `{"name":"Dee"}`). It now collects unknown keys into `rest` and flattens them
   back on encode, so the on-disk shape never carries a literal `rest` key.
   Check every new sub-object class against a round-trip test.
+- **Wire provenance is remembered in a `WeakMap`, and `Schema.Class` instances
+  are NOT frozen — so the replay must be guarded.** `Person` and `Repository`
+  both remember the exact wire value each instance was decoded from and replay
+  it on encode for byte-level fidelity. An instance mutated **in place** keeps
+  its provenance entry while no longer being described by it; an unguarded
+  replay then writes the ORIGINAL value back and the edit is silently
+  discarded. `Person.isFaithful` / `Repository`'s `wire === url` check are what
+  prevent it. Two traps if you touch either:
+  - **`rest` is the field the string branch forgets.** A shorthand has no
+    syntax for extra keys, so a person decoded from `"Ann"` that later gains
+    `rest` is *not* faithfully described by it — the three named fields still
+    match, and without an explicit clause the added keys vanish on write.
+    `isShorthandExpressible` is that clause.
+  - **A test that rebuilds with `Person.make({ ...person, x })` cannot catch
+    any of this.** That produces a NEW instance with no provenance, so the
+    replay path is never reached. Mutate the same instance in place.
+- **An edited shorthand re-emits as a shorthand.** When provenance is stale,
+  `Person.FromValue` rebuilds the shorthand (`"Ann <new@x.dev>"`) rather than
+  upgrading to the object form; the object form is the fallback **only** when
+  the shorthand genuinely cannot carry the value (it gained `rest`). Shape
+  fidelity is the promise — a manifest's `author` must not silently change
+  representation because one field was edited — and data fidelity outranks it
+  in the one case where they conflict. `isShorthandExpressible` decides both,
+  deliberately the same predicate: split them and a person can be refused the
+  replay yet handed back as shorthand, dropping the very keys the refusal
+  detected.
 - `Schema.Class` instances are not `Pipeable` in v4; `Package` hand-rolls the
   `pipe` overload block. Preserve it if you touch the class.
 - `parseRange` decodes via `Schema.decodeUnknownExit` — never run an Effect

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-21
-last-synced: 2026-07-21
+updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -43,6 +43,7 @@ Runtime dependencies:
 | `@effected/package-json` (`workspace:~`) | the full-manifest bridge and the corepack `packageManager` codec |
 | `@effected/npm` (`workspace:~`) | the resolver **contracts** this package implements |
 | `@effected/git` (`workspace:~`) | typed git introspection — `ChangeDetector` and `WorkspaceSnapshots` run on its `Git` service |
+| `@effected/commands` (`workspace:~`) | the `LocalExec` **contract** this package implements — a boundary-tier edge, so [R2](../effect-standards.md#dependency-policy) does not propagate anything |
 | `effect` (peer) | core |
 
 There is no `minimatch` dependency — dependency-pattern matching and the enumerator's mini-glob both run on `@effected/glob`'s vendored engine. Subprocess spawning lives entirely behind `@effected/git`'s `ChildProcessSpawner` contract; there is no `node:child_process` anywhere here. Two modules are Node-only, and both are opt-in rather than on the main path. `ConfigDependencyHooks.layerLive` does an in-process dynamic `import()` of a config dependency's pnpmfile — a built-in/dynamic-import, not a dependency, so it does not affect tier, and its TSDoc names it plainly. `src/node-sync.ts` imports `node:fs` / `node:path`, but it is a **separate entry point** (`@effected/workspaces/node-sync`) that the index never re-exports, so nothing reaches it unless a consumer imports the subpath by name — the main entry stays platform-free (see [the escape hatch](#workspacessync--the-escape-hatch)). `WorkspacesSync` itself imports `node:*` not at all: since the 2026-07-16 retrofit its file and path operations are consumer-supplied.
@@ -65,6 +66,185 @@ Two conveniences sit on top (2026-07-16, dogfood items 2 and 4):
 
 - **`Workspaces.resolverLayer(options?)`** — `Layer<CatalogResolver | WorkspaceResolver, never, FileSystem | Path>`: `resolvers` pre-wired over `layerWithConfigDependencies(options)`, so the two contracts need only a platform from the consumer. It is **deliberately a parameterized layer function, and the fresh layer per call is the feature**: layers memoize by reference, so each call mints an unmemoized layer whose root discovery re-runs — including a per-call `process.cwd()` read when `options.cwd` is omitted. A build tool that changes directory between manifests gets a correct re-discovery each time precisely because nothing is shared across calls; a consumer that wants sharing binds one call's result to a `const`. Catalog assembly takes the hook-replay path — compose `resolvers` with `layer()` yourself if config-dependency code must not run in process.
 - **`Workspaces.resolveManifest(manifest, options?)`** — the one-shot 90% path: `manifest.resolve()` (npm's `Manifest`, [npm.md](npm.md#manifest-tolerant-manifest-level-resolution)) provided with a fresh `resolverLayer(options)` per call. Consumers processing many manifests check the pure `manifest.needsResolution` first and skip the call — and catalog assembly — entirely when nothing needs resolving.
+
+## Implementing @effected/commands' LocalExec contract
+
+The second inverted contract this package fills, on the same reasoning as [npm's resolvers](#implementing-effectednpms-resolver-contracts). [@effected/commands](commands.md) needs package-manager detection and workspace-root resolution for its tool discovery, and both live here — but a direct `commands` → `workspaces` edge would make that **boundary-tier** package integrated, and through the planned `npm` → `commands` edge would drag `npm`, `lockfiles` (pure!) and `package-json` up a tier with it. So `commands` declares the narrow `LocalExec` contract and **`@effected/workspaces` ships `Workspaces.localExecLayer(options?)`**, a `Layer<LocalExec, never, PackageManagerDetector | WorkspaceRoot>`.
+
+**The R2 direction is what makes this safe.** The `@effected/commands` edge is a `workspace:~` dependency on a *boundary* package, and [R2](../effect-standards.md#dependency-policy) taxes only tier-3 edges — so taking it changes nothing about this package's tier (already integrated, for `@pnpm/catalogs.*`) and costs a consumer nothing extra. The inversion exists to protect `commands` and its dependents, not us.
+
+**The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` in `commands` is the one home of the four managers' `exec`/`dlx` prefixes; this layer detects *which* manager owns the directory and asks `commands` what that manager's argv looks like. The tests assert against that same static rather than a copy, so the two packages cannot silently drift apart on the table.
+
+**`None` is success, and the boundary is where the value is.** The contract reserves its typed `LocalExecError` for **mechanism** failure, so the mapping from this package's error taxonomy is:
+
+| Condition | Answer | Why |
+| --- | --- | --- |
+| No workspace root above `cwd` | `Option.none()` | "No project-local way to run tools here" is an ordinary fact; a bare directory should not have to catch an error to learn it. |
+| `PackageManagerDetectionError` | `Option.none()` | The detector found no evidence and [refused to guess](#the-standalone-and-declaration-tiers). No identifiable launcher is the same honest absence. |
+| `WorkspaceManifestError` | `LocalExecError` | A manifest that exists but cannot be read or parsed is **broken**, not absent. Reporting `None` here would tell a caller "no local tooling" when the truth is "your repository is damaged". |
+
+That split falls straight out of the detector's own two-error taxonomy, which is why it is stated rather than invented. All three rows are mutation-pinned in both directions — turning either `None` row into an error, and degrading the error row into `None`, each fails its own test.
+
+`directory` on the resulting `ExecContext` is the resolved **workspace root**, not the caller's cwd: a project-local launcher has to run where the workspace is, and resolving that root is the reason this layer exists rather than `LocalExec.layerFor`. The `{ cwd }` option follows the house [ambient-cwd convention](#ambient-cwd-is-an-explicit-option), read per call rather than at layer construction.
+
+A consumer with no monorepo never needs this layer and therefore never installs this package: `LocalExec.layerNone` and `LocalExec.layerFor(manager)` are one-liners in `commands`. That asymmetry is the entire payoff of the inversion.
+
+## Publishability as a contract seam
+
+Designed and **built** 2026-07-25 at Spencer's request, ahead of the systems dogfood. As-built notes are [at the end of this section](#as-built). The claim under review: `PublishabilityDetector` is described in its own source comment as the package's headline swappable service ("standard npm semantics are the default, and an organization with its own publish rules replaces the layer"), and the downstream evidence says that swap does not currently work the way the comment promises.
+
+### Current state: what silk-effects actually has to do
+
+`@savvy-web/silk-effects` is the real consumer, and it performs **three** distinct contortions to impose its own policy.
+
+**1. The default implementation is unreachable except through the tag it occupies.** `SilkPublishability.ts:454` reads:
+
+```ts
+const vanilla = yield* Effect.provide(PublishabilityDetector, PublishabilityDetector.layer);
+```
+
+Silk's adaptive detector has a `mode: "vanilla"` branch that wants *our* npm semantics. Because those semantics exist only as a `Layer` bound to `PublishabilityDetector` — the very tag silk is replacing — it must build that layer and provide it to the tag **inside** its own implementation of that tag, purely to get a function it could otherwise have called. This is the highest-value thing to fix and the cheapest: the rules should be reachable as a value.
+
+**2. The composite bakes the default in, so the graph is threaded twice.** `Workspaces.ts:102` ends:
+
+```ts
+return Layer.mergeAll(roots, detector, discovery, lockfiles, catalogs, PublishabilityDetector.layer);
+```
+
+so `Workspaces.layer()` / `layerWithGit()` always provide npm semantics. Silk's composition (`changesets/services/deps-regen.ts:645-651`) therefore passes `kitGraph` **twice** — once as the base, and once *into* its own override, which needs discovery to work — and relies on `Layer.provide` shadowing to beat the default the base is still supplying:
+
+```ts
+const kitGraph = Workspaces.layerWithGit(options);
+return DepsRegenLive.pipe(
+  Layer.provide(ConfigInspectorLive.pipe(Layer.provide(Layer.mergeAll(ChangesetConfigReaderLive, kitGraph)))),
+  Layer.provide(PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(Layer.mergeAll(ConfigGraph, kitGraph)))),
+  Layer.provide(ConfigGraph),
+  Layer.provide(kitGraph),          // still carrying the default detector
+);
+```
+
+**3. The override is silently order-dependent, in the dangerous direction.** Probed against `effect@4.0.0-beta.101`:
+
+| Composition | Resolves to |
+| --- | --- |
+| `mergeAll(composite, custom)` | **CUSTOM** ✅ |
+| `mergeAll(custom, composite)` | **DEFAULT** ❌ |
+| `custom.pipe(Layer.provideMerge(composite))` | **CUSTOM** ✅ |
+
+Last-wins. So `Layer.mergeAll(myDetector, Workspaces.layer())` — which reads in English as "my detector, plus the workspace services" — **silently reverts to npm semantics**. There is no type error and no warning. For a service that decides *whether a package publishes and to which registry*, a silent revert to "publishes to the public npm registry with `access: public`" is the worst available failure mode, and it is one word-order away at every call site.
+
+That third point is what turns this from an ergonomics complaint into a correctness one.
+
+### (a) The shape stays; the empty array is the open question, not the answer type
+
+`detect(pkg) => Effect<ReadonlyArray<PublishTarget>>` is right and should not become a richer classification **yet**. Every consumer surveyed asks exactly one question of it — `targets.length > 0`:
+
+- our `VersioningStrategy.detect` (`VersioningStrategy.ts:165-172`),
+- silk's `listPublishablePackageNames` (`changesets/utils/publishability.ts:44-48`).
+
+Nothing reads a reason, so a reason channel would be speculative API against this package's ships-on-evidence discipline. **But the conflation is real and worth recording**: silk's adaptive detector returns `[]` for three different facts — the package is changeset-ignored, the repo's mode is `none`, or the package genuinely does not publish. A user asking "why didn't my package release?" cannot be answered from the contract's output.
+
+**Trigger to revisit:** the first consumer that must *explain* an exclusion rather than act on it. The additive shape then is a second method (`explain(pkg) => Effect<Exclusion>`), not a change to `detect` — `detect`'s totality is what makes it cheap to call in a loop over every package.
+
+The `never` error channel also stays. Silk's config lookups are fallible and it folds them ("degrade or die", already documented on the shape); that cost is deliberate and buys every consumer a total question.
+
+### (b) Remove the default from the composites; require it in R
+
+**Recommendation: `Workspaces.layer()` and `layerWithGit()` stop providing `PublishabilityDetector` and start requiring it**, exactly as [`ToolDiscovery.layer` requires `LocalExec`](commands.md) and as [npm's resolver contracts](npm.md#resolver-contracts) are required rather than defaulted.
+
+```ts
+// before — the default is invisible and beats a naively-ordered override
+Layer.Layer<WorkspacesServices, never, FileSystem | Path>
+
+// after — the choice is in the type, and unmade wiring does not compile
+Layer.Layer<WorkspacesServices, never, FileSystem | Path | PublishabilityDetector>
+```
+
+Why this over the alternatives:
+
+- **Over an options bag** (`Workspaces.layer({ publishability })`): a layer passed as an option still hides the decision inside a call, and its own `R` would have to be threaded through the composite's signature. The R-hole states the requirement in the one place a reader already looks.
+- **Over keeping the default and documenting the ordering**: documentation does not fix a silent revert. The failure mode is a correct-looking composition that publishes to the wrong registry.
+- **Over `Layer.mock` / shadowing helpers**: those address tests, not production policy.
+
+**As built, the R-hole lives at the consuming operation, not the composite** — nothing inside a composite consumes a detector, so the composites neither provide nor require one (`layer()`/`layerWithConfigDependencies()` stay at `R = FileSystem | Path`) and the requirement surfaces where a program actually asks a publishability question (`VersioningStrategy.detect` requires `PublishabilityDetector | WorkspaceDiscovery`). The cost is one explicit line for programs that ask, which is the point — it makes "npm semantics" a **choice** rather than an ambient default nobody knew they had:
+
+```ts
+Effect.provide(program, Layer.mergeAll(Workspaces.layer(), PublishabilityDetector.layerNpm))
+```
+
+Both merge orders are safe — the composite supplies no default to shadow, so the old last-wins hazard is structurally gone (a regression test pins a caller's detector observed through the composite in both orders). One diagnostic consequence for migrators (round-1 finding): a missing detector fails to close `R` at the downstream consumer that names it, which can be far from the layer-wiring site the old composite-level error would have pointed at.
+
+### (c) The npm rules stay here, as one implementation among peers — and as a value
+
+They are genuine npm semantics and belong in the package that models npm workspaces; nothing is gained by exiling them. Two changes make them a peer rather than a default:
+
+- **Rename `PublishabilityDetector.layer` → `layerNpm`.** A static called `layer` reads as "the" layer; once no composite provides it automatically, the name should say which policy it is. Add `layerNone` (publishes nothing) for the CI-dry-run and test cases silk currently expresses with `mode: "none"`.
+- **Expose the rules as a value: `PublishabilityDetector.npm: PublishabilityDetectorShape`**, with `layerNpm = Layer.succeed(PublishabilityDetector, PublishabilityDetector.npm)`. This is the direct fix for contortion #1 — silk's vanilla branch becomes `yield* PublishabilityDetector.npm.detect(pkg)`, deleting the `Effect.provide`-inside-the-override entirely.
+
+That last point generalizes beyond this seam: **any shipped implementation of a swappable contract should be reachable as a value, not only as a layer bound to the tag it occupies.** A consumer composing *around* the default cannot use a layer without re-entering the tag it is replacing.
+
+### Worked before/after, on silk's real composition
+
+```ts
+// BEFORE — kitGraph threaded twice; the base still supplies a default that the
+// override must out-shadow; the "vanilla" branch re-instantiates our layer.
+const kitGraph = Workspaces.layerWithGit(options);
+return DepsRegenLive.pipe(
+  Layer.provide(ConfigInspectorLive.pipe(Layer.provide(Layer.mergeAll(ChangesetConfigReaderLive, kitGraph)))),
+  Layer.provide(PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(Layer.mergeAll(ConfigGraph, kitGraph)))),
+  Layer.provide(ConfigGraph),
+  Layer.provide(kitGraph),
+);
+
+// AFTER — one graph, one provide, no shadowing. The detector is a dependency of
+// the composite rather than a competitor to it.
+const detector = PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(ConfigGraph));
+const kitGraph = Workspaces.layerWithGit(options).pipe(Layer.provide(detector));
+return DepsRegenLive.pipe(Layer.provide(ConfigGraph), Layer.provide(kitGraph));
+```
+
+The detector still needs workspace services in its own right (it reads `pkg.packageJsonPath`), but it takes them from `FileSystem` + `ChangesetConfig`, not from the composite — so the cycle that forced the double-threading disappears.
+
+### (d) Migration cost
+
+| Site | Cost |
+| --- | --- |
+| `VersioningStrategy.detect` | **None.** Already requires `PublishabilityDetector` in `R`; it never resolved a default. |
+| `Workspaces.layer` / `layerWithGit` | Signature change: `RIn` gains `PublishabilityDetector`. Internal only — `compose` drops one merge member. |
+| In-kit tests composing the composite | One `Layer.provide(PublishabilityDetector.layerNpm)` each. |
+| Releases tooling / `@effected/app` | Same one line, at the edge where the platform layer already goes. |
+| silk-effects | **Net deletion**: the double-threaded `kitGraph`, the shadowing reliance, and the `Effect.provide`-inside-the-override all go. |
+
+Pre-1.0, and the only breaking part is a required-service addition the compiler reports at every site.
+
+### Open questions
+
+All three were ruled on at the implementation checkpoint and are recorded with their answers.
+
+1. **`layerNpm` vs an alias** — **clean rename, no alias.** An alias preserves the "there is a default" reading the change exists to kill. Pre-1.0, compiler-guided, one in-kit call site: the break was free.
+2. **`layerNone`** — **ships now.** silk's changeset `mode: "none"` is a real downstream consumer arriving with the dogfood, not speculation.
+3. **`@effected/app`** — **moot, verified.** It composes `xdg` + `store` + `config-file` and takes no `@effected/workspaces` edge; a grep for the composites across `packages/*/src` finds no consumer outside this package.
+
+### As built
+
+`PublishabilityDetector` now exposes its policies as **values** (`npm`, `none`) with layers built over them (`layerNpm`, `layerNone`); the bare `layer` static is gone. `compose` no longer merges a detector, and `WorkspacesServices` no longer lists it among the services the composite provides.
+
+**One correction to the design above, found by probing rather than assuming.** The design said the composites' signatures would *gain* `PublishabilityDetector` in `RIn`. They do not, and should not: nothing **inside** the composite consumes a detector — it simply stops providing one. Their `RIn` stays `FileSystem | Path`. The requirement surfaces in the **consumer's** `R` (`VersioningStrategy.detect` already declared it) and is enforced wherever `R` must be closed:
+
+```text
+Effect<VersioningStrategy, WorkspaceDiscoveryFailure, PublishabilityDetector>
+  is not assignable to
+Effect<VersioningStrategy, WorkspaceDiscoveryFailure, never>
+```
+
+That is strictly better than what was designed. A consumer that uses discovery, catalogs or lockfiles and never asks a publishability question is never made to supply a publish policy, and the diagnostic names the operation that actually needs it rather than the composite. Worth knowing when reading the section above: the *mechanism* is "the composite provides nothing", not "the composite requires it".
+
+**The seam has a named regression test.** `__test__/Workspaces.test.ts` pins a caller's detector as the one observed through the composite in **both** merge orders, plus `layerNpm` / `layerNone` and the value-reachability case. The load-bearing one is "merged BEFORE it — the order that used to silently lose": re-baking the default into `compose` fails exactly that test, with the custom registry replaced by `https://registry.npmjs.org/` — the silent revert, reproduced on demand.
+
+Two things the implementation confirmed that the design only argued:
+
+- **No existing test covered the seam.** Removing the default from every composite broke nothing except one `PublishabilityDetector.layer` reference in `ChangeDetector.test.ts`. The swap the package advertised as its headline example had no coverage at all, which is how the ordering hazard survived.
+- **The compiler found every site.** One `tsc --noEmit` enumerated the whole migration: the `WorkspacesServices` union, the composite's return type, and the single test reference. Nothing needed searching for.
 
 ## The packages: enumerator
 
@@ -89,7 +269,7 @@ Module-per-concept.
 | `src/index.ts` | Re-exports only |
 | `src/WorkspacePackage.ts` | `WorkspacePackage` class (getters, dependency queries, `dependencyDiff`, `matchesDependency` over `@effected/glob`, `manifest` bridging to `@effected/package-json`), `DependencyDiff` |
 | `src/WorkspaceRoot.ts` | `WorkspaceRoot` service + layer (over `@effected/walker`), `WorkspaceRootNotFoundError` |
-| `src/PackageManagerName.ts` | The `PackageManagerName` literal, `DetectedPackageManager`, `PackageManagerDetector` service + layer, `PackageManagerDetectionError` |
+| `src/PackageManagerName.ts` | The `PackageManagerName` literal, `DetectedPackageManager`, `PackageManagerDetector` service + layer + the `makeTest` / `layerTest` double, `PackageManagerDetectorShape`, `PackageManagerDetectionError` |
 | `src/WorkspaceDiscovery.ts` | `WorkspaceInfo`, `WorkspaceDiscovery` service + layer, the `makeTest` / `layerTest` test double, the `workspaceResolver` layer, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError` |
 | `src/DependencyGraph.ts` | `DependencyGraph` **value class** (graph + topological sort + cycles), `CyclicDependencyError` |
 | `src/ChangeDetector.ts` | `ChangeDetectionOptions`, `ChangeDetector` service + layer (over `@effected/git`'s `Git`), `ChangeDetectionError` |
@@ -99,7 +279,9 @@ Module-per-concept.
 | `src/ConfigDependencyHooks.ts` | `ConfigDependencyHooks` contract service, `layerLive`, `layerNoop`, the `HookInjection` result type (`catalogs` + `releaseAge`) |
 | `src/LockfileReader.ts` | `LockfileReader` service + layer (the IO half of `@effected/lockfiles`), `LockfileReadError` |
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetectorShape`, `PublishabilityDetector` service + default layer |
-| `src/Workspaces.ts` | The composite layers, `resolverLayer`, `resolveManifest` |
+| `src/ReleaseTag.ts` | `TagStyle`, `TagFormatOptions`, the `ReleaseTag` value class, the `TrackingTag` alias family with `TrackingTagOptions`, and `classifyTag` / `TagClassification` — a leaf importing nothing else here |
+| `src/VersioningStrategy.ts` | `VersioningStrategyType`, `ClassifyOptions`, `VersioningDetectOptions`, `PackageRelease`, the `VersioningStrategy` value class (`classify`, `detect`, `tagsFor`) |
+| `src/Workspaces.ts` | The composite layers, `resolverLayer`, `resolveManifest`, `localExecLayer` |
 | `src/WorkspacesSync.ts` | The synchronous escape hatch over consumer-supplied ops (`SyncFileSystem`, `SyncPath`, `WorkspacesSyncOptions`) |
 | `src/node-sync.ts` | **A second package entry** (`@effected/workspaces/node-sync`) — `nodeSyncOps` over `node:fs` / `node:path`; the only module here that imports `node:*` |
 | `src/internal/` | `traverse.ts` (the traversal state machine), `enumerate.ts` (the Effect enumerator over it), `patterns.ts` (`packages:` pattern reading), `catalogs.ts` (the `@pnpm/catalogs.*` boundary), `limits.ts` |
@@ -140,6 +322,21 @@ Three `Context.Service` classes, each with its layer in the same file.
 
 `PackageManagerDetector` uses a priority chain where **lockfile evidence is the primary signal** — it is what says which manager actually ran: `pnpm-workspace.yaml`, then `bun.lock`/`bun.lockb` plus a manifest field naming bun, then `yarn.lock` plus a manifest field naming yarn, then a `workspaces` field for npm. The manifest conjunction on bun and yarn disambiguates a stray `yarn.lock` in an npm repo.
 
+#### The standalone and declaration tiers
+
+Those four markers answer "which manager runs this **workspace**". Most repos are not workspaces, and until 2026-07-25 a single-package repo — a `pnpm-lock.yaml`, no `workspaces` field — was **undetectable**, failing typed. That gap is why silk-release-action carried *three* competing hand-rolled detections with two different silent defaults (`"npm"` in `main.ts`, `"pnpm"` in `detect-repo-type.ts`, plus an input-narrowing helper that is not detection at all). Two tiers close it:
+
+- **Standalone** — `pnpm-lock.yaml` → pnpm, a bun lockfile plus a manifest naming bun → bun, `yarn.lock` plus a manifest naming yarn → yarn, `package-lock.json` → npm. The conjunctions **mirror the workspace tier exactly** rather than inventing a looser second rule inside one service: a pnpm or npm lockfile is written by exactly one manager and stands alone, while a stray `yarn.lock` is as common in a single-package repo as in a workspace.
+- **Declaration** — no lockfile at all, but `packageManager` or `devEngines.packageManager` names one of the four. A fresh clone before its first install has no lockfile to read and its manifest still says plainly what is meant to run. Weaker evidence, so it is consulted last.
+
+Both tiers run **after every workspace marker has missed**, which makes the widening **strictly additive**: no input that already resolved can change its answer, and a stray `package-lock.json` cannot turn a pnpm workspace into an npm repo. A regression test pins that ordering, because reordering the tiers is the obvious and wrong "simplification".
+
+**The detector still refuses to guess.** Nothing matching is `PackageManagerDetectionError`, never a fabricated default — and the proof that this is the right contract is that the two consumer reimplementations both invented a default here and invented *different* ones. Choosing one is policy, not detection, and a library that makes the choice silently guarantees some caller is wrong. A consumer wanting a default writes `Effect.orElseSucceed` where a reader can see it. `CHECKED` grew to ten markers so the error still names everything it tried.
+
+> **Open, deliberately not changed:** within the workspace tier the npm `workspaces` field is still consulted *before* any standalone lockfile, so a repo with both `workspaces` and a `pnpm-lock.yaml` reports npm. Reordering so lockfile evidence outranks the `workspaces` field would be a behavior change to an already-shipped path rather than an additive one; it is recorded here rather than made silently.
+
+**The detector's double** (2026-07-25) completes the three-service set: `PackageManagerDetector.makeTest(overrides?)` / `layerTest(overrides?)` over the now-exported `PackageManagerDetectorShape`, matching `WorkspaceRoot` and `WorkspaceDiscovery`. **`detect` has no honest default and dies** — the `WorkspaceDiscovery.info` posture, and here the reasoning is sharper than "no default exists": a double that answered `"pnpm"` would contradict the defining property of the service it stands in for, which is that the live detector *refuses to guess*. Failing typed would be the subtler mistake, because `PackageManagerDetectionError` reads as a legitimate "no manager here" answer that a consumer branches on and proceeds past, never learning the test simply forgot to stub. Both wrong shapes are mutation-pinned. Together with the other two `layerTest`s, the whole discovery path now stands up with no filesystem at all.
+
 #### The two fields that declare a manager
 
 Corepack reads **both** the top-level `packageManager` and `devEngines.packageManager`, and they are not interchangeable. `packageManager` is not deprecated; `devEngines` is a validation and fallback layer over it. Corepack validates the two against each other when both are present and falls back to `devEngines.packageManager` when the top-level field is absent. The detector implements:
@@ -153,6 +350,46 @@ Both fields' versions normalize through `@effected/package-json`'s `PackageManag
 **A malformed manifest hint is ignored, never fatal.** A non-object `devEngines`, a non-object or array `devEngines.packageManager`, a `name` containing `@`, or an unusable version cannot turn a detectable workspace into a detection failure. A manifest that is *present but unreadable or unparseable* is different — it fails with a typed `WorkspaceManifestError`, because a corrupt root manifest is a real problem, not a missing hint. `detect`'s error channel is `PackageManagerDetectionError | WorkspaceManifestError`.
 
 `PackageManagerName` is this package's own literal (`"npm" | "pnpm" | "yarn" | "bun"`). It is structurally identical to `@effected/lockfiles`' `LockfileFormat` and assigns freely to it (which `LockfileReader` relies on), but they are different concepts sharing a carrier, and the name avoids colliding with `@effected/package-json`'s `PackageManager` (the corepack spec class) in a consumer's import list.
+
+### VersioningStrategy and ReleaseTag
+
+Two pure value classes (2026-07-25, github-split Phase 1c) answering the release-shaped questions the workspace model already holds the facts for: *how does this workspace version*, and *what is the git tag called*. They replace `@savvy-web/silk-effects`' `VersioningStrategy` / `TagStrategy` services and silk-release-action's parallel `determine-tag-strategy.ts`.
+
+**Neither is a service, and the kit-wide rule is what settles it** — a service shape carries only effectful members, and both halves here are total pure functions. The v3 originals wrapped classification and formatting in `Effect` with `never` error channels purely to fit a service shape, which is precisely the shape that rule exists to prevent. There is nothing to swap: the two genuinely swappable inputs (`WorkspaceDiscovery`, `PublishabilityDetector`) are already services with their own doubles.
+
+`VersioningStrategy.classify({ packages, fixedGroups? })` is total: `single` (≤ 1 publishable package), `fixed-group` (one group covers the whole publishable set), else `independent`. Two properties are load-bearing and easy to lose: names are **de-duplicated before counting**, or `["a", "a"]` misclassifies a one-package repo as independent and cuts per-package tags for it; and lockstep requires **one single group** to cover the set — two groups covering it between them mean the packages move separately, so a naive "are there any fixed groups?" test is wrong. A group naming non-publishable or nonexistent packages still counts, because groups describe the whole repo rather than the publishable slice.
+
+**`fixedGroups` is a plain argument, never read from a file.** Fixed groups are a release tool's concept — changesets writes them to `.changeset/config.json` — and a workspace-model package that read that file would be adopting one tool's schema and one tool's release policy. A `VersionGroups` contract service (the `CatalogResolver` shape) is the recorded escalation if a second group source ever appears; today there is one, and it lives outside the kit.
+
+`VersioningStrategy.detect(options?)` is the one `Effect.fn`, over `WorkspaceDiscovery | PublishabilityDetector`: enumerate, keep what publishes somewhere, classify. Asking publishability through the service is the point — a consumer honouring a release tool's ignore list swaps the layer rather than filtering afterwards, which is what silk-release-action already does.
+
+`ReleaseTag` is a leaf module importing nothing else in the package. `single` and `scoped` format `1.2.3` and `@scope/pkg@1.2.3` / `pkg@1.2.3` — `versionPrefix` defaults to `""` **uniformly**, strict SemVer, chosen deliberately (2026-07-25, Spencer's call). This diverges from `silk-release-action`'s live `pkg@v1.2.3` / `@scope/pkg@1.2.3` scoped/unscoped `v` asymmetry on purpose: that asymmetry was inherited rather than designed (two v3 implementations disagreed about it, one contradicting its own doc comment), and once the kit had to pick anyway, strict SemVer is the one worth keeping. Git tag history is not an API: pre-1.0 breaking-change freedom covers our own code, not a consumer's existing tags — a consumer that wants the GitHub `v<semver>` release-tag convention (or keeps existing `v`-prefixed tag history) passes `versionPrefix: "v"` explicitly. Only a **leading** `@` makes a name scoped, so `weird@name` is not a scope — that still governs the packageName/version split, just not the prefix default.
+
+**v3's `TagFormatError` is gone.** Its only cause was an empty version, which `Schema.NonEmptyString` now catches during `make`, so formatting is total and every call site sheds an error arm. A bad version reaching these statics is developer wiring rather than untrusted input, so it dies as a defect — the `matchesDependency` posture.
+
+#### TrackingTag — the floating alias family
+
+Release tags are strict SemVer 2 and immutable. **Tracking tags are the deliberately-not-SemVer alias family**: `v1` and `v1.2`, re-pointed at whatever release is newest in that line. This is the GitHub Actions distribution convention — a consumer writes `uses: owner/repo@v1` and gets the newest 1.x.
+
+`TrackingTag` is **its own concept, not a third `TagStyle`**, and the reason is that it is derived *from* a version rather than being a way of formatting one: a release tag names one immutable version, while a tracking tag carries a truncated number that is not a version at all. Folding them together would put a mutable pointer and an immutable name behind one type. It lives in `ReleaseTag.ts` because the classifier below has to know both families, so splitting the modules would force one to import the other anyway.
+
+`TrackingTag.forVersion(version, options?)` derives the set, broadest first, with `packageName` for a monorepo's `@scope/pkg@v1` and `precision: "major"` to skip the minor alias. Three properties are load-bearing:
+
+- **A prerelease derives NOTHING**, and the override (`includePrerelease`) is off by default. Anyone depending on `owner/repo@v1` is asking for the newest *stable* 1.x; re-pointing that alias at `1.0.0-beta.3` ships a prerelease to every such consumer with no signal. Pinned by tests and by two mutants (removing the guard, and treating `+build` as a prerelease).
+- **Build metadata is not a prerelease.** `+build` carries no precedence meaning in SemVer, so `1.2.3+sha.abc` is the stable `1.2.3` and derives normally. Stripping build *before* testing for `-` is what makes that correct; the obvious wrong implementation treats any `-`-or-`+` suffix as prerelease, and its own mutant pins it.
+- **Derivation is total and never throws.** A version that is not `X.Y.Z` derives nothing, because this is a query about a version rather than a validation of one — and `WorkspacePackage.version` is deliberately tolerant, so odd versions reach here routinely.
+
+0.x versions **do** derive aliases. Floating `v0` across 0.x minors is a genuine hazard, but which aliases to publish is policy decided where tags are moved, not something a derivation should quietly withhold.
+
+**Moving a git tag is not this package's business.** The module derives, formats and parses; re-pointing is a consumer concern over `@effected/git`. That omission is what keeps `ReleaseTag.ts` a pure leaf.
+
+`classifyTag(tag)` answers the recognition half: given any tag string, is it a release tag, a tracking alias, or neither? The families are told apart by **segment count, not by the `v` prefix** — three numeric segments is a version (`1.0.0` and `v1.0.0` are both release tags), one or two is a truncated alias. The `v` *is* required on an alias: a bare `1` is neither valid SemVer nor the convention, and accepting it would make the classifier guess. `unrecognized` is a real answer rather than a failure, because a repository's tags include `latest`, branch names and whatever else humans wrote. Round-tripping is a tested property in both directions — every tag `ReleaseTag` and `TrackingTag` format classifies back to its own family with fields intact — which is what makes the classifier trustworthy rather than a parallel guess that can drift from the producers.
+
+**`@effected/semver` was consciously declined**, matching the call [markdown.md](markdown.md) records for its `$schema` version grammar. The tracking-tag grammar is not SemVer, and the derivation needs only the three numeric segments plus the presence of a prerelease — roughly fifteen lines. A dependency edge for that is disproportionate. It earns itself the day something here needs real semver *comparison* (say, "is this release the newest matching `v1`"), which no caller asks for: choosing what a tracking tag should point at is the consumer's, made where the tag is moved.
+
+`strategy.tagsFor(releases, options?)` folds the two together and is what collapses the consumer's ~110-line `determineTagStrategy` + `isMonorepoForTagging` to two lines. Under `single`/`fixed-group` it returns exactly one tag carrying the **first** release's version; a lockstep batch shares a version by construction, so the choice is visible only on a batch that should not exist. Whether a batch actually agreed is a property of that batch, not of the workspace, so the v3 `isFixedVersioning` flag is deliberately **not** ported — it stays the caller's one-line check.
+
+Round-1 adoption notes (2026-07-25): the tag-prefix question the first adoption raised is **resolved**, and the [`ReleaseTag` section above](#versioningstrategy-and-releasetag) is written to the answer — the `versionPrefix` default flipped to `""` uniformly (strict SemVer, Spencer's call), so `ReleaseTag.scoped` and `ReleaseTag.single` no longer silently rename tags for a no-prefix convention; a consumer keeping the `v`-prefixed convention passes `versionPrefix: "v"` explicitly, and the consumer maps are updated to match. And `classify({ packages: [] })` is the **canonical "nothing publishable" value** at fallback call sites — a named `empty` constructor was requested and declined for now (one more name for a value the type already expresses); revisit if a second consumer asks.
 
 ### PublishabilityDetector
 
@@ -299,4 +536,6 @@ Mutation-proven edges:
 
 ## Build
 
-Standard per [package-setup.md](../package-setup.md). `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized class-factory bases; the gate is a zero-warning `dist/prod/issues.json` with only `*_base` symbols suppressed. The prod gate's expected suppressed count is **28** (`suppressed: 0` in the prod gate means the build did not run properly).
+Standard per [package-setup.md](../package-setup.md). `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized class-factory bases; the gate is a zero-warning `dist/prod/issues.json` with only `*_base` symbols suppressed. The prod gate's expected suppressed count is **31** — 28 plus `ReleaseTag_base`, `VersioningStrategy_base` and `TrackingTag_base` (`suppressed: 0` in the prod gate means the build did not run properly).
+
+The `_base` suppression is scoped to `_base` and nothing else, and Phase 1c demonstrated why: `VersioningStrategy.tagsFor` originally named a module-private `Release` interface on a `@public` signature, and the build reported it as a genuine `ae-forgotten-export` that the narrow pattern correctly did **not** mask. That is real surface a consumer must construct, so it was made `@public` as `PackageRelease` rather than suppressed — the policy's stated boundary, working as intended.

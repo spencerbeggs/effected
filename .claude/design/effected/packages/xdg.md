@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-07-25
+last-synced: 2026-07-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -188,21 +188,23 @@ Rungs 4 and 5 are **not** the XDG spec's per-kind defaults (`~/.config`, `~/.loc
 ### XdgConfig — the config-file bridge
 
 ```ts
-const XdgConfig = {
+class XdgConfig {
+  private constructor() {}
+
   /** Search the app's XDG config search path for `filename`. */
-  resolver(options: { readonly filename: string }):
-    ConfigResolver<AppDirs | FileSystem.FileSystem>,
+  static resolver(options: { readonly filename: string }):
+    ConfigResolver<AppDirs | FileSystem.FileSystem>;
 
   /** Probe the OS-native config directory for `filename`. */
-  nativeResolver(options: { readonly namespace: string; readonly filename: string }):
-    ConfigResolver<Xdg | FileSystem.FileSystem | Path.Path>,
+  static nativeResolver(options: { readonly namespace: string; readonly filename: string }):
+    ConfigResolver<Xdg | FileSystem.FileSystem | Path.Path>;
 
   /** The default save target: `<app config dir>/<filename>`. */
-  savePath(filename: string): Effect<string, never, AppDirs | Path.Path>,
-} as const;
+  static savePath(filename: string): Effect<string, never, AppDirs | Path.Path>;
+}
 ```
 
-Statics on a concept object, matching `ConfigResolver.staticDir` / `Walker.ascend`. `resolver` searches the **whole XDG config search path** — `~/.config/<ns>/rc`, then `/etc/xdg/<ns>/rc`, in that order — which is what the spec has always said. Placement guidance: put `resolver` ahead of `nativeResolver` in a chain, so an existing `~/.config/<app>` still beats the native directory. Both resolvers honour config-file's contract that `resolve`'s error channel is `never`, and they get that from walker rather than a hand-rolled `catchAll` (see below).
+Statics on a concept class, matching `ConfigResolver.staticDir` / `Walker.ascend` — the [house container form](../effect-standards.md#a-sanctioned-grouped-statics-container-is-a-static-class-not-an-as-const-object-2026-07-25), converted from an `as const` object 2026-07-25 with call syntax unchanged so the doc comments above survive into the built declarations. `resolver` searches the **whole XDG config search path** — `~/.config/<ns>/rc`, then `/etc/xdg/<ns>/rc`, in that order — which is what the spec has always said. Placement guidance: put `resolver` ahead of `nativeResolver` in a chain, so an existing `~/.config/<app>` still beats the native directory. Both resolvers honour config-file's contract that `resolve`'s error channel is `never`, and they get that from walker rather than a hand-rolled `catchAll` (see below).
 
 ### Deliberately not present
 

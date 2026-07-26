@@ -41,7 +41,7 @@ Available via the Skill tool (several also auto-load on trigger):
   (plus the unstable namespaces) in one what-it-is / when-to-reach-for-it
   table. Consult FIRST when deciding which module a task needs.
 - effected-packages — the routing map for the @effected kit: what each of the
-  18 packages contains, when to reach for it, and a per-package reference
+  25 packages contains, when to reach for it, and a per-package reference
   (services, usage, testing machinery). Consult before building lockfile/
   config/glob/semver/XDG/workspace/git capability the kit already ships.
 - effect-v4-source-lookup — the evidence ladder for confirming a v4 API before
@@ -76,6 +76,37 @@ Available via the Skill tool (several also auto-load on trigger):
   suppression for a zero-warning API (no @public X_base const).
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the
   malformed-input-fails-as-a-typed-error-never-a-defect invariant.
+
+The GitHub Actions / API suite — twelve skills over @effected/github-actions,
+github, commands, npm and sbom. START at the router; the rest are named by it
+and load on demand:
+- building-a-github-action — the ROUTER: which package owns a capability,
+  which skill teaches it, what does NOT exist (no @actions/*, no ANSI API, no
+  GithubMarkdown/ReportBuilder/ErrorAccumulator successor), and the fact that
+  the action bundler and scaffold are downstream savvy-web tooling, not here.
+- actions-runtime — Action.run, ActionServices, ActionRuntime.layer, the extra
+  layer that may require anything the runtime provides, failure rendering.
+- actions-inputs-outputs — ActionInput (Config, INPUT_ mangling) and
+  ActionOutputs, plus the Config.withDefault trap that silently swallows a
+  malformed input behind a default.
+- actions-reporting — logs, groups, buffers, annotations, job summaries, check
+  runs, sticky PR comments.
+- actions-state-and-secrets — ActionState, the Secret declassification seam,
+  DryRun, the DetachedProcess bare-pid guard.
+- actions-cache-and-artifacts — ActionCache, Artifact, BlobStore,
+  ToolInstaller, CacheKey; the Azure confinement and uses:-only-step traps.
+- github-api — the route IS the key (typed params and response, zero casts),
+  pagination, one retry policy, one GitHubError, upsert over TOCTOU.
+- github-app-tokens — GitHubApp, the client constructors, and the GitHubToken
+  provision/read/dispose bridge with its one-hour contract.
+- running-commands-and-tools — Run combinators, ToolDiscovery, LocalExec,
+  Redaction; every subprocess concept is core's and no implementation is.
+- release-and-publish — NpmRegistry, PackagePublish, NpmExecutor, release and
+  tracking tags, versioning strategies, the release-age gate.
+- supply-chain-attestation — SBOM, NTIA, in-toto/SLSA, OIDC, Sigstore signing,
+  attestation upload.
+- testing-actions — the makeTest/layerTest doubles convention, the scripted
+  octokit harness, and this domain's discriminating mutants.
 </skills>
 
 <agents>
@@ -93,10 +124,15 @@ the agents are the delivery mechanism. The specialists:
 - effect-migrator — MIGRATING any Effect v3 codebase to v4: library ports
   behind a characterization gate, or in-place application upgrades driven by
   the migration checklist. Delegate migration work here.
+- action-engineer — building, extending or debugging a GITHUB ACTION, a
+  release/publish pipeline, or any program talking to the GitHub API. Carries
+  the Actions suite above. Delegate whole action- and release-engineering
+  tasks here.
 </agents>
 
-When a task is substantially "write / review / migrate Effect code," dispatch
-the matching agent rather than doing it inline — when dispatch is permitted;
+When a task is substantially "write / review / migrate Effect code" or "build
+an action / call the GitHub API," dispatch the matching agent rather than
+doing it inline — when dispatch is permitted;
 otherwise load the same skills and do it inline. Either way what matters is the
 verify-against-installed-beta, typed-error-channel, and hardening disciplines
 they carry, which are easy to drop when working freehand.

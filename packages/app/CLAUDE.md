@@ -58,6 +58,14 @@ config-file's rule one level up (it measured 506 bytes versus 129.4 kB).
 Collecting the four concepts into one `App = { … }` would destroy the split
 silently.
 
+`App`, `AppStore`, `AppCache` and `AppConfig` are each a static class with a
+private constructor, not an `as const` namespace object — an `as const`
+object's member types are inferred in the built `.d.ts` and lose their TSDoc
+entirely, while a class's `static readonly` declarations keep it. Call syntax
+is unaffected (`App.layer(...)`); each internal implementation stays a plain
+function, carrying only a one-line pointer comment, with the full contract
+TSDoc living on the static.
+
 ## The ensure-before-open contract
 
 **The entire reason this package exists.** `SqliteClient.layer` has **no error

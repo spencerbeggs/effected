@@ -131,7 +131,20 @@ export class PackageManagerDetectionError extends Schema.TaggedErrorClass<Packag
 }
 
 /** The markers probed, in priority order. Exposed on the error so the contract is not prose-only. */
-const CHECKED = ["pnpm-workspace.yaml", "bun.lock", "bun.lockb", "yarn.lock", "package.json#workspaces"] as const;
+const CHECKED = [
+	// The workspace tier: which manager runs this WORKSPACE.
+	"pnpm-workspace.yaml",
+	"bun.lock",
+	"bun.lockb",
+	"yarn.lock",
+	"package.json#workspaces",
+	// The standalone tier: which manager runs this single-package repo.
+	"pnpm-lock.yaml",
+	"package-lock.json",
+	// The declaration tier: which manager is MEANT to run, before any install.
+	"package.json#packageManager",
+	"package.json#devEngines.packageManager",
+] as const;
 
 /**
  * Every failure {@link PackageManagerDetector} can surface: no manager could be
@@ -141,6 +154,21 @@ const CHECKED = ["pnpm-workspace.yaml", "bun.lock", "bun.lockb", "yarn.lock", "p
  * @public
  */
 export type PackageManagerDetectionFailure = PackageManagerDetectionError | WorkspaceManifestError;
+
+/**
+ * The {@link PackageManagerDetector} service shape.
+ *
+ * @remarks
+ * Exported so a consumer can type a bespoke double against the contract without
+ * reaching into the class — the `WorkspaceDiscoveryShape` /
+ * `PublishabilityDetectorShape` convention.
+ *
+ * @public
+ */
+export interface PackageManagerDetectorShape {
+	/** Detect the package manager at a workspace root. */
+	readonly detect: (root: string) => Effect.Effect<DetectedPackageManager, PackageManagerDetectionFailure>;
+}
 
 /**
  * Detects which package manager owns a workspace root.
@@ -183,13 +211,9 @@ export type PackageManagerDetectionFailure = PackageManagerDetectionError | Work
  *
  * @public
  */
-export class PackageManagerDetector extends Context.Service<
-	PackageManagerDetector,
-	{
-		/** Detect the package manager at a workspace root. */
-		readonly detect: (root: string) => Effect.Effect<DetectedPackageManager, PackageManagerDetectionFailure>;
-	}
->()("@effected/workspaces/PackageManagerDetector") {
+export class PackageManagerDetector extends Context.Service<PackageManagerDetector, PackageManagerDetectorShape>()(
+	"@effected/workspaces/PackageManagerDetector",
+) {
 	/** Builds the service over core `FileSystem` and `Path`. */
 	static readonly make: Effect.Effect<
 		{ readonly detect: (root: string) => Effect.Effect<DetectedPackageManager, PackageManagerDetectionFailure> },
@@ -321,6 +345,62 @@ export class PackageManagerDetector extends Context.Service<
 				});
 			}
 
+			// ── the standalone tier ────────────────────────────────────────────
+			//
+			// Every workspace marker has missed, so this is not a workspace. Most
+			// repos are not: before this tier existed, a single-package repo with a
+			// pnpm-lock.yaml and no `workspaces` field was undetectable, and
+			// consumers answered the question themselves — three times, with two
+			// different silent defaults.
+			//
+			// It runs LAST on purpose, so it is strictly additive: no input that
+			// already resolved can change its answer, and a stray package-lock.json
+			// cannot turn a pnpm workspace into an npm repo.
+			//
+			// The conjunctions mirror the workspace tier exactly rather than
+			// inventing a looser second rule inside one service: a pnpm or npm
+			// lockfile is written by exactly one manager and stands alone, while a
+			// yarn or bun lockfile still needs the manifest to name its manager,
+			// because a stray yarn.lock is as common here as in a workspace.
+			if (yield* has(root, "pnpm-lock.yaml")) {
+				return DetectedPackageManager.make({ name: "pnpm", version: versionFor(hints, "pnpm"), runtime: "node" });
+			}
+
+			if (bunLock && namesManager(hints, "bun")) {
+				return DetectedPackageManager.make({ name: "bun", version: versionFor(hints, "bun"), runtime: "bun" });
+			}
+
+			if ((yield* has(root, "yarn.lock")) && namesManager(hints, "yarn")) {
+				return DetectedPackageManager.make({ name: "yarn", version: versionFor(hints, "yarn"), runtime: "node" });
+			}
+
+			if (yield* has(root, "package-lock.json")) {
+				return DetectedPackageManager.make({ name: "npm", version: versionFor(hints, "npm"), runtime: "node" });
+			}
+
+			// ── the declaration tier ───────────────────────────────────────────
+			//
+			// No lockfile at all. A fresh clone before its first install has none to
+			// read, but its manifest still says plainly which manager is meant to
+			// run — weaker evidence than a lockfile, which is why it is consulted
+			// last, but evidence nonetheless.
+			const declared = declaredName(hints);
+			if (Option.isSome(declared)) {
+				const name = declared.value;
+				if (name === "pnpm" || name === "npm" || name === "yarn" || name === "bun") {
+					return DetectedPackageManager.make({
+						name,
+						version: versionFor(hints, name),
+						runtime: name === "bun" ? "bun" : "node",
+					});
+				}
+			}
+
+			// Nothing matched, and the package REFUSES TO GUESS. Both consumer
+			// reimplementations invented a default at this point and invented
+			// different ones — "npm" in one, "pnpm" in the other — which is the
+			// proof that the choice is policy, not detection. A caller who wants a
+			// default writes `Effect.orElseSucceed` where a reader can see it.
 			return yield* Effect.fail(new PackageManagerDetectionError({ root, checked: CHECKED }));
 		});
 
@@ -335,4 +415,61 @@ export class PackageManagerDetector extends Context.Service<
 		PackageManagerDetector,
 		PackageManagerDetector.make,
 	);
+
+	/**
+	 * The sanctioned in-memory double.
+	 *
+	 * @remarks
+	 * **`detect` has no honest default, so an unstubbed call dies** — the
+	 * `WorkspaceDiscovery.info` posture, for the same reason. A stand-in that
+	 * answered `"pnpm"` would hand a consumer a fact nothing established, and it
+	 * would contradict the very service it stands in for: the live detector's
+	 * defining property is that it [refuses to
+	 * guess](https://github.com/spencerbeggs/effected) when no evidence matches.
+	 * A double that guesses is worse than no double.
+	 *
+	 * Failing typed would be the subtler mistake: `PackageManagerDetectionError`
+	 * reads as a legitimate "no manager here" answer, so a consumer would branch
+	 * on it and proceed, never learning that the test simply forgot to stub.
+	 *
+	 * @param overrides - Members to supply; anything omitted dies on use.
+	 *
+	 * @example
+	 * ```ts
+	 * import { DetectedPackageManager, PackageManagerDetector } from "@effected/workspaces";
+	 * import { Effect, Option } from "effect";
+	 *
+	 * const TestDetector = PackageManagerDetector.layerTest({
+	 *   detect: () =>
+	 *     Effect.succeed(
+	 *       DetectedPackageManager.make({ name: "pnpm", version: Option.none(), runtime: "node" }),
+	 *     ),
+	 * });
+	 * ```
+	 */
+	static readonly makeTest = (overrides: Partial<PackageManagerDetectorShape> = {}): PackageManagerDetectorShape => ({
+		detect: () =>
+			Effect.die(
+				new Error(
+					"PackageManagerDetector.makeTest: detect() was called but not stubbed — no honest default DetectedPackageManager exists for a test double; pass a `detect` override.",
+				),
+			),
+		...overrides,
+	});
+
+	/**
+	 * {@link PackageManagerDetector.makeTest} behind `Layer.succeed`.
+	 *
+	 * @remarks
+	 * A parameterized layer factory mints a **fresh reference per call**, and
+	 * layers memoize by reference — bind the result to a `const` and reuse it
+	 * rather than calling `layerTest(...)` at each composition site.
+	 *
+	 * Pairs with `WorkspaceRoot.layerTest` and `WorkspaceDiscovery.layerTest` to
+	 * stand up the whole discovery path with no filesystem at all.
+	 */
+	static readonly layerTest = (
+		overrides: Partial<PackageManagerDetectorShape> = {},
+	): Layer.Layer<PackageManagerDetector> =>
+		Layer.succeed(PackageManagerDetector, PackageManagerDetector.makeTest(overrides));
 }

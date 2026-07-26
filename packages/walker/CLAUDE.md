@@ -22,6 +22,11 @@ already declared, so the dependency graph is unchanged.
 Walker needs **no platform package, even in tests** — `Path.layer` and
 `FileSystem.layerNoop` come from core. Do not add `@effect/platform-node`.
 
+`Walker` is a static class with a private constructor, not an `as const`
+namespace object — an `as const` object's member types are inferred in the
+built `.d.ts` and lose their TSDoc entirely, while a class's `static readonly`
+declarations keep it. Call syntax is unaffected (`Walker.ascend(...)`).
+
 ## The one absorbing loop
 
 `firstMatch` is the whole algorithm. `findRoot` is a genuine one-line

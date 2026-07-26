@@ -95,17 +95,7 @@ const runPhase = <A>(
 ): Effect.Effect<A, ConfigMigrationError> =>
 	Effect.suspend(run).pipe(Effect.mapError((cause) => new ConfigMigrationError({ version, name, phase, cause })));
 
-/**
- * Wrap a codec so that parsed content is brought up to the latest version.
- *
- * @remarks
- * The returned codec's error channel **widens** to include
- * {@link ConfigMigrationError} rather than flattening migration failures into
- * the inner codec's error — the reason the {@link (ConfigCodec:interface)} seam is generic
- * in its error type.
- *
- * @public
- */
+// Implementation of ConfigMigration.make; the public contract lives on the static.
 const make = (options: ConfigMigrationOptions): ConfigCodec<ConfigCodecError | ConfigMigrationError> => {
 	const access = options.versionAccess ?? VersionAccess.default;
 	const sorted = [...options.migrations].sort((a, b) => a.version - b.version);
@@ -132,4 +122,17 @@ const make = (options: ConfigMigrationOptions): ConfigCodec<ConfigCodecError | C
 };
 
 /** Versioned migration support for config codecs. @public */
-export const ConfigMigration = { make } as const;
+export class ConfigMigration {
+	private constructor() {}
+
+	/**
+	 * Wrap a codec so that parsed content is brought up to the latest version.
+	 *
+	 * @remarks
+	 * The returned codec's error channel **widens** to include
+	 * {@link ConfigMigrationError} rather than flattening migration failures into
+	 * the inner codec's error — the reason the {@link (ConfigCodec:interface)} seam is generic
+	 * in its error type.
+	 */
+	static readonly make = make;
+}

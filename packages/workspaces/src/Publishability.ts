@@ -119,8 +119,34 @@ export interface PublishabilityDetectorShape {
 export class PublishabilityDetector extends Context.Service<PublishabilityDetector, PublishabilityDetectorShape>()(
 	"@effected/workspaces/PublishabilityDetector",
 ) {
-	/** Standard npm publishing semantics. Pure — no filesystem, no platform services. */
-	static readonly layer: Layer.Layer<PublishabilityDetector> = Layer.succeed(PublishabilityDetector, {
+	/**
+	 * Standard npm publishing semantics, **as a value**. Pure — no filesystem,
+	 * no platform services.
+	 *
+	 * @remarks
+	 * Exposed as a shape and not only as a layer, because a consumer composing
+	 * *around* these rules cannot reach them through a layer without re-entering
+	 * the very tag it is replacing. `@savvy-web/silk-effects` had to write
+	 * `Effect.provide(PublishabilityDetector, PublishabilityDetector.layer)`
+	 * **inside its own implementation of that tag** to get at this function for
+	 * its pass-through branch; with the value exposed that becomes
+	 * `PublishabilityDetector.npm.detect(pkg)`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { PublishabilityDetector } from "@effected/workspaces";
+	 * import { Effect, Layer } from "effect";
+	 *
+	 * // A policy that defers to npm semantics for everything it does not veto.
+	 * const withVeto = Layer.succeed(PublishabilityDetector, {
+	 *   detect: (pkg) =>
+	 *     pkg.name.endsWith("-private")
+	 *       ? Effect.succeed([])
+	 *       : PublishabilityDetector.npm.detect(pkg),
+	 * });
+	 * ```
+	 */
+	static readonly npm: PublishabilityDetectorShape = {
 		detect: (pkg: WorkspacePackage) =>
 			Effect.sync(() => {
 				const config = pkg.publishConfig;
@@ -139,5 +165,36 @@ export class PublishabilityDetector extends Context.Service<PublishabilityDetect
 					}),
 				];
 			}),
-	});
+	};
+
+	/** Nothing publishes. */
+	static readonly none: PublishabilityDetectorShape = {
+		detect: () => Effect.succeed([] as ReadonlyArray<PublishTarget>),
+	};
+
+	/**
+	 * {@link PublishabilityDetector.npm} as a layer.
+	 *
+	 * @remarks
+	 * Named for its policy rather than called `layer`, deliberately. **No
+	 * composite in this package provides a publishability detector**: a
+	 * `Workspaces.layer()` that quietly supplied npm semantics made the choice
+	 * invisible, and worse, made a naively-ordered override lose to it in
+	 * silence — `Layer.mergeAll(myDetector, Workspaces.layer())` resolved to the
+	 * default, because `mergeAll` is last-wins. For a service that decides
+	 * whether a package publishes and to which registry, that silent revert was
+	 * the worst available failure. The requirement now sits in `R`, so the
+	 * choice is made once, explicitly, and unmade wiring does not compile.
+	 */
+	static readonly layerNpm: Layer.Layer<PublishabilityDetector> = Layer.succeed(this, this.npm);
+
+	/**
+	 * {@link PublishabilityDetector.none} as a layer: a workspace where nothing
+	 * publishes.
+	 *
+	 * @remarks
+	 * For dry runs, and for a release tool whose configuration disables
+	 * publishing wholesale — silk's changeset `mode: "none"` is exactly this.
+	 */
+	static readonly layerNone: Layer.Layer<PublishabilityDetector> = Layer.succeed(this, this.none);
 }

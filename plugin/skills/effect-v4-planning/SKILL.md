@@ -54,6 +54,43 @@ Observability row blank.
 Each pillar: the decisions to make, the idiomatic ruling, and the skill that owns
 the mechanics. Consult the linked skill; do not re-derive it here.
 
+### Pillar 0 — Pure core, effectful edge (runs before all four)
+
+Not a fifth pillar competing for a summary row — a cut you make **first**, that
+changes what the other four are even about. Every feature that touches IO also
+contains something that does not: a parse, a merge, a reconciliation, a decision
+about what to write. Split them. Put the algorithm in a **pure surface** — a
+`Schema.Class` with statics, or a plain module of functions — and reduce the
+service to a thin IO shell that reads, calls the pure thing, and writes.
+
+> Ask literally, before designing any service: **"is any of this pure, and can it
+> be tested without a layer?"** Whatever answers yes does not belong inside the
+> service.
+
+The cautionary tale is one program old. A 90-line reconciliation algorithm was
+written *inside* a `Layer.effect` closure. Nothing about it needed the
+filesystem — it took a desired state and an observed state and computed a diff —
+but sealed in the layer, the only way to exercise it was to write real files,
+provide a platform layer, run the effect, and read the files back. Every edge
+case cost a fixture directory, so the edge cases did not get tested. Lifted out,
+it is a pure function with a table-driven unit test and no layer at all, and the
+service shrinks to read → reconcile → write.
+
+Two consequences the other pillars inherit:
+
+- **Pillar 2:** if the pure part is genuinely pure, the service is small enough
+  that "no service at all" is often the honest answer for it.
+- **Pillar 4:** a pure core is testable by construction. A test that needs a
+  temp directory to check an algorithm is a design smell, not a fixture problem.
+- Related but distinct — a pure helper left on a service *shape* also breaks
+  `Layer.mock`'s partiality (`effect-v4-services-layers`). Pure things belong on
+  pure surfaces for testing reasons and for wiring reasons; they are the same
+  reason.
+
+State the cut in the summary's Services/Layers row: "pure `X` + `Y` service as IO
+shell", or "no pure core — all of this is IO" if you genuinely looked and found
+none.
+
 ### Pillar 1 — Data types & errors → `effect-v4-schema`, `effect-v4-idioms`, `hardening-a-parser-port`
 
 **Schemas.** Struct-vs-Class (Struct is the default; Class for behavior,
@@ -197,6 +234,8 @@ the change focused; do not scope-creep a refactor the user did not ask for.
 ## Self-check before you present
 
 - Every fallible operation has a named typed error with a stated audience.
+- Pillar 0 was run: the pure part is named and lives outside the service, or you
+  can say why there isn't one. No algorithm is sealed in a `Layer.effect` closure.
 - No service takes a `logger` parameter.
 - Observability row matches altitude and is not blank.
 - Every service dependency has a Test layer, and time is read via `Clock`.

@@ -10,6 +10,8 @@ tsconfig.json schemas, `extends`-chain resolution and config discovery. The one 
 
 **HARD RULE: zero `typescript` imports, including `import type`.** The version-coupled enum mappings live in `TsEnumCodec` as plain data tables; nothing else in the package may know TypeScript's numeric enums exist.
 
+`TsconfigDiscovery`, `TsconfigLoader`, `TsconfigLoaderSync` and `TsEnumCodec` are static classes with a private constructor, not `as const` namespace objects (the same conversion as `@effected/commands`' `Run`/`Redaction`/`Retry`) — an `as const` object's member types are inferred in the built `.d.ts` and lose their TSDoc entirely. `ResolvedTsconfig` and `PortableTsconfig` carry the same conversion one step further: each merges the static class with the pre-existing same-named data interface (`{@link (X:interface)}` / `{@link (X:class)}` selectors disambiguate the two in TSDoc), which trips Biome's `noUnsafeDeclarationMerging` — narrowly suppressed with a reason on both classes, since neither contributes instance members to the merge. `SpdxExpression`-shaped facades (a `type` alias sharing the facade's name, as in `@effected/spdx`) are NOT eligible for this conversion — a class cannot merge with a type alias, only with an interface. `TsEnumCodec.ts`'s conversion also fixed one latent `ae-unresolved-link` (a stale `{@link (CompilerOptions:variable).Type}` that should have selected `:namespace`) that the prior `as const` shape had silently hidden from API Extractor by never emitting that doc comment at all.
+
 ## Module map (one concept per module)
 
 - `CompilerOptions` — string-level literal-union schemas: case-insensitive decode, canonical-lowercase encode; typed live option set plus passthrough so unknown **and** dead options survive.

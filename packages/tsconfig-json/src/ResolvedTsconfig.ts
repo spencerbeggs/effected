@@ -163,16 +163,7 @@ const transformCompilerOptionPaths = (
 	return out as CompilerOptions.Type;
 };
 
-/**
- * Absolutize a config's path-typed options (E5) against its own `configDir`,
- * using the injected `join` (`Path.Path.resolve` at the call site — so an
- * already-absolute value is preserved). `${configDir}`-prefixed values are
- * exempt (resolved later, in {@link (ResolvedTsconfig:variable).substituteConfigDir}), and
- * `paths` VALUES stay verbatim. Only `compilerOptions` path surfaces are
- * touched; `files`/`include`/`exclude` are re-rooted at merge time instead (E4).
- *
- * @public
- */
+// Implementation of ResolvedTsconfig.absolutize; the public contract lives on the static.
 const absolutize = (
 	doc: TsconfigJson.Type,
 	configDir: string,
@@ -260,14 +251,7 @@ const mergeWatchOptions = (
 	return { ...base, ...derived };
 };
 
-/**
- * Fold one more-derived config onto the accumulated base (E4), derived winning.
- * The loader (Task 8) applies this across the resolution chain, own config last.
- * `derivedPath` is the derived config's absolute normalized path, from which the
- * re-rooting frame and `pathsBase` are computed.
- *
- * @public
- */
+// Implementation of ResolvedTsconfig.merge; the public contract lives on the static.
 const merge = (base: ResolvedTsconfig, derived: TsconfigJson.Type, derivedPath: string): ResolvedTsconfig => {
 	const finalDir = dirname(derivedPath);
 	const baseDir = dirname(base.configPath);
@@ -335,15 +319,7 @@ const substituteWatchExcludes = (
 	return out as WatchOptions.Type;
 };
 
-/**
- * The E5 final phase: replace a leading `${configDir}` token (case-insensitive,
- * leading position only) with `finalDir` — the top-level extending config's
- * directory — across every eligible surface: compilerOptions path options,
- * `paths` values, `files`/`include`/`exclude`, and `watchOptions`'
- * `excludeDirectories`/`excludeFiles`. Every other field is left untouched.
- *
- * @public
- */
+// Implementation of ResolvedTsconfig.substituteConfigDir; the public contract lives on the static.
 const substituteConfigDir = (resolved: ResolvedTsconfig, finalDir: string): ResolvedTsconfig => {
 	const substitute = (value: string): string =>
 		startsWithConfigDir(value) ? finalDir + value.slice(CONFIG_DIR_TEMPLATE.length) : value;
@@ -366,10 +342,44 @@ const substituteConfigDir = (resolved: ResolvedTsconfig, finalDir: string): Reso
 
 /**
  * The pure extends-merge engine: parse-time path absolutization
- * ({@link (ResolvedTsconfig:variable).absolutize}), the per-field merge fold
- * ({@link (ResolvedTsconfig:variable).merge}), and the `${configDir}` final
- * phase ({@link (ResolvedTsconfig:variable).substituteConfigDir}).
+ * ({@link (ResolvedTsconfig:class).absolutize}), the per-field merge fold
+ * ({@link (ResolvedTsconfig:class).merge}), and the `${configDir}` final
+ * phase ({@link (ResolvedTsconfig:class).substituteConfigDir}).
  *
  * @public
  */
-export const ResolvedTsconfig = { absolutize, merge, substituteConfigDir } as const;
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: deliberate — the class carries only statics and a private constructor, so it contributes no instance members to the merge; the interface (above) remains the sole shape of a ResolvedTsconfig data value.
+export class ResolvedTsconfig {
+	private constructor() {}
+
+	/**
+	 * Absolutize a config's path-typed options (E5) against its own
+	 * `configDir`, using the injected `join` (`Path.Path.resolve` at the call
+	 * site — so an already-absolute value is preserved). `${configDir}`-prefixed
+	 * values are exempt (resolved later, in
+	 * {@link (ResolvedTsconfig:class).substituteConfigDir}), and `paths`
+	 * VALUES stay verbatim. Only `compilerOptions` path surfaces are touched;
+	 * `files`/`include`/`exclude` are re-rooted at merge time instead (E4).
+	 */
+	static readonly absolutize = absolutize;
+
+	/**
+	 * Fold one more-derived config onto the accumulated base (E4), derived
+	 * winning. The loader (Task 8) applies this across the resolution chain,
+	 * own config last. `derivedPath` is the derived config's absolute
+	 * normalized path, from which the re-rooting frame and `pathsBase` are
+	 * computed.
+	 */
+	static readonly merge = merge;
+
+	/**
+	 * The E5 final phase: replace a leading `${configDir}` token
+	 * (case-insensitive, leading position only) with `finalDir` — the
+	 * top-level extending config's directory — across every eligible
+	 * surface: compilerOptions path options, `paths` values,
+	 * `files`/`include`/`exclude`, and `watchOptions`'
+	 * `excludeDirectories`/`excludeFiles`. Every other field is left
+	 * untouched.
+	 */
+	static readonly substituteConfigDir = substituteConfigDir;
+}

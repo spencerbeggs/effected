@@ -1,6 +1,6 @@
 ---
 name: effect-v4-cli
-description: Use when building or porting a command-line tool on Effect v4 — @effect/cli is DEAD on the v4 line (its latest peers on effect ^3.21.x), and the CLI framework now lives in core as effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a no-match must not), and the process-spawning gap. Verified against effect@4.0.0-beta.94+.
+description: Use when building or porting a command-line tool on Effect v4 — @effect/cli is DEAD on the v4 line (its latest peers on effect ^3.21.x), and the CLI framework now lives in core as effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a no-match must not), and the two different `Command`s (spawning is core's effect/unstable/process, NOT unstable/cli). Verified against effect@4.0.0-beta.101.
 ---
 
 # Effect v4 CLIs
@@ -44,7 +44,7 @@ almost none of them for Node:**
 | `FileSystem` | `FileSystem.layerNoop(partial)` — a **stub factory**, for tests |
 | `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape |
 | `Terminal` | **no layer at all** |
-| `ChildProcessSpawner` | **no layer at all** |
+| `ChildProcessSpawner` | the contract and the `ChildProcess` command values, but **no layer** — see below |
 
 So a CLI you actually intend to run needs `@effect/platform-node` for the real
 `Terminal` / `FileSystem` / `Stdio` implementations. **That is what makes a CLI
@@ -55,14 +55,30 @@ do not discover it when the first `Effect.provide` fails to typecheck.
 The corollary: **do not put a CLI in the same package as a pure library.** Split
 the CLI into its own package so the library keeps its `effect`-only peer closure.
 
-## There is no process-spawning `Command` in core
+## Two different `Command`s — spawning lives in `effect/unstable/process`
 
-Effect v4 core has **no `Command` / `CommandExecutor`** of the v3
-process-spawning kind — `effect/unstable/cli`'s `Command` is the *CLI command
-declaration*, an entirely different thing that happens to share the name.
-`ChildProcessSpawner` is the v4 primitive for spawning, and as noted core ships
-**no layer** for it. Shelling out therefore also requires `@effect/platform-node`
-— the same structural class of gap, and the same tier consequence.
+`effect/unstable/cli`'s `Command` is the **CLI command declaration**. It is not
+the v3 process-spawning `Command`, and the shared name is the whole trap.
+
+Spawning is **in core**, at `effect/unstable/process`, which exports exactly two
+modules (`unstable/process/index.ts`):
+
+| you want | v4 |
+| --- | --- |
+| `@effect/platform/Command` (build a command value) | **`effect/unstable/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:583,670,702,766,804`). **Warning:** `setEnv` never sets `extendEnv`, so the child's env is ONLY what you pass — it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`) |
+| `@effect/platform/CommandExecutor` (run it) | **`effect/unstable/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:241`) |
+
+> **Do not hand-roll a `node:child_process` layer or a parallel
+> `Command`/`CommandRunner` vocabulary.** One did survive four review gates in
+> this repo before a source check found `effect/unstable/process` already
+> declared the entire surface; the package was deleted the same day it was built.
+
+What core does **not** ship is a **layer** for `ChildProcessSpawner` — the
+contract is declared, the Node implementation is not (it arrives with
+`NodeServices.layer` from `@effect/platform-node`). That is the same structural
+class of gap as `Terminal`, with the same tier consequence for a CLI that
+actually shells out. Requiring `ChildProcessSpawner` in `R` is free; taking
+`@effect/platform-node` as a dependency edge is not.
 
 ## The exit-code contract
 
