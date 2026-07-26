@@ -177,10 +177,26 @@ const output = CheckRunOutput.make({
 });
 ```
 
+**There are TWO ways to get burned here, and migrators meet the misleading
+one first.**
+
+**Trap (a) — the bare object literal, and a compile error that lies to you.**
+Passing a plain `{ title, summary }` literal where a `CheckRunOutput` is
+expected (e.g. straight into `conclude(...)`) fails at compile time with
+TS2741: **"Property 'truncated' is missing"**. The compiler is demanding the
+instance *method* — a class instance is not a plain object — but its error
+text names `truncated` as if it were a data field you forgot, which is
+exactly how a migrator ends up hunting for a field that does not exist. The
+fix is not to add anything: construct through `CheckRunOutput.make({...})`
+and the literal becomes a real instance, method included.
+
 **There is no `truncated` field on this schema — do not go looking for one.**
 `truncated()` is the instance *method* above, not a constructor input; `make`
 takes exactly `title`, `summary`, and the two `optionalKey` fields `text` and
-`annotations`. The real trap sits one level up, and it is this package's
+`annotations`.
+
+**Trap (b) — explicit `undefined` on an `optionalKey`, a runtime throw.**
+This one sits one level up, and it is this package's
 general v4 constructor rule, not something special to check runs: `text` and
 `annotations` being `optionalKey` means the **key** may be omitted, not that
 the value may be `undefined` — `CheckRunOutput.make({ title, summary, text:
