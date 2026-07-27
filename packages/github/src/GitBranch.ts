@@ -55,6 +55,18 @@ export interface GitBranchShape {
 	 * This is one round trip in the common case and two in the raced one, and the
 	 * recovery **resets** rather than inheriting a branch a concurrent creator
 	 * rooted somewhere else — which is the semantics that comment was defending.
+	 *
+	 * **A reset is observable, and open pull requests react to it.** Resetting a
+	 * branch to its PR's base — `upsert(branch, targetHead)` — makes that PR's
+	 * head equal its base, and GitHub **auto-closes a PR whose diff is empty**.
+	 * The window is invisible at this call site: a consumer ran
+	 * `upsert(releaseBranch, mainHead)` intending to re-add content with a commit
+	 * ~3 seconds later, and GitHub closed the open release PR inside that window
+	 * while the run reported success. When the end state is "the target head plus
+	 * a commit", build the commit first — `GitCommit.get` the target for its
+	 * `treeSha`, `createTree` on it, `createCommit` with the target as parent —
+	 * and upsert **once**, straight to the finished sha, so the ref never rests
+	 * on the bare target head.
 	 */
 	readonly upsert: (name: string, sha: string) => Effect.Effect<BranchOutcome, GitHubError, Repo>;
 	/** Is the branch there? A 404 is `false`, not an error. */

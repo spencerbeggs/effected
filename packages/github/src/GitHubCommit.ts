@@ -22,6 +22,15 @@ export class CommitSummary extends Schema.Class<CommitSummary>("CommitSummary")(
 	authorLogin: Schema.optionalKey(Schema.String),
 	/** The web URL for the commit. */
 	url: Schema.String,
+	/**
+	 * The parent commit shas, in the order GitHub lists them.
+	 *
+	 * @remarks
+	 * Empty for a root commit, two or more for a merge commit. A required field,
+	 * not an optional one: every commit endpoint this package reads reports
+	 * `parents`, so "which commit(s) did this come from" never needs a raw route.
+	 */
+	parents: Schema.Array(Schema.String),
 }) {
 	/** The message's first line. */
 	get subject(): string {
@@ -154,6 +163,7 @@ interface RawCommit {
 	readonly html_url: string;
 	readonly commit: { readonly message: string; readonly author?: { readonly name?: string | null } | null };
 	readonly author?: { readonly login?: string } | null;
+	readonly parents: ReadonlyArray<{ readonly sha: string }>;
 }
 
 const summarize = (raw: RawCommit): CommitSummary =>
@@ -163,9 +173,16 @@ const summarize = (raw: RawCommit): CommitSummary =>
 		author: raw.commit.author?.name ?? "Unknown",
 		...(raw.author?.login !== undefined ? { authorLogin: raw.author.login } : {}),
 		url: raw.html_url,
+		parents: raw.parents.map((parent) => parent.sha),
 	});
 
-interface RawFile {
+/**
+ * The minimum of GitHub's `diff-entry` payload the {@link CommitFile}
+ * projection reads. Exported for `PullRequest.listFiles`, whose files endpoint
+ * answers with the same wire shape; not re-exported from the package
+ * entrypoint.
+ */
+export interface RawFile {
 	readonly filename: string;
 	readonly status: string;
 	readonly additions: number;
@@ -173,7 +190,11 @@ interface RawFile {
 	readonly previous_filename?: string | undefined;
 }
 
-const fileOf = (raw: RawFile): CommitFile =>
+/**
+ * Project a `diff-entry` to a {@link CommitFile}. Shared with
+ * `PullRequest.listFiles`; not re-exported from the package entrypoint.
+ */
+export const fileOf = (raw: RawFile): CommitFile =>
 	CommitFile.make({
 		path: raw.filename,
 		status: raw.status as CommitFile["status"],

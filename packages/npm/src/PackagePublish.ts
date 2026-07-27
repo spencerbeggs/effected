@@ -82,9 +82,9 @@ export class PackedTarball extends Schema.Class<PackedTarball>("PackedTarball")(
 export interface PublishOutcome {
 	/**
 	 * npm's Sigstore transparency-log URL, when it published provenance.
-	 * `None` for GitHub Packages, custom registries, and provenance-off runs.
+	 * Absent for GitHub Packages, custom registries, and provenance-off runs.
 	 */
-	readonly provenanceUrl: Option.Option<string>;
+	readonly provenanceUrl?: string | undefined;
 }
 
 /**
@@ -358,7 +358,10 @@ const make = Effect.fnUntraced(function* () {
 			);
 		}
 		const printed = `${output.stdout}\n${output.stderr}`;
-		return { provenanceUrl: Option.fromUndefinedOr(PROVENANCE_URL.exec(printed)?.[0]) } satisfies PublishOutcome;
+		const provenanceUrl = PROVENANCE_URL.exec(printed)?.[0];
+		return {
+			...(provenanceUrl === undefined ? {} : { provenanceUrl }),
+		} satisfies PublishOutcome;
 	});
 
 	const dryRun = Effect.fn("PackagePublish.dryRun")(function* (packageDir: string, options?: PackOptions) {

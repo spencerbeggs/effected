@@ -343,6 +343,7 @@ describe("GitHubCommit", () => {
 		html_url: `https://github.com/acme/widget/commit/${sha}`,
 		commit: { message: `subject for ${sha}\n\nbody`, author: { name: "Ada" } },
 		author: { login: "ada" },
+		parents: [{ sha: `parent-of-${sha}` }],
 		...extra,
 	});
 
@@ -355,6 +356,19 @@ describe("GitHubCommit", () => {
 			assert.strictEqual(value.author, "Ada");
 			assert.strictEqual(value.authorLogin, "ada");
 			assert.strictEqual(value.subject, "subject for c1");
+			assert.deepStrictEqual([...value.parents], ["parent-of-c1"]);
+		}),
+	);
+
+	it.effect("carries every parent of a merge commit, in order", () =>
+		Effect.gen(function* () {
+			const { value } = yield* drive(
+				[{ status: 200, body: commit("m1", { parents: [{ sha: "p1" }, { sha: "p2" }] }) }],
+				GitHubCommit,
+				GitHubCommit,
+				(commits) => commits.get("m1"),
+			);
+			assert.deepStrictEqual([...value.parents], ["p1", "p2"]);
 		}),
 	);
 

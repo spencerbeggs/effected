@@ -217,6 +217,111 @@ describe("NpmRegistry — the registry dimension", () => {
 	);
 });
 
+describe("NpmRegistry.version — registries without the per-version endpoint", () => {
+	/** A GitHub Packages packument: full version manifests under `versions`. */
+	const githubPackument = {
+		name: "@savvy-web/standalone-package",
+		"dist-tags": { latest: "0.10.9" },
+		versions: {
+			"0.10.9": {
+				name: "@savvy-web/standalone-package",
+				version: "0.10.9",
+				dist: {
+					integrity: "sha512-abc123==",
+					tarball: "https://npm.pkg.github.com/download/@savvy-web/standalone-package/0.10.9/deadbeef",
+				},
+			},
+		},
+	};
+
+	/** A packument whose `versions` entries are full manifests. */
+	const packumentWithManifest = {
+		name: "pkg",
+		"dist-tags": { latest: "1.1.0" },
+		versions: { "1.1.0": versionManifest },
+	};
+
+	it.effect("a github-packages target resolves through the packument, never the per-version path", () =>
+		// GitHub Packages answers the per-version endpoint with 405 regardless of
+		// credentials — the live failure that blocked silk-release-action's
+		// publish pipeline. The kind decides the path up front: one packument
+		// read, no doomed probe first.
+		Effect.gen(function* () {
+			const client = stub(() => ({ status: 200, body: githubPackument }));
+			const found = yield* run(
+				Effect.flatMap(registry, (r) =>
+					r.version("@savvy-web/standalone-package", "0.10.9", {
+						registry: "https://npm.pkg.github.com",
+						token: Redacted.make("ghp_token"),
+					}),
+				),
+				client,
+			);
+			if (Option.isNone(found)) assert.fail("expected the version to be published");
+			assert.strictEqual(found.value.name, "@savvy-web/standalone-package");
+			assert.strictEqual(found.value.version, "0.10.9");
+			assert.strictEqual(found.value.integrity, "sha512-abc123==");
+			assert.strictEqual(client.requests.length, 1);
+			// The builder's full-name encoding (`%40scope%2Fname`) — probed live:
+			// GitHub Packages answers 401 (auth wall, path recognized) for both
+			// this form and the literal-`@` form.
+			assert.strictEqual(client.requests[0]?.url, "https://npm.pkg.github.com/%40savvy-web%2Fstandalone-package");
+			assert.isTrue(client.requests.every((request) => !request.url.includes("0.10.9")));
+		}),
+	);
+
+	it.effect("a github-packages version absent from the packument is Option.none", () =>
+		Effect.gen(function* () {
+			const client = stub(() => ({ status: 200, body: githubPackument }));
+			const found = yield* run(
+				Effect.flatMap(registry, (r) =>
+					r.version("@savvy-web/standalone-package", "9.9.9", { registry: "https://npm.pkg.github.com" }),
+				),
+				client,
+			);
+			assert.isTrue(Option.isNone(found));
+		}),
+	);
+
+	it.effect("any other registry answering 405 on the per-version path retries through the packument", () =>
+		// The generic fallback for custom registries with the same limitation:
+		// the per-version probe is attempted first, and only a 405 reroutes.
+		Effect.gen(function* () {
+			const client = stub((url) =>
+				url.includes(encodeURIComponent("1.1.0")) ? { status: 405 } : { status: 200, body: packumentWithManifest },
+			);
+			const found = yield* run(
+				Effect.flatMap(registry, (r) => r.version("pkg", "1.1.0", { registry: "https://registry.example.com" })),
+				client,
+			);
+			if (Option.isNone(found)) assert.fail("expected the version to be published");
+			assert.strictEqual(found.value.version, "1.1.0");
+			assert.strictEqual(client.requests.length, 2);
+			assert.include(client.requests[0]?.url ?? "", "1.1.0");
+			assert.strictEqual(client.requests[1]?.url, "https://registry.example.com/pkg");
+		}),
+	);
+
+	it.effect("a packument entry that is not a version manifest fails with kind 'decode'", () =>
+		Effect.gen(function* () {
+			const client = stub(() => ({
+				status: 200,
+				body: { versions: { "0.10.9": "not a manifest" } },
+			}));
+			const error = yield* Effect.flip(
+				run(
+					Effect.flatMap(registry, (r) => r.version("pkg", "0.10.9", { registry: "https://npm.pkg.github.com" })),
+					client,
+				),
+			);
+			assert.instanceOf(error, RegistryReadError);
+			if (error instanceof RegistryReadError) {
+				assert.strictEqual(error.kind, "decode");
+			}
+		}),
+	);
+});
+
 describe("NpmRegistry.versions / distTags", () => {
 	it.effect("versions lists every published version", () =>
 		Effect.gen(function* () {

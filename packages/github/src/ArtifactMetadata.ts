@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
+import { Repo } from "./Repo.js";
 
 /**
  * What to record about a published artifact.
@@ -32,17 +33,17 @@ export class StorageRecordInput extends Schema.Class<StorageRecordInput>("Storag
  * Organization-level artifact metadata.
  *
  * @remarks
- * Org-scoped rather than repository-scoped, so it takes the organization as an
- * argument and does **not** read {@link Repo}.
+ * The endpoint is org-scoped rather than repository-scoped, but the
+ * organization is resolved from {@link Repo}'s `owner` per call like every
+ * other resource — an earlier version took it as a positional argument, the
+ * one method on the surface that did. `Repo.provide` covers the cross-org
+ * case, exactly as it covers the cross-repository one.
  *
  * @public
  */
 export interface ArtifactMetadataShape {
 	/** Record where a published artifact lives; returns the ids GitHub stored. */
-	readonly createStorageRecord: (
-		org: string,
-		input: StorageRecordInput,
-	) => Effect.Effect<ReadonlyArray<number>, GitHubError>;
+	readonly createStorageRecord: (input: StorageRecordInput) => Effect.Effect<ReadonlyArray<number>, GitHubError, Repo>;
 }
 
 /**
@@ -73,16 +74,14 @@ const unstubbed = (member: string): never => {
 };
 
 const make = (client: GitHubClient["Service"]): ArtifactMetadataShape => ({
-	createStorageRecord: Effect.fn("ArtifactMetadata.createStorageRecord")(function* (
-		org: string,
-		input: StorageRecordInput,
-	) {
-		yield* Effect.annotateCurrentSpan({ org, artifact: input.name });
+	createStorageRecord: Effect.fn("ArtifactMetadata.createStorageRecord")(function* (input: StorageRecordInput) {
+		const { owner } = yield* Repo;
+		yield* Effect.annotateCurrentSpan({ org: owner, artifact: input.name });
 		// The route is in GitHub's OpenAPI description now, so this is a typed call
 		// — the defensive `octokit.request` cast and string-body tolerance the
 		// previous version carried are both unnecessary.
 		const stored = yield* client.request("POST /orgs/{org}/artifacts/metadata/storage-record", {
-			org,
+			org: owner,
 			name: input.name,
 			digest: input.digest,
 			registry_url: input.registryUrl,

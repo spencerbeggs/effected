@@ -106,7 +106,7 @@ Effect.runPromise(program).then(console.log);
 
 `find` walks the tree in document pre-order and returns the document's own node, so the match feeds `modify` by identity. Replacements are literal strings or node fragments, and both render through the canonical stringifier, so a modified document re-parses cleanly by construction — you cannot splice in raw markdown that reopens a fence or breaks a table.
 
-`MarkdownFormat.format` handles the other half: conservative marker normalization, never content rewriting. It converts heading style, bullet character, emphasis marker, fence character and thematic-break character, and skips any conversion that would not be safe rather than attempting it cleverly:
+`MarkdownFormat.format` handles the other half: conservative marker normalization, never content rewriting. It converts heading style, bullet character, emphasis marker, fence character, thematic-break character and code-block style, and skips any conversion that would not be safe rather than attempting it cleverly:
 
 ```ts
 import { MarkdownFormat, MarkdownFormattingOptions } from "@effected/markdown";
@@ -135,6 +135,8 @@ console.log(MarkdownFormat.format(source, undefined, options));
 ```
 
 `format` is pure and total, and the edits are non-mutating data — hand them to `MarkdownEdit.applyAll`, or send them to an editor as a text-edit payload.
+
+`codeBlockStyle` is the option to know about before you hit its default: absent it, a language-less code block keeps whichever spelling it already has, and a language-less `Code` node with no `fenceChar` serializes as an *indented* block. `"fenced"` rewrites indented blocks to fences, `"indented"` goes the other way where the result provably re-parses the same, and both directions apply to root-level flush-left blocks only. A block with a language has no indented spelling and is never touched.
 
 ## Frontmatter
 
@@ -165,6 +167,8 @@ Effect.runPromise(program).then(console.log);
 ```
 
 Each stage fails typed and separately: no capture is a `FrontmatterMissingError` (catch the tag for optional semantics), a codec handed the wrong fence is a `FrontmatterFormatMismatchError`, unparseable content is a `FrontmatterDecodeError` carrying the format package's own positioned failure structurally, and schema-invalid data is a `FrontmatterValidationError` carrying the structured issue tree rather than a stringified rendering.
+
+Because capture is opt-in, "there is no frontmatter" has two meanings, and `FrontmatterMissingError.reason` tells them apart: `"absent"` when the source genuinely has no block, `"captureDisabled"` when it opens with one but was parsed with the toggle off — where the fix is a parse option, not a document edit. `MarkdownDocument.hasFrontmatterBlock` answers the same question directly, by re-running the parser's own pre-scan, so the accessor and the error can never disagree.
 
 The three codecs — `YamlFrontmatter` (`---`), `TomlFrontmatter` (`+++`) and `JsonFrontmatter` (`---json`) — are free-standing named exports, one module each, deliberately never collected into a namespace object. Naming one codec is what pulls in its format engine, so a JSON-frontmatter consumer never pays for the yaml parser.
 
@@ -260,13 +264,13 @@ if (Result.isSuccess(parsed)) {
 ## Features
 
 - `Markdown` — `parse`/`stringify` as `Effect`s with typed `MarkdownParseError`/`MarkdownStringifyError` channels, the pure `parseResult`/`stringifyResult` twins for synchronous callers, and the `MarkdownFromString` two-way codec.
-- `MarkdownDocument` — source, tree, diagnostics and the link-definition index, plus the derived `headings`, `sections` and `links` accessors, the `firstSection`/`sectionByHeading` finders over a `DocumentSection` (heading, depth, range, body), the `find`/`findAll` tree queries over type-narrowed selectors, and the `frontmatter` capture.
+- `MarkdownDocument` — source, tree, diagnostics and the link-definition index, plus the derived `headings`, `sections` and `links` accessors, the `firstSection`/`sectionByHeading` finders over a `DocumentSection` (heading, depth, range, body), the `find`/`findAll` tree queries over type-narrowed selectors, and the `frontmatter` capture with `hasFrontmatterBlock` to tell an absent block from an uncaptured one.
 - The mdast-shaped node classes — the CommonMark types plus GFM's `delete`, `table`, `tableRow`, `tableCell`, `footnoteDefinition`, `footnoteReference` and task-list `checked`, each carrying unist positions with byte offsets and this package's fidelity fields. `position` defaults to the zero-width synthetic sentinel, so a replacement fragment constructs in one line — `Text.make({ value: "shipped" })`.
 - `MarkdownEdit` / `MarkdownRange` (with `applyAll`) — the non-mutating text-edit vocabulary, field-identical to `@effected/jsonc`'s, `@effected/yaml`'s and `@effected/toml`'s.
 - `MarkdownFormat` — `format`/`formatToString` compute conservative marker-normalization edits; `modify`/`modifyToString` replace a node by identity through the canonical stringifier.
 - `MarkdownVisitor` — walk a parsed tree as a lazy `Stream` of `Enter`/`Exit` events with child-index paths and depth.
 - `Mdast` — `toMdast` projects to plain mdast JSON; `fromMdast`/`fromMdastResult` admit a foreign mdast tree with validation.
-- `MarkdownFrontmatter.schema` plus the `YamlFrontmatter`, `TomlFrontmatter` and `JsonFrontmatter` codecs — typed frontmatter decoding over optional per-format peers, with four separately catchable failure modes.
+- `MarkdownFrontmatter.schema` plus the `YamlFrontmatter`, `TomlFrontmatter` and `JsonFrontmatter` codecs — typed frontmatter decoding over optional per-format peers, with four separately catchable failure modes and a `FrontmatterMissingReason` on the absent one.
 - `SchemaResolver` — classify a frontmatter `$schema` declaration into `ByUrl`/`ByPath`/`Inline`/`ByName` and resolve names against a registry, with no IO and no dependencies.
 - `MarkdownDiagnostic` — the structured diagnostic (`code`, `message`, `offset`, `length`, `line`, `character`) every typed error carries, shaped identically to the sibling packages'.
 

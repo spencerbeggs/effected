@@ -1,4 +1,4 @@
-import { Console, Context, Effect, Inspectable, Layer, LogLevel, Logger, References } from "effect";
+import { Console, Context, Effect, Exit, Inspectable, Layer, LogLevel, Logger, References } from "effect";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import type { AnnotationProperties } from "./WorkflowCommand.js";
 import { WorkflowCommand } from "./WorkflowCommand.js";
@@ -116,6 +116,12 @@ const ActiveBuffer = Context.Reference<BufferState | null>("@effected/github-act
 	defaultValue: () => null,
 });
 
+/** Drop a transcript without writing it, so a green step stays quiet. */
+const discard = (state: BufferState): Effect.Effect<void> =>
+	Effect.sync(() => {
+		state.entries.length = 0;
+	});
+
 /** Write a transcript out and clear it, so a second flush is a no-op. */
 const flush = (state: BufferState): Effect.Effect<void> =>
 	Effect.suspend(() => {
@@ -132,6 +138,25 @@ const flush = (state: BufferState): Effect.Effect<void> =>
 	});
 
 /**
+ * Options for {@link ActionLoggerShape.withBuffer}.
+ *
+ * @public
+ */
+export interface WithBufferOptions {
+	/**
+	 * What happens to the captured transcript when the step **succeeds**.
+	 *
+	 * @remarks
+	 * `"flush"` — the default — replays it, so a clean run still prints what it
+	 * did. `"discard"` drops it, which is what keeps a green release log to one
+	 * line per step: the transcript exists only as the failure report. A failure,
+	 * a defect or an interruption flushes under either setting — the choice is
+	 * only about what a success is worth in the log.
+	 */
+	readonly onSuccess?: "flush" | "discard";
+}
+
+/**
  * The {@link ActionLogger} service shape.
  *
  * @public
@@ -146,13 +171,22 @@ export interface ActionLoggerShape {
 	 * Warnings and errors are **not** buffered — they go out as they happen, so a
 	 * long step still reports trouble while it is running. Everything at `Info`
 	 * and below is held and flushed on every exit path, including a defect or an
-	 * interruption, so a clean run still prints its transcript.
+	 * interruption, so a clean run still prints its transcript. A step that
+	 * should be **quiet** when it succeeds passes
+	 * `{ onSuccess: "discard" }` ({@link WithBufferOptions}); failure still
+	 * spills the transcript either way.
 	 *
 	 * Buffering is skipped entirely when the runner has step debugging enabled or
 	 * the ambient minimum log level is already `Debug` or lower — someone asking
-	 * for verbose output wants it live.
+	 * for verbose output wants it live, and that overrides
+	 * `onSuccess: "discard"` too: asking for debug output means wanting to see
+	 * what a green step did.
 	 */
-	readonly withBuffer: <A, E, R>(label: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+	readonly withBuffer: <A, E, R>(
+		label: string,
+		effect: Effect.Effect<A, E, R>,
+		options?: WithBufferOptions,
+	) => Effect.Effect<A, E, R>;
 	/**
 	 * Emit a `::notice::` annotation.
 	 *
@@ -192,7 +226,7 @@ const make = Effect.gen(function* () {
 				() => Console.log(WorkflowCommand.endGroup()),
 			),
 
-		withBuffer: <A, E, R>(label: string, effect: Effect.Effect<A, E, R>) =>
+		withBuffer: <A, E, R>(label: string, effect: Effect.Effect<A, E, R>, options?: WithBufferOptions) =>
 			Effect.gen(function* () {
 				const minimum = yield* References.MinimumLogLevel;
 				const stepDebug = yield* env.isDebug;
@@ -217,7 +251,11 @@ const make = Effect.gen(function* () {
 					Effect.provideService(References.MinimumLogLevel, "All"),
 					Effect.provideService(Logger.CurrentLoggers, new Set([buffering])),
 					Effect.provideService(ActiveBuffer, state),
-					Effect.onExit(() => flush(state)),
+					Effect.onExit((exit) =>
+						// Only a SUCCESS is ever discarded: a failure, a defect or an
+						// interruption is exactly the moment the transcript was kept for.
+						Exit.isSuccess(exit) && options?.onSuccess === "discard" ? discard(state) : flush(state),
+					),
 				);
 			}),
 

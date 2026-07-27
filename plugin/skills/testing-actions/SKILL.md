@@ -22,7 +22,16 @@ Every service in these four packages ships `makeTest(overrides?)` +
 `layerTest(overrides?)` (`Layer.succeed(Self, Self.makeTest(overrides))`).
 **Every unstubbed member dies, naming itself** — there is no `./testing`
 subpath, and none of the predecessor's nine `*Test` doubles survives as a
-whole-service `Layer.succeed`. The canonical shape stubs the ONE member a test
+whole-service `Layer.succeed`.
+
+**Writing a new double: the death must be LAZY.** The unstubbed default is
+`() => Effect.sync(() => { throw ... })` (or `Effect.die` built lazily), never
+`() => { throw ... }`. A throw at *call* time — while the member is being
+invoked to DESCRIBE the effect — escapes the Effect runtime entirely, so a
+consumer test's `Effect.exit`/`Effect.flip` never sees it and the failure
+surfaces as a raw thrown error in the wrong place. Copy the shape from
+`ActionOutputs`' `notStubbed`; this exact mistake was reproduced live while
+building `CheckDocument.makeTest` (2026-07-26). The canonical shape stubs the ONE member a test
 is about and lets the death of the rest prove the test touches nothing else —
 this is exactly what a whole-service double hides (fluency-audit Case 4:
 reimplementing six members to exercise one):
@@ -161,6 +170,39 @@ path is exercised, not assumed.
 ## The actions-specific instances of general traps
 
 `effect-v4-testing` owns each rule below; only the instance is new here.
+
+**`NodeServices.layer` also provides `ChildProcessSpawner`, and in a merge the
+LAST provider of a service wins** (probed against beta.101: `Layer.merge` and
+`Layer.mergeAll` both resolve a duplicate service to the later layer). An
+action test usually needs `FileSystem` (real) and `ChildProcessSpawner`
+(scripted) **simultaneously**, so this collision is the normal case, not an
+exotic one: `Layer.mergeAll(scriptedSpawner, NodeServices.layer)` silently
+replaces the script with the real spawner. A downstream suite wired exactly
+that way shelled out to a real `pnpm ci:build` — and PASSED, with correct
+output; the only tell was duration, 8.1 s → 24 ms once reordered. Put
+`NodeServices.layer` first and the scripted spawner after it (or provide the
+spawner separately), and assert the script actually recorded calls. **Green
+plus fast is the signal; green alone is not.**
+
+**Mutating `process.env` between reads inside one test file is not a loud
+failure — it is a quiet false green.** The environment is seeded once, at
+layer construction (`ActionEnvironment.ts:297`), so every later read in the
+process returns the FIRST case's value. A parameterized suite injected that
+way goes fully green while ten of twelve cases assert against the wrong
+input and the rejection cases never see theirs at all — the mechanism-only
+reading ("my value is ignored") predicts a loud failure that never comes.
+Inject via `ActionInput.layer({ "INPUT_…": value })` per case instead. The
+tell: every case passes while the fixture values differ — worth one
+skeptical read. (spencerbeggs/effected#190, reported from a live consumer.)
+
+**`ActionEnvironment.layerTest()` seeds `GITHUB_SERVER_URL` with the same
+value production code defaults to** — so a test of default-on-absence
+behavior against `layerTest()` is a false green: the assertion passes whether
+the default logic exists or not. Testing an absence path needs
+`ActionEnvironment.layerFrom({})` (a genuinely empty environment), with
+`layerTest({ GITHUB_SERVER_URL: "https://ghes.example.com" })` as the
+override case. Found while testing `ActionsProvenance.capture`'s
+github.com fallback (2026-07-26).
 
 **Two latches minimum for a concurrency-leak test — the `withEnv` instance.**
 A single-latch interleaving PASSED against a deliberately wrong save/restore

@@ -64,20 +64,38 @@ describe("MarkdownFrontmatter.schema", () => {
 		}),
 	);
 
-	it.effect("fails typed with FrontmatterMissingError when the document has no frontmatter", () =>
+	it.effect("fails typed with FrontmatterMissingError reason absent when the source has no block", () =>
 		Effect.gen(function* () {
 			const document = yield* parseDoc("# Just a heading\n");
 			const error = yield* Effect.flip(MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(document));
 			assert.strictEqual(error._tag, "FrontmatterMissingError");
 			assert.instanceOf(error, FrontmatterMissingError);
+			// Capture was ON here — the source genuinely carries no block.
+			assert.strictEqual(error.reason, "absent");
 		}),
 	);
 
-	it.effect("a fenced document parsed with capture off also reports missing", () =>
+	it.effect("a fenced document parsed with capture off reports missing with reason captureDisabled", () =>
 		Effect.gen(function* () {
 			const document = yield* MarkdownDocument.parse("---\ntitle: Hello\n---\n");
 			const error = yield* Effect.flip(MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(document));
 			assert.strictEqual(error._tag, "FrontmatterMissingError");
+			assert.instanceOf(error, FrontmatterMissingError);
+			// The distinction this reason exists for: the source visibly opens
+			// with a frontmatter block, but the parse ran with the toggle off.
+			assert.strictEqual(error.reason, "captureDisabled");
+		}),
+	);
+
+	it.effect("an unclosed fence is not frontmatter, so the reason is absent", () =>
+		Effect.gen(function* () {
+			// An opening fence with no close IS a thematic break plus content —
+			// parsing with capture ON would capture nothing either, so
+			// captureDisabled would be a lie here.
+			const document = yield* MarkdownDocument.parse("---\ntitle: Hello\n\n# Body\n");
+			const error = yield* Effect.flip(MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(document));
+			assert.instanceOf(error, FrontmatterMissingError);
+			assert.strictEqual(error.reason, "absent");
 		}),
 	);
 
@@ -136,6 +154,56 @@ describe("MarkdownDocument.frontmatter", () => {
 		Effect.gen(function* () {
 			const document = yield* MarkdownDocument.parse("---\ntitle: Hello\n---\n");
 			assert.isUndefined(document.frontmatter);
+		}),
+	);
+});
+
+describe("MarkdownDocument.hasFrontmatterBlock", () => {
+	it.effect("is true for a fenced document parsed with capture off — the disambiguating signal", () =>
+		Effect.gen(function* () {
+			const document = yield* MarkdownDocument.parse("---\ntitle: Hello\n---\n\nbody\n");
+			// The pair the accessor alone cannot distinguish: no capture node,
+			// but the source structurally opens with a frontmatter block.
+			assert.isUndefined(document.frontmatter);
+			assert.isTrue(document.hasFrontmatterBlock);
+		}),
+	);
+
+	it.effect("is true when the block was captured too — it reads the source, not the parse options", () =>
+		Effect.gen(function* () {
+			const document = yield* parseDoc("---\ntitle: Hello\n---\n\nbody\n");
+			assert.isDefined(document.frontmatter);
+			assert.isTrue(document.hasFrontmatterBlock);
+		}),
+	);
+
+	it.effect("recognizes the whole closed fence grammar: toml and json fences", () =>
+		Effect.gen(function* () {
+			const toml = yield* MarkdownDocument.parse('+++\ntitle = "Hello"\n+++\n');
+			assert.isTrue(toml.hasFrontmatterBlock);
+			const json = yield* MarkdownDocument.parse('---json\n{ "title": "Hello" }\n---\n');
+			assert.isTrue(json.hasFrontmatterBlock);
+		}),
+	);
+
+	it.effect("is false when the source has no block", () =>
+		Effect.gen(function* () {
+			const document = yield* MarkdownDocument.parse("# Heading\n");
+			assert.isFalse(document.hasFrontmatterBlock);
+		}),
+	);
+
+	it.effect("is false for an unclosed fence — an opening fence with no close is not frontmatter", () =>
+		Effect.gen(function* () {
+			const document = yield* MarkdownDocument.parse("---\ntitle: Hello\n\n# Body\n");
+			assert.isFalse(document.hasFrontmatterBlock);
+		}),
+	);
+
+	it.effect("is false for a fence below the head of the document", () =>
+		Effect.gen(function* () {
+			const document = yield* MarkdownDocument.parse("intro\n\n---\ntitle: Hello\n---\n");
+			assert.isFalse(document.hasFrontmatterBlock);
 		}),
 	);
 });

@@ -433,6 +433,14 @@ const extendEnv: {
  * core (where a non-zero exit is a success) at the reporting level while giving
  * the interpreting helpers the ergonomics callers actually want.
  *
+ * The interpreting helpers also **trim**: {@link Run.text} strips leading and
+ * trailing whitespace from the whole result — not just a trailing newline —
+ * and {@link Run.lines} trims each line. Fixed-column output whose first
+ * column can be whitespace (`git status --porcelain`) silently loses that
+ * column through either, producing plausible wrong values rather than an
+ * error. Parse that kind of output from the untrimmed `stdout` of
+ * {@link Run.collect}'s {@link CommandOutput} instead.
+ *
  * @public
  */
 export class Run {
@@ -463,6 +471,12 @@ export class Run {
 	 * A non-zero exit is a typed failure here — {@link CommandFailedError} —
 	 * unlike {@link Run.collect}, {@link Run.exitCode} and {@link Run.succeeds},
 	 * which treat it as a result.
+	 *
+	 * The trim strips **leading and trailing whitespace**, not just the trailing
+	 * newline. For parse-sensitive output where leading whitespace is data
+	 * (`git status --porcelain`, whose first entry's status column it would
+	 * silently eat), use {@link Run.collect} and read its {@link CommandOutput}'s
+	 * untrimmed `stdout` instead.
 	 */
 	static readonly text = text;
 

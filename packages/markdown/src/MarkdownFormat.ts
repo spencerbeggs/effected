@@ -56,6 +56,27 @@ import {
 export type MarkdownRangeLike = MarkdownRange | { readonly offset: number; readonly length: number };
 
 /**
+ * The two ways CommonMark spells a code block: `fenced` (a backtick or tilde
+ * fence) and `indented` (four-space indentation).
+ *
+ * @remarks
+ * A formatting target for {@link MarkdownFormattingOptions}, not a node
+ * fidelity field: on a {@link Code} node the two spellings are told apart by
+ * the presence or absence of `fenceChar`/`fenceLength`, and a language-less
+ * node with neither serializes as an **indented** block by default.
+ *
+ * @public
+ */
+export const CodeBlockStyle = Schema.Literals(["fenced", "indented"]);
+
+/**
+ * The union of all code-block-style string literals.
+ *
+ * @public
+ */
+export type CodeBlockStyle = typeof CodeBlockStyle.Type;
+
+/**
  * Options controlling formatting: which concrete-syntax markers to normalize,
  * plus the parse knobs (`dialect`, `frontmatter`) the formatter parses the
  * source with (same defaults as `Markdown.parse`). Every marker option is
@@ -63,7 +84,25 @@ export type MarkdownRangeLike = MarkdownRange | { readonly offset: number; reado
  *
  * Day-one scope is marker normalization only — heading style, bullet
  * character, emphasis/strong marker, fence character, thematic-break
- * character. Content is never rewritten, rewrapped or reflowed.
+ * character, code-block style. Content is never rewritten, rewrapped or
+ * reflowed.
+ *
+ * @remarks
+ * `codeBlockStyle` is the opt-in that converts between the two code-block
+ * spellings for **language-less** blocks (a block with a `lang` has no
+ * indented spelling and is never touched). It exists because the default
+ * surprises: absent this option, a language-less code block keeps its
+ * spelling — and a language-less {@link Code} node with no explicit
+ * `fenceChar` **serializes as an indented block** through
+ * `Markdown.stringify`. `"fenced"` rewrites indented blocks to fences (the
+ * fence character follows `fenceChar` when also set, backtick otherwise);
+ * `"indented"` rewrites language-less fences to indented form where provably
+ * safe. Like every other option, hazardous conversions are skipped, never
+ * attempted: both directions apply to root-level, flush-left blocks only,
+ * and the `"indented"` direction additionally skips blocks whose indented
+ * spelling would lazily continue a paragraph, be absorbed into a preceding
+ * list or footnote definition, merge with an adjacent code block, or fail
+ * representability (empty, or blank first/last lines).
  *
  * @public
  */
@@ -75,6 +114,7 @@ export class MarkdownFormattingOptions extends Schema.Class<MarkdownFormattingOp
 	emphasisChar: Schema.optionalKey(EmphasisChar),
 	fenceChar: Schema.optionalKey(FenceChar),
 	thematicBreakChar: Schema.optionalKey(ThematicBreakChar),
+	codeBlockStyle: Schema.optionalKey(CodeBlockStyle),
 }) {}
 
 /**
@@ -378,6 +418,84 @@ const formatFence = (source: string, emit: FormatEmitter, node: Code, target: Fe
 	}
 };
 
+/** A line that is empty or holds only spaces and tabs. */
+const BLANK_LINE = /^[ \t]*$/;
+
+/** Whether a sibling is a code block with no info string (either spelling). */
+const isLanguagelessCode = (node: MarkdownNode): boolean =>
+	node.type === "code" && (node as Code).lang === undefined && (node as Code).meta === undefined;
+
+/**
+ * Convert a language-less code block toward the requested style. Returns
+ * whether a whole-block conversion edit was emitted, so the caller can keep
+ * `formatFence` off a span this conversion already rewrote.
+ *
+ * Both directions are whole-block rewrites, so both are restricted to
+ * root-level, flush-left blocks — a container's continuation-line prefix
+ * (`> `, list indentation) is not reproducible by a single splice. The
+ * indented direction carries the re-parse hazards an indented block is
+ * subject to and skips each one: it cannot follow a non-blank line (lazy
+ * paragraph continuation), a list or footnote definition absorbs it as item
+ * continuation, an adjacent language-less code block would merge with it
+ * across the blank line, and an empty value or one with blank first/last
+ * lines (or interior whitespace-only lines, which blankness would erase) has
+ * no indented spelling at all.
+ */
+const formatCodeBlockStyle = (
+	source: string,
+	emit: FormatEmitter,
+	node: Code,
+	parent: MarkdownNode | undefined,
+	siblings: ReadonlyArray<MarkdownNode>,
+	index: number,
+	target: CodeBlockStyle,
+	fenceChar: FenceChar | undefined,
+): boolean => {
+	if (node.lang !== undefined || node.meta !== undefined) {
+		return false;
+	}
+	if (parent === undefined || parent.type !== "root") {
+		return false;
+	}
+	const { start, end } = spanOf(node);
+	if (lineStartOf(source, start) !== start) {
+		return false;
+	}
+	const value = node.value.endsWith("\n") ? node.value.slice(0, -1) : node.value;
+	if (target === "fenced") {
+		if (node.fenceChar !== undefined) {
+			return false;
+		}
+		const char = fenceChar ?? "`";
+		const fence = char.repeat(Math.max(3, longestRun(value, char) + 1));
+		emit.push(node, start, end - start, `${fence}\n${value}\n${fence}`);
+		return true;
+	}
+	if (node.fenceChar === undefined) {
+		return false;
+	}
+	const lines = value === "" ? [] : value.split("\n");
+	if (lines.length === 0 || BLANK_LINE.test(lines[0]) || BLANK_LINE.test(lines[lines.length - 1])) {
+		return false;
+	}
+	if (lines.some((line) => line !== "" && BLANK_LINE.test(line))) {
+		return false;
+	}
+	if (!previousLineBlank(source, start)) {
+		return false;
+	}
+	const previous = index > 0 ? siblings[index - 1] : undefined;
+	const next = index + 1 < siblings.length ? siblings[index + 1] : undefined;
+	if (previous !== undefined && (previous.type === "list" || previous.type === "footnoteDefinition")) {
+		return false;
+	}
+	if ((previous !== undefined && isLanguagelessCode(previous)) || (next !== undefined && isLanguagelessCode(next))) {
+		return false;
+	}
+	emit.push(node, start, end - start, lines.map((line) => (line === "" ? "" : `    ${line}`)).join("\n"));
+	return true;
+};
+
 // ── Internal: modify support ────────────────────────────────────────────────
 
 const FLOW_TYPES: ReadonlySet<string> = new Set([
@@ -475,12 +593,18 @@ export class MarkdownFormat {
 	/**
 	 * Compute marker-normalization edits per the requested
 	 * {@link MarkdownFormattingOptions}: heading style, bullet character,
-	 * emphasis/strong marker, fence character and thematic-break character,
-	 * each only where the node's concrete syntax differs from the target and
-	 * the rewrite is provably safe. Content is never touched. `range`
-	 * restricts edits to the nodes intersecting it (the owning-node
-	 * intersection posture, matching toml). Non-mutating — apply with
-	 * `MarkdownEdit.applyAll` (or use {@link MarkdownFormat.formatToString}).
+	 * emphasis/strong marker, fence character, thematic-break character and
+	 * code-block style, each only where the node's concrete syntax differs
+	 * from the target and the rewrite is provably safe. Content is never
+	 * touched. `range` restricts edits to the nodes intersecting it (the
+	 * owning-node intersection posture, matching toml). Non-mutating — apply
+	 * with `MarkdownEdit.applyAll` (or use
+	 * {@link MarkdownFormat.formatToString}).
+	 *
+	 * Note the code-block default: absent `codeBlockStyle`, a language-less
+	 * code block keeps whichever spelling it has — `fenceChar` alone
+	 * normalizes existing fences and deliberately leaves indented blocks
+	 * indented.
 	 */
 	static format(
 		text: string,
@@ -498,7 +622,7 @@ export class MarkdownFormat {
 			return [];
 		}
 		const emit = new FormatEmitter(text);
-		walk(parsed.success, undefined, [], 0, (node, _parent, siblings, index) => {
+		walk(parsed.success, undefined, [], 0, (node, parent, siblings, index) => {
 			if (options?.thematicBreakChar !== undefined && node.type === "thematicBreak") {
 				formatThematicBreak(text, emit, node, options.thematicBreakChar);
 			}
@@ -511,8 +635,24 @@ export class MarkdownFormat {
 			if (options?.emphasisChar !== undefined && isEmphasisLike(node)) {
 				formatEmphasis(text, emit, node, siblings, index, options.emphasisChar);
 			}
-			if (options?.fenceChar !== undefined && node.type === "code") {
-				formatFence(text, emit, node as Code, options.fenceChar);
+			if (node.type === "code") {
+				// A style conversion rewrites the whole block; formatFence must
+				// not also splice inside a span the conversion replaced.
+				const converted =
+					options?.codeBlockStyle !== undefined &&
+					formatCodeBlockStyle(
+						text,
+						emit,
+						node as Code,
+						parent,
+						siblings,
+						index,
+						options.codeBlockStyle,
+						options.fenceChar,
+					);
+				if (!converted && options?.fenceChar !== undefined) {
+					formatFence(text, emit, node as Code, options.fenceChar);
+				}
 			}
 		});
 		const filtered =

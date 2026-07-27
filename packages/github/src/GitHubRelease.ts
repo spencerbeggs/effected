@@ -73,6 +73,13 @@ export interface GitHubReleaseShape {
 	 * endpoint map: asset upload goes to `uploads.github.com` with a raw binary
 	 * body, and the map omits it. So it goes through `requestDecoded` with an
 	 * owned schema — the escape hatch is from the route table, never from typing.
+	 *
+	 * Being outside the map cuts the other way too: octokit has no schema
+	 * saying `name` is a **query** parameter, so the route template must carry
+	 * it (`assets{?name}`) or octokit silently drops it and GitHub answers 400
+	 * `Invalid name for request` — a hand-written route owns its query
+	 * parameters in the template, always. `label` is the endpoint's optional
+	 * display label, shown in place of the file name on the release page.
 	 */
 	readonly uploadAsset: (
 		release: ReleaseInfo,
@@ -80,6 +87,7 @@ export interface GitHubReleaseShape {
 			readonly name: string;
 			readonly data: Uint8Array | string;
 			readonly contentType: string;
+			readonly label?: string | undefined;
 		},
 	) => Effect.Effect<ReleaseAsset, GitHubError, Repo>;
 	readonly listAssets: (
@@ -229,17 +237,31 @@ const make = (client: GitHubClient["Service"]): GitHubReleaseShape => {
 
 		uploadAsset: Effect.fn("GitHubRelease.uploadAsset")(function* (
 			release: ReleaseInfo,
-			asset: { readonly name: string; readonly data: Uint8Array | string; readonly contentType: string },
+			asset: {
+				readonly name: string;
+				readonly data: Uint8Array | string;
+				readonly contentType: string;
+				readonly label?: string | undefined;
+			},
 		) {
 			const { owner, repo } = yield* Repo;
 			yield* Effect.annotateCurrentSpan({ owner, repo, release: release.id, asset: asset.name });
+			// `name` MUST be in the template: this route is outside the generated
+			// endpoint map, so no schema routes it to the query string — passed
+			// only as a parameter it is silently dropped and GitHub answers 400
+			// "Invalid name for request" (live incident, 2026-07-26). The two
+			// template spellings exist because `{?name,label}` with an absent
+			// label expands to a dangling `&` (probed at @octokit/endpoint 11.0.3).
 			const raw = yield* client.requestDecoded(
-				"POST /repos/{owner}/{repo}/releases/{release_id}/assets",
+				asset.label === undefined
+					? "POST /repos/{owner}/{repo}/releases/{release_id}/assets{?name}"
+					: "POST /repos/{owner}/{repo}/releases/{release_id}/assets{?name,label}",
 				{
 					owner,
 					repo,
 					release_id: release.id,
 					name: asset.name,
+					...(asset.label === undefined ? {} : { label: asset.label }),
 					data: asset.data,
 					baseUrl: UPLOADS_BASE_URL,
 					headers: { "content-type": asset.contentType },

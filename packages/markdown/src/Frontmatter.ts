@@ -136,25 +136,57 @@ export interface FrontmatterCodec {
 }
 
 /**
+ * Why a frontmatter decoder found no capture on a document.
+ *
+ * @remarks
+ * `"absent"` — the source genuinely has no frontmatter block.
+ * `"captureDisabled"` — the source opens with a well-formed frontmatter
+ * block, but the document carries no capture node: it was parsed without
+ * `frontmatter: true` (the toggle defaults off), so spec-correct CommonMark
+ * read the fences as ordinary content.
+ *
+ * @public
+ */
+export const FrontmatterMissingReason = Schema.Literals(["absent", "captureDisabled"]);
+
+/**
+ * Why a frontmatter decoder found no capture on a document.
+ *
+ * @public
+ */
+export type FrontmatterMissingReason = typeof FrontmatterMissingReason.Type;
+
+/**
  * Indicates that a document handed to a frontmatter decoder carries no
  * frontmatter capture.
  *
  * @remarks
- * Raised when the document genuinely has no frontmatter block — including
- * when it has one in the source but was parsed with the capture toggle off
- * (`MarkdownParseOptions.frontmatter` defaults to `false`). Cause-free: there
- * is nothing to diagnose beyond the absence itself. Consumers wanting
- * optional semantics can `Effect.catchTag("FrontmatterMissingError", ...)`
- * to a default.
+ * `reason` distinguishes the two ways this happens: `"absent"` when the
+ * source genuinely has no frontmatter block, `"captureDisabled"` when the
+ * source opens with one but the document was parsed with the capture toggle
+ * off (`MarkdownParseOptions.frontmatter` defaults to `false`) — the fix
+ * there is parsing with `frontmatter: true`, not editing the document. The
+ * discriminant is computed from the same structural signal
+ * `MarkdownDocument.hasFrontmatterBlock` exposes, so the error and the
+ * accessor can never disagree.
+ *
+ * Cause-free: there is nothing to diagnose beyond the absence itself.
+ * Consumers wanting optional semantics can
+ * `Effect.catchTag("FrontmatterMissingError", ...)` to a default.
  *
  * @public
  */
 export class FrontmatterMissingError extends Schema.TaggedErrorClass<FrontmatterMissingError>()(
 	"FrontmatterMissingError",
-	{},
+	{
+		/** Why there is no capture: no block at all, or capture left off. */
+		reason: FrontmatterMissingReason,
+	},
 ) {
 	override get message(): string {
-		return "the document has no frontmatter capture; was it parsed with `frontmatter: true`?";
+		return this.reason === "captureDisabled"
+			? "the source opens with a frontmatter block, but it was not captured; parse with `frontmatter: true`"
+			: "the document has no frontmatter block";
 	}
 }
 
@@ -253,7 +285,8 @@ export class MarkdownFrontmatter {
 	 * The decoder reads the document's frontmatter capture (parse with
 	 * `frontmatter: true` — the toggle defaults off), decodes its raw value
 	 * through the codec, then validates the data against `schema`. Each stage
-	 * fails typed: no capture is {@link FrontmatterMissingError}, a
+	 * fails typed: no capture is {@link FrontmatterMissingError} (its `reason`
+	 * says whether the block is genuinely absent or capture was left off), a
 	 * wrong-format codec is {@link FrontmatterFormatMismatchError}, unparseable
 	 * content is {@link FrontmatterDecodeError}, and schema-invalid data is
 	 * {@link FrontmatterValidationError} carrying the structured issue.
@@ -278,7 +311,13 @@ export class MarkdownFrontmatter {
 		return (document) => {
 			const node = document.frontmatter;
 			return node === undefined
-				? Effect.fail(new FrontmatterMissingError())
+				? // The discriminant is the document's own structural signal: a source
+					// that opens with a capturable block but carries no capture node was
+					// parsed with the toggle off — the accessor and this error agree by
+					// construction.
+					Effect.fail(
+						new FrontmatterMissingError({ reason: document.hasFrontmatterBlock ? "captureDisabled" : "absent" }),
+					)
 				: codec.decode(node).pipe(
 						Effect.flatMap((data) =>
 							Schema.decodeUnknownEffect(schema)(data).pipe(

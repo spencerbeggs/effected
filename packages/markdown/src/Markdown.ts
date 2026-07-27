@@ -49,7 +49,9 @@ export type MarkdownDialect = typeof MarkdownDialect.Type;
  * spec-conformant reading must hold unless a consumer opts in. Enabled, the
  * engine captures `---`/`+++`/`---json` blocks at offset 0 into a raw
  * `Frontmatter` head node — decoding it is the frontmatter codec modules'
- * job.
+ * job. Parsed with the toggle off, such a document reports no frontmatter —
+ * `MarkdownDocument.hasFrontmatterBlock` tells "no block in the source"
+ * apart from "parsed with capture off".
  *
  * @public
  */
@@ -230,10 +232,14 @@ export class Markdown {
 	 * @remarks
 	 * Canonical serialization: fidelity fields (marker characters, fence
 	 * style, heading spelling) win when present; documented canonical
-	 * defaults apply when absent. The output re-parses to a render-equivalent
-	 * document — the corpus-pinned contract — but is not a byte-level
-	 * round-trip of any original source; surgical editing goes through the
-	 * offset-splice edit layer instead.
+	 * defaults apply when absent. One default surprises: a language-less
+	 * `Code` node with no explicit `fenceChar` serializes as an
+	 * **indented** code block — set `fenceChar` (or a `lang`) on the node for
+	 * a fence, or normalize afterward with
+	 * `MarkdownFormattingOptions.codeBlockStyle: "fenced"`. The output
+	 * re-parses to a render-equivalent document — the corpus-pinned
+	 * contract — but is not a byte-level round-trip of any original source;
+	 * surgical editing goes through the offset-splice edit layer instead.
 	 *
 	 * Failure is rare by design, symmetric with parse: only a hardening-guard
 	 * trip on a tree nesting past the depth cap fails, and only synthesized

@@ -38,6 +38,12 @@ the surface this replaced cost four consumer repos sixteen cast sites.
   schema)`. The schema is **mandatory**: the escape hatch is from the route
   table, never from typing. Two real cases: release-asset upload (not in the
   map) and the attestation reads (pinned api-version, different contract).
+- **A hand-written route owns its query parameters in the template.** Outside
+  the map nothing tells octokit that `name` is a query parameter, so
+  `assets{?name}` must spell it or octokit drops it silently and GitHub answers
+  400 `Invalid name for request` (live, 2026-07-26). The two spellings on
+  `uploadAsset` (`{?name}` / `{?name,label}`) exist because an absent `label`
+  in one template expands to a dangling `&`.
 
 ## Conventions that are load-bearing here
 
@@ -55,7 +61,15 @@ the surface this replaced cost four consumer repos sixteen cast sites.
 - **One retry policy**, in the client. Resources never retry.
 - Pure classes — `TokenPermissions`, `CheckRunOutput`, `CommentMarker`,
   `BotIdentity`, `RepoRef`, `RetryPolicy` — reach nothing but `effect` and are
-  testable with no layer.
+  testable with no layer. `BotIdentity.signoff` renders the DCO trailer,
+  because a commit made through the Git Data API bypasses `git commit -s` and
+  a hand-built trailer fails late as a red DCO check.
+- **Never spell a rebase as `GitBranch.upsert(branch, targetHead)` followed by
+  `GitCommit.commitFiles`.** In between, the branch *is* the base, an open PR
+  from it has an empty diff, and GitHub auto-closes it — a consumer lost its
+  release PR to that ~3-second window while the run went green. Build the
+  commit first (`get` the target's `treeSha` → `createTree` → `createCommit`
+  with the target as parent) and `upsert` **once**, to the finished sha.
 
 ## Tree-shakability is tested, not promised
 

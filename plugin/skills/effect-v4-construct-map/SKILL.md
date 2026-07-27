@@ -87,6 +87,7 @@ mis-guess silently survives. Full context in the reference files.
 | `Context.Tag` / `Effect.Service` | `Context.Service<Self, Shape>()("id")` | type params FIRST, then the id |
 | `FiberRef` | **`Context.Reference`** (`Context.ts:1335`); the built-in runtime keys live in `References.ts` | there is no `FiberRef.ts` on the v4 line. Concurrency, log level, tracer settings are all `Context.Reference`s now, set with `Effect.provideService` |
 | `DateTime.unsafeMake` | **`DateTime.makeUnsafe`** (`DateTime.ts:656`) | the whole `unsafe*` → `*Unsafe` suffix flip. And the safe form changed shape: `DateTime.make` returns **`Option`** (`:787`), not a throwing constructor |
+| `Schema.DateTimeUtc` encodes to an ISO string | encoded side is **`DateTime.Utc` itself** — string serialization moved out of the declare schemas; `Schema.DateTimeUtcFromString` is the string codec | v3 muscle memory says ISO string; probed at beta.101 (2026-07-26). Matters anywhere the ENCODED side is consumed as text — pick `DateTimeUtcFromString` for wire/string projections |
 | `Layer.scoped` | `Layer.effect` | it already handles resource-owning layers |
 | `Schema.Schema<A, I>` | `Schema.Codec<A, I>` | `Schema.Schema` takes ONE arg now |
 | `Schema.transform(...)` | `from.pipe(Schema.decodeTo(to, SchemaTransformation.transform(...)))` | the top-level callable does **not exist** — it throws |

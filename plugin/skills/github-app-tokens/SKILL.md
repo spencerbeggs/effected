@@ -166,15 +166,23 @@ reports:
 ### `BotIdentity` — pure, not a service member
 
 ```ts
-// packages/github/src/GitHubApp.ts:151-174
+// packages/github/src/GitHubApp.ts:151-190
 export class BotIdentity extends Schema.Class<BotIdentity>("BotIdentity")({
  name: Schema.String,
  email: Schema.String,
 }) {
  static forApp(source: { appSlug: string; appUserId?: number }): BotIdentity;
  static readonly githubActions: BotIdentity; // "github-actions[bot]"
+ get signoff(): string; // "Signed-off-by: <name> <email>"
 }
 ```
+
+`signoff` renders the DCO 1.1 trailer from the type that owns the data —
+commits created through the Git Data API bypass `git commit -s`, so no
+porcelain adds it, and a hand-built trailer that is subtly wrong fails late
+as a red DCO check on someone else's pull request
+(`GitHubApp.ts:175-190`). Whether a missing identity falls back to
+`BotIdentity.githubActions` stays the caller's policy.
 
 The predecessor put `botIdentity(source?)` directly on the `GitHubApp`
 service shape as a plain synchronous method — required in every

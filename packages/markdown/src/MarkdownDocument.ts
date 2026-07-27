@@ -7,7 +7,9 @@
 // a defect.
 
 import { Effect, Result, Schema } from "effect";
+import { scanFrontmatter } from "./internal/blocks/frontmatter.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
+import { preprocessLines } from "./internal/preprocess.js";
 import { normalizeLabelText } from "./internal/references.js";
 import type { MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";
 import { parsePassResult } from "./Markdown.js";
@@ -311,11 +313,37 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	 * only ever sit at the head of `root.children` (the capture fires at most
 	 * once, at offset 0), so the tree is the single source of truth and the
 	 * accessor can never disagree with it. `undefined` covers both a document
-	 * with no frontmatter block and one parsed with the capture toggle off.
+	 * with no frontmatter block and one parsed with the capture toggle off —
+	 * {@link MarkdownDocument.hasFrontmatterBlock} tells the two apart.
 	 */
 	get frontmatter(): Frontmatter | undefined {
 		const head = this.root.children[0];
 		return head !== undefined && head.type === "frontmatter" ? head : undefined;
+	}
+
+	/**
+	 * Whether the source opens with a well-formed frontmatter block —
+	 * regardless of how the document was parsed.
+	 *
+	 * @remarks
+	 * The structural signal that disambiguates the `frontmatter` accessor's
+	 * `undefined`: capture is opt-in (`MarkdownParseOptions.frontmatter`
+	 * defaults off), so a document whose source visibly starts with `---` can
+	 * still carry no capture node — spec-correct CommonMark reads the fences as
+	 * a thematic break plus content. `frontmatter === undefined` with
+	 * `hasFrontmatterBlock === true` means exactly "parsed with capture off";
+	 * with `false` it means the source genuinely has no block.
+	 *
+	 * Derived, not stored: the getter runs the **same** pre-scan the parser
+	 * runs when capture is enabled (the closed fence grammar — `---` yaml,
+	 * `+++` toml, `---json` json; an unclosed fence is not frontmatter), so it
+	 * is `true` exactly when parsing this source with `frontmatter: true`
+	 * would produce a capture node, and the two can never drift. Like the
+	 * other navigation accessors it recomputes per access — bind it once when
+	 * checking repeatedly.
+	 */
+	get hasFrontmatterBlock(): boolean {
+		return scanFrontmatter(preprocessLines(this.source), this.source) !== null;
 	}
 
 	/**

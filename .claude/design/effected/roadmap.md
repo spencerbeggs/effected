@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-07-25
-last-synced: 2026-07-25
+updated: 2026-07-26
+last-synced: 2026-07-26
 completeness: 88
 related:
   - releases.md
@@ -104,6 +104,8 @@ External repos. These are **pull, not push** — they proceed whenever their inp
 - **vitest-agent**, **@soda3js/config** and the **runtime-resolver CLI re-ship**.
 - **silk-update-action** and **savvy-web/systems** (DepsRegen, plus the `savvy` CLI and MCP adapters over it) — the two consumers that scoped workspaces' point-in-time functionality; they migrate off `workspaces-effect`.
 - **The github-split consumers** — silk-release-action, silk-sync-action, silk-router-action, silk-runtime-action and claude-code-marketplace-manager, all pinned at `@savvy-web/github-action-effects@3.x` and migrating deliberately. Nothing forces a synchronized cutover; the per-repo maps in [consumers/](consumers/README.md) record what each replaces and carry the status column that moves as they land.
+
+  **silk-release-action went first, and its feedback is a workstream** (rounds 1-3, 2026-07-26). Three rounds of upstream hardening landed across seven packages — six new `@effected/github-actions` modules, the shapes listed under [breaking shapes](consumers/README.md#breaking-shapes-from-dogfood-rounds-13-silk-release-action-2026-07-26), and four plugin skills. The pattern is worth carrying into the remaining ports: **not one round reported a missing capability.** Every item was a *projection* the consumer had to write between two things the kit already owned — OIDC claims to a provenance predicate, check state to a document, a row type to a table — and got wrong in a way that typechecked. Expect the same class from the next consumer, and prefer absorbing the projection over documenting the hazard.
 
 ## The TypeScript 5→6→7 posture
 

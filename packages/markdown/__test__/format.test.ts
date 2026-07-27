@@ -150,6 +150,102 @@ describe("MarkdownFormat.format", () => {
 		});
 	});
 
+	describe("codeBlockStyle", () => {
+		it("absent, both code-block spellings survive untouched (the pinned default)", () => {
+			const source = "    indented\n\n```\nfenced\n```\n";
+			assert.strictEqual(fmt(source, {}), source);
+		});
+
+		it("fenced converts a language-less indented block to a backtick fence", () => {
+			assert.strictEqual(fmt("    code\n", { codeBlockStyle: "fenced" }), "```\ncode\n```\n");
+		});
+
+		it("fenced honors the fenceChar option for the new fence", () => {
+			assert.strictEqual(fmt("    code\n", { codeBlockStyle: "fenced", fenceChar: "~" }), "~~~\ncode\n~~~\n");
+		});
+
+		it("fenced preserves interior blank lines of a merged indented block", () => {
+			assert.strictEqual(fmt("    a\n\n    b\n", { codeBlockStyle: "fenced" }), "```\na\n\nb\n```\n");
+		});
+
+		it("fenced grows the fence past interior runs of the fence character", () => {
+			assert.strictEqual(fmt("    a\n    ```\n", { codeBlockStyle: "fenced" }), "````\na\n```\n````\n");
+		});
+
+		it("fenced leaves an existing fence to fenceChar normalization", () => {
+			assert.strictEqual(fmt("```js\ncode\n```\n", { codeBlockStyle: "fenced", fenceChar: "~" }), "~~~js\ncode\n~~~\n");
+		});
+
+		it("fenced skips an indented block inside a container", () => {
+			const source = ">     code\n";
+			assert.strictEqual(fmt(source, { codeBlockStyle: "fenced" }), source);
+		});
+
+		it("indented converts a language-less fence", () => {
+			assert.strictEqual(fmt("```\ncode\n```\n", { codeBlockStyle: "indented" }), "    code\n");
+		});
+
+		it("indented emits no fenceChar edit on a span it converted", () => {
+			assert.strictEqual(fmt("```\ncode\n```\n", { codeBlockStyle: "indented", fenceChar: "~" }), "    code\n");
+		});
+
+		it("indented preserves interior blank lines", () => {
+			assert.strictEqual(fmt("```\na\n\nb\n```\n", { codeBlockStyle: "indented" }), "    a\n\n    b\n");
+		});
+
+		it("indented leaves a fence with a language alone", () => {
+			const source = "```js\ncode\n```\n";
+			assert.strictEqual(fmt(source, { codeBlockStyle: "indented" }), source);
+		});
+
+		it("indented skips a fence whose indented form would lazily continue a paragraph", () => {
+			const source = "para\n```\ncode\n```\n";
+			assert.strictEqual(fmt(source, { codeBlockStyle: "indented" }), source);
+		});
+
+		it("indented skips a fence a preceding list would absorb", () => {
+			const source = "- a\n\n```\ncode\n```\n";
+			assert.strictEqual(fmt(source, { codeBlockStyle: "indented" }), source);
+		});
+
+		it("indented skips a fence adjacent to a language-less code sibling", () => {
+			const source = "```\na\n```\n\n    b\n";
+			assert.strictEqual(fmt(source, { codeBlockStyle: "indented" }), source);
+		});
+
+		it("indented skips an empty fence", () => {
+			const source = "```\n```\n";
+			assert.strictEqual(fmt(source, { codeBlockStyle: "indented" }), source);
+		});
+
+		it("indented skips a value with a blank first line", () => {
+			const source = "```\n\nx\n```\n";
+			assert.strictEqual(fmt(source, { codeBlockStyle: "indented" }), source);
+		});
+
+		it("indented skips a fence inside a blockquote", () => {
+			const source = "> ```\n> code\n> ```\n";
+			assert.strictEqual(fmt(source, { codeBlockStyle: "indented" }), source);
+		});
+
+		it("both directions are idempotent", () => {
+			for (const codeBlockStyle of ["fenced", "indented"] as const) {
+				const options = MarkdownFormattingOptions.make({ codeBlockStyle });
+				const source = "    a\n\npara\n\n```\nb\n```\n";
+				const once = MarkdownFormat.formatToString(source, undefined, options);
+				const twice = MarkdownFormat.formatToString(once, undefined, options);
+				assert.strictEqual(twice, once);
+			}
+		});
+
+		it("keeps converted documents render-equivalent", () => {
+			for (const codeBlockStyle of ["fenced", "indented"] as const) {
+				const source = "    a\n\npara\n\n```\nb\n```\n\n~~~py\nc\n~~~\n";
+				assertEquivalent(source, fmt(source, { codeBlockStyle }));
+			}
+		});
+	});
+
 	describe("composition and stability", () => {
 		it("applies several options in one pass", () => {
 			const result = fmt("* a\n\n***\n\n_x_\n", { bulletChar: "-", thematicBreakChar: "*", emphasisChar: "*" });
@@ -167,6 +263,7 @@ describe("MarkdownFormat.format", () => {
 					thematicBreakChar: "*",
 					emphasisChar: "*",
 					fenceChar: "`",
+					codeBlockStyle: "fenced",
 				}),
 			);
 			assert.strictEqual(edits.length, 0);

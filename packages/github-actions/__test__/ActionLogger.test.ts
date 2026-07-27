@@ -150,6 +150,65 @@ describe("ActionLogger", () => {
 			),
 		);
 
+		it.effect("onSuccess: 'discard' drops the transcript when the step succeeds", () =>
+			live(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					const value = yield* logger.withBuffer(
+						"install",
+						Effect.as(Effect.andThen(Effect.logInfo("resolving"), Effect.logInfo("done")), 7),
+						{ onSuccess: "discard" },
+					);
+					assert.strictEqual(value, 7);
+					const captured = yield* lines;
+					// A green step leaves NOTHING behind — no header, no footer, no body.
+					assert.deepStrictEqual(captured, []);
+				}),
+			),
+		);
+
+		it.effect("onSuccess: 'discard' still flushes the transcript when the step fails", () =>
+			live(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					yield* Effect.flip(
+						logger.withBuffer("install", Effect.andThen(Effect.logInfo("resolving"), Effect.fail("boom")), {
+							onSuccess: "discard",
+						}),
+					);
+					const captured = yield* lines;
+					// Discard is a statement about SUCCESS only; the failure transcript
+					// is exactly what the buffer was kept for.
+					assert.deepStrictEqual(bufferedFor("install", captured), ["resolving"]);
+				}),
+			),
+		);
+
+		it.effect("onSuccess: 'flush' spelled explicitly matches the default", () =>
+			live(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					yield* logger.withBuffer("install", Effect.logInfo("resolving"), { onSuccess: "flush" });
+					const captured = yield* lines;
+					assert.deepStrictEqual(bufferedFor("install", captured), ["resolving"]);
+				}),
+			),
+		);
+
+		it.effect("onSuccess: 'discard' does not suppress warnings, which never entered the buffer", () =>
+			live(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					yield* logger.withBuffer("install", Effect.andThen(Effect.logWarning("deprecated"), Effect.logInfo("done")), {
+						onSuccess: "discard",
+					});
+					const captured = yield* lines;
+					// The warning went out live; only the Info transcript was discarded.
+					assert.deepStrictEqual(captured, ["::warning::deprecated"]);
+				}),
+			),
+		);
+
 		it.effect("passes warnings through immediately rather than burying them in the buffer", () =>
 			live(
 				Effect.gen(function* () {

@@ -407,6 +407,21 @@ describe("BotIdentity", () => {
 		// committer line needs none of the machinery.
 		assert.instanceOf(BotIdentity.forApp({ appSlug: "x" }), BotIdentity);
 	});
+
+	it("renders its own DCO sign-off trailer", () => {
+		// Git Data API commits bypass `git commit -s`, so the trailer has no
+		// porcelain to come from — and a hand-built one that is subtly wrong
+		// surfaces as a red DCO check on someone else's PR. DCO 1.1's exact
+		// casing, spacing and angle brackets, from the type that owns the data.
+		assert.strictEqual(
+			BotIdentity.githubActions.signoff,
+			"Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+		);
+		assert.strictEqual(
+			BotIdentity.forApp({ appSlug: "my-app", appUserId: 42 }).signoff,
+			"Signed-off-by: my-app[bot] <42+my-app[bot]@users.noreply.github.com>",
+		);
+	});
 });
 
 describe("AppIdentity", () => {

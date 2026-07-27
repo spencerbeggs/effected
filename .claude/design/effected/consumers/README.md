@@ -3,9 +3,9 @@ status: current
 module: effected
 category: migration
 created: 2026-07-25
-updated: 2026-07-25
-last-synced: 2026-07-25
-completeness: 85
+updated: 2026-07-26
+last-synced: 2026-07-26
+completeness: 87
 related:
   - ../packages/commands.md
   - ../packages/templates.md
@@ -49,11 +49,13 @@ The program replaces `@savvy-web/github-action-effects` wholesale and upstreams 
 | **decision pending** | The replacement's package or shape is not yet settled; the row names the open question. |
 | **stays local** | Deliberately not absorbed. Policy, domain logic or one tool's layout. |
 
-## Migration warnings (dogfood round 1, savvy-web/systems)
+## Migration warnings (dogfood: savvy-web/systems, then silk-release-action)
 
-Cross-cutting hazards the first real adoption hit or flagged. Every remaining
-migration should read these before touching the corresponding surface; none of
-them produce a compile error.
+Cross-cutting hazards a real adoption hit or flagged — items 1-6 from the
+savvy-web/systems round, 7-11 from the silk-release-action rounds (2026-07-26).
+Every remaining migration should read these before touching the corresponding
+surface; **none of them produce a compile error**, which is the whole reason
+they are written down.
 
 1. **`ReleaseTag` defaults to strict SemVer — no `v` prefix — as of
    2026-07-25.** The round-1 finding (unscoped names silently gained
@@ -92,6 +94,49 @@ them produce a compile error.
    return value reads the wrong path for every entry whose status column was
    a space. Parse fixed-column, whitespace-significant output from
    `Run.collect`'s untrimmed `CommandOutput.stdout` instead.
+8. **`upsert(branch, targetHead)` then `commitFiles` closes open pull
+   requests.** Between the two calls the branch *is* its PR's base, the diff is
+   empty, and GitHub auto-closes a PR in that state — a real consumer lost its
+   open release PR to a ~3-second window while the run reported success. Build
+   the commit first (`GitCommit.get` → `createTree` → `createCommit`) and
+   `GitBranch.upsert` once, straight to the finished sha. Both members'
+   TSDoc carries the warning; neither call is wrong alone.
+9. **Wire a `PublishabilityDetector` with `Layer.mergeAll`, never
+   `Layer.provide`.** Warning 5's companion, and the one that reads as correct:
+   because the composites do not *require* a detector, `Layer.provide(detector)`
+   satisfies nothing and **discards** it, so the service is absent from the
+   result. The `@effected/workspaces@0.9.0` changelog shipped the wrong form
+   and a consumer copied it. Merge sideways; provide downward.
+10. **`npm run <script> --flag` silently eats the flag.** npm claims post-script
+    arguments for itself; the other three managers do not. `LocalExec`'s npm
+    `scriptPrefix` is `["npm", "run", "--"]` for exactly this reason — take the
+    prefix from `LocalExec.scriptPrefix(launcher)` rather than spelling
+    `["npm", "run"]` at a call site.
+11. **A language-less `Code` node stringifies as an *indented* block.** Building
+    a fenced block through `@effected/markdown` needs an explicit `fenceChar`
+    (or a `lang`) on the node, or a formatting pass with
+    `MarkdownFormattingOptions.codeBlockStyle: "fenced"`. The default is
+    canonical and correct; it is also not what a consumer synthesizing a fenced
+    block expects, and nothing fails.
+
+### Breaking shapes from dogfood rounds 1–3 (silk-release-action, 2026-07-26)
+
+Unlike the warnings above, every one of these **does** produce a compile error —
+listed so a migrator recognizes it as an intended correction rather than a
+regression:
+
+- `PullRequest.listFiles` answers `ReadonlyArray<CommitFile>`, not
+  `ReadonlyArray<string>` (path *and* status, matching `changedFiles`).
+- `PullRequestInfo` gains required `headSha` / `baseSha`; `CommitSummary` gains
+  required `parents`.
+- `ArtifactMetadata.createStorageRecord(input)` drops its positional `org` and
+  resolves the organization from `Repo` like every other resource method.
+- `PublishOutcome.provenanceUrl` is a plain optional `string`, not an `Option`.
+- `FrontmatterMissingError` gains a required `reason`
+  (`"absent" | "captureDisabled"`).
+- `ExecContext` gains a required `scriptPrefix` — relevant only to a consumer
+  constructing one by hand rather than through `LocalExec.layerFor` /
+  `Workspaces.localExecLayer`.
 
 ## Document shape
 

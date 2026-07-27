@@ -51,7 +51,11 @@ that digest for no reason (`Sbom.ts:59-74`).
 never who supplied it, who assembled the BOM, or when; deriving any of them
 would fabricate three of the seven NTIA elements (`SbomMetadataSource.ts:62-87`).
 `Package` is imported there as a **type only** (`SbomMetadataSource.ts:20`) —
-see [Keeping a light consumer light](#keeping-a-light-consumer-light).
+see [Keeping a light consumer light](#keeping-a-light-consumer-light). The
+package **entrypoint** re-exports `Package`, `Person` and `Repository` from
+`@effected/package-json` (`packages/sbom/src/index.ts:14`), so a consumer
+constructing metadata inputs imports them from `@effected/sbom` without
+adding the `package-json` edge itself.
 
 ### 2. Check `NtiaReport` — the seven minimum elements
 
@@ -95,6 +99,17 @@ const statement = InTotoStatement.forSubject({
 });
 ```
 
+**An Actions consumer does not hand-assemble `claims` →
+`GitHubWorkflowProvenance`.** `ActionsProvenance.capture(audience?)` in
+`@effected/github-actions` reads `OidcTokenIssuer.claims` plus
+`GITHUB_SERVER_URL` (defaulted to `https://github.com` — absence is not a
+failure, only GHES sets it) and returns the `SlsaProvenance` directly. The
+hand mapping is eleven same-typed string renames where transposing
+`repository_id`/`repository_owner_id` compiles clean and signs a wrong
+attestation; `capture` exists to make that unwritable. The typed
+`OidcTokenError` passes through — catch-and-skip vs mandatory attestation is
+the caller's policy, not the kit's.
+
 `SlsaProvenance.forGitHubWorkflow` is **total, a pure projection** —
 upstream `@actions/attest` reads `process.env.GITHUB_SERVER_URL` with no
 default and writes the literal string `"undefined"` into every URL it builds
@@ -124,22 +139,23 @@ export interface IdentityTokenShape {
 (`packages/sbom/src/IdentityToken.ts:50-53`). `sbom` declares the contract;
 `github-actions` ships `OidcTokenIssuer`, whose runner half reads
 `ACTIONS_ID_TOKEN_REQUEST_TOKEN`/`_URL` and decodes claims
-(`packages/github-actions/src/OidcTokenIssuer.ts:90-222`). Wire them with an
-adapter layer, or hand `sign` a token you already hold via
-`IdentityToken.layerStatic`:
+(`packages/github-actions/src/OidcTokenIssuer.ts:90-222`). **The adapter
+ships — do not hand-roll it** (it lived in every consumer until dogfood
+round 1, 2026-07-26):
 
 ```ts
-import { OidcTokenIssuer } from "@effected/github-actions";
-import { IdentityToken } from "@effected/sbom";
-import { Effect, Layer } from "effect";
+import { ActionsIdentityToken, OidcTokenIssuer } from "@effected/github-actions";
+import { SigstoreSigner } from "@effected/sbom";
+import { Layer } from "effect";
 
-const ActionsIdentityToken = Layer.effect(
-  IdentityToken,
-  Effect.map(OidcTokenIssuer, (issuer) => ({
-    token: (audience: string) => issuer.token(audience).pipe(Effect.mapError((cause) => new IdentityTokenError({ audience, cause }))),
-  })),
+const signing = SigstoreSigner.layer.pipe(
+  Layer.provide(ActionsIdentityToken.layer), // Layer<IdentityToken, never, OidcTokenIssuer>
+  Layer.provide(OidcTokenIssuer.layer),
 );
 ```
+
+Outside Actions, hand `sign` a token you already hold via
+`IdentityToken.layerStatic`.
 
 **The audience constant stays in `sbom`**, not the caller:
 `SIGSTORE_OIDC_AUDIENCE = "sigstore"` is Sigstore's requirement, not the
@@ -156,7 +172,7 @@ import { Effect, Layer } from "effect";
 const bundle = yield* Effect.gen(function* () {
   const signer = yield* SigstoreSigner;
   return yield* signer.sign(statement);
-}).pipe(Effect.provide(SigstoreSigner.layer.pipe(Layer.provide(ActionsIdentityToken))));
+}).pipe(Effect.provide(SigstoreSigner.layer.pipe(Layer.provide(ActionsIdentityToken.layer), Layer.provide(OidcTokenIssuer.layer))));
 ```
 
 `SigstoreSigner.layer` signs against the public-good Fulcio/Rekor instances;

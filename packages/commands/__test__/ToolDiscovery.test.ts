@@ -15,7 +15,13 @@ import {
 
 /** A local context: `pnpm exec <tool>` in /repo. */
 const pnpmLocal = LocalExec.layerContext(
-	ExecContext.make({ label: "pnpm", prefix: ["pnpm", "exec"], dlxPrefix: ["pnpm", "dlx"], directory: "/repo" }),
+	ExecContext.make({
+		label: "pnpm",
+		prefix: ["pnpm", "exec"],
+		dlxPrefix: ["pnpm", "dlx"],
+		scriptPrefix: ["pnpm", "run"],
+		directory: "/repo",
+	}),
 );
 
 /**

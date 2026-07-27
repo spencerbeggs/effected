@@ -303,6 +303,10 @@ export class SbomMetadataSource {
 	 * maintainers fill them — the one derivation that crosses from manifest
 	 * vocabulary into supplier vocabulary, and only where the caller left a
 	 * hole.
+	 *
+	 * `pkg` is a `@effected/package-json` `Package`, re-exported from
+	 * this package's entry point so a caller can name the parameter type
+	 * without adding `@effected/package-json` as an undeclared dependency.
 	 */
 	static readonly fromPackage = fromPackage;
 

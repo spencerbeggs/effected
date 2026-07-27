@@ -64,6 +64,7 @@ describe("Workspaces.localExecLayer — a detected workspace", () => {
 			const expected = LocalExec.prefixes("pnpm");
 			assert.deepStrictEqual(context.value.prefix, expected.prefix);
 			assert.deepStrictEqual(context.value.dlxPrefix, expected.dlxPrefix);
+			assert.deepStrictEqual(context.value.scriptPrefix, expected.scriptPrefix);
 		}),
 	);
 
@@ -92,6 +93,7 @@ describe("Workspaces.localExecLayer — a detected workspace", () => {
 				assert.strictEqual(context.value.label, name, `${name} label`);
 				assert.deepStrictEqual(context.value.prefix, expected.prefix, `${name} prefix`);
 				assert.deepStrictEqual(context.value.dlxPrefix, expected.dlxPrefix, `${name} dlx prefix`);
+				assert.deepStrictEqual(context.value.scriptPrefix, expected.scriptPrefix, `${name} script prefix`);
 			}
 		}),
 	);

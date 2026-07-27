@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-25
-last-synced: 2026-07-25
-completeness: 93
+updated: 2026-07-26
+last-synced: 2026-07-26
+completeness: 94
 related:
   - ../architecture.md
   - ../effect-standards.md
@@ -207,7 +207,11 @@ export interface RegistryTarget {
 }
 
 export interface NpmRegistryShape {
-  /** One published version's metadata, or None when that version is not on that registry. */
+  /**
+   * One published version's metadata, or None when that version is not on that
+   * registry. A `github-packages` target reads through the packument — see
+   * [the 2026-07-26 correction](#as-built-two-registry-shape-corrections-2026-07-26).
+   */
   readonly version: (name: string, version: string, target?: RegistryTarget) =>
     Effect.Effect<Option.Option<PublishedVersion>, RegistryReadError>;
   /** Every published version, newest last. */
@@ -326,6 +330,18 @@ Three source modules plus a shared error module, 65 new tests (165 for the packa
 - **Service `R` is discharged at construction.** `Run.collect` requires `ChildProcessSpawner` and `NpmExecutor.command` requires `LocalExec`; both are resolved in `make` and provided with `Effect.provideService`, so every method's `R` is `never` (the `@effected/git` shape). The next kit service built over `commands` will hit this identically.
 
 **Mutation-tested claims** (each mutant run, observed red, reverted): the scoped-package URL encoding; 404-as-absence; the seeded double's registry axis; the npmrc auth-key trailing slash; a failed dry run staying a result; `dlx` degrading silently; the lookalike-domain guard; and the reachability test itself.
+
+### As built: two registry-shape corrections (2026-07-26)
+
+Both from the silk-release-action dogfood, both cases where the shape was right for the public registry and wrong for the one the consumer actually publishes to.
+
+**`version` reads a `github-packages` target through the packument.** GitHub Packages answers the per-version endpoint (`/{name}/{version}`) with **405 regardless of credentials** — not 404, not 401, so none of the existing classification applied and a perfectly valid read failed as a transport-shaped `status` error. `version` now routes through the whole packument for that kind up front, selecting the version out of `versions`, and **falls back the same way on a 405 from any other registry**: the routing is by *observed behavior*, not by a vendor list, so a self-hosted registry with the same gap works without a code change here. `RegistryKind` earns its keep a second time — [the classifier that decides whether a token is sent](#as-built-2026-07-25) is the same one that decides which read path applies.
+
+Two smaller facts inside it. The version is selected with **`Object.hasOwn`, not a bare index**: the version number is caller input, and a lookup for `constructor` must not read the prototype and hand back a "published version" that is a function. And absence stays `Option.none()` on both paths, so the [404-is-absence convention](#npmregistry--reads-over-core-httpclient) holds whether the answer came from a per-version read or a packument selection.
+
+This also **partially answers open question 3** (packument caching): `version` now fetches the same document `versions` / `distTags` / `publishTimes` fetch, so the redundancy the question deferred is one call site larger. Still deferred — the fix is unchanged (core `Cache` keyed `(registry, name)`) and the trigger is still a consumer's call pattern, not this.
+
+**`PublishOutcome.provenanceUrl` is a plain optional field, not `Option`.** It was `Option.Option<string>` — a defensible reading of "absent for GitHub Packages, custom registries and provenance-off runs" — but `PublishOutcome` is a **plain interface returned by a method**, not a `Schema.Class` whose Type side we control, and an `Option` in that position makes every consumer import `Option` to read one URL out of a result they already have. The kit's `Option` convention is for *service members answering "absent is not an error"*; a bare optional property on a result record is `?:`. The construction uses a conditional spread rather than `provenanceUrl: undefined`, per the house idiom.
 
 ## Testing
 

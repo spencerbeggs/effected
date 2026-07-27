@@ -70,8 +70,15 @@ Two real call sites, both verified in source, no others:
 
 - `GitHubRelease.uploadAsset` — release-asset upload is not in the generated
   map at all (raw binary body, `uploads.github.com` host):
-  `client.requestDecoded("POST /repos/{owner}/{repo}/releases/{release_id}/assets", { owner, repo, release_id, name, data, baseUrl: "https://uploads.github.com", headers: { "content-type": … } }, AssetResponse)`
-  (`packages/github/src/GitHubRelease.ts:236-248`).
+  `client.requestDecoded("POST /repos/{owner}/{repo}/releases/{release_id}/assets{?name}", { owner, repo, release_id, name, data, baseUrl: "https://uploads.github.com", headers: { "content-type": … } }, AssetResponse)`
+  (`packages/github/src/GitHubRelease.ts:238-271`). **The `{?name}` query
+  parameter must be in the template**: outside the generated map no schema
+  routes `name` to the query string, so passed only as a parameter octokit
+  silently drops it and GitHub answers 400 `Invalid name for request` (live
+  incident, 2026-07-26). With the optional `label` the template becomes
+  `{?name,label}` — two spellings because `{?name,label}` with an absent
+  label expands to a dangling `&` (probed at `@octokit/endpoint` 11.0.3). A
+  hand-written route owns its query parameters in the template, always.
 - `Attestation.upload` / `Attestation.listForSubject` — both pin
   `X-GitHub-Api-Version: 2026-03-10`, so the live contract differs from what
   the generated types describe (`packages/github/src/Attestation.ts:15,113-148`).
@@ -351,6 +358,12 @@ layer:
 - `CommentMarker.html` / `.matches(body)` — the hidden marker that makes a
   sticky comment findable, no longer a hardcoded vendor string baked into
   the library (`PullRequestComment.ts:19-34`).
+- `BotIdentity.signoff` — a getter rendering the DCO 1.1 trailer
+  (`Signed-off-by: name <email>` — only the email in angle brackets) from the
+  identity that owns the data;
+  Git Data API commits bypass `git commit -s`, so no porcelain adds it and a
+  hand-built trailer fails late as a red DCO check (`GitHubApp.ts:175-190`).
+  Constructors and the token-enrichment path: `github-app-tokens`.
 - `RepoRef.parseResult(slug)` is the sync `Result` primitive;
   `RepoRef.parse` is `Effect.fromResult` over it (`Repo.ts:36-46`) — the
   house sync/Effect parity pattern from `building-a-format-package`.

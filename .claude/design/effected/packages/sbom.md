@@ -3,13 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-07-25
-last-synced: 2026-07-25
+updated: 2026-07-26
+last-synced: 2026-07-26
 completeness: 95
 related:
   - ../effect-standards.md
   - ../package-inventory.md
   - github.md
+  - github-actions.md
   - spdx.md
   - package-json.md
   - commands.md
@@ -68,7 +69,7 @@ Real dependencies, no optional-peer maze, and — decisively — **this is crypt
 | Edge | Why |
 | --- | --- |
 | `@effected/spdx` (`workspace:~`) | license expressions on components — the decisions-log delegation, never a second SPDX engine |
-| `@effected/package-json` (`workspace:~`) | manifest-derived metadata; see [the split](#the-metadata-derivation-split) |
+| `@effected/package-json` (`workspace:~`) | manifest-derived metadata; see [the split](#the-metadata-derivation-split). **`Package`, `Person` and `Repository` are re-exported from this package's entry point** (2026-07-26) — `SbomMetadataSource.fromPackage` takes a `Package`, so a caller must be able to *name* its parameter type without adding an undeclared dependency on a package it only touches through ours. Re-exporting the three types the surface actually speaks is cheaper than either alternative: a structural copy that drifts, or every consumer declaring an edge to satisfy a type annotation. |
 | `effect` (peer) | core |
 
 **No `@effected/github` edge, in either direction** — see [the attestation seam](#the-attestation-seam-no-edge-either-way).
@@ -198,6 +199,8 @@ export interface IdentityTokenShape {
 ```
 
 OIDC token issuance stays in `@effected/github-actions` (Phase 3), which owns `ACTIONS_ID_TOKEN_REQUEST_URL` and the Actions runtime. This package must not depend on it — github-actions is integrated with a required `@effect/platform-node` peer, and taking that edge would drag a platform peer into every SBOM consumer. So `sbom` declares the narrow contract, github-actions ships the layer implementing it, and `sbom` ships `IdentityToken.layerStatic(token)` for a consumer holding one already.
+
+**The implementing layer now exists and is named here** (2026-07-26, effected#184): [`ActionsIdentityToken.layer`](github-actions.md#the-effectedsbom-seam-adapters-2026-07-26), over that package's `OidcTokenIssuer`. Until it shipped, every action wanting a signed attestation wrote the adapter itself — from a contract in this package against a service in another — which is the work an inverted contract is supposed to have already done. The module header names it, because a contract that does not point at its implementation reads as unimplemented. The same round added `ActionsProvenance.capture` on the other half of the seam: the OIDC-claims → `SlsaProvenance` projection, which is [this package's `forGitHubWorkflow`](#slsaprovenance--the-predicate-typed) fed by the runner, with the eleven-field snake_case rename owned once on the side that holds the claims.
 
 **The audience string stays in this package.** `SIGSTORE_OIDC_AUDIENCE = "sigstore"` is Sigstore's requirement, not the caller's knowledge — which is why `sign` takes only a statement and asks the contract for a token, rather than taking a token parameter. Considered and rejected: `sign(statement, { token })`, which reads simpler but forces every caller to know an audience constant that belongs to the signing protocol.
 

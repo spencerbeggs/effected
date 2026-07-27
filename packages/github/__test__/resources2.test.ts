@@ -386,8 +386,8 @@ describe("PullRequest", () => {
 		html_url: `https://x/${number}`,
 		title: `pr ${number}`,
 		state: "open",
-		head: { ref: "feature" },
-		base: { ref: "main" },
+		head: { ref: "feature", sha: "feature-sha" },
+		base: { ref: "main", sha: "base-sha" },
 		draft: false,
 		merged: false,
 		merged_at: null,
@@ -415,6 +415,50 @@ describe("PullRequest", () => {
 			);
 			assert.isTrue(Option.isNone(value.mergedAt));
 			assert.isFalse(value.merged);
+		}),
+	);
+
+	it.effect("carries the head and base shas alongside the branch names", () =>
+		Effect.gen(function* () {
+			// "Which commit did this branch from" is base.sha — routine, and it used
+			// to need a raw route.
+			const { value } = yield* drive([{ status: 200, body: pull(9) }], PullRequest, PullRequest, (pulls) =>
+				pulls.get(9),
+			);
+			assert.strictEqual(value.head, "feature");
+			assert.strictEqual(value.headSha, "feature-sha");
+			assert.strictEqual(value.base, "main");
+			assert.strictEqual(value.baseSha, "base-sha");
+		}),
+	);
+
+	it.effect("listFiles carries the status, not the path alone", () =>
+		Effect.gen(function* () {
+			// The endpoint answers with the same `diff-entry` shape as the
+			// single-commit read; projecting to the filename dropped the status and
+			// pushed consumers to a raw route.
+			const { value, script } = yield* drive(
+				[
+					{
+						status: 200,
+						body: [
+							{ filename: "a.txt", status: "modified", additions: 1, deletions: 2 },
+							{ filename: "new.txt", status: "renamed", additions: 0, deletions: 0, previous_filename: "old.txt" },
+						],
+					},
+				],
+				PullRequest,
+				PullRequest,
+				(pulls) => pulls.listFiles(7),
+			);
+			assert.deepStrictEqual(
+				value.map((file) => file.path),
+				["a.txt", "new.txt"],
+			);
+			assert.strictEqual(value[0]?.status, "modified");
+			assert.strictEqual(value[1]?.status, "renamed");
+			assert.strictEqual(value[1]?.previousPath, "old.txt");
+			assert.include(script.calls[0]?.path ?? "", "/pulls/7/files");
 		}),
 	);
 
@@ -472,7 +516,9 @@ describe("PullRequest", () => {
 		title: "t",
 		state: "open",
 		head: "feature",
+		headSha: "feature-sha",
 		base: "main",
+		baseSha: "base-sha",
 		draft: false,
 		merged: false,
 		mergedAt: Option.none(),
@@ -626,6 +672,42 @@ describe("GitHubRelease", () => {
 			assert.strictEqual(value.id, 9);
 			assert.include(script.calls[0]?.url ?? "", "uploads.github.com");
 			assert.strictEqual(script.calls[0]?.headers["content-type"], "application/zip");
+			// The discriminating assertion is on the BUILT url, not the arguments:
+			// this route is outside the generated map, so a `name` passed only as
+			// a parameter is silently dropped by octokit — every upload then 400s
+			// with "Invalid name for request" (live incident, 2026-07-26).
+			assert.strictEqual(script.queryOf(0).get("name"), "app.zip");
+			assert.isFalse(script.queryOf(0).has("label"));
+			assert.notInclude(script.calls[0]?.url ?? "", "&");
+		}),
+	);
+
+	it.effect("uploadAsset carries an optional display label as a second query parameter", () =>
+		Effect.gen(function* () {
+			const info = ReleaseInfo.make({
+				id: 5,
+				tag: "v1.0.0",
+				name: "",
+				body: "",
+				draft: false,
+				prerelease: false,
+				url: "https://x/5",
+				uploadUrl: "https://uploads.github.com/x",
+			});
+			const { script } = yield* drive(
+				[{ status: 201, body: { id: 9, name: "app.zip", browser_download_url: "https://d/9", size: 12 } }],
+				GitHubRelease,
+				GitHubRelease,
+				(releases) =>
+					releases.uploadAsset(info, {
+						name: "app.zip",
+						data: "bytes",
+						contentType: "application/zip",
+						label: "Tarball (npm)",
+					}),
+			);
+			assert.strictEqual(script.queryOf(0).get("name"), "app.zip");
+			assert.strictEqual(script.queryOf(0).get("label"), "Tarball (npm)");
 		}),
 	);
 

@@ -28,6 +28,7 @@ export {
 	FrontmatterEncodeError,
 	FrontmatterFormatMismatchError,
 	FrontmatterMissingError,
+	FrontmatterMissingReason,
 	FrontmatterValidationError,
 	MarkdownFrontmatter,
 } from "./Frontmatter.js";
@@ -65,6 +66,7 @@ export type { MarkdownPath, MarkdownSegment } from "./MarkdownEdit.js";
 export { MarkdownEdit, MarkdownRange } from "./MarkdownEdit.js";
 export type { MarkdownRangeLike } from "./MarkdownFormat.js";
 export {
+	CodeBlockStyle,
 	MarkdownFormat,
 	MarkdownFormattingOptions,
 	MarkdownModificationError,

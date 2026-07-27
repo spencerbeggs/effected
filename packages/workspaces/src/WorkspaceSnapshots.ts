@@ -351,7 +351,11 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 			const at = Effect.fn("WorkspaceSnapshots.at")(function* (ref: string) {
 				// `Effect.suspend` so the ambient cwd is read at call time, not layer build.
 				const root = yield* Effect.suspend(() => roots.find(options?.cwd ?? process.cwd()));
-				const key = `${root} ${ref}`;
+				// NUL-separated — a NUL can occur in neither a path nor a ref, so keys
+				// cannot collide. Kept as the `\0` escape deliberately: a literal NUL
+				// byte makes `file` classify this source as binary and grep/ripgrep
+				// silently skip it (#187).
+				const key = `${root}\0${ref}`;
 				let memo = atCaches.get(key);
 				if (memo === undefined) {
 					const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(
@@ -425,6 +429,13 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 	 * Both methods therefore **die** with an instructive defect until stubbed; a
 	 * test-wiring mistake fails loudly as a defect rather than succeeding with a
 	 * lie.
+	 *
+	 * **A defect is not absorbed by `Effect.catch` or any typed-error handler**,
+	 * and that is the point: code under test with a best-effort `catch` around
+	 * its snapshot reads cannot make a mandatory stub look optional — the
+	 * unstubbed call still fails the test instead of quietly taking the catch
+	 * branch. Only defect-level combinators (`Effect.catchDefect`,
+	 * `Effect.exit`) would see it.
 	 *
 	 * @example
 	 * ```ts

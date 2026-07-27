@@ -19,6 +19,15 @@ the integration suite only.
 v1 scope is **managed sections only**. Whole-file templating is out of scope
 until a consumer proves a concrete shape.
 
+**First in-kit consumer (2026-07-26): `@effected/github-actions`'s
+`ManagedDocument`** — a PR comment or check summary whose regions an action
+rewrites while the human's prose survives. It is `SectionDocument` with three
+parameters *fixed* (HTML comment style, the `MANAGED REGION` phrase,
+`ns.key.region` keys), **a domain fixing of the dialect, not a second engine**:
+the region grammar, the line-ending invariant and the idempotence proof all
+stayed here. It asked for `SectionDialect`'s parameters to be narrowed, never
+extended — keep it that way when the next consumer arrives.
+
 ## The one architectural rule: pure core, thin edge
 
 ```text

@@ -20,7 +20,7 @@ module, ~380 KB.
 | --- | --- |
 | `@sigstore/sign`, `@sigstore/bundle` | signing. **`SigstoreSigner.ts` only** |
 | `@effected/spdx` (`workspace:~`) | license identifier vs expression, on components |
-| `@effected/package-json` (`workspace:~`) | manifest-derived metadata (**type-only import**) |
+| `@effected/package-json` (`workspace:~`) | manifest-derived metadata (**type-only** in `src/`; `Package` / `Person` / `Repository` re-exported from the entry point) |
 | `effect` (peer) | core |
 
 **`@cyclonedx/cyclonedx-library` is deliberately absent** — 6.6 MB with seven
@@ -128,6 +128,14 @@ A value import would put `@effected/package-json` — and its `FileSystem` IO
 module — on the runtime graph of a package whose SBOM half is otherwise pure.
 The reachability suite asserts the resulting edge set exactly, so a stray value
 import fails there rather than in a consumer's bundle.
+
+`src/index.ts` does re-export `Package`, `Person` and `Repository` as values,
+and that is the one sanctioned place: `SbomMetadataSource.fromPackage` takes a
+`Package`, and without the re-export a caller could not name its argument type
+without declaring a dependency it does not otherwise have. Same posture as the
+entry point re-exporting the signer — the property that matters is that every
+pure **module** stays reachable without the heavy graph. **Do not copy the
+pattern into `src/`.**
 
 ### The signer's error `kind` comes from Sigstore's own error codes
 

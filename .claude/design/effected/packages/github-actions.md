@@ -3,14 +3,17 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-07-25
-last-synced: 2026-07-25
+updated: 2026-07-26
+last-synced: 2026-07-26
 completeness: 100
 related:
   - ../effect-standards.md
   - ../roadmap.md
   - github.md
   - commands.md
+  - sbom.md
+  - templates.md
+  - markdown.md
 ---
 
 # @effected/github-actions design
@@ -33,6 +36,10 @@ Scope is closed by six consumers — the five in the spec plus **silk-runtime-ac
 {
   "dependencies": {
     "@effected/github": "workspace:~",
+    "@effected/glob": "workspace:~",
+    "@effected/markdown": "workspace:~",     // GitHubMarkdown only, reachability-pinned
+    "@effected/sbom": "workspace:~",         // the two seam adapters only
+    "@effected/templates": "workspace:~",    // ManagedDocument / CheckDocument only
     "@azure/storage-blob": "^12.33.0"
   },
   "peerDependencies": {
@@ -63,6 +70,8 @@ The rules that make the confinement hold:
 - The three modules are separate named re-exports in `index.ts`, never gathered into a namespace object — the [codec hazard](../effect-standards.md#no-barrel-re-exports) applies verbatim: `export const Stores = { cache, artifact, blob }` would make every one of them reachable from any of them.
 - **Measured, not asserted.** A bundle-reachability test with a control, copying [github's](github.md#testing): bundle a program importing only `ActionOutputs` and assert `@azure/storage-blob` is absent from the module graph; bundle one importing `ActionCache` and assert it is present. Without the second assertion the first can pass for the wrong reason.
 
+**`@effected/markdown` is confined the same way, by the same test** (2026-07-26). It is the kit's second-largest package and `GitHubMarkdown` is the only module allowed to import it; every other reporting module composes *strings*, so a consumer that writes a check document without ever calling the writer does not link the engine. `__test__/reachability.test.ts` carries the pair with a control, exactly as Azure does. `@effected/templates` and `@effected/sbom` are deliberately **not** confined — both are small, pure-or-contract-shaped kit packages whose presence in a graph costs nothing worth measuring, and pretending otherwise would make the reachability suite a ritual rather than a defense.
+
 ## Module map
 
 Module-per-concept, no barrels, `src/index.ts` re-exports only.
@@ -80,6 +89,8 @@ Module-per-concept, no barrels, `src/index.ts` re-exports only.
 | `src/Secret.ts` | **the declassification seam** — masked handoff of `Redacted` values | — |
 | `src/GitHubToken.ts` | the App-token lifecycle bridge onto `@effected/github` | `@effected/github` |
 | `src/OidcTokenIssuer.ts` | `id-token: write` OIDC tokens | — |
+| `src/ActionsIdentityToken.ts` | the layer closing `@effected/sbom`'s inverted `IdentityToken` contract over `OidcTokenIssuer` (effected#184) | `@effected/sbom` |
+| `src/ActionsProvenance.ts` | `ActionsProvenance.capture` — the OIDC-claims→`SlsaProvenance` projection over `OidcTokenIssuer` + `ActionEnvironment`, owning the eleven-field snake_case→camelCase rename once so a consumer cannot transpose `repository_id`/`repository_owner_id` into a validly signed wrong attestation (dogfood round-2 item 23). `GITHUB_SERVER_URL` via `getOptional` with the `https://github.com` default (absence is not a failure — GHES sets it, github.com never does); `OidcTokenError` passes through untouched so the mandatory-vs-best-effort attestation policy stays the consumer's; ends at the predicate — statement/sign/upload stay consumer glue | `@effected/sbom` |
 | `src/CacheKey.ts` | `hashFiles`, restore-key ladders, branch-aware derivation — **pure + FS** | — |
 | `src/ActionCache.ts` | the Actions cache protocol | `@azure/storage-blob` |
 | `src/Artifact.ts` | the Actions artifact protocol | `@azure/storage-blob` |
@@ -89,9 +100,13 @@ Module-per-concept, no barrels, `src/index.ts` re-exports only.
 | `src/BlobTransfer.ts` | **pure**: the transport seam the three Azure modules take as an argument | — |
 | `src/ToolInstaller.ts` | download / extract / cache a toolchain | — |
 | `src/DetachedProcess.ts` | detached spawn, readiness probe, the bare-pid reap guard | `node:child_process` |
+| `src/CheckState.ts` | **pure**: the check-state vocabulary (`running`/`pass`/`fail`/`warn`/`user_interaction_required`/`skipped`/`timeout`) and `projectCheckState` onto GitHub's check-run status/conclusion wire — conclusion literals mirrored structurally so the module never reaches `@effected/github`, drift pinned by a test | — |
+| `src/ManagedDocument.ts` | **pure**: the marker-delimited document — sentinel `<!-- ns:key -->`, named regions replaced from current state, human bytes preserved, create-or-update in one parse. A thin domain fix of `@effected/templates`' `SectionDocument` (HTML style, `MANAGED REGION` phrase, `ns.key.region` wire keys) | `@effected/templates` |
+| `src/GitHubMarkdown.ts` | the fluent GFM writer for GitHub surfaces — `table`/`heading`/`link`/`code`/`codeBlock`/`list`/`details`/`raw`, escaping through `@effected/markdown`'s nodes + stringify (the **only** module allowed to import the engine; reachability-tested like Azure) | `@effected/markdown` |
+| `src/CheckDocument.ts` | the check-run → document reconciler: in-process registry (`report`, last-write-wins, resolution non-terminal), trailing debounce with max-wait (500 ms / 3 s defaults), byte-identical render ⇒ no write, narrow `sink` contract, finalizer flush | `@effected/templates` |
 | `src/internal/` | SigV4, the Twirp client, the results-backend reader | — |
 
-Twenty modules against the source package's eleven runtime services. The growth is deliberate: framing (`BlobEnvelope`), cache-key derivation (`CacheKey`), the secret seam (`Secret`) and detached-process lifecycle (`DetachedProcess`) were all **consumer-side hand-rolls** the survey found, not new inventions.
+**Twenty-six modules** against the source package's eleven runtime services: twenty at the port, plus the [four reporting modules](#the-github-surfaces-reporting-suite-2026-07-26) added for silk-release-action's item 2 and the [two `@effected/sbom` seam adapters](#the-effectedsbom-seam-adapters-2026-07-26), all six landed 2026-07-26. The growth is deliberate: framing (`BlobEnvelope`), cache-key derivation (`CacheKey`), the secret seam (`Secret`) and detached-process lifecycle (`DetachedProcess`) were all **consumer-side hand-rolls** the survey found, not new inventions.
 
 ## `ActionEnvironment`, and the two friction fixes
 
@@ -163,7 +178,7 @@ export class ActionInput {
 Two friction fixes:
 
 - **`ActionLogger.layerSilent()`** — the spec counts `Effect.provide(Logger.layer([]))` **13 times** in silk-release-action and **23** in silk-sync-action, purely to silence logs in tests. One named layer replaces all 36.
-- **The buffered step renderer stays**, because it is what makes an action's log readable, but `withBuffer` is no longer wrapped around the whole program by `Action.run` implicitly — an unhandled defect inside a buffer swallowed the output in the source package. `Action.run` flushes buffers on every exit path, including a defect.
+- **The buffered step renderer stays**, because it is what makes an action's log readable, but `withBuffer` is no longer wrapped around the whole program by `Action.run` implicitly — an unhandled defect inside a buffer swallowed the output in the source package. `Action.run` flushes buffers on every exit path, including a defect. Since 2026-07-26 it also takes `{ onSuccess: "flush" | "discard" }`, so a step can be quiet when it succeeds and still spill its transcript when it does not — see [the reporting suite](#the-github-surfaces-reporting-suite-2026-07-26).
 
 ## Secrets: the declassification seam
 
@@ -395,13 +410,47 @@ export interface OidcTokenIssuerShape {
 
 If a consumer ever needs a *verified* token, that is a different operation with a different name and a different error channel, not an option on this one.
 
+## The `@effected/sbom` seam adapters (2026-07-26)
+
+Two modules, both landed in the silk-release-action dogfood, both instances of the same rule: **`@effected/sbom` must not depend on the Actions runtime, so the adapter that closes its contract lives here.** This is the [inverted-contract pattern](../effect-standards.md#dependency-policy) already used for `@effected/npm`'s `CatalogResolver` and `@effected/commands`' `LocalExec` — the dependency edge points `github-actions → sbom`, never back.
+
+- **`ActionsIdentityToken.layer`** — `Layer<IdentityToken, never, OidcTokenIssuer>`, the layer `sbom`'s inverted `IdentityToken` contract was declared for (effected#184). Without it every action wanting a signed attestation had to write the adapter itself, from a contract in one package against a service in another; `IdentityToken.layerStatic` stays the path for a consumer that already holds a token.
+- **`ActionsProvenance.capture(audience?)`** — `Effect<SlsaProvenance, OidcTokenError, OidcTokenIssuer | ActionEnvironment>`. `SlsaProvenance.forGitHubWorkflow` is total and does the real work, but it takes camelCase, and the only input anyone inside a workflow holds is the runner's snake_case OIDC claims. **The rename is eleven all-string fields**, so transposing `repository_id` and `repository_owner_id` compiles, typechecks, and produces a validly signed attestation asserting the *wrong* provenance. Owning the rename once is the whole point of the module (dogfood round-2 item 23).
+
+Three decisions inside `capture` are worth keeping:
+
+- **`serverUrl` is read through `ActionEnvironment.getOptional` with a `https://github.com` default, not through the `GitHubContext` projection.** The projection fails typed when a `GITHUB_*` variable is absent, and a missing server URL is *not* a failure — it has a correct answer. GHES runners set the variable; github.com consumers should never think about it. Upstream `@actions/attest` reads the same variable with no default and writes the literal string `undefined` into every URL it builds, which is exactly the hazard `GitHubWorkflowProvenance.serverUrl` being required exists to prevent.
+- **`OidcTokenError` passes through untouched** — not caught, not defaulted, not wrapped. Whether attestation is mandatory or best-effort is the *consumer's* policy: an action that must not publish unattested lets it propagate; one that publishes anyway catches it at its own boundary. `reason: "unavailable"` almost always means the workflow forgot `permissions: id-token: write`.
+- **The construct ends at the predicate.** Statement assembly, signing and upload stay consumer glue over `sbom`'s `SigstoreSigner` and `github`'s `Attestation.upload` — the same line [the sbom design draws](sbom.md#the-consumer-side-pipeline-a-worked-sketch-not-shipped-code).
+
+## The GitHub-surfaces reporting suite (2026-07-26)
+
+Four modules answering silk-release-action's dogfood item 2: an action that reports progress into a **living document** — a PR comment or check summary rewritten as checks resolve — had to hand-roll marker parsing, GFM escaping, a debounce and a check-state vocabulary, and got the escaping wrong in production.
+
+**`CheckState.ts` — pure vocabulary.** `running` / `pass` / `fail` / `warn` / `user_interaction_required` / `skipped` / `timeout`, plus `projectCheckState` onto GitHub's check-run status/conclusion wire (`{ status: "in_progress" }` or `{ status: "completed", conclusion }`). The conclusion literals are **mirrored structurally rather than imported**, so the module never reaches `@effected/github` — a check *state* is a reporting concept an action can hold without linking an API client — and a test pins the mirror against the real union so the duplication cannot drift silently. This is also what makes the other four [`CheckRun` conclusions reachable](github.md#as-built--where-implementation-corrected-the-design) from a vocabulary rather than a literal.
+
+**`ManagedDocument.ts` — pure, over `@effected/templates`.** A marker-delimited document: a sentinel `<!-- ns:key -->` identifies *this* action's document among many, and named regions inside it are replaced from current state while every byte the human wrote around them survives. Create-or-update is **one parse**, not a find-then-branch. It is a thin domain fixing of [`SectionDocument`](templates.md#sectiondocument--the-pure-core) — HTML comment style, the `MANAGED REGION` phrase, `ns.key.region` wire keys — and deliberately *not* a second engine: the region grammar, the line-ending invariant and the idempotence proof all stay in `templates`, which is the package that has them under test.
+
+**`GitHubMarkdown.ts` — the fluent writer, and the only importer of the engine.** `table` / `heading` / `link` / `code` / `codeBlock` / `list` / `details` / `raw`. Every member takes **pre-rendered markdown** and returns a `string`, so compositions read as plain string assembly; what the writer owns is the *structure*. A cell carrying `>=1 || <2` renders with its pipes escaped instead of shifting every column after it; a fence inside a code block widens the fence; a URL with spaces is angle-bracketed. The predecessor's string-joining fallback arm is the live table-corruption defect this module exists to delete, which is why the impossible serializer arm is a **defect, not a fallback**: `Markdown.stringifyResult` is total over the fixed-shape two-level trees this module builds, and quietly degrading to string joining on a tree that cannot occur is how the corruption came back last time.
+
+`tableFor(schema)` (round 3) is the same argument one level up: **a table's columns are defined once, by a row schema.** Column order is field declaration order, each header is the field's `title` annotation (falling back to the property name, overridable per column), and each cell is the field value's **encoded** form — a branded or typed field projects through its own codec instead of being respelled at every call site, and a row can no longer transpose columns because it is a typed object rather than a positional array. The one place the types get strict: a field whose encoded side is **not** a string has no string projection to borrow, so its column's `format` — and therefore `columns` and `options` themselves — becomes **required** rather than defaulting to `String(value)`. An absent optional field renders an empty cell without consulting codec or formatter.
+
+**`CheckDocument.ts` — the reconciler.** An in-process registry (`report(check, CheckReport)`, last-write-wins per check, resolution non-terminal so a check may report again) projected onto a `ManagedDocument` by a scoped background fiber, written through a narrow `sink: (rendered: string) => Effect<unknown, unknown>` so the same reconciler drives a PR comment, a check summary or a file with no knowledge of any of them. Four properties carry it:
+
+- **Push, not pull.** The run owns its checks and knows when they resolve; nothing here polls GitHub.
+- **Trailing debounce with a max-wait** (500 ms quiet, 3 s bound). A burst coalesces into one write carrying the burst's *final* state; a steady stream still surfaces progress. Leading-edge would publish the first state of every burst, which is the one state guaranteed to be stale.
+- **A byte-identical render issues no write at all** — the cheapest possible answer to a comment-editing rate limit, and it needs no cache beyond the text already written.
+- **The finalizer flushes**, registered *before* the daemon is forked so it runs *after* the fork's own interruption finalizer: the daemon is already dead when the last flush runs, so the two cannot race for the sink. A background pass that fails logs a structured warning and leaves the registry intact — the next report retries it, and only `flush` surfaces the typed error, because a reporting document failing must not fail the run it is reporting on.
+
+**`ActionLogger.withBuffer` gained `{ onSuccess: "flush" | "discard" }`** in the same round, and belongs with these: it is what keeps a green release log to one line per step while a failure still spills the whole transcript. Only a **success** is ever discarded — a typed failure, a defect and an interruption all flush, because that is the moment the transcript was kept for — and step debugging overrides the discard, since asking for debug output means wanting to see what a green step did.
+
 ## Errors
 
 **Audit every ported error channel for whether it can actually fire.** A general finding from the source read: the package has at least two error channels that are structurally unreachable — a pure body wrapped in `Effect.try`, so the `catch` arm is dead. A channel that cannot fire is worse than no channel: it forces every caller to handle a case that does not exist, and it makes the type a lie about the operation. When porting a member, either demonstrate the failure path with a test or delete it from the signature.
 
 One typed error per concept module, `Schema.TaggedErrorClass`, sized to what callers actually read — the spec's §7 finding that `GitHubClientError` demanded five mandatory fields while readers used one or two applies here too.
 
-`ActionEnvironmentError`, `ActionStateError`, `ActionOutputError`, `ActionCacheError`, `ArtifactError`, `ToolInstallerError`, `OidcTokenError`, `BlobStoreError`, `BlobEnvelopeError`, `DetachedProcessError`. Each carries a `reason` literal union plus the one or two fields a caller branches on, with ergonomic statics for construction, and foreign failures wrapped with `cause: Schema.Defect()` rather than stringified.
+`ActionEnvironmentError`, `ActionStateError`, `ActionOutputError`, `ActionCacheError`, `ArtifactError`, `ToolInstallerError`, `OidcTokenError`, `BlobStoreError`, `BlobEnvelopeError`, `DetachedProcessError`, and from the [reporting suite](#the-github-surfaces-reporting-suite-2026-07-26) `ManagedDocumentError` and `CheckDocumentError` (`kind: "render" | "sink"`, so a caller can tell "the document could not be built" from "the place it was going refused it"). Each carries a `reason` literal union plus the one or two fields a caller branches on, with ergonomic statics for construction, and foreign failures wrapped with `cause: Schema.Defect()` rather than stringified.
 
 `ActionInputError` does **not** survive: input failures are `ConfigError` now, because inputs are `Config`-backed. That is one fewer error class and a strictly better message, since `ConfigError` names the missing key.
 
@@ -435,6 +484,7 @@ Per program decision 9, recorded per concept:
 - **`RepoRef`, `InstallationToken`, `BotIdentity`, `GitHubClient` — canonical in `github`, consumed here.** This package depends on `github` (program decision 4), so duplicating them is the failure mode decision 9 warns about. `ActionEnvironment.repo` returns `github`'s `RepoRef`, and `GitHubToken` persists `github`'s `InstallationToken` — which is encodable precisely so this package can persist it.
 - **`GitHubContext` / `RunnerContext` — canonical here.** They describe the *runner*, not the API: `runId`, `runAttempt`, `workflow`, `job`, `runnerOs`, `runnerTemp`. `github` has no use for them and taking them there would invert the dependency.
 - **The workflow-command protocol is canonical here and duplicated nowhere.** It is the seam `github` deliberately dropped when `silentOctokitLog` died.
+- **The check-run *conclusion* literals are canonical in `github` and mirrored here structurally** (2026-07-26), which is the one deliberate exception. `CheckState` is a reporting vocabulary an action holds while it works; importing the API client to name a string would put `@effected/github` on the graph of every module that reports progress. The mirror is pinned by a test against the real union, so this is a duplication with an alarm on it rather than one on trust — and it is the only place in the package where decision 9 is answered with "copy" instead of "consume".
 
 ## Deliberately not ported
 
@@ -445,13 +495,13 @@ Per program decision 9, recorded per concept:
 - **`Attest`, `Sbom`, `SigstoreSigner`** — Phase 4, and their `@cyclonedx/*` and `@sigstore/*` dependencies go with them.
 - **`PackagePublish`, `NpmRegistry`** — Phase 5, with token masking hoisted to the caller, which removes the duplicate sub-provide silk-release-action needs today (spec §5).
 - **`WorkspaceDetector`, `PackageManagerAdapter`, `ChangesetAnalyzer`** — the kit already owns all three.
-- **`GithubMarkdown`** — a string builder with no Actions coupling; it belongs to whichever consumer wants it, or to `@effected/markdown` if a second one does.
+- ~~**`GithubMarkdown`** — a string builder with no Actions coupling; it belongs to whichever consumer wants it, or to `@effected/markdown` if a second one does.~~ **REVERSED 2026-07-26.** The premise was wrong in the direction that mattered: the predecessor was a string *joiner*, and joining is precisely what corrupts a table when a cell contains a pipe — a live defect in the dogfood consumer. What ships is [`GitHubMarkdown`](#the-github-surfaces-reporting-suite-2026-07-26), a writer over `@effected/markdown`'s nodes and serializer, which is a different artifact from the one declined. It stays *here* rather than moving into `markdown` because its subject is GitHub's surfaces (check summaries, PR comments, job summaries) and their escaping hazards, not CommonMark; the engine is confined to that one module and pinned by the reachability suite.
 - **`ActionInputError`** — dissolved into `ConfigError`.
 - **`Artifact`'s `FindBy` (the cross-run / cross-repo lookup)** — RULED out of v1 (2026-07-25). **A parameter whose only behavior has ever been a typed refusal is a ported lie:** every path through `findBy` in the source package fails with "not yet implemented", so porting it would ship a surface that answers no question. `Artifact` is already [provisional by ruling](#artifact--ships-in-v1-and-the-name-collision-that-nearly-sank-it), and adding the parameter back when a consumer produces a real cross-run lookup is **additive**, whereas shipping it and later removing it would not be. If it returns, the design doc's sketch is the shape it takes: `{ token, workflowRunId, repositoryOwner, repositoryName }` with **`token: Redacted.Redacted<string>`** rather than the source's `string`, because it is a credential and this package has a seam for declassifying one.
 
 ## As built — complete (2026-07-25)
 
-Every module in the map is built against `effect@4.0.0-beta.101`: **298 tests**, `tsc --noEmit` clean, biome clean, and a **zero-warning build** — 27 suppressed `_base` entries and nothing else.
+Every module in the map is built against `effect@4.0.0-beta.101`: **298 tests at the port**, `tsc --noEmit` clean, biome clean, and a **zero-warning build** — 27 suppressed `_base` entries and nothing else. The [dogfood rounds](#the-dogfood-rounds--what-adoption-actually-asked-for-2026-07-26) added six modules and their suites on top of that count.
 
 It arrived over three sessions. The first two produced fourteen units — `WorkflowCommand`, `ActionEnvironment`, `ActionOutputs`, `ActionState`, `Secret`, `BlobEnvelope`, `ActionInput`, `ActionLogger`, `DryRun`, `CacheKey`, `DetachedProcess`, `OidcTokenIssuer`, `ToolInstaller`, `BlobStore` (+ the SigV4 signer) — at 213 tests. The third closed it: `internal/twirp`, `internal/actionsResults`, `BlobTransfer`, `BlobStore.githubCache`, `ActionCache`, `Artifact`, `CacheKey.matchingFiles`/`hashMatching`, the Azure reachability suite, `GitHubToken`, and `Action`/`ActionRuntime`.
 
@@ -683,6 +733,20 @@ The package is complete; what is left is adoption. Two things a first consumer w
 
 - **`Artifact` is provisional by ruling.** It was ported without a call site to shape it against, so the first consumer to adopt it is the one whose feedback reshapes it — including whether the cross-run lookup comes back.
 - **The two integration paths are opt-in and unexecuted in CI**: a real Actions-cache round trip and a real S3-compatible round trip. The transport seam is how both are pointed at something local.
+
+### The dogfood rounds — what adoption actually asked for (2026-07-26)
+
+Adoption started immediately, against `@savvy-web/silk-release-action`, and three rounds of it added **six modules and one option** to a package declared complete. Recorded because the *shape* of the feedback is the useful part:
+
+| Round | What the consumer was doing by hand | What landed |
+| --- | --- | --- |
+| 1 | writing the `IdentityToken` adapter itself, from a contract in `sbom` against a service here | `ActionsIdentityToken.layer`; `ActionLogger.withBuffer`'s `onSuccess` option; `Secret.forSigning`'s TSDoc rescoped from "signing" to "any in-process use" |
+| 2 | marker parsing, GFM escaping, a debounce and a check vocabulary — with the escaping wrong in production; and an eleven-field claim rename | the [four reporting modules](#the-github-surfaces-reporting-suite-2026-07-26); [`ActionsProvenance.capture`](#the-effectedsbom-seam-adapters-2026-07-26) |
+| 3 | respelling a table's columns at every call site | `GitHubMarkdown.tableFor(schema)` |
+
+Not one of them is a *service gap* of the kind the surveys found before the port — every round is a **projection** a consumer had to write between two things this kit already owned, and got wrong in a way that typechecked. That is the class this package should keep absorbing, and the reason `tableFor`'s formatter is type-*required* rather than defaulted: the defect these modules delete is never "no API for it", it is "the obvious spelling is silently wrong".
+
+Three dependency edges came with them — `@effected/templates`, `@effected/markdown` and `@effected/sbom` — and each is confined to the modules that earn it, with `markdown`'s [measured like Azure's](#bundle-reachability-confining-azure).
 
 ## Settled at the Phase 3 checkpoint
 

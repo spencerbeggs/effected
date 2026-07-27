@@ -61,6 +61,12 @@ Three facts are load-bearing:
   (`@effected/npm`'s SRI/corepack/yarn brand), not a bare string
   (`NpmRegistry.ts:43`) — comparing it against `PackagePublish.pack`'s
   `PackedTarball.integrity` is a typed comparison, not a string-equals-and-hope.
+- **A `github-packages` target reads `version` through the packument.**
+  GitHub Packages answers the per-version endpoint with 405 regardless of
+  credentials, so a registry classifying `github-packages` routes straight to
+  the whole-packument read and selects the version from it; a 405 from any
+  **other** registry falls back to the same packument path instead of failing
+  (`NpmRegistry.ts:160-168,238-296`). Absence stays `Option.none()` either way.
 
 `RegistryReadError` (`NpmRegistry.ts:80-103`) routes on `kind: "transport" |
 "status" | "decode"` — never a `"search"` kind that no read ever produces, and
@@ -163,6 +169,12 @@ hashing it (`PackagePublish.ts:296-301`) — not derived from npm's own report �
 which is what makes it a verifiable attestation subject. Point at
 `supply-chain-attestation` for what consumes it. Getting the two swapped is a
 silent attestation mismatch, not a type error: both are strings.
+
+**`publishTarball` returns `PublishOutcome`, whose one field is
+`provenanceUrl?: string | undefined`** — a plain optional, not an `Option`:
+npm's Sigstore transparency-log URL when it published provenance, scraped
+from npm's own output, absent for GitHub Packages, custom registries and
+provenance-off runs (`PackagePublish.ts:82-88,361-363`).
 
 **A failed `dryRun` is a result, not an error** (`DryRunOutcome.ok: boolean`,
 `PackagePublish.ts:102-109,370-376`). `npm pack --dry-run` never contacts a

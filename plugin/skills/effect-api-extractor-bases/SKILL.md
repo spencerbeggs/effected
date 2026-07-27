@@ -201,7 +201,7 @@ and every other class factory that takes a type argument.
 > `{@link}` resolves **only to symbols the entry point exports, under the name it
 > exports them by**. Everything else is a backtick span.
 
-Four ways a name fails that test, all confirmed in this repo's builds:
+Five ways a name fails that test, all confirmed in this repo's builds:
 
 - **A schema-declared `Schema.Class` field** — the class owns it, but only
   through the factory, which API Extractor does not see through.
@@ -212,11 +212,21 @@ Four ways a name fails that test, all confirmed in this repo's builds:
 - **A member of a const-only namespace object** — link through the exported
   const (`{@link Walker.ascend}`), never the bare member.
 - **A module-private const** — never exported, so nothing resolves; backticks.
+- **A re-exported cross-package `Schema.Class`, `{@link}`ed from a file that
+  only `import type`s it** — even when the entry point re-exports the symbol
+  (`export { Package } from "@effected/package-json"`), a `{@link Package}`
+  written in a module that reaches it via `import type` fails with a
+  **different message** than the other cases: *"This type of declaration is
+  not supported yet by the resolver"*, and issues.json may attribute it to an
+  unrelated line through the rollup. Backticks are the fix. Confirmed at the
+  `@effected/sbom` build (2026-07-26); the re-export itself is fine — only
+  the `{@link}` form is rejected.
 
 The diagnostic distinguishes the fixable case from the unfixable one, so read it
 rather than pattern-matching: *"ambiguous… add a TSDoc member reference
 selector"* means a selector will work (below); *"does not have an export"* means
-no selector ever will.
+no selector ever will; *"not supported yet by the resolver"* means the resolver
+cannot follow the declaration shape at all — backticks, no selector to try.
 
 **Merged value + type names: use a member-reference selector, not a backtick.**
 

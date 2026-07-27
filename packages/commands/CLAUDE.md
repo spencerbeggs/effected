@@ -38,7 +38,7 @@ Concretely, never add: a `Command` type, a service wrapping `ChildProcessSpawner
 a spawner backend, a platform layer, a `node:child_process` import, or a shell
 helper. `Run` is **free functions**, not a service, for exactly this reason.
 
-## Six source modules
+## Seven source modules
 
 - `Redaction.ts` — `apply` / `applyArgs` (by **value**, from `Redacted`) and
   `scrubArgs` (flag heuristic). Value-based is primary; the heuristic is a
@@ -56,6 +56,15 @@ helper. `Run` is **free functions**, not a service, for exactly this reason.
   does NOT violate the one rule: it implements nothing for production — it is
   the test-side analogue of `makeTest` on a service, providing core's own
   contract from a script. Standard commands only; a piped command dies loudly.
+- `LocalExec.ts` — the inverted contract `@effected/workspaces` implements:
+  `LocalExec` (`context`, `None`-is-success), `LocalExecError`, `Launcher`,
+  `LauncherPrefixes` and `ExecContext`. **`prefixes(launcher)` is the one home
+  of the four managers' argv**, now three prefixes each — `exec`, `dlx` and the
+  script runner — with matching `apply` / `applyDlx` / `applyScript`.
+  `scriptPrefix` is a **required** `ExecContext` field, so an implementation
+  cannot forget it. npm's is `["npm", "run", "--"]`: bare `npm run <script>
+  --flag` silently claims the flag for npm itself, and the other three forward
+  post-script arguments without help.
 - `Tool.ts` — `Tool`, the `VersionProbe` union (`VersionFlag` / `VersionJson` /
   `VersionNone`), `ToolSource`, `MismatchPolicy`.
 - `ToolDiscovery.ts` — the service + layer, `ResolvedTool`, the three tool
@@ -210,8 +219,8 @@ requirement.
 
 ## Testing
 
-127 tests in `__test__/`: 117 unit (Redaction 17, Run 36, Retry 12, LocalExec
-10, ToolDiscovery 33, ScriptedSpawner 9) and 10 e2e. `@effect/vitest`,
+131 tests in `__test__/`: 121 unit (Redaction 17, Run 36, Retry 12, LocalExec
+14, ToolDiscovery 33, ScriptedSpawner 9) and 10 e2e. `@effect/vitest`,
 `it.effect`, `assert.*` — never `expect`.
 
 - Unit: every suite stubs the spawner with the **public**

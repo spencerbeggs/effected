@@ -84,7 +84,13 @@ const LIGHT_MODULES = [
 	"BlobStore.ts",
 	"BlobTransfer.ts",
 	"CacheKey.ts",
+	"CheckDocument.ts",
+	"CheckState.ts",
+	"GitHubMarkdown.ts",
 	"GitHubToken.ts",
+	"ManagedDocument.ts",
+	"ActionsIdentityToken.ts",
+	"ActionsProvenance.ts",
 	"DetachedProcess.ts",
 	"DryRun.ts",
 	"OidcTokenIssuer.ts",
@@ -166,6 +172,30 @@ describe("bundle reachability", () => {
 			"effect",
 			"effect/unstable/http",
 		]);
+	});
+
+	it("the markdown engine is confined to the writer, on Azure's terms", () => {
+		// `@effected/markdown` is the second-heaviest engine this package can
+		// reach, and only the fluent writer earns it. The control comes first:
+		// a blinded walker must fail here, not pass everything below.
+		assert.isTrue(
+			[...reachableBareImports("GitHubMarkdown.ts")].includes("@effected/markdown"),
+			"GitHubMarkdown does not reach the engine — the walker is blind",
+		);
+		for (const entry of LIGHT_MODULES.filter((module) => module !== "GitHubMarkdown.ts")) {
+			assert.isFalse(
+				[...reachableBareImports(entry)].includes("@effected/markdown"),
+				`${entry} reaches @effected/markdown — the writer confinement has leaked`,
+			);
+		}
+		// Exact edge sets for the new modules, same discipline as the light half:
+		// the vocabulary reaches nothing but effect (in particular NOT
+		// `@effected/github`, whose conclusion set it mirrors structurally), and
+		// the document modules reach the templates region engine and no more.
+		assert.deepStrictEqual([...reachableBareImports("CheckState.ts")].sort(), ["effect"]);
+		assert.deepStrictEqual([...reachableBareImports("ManagedDocument.ts")].sort(), ["@effected/templates", "effect"]);
+		assert.deepStrictEqual([...reachableBareImports("CheckDocument.ts")].sort(), ["@effected/templates", "effect"]);
+		assert.deepStrictEqual([...reachableBareImports("GitHubMarkdown.ts")].sort(), ["@effected/markdown", "effect"]);
 	});
 
 	it("no shared internal helper reaches Azure", () => {

@@ -432,6 +432,11 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 	 * reads as a legitimate "no manager here" answer, so a consumer would branch
 	 * on it and proceed, never learning that the test simply forgot to stub.
 	 *
+	 * The defect is also not absorbed by `Effect.catch` or any typed-error
+	 * handler — deliberately, so code under test with a best-effort `catch`
+	 * around detection cannot make the mandatory stub look optional; the
+	 * unstubbed call still fails the test.
+	 *
 	 * @param overrides - Members to supply; anything omitted dies on use.
 	 *
 	 * @example
