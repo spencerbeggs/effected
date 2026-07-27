@@ -103,7 +103,6 @@ describe("PortableTsconfig.make — from a bare CompilerOptions.Type", () => {
 			"baseUrl",
 			"paths",
 			"typeRoots",
-			"types",
 			"declaration",
 			"declarationMap",
 			"emitDeclarationOnly",
@@ -116,6 +115,10 @@ describe("PortableTsconfig.make — from a bare CompilerOptions.Type", () => {
 			assert.isFalse(key in compilerOptions, `expected "${key}" to be excluded`);
 		}
 	});
+
+	// `types` is portable but resolution-dependent, so it is neither in the
+	// unconditional allow-list nor in the exclusion list above — it is opt-in.
+	// Its default (dropped) and opted-in behavior live in their own describe.
 
 	it("excludes an emit-formatting-only enum (newLine)", () => {
 		const { compilerOptions } = PortableTsconfig.make(fullOptionZoo);
@@ -216,5 +219,56 @@ describe("PortableTsconfig.make — from a ResolvedTsconfig (structural discrimi
 		// ResolvedTsconfig-only fields never leak onto the portable shape.
 		assert.isFalse("configPath" in portable);
 		assert.isFalse("include" in portable);
+	});
+});
+
+describe("PortableTsconfig.make — the includeTypes opt-in", () => {
+	it("carries `types` when opted in", () => {
+		const { compilerOptions } = PortableTsconfig.make(fullOptionZoo, { includeTypes: true });
+		assert.deepStrictEqual(compilerOptions.types, ["node"]);
+	});
+
+	it("still drops `typeRoots` when opted in — only `types` is package-name-valued", () => {
+		const { compilerOptions } = PortableTsconfig.make(fullOptionZoo, { includeTypes: true });
+		assert.isFalse("typeRoots" in compilerOptions);
+	});
+
+	it("omits the key entirely when the source declared no `types`", () => {
+		const { compilerOptions } = PortableTsconfig.make({ strict: true } as CompilerOptions.Type, {
+			includeTypes: true,
+		});
+		assert.isFalse("types" in compilerOptions);
+	});
+
+	it("preserves an empty `types: []` — a deliberate opt-out of automatic @types inclusion", () => {
+		const { compilerOptions } = PortableTsconfig.make({ types: [] } as unknown as CompilerOptions.Type, {
+			includeTypes: true,
+		});
+		assert.deepStrictEqual(compilerOptions.types, []);
+	});
+
+	it("drops `types` under every non-opted-in call shape (the default is unchanged)", () => {
+		for (const options of [undefined, {}, { includeTypes: false }] as const) {
+			const { compilerOptions } = PortableTsconfig.make(fullOptionZoo, options);
+			assert.isFalse("types" in compilerOptions, `expected "types" dropped for ${JSON.stringify(options)}`);
+		}
+	});
+
+	it("opts in off a ResolvedTsconfig too", () => {
+		const resolved: ResolvedTsconfig = {
+			configPath: "/proj/tsconfig.json",
+			extendedPaths: ["/proj/tsconfig.json"],
+			compilerOptions: { types: ["node", "vitest/globals"], typeRoots: ["/proj/types"] },
+		};
+		const { compilerOptions } = PortableTsconfig.make(resolved, { includeTypes: true });
+		assert.deepStrictEqual(compilerOptions.types, ["node", "vitest/globals"]);
+		assert.isFalse("typeRoots" in compilerOptions);
+	});
+
+	it("does not let the forced flags or $schema drift when opted in", () => {
+		const portable = PortableTsconfig.make(fullOptionZoo, { includeTypes: true });
+		assert.strictEqual(portable.$schema, "https://json.schemastore.org/tsconfig");
+		assert.strictEqual(portable.compilerOptions.composite, false);
+		assert.strictEqual(portable.compilerOptions.noEmit, true);
 	});
 });

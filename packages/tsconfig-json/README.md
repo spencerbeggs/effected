@@ -82,7 +82,12 @@ console.log(TsEnumCodec.encodeCompilerOptions({ target: "es2023", strict: true, 
 
 console.log(PortableTsconfig.make(resolved).compilerOptions.noEmit);
 // true — always forced, whatever the source config declared
+
+console.log(PortableTsconfig.make(resolved, { includeTypes: true }).compilerOptions.types);
+// carries the source config's `types` package names when it declares them, omitted when absent
 ```
+
+`includeTypes` is opt-in and defaults to `false` because emitting `types` makes tsc demand those `@types` packages resolve — a hard error in a virtual environment with no `node_modules`. Pass it when your environment materializes `@types` itself; leave it off for the permissive default where TypeScript auto-includes whatever it finds.
 
 ## Synchronous loading
 
@@ -154,7 +159,7 @@ console.log(fsMap.size);
 - `ResolvedTsconfig` — the pure merge engine behind `resolve`: per-field merge semantics, path-option absolutization against the declaring config's directory, final `${configDir}` substitution and `pathsBase` provenance, with no filesystem access at all.
 - `TsconfigDiscovery.findNearest` — the nearest `tsconfig.json` (or any filename via `options.filename`) at or above a starting directory, over `@effected/walker`; one unreadable ancestor cannot hide a config above it.
 - `TsEnumCodec` — the string↔numeric enum tables as plain data with zero `typescript` imports. `encodeCompilerOptions` returns the exported `ProgrammaticCompilerOptions` type — the numeric shape `ts.CompilerOptions` expects, so you hand it to a `ts.CompilerOptions`-shaped API without a cast — with `lib` entries in the file-name form the compiler resolves verbatim; `decodeCompilerOptions` reverses it.
-- `PortableTsconfig.make` — an allow-list projection down to machine-independent type-semantics options, with `composite: false` and `noEmit: true` forced: the slice a virtual TypeScript environment (Twoslash, API Extractor, an in-memory language service) can safely inherit.
+- `PortableTsconfig.make` — an allow-list projection down to machine-independent type-semantics options, with `composite: false` and `noEmit: true` forced: the slice a virtual TypeScript environment (Twoslash, API Extractor, an in-memory language service) can safely inherit. An optional `{ includeTypes }` argument carries the source config's `types` package names onto the portable shape too, for a caller whose virtual environment can resolve `@types` packages itself; `typeRoots` stays dropped either way, since it names absolute machine-specific directories.
 - `JsxConfig.fromCompilerOptions` — the JSX transform a bundler can configure, projected from decoded options: `react-jsx` / `react-jsxdev` select the automatic runtime with its import source (defaulting to `react`, tsc's own default), `react` selects classic, and `preserve`, `react-native` or an absent `jsx` yield `Option.none()`.
 - Typed failures everywhere: a malformed file is a `TsconfigParseError` carrying its path, a broken chain is a `TsconfigExtendsError` with a `not-found` / `cycle` / `depth` / `empty` reason and the full resolution chain, and IO errors flow through as `PlatformError`. Nothing fails as a defect.
 

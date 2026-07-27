@@ -138,6 +138,19 @@ console.log(portable.compilerOptions.outDir); // undefined — filtered out
 
 `make` also accepts a whole `ResolvedTsconfig` — hand it the output of `TsconfigLoader.resolve` and it reads the merged `compilerOptions` for you.
 
+`types` (an array of `@types` package names) is dropped by default for the same reason `outDir` is: it is one more key the allow-list does not carry unconditionally. Pass `{ includeTypes: true }` as a second argument when your virtual environment can resolve those packages itself:
+
+```ts with-api
+import { PortableTsconfig } from "@effected/tsconfig-json";
+
+const withTypes = PortableTsconfig.make({ target: "es2023", types: ["node"] }, { includeTypes: true });
+
+console.log(withTypes.compilerOptions.types);
+// [ "node" ] — carried because includeTypes was set; omitted entirely when the source has no `types` key
+```
+
+Opt in only when the environment materializes `@types` itself (a real `node_modules`, or one built into the virtual filesystem) — otherwise emitting `types` makes tsc demand those packages resolve, which a `node_modules`-less environment cannot satisfy. `typeRoots` is never carried, opt-in or not: it names absolute, machine-specific directories.
+
 ### Project the JSX transform a bundler should configure
 
 `JsxConfig.fromCompilerOptions` reads the decoded `jsx` option and tells you which runtime a bundler should set up. `react-jsx` / `react-jsxdev` map to the automatic runtime (with its import source), `react` maps to classic, and `preserve`, `react-native` or an absent `jsx` yield `Option.none()` — there is nothing to transform:

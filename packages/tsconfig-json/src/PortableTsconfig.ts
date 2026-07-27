@@ -18,6 +18,13 @@
 // config is deliberately a strict subset of "everything the source config
 // said"; growing it is an explicit, reviewed addition to the allow-list
 // below, never an accident of "we didn't exclude it."
+//
+// The allow-list has two tiers. The unconditional one below is safe for every
+// consumer. The second is a single opt-in key, `types`, which is portable but
+// resolution-dependent — see OPT_IN_TYPES_OPTION for why that distinction
+// exists and why it does not default on. Reported by savvy-web-systems on
+// 2026-07-27, whose virtual TypeScript environments lost their Node globals
+// because `types` had never been classified either way.
 
 import type { CompilerOptions } from "./CompilerOptions.js";
 import type { ResolvedTsconfig } from "./ResolvedTsconfig.js";
@@ -133,6 +140,26 @@ const PRESERVED_OPTIONS: ReadonlyArray<string> = [
 	...PRESERVED_STRING_OPTIONS,
 ];
 
+// ── The opt-in tier: portable, but resolution-dependent ────────────────────
+//
+// `types` is the one classified option that is portable by the criterion above
+// — it holds package NAMES, never a path — yet is still not carried by
+// default, because portability and *resolvability* are two different axes and
+// the allow-list above only models the first. Emitting `types: ["node"]` makes
+// tsc DEMAND that `@types/node` be resolvable; in a virtual environment with
+// no `node_modules` that is a hard error, where omitting the key lets TS
+// auto-include whatever `@types` the environment happens to have and never
+// error. Dropping it therefore trades a loud cannot-find-type-definition
+// failure for a silent missing-globals one — better for the environment that
+// materializes nothing, worse for the one that materializes `@types` and needs
+// to know which ones this config's type-checking assumed.
+//
+// Neither default serves both, so the caller picks: `includeTypes` carries the
+// information for consumers that can satisfy it. `typeRoots` stays dropped
+// under the opt-in as well — it holds absolute machine-specific directories
+// and fails the portability criterion outright, opt-in or not.
+const OPT_IN_TYPES_OPTION = "types";
+
 // ── Structural discrimination (ResolvedTsconfig | CompilerOptions.Type) ─────
 
 /**
@@ -172,13 +199,39 @@ export interface PortableTsconfig {
 	readonly compilerOptions: Record<string, unknown>;
 }
 
+/**
+ * Options for {@link (PortableTsconfig:class).make}.
+ *
+ * @public
+ */
+export interface PortableTsconfigOptions {
+	/**
+	 * Carry `types` (an array of `@types` package NAMES) onto the portable
+	 * shape when the source declares it. Defaults to `false`.
+	 *
+	 * Opt in when the consuming environment can resolve those packages — it
+	 * materializes `@types` into its virtual filesystem, or type-checks against
+	 * a real `node_modules`. Leaving it off keeps the permissive default, where
+	 * TypeScript auto-includes whatever `@types` the environment happens to
+	 * have and never errors on a missing one.
+	 *
+	 * `typeRoots` is NOT carried under this flag: it holds absolute,
+	 * machine-specific directories and is never portable.
+	 */
+	readonly includeTypes?: boolean;
+}
+
 // Implementation of PortableTsconfig.make; the public contract lives on the static.
-const make = (input: ResolvedTsconfig | CompilerOptions.Type): PortableTsconfig => {
+const make = (input: ResolvedTsconfig | CompilerOptions.Type, options?: PortableTsconfigOptions): PortableTsconfig => {
 	const source: Record<string, unknown> = isResolvedTsconfig(input) ? input.compilerOptions : input;
 	const compilerOptions: Record<string, unknown> = {};
 	for (const key of PRESERVED_OPTIONS) {
 		const value = source[key];
 		if (value !== undefined) compilerOptions[key] = value;
+	}
+	if (options?.includeTypes === true) {
+		const types = source[OPT_IN_TYPES_OPTION];
+		if (types !== undefined) compilerOptions[OPT_IN_TYPES_OPTION] = types;
 	}
 	compilerOptions.composite = false;
 	compilerOptions.noEmit = true;
@@ -206,6 +259,18 @@ export class PortableTsconfig {
 	 * is dropped; this is an allow-list, not a deny-list, so an option this
 	 * package does not yet classify never leaks onto the portable shape by
 	 * accident.
+	 *
+	 * `types` is the one deliberate exception, and it is opt-in rather than
+	 * unclassified: it is portable (package names, not paths) but carrying it
+	 * makes TypeScript demand those packages be resolvable, which a virtual
+	 * environment with no `node_modules` cannot satisfy. Pass
+	 * {@link PortableTsconfigOptions.includeTypes} when the consumer
+	 * materializes `@types`; leave it off for the permissive default. Related
+	 * `typeRoots` is never carried — absolute machine-specific directories.
+	 *
+	 * @param input - The resolved config, or a bare compiler-options bag.
+	 * @param options - Opt-ins for options that are portable but
+	 * resolution-dependent. Omitted means the strict, always-safe subset.
 	 */
 	static readonly make = make;
 }

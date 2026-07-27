@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-13
-updated: 2026-07-21
-last-synced: 2026-07-21
+updated: 2026-07-27
+last-synced: 2026-07-27
 completeness: 95
 related:
   - ../roadmap.md
@@ -154,6 +154,16 @@ The free assignability targets the **TS6 / `@typescript/vfs` consumer specifical
 A small pure module providing the **portable tsconfig** filter: it takes a resolved config and produces a self-contained, machine-independent one — `compilerOptions` only, emit/path/file-selection options excluded, `composite: false` and `noEmit: true` forced, `$schema` stamped (`https://json.schemastore.org/tsconfig`). It is generic to any virtual-TS or Twoslash environment.
 
 The filter is an **allow-list**, never a deny-list: only classified keys reach the output, and unknown options — including every unknown/future passthrough key the schemas preserve for forward tolerance — are dropped by design. A portable config is deliberately a strict subset; growing it is an explicit, reviewed addition to the allow-list. `newLine` is excluded — pure emit formatting with no bearing on type-checking, inert anyway under the forced `noEmit: true`. See `src/PortableTsconfig.ts` for the classification rationale.
+
+### The opt-in tier: portable vs resolvable
+
+The allow-list has **two tiers** (2026-07-27). The unconditional tier is safe for every consumer. The second holds exactly one key — `types` — reached through `make`'s optional second argument, `PortableTsconfigOptions.includeTypes`, defaulting to `false`.
+
+`types` exists because **portability and resolvability are different axes**, and the allow-list originally modelled only the first. `types` holds package *names*, never a path, so it passes the portability criterion outright — unlike `typeRoots`, which holds absolute machine-specific directories and stays dropped in both tiers. What makes it not-unconditional is the failure mode it selects: emitting `types: ["node"]` makes tsc **demand** `@types/node` be resolvable, a hard error in a virtual environment with no `node_modules`; omitting it lets TypeScript auto-include whatever `@types` the environment happens to have, and never error. Dropping it therefore trades a loud cannot-find-type-definition failure for a silent missing-globals one. Neither default serves both consumers, so the caller picks.
+
+Found by dogfooding: `@savvy-web/tsdown-plugins` projects each package's tsconfig through `make` and publishes the result as an asset that builds `@typescript/vfs` + Twoslash environments for API documentation. Those environments silently lost `console`, `process` and `Buffer` — reported 2026-07-27, several layers from the cause. `types` had been neither allow-listed nor excluded, so the allow-list's own default swallowed it, exactly as designed; the gap was the missing classification, not the mechanism. The reporting consumer shipped a merge-back workaround and drops it once this ships.
+
+The precedent this sets: a key that is portable but whose presence imposes a **resolution obligation on the consuming environment** belongs in the opt-in tier, not the unconditional one and not the exclusion list.
 
 ## Error handling
 
