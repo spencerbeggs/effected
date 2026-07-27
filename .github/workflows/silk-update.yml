@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       dry-run:
-        description: Run without making changes (for testing)
+        description: Run without making changes
         type: boolean
-        default: true
+        default: false
       branch:
         description: Branch name for dependency update PR
         type: string
