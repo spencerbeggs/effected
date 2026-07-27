@@ -138,7 +138,7 @@ console.log(portable.compilerOptions.outDir); // undefined — filtered out
 
 `make` also accepts a whole `ResolvedTsconfig` — hand it the output of `TsconfigLoader.resolve` and it reads the merged `compilerOptions` for you.
 
-`types` (an array of `@types` package names) is dropped by default for the same reason `outDir` is: it is one more key the allow-list does not carry unconditionally. Pass `{ includeTypes: true }` as a second argument when your virtual environment can resolve those packages itself:
+`types` (an array of `@types` package names) is also dropped by default — but for a different reason than `outDir`. `outDir` is an emit destination and is not portable at all. `types` holds package names, so it *is* portable; it sits in a second, opt-in tier because it is **resolution-dependent**: emitting it obliges the consuming environment to resolve those packages. Pass `{ includeTypes: true }` as a second argument when your virtual environment can do that:
 
 ```ts with-api
 import { PortableTsconfig } from "@effected/tsconfig-json";
@@ -149,7 +149,7 @@ console.log(withTypes.compilerOptions.types);
 // [ "node" ] — carried because includeTypes was set; omitted entirely when the source has no `types` key
 ```
 
-Opt in only when the environment materializes `@types` itself (a real `node_modules`, or one built into the virtual filesystem) — otherwise emitting `types` makes tsc demand those packages resolve, which a `node_modules`-less environment cannot satisfy. `typeRoots` is never carried, opt-in or not: it names absolute, machine-specific directories.
+Opt in only when the environment materializes `@types` itself (a real `node_modules`, or one built into the virtual filesystem) — otherwise emitting `types` makes tsc demand those packages resolve, which a `node_modules`-less environment cannot satisfy. `typeRoots` is never carried, opt-in or not: it names machine-specific, config-location-dependent directories — absolute when they come off a `ResolvedTsconfig`, relative to the source config when they come off a bare options bag, and portable in neither form.
 
 ### Project the JSX transform a bundler should configure
 

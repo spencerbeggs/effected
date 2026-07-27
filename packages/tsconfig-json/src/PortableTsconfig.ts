@@ -156,8 +156,11 @@ const PRESERVED_OPTIONS: ReadonlyArray<string> = [
 //
 // Neither default serves both, so the caller picks: `includeTypes` carries the
 // information for consumers that can satisfy it. `typeRoots` stays dropped
-// under the opt-in as well — it holds absolute machine-specific directories
-// and fails the portability criterion outright, opt-in or not.
+// under the opt-in as well — it names filesystem directories, absolute when
+// they arrive on a `ResolvedTsconfig` and relative to the source config when
+// they arrive on a bare options bag, and meaningful in either form only on the
+// machine and at the config location they came from. It fails the portability
+// criterion outright, opt-in or not.
 const OPT_IN_TYPES_OPTION = "types";
 
 // ── Structural discrimination (ResolvedTsconfig | CompilerOptions.Type) ─────
@@ -215,8 +218,9 @@ export interface PortableTsconfigOptions {
 	 * TypeScript auto-includes whatever `@types` the environment happens to
 	 * have and never errors on a missing one.
 	 *
-	 * `typeRoots` is NOT carried under this flag: it holds absolute,
-	 * machine-specific directories and is never portable.
+	 * `typeRoots` is NOT carried under this flag: it names filesystem
+	 * directories, which are machine-specific and config-location-dependent,
+	 * so they are never portable.
 	 */
 	readonly includeTypes?: boolean;
 }
@@ -266,7 +270,8 @@ export class PortableTsconfig {
 	 * environment with no `node_modules` cannot satisfy. Pass
 	 * {@link PortableTsconfigOptions.includeTypes} when the consumer
 	 * materializes `@types`; leave it off for the permissive default. Related
-	 * `typeRoots` is never carried — absolute machine-specific directories.
+	 * `typeRoots` is never carried — machine-specific,
+	 * config-location-dependent directories.
 	 *
 	 * @param input - The resolved config, or a bare compiler-options bag.
 	 * @param options - Opt-ins for options that are portable but
