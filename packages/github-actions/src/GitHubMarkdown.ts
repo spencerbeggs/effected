@@ -205,10 +205,15 @@ export class GitHubMarkdown {
 	 * padded with empty cells rather than shifting.
 	 */
 	static table(headers: ReadonlyArray<string>, rows: ReadonlyArray<ReadonlyArray<string>>): string {
+		// A raw newline inside a cell terminates the GFM row — the same
+		// corruption class the pipe escaping exists to prevent, reachable
+		// through a multi-line `format` result or a multi-line value. GitHub
+		// renders `<br>` inside a cell, so line structure survives inline.
+		const inline = (value: string): string => value.replace(/\r?\n/g, "<br>");
 		const cells = (values: ReadonlyArray<string>): TableRow =>
 			TableRow.make({
 				children: Array.from({ length: headers.length }, (_, index) =>
-					TableCell.make({ children: [passthrough(values[index] ?? "")] }),
+					TableCell.make({ children: [passthrough(inline(values[index] ?? ""))] }),
 				),
 			});
 		return block(Table.make({ children: [cells(headers), ...rows.map(cells)] }));

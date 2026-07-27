@@ -359,7 +359,8 @@ layer:
   sticky comment findable, no longer a hardcoded vendor string baked into
   the library (`PullRequestComment.ts:19-34`).
 - `BotIdentity.signoff` — a getter rendering the DCO 1.1 trailer
-  (`Signed-off-by: <name> <email>`) from the identity that owns the data;
+  (`Signed-off-by: name <email>` — only the email in angle brackets) from the
+  identity that owns the data;
   Git Data API commits bypass `git commit -s`, so no porcelain adds it and a
   hand-built trailer fails late as a red DCO check (`GitHubApp.ts:175-190`).
   Constructors and the token-enrichment path: `github-app-tokens`.

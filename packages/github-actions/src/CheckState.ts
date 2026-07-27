@@ -90,7 +90,13 @@ export const projectCheckState = (state: CheckState): CheckRunProjection => {
 			return { status: "completed", conclusion: "action_required" };
 		case "skipped":
 			return { status: "completed", conclusion: "skipped" };
-		default:
+		case "timeout":
 			return { status: "completed", conclusion: "timed_out" };
+		default: {
+			// Exhaustiveness at compile time: a literal added to the vocabulary
+			// without a row here fails the build, not just the runtime count test.
+			const unhandled: never = state;
+			throw new Error(`Unhandled CheckState: ${String(unhandled)}`);
+		}
 	}
 };

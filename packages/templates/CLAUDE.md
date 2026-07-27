@@ -19,7 +19,7 @@ the integration suite only.
 v1 scope is **managed sections only**. Whole-file templating is out of scope
 until a consumer proves a concrete shape.
 
-**First in-kit consumer (2026-07-26): `@effected/github-actions`'
+**First in-kit consumer (2026-07-26): `@effected/github-actions`'s
 `ManagedDocument`** — a PR comment or check summary whose regions an action
 rewrites while the human's prose survives. It is `SectionDocument` with three
 parameters *fixed* (HTML comment style, the `MANAGED REGION` phrase,

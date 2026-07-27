@@ -176,8 +176,9 @@ export class BotIdentity extends Schema.Class<BotIdentity>("BotIdentity")({
 	 * The DCO sign-off trailer for this identity.
 	 *
 	 * @remarks
-	 * `Signed-off-by: <name> <email>` — DCO 1.1's fixed casing, spacing and
-	 * angle brackets, rendered by the type that owns the data. Commits created
+	 * `Signed-off-by: name <email>` — DCO 1.1's fixed casing and spacing, with
+	 * only the email in angle brackets, rendered by the type that owns the
+	 * data. Commits created
 	 * through the Git Data API bypass `git commit -s`, so no porcelain adds
 	 * the trailer, and a hand-built one that is subtly wrong fails late as a
 	 * red DCO check on someone else's pull request. Whether a missing

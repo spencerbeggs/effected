@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { Duration } from "effect";
-import { Effect, Option, Ref, Result } from "effect";
+import { Effect, Fiber, Option, Ref, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { CheckDocument, CheckDocumentError, CheckReport } from "../src/CheckDocument.js";
 import { ManagedDocument } from "../src/ManagedDocument.js";
@@ -21,6 +21,7 @@ interface HarnessOptions {
 	readonly initial?: string;
 	readonly quiet?: Duration.Input;
 	readonly maxWait?: Duration.Input;
+	readonly sinkTimeout?: Duration.Input;
 }
 
 /** A recording sink plus the layer wired to it. */
@@ -34,6 +35,7 @@ const harness = (options: HarnessOptions = {}) =>
 			render: options.render ?? perCheck,
 			sink: options.sink ?? ((rendered) => Ref.update(writes, (all) => [...all, rendered])),
 			debounce: { quiet: options.quiet ?? "500 millis", maxWait: options.maxWait ?? "3 seconds" },
+			...(options.sinkTimeout === undefined ? {} : { sinkTimeout: options.sinkTimeout }),
 		});
 		return { writes, layer };
 	});
@@ -240,6 +242,33 @@ describe("CheckDocument", () => {
 					const doc = yield* CheckDocument;
 					yield* doc.report("build", CheckReport.make({ state: "pass" }));
 					const failure = yield* Effect.flip(doc.flush);
+					assert.strictEqual(failure.kind, "sink");
+				}).pipe(Effect.provide(layer));
+			}),
+		);
+
+		it.effect("kind sink: a HUNG sink fails at the timeout bound instead of stalling the reconciler", () =>
+			Effect.gen(function* () {
+				// The pass holds the single permit and the finalizer's last flush
+				// waits on it — unbounded, a sink that never resolves would stall
+				// every later pass AND scope teardown. Hang only the FIRST call so
+				// the finalizer's own flush can complete the teardown cleanly.
+				const calls = yield* Ref.make(0);
+				const { layer } = yield* harness({
+					sink: () =>
+						Effect.flatMap(
+							Ref.updateAndGet(calls, (n) => n + 1),
+							(n) => (n === 1 ? Effect.never : Effect.void),
+						),
+					sinkTimeout: "1 second",
+				});
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "pass" }));
+					const flipped = yield* Effect.forkChild(Effect.flip(doc.flush));
+					yield* TestClock.adjust("1 second");
+					const failure = yield* Fiber.join(flipped);
+					assert.instanceOf(failure, CheckDocumentError);
 					assert.strictEqual(failure.kind, "sink");
 				}).pipe(Effect.provide(layer));
 			}),

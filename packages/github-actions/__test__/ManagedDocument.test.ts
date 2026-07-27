@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Option, Result } from "effect";
+import { Effect, Option, Result } from "effect";
 import { ManagedDocument, ManagedDocumentError } from "../src/ManagedDocument.js";
 
 const NS = "savvy-web";
@@ -181,5 +181,35 @@ describe("ManagedDocument", () => {
 			assert.isTrue(doc.matches(doc.text));
 			assert.isFalse(doc.matches("no marker here"));
 		});
+	});
+
+	describe("the Effect variants", () => {
+		it.effect("parse and withRegions succeed through the Effect channel", () =>
+			Effect.gen(function* () {
+				const doc = yield* ManagedDocument.parse({ namespace: NS, key: KEY });
+				const next = yield* doc.withRegions([["header", "v1"]]);
+				assert.deepStrictEqual(next.region("header"), Option.some("v1"));
+				assert.isTrue(next.matches(next.text));
+			}),
+		);
+
+		it.effect("both keep the TYPED error channel — a wrapper regression would defect instead", () =>
+			Effect.gen(function* () {
+				const parseError = yield* Effect.flip(
+					ManagedDocument.parse({
+						namespace: NS,
+						key: KEY,
+						text: `${marker("BEGIN", "header")}\nnever closed`,
+					}),
+				);
+				assert.instanceOf(parseError, ManagedDocumentError);
+				assert.strictEqual(parseError.kind, "unterminatedRegion");
+
+				const doc = yield* ManagedDocument.parse({ namespace: NS, key: KEY });
+				const applyError = yield* Effect.flip(doc.withRegions([["body", marker("BEGIN", "body")]]));
+				assert.instanceOf(applyError, ManagedDocumentError);
+				assert.strictEqual(applyError.kind, "markerInContent");
+			}),
+		);
 	});
 });

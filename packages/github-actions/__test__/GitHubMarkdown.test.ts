@@ -24,6 +24,15 @@ describe("GitHubMarkdown", () => {
 				"| A | B | C |\n| --- | --- | --- |\n| only |  |  |",
 			);
 		});
+
+		it("a cell carrying a newline stays one row — line breaks become <br>", () => {
+			// The same corruption class as an unescaped pipe: a raw newline in a
+			// cell (a multi-line format result, npm stderr) terminates the row.
+			assert.strictEqual(
+				GitHubMarkdown.table(["Check", "Log"], [["build", "line one\nline two"]]),
+				"| Check | Log |\n| --- | --- |\n| build | line one<br>line two |",
+			);
+		});
 	});
 
 	describe("code", () => {

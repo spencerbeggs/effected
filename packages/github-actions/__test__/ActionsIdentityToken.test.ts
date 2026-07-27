@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { IdentityToken, IdentityTokenError } from "@effected/sbom";
-import { Effect, Layer, Redacted } from "effect";
+import { Cause, Effect, Equal, Exit, Layer, Redacted } from "effect";
 import { ActionsIdentityToken, OidcClaims, OidcTokenError, OidcTokenIssuer } from "../src/index.js";
 
 const CLAIMS = new OidcClaims({
@@ -28,9 +28,13 @@ describe("ActionsIdentityToken", () => {
 				const identity = yield* IdentityToken;
 				const token = yield* identity.token("sigstore");
 				// `layerFor` answers with a real decodable JWT built from the claims,
-				// so the value crossing the seam is a token, not a placeholder.
-				assert.include(Redacted.value(token), ".");
-				assert.strictEqual(Redacted.value(token), Redacted.value(OidcTokenIssuer.unsignedTokenFor(CLAIMS)));
+				// so the value crossing the seam is a token, not a placeholder. The
+				// value that crossed the seam stays OPAQUE: `Redacted` is
+				// Equal-by-value, so the comparison never declassifies `token` —
+				// only the locally built fixture is opened for the format check.
+				const expected = OidcTokenIssuer.unsignedTokenFor(CLAIMS);
+				assert.include(Redacted.value(expected), ".");
+				assert.isTrue(Equal.equals(token, expected));
 			}),
 			OidcTokenIssuer.layerFor(CLAIMS),
 		),
@@ -78,9 +82,13 @@ describe("ActionsIdentityToken", () => {
 			Effect.gen(function* () {
 				const identity = yield* IdentityToken;
 				const exit = yield* Effect.exit(identity.token("sigstore"));
-				// The die-loudly default survives the bridge: a defect, not a typed
-				// failure, and it names the member.
-				assert.isTrue(exit._tag === "Failure");
+				// The die-loudly default survives the bridge AS A DEFECT: a bare
+				// Failure check would also pass for a typed fail, which is exactly
+				// what the double must not degrade to.
+				assert.isTrue(Exit.isFailure(exit));
+				if (Exit.isFailure(exit)) {
+					assert.isTrue(Cause.hasDies(exit.cause));
+				}
 			}),
 			OidcTokenIssuer.layerTest(),
 		),

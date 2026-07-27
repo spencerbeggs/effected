@@ -107,6 +107,19 @@ export interface CheckDocumentOptions {
 	readonly debounce?:
 		| { readonly quiet?: Duration.Input | undefined; readonly maxWait?: Duration.Input | undefined }
 		| undefined;
+	/**
+	 * How long one sink write may run before the pass fails with
+	 * `kind: "sink"`. Default: 30 seconds.
+	 *
+	 * @remarks
+	 * The reconciler serializes passes behind one permit, and the finalizer's
+	 * last flush waits on that same permit — so a sink that never resolves
+	 * would otherwise stall every later pass AND scope teardown. The bound
+	 * turns a hung write into the ordinary sink failure path: a background
+	 * pass logs and retries on the next report, `flush` surfaces the typed
+	 * error.
+	 */
+	readonly sinkTimeout?: Duration.Input | undefined;
 }
 
 /**
@@ -227,9 +240,13 @@ export class CheckDocument extends Context.Service<CheckDocument, CheckDocumentS
 					if (next.text === current) {
 						return;
 					}
-					yield* options
-						.sink(next.text)
-						.pipe(Effect.mapError((cause) => new CheckDocumentError({ kind: "sink", cause })));
+					// The timeout is load-bearing, not defensive: this pass holds the
+					// single permit, and the finalizer's last flush waits on it — an
+					// unbounded hung sink would stall reconciling AND scope teardown.
+					yield* options.sink(next.text).pipe(
+						Effect.timeout(options.sinkTimeout ?? "30 seconds"),
+						Effect.mapError((cause) => new CheckDocumentError({ kind: "sink", cause })),
+					);
 					yield* Ref.set(writtenRef, next.text);
 				});
 

@@ -89,13 +89,16 @@ export class Secret {
 	 *
 	 * Signing named the member; it does not gate it. **Any in-process use that
 	 * needs the raw value without writing it to a runner file is this
-	 * operation** — bridging a token into this process's own `process.env` for
-	 * an SDK that only reads the environment, or handing a key to a library
-	 * that takes a plain string. The dividing line is where the value goes, not
-	 * what it is for: a value crossing into a **child's** environment is
-	 * {@link Secret.forChildEnv}, one written to `GITHUB_STATE` or
-	 * `GITHUB_OUTPUT` is {@link Secret.forRunnerFile}, and one that stays in
-	 * this process is this member.
+	 * operation** — handing a key to a library that takes a plain string. The
+	 * dividing line is where the value goes, not what it is for: a value
+	 * crossing into a **child's** environment is {@link Secret.forChildEnv},
+	 * one written to `GITHUB_STATE` or `GITHUB_OUTPUT` is
+	 * {@link Secret.forRunnerFile}, and one that stays in this process is this
+	 * member. A third-party SDK that reads only the ambient environment is the
+	 * hard case: this package never mutates `process.env` (reads are seeded
+	 * once through `ActionEnvironment`), so if a consumer chooses that bridge,
+	 * the mutation — and its restore discipline — lives in consumer code as
+	 * the consumer's own tradeoff, not as a pattern this member recommends.
 	 *
 	 * It masks even though the value is never *written* anywhere, and that is
 	 * deliberate rather than superstitious: a signing key that leaks does so
