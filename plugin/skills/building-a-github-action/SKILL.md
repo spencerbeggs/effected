@@ -42,6 +42,10 @@ XDG paths, git introspection, managed file sections — consult
 | write the job summary | `ActionOutputs.summary` | `actions-reporting` |
 | create a check run or annotate a PR | `CheckRun`, `CheckRun.withCheckRun` | `actions-reporting` |
 | post or update a sticky PR comment | `PullRequestComment.upsert` + `CommentMarker` | `actions-reporting` |
+| write GitHub-flavored markdown / a findings table | `GitHubMarkdown`, `GitHubMarkdown.tableFor` | `actions-reporting` |
+| maintain a sticky-comment or PR-description document | `ManagedDocument` (marker-delimited regions) | `actions-reporting` |
+| reconcile check state onto a living document | `CheckDocument` + `CheckState` / `projectCheckState` | `actions-reporting` |
+| read the webhook event payload | `ActionEnvironment.payload` | `actions-runtime` |
 | pass a value from `pre` to `main` to `post` | `ActionState` | `actions-state-and-secrets` |
 | handle a secret without leaking it | `Secret`, `Redacted`, `Redaction` | `actions-state-and-secrets` |
 | decide whether a failure should fail the run | `Action.run`'s contract, `DryRun` | `actions-state-and-secrets` |
@@ -65,7 +69,22 @@ XDG paths, git introspection, managed file sections — consult
 | emit an SBOM | `Sbom.generate` / `toJson` / `write` | `supply-chain-attestation` |
 | sign an artifact and attest a build | `SigstoreSigner`, `SlsaProvenance`, `Attestation.upload` | `supply-chain-attestation` |
 | get an OIDC token from the runner | `OidcTokenIssuer` | `supply-chain-attestation` |
+| capture SLSA provenance from the runner's claims | `ActionsProvenance.capture` | `supply-chain-attestation` |
+| serve `sbom`'s identity contract from the runner | `ActionsIdentityToken.layer` | `supply-chain-attestation` |
+| render a DCO sign-off trailer on a bot commit | `BotIdentity.signoff` | `github-api` |
 | test any of the above | `makeTest` / `layerTest` on every service | `testing-actions` |
+
+## Call sequences — when the capability is a chain, not one service
+
+Single rows above answer "which service"; these answer "in what order" for the
+flows that span services. Each arrow is a real member, verified against source.
+
+| I need to… | Call sequence | Packages |
+| --- | --- | --- |
+| sign and store an attestation | `SlsaProvenance.forGitHubWorkflow` → `InTotoStatement.forSubject` → `SigstoreSigner.sign` → `Attestation.upload` | `sbom` + `github` |
+| publish a package, integrity-checked | `NpmRegistry.version` (already-published probe) → `PackagePublish.setupAuth` → `PackagePublish.pack` → `PackagePublish.publishTarball` | `npm` |
+| hold a token across the three phases | `GitHubToken.provision` (pre) → `GitHubToken.read` (main) → `GitHubToken.dispose` (post) | `github-actions` |
+| emit an SBOM and attest it | `Sbom.generate` → `Sbom.toJson` → `InTotoStatement.forSubject` → `SigstoreSigner.sign` → `Attestation.upload` | `sbom` + `github` |
 
 ## What does NOT exist — do not invent it
 
@@ -77,18 +96,23 @@ XDG paths, git introspection, managed file sections — consult
 | `RateLimiter`, a rate-limit subsystem, proactive throttling | gone — one `RetryPolicy` inside the client, and `client.rateLimit` for the headers |
 | eighteen resource-specific error classes | gone — one `GitHubError` with a `kind` discriminant |
 | `GitHubGraphQLLive` | gone — GraphQL is a member of the client |
-| `GithubMarkdown`, `ReportBuilder` | **no kit successor, by decision** — report shaping is consumer policy. Build strings locally, or reach for `@effected/markdown` |
+| `GithubMarkdown` (predecessor spelling) | **superseded 2026-07-26** — the kit now ships `GitHubMarkdown` in `@effected/github-actions` (`table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details`, `raw`); see `actions-reporting` |
+| `ReportBuilder` | **no kit successor, by decision** — report *shaping* is consumer policy. Compose `GitHubMarkdown` pieces, or reach for `@effected/markdown` |
 | `ErrorAccumulator` | **no kit successor, by decision** — it is core composition: `Effect.partition(items, f)` returns `[failures, successes]` and never fails (`.repos/effect/packages/effect/src/Effect.ts:556`), and `Effect.all(effects, { mode: "result" })` is the same idea per-effect |
 | an ANSI / colour API | does not exist and must not be invented — GitHub's log viewer colours the workflow commands itself |
 | the nine `*Test` doubles and the `./testing` subpath | gone — every service ships `makeTest` / `layerTest` from its own module |
 | `Action.resolveLogLevel` | **no successor by that name** — `ActionEnvironment.isDebug` (`Effect.Effect<boolean>`, reading `RUNNER_DEBUG === "1"`) is what a program reaches for instead; see `actions-runtime` |
 
-**A bare `Config.*` read on an action input is a false green, not a shortcut.**
-It typechecks, and a test suite that injects its own `ConfigProvider` can
-pass against it, because the runner's `INPUT_` key derivation never enters
-either path. Read inputs through `ActionInput` only — see
-`actions-inputs-outputs` for the mangling rule and the production incident it
-traces to.
+**A bare `Config.*` read on an action input is a false green in tests, not a
+shortcut.** Since the 2026-07-25 ruling, `ActionRuntime.layer` installs
+`ActionInput.layerDefault`, so **under `Action.run`** a bare read does resolve
+the runner's `INPUT_` derivation — production is defended at the root. The
+false green lives in suites that bypass the runtime: a test injecting its own
+`ConfigProvider` passes against plain names, and the two paths do not parse
+booleans identically. Read inputs through `ActionInput` — it carries the
+parsing and the typed `ConfigError`s; the runtime provider only stops a
+side-step from silently missing. See `actions-inputs-outputs` for the mangling
+rule and the production incident it traces to.
 
 **The bundler and the scaffold are not here.** `@savvy-web/github-action-builder`,
 `action.config.ts`, rsbuild externals, the committed `dist/`, `action.yml`

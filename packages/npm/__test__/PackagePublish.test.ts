@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { LocalExec } from "@effected/commands";
-import { Effect, Exit, Layer, Option, Redacted } from "effect";
+import { Effect, Exit, Layer, Redacted } from "effect";
 import { NpmExecutor } from "../src/NpmExecutor.js";
 import { PackagePublish, PackedTarball } from "../src/PackagePublish.js";
 import { PublishError } from "../src/PublishError.js";
@@ -292,7 +292,7 @@ describe("PackagePublish.publishTarball", () => {
 					p.publishTarball("/tmp/t.tgz", { registry: "https://r.example", provenance: true }),
 				),
 			);
-			assert.deepStrictEqual(outcome.provenanceUrl, Option.some("https://search.sigstore.dev/?logIndex=42"));
+			assert.strictEqual(outcome.provenanceUrl, "https://search.sigstore.dev/?logIndex=42");
 		}),
 	);
 
@@ -302,7 +302,7 @@ describe("PackagePublish.publishTarball", () => {
 			const outcome = yield* h.run(
 				Effect.flatMap(publisher, (p) => p.publishTarball("/tmp/t.tgz", { registry: "https://r.example" })),
 			);
-			assert.isTrue(Option.isNone(outcome.provenanceUrl));
+			assert.isUndefined(outcome.provenanceUrl);
 		}),
 	);
 

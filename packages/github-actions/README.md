@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-The GitHub Actions runtime for [Effect](https://effect.website) v4: the services an action needs to talk to the runner it is executing inside. `Action.run` composes the runtime, runs your program, renders a failure as an `::error::` annotation and sets the exit code. `ActionInput` reads workflow inputs as typed `Config` values — string, boolean, integer, redacted secret, multiline list, `key=value` pairs, or a schema-decoded JSON blob — with one absence rule shared by every accessor: unset and `""` are both missing data. `ActionOutputs`, `ActionState`, `ActionLogger` and a fiber-local `ActionEnvironment` round out the runner surface, alongside `ActionCache`, `Artifact`, a metadata-carrying `BlobStore` (S3-compatible or the runner's own cache), `OidcTokenIssuer` and `ToolInstaller` for the heavier protocols. No `@actions/*` dependency anywhere — the cache, artifact and tool-cache protocols are implemented directly against their HTTP APIs.
+The GitHub Actions runtime for [Effect](https://effect.website) v4: the services an action needs to talk to the runner it is executing inside. `Action.run` composes the runtime, runs your program, renders a failure as an `::error::` annotation and sets the exit code. `ActionInput` reads workflow inputs as typed `Config` values — string, boolean, integer, redacted secret, multiline list, `key=value` pairs, or a schema-decoded JSON blob — with one absence rule shared by every accessor: unset and `""` are both missing data. `ActionOutputs`, `ActionState`, `ActionLogger` and a fiber-local `ActionEnvironment` round out the runner surface, alongside `ActionCache`, `Artifact`, a metadata-carrying `BlobStore` (S3-compatible or the runner's own cache), `OidcTokenIssuer` and `ToolInstaller` for the heavier protocols. A reporting suite — `GitHubMarkdown`, `ManagedDocument`, `CheckState` and `CheckDocument` — covers the other direction: rendering what a run did onto a pull request comment, a check run or the job summary. No `@actions/*` dependency anywhere — the cache, artifact and tool-cache protocols are implemented directly against their HTTP APIs.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 beta. Packages graduate to
@@ -141,6 +141,65 @@ await Action.run(program, { layer: ActionCache.layer });
 
 `CacheKey.hashFiles` is byte-compatible with `@actions/glob`'s `hashFiles`, and `OidcTokenIssuer.claims` decodes the runner's OIDC token for a SLSA provenance predicate without verifying its signature — the token arrived over TLS from the runner's own token service, so the transport is the trust boundary and nothing here branches on the claims for authorization.
 
+`ActionsProvenance.capture` turns those claims into an `@effected/sbom` `SlsaProvenance` predicate, and `ActionsIdentityToken.layer` serves that package's narrow `IdentityToken` contract from the same issuer — the inversion that keeps the Actions runtime out of every consumer that only wants to emit an SBOM:
+
+```ts
+import { ActionsIdentityToken, ActionsProvenance, OidcTokenIssuer } from "@effected/github-actions";
+import { SigstoreSigner } from "@effected/sbom";
+import { Effect, Layer } from "effect";
+
+const program = Effect.gen(function* () {
+  const provenance = yield* ActionsProvenance.capture();
+  return provenance.runDetails.builder.id;
+});
+// the builder id, derived from the workflow ref in the runner's own claims
+
+const SigningLayer = SigstoreSigner.layer.pipe(
+  Layer.provide(ActionsIdentityToken.layer),
+  Layer.provide(OidcTokenIssuer.layer),
+);
+```
+
+An `OidcTokenError` passes through `capture` untouched: whether an unattested publish is allowed is the action's policy, not this package's. `reason: "unavailable"` almost always means the workflow is missing `permissions: id-token: write`.
+
+## Reporting on GitHub surfaces
+
+The other half of an action's job is saying what happened — on a pull request comment, a check-run summary or the job summary. `GitHubMarkdown` writes those bodies. Every member takes pre-rendered markdown and returns a string, but the structure around it goes through `@effected/markdown`'s serializer rather than string joining, so a cell carrying `>=1 || <2` escapes its pipes instead of shifting every column after it. `tableFor` goes further and takes the table's whole shape from a row schema:
+
+```ts
+import { GitHubMarkdown } from "@effected/github-actions";
+import { Schema } from "effect";
+
+const Row = Schema.Struct({
+  name: Schema.String.annotate({ title: "Check" }),
+  detail: Schema.String,
+});
+
+console.log(GitHubMarkdown.tableFor(Row).render([{ name: "build", detail: "clean" }]));
+// | Check | detail |
+// | --- | --- |
+// | build | clean |
+```
+
+Column order is field declaration order, each header is the field's `title` annotation, and each cell is the field's encoded form — so a typed field projects through its own codec, and a row cannot transpose columns because it is an object rather than a positional array.
+
+`ManagedDocument` owns named regions inside text a human also edits: a sentinel HTML comment identifies the document, marker comments delimit each region, and everything outside them survives byte-for-byte. Regions are replaced from current state rather than appended, which is what makes a sticky comment safe to re-render. `CheckDocument` puts a debounced reconciler on top — report a check as its state changes, and a background fiber projects the registry onto the document and writes it through a narrow sink:
+
+```ts
+import { CheckDocument, CheckReport } from "@effected/github-actions";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const doc = yield* CheckDocument;
+  yield* doc.report("build", CheckReport.make({ state: "running" }));
+  yield* doc.report("build", CheckReport.make({ state: "pass", outcome: "clean" }));
+  yield* doc.flush;
+});
+// one write carrying the final state; a render byte-identical to the last one writes nothing
+```
+
+The debounce is trailing with a max-wait, so a burst of reports coalesces into one write carrying the *final* state while a steady stream still surfaces progress. `CheckState` is the vocabulary both of them speak, and it is deliberately wider than GitHub's conclusion set — `running` is a state rather than the absence of one, and `user_interaction_required` names a pipeline waiting on a human. `projectCheckState` maps each onto the wire form GitHub wants, as a status plus a conclusion exactly when the status is `completed`.
+
 ## Testing
 
 Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`, with unstubbed members dying loudly and naming themselves — three recorded exceptions state why they default instead: `ActionEnvironment.makeTest` seeds the twelve `GITHUB_*`/`RUNNER_*` variables, `ActionLogger.makeTest` defaults to silent, and `DryRun.makeTest` defaults to rehearsing, the safe direction:
@@ -162,13 +221,18 @@ const TestOutputs = ActionOutputs.layerTest({
 - `ActionInput` — typed input accessors (`string`, `boolean`, `integer`, `redacted`, `lines`, `list`, `pairs`, `schema`) sharing one absence rule, plus the `INPUT_`-aware `ConfigProvider` `Action.run` installs by default.
 - `ActionOutputs` — step outputs, JSON outputs, the job summary, exported variables, `PATH` additions, failure annotations and log masking.
 - `ActionState` / `ActionEnvironment` — persisted `pre`/`main`/`post` state, and the fiber-local `GITHUB_*`/`RUNNER_*` context read once from `process.env`.
-- `ActionLogger` — collapsible groups, buffered step transcripts, `::notice::` annotations, and the `Logger` that renders every `Effect.log*` as a workflow command.
+- `ActionLogger` — collapsible groups, buffered step transcripts (`withBuffer({ onSuccess: "discard" })` keeps a green log to one line per step, while a failure, defect or interruption still flushes), `::notice::` annotations, and the `Logger` that renders every `Effect.log*` as a workflow command.
 - `DryRun` — the rehearsal guard every mutation goes through, driven by the `dry-run` input by default.
 - `Secret` — the one declassification seam between a `Redacted` value and a plain string, masking before it returns plaintext.
 - `GitHubToken` — the App-token lifecycle shaped like the `pre`/`main`/`post` workflow: mint, verify scopes, persist, read, revoke.
 - `ActionCache` / `Artifact` — the runner's cache and artifact protocols over Twirp v2, excluded from the default runtime so a consumer that skips them never links Azure.
 - `CacheKey` — cache keys and their restore-key ladder, plus `hashFiles`/`matchingFiles`/`hashMatching` byte-compatible with `@actions/glob`.
 - `OidcTokenIssuer` — the runner's OIDC token service, with unverified claim decoding for provenance predicates.
+- `ActionsIdentityToken` / `ActionsProvenance` — the `@effected/sbom` seam: `layer` serves that package's `IdentityToken` contract from the runner's issuer, and `capture` builds a `SlsaProvenance` predicate out of the runner's OIDC claims.
+- `GitHubMarkdown` — the escaping-safe writer for GitHub surfaces: `table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details` and `raw`, and the package's only importer of `@effected/markdown`.
+- `ManagedDocument` — marker-delimited named regions in text a human also edits, for a sticky comment or a managed pull request description; content outside the regions survives byte-for-byte.
+- `CheckState` / `projectCheckState` — the kit's check vocabulary, wider than GitHub's conclusions, and its projection onto the check-run wire form.
+- `CheckDocument` — the debounced check-to-document reconciler: report states as they change, and one write lands carrying the final one.
 - `ToolInstaller` — download, extract and cache a toolchain in the runner's tool cache, with no `@actions/tool-cache` dependency.
 - `BlobStore` — durable `get`/`put`/`has` over bytes plus a metadata channel, backed by `layerS3` (SigV4-signed, no `@aws-sdk/*` dependency) or `GitHubCacheBlobStore.layer` (the runner's own cache); `layerMemory` runs the real envelope framing for tests.
 

@@ -2,6 +2,7 @@ import { Context, DateTime, Effect, Layer, Option, Redacted, Schema } from "effe
 import type { HttpClientError } from "effect/unstable/http";
 import { HttpClient } from "effect/unstable/http";
 import { IntegrityHash } from "./IntegrityHash.js";
+import { classifyRegistry } from "./RegistryKind.js";
 
 /**
  * The public npm registry, used when a read names no other.
@@ -156,7 +157,15 @@ const packageUrl = (registry: string, name: string, version?: string): string =>
  * @public
  */
 export interface NpmRegistryShape {
-	/** One published version, or `None` when that version is not on that registry. */
+	/**
+	 * One published version, or `None` when that version is not on that registry.
+	 *
+	 * @remarks
+	 * A `github-packages` target is read through the packument (GitHub Packages
+	 * answers the per-version endpoint with 405 regardless of credentials); any
+	 * other registry answering 405 on the per-version path is retried the same
+	 * way.
+	 */
 	readonly version: (
 		name: string,
 		version: string,
@@ -225,6 +234,39 @@ const make = Effect.fnUntraced(function* () {
 		return read(Packument, packageUrl(registry, name), name, registry, target);
 	};
 
+	/**
+	 * Resolves one version by reading the whole packument and selecting it.
+	 *
+	 * @remarks
+	 * The read path for registries that do not implement the per-version
+	 * endpoint — GitHub Packages answers it with 405 regardless of credentials,
+	 * so `version` routes here up front for that kind, and falls back here on a
+	 * 405 from any other registry.
+	 */
+	const versionFromPackument = (
+		name: string,
+		versionNumber: string,
+		registry: string,
+		target: RegistryTarget | undefined,
+	): Effect.Effect<Option.Option<typeof VersionManifest.Type>, RegistryReadError> =>
+		read(Packument, packageUrl(registry, name), name, registry, target).pipe(
+			Effect.flatMap((document) => {
+				if (Option.isNone(document)) return Effect.succeed(Option.none<typeof VersionManifest.Type>());
+				const published = document.value.versions;
+				// `hasOwn` rather than a bare index: the version number is caller
+				// input, and a key like `constructor` must not read the prototype.
+				if (published === undefined || !Object.hasOwn(published, versionNumber)) {
+					return Effect.succeed(Option.none<typeof VersionManifest.Type>());
+				}
+				return Schema.decodeUnknownEffect(VersionManifest)(published[versionNumber]).pipe(
+					Effect.map(Option.some),
+					Effect.catch((cause) =>
+						Effect.fail(new RegistryReadError({ kind: "decode", package: name, registry, cause })),
+					),
+				);
+			}),
+		);
+
 	const version = Effect.fn("NpmRegistry.version")(function* (
 		name: string,
 		versionNumber: string,
@@ -232,7 +274,15 @@ const make = Effect.fnUntraced(function* () {
 	) {
 		const registry = target?.registry ?? DEFAULT_REGISTRY;
 		yield* Effect.annotateCurrentSpan({ package: name, version: versionNumber, registry });
-		const manifest = yield* read(VersionManifest, packageUrl(registry, name, versionNumber), name, registry, target);
+		const manifest = yield* classifyRegistry(registry) === "github-packages"
+			? versionFromPackument(name, versionNumber, registry, target)
+			: read(VersionManifest, packageUrl(registry, name, versionNumber), name, registry, target).pipe(
+					Effect.catch((error) =>
+						error.kind === "status" && error.status === 405
+							? versionFromPackument(name, versionNumber, registry, target)
+							: Effect.fail(error),
+					),
+				);
 		return Option.map(manifest, (found) =>
 			PublishedVersion.make({
 				name: found.name,

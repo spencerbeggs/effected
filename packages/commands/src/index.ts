@@ -33,7 +33,7 @@
  * @packageDocumentation
  */
 
-export type { LocalExecShape } from "./LocalExec.js";
+export type { LauncherPrefixes, LocalExecShape } from "./LocalExec.js";
 export { ExecContext, Launcher, LocalExec, LocalExecError } from "./LocalExec.js";
 export { REDACTED, Redaction, SECRET_FLAGS } from "./Redaction.js";
 export { Retry, TRANSIENT_PATTERNS } from "./Retry.js";

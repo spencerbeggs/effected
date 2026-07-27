@@ -183,8 +183,15 @@ export class PublishabilityDetector extends Context.Service<PublishabilityDetect
 	 * silence — `Layer.mergeAll(myDetector, Workspaces.layer())` resolved to the
 	 * default, because `mergeAll` is last-wins. For a service that decides
 	 * whether a package publishes and to which registry, that silent revert was
-	 * the worst available failure. The requirement now sits in `R`, so the
-	 * choice is made once, explicitly, and unmade wiring does not compile.
+	 * the worst available failure.
+	 *
+	 * The composites do not *require* a detector either — nothing inside them
+	 * asks a publishability question, so their `R` stays `FileSystem | Path`.
+	 * The requirement instead surfaces in the `R` of each operation that asks
+	 * (`VersioningStrategy.detect`, e.g.): a program that asks and never wires
+	 * a detector fails to compile where that operation's `R` must close — which
+	 * can be far from the layer-wiring site — and a program that never asks
+	 * never supplies a publish policy at all.
 	 */
 	static readonly layerNpm: Layer.Layer<PublishabilityDetector> = Layer.succeed(this, this.npm);
 

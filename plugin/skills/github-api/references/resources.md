@@ -22,7 +22,7 @@ no working tree (`@effected/git` runs git).
 | Member | Signature | Notes |
 | --- | --- | --- |
 | `create` | `(name, sha) => Effect<void>` | Fails `alreadyExists` if already there (`:165-175`) |
-| `upsert` | `(name, sha) => Effect<BranchOutcome>` | `"created" \| "reset"`; one call, no TOCTOU (`:190-200`) |
+| `upsert` | `(name, sha) => Effect<BranchOutcome>` | `"created" \| "reset"`; one call, no TOCTOU. **A reset is observable**: `upsert(branch, targetHead)` intending to add a commit later leaves the branch equal to the target, and GitHub **auto-closes an open PR whose diff is empty** — build the commit first and upsert once, straight to the finished sha (`:59-71,202-235`) |
 | `exists` | `(name) => Effect<boolean>` | 404 degrades to `false` (`:225-228`) |
 | `sha` | `(name) => Effect<string>` | Fails `notFound` if absent (`:229-233`) |
 | `shaOption` | `(name) => Effect<Option<string>>` | Absence as `Option.none` (`:213-219`) |
@@ -62,7 +62,7 @@ Commits, trees and blobs in the **Git Database API**.
 | `get` | `(sha) => Effect<CommitRef>` | `CommitRef = {sha, treeSha, parents}` — exists specifically so no caller casts for `tree.sha` as a `base_tree` (`:138-151`) |
 | `createTree` | `({changes, baseTree?}) => Effect<string>` (tree sha) | `changes: ReadonlyArray<FileChange>` — `FileContent \| FileDeletion` tagged union (`:153-166`) |
 | `createCommit` | `({message, tree, parents}) => Effect<string>` (commit sha) | `:168-183` |
-| `commitFiles` | `({branch, message, changes}) => Effect<string>` (commit sha) | Read branch → build tree on its commit's tree → create commit → move ref, as one operation; the ref move is **not forced** — a branch that moved underneath you is a real conflict (`:189-213`) |
+| `commitFiles` | `({branch, message, changes}) => Effect<string>` (commit sha) | Read branch → build tree on its commit's tree → create commit → move ref, as one operation; the ref move is **not forced** — a branch that moved underneath you is a real conflict. **"Commit onto a branch you own", not a rebase**: never spell a rebase as `GitBranch.upsert(branch, targetHead)` then `commitFiles` — between the calls the branch *is* the target head and GitHub auto-closes an open PR with an empty diff; compose `get` → `createTree` → `createCommit` (target as parent) → one `upsert` to the finished sha (`:88-113,202-213`) |
 
 ## `GitHubCommit` — `GitHubCommit.ts`
 
@@ -71,10 +71,10 @@ Reading commits as GitHub reports them (not the Git Database API — see
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `get` | `(ref) => Effect<CommitSummary>` | `{sha, message, author, authorLogin?, url}`; `.subject` getter is the message's first line (`:186-191`) |
-| `list` | `(options?: {ref?, path?, page?}) => Effect<ReadonlyArray<CommitSummary>>` | `:193-211` |
-| `compare` | `(base, head) => Effect<CommitComparison>` | `{status, aheadBy, behindBy, commits, files}`; paginates **by commit** (`:213-228`) |
-| `changedFiles` | `(ref, options?: {page?}) => Effect<ReadonlyArray<CommitFile>>` | Paginates **by file**, 300/page — GitHub's own constraint, so a one-commit `compare` is permanently truncated at 300 files no matter what you pass (`:230-263`) |
+| `get` | `(ref) => Effect<CommitSummary>` | `{sha, message, author, authorLogin?, url, parents}`; `.subject` getter is the message's first line; `parents` is the parent shas in GitHub's order — empty for a root commit, two or more for a merge (`:207-212`) |
+| `list` | `(options?: {ref?, path?, page?}) => Effect<ReadonlyArray<CommitSummary>>` | `:214-232` |
+| `compare` | `(base, head) => Effect<CommitComparison>` | `{status, aheadBy, behindBy, commits, files}`; paginates **by commit** (`:234-249`) |
+| `changedFiles` | `(ref, options?: {page?}) => Effect<ReadonlyArray<CommitFile>>` | Paginates **by file**, 300/page — GitHub's own constraint, so a one-commit `compare` is permanently truncated at 300 files no matter what you pass (`:251-284`) |
 
 `CommitFile = {path, status, additions, deletions, previousPath?}`; `status`
 is one of `added/removed/modified/renamed/copied/changed/unchanged`.
@@ -121,7 +121,7 @@ normalizes GitHub's `string | {name}` union to plain names.
 | `getByTagOption` | `(tag) => Effect<Option<ReleaseInfo>>` | `:193-198` |
 | `list` | `(options?: {page?}) => Effect<ReadonlyArray<ReleaseInfo>>` | `:200-205` |
 | `update` | `(id, patch) => Effect<ReleaseInfo>` | `:207-228` |
-| `uploadAsset` | `(release: ReleaseInfo, asset: {name, data, contentType}) => Effect<ReleaseAsset>` | Uses `requestDecoded` — this route is not in the generated map (`:230-250`) |
+| `uploadAsset` | `(release: ReleaseInfo, asset: {name, data, contentType, label?}) => Effect<ReleaseAsset>` | Uses `requestDecoded` — this route is not in the generated map, so the template carries the query itself: `assets{?name}` (`{?name,label}` when `label` is set) or octokit silently drops `name` and GitHub answers 400. `label` is the release page's display label (`:68-92,238-271`) |
 | `listAssets` | `(id, options?: {page?}) => Effect<ReadonlyArray<ReleaseAsset>>` | Now forwards `PageOptions`; the predecessor hardcoded `{}` here (`:252-266`) |
 
 `ReleaseInfo = {id, tag, name, body, draft, prerelease, url, uploadUrl}`;
@@ -132,22 +132,24 @@ url, size}`.
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `get` | `(number) => Effect<PullRequestInfo>` | `:314-323` |
-| `list` | `(options?: {head?, base?, state?, page?}) => Effect<ReadonlyArray<PullRequestInfo>>` | `:241-260` |
-| `listFiles` | `(number, options?: {page?}) => Effect<ReadonlyArray<string>>` | Path strings only (`:325-337`) |
-| `listAssociatedWithCommit` | `(sha, options?: {page?}) => Effect<ReadonlyArray<PullRequestInfo>>` | Named for the question it answers; the predecessor had this method and one consumer never found it, dropping to the survey's only `noExplicitAny` instead. Now paginates, which it did not (`:339-351`) |
-| `create` | `(input) => Effect<PullRequestInfo>` | `:262-281` |
-| `update` | `(number, patch) => Effect<PullRequestInfo>` | Conditional spreads, not `...patch` — `exactOptionalPropertyTypes` makes a present-but-`undefined` key different from an absent one (`:283-307`) |
-| `upsert` | `(input) => Effect<UpsertedPullRequest>` | `{pullRequest, created}`; finds the open PR for `head`→`base` via a one-page lookup, else creates (`:353-375`) |
-| `merge` | `(number, options?: {method?, commitTitle?, commitMessage?}) => Effect<string>` (merge sha) | `:377-396` |
-| `addLabels` | `(number, labels) => Effect<void>` | `:398-407` |
-| `requestReviewers` | `(number, {users?, teams?}) => Effect<void>` | `:409-425` |
-| `setAutoMerge` | `(pullRequest, method: "merge"\|"squash"\|"rebase"\|"off") => Effect<void, GitHubGraphQLError>` | Explicit call, not an option on `create`/`update` — the predecessor fired this from an `Effect.tap` *after* create succeeded, so a working create could still surface an auto-merge failure as if it hadn't (`:427-440`) |
+| `get` | `(number) => Effect<PullRequestInfo>` | `:332-341` |
+| `list` | `(options?: {head?, base?, state?, page?}) => Effect<ReadonlyArray<PullRequestInfo>>` | `:259-278` |
+| `listFiles` | `(number, options?: {page?}) => Effect<ReadonlyArray<CommitFile>>` | Full `CommitFile`s — path **and** status, line counts, pre-rename path — the same `diff-entry` projection `GitHubCommit.changedFiles` returns. An earlier version projected to the path alone and consumers needing the status fell back to a raw route (`:343-357`) |
+| `listAssociatedWithCommit` | `(sha, options?: {page?}) => Effect<ReadonlyArray<PullRequestInfo>>` | Named for the question it answers; the predecessor had this method and one consumer never found it, dropping to the survey's only `noExplicitAny` instead. Now paginates, which it did not (`:359-371`) |
+| `create` | `(input) => Effect<PullRequestInfo>` | `:280-299` |
+| `update` | `(number, patch) => Effect<PullRequestInfo>` | Conditional spreads, not `...patch` — `exactOptionalPropertyTypes` makes a present-but-`undefined` key different from an absent one (`:301-325`) |
+| `upsert` | `(input) => Effect<UpsertedPullRequest>` | `{pullRequest, created}`; finds the open PR for `head`→`base` via a one-page lookup, else creates (`:373-395`) |
+| `merge` | `(number, options?: {method?, commitTitle?, commitMessage?}) => Effect<string>` (merge sha) | `:397-416` |
+| `addLabels` | `(number, labels) => Effect<void>` | `:418-427` |
+| `requestReviewers` | `(number, {users?, teams?}) => Effect<void>` | `:429-445` |
+| `setAutoMerge` | `(pullRequest, method: "merge"\|"squash"\|"rebase"\|"off") => Effect<void, GitHubGraphQLError>` | Explicit call, not an option on `create`/`update` — the predecessor fired this from an `Effect.tap` *after* create succeeded, so a working create could still surface an auto-merge failure as if it hadn't (`:447-460`) |
 
 `PullRequestInfo`: `number`, `nodeId`, `url`, `title`, `state`, `head`,
-`base`, `draft`, `merged`, `mergedAt: Option<DateTime.Utc>` (an `Option`, not
-an optional field — whether a PR has merged is a fact GitHub always
-reports), `body?`, `mergeCommitSha?` (`:17-45`).
+`headSha`, `base`, `baseSha` (branch names **and** the shas they pointed at —
+`baseSha` answers "which commit did this PR branch from"), `draft`, `merged`,
+`mergedAt: Option<DateTime.Utc>` (an `Option`, not an optional field —
+whether a PR has merged is a fact GitHub always reports), `body?`,
+`mergeCommitSha?` (`:19-51`).
 
 ## `PullRequestComment` — `PullRequestComment.ts`
 
@@ -204,12 +206,14 @@ REST upload/list only — signing and SBOM assembly belong to
 
 ## `ArtifactMetadata` — `ArtifactMetadata.ts`
 
-**Org-scoped, not repo-scoped** — takes `org` as an argument and does **not**
-require `Repo`.
+The **endpoint** is org-scoped, but the organization is resolved from
+`Repo`'s `owner` per call like every other resource — `Repo.provide` covers
+the cross-org case. (An earlier version took `org` positionally, the one
+method on the surface that did.)
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `createStorageRecord` | `(org, input: StorageRecordInput) => Effect<ReadonlyArray<number>>` | Returns the stored ids. `StorageRecordInput` has **no `version` field** — the predecessor sent one the endpoint has no notion of, silently accepted by a `Record<string, unknown>` body and rejected outright by the generated types (`:16-29,75-94`) |
+| `createStorageRecord` | `(input: StorageRecordInput) => Effect<ReadonlyArray<number>, GitHubError, Repo>` | Returns the stored ids. `StorageRecordInput` has **no `version` field** — the predecessor sent one the endpoint has no notion of, silently accepted by a `Record<string, unknown>` body and rejected outright by the generated types (`:16-29,76-96`) |
 
 ## `TokenPermissions` — `TokenPermissions.ts` (pure class, no layer)
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-25
-last-synced: 2026-07-25
+updated: 2026-07-26
+last-synced: 2026-07-26
 completeness: 90
 related:
   - architecture.md
@@ -69,6 +69,8 @@ Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `descrip
 - `release-and-publish` — the npm registry read side, publishability and the release/tracking tag families.
 - `supply-chain-attestation` — CycloneDX SBOMs, NTIA minimum elements, in-toto statements and Sigstore signing.
 - `testing-actions` — the test machinery across all four packages, `ScriptedSpawner` included.
+
+**Five of the twelve were hardened by the silk-release-action dogfood** (rounds 1-3, 2026-07-26), which is the [improve loop](#the-improve-skill) running on a suite that had never met a real consumer. Every edit was a *falsified claim* rather than a gap: `testing-actions` gained the layer merge-order collision trap, the lazy-death double rule and the `layerTest` `GITHUB_SERVER_URL` false green; `building-a-github-action` gained a call-sequences table and the reconciliation between its bare-`Config` warning and the `layerDefault` fact; `supply-chain-attestation` now routes to `ActionsIdentityToken.layer` and `ActionsProvenance.capture` instead of describing the adapter a consumer would write; `effect-v4-construct-map` records that `Schema.DateTimeUtc` encodes to a `DateTime.Utc`, **not** an ISO string (`DateTimeUtcFromString` is the string codec); and `effect-api-extractor-bases` gained a fifth `{@link}` failure — a re-exported cross-package `Schema.Class` resolves to "not supported yet by the resolver", so it takes backticks. Recorded because it is the loop's first evidence at suite scale: a skill suite written against shipped surfaces still carries false claims until something consumes it.
 
 ## Specialist agents
 

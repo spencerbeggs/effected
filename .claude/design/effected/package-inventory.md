@@ -110,6 +110,8 @@ Three structural facts from it recur, each argued in the package's own doc:
 
 The program also **extended five published packages** rather than adding to them: `npm` (retiered, above), `workspaces` (release/tracking tags, versioning strategy, the `LocalExec` layer and the publishability seam), `config-file` (`ConfigFile.read`), `package-json` (the location fields, and the `Person` stale-wire fix) and `markdown` (the section finders). Each package's doc carries its own as-built section.
 
+**The dogfood that followed added three in-kit edges, all onto `github-actions`** (silk-release-action rounds 1-3, 2026-07-26): `@effected/templates`, `@effected/markdown` and `@effected/sbom`. None changes a tier — `github-actions` is already integrated and nothing depends on it — and each is confined to the modules that earn it, with `markdown`'s pinned by the same bundle-reachability suite that pins Azure's. One of them is the inverted-contract pattern closing: `sbom` declared `IdentityToken` and `github-actions` now ships the layer. Worth recording as the shape adoption takes: the dogfood asked for **projections between packages the kit already had**, not for new capabilities, so the edges it produced all point from the integrated overlay downward.
+
 ## Not in the kit
 
 - `@effected/ts-vfs` (port of `type-registry-effect`) — ported, then returned to the external `type-registry-effect` repo, where its consumer `rspress-plugin-api-extractor` consumes it from source. It carries the `typescript@^6` / `@typescript/vfs` peers, so keeping it out preserves the kit's "no `@effected/*` package imports `typescript`" posture. See [releases.md](releases.md#the-five-applications).

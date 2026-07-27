@@ -1,6 +1,6 @@
 ---
 name: running-commands-and-tools
-description: Use when running a subprocess in Effect v4, spawning a command, capturing stdout/stderr/exit code, checking whether a CLI tool is installed or which copy (global vs. project-local) to run, running git/pnpm/npm/npx from Effect, detaching a background process that must outlive its scope, or redacting a secret from argv or captured output. Covers @effected/commands' Run combinators (collect/collectTee/text/lines/json/exitCode/succeeds/stream/detach), ToolDiscovery's resolution and evidence cache, the LocalExec contract inversion, and the Redaction/Retry vocabulary — all built over core's ChildProcess/ChildProcessSpawner, never reimplementing it.
+description: Use when running a subprocess in Effect v4, spawning a command, capturing stdout/stderr/exit code, checking whether a CLI tool is installed or which copy (global vs. project-local) to run, running git/pnpm/npm/npx from Effect, running a package.json script through the project's launcher, detaching a background process that must outlive its scope, or redacting a secret from argv or captured output. Covers @effected/commands' Run combinators (collect/collectTee/text/lines/json/exitCode/succeeds/stream/detach), ToolDiscovery's resolution and evidence cache, the LocalExec contract inversion with its exec/dlx/script prefixes (ExecContext.apply/applyDlx/applyScript), and the Redaction/Retry vocabulary — all built over core's ChildProcess/ChildProcessSpawner, never reimplementing it.
 ---
 
 # Running commands and finding tools
@@ -247,13 +247,21 @@ export interface LocalExecShape {
 }
 ```
 
-`ExecContext` (`LocalExec.ts:50-79`) carries `label` (reporting only — nothing branches on it),
-`prefix`, `dlxPrefix`, optional `directory`; `.apply(command)` / `.applyDlx(command)` prefix a core
-`StandardCommand` and apply `directory` via `ChildProcess.prefix` / `ChildProcess.setCwd` — both
-return **new** command values, never mutating the caller's. `LocalExec.prefixes(launcher)` is the
-one place the four managers' argv lives (`npx --no --` / `pnpm exec` / `yarn exec` / `bun x
---no-install`, plus each `dlxPrefix`) — `npm`'s `--no` and bun's `--no-install` both refuse to
-silently install a missing binary.
+`ExecContext` (`LocalExec.ts:70-110`) carries `label` (reporting only — nothing branches on it),
+`prefix`, `dlxPrefix`, `scriptPrefix`, optional `directory`; `.apply(command)` /
+`.applyDlx(command)` / `.applyScript(command)` prefix a core `StandardCommand` and apply
+`directory` via `ChildProcess.prefix` / `ChildProcess.setCwd` — all return **new** command values,
+never mutating the caller's. For `applyScript` the command's `command` is the **script name** and
+its `args` are the script's arguments. `LocalExec.prefixes(launcher)` (returning the
+`LauncherPrefixes` record: `prefix` / `dlxPrefix` / `scriptPrefix`, `LocalExec.ts:35-48,183`) is
+the one place the four managers' argv lives (`npx --no --` / `pnpm exec` / `yarn exec` / `bun x
+--no-install`, plus each `dlxPrefix`, plus each `run` form as `scriptPrefix`;
+`LocalExec.scriptPrefix(launcher)` picks the one row, `:196`) — `npm`'s `--no` and bun's
+`--no-install` both refuse to silently install a missing binary. **npm's `scriptPrefix` is
+`["npm", "run", "--"]`, trailing `--` included**: bare `npm run <script> --flag` silently CLAIMS
+`--flag` for npm itself and delivers nothing to the script (probed live at npm 11;
+`npm run -- <script> --flag` delivers it) — the other three managers forward post-script
+arguments without it (`LocalExec.ts:46-58`).
 
 A single-package consumer never installs `@effected/workspaces`:
 

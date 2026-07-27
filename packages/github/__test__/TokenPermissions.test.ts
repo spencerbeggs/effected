@@ -97,7 +97,6 @@ describe("ArtifactMetadata", () => {
 			const ids = yield* Effect.provide(
 				Effect.flatMap(ArtifactMetadata, (metadata) =>
 					metadata.createStorageRecord(
-						"acme",
 						StorageRecordInput.make({
 							name: "libfoo-1.2.3",
 							digest: "sha256:abc",
@@ -109,6 +108,9 @@ describe("ArtifactMetadata", () => {
 				ArtifactMetadata.layer.pipe(Layer.provideMerge(base)),
 			);
 			assert.deepStrictEqual([...ids], [11, 12]);
+			// The organization comes from Repo's owner, like every other resource —
+			// not from a positional argument.
+			assert.include(script.calls[0]?.path ?? "", "/orgs/acme/artifacts/metadata/storage-record");
 			const body = JSON.parse(script.calls[0]?.body ?? "{}");
 			assert.deepStrictEqual(body, {
 				name: "libfoo-1.2.3",

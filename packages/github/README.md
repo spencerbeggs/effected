@@ -161,8 +161,9 @@ const TestBranches = GitBranch.layerTest({
 - `GitHubApp` — App JWT signing, installation token minting/revocation, app and installation identity, and `clientLayer` for an App-authenticated `GitHubClient`.
 - `GitBranch` / `GitTag` — Git Database API refs, with `upsert` collapsing the create-or-reset dance to one call and `GitTag.latestSemver` picking the newest version-shaped tag in one pass.
 - `CheckRun` — `withCheckRun` concludes on every exit path; `CheckRunOutput.truncated()` cuts rendered output to GitHub's byte limits.
-- `PullRequest` / `PullRequestComment` — upserts for both, plus `CommentMarker` for finding a sticky comment again.
-- `GitHubRelease` — releases and asset uploads, including the one route (`uploadAsset`) outside GitHub's generated endpoint map.
+- `PullRequest` / `PullRequestComment` — upserts for both, `listFiles` answering with the same full `CommitFile` records a commit read returns, `headSha`/`baseSha` on `PullRequestInfo`, plus `CommentMarker` for finding a sticky comment again.
+- `GitHubRelease` — releases and asset uploads, including the one route (`uploadAsset`, with the endpoint's optional display label) outside GitHub's generated endpoint map.
+- `BotIdentity` — the author and committer a bot commits as, with `signoff` rendering the DCO trailer that a commit made through the Git Data API never gets from `git commit -s`.
 - `Attestation` — upload and list attestations against a subject digest; building and signing the bundle is `@effected/sbom`'s job.
 - `TokenPermissions` — a pure comparator between granted and required permissions, reaching nothing but `effect`.
 

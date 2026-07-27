@@ -1,6 +1,6 @@
 # @effected/npm
 
-Effect service **contracts** (not implementations) for resolving pnpm `catalog:`/`workspace:` dependency specifiers, the one-call `Manifest` projection built on those contracts, plus the shared npm dependency vocabulary (specifier taxonomy, dependency-section literals, integrity-hash brand) used across the kit's manifest/lockfile/workspace packages. Pure tier: no IO, one pure edge on `@effected/semver`.
+Effect service **contracts** (not implementations) for resolving pnpm `catalog:`/`workspace:` dependency specifiers, the one-call `Manifest` projection built on those contracts, plus the shared npm dependency vocabulary (specifier taxonomy, dependency-section literals, integrity-hash brand) used across the kit's manifest/lockfile/workspace packages — **and**, since the 2026-07-25 extension, the registry/publish half: `NpmRegistry` (reads over core `HttpClient`) and `PackagePublish` (the npm CLI over `@effected/commands`). Boundary tier, deliberately — IO goes through core contracts required in `R`; the contracts/vocabulary half stays pure with one pure edge on `@effected/semver`.
 
 ## Import
 
@@ -21,6 +21,16 @@ Single entrypoint; no subpaths.
 - **`DependencySpecifier`** — branded string with an eleven-protocol classification (`range | tag | git | url | npm | file | link | portal | catalog | workspace | unknown`) and a `FromString` codec decoding to a five-case tagged union (`CatalogSpecifier | WorkspaceSpecifier | RangeSpecifier | DistTagSpecifier | RawSpecifier`) that encodes back byte-for-byte. Statics beyond the codec: `protocolOf(value)` (classify without decoding), `isRange`/`isTag`/`isGit`/`isUrl`/`isLocal`/`isLink`/`isPortal`/`isCatalog`/`isWorkspace` (per-protocol boolean checks), `parseRange(value)` → `Option<Range>` (from `@effected/semver`), `catalogNameOf(specifier)` → `Option<string>`, `workspaceTargetOf(specifier)` → `Option<string>` (the alias target of a `workspace:<name>@<range>` form), `resolveWorkspace(specifier, version)` (projects a `workspace:` specifier to its published form given a concrete version — the same projection `Manifest.resolve()` applies internally), `isValid`, `decode(input)` → `Effect<DependencySpecifierBrand, InvalidDependencySpecifierError>`.
 - **`DependencySection`** — `DependencyKind` (`prod`/`dev`/`peer`/`optional`) and `DependencyField` literals with bidirectional `fieldOf`/`kindOf`.
 - **`IntegrityHash`** — brand covering SRI (`<algo>-<base64>`), corepack (`<algo>.<hex>`) and yarn (`10c0/<hex>`) forms; `algorithmOf`, `isSri`/`isCorepack`/`isYarnChecksum`/`isValid`, `decode(input)` → `Effect<IntegrityHashBrand, InvalidIntegrityHashError>`.
+
+## The registry/publish half
+
+Depth — the doubles, the auth/nerf-dart mechanics, the digest pair, the executor, the age gate — lives in the `release-and-publish` skill; this is the member list:
+
+- **`NpmRegistry`** — `Context.Service` over core `HttpClient`: `version(name, version, target?)` → `Effect<Option<PublishedVersion>, RegistryReadError>` (a `github-packages` target reads through the whole packument — GitHub Packages answers the per-version endpoint 405 regardless of credentials — and a 405 from any other registry falls back the same way), `versions`, `distTags`, `publishTimes`. A 404 is `Option.none()`/empty, never an error. Doubles: `layerTest(overrides?)` (dies loudly) and `layerSeeded(seed)` (a working fake keyed registry→name→version).
+- **`PackagePublish`** — the npm CLI through `@effected/commands`' `Run`: `setupAuth` (token to a caller-supplied npmrc, never argv), `pack` → `PackedTarball` (`integrity` SRI + `sha256Hex` attestation subject — not interchangeable), `publishTarball` → `PublishOutcome` (`provenanceUrl?: string | undefined`, plain optional — npm's transparency-log URL when provenance published), `dryRun` → `DryRunOutcome` (`ok: false` is a result, not an error). Errors: `PublishError`, `kind: "auth" | "pack" | "publish" | "output" | "digest" | "executor"`.
+- **`NpmExecutor`** — which npm runs: `NpmExecutor.ambient` or `NpmExecutor.dlx("npm@11")` through `LocalExec.applyDlx`; `dlx` with no project-local launcher fails typed rather than degrading to the ambient npm.
+- **`RegistryKind` / `classifyRegistry(registry?)`** — `"npm" | "github-packages" | "jsr" | "custom"`; absent classifies as `"npm"`; subdomain matching requires a leading dot.
+- **`ReleaseAgeGate` / `PartialReleaseAgeGate`** — pnpm-parity publish-age gating: `combine` (the single clamping authority), `matchesExclude`/`isExcluded` (`@pnpm/matcher` parity — `*` crosses `/`, deliberately NOT `@effected/glob`'s dialect), `filterVersions`.
 
 ## Usage
 
@@ -56,7 +66,7 @@ Effect.runPromise(Effect.provide(program, Default));
 
 ## Testing machinery
 
-None exported beyond the `.noop` layers and `Default`, which are exactly what tests usually want.
+For the contracts half: the `.noop` layers and `Default`, which are exactly what tests usually want. For the registry/publish half: `NpmRegistry.makeTest`/`.layerTest` and `PackagePublish.makeTest`/`.layerTest` (unstubbed members die naming themselves), plus `NpmRegistry.layerSeeded(seed)` — a working fake; `layerSeeded({ registries: {} })` is the "everything absent" registry a v3 `NpmRegistryTest.empty()` caller wants.
 
 ## Gotchas
 

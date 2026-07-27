@@ -3,13 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-07-25
-last-synced: 2026-07-25
+updated: 2026-07-26
+last-synced: 2026-07-26
 completeness: 92
 related:
   - ../effect-standards.md
   - ../roadmap.md
   - ../formatter-convention.md
+  - github-actions.md
   - walker.md
   - git.md
   - markdown.md
@@ -472,6 +473,7 @@ One integration suite (`__test__/integration/`) drives the real `@effect/platfor
 
 - **`@savvy-web/silk-effects` / `@savvy-web/cli`** — the origin. The `savvy commit init` / `savvy lint init` / `savvy … check` commands manage `savvy-base`, `savvy-hooks`, `savvy-commit` and `savvy-lint` blocks across four husky hooks, and are the reason `syncAll`'s ordering guarantee exists (the preamble defines `pm_exec`; the tool block calls it). They migrate to `@effected/templates` + `@savvy-web/templates` after this package ships.
 - **claude-code-marketplace-manager** and docs tooling — the wrapped-comment (`<!-- … -->`) case that v3 could not represent; managed blocks in Markdown.
+- **`@effected/github-actions`' `ManagedDocument`** (2026-07-26) — the first **in-kit** consumer, and the one that tested the [division of labor](#division-of-labor-mechanism-here-content-elsewhere) as a claim rather than a plan. It needed a marker-delimited PR comment or check summary whose regions an action rewrites while the human's prose survives, which is `SectionDocument` with three parameters fixed: HTML comment style, the `MANAGED REGION` phrase, `ns.key.region` wire keys. It is **a domain fixing of the dialect, not a second engine** — the region grammar, the line-ending invariant and the idempotence proof all stayed here, which is the outcome the split was designed for, observed once from outside. Worth recording that the consumer wanted `SectionDialect`'s parameters *narrowed*, not extended: nothing was missing from the mechanism.
 - Any kit consumer that writes into a user-owned file. This is the mechanism; it has no opinion about what goes in the block.
 
 ## Deliberately out of scope

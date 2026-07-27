@@ -83,9 +83,11 @@ const compose = (
 	// `Layer.mergeAll(myDetector, Workspaces.layer())` — silently lose to it.
 	// For the service that decides whether a package publishes and where, a
 	// silent revert to "publishes to the public registry" is the worst failure
-	// available. It is required in `R` instead: one explicit
-	// `Layer.provide(PublishabilityDetector.layerNpm)` for the common case, and
-	// wiring that forgets to choose does not compile.
+	// available. Note the composite does not REQUIRE a detector either — nothing
+	// inside it consumes one, so `R` stays `FileSystem | Path`. The requirement
+	// surfaces in the R of each operation that asks a publishability question
+	// (`VersioningStrategy.detect`, e.g.), which is where unwired programs fail
+	// to compile; a consumer that never asks never supplies a policy.
 	return Layer.mergeAll(roots, detector, discovery, lockfiles, catalogs);
 };
 
@@ -175,12 +177,13 @@ const localExecLayer = (options?: {
 				);
 				if (Option.isNone(detected)) return Option.none<ExecContext>();
 
-				const { prefix, dlxPrefix } = LocalExec.prefixes(detected.value.name);
+				const { prefix, dlxPrefix, scriptPrefix } = LocalExec.prefixes(detected.value.name);
 				return Option.some(
 					ExecContext.make({
 						label: detected.value.name,
 						prefix,
 						dlxPrefix,
+						scriptPrefix,
 						directory: root.value,
 					}),
 				);
@@ -200,12 +203,22 @@ export class Workspaces {
 
 	/**
 	 * Every service that needs only a filesystem: root, package-manager
-	 * detection, discovery, lockfile reading, catalogs and publishability.
+	 * detection, discovery, lockfile reading and catalogs.
 	 *
 	 * @remarks
 	 * Requires core `FileSystem` and `Path`, which the consumer provides at the
 	 * edge (`@effect/platform-node`, `@effect/platform-bun`, or a test's
 	 * `FileSystem.layerNoop`).
+	 *
+	 * **`PublishabilityDetector` is neither provided nor required here.** The
+	 * composite used to bake in npm semantics, which a naively-ordered override
+	 * silently lost to; now it supplies no default, and — because nothing inside
+	 * the composite asks a publishability question — it does not require one in
+	 * `R` either. The requirement surfaces in the `R` of each operation that
+	 * asks (`VersioningStrategy.detect`, e.g.), so a program that asks and never
+	 * wires a detector fails to compile at that operation, and a program that
+	 * never asks never supplies a publish policy. Wire one explicitly where
+	 * needed: `Layer.mergeAll(Workspaces.layer(), PublishabilityDetector.layerNpm)`.
 	 *
 	 * **Bind the result to a `const`.** This is a parameterized factory and
 	 * layers memoize by reference, so calling it twice builds everything twice.
@@ -265,7 +278,8 @@ export class Workspaces {
 	 * it. So `commands` declares the narrow contract and we ship the layer.
 	 *
 	 * **The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` is
-	 * the one home of the four managers' `exec`/`dlx` prefixes; this layer
+	 * the one home of the four managers' `exec`/`dlx`/script-runner prefixes;
+	 * this layer
 	 * detects *which* manager owns the directory and asks `commands` what that
 	 * manager's argv looks like. Neither package reimplements the other's
 	 * half.

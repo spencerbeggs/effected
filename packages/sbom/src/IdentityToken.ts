@@ -10,8 +10,8 @@
 // So the dependency is inverted, as it was for `@effected/npm`'s
 // `CatalogResolver` and `@effected/commands`' `LocalExec`: this package
 // declares the narrow contract it needs, github-actions ships the layer that
-// implements it, and a consumer already holding a token uses
-// `IdentityToken.layerStatic`.
+// implements it (`ActionsIdentityToken.layer`, over its `OidcTokenIssuer`),
+// and a consumer already holding a token uses `IdentityToken.layerStatic`.
 
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
 

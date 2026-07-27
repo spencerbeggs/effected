@@ -46,8 +46,7 @@ All `@effected/*` packages are ESM-only: the exports maps publish only `import` 
 Generating an SBOM needs no layer, no service and no network call:
 
 ```ts
-import { Sbom, SbomMetadataSource } from "@effected/sbom";
-import { Package } from "@effected/package-json";
+import { Package, Sbom, SbomMetadataSource } from "@effected/sbom";
 
 declare const pkg: Package;
 
@@ -64,6 +63,8 @@ console.log(Sbom.toJson(document));
 ```
 
 Components are sorted by name so the document's digest — which becomes an attestation subject — does not change between runs over the same inputs for no reason.
+
+`Package`, `Person` and `Repository` come from `@effected/package-json` and are re-exported here, so naming the type `fromPackage` takes does not mean declaring a dependency you would not otherwise have. Inside `src/` the manifest types stay a type-only import; the entry point is the one place they cross as values.
 
 ## NTIA compliance
 
@@ -141,7 +142,7 @@ Effect.runPromise(program.pipe(Effect.provide(SignerLayer))).then(console.log);
 // SigstoreBundle: { mediaType, verificationMaterial, dsseEnvelope }
 ```
 
-`IdentityToken` is a narrow, one-method contract deliberately smaller than any real issuer's surface, so `@effected/github-actions`' `OidcTokenIssuer` is one of several things that can satisfy it — a CI system that mints its own token works the same way through `IdentityToken.layerStatic`.
+`IdentityToken` is a narrow, one-method contract deliberately smaller than any real issuer's surface, so several things can satisfy it. On a GitHub runner that is `ActionsIdentityToken.layer`, which `@effected/github-actions` ships over its own `OidcTokenIssuer` — the dependency points that way so signing never drags the Actions runtime into a consumer that only emits an SBOM. A CI system that mints its own token works the same way through `IdentityToken.layerStatic`.
 
 ## Errors
 

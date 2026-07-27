@@ -142,7 +142,17 @@ service modules themselves:
 `ActionState` needs `ActionOutputs` because it masks a value with
 `setSecret` before it persists it; `ActionOutputs` needs `ActionEnvironment`
 for the same reason `ActionEnvironment.payload`/`.repo` resolve `FileSystem`
-once at construction rather than per call. `Layer.provideMerge`, not a flat
+once at construction rather than per call.
+
+**The webhook event payload is `ActionEnvironment.payload`** —
+`Effect<unknown, ActionEnvironmentError>`, reading the file
+`GITHUB_EVENT_PATH` names and parsing its JSON, with an unreadable file or
+invalid JSON failing typed (`reason: "malformed"`, naming the variable;
+`ActionEnvironment.ts:106-112,217-238`). Its `R` is `never` — the layer
+resolved `FileSystem` at construction. Decode the `unknown` through your own
+`Schema` for the event you handle; do not hand-roll
+`JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH))` — two consumers
+did, for lack of a routing row. `Layer.provideMerge`, not a flat
 `Layer.mergeAll`, is what feeds each dependency down the chain and keeps its
 output visible to what needs it — merged as siblings, `ActionState` and
 `ActionOutputs` would never see each other and the layer would not build

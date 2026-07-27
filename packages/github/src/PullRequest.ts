@@ -1,5 +1,7 @@
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
+import type { CommitFile } from "./GitHubCommit.js";
+import { fileOf } from "./GitHubCommit.js";
 import { GitHubError } from "./GitHubError.js";
 import type { GitHubGraphQLError } from "./GraphQL.js";
 import { GraphQLDocument } from "./GraphQL.js";
@@ -25,8 +27,12 @@ export class PullRequestInfo extends Schema.Class<PullRequestInfo>("PullRequestI
 	state: Schema.Literals(["open", "closed"]),
 	/** The source branch name. */
 	head: Schema.String,
+	/** The sha the source branch pointed at when GitHub answered. */
+	headSha: Schema.String,
 	/** The target branch name. */
 	base: Schema.String,
+	/** The sha the target branch pointed at when GitHub answered — the commit the pull request branches from. */
+	baseSha: Schema.String,
 	draft: Schema.Boolean,
 	merged: Schema.Boolean,
 	/**
@@ -86,11 +92,21 @@ export interface PullRequestShape {
 		readonly state?: "open" | "closed" | "all" | undefined;
 		readonly page?: PageOptions | undefined;
 	}) => Effect.Effect<ReadonlyArray<PullRequestInfo>, GitHubError, Repo>;
-	/** The files a pull request changes. */
+	/**
+	 * The files a pull request changes.
+	 *
+	 * @remarks
+	 * Each entry is a full {@link CommitFile} — path **and** status, plus the
+	 * line counts and any pre-rename path — the same projection
+	 * `GitHubCommit.changedFiles` returns, because GitHub answers both
+	 * endpoints with the same `diff-entry` shape. An earlier version projected
+	 * to the path alone, and consumers who needed the status fell back to a raw
+	 * route.
+	 */
 	readonly listFiles: (
 		number: number,
 		options?: { readonly page?: PageOptions | undefined },
-	) => Effect.Effect<ReadonlyArray<string>, GitHubError, Repo>;
+	) => Effect.Effect<ReadonlyArray<CommitFile>, GitHubError, Repo>;
 	/**
 	 * The pull requests associated with a commit.
 	 *
@@ -200,8 +216,8 @@ interface RawPull {
 	readonly html_url: string;
 	readonly title: string;
 	readonly state: string;
-	readonly head: { readonly ref: string };
-	readonly base: { readonly ref: string };
+	readonly head: { readonly ref: string; readonly sha: string };
+	readonly base: { readonly ref: string; readonly sha: string };
 	readonly draft?: boolean | undefined;
 	readonly merged?: boolean | undefined;
 	readonly merged_at?: string | null | undefined;
@@ -219,7 +235,9 @@ const project = (raw: RawPull): Effect.Effect<PullRequestInfo, GitHubError> =>
 				title: raw.title,
 				state: raw.state === "closed" ? "closed" : "open",
 				head: raw.head.ref,
+				headSha: raw.head.sha,
 				base: raw.base.ref,
+				baseSha: raw.base.sha,
 				draft: raw.draft ?? false,
 				merged: raw.merged ?? raw.merged_at != null,
 				// Constructed rather than decoded: the Type side of
@@ -333,7 +351,9 @@ const make = (client: GitHubClient["Service"]): PullRequestShape => {
 				{ owner, repo, pull_number: number },
 				options?.page,
 			);
-			return files.map((file) => file.filename);
+			// The same `diff-entry` wire shape the single-commit read answers with,
+			// so the same projection turns it into `CommitFile`s.
+			return files.map(fileOf);
 		}),
 
 		listAssociatedWithCommit: Effect.fn("PullRequest.listAssociatedWithCommit")(function* (

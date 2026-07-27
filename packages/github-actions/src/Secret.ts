@@ -87,6 +87,16 @@ export class Secret {
 	 * over a `Redacted`, so a signing key has to become a string somewhere, and
 	 * the point of this module is that "somewhere" is here and nowhere else.
 	 *
+	 * Signing named the member; it does not gate it. **Any in-process use that
+	 * needs the raw value without writing it to a runner file is this
+	 * operation** — bridging a token into this process's own `process.env` for
+	 * an SDK that only reads the environment, or handing a key to a library
+	 * that takes a plain string. The dividing line is where the value goes, not
+	 * what it is for: a value crossing into a **child's** environment is
+	 * {@link Secret.forChildEnv}, one written to `GITHUB_STATE` or
+	 * `GITHUB_OUTPUT` is {@link Secret.forRunnerFile}, and one that stays in
+	 * this process is this member.
+	 *
 	 * It masks even though the value is never *written* anywhere, and that is
 	 * deliberate rather than superstitious: a signing key that leaks does so
 	 * through something nobody audited — a debug log of outgoing headers, a

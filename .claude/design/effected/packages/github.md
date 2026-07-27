@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-07-25
-last-synced: 2026-07-25
-completeness: 90
+updated: 2026-07-26
+last-synced: 2026-07-26
+completeness: 91
 related:
   - ../effect-standards.md
   - ../package-inventory.md
@@ -875,7 +875,9 @@ needs: `nodeId`, `allowAutoMerge`, `squashMergeCommitTitle` and the other thirte
 accessors, no cast.
 
 **`GitHubCommit`** — `get(ref)`, `list(options?)`, `compare(base, head)`, `changedFiles(ref,
-options?)`. The documented GitHub constraint stays documented: `GET .../commits/{ref}` paginates
+options?)`. `CommitSummary` carries **`parents`** (required — empty for a root commit, two or more
+for a merge; every commit endpoint this package reads reports it, so "which commit did this come
+from" never needs a raw route). The documented GitHub constraint stays documented: `GET .../commits/{ref}` paginates
 **by file** (300/page) while `compare` paginates **by commit**, so a one-commit compare is
 permanently truncated at 300 files. `changedFiles` keeps the file-counting paginator, now with
 caller-controllable `PageOptions`.
@@ -894,7 +896,10 @@ are typed GraphQL — see [GraphQL ownership](#graphql-ownership).
 `update(id, patch)`, `uploadAsset(id, asset)`, `listAssets(id, options?)`. `listAssets` now
 forwards `PageOptions` (it did not). `uploadAsset` uses the typed route with
 `baseUrl: "https://uploads.github.com"` and a `content-type` header — both expressible through
-`Rest.RequestExtras`, which is exactly why those three fields survived the narrowing.
+`Rest.RequestExtras`, which is exactly why those three fields survived the narrowing. Its asset
+input also takes an optional **`label`** (GitHub's display name for the asset on the release page),
+and its route **template carries its own query parameters** — see
+[the hand-written-route rule](#a-hand-written-route-owns-its-query-parameters-2026-07-26).
 
 **`PullRequest`** — `get(n)`, `list(options?)`, `listFiles(n, options?)`,
 **`listAssociatedWithCommit(sha, options?)`**, `create(input)`, `update(n, patch)`,
@@ -909,6 +914,15 @@ could surface from a call that had already succeeded. `PullRequestInfo`'s option
 (`mergedAt`, `body`, `mergeCommitSha`, `baseSha`) are **re-examined at implementation**: they are
 optional today because hand-written test doubles did not set them, which is a fixture problem, not
 a domain one.
+
+Two shapes were corrected in the dogfood (2026-07-26). **`listFiles` answers
+`ReadonlyArray<CommitFile>`, not `ReadonlyArray<string>`** — path *and* status, plus line counts and
+any pre-rename path, the same projection `GitHubCommit.changedFiles` returns, because GitHub answers
+both endpoints with the same `diff-entry` shape. Projecting to the path alone sent every consumer
+who needed the status back to a raw route, which is the failure this surface exists to prevent. And
+**`headSha` / `baseSha` are required fields** on `PullRequestInfo`: GitHub always reports both, they
+are what a caller needs to commit onto a PR's head or diff against its base, and modelling them as
+absent described the old fixtures rather than the domain.
 
 **`PullRequestComment`** — `create(pr, body)`, `upsert(pr, marker, body)`, `find(pr, marker) →
 Option<CommentRecord>`, `delete(pr, id)`. `find` **paginates**. The hardcoded
@@ -1002,7 +1016,13 @@ necessary — has no successor: with a typed client there is nothing to sniff.
 **`ArtifactMetadata`** — `createStorageRecord(input) → ReadonlyArray<number>`. Worth keeping as a
 module for its projection (`storage_records[].id`) even though the route
 (`POST /orgs/{org}/artifacts/metadata/storage-record`) turns out to be **in** the current OpenAPI
-schema, so the old defensive `OctokitRequest` cast and string-body tolerance are unnecessary.
+schema, so the old defensive `OctokitRequest` cast and string-body tolerance are unnecessary. The
+endpoint is org-scoped rather than repository-scoped, and the organization is nonetheless resolved
+from `Repo`'s `owner` per call **like every other resource** (2026-07-26): it shipped taking the org
+as a positional argument, the one method on the whole surface that did, which made the uniform rule
+"resource methods read `Repo`" false for exactly one call site and cost every caller the question
+of where its org comes from. `Repo.provide` covers the cross-org case exactly as it covers the
+cross-repository one.
 
 ## GraphQL ownership
 
@@ -1282,6 +1302,27 @@ arrow or throw `Cannot access 'make' before initialization` at import time with
 a clean typecheck; a commit's `author` can be `Record<string, never>` rather
 than `null`; and the artifact-metadata endpoint has **no `version` field**,
 which the previous package sent.
+
+### A hand-written route owns its query parameters (2026-07-26)
+
+Release-asset upload is one of the [two routes outside the generated endpoint map](#as-built--where-implementation-corrected-the-design), and being outside it cuts a second way nobody anticipated: **octokit has no schema saying `name` is a query parameter**, so a parameter it cannot place is silently dropped from the request. The live symptom was a 400 `Invalid name for request` on every asset upload, from a call whose arguments all looked right.
+
+The fix is a rule, not a patch: **a hand-written route carries its own query parameters in the template.** `uploadAsset` requests `POST …/assets{?name}`, or `…/assets{?name,label}` when a label is supplied. The two spellings exist rather than one, and that is the second finding: `{?name,label}` with an absent `label` expands to a dangling `&` (probed at `@octokit/endpoint` 11.0.3), so an "optional" parameter in an RFC 6570 template is not optional in the way a caller assumes.
+
+The general lesson generalizes past this endpoint: **the typed route table is doing more work than routing.** Every parameter placement decision the generated map makes for free has to be made by hand on a route that is not in it, and the failure mode is a dropped value rather than a type error.
+
+### The PR auto-close two-step, and the composition that avoids it (2026-07-26)
+
+`GitBranch.upsert` and `GitCommit.commitFiles` are each correct and each documented; the hazard is in their *sequence*. Resetting a release branch to its base — `upsert(branch, targetHead)` — makes an open pull request from that branch have an **empty diff**, and GitHub auto-closes a PR in that state. A consumer that reset and then re-added content with `commitFiles` about three seconds later lost its open release PR inside that window while the run reported success.
+
+The correct spelling is one operation with **no observable intermediate state**: `GitCommit.get` the target head for its `treeSha`, `createTree` on it, `createCommit` with the target as parent, then a single `GitBranch.upsert` straight to the finished sha. The branch never rests on the bare target head, so no PR is ever momentarily empty.
+
+**No API changed.** This was reported as dogfood item 24 and the API-shaped fix was **retracted deliberately**: a `rebaseOnto`-style member would bake one consumer's release-branch policy into the resource surface, and the members needed to compose it correctly already exist and already return the right values. What was missing was the *warning*, so both members' TSDoc now carries it — `upsert` on the "a reset is observable" side, `commitFiles` on the "this is commit-onto-your-own-branch, not a rebase" side. A hazard that only exists between two calls has to be documented at both of them, because a reader arrives at whichever one they reached for.
+
+### Two smaller shapes the dogfood settled (2026-07-26)
+
+- **`BotIdentity.signoff`** renders `Signed-off-by: <name> <email>` — DCO 1.1's fixed casing, spacing and angle brackets — from the type that owns the data. Commits created through the Git Data API bypass `git commit -s`, so no porcelain adds the trailer, and a hand-built one that is subtly wrong fails late as a red DCO check on someone else's pull request. Whether a missing identity falls back to `BotIdentity.githubActions` stays the **caller's** policy: that is a decision about attribution, not about formatting.
+- **`RawFile` and `fileOf` are exported from `GitHubCommit.ts` but deliberately not from the entry point.** `PullRequest.listFiles` answers with the same `diff-entry` wire shape as `changedFiles`, so the projection is shared rather than written twice — and it stays a package-internal export because a `diff-entry` is octokit's vocabulary, not this package's. `CommitFile` is the public type; the raw shape is how it gets built.
 
 ### The API Extractor watch item, answered
 

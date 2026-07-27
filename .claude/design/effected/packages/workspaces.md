@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-25
-last-synced: 2026-07-25
+updated: 2026-07-26
+last-synced: 2026-07-26
 completeness: 95
 related:
   - ../effect-standards.md
@@ -73,7 +73,7 @@ The second inverted contract this package fills, on the same reasoning as [npm's
 
 **The R2 direction is what makes this safe.** The `@effected/commands` edge is a `workspace:~` dependency on a *boundary* package, and [R2](../effect-standards.md#dependency-policy) taxes only tier-3 edges — so taking it changes nothing about this package's tier (already integrated, for `@pnpm/catalogs.*`) and costs a consumer nothing extra. The inversion exists to protect `commands` and its dependents, not us.
 
-**The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` in `commands` is the one home of the four managers' `exec`/`dlx` prefixes; this layer detects *which* manager owns the directory and asks `commands` what that manager's argv looks like. The tests assert against that same static rather than a copy, so the two packages cannot silently drift apart on the table.
+**The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` in `commands` is the one home of the four managers' `exec` / `dlx` / **`script`** prefixes; this layer detects *which* manager owns the directory and asks `commands` what that manager's argv looks like. The tests assert against that same static rather than a copy, so the two packages cannot silently drift apart on the table. That held with no work when `scriptPrefix` [joined the record](commands.md#as-built-the-script-runner-prefix-2026-07-26) on 2026-07-26 — this layer destructures whatever `prefixes` returns, so a third prefix cost the reciprocal edge exactly one field name and no knowledge.
 
 **`None` is success, and the boundary is where the value is.** The contract reserves its typed `LocalExecError` for **mechanism** failure, so the mapping from this package's error taxonomy is:
 
@@ -196,14 +196,16 @@ return DepsRegenLive.pipe(
   Layer.provide(kitGraph),
 );
 
-// AFTER — one graph, one provide, no shadowing. The detector is a dependency of
-// the composite rather than a competitor to it.
+// AFTER — one graph, one merge, no shadowing. The detector travels ALONGSIDE
+// the composite, not underneath it.
 const detector = PublishabilityDetectorAdaptiveLive.pipe(Layer.provide(ConfigGraph));
-const kitGraph = Workspaces.layerWithGit(options).pipe(Layer.provide(detector));
+const kitGraph = Layer.mergeAll(Workspaces.layerWithGit(options), detector);
 return DepsRegenLive.pipe(Layer.provide(ConfigGraph), Layer.provide(kitGraph));
 ```
 
 The detector still needs workspace services in its own right (it reads `pkg.packageJsonPath`), but it takes them from `FileSystem` + `ChangesetConfig`, not from the composite — so the cycle that forced the double-threading disappears.
+
+**The merge is `Layer.mergeAll`, and writing it as `Layer.provide` is a live defect** (corrected 2026-07-26, effected#182; the `0.9.0` changelog shipped the wrong form and a dogfood consumer copied it). `Layer.provide(detector)` feeds the detector *into* the composite's `RIn` — and [the composite does not require one](#as-built), so the provide satisfies nothing and the detector is **discarded**, taking the service back out of the resulting layer's output. The program then fails to close `R` at whichever operation asks the publishability question, which is exactly the diagnostic distance the as-built note warns about, arriving for a reason the wiring line does not suggest. Merge sideways; provide downward.
 
 ### (d) Migration cost
 
@@ -450,7 +452,7 @@ It is the repo's first subpath export, and the entry-point status has one conseq
 
 **`worktree()`** reads the live tree over `WorkspaceDiscovery` and `WorkspaceCatalogs`, uncached — the **one** shared read path between worktree snapshots and catalog assembly; there is no second manifest/lockfile read for the worktree.
 
-Mechanics follow the house rules: caching per `(root, ref)` via `Effect.cachedInvalidateWithTTL(Duration.infinity)` with invalidate-on-non-success; a `{ cwd }` option resolving the root by walking up; two named error unions kept narrow — **`WorkspaceSnapshotAtFailure`** (git errors ∪ `CatalogAssemblyError` ∪ `WorkspaceRootNotFoundError`; `at` never enumerates the live filesystem) and **`WorkspaceSnapshotWorktreeFailure`** (discovery errors ∪ `CatalogAssemblyError` ∪ `WorkspaceRootNotFoundError`; `worktree` never invokes git).
+Mechanics follow the house rules: caching per `(root, ref)` via `Effect.cachedInvalidateWithTTL(Duration.infinity)` with invalidate-on-non-success — the composite key is **NUL-separated** (`` `${root}\0${ref}` ``), since a NUL can appear in neither a path nor a ref and so the key cannot collide, and it is spelled as the `\0` **escape** rather than a literal NUL byte because a literal one makes `file` classify the module as binary and grep/ripgrep silently skip it (effected#187 — a source file that greps report as absent is a maintenance hazard out of all proportion to the byte); a `{ cwd }` option resolving the root by walking up; two named error unions kept narrow — **`WorkspaceSnapshotAtFailure`** (git errors ∪ `CatalogAssemblyError` ∪ `WorkspaceRootNotFoundError`; `at` never enumerates the live filesystem) and **`WorkspaceSnapshotWorktreeFailure`** (discovery errors ∪ `CatalogAssemblyError` ∪ `WorkspaceRootNotFoundError`; `worktree` never invokes git).
 
 **Documented property — at/worktree hook-catalog asymmetry.** `WorkspaceSnapshots.at` never replays config-dependency hooks: it reads inline catalogs plus the lockfile at the ref only. So under `layerWithConfigDependencies`, an `at("HEAD")` snapshot and a `worktree()` snapshot can disagree on hook-injected *catalog sets*. This is deliberate — an at-ref read must not execute historical `pnpmfile.cjs` code.
 
@@ -523,6 +525,8 @@ Workspaces reads a filesystem, not a hostile string — but a filesystem is stil
 `@effect/vitest`, `it.effect`, `assert.*`, suite-boundary `layer(...)` — never per-test `Effect.provide`.
 
 The whole package tests without `@effect/platform-node`: `Path.layer` and `FileSystem.layerNoop(partial)` come from `effect` core, so a stubbed filesystem drives discovery, enumeration and PM detection. Change-detection and snapshot tests mock `@effected/git`'s `Git` service with `Layer.succeed`, so they need no git repository. One integration test discovers *this repository* for real — the test that surfaces real-world file shapes (it is what surfaced the pnpm 11 config-dependencies lockfile-framing shape, now owned in `@effected/lockfiles`).
+
+**The doubles die as defects, and the TSDoc now says what that costs a caller** (2026-07-26, dogfood): an unstubbed member of `WorkspaceDiscovery.makeTest`, `PackageManagerDetector.makeTest` or `WorkspaceSnapshots.makeTest` is **not absorbed by `Effect.catch`** or any typed-error handler. That is the point rather than an omission — code under test with a best-effort `catch` around its discovery or snapshot reads would otherwise make a mandatory stub look optional, taking the catch branch and passing. Only `Effect.catchDefect` or `Effect.exit` sees it. Consumers hit this reading a green test as proof their stubs were complete, so every double's TSDoc states it.
 
 Mutation-proven edges:
 

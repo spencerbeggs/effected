@@ -91,6 +91,19 @@ export interface GitCommitShape {
 	 * tree, create the commit, move the ref — as one operation. The ref update is
 	 * **not** forced: a branch that moved underneath you is a conflict worth
 	 * hearing about, not one to overwrite.
+	 *
+	 * **This is "commit onto a branch you own", not a rebase.** Putting a commit
+	 * on top of *another* branch's head — the release-branch pattern — is a
+	 * different operation, and it composes from the members above with no
+	 * observable intermediate state: {@link GitCommitShape.get} the target head
+	 * for its `treeSha`, {@link GitCommitShape.createTree} on it,
+	 * {@link GitCommitShape.createCommit} with the target as parent, then one
+	 * `GitBranch.upsert` straight to the finished commit. Do **not** spell a
+	 * rebase as `upsert(branch, targetHead)` followed by `commitFiles`: between
+	 * those calls the branch *is* the target head, an open pull request from it
+	 * has an empty diff, and GitHub auto-closes PRs in that state — a real
+	 * consumer lost its open release PR to that ~3-second window while the run
+	 * went green.
 	 */
 	readonly commitFiles: (options: {
 		readonly branch: string;

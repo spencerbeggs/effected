@@ -483,6 +483,12 @@ export class ThematicBreak extends Schema.Class<ThematicBreak>("ThematicBreak")(
  * for fenced blocks and **absent for indented blocks** — their absence is how
  * the two are told apart on the way back out.
  *
+ * A consequence worth knowing before it surprises: a language-less `Code`
+ * node with no explicit `fenceChar` **serializes as an indented block**
+ * through `Markdown.stringify`. To get a fence, set `fenceChar` on the node
+ * (or a `lang`, which forces one), or format the emitted source with
+ * `MarkdownFormattingOptions.codeBlockStyle: "fenced"`.
+ *
  * @public
  */
 export class Code extends Schema.Class<Code>("Code")({

@@ -494,7 +494,10 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 	 *   (a fabricated root path would leak into consumer path logic), so an
 	 *   unstubbed `info()` call is a test-wiring mistake and fails loudly as a
 	 *   defect rather than succeeding with a lie or failing with a dishonest
-	 *   typed error.
+	 *   typed error. A defect is not absorbed by `Effect.catch` or any
+	 *   typed-error handler — deliberately, so code under test with a
+	 *   best-effort `catch` cannot make the mandatory stub look optional; the
+	 *   unstubbed call still fails the test.
 	 *
 	 * @example
 	 * ```ts

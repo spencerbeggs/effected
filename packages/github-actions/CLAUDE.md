@@ -6,9 +6,10 @@ runner it is executing inside.
 **Design doc:** `@../../.claude/design/effected/packages/github-actions.md`
 Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 3).
 
-**Status: complete** (2026-07-25) — 298 tests, zero-warning build. The design
-doc's as-built section is the authority on what exists and why; read it before
-adding a module.
+**Status: complete** (2026-07-25; the `@effected/sbom` seam adapters and the
+GitHub-surfaces reporting suite landed 2026-07-26) — 388 tests, zero-warning
+build. The design doc's as-built section is the authority on what exists and
+why; read it before adding a module.
 
 ## The line against @effected/github
 
@@ -22,6 +23,23 @@ maps `Effect.log*` onto workflow commands (`ActionLogger.logger`, built).
 in `github` and consumed here. `GitHubContext` / `RunnerContext` and the
 workflow-command protocol are canonical **here** — they describe the runner, not
 the API.
+
+## What it takes from the kit
+
+Five `@effected/*` dependencies; three arrived 2026-07-26 and every arrow points
+**inward**.
+
+- `github` — the token bridge's vocabulary (above). `glob` — `CacheKey` matching.
+- `templates` — the region engine under `ManagedDocument` / `CheckDocument`.
+  **Not a second engine**: the region grammar, the line-ending invariant and the
+  idempotence proof stay in `templates`, which has them under test.
+- `markdown` — the GFM writer's escaping, **confined to `GitHubMarkdown.ts`**
+  (below).
+- `sbom` — `IdentityToken` and `SlsaProvenance`, closed here by
+  `ActionsIdentityToken.layer` and `ActionsProvenance.capture`. **`sbom` must not
+  depend on the Actions runtime, so the adapter that closes its contract lives
+  here** — the same inversion as `commands`' `LocalExec` and `npm`'s
+  `CatalogResolver`. Never add the reverse edge.
 
 ## Tier: integrated, and the licences that follow
 
@@ -144,6 +162,36 @@ to `""` are both *missing data*, because the runner writes `""` for an input the
 workflow omitted. An **optional** input therefore needs `Config.withDefault` (or
 `Config.option`) at the call site, or the read fails outright.
 
+## The 2026-07-26 additions, and what will bite you in them
+
+Design detail is in the doc's two dated sections; these are the rules.
+
+- **`ActionsProvenance.capture` owns the OIDC-claims rename once.** Eleven
+  all-string fields — a transposed `repository_id` / `repository_owner_id`
+  compiles, typechecks and signs the **wrong** provenance. `serverUrl` comes
+  from `getOptional` with a `https://github.com` default (absence is not a
+  failure), `OidcTokenError` passes through untouched (mandatory-vs-best-effort
+  attestation is the *consumer's* policy), and the construct **ends at the
+  predicate**.
+- **`GitHubMarkdown`'s impossible serializer arm is a defect, not a fallback.**
+  A string-joining fallback is the live table-corruption defect this module
+  exists to delete. `tableFor(schema)` defines columns once from a row schema —
+  declaration order, `title` annotations, **encoded** cell values — so a field
+  whose encoded side is not a string makes `format` (and therefore `columns`)
+  **required** rather than defaulting to `String(value)`.
+- **`CheckDocument` writes only when the render changed.** Byte-identical ⇒ no
+  write; **trailing** debounce with a max-wait (leading-edge publishes the one
+  state guaranteed to be stale); the finalizer is registered **before** the
+  daemon is forked, so the flush cannot race the sink; a failed background pass
+  logs and leaves the registry intact — only `flush` surfaces the typed error,
+  because a reporting document must not fail the run it reports on.
+- **`CheckState` mirrors `github`'s conclusion literals structurally** so the
+  module never reaches an API client; a test pins the mirror. Do not "fix" it
+  into an import.
+- **`ActionLogger.withBuffer({ onSuccess: "discard" })` discards a success and
+  nothing else** — failure, defect and interruption all flush, and step
+  debugging overrides the discard.
+
 ## Errors
 
 **Audit every ported channel for whether it can fire.** The source package has
@@ -202,7 +250,7 @@ Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`,
 emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a
 clean gate.
 
-## Bundle reachability: confining Azure
+## Bundle reachability: confining Azure, and now the markdown engine
 
 `@azure/storage-blob` is the only heavy external dependency, and the requirement
 is structural: **a consumer importing only `ActionOutputs` must be unable to link
@@ -221,6 +269,16 @@ cache into the default runtime would put a blob-storage client in the bundle of
 every action that merely sets an output. Their requirements are all satisfied by
 the runtime, so taking one costs one line:
 `Action.run(program, { layer: ActionCache.layer })`.
+
+**`@effected/markdown` is confined the same way, on the same terms**: the
+engine is the second-heaviest thing this package can reach and only
+`GitHubMarkdown.ts` may import it — measured, with its own control, not
+promised. The exact edge sets say the rest: `CheckState.ts` reaches `effect`
+alone (in particular **not** `@effected/github`, whose conclusion set it
+mirrors), and `ManagedDocument.ts` / `CheckDocument.ts` reach
+`@effected/templates` and no more. `ActionRuntime.layer` still excludes the
+three Azure modules and is unchanged by any of this — `Action.ts` reaches
+`@effect/platform-node`, `effect` and `effect/unstable/http`, nothing else.
 
 **Measured, not asserted** — `__test__/reachability.test.ts` walks the runtime
 import graph with a control (the three *do* reach Azure), exact edge-set

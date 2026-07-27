@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-07-25
-last-synced: 2026-07-25
-completeness: 90
+updated: 2026-07-26
+last-synced: 2026-07-26
+completeness: 91
 related:
   - ../effect-standards.md
   - ../roadmap.md
@@ -73,6 +73,8 @@ export class ExecContext extends Schema.Class<ExecContext>("ExecContext")({
   prefix: Schema.Array(Schema.String),
   /** argv prefix that fetch-and-runs a package binary, e.g. `["pnpm", "dlx"]`. */
   dlxPrefix: Schema.Array(Schema.String),
+  /** argv prefix that runs a `package.json` script, e.g. `["pnpm", "run"]`. Added 2026-07-26. */
+  scriptPrefix: Schema.Array(Schema.String),
   /** Directory the prefix must run in (the workspace root). Omitted means "the caller's cwd". */
   directory: Schema.optionalKey(Schema.String),
 }) {
@@ -80,6 +82,8 @@ export class ExecContext extends Schema.Class<ExecContext>("ExecContext")({
   apply(command: ChildProcess.StandardCommand): ChildProcess.Command;
   /** As {@link ExecContext.apply}, using `dlxPrefix`. */
   applyDlx(command: ChildProcess.StandardCommand): ChildProcess.Command;
+  /** As {@link ExecContext.apply}, using `scriptPrefix` — runs a script by name. */
+  applyScript(command: ChildProcess.StandardCommand): ChildProcess.Command;
 }
 
 export interface LocalExecShape {
@@ -97,7 +101,7 @@ export interface LocalExecShape {
 **Three consequences worth stating.**
 
 - **`commands` never touches a path or an ambient `cwd`.** The roadmap's port note ("v3 calls `process.cwd()` directly; v4 must parameterize that") is discharged not by threading a `cwd` parameter through every method, but by moving the entire question behind the contract. `@effected/workspaces` already owns the house `{ cwd }` convention (*"every root-consuming layer takes `{ cwd }`, defaulting to `process.cwd()` read lazily inside `Effect.suspend`; no service method reaches for the ambient cwd"*), so the ambient read lands in the one package that already has a policy for it — or in the application, at the edge, where it belongs.
-- **The prefix table lives in `commands`, once.** `LocalExec.prefixes(manager)` is a pure static returning the four managers' `{ prefix, dlxPrefix }` pairs. Workspaces' layer calls it with the `DetectedPackageManager.name` it detected, so there is **no duplication of package-manager argv knowledge** — the detection lives in workspaces, the argv lives here, and neither reimplements the other.
+- **The prefix table lives in `commands`, once.** `LocalExec.prefixes(manager)` is a pure static returning the four managers' `LauncherPrefixes` — `{ prefix, dlxPrefix, scriptPrefix }` since 2026-07-26, with `LocalExec.scriptPrefix(manager)` as the projection for a caller that only runs scripts. Workspaces' layer calls it with the `DetectedPackageManager.name` it detected, so there is **no duplication of package-manager argv knowledge** — the detection lives in workspaces, the argv lives here, and neither reimplements the other.
 - **A consumer with no monorepo pays nothing.** A GitHub Action running in a single-package checkout wires `LocalExec.layerNone` (global-only resolution) or `LocalExec.layerFor("npm")` and never installs `@effected/workspaces`. Under Option A that consumer installs the pnpm catalog engine to ask whether `tar` exists.
 
 **Wiring, both ways, for comparison.**
@@ -471,6 +475,18 @@ The downstream action rebuild's main friction ask, shipped as a seventh source m
 - The Node backend's `acquireRelease` release checks an `isReferenced` flag and **skips the kill** for an unref'd child, which is what makes `Run.detach` possible without a backend of our own.
 
 **Mutation-tested claims** (each mutant run, observed red, reverted): the `unref` ordering in `detach`; success-path output redaction; the capture byte bound; the pre-spawn option-injection guard; and `{ concurrency: "unbounded" }` — which deadlocks for real under the e2e backpressure test, confirming that test discriminates rather than merely passing.
+
+### As built: the script-runner prefix (2026-07-26)
+
+The silk-release-action dogfood asked the contract one question it could not answer: **how do I run a `package.json` script here?** `prefix` runs a project-local *binary* and `dlxPrefix` fetch-and-runs a *package*; a script is a third thing, and every consumer that wanted one respelled `["pnpm", "run"]` at its own call site — which is the duplication the [prefix-table rule](#the-workspaces-edge-contract-inversion-and-why-it-is-not-optional) exists to prevent, reappearing one verb over.
+
+`scriptPrefix` joins the record, `ExecContext.applyScript` joins the two apply methods, `LauncherPrefixes` becomes an exported interface (a consumer holding the whole record no longer re-derives its shape), and `LocalExec.scriptPrefix(launcher)` is the projection for the caller that only runs scripts.
+
+**The field is REQUIRED on `ExecContext`, deliberately.** An optional one would have been the compatible choice, and it would have handed every consumer the question "what does absent mean here?" — a schema class describing an execution context has no honest answer other than the launcher's own `run` form. `Workspaces.localExecLayer` supplies it from the same `LocalExec.prefixes` call it already made, so the reciprocal edge cost nothing.
+
+**`npm`'s prefix is `["npm", "run", "--"]`, and that trailing `--` was live-probed, not reasoned.** Bare `npm run <script> --flag` silently **claims** the flag for npm itself: at npm 11, `npm run args --flag` delivers nothing to the script while `npm run -- args --flag` delivers `--flag`. The other three managers forward post-script arguments without it. This is the same class as `npx --no --` in the exec prefix — npm's argv handling is the odd one out twice, and both times the failure is a *silently dropped argument* rather than an error, which is why the table is the only place that knowledge is allowed to live.
+
+`Run`'s TSDoc gained the neighbouring warning in the same round: **the interpreting helpers trim**, and `Run.text` trims the whole result rather than just a trailing newline. Fixed-column output whose first column can be whitespace — `git status --porcelain` is the canonical one — silently loses that column through `text` or `lines`, producing plausible wrong values rather than an error. Parse that from `Run.collect`'s untrimmed `stdout`.
 
 ## Decisions recorded
 

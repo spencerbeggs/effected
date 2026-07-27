@@ -23,25 +23,45 @@ export const Launcher = Schema.Literals(["npm", "pnpm", "yarn", "bun"]);
  */
 export type Launcher = typeof Launcher.Type;
 
+/**
+ * The per-launcher argv prefix record: exec, dlx and script-runner.
+ *
+ * @remarks
+ * The return type of {@link LocalExec.prefixes} — exported so a consumer can
+ * hold or pass the whole record without re-deriving its shape.
+ *
+ * @public
+ */
+export interface LauncherPrefixes {
+	/** argv prefix that runs a project-local binary, e.g. `["pnpm", "exec"]`. */
+	readonly prefix: ReadonlyArray<string>;
+	/** argv prefix that fetch-and-runs a package binary, e.g. `["pnpm", "dlx"]`. */
+	readonly dlxPrefix: ReadonlyArray<string>;
+	/** argv prefix that runs a `package.json` script, e.g. `["pnpm", "run"]`. */
+	readonly scriptPrefix: ReadonlyArray<string>;
+}
+
 /** The argv prefixes for each launcher. The one place this knowledge lives. */
-const PREFIXES: Readonly<
-	Record<Launcher, { readonly prefix: ReadonlyArray<string>; readonly dlxPrefix: ReadonlyArray<string> }>
-> = {
+const PREFIXES: Readonly<Record<Launcher, LauncherPrefixes>> = {
 	// `--no` refuses to silently install a missing binary; the `--` stops npx
-	// from claiming the tool's own flags.
-	npm: { prefix: ["npx", "--no", "--"], dlxPrefix: ["npx"] },
-	pnpm: { prefix: ["pnpm", "exec"], dlxPrefix: ["pnpm", "dlx"] },
-	yarn: { prefix: ["yarn", "exec"], dlxPrefix: ["yarn", "dlx"] },
+	// from claiming the tool's own flags. `npm run` needs its own `--` for the
+	// same reason: npm silently CLAIMS flag arguments after the script name
+	// (probed live at npm 11: `npm run args --flag` delivers nothing to the
+	// script; `npm run -- args --flag` delivers `--flag`). The other three
+	// managers forward post-script arguments without it.
+	npm: { prefix: ["npx", "--no", "--"], dlxPrefix: ["npx"], scriptPrefix: ["npm", "run", "--"] },
+	pnpm: { prefix: ["pnpm", "exec"], dlxPrefix: ["pnpm", "dlx"], scriptPrefix: ["pnpm", "run"] },
+	yarn: { prefix: ["yarn", "exec"], dlxPrefix: ["yarn", "dlx"], scriptPrefix: ["yarn", "run"] },
 	// `--no-install` is bun's equivalent of npm's `--no`.
-	bun: { prefix: ["bun", "x", "--no-install"], dlxPrefix: ["bun", "x"] },
+	bun: { prefix: ["bun", "x", "--no-install"], dlxPrefix: ["bun", "x"], scriptPrefix: ["bun", "run"] },
 };
 
 /**
  * How to run a project-local binary here.
  *
  * @remarks
- * This is the whole of what tool discovery needs from a workspace: an argv
- * prefix and a directory to run it in. It deliberately carries no workspace
+ * This is the whole of what tool discovery needs from a workspace: argv
+ * prefixes and a directory to run them in. It deliberately carries no workspace
  * root, no manifest and no package-manager semantics — `label` is for
  * reporting only, and nothing in this package branches on it.
  *
@@ -54,6 +74,8 @@ export class ExecContext extends Schema.Class<ExecContext>("ExecContext")({
 	prefix: Schema.Array(Schema.String),
 	/** argv prefix that fetch-and-runs a package binary, e.g. `["pnpm", "dlx"]`. */
 	dlxPrefix: Schema.Array(Schema.String),
+	/** argv prefix that runs a `package.json` script, e.g. `["pnpm", "run"]`. */
+	scriptPrefix: Schema.Array(Schema.String),
 	/** Directory the prefix must run in. Omitted means "wherever the caller is". */
 	directory: Schema.optionalKey(Schema.String),
 }) {
@@ -65,6 +87,20 @@ export class ExecContext extends Schema.Class<ExecContext>("ExecContext")({
 	/** As {@link ExecContext.apply}, using `dlxPrefix` — the fetch-and-run launcher. */
 	applyDlx(command: ChildProcess.StandardCommand): ChildProcess.Command {
 		return this.withPrefix(command, this.dlxPrefix);
+	}
+
+	/**
+	 * As {@link ExecContext.apply}, using `scriptPrefix` — runs a
+	 * `package.json` script by name.
+	 *
+	 * @remarks
+	 * The command's `command` is the script name and its `args` are the script's
+	 * arguments. Every launcher uses the explicit `run` form, and npm's prefix
+	 * carries a trailing `--` because bare `npm run <script> --flag` silently
+	 * claims `--flag` for npm itself instead of the script.
+	 */
+	applyScript(command: ChildProcess.StandardCommand): ChildProcess.Command {
+		return this.withPrefix(command, this.scriptPrefix);
 	}
 
 	/**
@@ -143,10 +179,21 @@ export interface LocalExecShape {
  * @public
  */
 export class LocalExec extends Context.Service<LocalExec, LocalExecShape>()("@effected/commands/LocalExec") {
-	/** The exec and dlx argv prefixes for a launcher — the single home of that knowledge. */
-	static readonly prefixes = (
-		launcher: Launcher,
-	): { readonly prefix: ReadonlyArray<string>; readonly dlxPrefix: ReadonlyArray<string> } => PREFIXES[launcher];
+	/** The exec, dlx and script-runner argv prefixes for a launcher — the single home of that knowledge. */
+	static readonly prefixes = (launcher: Launcher): LauncherPrefixes => PREFIXES[launcher];
+
+	/**
+	 * The argv prefix that runs a `package.json` script for `launcher`.
+	 *
+	 * @remarks
+	 * A projection of {@link LocalExec.prefixes} for the caller that only runs
+	 * scripts. Every launcher uses the explicit `run` form —
+	 * `["npm", "run", "--"]`, `["pnpm", "run"]`, `["yarn", "run"]` and
+	 * `["bun", "run"]` — and npm's carries a trailing `--` because bare
+	 * `npm run <script> --flag` silently claims `--flag` for npm itself; the
+	 * other three forward post-script arguments without it.
+	 */
+	static readonly scriptPrefix = (launcher: Launcher): ReadonlyArray<string> => PREFIXES[launcher].scriptPrefix;
 
 	/**
 	 * No project-local execution context: every tool resolves globally.
@@ -164,12 +211,13 @@ export class LocalExec extends Context.Service<LocalExec, LocalExecShape>()("@ef
 		launcher: Launcher,
 		options?: { readonly directory?: string | undefined },
 	): Layer.Layer<LocalExec> => {
-		const { prefix, dlxPrefix } = PREFIXES[launcher];
+		const { prefix, dlxPrefix, scriptPrefix } = PREFIXES[launcher];
 		return LocalExec.layerContext(
 			ExecContext.make({
 				label: launcher,
 				prefix,
 				dlxPrefix,
+				scriptPrefix,
 				...(options?.directory === undefined ? {} : { directory: options.directory }),
 			}),
 		);

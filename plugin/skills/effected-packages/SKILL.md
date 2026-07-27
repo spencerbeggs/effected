@@ -47,7 +47,7 @@ against its services, or test code that uses it.
 | `@effected/store` | migrated SQLite `Store` + TTL `Cache` with tags/eviction/events | durable local state or an on-disk cache | integrated | [store.md](./references/store.md) |
 | `@effected/workspaces` | monorepo discovery, dependency graph, PM detection, catalogs, change detection, snapshots, versioning/tag strategies; implements `npm`'s resolvers and `commands`' `LocalExec` | any monorepo/workspace introspection | integrated | [workspaces.md](./references/workspaces.md) |
 | `@effected/github` | typed GitHub REST + GraphQL over octokit's core request surface, App auth, resources (branches/tags/commits/releases/PRs/checks), pagination, one error taxonomy | any GitHub API call — the route literal types params AND response, no casts | integrated | the package's own `CLAUDE.md` |
-| `@effected/github-actions` | the Actions RUNTIME: inputs/outputs/state/env, workflow commands, logger, cache, artifacts, tool installer, OIDC, the `GitHubToken` bridge | writing a GitHub Action — talking to the runner, not the API | integrated | the package's own `CLAUDE.md` |
+| `@effected/github-actions` | the Actions RUNTIME: inputs/outputs/state/env, workflow commands, logger, cache, artifacts, tool installer, OIDC, the `GitHubToken` bridge; plus the reporting/document suite (`GitHubMarkdown`, `ManagedDocument`, `CheckDocument`/`CheckState`) and the sbom-seam adapters (`ActionsProvenance`, `ActionsIdentityToken`) | writing a GitHub Action — talking to the runner, not the API | integrated | the package's own `CLAUDE.md` |
 | `@effected/sbom` | owned CycloneDX 1.6 emitter, Sigstore signing, in-toto/SLSA provenance, NTIA minimum-elements validation | generating, signing or attesting an SBOM | integrated | the package's own `CLAUDE.md` |
 | `@effected/app` | the application control plane: one layer wiring XDG dirs + Store + Cache + config | wiring an APPLICATION's local state in one move | integrated | [app.md](./references/app.md) |
 | `@effected/pnpm-plugin-effect` | pnpm catalogs pinning the Effect ecosystem (companion — config, not code) | setting up Effect version pinning in a pnpm workspace | — | [pnpm-plugin-effect.md](./references/pnpm-plugin-effect.md) |
@@ -75,6 +75,10 @@ Facts about them that change how you depend on them:
   GitHub runner, so there is no second platform to abstract over. Its
   `@azure/storage-blob` dependency is confined to three modules and asserted by
   a reachability test — import `ActionOutputs` and you cannot link Azure.
+- **`@effected/sbom`'s entrypoint re-exports `Package`, `Person` and
+  `Repository` from `@effected/package-json`** — a consumer constructing
+  `SbomMetadataSource` inputs imports them from `@effected/sbom` directly
+  instead of adding the `package-json` edge itself.
 - **`@effected/github` deliberately omits `@octokit/rest` and
   `@octokit/auth-app`.** The former is a second spelling of the endpoint types;
   the latter makes ~492 KB of OAuth machinery reachable from a package that only
@@ -89,13 +93,14 @@ Facts about them that change how you depend on them:
   (`PublishabilityDetector.npm`), so a policy that wraps npm semantics does not
   have to re-enter the tag it is replacing.
 
-## Local-build dogfood state (2026-07-25)
+## Local-build dogfood state (updated 2026-07-26)
 
-**Twenty of the twenty-five are published; five are not.** `commands`,
-`templates`, `github`, `github-actions` and `sbom` are **built and unreleased at
-`0.0.0`** — they came out of the github-split program and ship in a later
-coordinated wave. Until a wave names them, consume them **from the local
-`effected` checkout**, not from the registry. Everything published is `0.x` and
+**All twenty-five are published.** `commands`, `templates`, `github`,
+`github-actions` and `sbom` — the github-split five — published for the first
+time in the 2026-07-26 wave (16 packages, PR #181) at `0.1.0`; nothing in the
+kit still sits at `0.0.0`. A downstream repo mid-dogfood-loop may still
+consume unreleased branch work from the local `effected` checkout via `file:`
+overrides until the next wave lands. Everything published is `0.x` and
 unstable; the kit releases in waves, never one package at a time.
 
 Three standing directives for a downstream repo rebuilding against this kit:
@@ -105,9 +110,10 @@ Three standing directives for a downstream repo rebuilding against this kit:
 - **No branching and no changesets in downstream repos during the rebuild.**
   Work lands on the working branch; release bookkeeping comes later, once the
   rebuild settles.
-- **The five unreleased packages resolve from the local checkout.** A downstream
-  manifest points at it (a workspace link or a `file:`/`overrides:` entry) until
-  the release wave lands — do not add a registry range for them.
+- **Mid-loop branch work resolves from the local checkout.** While a dogfood
+  loop is linked, a downstream manifest points at it (a workspace link or a
+  `file:`/`overrides:` entry) rather than a registry range, until the next
+  release wave carries the work.
 
 ## The two warnings every consumer inherits
 
