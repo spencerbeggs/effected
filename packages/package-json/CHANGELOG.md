@@ -1,5 +1,13 @@
 # @effected/package-json
 
+## 0.6.1
+
+### Dependencies
+
+| Dependency    | Type       | Action  | From  | To    |
+| ------------- | ---------- | ------- | ----- | ----- |
+| @effected/npm | dependency | updated | 0.5.0 | 0.6.0 |
+
 ## 0.6.0
 
 ### Features

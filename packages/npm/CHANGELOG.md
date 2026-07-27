@@ -1,5 +1,42 @@
 # @effected/npm
 
+## 0.6.0
+
+### Breaking Changes
+
+* `PublishOutcome.provenanceUrl` is now a plain optional field instead of an
+  `Option.Option<string>`. Read it as `outcome.provenanceUrl` (possibly
+  `undefined`), not `Option.getOrUndefined(outcome.provenanceUrl)`.
+
+  ```ts
+  // Before
+  const url = Option.getOrUndefined(outcome.provenanceUrl);
+
+  // After
+  const url = outcome.provenanceUrl;
+  ```
+
+### Bug Fixes
+
+* `NpmRegistry.version` now reads a `github-packages` target through the
+  packument instead of the per-version endpoint. GitHub Packages answers the
+  per-version route with `405` regardless of credentials, so a lookup against a
+  GitHub Packages registry previously failed outright. Any other registry that
+  answers `405` on the per-version path is retried the same way, so the fix is
+  not GitHub-specific. [#191][#191]
+
+### Dependencies
+
+| Dependency         | Type       | Action  | From  | To    |
+| ------------------ | ---------- | ------- | ----- | ----- |
+| @effected/commands | dependency | updated | 0.1.0 | 0.2.0 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#191]: https://github.com/spencerbeggs/effected/pull/191
+
 ## 0.5.0
 
 ### Features
