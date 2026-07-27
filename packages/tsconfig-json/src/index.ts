@@ -16,6 +16,7 @@ export {
 	Target,
 } from "./CompilerOptions.js";
 export { JsxConfig } from "./JsxConfig.js";
+export type { PortableTsconfigOptions } from "./PortableTsconfig.js";
 export { PortableTsconfig } from "./PortableTsconfig.js";
 export { ResolvedTsconfig } from "./ResolvedTsconfig.js";
 export type { FindNearestOptions } from "./TsconfigDiscovery.js";

@@ -214,8 +214,8 @@
 		{
 			"source": "packages/tsconfig-json/CLAUDE.md",
 			"target": ".claude/design/effected/packages/tsconfig-json.md",
-			"hash": "05c7ec58a7c127ffb79f3675da7dc5267527f178d91cd2a80051f50f3aeff1e0",
-			"recordedAt": "2026-07-21"
+			"hash": "56743b45c4daf3bd17c5304a92c69b73eb2832bbcdfcaab65ddfc1cbc6c6b77e",
+			"recordedAt": "2026-07-27"
 		},
 		{
 			"source": "packages/walker/CLAUDE.md",
