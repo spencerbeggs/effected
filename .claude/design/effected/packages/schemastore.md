@@ -1,11 +1,11 @@
 ---
-status: draft
+status: current
 module: effected
 category: architecture
 created: 2026-07-28
 updated: 2026-07-28
 last-synced: 2026-07-28
-completeness: 80
+completeness: 95
 related:
   - ../effect-standards.md
   - ../migration-playbook.md
@@ -17,7 +17,7 @@ related:
 
 ## Overview
 
-`@effected/schemastore` is a reusable way to build, validate, version and publish JSON Schema documents generated from Effect Schema sources, in the shape SchemaStore (schemastore.org) and its consuming toolchain (vscode-json-languageservice, redhat yaml-language-server, taplo, tombi, IntelliJ) expect — plus the catalog-entry and editor/toolchain association artifacts around them. **Phase 1 (the pure core) is built** (commit a74420d02, 2026-07-28); phase 2 (`SchemaFile` IO, the `SchemaValidator` seam, the annotation carriers) remains design-only. `packages/schemastore/CLAUDE.md` is authoritative for the as-built surface; this doc records the design decisions and the phase-2 state.
+`@effected/schemastore` is a reusable way to build, validate, version and publish JSON Schema documents generated from Effect Schema sources, in the shape SchemaStore (schemastore.org) and its consuming toolchain (vscode-json-languageservice, redhat yaml-language-server, taplo, tombi, IntelliJ) expect — plus the catalog-entry and editor/toolchain association artifacts around them. **The package is fully built**: phase 1 (the pure core, commit a74420d02) and phase 2 (the annotation carriers, the `SchemaValidator` seam and `SchemaFile` IO, commit e3430d58) both landed 2026-07-28. `packages/schemastore/CLAUDE.md` is authoritative for the as-built surface; this doc records the design decisions and their rationale.
 
 It generalizes a live consumer implementation: `/Users/spencer/workspaces/savvy-web/silk-release-action/lib/scripts/generate-schema.ts` is the extraction source. A second consumer is expected: the silk-runtime-action greenfield rebuild (its JSON config input schema). The concept previously existed in the retired `config-file-effect` repo as taplo/tombi support for config files; this package is its generic successor. Two named consumers satisfy the kit's scope rule that capability is pulled by real consumers.
 
@@ -52,13 +52,27 @@ From the SchemaStore repo's CONTRIBUTING.md (checkout at `/Users/spencer/workspa
 
 Module-per-concept per the [module layout standard](../effect-standards.md#module-layout-module-per-concept); no barrel re-exports below the entrypoint.
 
-**Built (phase 1)** — six pure modules: `StoreDocument` (the assembly over core's `Schema.toJsonSchemaDocument` + `JsonSchema.toDocumentDraft07`, owning the `#/definitions`→`#/$defs` ref rewrite and the publication shape — the package owns assembly, **not** a JSON Schema engine), `SchemaTarget` (the target manifest vocabulary: schema + identity + destination path + optional version, generalizing the extraction source's `{schema, $id, path}` triples), `SchemaVersioning` (both catalog modes and the version grammar — see [versioning](#versioning-a-store-native-grammar-not-semver)), `CatalogEntry` (Schema classes for the catalog.json entry shape plus the fileMatch hygiene lint), `DocumentLint` (owned structural checks: `$ref` resolution against the `$defs` pool, unknown keywords outside the declared non-standard families, best-practice advisories) and `CanonicalJson` (the owned deterministic serializer, fixing the extraction source's biome shell-out). See `packages/schemastore/CLAUDE.md` for the as-built details.
+**Phase 1** — six pure modules: `StoreDocument` (the assembly over core's `Schema.toJsonSchemaDocument` + `JsonSchema.toDocumentDraft07`, owning the `#/definitions`→`#/$defs` ref rewrite and the publication shape — the package owns assembly, **not** a JSON Schema engine), `SchemaTarget` (the target manifest vocabulary: schema + identity + destination path + optional version, generalizing the extraction source's `{schema, $id, path}` triples), `SchemaVersioning` (both catalog modes and the version grammar — see [versioning](#versioning-a-store-native-grammar-not-semver)), `CatalogEntry` (Schema classes for the catalog.json entry shape plus the fileMatch hygiene lint), `DocumentLint` (owned structural checks: `$ref` resolution against the `$defs` pool, unknown keywords outside the declared non-standard families, best-practice advisories) and `CanonicalJson` (the owned deterministic serializer, fixing the extraction source's biome shell-out).
 
-**Deferred (phase 2):**
+**Phase 2 (commit e3430d58)** — the four remaining modules:
 
-- **Annotation carriers** for the non-standard property families (taplo/tombi/vscode/intellij) so Effect Schema annotations flow into emitted documents — the generic successor to config-file-effect's taplo/tombi support. A settled design constraint, probe-established against the installed beta (rung 3 at beta.101): core's Draft-07 lowering (`JsonSchema.toDocumentDraft07`) **drops every keyword outside its fixed copy-list** — annotation-admitted keys such as `x-taplo` survive at 2020-12 and vanish after lowering. The carrier mechanism therefore **must be a post-lowering re-graft**; it cannot ride `ToJsonSchemaOptions` alone.
-- **`SchemaFile`** — the one IO module, mirroring `@effected/package-json`'s `PackageJsonFile` pattern: write-if-changed over core `FileSystem`/`Path` in `R` (serialization already owned by `CanonicalJson`), plus a read side for drift tests.
-- **`SchemaValidator`** — the contract seam from the [validation seam](#the-validation-seam-the-ajv-question) below.
+- **`AnnotationCarriers`** — the post-lowering re-graft carrying the non-standard property families (taplo/tombi/vscode/intellij) from Effect Schema annotations into emitted documents — the generic successor to config-file-effect's taplo/tombi support. The mechanism and its rationale are the [annotation carrying](#annotation-carrying-a-parallel-walk-not-pointer-mapping) section below.
+- **`KeywordFamilies`** — the one owner of the declared non-standard keyword registry. `AnnotationCarriers`, `StoreDocument` and `DocumentLint` all consume its single predicate, so the carriers and the lint cannot drift apart on what counts as declared.
+- **`SchemaValidator`** — the contract seam decided in [the validation seam](#the-validation-seam-the-ajv-question) below, built as designed.
+- **`SchemaFile`** — the one IO module, mirroring `@effected/package-json`'s `PackageJsonFile` pattern: write-if-changed over core `FileSystem`/`Path` in `R` (serialization owned by `CanonicalJson`), answering `"written" | "unchanged"` as a value, plus a read side for drift tests. One deliberate divergence from `PackageJsonFile`'s narrowed write channel: `CanonicalJsonError` propagates as itself (its encode is not total, unlike `PackageJsonFile`'s), and a comparison-read failure other than not-found fails typed rather than silently overwriting.
+
+See `packages/schemastore/CLAUDE.md` for the as-built details of every module.
+
+## Annotation carrying: a parallel walk, not pointer mapping
+
+Two probe-established constraints against the installed beta (rung 3 at beta.101) fix the design space. First, core's Draft-07 lowering (`JsonSchema.toDocumentDraft07`) **drops every keyword outside its fixed copy-list** — annotation-admitted keys such as `x-taplo` survive at 2020-12 and vanish after lowering — so the carrier mechanism must act after the lowering; it cannot ride `ToJsonSchemaOptions` alone. Second, the problem was originally framed as mapping schema nodes to JSON-pointer locations in the lowered document — **the probe showed pointer-mapping is the wrong frame entirely.** Annotation-admitted keys land deterministically on their 2020-12 nodes at every attachment site core generates (struct fields, roots, `$defs` entries, tuple members, `optionalKey` wrappers, check-produced `allOf` arms); the definitions pool maps key-for-key through the lowering; the only coordinate move is `prefixItems[i]`→`items[i]` (trailing `items`→`additionalItems`). The mechanism is therefore a **parallel walk mirroring the lowering's descent rules** — no pointer arithmetic exists anywhere in the package.
+
+**Chosen design: option A — ride the 2020-12 generation, re-graft after the ref-rewrite.** Consumers annotate their Effect Schemas where they define them; the carriers copy declared-family keys from each 2020-12 node onto its lowered counterpart. Option B — consumers supply explicit JSON pointers into the lowered document — was rejected: it would discard definition-site DX and force consumers to know the lowered layout, exactly the knowledge this package exists to own.
+
+Two consumer-facing facts the design commits to:
+
+- **Annotate at the definition site.** Annotating a hoisted/identifier'd schema at its *usage* site (e.g. `Person.annotate({...})` inside a struct field) reaches neither the `$ref` node nor the `$defs` pool entry, even at 2020-12 — the annotation silently carries nothing. This is core behavior, documented rather than fixable in this package.
+- **Carriers are default-on.** The declared families are always admitted; a caller's `includeAnnotationKey` adds keys but cannot suppress a declared family. A consciously minimal API surface — the flag widens, never narrows.
 
 ## Versioning: a store-native grammar, not SemVer
 
@@ -72,11 +86,11 @@ SchemaStore's own gate is ajv strict mode, so the package needs a story for real
 - **(b) a `SchemaValidator` contract seam** — interface + error type only, closed by the consumer with real ajv at the edge. The same contract-seam inversion as `@effected/commands`' `LocalExec` and `@effected/npm`'s resolver contracts.
 - **(c) owned structural checking only** — `DocumentLint` in the package, ajv left entirely to consumer CI.
 
-**Decided: (b)+(c).** `DocumentLint` is owned and always available (built in phase 1); the `SchemaValidator` seam (phase 2) carries real-engine validation without ajv ever entering the dependency graph.
+**Decided: (b)+(c), both built.** `DocumentLint` is owned and always available (phase 1); the `SchemaValidator` seam (phase 2) carries real-engine validation without ajv ever entering the dependency graph — the consumer closes it with real ajv at the edge. The seam's channel convention: findings are **values** (an ajv strict-mode compile failure is findings, not an error) and the error channel is reserved for the mechanism itself failing, whose error carries only `cause` — the input may carry no `$id` to name. `validate` takes the flat serialized `Record`, engine-shaped and decoupled from the package's classes. The seam ships `noop` and `makeTest`/`layerTest` so consumers and tests can close it without an engine.
 
 ## Tier and dependencies
 
-**Pure tier as built (phase 1); goes boundary at phase 2** when `SchemaFile` lands over core `FileSystem`/`Path` required in `R`. No IO anywhere in `src/` today; no third-party runtime dependencies.
+**Boundary tier as built** (phase 2, as this doc anticipated): all IO lives in `SchemaFile` over core `FileSystem`/`Path` required in `R`; every other module is pure. No third-party runtime dependencies — the package never rises to integrated.
 
 - `peerDependencies`: `effect` (`catalog:effect:peers`).
 - `dependencies`: `@effected/semver` (`workspace:~`) — a regular dependency, not a peer, used internally for version ordering in `SchemaVersioning` (see [versioning](#versioning-a-store-native-grammar-not-semver)).
@@ -90,7 +104,7 @@ The repo's CLAUDE.md records that `@effected/json-schema` is off the roadmap ent
 ## Resolved design questions
 
 - **Module naming**: settled as `StoreDocument`. `SchemaDocument` was rejected because it reads like the banned general-JSON-Schema scope (the [scope fence](#scope-fence-the-effectedjson-schema-ghost)).
-- **Annotation mechanism**: the load-bearing constraint is settled — carriers must re-graft after the Draft-07 lowering, which drops every keyword outside its fixed copy-list (see [module surface](#module-surface)). The exact carrier API is phase-2 design work within that constraint.
+- **Annotation mechanism**: fully settled and built — a parallel walk re-grafting after the lowering, with pointer-mapping rejected as the wrong frame entirely (see [annotation carrying](#annotation-carrying-a-parallel-walk-not-pointer-mapping)).
 - **`@effected/glob` dependency**: not added. The fileMatch hygiene lint is pattern-shape analysis — it never matches a pattern against a path — so simple structural checks suffice.
 - **The `$schema` constant**: keeps the trailing `#` (the SchemaStore corpus convention), deliberately diverging from core's `JsonSchema.META_SCHEMA_URI_DRAFT_07`, which omits it. Documented on the constant.
 
@@ -104,4 +118,4 @@ The repo's CLAUDE.md records that `@effected/json-schema` is off the roadmap ent
 
 ## Status and sequencing
 
-Design-first per the [migration playbook](../migration-playbook.md); this doc was that first step, and **phase 1 is now implemented** at `packages/schemastore` (commit a74420d02, 2026-07-28) — the pure core, this doc's first consumer. Phase 2 (`SchemaFile`, the `SchemaValidator` seam, the annotation carriers) is designed but unbuilt. The package is **not** on any current release gate — the silk-runtime-action dogfood loop is active and holds releases — and it remains absent from `package-inventory.md` and `roadmap.md` until sequenced there.
+Design-first per the [migration playbook](../migration-playbook.md); this doc was that first step, and **both phases are now implemented** at `packages/schemastore` (phase 1 commit a74420d02, phase 2 commit e3430d58, both 2026-07-28), landing with a zero-warning build. No consumer has adopted the package yet. It is **not** on any current release gate — the silk-runtime-action dogfood loop is active and holds releases — and it remains absent from `package-inventory.md` and `roadmap.md` until sequenced there.
