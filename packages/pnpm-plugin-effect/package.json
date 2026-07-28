@@ -37,7 +37,7 @@
 		"@savvy-web/bundler": "^2.1.0",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
-		"rolldown-pnpm-config": "^0.5.4",
+		"rolldown-pnpm-config": "^0.5.5",
 		"typescript": "catalog:silk"
 	},
 	"engines": {
