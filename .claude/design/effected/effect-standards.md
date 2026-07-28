@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-25
-last-synced: 2026-07-25
+updated: 2026-07-28
+last-synced: 2026-07-28
 completeness: 95
 related:
   - architecture.md
@@ -53,7 +53,7 @@ The permission above says *whether* members may be grouped; this says *how*. **A
 
 The sweep converted the kit's containers in one pass (2026-07-25): `Run` / `Redaction` / `Retry`, `App` / `AppCache` / `AppConfig` / `AppStore`, `XdgConfig`, `Walker`, `DependencySection`, `Sbom` / `SbomMetadataSource`, `Workspaces`, `ConfigFile` / `ConfigMigration` / `ConfigResolver`, `GitCommand` and `tsconfig-json`'s six. **Call syntax is identical**, so no consumer or cross-package call site changed — which is what makes this a house-form rule rather than an API decision.
 
-Three holdouts are recorded rather than re-attempted, all the same cause — **a class cannot merge with a same-named type**: `SpdxExpression` (the name is already a type alias), `EncryptedCodecKey` (likewise) and `MergeStrategy` (a same-named generic interface with no default type parameter). Each was reproduced under the installed TypeScript before reverting, and each is noted in its package's context file. Where a container's name is *not* already taken by a type, a statics-only class merges cleanly with a same-named data interface — `ResolvedTsconfig` and `PortableTsconfig` do, since a statics-only class contributes no instance members.
+Three holdouts are recorded rather than re-attempted, all the same cause — **a class cannot merge with a same-named type**: `SpdxExpression` (the name is already a type alias), `EncryptedCodecKey` (likewise) and `MergeStrategy` (a same-named generic interface with no default type parameter). Each was reproduced under the installed TypeScript before reverting, and each is noted in its package's context file. Where a container's name is *not* already taken by a type, a statics-only class merges cleanly with a same-named data interface — `ResolvedTsconfig` and `PortableTsconfig` do, since a statics-only class contributes no instance members. The compiler accepts the merge but Biome still flags it (`lint/suspicious/noUnsafeDeclarationMerging`), so every merge site carries the house `biome-ignore` for that rule with the statics-only justification — precedent: `tsconfig-json`'s `ResolvedTsconfig`, now `schemastore`'s `SchemaTarget`.
 
 This rule and the namespace-object ban answer different questions and must not be collapsed: the ban is about **what may be grouped** (never cross-module implementations reaching distinct engines) and is load-bearing for bundles; this is about **what the sanctioned group is spelled as** and is load-bearing for docs. A static class collecting engines is exactly as forbidden as an object collecting them.
 

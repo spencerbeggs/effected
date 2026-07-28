@@ -5,7 +5,7 @@ category: architecture
 created: 2026-07-28
 updated: 2026-07-28
 last-synced: 2026-07-28
-completeness: 68
+completeness: 80
 related:
   - ../effect-standards.md
   - ../migration-playbook.md
@@ -13,11 +13,11 @@ related:
   - semver.md
 ---
 
-# @effected/schemastore design (proposed)
+# @effected/schemastore design
 
 ## Overview
 
-`@effected/schemastore` is a **proposed** package — this doc is the design-first step of the [migration playbook](../migration-playbook.md); **no code exists yet**. It is a reusable way to build, validate, version and publish JSON Schema documents generated from Effect Schema sources, in the shape SchemaStore (schemastore.org) and its consuming toolchain (vscode-json-languageservice, redhat yaml-language-server, taplo, tombi, IntelliJ) expect — plus the catalog-entry and editor/toolchain association artifacts around them.
+`@effected/schemastore` is a reusable way to build, validate, version and publish JSON Schema documents generated from Effect Schema sources, in the shape SchemaStore (schemastore.org) and its consuming toolchain (vscode-json-languageservice, redhat yaml-language-server, taplo, tombi, IntelliJ) expect — plus the catalog-entry and editor/toolchain association artifacts around them. **Phase 1 (the pure core) is built** (commit a74420d02, 2026-07-28); phase 2 (`SchemaFile` IO, the `SchemaValidator` seam, the annotation carriers) remains design-only. `packages/schemastore/CLAUDE.md` is authoritative for the as-built surface; this doc records the design decisions and the phase-2 state.
 
 It generalizes a live consumer implementation: `/Users/spencer/workspaces/savvy-web/silk-release-action/lib/scripts/generate-schema.ts` is the extraction source. A second consumer is expected: the silk-runtime-action greenfield rebuild (its JSON config input schema). The concept previously existed in the retired `config-file-effect` repo as taplo/tombi support for config files; this package is its generic successor. Two named consumers satisfy the kit's scope rule that capability is pulled by real consumers.
 
@@ -48,17 +48,21 @@ From the SchemaStore repo's CONTRIBUTING.md (checkout at `/Users/spencer/workspa
 - **Non-standard properties** consumed by language servers, relevant because the package should let Effect Schema annotations carry them into emitted documents: `allowTrailingCommas`, `defaultSnippets`, `markdownDescription`, `enumDescriptions`, `markdownEnumDescriptions` (vscode-json-languageservice); `x-taplo`, `x-taplo-info` (taplo); `x-tombi-toml-version`, `x-tombi-array-values-order(-by)`, `x-tombi-table-keys-order`, `x-tombi-string-formats`, `x-tombi-additional-key-label` (tombi); `x-intellij-language-injection`, `x-intellij-html-description`, `x-intellij-enum-metadata` (IntelliJ). Design consideration for the ajv-strict interplay: unknown keywords fail ajv strict mode — SchemaStore handles this via per-schema `options` in `schema-validation.jsonc`, so the package's own lint/validation story must account for the declared non-standard families.
 - **Coverage tool.** SchemaStore ships an opt-in coverage tool (8 checks: unused `$defs`, description coverage, test completeness, enum coverage, pattern coverage, required-field coverage, default-value coverage, negative-test isolation), enabled per schema via the `coverage` array in `schema-validation.jsonc`. Candidate inspiration for what the package could lint locally; implementing it is **not** v1 scope.
 
-## Proposed module surface
+## Module surface
 
-Module-per-concept per the [module layout standard](../effect-standards.md#module-layout-module-per-concept); no barrel re-exports below the entrypoint. Proposed modules:
+Module-per-concept per the [module layout standard](../effect-standards.md#module-layout-module-per-concept); no barrel re-exports below the entrypoint.
 
-- **`StoreDocument`** (naming open — alternative `SchemaDocument`) — the pure assembly: (Effect Schema, `$id`, options) → Draft-07 SchemaStore document with `$schema`/`$id`/root/`$defs` and the `#/definitions`→`#/$defs` ref rewrite owned here. Wraps core's `Schema.toJsonSchemaDocument` + `JsonSchema.toDocumentDraft07`; the package owns assembly and publication shape, **not** a JSON Schema engine.
-- **`SchemaTarget`** — the target manifest vocabulary: schema + identity + destination path + optional version, N per repo (the extraction source's `{schema, $id, path}` triples, generalized).
-- **`SchemaVersioning`** — both catalog modes: an unversioned target (plain name, `url` only) and versioned targets (`name-<version>.json` filename derivation, `versions` map assembly, `url` = latest). Version ordering probably via `@effected/semver` (workspace dep) — recorded as a likely dependency.
-- **`CatalogEntry`** — Schema classes for the catalog.json entry shape (`{name, description, fileMatch, url, versions?}`), plus fileMatch hygiene lint (generic-pattern and complex-glob warnings) as pure checks.
-- **Annotation carriers** for the non-standard property families (taplo/tombi/vscode/intellij) so Effect Schema annotations flow into emitted documents — the generic successor to config-file-effect's taplo/tombi support. The exact mechanism (Effect Schema annotations → emitted keywords) is an open design question to resolve against the installed beta's annotation API during implementation.
-- **`DocumentLint`** — owned structural checks over the emitted document: every `$ref` resolves against the `$defs` pool; no unknown keywords outside the declared non-standard families; SchemaStore best-practice advisories such as the description-URL convention. Tractable because the input is bounded `toJsonSchemaDocument` output.
-- **`SchemaFile`** — the one IO module, mirroring `@effected/package-json`'s `PackageJsonFile` pattern: write-if-changed over core `FileSystem`/`Path` in `R`, canonical JSON serialization owned by the package (fixing the biome shell-out wart), plus a read side for drift tests.
+**Built (phase 1)** — six pure modules: `StoreDocument` (the assembly over core's `Schema.toJsonSchemaDocument` + `JsonSchema.toDocumentDraft07`, owning the `#/definitions`→`#/$defs` ref rewrite and the publication shape — the package owns assembly, **not** a JSON Schema engine), `SchemaTarget` (the target manifest vocabulary: schema + identity + destination path + optional version, generalizing the extraction source's `{schema, $id, path}` triples), `SchemaVersioning` (both catalog modes and the version grammar — see [versioning](#versioning-a-store-native-grammar-not-semver)), `CatalogEntry` (Schema classes for the catalog.json entry shape plus the fileMatch hygiene lint), `DocumentLint` (owned structural checks: `$ref` resolution against the `$defs` pool, unknown keywords outside the declared non-standard families, best-practice advisories) and `CanonicalJson` (the owned deterministic serializer, fixing the extraction source's biome shell-out). See `packages/schemastore/CLAUDE.md` for the as-built details.
+
+**Deferred (phase 2):**
+
+- **Annotation carriers** for the non-standard property families (taplo/tombi/vscode/intellij) so Effect Schema annotations flow into emitted documents — the generic successor to config-file-effect's taplo/tombi support. A settled design constraint, probe-established against the installed beta (rung 3 at beta.101): core's Draft-07 lowering (`JsonSchema.toDocumentDraft07`) **drops every keyword outside its fixed copy-list** — annotation-admitted keys such as `x-taplo` survive at 2020-12 and vanish after lowering. The carrier mechanism therefore **must be a post-lowering re-graft**; it cannot ride `ToJsonSchemaOptions` alone.
+- **`SchemaFile`** — the one IO module, mirroring `@effected/package-json`'s `PackageJsonFile` pattern: write-if-changed over core `FileSystem`/`Path` in `R` (serialization already owned by `CanonicalJson`), plus a read side for drift tests.
+- **`SchemaValidator`** — the contract seam from the [validation seam](#the-validation-seam-the-ajv-question) below.
+
+## Versioning: a store-native grammar, not SemVer
+
+The original proposal said version ordering would come "probably via `@effected/semver`" — but SchemaStore's own catalog labels (e.g. `1.2`) are **not** strict semver and are unparseable by `SemVer.FromString`. The as-built resolution: a store-native `SchemaVersion` grammar `major[.minor[.patch]][-prerelease]` (leading zeros rejected), ordered by padding labels to full SemVer internally via `SemVer.parseResult` + `SemVer.Order`, with labels round-tripping verbatim. `@effected/semver` is a **regular dependency** (`workspace:~`, not a peer) and no `SemVer` type surfaces in the public API. Record for the next consumer: do not assume `SemVer.FromString` accepts a catalog label — it does not.
 
 ## The validation seam: the ajv question
 
@@ -68,25 +72,27 @@ SchemaStore's own gate is ajv strict mode, so the package needs a story for real
 - **(b) a `SchemaValidator` contract seam** — interface + error type only, closed by the consumer with real ajv at the edge. The same contract-seam inversion as `@effected/commands`' `LocalExec` and `@effected/npm`'s resolver contracts.
 - **(c) owned structural checking only** — `DocumentLint` in the package, ajv left entirely to consumer CI.
 
-**Recommended: (b)+(c).** `DocumentLint` is owned and always available; the `SchemaValidator` seam carries real-engine validation without ajv ever entering the dependency graph.
+**Decided: (b)+(c).** `DocumentLint` is owned and always available (built in phase 1); the `SchemaValidator` seam (phase 2) carries real-engine validation without ajv ever entering the dependency graph.
 
 ## Tier and dependencies
 
-**Boundary tier.** One IO module (`SchemaFile`) over core `FileSystem`/`Path` required in `R`; everything else pure; no third-party runtime dependencies under the recommended validation option.
+**Pure tier as built (phase 1); goes boundary at phase 2** when `SchemaFile` lands over core `FileSystem`/`Path` required in `R`. No IO anywhere in `src/` today; no third-party runtime dependencies.
 
-- `peerDependencies`: `effect` (`catalog:effect`); likely `@effected/semver` (`workspace:~`) for version ordering in `SchemaVersioning`.
-- Possibly `@effected/glob` for fileMatch pattern analysis in `CatalogEntry` — an open question; the hygiene lint may need only simple structural checks.
+- `peerDependencies`: `effect` (`catalog:effect:peers`).
+- `dependencies`: `@effected/semver` (`workspace:~`) — a regular dependency, not a peer, used internally for version ordering in `SchemaVersioning` (see [versioning](#versioning-a-store-native-grammar-not-semver)).
+- No `@effected/glob` edge — resolved, see [resolved questions](#resolved-design-questions).
 - No ajv, no JSON Schema engine, anywhere in the runtime graph.
 
 ## Scope fence: the @effected/json-schema ghost
 
 The repo's CLAUDE.md records that `@effected/json-schema` is off the roadmap entirely — core's `JsonSchema` module made it redundant. This package must stay the narrow publication/catalog/versioning/lint layer and **must not grow into a general JSON Schema package**. Anything that smells like schema construction, ref resolution beyond the document's own `$defs` pool, or dialect conversion belongs to core's `JsonSchema`, not here. This is an explicit non-goal, not a deferral.
 
-## Open questions
+## Resolved design questions
 
-- **Module naming**: `StoreDocument` vs `SchemaDocument` for the assembly module.
-- **Annotation mechanism**: how Effect Schema annotations map to emitted non-standard keywords, to be resolved against the installed beta's annotation API during implementation.
-- **`@effected/glob` dependency**: whether fileMatch hygiene lint warrants the full pattern-analysis package or simple structural checks suffice.
+- **Module naming**: settled as `StoreDocument`. `SchemaDocument` was rejected because it reads like the banned general-JSON-Schema scope (the [scope fence](#scope-fence-the-effectedjson-schema-ghost)).
+- **Annotation mechanism**: the load-bearing constraint is settled — carriers must re-graft after the Draft-07 lowering, which drops every keyword outside its fixed copy-list (see [module surface](#module-surface)). The exact carrier API is phase-2 design work within that constraint.
+- **`@effected/glob` dependency**: not added. The fileMatch hygiene lint is pattern-shape analysis — it never matches a pattern against a path — so simple structural checks suffice.
+- **The `$schema` constant**: keeps the trailing `#` (the SchemaStore corpus convention), deliberately diverging from core's `JsonSchema.META_SCHEMA_URI_DRAFT_07`, which omits it. Documented on the constant.
 
 ## Non-goals (v1)
 
@@ -98,4 +104,4 @@ The repo's CLAUDE.md records that `@effected/json-schema` is off the roadmap ent
 
 ## Status and sequencing
 
-Design-first per the [migration playbook](../migration-playbook.md); this doc is that first step, and implementation follows only if the package is approved for the roadmap. It is **not** on any current release gate and is a post-rebuild roadmap item — the silk-runtime-action dogfood loop is active and holds releases. The package is deliberately absent from `package-inventory.md` and `roadmap.md` until approved; catalog integration happens then, not now.
+Design-first per the [migration playbook](../migration-playbook.md); this doc was that first step, and **phase 1 is now implemented** at `packages/schemastore` (commit a74420d02, 2026-07-28) — the pure core, this doc's first consumer. Phase 2 (`SchemaFile`, the `SchemaValidator` seam, the annotation carriers) is designed but unbuilt. The package is **not** on any current release gate — the silk-runtime-action dogfood loop is active and holds releases — and it remains absent from `package-inventory.md` and `roadmap.md` until sequenced there.
