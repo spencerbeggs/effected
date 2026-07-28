@@ -34,7 +34,7 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@effected/glob": "workspace:*",
-		"@savvy-web/bundler": "^2.0.13",
+		"@savvy-web/bundler": "^2.1.0",
 		"@types/node": "catalog:silk",
 		"effect": "catalog:effect",
 		"typescript": "catalog:silk"
