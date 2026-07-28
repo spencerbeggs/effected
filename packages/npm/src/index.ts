@@ -67,6 +67,11 @@ export {
 	type SeededVersion,
 } from "./NpmRegistry.js";
 export {
+	InvalidPackageManagerPinError,
+	PackageManagerPin,
+	PackageManagerPinName,
+} from "./PackageManagerPin.js";
+export {
 	type DryRunOutcome,
 	type PackOptions,
 	PackagePublish,
