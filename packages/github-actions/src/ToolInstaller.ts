@@ -1,3 +1,4 @@
+import type { Duration } from "effect";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schedule, Schema, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -79,6 +80,29 @@ export interface ExtractOptions {
 }
 
 /**
+ * How a {@link ToolInstallerShape.download} should behave.
+ *
+ * @public
+ */
+export interface ToolDownloadOptions {
+	/**
+	 * The overall time budget for ONE download attempt (request plus streaming
+	 * the body to disk). Defaults to five minutes.
+	 *
+	 * @remarks
+	 * The default is deliberately generous: toolchain archives run to hundreds
+	 * of megabytes, and a healthy runner connection moves tens of megabytes a
+	 * second — even a 500 MB archive on a degraded 2 MB/s link fits in five
+	 * minutes. What the budget exists for is the connection that stops moving
+	 * entirely: without it, a dead connection is a silent CI hang until the job
+	 * timeout; with it, the attempt fails typed as `downloadFailed` with no
+	 * status — which `retryable` classifies as a transport fault — and the
+	 * download's own retry policy tries again.
+	 */
+	readonly timeout?: Duration.Input | undefined;
+}
+
+/**
  * The {@link ToolInstaller} service shape.
  *
  * @public
@@ -103,7 +127,7 @@ export interface ToolInstallerShape {
 	 */
 	readonly find: (tool: string, version: string) => Effect.Effect<Option.Option<string>>;
 	/** Download a url to a temporary file, retrying what is worth retrying. */
-	readonly download: (url: string) => Effect.Effect<string, ToolInstallerError>;
+	readonly download: (url: string, options?: ToolDownloadOptions) => Effect.Effect<string, ToolInstallerError>;
 	/** Extract a tarball. Returns the directory its contents landed in. */
 	readonly extractTar: (archive: string, options?: ExtractOptions) => Effect.Effect<string, ToolInstallerError>;
 	/** Extract a zip. Returns the directory its contents landed in. */
@@ -121,6 +145,9 @@ export interface ToolInstallerShape {
 
 /** How many times a retryable download is retried before giving up. */
 const DOWNLOAD_RETRIES = 2;
+
+/** The default per-attempt download budget. See {@link ToolDownloadOptions.timeout}. */
+const DOWNLOAD_TIMEOUT: Duration.Input = "5 minutes";
 
 const make = Effect.gen(function* () {
 	const env = yield* ActionEnvironment;
@@ -157,27 +184,40 @@ const make = Effect.gen(function* () {
 	};
 
 	/**
-	 * Run an extraction command, keeping its stderr.
+	 * Run an extraction command ONCE, keeping its stderr.
 	 *
 	 * @remarks
 	 * `tar`'s exit code says only that it failed; its stderr says why, and it is
 	 * the difference between "this is not a gzip archive" and "tar is not
 	 * installed". Discarding it is what makes an extraction failure unactionable.
+	 *
+	 * **One spawn, not two — load-bearing.** The spawner's convenience members
+	 * each spawn independently: `string` collects output without inspecting the
+	 * exit code, and `exitCode` runs the command AGAIN (core's
+	 * `ChildProcessSpawner.make` derives both from `spawn`). Calling them
+	 * back-to-back double-executed every extraction — harmless for idempotent
+	 * `tar`/`unzip -o`, but .NET's `ZipFile.ExtractToDirectory` refuses to
+	 * overwrite, so the second run failed 5/5 on real Windows runners while the
+	 * captured "complaint" was the FIRST run's silent success. Output and exit
+	 * code must come from the same `spawn` handle.
 	 */
 	const extractWith = (command: ChildProcess.Command, archive: string): Effect.Effect<void, ToolInstallerError> =>
-		Effect.gen(function* () {
-			const output = yield* spawner
-				.string(command, { includeStderr: true })
-				.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "extractFailed", subject: archive, cause })));
-			const code = yield* spawner
-				.exitCode(command)
-				.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "extractFailed", subject: archive, cause })));
-			if (code !== 0) {
-				return yield* Effect.fail(
-					new ToolInstallerError({ reason: "extractFailed", subject: archive, stderr: output.trim() }),
-				);
-			}
-		});
+		Effect.scoped(
+			Effect.gen(function* () {
+				const extractError = (cause: unknown) =>
+					new ToolInstallerError({ reason: "extractFailed", subject: archive, cause });
+				const handle = yield* spawner.spawn(command).pipe(Effect.mapError(extractError));
+				// Drain stdout+stderr BEFORE awaiting the exit code, so a chatty
+				// extractor cannot deadlock on a full pipe; the stream ends at exit.
+				const output = yield* Stream.mkString(Stream.decodeText(handle.all)).pipe(Effect.mapError(extractError));
+				const code = yield* handle.exitCode.pipe(Effect.mapError(extractError));
+				if (code !== 0) {
+					return yield* Effect.fail(
+						new ToolInstallerError({ reason: "extractFailed", subject: archive, stderr: output.trim() }),
+					);
+				}
+			}),
+		);
 
 	/**
 	 * Install a staged directory into the tool cache by renaming it into place.
@@ -223,7 +263,7 @@ const make = Effect.gen(function* () {
 			),
 		);
 
-	const download = Effect.fn("ToolInstaller.download")(function* (url: string) {
+	const download = Effect.fn("ToolInstaller.download")(function* (url: string, options?: ToolDownloadOptions) {
 		const attempt = Effect.gen(function* () {
 			const response = yield* http
 				.get(url)
@@ -246,6 +286,13 @@ const make = Effect.gen(function* () {
 		});
 
 		return yield* attempt.pipe(
+			// The per-attempt budget sits INSIDE the retry: a connection that stops
+			// moving becomes a typed, statusless (and therefore retryable)
+			// downloadFailed instead of a silent hang to the job timeout.
+			Effect.timeout(options?.timeout ?? DOWNLOAD_TIMEOUT),
+			Effect.catchTag("TimeoutError", (cause) =>
+				Effect.fail(new ToolInstallerError({ reason: "downloadFailed", subject: url, cause })),
+			),
 			Effect.retry({
 				schedule: Schedule.exponential("1 second"),
 				times: DOWNLOAD_RETRIES,
@@ -276,12 +323,19 @@ const make = Effect.gen(function* () {
 			// The platform comes from `RUNNER_OS` rather than `process.platform`,
 			// which is both the runner's own answer and the only version of this
 			// branch that a test on any host can reach.
+			// The pwsh branch is deliberately belt-and-braces: the THREE-argument
+			// `ExtractToDirectory(src, dest, $true)` overload overwrites existing
+			// files (the two-argument one refuses, which is what turned a repeated
+			// extraction into a hard failure), and the try/catch writes the actual
+			// .NET exception text plainly to stderr and exits 1 — pwsh's own error
+			// rendering does not reliably reach a captured stream, and an empty
+			// complaint costs a source dive to even hypothesize about.
 			const command = windows
 				? ChildProcess.make("pwsh", [
 						"-NoProfile",
 						"-NonInteractive",
 						"-Command",
-						`Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('${archive.replaceAll("'", "''")}', '${destination.replaceAll("'", "''")}')`,
+						`$ErrorActionPreference = 'Stop'; try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('${archive.replaceAll("'", "''")}', '${destination.replaceAll("'", "''")}', $true) } catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 1 }`,
 					])
 				: ChildProcess.make("unzip", ["-oq", archive, "-d", destination]);
 			yield* extractWith(command, archive);

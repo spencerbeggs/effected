@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
-import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
@@ -195,27 +195,37 @@ const make = (
 			});
 
 		/**
-		 * Run `tar`, keeping its stderr.
+		 * Run `tar` ONCE, keeping its stderr.
 		 *
 		 * @remarks
 		 * On Windows, extraction runs with `-k` so a file another process holds
 		 * open is skipped rather than failing the whole restore — and `tar` then
 		 * exits 1 to say so, which is a warning rather than an error. Exit 2 and
 		 * above stays a failure on every platform.
+		 *
+		 * Output and exit code come from the SAME `spawn` handle: the spawner's
+		 * `string` and `exitCode` convenience members each spawn independently
+		 * (core derives both from `spawn`), so calling them back-to-back
+		 * double-executed every archive operation — and on a failure reported the
+		 * FIRST run's output as the second run's complaint. `tar` being idempotent
+		 * kept this latent here; the same shape failed loudly in
+		 * `ToolInstaller.extractZip` on Windows.
 		 */
 		const tar = (args: ReadonlyArray<string>, key: string, tolerateWarnings: boolean) =>
-			Effect.gen(function* () {
-				const command = ChildProcess.make("tar", [...args]);
-				const output = yield* spawner
-					.string(command, { includeStderr: true })
-					.pipe(Effect.mapError((cause) => new ActionCacheError({ reason: "archiveFailed", key, cause })));
-				const code = yield* spawner
-					.exitCode(command)
-					.pipe(Effect.mapError((cause) => new ActionCacheError({ reason: "archiveFailed", key, cause })));
-				if (code !== 0 && !(tolerateWarnings && code === 1)) {
-					return yield* Effect.fail(new ActionCacheError({ reason: "archiveFailed", key, stderr: output.trim() }));
-				}
-			});
+			Effect.scoped(
+				Effect.gen(function* () {
+					const command = ChildProcess.make("tar", [...args]);
+					const archiveError = (cause: unknown) => new ActionCacheError({ reason: "archiveFailed", key, cause });
+					const handle = yield* spawner.spawn(command).pipe(Effect.mapError(archiveError));
+					// Drain stdout+stderr BEFORE awaiting the exit code, so a chatty
+					// tar cannot deadlock on a full pipe; the stream ends at exit.
+					const output = yield* Stream.mkString(Stream.decodeText(handle.all)).pipe(Effect.mapError(archiveError));
+					const code = yield* handle.exitCode.pipe(Effect.mapError(archiveError));
+					if (code !== 0 && !(tolerateWarnings && code === 1)) {
+						return yield* Effect.fail(new ActionCacheError({ reason: "archiveFailed", key, stderr: output.trim() }));
+					}
+				}),
+			);
 
 		/** A scratch archive path, removed on every exit path. */
 		const withArchive = <A>(

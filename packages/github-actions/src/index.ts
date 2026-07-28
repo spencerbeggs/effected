@@ -90,6 +90,7 @@ export {
 export { Secret } from "./Secret.js";
 export {
 	type ExtractOptions,
+	type ToolDownloadOptions,
 	ToolInstaller,
 	ToolInstallerError,
 	type ToolInstallerShape,
