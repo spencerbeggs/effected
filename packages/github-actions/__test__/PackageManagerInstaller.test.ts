@@ -1,16 +1,18 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { PackageManagerPin } from "@effected/npm";
-import { Effect, Layer, Logger, Option, PlatformError, Stream } from "effect";
+import { Effect, Layer, Logger, Option, PlatformError, Schema, Stream } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
 	ActionEnvironment,
+	AmbientPackageManager,
+	CachedPackageManager,
 	InstalledPackageManager,
 	PackageManagerInstaller,
 	PackageManagerInstallerError,
@@ -50,12 +52,17 @@ const live = (root: string, fetch: typeof globalThis.fetch = alwaysFails, env: R
 };
 
 const withRoot = <A, E>(
-	use: (root: string) => Effect.Effect<A, E, PackageManagerInstaller | ToolInstaller>,
+	use: (
+		root: string,
+	) => Effect.Effect<A, E, PackageManagerInstaller | ToolInstaller | ChildProcessSpawner.ChildProcessSpawner>,
 	options: { fetch?: typeof globalThis.fetch; env?: Record<string, string> } = {},
 ) => {
 	const root = scratch();
 	return use(root).pipe(
 		Effect.provide(live(root, options.fetch ?? alwaysFails, options.env ?? {})),
+		// A second NodeServices at the outer level gives the TEST its own real
+		// spawner for probing installed shims; the layer above consumed its own.
+		Effect.provide(NodeServices.layer),
 		Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
 	);
 };
@@ -72,6 +79,8 @@ const makeManagerTarball = (
 		readonly version: string;
 		readonly bin?: Record<string, string> | undefined;
 		readonly binFiles?: ReadonlyArray<string> | undefined;
+		readonly binFileContents?: string | undefined;
+		readonly extraFiles?: ReadonlyArray<string> | undefined;
 		readonly omitManifest?: boolean | undefined;
 	},
 ): string => {
@@ -87,7 +96,13 @@ const makeManagerTarball = (
 	}
 	for (const file of options.binFiles ?? []) {
 		mkdirSync(join(packageDir, file, ".."), { recursive: true });
-		writeFileSync(join(packageDir, file), `#!/usr/bin/env node\nconsole.log("${options.name}");\n`);
+		writeFileSync(
+			join(packageDir, file),
+			options.binFileContents ?? `#!/usr/bin/env node\nconsole.log("${options.name}");\n`,
+		);
+	}
+	for (const file of options.extraFiles ?? []) {
+		writeFileSync(join(packageDir, file), "plain file");
 	}
 	const archive = join(directory, `${safeName}-${options.version}.tgz`);
 	execFileSync("tar", ["czf", archive, "-C", staging, "package"]);
@@ -107,9 +122,6 @@ const makeBunZip = (directory: string, target: string): string => {
 const tgzResponse = (archive: string) => () => new Response(new Uint8Array(readFileSync(archive)), { status: 200 });
 
 const sha512Hex = (file: string): string => createHash("sha512").update(readFileSync(file)).digest("hex");
-
-/** The bun arch component for this host, in bun's own spelling. */
-const bunArch = process.arch === "arm64" ? "aarch64" : "x64";
 
 /** A spawner whose `string` is scripted and whose other members die loudly. */
 const scriptedSpawner = (
@@ -152,22 +164,71 @@ const pin = (spec: string): PackageManagerPin => {
 const install = (spec: string, options?: { requireIntegrity?: boolean; registry?: string }) =>
 	Effect.flatMap(PackageManagerInstaller, (installer) => installer.install(pin(spec), options));
 
+/** Narrow to the tool-cache variant or fail the test loudly. */
+const cachedOf = (installed: InstalledPackageManager): CachedPackageManager => {
+	assert.instanceOf(installed, CachedPackageManager);
+	assert.strictEqual(installed.source, "tool-cache");
+	return installed as CachedPackageManager;
+};
+
 describe("PackageManagerInstaller", () => {
 	describe("the tool-cache short-circuit", () => {
-		it.live("answers from the cache without downloading anything", () =>
+		it.live("answers from the cache without downloading anything, regenerating absent shims", () =>
 			withRoot((root) =>
 				Effect.gen(function* () {
 					// The fetch always fails, so a hit here proves no download happened.
+					// The entry has no `.bin` — a foreign writer (runner image, setup-*
+					// action, or the previous version of this module) cached it — so
+					// the shims must be regenerated into the entry.
 					const cached = ToolInstaller.cachePath({ root, tool: "pnpm", version: "7.7.7", arch: process.arch });
 					mkdirSync(join(cached, "bin"), { recursive: true });
 					writeFileSync(join(cached, "package.json"), JSON.stringify({ bin: { pnpm: "bin/pnpm.cjs" } }));
 					writeFileSync(join(cached, "bin", "pnpm.cjs"), "console.log('pnpm')");
 
-					const installed = yield* install("pnpm@7.7.7");
-					assert.instanceOf(installed, InstalledPackageManager);
-					assert.strictEqual(installed.source, "tool-cache");
+					const installed = cachedOf(yield* install("pnpm@7.7.7"));
 					assert.strictEqual(installed.directory, cached);
+					assert.strictEqual(installed.binDir, join(cached, ".bin"));
 					assert.deepStrictEqual(installed.bins, { pnpm: join(cached, "bin", "pnpm.cjs") });
+					// The regenerated shim points INTO the cached entry, verbatim.
+					assert.strictEqual(
+						readFileSync(join(cached, ".bin", "pnpm"), "utf8"),
+						`#!/bin/sh\nexec node "${join(cached, "bin", "pnpm.cjs")}" "$@"\n`,
+					);
+					assert.notStrictEqual(statSync(join(cached, ".bin", "pnpm")).mode & 0o111, 0);
+				}),
+			),
+		);
+
+		it.live("leaves an already-present shim untouched on a cache hit", () =>
+			withRoot((root) =>
+				Effect.gen(function* () {
+					// The tool cache is SHARED: another writer's shim must not be
+					// rewritten out from under it.
+					const cached = ToolInstaller.cachePath({ root, tool: "pnpm", version: "7.7.9", arch: process.arch });
+					mkdirSync(join(cached, "bin"), { recursive: true });
+					mkdirSync(join(cached, ".bin"), { recursive: true });
+					writeFileSync(join(cached, "package.json"), JSON.stringify({ bin: { pnpm: "bin/pnpm.cjs" } }));
+					writeFileSync(join(cached, "bin", "pnpm.cjs"), "console.log('pnpm')");
+					writeFileSync(join(cached, ".bin", "pnpm"), "#!/bin/sh\n# sentinel: a foreign shim\n");
+
+					yield* install("pnpm@7.7.9");
+					assert.include(readFileSync(join(cached, ".bin", "pnpm"), "utf8"), "sentinel");
+				}),
+			),
+		);
+
+		it.live("a shim that cannot be regenerated is a typed cacheFailed", () =>
+			withRoot((root) =>
+				Effect.gen(function* () {
+					const cached = ToolInstaller.cachePath({ root, tool: "pnpm", version: "7.8.0", arch: process.arch });
+					mkdirSync(join(cached, "bin"), { recursive: true });
+					writeFileSync(join(cached, "package.json"), JSON.stringify({ bin: { pnpm: "bin/pnpm.cjs" } }));
+					writeFileSync(join(cached, "bin", "pnpm.cjs"), "console.log('pnpm')");
+					chmodSync(cached, 0o555); // read-only entry: the .bin mkdir must fail
+					const error = yield* Effect.flip(install("pnpm@7.8.0"));
+					chmodSync(cached, 0o755); // restore so cleanup can remove the root
+					assert.instanceOf(error, PackageManagerInstallerError);
+					assert.strictEqual(error.reason, "cacheFailed");
 				}),
 			),
 		);
@@ -189,9 +250,13 @@ describe("PackageManagerInstaller", () => {
 		it.effect("answers ambient when the probe matches the pin exactly", () =>
 			Effect.gen(function* () {
 				const installed = yield* install("npm@9.9.9");
+				assert.instanceOf(installed, AmbientPackageManager);
 				assert.strictEqual(installed.source, "ambient");
 				assert.strictEqual(installed.version, "9.9.9");
-				assert.isUndefined(installed.directory);
+				// The discriminant is structural: the ambient variant HAS no
+				// directory or binDir field, rather than carrying undefined ones.
+				assert.isFalse("directory" in installed);
+				assert.isFalse("binDir" in installed);
 				assert.deepStrictEqual(installed.bins, { npm: "npm", npx: "npx" });
 			}).pipe(
 				Effect.provide(
@@ -217,13 +282,14 @@ describe("PackageManagerInstaller", () => {
 				// The REAL spawner probes the host's real npm, whose version is never
 				// the fixture's 1.0.0 — so the probe answers, mismatches, and the
 				// dist path runs.
-				const installed = yield* install("npm@1.0.0").pipe(
-					Effect.provide(live(root, script.fetch)),
-					Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+				const installed = cachedOf(
+					yield* install("npm@1.0.0").pipe(
+						Effect.provide(live(root, script.fetch)),
+						Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+					),
 				);
-				assert.strictEqual(installed.source, "tool-cache");
 				assert.deepStrictEqual(script.calls, ["https://registry.npmjs.org/npm/-/npm-1.0.0.tgz"]);
-				assert.strictEqual(installed.bins.npm, join(installed.directory ?? "", "bin", "npm-cli.js"));
+				assert.strictEqual(installed.bins.npm, join(installed.directory, "bin", "npm-cli.js"));
 			}),
 		);
 
@@ -235,26 +301,114 @@ describe("PackageManagerInstaller", () => {
 				writeFileSync(join(extracted, "package.json"), JSON.stringify({ bin: { npm: "bin/npm-cli.js" } }));
 				writeFileSync(join(extracted, "bin", "npm-cli.js"), "console.log('npm')");
 
-				const installed = yield* install("npm@1.2.3").pipe(
-					Effect.provide(
-						stubbed({
-							spawner: scriptedSpawner(() =>
-								Effect.fail(
-									PlatformError.badArgument({ module: "Test", method: "string", description: "npm is not installed" }),
+				// The stub answers with the destination the module derives, so the
+				// divergence guard passes and the record comes back tool-cache.
+				const destination = ToolInstaller.cachePath({ root, tool: "npm", version: "1.2.3", arch: process.arch });
+				const installed = cachedOf(
+					yield* install("npm@1.2.3").pipe(
+						Effect.provide(
+							stubbed({
+								env: { RUNNER_TOOL_CACHE: root },
+								spawner: scriptedSpawner(() =>
+									Effect.fail(
+										PlatformError.badArgument({
+											module: "Test",
+											method: "string",
+											description: "npm is not installed",
+										}),
+									),
 								),
-							),
-							installer: {
-								find: () => Effect.succeed(Option.none()),
-								download: () => Effect.succeed(join(root, "unused-archive")),
-								extractTar: () => Effect.succeed(join(root, "extracted")),
-								cacheDir: () => Effect.succeed(join(root, "cached")),
-							},
-						}),
+								installer: {
+									find: () => Effect.succeed(Option.none()),
+									download: () => Effect.succeed(join(root, "unused-archive")),
+									extractTar: () => Effect.succeed(join(root, "extracted")),
+									cacheDir: () => Effect.succeed(destination),
+								},
+							}),
+						),
+						Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
 					),
+				);
+				assert.strictEqual(installed.bins.npm, join(destination, "bin", "npm-cli.js"));
+				assert.strictEqual(installed.binDir, join(destination, ".bin"));
+			}),
+		);
+	});
+
+	describe("shims", () => {
+		it.live("writes executable shims as part of the cached entry, naming the final path", () =>
+			Effect.gen(function* () {
+				const root = scratch();
+				const archive = makeManagerTarball(root, {
+					name: "pnpm",
+					version: "5.0.0",
+					bin: { pnpm: "bin/pnpm.cjs", pnpx: "bin/pnpx.cjs" },
+					binFiles: ["bin/pnpm.cjs", "bin/pnpx.cjs"],
+				});
+				const script = scriptedFetch({ "https://registry.npmjs.org/pnpm/-/pnpm-5.0.0.tgz": tgzResponse(archive) });
+				const installed = cachedOf(yield* install("pnpm@5.0.0").pipe(Effect.provide(live(root, script.fetch))));
+				assert.strictEqual(installed.binDir, join(installed.directory, ".bin"));
+				// The shim contents are the contract: an exec wrapper naming the
+				// FINAL cached entry path — never the staging directory the entry
+				// was assembled in — pinned verbatim.
+				const shim = readFileSync(join(installed.binDir, "pnpm"), "utf8");
+				assert.strictEqual(shim, `#!/bin/sh\nexec node "${join(installed.directory, "bin", "pnpm.cjs")}" "$@"\n`);
+				assert.strictEqual(
+					readFileSync(join(installed.binDir, "pnpx"), "utf8"),
+					`#!/bin/sh\nexec node "${join(installed.directory, "bin", "pnpx.cjs")}" "$@"\n`,
+				);
+				assert.notStrictEqual(statSync(join(installed.binDir, "pnpm")).mode & 0o111, 0, "shims must be executable");
+				rmSync(root, { recursive: true, force: true });
+			}),
+		);
+
+		it.live("a shim passes its arguments through intact, run for real", () =>
+			Effect.gen(function* () {
+				const root = scratch();
+				const archive = makeManagerTarball(root, {
+					name: "pnpm",
+					version: "5.0.1",
+					bin: { pnpm: "bin/pnpm.cjs" },
+					binFiles: ["bin/pnpm.cjs"],
+					binFileContents: "console.log(JSON.stringify(process.argv.slice(2)));\n",
+				});
+				const script = scriptedFetch({ "https://registry.npmjs.org/pnpm/-/pnpm-5.0.1.tgz": tgzResponse(archive) });
+				const program = Effect.gen(function* () {
+					const installed = cachedOf(yield* install("pnpm@5.0.1"));
+					// The REAL spawner executes the shim itself: shebang, executable
+					// bit and `"$@"` quoting all have to hold for this to answer.
+					const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+					const output = yield* spawner.string(
+						ChildProcess.make(join(installed.binDir, "pnpm"), ["a b", "--flag", "c"]),
+					);
+					assert.deepStrictEqual(JSON.parse(output.trim()), ["a b", "--flag", "c"]);
+				});
+				yield* program.pipe(
+					Effect.provide(Layer.mergeAll(live(root, script.fetch), NodeServices.layer)),
 					Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
 				);
-				assert.strictEqual(installed.source, "tool-cache");
-				assert.strictEqual(installed.bins.npm, join(root, "cached", "bin", "npm-cli.js"));
+			}),
+		);
+
+		it.live("a shim directory that cannot be created fails typed as cacheFailed, and caches nothing", () =>
+			Effect.gen(function* () {
+				const root = scratch();
+				// The tarball ships a FILE named `.bin` where the shim directory
+				// must go — the mkdir fails, and the entry must not be cached.
+				const archive = makeManagerTarball(root, {
+					name: "pnpm",
+					version: "5.0.2",
+					bin: { pnpm: "bin/pnpm.cjs" },
+					binFiles: ["bin/pnpm.cjs"],
+					extraFiles: [".bin"],
+				});
+				const script = scriptedFetch({ "https://registry.npmjs.org/pnpm/-/pnpm-5.0.2.tgz": tgzResponse(archive) });
+				const error = yield* Effect.flip(install("pnpm@5.0.2").pipe(Effect.provide(live(root, script.fetch))));
+				assert.instanceOf(error, PackageManagerInstallerError);
+				assert.strictEqual(error.reason, "cacheFailed");
+				const destination = ToolInstaller.cachePath({ root, tool: "pnpm", version: "5.0.2", arch: process.arch });
+				assert.isFalse(existsSync(destination), "a failed shim write must not leave a cached entry behind");
+				rmSync(root, { recursive: true, force: true });
 			}),
 		);
 	});
@@ -353,13 +507,15 @@ describe("PackageManagerInstaller", () => {
 					binFiles: ["bin/yarn.js"],
 				});
 				const script = scriptedFetch({ "https://registry.npmjs.org/yarn/-/yarn-1.22.10.tgz": tgzResponse(archive) });
-				const installed = yield* install("yarn@1.22.10").pipe(
-					Effect.provide(live(root, script.fetch)),
-					Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+				const installed = cachedOf(
+					yield* install("yarn@1.22.10").pipe(
+						Effect.provide(live(root, script.fetch)),
+						Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+					),
 				);
 				assert.deepStrictEqual(script.calls, ["https://registry.npmjs.org/yarn/-/yarn-1.22.10.tgz"]);
-				assert.strictEqual(installed.bins.yarn, join(installed.directory ?? "", "bin", "yarn.js"));
-				assert.strictEqual(installed.bins.yarnpkg, join(installed.directory ?? "", "bin", "yarn.js"));
+				assert.strictEqual(installed.bins.yarn, join(installed.directory, "bin", "yarn.js"));
+				assert.strictEqual(installed.bins.yarnpkg, join(installed.directory, "bin", "yarn.js"));
 			}),
 		);
 
@@ -385,7 +541,7 @@ describe("PackageManagerInstaller", () => {
 
 				// …and the TARBALL hash — the right answer for every other manager —
 				// must fail: this pair is what discriminates the Berry rule.
-				rmSync(join(installed.directory ?? ""), { recursive: true, force: true });
+				rmSync(cachedOf(installed).directory, { recursive: true, force: true });
 				const error = yield* Effect.flip(
 					install(`yarn@4.1.0+sha512.${sha512Hex(archive)}`).pipe(Effect.provide(live(root, script.fetch))),
 				);
@@ -398,36 +554,54 @@ describe("PackageManagerInstaller", () => {
 	describe("bun", () => {
 		it.live("maps the runner platform onto bun's release asset, extracts, and sets the executable bit", () =>
 			Effect.gen(function* () {
+				// RUNNER_ARCH decides the target (F3), so the fixture's name is a
+				// LITERAL — deterministic on any host.
 				const root = scratch();
-				const target = `bun-linux-${bunArch}`;
-				const archive = makeBunZip(root, target);
-				const url = `https://github.com/oven-sh/bun/releases/download/bun-v1.0.0/${target}.zip`;
+				const archive = makeBunZip(root, "bun-linux-x64");
+				const url = "https://github.com/oven-sh/bun/releases/download/bun-v1.0.0/bun-linux-x64.zip";
 				const script = scriptedFetch({
 					[url]: () => new Response(new Uint8Array(readFileSync(archive)), { status: 200 }),
 				});
-				const installed = yield* install("bun@1.0.0").pipe(
-					Effect.provide(live(root, script.fetch, { RUNNER_OS: "Linux" })),
+				const installed = cachedOf(
+					yield* install("bun@1.0.0").pipe(
+						Effect.provide(live(root, script.fetch, { RUNNER_OS: "Linux", RUNNER_ARCH: "X64" })),
+					),
 				);
 				assert.deepStrictEqual(script.calls, [url]);
-				assert.strictEqual(installed.source, "tool-cache");
+				// bun's binDir IS the entry directory: the binary is directly
+				// executable, so no shim is written for it.
+				assert.strictEqual(installed.binDir, installed.directory);
+				assert.isFalse(existsSync(join(installed.directory, ".bin")), "bun must get no shim directory");
 				const binary = installed.bins.bun ?? "";
-				assert.strictEqual(binary, join(installed.directory ?? "", "bun"));
+				assert.strictEqual(binary, join(installed.directory, "bun"));
 				assert.notStrictEqual(statSync(binary).mode & 0o111, 0, "the cached bun binary must be executable");
 				rmSync(root, { recursive: true, force: true });
 			}),
 		);
 
-		it.live("maps macOS onto bun's darwin spelling", () =>
+		it.live("maps macOS and ARM64 onto bun's own spellings", () =>
 			Effect.gen(function* () {
-				// The 404 is the assertion vehicle: what matters is the url the
-				// mapping produced, recorded by the scripted fetch.
-				const script = scriptedFetch({});
-				const error = yield* Effect.flip(
-					install("bun@1.0.0").pipe(Effect.provide(live(scratch(), script.fetch, { RUNNER_OS: "macOS" }))),
+				// The 404s are the assertion vehicle: what matters are the urls the
+				// mapping produced, recorded by the scripted fetch — exact literals,
+				// reachable from any host because RUNNER_ARCH decides (F3).
+				const darwin = scriptedFetch({});
+				yield* Effect.flip(
+					install("bun@1.0.0").pipe(
+						Effect.provide(live(scratch(), darwin.fetch, { RUNNER_OS: "macOS", RUNNER_ARCH: "X64" })),
+					),
 				);
-				assert.strictEqual(error.reason, "downloadFailed");
-				assert.deepStrictEqual(script.calls, [
-					`https://github.com/oven-sh/bun/releases/download/bun-v1.0.0/bun-darwin-${bunArch}.zip`,
+				assert.deepStrictEqual(darwin.calls, [
+					"https://github.com/oven-sh/bun/releases/download/bun-v1.0.0/bun-darwin-x64.zip",
+				]);
+
+				const arm = scriptedFetch({});
+				yield* Effect.flip(
+					install("bun@1.0.0").pipe(
+						Effect.provide(live(scratch(), arm.fetch, { RUNNER_OS: "Linux", RUNNER_ARCH: "ARM64" })),
+					),
+				);
+				assert.deepStrictEqual(arm.calls, [
+					"https://github.com/oven-sh/bun/releases/download/bun-v1.0.0/bun-linux-aarch64.zip",
 				]);
 			}),
 		);
@@ -535,6 +709,37 @@ describe("PackageManagerInstaller", () => {
 				rmSync(root, { recursive: true, force: true });
 			}),
 		);
+
+		it.live("a cache entry that lands away from the derived shim target is a typed cacheFailed", () =>
+			Effect.gen(function* () {
+				// The divergence guard: the shims name a destination this module
+				// derived; if ToolInstaller's swap lands the entry anywhere else the
+				// shims point at nothing, and that must be loud, not latent.
+				const root = scratch();
+				const extracted = join(root, "extracted", "package");
+				mkdirSync(join(extracted, "bin"), { recursive: true });
+				writeFileSync(join(extracted, "package.json"), JSON.stringify({ bin: { pnpm: "bin/pnpm.cjs" } }));
+				writeFileSync(join(extracted, "bin", "pnpm.cjs"), "console.log('pnpm')");
+				const error = yield* Effect.flip(
+					install("pnpm@2.0.6").pipe(
+						Effect.provide(
+							stubbed({
+								installer: {
+									find: () => Effect.succeed(Option.none()),
+									download: () => Effect.succeed(join(root, "unused-archive")),
+									extractTar: () => Effect.succeed(join(root, "extracted")),
+									cacheDir: () => Effect.succeed(join(root, "somewhere-else")),
+								},
+							}),
+						),
+					),
+				);
+				assert.instanceOf(error, PackageManagerInstallerError);
+				assert.strictEqual(error.reason, "cacheFailed");
+				assert.include(error.subject ?? "", "diverged");
+				rmSync(root, { recursive: true, force: true });
+			}),
+		);
 	});
 
 	describe("the registry override", () => {
@@ -560,6 +765,37 @@ describe("PackageManagerInstaller", () => {
 		);
 	});
 
+	describe("the discriminated union", () => {
+		it.effect("both variants round-trip through the union schema (ActionState-persistable)", () =>
+			Effect.gen(function* () {
+				const cached = CachedPackageManager.make({
+					name: "pnpm",
+					version: "1.2.3",
+					directory: "/cache/pnpm/1.2.3/x64",
+					binDir: "/cache/pnpm/1.2.3/x64/.bin",
+					bins: { pnpm: "/cache/pnpm/1.2.3/x64/bin/pnpm.cjs" },
+				});
+				const ambient = AmbientPackageManager.make({ name: "npm", version: "9.9.9", bins: { npm: "npm" } });
+
+				const encode = Schema.encodeUnknownEffect(InstalledPackageManager);
+				const decode = Schema.decodeUnknownEffect(InstalledPackageManager);
+				const cachedBack = yield* decode(JSON.parse(JSON.stringify(yield* encode(cached))));
+				const ambientBack = yield* decode(JSON.parse(JSON.stringify(yield* encode(ambient))));
+
+				assert.instanceOf(cachedBack, CachedPackageManager);
+				assert.instanceOf(ambientBack, AmbientPackageManager);
+				// The discriminant narrows in the type AND at runtime: the tool-cache
+				// variant carries directory + binDir, the ambient one has neither.
+				if (cachedBack.source === "tool-cache") {
+					assert.strictEqual(cachedBack.binDir, "/cache/pnpm/1.2.3/x64/.bin");
+				} else {
+					assert.fail("cached record decoded to the wrong variant");
+				}
+				assert.isFalse("directory" in ambientBack);
+			}),
+		);
+	});
+
 	describe("test double", () => {
 		it.effect("an unstubbed member dies rather than reporting an install that did not happen", () =>
 			Effect.gen(function* () {
@@ -570,26 +806,14 @@ describe("PackageManagerInstaller", () => {
 
 		it.effect("an override wins", () =>
 			Effect.gen(function* () {
-				const record = InstalledPackageManager.make({
-					name: "npm",
-					version: "1.0.0",
-					source: "ambient",
-					bins: { npm: "npm" },
-				});
+				const record = AmbientPackageManager.make({ name: "npm", version: "1.0.0", bins: { npm: "npm" } });
 				const installed = yield* install("npm@1.0.0");
 				assert.deepStrictEqual(installed, record);
 			}).pipe(
 				Effect.provide(
 					PackageManagerInstaller.layerTest({
 						install: () =>
-							Effect.succeed(
-								InstalledPackageManager.make({
-									name: "npm",
-									version: "1.0.0",
-									source: "ambient",
-									bins: { npm: "npm" },
-								}),
-							),
+							Effect.succeed(AmbientPackageManager.make({ name: "npm", version: "1.0.0", bins: { npm: "npm" } })),
 					}),
 				),
 			),

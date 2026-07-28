@@ -65,7 +65,16 @@ export class ToolInstallerError extends Schema.TaggedErrorClass<ToolInstallerErr
 export interface ExtractOptions {
 	/** The destination. A fresh temporary directory when omitted. */
 	readonly destination?: string | undefined;
-	/** Flags for `tar`. Defaults to `["xzf"]`, i.e. a gzipped tarball. */
+	/**
+	 * Flags for `tar`. Defaults to `["xzf"]`, i.e. a gzipped tarball.
+	 *
+	 * @remarks
+	 * The argv is assembled as `[...flags, archive, "-C", destination]` — the
+	 * archive path is appended directly AFTER the flags, so the LAST flag must
+	 * be the one that consumes the archive operand. `["xzf"]` works because `f`
+	 * is last inside the cluster; a custom set like `["xz", "--strip=1", "-f"]`
+	 * must end the same way, deliberately rather than by ordering luck.
+	 */
 	readonly flags?: ReadonlyArray<string> | undefined;
 }
 
@@ -81,6 +90,16 @@ export interface ToolInstallerShape {
 	 * @remarks
 	 * Absent is not an error, and neither is an unreadable cache: both mean
 	 * "install it", which is the only thing a caller can do about either.
+	 *
+	 * **The tool cache is SHARED.** The hosted runner image pre-populates it and
+	 * every `setup-*` action writes into it — this package is a co-writer, not
+	 * the owner. A hit guarantees only the `<root>/<tool>/<version>/<arch>`
+	 * location contract ({@link ToolInstaller.cachePath}); the directory's
+	 * *interior* layout is whatever its writer produced, which is not
+	 * necessarily what this consumer's own `cacheDir` would have written.
+	 * Validate the layout of a foreign hit before relying on it — applying an
+	 * assumption from your own install path (an archive-wrapper subdirectory,
+	 * say) to a foreign entry is a real shipped bug.
 	 */
 	readonly find: (tool: string, version: string) => Effect.Effect<Option.Option<string>>;
 	/** Download a url to a temporary file, retrying what is worth retrying. */

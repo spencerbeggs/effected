@@ -34,7 +34,11 @@ and every arrow points **inward**.
   version npm/pnpm/yarn/bun provisioning over `ToolInstaller`) and **confined to
   that one module by the reachability suite**, on Azure's terms: not reachable
   from `ActionRuntime.layer` or any light module; taking it costs the consumer
-  one explicit layer line.
+  one explicit layer line. The result is a discriminated union on `source`
+  (`AmbientPackageManager` | `CachedPackageManager`); every tool-cache answer
+  carries an `addPath`-able `binDir` — shims written into the **staged** entry
+  for the npm-registry managers (never a post-swap mutation; regenerated
+  best-effort on a foreign cache hit), bun's own directory for bun.
 - `templates` — the region engine under `ManagedDocument` / `CheckDocument`.
   **Not a second engine**: the region grammar, the line-ending invariant and the
   idempotence proof stay in `templates`, which has them under test.

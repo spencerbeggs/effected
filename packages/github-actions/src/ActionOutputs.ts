@@ -80,7 +80,17 @@ export interface ActionOutputsShape {
 	readonly summary: (content: string) => Effect.Effect<void, ActionOutputError>;
 	/** Export an environment variable to **subsequent** steps. */
 	readonly exportVariable: (name: string, value: string) => Effect.Effect<void, ActionOutputError>;
-	/** Prepend a directory to `PATH` for subsequent steps. */
+	/**
+	 * Prepend a directory to `PATH` for **subsequent** steps.
+	 *
+	 * @remarks
+	 * This appends to the `GITHUB_PATH` runner file and does **nothing else** —
+	 * unlike `@actions/core`, it does NOT mutate the live `process.env.PATH` of
+	 * the current process. A same-process probe of a tool that was just added
+	 * (`pnpm --version`, a shim, a binary) will not find it by name; probe by
+	 * absolute path instead. The runner applies the addition when the next step
+	 * starts, exactly as it does for {@link ActionOutputsShape.exportVariable}.
+	 */
 	readonly addPath: (path: string) => Effect.Effect<void, ActionOutputError>;
 	/** Emit an error annotation. Does not itself set the exit code. */
 	readonly setFailed: (message: string) => Effect.Effect<void>;

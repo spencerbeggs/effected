@@ -117,6 +117,12 @@ const corepackIntegrity = IntegrityHash.pipe(
  * {@link (IntegrityHash:variable)} restricted to the corepack `<algo>.<hex>`
  * form.
  *
+ * A consequence worth stating loudly: a version tail that is valid **semver
+ * build metadata but not a corepack integrity** — `pnpm@10.20.0+deadbeef`,
+ * say — is intentionally outside the pin grammar and fails with
+ * `reason: "integrity"`. Build-metadata-carrying versions are not pinnable by
+ * design; the `+` position is spoken for.
+ *
  * @example
  * ```ts
  * import { PackageManagerPin } from "@effected/npm";
@@ -177,7 +183,9 @@ export class PackageManagerPin extends Schema.Class<PackageManagerPin>("PackageM
 	 * The first `+` after the version always begins the integrity component: a
 	 * pin's version never carries semver build metadata, and a malformed tail
 	 * after a `+` fails with `reason: "integrity"` rather than falling back to
-	 * build-metadata parsing. Prerelease versions are accepted; ranges
+	 * build-metadata parsing — `pnpm@10.20.0+deadbeef`, whose tail is valid
+	 * semver build metadata but not a corepack `<algo>.<hex>` hash, is
+	 * intentionally not pinnable. Prerelease versions are accepted; ranges
 	 * (`^9.0.0`), partial versions (`9`, `9.1`) and dist-tags (`latest`,
 	 * `berry`) fail with `reason: "version"`.
 	 *

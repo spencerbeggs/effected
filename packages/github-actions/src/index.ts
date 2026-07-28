@@ -79,6 +79,8 @@ export {
 export { ManagedDocument, ManagedDocumentError, type ManagedDocumentSource } from "./ManagedDocument.js";
 export { OidcClaims, OidcTokenError, OidcTokenIssuer, type OidcTokenIssuerShape } from "./OidcTokenIssuer.js";
 export {
+	AmbientPackageManager,
+	CachedPackageManager,
 	InstalledPackageManager,
 	type PackageManagerInstallOptions,
 	PackageManagerInstaller,
