@@ -182,6 +182,18 @@ Read the consequences off the row you are actually in:
   fix for [#6491](https://github.com/Effect-TS/effect/issues/6491) changed —
   through beta.99 a *constructor-defaulted* foreign field threw on a literal
   instead.
+- **The "accepted" in that literal column is runtime truth; the TYPE level
+  agrees only for member-less classes.** `make`'s input type for a foreign
+  field is the class's **instance type** — and wrapping the field in
+  `.pipe(Schema.check(...))` changes nothing on this axis (probed both ways
+  at beta.101). A member-less value class is structurally satisfied by the
+  literal, so it compiles; a class with any member the literal lacks (a
+  getter, a method — most real classes) rejects the literal at compile time
+  (TS2741 "property … missing in type", or TS2740) even though runtime would
+  still validate, run the field's checks, and promote it. Do not read that
+  error as "the check narrowed `make`" — the check is innocent — and do not
+  cast the literal through; construct the instance
+  (`Outer.make({ inner: Inner.make({...}) })`).
 - **Self-recursive field** (every AST node type: `JsoncNode.children`,
   `MarkdownNode`, `TomlNode`). A structurally valid literal is **rejected** —
   you must build real instances, which bites hand-built trees and fixtures,
