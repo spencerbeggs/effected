@@ -55,6 +55,12 @@ describe("PackageManagerPin.parse", () => {
 			assert.deepStrictEqual(bare.version.prerelease, ["rc", 1]);
 
 			const withIntegrity = yield* PackageManagerPin.parse("pnpm@10.0.0-beta.2+sha512.abc123");
+			// corepack's own transparent default pin for yarn Berry hashes with
+			// sha224 — the exact shape that once failed with reason "integrity".
+			const sha224 = yield* PackageManagerPin.parse(
+				"yarn@4.12.0+sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447",
+			);
+			assert.strictEqual(sha224.integrity, "sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447");
 			assert.strictEqual(withIntegrity.version.toString(), "10.0.0-beta.2");
 			assert.strictEqual(withIntegrity.integrity, "sha512.abc123");
 		}),

@@ -19,14 +19,22 @@ import { Effect, Option, Schema } from "effect";
 /**
  * A supported integrity hash algorithm.
  *
+ * @remarks
+ * `sha224` appears only in the corepack form — corepack's own transparent
+ * default pins emit it (e.g. `yarn@4.x+sha224.<hex>`) — and never in SRI,
+ * whose specification names only `sha256`/`sha384`/`sha512` (plus legacy
+ * `sha1`).
+ *
  * @public
  */
-export type IntegrityAlgorithm = "sha1" | "sha256" | "sha384" | "sha512";
+export type IntegrityAlgorithm = "sha1" | "sha224" | "sha256" | "sha384" | "sha512";
 
-// SRI: `<algo>-<base64>` (optional `=` padding).
+// SRI: `<algo>-<base64>` (optional `=` padding). No sha224 — the SRI spec
+// does not include it.
 const SRI_RE = /^(sha1|sha256|sha384|sha512)-[A-Za-z0-9+/]+={0,2}$/;
-// Corepack: `<algo>.<lowercase-hex>`.
-const COREPACK_RE = /^(sha1|sha256|sha384|sha512)\.[0-9a-f]+$/;
+// Corepack: `<algo>.<lowercase-hex>`. sha224 is real and corepack-emitted:
+// the transparent default pin for yarn Berry hashes with it.
+const COREPACK_RE = /^(sha1|sha224|sha256|sha384|sha512)\.[0-9a-f]+$/;
 // Yarn Berry: `<cachekey>/<lowercase-hex>`, e.g. `10c0/<hex>`. The cache key is
 // a version marker (`<digits>c<digits>`), not an algorithm token.
 const YARN_RE = /^[0-9]+(c[0-9]+)?\/[0-9a-f]+$/;

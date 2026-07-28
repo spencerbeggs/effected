@@ -35,6 +35,10 @@ describe("IntegrityHash statics", () => {
 		assert.isFalse(IntegrityHash.isCorepack("sha512-YWJj"));
 		assert.isTrue(IntegrityHash.isCorepack("sha512.abc"));
 		assert.isFalse(IntegrityHash.isSri("sha512.abc"));
+		// sha224 is corepack-only: corepack's transparent default yarn pin emits
+		// it, and the SRI spec does not include it.
+		assert.isTrue(IntegrityHash.isCorepack("sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447"));
+		assert.isFalse(IntegrityHash.isSri("sha224-YWJj"));
 		assert.isTrue(IntegrityHash.isYarnChecksum("10c0/deadbeef"));
 		assert.isTrue(IntegrityHash.isYarnChecksum("9c0/abc123"));
 		assert.isFalse(IntegrityHash.isYarnChecksum("sha512-YWJj"));
