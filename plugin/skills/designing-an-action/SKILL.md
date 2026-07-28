@@ -96,6 +96,15 @@ stay green is a wiring bug found while wiring is the only thing that exists.
    result type, a tagged error with a `reason` literal union (plus stored
    `message`, optional `cause`), a declared requirement channel `R`, and a
    stub that succeeds with a documented inert value. **Stubs never fail.**
+
+   **The R channel.** For a succeeding stub, a too-wide `R` costs nothing;
+   a too-narrow `R` is a breaking change to the composing program the
+   moment Phase B needs the missing service — so widen at contract time,
+   not fill time. Derive each step's `R` from the legacy oracle's actual
+   service usage, never from intuition — review-audit any `R` an
+   implementer judgment-called. And when two implementation strategies are
+   both still live options, declare the **union** of their requirements,
+   so Phase B can pick either without touching the contract.
 6. **Program, entries, layers** — the real `Action.run` bootstraps, the real
    layer composition, steps composed under `ActionLogger.group`, outputs
    emitted from the fold of stub results. Build all bundles; smoke-run.
@@ -120,6 +129,11 @@ What makes the multi-agent execution smooth rather than chaotic:
 - **Reviewers verify against primary sources, not reports** — re-run the
   reject matrix, re-read the source line by line. A reviewer that reads the
   implementer's summary reviews the summary.
+- **A convention decision made mid-build supersedes plan text**: record it
+  at the top of the plan with a mapping for stale paths, ledger it as a
+  ruling, and restate it in every later dispatch — task briefs are
+  extracted from the plan, so a fresh subagent cannot know a decision made
+  after its brief's text was written.
 - **Checkpoints**: per-task gates (own tests → full suite → typecheck → lint
   → validated conventional commit), and milestone end-to-end runs after the
   skeleton and after designated Phase B steps.
@@ -136,6 +150,8 @@ What makes the multi-agent execution smooth rather than chaotic:
   dossier was not persisted, or not handed to them.
 - A reviewer approving from the implementer's report without opening the
   primary source.
+- An `R` channel declared from intuition rather than the oracle's actual
+  service usage.
 
 ## Where the depth lives
 
