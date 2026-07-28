@@ -239,6 +239,9 @@ importers:
       '@effected/markdown':
         specifier: workspace:~
         version: link:../markdown/dist/dev/pkg
+      '@effected/npm':
+        specifier: workspace:~
+        version: link:../npm/dist/dev/pkg
       '@effected/sbom':
         specifier: workspace:~
         version: link:../sbom/dist/dev/pkg

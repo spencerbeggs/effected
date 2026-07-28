@@ -78,6 +78,13 @@ export {
 } from "./GitHubToken.js";
 export { ManagedDocument, ManagedDocumentError, type ManagedDocumentSource } from "./ManagedDocument.js";
 export { OidcClaims, OidcTokenError, OidcTokenIssuer, type OidcTokenIssuerShape } from "./OidcTokenIssuer.js";
+export {
+	InstalledPackageManager,
+	type PackageManagerInstallOptions,
+	PackageManagerInstaller,
+	PackageManagerInstallerError,
+	type PackageManagerInstallerShape,
+} from "./PackageManagerInstaller.js";
 export { Secret } from "./Secret.js";
 export {
 	type ExtractOptions,

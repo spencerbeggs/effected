@@ -36,6 +36,7 @@
 		"@effected/github": "workspace:~",
 		"@effected/glob": "workspace:~",
 		"@effected/markdown": "workspace:~",
+		"@effected/npm": "workspace:~",
 		"@effected/sbom": "workspace:~",
 		"@effected/templates": "workspace:~"
 	},

@@ -26,10 +26,15 @@ the API.
 
 ## What it takes from the kit
 
-Five `@effected/*` dependencies; three arrived 2026-07-26 and every arrow points
-**inward**.
+Six `@effected/*` dependencies; three arrived 2026-07-26, `npm` on 2026-07-28,
+and every arrow points **inward**.
 
 - `github` — the token bridge's vocabulary (above). `glob` — `CacheKey` matching.
+- `npm` — `PackageManagerPin`, consumed by `PackageManagerInstaller` (exact-
+  version npm/pnpm/yarn/bun provisioning over `ToolInstaller`) and **confined to
+  that one module by the reachability suite**, on Azure's terms: not reachable
+  from `ActionRuntime.layer` or any light module; taking it costs the consumer
+  one explicit layer line.
 - `templates` — the region engine under `ManagedDocument` / `CheckDocument`.
   **Not a second engine**: the region grammar, the line-ending invariant and the
   idempotence proof stay in `templates`, which has them under test.
