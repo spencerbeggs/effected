@@ -161,7 +161,7 @@ const pin = (spec: string): PackageManagerPin => {
 	return parsed.success;
 };
 
-const install = (spec: string, options?: { requireIntegrity?: boolean; registry?: string }) =>
+const install = (spec: string, options?: { requireIntegrity?: boolean; registry?: string; allowAmbient?: boolean }) =>
 	Effect.flatMap(PackageManagerInstaller, (installer) => installer.install(pin(spec), options));
 
 /** Narrow to the tool-cache variant or fail the test loudly. */
@@ -262,6 +262,64 @@ describe("PackageManagerInstaller", () => {
 				Effect.provide(
 					stubbed({
 						// find misses; download would DIE if the short-circuit failed to fire.
+						installer: { find: () => Effect.succeed(Option.none()) },
+						spawner: scriptedSpawner(() => Effect.succeed("9.9.9\n")),
+					}),
+				),
+			),
+		);
+
+		it.live("allowAmbient: false suppresses the probe even when it WOULD match, and installs to the tool cache", () =>
+			Effect.gen(function* () {
+				// The discriminating case for the option: the probe stands ready to
+				// answer EXACTLY the pinned version — but it must never be asked. A
+				// consumer that sets allowAmbient: false is replacing node in-run,
+				// so the runner's npm is about to be shadowed and its answer would
+				// diverge from the npm that actually executes.
+				const root = scratch();
+				const extracted = join(root, "extracted", "package");
+				mkdirSync(join(extracted, "bin"), { recursive: true });
+				writeFileSync(join(extracted, "package.json"), JSON.stringify({ bin: { npm: "bin/npm-cli.js" } }));
+				writeFileSync(join(extracted, "bin", "npm-cli.js"), "console.log('npm')");
+				const destination = ToolInstaller.cachePath({ root, tool: "npm", version: "9.9.9", arch: process.arch });
+
+				const probes: Array<string> = [];
+				const installed = cachedOf(
+					yield* install("npm@9.9.9", { allowAmbient: false }).pipe(
+						Effect.provide(
+							stubbed({
+								env: { RUNNER_TOOL_CACHE: root },
+								spawner: scriptedSpawner(() =>
+									Effect.suspend(() => {
+										probes.push("npm --version");
+										return Effect.succeed("9.9.9\n"); // WOULD match — must never be consulted
+									}),
+								),
+								installer: {
+									find: () => Effect.succeed(Option.none()),
+									download: () => Effect.succeed(join(root, "unused-archive")),
+									extractTar: () => Effect.succeed(join(root, "extracted")),
+									cacheDir: () => Effect.succeed(destination),
+								},
+							}),
+						),
+						Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+					),
+				);
+				assert.lengthOf(probes, 0, "the ambient probe must not have been spawned at all");
+				assert.strictEqual(installed.source, "tool-cache");
+				assert.strictEqual(installed.binDir, join(destination, ".bin"));
+			}),
+		);
+
+		it.effect("allowAmbient: true is the default behavior, spelled out", () =>
+			Effect.gen(function* () {
+				const installed = yield* install("npm@9.9.9", { allowAmbient: true });
+				assert.instanceOf(installed, AmbientPackageManager);
+				assert.strictEqual(installed.source, "ambient");
+			}).pipe(
+				Effect.provide(
+					stubbed({
 						installer: { find: () => Effect.succeed(Option.none()) },
 						spawner: scriptedSpawner(() => Effect.succeed("9.9.9\n")),
 					}),

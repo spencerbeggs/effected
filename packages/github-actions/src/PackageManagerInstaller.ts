@@ -90,6 +90,22 @@ export interface PackageManagerInstallOptions {
 	 * always comes from GitHub releases.
 	 */
 	readonly registry?: string | undefined;
+	/**
+	 * Whether an npm pin may be answered by the runner's own ambient npm.
+	 * Defaults to `true`.
+	 *
+	 * @remarks
+	 * Set `false` when the run REPLACES node: a consumer that installs a pinned
+	 * node in the same run puts that node's bundled npm ahead of the runner's on
+	 * every path that matters afterward (the install child's `PATH`, and every
+	 * later workflow step via `GITHUB_PATH`). The ambient probe interrogates the
+	 * RUNNER's npm, so its exact-version match can diverge from the npm that
+	 * actually executes once the pinned node shadows it. Suppressing the probe
+	 * skips it entirely — no `npm --version` is ever spawned — and the install
+	 * goes straight to the tool-cache/dist path, answering
+	 * `source: "tool-cache"` with its own `binDir` as usual.
+	 */
+	readonly allowAmbient?: boolean | undefined;
 }
 
 /**
@@ -620,8 +636,11 @@ const make = Effect.gen(function* () {
 
 		// Every Node toolchain ships npm; when the ambient one is already the
 		// pinned version there is nothing to download. A failed probe falls
-		// through to the dist path rather than failing.
-		if (pin.name === "npm") {
+		// through to the dist path rather than failing. `allowAmbient: false`
+		// suppresses the probe entirely — the run is replacing node, so the
+		// runner's npm is about to be shadowed and its answer is not the npm
+		// that will execute (see PackageManagerInstallOptions.allowAmbient).
+		if (pin.name === "npm" && options?.allowAmbient !== false) {
 			const probed = yield* ambientNpmVersion;
 			if (Option.isSome(probed) && probed.value === version) {
 				return AmbientPackageManager.make({
