@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
+import { KeywordFamilies } from "./KeywordFamilies.js";
 import type { StoreDocument } from "./StoreDocument.js";
 
 /**
@@ -72,21 +73,6 @@ const DRAFT_07_KEYWORDS = new Set([
 	"writeOnly",
 ]);
 
-// The vscode-json-languageservice extension set (exact names).
-const VSCODE_KEYWORDS = new Set([
-	"allowTrailingCommas",
-	"defaultSnippets",
-	"enumDescriptions",
-	"markdownDescription",
-	"markdownEnumDescriptions",
-]);
-
-// The declared non-standard keyword families language servers consume:
-// taplo (`x-taplo`, `x-taplo-info`, ...), tombi (`x-tombi-*`) and IntelliJ
-// (`x-intellij-*`) prefixes, plus the vscode set above.
-const isDeclaredNonStandard = (key: string): boolean =>
-	VSCODE_KEYWORDS.has(key) || key.startsWith("x-taplo") || key.startsWith("x-tombi-") || key.startsWith("x-intellij-");
-
 const URL_LINE = /^https?:\/\/\S+$/;
 
 const escapePointerSegment = (segment: string): string => segment.replace(/~/g, "~0").replace(/\//g, "~1");
@@ -144,7 +130,7 @@ const lintSchema = (node: unknown, path: string, depth: number, context: LintCon
 	}
 	for (const [key, value] of Object.entries(node)) {
 		const keyPath = `${path}/${escapePointerSegment(key)}`;
-		if (!DRAFT_07_KEYWORDS.has(key) && !isDeclaredNonStandard(key)) {
+		if (!DRAFT_07_KEYWORDS.has(key) && !KeywordFamilies.isDeclared(key)) {
 			context.findings.push(
 				DocumentLintFinding.make({
 					check: "UnknownKeyword",
@@ -228,8 +214,8 @@ const lintSchema = (node: unknown, path: string, depth: number, context: LintCon
  *   (`#` self-refs allowed; anything else, including a surviving
  *   `#/definitions/...` pointer, is a warning).
  * - `UnknownKeyword` — no keyword outside Draft-07 plus the declared
- *   non-standard families (`x-taplo*`, `x-tombi-*`, `x-intellij-*` and the
- *   vscode set), which ajv strict mode would reject.
+ *   non-standard families ({@link KeywordFamilies}: `x-taplo*`, `x-tombi-*`,
+ *   `x-intellij-*` and the vscode set), which ajv strict mode would reject.
  * - `DescriptionWithoutUrl` — advisory: SchemaStore's description
  *   convention ends the root description with a docs URL line.
  *

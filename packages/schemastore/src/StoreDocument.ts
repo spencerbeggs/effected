@@ -1,7 +1,9 @@
 import { Effect, JsonSchema, Result, Schema } from "effect";
+import { AnnotationCarriers } from "./AnnotationCarriers.js";
 import type { CanonicalJsonError, CanonicalJsonOptions } from "./CanonicalJson.js";
 import { CanonicalJson } from "./CanonicalJson.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
+import { KeywordFamilies } from "./KeywordFamilies.js";
 
 /**
  * The Draft-07 meta-schema URL SchemaStore documents declare as `$schema`.
@@ -48,12 +50,15 @@ export interface StoreDocumentOptions {
 	 * (`additionalProperties`, `generateDescriptions`,
 	 * `includeAnnotationKey`).
 	 *
-	 * Know the boundary: keys admitted by `includeAnnotationKey` reach the
-	 * Draft 2020-12 document but are **dropped by the Draft-07 lowering**
-	 * (its keyword walk copies a fixed subset) — verified against the
-	 * installed beta. Carrying non-standard keyword families into the
-	 * emitted document is the phase-2 annotation-carrier work, which must
-	 * re-graft them after the lowering rather than ride this option alone.
+	 * The declared non-standard keyword families ({@link KeywordFamilies})
+	 * are **always admitted** and carried into the built document — annotate
+	 * a schema node (`Schema.String.annotate({ "x-taplo": ... })`) and the
+	 * key survives the Draft-07 lowering via the post-lowering re-graft
+	 * ({@link AnnotationCarriers}). A supplied `includeAnnotationKey` is
+	 * consulted *in addition* for other keys; know the boundary: keys it
+	 * admits outside the declared families reach the Draft 2020-12 document
+	 * but are **dropped by the Draft-07 lowering** (its keyword walk copies
+	 * a fixed subset) — verified against the installed beta.
 	 */
 	readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 }
@@ -68,6 +73,17 @@ const DEFINITIONS_REF_PREFIX = /^#\/definitions(?=\/|$)/;
 class RewriteDepthExceeded {
 	readonly _tag = "RewriteDepthExceeded";
 }
+
+// Applies the carrier re-graft to one lowered node, folding a (practically
+// unreachable for bounded core output) depth failure into the enclosing
+// try/catch as the SchemaConversionError cause.
+const carry = (source: unknown, target: unknown): Record<string, unknown> => {
+	const result = AnnotationCarriers.carryResult(source, target);
+	if (Result.isFailure(result)) {
+		throw result.failure;
+	}
+	return result.success as Record<string, unknown>;
+};
 
 // Recursively rewrites `#/definitions/...` `$ref` string values back to
 // `#/$defs/...`. Only `$ref` values are touched: keys, non-string `$ref`s
@@ -99,9 +115,11 @@ const restoreDefsRefs = (node: unknown, depth: number): unknown => {
  *
  * {@link StoreDocument.fromSchema} owns the whole pipeline: core's
  * `Schema.toJsonSchemaDocument` (Draft 2020-12), core's
- * `JsonSchema.toDocumentDraft07` lowering, and the `#/definitions` →
+ * `JsonSchema.toDocumentDraft07` lowering, the `#/definitions` →
  * `#/$defs` `$ref` rewrite the lowering makes necessary — so every `$ref`
- * in a built document already resolves against the `$defs` pool. The
+ * in a built document already resolves against the `$defs` pool — and the
+ * {@link AnnotationCarriers} re-graft, so annotated non-standard keyword
+ * families ({@link KeywordFamilies}) survive into the built document. The
  * package owns assembly and publication shape, not a JSON Schema engine.
  *
  * @public
@@ -126,11 +144,20 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 		options: StoreDocumentOptions,
 	): Result.Result<StoreDocument, SchemaConversionError> {
 		try {
-			const lowered = JsonSchema.toDocumentDraft07(Schema.toJsonSchemaDocument(source, options.jsonSchema));
-			const root = restoreDefsRefs(lowered.schema, 0) as Record<string, unknown>;
+			const userIncludes = options.jsonSchema?.includeAnnotationKey;
+			const document = Schema.toJsonSchemaDocument(source, {
+				...options.jsonSchema,
+				// The declared families are always admitted so annotations can
+				// be carried; the user's predicate is consulted in addition.
+				includeAnnotationKey: (key) => KeywordFamilies.isDeclared(key) || userIncludes?.(key) === true,
+			});
+			const lowered = JsonSchema.toDocumentDraft07(document);
+			// Carriers re-graft AFTER the `$ref` rewrite, so carrier payloads
+			// pass through verbatim rather than being walked by the rewrite.
+			const root = carry(document.schema, restoreDefsRefs(lowered.schema, 0));
 			const defs: Record<string, unknown> = {};
 			for (const [name, definition] of Object.entries(lowered.definitions)) {
-				defs[name] = restoreDefsRefs(definition, 1);
+				defs[name] = carry(document.definitions[name], restoreDefsRefs(definition, 1));
 			}
 			return Result.succeed(StoreDocument.make({ $schema: DRAFT_07_META_SCHEMA, $id: options.$id, root, defs }));
 		} catch (cause) {
