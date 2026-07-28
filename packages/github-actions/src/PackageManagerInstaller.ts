@@ -153,6 +153,16 @@ export class CachedPackageManager extends Schema.Class<CachedPackageManager>("Ca
  * `addPath`-able `binDir`. The union is a `Schema`, so the record round-trips
  * through `ActionState` for a later phase to read back.
  *
+ * @remarks
+ * **Construct the variant classes, never the union.** The union's inherited
+ * `make` typechecks against *both* variants at once, so a wrong field yields
+ * a confusing two-branch error instead of "this variant wants X" — reach for
+ * {@link AmbientPackageManager}`.make` / {@link CachedPackageManager}`.make`,
+ * whose `Schema.tag` fills `source` for you. The same tag is why an
+ * overrides-style test helper should be typed
+ * `Partial<Omit<typeof CachedPackageManager.Type, "source">>` — a plain
+ * `Partial` offers `source`, which `make` auto-fills and rejects as input.
+ *
  * @public
  */
 export const InstalledPackageManager = Schema.Union([AmbientPackageManager, CachedPackageManager]);
