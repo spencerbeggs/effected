@@ -174,10 +174,9 @@ export class DependencyGraph extends Schema.Class<DependencyGraph>("DependencyGr
 			const { reverse } = this.#index();
 			const affected = new Set<string>();
 			const queue = [...names];
-			while (queue.length > 0) {
-				const current = queue.shift();
-				/* v8 ignore next */
-				if (current === undefined) break;
+			for (let head = 0; head < queue.length; head += 1) {
+				const current = queue[head];
+				if (current === undefined) continue;
 				if (affected.has(current)) continue;
 				affected.add(current);
 				for (const dependent of reverse.get(current) ?? []) {
@@ -232,10 +231,9 @@ export class DependencyGraph extends Schema.Class<DependencyGraph>("DependencyGr
 
 				const needed = new Set<string>();
 				const queue = [...names];
-				while (queue.length > 0) {
-					const current = queue.shift();
-					/* v8 ignore next */
-					if (current === undefined) break;
+				for (let head = 0; head < queue.length; head += 1) {
+					const current = queue[head];
+					if (current === undefined) continue;
 					if (needed.has(current)) continue;
 					needed.add(current);
 					for (const dependency of forward.get(current) ?? []) {
