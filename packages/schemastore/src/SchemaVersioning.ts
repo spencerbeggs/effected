@@ -73,7 +73,16 @@ const assertSimpleName = (name: string): void => {
 	}
 };
 
-const joinUrl = (baseUrl: string, file: string): string => `${baseUrl.replace(/\/+$/, "")}/${file}`;
+// A manual trailing-slash trim rather than `/\/+$/`: the regex form
+// backtracks polynomially on adversarial all-slash inputs (CodeQL
+// js/polynomial-redos), and baseUrl is library input.
+const joinUrl = (baseUrl: string, file: string): string => {
+	let end = baseUrl.length;
+	while (end > 0 && baseUrl.charCodeAt(end - 1) === 47) {
+		end -= 1;
+	}
+	return `${baseUrl.slice(0, end)}/${file}`;
+};
 
 /**
  * The `url`/`versions` half of a catalog entry, as assembled by
