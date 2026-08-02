@@ -43,7 +43,12 @@ Cheap, wide, evidence-only. No design decisions yet.
    `BlobStore` backend; a toolchain step needs `ToolInstaller`. A missing
    enabler changes the whole plan, so it must be found before the plan
    exists — not during implementation.
-3. **Present the human 2–4 real decisions with recommended defaults**: where
+3. **Read the repository contracts before deciding anything.** Every package
+   you will touch or consume has a `CLAUDE.md`, and the host repo may carry
+   design docs — read them BEFORE the decision list exists, not after an
+   architecture is chosen. A recon that picks a shape first and meets the
+   package's constraints later re-litigates its own decisions.
+4. **Present the human 2–4 real decisions with recommended defaults**: where
    the legacy code goes, the dependency link posture, how strict the parity
    contract is. Get them answered before writing a line of design. Everything
    else is not a decision — do not pad the list.
@@ -56,9 +61,14 @@ Cheap, wide, evidence-only. No design decisions yet.
   new action, freeze the inventory you just designed; the point is that
   Phase A and every review after it compare against a fixed artifact.
 - **Every uncertainty becomes a numbered known unknown with a verification
-  obligation.** No upstream ask, no design commitment, until the unknown is
-  checked against installed `.d.ts` with `file:line` cites. Expect most to
-  dissolve on verification — the ones that survive are the real asks.
+  obligation — against the evidence source the claim actually has.** A
+  package-API claim is settled by the installed `.d.ts` with `file:line`
+  cites; a claim about action metadata belongs to the frozen `action.yml`;
+  runner behavior belongs to upstream source/documentation or a probe; a
+  legacy-behavior claim belongs to the stashed oracle. No upstream ask, no
+  design commitment, until the unknown is checked against its source.
+  Expect most to dissolve on verification — the ones that survive are the
+  real asks.
 
 ## Phase 0.5: The API dossier
 
@@ -71,6 +81,11 @@ consumer call sites, producing a signature-level dossier with a per-claim
 context; the dossier is what stops N downstream agents from re-deriving — or
 hallucinating — the same API surface N times. It is also the artifact that
 survives context loss between sessions.
+
+**No subagent dispatch available? The dossier is still mandatory** — the
+coordinator performs the same research inline, same verdict format, same
+persisted file. Dispatch is the delivery mechanism; the artifact is the
+requirement.
 
 ## Phase A: Contracts-first walking skeleton
 
@@ -87,7 +102,10 @@ stay green is a wiring bug found while wiring is the only thing that exists.
    absence rule and the `Config.withDefault` trap.)
 3. **Outputs module** — the output names as a `const` tuple, a typed model,
    defaults, and **one** emitter — with a test proving it writes every name
-   exactly once, by sorted-key comparison against the frozen inventory.
+   **exactly once**: a recording emitter (or spy) counting one write per
+   name, THEN the emitted names compared against the frozen inventory. A
+   map-shaped assertion alone collapses duplicate writes and proves only
+   presence.
 4. **Cross-phase state** — `Schema.Class` state records keyed by a
    `STATE_KEYS` const; any pid field uses the kit's validating `ProcessId`
    brand so a truncated state file fails typed
@@ -97,17 +115,23 @@ stay green is a wiring bug found while wiring is the only thing that exists.
    `message`, optional `cause`), a declared requirement channel `R`, and a
    stub that succeeds with a documented inert value. **Stubs never fail.**
 
-   **The R channel.** For a succeeding stub, a too-wide `R` costs nothing;
-   a too-narrow `R` is a breaking change to the composing program the
-   moment Phase B needs the missing service — so widen at contract time,
-   not fill time. Derive each step's `R` from the legacy oracle's actual
-   service usage, never from intuition — review-audit any `R` an
-   implementer judgment-called. And when two implementation strategies are
-   both still live options, declare the **union** of their requirements,
-   so Phase B can pick either without touching the contract.
+   **The R channel.** The asymmetry: a too-narrow `R` is a breaking change
+   to the composing program the moment Phase B needs the missing service,
+   while a too-wide `R` costs only what it honestly costs — every composer
+   and every test must keep providing the extra services. Widening is the
+   cheaper error, so widen at contract time, not fill time — but it is a
+   real obligation, not free. Derive each step's `R` from the legacy
+   oracle's actual service usage, never from intuition — review-audit any
+   `R` an implementer judgment-called. And when two implementation
+   strategies are both still live options, declare the **union** of their
+   requirements, so Phase B can pick either without touching the contract.
 6. **Program, entries, layers** — the real `Action.run` bootstraps, the real
    layer composition, steps composed under `ActionLogger.group`, outputs
-   emitted from the fold of stub results. Build all bundles; smoke-run.
+   emitted from the fold of stub results. Build every bundle through the
+   repo's sanctioned build entry (in the kit's world:
+   `pnpm build --filter <pkg>` — **never** `node savvy.build.ts --target
+   prod`, which skips `build:dev` and leaves a truncated gate shaped like a
+   clean one); smoke-run.
 7. **Only then, Phase B** — fill each step's business logic in TDD
    red/green/refactor against the frozen contract, one step per plan, using
    the legacy implementation as a behavioral oracle: stashed verbatim,
@@ -135,7 +159,10 @@ What makes the multi-agent execution smooth rather than chaotic:
   extracted from the plan, so a fresh subagent cannot know a decision made
   after its brief's text was written.
 - **Checkpoints**: per-task gates (own tests → full suite → typecheck → lint
-  → validated conventional commit), and milestone end-to-end runs after the
+  → validated conventional commit carrying the host repo's full commit
+  contract — in the kit's world that is a conventional type, a DCO
+  Signed-off-by trailer, and a plain-prose body with no markdown), and
+  milestone end-to-end runs after the
   skeleton and after designated Phase B steps.
 
 ## Red flags
