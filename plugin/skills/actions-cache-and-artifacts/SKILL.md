@@ -32,6 +32,20 @@ Actions results backend** (`ACTIONS_RESULTS_URL` / `ACTIONS_RUNTIME_TOKEN`) —
 see Trap 1. `BlobStore.layerS3` and `ToolInstaller` need neither variable and
 work identically from a `run:` shell step.
 
+**`ActionCache`'s `paths` are GLOB PATTERNS on save, hashed LITERALLY on
+both sides.** `save` resolves them with actions/cache parity before tar
+(`**/node_modules` matches directories, archived recursively; non-matching
+patterns — absent literals included — are dropped silently; a fully-empty
+resolution fails typed with zero backend calls; `~` and `!` work; relative
+patterns root at `GITHUB_WORKSPACE`). `restore`'s tar is pure extract and
+consumes no paths — its `paths` argument exists only to derive the cache
+**version**, which hashes the LITERAL pattern list on both save and restore
+(toolkit parity: `getCacheVersion` never sees resolved paths), so the same
+literal list must be passed to both or the entry is invisible. Until
+2026-08-02 save handed patterns to tar verbatim and every glob-carrying
+list failed on a real runner as `tar: **/…: Cannot stat` — treat that
+message as the resolution-was-skipped signature.
+
 `ActionRuntime.layer` provides none of the six services above by default —
 see `actions-runtime` for why, and for the one-line cost of taking one
 (`Action.run(program, { layer: ActionCache.layer })`).
