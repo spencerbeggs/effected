@@ -13,7 +13,7 @@
 
 import { SemVer } from "@effected/semver";
 import { Effect, Exit, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
-import { IntegrityHash } from "./IntegrityHash.js";
+import { CorepackIntegrityHash } from "./IntegrityHash.js";
 
 /**
  * Indicates that a string could not be parsed as a corepack package-manager
@@ -64,6 +64,24 @@ export class InvalidPackageManagerPinError extends Schema.TaggedErrorClass<Inval
  * posture `@effected/github-actions`' `CheckState` takes toward
  * `@effected/github`'s conclusion literals.
  *
+ * **This four-literal set is narrower than the `packageManager` manifest field,
+ * and the difference is deliberate.** `@effected/package-json`'s
+ * `PackageManager` parses the identical `<name>@<version>[+<integrity>]`
+ * grammar with the same strict version and the same shared corepack integrity,
+ * but accepts any `[a-z]+` name, because a field model reads manifests it did
+ * not write. This schema is the kit's *provisioning* vocabulary: a pin names
+ * something the kit is prepared to install and run, so the set is closed by
+ * what the kit supports rather than by what a manifest may contain. The two
+ * name grammars are the one place the schemas diverge; see the field model's
+ * remarks for the evidence behind the latitude.
+ *
+ * Worth knowing while reading corepack's own source: corepack (0.34.0,
+ * `specUtils.ts`) supports **three** managers, `npm | pnpm | yarn`, and
+ * `parseSpec` throws `Unsupported package manager specification` for anything
+ * else. `bun` is in this set anyway — the kit provisions bun directly, not
+ * through corepack — which is exactly why the set is stated in kit terms and
+ * not copied from corepack.
+ *
  * @public
  */
 export const PackageManagerPinName = Schema.Literals(["npm", "pnpm", "yarn", "bun"]);
@@ -87,19 +105,6 @@ const pinVersion = SemVer.pipe(
 	Schema.check(
 		Schema.makeFilter((version: SemVer) =>
 			version.build.length === 0 ? undefined : "Expected a version without build metadata",
-		),
-	),
-);
-
-// A pin only ever carries corepack's `<algo>.<hex>` integrity form (the
-// `name@version+sha512.<hex>` tail). Restrict the `IntegrityHash` brand —
-// which also admits the SRI and yarn forms — to just the corepack shape, the
-// same restriction `@effected/package-json` applies to its `packageManager`
-// field.
-const corepackIntegrity = IntegrityHash.pipe(
-	Schema.check(
-		Schema.makeFilter((value) =>
-			IntegrityHash.isCorepack(value) ? undefined : "Expected a corepack (<algo>.<hex>) integrity hash",
 		),
 	),
 );
@@ -149,11 +154,12 @@ export class PackageManagerPin extends Schema.Class<PackageManagerPin>("PackageM
 	 */
 	version: pinVersion,
 	/**
-	 * The optional integrity hash (e.g. `sha512.abc…`): an `IntegrityHash`
-	 * restricted to the corepack `<algo>.<hex>` form. Absent when the pin
-	 * carries no `+<integrity>` tail — never present-but-`undefined`.
+	 * The optional integrity hash (e.g. `sha512.abc…`):
+	 * {@link (CorepackIntegrityHash:variable)}, the shared restriction of the
+	 * `IntegrityHash` brand to the corepack `<algo>.<hex>` form. Absent when the
+	 * pin carries no `+<integrity>` tail — never present-but-`undefined`.
 	 */
-	integrity: Schema.optionalKey(corepackIntegrity),
+	integrity: Schema.optionalKey(CorepackIntegrityHash),
 }) {
 	/**
 	 * Schema transformation between the `<name>@<version>[+<integrity>]` string
@@ -220,7 +226,7 @@ export class PackageManagerPin extends Schema.Class<PackageManagerPin>("PackageM
 		if (plus === -1) {
 			return Result.succeed(PackageManagerPin.make({ name, version: version.success }));
 		}
-		const integrity = Schema.decodeUnknownExit(corepackIntegrity)(rest.slice(plus + 1));
+		const integrity = Schema.decodeUnknownExit(CorepackIntegrityHash)(rest.slice(plus + 1));
 		if (Exit.isFailure(integrity)) {
 			return Result.fail(new InvalidPackageManagerPinError({ input, reason: "integrity" }));
 		}

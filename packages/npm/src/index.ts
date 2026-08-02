@@ -38,6 +38,7 @@ export {
 	isValidDependencySpecifier,
 } from "./DependencySpecifier.js";
 export {
+	CorepackIntegrityHash,
 	type IntegrityAlgorithm,
 	IntegrityHash,
 	type IntegrityHashBrand,

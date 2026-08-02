@@ -1,80 +1,162 @@
 // The `packageManager` field model: a `PackageManager` class parsing
 // `"pnpm@10.33.0+sha512.abc"` into `name` / `version` / `integrity` (a genuine
 // `Option` — absence is computed on by `PackageManager.hasIntegrity`), with a
-// `PackageManager.FromString` string codec. The integrity half types against
-// `@effected/npm`'s `IntegrityHash` brand (the corepack `<algo>.<hex>` form).
+// `PackageManager.FromString` string codec.
+//
+// The field carries the corepack pin triple, and this module shares BOTH of the
+// strict pieces with `@effected/npm`'s `PackageManagerPin` rather than
+// re-deriving them: the integrity half is npm's `CorepackIntegrityHash`, and
+// the version half validates through `@effected/semver`'s `SemVer.parseResult`
+// — the same strict parse corepack itself performs with `semver.valid`.
+//
+// The one load-bearing grammar rule, identical to the pin's: the FIRST `+`
+// after the version begins the integrity component. The version position never
+// carries semver build metadata, so `pnpm@10.33.0+sha512.abc` is version
+// `10.33.0` plus integrity `sha512.abc`, and a malformed tail after `+` fails
+// typed rather than falling back to build-metadata parsing.
+//
+// What this module does NOT share with the pin is the name grammar; the
+// `PackageManager` class remarks carry that decision and its evidence.
 
-import { IntegrityHash } from "@effected/npm";
-import { Effect, Exit, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { CorepackIntegrityHash } from "@effected/npm";
+import { SemVer } from "@effected/semver";
+import { Effect, Exit, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
-const PACKAGE_MANAGER_RE = /^([a-z]+)@(\d+\.\d+\.\d+(?:-[a-zA-Z0-9._-]+)?)(?:\+(.+))?$/;
+// The name half of the grammar, deliberately looser than
+// `PackageManagerPin`'s four literals — see the class remarks for why.
+const PACKAGE_MANAGER_NAME_RE = /^[a-z]+$/;
 
-/**
- * The `packageManager` field only ever carries corepack's `<algo>.<hex>`
- * integrity form (the `name@version+sha512.<hex>` tail). Restrict the
- * `@effected/npm` `IntegrityHash` brand — which also admits the SRI and yarn
- * forms — to just the corepack shape, so an SRI or yarn integrity here fails
- * typed rather than being accepted into a field that can never legitimately
- * hold it.
- */
-const CorepackIntegrity = IntegrityHash.pipe(
+// The version half. Strict SemVer 2.0.0, and no build metadata: the grammar
+// cannot express it (the first `+` begins the integrity), so a value carrying
+// build identifiers would encode to a string that re-parses differently. The
+// check also closes the construction hole a plain `Schema.String` leaves —
+// `PackageManager.make({ version: "01.2.3" })` is bad wiring, and fails at
+// construction rather than producing a manifest value corepack rejects.
+const isPinnableVersion = (value: string): boolean => {
+	const parsed = SemVer.parseResult(value);
+	return Result.isSuccess(parsed) && parsed.success.build.length === 0;
+};
+
+const pinnableVersion = Schema.String.pipe(
 	Schema.check(
 		Schema.makeFilter((value) =>
-			IntegrityHash.isCorepack(value) ? undefined : "Expected a corepack (<algo>.<hex>) integrity hash",
+			isPinnableVersion(value)
+				? undefined
+				: "Expected an exact SemVer version with no build metadata (ranges, partial versions and dist-tags are not pinnable)",
 		),
 	),
 );
+
+const invalid = (input: string, message: string) =>
+	Effect.fail(new SchemaIssue.InvalidValue(Option.some(input), { message }));
 
 /**
  * A structured `packageManager` value with `name`, `version` and an optional
  * `integrity` hash.
  *
+ * @remarks
+ * The same `<name>@<version>[+<integrity>]` triple `@effected/npm`'s
+ * `PackageManagerPin` models, in its `package.json` field form. Both share the
+ * strict pieces — the version is validated with `@effected/semver`'s
+ * `SemVer.parseResult`, the integrity is npm's `CorepackIntegrityHash` — and
+ * both apply the first-`+`-is-integrity rule. Reach for the pin when
+ * provisioning a package manager; reach for this class when reading or writing
+ * the manifest field.
+ *
+ * **The one deliberate divergence is the name grammar**, and it points this
+ * way: the pin closes the set to the four managers the kit can provision
+ * (`npm | pnpm | yarn | bun`), while this field model accepts any lowercase
+ * name. The evidence:
+ *
+ * - Corepack 0.34.0 (`specUtils.ts`, `parseSpec`) recognises **three** names —
+ *   `npm`, `pnpm`, `yarn` — and throws an "unsupported package manager
+ *   specification" usage error for any other. Adopting that set here would reject
+ *   `bun@1.2.20`, which is real: six published packages in this repo's own
+ *   `node_modules` carry exactly that value, and a manifest model that cannot
+ *   read them is useless for the job it has.
+ * - Corepack does not treat the set as closed either. `parseSpec` skips the
+ *   name check entirely when the spec is a URL, so a custom name is reachable
+ *   in corepack's own grammar (behind `COREPACK_ENABLE_UNSAFE_CUSTOM_URLS`).
+ * - npm documents no constraint on this field at all. Its `package.json`
+ *   reference constrains only `devEngines.packageManager.name` — a different
+ *   field, modeled here by `DevEngine` and out of scope for this class.
+ *
+ * So: field model = manifests as they exist in the wild; pin = the kit's
+ * provisioning vocabulary. A name outside the pin's four is representable here
+ * and simply will not be installable through the pin — which is the honest
+ * relationship between a document model and a provisioning contract.
+ *
  * @public
  */
 export class PackageManager extends Schema.Class<PackageManager>("PackageManager")({
-	/** The package-manager name (e.g. `pnpm`). */
+	/** The package-manager name (e.g. `pnpm`). Any lowercase name — see the class remarks. */
 	name: Schema.String,
-	/** The version (e.g. `10.33.0`). */
-	version: Schema.String,
-	/** The optional integrity hash (e.g. `sha512.abc`), an `@effected/npm` `IntegrityHash` restricted to the corepack `<algo>.<hex>` form. */
-	integrity: Schema.Option(CorepackIntegrity),
+	/**
+	 * The version (e.g. `10.33.0`): an exact SemVer 2.0.0 version with no build
+	 * metadata. Prerelease versions are allowed (`10.0.0-rc.1`); ranges, partial
+	 * versions, dist-tags and leading-zero components are not, and a version
+	 * carrying build metadata is rejected at construction because the grammar
+	 * cannot express it.
+	 */
+	version: pinnableVersion,
+	/**
+	 * The optional integrity hash (e.g. `sha512.abc`): `@effected/npm`'s
+	 * `CorepackIntegrityHash`, the shared restriction of the `IntegrityHash`
+	 * brand to the corepack `<algo>.<hex>` form.
+	 */
+	integrity: Schema.Option(CorepackIntegrityHash),
 }) {
 	/**
 	 * Schema transformation between the `"name@version+integrity"` string and a
 	 * {@link PackageManager}.
+	 *
+	 * @remarks
+	 * Decoding splits on the first `@`, then on the first `+` — which always
+	 * begins the integrity, never semver build metadata — and validates each
+	 * component: the name against the lowercase grammar, the version through
+	 * `@effected/semver`'s strict parse, the integrity through
+	 * `CorepackIntegrityHash`. Every failure is a typed decode failure naming
+	 * the component that failed. Encoding prints the canonical string, which is
+	 * byte-identical to any input this codec accepts.
 	 */
 	static readonly FromString: Schema.Codec<PackageManager, string> = Schema.String.pipe(
 		Schema.decodeTo(
 			Schema.instanceOf(PackageManager),
 			SchemaTransformation.transformOrFail({
 				decode: (input: string) => {
-					const match = input.match(PACKAGE_MANAGER_RE);
-					if (match === null) {
-						return Effect.fail(
-							new SchemaIssue.InvalidValue(Option.some(input), {
-								message: `Invalid packageManager format: "${input}"`,
-							}),
-						);
+					const at = input.indexOf("@");
+					if (at === -1) {
+						return invalid(input, `Invalid packageManager format: "${input}"`);
 					}
-					const rawIntegrity = match[3];
-					if (rawIntegrity === undefined) {
-						return Effect.succeed(PackageManager.make({ name: match[1], version: match[2], integrity: Option.none() }));
+					const name = input.slice(0, at);
+					if (!PACKAGE_MANAGER_NAME_RE.test(name)) {
+						return invalid(input, `Invalid packageManager name: "${name}"`);
 					}
-					// Validate the integrity through the corepack-restricted brand so a
+					const rest = input.slice(at + 1);
+					// The first `+` begins the integrity component, unconditionally —
+					// the version position of this field never carries build metadata.
+					const plus = rest.indexOf("+");
+					const version = plus === -1 ? rest : rest.slice(0, plus);
+					// Strict semver, matching corepack's own `semver.valid` check: a
+					// leading-zero component (`01.2.3`), a leading-zero numeric
+					// prerelease (`1.2.3-01`) or an empty prerelease identifier
+					// (`1.2.3-a..b`) is malformed, not merely unusual.
+					if (!isPinnableVersion(version)) {
+						return invalid(input, `Invalid packageManager version: "${version}"`);
+					}
+					if (plus === -1) {
+						return Effect.succeed(PackageManager.make({ name, version, integrity: Option.none() }));
+					}
+					// Validate the integrity through the corepack-restricted schema so a
 					// malformed hash — or a valid SRI/yarn form the `packageManager`
 					// field never legitimately carries — is a typed failure, not the
 					// defect `make` would throw on a value the field schema rejects.
-					const decoded = Schema.decodeUnknownExit(CorepackIntegrity)(rawIntegrity);
+					const rawIntegrity = rest.slice(plus + 1);
+					const decoded = Schema.decodeUnknownExit(CorepackIntegrityHash)(rawIntegrity);
 					if (Exit.isFailure(decoded)) {
-						return Effect.fail(
-							new SchemaIssue.InvalidValue(Option.some(input), {
-								message: `Invalid packageManager integrity: "${rawIntegrity}"`,
-							}),
-						);
+						return invalid(input, `Invalid packageManager integrity: "${rawIntegrity}"`);
 					}
-					return Effect.succeed(
-						PackageManager.make({ name: match[1], version: match[2], integrity: Option.some(decoded.value) }),
-					);
+					return Effect.succeed(PackageManager.make({ name, version, integrity: Option.some(decoded.value) }));
 				},
 				encode: (pm: PackageManager) =>
 					Effect.succeed(

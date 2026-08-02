@@ -12,6 +12,12 @@
 // A branded string plus its taxonomy statics (`algorithmOf`, `isSri`,
 // `isCorepack`, `isYarnChecksum`) and a typed `decode`, mirroring
 // `DependencySpecifier`'s shape.
+//
+// `CorepackIntegrityHash` is the one narrowing the kit needs: the pin tail
+// `<name>@<version>+<integrity>` only ever carries the corepack form, and both
+// schemas that model it (`PackageManagerPin` here, `@effected/package-json`'s
+// `PackageManager`) consume that export rather than restricting the brand
+// themselves.
 
 import type { Brand } from "effect";
 import { Effect, Option, Schema } from "effect";
@@ -137,3 +143,60 @@ export const IntegrityHash = Object.assign(brandedIntegrity, {
 	algorithmOf,
 	decode,
 } satisfies IntegrityHashStatics);
+
+/**
+ * {@link (IntegrityHash:variable)} narrowed to the corepack `<algo>.<hex>` form
+ * — `sha512.deadbeef`, and corepack's own sha224 default pins
+ * (`sha224.877304e3…`). An SRI (`sha512-<base64>`) or yarn (`10c0/<hex>`)
+ * hash, both valid `IntegrityHash` values, fails this schema.
+ *
+ * @remarks
+ * The corepack pin tail (`<name>@<version>+<integrity>`) is the one place the
+ * kit meets this form, and two schemas name it: `PackageManagerPin.integrity`
+ * here and `@effected/package-json`'s `PackageManager.integrity`. Both consume
+ * **this** schema — the restriction existed privately in each module until they
+ * were consolidated, and a private copy is exactly how the two drift (the
+ * widening that admitted sha224 had to be made twice).
+ *
+ * It decodes to the same {@link IntegrityHashBrand} the unrestricted schema
+ * does, so a corepack-validated value assigns anywhere an `IntegrityHash` is
+ * expected; there is no second brand. Reach for
+ * `IntegrityHash.isCorepack(value)` to ask the same question about a raw
+ * string without decoding.
+ *
+ * That single brand is also why sharing this schema is not type-enforced, and
+ * the consequence is sharper than it looks: a `Schema.check` is **erased from
+ * the built type**, so this schema and the unrestricted one are the same
+ * declared type. A consumer that quietly reverts to a private copy compiles
+ * clean, and — if the copy is faithful — passes every rejection test too.
+ * Neither `tsc` nor behaviour can see the re-fork.
+ *
+ * What does see it is **object identity**, so each consumer's suite asserts
+ * that its field schema IS this export:
+ * `PackageManagerPin.fields.integrity.schema === CorepackIntegrityHash` (an
+ * `optionalKey` field keeps the inner schema on `.schema`), and
+ * `PackageManager.fields.integrity.value === CorepackIntegrityHash` on the
+ * `@effected/package-json` side (a `Schema.Option` keeps it on `.value`). Both
+ * assertions carry a control against the unrestricted brand, so they discriminate
+ * rather than passing on any schema at all. That identity assertion is the only
+ * thing standing between the two surfaces and a silent re-fork; do not replace
+ * it with a behavioural test, which cannot fail.
+ *
+ * @example
+ * ```ts
+ * import { CorepackIntegrityHash } from "@effected/npm";
+ * import { Schema } from "effect";
+ *
+ * const decode = Schema.decodeUnknownExit(CorepackIntegrityHash);
+ *
+ * decode("sha512.deadbeef"); // success
+ * decode("sha512-3q2+7w=="); // failure — SRI form
+ * ```
+ *
+ * @public
+ */
+export const CorepackIntegrityHash = brandedIntegrity.pipe(
+	Schema.check(
+		Schema.makeFilter((value) => (isCorepack(value) ? undefined : "Expected a corepack (<algo>.<hex>) integrity hash")),
+	),
+);
