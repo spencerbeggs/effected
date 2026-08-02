@@ -119,6 +119,28 @@ these before inventing a local convention.
 - **A parse failure carries an ARRAY of diagnostics** even when only one is
   populated today — the array is the cross-package contract.
 
+## Sum types: a domain-named discriminant on `Schema.Class` variants
+
+The kit's model for a sum type — production-proven by
+`@effected/github-actions`' `InstalledPackageManager` and named "the model"
+by its first consumer — is two (or more) `Schema.Class` variants carrying
+`Schema.tag` on a **domain-named** discriminant (`source`, not `_tag`),
+unioned via `Schema.Union`. Narrowing needs no ceremony
+(`x.source === "tool-cache"` narrows), `Schema.tag` auto-fills the
+discriminant in `make` so a double cannot mint a mismatched variant, and an
+impossible state becomes unrepresentable rather than guarded (the consumer
+deleted an `Effect.die` guard and its test on adoption). Prefer this over
+one class with `optionalKey` fields plus a prose invariant.
+
+Two adoption traps, both hit live and both documented on the worked
+precedent's union TSDoc (`PackageManagerInstaller.ts`): the union's
+inherited `make` typechecks against **both** variants and yields a
+confusing two-branch error — construct the variant classes; and
+`Partial<Variant>` includes the auto-filled tag field, so overrides-style
+doubles want `Partial<Omit<typeof Variant.Type, "source">>`. The
+`Schema.tag` mechanics live in `effect-v4-schema`'s foreign-contracts
+section.
+
 ## API surface and TSDoc
 
 - **Every exported symbol carries `@public`; everything in `internal/`

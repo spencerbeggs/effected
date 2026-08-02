@@ -192,6 +192,21 @@ The top-level `layer` builds its layer once per group through a `MemoMap`
 the group, and closes it in `afterAll`. A per-test `.pipe(Effect.provide(L))`
 carries no memo map and rebuilds per test.
 
+**But that is per-TEST, not per-provide: NESTED provides memoize constituent
+consts.** Within one running effect, `Effect.provide` memoizes layers by
+reference — an inner `Effect.provide(Layer.mergeAll(SharedConst, Variant))`
+under an outer provide that already built `SharedConst` serves the **outer**
+build of it, even though the `mergeAll` composition is a fresh reference
+(probed at beta.101: nested builds once and the inner read sees the outer
+instance; two sequential sibling `runPromise` roots build twice). The bite: a
+test helper that provides real layers, wrapping a test that inner-provides a
+fault-injected or scripted variant feeding those same constituent consts,
+silently exercises the REAL services — the swap never takes effect for
+anything already built outside. The tell is a green test with the wrong
+duration (a retry policy actually running, a scripted response never
+consumed). Restructure so the variant is provided at the outermost level, or
+compose the fault into the layer before anything builds it.
+
 **So per-test provide is the SAFE default, and collapsing a suite onto a
 suite-boundary `layer()` is the RISKY move** — not the neutral one. Read
 build-once as "every stateful resource in that layer is cumulative across the
@@ -474,6 +489,17 @@ calls. Each with its probe →
 code — and read `unhandledErrors` with it:** a `ChildProcess` with no `error`
 listener re-throws asynchronously *after* the failure was correctly reported,
 and 15 green tests carried a live defect that only that field showed.
+
+**The stale-upstream-dist red herring** (a red that lies rather than a green):
+in a kit monorepo, a downstream package's tests resolve workspace siblings
+through their BUILT dist (the lockfile links `version: link:../npm/dist/dev/pkg`),
+so adding an export to an upstream package makes every downstream suite fail
+to LOAD with `Cannot read properties of undefined (reading 'ast')` — the new
+export exists in source, is `undefined` in the stale artifact, and the schema
+built from it dies at module load pointing nowhere near the cause. When you
+add an export to an upstream kit package, `pnpm build --filter <upstream>`
+before running any downstream suite; that error message at suite load IS the
+stale-dist signature.
 
 ## House conventions
 

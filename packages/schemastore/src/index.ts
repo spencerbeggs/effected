@@ -1,0 +1,80 @@
+/**
+ * Build, version and lint SchemaStore-shaped Draft-07 JSON Schema documents
+ * from Effect Schema sources.
+ *
+ * The pipeline is core's: `Schema.toJsonSchemaDocument` (Draft 2020-12)
+ * lowered with `JsonSchema.toDocumentDraft07`. This package owns what core
+ * does not: the SchemaStore publication shape (`$schema` + `$id` + root +
+ * `$defs`, with the `#/definitions` → `#/$defs` ref rewrite the lowering
+ * makes necessary), the annotation carriers that re-graft the non-standard
+ * language-server keyword families the lowering drops, the catalog-entry
+ * vocabulary with both versioning modes, the structural and hygiene lints,
+ * canonical JSON text, write-if-changed file IO (`SchemaFile`), and the
+ * `SchemaValidator` contract seam a consumer closes with a real engine
+ * (ajv) at the edge.
+ *
+ * @example
+ * ```ts
+ * import { CatalogEntry, DocumentLint, StoreDocument } from "@effected/schemastore";
+ * import { Effect, Schema } from "effect";
+ *
+ * const Config = Schema.Struct({ name: Schema.String });
+ *
+ * const program = Effect.gen(function* () {
+ *   const document = yield* StoreDocument.fromSchema(Config, {
+ *     $id: "https://example.com/config.schema.json",
+ *   });
+ *   const findings = DocumentLint.lint(document);
+ *   const text = yield* Effect.fromResult(document.serializeResult());
+ *   return [findings.length, text.endsWith("\n")] as const;
+ * });
+ *
+ * console.log(Effect.runSync(program));
+ * // => [1, true]
+ * ```
+ *
+ * @see {@link https://www.schemastore.org | SchemaStore}
+ * @see {@link https://effect.website | Effect}
+ *
+ * @packageDocumentation
+ */
+
+export { AnnotationCarriers, CarrierDepthExceededError } from "./AnnotationCarriers.js";
+export {
+	CanonicalJson,
+	type CanonicalJsonError,
+	type CanonicalJsonOptions,
+	JsonDepthExceededError,
+	NonJsonValueError,
+} from "./CanonicalJson.js";
+export { CatalogEntry, CatalogLintFinding } from "./CatalogEntry.js";
+export { DocumentLint, DocumentLintFinding } from "./DocumentLint.js";
+export { KeywordFamilies } from "./KeywordFamilies.js";
+export {
+	SchemaFile,
+	SchemaFileNotFoundError,
+	SchemaFileReadError,
+	type SchemaFileShape,
+	SchemaFileWriteError,
+	type WriteOutcome,
+} from "./SchemaFile.js";
+export { SchemaTarget } from "./SchemaTarget.js";
+export {
+	SchemaValidator,
+	SchemaValidatorError,
+	type SchemaValidatorOptions,
+	type SchemaValidatorShape,
+	ValidationFinding,
+} from "./SchemaValidator.js";
+export {
+	type CatalogUrls,
+	InvalidSchemaVersionError,
+	SchemaVersion,
+	SchemaVersioning,
+} from "./SchemaVersioning.js";
+export {
+	DRAFT_07_META_SCHEMA,
+	SchemaConversionError,
+	StoreDocument,
+	type StoreDocumentOptions,
+} from "./StoreDocument.js";

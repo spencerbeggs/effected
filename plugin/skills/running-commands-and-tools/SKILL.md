@@ -160,6 +160,23 @@ column was a space. Route fixed-column, whitespace-significant output through
 `output.stdout` directly, never `Run.text`'s return value, whenever column
 position carries meaning.
 
+### Trap 7 — combining two spawner convenience members RE-EXECUTES the command
+
+Core's `ChildProcessSpawner` convenience members are each derived from their
+own `spawn`: `string` is `Stream.mkString(streamString(command))` and
+`exitCode` is `Effect.scoped(Effect.flatMap(spawn(command), (handle) =>
+handle.exitCode))` (`ChildProcessSpawner.ts:227,231`) — nothing in their
+signatures says so, and calling `string` then `exitCode` on the same command
+runs it **twice**. Idempotent commands (`tar xzf`, `unzip -o`) hide it;
+anything non-idempotent fails on the second run while the captured output —
+reported as "the failure's stderr" — belongs to the *first, successful*
+execution. This shipped as a production Windows blocker in
+`@effected/github-actions` (`ZipFile.ExtractToDirectory` refuses to
+overwrite, so run #2 threw with run #1's empty complaint attached). When you
+need output AND exit code, either use `Run.collect` — which owns exactly
+this composition — or drop to `spawner.spawn` and read `handle.all` and
+`handle.exitCode` from the **same** handle.
+
 ## Errors: `CommandFailedError` and `CommandOutputError`
 
 `CommandFailedError` (`kind: "nonZero" | "spawn" | "timeout"`) is "the command could not be run, or

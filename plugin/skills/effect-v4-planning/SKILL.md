@@ -271,6 +271,18 @@ you still owe splits by the *kind* of surprise the summary turns up:
   MUST land prominently in your report, never silently. Do the correct thing and surface
   what it cost.
 
+- Evidence of a **concurrent writer in your assigned files** is a **stop**, and it is
+  neither of the two above — a *state* problem, not a design one. The signatures: an
+  edit you did not make appears between your read and your write; a declaration you
+  did not author (caught as `noRedeclare`); an Edit answered "file changed since read"
+  with your intended change *already applied*. That last one reads like a harness
+  quirk and is not — it is the collision signature. Stop writing immediately and
+  report to your coordinator, because the reconcile cost grows with every further
+  edit, and `git status` will NOT show you the other writer (uncommitted trees look
+  identical whoever wrote them). Two agents hit this unrouted in one session,
+  2026-07-28; the one that stopped early reconciled cleanly, the one that kept
+  writing spent the difference by hand.
+
 Put any genuinely unresolved item in the Open risks row rather than deciding it silently.
 
 An interactive session has a real user: wait for them, as step 4 says.

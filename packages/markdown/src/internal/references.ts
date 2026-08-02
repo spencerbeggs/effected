@@ -55,6 +55,23 @@ const reLinkLabel = /^\[(?:[^\\[\]]|\\.){0,1000}\]/s;
 const isWhitespaceCode = (code: number): boolean =>
 	code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0b || code === 0x0c || code === 0x0d;
 
+/**
+ * The most `(` a bare link destination may hold open at once.
+ *
+ * cmark's `MAX_LINK_DEST_PARENS` bound in `manual_scan_link_url`, and the
+ * limit the spec explicitly sanctions ("Implementations may impose limits on
+ * parentheses nesting to avoid performance issues, but at least three levels
+ * of nesting should be supported"). Without it the bare-destination walk is
+ * the engine's one quadratic: on `"[a](b".repeat(n)` there is no whitespace
+ * and no unbalanced `)` to stop at, so every failed inline-link attempt
+ * scanned to the end of the subject — O(n) per `]`, O(n^2) overall. With the
+ * cap a failed attempt stops at the 33rd `(`, a constant distance, and the
+ * pathological suite's "unclosed links B" runs linear. commonmark.js@0.31.2
+ * has no such cap and shares the quadratic; the C reference is the authority
+ * here.
+ */
+const MAX_LINK_DESTINATION_PARENS = 32;
+
 const C_BACKSLASH = 0x5c;
 const C_COLON = 0x3a;
 const C_LESSTHAN = 0x3c;
@@ -131,6 +148,9 @@ export class ReferenceScanner {
 			} else if (code === C_OPEN_PAREN) {
 				this.pos += 1;
 				openParens += 1;
+				if (openParens > MAX_LINK_DESTINATION_PARENS) {
+					return undefined;
+				}
 			} else if (code === C_CLOSE_PAREN) {
 				if (openParens < 1) {
 					break;

@@ -239,6 +239,9 @@ importers:
       '@effected/markdown':
         specifier: workspace:~
         version: link:../markdown/dist/dev/pkg
+      '@effected/npm':
+        specifier: workspace:~
+        version: link:../npm/dist/dev/pkg
       '@effected/sbom':
         specifier: workspace:~
         version: link:../sbom/dist/dev/pkg
@@ -502,6 +505,32 @@ importers:
       '@savvy-web/bundler':
         specifier: ^2.1.0
         version: 2.1.0(@effected/jsonc@0.5.1(effect@4.0.0-beta.101))(@effected/semver@0.2.1(effect@4.0.0-beta.101))(@effected/walker@0.3.3(@effected/glob@0.2.1(effect@4.0.0-beta.101))(effect@4.0.0-beta.101))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tsx@4.23.1)(typescript@7.0.2)
+      '@types/node':
+        specifier: catalog:silk
+        version: 26.1.1
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.101
+      typescript:
+        specifier: catalog:silk
+        version: 7.0.2
+    publishDirectory: dist/dev/pkg
+
+  packages/schemastore:
+    dependencies:
+      '@effected/semver':
+        specifier: workspace:~
+        version: link:../semver/dist/dev/pkg
+    devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-beta.101(effect@4.0.0-beta.101)(ioredis@5.11.1(supports-color@9.4.0))
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-beta.101(effect@4.0.0-beta.101)(vitest@4.1.10)
+      '@savvy-web/bundler':
+        specifier: ^2.1.0
+        version: 2.1.0(@effected/jsonc@0.5.1(effect@4.0.0-beta.101))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.3.3(@effected/glob@0.2.1(effect@4.0.0-beta.101))(effect@4.0.0-beta.101))(@types/node@26.1.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tsx@4.23.1)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:silk
         version: 26.1.1

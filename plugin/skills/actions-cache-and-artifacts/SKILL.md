@@ -32,6 +32,22 @@ Actions results backend** (`ACTIONS_RESULTS_URL` / `ACTIONS_RUNTIME_TOKEN`) —
 see Trap 1. `BlobStore.layerS3` and `ToolInstaller` need neither variable and
 work identically from a `run:` shell step.
 
+**`ActionCache`'s `paths` are GLOB PATTERNS on save, hashed LITERALLY on
+both sides.** `save` resolves them with actions/cache parity before tar
+(`**/node_modules` matches directories, archived recursively; non-matching
+patterns — absent literals included — are dropped silently; a fully-empty
+resolution fails typed with zero backend calls; `~` and `!` work; relative
+patterns root at `GITHUB_WORKSPACE`). `restore`'s tar is pure extract and
+consumes no paths — its `paths` argument exists only to derive the cache
+**version**, which hashes the LITERAL pattern list on both save and restore
+(toolkit parity: `getCacheVersion` never sees resolved paths), so the same
+literal list must be passed to both or the entry is invisible. Until
+2026-08-02 save handed patterns to tar verbatim and every glob-carrying
+list failed on a real runner as `tar: **/…: Cannot stat` — treat that
+message as the resolution-was-skipped signature. Resolved paths reach tar
+via a `-T` manifest file, never argv — a `${workspace}/**` resolution is
+tens of thousands of paths, well past the argv limit (`E2BIG`).
+
 `ActionRuntime.layer` provides none of the six services above by default —
 see `actions-runtime` for why, and for the one-line cost of taking one
 (`Action.run(program, { layer: ActionCache.layer })`).
@@ -323,20 +339,19 @@ than becoming a second version channel that can disagree with the real one.
 ## `CacheKey` and where `hashFiles` lives
 
 `CacheKey` is a pure `Schema.Class` — no service, no layer — over validated,
-comma/newline-refusing segments (`CacheKey.ts:52-58`), with a derived
-restore-key ladder:
-
-```ts
-get restoreKeys(): ReadonlyArray<string> {
- const rungs: Array<string> = [];
- for (let length = this.segments.length - 1; length >= 1; length -= 1) {
-  rungs.push(`${this.segments.slice(0, length).join(SEPARATOR)}${SEPARATOR}`);
- }
- return rungs;
-}
-```
-
-(`CacheKey.ts:100-106`.) Two properties every hand-rolled ladder gets wrong:
+comma/newline-refusing segments (`CacheKey.ts:52-58`), with a restore-key
+ladder that is **policy-carrying, not only derived**: absent policy, every
+prefix becomes a rung (most-specific first); `withRestoreDepths([4, 3])`
+makes the key carry an explicit ladder (each depth = leading segments kept,
+rungs emitted in the order given — order IS the policy, GitHub tries them in
+order); `withoutRestoreKeys()` is the exact-match-only spelling (zero
+rungs). All three ride the same schema field, survive `ActionState` round
+trips, and pass through `ActionCache.restore(paths, cacheKey)` untouched —
+never hand-build a ladder beside a typed key. The default derivation drops
+one trailing segment per rung; the depths grammar lives in the class TSDoc
+(`CacheKey.ts`, the `restoreKeys` getter and `withRestoreDepths` remarks —
+line numbers shift, search the members). Two properties every hand-rolled
+ladder gets wrong:
 **every rung ends in the separator** — GitHub matches a restore key as a bare
 prefix, so `Linux-pnpm` (no trailing `-`) would also match
 `Linux-pnpmx-…` from an unrelated cache — and **a one-segment key produces no

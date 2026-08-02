@@ -3,7 +3,7 @@ set -euo pipefail
 
 # SessionStart hook (no matcher — fires on all starts including resume/compact):
 # brief the main agent that the "effected" plugin ships Effect v4 skills and
-# three specialist subagents, and that it should delegate Effect work to them
+# four specialist subagents, and that it should delegate Effect work to them
 # where subagent dispatch is available — and load the same skills inline where
 # it is not.
 #
@@ -25,7 +25,7 @@ cat >/dev/null 2>&1 || true
 CONTEXT=$(
 	cat <<'CONTEXT'
 <effect_plugin>
-The "effected" plugin is loaded: Effect v4 development skills plus three
+The "effected" plugin is loaded: Effect v4 development skills plus four
 specialist subagents, distilled from the @effected package migrations and the
 official Effect-TS v4 guides. Everything here is v4-first — when writing Effect,
 verify any API against the installed `effect` beta, never v3 memory (a runtime
@@ -77,13 +77,18 @@ Available via the Skill tool (several also auto-load on trigger):
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the
   malformed-input-fails-as-a-typed-error-never-a-defect invariant.
 
-The GitHub Actions / API suite — twelve skills over @effected/github-actions,
+The GitHub Actions / API suite — thirteen skills over @effected/github-actions,
 github, commands, npm and sbom. START at the router; the rest are named by it
 and load on demand:
 - building-a-github-action — the ROUTER: which package owns a capability,
   which skill teaches it, what does NOT exist (no @actions/*, no ANSI API, no
   GithubMarkdown/ReportBuilder/ErrorAccumulator successor), and the fact that
   the action bundler and scaffold are downstream savvy-web tooling, not here.
+- designing-an-action — the build PROCESS for a new, rebuilt or ported
+  action: recon, a frozen parity contract with a known-unknowns ledger, one
+  persisted API dossier, a contracts-first walking skeleton whose stubs
+  succeed, then TDD fill per step. The router routes capabilities; this
+  sequences the whole build.
 - actions-runtime — Action.run, ActionServices, ActionRuntime.layer, the extra
   layer that may require anything the runtime provides, failure rendering.
 - actions-inputs-outputs — ActionInput (Config, INPUT_ mangling) and

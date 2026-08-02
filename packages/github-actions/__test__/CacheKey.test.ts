@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { Path } from "effect";
-import { Effect, FileSystem, Option } from "effect";
+import { Effect, FileSystem, Option, Schema } from "effect";
 import { systemError } from "effect/PlatformError";
 import { CacheKey, CacheKeyError } from "../src/index.js";
 
@@ -74,6 +74,78 @@ describe("CacheKey", () => {
 		it("accepts a key exactly at the limit", () => {
 			const key = CacheKey.of("x".repeat(512));
 			assert.lengthOf(key.key, 512);
+		});
+	});
+
+	describe("an explicit ladder policy", () => {
+		it("answers exactly the depths given, in the order given", () => {
+			// The consumer case this exists for: a five-segment key whose default
+			// ladder derives rungs WITHOUT the version digest — rungs that match
+			// stale cross-version caches. The literal expectations matter: an
+			// implementation that ignores the policy and falls back to
+			// all-prefixes yields four rungs here, not these two.
+			const key = CacheKey.of("Linux", "X64", "v1hash", "main", "lockhash").withRestoreDepths([4, 3]);
+			assert.deepStrictEqual(key.restoreKeys, ["Linux-X64-v1hash-main-", "Linux-X64-v1hash-"]);
+		});
+
+		it("preserves a non-descending order verbatim — the order IS the policy", () => {
+			// GitHub tries restore keys in order; descending is recommended in the
+			// TSDoc, deliberately not enforced.
+			const key = CacheKey.of("a", "b", "c").withRestoreDepths([1, 2]);
+			assert.deepStrictEqual(key.restoreKeys, ["a-", "a-b-"]);
+		});
+
+		it("leaves the primary key alone", () => {
+			const key = CacheKey.of("Linux", "pnpm-store", "abc123").withRestoreDepths([1]);
+			assert.strictEqual(key.key, "Linux-pnpm-store-abc123");
+		});
+
+		it("does not change the default ladder of a key without a policy", () => {
+			// Byte-compatibility claim for every existing consumer.
+			assert.deepStrictEqual(CacheKey.of("Linux", "pnpm-store", "abc123").restoreKeys, ["Linux-pnpm-store-", "Linux-"]);
+		});
+
+		it("refuses a depth that keeps every segment — that rung would repeat the primary key", () => {
+			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([3]));
+		});
+
+		it("refuses a depth of zero — that rung would match every cache in the repository", () => {
+			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([0]));
+		});
+
+		it("refuses a negative or fractional depth", () => {
+			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([-1]));
+			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([1.5]));
+		});
+	});
+
+	describe("no ladder at all — exact-match-only", () => {
+		it("answers zero rungs", () => {
+			// The third point in the policy space: absent = the default ladder,
+			// explicit depths = that ladder, EMPTY = no ladder. A mutant that
+			// reads an empty policy as "no policy" regenerates the two default
+			// rungs here and fails on the literal [].
+			assert.deepStrictEqual(CacheKey.of("Linux", "pnpm-store", "abc123").withoutRestoreKeys().restoreKeys, []);
+		});
+
+		it("leaves the primary key alone", () => {
+			assert.strictEqual(
+				CacheKey.of("Linux", "pnpm-store", "abc123").withoutRestoreKeys().key,
+				"Linux-pnpm-store-abc123",
+			);
+		});
+
+		it("survives a schema round-trip without regaining a ladder", () => {
+			// The policy is a plain field, so a key that crossed a serialization
+			// boundary (state, JSON output) keeps meaning "exact match only".
+			const encoded = Schema.encodeSync(CacheKey)(CacheKey.of("Linux", "pnpm-store").withoutRestoreKeys());
+			const decoded = Schema.decodeUnknownSync(CacheKey)(encoded);
+			assert.deepStrictEqual(decoded.restoreKeys, []);
+			assert.strictEqual(decoded.key, "Linux-pnpm-store");
+		});
+
+		it("does not change a key without a policy — absent still means the default ladder", () => {
+			assert.deepStrictEqual(CacheKey.of("Linux", "pnpm-store", "abc123").restoreKeys, ["Linux-pnpm-store-", "Linux-"]);
 		});
 	});
 

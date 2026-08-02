@@ -80,6 +80,11 @@ describe("DependencyGraph", () => {
 		assert.isFalse(graph.hasCycle);
 	});
 
+	// The explicit timeout: the claim is stack-safety, not latency. The walk
+	// is ~375ms uninstrumented, but v8 coverage on a shared CI runner
+	// amplifies wall time well past the 5s default (observed 18x elsewhere in
+	// this repo). A RangeError still fails instantly; only the legitimate
+	// walk needs the headroom.
 	it("cycle detection does not overflow on a long chain", () => {
 		// 20,000 links. A recursive DFS — which is what v3 shipped — throws
 		// RangeError here, and a RangeError is an unhandled defect.
@@ -87,7 +92,7 @@ describe("DependencyGraph", () => {
 			i === 19_999 ? pkg(`p${i}`) : pkg(`p${i}`, { [`p${i + 1}`]: "1.0.0" }),
 		);
 		assert.isFalse(DependencyGraph.make({ packages }).hasCycle);
-	});
+	}, 30_000);
 
 	it.effect("levels groups packages into parallel build tiers, leaves first", () =>
 		Effect.gen(function* () {

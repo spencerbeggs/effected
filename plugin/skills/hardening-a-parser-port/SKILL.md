@@ -102,17 +102,35 @@ memory side: **amplification vectors are orthogonal to nesting depth.**
 
 Two consequences for a port:
 
-- **The guard is the algorithm, not a limit constant.** CommonMark's
-  delimiter-stack emphasis algorithm and its "openers and closers multiple
-  of 3" rule exist precisely to make pathological delimiter runs linear; an
-  engine that "simplifies" them re-opens the vector. Port the algorithm
-  faithfully — there is no bolt-on cap that fixes a quadratic matcher.
+- **The guard is the algorithm, not a limit constant** — with one recorded
+  carve-out. CommonMark's delimiter-stack emphasis algorithm and its
+  "openers and closers multiple of 3" rule exist precisely to make
+  pathological delimiter runs linear; an engine that "simplifies" them
+  re-opens the vector. Port the algorithm faithfully — there is no bolt-on
+  cap that fixes a quadratic matcher. **The carve-out: when the SPEC itself
+  sanctions a limit, the limit IS the algorithm's fix.** The bare
+  link-destination scan is quadratic on unclosed-link input in the
+  reference implementation too, and cmark's fix is `MAX_LINK_DEST_PARENS`
+  (32) under the spec's explicit "implementations may impose limits on
+  parentheses nesting" license — adopted verbatim in `@effected/markdown`
+  after the vendored reference was confirmed to share the flaw
+  (2026-08-02: 30k unclosed links, 5.2s → 30ms). The discriminator: a
+  spec-sanctioned cap bounds a *scan the grammar cannot otherwise
+  terminate*; a bolt-on cap papers over a matcher whose fix is a better
+  algorithm. Check the reference's own limit constants before assuming the
+  rule forbids constants.
 - **The regression instrument is a vendored pathological corpus with
   timeout assertions.** cmark's `pathological_tests.py` is the pattern:
   ~25 named cases (`"*a **a" * 65000`, 65k mismatched openers/closers, deep
   bracket nests, reference collisions), each asserting output *shape* via
   regex under a wall-clock timeout — no HTML fixture needed. Vendor it and
-  run it as its own mandatory suite.
+  run it as its own mandatory suite. Two operational rules from running one
+  at scale: prefer **ratio-based scaling guards** (time N vs 2N vs 4N;
+  instrumentation and hardware cancel) over absolute budgets where the
+  claim is complexity, and if the suite CALIBRATES its budgets against a
+  measured input, **recalibrate after any engine perf fix** — a calibration
+  input that rode the removed hot path now measures ~nothing, silently
+  un-scaling every other budget (this exact failure fired 2026-08-02).
 
 **A green conformance corpus says nothing about complexity.** Every
 conformance example is small and well-formed; an engine can pass all of them

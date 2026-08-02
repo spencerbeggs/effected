@@ -92,6 +92,30 @@ describe("MarkdownNode", () => {
 			assert.strictEqual(text.position.start.offset, 3);
 			assert.strictEqual(text.position.end.offset, 4);
 		});
+
+		it("passes constructed children through `make` by identity", () => {
+			// The pin for the category-union children fields (`RowContent` in
+			// `MarkdownNode.ts`): `make` passes an existing instance through a
+			// union member untouched, while a class-typed field re-runs
+			// construction on every element — which re-built all 90k rows of
+			// the pathological "tables" case inside the single `Table.make`
+			// call. `position` deliberately stays a class-typed field, so THIS
+			// pass-through holds for children while positions still
+			// re-construct (the `deepStrictEqual`-not-`strictEqual` rule).
+			const text = Text.make({ value: "x", position: span(0, 1) });
+			const cell = TableCell.make({ children: [text], position: span(0, 1) });
+			assert.strictEqual(cell.children[0], text);
+
+			const row = TableRow.make({ children: [cell], position: span(0, 1) });
+			assert.strictEqual(row.children[0], cell);
+
+			const table = Table.make({ children: [row], position: span(0, 1) });
+			assert.strictEqual(table.children[0], row);
+
+			const item = ListItem.make({ children: [], position: span(0, 1) });
+			const list = List.make({ children: [item], position: span(0, 1) });
+			assert.strictEqual(list.children[0], item);
+		});
 	});
 
 	describe("structural equality", () => {

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-08-02
+last-synced: 2026-08-02
 completeness: 98
 related:
   - ../effect-standards.md
@@ -67,6 +67,8 @@ A `Schema.Class` with one encoded field, `source: string`; the compiled matcher 
 `enumerationPrefix` and `crossesSegments` are **new API with no upstream analogue**, designed for the enumerator contract — glob-core's `prefix` was substring-to-last-`/`, which is wrong once `**` is real. They are computed under default options, which is all `GlobSet` uses; their interaction with `matchBase`/windows modes stays defined only for default-options patterns.
 
 Both held under a **second, independent consumer**: [`@effected/walker`](walker.md)'s `descend` drives a general-purpose filesystem walk off the same two getters, and needed no change to either for non-negated patterns. That is the useful part of the result — the metadata was designed against workspaces' enumerator, and a contract that survives its second consumer unmodified is one that generalizes rather than one that encoded its first caller.
+
+A **third consumer** landed 2026-08-02 (30ee8d58): [`@effected/github-actions`](github-actions.md)' `ActionCache` derives its cache-path search roots from `enumerationPrefix` and `negated` over a `GlobSet` — the `@actions/glob` search-path derivation, with a whole-pattern negation contributing no root because it only filters. Unlike the first two consumers, its coverage is real IO: save→restore round-trip tests over actual filesystem walks, plus real-runner e2e in the silk-runtime-action dogfood loop. What stays open is narrower than the original item: no dedicated conformance run against a reference enumerator has been performed, so the semantics are **materially de-risked, not closed** — three independent consumers hold, one of them under real enumeration, but nothing yet asserts agreement with `@actions/glob` or another reference implementation case by case.
 
 **`enumerationPrefix` is meaningful for NON-NEGATED patterns only.** It is computed from the *inner* pattern, but a negated pattern's `matches()` **inverts**, so it matches everything the inner pattern does not — and those matches can land anywhere, including outside the prefix. A negated pattern's walk must therefore ignore the prefix entirely: **start at the walk root (`cwd`) AND deep-walk unconditionally**, regardless of `crossesSegments` — `descend` uses base `""` and walk condition `crossesSegments || negated` (deep-walking *from the inner prefix* is the tempting half-fix that still silently misses every match outside it). Neither getter is wrong here — the inversion is simply not theirs to express, and the caveat lives with the contract rather than in each consumer's memory.
 

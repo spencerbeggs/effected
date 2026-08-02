@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-26
-last-synced: 2026-07-26
+updated: 2026-08-02
+last-synced: 2026-08-02
 completeness: 94
 related:
   - ../architecture.md
@@ -45,11 +45,12 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 - `Manifest.ts` — the `Manifest` domain model, `ManifestDecodeError` and `UnresolvedDependencyError`.
 - `DependencySpecifier.ts` — the branded specifier, its classification statics and the `FromString` codec to the classified union.
 - `DependencySection.ts` — the `DependencyKind` / `DependencyField` literals and their mapping.
-- `IntegrityHash.ts` — the SRI/corepack/yarn integrity brand.
+- `IntegrityHash.ts` — the SRI/corepack/yarn integrity brand, plus `CorepackIntegrityHash` (2026-07-28), the corepack-only narrowing shared with `@effected/package-json`'s `PackageManager.integrity` — one home, consumed by identity-asserting tests on both sides (see the package `CLAUDE.md`).
+- `PackageManagerPin.ts` — the corepack pin triple `<name>@<version>[+<integrity>]` as a first-class `Schema.Class` (2026-07-28), independent of any package.json field, plus `InvalidPackageManagerPinError`. Shares the strict version ruling and `CorepackIntegrityHash` with `@effected/package-json`'s `PackageManager`; the four-literal name grammar is a deliberate divergence from the field model's permissive one. The grammar rules and their evidence live in the package `CLAUDE.md` and the modules' TSDoc.
 - `ReleaseAgeGate.ts` — the `ReleaseAgeGate` class and its permissive `PartialReleaseAgeGate` input shape; the pure release-age gate vocabulary (see [ReleaseAgeGate](#releaseagegate-the-release-age-gate-vocabulary)).
 - `index.ts` — the public surface and the composite `Default` layer (`Layer.mergeAll(CatalogResolver.noop, WorkspaceResolver.noop)`), which lives here because merging both no-op layers is the cycle-free home.
 
-Every class factory is written **inline** with the synthesized `_base` heritage symbols suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern), per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), keeping `dist/prod/issues.json` zero-warning. The prod gate's expected suppressed count is **15** (`ReleaseAgeGate`'s `_base` joined the count when the gate landed; `suppressed: 0` in the prod gate means the build did not run properly).
+Every class factory is written **inline** with the synthesized `_base` heritage symbols suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern), per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), keeping `dist/prod/issues.json` zero-warning. The expected suppressed tally is tracked in the package `CLAUDE.md`; `suppressed: 0` in the prod gate means the build did not run properly.
 
 ## Resolver contracts
 
@@ -141,7 +142,7 @@ Standing assignments: versions and ranges → `@effected/semver`; manifest shape
 | `engines` | modeled | package-json (string map) |
 | `exports` | modeled | package-json `ExportsField` |
 | `publishConfig` | modeled **twice, deliberately** | package-json `PublishConfigField` and workspaces `PublishConfig` — an accepted duplication: `WorkspacePackage` is deliberately tolerant and takes no package-json edge |
-| `packageManager` | modeled | package-json `PackageManager` (`name@version+integrity` codec); integrity half re-points to `IntegrityHash` |
+| `packageManager` | modeled | package-json `PackageManager` (`name@version+integrity` codec); the field-independent pin grammar is `PackageManagerPin` (here, 2026-07-28), and both integrity halves share `CorepackIntegrityHash` (here) |
 | `devEngines` | modeled | package-json `DevEnginesSchema`; workspaces separately *reads* the field as a detection hint without modeling it |
 | `workspaces` | read, not modeled | workspaces reads globs and bun-style `catalog`/`catalogs`; package-json preserves the field via `rest`. Trigger for modeling: a consumer needing to *write* the field |
 | `keywords`, `homepage`, `bugs`, `funding` | preserved, not modeled | package-json `rest`. Trigger: a consumer that reads or validates them |
@@ -315,7 +316,7 @@ All three were ruled on at the Phase 5 checkpoint and are recorded here with the
 
 Three source modules plus a shared error module, 65 new tests (165 for the package), `tsc --noEmit` clean, and a prod `issues.json` of **0 warnings / 0 errors / 23 suppressed** (was 15; the eight new class factories account for the difference). Three genuine `ae-missing-release-tag` warnings on exported interfaces were **fixed, not suppressed**.
 
-**The tier flip is real and is now enforced by a test.** The package is **boundary** by [R4](../effect-standards.md#dependency-policy) — it performs IO itself through `HttpClient`, `ChildProcessSpawner`, `FileSystem` and `Crypto` in `R`. `@effected/lockfiles` stays **pure** and `@effected/package-json` stays **boundary** under R3. `__test__/reachability.test.ts` asserts both halves of the guardrail from the source graph: the eight vocabulary modules import neither service nor `@effected/commands`, and `index.ts` declares no `export * as` namespace object. It is proven discriminating (adding an `@effected/commands` import to `IntegrityHash.ts` fails it), and it exists because the guardrail was otherwise only prose in a design doc.
+**The tier flip is real and is now enforced by a test.** The package is **boundary** by [R4](../effect-standards.md#dependency-policy) — it performs IO itself through `HttpClient`, `ChildProcessSpawner`, `FileSystem` and `Crypto` in `R`. `@effected/lockfiles` stays **pure** and `@effected/package-json` stays **boundary** under R3. `__test__/reachability.test.ts` asserts both halves of the guardrail from the source graph: the vocabulary modules (`PackageManagerPin` joined the set 2026-07-28) import neither service nor `@effected/commands`, and `index.ts` declares no `export * as` namespace object. It is proven discriminating (adding an `@effected/commands` import to `IntegrityHash.ts` fails it), and it exists because the guardrail was otherwise only prose in a design doc.
 
 **Deltas from the draft, each with its reason:**
 

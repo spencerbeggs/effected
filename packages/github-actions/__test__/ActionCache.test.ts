@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option } from "effect";
+import { Effect, FileSystem, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { ChildProcessSpawner } from "effect/unstable/process";
 import type { FileBlobTransfer } from "../src/index.js";
 import { ActionCache, ActionCacheError, BlobTransferError, CacheKey } from "../src/index.js";
 import { json, resultsEnv, twirpFetch } from "./results.js";
@@ -154,6 +155,42 @@ describe("ActionCache", () => {
 		}),
 	);
 
+	it.effect("hands a policy-carrying key's EXACT ladder through, not the derived prefixes", () =>
+		Effect.gen(function* () {
+			// The whole point of the ladder policy: the typed-key path must carry
+			// it, or every consumer with a policy is back to hand-building the
+			// restore-key list and bypassing CacheKey. The expected rungs are
+			// LITERAL: an implementation that ignores the policy sends four
+			// derived prefixes here, and asserting against `key.restoreKeys`
+			// would agree with that mutant on both sides.
+			const key = CacheKey.of("Linux", "X64", "v1hash", "main", "lockhash").withRestoreDepths([4, 3]);
+			const { transfer } = fileTransfer();
+			const { calls, fetch } = twirpFetch({ GetCacheEntryDownloadURL: () => json({ ok: false }) });
+			yield* Effect.flatMap(ActionCache, (cache) => cache.restore(["x"], key)).pipe(
+				Effect.provide(live(fetch, transfer)),
+			);
+			assert.strictEqual(calls[0]?.body.key, "Linux-X64-v1hash-main-lockhash");
+			assert.deepStrictEqual(calls[0]?.body.restore_keys, ["Linux-X64-v1hash-main-", "Linux-X64-v1hash-"]);
+		}),
+	);
+
+	it.effect("sends ZERO restore keys for an exact-match-only key", () =>
+		Effect.gen(function* () {
+			// The cache-bust mode: a stale partial hit is worse than a cold start,
+			// so the body must carry an EMPTY restore_keys — an implementation
+			// that reads the empty policy as "no policy" sends the two derived
+			// prefixes here instead.
+			const key = CacheKey.of("Linux", "pnpm-store", "abc123").withoutRestoreKeys();
+			const { transfer } = fileTransfer();
+			const { calls, fetch } = twirpFetch({ GetCacheEntryDownloadURL: () => json({ ok: false }) });
+			yield* Effect.flatMap(ActionCache, (cache) => cache.restore(["x"], key)).pipe(
+				Effect.provide(live(fetch, transfer)),
+			);
+			assert.strictEqual(calls[0]?.body.key, "Linux-pnpm-store-abc123");
+			assert.deepStrictEqual(calls[0]?.body.restore_keys, []);
+		}),
+	);
+
 	it.effect("reports a miss as nothing", () =>
 		Effect.gen(function* () {
 			const { transfer } = fileTransfer();
@@ -205,23 +242,30 @@ describe("ActionCache", () => {
 		}),
 	);
 
-	it.effect("fails with tar's own complaint when the archive cannot be built", () =>
-		withScratch((root) =>
-			Effect.gen(function* () {
-				const { transfer } = fileTransfer();
-				const { calls, fetch } = twirpFetch({});
-				const error = yield* Effect.flip(
-					Effect.flatMap(ActionCache, (cache) => cache.save([join(root, "absent")], "k")).pipe(
-						Effect.provide(live(fetch, transfer)),
-					),
-				);
-				assert.strictEqual(error.reason, "archiveFailed");
-				// The exit code says it failed; only stderr says why, and the difference
-				// between "no such file" and "tar is not installed" is the whole message.
-				assert.isDefined(error.stderr);
-				assert.lengthOf(calls, 0);
-			}),
-		),
+	it.effect("fails with tar's own complaint when the archive cannot be extracted", () =>
+		Effect.gen(function* () {
+			// A missing path no longer reaches tar (resolution existence-filters
+			// it), so the stderr channel is proved on the extract side: bytes that
+			// are not a gzip archive.
+			const corrupt: FileBlobTransfer = {
+				uploadFile: () => Effect.void,
+				downloadToFile: (_url, file) =>
+					Effect.tryPromise({
+						try: () => writeFile(file, "this is not an archive"),
+						catch: (cause) => new BlobTransferError({ reason: "downloadFailed", cause }),
+					}),
+			};
+			const { fetch } = twirpFetch({
+				GetCacheEntryDownloadURL: () => json({ ok: true, signedDownloadUrl: "https://blob.example/junk" }),
+			});
+			const error = yield* Effect.flip(
+				Effect.flatMap(ActionCache, (cache) => cache.restore(["x"], "k")).pipe(Effect.provide(live(fetch, corrupt))),
+			);
+			assert.strictEqual(error.reason, "archiveFailed");
+			// The exit code says it failed; only stderr says why, and the difference
+			// between "not in gzip format" and "tar is not installed" is the whole message.
+			assert.isDefined(error.stderr);
+		}),
 	);
 
 	it.effect("treats a create conflict as a save that already happened", () =>
@@ -293,6 +337,340 @@ describe("ActionCache", () => {
 			assert.include(error.message, "ACTIONS_RESULTS_URL");
 		}),
 	);
+
+	describe("glob resolution on save", () => {
+		/** A tree with two node_modules at different depths and a bystander file. */
+		const tree = (root: string) => {
+			const aDep = join(root, "a", "node_modules", "pkg", "dep.txt");
+			const bDep = join(root, "b", "node_modules", "dep.txt");
+			const bystander = join(root, "src", "keep.ts");
+			for (const file of [aDep, bDep, bystander]) {
+				mkdirSync(join(file, ".."), { recursive: true });
+				writeFileSync(file, `contents of ${file}`);
+			}
+			return { aDep, bDep, bystander };
+		};
+
+		const backend = (url = "https://blob.example/resolved") =>
+			twirpFetch({
+				CreateCacheEntry: () => json({ ok: true, signedUploadUrl: url }),
+				FinalizeCacheEntryUpload: () => json({ ok: true }),
+				GetCacheEntryDownloadURL: () => json({ ok: true, signedDownloadUrl: url }),
+			});
+
+		it.effect("resolves `**/` patterns to real directories and archives them recursively", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// The real-runner repro: `tar: **/node_modules: Cannot stat` — the
+					// pattern must be resolved BEFORE tar, and a matched directory is
+					// archived recursively (implicitDescendants stays off, as in
+					// actions/toolkit cacheUtils.ts:48-70; tar's own recursion does the
+					// descending). Handing the pattern to tar verbatim fails this test
+					// with tar's exact production complaint.
+					const { aDep, bDep, bystander } = tree(root);
+					const { transfer } = fileTransfer();
+					const { fetch } = backend();
+					const scope = live(fetch, transfer);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save([`${root}/**/node_modules`], "k")).pipe(
+						Effect.provide(scope),
+					);
+					rmSync(join(root, "a"), { recursive: true });
+					rmSync(join(root, "b"), { recursive: true });
+					rmSync(bystander);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore([`${root}/**/node_modules`], "k")).pipe(
+						Effect.provide(scope),
+					);
+					assert.strictEqual(readFileSync(aDep, "utf8"), `contents of ${aDep}`);
+					assert.strictEqual(readFileSync(bDep, "utf8"), `contents of ${bDep}`);
+					// The bystander never matched, so the archive must not resurrect it.
+					assert.isFalse(existsSync(bystander));
+				}),
+			),
+		);
+
+		it.effect("hashes the LITERAL pattern list into the version, on save AND restore", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// actions/toolkit hashes the caller's un-resolved list on both
+					// sides (getCacheVersion, cacheUtils.ts:136-159; cache.ts:689 and
+					// :361) — restore resolves nothing, so hashing the RESOLVED list on
+					// save would compute a version restore can never reproduce, and
+					// every save would be an entry no restore finds.
+					tree(root);
+					const literals = [`${root}/**/node_modules`, `${root}/src`];
+					const { transfer } = fileTransfer();
+					const { calls, fetch } = backend();
+					const scope = live(fetch, transfer);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save(literals, "k")).pipe(Effect.provide(scope));
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore(literals, "k")).pipe(Effect.provide(scope));
+					const create = calls.find((call) => call.method === "CreateCacheEntry");
+					const lookup = calls.find((call) => call.method === "GetCacheEntryDownloadURL");
+					assert.strictEqual(create?.body.version, versionOf(literals));
+					assert.strictEqual(lookup?.body.version, versionOf(literals));
+				}),
+			),
+		);
+
+		it.effect("drops a pattern that matches nothing and saves the rest", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// Toolkit parity: the globber simply yields nothing for a pattern
+					// with no matches — and for a LITERAL path that is not on disk,
+					// which goes through the same existence filter
+					// (internal-globber.ts:90-100). Neither is an error while anything
+					// else matched.
+					const file = join(root, "payload.txt");
+					writeFileSync(file, "kept");
+					const { blobs, transfer } = fileTransfer();
+					const { fetch } = backend();
+					yield* Effect.flatMap(ActionCache, (cache) =>
+						cache.save([file, `${root}/nothing-*`, join(root, "absent-literal")], "k"),
+					).pipe(Effect.provide(live(fetch, transfer)));
+					assert.strictEqual(blobs.size, 1, "the archive with the surviving path was uploaded");
+				}),
+			),
+		);
+
+		it.effect("fails typed, before the backend, when nothing at all matches", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					const { transfer } = fileTransfer();
+					const { calls, fetch } = twirpFetch({});
+					const error = yield* Effect.flip(
+						Effect.flatMap(ActionCache, (cache) => cache.save([`${root}/nothing-*`], "k")).pipe(
+							Effect.provide(live(fetch, transfer)),
+						),
+					);
+					assert.strictEqual(error.reason, "archiveFailed");
+					assert.include(error.detail, "matched");
+					// Reserving an entry for an archive that will never exist leaves a
+					// key that answers "present" and serves nothing — same rule as the
+					// empty input list, which is the toolkit's hard Path Validation
+					// Error (cache.ts:662-666).
+					assert.lengthOf(calls, 0);
+				}),
+			),
+		);
+
+		it.effect("roots a relative pattern at GITHUB_WORKSPACE", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// The canonical actions/cache idiom, exactly as a workflow writes it.
+					const { aDep } = tree(root);
+					const { transfer } = fileTransfer();
+					const { fetch } = backend();
+					const scope = live(fetch, transfer, { GITHUB_WORKSPACE: root });
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save(["**/node_modules"], "k")).pipe(
+						Effect.provide(scope),
+					);
+					rmSync(join(root, "a"), { recursive: true });
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore(["**/node_modules"], "k")).pipe(
+						Effect.provide(scope),
+					);
+					assert.strictEqual(readFileSync(aDep, "utf8"), `contents of ${aDep}`);
+				}),
+			),
+		);
+
+		it.effect("expands a leading ~ against HOME", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					const file = join(root, "payload.txt");
+					writeFileSync(file, "from home");
+					const { blobs, transfer } = fileTransfer();
+					const { fetch } = backend();
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save(["~/payload.txt"], "k")).pipe(
+						Effect.provide(live(fetch, transfer, { HOME: root })),
+					);
+					assert.strictEqual(blobs.size, 1);
+				}),
+			),
+		);
+
+		it.effect("a `!` exclusion filters what the includes matched", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					const { aDep, bDep } = tree(root);
+					const { transfer } = fileTransfer();
+					const { fetch } = backend();
+					const patterns = [`${root}/**/node_modules`, `!${root}/b/**`];
+					const scope = live(fetch, transfer);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save(patterns, "k")).pipe(Effect.provide(scope));
+					rmSync(join(root, "a"), { recursive: true });
+					rmSync(join(root, "b"), { recursive: true });
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore(patterns, "k")).pipe(Effect.provide(scope));
+					assert.strictEqual(readFileSync(aDep, "utf8"), `contents of ${aDep}`);
+					assert.isFalse(existsSync(bDep));
+				}),
+			),
+		);
+
+		/** The real spawner, recording each spawn's argv — and, when a `-T` flag is present, the named manifest's content AT SPAWN TIME, before the scratch directory is removed. */
+		const spyingSpawner = () => {
+			const spawns: Array<{ readonly args: ReadonlyArray<string>; readonly manifest?: string }> = [];
+			const layer = Layer.effect(
+				ChildProcessSpawner.ChildProcessSpawner,
+				Effect.gen(function* () {
+					const real = yield* ChildProcessSpawner.ChildProcessSpawner;
+					return {
+						...real,
+						spawn: (...spawnArgs: Parameters<typeof real.spawn>) => {
+							const [command] = spawnArgs;
+							if ("args" in command) {
+								const args = [...command.args];
+								const flag = args.indexOf("-T");
+								const manifestPath = flag === -1 ? undefined : args[flag + 1];
+								spawns.push({
+									args,
+									...(manifestPath === undefined ? {} : { manifest: readFileSync(manifestPath, "utf8") }),
+								});
+							}
+							return real.spawn(...spawnArgs);
+						},
+					};
+				}),
+			).pipe(Layer.provide(NodeServices.layer));
+			return { spawns, layer };
+		};
+
+		/** The real FileSystem with a live `readDirectory` call counter. */
+		const countingFileSystem = () => {
+			let reads = 0;
+			const layer = Layer.effect(
+				FileSystem.FileSystem,
+				Effect.gen(function* () {
+					const real = yield* FileSystem.FileSystem;
+					return {
+						...real,
+						readDirectory: (...readArgs: Parameters<typeof real.readDirectory>) => {
+							reads += 1;
+							return real.readDirectory(...readArgs);
+						},
+					};
+				}),
+			).pipe(Layer.provide(NodeServices.layer));
+			return { layer, reads: () => reads };
+		};
+
+		it.effect(
+			"a resolution too large for argv reaches tar through a manifest file",
+			() =>
+				withScratch((root) =>
+					Effect.gen(function* () {
+						// ~2.7MB of resolved absolute paths: past Linux's ~2MB and
+						// macOS's 1MB execve budgets, so handing the list to tar as
+						// argv would die as E2BIG before tar even started — the
+						// `${workspace}/**` shape at production scale.
+						const segment = (label: string) => `${label}-${"x".repeat(180)}`;
+						const deep = join(root, segment("d1"), segment("d2"), segment("d3"), segment("d4"));
+						mkdirSync(deep, { recursive: true });
+						const files: Array<string> = [];
+						for (let index = 0; index < 2800; index += 1) {
+							const file = join(deep, `file-${String(index).padStart(4, "0")}-${"y".repeat(180)}.txt`);
+							writeFileSync(file, `payload ${index}`);
+							files.push(file);
+						}
+						assert.isAbove(
+							files.reduce((total, file) => total + file.length + 1, 0),
+							2_500_000,
+							"the fixture must be big enough that argv would actually overflow",
+						);
+
+						const { transfer } = fileTransfer();
+						const { fetch } = backend();
+						const spy = spyingSpawner();
+						const scope = ActionCache.layerWith(transfer).pipe(
+							Layer.provide(spy.layer),
+							Layer.provide(
+								Layer.mergeAll(
+									resultsEnv({}),
+									NodeServices.layer,
+									FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fetch))),
+								),
+							),
+						);
+						const pattern = `${deep}/*`;
+						yield* Effect.flatMap(ActionCache, (cache) => cache.save([pattern], "k")).pipe(Effect.provide(scope));
+						rmSync(deep, { recursive: true });
+						yield* Effect.flatMap(ActionCache, (cache) => cache.restore([pattern], "k")).pipe(Effect.provide(scope));
+						// The real-IO round trip held at manifest scale.
+						assert.strictEqual(readFileSync(files[0] ?? "", "utf8"), "payload 0");
+						assert.strictEqual(readFileSync(files[2799] ?? "", "utf8"), "payload 2799");
+
+						// The create invocation carried `-T <manifest>` and not one
+						// resolved path; the manifest listed every match.
+						const create = spy.spawns.find((spawn) => spawn.args.includes("-T"));
+						assert.isDefined(create, "tar was never invoked with a manifest");
+						const resolvedSet = new Set(files);
+						assert.isFalse(
+							create?.args.some((arg) => resolvedSet.has(arg)),
+							"resolved paths must not travel as argv",
+						);
+						const listed = (create?.manifest ?? "").split("\n").filter((line) => line !== "");
+						assert.deepStrictEqual([...listed].sort(), [...files].sort());
+					}),
+				),
+			120_000,
+		);
+
+		it.effect("stat-and-admits a literal directory without enumerating it", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// A pnpm-store-shaped literal: a directory with real contents
+					// that only tar's own recursion should ever descend into.
+					const store = join(root, "store");
+					mkdirSync(join(store, "v3"), { recursive: true });
+					writeFileSync(join(store, "v3", "entry.txt"), "stored");
+					const { transfer } = fileTransfer();
+					const { fetch } = backend();
+					const counting = countingFileSystem();
+					const scope = ActionCache.layerWith(transfer).pipe(
+						Layer.provide(counting.layer),
+						Layer.provide(
+							Layer.mergeAll(
+								resultsEnv({}),
+								NodeServices.layer,
+								FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fetch))),
+							),
+						),
+					);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save([store], "k")).pipe(Effect.provide(scope));
+					rmSync(store, { recursive: true });
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore([store], "k")).pipe(Effect.provide(scope));
+					// The literal contributed the only search root, and no pattern can
+					// match below it: admission comes from the stat alone, on save AND
+					// restore — a store-sized literal must not cost a full enumeration
+					// that can admit nothing. tar's recursion still archived the
+					// contents, which is what the round trip above proves.
+					assert.strictEqual(readFileSync(join(store, "v3", "entry.txt"), "utf8"), "stored");
+					assert.strictEqual(counting.reads(), 0, "a literal-only resolution must not enumerate the directory");
+					// The control: a wildcard below the same root MUST enumerate —
+					// proof the counter is live rather than the wrapper being blind.
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save([`${store}/**`], "k2")).pipe(Effect.provide(scope));
+					assert.isAbove(counting.reads(), 0, "the toolkit-parity walk must survive for actual patterns");
+				}),
+			),
+		);
+
+		it.effect("an uncompilable pattern fails typed, naming it", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// The engine refuses a pattern past its 64KB guard — the one way a
+					// pattern fails to COMPILE rather than merely failing to match.
+					const { transfer } = fileTransfer();
+					const { calls, fetch } = twirpFetch({});
+					const error = yield* Effect.flip(
+						Effect.flatMap(ActionCache, (cache) => cache.save([`${root}/${"a".repeat(70_000)}`], "k")).pipe(
+							Effect.provide(live(fetch, transfer)),
+						),
+					);
+					assert.strictEqual(error.reason, "archiveFailed");
+					assert.include(error.detail, "not a usable glob pattern");
+					assert.lengthOf(calls, 0);
+				}),
+			),
+		);
+	});
 
 	describe("test double", () => {
 		it.effect("an unstubbed member dies rather than reporting a miss", () =>
