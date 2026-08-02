@@ -394,6 +394,23 @@ describe("the delimiter stack", () => {
 			assert.strictEqual(node?.type === "link" ? node.url : "", "/b%C3%A4r*baz");
 		});
 
+		it("parses a bare destination holding 32 nested parens, the cmark bound", () => {
+			const url = `/${"(".repeat(32)}a${")".repeat(32)}`;
+			const [node] = inlinesOf(`[foo](${url})\n`);
+			assert.strictEqual(node?.type === "link" ? node.url : "", url);
+		});
+
+		it("leaves the brackets literal past 32 nested parens, like cmark", () => {
+			// The spec sanctions the bound: "Implementations may impose limits
+			// on parentheses nesting to avoid performance issues, but at least
+			// three levels of nesting should be supported." Without it the
+			// bare-destination scan is quadratic on `"[a](b"` repeated — the
+			// pathological suite's "unclosed links B" (`references.ts`,
+			// MAX_LINK_DESTINATION_PARENS).
+			const [node] = inlinesOf(`[foo](/${"(".repeat(33)}a${")".repeat(33)})\n`);
+			assert.strictEqual(node?.type, "text");
+		});
+
 		it("omits an absent title rather than storing undefined", () => {
 			const [node] = inlinesOf("[foo](/url)\n");
 			assert.isFalse(Object.hasOwn(node ?? {}, "title"));

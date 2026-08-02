@@ -602,7 +602,7 @@ export class List extends Schema.Class<List>("List")({
 	ordered: Schema.optionalKey(Schema.Boolean),
 	start: Schema.optionalKey(Schema.Number),
 	spread: Schema.optionalKey(Schema.Boolean),
-	children: Schema.Array(Schema.suspend((): Schema.Codec<ListItem> => ListItem)),
+	children: Schema.Array(Schema.suspend((): Schema.Codec<ListContent> => ListContent)),
 	position: NodePosition,
 	bulletChar: Schema.optionalKey(BulletChar),
 	delimiter: Schema.optionalKey(ListDelimiter),
@@ -644,9 +644,19 @@ export class TableCell extends Schema.Class<TableCell>("TableCell")({
  * content — the cells in a {@link TableRow}. A one-member union, kept because
  * mdast names the category.
  *
+ * A REAL `Schema.Union`, not a bare suspended class reference, and the
+ * wrapper is load-bearing: `make` passes an already-constructed class
+ * instance through a union member untouched, while a class-typed field
+ * re-runs construction on every element of the array. On a 30k-row table
+ * that re-construction was 1137ms for the single `Table.make` call against
+ * 9ms through the union (measured; the pathological suite's "tables" case is
+ * the regression instrument). The `children` fields of `TableRow`, `Table`
+ * and `List` point at these category unions for exactly that reason — do not
+ * "simplify" them back to the member class.
+ *
  * @public
  */
-export const RowContent: Schema.Codec<RowContent> = Schema.suspend(() => TableCell);
+export const RowContent: Schema.Codec<RowContent> = Schema.suspend(() => Schema.Union([TableCell]));
 
 /**
  * The union of all row-content node types.
@@ -663,18 +673,19 @@ export type RowContent = TableCell;
  */
 export class TableRow extends Schema.Class<TableRow>("TableRow")({
 	type: Schema.tag("tableRow"),
-	children: Schema.Array(Schema.suspend((): Schema.Codec<TableCell> => TableCell)),
+	children: Schema.Array(Schema.suspend((): Schema.Codec<RowContent> => RowContent)),
 	position: NodePosition,
 }) {}
 
 /**
  * The union of every node that may appear where mdast expects **table**
  * content — the rows in a {@link Table}. A one-member union, kept because
- * mdast names the category.
+ * mdast names the category — and a real `Schema.Union` for the construction
+ * pass-through documented on `RowContent`.
  *
  * @public
  */
-export const TableContent: Schema.Codec<TableContent> = Schema.suspend(() => TableRow);
+export const TableContent: Schema.Codec<TableContent> = Schema.suspend(() => Schema.Union([TableRow]));
 
 /**
  * The union of all table-content node types.
@@ -696,7 +707,7 @@ export type TableContent = TableRow;
 export class Table extends Schema.Class<Table>("Table")({
 	type: Schema.tag("table"),
 	align: Schema.optionalKey(Schema.Array(Schema.NullOr(TableAlign))),
-	children: Schema.Array(Schema.suspend((): Schema.Codec<TableRow> => TableRow)),
+	children: Schema.Array(Schema.suspend((): Schema.Codec<TableContent> => TableContent)),
 	position: NodePosition,
 }) {}
 
@@ -748,11 +759,12 @@ export type FlowContent =
 /**
  * The union of every node that may appear where mdast expects **list**
  * content. A one-member union, kept because mdast names the category and
- * later dialects widen it.
+ * later dialects widen it — and a real `Schema.Union` for the construction
+ * pass-through documented on `RowContent`.
  *
  * @public
  */
-export const ListContent: Schema.Codec<ListContent> = Schema.suspend(() => ListItem);
+export const ListContent: Schema.Codec<ListContent> = Schema.suspend(() => Schema.Union([ListItem]));
 
 /**
  * The union of all list-content node types.
