@@ -77,7 +77,7 @@ Available via the Skill tool (several also auto-load on trigger):
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the
   malformed-input-fails-as-a-typed-error-never-a-defect invariant.
 
-The GitHub Actions / API suite — twelve skills over @effected/github-actions,
+The GitHub Actions / API suite — thirteen skills over @effected/github-actions,
 github, commands, npm and sbom. START at the router; the rest are named by it
 and load on demand:
 - building-a-github-action — the ROUTER: which package owns a capability,
