@@ -272,4 +272,83 @@ describe("SemVer", () => {
 			assert.strictEqual(result.failure.position, 0);
 		});
 	});
+
+	describe("isValid", () => {
+		it("accepts exactly one version, build metadata included", () => {
+			assert.isTrue(SemVer.isValid("1.2.3"));
+			assert.isTrue(SemVer.isValid("0.0.0"));
+			assert.isTrue(SemVer.isValid("1.2.3-rc.1"));
+			// Build metadata is valid grammar; only the PINNABLE notion excludes it.
+			assert.isTrue(SemVer.isValid("1.2.3+build.42"));
+			assert.isTrue(SemVer.isValid("1.2.3-rc.1+build"));
+		});
+
+		it("rejects everything that is not exactly one version", () => {
+			assert.isFalse(SemVer.isValid("v1.2.3"));
+			assert.isFalse(SemVer.isValid("^1.2.3"));
+			assert.isFalse(SemVer.isValid("1.2"));
+			assert.isFalse(SemVer.isValid("1"));
+			assert.isFalse(SemVer.isValid("01.2.3"));
+			assert.isFalse(SemVer.isValid("latest"));
+			assert.isFalse(SemVer.isValid(""));
+		});
+
+		it("rejects padded input that parseResult would trim into validity", () => {
+			// The posture, stated as a control pair: parseResult TRIMS (matching
+			// node-semver), so the boolean must diverge from it on exactly this
+			// class of input — whitespace is the caller's bug to surface, never
+			// this package's to hide. A version of isValid written as a bare
+			// parseResult success check passes every other case and fails here.
+			assert.isTrue(Result.isSuccess(SemVer.parseResult(" 1.2.3")));
+			assert.isFalse(SemVer.isValid(" 1.2.3"));
+			assert.isFalse(SemVer.isValid("1.2.3 "));
+			assert.isFalse(SemVer.isValid(" 1.2.3 "));
+			assert.isFalse(SemVer.isValid("1.2.3\n"));
+			assert.isFalse(SemVer.isValid("\t1.2.3"));
+		});
+	});
+
+	describe("isPinnable", () => {
+		it("is isValid minus build metadata", () => {
+			assert.isTrue(SemVer.isPinnable("1.2.3"));
+			assert.isTrue(SemVer.isPinnable("10.0.0-rc.1"));
+			assert.isFalse(SemVer.isPinnable("1.2.3+build.42"), "build metadata is valid grammar but not pinnable");
+			assert.isFalse(SemVer.isPinnable("1.2.3-rc.1+build"));
+		});
+
+		it("shares isValid's whitespace posture and grammar", () => {
+			assert.isFalse(SemVer.isPinnable(" 1.2.3"));
+			assert.isFalse(SemVer.isPinnable("1.2.3 "));
+			assert.isFalse(SemVer.isPinnable("^1.2.3"));
+			assert.isFalse(SemVer.isPinnable("1.2"));
+			assert.isFalse(SemVer.isPinnable("latest"));
+		});
+	});
+
+	describe("ExactVersionString and PinnableVersionString", () => {
+		const decodeExact = Schema.decodeUnknownResult(SemVer.ExactVersionString);
+		const decodePinnable = Schema.decodeUnknownResult(SemVer.PinnableVersionString);
+
+		it("ExactVersionString accepts exactly what isValid accepts, and the type stays string", () => {
+			const accepted = decodeExact("1.2.3+build.42");
+			if (Result.isFailure(accepted)) {
+				return assert.fail("a valid version string must decode");
+			}
+			// The point of the schema: a consumer struct field stays a plain string.
+			assert.strictEqual(accepted.success, "1.2.3+build.42");
+			assert.isTrue(Result.isFailure(decodeExact(" 1.2.3")), "padded input is invalid");
+			assert.isTrue(Result.isFailure(decodeExact("^1.2.3")));
+			assert.isTrue(Result.isFailure(decodeExact("latest")));
+		});
+
+		it("PinnableVersionString additionally refuses build metadata", () => {
+			const accepted = decodePinnable("10.0.0-rc.1");
+			if (Result.isFailure(accepted)) {
+				return assert.fail("a pinnable version string must decode");
+			}
+			assert.strictEqual(accepted.success, "10.0.0-rc.1");
+			assert.isTrue(Result.isFailure(decodePinnable("1.2.3+build.42")));
+			assert.isTrue(Result.isFailure(decodePinnable(" 1.2.3")));
+		});
+	});
 });

@@ -94,6 +94,7 @@ const LIGHT_MODULES = [
 	"DetachedProcess.ts",
 	"DryRun.ts",
 	"OidcTokenIssuer.ts",
+	"PackageManagerInstaller.ts",
 	"Secret.ts",
 	"ToolInstaller.ts",
 	"WorkflowCommand.ts",
@@ -196,6 +197,35 @@ describe("bundle reachability", () => {
 		assert.deepStrictEqual([...reachableBareImports("ManagedDocument.ts")].sort(), ["@effected/templates", "effect"]);
 		assert.deepStrictEqual([...reachableBareImports("CheckDocument.ts")].sort(), ["@effected/templates", "effect"]);
 		assert.deepStrictEqual([...reachableBareImports("GitHubMarkdown.ts")].sort(), ["@effected/markdown", "effect"]);
+	});
+
+	it("the @effected/npm edge is confined to the installer, on Azure's terms", () => {
+		// `PackageManagerInstaller` consumes `@effected/npm`'s pin vocabulary and
+		// is the ONLY module allowed to: the edge exists for one service a
+		// consumer takes with one explicit layer line, and it must not ride into
+		// the runtime or any light module's graph. The control comes first, so a
+		// blinded walker fails here rather than passing everything below.
+		assert.isTrue(
+			[...reachableBareImports("PackageManagerInstaller.ts")].includes("@effected/npm"),
+			"PackageManagerInstaller does not reach @effected/npm — the walker is blind",
+		);
+		for (const entry of LIGHT_MODULES.filter((module) => module !== "PackageManagerInstaller.ts")) {
+			assert.isFalse(
+				[...reachableBareImports(entry)].includes("@effected/npm"),
+				`${entry} reaches @effected/npm — the installer confinement has leaked`,
+			);
+		}
+		// The exact edge set: the pin vocabulary, effect, ToolInstaller's HTTP and
+		// subprocess contracts, and the sanctioned node:crypto digest. In
+		// particular the DEFAULT RUNTIME stays clear: `Action.ts`'s exact edge set
+		// above is what pins `ActionRuntime.layer` never linking this module.
+		assert.deepStrictEqual([...reachableBareImports("PackageManagerInstaller.ts")].sort(), [
+			"@effected/npm",
+			"effect",
+			"effect/unstable/http",
+			"effect/unstable/process",
+			"node:crypto",
+		]);
 	});
 
 	it("no shared internal helper reaches Azure", () => {

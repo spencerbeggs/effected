@@ -24,6 +24,7 @@ const SRC = new URL("../src/", import.meta.url).pathname;
 const VOCABULARY = [
 	"IntegrityHash.ts",
 	"DependencySpecifier.ts",
+	"PackageManagerPin.ts",
 	"DependencySection.ts",
 	"ReleaseAgeGate.ts",
 	"CatalogResolver.ts",

@@ -35,6 +35,7 @@ Each row is a hard house default; reasoning and worked code in
 | dodge the class factory's reserved static names when designing domain statics — every `Schema.Class`/`TaggedClass`/`TaggedErrorClass` base already declares `identifier`, `fields`, `ast`, `pipe`, `rebuild`, `make`, `makeOption`, `makeEffect`, `annotate`, `annotateKey`, `check`, `extend`, `mapFields` (vendored `Schema.ts` `makeClass`) | a domain static reusing one of those names — an incompatible signature is a TS2417 compile error (*static side incorrectly extends base*); the lockfiles port had to rename an approved `LockfileIntegrity.check(lockfile, manifests)` design to `compare` on exactly this |
 | name a validating string constructor `parse` / `parseResult` — **`make` is reserved and cannot be overloaded**, and this pair is the kit-wide shape ([worked example](#the-reserved-make-collision-parse--parseresult-is-the-house-resolution)) | `static make(raw: string)` on a `Schema.Class` — TS2417, every time |
 | conditional-spread an absent optional field | pass an explicit `undefined` for a `Schema.optionalKey` — a *present* `undefined` throws |
+| cross-field validation on a class: pass a **checked Struct** to the factory — `Schema.Class<X>("X")(Schema.Struct(fields).check(...))`; `check` returns `this["Rebuild"]` (`Schema.ts:187`), so a checked `Struct<Fields>` is still a `Struct<Fields>` the factory accepts, and the check sees the whole record (worked precedent: `CacheKey`'s restore-depths bound against its own segment count) | per-field checks that need a sibling's value (a field check sees only its field), or validating cross-field invariants in a `parse` wrapper the direct `make` path never runs |
 | `Schema.optionalKey` for object fields — it yields `field?: T`, the exact-optional contract these `exactOptionalPropertyTypes` repos want ([why](#schemaoptional-is-not-exact-optional)) | `Schema.optional` unless the *value* itself must carry `undefined` — it is literally `optionalKey(UndefinedOr(self))` (`Schema.ts:2386`), so it yields `field?: T \| undefined` and **admits `{ field: undefined }`** |
 | `.check(is*)` to constrain, `refine` to narrow, `check(makeFilter(...))` for cross-field | the removed `positive`/`negative` or the v3 `filter`/`greaterThan` names |
 | tagged unions of `TaggedClass` members (`_tag` branching) | untagged unions for domain variants |
@@ -182,6 +183,18 @@ Read the consequences off the row you are actually in:
   fix for [#6491](https://github.com/Effect-TS/effect/issues/6491) changed —
   through beta.99 a *constructor-defaulted* foreign field threw on a literal
   instead.
+- **The "accepted" in that literal column is runtime truth; the TYPE level
+  agrees only for member-less classes.** `make`'s input type for a foreign
+  field is the class's **instance type** — and wrapping the field in
+  `.pipe(Schema.check(...))` changes nothing on this axis (probed both ways
+  at beta.101). A member-less value class is structurally satisfied by the
+  literal, so it compiles; a class with any member the literal lacks (a
+  getter, a method — most real classes) rejects the literal at compile time
+  (TS2741 "property … missing in type", or TS2740) even though runtime would
+  still validate, run the field's checks, and promote it. Do not read that
+  error as "the check narrowed `make`" — the check is innocent — and do not
+  cast the literal through; construct the instance
+  (`Outer.make({ inner: Inner.make({...}) })`).
 - **Self-recursive field** (every AST node type: `JsoncNode.children`,
   `MarkdownNode`, `TomlNode`). A structurally valid literal is **rejected** —
   you must build real instances, which bites hand-built trees and fixtures,
@@ -321,6 +334,31 @@ the **identifier in the first call** and fields in the second, while
 `Schema.TaggedClass<Self>()("Tag", fields)` takes an **optional identifier
 first** and the tag+fields in the second. Mixing them up produces confusing
 inference errors, not a clear TS message.
+
+## A `Schema.check` narrowing is ERASED from the published type
+
+A check narrows what **decodes**, not what the value is **typed** as — so a
+checked schema and its base publish as the *same* declared type.
+`CorepackIntegrityHash` (corepack-form-only) and the wide `IntegrityHash`
+brand both emit as `Schema.brand<Schema.String, "IntegrityHash">` in
+`@effected/npm`'s built `.d.ts`; a consumer reading the types cannot tell
+them apart. Probed at beta.101, and the consequence bites in two directions:
+
+- **A faithful private re-fork of a shared checked schema is invisible** to
+  `tsc` AND to every behavioral test — the mutant that re-forks the schema
+  keeps the entire rejection matrix green. When two modules must share a
+  checked narrowing of one brand, the only proven guard is a **runtime
+  identity assertion** on the consumer's field schema
+  (`X.fields.integrity.schema === CorepackIntegrityHash`; through
+  `Schema.Option`, `.fields.<name>.value === …`), with a control proving it
+  discriminates (`=== IntegrityHash` must be false). The failing assert
+  prints "Compared values have no visual difference" — which is the point.
+  Do not downgrade it to a behavioral test, which cannot fail, or a
+  source-text import walker, which passes if the import is left unused.
+- **A behavioral break can be type-invisible**: strictening a field's check
+  (package-json's `PackageManager` version fold) ships a byte-identical
+  `.d.ts` while previously-accepted inputs now fail at decode. Announce
+  such changes loudly in handoffs — nothing downstream fails to compile.
 
 ## Verify against the installed beta, not the references
 

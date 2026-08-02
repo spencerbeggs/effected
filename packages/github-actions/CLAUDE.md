@@ -7,7 +7,7 @@ runner it is executing inside.
 Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 3).
 
 **Status: complete** (2026-07-25; the `@effected/sbom` seam adapters and the
-GitHub-surfaces reporting suite landed 2026-07-26) — 388 tests, zero-warning
+GitHub-surfaces reporting suite landed 2026-07-26) — 443 tests, zero-warning
 build. The design doc's as-built section is the authority on what exists and
 why; read it before adding a module.
 
@@ -26,10 +26,19 @@ the API.
 
 ## What it takes from the kit
 
-Five `@effected/*` dependencies; three arrived 2026-07-26 and every arrow points
-**inward**.
+Six `@effected/*` dependencies; three arrived 2026-07-26, `npm` on 2026-07-28,
+and every arrow points **inward**.
 
 - `github` — the token bridge's vocabulary (above). `glob` — `CacheKey` matching.
+- `npm` — `PackageManagerPin`, consumed by `PackageManagerInstaller` (exact-
+  version npm/pnpm/yarn/bun provisioning over `ToolInstaller`) and **confined to
+  that one module by the reachability suite**, on Azure's terms: not reachable
+  from `ActionRuntime.layer` or any light module; taking it costs the consumer
+  one explicit layer line. The result is a discriminated union on `source`
+  (`AmbientPackageManager` | `CachedPackageManager`); every tool-cache answer
+  carries an `addPath`-able `binDir` — shims written into the **staged** entry
+  for the npm-registry managers (never a post-swap mutation; regenerated
+  best-effort on a foreign cache hit), bun's own directory for bun.
 - `templates` — the region engine under `ManagedDocument` / `CheckDocument`.
   **Not a second engine**: the region grammar, the line-ending invariant and the
   idempotence proof stay in `templates`, which has them under test.
@@ -79,6 +88,14 @@ This has caught two real leaks — see the design doc. When you hit the third,
 **add a member to `Secret` rather than an exception**: `forSigning` exists
 because SigV4 needs raw bytes for an HMAC, and it took one line.
 
+**Masking assumes the runner parses stdout — a detached worker inverts it.**
+A worker's stdout is a log file no runner parses, so a mask emitted there is
+inert AND writes the plaintext verbatim into the log (a consumer shipped
+exactly that for one round). The worker composes `ActionOutputs.layerDetached`
+(2026-08-02): `setSecret` a documented no-op, the runner-file members failing
+typed (`reason: "detached"`), `setFailed` a plain log line. The parent masks
+**before** the spawn, via `Secret.forChildEnv` under the real layer.
+
 The scan **strips comments first**. TSDoc that mentions `Redacted.value` while
 explaining that a module does not call it is otherwise reported as a call — the
 same phantom-edge problem the bundle-reachability walkers hit with `@example`
@@ -106,6 +123,41 @@ straight to the destination leaves a partial tool behind on failure, and `find`
 reports a partial directory as a hit — so every later run uses a broken
 toolchain and never re-downloads it. The staging directory must stay under the
 cache root: a cross-filesystem rename is not atomic.
+
+`ToolInstaller.provisionFile` (2026-08-02) packages the one composition with no
+per-tool variation — a single bare binary: `find` → `download` → chmod `0o755`
+(skipped when `RUNNER_OS` is Windows, and BEFORE caching, so the cache never
+holds a non-executable tool) → `cacheFile`, answering `{ directory, binDir }`
+where `binDir` IS the cached directory. A hit **missing the named binary** is a
+foreign/partial entry and is reinstalled over, not answered. The bun path in
+`PackageManagerInstaller` deliberately does not route through it — integrity
+verification and zip extraction sit between its download and chmod.
+
+`ActionCache.save` (2026-08-02) resolves its `paths` as glob patterns before
+`tar`, with `actions/cache` parity: matched directories archive recursively,
+non-matching patterns (including absent literals) drop silently, an empty
+resolution fails typed, and `versionOf` hashes the **literal** pattern list on
+both save and restore — exactly as the toolkit's `getCacheVersion` does — so
+restore resolves nothing and the versions agree for free. Resolved paths stay
+absolute for the `-P` posture (a documented divergence from the toolkit's
+workspace-relative entries). The engine is `@effected/glob`, never
+`@actions/glob`.
+
+`ActionState.save` (2026-08-02) proves at save time that the encoded form
+survives `JSON.stringify`/`parse` and re-decodes, failing typed
+(`notPlainJson`, naming the key) instead of leaving a `malformed` mystery for
+a later phase — the schema's encoded form must be plain JSON
+(`Schema.OptionFromNullOr`, not `Schema.Option`).
+
+`CacheKey.withRestoreDepths` (2026-08-02) lets a key carry an explicit
+restore-key ladder — each depth is the number of leading segments a rung keeps,
+emitted in the order given — because the default every-prefix ladder drops
+digest segments a five-segment key must never lose. `ActionCache.restore` picks
+the policy up through the same typed-key path; depths outside
+`1..segments.length - 1` are refused at construction. `withoutRestoreKeys()`
+(2026-08-02) is the third point in the policy space — the same field carrying
+**zero rungs**, so an exact-match-only restore sends an empty `restore_keys`
+and never falls back; only *absence* means the default every-prefix ladder.
 
 ### The results backend is only reachable from a `uses:` step
 
@@ -146,7 +198,11 @@ block early — a value-controlled injection into the runner's own file.
 Inputs go through `ActionInput` (which owns the `INPUT_` mangling — GitHub
 uppercases and replaces **spaces**, and leaves **dashes alone**); log
 annotations go through `ActionLogger.annotated`. Both exist because a consumer
-spelled a name wrong and shipped it.
+spelled a name wrong and shipped it. The rule extends to tests (2026-08-02):
+`ActionInput.provider`/`layer` dual-accept **input-name keys** (`with:`-block
+style, `{"biome-version": "…"}`) and mangle internally — an explicit
+`INPUT_`-spelled entry still wins — and `ActionInput.variable(name)` exports
+the derivation for the rare test that must spell the variable.
 
 **`Action.run` installs `ActionInput.providerOver(ambient)` as the default
 `ConfigProvider`** (via `ActionInput.layerDefault`, composed into

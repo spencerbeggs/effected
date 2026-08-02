@@ -166,6 +166,23 @@ path is exercised, not assumed.
   (`packages/github-actions/src/ActionInput.ts:238-251`) — never write to
   `process.env` in a test to fake an input. Point at `actions-inputs-outputs`
   for the full `INPUT_` mangling contract.
+- **In-memory doubles are strictly MORE permissive than the runner — round-trip
+  state claims through the real layer.** A `Map`-backed `ActionState` double
+  happily stores any object; the runner writes a FILE, so the value survives
+  only what `JSON.stringify`/`parse` preserves. A `Schema.Option` state schema
+  passed every in-memory test and failed on the real runner one phase later
+  (its encoded form is an Option *instance*, serialized via `toJSON` into a
+  shape the decode rejects). The regression harness that catches this class:
+  a temp file as `GITHUB_STATE` + the real `ActionState.layer`, saving in one
+  scope and reading back in a fresh one — the double proves the logic, only
+  the real layer proves the *serialization*. (Since 2026-08-02 `save` fails
+  this typed as `notPlainJson` at save time, but the harness rule stands for
+  every file-backed service double.)
+- **Faulting one member of a REAL service**: wrap the live service and override
+  the member — `Layer.effect(FileSystem.FileSystem, Effect.map(FileSystem.FileSystem,
+  (fs) => ({ ...fs, chmod: spy })))` provided AFTER `NodeServices.layer` in the
+  merge — real IO everywhere except the one observed call. First-try shape for
+  "prove chmod was (not) called" without giving up the real filesystem.
 
 ## The actions-specific instances of general traps
 

@@ -253,6 +253,15 @@ node probe.ts             # behavioural probe; Node runs TS directly
 rm -f "$PWD/probe.ts"
 ```
 
+**Run `tsc` BARE — never pass the probe file as a CLI argument.** Under
+TypeScript 7 a found tsconfig plus CLI file args is a hard error
+(`TS5112: tsconfig.json is present but will not be loaded if files are
+specified on commandline`), probed 2026-08-02. The bare form compiles the
+package's own program, which includes a root-level probe (precondition 3's
+whole point). If a file argument is genuinely unavoidable, `--ignoreConfig`
+proceeds — but it abandons the package's tsconfig, so the bare form stays
+canonical.
+
 A type-level control that works, verified against `effect@4.0.0-beta.94`:
 
 ```ts

@@ -1,12 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option } from "effect";
+import { Effect, FileSystem, Layer, Option, Sink, Stream } from "effect";
+import { badArgument } from "effect/PlatformError";
+import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
+import { ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment, ToolInstaller, ToolInstallerError } from "../src/index.js";
+import { settle } from "./results.js";
 
 /** A scratch tool-cache root, removed by the test that made it. */
 const scratch = () => mkdtempSync(join(tmpdir(), "effected-toolcache-"));
@@ -54,6 +58,108 @@ const makeTarball = (directory: string, contents: string): string => {
 	execFileSync("tar", ["czf", archive, "-C", staging, "tool.txt"]);
 	return archive;
 };
+
+/** A real zip containing one file. */
+const makeZip = (directory: string, contents: string): string => {
+	const staging = join(directory, "zip-payload");
+	mkdirSync(staging, { recursive: true });
+	writeFileSync(join(staging, "tool.txt"), contents);
+	const archive = join(directory, "tool.zip");
+	execFileSync("zip", ["-q", archive, "tool.txt"], { cwd: staging });
+	return archive;
+};
+
+/**
+ * A spawner built through core's own `ChildProcessSpawner.make`, counting
+ * every spawn and answering each with one scripted handle.
+ *
+ * @remarks
+ * The COUNT is the point: the convenience members (`string`, `exitCode`) each
+ * spawn independently, so an implementation that composes them re-executes the
+ * command — the exact defect that failed 5/5 Windows extraction jobs while
+ * POSIX stayed green on idempotency. A test asserting only on outputs cannot
+ * see the second execution; the counter can.
+ */
+const countingSpawner = (script: { readonly exitCode: number; readonly output: string }) => {
+	let spawns = 0;
+	const service = ChildProcessSpawner.make(() =>
+		Effect.sync(() => {
+			spawns += 1;
+			const bytes = new TextEncoder().encode(script.output);
+			return ChildProcessSpawner.makeHandle({
+				pid: ChildProcessSpawner.ProcessId(4321),
+				exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(script.exitCode)),
+				isRunning: Effect.succeed(false),
+				kill: () => Effect.void,
+				stdin: Sink.drain,
+				stdout: Stream.fromIterable([bytes]),
+				stderr: Stream.empty,
+				all: Stream.fromIterable([bytes]),
+				getInputFd: () => Sink.drain,
+				getOutputFd: () => Stream.empty,
+				unref: Effect.succeed(Effect.void),
+			});
+		}),
+	);
+	return {
+		count: () => spawns,
+		layer: Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, service),
+	};
+};
+
+/**
+ * The live layer with one or more `FileSystem` members replaced.
+ *
+ * @remarks
+ * Everything else stays the real thing — the point is to observe or fail
+ * exactly one member (chmod) while the download, the staging copy and the
+ * swap all run against the real filesystem.
+ */
+const liveWithFileSystem = (
+	root: string,
+	mutate: (fs: FileSystem.FileSystem) => FileSystem.FileSystem,
+	fetch: typeof globalThis.fetch,
+	env: Record<string, string> = {},
+) =>
+	ToolInstaller.layer.pipe(
+		Layer.provide(
+			Layer.mergeAll(
+				ActionEnvironment.layerTest({ RUNNER_TOOL_CACHE: root, ...env }),
+				// NodeServices FIRST, the mutated FileSystem after it: the last
+				// provider of a duplicated service wins the merge.
+				NodeServices.layer,
+				Layer.effect(FileSystem.FileSystem, Effect.map(FileSystem.FileSystem, mutate)).pipe(
+					Layer.provide(NodeServices.layer),
+				),
+				FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fetch))),
+			),
+		),
+	);
+
+/** A fetch that counts its calls — the observable for "did it download?". */
+const countingFetch = (respond: () => Response) => {
+	let count = 0;
+	const fetch: typeof globalThis.fetch = async () => {
+		count += 1;
+		return respond();
+	};
+	return { fetch, count: () => count };
+};
+
+/** The live layer with the spawner replaced by a scripted, counting one. */
+const liveWithSpawner = (root: string, spawner: Layer.Layer<ChildProcessSpawner.ChildProcessSpawner>) =>
+	ToolInstaller.layer.pipe(
+		Layer.provide(
+			Layer.mergeAll(
+				ActionEnvironment.layerTest({ RUNNER_TOOL_CACHE: root }),
+				// NodeServices FIRST, the scripted spawner after it: the last
+				// provider of a duplicated service wins the merge.
+				NodeServices.layer,
+				FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(alwaysFails))),
+				spawner,
+			),
+		),
+	);
 
 describe("ToolInstaller", () => {
 	describe("the cache layout", () => {
@@ -223,6 +329,63 @@ describe("ToolInstaller", () => {
 		);
 	});
 
+	describe("extraction runs exactly once", () => {
+		it.live("a successful extraction spawns its command EXACTLY once", () =>
+			Effect.gen(function* () {
+				// This counter is the mutant that was alive in production: `string`
+				// then `exitCode` are two spawns, and the second one is what failed
+				// 5/5 on Windows where ExtractToDirectory refuses to overwrite.
+				const root = scratch();
+				const tarSpawner = countingSpawner({ exitCode: 0, output: "" });
+				yield* Effect.flatMap(ToolInstaller, (installer) => installer.extractTar(join(root, "a.tgz"))).pipe(
+					Effect.provide(liveWithSpawner(root, tarSpawner.layer)),
+				);
+				assert.strictEqual(tarSpawner.count(), 1, "extractTar must spawn exactly once");
+
+				const zipSpawner = countingSpawner({ exitCode: 0, output: "" });
+				yield* Effect.flatMap(ToolInstaller, (installer) => installer.extractZip(join(root, "a.zip"))).pipe(
+					Effect.provide(liveWithSpawner(root, zipSpawner.layer)),
+				);
+				assert.strictEqual(zipSpawner.count(), 1, "extractZip must spawn exactly once");
+				rmSync(root, { recursive: true, force: true });
+			}),
+		);
+
+		it.live("a failed extraction spawns once and reports THAT run's complaint", () =>
+			Effect.gen(function* () {
+				const root = scratch();
+				const spawner = countingSpawner({ exitCode: 1, output: "the actual complaint" });
+				const error = yield* Effect.flip(
+					Effect.flatMap(ToolInstaller, (installer) => installer.extractTar(join(root, "a.tgz"))).pipe(
+						Effect.provide(liveWithSpawner(root, spawner.layer)),
+					),
+				);
+				assert.instanceOf(error, ToolInstallerError);
+				assert.strictEqual(error.reason, "extractFailed");
+				assert.strictEqual(error.stderr, "the actual complaint");
+				assert.strictEqual(spawner.count(), 1, "the failure must come from the one and only run");
+				rmSync(root, { recursive: true, force: true });
+			}),
+		);
+
+		it.live("extracting the same zip twice into the same destination succeeds", () =>
+			withRoot((root) =>
+				Effect.gen(function* () {
+					// The idempotency claim: extraction into a pre-populated
+					// destination must overwrite, not refuse — the POSIX half runs
+					// here (`unzip -o`); the Windows half is the three-argument
+					// ExtractToDirectory overwrite overload in the same code path.
+					const archive = makeZip(root, "zipped");
+					const destination = join(root, "dest");
+					const installer = yield* ToolInstaller;
+					yield* installer.extractZip(archive, { destination });
+					yield* installer.extractZip(archive, { destination });
+					assert.strictEqual(readFileSync(join(destination, "tool.txt"), "utf8"), "zipped");
+				}),
+			),
+		);
+	});
+
 	describe("download", () => {
 		it.live("streams the body to a file", () =>
 			withRoot(
@@ -262,6 +425,167 @@ describe("ToolInstaller", () => {
 			assert.isFalse(of(401).retryable);
 			assert.isFalse(new ToolInstallerError({ reason: "extractFailed" }).retryable);
 			return Effect.void;
+		});
+
+		it.effect("a connection that stops moving times out typed, statusless, and retryable", () =>
+			Effect.gen(function* () {
+				// A fetch that never settles is the dead connection: without the
+				// per-attempt budget this is a silent hang to the job timeout. Under
+				// the virtual clock the default five-minute budget (plus the two
+				// retries it makes possible) elapses instantly.
+				const root = scratch();
+				const stalled: typeof globalThis.fetch = () => new Promise<Response>(() => {});
+				const exit = yield* settle(
+					Effect.flip(
+						Effect.flatMap(ToolInstaller, (installer) => installer.download("https://example.test/stall")).pipe(
+							Effect.provide(live(root, stalled)),
+						),
+					),
+					TestClock.adjust("6 minutes"),
+				);
+				rmSync(root, { recursive: true, force: true });
+				assert.strictEqual(exit._tag, "Success", "the download must FAIL typed, not hang");
+				if (exit._tag === "Success") {
+					const error = exit.value;
+					assert.instanceOf(error, ToolInstallerError);
+					assert.strictEqual(error.reason, "downloadFailed");
+					assert.isUndefined(error.status, "a timeout has no status");
+					assert.isTrue(error.retryable, "a dead connection is a transport fault, the most retryable thing there is");
+				}
+			}),
+		);
+	});
+
+	describe("provisionFile", () => {
+		const options = { tool: "biome", version: "2.3.4", url: "https://example.test/biome", binary: "biome" };
+		const binaryBody = "#!/bin/sh\necho biome\n";
+
+		it.live("provisions a single binary: downloaded, executable, cached, binDir answered", () =>
+			withRoot(
+				(root) =>
+					Effect.gen(function* () {
+						const provisioned = yield* (yield* ToolInstaller).provisionFile(options);
+						assert.strictEqual(
+							provisioned.directory,
+							ToolInstaller.cachePath({ root, tool: "biome", version: "2.3.4", arch: process.arch }),
+						);
+						// For a single binary the cached directory IS the addPath target.
+						assert.strictEqual(provisioned.binDir, provisioned.directory);
+						const file = join(provisioned.directory, "biome");
+						assert.strictEqual(readFileSync(file, "utf8"), binaryBody);
+						// The executable bit is the difference between a cached tool and a
+						// cached file, and it must be ON THE CACHED FILE — a chmod after
+						// caching would mutate a swapped-in entry, and a skipped chmod
+						// ships a binary the runner cannot execute.
+						assert.strictEqual(statSync(file).mode & 0o777, 0o755);
+					}),
+				{ fetch: async () => new Response(binaryBody, { status: 200 }) },
+			),
+		);
+
+		it.live("short-circuits on a cache hit carrying the binary, and the hit answers binDir too", () => {
+			const counting = countingFetch(() => new Response(binaryBody, { status: 200 }));
+			return withRoot(
+				(root) =>
+					Effect.gen(function* () {
+						const directory = ToolInstaller.cachePath({ root, tool: "biome", version: "2.3.4", arch: process.arch });
+						mkdirSync(directory, { recursive: true });
+						writeFileSync(join(directory, "biome"), "already cached");
+						const provisioned = yield* (yield* ToolInstaller).provisionFile(options);
+						assert.strictEqual(provisioned.directory, directory);
+						assert.strictEqual(provisioned.binDir, directory);
+						assert.strictEqual(readFileSync(join(directory, "biome"), "utf8"), "already cached");
+						assert.strictEqual(counting.count(), 0, "a hit must not download");
+					}),
+				{ fetch: counting.fetch },
+			);
+		});
+
+		it.live("reinstalls over a foreign hit that is MISSING the binary", () => {
+			// find's own TSDoc warning made real: the tool cache is shared, and a
+			// foreign entry guarantees only the location contract. An entry without
+			// the named binary cannot run the tool, so it is treated as a miss —
+			// answering it as a hit is the shipped-bug shape the warning records.
+			const counting = countingFetch(() => new Response(binaryBody, { status: 200 }));
+			return withRoot(
+				(root) =>
+					Effect.gen(function* () {
+						const directory = ToolInstaller.cachePath({ root, tool: "biome", version: "2.3.4", arch: process.arch });
+						mkdirSync(directory, { recursive: true });
+						writeFileSync(join(directory, "other-layout.txt"), "a different writer's idea of biome");
+						const provisioned = yield* (yield* ToolInstaller).provisionFile(options);
+						assert.strictEqual(counting.count(), 1, "a hit without the binary must reinstall");
+						assert.strictEqual(readFileSync(join(provisioned.directory, "biome"), "utf8"), binaryBody);
+					}),
+				{ fetch: counting.fetch },
+			);
+		});
+
+		it.live("skips chmod entirely when RUNNER_OS is Windows", () => {
+			const root = scratch();
+			const chmods: Array<string> = [];
+			const spying = (fs: FileSystem.FileSystem): FileSystem.FileSystem => ({
+				...fs,
+				chmod: (file, mode) => {
+					chmods.push(String(file));
+					return fs.chmod(file, mode);
+				},
+			});
+			return Effect.gen(function* () {
+				const provisioned = yield* Effect.flatMap(ToolInstaller, (installer) => installer.provisionFile(options));
+				assert.deepStrictEqual(chmods, [], "no chmod may be attempted on Windows — the bit does not exist there");
+				assert.strictEqual(provisioned.binDir, provisioned.directory);
+			}).pipe(
+				Effect.provide(
+					liveWithFileSystem(root, spying, async () => new Response(binaryBody, { status: 200 }), {
+						RUNNER_OS: "Windows",
+					}),
+				),
+				Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+			);
+		});
+
+		it.live("the control: off Windows the same spy sees exactly one chmod, on the downloaded file", () => {
+			const root = scratch();
+			const chmods: Array<string> = [];
+			const spying = (fs: FileSystem.FileSystem): FileSystem.FileSystem => ({
+				...fs,
+				chmod: (file, mode) => {
+					chmods.push(String(file));
+					return fs.chmod(file, mode);
+				},
+			});
+			return Effect.gen(function* () {
+				yield* Effect.flatMap(ToolInstaller, (installer) => installer.provisionFile(options));
+				assert.lengthOf(chmods, 1, "the Windows test's spy must be able to see a chmod at all");
+				assert.isTrue(chmods[0]?.endsWith("download"), "the chmod lands on the downloaded file, before caching");
+			}).pipe(
+				Effect.provide(liveWithFileSystem(root, spying, async () => new Response(binaryBody, { status: 200 }))),
+				Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+			);
+		});
+
+		it.live("a chmod failure is cacheFailed naming the downloaded file, and nothing is cached", () => {
+			const root = scratch();
+			const failing = (fs: FileSystem.FileSystem): FileSystem.FileSystem => ({
+				...fs,
+				chmod: () => Effect.fail(badArgument({ module: "FileSystem", method: "chmod", description: "refused" })),
+			});
+			return Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					Effect.flatMap(ToolInstaller, (installer) => installer.provisionFile(options)),
+				);
+				assert.instanceOf(error, ToolInstallerError);
+				assert.strictEqual(error.reason, "cacheFailed");
+				assert.isTrue(error.subject?.endsWith("download"), "the subject is the file that could not be made executable");
+				// The failure happened BEFORE caching, so the cache must not contain
+				// a non-executable binary for every later run to find.
+				const found = yield* Effect.flatMap(ToolInstaller, (installer) => installer.find("biome", "2.3.4"));
+				assert.isTrue(Option.isNone(found));
+			}).pipe(
+				Effect.provide(liveWithFileSystem(root, failing, async () => new Response(binaryBody, { status: 200 }))),
+				Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+			);
 		});
 	});
 

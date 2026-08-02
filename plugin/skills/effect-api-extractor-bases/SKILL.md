@@ -307,6 +307,17 @@ and `types:check` — it only surfaces in the **prod** build's `issues.json`.
    member; here the class does own it, but only through the factory, which is
    the same dead end from API Extractor's side.
 
+## `{@link X.member}` where the member name IS a TSDoc selector keyword
+
+A member whose name collides with a TSDoc **system selector** (`variable`,
+`function`, `class`, `interface`, `namespace`, `enum`, `constructor`,
+`static`, `instance`, …) makes `{@link ActionInput.variable}` ambiguous to
+the parser, and the bundler warns *"identifier must be quoted"*. Hit live
+2026-08-02 on a static genuinely named `variable`. The fix is the same as
+every other unresolvable-link case in this skill: **backticks**
+(`` `ActionInput.variable` ``) — do not try quoted-selector syntax, and do
+not rename the API to appease the doc engine.
+
 ## `tsdoc-at-sign-in-word`: never markdown-link a scoped package
 
 A scoped package name in TSDoc must be backticked. That much is known — the trap
@@ -334,6 +345,19 @@ indexes the **generated `.d.ts`**. Locate a `tsdoc-*` or `ae-unresolved-link`
 defect textually, not by jumping to that line number — the position routinely
 lands on a class declaration thirty lines from the offending comment, which has
 sent more than one agent chasing an innocent symbol.
+
+## `tsdoc-code-span-missing-delimiter`: a code span must not wrap
+
+A backtick code span must open and close on the **same comment line**. Prose
+reflow is how this breaks: a span like
+`` `Unsupported package manager specification` `` wrapped across two comment
+lines reads perfectly balanced in source — each line's fragment looks fine —
+but the parser sees two half-spans and emits **two**
+`tsdoc-code-span-missing-delimiter` warnings in the prod gate. When wrapping
+would split a span, rewrap the sentence, not the span: move the whole span to
+the next line, or shorten the prose around it. (Found live in
+`@effected/package-json`, 2026-07-28, where an error-message quotation
+wrapped during an ordinary TSDoc edit.)
 
 ## Reading the gate without fooling yourself
 
@@ -371,6 +395,12 @@ exit-code provenance, so it is only evidence when *your* build exited 0 against
 a clean tree with nothing else building. If you mutate source to prove a fix is
 load-bearing, **rebuild afterward** — otherwise you leave an artifact that
 describes a tree no commit ever contained.
+
+One cosmetic non-defect while reading built declarations: core's dollar-alias
+export names surface verbatim — a `Schema.Array` field emits as
+`Schema.$Array<…>`, `Schema.Record` as `Schema.$Record<…>`. Correct output,
+observed across multiple package builds at beta.101; do not "fix" it, and do
+not read it as a wrong import in the source.
 
 ## History
 

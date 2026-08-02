@@ -1,3 +1,4 @@
+import type { Duration } from "effect";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schedule, Schema, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -65,8 +66,77 @@ export class ToolInstallerError extends Schema.TaggedErrorClass<ToolInstallerErr
 export interface ExtractOptions {
 	/** The destination. A fresh temporary directory when omitted. */
 	readonly destination?: string | undefined;
-	/** Flags for `tar`. Defaults to `["xzf"]`, i.e. a gzipped tarball. */
+	/**
+	 * Flags for `tar`. Defaults to `["xzf"]`, i.e. a gzipped tarball.
+	 *
+	 * @remarks
+	 * The argv is assembled as `[...flags, archive, "-C", destination]` — the
+	 * archive path is appended directly AFTER the flags, so the LAST flag must
+	 * be the one that consumes the archive operand. `["xzf"]` works because `f`
+	 * is last inside the cluster; a custom set like `["xz", "--strip=1", "-f"]`
+	 * must end the same way, deliberately rather than by ordering luck.
+	 */
 	readonly flags?: ReadonlyArray<string> | undefined;
+}
+
+/**
+ * How a {@link ToolInstallerShape.download} should behave.
+ *
+ * @public
+ */
+export interface ToolDownloadOptions {
+	/**
+	 * The overall time budget for ONE download attempt (request plus streaming
+	 * the body to disk). Defaults to five minutes.
+	 *
+	 * @remarks
+	 * The default is deliberately generous: toolchain archives run to hundreds
+	 * of megabytes, and a healthy runner connection moves tens of megabytes a
+	 * second — even a 500 MB archive on a degraded 2 MB/s link fits in five
+	 * minutes. What the budget exists for is the connection that stops moving
+	 * entirely: without it, a dead connection is a silent CI hang until the job
+	 * timeout; with it, the attempt fails typed as `downloadFailed` with no
+	 * status — which `retryable` classifies as a transport fault — and the
+	 * download's own retry policy tries again.
+	 */
+	readonly timeout?: Duration.Input | undefined;
+}
+
+/**
+ * What {@link ToolInstallerShape.provisionFile} should provision.
+ *
+ * @public
+ */
+export interface ProvisionFileOptions {
+	/** The tool-cache name the binary is provisioned under, e.g. `"biome"`. */
+	readonly tool: string;
+	/** The exact version — a tool-cache path segment, so spell it canonically. */
+	readonly version: string;
+	/** The url the binary downloads from on a cache miss. */
+	readonly url: string;
+	/**
+	 * The cached file's name — what the tool is invoked as once its directory
+	 * is on the `PATH` (e.g. `"biome"`, or `"biome.exe"` on Windows).
+	 */
+	readonly binary: string;
+}
+
+/**
+ * Where {@link ToolInstallerShape.provisionFile} put a single-binary tool.
+ *
+ * @remarks
+ * The same `directory`/`binDir` shape as `PackageManagerInstaller`'s
+ * `CachedPackageManager`, so a consumer publishes either the same way. For a
+ * single binary the two coincide: the cached directory contains exactly the
+ * executable, so it IS the directory to hand to `ActionOutputs.addPath`.
+ *
+ * @public
+ */
+export interface ProvisionedFile {
+	/** The cached entry: `<tool-cache>/<tool>/<version>/<arch>`. */
+	readonly directory: string;
+	/** The directory to `addPath` — for a single binary, the cached directory itself. */
+	readonly binDir: string;
 }
 
 /**
@@ -81,10 +151,20 @@ export interface ToolInstallerShape {
 	 * @remarks
 	 * Absent is not an error, and neither is an unreadable cache: both mean
 	 * "install it", which is the only thing a caller can do about either.
+	 *
+	 * **The tool cache is SHARED.** The hosted runner image pre-populates it and
+	 * every `setup-*` action writes into it — this package is a co-writer, not
+	 * the owner. A hit guarantees only the `<root>/<tool>/<version>/<arch>`
+	 * location contract ({@link ToolInstaller.cachePath}); the directory's
+	 * *interior* layout is whatever its writer produced, which is not
+	 * necessarily what this consumer's own `cacheDir` would have written.
+	 * Validate the layout of a foreign hit before relying on it — applying an
+	 * assumption from your own install path (an archive-wrapper subdirectory,
+	 * say) to a foreign entry is a real shipped bug.
 	 */
 	readonly find: (tool: string, version: string) => Effect.Effect<Option.Option<string>>;
 	/** Download a url to a temporary file, retrying what is worth retrying. */
-	readonly download: (url: string) => Effect.Effect<string, ToolInstallerError>;
+	readonly download: (url: string, options?: ToolDownloadOptions) => Effect.Effect<string, ToolInstallerError>;
 	/** Extract a tarball. Returns the directory its contents landed in. */
 	readonly extractTar: (archive: string, options?: ExtractOptions) => Effect.Effect<string, ToolInstallerError>;
 	/** Extract a zip. Returns the directory its contents landed in. */
@@ -98,10 +178,32 @@ export interface ToolInstallerShape {
 		tool: string,
 		version: string,
 	) => Effect.Effect<string, ToolInstallerError>;
+	/**
+	 * Provision a single-binary tool: the whole `find` → `download` →
+	 * chmod → `cacheFile` composition as one call.
+	 *
+	 * @remarks
+	 * The one packaged workflow among the primitives, because the single-binary
+	 * shape (biome, and every Rust/Go tool distributed as a bare executable) has
+	 * no per-tool variation left to compose: there is no archive, so no
+	 * extraction and no layout fixup. A cache hit whose entry contains the
+	 * named `binary` short-circuits; a hit *missing* it — a foreign or partial
+	 * entry, see {@link ToolInstallerShape.find}'s shared-cache warning — is
+	 * treated as a miss and reinstalled over, rather than handing back a
+	 * directory that cannot run the tool. On the install path the downloaded
+	 * file is made executable (`0o755`) BEFORE caching — skipped when
+	 * `RUNNER_OS` is Windows, where the bit does not exist — so the cache only
+	 * ever contains a runnable tool; a chmod failure is `cacheFailed` with the
+	 * file as its subject.
+	 */
+	readonly provisionFile: (options: ProvisionFileOptions) => Effect.Effect<ProvisionedFile, ToolInstallerError>;
 }
 
 /** How many times a retryable download is retried before giving up. */
 const DOWNLOAD_RETRIES = 2;
+
+/** The default per-attempt download budget. See {@link ToolDownloadOptions.timeout}. */
+const DOWNLOAD_TIMEOUT: Duration.Input = "5 minutes";
 
 const make = Effect.gen(function* () {
 	const env = yield* ActionEnvironment;
@@ -138,27 +240,40 @@ const make = Effect.gen(function* () {
 	};
 
 	/**
-	 * Run an extraction command, keeping its stderr.
+	 * Run an extraction command ONCE, keeping its stderr.
 	 *
 	 * @remarks
 	 * `tar`'s exit code says only that it failed; its stderr says why, and it is
 	 * the difference between "this is not a gzip archive" and "tar is not
 	 * installed". Discarding it is what makes an extraction failure unactionable.
+	 *
+	 * **One spawn, not two — load-bearing.** The spawner's convenience members
+	 * each spawn independently: `string` collects output without inspecting the
+	 * exit code, and `exitCode` runs the command AGAIN (core's
+	 * `ChildProcessSpawner.make` derives both from `spawn`). Calling them
+	 * back-to-back double-executed every extraction — harmless for idempotent
+	 * `tar`/`unzip -o`, but .NET's `ZipFile.ExtractToDirectory` refuses to
+	 * overwrite, so the second run failed 5/5 on real Windows runners while the
+	 * captured "complaint" was the FIRST run's silent success. Output and exit
+	 * code must come from the same `spawn` handle.
 	 */
 	const extractWith = (command: ChildProcess.Command, archive: string): Effect.Effect<void, ToolInstallerError> =>
-		Effect.gen(function* () {
-			const output = yield* spawner
-				.string(command, { includeStderr: true })
-				.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "extractFailed", subject: archive, cause })));
-			const code = yield* spawner
-				.exitCode(command)
-				.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "extractFailed", subject: archive, cause })));
-			if (code !== 0) {
-				return yield* Effect.fail(
-					new ToolInstallerError({ reason: "extractFailed", subject: archive, stderr: output.trim() }),
-				);
-			}
-		});
+		Effect.scoped(
+			Effect.gen(function* () {
+				const extractError = (cause: unknown) =>
+					new ToolInstallerError({ reason: "extractFailed", subject: archive, cause });
+				const handle = yield* spawner.spawn(command).pipe(Effect.mapError(extractError));
+				// Drain stdout+stderr BEFORE awaiting the exit code, so a chatty
+				// extractor cannot deadlock on a full pipe; the stream ends at exit.
+				const output = yield* Stream.mkString(Stream.decodeText(handle.all)).pipe(Effect.mapError(extractError));
+				const code = yield* handle.exitCode.pipe(Effect.mapError(extractError));
+				if (code !== 0) {
+					return yield* Effect.fail(
+						new ToolInstallerError({ reason: "extractFailed", subject: archive, stderr: output.trim() }),
+					);
+				}
+			}),
+		);
 
 	/**
 	 * Install a staged directory into the tool cache by renaming it into place.
@@ -204,7 +319,7 @@ const make = Effect.gen(function* () {
 			),
 		);
 
-	const download = Effect.fn("ToolInstaller.download")(function* (url: string) {
+	const download = Effect.fn("ToolInstaller.download")(function* (url: string, options?: ToolDownloadOptions) {
 		const attempt = Effect.gen(function* () {
 			const response = yield* http
 				.get(url)
@@ -227,6 +342,13 @@ const make = Effect.gen(function* () {
 		});
 
 		return yield* attempt.pipe(
+			// The per-attempt budget sits INSIDE the retry: a connection that stops
+			// moving becomes a typed, statusless (and therefore retryable)
+			// downloadFailed instead of a silent hang to the job timeout.
+			Effect.timeout(options?.timeout ?? DOWNLOAD_TIMEOUT),
+			Effect.catchTag("TimeoutError", (cause) =>
+				Effect.fail(new ToolInstallerError({ reason: "downloadFailed", subject: url, cause })),
+			),
 			Effect.retry({
 				schedule: Schedule.exponential("1 second"),
 				times: DOWNLOAD_RETRIES,
@@ -235,13 +357,30 @@ const make = Effect.gen(function* () {
 		);
 	});
 
-	return {
-		find: (tool: string, version: string) =>
-			Effect.map(Effect.result(fs.stat(cachePath(tool, version))), (result) =>
-				result._tag === "Success" && result.success.type === "Directory"
-					? Option.some(cachePath(tool, version))
-					: Option.none(),
+	const find = (tool: string, version: string): Effect.Effect<Option.Option<string>> =>
+		Effect.map(Effect.result(fs.stat(cachePath(tool, version))), (result) =>
+			result._tag === "Success" && result.success.type === "Directory"
+				? Option.some(cachePath(tool, version))
+				: Option.none(),
+		);
+
+	const cacheFile = Effect.fn("ToolInstaller.cacheFile")(function* (
+		source: string,
+		name: string,
+		tool: string,
+		version: string,
+	) {
+		yield* Effect.annotateCurrentSpan({ tool, version });
+		return yield* staged(tool, (staging) =>
+			fs.copyFile(source, path.join(staging, name)).pipe(
+				Effect.mapError((cause) => new ToolInstallerError({ reason: "cacheFailed", subject: tool, cause })),
+				Effect.flatMap(() => swapIntoCache(staging, tool, version)),
 			),
+		);
+	});
+
+	return {
+		find,
 
 		download,
 
@@ -257,12 +396,19 @@ const make = Effect.gen(function* () {
 			// The platform comes from `RUNNER_OS` rather than `process.platform`,
 			// which is both the runner's own answer and the only version of this
 			// branch that a test on any host can reach.
+			// The pwsh branch is deliberately belt-and-braces: the THREE-argument
+			// `ExtractToDirectory(src, dest, $true)` overload overwrites existing
+			// files (the two-argument one refuses, which is what turned a repeated
+			// extraction into a hard failure), and the try/catch writes the actual
+			// .NET exception text plainly to stderr and exits 1 — pwsh's own error
+			// rendering does not reliably reach a captured stream, and an empty
+			// complaint costs a source dive to even hypothesize about.
 			const command = windows
 				? ChildProcess.make("pwsh", [
 						"-NoProfile",
 						"-NonInteractive",
 						"-Command",
-						`Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('${archive.replaceAll("'", "''")}', '${destination.replaceAll("'", "''")}')`,
+						`$ErrorActionPreference = 'Stop'; try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('${archive.replaceAll("'", "''")}', '${destination.replaceAll("'", "''")}', $true) } catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 1 }`,
 					])
 				: ChildProcess.make("unzip", ["-oq", archive, "-d", destination]);
 			yield* extractWith(command, archive);
@@ -279,19 +425,34 @@ const make = Effect.gen(function* () {
 			);
 		}),
 
-		cacheFile: Effect.fn("ToolInstaller.cacheFile")(function* (
-			source: string,
-			name: string,
-			tool: string,
-			version: string,
-		) {
-			yield* Effect.annotateCurrentSpan({ tool, version });
-			return yield* staged(tool, (staging) =>
-				fs.copyFile(source, path.join(staging, name)).pipe(
-					Effect.mapError((cause) => new ToolInstallerError({ reason: "cacheFailed", subject: tool, cause })),
-					Effect.flatMap(() => swapIntoCache(staging, tool, version)),
-				),
-			);
+		cacheFile,
+
+		provisionFile: Effect.fn("ToolInstaller.provisionFile")(function* (options: ProvisionFileOptions) {
+			yield* Effect.annotateCurrentSpan({ tool: options.tool, version: options.version });
+			const cached = yield* find(options.tool, options.version);
+			if (Option.isSome(cached)) {
+				// The hit is validated, per find's shared-cache warning: the entry may
+				// have been written by the runner image or a setup-* action, and a hit
+				// without the named binary is a directory that cannot run the tool.
+				// Absence falls through to a reinstall over the entry rather than
+				// failing — the install path is the only recovery a caller has anyway.
+				const present = yield* Effect.result(fs.stat(path.join(cached.value, options.binary)));
+				if (present._tag === "Success" && present.success.type === "File") {
+					return { directory: cached.value, binDir: cached.value };
+				}
+			}
+			const file = yield* download(options.url);
+			if (!windows) {
+				// A downloaded file has no executable bit, and the cached binary must
+				// be invokable as-is; on Windows the bit does not exist and chmod is
+				// skipped entirely. BEFORE caching, so the cache only ever contains a
+				// runnable tool — same ordering as PackageManagerInstaller's bun path.
+				yield* fs
+					.chmod(file, 0o755)
+					.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "cacheFailed", subject: file, cause })));
+			}
+			const directory = yield* cacheFile(file, options.binary, options.tool, options.version);
+			return { directory, binDir: directory };
 		}),
 	} satisfies ToolInstallerShape;
 });
@@ -304,10 +465,13 @@ const unimplemented = (member: string): never => {
  * Download, extract and cache a toolchain in the runner's tool cache.
  *
  * @remarks
- * The primitives, not a workflow: a consumer composes `find` → `download` →
- * `extractTar` → `cacheDir` in whatever order its tool needs, because the
- * orders genuinely differ (a single binary skips extraction, a tarball with a
- * nested root directory needs a path fixup between extract and cache).
+ * The primitives, plus exactly one packaged workflow: a consumer composes
+ * `find` → `download` → `extractTar` → `cacheDir` in whatever order its tool
+ * needs, because the orders genuinely differ (a tarball with a nested root
+ * directory needs a path fixup between extract and cache). The one shape with
+ * no per-tool variation — a single bare binary, which skips extraction and
+ * needs only the executable bit — ships whole as
+ * {@link ToolInstallerShape.provisionFile}.
  *
  * No `@actions/tool-cache` dependency — the cache is a directory layout, and
  * this reproduces the layout rather than importing a package to compute it.
@@ -368,6 +532,7 @@ export class ToolInstaller extends Context.Service<ToolInstaller, ToolInstallerS
 		extractZip: () => Effect.sync(() => unimplemented("extractZip")),
 		cacheDir: () => Effect.sync(() => unimplemented("cacheDir")),
 		cacheFile: () => Effect.sync(() => unimplemented("cacheFile")),
+		provisionFile: () => Effect.sync(() => unimplemented("provisionFile")),
 		...overrides,
 	});
 

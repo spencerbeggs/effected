@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-07-28
+last-synced: 2026-07-28
 completeness: 92
 related:
   - architecture.md
@@ -54,7 +54,7 @@ Mirror [`packages/yaml/package.json`](../../../packages/yaml/package.json) as th
 - `exports`: `{ ".": "./src/index.ts", "./package.json": "./package.json" }`.
 - `scripts`: `build:dev` = `node savvy.build.ts --target dev`, `build:prod` = `node savvy.build.ts --target prod`, `types:check` = `tsc --noEmit`. A package that depends on a sibling `@effected/*` package via `workspace:*` ALSO needs `prepare` = `turbo run build:dev` — see [cross-package build dependencies](#cross-package-build-dependencies).
 - `devDependencies`: `@savvy-web/bundler` (a plain semver range, not catalogued); `@effect/vitest` and `effect` at `catalog:effect`; `@types/node` and `typescript` at `catalog:silk`. The bundler is what `savvy.build.ts` imports, so every package that builds declares it. It is a **`devDependency`** — never a `dependency`, even in a package that has a `dependencies` block, or the publishable manifest ships a build tool at runtime. `typescript` is the typechecker behind `types:check`; do **not** add `@effect/tsgo` (see [the typechecker](#the-typechecker-tsc-not-tsgo)).
-- `peerDependencies`: `effect` at `catalog:effect` — libraries keep `effect` as a peer.
+- `peerDependencies`: `effect` at `catalog:effect:peers` — libraries keep `effect` as a peer, and the peer declaration draws from the `effect:peers` catalog, not `effect` (which is what the `devDependencies` entry uses). Every sibling manifest spells it this way; verified against `semver`, `toml` and `walker`.
 - `engines`: `node >=24.11.0`.
 - `publishConfig`: `{ access: public, directory: dist/dev/pkg, linkDirectory: true, targets: { npm: true } }`.
 
@@ -79,7 +79,7 @@ Every package typechecks with `tsc --noEmit`, backed by `typescript: catalog:sil
 Wiring is mostly automatic once the files exist:
 
 - The `packages/*` glob in `pnpm-workspace.yaml` picks the package up — no manual registration.
-- Catalogs referenced (`catalog:effect` for `effect`/`@effect/vitest`, `catalog:silk` for `@types/node`/`typescript`) live in `pnpm-workspace.yaml`.
+- Catalogs referenced (`catalog:effect` for the `effect`/`@effect/vitest` devDependencies, `catalog:effect:peers` for the `effect` peer, `catalog:silk` for `@types/node`/`typescript`) live in `pnpm-workspace.yaml`.
 - The api-extractor model is wired by the `turbo.json` `outputs` entry plus the `savvy.build.ts` `localPaths` (both `../../website/lib/models/X`). The generated model under `website/lib/models/X` is a `build:prod` artifact, **not** committed — `.gitignore` ignores `website/lib/models/*`, and no package's model is tracked. Website docs pages are a separate, later step (migration-playbook step 5).
 
 ## Steps to add a package

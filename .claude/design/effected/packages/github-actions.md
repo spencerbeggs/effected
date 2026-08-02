@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-07-26
-last-synced: 2026-07-26
+updated: 2026-08-02
+last-synced: 2026-08-02
 completeness: 100
 related:
   - ../effect-standards.md
@@ -38,6 +38,7 @@ Scope is closed by six consumers — the five in the spec plus **silk-runtime-ac
     "@effected/github": "workspace:~",
     "@effected/glob": "workspace:~",
     "@effected/markdown": "workspace:~",     // GitHubMarkdown only, reachability-pinned
+    "@effected/npm": "workspace:~",          // PackageManagerPin, PackageManagerInstaller only (2026-07-28)
     "@effected/sbom": "workspace:~",         // the two seam adapters only
     "@effected/templates": "workspace:~",    // ManagedDocument / CheckDocument only
     "@azure/storage-blob": "^12.33.0"
@@ -70,7 +71,7 @@ The rules that make the confinement hold:
 - The three modules are separate named re-exports in `index.ts`, never gathered into a namespace object — the [codec hazard](../effect-standards.md#no-barrel-re-exports) applies verbatim: `export const Stores = { cache, artifact, blob }` would make every one of them reachable from any of them.
 - **Measured, not asserted.** A bundle-reachability test with a control, copying [github's](github.md#testing): bundle a program importing only `ActionOutputs` and assert `@azure/storage-blob` is absent from the module graph; bundle one importing `ActionCache` and assert it is present. Without the second assertion the first can pass for the wrong reason.
 
-**`@effected/markdown` is confined the same way, by the same test** (2026-07-26). It is the kit's second-largest package and `GitHubMarkdown` is the only module allowed to import it; every other reporting module composes *strings*, so a consumer that writes a check document without ever calling the writer does not link the engine. `__test__/reachability.test.ts` carries the pair with a control, exactly as Azure does. `@effected/templates` and `@effected/sbom` are deliberately **not** confined — both are small, pure-or-contract-shaped kit packages whose presence in a graph costs nothing worth measuring, and pretending otherwise would make the reachability suite a ritual rather than a defense.
+**`@effected/markdown` is confined the same way, by the same test** (2026-07-26). It is the kit's second-largest package and `GitHubMarkdown` is the only module allowed to import it; every other reporting module composes *strings*, so a consumer that writes a check document without ever calling the writer does not link the engine. `__test__/reachability.test.ts` carries the pair with a control, exactly as Azure does. **`@effected/npm` joined the confined set on the same terms** (2026-07-28): `PackageManagerInstaller` is its only importer, it is not reachable from `ActionRuntime.layer` or any light module, and taking it costs the consumer one explicit layer line. `@effected/templates` and `@effected/sbom` are deliberately **not** confined — both are small, pure-or-contract-shaped kit packages whose presence in a graph costs nothing worth measuring, and pretending otherwise would make the reachability suite a ritual rather than a defense.
 
 ## Module map
 
@@ -98,7 +99,8 @@ Module-per-concept, no barrels, `src/index.ts` re-exports only.
 | `src/BlobStore.ts` | the `BlobStore` service + the S3 backend | — |
 | `src/BlobStore.githubCache.ts` | `GitHubCacheBlobStore` — the Actions-cache Twirp v2 backend | `@azure/storage-blob` |
 | `src/BlobTransfer.ts` | **pure**: the transport seam the three Azure modules take as an argument | — |
-| `src/ToolInstaller.ts` | download / extract / cache a toolchain | — |
+| `src/ToolInstaller.ts` | download / extract / cache a toolchain; `provisionFile` for the single-bare-binary composition (2026-08-02) | — |
+| `src/PackageManagerInstaller.ts` | exact-version npm/pnpm/yarn/bun provisioning over `ToolInstaller`, keyed by `@effected/npm`'s `PackageManagerPin` (2026-07-28) | `@effected/npm` |
 | `src/DetachedProcess.ts` | detached spawn, readiness probe, the bare-pid reap guard | `node:child_process` |
 | `src/CheckState.ts` | **pure**: the check-state vocabulary (`running`/`pass`/`fail`/`warn`/`user_interaction_required`/`skipped`/`timeout`) and `projectCheckState` onto GitHub's check-run status/conclusion wire — conclusion literals mirrored structurally so the module never reaches `@effected/github`, drift pinned by a test | — |
 | `src/ManagedDocument.ts` | **pure**: the marker-delimited document — sentinel `<!-- ns:key -->`, named regions replaced from current state, human bytes preserved, create-or-update in one parse. A thin domain fix of `@effected/templates`' `SectionDocument` (HTML style, `MANAGED REGION` phrase, `ns.key.region` wire keys) | `@effected/templates` |
@@ -106,7 +108,7 @@ Module-per-concept, no barrels, `src/index.ts` re-exports only.
 | `src/CheckDocument.ts` | the check-run → document reconciler: in-process registry (`report`, last-write-wins, resolution non-terminal), trailing debounce with max-wait (500 ms / 3 s defaults), byte-identical render ⇒ no write, narrow `sink` contract, finalizer flush | `@effected/templates` |
 | `src/internal/` | SigV4, the Twirp client, the results-backend reader | — |
 
-**Twenty-six modules** against the source package's eleven runtime services: twenty at the port, plus the [four reporting modules](#the-github-surfaces-reporting-suite-2026-07-26) added for silk-release-action's item 2 and the [two `@effected/sbom` seam adapters](#the-effectedsbom-seam-adapters-2026-07-26), all six landed 2026-07-26. The growth is deliberate: framing (`BlobEnvelope`), cache-key derivation (`CacheKey`), the secret seam (`Secret`) and detached-process lifecycle (`DetachedProcess`) were all **consumer-side hand-rolls** the survey found, not new inventions.
+**Twenty-seven modules** against the source package's eleven runtime services: twenty at the port, plus the [four reporting modules](#the-github-surfaces-reporting-suite-2026-07-26) added for silk-release-action's item 2 and the [two `@effected/sbom` seam adapters](#the-effectedsbom-seam-adapters-2026-07-26) (all six landed 2026-07-26), plus `PackageManagerInstaller` from the silk-runtime-action dogfood (2026-07-28). The growth is deliberate: framing (`BlobEnvelope`), cache-key derivation (`CacheKey`), the secret seam (`Secret`) and detached-process lifecycle (`DetachedProcess`) were all **consumer-side hand-rolls** the survey found, not new inventions.
 
 ## `ActionEnvironment`, and the two friction fixes
 
@@ -207,6 +209,8 @@ export class Secret {
 ```
 
 The invariant that makes this worth a module: **you cannot obtain plaintext from this package without the runner mask having been applied first**, because masking and declassification are the same call. `Redacted.value` appears nowhere else in the package, and a test asserts that — a grep-style structural test over `src/`, which is cheap and catches the reintroduction.
+
+The one context where the mask is inert is a **detached worker**, whose stdout is a log file no runner parses — a mask emitted there does nothing except write the plaintext into the log. `ActionOutputs.layerDetached` (2026-08-02) is the answer: the worker composes it (`setSecret` a documented no-op, the runner-file members failing typed with `reason: "detached"`, `setFailed` a plain log line), and the parent masks **before** the spawn via `Secret.forChildEnv` under the real layer. The invariant is unchanged — declassification still routes through the seam; what the layer changes is which side of the process boundary the mask lands on.
 
 `ActionState` gets the same treatment rather than a second mechanism: `saveSecret(key, secret)` masks then persists, because `GITHUB_STATE` is plaintext by GitHub's protocol and the mask is the only available defense. [`@effected/github` deliberately does neither](github.md#the-seam-effectedgithub-actions-needs) — masking is an Actions output command and persistence is an Actions file, so both are this package's job.
 
@@ -542,7 +546,7 @@ Three properties earned their tests, and each is a way the obvious implementatio
 
 `hashFiles` is **byte-compatible with `@actions/glob`**: sorted, de-duplicated, and each file's SHA-256 fed into the accumulator as **binary, not hex**. A hex-fed accumulator produces a perfectly plausible digest that never matches a cache entry written by any other action; the test pins the digest as a literal and the wrong-way value (`e11ab1a1…`) is what the mutant produced.
 
-**Built as two statics, not one.** `CacheKey.matchingFiles({ workspace, patterns })` answers with the sorted absolute paths a pattern set matches; `CacheKey.hashMatching` is that fed to `hashFiles`. Splitting them is what lets a caller reuse the discovery — `ActionCache.save` takes literal paths — and it is the pairing every consumer otherwise writes by hand, whose two halves have to agree about ordering and about what counts as a file.
+**Built as two statics, not one.** `CacheKey.matchingFiles({ workspace, patterns })` answers with the sorted absolute paths a pattern set matches; `CacheKey.hashMatching` is that fed to `hashFiles`. Splitting them is what lets a caller reuse the discovery — `ActionCache.save` took literal paths at the port, and since 2026-08-02 resolves its `paths` as glob patterns itself with `actions/cache` parity (see the package `CLAUDE.md`) — and it is the pairing every consumer otherwise writes by hand, whose two halves have to agree about ordering and about what counts as a file.
 
 Two behaviors earned tests, and one of them is a real trap: **candidates are matched by their path relative to the workspace** (which is what makes "never hash a file outside the workspace" structural rather than remembered), and **directories are excluded by an explicit `stat`**. A directory called `notes.txt` matches `**/*.txt` and is not a file; without the check it reaches `hashFiles`, which fails on the read — so the difference is a working cache key versus a failing action. The mutant that loosens the check is what proves the test discriminates.
 

@@ -38,6 +38,7 @@ export {
 	isValidDependencySpecifier,
 } from "./DependencySpecifier.js";
 export {
+	CorepackIntegrityHash,
 	type IntegrityAlgorithm,
 	IntegrityHash,
 	type IntegrityHashBrand,
@@ -66,6 +67,11 @@ export {
 	type RegistryTarget,
 	type SeededVersion,
 } from "./NpmRegistry.js";
+export {
+	InvalidPackageManagerPinError,
+	PackageManagerPin,
+	PackageManagerPinName,
+} from "./PackageManagerPin.js";
 export {
 	type DryRunOutcome,
 	type PackOptions,

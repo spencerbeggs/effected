@@ -42,6 +42,16 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
   structured fields; never store a preformatted message.
 - **`Effect.fn("Name.op")` spans on fallible public boundaries only** — `parse`
   statics, `Range.intersect`, every fallible `VersionCache` method.
+- **String-level validity lives on the class too**: `SemVer.isValid` /
+  `SemVer.isPinnable` (booleans) and `SemVer.ExactVersionString` /
+  `SemVer.PinnableVersionString` (`Schema.String` checks — the type stays
+  `string`). All four **reject surrounding whitespace**, deliberately diverging
+  from `parseResult`, which trims (matching node-semver): padded input is the
+  caller's bug to surface, not this package's to hide, and the padded-input
+  tests are the recorded discriminating mutant for a bare-`parseResult`
+  rewrite. "Pinnable" additionally excludes build metadata (the corepack pin
+  notion). `PinnableVersionString` is consumed **by identity** in
+  `@effected/package-json`'s `PackageManager` — do not re-derive it downstream.
 - **The sync `Result` form is the primitive; the `Effect` form derives from it.**
   `SemVer.parseResult`, `Range.parseResult`, `Comparator.parseResult` and
   `Range.intersectResult` hold the engine; each `Effect` twin is
@@ -77,7 +87,7 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
 
 ## Test and build
 
-Tests live in `__test__/` (6 files, 194 tests), use `@effect/vitest`, and
+Tests live in `__test__/` (6 files, 243 tests), use `@effect/vitest`, and
 assert with `assert.*` — never `expect`. Default to `it.effect`; `VersionCache`
 suites use one top-level `layer(VersionCache.layer)(...)` group. Shared cases
 live in `__test__/fixtures/`.
