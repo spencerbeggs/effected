@@ -87,7 +87,7 @@ phrasing and missed on its module name.
 | `Iterable` | lazy combinators over any `[Symbol.iterator]` value | transform/search/group iterables without materializing arrays |
 | `JsonPatch` | computes/applies deterministic RFC6902 add/remove/replace patches | diffing two JSON docs or replaying JSON changes |
 | `JsonPointer` | RFC6901 token escape/unescape helpers | escaping `~`/`/` in JSON Pointer path segments |
-| `JsonSchema` | normalize/convert JSON Schema & OpenAPI dialect documents | converting between Draft-07/2020-12/OpenAPI schemas, `$ref` resolution |
+| `JsonSchema` | normalize/convert JSON Schema & OpenAPI dialect documents | converting between Draft-07/2020-12/OpenAPI schemas, `$ref` resolution. **Generation lives in `Schema`**: `Schema.toJsonSchemaDocument` (2020-12; `includeAnnotationKey` admits custom keys) then `JsonSchema.toDocumentDraft07` to lower. **The lowering drops every keyword outside its fixed copy-list** — annotation-admitted keys survive at 2020-12 and vanish at draft-07 (re-graft after, never rely on options); the `$defs` pool maps key-for-key; the one coordinate move is `prefixItems[i]`→`items[i]`. Probe evidence: `@effected/schemastore`'s CLAUDE.md and design doc. |
 | `Latch` | reusable open/closed fiber coordination primitive | gating fibers until an explicit open/release signal |
 | `Layer` | describes acquiring/wiring services with deps and errors | constructing and composing service dependencies |
 | `LayerMap` | keyed cache of scoped layer-built service contexts | per-tenant/per-region resource families built on demand |

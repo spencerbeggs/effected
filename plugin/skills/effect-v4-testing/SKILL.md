@@ -490,6 +490,17 @@ code — and read `unhandledErrors` with it:** a `ChildProcess` with no `error`
 listener re-throws asynchronously *after* the failure was correctly reported,
 and 15 green tests carried a live defect that only that field showed.
 
+**The stale-upstream-dist red herring** (a red that lies rather than a green):
+in a kit monorepo, a downstream package's tests resolve workspace siblings
+through their BUILT dist (the lockfile links `version: link:../npm/dist/dev/pkg`),
+so adding an export to an upstream package makes every downstream suite fail
+to LOAD with `Cannot read properties of undefined (reading 'ast')` — the new
+export exists in source, is `undefined` in the stale artifact, and the schema
+built from it dies at module load pointing nowhere near the cause. When you
+add an export to an upstream kit package, `pnpm build --filter <upstream>`
+before running any downstream suite; that error message at suite load IS the
+stale-dist signature.
+
 ## House conventions
 
 - Tests live in each package's `__test__/` directory (`*.test.ts`), never

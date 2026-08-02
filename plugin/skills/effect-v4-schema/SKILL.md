@@ -334,6 +334,31 @@ the **identifier in the first call** and fields in the second, while
 first** and the tag+fields in the second. Mixing them up produces confusing
 inference errors, not a clear TS message.
 
+## A `Schema.check` narrowing is ERASED from the published type
+
+A check narrows what **decodes**, not what the value is **typed** as — so a
+checked schema and its base publish as the *same* declared type.
+`CorepackIntegrityHash` (corepack-form-only) and the wide `IntegrityHash`
+brand both emit as `Schema.brand<Schema.String, "IntegrityHash">` in
+`@effected/npm`'s built `.d.ts`; a consumer reading the types cannot tell
+them apart. Probed at beta.101, and the consequence bites in two directions:
+
+- **A faithful private re-fork of a shared checked schema is invisible** to
+  `tsc` AND to every behavioral test — the mutant that re-forks the schema
+  keeps the entire rejection matrix green. When two modules must share a
+  checked narrowing of one brand, the only proven guard is a **runtime
+  identity assertion** on the consumer's field schema
+  (`X.fields.integrity.schema === CorepackIntegrityHash`; through
+  `Schema.Option`, `.fields.<name>.value === …`), with a control proving it
+  discriminates (`=== IntegrityHash` must be false). The failing assert
+  prints "Compared values have no visual difference" — which is the point.
+  Do not downgrade it to a behavioral test, which cannot fail, or a
+  source-text import walker, which passes if the import is left unused.
+- **A behavioral break can be type-invisible**: strictening a field's check
+  (package-json's `PackageManager` version fold) ships a byte-identical
+  `.d.ts` while previously-accepted inputs now fail at decode. Announce
+  such changes loudly in handoffs — nothing downstream fails to compile.
+
 ## Verify against the installed beta, not the references
 
 The `references/` track **upstream `Effect-TS/effect` main**, which runs AHEAD of the

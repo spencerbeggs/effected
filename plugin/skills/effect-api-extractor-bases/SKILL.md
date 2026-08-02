@@ -335,6 +335,19 @@ defect textually, not by jumping to that line number — the position routinely
 lands on a class declaration thirty lines from the offending comment, which has
 sent more than one agent chasing an innocent symbol.
 
+## `tsdoc-code-span-missing-delimiter`: a code span must not wrap
+
+A backtick code span must open and close on the **same comment line**. Prose
+reflow is how this breaks: a span like
+`` `Unsupported package manager specification` `` wrapped across two comment
+lines reads perfectly balanced in source — each line's fragment looks fine —
+but the parser sees two half-spans and emits **two**
+`tsdoc-code-span-missing-delimiter` warnings in the prod gate. When wrapping
+would split a span, rewrap the sentence, not the span: move the whole span to
+the next line, or shorten the prose around it. (Found live in
+`@effected/package-json`, 2026-07-28, where an error-message quotation
+wrapped during an ordinary TSDoc edit.)
+
 ## Reading the gate without fooling yourself
 
 `issues.json` is a **false-green oracle**. Four rules, each learned by being burned:
