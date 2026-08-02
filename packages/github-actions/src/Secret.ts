@@ -49,6 +49,16 @@ export class Secret {
 	 * @remarks
 	 * Every value is masked before any plaintext is returned — including when
 	 * one of them fails, because masking happens for the whole set first.
+	 *
+	 * **Detached workers invert the masking model.** Masking works because the
+	 * runner parses this process's stdout; a *detached* child's stdout is a log
+	 * file no runner parses, so a mask emitted **inside** the worker is inert
+	 * and writes the plaintext verbatim into that log — a shipped incident, not
+	 * a hypothetical. The rule: **the parent masks, before the spawn** — call
+	 * this member in the parent, where the runner is listening, and hand the
+	 * already-masked plaintext to the worker's environment. Inside the worker,
+	 * compose `ActionOutputs.layerDetached`, whose `setSecret` is a documented
+	 * no-op, so the same code cannot re-leak what the parent already masked.
 	 */
 	static readonly forChildEnv = (
 		entries: Readonly<Record<string, Redacted.Redacted<string>>>,
@@ -108,6 +118,17 @@ export class Secret {
 	 *
 	 * Call it **once, at layer construction**, not per operation: masking is
 	 * idempotent but a workflow command per request is noise in the log.
+	 *
+	 * **In a detached worker, the mask this member emits is a leak.** The
+	 * `::add-mask::` command only masks when the runner parses this process's
+	 * stdout; a detached worker's stdout is a log file no runner parses, so
+	 * there the command masks nothing *and* spells the plaintext into the log
+	 * — a signing key shipped exactly that way for one round. A worker that
+	 * signs (an S3-style `BlobStore` is the canonical case) must compose
+	 * `ActionOutputs.layerDetached`, under which this member still returns the
+	 * raw key for the HMAC but the mask is a documented no-op; the masking
+	 * itself is the **parent's** job, done before the spawn via
+	 * {@link Secret.forChildEnv} under the real layer.
 	 */
 	static readonly forSigning = (secret: Redacted.Redacted<string>): Effect.Effect<string, never, ActionOutputs> =>
 		Secret.forRunnerFile(secret);

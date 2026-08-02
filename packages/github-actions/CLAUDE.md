@@ -88,6 +88,14 @@ This has caught two real leaks — see the design doc. When you hit the third,
 **add a member to `Secret` rather than an exception**: `forSigning` exists
 because SigV4 needs raw bytes for an HMAC, and it took one line.
 
+**Masking assumes the runner parses stdout — a detached worker inverts it.**
+A worker's stdout is a log file no runner parses, so a mask emitted there is
+inert AND writes the plaintext verbatim into the log (a consumer shipped
+exactly that for one round). The worker composes `ActionOutputs.layerDetached`
+(2026-08-02): `setSecret` a documented no-op, the runner-file members failing
+typed (`reason: "detached"`), `setFailed` a plain log line. The parent masks
+**before** the spawn, via `Secret.forChildEnv` under the real layer.
+
 The scan **strips comments first**. TSDoc that mentions `Redacted.value` while
 explaining that a module does not call it is otherwise reported as a call — the
 same phantom-edge problem the bundle-reachability walkers hit with `@example`
@@ -146,7 +154,10 @@ restore-key ladder — each depth is the number of leading segments a rung keeps
 emitted in the order given — because the default every-prefix ladder drops
 digest segments a five-segment key must never lose. `ActionCache.restore` picks
 the policy up through the same typed-key path; depths outside
-`1..segments.length - 1` are refused at construction.
+`1..segments.length - 1` are refused at construction. `withoutRestoreKeys()`
+(2026-08-02) is the third point in the policy space — the same field carrying
+**zero rungs**, so an exact-match-only restore sends an empty `restore_keys`
+and never falls back; only *absence* means the default every-prefix ladder.
 
 ### The results backend is only reachable from a `uses:` step
 
@@ -187,7 +198,11 @@ block early — a value-controlled injection into the runner's own file.
 Inputs go through `ActionInput` (which owns the `INPUT_` mangling — GitHub
 uppercases and replaces **spaces**, and leaves **dashes alone**); log
 annotations go through `ActionLogger.annotated`. Both exist because a consumer
-spelled a name wrong and shipped it.
+spelled a name wrong and shipped it. The rule extends to tests (2026-08-02):
+`ActionInput.provider`/`layer` dual-accept **input-name keys** (`with:`-block
+style, `{"biome-version": "…"}`) and mangle internally — an explicit
+`INPUT_`-spelled entry still wins — and `ActionInput.variable(name)` exports
+the derivation for the rare test that must spell the variable.
 
 **`Action.run` installs `ActionInput.providerOver(ambient)` as the default
 `ConfigProvider`** (via `ActionInput.layerDefault`, composed into

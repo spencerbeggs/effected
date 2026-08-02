@@ -40,6 +40,81 @@ describe("ActionInput", () => {
 		);
 	});
 
+	describe("variable — the mangling, exported", () => {
+		it("derives the exact runner variable, dashes preserved", () => {
+			// The hand-written spelling this replaces was INPUT_BIOME_VERSION —
+			// absent on a real runner, so the default silently applied and the
+			// suite went green against the wrong value.
+			assert.strictEqual(ActionInput.variable("biome-version"), "INPUT_BIOME-VERSION");
+		});
+
+		it("replaces spaces with underscores and uppercases; everything else survives", () => {
+			assert.strictEqual(ActionInput.variable("my input"), "INPUT_MY_INPUT");
+			assert.strictEqual(ActionInput.variable("Simple"), "INPUT_SIMPLE");
+			assert.strictEqual(ActionInput.variable("a.b"), "INPUT_A.B");
+		});
+	});
+
+	describe("input-name keys — the with:-block style", () => {
+		it.effect("an input-name key serves the typed accessor", () =>
+			Effect.gen(function* () {
+				// No caller spells INPUT_BIOME-VERSION: the key is the input name
+				// exactly as the workflow's `with:` block writes it, and the
+				// mangling never leaves the module.
+				assert.strictEqual(yield* readOk(ActionInput.string("biome-version"), { "biome-version": "2.3.14" }), "2.3.14");
+			}),
+		);
+
+		it.effect("an input-name key makes a bare Config read resolve, as the production runtime would", () =>
+			Effect.gen(function* () {
+				// The requested regression: the test layer resolves a bare
+				// Config.string("biome-version") through the same INPUT_ derivation
+				// Action.run installs, so a suite green under ActionInput.layer is
+				// green for the same reason the action is.
+				assert.strictEqual(yield* readOk(Config.string("biome-version"), { "biome-version": "2.3.14" }), "2.3.14");
+			}),
+		);
+
+		it.effect("the old hazard stays absent — and the new path cannot reproduce it", () =>
+			Effect.gen(function* () {
+				// The hand-written underscore spelling reads as absent, exactly as it
+				// does on a real runner (which publishes INPUT_BIOME-VERSION)…
+				yield* readFails(ActionInput.string("biome-version"), { INPUT_BIOME_VERSION: "x" });
+				// …and the same test written input-name-first resolves, because the
+				// caller never had a variable name to misspell.
+				assert.strictEqual(yield* readOk(ActionInput.string("biome-version"), { "biome-version": "x" }), "x");
+			}),
+		);
+
+		it.effect("mangles spaces and case in an input-name key", () =>
+			Effect.gen(function* () {
+				assert.strictEqual(yield* readOk(ActionInput.string("My Input"), { "my input": "v" }), "v");
+			}),
+		);
+
+		it.effect("an explicit INPUT_-spelled entry wins over the input-name spelling", () =>
+			Effect.gen(function* () {
+				assert.strictEqual(
+					yield* readOk(ActionInput.string("flag"), { INPUT_FLAG: "explicit", flag: "named" }),
+					"explicit",
+				);
+			}),
+		);
+
+		it.effect("an empty input-name value reads as absent, like the runner's own ''", () =>
+			readFails(ActionInput.string("flag"), { flag: "" }),
+		);
+
+		it.effect("a plain runner variable still resolves verbatim beside input-name keys", () =>
+			Effect.gen(function* () {
+				assert.strictEqual(
+					yield* readOk(Config.string("PLAIN_VAR"), { PLAIN_VAR: "y", "biome-version": "2.3.14" }),
+					"y",
+				);
+			}),
+		);
+	});
+
 	describe("boolean", () => {
 		it.effect("accepts every documented true and false spelling", () =>
 			Effect.gen(function* () {

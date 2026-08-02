@@ -66,7 +66,12 @@ const RestoreDepth = Schema.Number.check(
 	Schema.isBetween({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
 );
 
-const RestoreDepths = Schema.NonEmptyArray(RestoreDepth);
+/**
+ * The explicit ladder: possibly empty, because **zero rungs is a policy** —
+ * exact-match-only restores, spelled by {@link CacheKey.withoutRestoreKeys}.
+ * Only *absence* means the default every-prefix ladder.
+ */
+const RestoreDepths = Schema.Array(RestoreDepth);
 
 /**
  * A GitHub Actions cache key and the restore-key ladder that goes with it.
@@ -82,7 +87,8 @@ const RestoreDepths = Schema.NonEmptyArray(RestoreDepth);
  * By default every prefix is a rung. When some segments must never be dropped
  * — a rung without a version digest resurrects stale cross-version caches —
  * give the key an explicit ladder policy with
- * {@link CacheKey.withRestoreDepths} instead of bypassing the typed key.
+ * {@link CacheKey.withRestoreDepths}, or none at all with
+ * {@link CacheKey.withoutRestoreKeys}, instead of bypassing the typed key.
  *
  * @example
  * ```ts
@@ -102,7 +108,9 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 		/**
 		 * The explicit ladder policy, when one was given: how many leading
 		 * segments each rung keeps, in the order the rungs are tried. Absent for
-		 * the default every-prefix ladder. See {@link CacheKey.withRestoreDepths}.
+		 * the default every-prefix ladder; **empty for no ladder at all** —
+		 * exact-match-only. See {@link CacheKey.withRestoreDepths} and
+		 * {@link CacheKey.withoutRestoreKeys}.
 		 */
 		restoreDepths: Schema.optionalKey(RestoreDepths),
 	}).check(
@@ -134,7 +142,10 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 	 * caches. A key built with {@link CacheKey.withRestoreDepths} carries its
 	 * own ladder instead, and this getter answers exactly that ladder — so
 	 * `ActionCache.restore` picks the policy up through the same typed-key
-	 * path, no hand-built restore-key list required.
+	 * path, no hand-built restore-key list required. An **empty** policy
+	 * ({@link CacheKey.withoutRestoreKeys}) answers no rungs at all: only
+	 * *absence* selects the default ladder, so "none" is never mistaken for
+	 * "every prefix".
 	 */
 	get restoreKeys(): ReadonlyArray<string> {
 		const rung = (length: number): string => `${this.segments.slice(0, length).join(SEPARATOR)}${SEPARATOR}`;
@@ -172,6 +183,31 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 	 */
 	withRestoreDepths(depths: readonly [number, ...Array<number>]): CacheKey {
 		return CacheKey.make({ segments: this.segments, restoreDepths: depths });
+	}
+
+	/**
+	 * A copy of this key that restores from its **exact key only** — no ladder.
+	 *
+	 * @remarks
+	 * The third point in the policy space, and the one the typed key had no
+	 * spelling for: absence of a policy means the default every-prefix ladder,
+	 * so exact-match-only restores (a cache-bust mode, where a stale partial
+	 * hit is worse than a cold start) previously forced the caller back to the
+	 * string form. This is the same `restoreDepths` field carrying **zero
+	 * rungs** — an honest value, not a sentinel: `ActionCache.restore` sends no
+	 * `restore_keys` at all, so the backend answers this key or a miss.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CacheKey } from "@effected/github-actions";
+	 *
+	 * const key = CacheKey.of("Linux", "pnpm-store", "abc123").withoutRestoreKeys();
+	 * key.key;          // "Linux-pnpm-store-abc123"
+	 * key.restoreKeys;  // []
+	 * ```
+	 */
+	withoutRestoreKeys(): CacheKey {
+		return CacheKey.make({ segments: this.segments, restoreDepths: [] });
 	}
 
 	/** Build a key from its segments. */

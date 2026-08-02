@@ -59,7 +59,9 @@ describe("DryRun", () => {
 				Effect.gen(function* () {
 					assert.isTrue(yield* (yield* DryRun).isDryRun);
 				}),
-				{ "INPUT_DRY-RUN": "true" },
+				// Input-name keyed, `with:`-block style: the INPUT_ mangling stays
+				// inside ActionInput, where a hand-written spelling cannot drift.
+				{ "dry-run": "true" },
 			),
 		);
 
@@ -77,7 +79,7 @@ describe("DryRun", () => {
 				Effect.gen(function* () {
 					assert.isFalse(yield* (yield* DryRun).isDryRun);
 				}),
-				{ "INPUT_DRY-RUN": "" },
+				{ "dry-run": "" },
 			),
 		);
 
@@ -102,7 +104,7 @@ describe("DryRun", () => {
 				assert.isTrue(yield* (yield* DryRun).isDryRun);
 			}).pipe(
 				Effect.provide(DryRun.layerFromInput("rehearse only")),
-				Effect.provide(ActionInput.layer({ INPUT_REHEARSE_ONLY: "true" })),
+				Effect.provide(ActionInput.layer({ "rehearse only": "true" })),
 			),
 		);
 	});

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { Path } from "effect";
-import { Effect, FileSystem, Option } from "effect";
+import { Effect, FileSystem, Option, Schema } from "effect";
 import { systemError } from "effect/PlatformError";
 import { CacheKey, CacheKeyError } from "../src/index.js";
 
@@ -116,6 +116,36 @@ describe("CacheKey", () => {
 		it("refuses a negative or fractional depth", () => {
 			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([-1]));
 			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([1.5]));
+		});
+	});
+
+	describe("no ladder at all — exact-match-only", () => {
+		it("answers zero rungs", () => {
+			// The third point in the policy space: absent = the default ladder,
+			// explicit depths = that ladder, EMPTY = no ladder. A mutant that
+			// reads an empty policy as "no policy" regenerates the two default
+			// rungs here and fails on the literal [].
+			assert.deepStrictEqual(CacheKey.of("Linux", "pnpm-store", "abc123").withoutRestoreKeys().restoreKeys, []);
+		});
+
+		it("leaves the primary key alone", () => {
+			assert.strictEqual(
+				CacheKey.of("Linux", "pnpm-store", "abc123").withoutRestoreKeys().key,
+				"Linux-pnpm-store-abc123",
+			);
+		});
+
+		it("survives a schema round-trip without regaining a ladder", () => {
+			// The policy is a plain field, so a key that crossed a serialization
+			// boundary (state, JSON output) keeps meaning "exact match only".
+			const encoded = Schema.encodeSync(CacheKey)(CacheKey.of("Linux", "pnpm-store").withoutRestoreKeys());
+			const decoded = Schema.decodeUnknownSync(CacheKey)(encoded);
+			assert.deepStrictEqual(decoded.restoreKeys, []);
+			assert.strictEqual(decoded.key, "Linux-pnpm-store");
+		});
+
+		it("does not change a key without a policy — absent still means the default ladder", () => {
+			assert.deepStrictEqual(CacheKey.of("Linux", "pnpm-store", "abc123").restoreKeys, ["Linux-pnpm-store-", "Linux-"]);
 		});
 	});
 

@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Schema } from "effect";
+import { Effect, FileSystem, Layer, Redacted, Schema } from "effect";
 import { TestConsole } from "effect/testing";
-import { ActionEnvironment, ActionOutputs } from "../src/index.js";
+import { ActionEnvironment, ActionOutputError, ActionOutputs, Secret } from "../src/index.js";
 
 const FILES = {
 	GITHUB_OUTPUT: "/rf/output",
@@ -189,6 +189,86 @@ describe("ActionOutputs", () => {
 				files,
 			);
 		});
+	});
+
+	describe("layerDetached", () => {
+		/** The S3-shaped secret from the incident this layer exists for. */
+		const PLAINTEXT = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+
+		/** Everything this process wrote to its console, as one string. */
+		const captured = Effect.map(Effect.zip(TestConsole.logLines, TestConsole.errorLines), ([logs, errors]) =>
+			JSON.stringify([...logs, ...errors]),
+		);
+
+		it.effect("the incident, as regression: a signing secret never reaches a detached worker's log", () =>
+			Effect.gen(function* () {
+				// The worker-side composition that shipped wrong: an S3-style signer
+				// declassifying its key via Secret.forSigning. Under layerDetached
+				// the signer still gets the raw bytes for the HMAC…
+				const key = yield* Secret.forSigning(Redacted.make(PLAINTEXT));
+				assert.strictEqual(key, PLAINTEXT);
+				// …and the secret appears NOWHERE in the captured output. Under the
+				// real layer this exact assertion fails (see the control below):
+				// stdout in a detached worker is a log file no runner parses, so the
+				// mask both masks nothing and writes the plaintext into the log.
+				assert.notInclude(yield* captured, PLAINTEXT);
+			}).pipe(Effect.provide(ActionOutputs.layerDetached)),
+		);
+
+		it.effect("the control: the REAL layer writes ::add-mask::<plaintext> — the shipped inversion", () => {
+			const files = runnerFiles();
+			return live(
+				Effect.gen(function* () {
+					// The mutant the regression discriminates against: swap
+					// layerDetached back to ActionOutputs.layer and the plaintext is in
+					// the output, workflow-command prefix and all. In a `uses:` step the
+					// runner consumes this line; in a detached worker it IS the leak.
+					yield* Secret.forSigning(Redacted.make(PLAINTEXT));
+					assert.include(yield* captured, `::add-mask::${PLAINTEXT}`);
+				}),
+				files,
+			);
+		});
+
+		it.effect("setSecret is a silent no-op — the value must not be written anywhere", () =>
+			Effect.gen(function* () {
+				yield* (yield* ActionOutputs).setSecret("s3cr3t");
+				assert.strictEqual(yield* captured, "[]", "a detached worker must write nothing for a mask");
+			}).pipe(Effect.provide(ActionOutputs.layerDetached)),
+		);
+
+		it.effect("every runner-file member fails typed, naming its file", () =>
+			Effect.gen(function* () {
+				const outputs = yield* ActionOutputs;
+				const cases: ReadonlyArray<readonly [Effect.Effect<void, unknown>, string]> = [
+					[outputs.set("version", "1.2.3"), "GITHUB_OUTPUT"],
+					[outputs.setJson("result", { a: 1 }, Schema.Struct({ a: Schema.Number })), "GITHUB_OUTPUT"],
+					[outputs.exportVariable("FOO", "bar"), "GITHUB_ENV"],
+					[outputs.addPath("/opt/bin"), "GITHUB_PATH"],
+					[outputs.summary("## Results\n"), "GITHUB_STEP_SUMMARY"],
+				];
+				for (const [call, file] of cases) {
+					const error = yield* Effect.flip(call);
+					assert.instanceOf(error, ActionOutputError);
+					assert.strictEqual(error.reason, "detached", file);
+					assert.strictEqual(error.file, file);
+					assert.include(error.message, "detached worker");
+				}
+				// Failing typed, not silently: nothing was logged on the way.
+				assert.strictEqual(yield* captured, "[]");
+			}).pipe(Effect.provide(ActionOutputs.layerDetached)),
+		);
+
+		it.effect("setFailed degrades to a plain log line, with no workflow-command syntax", () =>
+			Effect.gen(function* () {
+				yield* (yield* ActionOutputs).setFailed("it broke");
+				const errors = yield* TestConsole.errorLines;
+				assert.include(JSON.stringify(errors), "it broke");
+				// The ::error:: protocol means nothing in a worker's log file —
+				// emitting it would be pretending a runner is listening.
+				assert.notInclude(yield* captured, "::error::");
+			}).pipe(Effect.provide(ActionOutputs.layerDetached)),
+		);
 	});
 
 	describe("test double", () => {

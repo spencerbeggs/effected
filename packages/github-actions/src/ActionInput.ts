@@ -89,6 +89,22 @@ export class ActionInput {
 	private constructor() {}
 
 	/**
+	 * The exact environment variable the runner publishes an input under.
+	 *
+	 * @remarks
+	 * `variable("biome-version")` is `"INPUT_BIOME-VERSION"` — GitHub
+	 * uppercases, replaces **spaces** with underscores, and leaves every other
+	 * character (**dashes included**) alone. This is the same derivation every
+	 * accessor on this class resolves through, exported so a test that must
+	 * spell a runner variable can derive it instead of hand-writing it: a
+	 * hand-written `INPUT_BIOME_VERSION` reads as absent on a real runner, the
+	 * default silently applies, and the suite goes green against the wrong
+	 * value. Prefer keying the test environment by input name (see
+	 * {@link ActionInput.provider}) so no variable is spelled at all.
+	 */
+	static readonly variable = (name: string): string => inputVariable(name);
+
+	/**
 	 * A required string input.
 	 *
 	 * @remarks
@@ -301,22 +317,68 @@ export class ActionInput {
 	}
 
 	/**
-	 * A `ConfigProvider` over a record of runner variables.
+	 * A `ConfigProvider` over a record of runner variables **or input names**.
 	 *
 	 * @remarks
-	 * Subsumes the source package's free-standing `ActionsConfigProvider`, whose
-	 * three behaviors are preserved exactly: the path is joined with `_`, spaces
-	 * become underscores and the whole is uppercased; and an **empty string
-	 * reads as absent**, because the runner sets unsupplied inputs to `""` and
-	 * treating that as present would make every optional input look supplied.
+	 * The record dual-accepts, and the split is the `INPUT_` prefix:
+	 *
+	 * - A key already spelled as a runner variable (`INPUT_BIOME-VERSION`,
+	 *   `PLAIN_VAR`) is read verbatim, exactly as before.
+	 * - Any other key is treated as an **input name**, `with:`-block style —
+	 *   `{ "biome-version": "2.3.14" }` — and serves the variable this module
+	 *   derives for it (`ActionInput.variable`). This is the spelling to
+	 *   prefer in tests: a hand-written `INPUT_BIOME_VERSION` (underscore where
+	 *   the runner keeps the dash) reads as absent and the default silently
+	 *   applies, and the input-name form makes that class of bug
+	 *   unrepresentable — the mangling never leaves this module.
+	 *
+	 * When both spellings of the same input are present and non-empty, the
+	 * explicit `INPUT_`-spelled entry wins.
+	 *
+	 * A **flat single-segment** lookup additionally tries the `INPUT_`
+	 * derivation of the name first, mirroring the order the production runtime
+	 * installs ({@link ActionInput.providerOver} via `layerDefault`) — so a
+	 * bare `Config.string("biome-version")` resolves under this provider
+	 * exactly as it does inside `Action.run`. Nested and numeric paths pass
+	 * through as the joined spelling only, as ever.
+	 *
+	 * The source package's `ActionsConfigProvider` behaviors are otherwise
+	 * preserved exactly: the path is joined with `_`, spaces become underscores
+	 * and the whole is uppercased; and an **empty string reads as absent**,
+	 * because the runner sets unsupplied inputs to `""` and treating that as
+	 * present would make every optional input look supplied. That rule applies
+	 * to input-name entries too: `{ "flag": "" }` is an unsupplied input.
 	 *
 	 * Taking the environment as an argument rather than reading `process.env`
 	 * is what makes inputs testable without mutating the test process.
 	 */
 	static provider(env: Readonly<Record<string, string | undefined>> = process.env): ConfigProvider.ConfigProvider {
+		/** Unset, and the `""` the runner writes for an unsupplied input, are both absent. */
+		const present = (value: string | undefined): value is string => value !== undefined && value !== "";
+		/**
+		 * Resolve one runner-variable name: the verbatim entry wins; an
+		 * `INPUT_`-prefixed miss then consults the input-name entries through the
+		 * one spelling of the derivation (`inputVariable`).
+		 */
+		const lookup = (name: string): string | undefined => {
+			const direct = env[name];
+			if (present(direct)) {
+				return direct;
+			}
+			if (name.startsWith("INPUT_")) {
+				for (const [key, value] of Object.entries(env)) {
+					if (!key.startsWith("INPUT_") && inputVariable(key) === name && present(value)) {
+						return value;
+					}
+				}
+			}
+			return undefined;
+		};
 		return ConfigProvider.make((path) => {
-			const value = env[path.join("_").replaceAll(" ", "_").toUpperCase()];
-			return Effect.succeed(value === undefined || value === "" ? undefined : ConfigProvider.makeValue(value));
+			const single = path.length === 1 && typeof path[0] === "string" ? path[0] : undefined;
+			const attempted = single === undefined ? undefined : lookup(inputVariable(single));
+			const value = attempted ?? lookup(path.join("_").replaceAll(" ", "_").toUpperCase());
+			return Effect.succeed(value === undefined ? undefined : ConfigProvider.makeValue(value));
 		});
 	}
 

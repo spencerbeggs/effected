@@ -173,6 +173,23 @@ describe("ActionCache", () => {
 		}),
 	);
 
+	it.effect("sends ZERO restore keys for an exact-match-only key", () =>
+		Effect.gen(function* () {
+			// The cache-bust mode: a stale partial hit is worse than a cold start,
+			// so the body must carry an EMPTY restore_keys — an implementation
+			// that reads the empty policy as "no policy" sends the two derived
+			// prefixes here instead.
+			const key = CacheKey.of("Linux", "pnpm-store", "abc123").withoutRestoreKeys();
+			const { transfer } = fileTransfer();
+			const { calls, fetch } = twirpFetch({ GetCacheEntryDownloadURL: () => json({ ok: false }) });
+			yield* Effect.flatMap(ActionCache, (cache) => cache.restore(["x"], key)).pipe(
+				Effect.provide(live(fetch, transfer)),
+			);
+			assert.strictEqual(calls[0]?.body.key, "Linux-pnpm-store-abc123");
+			assert.deepStrictEqual(calls[0]?.body.restore_keys, []);
+		}),
+	);
+
 	it.effect("reports a miss as nothing", () =>
 		Effect.gen(function* () {
 			const { transfer } = fileTransfer();
