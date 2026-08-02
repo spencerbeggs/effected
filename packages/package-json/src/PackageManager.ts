@@ -6,8 +6,10 @@
 // The field carries the corepack pin triple, and this module shares BOTH of the
 // strict pieces with `@effected/npm`'s `PackageManagerPin` rather than
 // re-deriving them: the integrity half is npm's `CorepackIntegrityHash`, and
-// the version half validates through `@effected/semver`'s `SemVer.parseResult`
-// — the same strict parse corepack itself performs with `semver.valid`.
+// the version half IS `@effected/semver`'s `SemVer.PinnableVersionString` —
+// the shared "exact version, no build metadata, no surrounding whitespace"
+// schema, whose parse is the same strict one corepack performs with
+// `semver.valid` (minus the trim: a padded version is a typed failure here).
 //
 // The one load-bearing grammar rule, identical to the pin's: the FIRST `+`
 // after the version begins the integrity component. The version position never
@@ -20,32 +22,11 @@
 
 import { CorepackIntegrityHash } from "@effected/npm";
 import { SemVer } from "@effected/semver";
-import { Effect, Exit, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Exit, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 // The name half of the grammar, deliberately looser than
 // `PackageManagerPin`'s four literals — see the class remarks for why.
 const PACKAGE_MANAGER_NAME_RE = /^[a-z]+$/;
-
-// The version half. Strict SemVer 2.0.0, and no build metadata: the grammar
-// cannot express it (the first `+` begins the integrity), so a value carrying
-// build identifiers would encode to a string that re-parses differently. The
-// check also closes the construction hole a plain `Schema.String` leaves —
-// `PackageManager.make({ version: "01.2.3" })` is bad wiring, and fails at
-// construction rather than producing a manifest value corepack rejects.
-const isPinnableVersion = (value: string): boolean => {
-	const parsed = SemVer.parseResult(value);
-	return Result.isSuccess(parsed) && parsed.success.build.length === 0;
-};
-
-const pinnableVersion = Schema.String.pipe(
-	Schema.check(
-		Schema.makeFilter((value) =>
-			isPinnableVersion(value)
-				? undefined
-				: "Expected an exact SemVer version with no build metadata (ranges, partial versions and dist-tags are not pinnable)",
-		),
-	),
-);
 
 const invalid = (input: string, message: string) =>
 	Effect.fail(new SchemaIssue.InvalidValue(Option.some(input), { message }));
@@ -57,8 +38,9 @@ const invalid = (input: string, message: string) =>
  * @remarks
  * The same `<name>@<version>[+<integrity>]` triple `@effected/npm`'s
  * `PackageManagerPin` models, in its `package.json` field form. Both share the
- * strict pieces — the version is validated with `@effected/semver`'s
- * `SemVer.parseResult`, the integrity is npm's `CorepackIntegrityHash` — and
+ * strict pieces — the version is `@effected/semver`'s
+ * `SemVer.PinnableVersionString` (decode rules through `SemVer.isPinnable`),
+ * the integrity is npm's `CorepackIntegrityHash` — and
  * both apply the first-`+`-is-integrity rule. Reach for the pin when
  * provisioning a package manager; reach for this class when reading or writing
  * the manifest field.
@@ -92,13 +74,16 @@ export class PackageManager extends Schema.Class<PackageManager>("PackageManager
 	/** The package-manager name (e.g. `pnpm`). Any lowercase name — see the class remarks. */
 	name: Schema.String,
 	/**
-	 * The version (e.g. `10.33.0`): an exact SemVer 2.0.0 version with no build
-	 * metadata. Prerelease versions are allowed (`10.0.0-rc.1`); ranges, partial
-	 * versions, dist-tags and leading-zero components are not, and a version
+	 * The version (e.g. `10.33.0`): `@effected/semver`'s
+	 * `SemVer.PinnableVersionString` — an exact SemVer 2.0.0 version with no
+	 * build metadata and no surrounding whitespace. Prerelease versions are
+	 * allowed (`10.0.0-rc.1`); ranges, partial versions, dist-tags,
+	 * leading-zero components and padded values are not, and a version
 	 * carrying build metadata is rejected at construction because the grammar
-	 * cannot express it.
+	 * cannot express it. The shared schema is consumed by identity, not
+	 * copied — the suite asserts `fields.version === SemVer.PinnableVersionString`.
 	 */
-	version: pinnableVersion,
+	version: SemVer.PinnableVersionString,
 	/**
 	 * The optional integrity hash (e.g. `sha512.abc`): `@effected/npm`'s
 	 * `CorepackIntegrityHash`, the shared restriction of the `IntegrityHash`
@@ -140,8 +125,10 @@ export class PackageManager extends Schema.Class<PackageManager>("PackageManager
 					// Strict semver, matching corepack's own `semver.valid` check: a
 					// leading-zero component (`01.2.3`), a leading-zero numeric
 					// prerelease (`1.2.3-01`) or an empty prerelease identifier
-					// (`1.2.3-a..b`) is malformed, not merely unusual.
-					if (!isPinnableVersion(version)) {
+					// (`1.2.3-a..b`) is malformed, not merely unusual. Stricter than
+					// the trimming parse on one axis — a padded version substring
+					// (`pnpm@ 10.33.0`) fails typed rather than being canonicalized.
+					if (!SemVer.isPinnable(version)) {
 						return invalid(input, `Invalid packageManager version: "${version}"`);
 					}
 					if (plus === -1) {

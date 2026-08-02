@@ -103,6 +103,43 @@ export interface ToolDownloadOptions {
 }
 
 /**
+ * What {@link ToolInstallerShape.provisionFile} should provision.
+ *
+ * @public
+ */
+export interface ProvisionFileOptions {
+	/** The tool-cache name the binary is provisioned under, e.g. `"biome"`. */
+	readonly tool: string;
+	/** The exact version — a tool-cache path segment, so spell it canonically. */
+	readonly version: string;
+	/** The url the binary downloads from on a cache miss. */
+	readonly url: string;
+	/**
+	 * The cached file's name — what the tool is invoked as once its directory
+	 * is on the `PATH` (e.g. `"biome"`, or `"biome.exe"` on Windows).
+	 */
+	readonly binary: string;
+}
+
+/**
+ * Where {@link ToolInstallerShape.provisionFile} put a single-binary tool.
+ *
+ * @remarks
+ * The same `directory`/`binDir` shape as `PackageManagerInstaller`'s
+ * `CachedPackageManager`, so a consumer publishes either the same way. For a
+ * single binary the two coincide: the cached directory contains exactly the
+ * executable, so it IS the directory to hand to `ActionOutputs.addPath`.
+ *
+ * @public
+ */
+export interface ProvisionedFile {
+	/** The cached entry: `<tool-cache>/<tool>/<version>/<arch>`. */
+	readonly directory: string;
+	/** The directory to `addPath` — for a single binary, the cached directory itself. */
+	readonly binDir: string;
+}
+
+/**
  * The {@link ToolInstaller} service shape.
  *
  * @public
@@ -141,6 +178,25 @@ export interface ToolInstallerShape {
 		tool: string,
 		version: string,
 	) => Effect.Effect<string, ToolInstallerError>;
+	/**
+	 * Provision a single-binary tool: the whole `find` → `download` →
+	 * chmod → `cacheFile` composition as one call.
+	 *
+	 * @remarks
+	 * The one packaged workflow among the primitives, because the single-binary
+	 * shape (biome, and every Rust/Go tool distributed as a bare executable) has
+	 * no per-tool variation left to compose: there is no archive, so no
+	 * extraction and no layout fixup. A cache hit whose entry contains the
+	 * named `binary` short-circuits; a hit *missing* it — a foreign or partial
+	 * entry, see {@link ToolInstallerShape.find}'s shared-cache warning — is
+	 * treated as a miss and reinstalled over, rather than handing back a
+	 * directory that cannot run the tool. On the install path the downloaded
+	 * file is made executable (`0o755`) BEFORE caching — skipped when
+	 * `RUNNER_OS` is Windows, where the bit does not exist — so the cache only
+	 * ever contains a runnable tool; a chmod failure is `cacheFailed` with the
+	 * file as its subject.
+	 */
+	readonly provisionFile: (options: ProvisionFileOptions) => Effect.Effect<ProvisionedFile, ToolInstallerError>;
 }
 
 /** How many times a retryable download is retried before giving up. */
@@ -301,13 +357,30 @@ const make = Effect.gen(function* () {
 		);
 	});
 
-	return {
-		find: (tool: string, version: string) =>
-			Effect.map(Effect.result(fs.stat(cachePath(tool, version))), (result) =>
-				result._tag === "Success" && result.success.type === "Directory"
-					? Option.some(cachePath(tool, version))
-					: Option.none(),
+	const find = (tool: string, version: string): Effect.Effect<Option.Option<string>> =>
+		Effect.map(Effect.result(fs.stat(cachePath(tool, version))), (result) =>
+			result._tag === "Success" && result.success.type === "Directory"
+				? Option.some(cachePath(tool, version))
+				: Option.none(),
+		);
+
+	const cacheFile = Effect.fn("ToolInstaller.cacheFile")(function* (
+		source: string,
+		name: string,
+		tool: string,
+		version: string,
+	) {
+		yield* Effect.annotateCurrentSpan({ tool, version });
+		return yield* staged(tool, (staging) =>
+			fs.copyFile(source, path.join(staging, name)).pipe(
+				Effect.mapError((cause) => new ToolInstallerError({ reason: "cacheFailed", subject: tool, cause })),
+				Effect.flatMap(() => swapIntoCache(staging, tool, version)),
 			),
+		);
+	});
+
+	return {
+		find,
 
 		download,
 
@@ -352,19 +425,34 @@ const make = Effect.gen(function* () {
 			);
 		}),
 
-		cacheFile: Effect.fn("ToolInstaller.cacheFile")(function* (
-			source: string,
-			name: string,
-			tool: string,
-			version: string,
-		) {
-			yield* Effect.annotateCurrentSpan({ tool, version });
-			return yield* staged(tool, (staging) =>
-				fs.copyFile(source, path.join(staging, name)).pipe(
-					Effect.mapError((cause) => new ToolInstallerError({ reason: "cacheFailed", subject: tool, cause })),
-					Effect.flatMap(() => swapIntoCache(staging, tool, version)),
-				),
-			);
+		cacheFile,
+
+		provisionFile: Effect.fn("ToolInstaller.provisionFile")(function* (options: ProvisionFileOptions) {
+			yield* Effect.annotateCurrentSpan({ tool: options.tool, version: options.version });
+			const cached = yield* find(options.tool, options.version);
+			if (Option.isSome(cached)) {
+				// The hit is validated, per find's shared-cache warning: the entry may
+				// have been written by the runner image or a setup-* action, and a hit
+				// without the named binary is a directory that cannot run the tool.
+				// Absence falls through to a reinstall over the entry rather than
+				// failing — the install path is the only recovery a caller has anyway.
+				const present = yield* Effect.result(fs.stat(path.join(cached.value, options.binary)));
+				if (present._tag === "Success" && present.success.type === "File") {
+					return { directory: cached.value, binDir: cached.value };
+				}
+			}
+			const file = yield* download(options.url);
+			if (!windows) {
+				// A downloaded file has no executable bit, and the cached binary must
+				// be invokable as-is; on Windows the bit does not exist and chmod is
+				// skipped entirely. BEFORE caching, so the cache only ever contains a
+				// runnable tool — same ordering as PackageManagerInstaller's bun path.
+				yield* fs
+					.chmod(file, 0o755)
+					.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "cacheFailed", subject: file, cause })));
+			}
+			const directory = yield* cacheFile(file, options.binary, options.tool, options.version);
+			return { directory, binDir: directory };
 		}),
 	} satisfies ToolInstallerShape;
 });
@@ -377,10 +465,13 @@ const unimplemented = (member: string): never => {
  * Download, extract and cache a toolchain in the runner's tool cache.
  *
  * @remarks
- * The primitives, not a workflow: a consumer composes `find` → `download` →
- * `extractTar` → `cacheDir` in whatever order its tool needs, because the
- * orders genuinely differ (a single binary skips extraction, a tarball with a
- * nested root directory needs a path fixup between extract and cache).
+ * The primitives, plus exactly one packaged workflow: a consumer composes
+ * `find` → `download` → `extractTar` → `cacheDir` in whatever order its tool
+ * needs, because the orders genuinely differ (a tarball with a nested root
+ * directory needs a path fixup between extract and cache). The one shape with
+ * no per-tool variation — a single bare binary, which skips extraction and
+ * needs only the executable bit — ships whole as
+ * {@link ToolInstallerShape.provisionFile}.
  *
  * No `@actions/tool-cache` dependency — the cache is a directory layout, and
  * this reproduces the layout rather than importing a package to compute it.
@@ -441,6 +532,7 @@ export class ToolInstaller extends Context.Service<ToolInstaller, ToolInstallerS
 		extractZip: () => Effect.sync(() => unimplemented("extractZip")),
 		cacheDir: () => Effect.sync(() => unimplemented("cacheDir")),
 		cacheFile: () => Effect.sync(() => unimplemented("cacheFile")),
+		provisionFile: () => Effect.sync(() => unimplemented("provisionFile")),
 		...overrides,
 	});
 

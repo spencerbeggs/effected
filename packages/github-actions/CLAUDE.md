@@ -7,7 +7,7 @@ runner it is executing inside.
 Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 3).
 
 **Status: complete** (2026-07-25; the `@effected/sbom` seam adapters and the
-GitHub-surfaces reporting suite landed 2026-07-26) — 388 tests, zero-warning
+GitHub-surfaces reporting suite landed 2026-07-26) — 443 tests, zero-warning
 build. The design doc's as-built section is the authority on what exists and
 why; read it before adding a module.
 
@@ -115,6 +115,22 @@ straight to the destination leaves a partial tool behind on failure, and `find`
 reports a partial directory as a hit — so every later run uses a broken
 toolchain and never re-downloads it. The staging directory must stay under the
 cache root: a cross-filesystem rename is not atomic.
+
+`ToolInstaller.provisionFile` (2026-08-02) packages the one composition with no
+per-tool variation — a single bare binary: `find` → `download` → chmod `0o755`
+(skipped when `RUNNER_OS` is Windows, and BEFORE caching, so the cache never
+holds a non-executable tool) → `cacheFile`, answering `{ directory, binDir }`
+where `binDir` IS the cached directory. A hit **missing the named binary** is a
+foreign/partial entry and is reinstalled over, not answered. The bun path in
+`PackageManagerInstaller` deliberately does not route through it — integrity
+verification and zip extraction sit between its download and chmod.
+
+`CacheKey.withRestoreDepths` (2026-08-02) lets a key carry an explicit
+restore-key ladder — each depth is the number of leading segments a rung keeps,
+emitted in the order given — because the default every-prefix ladder drops
+digest segments a five-segment key must never lose. `ActionCache.restore` picks
+the policy up through the same typed-key path; depths outside
+`1..segments.length - 1` are refused at construction.
 
 ### The results backend is only reachable from a `uses:` step
 

@@ -1,6 +1,6 @@
 # @effected/package-json
 
-package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged. 12 `src/` modules (down from 34 v3 files), 14 test files, 194 tests.
+package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged. 12 `src/` modules (down from 34 v3 files), 14 test files, 197 tests.
 
 **Design doc:** `@../../.claude/design/effected/packages/package-json.md` — load when
 changing the public surface, the `rest` wire transform, or the error taxonomy.
@@ -64,21 +64,26 @@ re-exports below it).
   `PackageManagerPin`, and since the **2026-07-28 consolidation** shares both
   strict pieces with it rather than re-deriving them: `integrity` is npm's
   `CorepackIntegrityHash` (the shared corepack `<algo>.<hex>` narrowing), and
-  the version validates through `@effected/semver`'s `SemVer.parseResult`. That
-  version fold was a **deliberate strictening** of `PackageManager.FromString`
-  — `pnpm@01.2.3`, `1.2.3-01` and `1.2.3-a..b` were accepted by the old
-  regex and now fail typed, matching corepack's own `semver.valid` check — and
-  the check sits on the *field*, so `make` refuses a malformed version (and any
-  build metadata, which the grammar cannot express) rather than producing a
-  manifest value that re-parses differently. The public `.d.ts` is unchanged:
-  a `Schema.check` is **erased from the built type**, so the break is
-  behavioural only — and, for the same reason, severing the shared integrity
-  schema would not be a type error either. The guard is a runtime identity
-  assertion, `PackageManager.fields.integrity.value === CorepackIntegrityHash`
-  (a `Schema.Option` keeps the inner schema on `.value`), with a control against
-  the unrestricted brand; the version fold has no identity analogue and is
-  pinned instead by an equivalence test against `SemVer.parseResult` over a
-  corpus. Do not downgrade either to a source-text check.
+  the version — since the 2026-08-02 migration — IS `@effected/semver`'s
+  `SemVer.PinnableVersionString` (decode rules through `SemVer.isPinnable`).
+  That version fold was a **deliberate strictening** of
+  `PackageManager.FromString` — `pnpm@01.2.3`, `1.2.3-01` and `1.2.3-a..b`
+  were accepted by the old regex, and `pnpm@ 10.33.0` (padded version) by the
+  pre-migration trimming parse; all now fail typed, matching corepack's own
+  `semver.valid` check minus its trim — and the check sits on the *field*, so
+  `make` refuses a malformed version (and any build metadata, which the
+  grammar cannot express) rather than producing a manifest value that
+  re-parses differently. The public `.d.ts` is unchanged: a `Schema.check` is
+  **erased from the built type**, so the break is behavioural only — and, for
+  the same reason, severing either shared schema would not be a type error.
+  The guard is a runtime identity assertion for both halves:
+  `PackageManager.fields.integrity.value === CorepackIntegrityHash` (a
+  `Schema.Option` keeps the inner schema on `.value`) and
+  `PackageManager.fields.version === SemVer.PinnableVersionString` (a bare
+  field keeps the schema directly on `fields`), each with a control; the
+  version half is additionally pinned by an equivalence test against
+  `SemVer.parseResult` over a corpus. Do not downgrade any of these to a
+  source-text check.
   **The name grammar is the one place the two schemas diverge, deliberately.**
   This field model keeps any `[a-z]+` name; the pin closes the set to four.
   Field model = manifests as they exist in the wild, pin = the kit's

@@ -77,6 +77,48 @@ describe("CacheKey", () => {
 		});
 	});
 
+	describe("an explicit ladder policy", () => {
+		it("answers exactly the depths given, in the order given", () => {
+			// The consumer case this exists for: a five-segment key whose default
+			// ladder derives rungs WITHOUT the version digest — rungs that match
+			// stale cross-version caches. The literal expectations matter: an
+			// implementation that ignores the policy and falls back to
+			// all-prefixes yields four rungs here, not these two.
+			const key = CacheKey.of("Linux", "X64", "v1hash", "main", "lockhash").withRestoreDepths([4, 3]);
+			assert.deepStrictEqual(key.restoreKeys, ["Linux-X64-v1hash-main-", "Linux-X64-v1hash-"]);
+		});
+
+		it("preserves a non-descending order verbatim — the order IS the policy", () => {
+			// GitHub tries restore keys in order; descending is recommended in the
+			// TSDoc, deliberately not enforced.
+			const key = CacheKey.of("a", "b", "c").withRestoreDepths([1, 2]);
+			assert.deepStrictEqual(key.restoreKeys, ["a-", "a-b-"]);
+		});
+
+		it("leaves the primary key alone", () => {
+			const key = CacheKey.of("Linux", "pnpm-store", "abc123").withRestoreDepths([1]);
+			assert.strictEqual(key.key, "Linux-pnpm-store-abc123");
+		});
+
+		it("does not change the default ladder of a key without a policy", () => {
+			// Byte-compatibility claim for every existing consumer.
+			assert.deepStrictEqual(CacheKey.of("Linux", "pnpm-store", "abc123").restoreKeys, ["Linux-pnpm-store-", "Linux-"]);
+		});
+
+		it("refuses a depth that keeps every segment — that rung would repeat the primary key", () => {
+			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([3]));
+		});
+
+		it("refuses a depth of zero — that rung would match every cache in the repository", () => {
+			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([0]));
+		});
+
+		it("refuses a negative or fractional depth", () => {
+			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([-1]));
+			assert.throws(() => CacheKey.of("a", "b", "c").withRestoreDepths([1.5]));
+		});
+	});
+
 	describe("branch-aware derivation", () => {
 		it("orders the segments so the first fallback stays on the branch", () => {
 			const key = CacheKey.forBranch({ os: "Linux", scope: "pnpm-store", branch: "feature/x", hash: "abc123" });

@@ -130,6 +130,13 @@ describe("PackageManagerPin rejection matrix", () => {
 	// v-prefixed and empty versions.
 	rejects("pnpm@v1.2.3", "version");
 	rejects("pnpm@", "version");
+	// Padded versions: the version substring is ruled on by SemVer.isPinnable,
+	// which rejects surrounding whitespace — SemVer.parseResult alone TRIMS, so
+	// a bare-parse implementation silently canonicalizes these instead of
+	// failing typed. These three are what discriminate the two.
+	rejects("pnpm@ 11.17.0", "version");
+	rejects("pnpm@11.17.0 ", "version");
+	rejects("pnpm@ 11.17.0 +sha512.deadbeef", "version");
 	// Unknown or empty manager names.
 	rejects("cargo@1.0.0", "name");
 	rejects("PNPM@1.0.0", "name");

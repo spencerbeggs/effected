@@ -192,8 +192,10 @@ export class PackageManagerPin extends Schema.Class<PackageManagerPin>("PackageM
 	 * build-metadata parsing — `pnpm@10.20.0+deadbeef`, whose tail is valid
 	 * semver build metadata but not a corepack `<algo>.<hex>` hash, is
 	 * intentionally not pinnable. Prerelease versions are accepted; ranges
-	 * (`^9.0.0`), partial versions (`9`, `9.1`) and dist-tags (`latest`,
-	 * `berry`) fail with `reason: "version"`.
+	 * (`^9.0.0`), partial versions (`9`, `9.1`), dist-tags (`latest`,
+	 * `berry`) and padded versions (`pnpm@ 11.17.0` — the version substring is
+	 * ruled on by `@effected/semver`'s `SemVer.isPinnable`, which rejects
+	 * surrounding whitespace) fail with `reason: "version"`.
 	 *
 	 * @remarks
 	 * {@link PackageManagerPin.parse} is defined in terms of this function; the
@@ -219,8 +221,13 @@ export class PackageManagerPin extends Schema.Class<PackageManagerPin>("PackageM
 		// The first `+` begins the integrity component, unconditionally — the
 		// version part of a pin never carries build metadata.
 		const plus = rest.indexOf("+");
-		const version = SemVer.parseResult(plus === -1 ? rest : rest.slice(0, plus));
-		if (Result.isFailure(version)) {
+		const candidate = plus === -1 ? rest : rest.slice(0, plus);
+		// The string-level ruling is `SemVer.isPinnable` — the same export
+		// `@effected/package-json`'s field model consumes — and it is stricter
+		// than the trimming parse: a padded version substring (`pnpm@ 11.17.0`)
+		// fails typed here rather than being silently canonicalized.
+		const version = SemVer.parseResult(candidate);
+		if (Result.isFailure(version) || !SemVer.isPinnable(candidate)) {
 			return Result.fail(new InvalidPackageManagerPinError({ input, reason: "version" }));
 		}
 		if (plus === -1) {

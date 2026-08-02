@@ -150,6 +150,11 @@ describe("PackageManager.FromString version rejection matrix", () => {
 	rejects("pnpm@latest", "dist-tag");
 	rejects("pnpm@v1.2.3", "v prefix");
 	rejects("pnpm@", "empty version");
+	// Padded version substrings: `SemVer.isPinnable` refuses surrounding
+	// whitespace, where a bare `SemVer.parseResult` check TRIMS and silently
+	// canonicalizes — these two discriminate the shared export from that mutant.
+	rejects("pnpm@ 10.33.0", "leading whitespace on the version");
+	rejects("pnpm@10.33.0 ", "trailing whitespace on the version");
 
 	it.effect("still accepts the prerelease forms that ARE valid", () =>
 		Effect.gen(function* () {
@@ -170,6 +175,9 @@ describe("PackageManager.FromString version rejection matrix", () => {
 		// spoken for by the integrity — so it is refused at construction rather
 		// than encoding to a string that re-parses as an invalid integrity.
 		assert.throws(() => PackageManager.make({ name: "pnpm", version: "1.2.3+build", integrity: Option.none() }));
+		// Padding is refused at construction too — the shared schema's whitespace
+		// posture, not just the codec's.
+		assert.throws(() => PackageManager.make({ name: "pnpm", version: " 1.2.3", integrity: Option.none() }));
 		// The control: the same construction with an exact version succeeds.
 		const pm = PackageManager.make({ name: "pnpm", version: "1.2.3", integrity: Option.none() });
 		assert.strictEqual(pm.version, "1.2.3");
@@ -221,12 +229,29 @@ describe("PackageManager consolidation", () => {
 		assert.notStrictEqual(PackageManager.fields.integrity.value, IntegrityHash);
 	});
 
-	// The version half has no identity analogue — the field schema is built
-	// locally either way — so it is pinned as an EQUIVALENCE instead: whatever
-	// this field accepts must be exactly what `@effected/semver`'s strict parse
+	// The version half is a shared VALUE too since it became
+	// `SemVer.PinnableVersionString`, so identity settles it the same way.
+	it("version IS @effected/semver's shared pinnable schema, not a copy that agrees with it", () => {
+		// A non-optional field keeps the schema directly on `fields`.
+		assert.strictEqual(
+			PackageManager.fields.version,
+			SemVer.PinnableVersionString,
+			"the pinnable-version restriction must not be re-derived here — consume SemVer.PinnableVersionString",
+		);
+		// The control: the assertion discriminates against the two neighbours a
+		// faithful re-derivation would plausibly reach for.
+		assert.notStrictEqual(PackageManager.fields.version, SemVer.ExactVersionString);
+		assert.notStrictEqual(PackageManager.fields.version, Schema.String);
+	});
+
+	// The equivalence corpus stays as the BEHAVIOURAL guard: whatever this
+	// field accepts must be exactly what `@effected/semver`'s strict parse
 	// accepts (minus build metadata, which the grammar cannot express). A
 	// hand-rolled parser that drifts from SemVer on any corpus entry fails here,
-	// whichever direction it drifts.
+	// whichever direction it drifts. Corpus entries are untrimmed on purpose:
+	// on PADDED input the oracle below (parseResult, which trims) and the field
+	// (SemVer.isPinnable, which refuses padding) legitimately disagree — that
+	// divergence is pinned by its own test, not by this corpus.
 	it.effect("accepts exactly what SemVer.parseResult accepts, no build metadata", () =>
 		Effect.gen(function* () {
 			const corpus = [

@@ -154,6 +154,25 @@ describe("ActionCache", () => {
 		}),
 	);
 
+	it.effect("hands a policy-carrying key's EXACT ladder through, not the derived prefixes", () =>
+		Effect.gen(function* () {
+			// The whole point of the ladder policy: the typed-key path must carry
+			// it, or every consumer with a policy is back to hand-building the
+			// restore-key list and bypassing CacheKey. The expected rungs are
+			// LITERAL: an implementation that ignores the policy sends four
+			// derived prefixes here, and asserting against `key.restoreKeys`
+			// would agree with that mutant on both sides.
+			const key = CacheKey.of("Linux", "X64", "v1hash", "main", "lockhash").withRestoreDepths([4, 3]);
+			const { transfer } = fileTransfer();
+			const { calls, fetch } = twirpFetch({ GetCacheEntryDownloadURL: () => json({ ok: false }) });
+			yield* Effect.flatMap(ActionCache, (cache) => cache.restore(["x"], key)).pipe(
+				Effect.provide(live(fetch, transfer)),
+			);
+			assert.strictEqual(calls[0]?.body.key, "Linux-X64-v1hash-main-lockhash");
+			assert.deepStrictEqual(calls[0]?.body.restore_keys, ["Linux-X64-v1hash-main-", "Linux-X64-v1hash-"]);
+		}),
+	);
+
 	it.effect("reports a miss as nothing", () =>
 		Effect.gen(function* () {
 			const { transfer } = fileTransfer();

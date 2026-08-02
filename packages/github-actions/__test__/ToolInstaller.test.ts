@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option, Sink, Stream } from "effect";
+import { Effect, FileSystem, Layer, Option, Sink, Stream } from "effect";
+import { badArgument } from "effect/PlatformError";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -104,6 +105,45 @@ const countingSpawner = (script: { readonly exitCode: number; readonly output: s
 		count: () => spawns,
 		layer: Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, service),
 	};
+};
+
+/**
+ * The live layer with one or more `FileSystem` members replaced.
+ *
+ * @remarks
+ * Everything else stays the real thing — the point is to observe or fail
+ * exactly one member (chmod) while the download, the staging copy and the
+ * swap all run against the real filesystem.
+ */
+const liveWithFileSystem = (
+	root: string,
+	mutate: (fs: FileSystem.FileSystem) => FileSystem.FileSystem,
+	fetch: typeof globalThis.fetch,
+	env: Record<string, string> = {},
+) =>
+	ToolInstaller.layer.pipe(
+		Layer.provide(
+			Layer.mergeAll(
+				ActionEnvironment.layerTest({ RUNNER_TOOL_CACHE: root, ...env }),
+				// NodeServices FIRST, the mutated FileSystem after it: the last
+				// provider of a duplicated service wins the merge.
+				NodeServices.layer,
+				Layer.effect(FileSystem.FileSystem, Effect.map(FileSystem.FileSystem, mutate)).pipe(
+					Layer.provide(NodeServices.layer),
+				),
+				FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fetch))),
+			),
+		),
+	);
+
+/** A fetch that counts its calls — the observable for "did it download?". */
+const countingFetch = (respond: () => Response) => {
+	let count = 0;
+	const fetch: typeof globalThis.fetch = async () => {
+		count += 1;
+		return respond();
+	};
+	return { fetch, count: () => count };
 };
 
 /** The live layer with the spawner replaced by a scripted, counting one. */
@@ -414,6 +454,139 @@ describe("ToolInstaller", () => {
 				}
 			}),
 		);
+	});
+
+	describe("provisionFile", () => {
+		const options = { tool: "biome", version: "2.3.4", url: "https://example.test/biome", binary: "biome" };
+		const binaryBody = "#!/bin/sh\necho biome\n";
+
+		it.live("provisions a single binary: downloaded, executable, cached, binDir answered", () =>
+			withRoot(
+				(root) =>
+					Effect.gen(function* () {
+						const provisioned = yield* (yield* ToolInstaller).provisionFile(options);
+						assert.strictEqual(
+							provisioned.directory,
+							ToolInstaller.cachePath({ root, tool: "biome", version: "2.3.4", arch: process.arch }),
+						);
+						// For a single binary the cached directory IS the addPath target.
+						assert.strictEqual(provisioned.binDir, provisioned.directory);
+						const file = join(provisioned.directory, "biome");
+						assert.strictEqual(readFileSync(file, "utf8"), binaryBody);
+						// The executable bit is the difference between a cached tool and a
+						// cached file, and it must be ON THE CACHED FILE — a chmod after
+						// caching would mutate a swapped-in entry, and a skipped chmod
+						// ships a binary the runner cannot execute.
+						assert.strictEqual(statSync(file).mode & 0o777, 0o755);
+					}),
+				{ fetch: async () => new Response(binaryBody, { status: 200 }) },
+			),
+		);
+
+		it.live("short-circuits on a cache hit carrying the binary, and the hit answers binDir too", () => {
+			const counting = countingFetch(() => new Response(binaryBody, { status: 200 }));
+			return withRoot(
+				(root) =>
+					Effect.gen(function* () {
+						const directory = ToolInstaller.cachePath({ root, tool: "biome", version: "2.3.4", arch: process.arch });
+						mkdirSync(directory, { recursive: true });
+						writeFileSync(join(directory, "biome"), "already cached");
+						const provisioned = yield* (yield* ToolInstaller).provisionFile(options);
+						assert.strictEqual(provisioned.directory, directory);
+						assert.strictEqual(provisioned.binDir, directory);
+						assert.strictEqual(readFileSync(join(directory, "biome"), "utf8"), "already cached");
+						assert.strictEqual(counting.count(), 0, "a hit must not download");
+					}),
+				{ fetch: counting.fetch },
+			);
+		});
+
+		it.live("reinstalls over a foreign hit that is MISSING the binary", () => {
+			// find's own TSDoc warning made real: the tool cache is shared, and a
+			// foreign entry guarantees only the location contract. An entry without
+			// the named binary cannot run the tool, so it is treated as a miss —
+			// answering it as a hit is the shipped-bug shape the warning records.
+			const counting = countingFetch(() => new Response(binaryBody, { status: 200 }));
+			return withRoot(
+				(root) =>
+					Effect.gen(function* () {
+						const directory = ToolInstaller.cachePath({ root, tool: "biome", version: "2.3.4", arch: process.arch });
+						mkdirSync(directory, { recursive: true });
+						writeFileSync(join(directory, "other-layout.txt"), "a different writer's idea of biome");
+						const provisioned = yield* (yield* ToolInstaller).provisionFile(options);
+						assert.strictEqual(counting.count(), 1, "a hit without the binary must reinstall");
+						assert.strictEqual(readFileSync(join(provisioned.directory, "biome"), "utf8"), binaryBody);
+					}),
+				{ fetch: counting.fetch },
+			);
+		});
+
+		it.live("skips chmod entirely when RUNNER_OS is Windows", () => {
+			const root = scratch();
+			const chmods: Array<string> = [];
+			const spying = (fs: FileSystem.FileSystem): FileSystem.FileSystem => ({
+				...fs,
+				chmod: (file, mode) => {
+					chmods.push(String(file));
+					return fs.chmod(file, mode);
+				},
+			});
+			return Effect.gen(function* () {
+				const provisioned = yield* Effect.flatMap(ToolInstaller, (installer) => installer.provisionFile(options));
+				assert.deepStrictEqual(chmods, [], "no chmod may be attempted on Windows — the bit does not exist there");
+				assert.strictEqual(provisioned.binDir, provisioned.directory);
+			}).pipe(
+				Effect.provide(
+					liveWithFileSystem(root, spying, async () => new Response(binaryBody, { status: 200 }), {
+						RUNNER_OS: "Windows",
+					}),
+				),
+				Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+			);
+		});
+
+		it.live("the control: off Windows the same spy sees exactly one chmod, on the downloaded file", () => {
+			const root = scratch();
+			const chmods: Array<string> = [];
+			const spying = (fs: FileSystem.FileSystem): FileSystem.FileSystem => ({
+				...fs,
+				chmod: (file, mode) => {
+					chmods.push(String(file));
+					return fs.chmod(file, mode);
+				},
+			});
+			return Effect.gen(function* () {
+				yield* Effect.flatMap(ToolInstaller, (installer) => installer.provisionFile(options));
+				assert.lengthOf(chmods, 1, "the Windows test's spy must be able to see a chmod at all");
+				assert.isTrue(chmods[0]?.endsWith("download"), "the chmod lands on the downloaded file, before caching");
+			}).pipe(
+				Effect.provide(liveWithFileSystem(root, spying, async () => new Response(binaryBody, { status: 200 }))),
+				Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+			);
+		});
+
+		it.live("a chmod failure is cacheFailed naming the downloaded file, and nothing is cached", () => {
+			const root = scratch();
+			const failing = (fs: FileSystem.FileSystem): FileSystem.FileSystem => ({
+				...fs,
+				chmod: () => Effect.fail(badArgument({ module: "FileSystem", method: "chmod", description: "refused" })),
+			});
+			return Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					Effect.flatMap(ToolInstaller, (installer) => installer.provisionFile(options)),
+				);
+				assert.instanceOf(error, ToolInstallerError);
+				assert.strictEqual(error.reason, "cacheFailed");
+				assert.isTrue(error.subject?.endsWith("download"), "the subject is the file that could not be made executable");
+				// The failure happened BEFORE caching, so the cache must not contain
+				// a non-executable binary for every later run to find.
+				const found = yield* Effect.flatMap(ToolInstaller, (installer) => installer.find("biome", "2.3.4"));
+				assert.isTrue(Option.isNone(found));
+			}).pipe(
+				Effect.provide(liveWithFileSystem(root, failing, async () => new Response(binaryBody, { status: 200 }))),
+				Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+			);
+		});
 	});
 
 	describe("test double", () => {

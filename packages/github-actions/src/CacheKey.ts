@@ -58,6 +58,17 @@ const Segments = Schema.NonEmptyArray(Segment).check(
 );
 
 /**
+ * One explicit rung: how many leading segments it keeps. The upper bound is
+ * cross-field (`segments.length - 1`) and lives on the class schema.
+ */
+const RestoreDepth = Schema.Number.check(
+	Schema.isInt(),
+	Schema.isBetween({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+);
+
+const RestoreDepths = Schema.NonEmptyArray(RestoreDepth);
+
+/**
  * A GitHub Actions cache key and the restore-key ladder that goes with it.
  *
  * @remarks
@@ -67,6 +78,11 @@ const Segments = Schema.NonEmptyArray(Segment).check(
  * therefore ends in the separator. Deriving the rungs from the segments makes
  * the primary key and its fallbacks impossible to drift apart, which is the
  * failure that produces a cache that never hits and never says why.
+ *
+ * By default every prefix is a rung. When some segments must never be dropped
+ * — a rung without a version digest resurrects stale cross-version caches —
+ * give the key an explicit ladder policy with
+ * {@link CacheKey.withRestoreDepths} instead of bypassing the typed key.
  *
  * @example
  * ```ts
@@ -79,10 +95,24 @@ const Segments = Schema.NonEmptyArray(Segment).check(
  *
  * @public
  */
-export class CacheKey extends Schema.Class<CacheKey>("CacheKey")({
-	/** The components, most general first. */
-	segments: Segments,
-}) {
+export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
+	Schema.Struct({
+		/** The components, most general first. */
+		segments: Segments,
+		/**
+		 * The explicit ladder policy, when one was given: how many leading
+		 * segments each rung keeps, in the order the rungs are tried. Absent for
+		 * the default every-prefix ladder. See {@link CacheKey.withRestoreDepths}.
+		 */
+		restoreDepths: Schema.optionalKey(RestoreDepths),
+	}).check(
+		Schema.makeFilter((key) =>
+			key.restoreDepths === undefined || key.restoreDepths.every((depth) => depth <= key.segments.length - 1)
+				? undefined
+				: "every restore depth must be between 1 and segments.length - 1 — a rung keeping every segment would just repeat the primary key",
+		),
+	),
+) {
 	/** The primary key: every segment, joined. */
 	get key(): string {
 		return this.segments.join(SEPARATOR);
@@ -92,17 +122,56 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")({
 	 * The restore keys, most specific first.
 	 *
 	 * @remarks
-	 * Each rung drops the last segment and keeps the trailing separator, so a
-	 * three-segment key falls back to two prefixes and a one-segment key falls
-	 * back to nothing — there is no rung that would match every cache in the
-	 * repository.
+	 * By default each rung drops the last segment and keeps the trailing
+	 * separator, so a three-segment key falls back to two prefixes and a
+	 * one-segment key falls back to nothing — there is no rung that would match
+	 * every cache in the repository.
+	 *
+	 * **The default ladder is every prefix**, which is wrong for a key whose
+	 * later segments must never be dropped alone: a
+	 * `platform-arch-versionHash-branchHash-lockfileHash` key derives rungs
+	 * without the version digest, and those resurrect stale cross-version
+	 * caches. A key built with {@link CacheKey.withRestoreDepths} carries its
+	 * own ladder instead, and this getter answers exactly that ladder — so
+	 * `ActionCache.restore` picks the policy up through the same typed-key
+	 * path, no hand-built restore-key list required.
 	 */
 	get restoreKeys(): ReadonlyArray<string> {
+		const rung = (length: number): string => `${this.segments.slice(0, length).join(SEPARATOR)}${SEPARATOR}`;
+		if (this.restoreDepths !== undefined) {
+			return this.restoreDepths.map(rung);
+		}
 		const rungs: Array<string> = [];
 		for (let length = this.segments.length - 1; length >= 1; length -= 1) {
-			rungs.push(`${this.segments.slice(0, length).join(SEPARATOR)}${SEPARATOR}`);
+			rungs.push(rung(length));
 		}
 		return rungs;
+	}
+
+	/**
+	 * A copy of this key carrying an explicit restore-key ladder policy.
+	 *
+	 * @remarks
+	 * Each depth is the number of **leading segments** the rung keeps, and the
+	 * rungs are emitted in exactly the order given — GitHub tries restore keys
+	 * in order, so the order IS the policy. Descending depths (most specific
+	 * first) are what a fallback ladder almost always wants; that convention is
+	 * recommended rather than enforced, because rung ordering is the consumer's
+	 * policy where commas, newlines and the length limit are the runner's
+	 * protocol. A depth outside `1..segments.length - 1` is refused at
+	 * construction: `0` would match every cache in the repository, and
+	 * `segments.length` would just repeat the primary key.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CacheKey } from "@effected/github-actions";
+	 *
+	 * const key = CacheKey.of("Linux", "X64", "v1hash", "main", "lockhash").withRestoreDepths([4, 3]);
+	 * key.restoreKeys; // ["Linux-X64-v1hash-main-", "Linux-X64-v1hash-"]
+	 * ```
+	 */
+	withRestoreDepths(depths: readonly [number, ...Array<number>]): CacheKey {
+		return CacheKey.make({ segments: this.segments, restoreDepths: depths });
 	}
 
 	/** Build a key from its segments. */

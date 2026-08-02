@@ -120,6 +120,53 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 		),
 	);
 
+	/**
+	 * `Schema.String` refined by {@link SemVer.isValid}: an exact SemVer 2.0.0
+	 * version string whose type stays `string`.
+	 *
+	 * @remarks
+	 * For consumer structs whose field must remain a plain string — a manifest
+	 * model, an action input — while still refusing everything that is not
+	 * exactly one version: ranges, partial versions, dist-tags, and padded
+	 * input (see {@link SemVer.isValid} for the whitespace posture). Build
+	 * metadata is valid grammar and passes; reach for
+	 * {@link SemVer.PinnableVersionString} when the `+` position is spoken for.
+	 * Decode to a {@link SemVer} instance with {@link SemVer.FromString}
+	 * instead when the parsed components are wanted.
+	 */
+	static readonly ExactVersionString: Schema.String = Schema.String.pipe(
+		Schema.check(
+			Schema.makeFilter((value) =>
+				SemVer.isValid(value)
+					? undefined
+					: "Expected an exact SemVer 2.0.0 version string (ranges, partial versions, dist-tags and surrounding whitespace are not valid)",
+			),
+		),
+	);
+
+	/**
+	 * `Schema.String` refined by {@link SemVer.isPinnable}: an exact,
+	 * build-metadata-free SemVer 2.0.0 version string whose type stays
+	 * `string`.
+	 *
+	 * @remarks
+	 * The corepack-pinnable notion: what the `<name>@<version>[+<integrity>]`
+	 * pin grammar can express in its version position, where the first `+`
+	 * always begins the integrity component. `@effected/package-json`'s
+	 * `PackageManager` field model consumes this schema directly; suites that
+	 * must prove they share it rather than carrying a copy can assert object
+	 * identity against this export.
+	 */
+	static readonly PinnableVersionString: Schema.String = Schema.String.pipe(
+		Schema.check(
+			Schema.makeFilter((value) =>
+				SemVer.isPinnable(value)
+					? undefined
+					: "Expected an exact SemVer version with no build metadata (ranges, partial versions, dist-tags and surrounding whitespace are not pinnable)",
+			),
+		),
+	);
+
 	// ── Construction ────────────────────────────────────────────────────
 
 	/**
@@ -174,6 +221,54 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 	 * when `input` is not a valid version string.
 	 */
 	static readonly parse = Effect.fn("SemVer.parse")((input: string) => Effect.fromResult(SemVer.parseResult(input)));
+
+	// ── Validation ──────────────────────────────────────────────────────
+
+	/**
+	 * Whether `input` is a valid SemVer 2.0.0 version string, exactly as
+	 * given.
+	 *
+	 * @remarks
+	 * Strict grammar validity — the same grammar as {@link SemVer.parseResult}
+	 * — with one deliberate divergence: surrounding whitespace is **rejected**.
+	 * `parseResult` trims its input (matching node-semver, whose `SemVer`
+	 * constructor trims), so `" 1.2.3"` parses; this predicate answers a
+	 * different question — "is this string, byte for byte, a version?" — and a
+	 * padded input is the caller's bug to surface, not this package's to hide.
+	 * Build metadata is valid grammar (`isValid("1.2.3+build")` is `true`);
+	 * reach for {@link SemVer.isPinnable} when the `+` position must stay
+	 * free.
+	 *
+	 * @param input - the candidate version string
+	 * @returns `true` when `input` is a valid version string with no
+	 * surrounding whitespace.
+	 */
+	static isValid(input: string): boolean {
+		return input === input.trim() && Result.isSuccess(SemVer.parseResult(input));
+	}
+
+	/**
+	 * Whether `input` is a corepack-pinnable version string: valid by
+	 * {@link SemVer.isValid} **and** carrying no build metadata.
+	 *
+	 * @remarks
+	 * The notion the `<name>@<version>[+<integrity>]` pin grammar needs: there
+	 * the first `+` after the version always begins the integrity component,
+	 * so a version carrying build identifiers would encode to a string that
+	 * re-parses differently. Prerelease versions are pinnable; the whitespace
+	 * posture is {@link SemVer.isValid}'s.
+	 *
+	 * @param input - the candidate version string
+	 * @returns `true` when `input` is a valid, untrimmed version string whose
+	 * build metadata is empty.
+	 */
+	static isPinnable(input: string): boolean {
+		if (input !== input.trim()) {
+			return false;
+		}
+		const parsed = SemVer.parseResult(input);
+		return Result.isSuccess(parsed) && parsed.success.build.length === 0;
+	}
 
 	/**
 	 * Positional convenience constructor: `SemVer.of(1, 2, 3)`.
