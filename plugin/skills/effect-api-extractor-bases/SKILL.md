@@ -307,6 +307,17 @@ and `types:check` — it only surfaces in the **prod** build's `issues.json`.
    member; here the class does own it, but only through the factory, which is
    the same dead end from API Extractor's side.
 
+## `{@link X.member}` where the member name IS a TSDoc selector keyword
+
+A member whose name collides with a TSDoc **system selector** (`variable`,
+`function`, `class`, `interface`, `namespace`, `enum`, `constructor`,
+`static`, `instance`, …) makes `{@link ActionInput.variable}` ambiguous to
+the parser, and the bundler warns *"identifier must be quoted"*. Hit live
+2026-08-02 on a static genuinely named `variable`. The fix is the same as
+every other unresolvable-link case in this skill: **backticks**
+(`` `ActionInput.variable` ``) — do not try quoted-selector syntax, and do
+not rename the API to appease the doc engine.
+
 ## `tsdoc-at-sign-in-word`: never markdown-link a scoped package
 
 A scoped package name in TSDoc must be backticked. That much is known — the trap
@@ -384,6 +395,12 @@ exit-code provenance, so it is only evidence when *your* build exited 0 against
 a clean tree with nothing else building. If you mutate source to prove a fix is
 load-bearing, **rebuild afterward** — otherwise you leave an artifact that
 describes a tree no commit ever contained.
+
+One cosmetic non-defect while reading built declarations: core's dollar-alias
+export names surface verbatim — a `Schema.Array` field emits as
+`Schema.$Array<…>`, `Schema.Record` as `Schema.$Record<…>`. Correct output,
+observed across multiple package builds at beta.101; do not "fix" it, and do
+not read it as a wrong import in the source.
 
 ## History
 
