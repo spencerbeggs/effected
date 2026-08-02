@@ -36,10 +36,14 @@ describe("SchemaFile (integration)", () => {
 					assert.include(bytes, '"x-taplo"');
 
 					// Pin an ancient mtime so an accidental rewrite is detectable.
+					// Compare against the mtime the filesystem actually stored,
+					// not the literal epoch — not every filesystem stores the
+					// requested timestamp exactly.
 					utimesSync(target, new Date(0), new Date(0));
+					const pinnedMtimeMs = statSync(target).mtimeMs;
 					const second = yield* files.write(target, document);
 					assert.strictEqual(second, "unchanged");
-					assert.strictEqual(statSync(target).mtimeMs, 0);
+					assert.strictEqual(statSync(target).mtimeMs, pinnedMtimeMs);
 				} finally {
 					rmSync(directory, { recursive: true, force: true });
 				}

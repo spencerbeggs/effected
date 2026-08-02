@@ -144,9 +144,12 @@ export class SchemaFile extends Context.Service<SchemaFile, SchemaFileShape>()("
 			const read = Effect.fn("SchemaFile.read")(function* (target: string) {
 				// Read directly — no `exists` pre-check (that TOCTOU race reports
 				// a file deleted between the two calls as SchemaFileReadError).
-				// The core FileSystem fails with a PlatformError whose
-				// `reason._tag` is "NotFound" for a missing file; route only
-				// that to NotFound.
+				// The core FileSystem fails with `PlatformError`, a wrapper class
+				// whose `reason` field ALWAYS exists and holds the underlying
+				// `SystemError` (tagged "NotFound", "PermissionDenied", ...) or
+				// `BadArgument` (tagged "BadArgument") — verified against the
+				// installed beta. Route only "NotFound" to NotFound; every other
+				// reason, BadArgument included, is a typed SchemaFileReadError.
 				return yield* fs
 					.readFileString(target)
 					.pipe(
@@ -165,8 +168,11 @@ export class SchemaFile extends Context.Service<SchemaFile, SchemaFileShape>()("
 			) {
 				const text = yield* Effect.fromResult(document.serializeResult(options));
 				// A missing file is simply "different" (proceed to write); any
-				// other read failure is surfaced — if the content cannot be
-				// compared, silently overwriting would defeat the contract.
+				// other read failure — a BadArgument-reasoned PlatformError
+				// included (`reason` is always present on the wrapper; its
+				// "BadArgument" tag is not "NotFound") — is surfaced typed: if
+				// the content cannot be compared, silently overwriting would
+				// defeat the contract.
 				const existing = yield* fs
 					.readFileString(target)
 					.pipe(

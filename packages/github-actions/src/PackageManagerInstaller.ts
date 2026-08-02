@@ -394,6 +394,18 @@ const make = Effect.gen(function* () {
 		(result) => (result._tag === "Success" ? Option.some(result.success.trim()) : Option.none()),
 	);
 
+	const assertFile = (
+		pin: PackageManagerPin,
+		file: string,
+		subject: string,
+	): Effect.Effect<void, PackageManagerInstallerError> =>
+		Effect.gen(function* () {
+			const stat = yield* Effect.result(fs.stat(file));
+			if (stat._tag !== "Success" || stat.success.type !== "File") {
+				return yield* Effect.fail(errorFor(pin)({ reason: "layoutUnexpected", subject }));
+			}
+		});
+
 	/**
 	 * The bin entries a package directory publishes, from its own manifest.
 	 *
@@ -421,21 +433,25 @@ const make = Effect.gen(function* () {
 				return yield* Effect.fail(errorFor(pin)({ reason: "layoutUnexpected", subject: "package.json names no bin" }));
 			}
 			for (const [name, relative] of Object.entries(bins)) {
-				yield* assertFile(pin, path.join(packageDir, relative), `bin ${name} (${relative}) is missing`);
+				const target = path.join(packageDir, relative);
+				// The manifest is attacker-supplied bytes: a bin of "../../payload.js"
+				// resolves OUTSIDE the package directory, and everything downstream —
+				// the existence check, the shim target, the published `bins` paths —
+				// would then chmod and execute a file the tarball never legitimately
+				// owned. Containment is checked on the resolved path, so `..` smuggled
+				// through any spelling is caught.
+				const containment = path.relative(packageDir, target);
+				if (containment === ".." || containment.startsWith(`..${path.sep}`) || path.isAbsolute(containment)) {
+					return yield* Effect.fail(
+						errorFor(pin)({
+							reason: "layoutUnexpected",
+							subject: `bin ${name} (${relative}) escapes the package directory`,
+						}),
+					);
+				}
+				yield* assertFile(pin, target, `bin ${name} (${relative}) is missing`);
 			}
 			return bins;
-		});
-
-	const assertFile = (
-		pin: PackageManagerPin,
-		file: string,
-		subject: string,
-	): Effect.Effect<void, PackageManagerInstallerError> =>
-		Effect.gen(function* () {
-			const stat = yield* Effect.result(fs.stat(file));
-			if (stat._tag !== "Success" || stat.success.type !== "File") {
-				return yield* Effect.fail(errorFor(pin)({ reason: "layoutUnexpected", subject }));
-			}
 		});
 
 	const rootBins = (bins: Record<string, string>, directory: string): Record<string, string> =>

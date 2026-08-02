@@ -168,33 +168,41 @@ describe("pathological inputs", () => {
 	// 303ms/1278ms/4842ms at 7.5k/15k/30k reps); linear costs ~4x (measured
 	// 9ms/32ms). The threshold of 8 sits between the two with margin on both
 	// sides. Watched red against the uncapped scan.
-	it("unclosed links B scales linearly", () => {
-		const timeAt = (reps: number): number => {
-			const input = "[a](b".repeat(reps);
-			// Two passes, keep the faster: damps JIT and GC noise without
-			// hiding an algorithmic blowup.
-			let best = Number.POSITIVE_INFINITY;
-			for (let pass = 0; pass < 2; pass += 1) {
-				const started = performance.now();
-				parseBlocks(input);
-				best = Math.min(best, performance.now() - started);
-			}
-			return best;
-		};
+	it(
+		"unclosed links B scales linearly",
+		() => {
+			const timeAt = (reps: number): number => {
+				const input = "[a](b".repeat(reps);
+				// Two passes, keep the faster: damps JIT and GC noise without
+				// hiding an algorithmic blowup.
+				let best = Number.POSITIVE_INFINITY;
+				for (let pass = 0; pass < 2; pass += 1) {
+					const started = performance.now();
+					parseBlocks(input);
+					best = Math.min(best, performance.now() - started);
+				}
+				return best;
+			};
 
-		// Warm the path so the small measurement is not first-call cost.
-		timeAt(1000);
-		const small = timeAt(7500);
-		const large = timeAt(30000);
-		// Floor the denominator: a sub-millisecond small run would make the
-		// ratio noise, and 1ms is far above the quadratic's small-run cost
-		// anyway.
-		const ratio = large / Math.max(small, 1);
-		assert.isBelow(
-			ratio,
-			8,
-			`4x the input cost ${ratio.toFixed(1)}x the time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
-				"linear is ~4x, the pre-cap quadratic was ~16x",
-		);
-	});
+			// Warm the path so the small measurement is not first-call cost.
+			timeAt(1000);
+			const small = timeAt(7500);
+			const large = timeAt(30000);
+			// Floor the denominator: a sub-millisecond small run would make the
+			// ratio noise, and 1ms is far above the quadratic's small-run cost
+			// anyway.
+			const ratio = large / Math.max(small, 1);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+					"linear is ~4x, the pre-cap quadratic was ~16x",
+			);
+		},
+		// The same wall-clock ceiling the vendored cases get (their shared
+		// TIMEOUT_MS is 8000): generous against instrumented linear cost —
+		// two orders of magnitude of headroom — while anything worse than
+		// the measured quadratic fails HERE instead of grinding the runner.
+		8000 * 40 + 5000,
+	);
 });

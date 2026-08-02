@@ -265,7 +265,8 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 	 * posture is {@link SemVer.isValid}'s.
 	 *
 	 * @param input - the candidate version string
-	 * @returns `true` when `input` is a valid, untrimmed version string whose
+	 * @returns `true` when `input` is a valid version string with no
+	 * surrounding whitespace (the string equals its own trim) and whose
 	 * build metadata is empty.
 	 */
 	static isPinnable(input: string): boolean {

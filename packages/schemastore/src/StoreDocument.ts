@@ -96,7 +96,14 @@ const restoreDefsRefs = (node: unknown, depth: number): unknown => {
 		return node.map((item) => restoreDefsRefs(item, depth + 1));
 	}
 	if (typeof node === "object" && node !== null) {
-		const out: Record<string, unknown> = {};
+		// Null-prototype accumulator: assigning a literal `__proto__` key to
+		// a `{}` literal invokes the prototype setter — the key is dropped
+		// and the accumulator's prototype becomes attacker-controlled. With
+		// no prototype there is no setter; the key lands as a plain own
+		// property. (Defense in depth: probed at the installed beta, core's
+		// generation and lowering strip `__proto__` keys before this walk
+		// runs, but this walk must stay safe on its own terms.)
+		const out: Record<string, unknown> = Object.create(null);
 		for (const [key, value] of Object.entries(node)) {
 			out[key] =
 				key === "$ref" && typeof value === "string"
@@ -155,7 +162,9 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 			// Carriers re-graft AFTER the `$ref` rewrite, so carrier payloads
 			// pass through verbatim rather than being walked by the rewrite.
 			const root = carry(document.schema, restoreDefsRefs(lowered.schema, 0));
-			const defs: Record<string, unknown> = {};
+			// Null-prototype for the same `__proto__` hardening as the rewrite
+			// walk: a definition named `__proto__` must land as an own key.
+			const defs: Record<string, unknown> = Object.create(null);
 			for (const [name, definition] of Object.entries(lowered.definitions)) {
 				defs[name] = carry(document.definitions[name], restoreDefsRefs(definition, 1));
 			}

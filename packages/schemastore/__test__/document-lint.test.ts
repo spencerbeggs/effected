@@ -111,7 +111,16 @@ describe("DocumentLint", () => {
 					properties: { list: { type: "array", items: [{ oneOf: [{ nope: true }] }] } },
 				}),
 			);
-			assert.deepStrictEqual([...checks(findings)].sort(), ["UnknownKeyword", "UnknownKeyword"]);
+			// Both findings, pinned by PATH: the count alone cannot tell a
+			// walk that reached both nested positions from one that fired
+			// twice in the same place.
+			assert.deepStrictEqual(
+				findings.map((finding) => [finding.check, finding.path]).sort((a, b) => (a[1] ?? "").localeCompare(b[1] ?? "")),
+				[
+					["UnknownKeyword", "/dependencies/a/bogus"],
+					["UnknownKeyword", "/properties/list/items/0/oneOf/0/nope"],
+				],
+			);
 		});
 	});
 

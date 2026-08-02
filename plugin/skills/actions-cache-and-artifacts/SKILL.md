@@ -44,7 +44,9 @@ consumes no paths — its `paths` argument exists only to derive the cache
 literal list must be passed to both or the entry is invisible. Until
 2026-08-02 save handed patterns to tar verbatim and every glob-carrying
 list failed on a real runner as `tar: **/…: Cannot stat` — treat that
-message as the resolution-was-skipped signature.
+message as the resolution-was-skipped signature. Resolved paths reach tar
+via a `-T` manifest file, never argv — a `${workspace}/**` resolution is
+tens of thousands of paths, well past the argv limit (`E2BIG`).
 
 `ActionRuntime.layer` provides none of the six services above by default —
 see `actions-runtime` for why, and for the one-line cost of taking one

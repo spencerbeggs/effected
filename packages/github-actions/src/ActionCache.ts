@@ -264,16 +264,19 @@ const make = (
 				}),
 			);
 
-		/** A scratch archive path, removed on every exit path. */
+		/**
+		 * A scratch archive path — plus the scratch directory itself, where the
+		 * save side writes its tar manifest — removed on every exit path.
+		 */
 		const withArchive = <A>(
 			key: string,
-			use: (archive: string) => Effect.Effect<A, ActionCacheError>,
+			use: (archive: string, scratch: string) => Effect.Effect<A, ActionCacheError>,
 		): Effect.Effect<A, ActionCacheError> =>
 			Effect.acquireUseRelease(
 				fs
 					.makeTempDirectory({ prefix: "effected-cache-" })
 					.pipe(Effect.mapError((cause) => new ActionCacheError({ reason: "archiveFailed", key, cause }))),
-				(directory) => use(path.join(directory, "cache.tar.gz")),
+				(directory) => use(path.join(directory, "cache.tar.gz"), directory),
 				(directory) => Effect.ignore(fs.remove(directory, { recursive: true, force: true })),
 			);
 
@@ -350,15 +353,28 @@ const make = (
 
 				// Search roots: the longest literal prefix of every include — the same
 				// derivation as `@actions/glob`'s search paths, with descendant roots
-				// folded into their ancestors so nothing is walked twice.
+				// folded into their ancestors so nothing is walked twice. Wildcard
+				// roots are remembered apart from literal ones, because only a
+				// wildcard can match BELOW a root: a root that literals alone
+				// contributed is stat-and-admitted without the recursive walk (a
+				// literal `~/.pnpm-store` must not cost a full store enumeration
+				// that can admit nothing), while a folded-in wildcard root keeps
+				// the toolkit-parity descent for the ancestor that absorbed it.
 				const roots: Array<string> = [];
-				const addRoot = (root: string) => {
-					if (root !== "" && !roots.includes(root)) {
+				const wildcardRoots: Array<string> = [];
+				const addRoot = (root: string, fromWildcard: boolean) => {
+					if (root === "") {
+						return;
+					}
+					if (!roots.includes(root)) {
 						roots.push(root);
+					}
+					if (fromWildcard && !wildcardRoots.includes(root)) {
+						wildcardRoots.push(root);
 					}
 				};
 				for (const literal of set.literals) {
-					addRoot(literal);
+					addRoot(literal, false);
 				}
 				for (const wildcard of set.wildcards) {
 					// A whole-pattern negation only filters; it contributes no root.
@@ -366,11 +382,12 @@ const make = (
 						continue;
 					}
 					const prefix = wildcard.enumerationPrefix;
-					addRoot(prefix === "" ? base : prefix === "/" ? "/" : prefix.slice(0, -1));
+					addRoot(prefix === "" ? base : prefix === "/" ? "/" : prefix.slice(0, -1), true);
 				}
 				const under = (child: string, parent: string) =>
 					parent === "/" ? child !== "/" : child.startsWith(`${parent}/`);
 				const searchRoots = roots.filter((root) => !roots.some((other) => other !== root && under(root, other)));
+				const needsWalk = (root: string) => wildcardRoots.some((w) => w === root || under(w, root));
 
 				const matched: Array<string> = [];
 				const seen = new Set<string>();
@@ -390,7 +407,11 @@ const make = (
 						continue;
 					}
 					admit(root);
-					if (info.value.type === "Directory") {
+					// Descend only where a wildcard can match: a literal-only root
+					// admits itself (or not) at the stat above, and every deeper
+					// candidate would fail `set.matches` anyway — the walk would be
+					// pure cost, at pnpm-store scale a multi-second one.
+					if (info.value.type === "Directory" && needsWalk(root)) {
 						const entries = yield* fs
 							.readDirectory(root, { recursive: true })
 							.pipe(Effect.mapError((cause) => failed(`could not enumerate "${root}"`, cause)));
@@ -417,12 +438,31 @@ const make = (
 					);
 				}
 				const resolved = yield* resolvePaths(paths, primary);
-				yield* withArchive(primary, (archive) =>
+				yield* withArchive(primary, (archive, scratch) =>
 					Effect.gen(function* () {
+						// The resolved list reaches tar through a MANIFEST FILE, never
+						// argv: resolution admits every matched descendant, so a pattern
+						// like `${workspace}/**` resolves to tens of thousands of
+						// absolute paths and overflows the kernel's argv limit (E2BIG)
+						// before tar ever runs. Same fix as the toolkit, which writes
+						// manifest.txt and passes `--files-from`
+						// (`cache/src/internal/tar.ts`). The flag is spelled `-T`: GNU
+						// tar (Linux runners) and bsdtar (macOS runners, and Windows'
+						// system tar.exe) both document `-T` and `--files-from` as
+						// synonyms — probed against bsdtar 3.5.3 with this exact
+						// invocation — and the short spelling sidesteps GNU's
+						// `--files-from=FILE` vs bsdtar's `--files-from FILE` split.
+						// GNU tar reads a manifest line starting with `-` as an option
+						// (its escape hatch, `--verbatim-files-from`, is GNU-only), but
+						// resolved paths here are always absolute, so no line can.
+						const manifest = path.join(scratch, "manifest.txt");
+						yield* fs
+							.writeFileString(manifest, `${resolved.join("\n")}\n`)
+							.pipe(Effect.mapError((cause) => new ActionCacheError({ reason: "archiveFailed", key: primary, cause })));
 						// `-P` keeps leading separators, so an absolute path is stored
 						// verbatim and restored where it came from rather than under the
 						// working directory of whichever step happens to restore it.
-						yield* tar(["czPf", archive, ...resolved], primary, false);
+						yield* tar(["czPf", archive, "-T", manifest], primary, false);
 						const size = yield* fs
 							.stat(archive)
 							.pipe(Effect.mapError((cause) => new ActionCacheError({ reason: "archiveFailed", key: primary, cause })));

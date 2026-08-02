@@ -21,6 +21,11 @@ const canonicalText = Result.getOrThrow(document.serializeResult());
 const permissionDenied = (method: string) =>
 	PlatformError.systemError({ _tag: "PermissionDenied", module: "FileSystem", method });
 
+// The other member of PlatformError's `reason` union: a BadArgument-reasoned
+// wrapper (reason._tag is "BadArgument", not a SystemErrorTag).
+const badArgument = (method: string) =>
+	PlatformError.badArgument({ module: "FileSystem", method, description: "hostile path" });
+
 // SchemaFile over a stubbed core FileSystem (layerNoop members fail NotFound
 // unless overridden) — no platform package anywhere in this suite.
 const withFs = (fs: Layer.Layer<FileSystem.FileSystem>) =>
@@ -152,6 +157,29 @@ describe("SchemaFile", () => {
 			}),
 		);
 
+		it.effect(
+			"a BadArgument-reasoned comparison read failure fails typed with SchemaFileReadError — never a defect, never a write",
+			() =>
+				Effect.gen(function* () {
+					const fs = FileSystem.layerNoop({
+						readFileString: () => Effect.fail(badArgument("readFileString")),
+						makeDirectory: () => Effect.void,
+						writeFileString: () => Effect.die(new Error("must not write when the comparison read failed")),
+					});
+					// Effect.flip only surfaces a TYPED failure: were the mapper to
+					// throw on the BadArgument reason, this would die, not flip.
+					const error = yield* run(
+						Effect.gen(function* () {
+							const files = yield* SchemaFile;
+							return yield* Effect.flip(files.write("schemas/x.schema.json", document));
+						}),
+						fs,
+					);
+					assert.instanceOf(error, SchemaFileReadError);
+					assert.strictEqual(error.path, "schemas/x.schema.json");
+				}),
+		);
+
 		it.effect("a document that does not serialize propagates the CanonicalJson error untouched", () =>
 			Effect.gen(function* () {
 				const hostile = StoreDocument.make({
@@ -221,6 +249,25 @@ describe("SchemaFile", () => {
 					fs,
 				);
 				assert.instanceOf(error, SchemaFileReadError);
+			}),
+		);
+
+		it.effect("a BadArgument-reasoned failure fails typed with SchemaFileReadError, not a defect", () =>
+			Effect.gen(function* () {
+				const fs = FileSystem.layerNoop({
+					readFileString: () => Effect.fail(badArgument("readFileString")),
+				});
+				// Effect.flip only surfaces a TYPED failure: were the mapper to
+				// throw on the BadArgument reason, this would die, not flip.
+				const error = yield* run(
+					Effect.gen(function* () {
+						const files = yield* SchemaFile;
+						return yield* Effect.flip(files.read("schemas/x.schema.json"));
+					}),
+					fs,
+				);
+				assert.instanceOf(error, SchemaFileReadError);
+				assert.strictEqual(error.path, "schemas/x.schema.json");
 			}),
 		);
 	});

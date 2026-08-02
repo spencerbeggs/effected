@@ -96,7 +96,11 @@ export class CatalogEntry extends Schema.Class<CatalogEntry>("CatalogEntry")({
 	fileMatch: Schema.Array(Schema.String),
 	/** The schema URL — the unversioned file, or the latest version. */
 	url: Schema.String,
-	/** Versioned mode only: label → schema URL, ascending. */
+	/**
+	 * Versioned mode only: label → schema URL. Inserted ascending, but key
+	 * order is not a contract — bare-major labels enumerate first (see
+	 * `SchemaVersioning.catalogUrls`); derive ordering from the labels.
+	 */
 	versions: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 }) {
 	/**

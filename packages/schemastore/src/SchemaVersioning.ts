@@ -6,10 +6,15 @@ import { Effect, Option, Order, Result, Schema } from "effect";
  * components and an optional prerelease — `1`, `1.2`, `1.2.3`,
  * `1.2-beta.1` — per the catalog's versioned-schema convention
  * (`agripparc-1.2.json`). They are deliberately NOT strict SemVer: most
- * real catalog labels are two-part. Leading zeros are rejected so no two
- * distinct labels can collide under numeric ordering.
+ * real catalog labels are two-part. Leading zeros are rejected on every
+ * numeric identifier — core components and numeric prerelease identifiers
+ * alike (SemVer §9 semantics: `0` is legal, `01` is not, alphanumerics
+ * like `0abc` are) — so no two distinct labels can collide under numeric
+ * ordering, and every accepted label survives the SemVer pad the ordering
+ * performs (see `orderingKey`).
  */
-const VERSION_PATTERN = /^(0|[1-9]\d*)(\.(0|[1-9]\d*)){0,2}(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
+const VERSION_PATTERN =
+	/^(0|[1-9]\d*)(\.(0|[1-9]\d*)){0,2}(-(0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?$/;
 
 /**
  * Indicates that a string is not a valid SchemaStore version label.
@@ -60,8 +65,11 @@ const orderingKey = (label: SchemaVersion): SemVer => {
 	}
 	const result = SemVer.parseResult(`${parts.join(".")}${prerelease}`);
 	if (Result.isFailure(result)) {
-		// Unreachable for a validated label: the grammar above pads to a
-		// strict SemVer by construction. A failure here is a programmer error.
+		// Unreachable for a validated label: the grammar rejects leading-zero
+		// numeric identifiers everywhere strict SemVer does (core components
+		// AND numeric prerelease identifiers), so the zero-pad always parses
+		// — the closure test over the accepted corpus pins this property.
+		// A failure here is a programmer error.
 		throw new Error(`SchemaVersion ordering invariant violated for label "${label}"`);
 	}
 	return result.success;
@@ -93,7 +101,15 @@ const joinUrl = (baseUrl: string, file: string): string => {
 export interface CatalogUrls {
 	/** The catalog `url` — the unversioned file, or the latest versioned file. */
 	readonly url: string;
-	/** The versioned catalog's `versions` map (label → url), ascending. */
+	/**
+	 * The versioned catalog's `versions` map (label → url). Labels are
+	 * inserted in ascending version order, but JavaScript object semantics
+	 * cap what insertion can promise: integer-like labels (bare majors such
+	 * as `2`) always enumerate first, numerically, ahead of every dotted
+	 * label — see {@link SchemaVersioning.catalogUrls} for the exact
+	 * enumeration contract. Read version ordering from the labels, never
+	 * from key position.
+	 */
 	readonly versions?: Readonly<Record<string, string>>;
 }
 
@@ -174,10 +190,21 @@ export class SchemaVersioning {
 	 *
 	 * Omitting `versions` selects the unversioned mode (`url` only,
 	 * pointing at the plain `name.json`). Providing them selects the
-	 * versioned mode: the `versions` map carries every label ascending, and
-	 * `url` points at the latest version's file. An **empty** `versions`
-	 * array is a contradiction (versioned mode with no versions) and
-	 * throws — pass `undefined` for the unversioned mode.
+	 * versioned mode: the `versions` map carries every label, and `url`
+	 * points at the latest version's file. An **empty** `versions` array is
+	 * a contradiction (versioned mode with no versions) and throws — pass
+	 * `undefined` for the unversioned mode.
+	 *
+	 * Labels are inserted in ascending {@link SchemaVersioning.Order}, but
+	 * the SchemaStore catalog format requires `versions` to be a JSON
+	 * *object*, and JavaScript enumerates array-index-like keys first: a
+	 * bare-major label (`"2"`) always enumerates — and therefore
+	 * serializes — before every dotted label, regardless of insertion. The
+	 * resulting enumeration order is: bare-major labels ascending
+	 * numerically, then all other labels ascending. For label sets with no
+	 * bare majors this is fully ascending; mixed sets interleave, so
+	 * consumers must derive ordering from the labels themselves (as
+	 * {@link SchemaVersioning.latest} does), never from key position.
 	 */
 	static catalogUrls(options: {
 		readonly baseUrl: string;

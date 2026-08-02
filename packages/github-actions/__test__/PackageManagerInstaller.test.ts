@@ -244,6 +244,29 @@ describe("PackageManagerInstaller", () => {
 				}),
 			),
 		);
+
+		it.live("refuses a bin path that escapes the package directory, even when its target exists", () =>
+			withRoot((root) =>
+				Effect.gen(function* () {
+					// The hostile-manifest case: the bin names a file OUTSIDE the
+					// entry, and that file EXISTS — so the existence check alone would
+					// pass, a shim would be written invoking it, and `bins` would
+					// publish a path the artifact never legitimately owned. Only the
+					// containment guard can refuse this one.
+					const cached = ToolInstaller.cachePath({ root, tool: "pnpm", version: "7.9.0", arch: process.arch });
+					mkdirSync(cached, { recursive: true });
+					writeFileSync(join(cached, "package.json"), JSON.stringify({ bin: { pnpm: "../../../evil.js" } }));
+					// `<root>/pnpm/7.9.0/<arch>/../../../evil.js` is `<root>/evil.js`.
+					writeFileSync(join(root, "evil.js"), "console.log('payload')");
+					const error = yield* Effect.flip(install("pnpm@7.9.0"));
+					assert.instanceOf(error, PackageManagerInstallerError);
+					assert.strictEqual(error.reason, "layoutUnexpected");
+					assert.include(error.subject ?? "", "pnpm");
+					assert.include(error.subject ?? "", "escapes");
+					assert.isFalse(existsSync(join(cached, ".bin")), "no shim may be written for an escaping bin");
+				}),
+			),
+		);
 	});
 
 	describe("the ambient npm short-circuit", () => {
@@ -642,20 +665,24 @@ describe("PackageManagerInstaller", () => {
 				// The 404s are the assertion vehicle: what matters are the urls the
 				// mapping produced, recorded by the scripted fetch — exact literals,
 				// reachable from any host because RUNNER_ARCH decides (F3).
+				const darwinRoot = scratch();
 				const darwin = scriptedFetch({});
 				yield* Effect.flip(
 					install("bun@1.0.0").pipe(
-						Effect.provide(live(scratch(), darwin.fetch, { RUNNER_OS: "macOS", RUNNER_ARCH: "X64" })),
+						Effect.provide(live(darwinRoot, darwin.fetch, { RUNNER_OS: "macOS", RUNNER_ARCH: "X64" })),
+						Effect.ensuring(Effect.sync(() => rmSync(darwinRoot, { recursive: true, force: true }))),
 					),
 				);
 				assert.deepStrictEqual(darwin.calls, [
 					"https://github.com/oven-sh/bun/releases/download/bun-v1.0.0/bun-darwin-x64.zip",
 				]);
 
+				const armRoot = scratch();
 				const arm = scriptedFetch({});
 				yield* Effect.flip(
 					install("bun@1.0.0").pipe(
-						Effect.provide(live(scratch(), arm.fetch, { RUNNER_OS: "Linux", RUNNER_ARCH: "ARM64" })),
+						Effect.provide(live(armRoot, arm.fetch, { RUNNER_OS: "Linux", RUNNER_ARCH: "ARM64" })),
+						Effect.ensuring(Effect.sync(() => rmSync(armRoot, { recursive: true, force: true }))),
 					),
 				);
 				assert.deepStrictEqual(arm.calls, [
@@ -666,9 +693,13 @@ describe("PackageManagerInstaller", () => {
 
 		it.live("fails typed on a platform bun does not publish for, without downloading", () =>
 			Effect.gen(function* () {
+				const root = scratch();
 				const script = scriptedFetch({});
 				const error = yield* Effect.flip(
-					install("bun@1.0.0").pipe(Effect.provide(live(scratch(), script.fetch, { RUNNER_OS: "Solaris" }))),
+					install("bun@1.0.0").pipe(
+						Effect.provide(live(root, script.fetch, { RUNNER_OS: "Solaris" })),
+						Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+					),
 				);
 				assert.instanceOf(error, PackageManagerInstallerError);
 				assert.strictEqual(error.reason, "unsupportedPlatform");
@@ -681,8 +712,14 @@ describe("PackageManagerInstaller", () => {
 	describe("the error reasons that remain", () => {
 		it.live("downloadFailed carries the ToolInstaller failure as cause", () =>
 			Effect.gen(function* () {
+				const root = scratch();
 				const script = scriptedFetch({});
-				const error = yield* Effect.flip(install("pnpm@2.0.0").pipe(Effect.provide(live(scratch(), script.fetch))));
+				const error = yield* Effect.flip(
+					install("pnpm@2.0.0").pipe(
+						Effect.provide(live(root, script.fetch)),
+						Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+					),
+				);
 				assert.strictEqual(error.reason, "downloadFailed");
 				assert.instanceOf(error.cause, ToolInstallerError);
 			}),
@@ -690,10 +727,16 @@ describe("PackageManagerInstaller", () => {
 
 		it.live("extractFailed when the downloaded bytes are not an archive", () =>
 			Effect.gen(function* () {
+				const root = scratch();
 				const script = scriptedFetch({
 					"https://registry.npmjs.org/pnpm/-/pnpm-2.0.1.tgz": () => new Response("not a tarball", { status: 200 }),
 				});
-				const error = yield* Effect.flip(install("pnpm@2.0.1").pipe(Effect.provide(live(scratch(), script.fetch))));
+				const error = yield* Effect.flip(
+					install("pnpm@2.0.1").pipe(
+						Effect.provide(live(root, script.fetch)),
+						Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+					),
+				);
 				assert.strictEqual(error.reason, "extractFailed");
 			}),
 		);

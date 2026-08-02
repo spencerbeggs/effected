@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option } from "effect";
+import { Effect, FileSystem, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { ChildProcessSpawner } from "effect/unstable/process";
 import type { FileBlobTransfer } from "../src/index.js";
 import { ActionCache, ActionCacheError, BlobTransferError, CacheKey } from "../src/index.js";
 import { json, resultsEnv, twirpFetch } from "./results.js";
@@ -500,6 +501,153 @@ describe("ActionCache", () => {
 					yield* Effect.flatMap(ActionCache, (cache) => cache.restore(patterns, "k")).pipe(Effect.provide(scope));
 					assert.strictEqual(readFileSync(aDep, "utf8"), `contents of ${aDep}`);
 					assert.isFalse(existsSync(bDep));
+				}),
+			),
+		);
+
+		/** The real spawner, recording each spawn's argv — and, when a `-T` flag is present, the named manifest's content AT SPAWN TIME, before the scratch directory is removed. */
+		const spyingSpawner = () => {
+			const spawns: Array<{ readonly args: ReadonlyArray<string>; readonly manifest?: string }> = [];
+			const layer = Layer.effect(
+				ChildProcessSpawner.ChildProcessSpawner,
+				Effect.gen(function* () {
+					const real = yield* ChildProcessSpawner.ChildProcessSpawner;
+					return {
+						...real,
+						spawn: (...spawnArgs: Parameters<typeof real.spawn>) => {
+							const [command] = spawnArgs;
+							if ("args" in command) {
+								const args = [...command.args];
+								const flag = args.indexOf("-T");
+								const manifestPath = flag === -1 ? undefined : args[flag + 1];
+								spawns.push({
+									args,
+									...(manifestPath === undefined ? {} : { manifest: readFileSync(manifestPath, "utf8") }),
+								});
+							}
+							return real.spawn(...spawnArgs);
+						},
+					};
+				}),
+			).pipe(Layer.provide(NodeServices.layer));
+			return { spawns, layer };
+		};
+
+		/** The real FileSystem with a live `readDirectory` call counter. */
+		const countingFileSystem = () => {
+			let reads = 0;
+			const layer = Layer.effect(
+				FileSystem.FileSystem,
+				Effect.gen(function* () {
+					const real = yield* FileSystem.FileSystem;
+					return {
+						...real,
+						readDirectory: (...readArgs: Parameters<typeof real.readDirectory>) => {
+							reads += 1;
+							return real.readDirectory(...readArgs);
+						},
+					};
+				}),
+			).pipe(Layer.provide(NodeServices.layer));
+			return { layer, reads: () => reads };
+		};
+
+		it.effect(
+			"a resolution too large for argv reaches tar through a manifest file",
+			() =>
+				withScratch((root) =>
+					Effect.gen(function* () {
+						// ~2.7MB of resolved absolute paths: past Linux's ~2MB and
+						// macOS's 1MB execve budgets, so handing the list to tar as
+						// argv would die as E2BIG before tar even started — the
+						// `${workspace}/**` shape at production scale.
+						const segment = (label: string) => `${label}-${"x".repeat(180)}`;
+						const deep = join(root, segment("d1"), segment("d2"), segment("d3"), segment("d4"));
+						mkdirSync(deep, { recursive: true });
+						const files: Array<string> = [];
+						for (let index = 0; index < 2800; index += 1) {
+							const file = join(deep, `file-${String(index).padStart(4, "0")}-${"y".repeat(180)}.txt`);
+							writeFileSync(file, `payload ${index}`);
+							files.push(file);
+						}
+						assert.isAbove(
+							files.reduce((total, file) => total + file.length + 1, 0),
+							2_500_000,
+							"the fixture must be big enough that argv would actually overflow",
+						);
+
+						const { transfer } = fileTransfer();
+						const { fetch } = backend();
+						const spy = spyingSpawner();
+						const scope = ActionCache.layerWith(transfer).pipe(
+							Layer.provide(spy.layer),
+							Layer.provide(
+								Layer.mergeAll(
+									resultsEnv({}),
+									NodeServices.layer,
+									FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fetch))),
+								),
+							),
+						);
+						const pattern = `${deep}/*`;
+						yield* Effect.flatMap(ActionCache, (cache) => cache.save([pattern], "k")).pipe(Effect.provide(scope));
+						rmSync(deep, { recursive: true });
+						yield* Effect.flatMap(ActionCache, (cache) => cache.restore([pattern], "k")).pipe(Effect.provide(scope));
+						// The real-IO round trip held at manifest scale.
+						assert.strictEqual(readFileSync(files[0] ?? "", "utf8"), "payload 0");
+						assert.strictEqual(readFileSync(files[2799] ?? "", "utf8"), "payload 2799");
+
+						// The create invocation carried `-T <manifest>` and not one
+						// resolved path; the manifest listed every match.
+						const create = spy.spawns.find((spawn) => spawn.args.includes("-T"));
+						assert.isDefined(create, "tar was never invoked with a manifest");
+						const resolvedSet = new Set(files);
+						assert.isFalse(
+							create?.args.some((arg) => resolvedSet.has(arg)),
+							"resolved paths must not travel as argv",
+						);
+						const listed = (create?.manifest ?? "").split("\n").filter((line) => line !== "");
+						assert.deepStrictEqual([...listed].sort(), [...files].sort());
+					}),
+				),
+			120_000,
+		);
+
+		it.effect("stat-and-admits a literal directory without enumerating it", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// A pnpm-store-shaped literal: a directory with real contents
+					// that only tar's own recursion should ever descend into.
+					const store = join(root, "store");
+					mkdirSync(join(store, "v3"), { recursive: true });
+					writeFileSync(join(store, "v3", "entry.txt"), "stored");
+					const { transfer } = fileTransfer();
+					const { fetch } = backend();
+					const counting = countingFileSystem();
+					const scope = ActionCache.layerWith(transfer).pipe(
+						Layer.provide(counting.layer),
+						Layer.provide(
+							Layer.mergeAll(
+								resultsEnv({}),
+								NodeServices.layer,
+								FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fetch))),
+							),
+						),
+					);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save([store], "k")).pipe(Effect.provide(scope));
+					rmSync(store, { recursive: true });
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore([store], "k")).pipe(Effect.provide(scope));
+					// The literal contributed the only search root, and no pattern can
+					// match below it: admission comes from the stat alone, on save AND
+					// restore — a store-sized literal must not cost a full enumeration
+					// that can admit nothing. tar's recursion still archived the
+					// contents, which is what the round trip above proves.
+					assert.strictEqual(readFileSync(join(store, "v3", "entry.txt"), "utf8"), "stored");
+					assert.strictEqual(counting.reads(), 0, "a literal-only resolution must not enumerate the directory");
+					// The control: a wildcard below the same root MUST enumerate —
+					// proof the counter is live rather than the wrapper being blind.
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save([`${store}/**`], "k2")).pipe(Effect.provide(scope));
+					assert.isAbove(counting.reads(), 0, "the toolkit-parity walk must survive for actual patterns");
 				}),
 			),
 		);

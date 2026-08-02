@@ -102,6 +102,52 @@ describe("StoreDocument", () => {
 		);
 	});
 
+	describe("__proto__ hardening", () => {
+		it("a document carrying a literal __proto__ key round-trips it and leaves Object.prototype untouched", () => {
+			// The realistic vector: an existing schema file decoded with
+			// JSON.parse, which creates a plain OWN "__proto__" property.
+			const hostileRoot = JSON.parse(
+				'{"type":"object","properties":{"__proto__":{"type":"string"}},"__proto__":{"polluted":true}}',
+			) as Record<string, unknown>;
+			const document = StoreDocument.make({
+				$schema: DRAFT_07_META_SCHEMA,
+				$id,
+				root: hostileRoot,
+				defs: {},
+			});
+			const json = document.toJson();
+			// The key survives as an own data property at both positions…
+			assert.isTrue(Object.getOwnPropertyNames(json).includes("__proto__"));
+			const properties = json.properties as Record<string, unknown>;
+			assert.isTrue(Object.getOwnPropertyNames(properties).includes("__proto__"));
+			// …reaches the serialized text…
+			const text = Result.getOrThrow(document.serializeResult());
+			assert.include(text, '"__proto__"');
+			assert.deepStrictEqual(JSON.parse(text).type, "object");
+			// …and nothing along the way mutated Object.prototype.
+			assert.isFalse("polluted" in {});
+			assert.strictEqual(Object.getPrototypeOf(json), Object.prototype);
+		});
+
+		it.effect("fromSchema over a hostile __proto__-carrying default leaves Object.prototype untouched", () =>
+			Effect.gen(function* () {
+				// Probed at the installed beta: core's generation and lowering
+				// strip own "__proto__" keys before this package's walks run
+				// (the null-prototype accumulators are defense in depth), so
+				// the observable contract is: the pipeline completes and no
+				// stage pollutes the global prototype.
+				const hostileDefault = JSON.parse('{"__proto__":{"polluted":true},"ok":1}') as Record<string, unknown>;
+				const Hostile = Schema.Struct({
+					a: Schema.Record(Schema.String, Schema.Unknown).annotate({ default: hostileDefault }),
+				});
+				const document = yield* StoreDocument.fromSchema(Hostile, { $id });
+				assert.isFalse("polluted" in {});
+				const text = Result.getOrThrow(document.serializeResult());
+				assert.isFalse("polluted" in JSON.parse(text));
+			}),
+		);
+	});
+
 	describe("serializeResult", () => {
 		it("produces canonical text ending in a newline", () => {
 			const document = Result.getOrThrow(StoreDocument.fromSchemaResult(Team, { $id }));

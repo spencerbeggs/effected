@@ -63,7 +63,11 @@ export interface CanonicalJsonOptions {
 	/**
 	 * Indentation unit: `"tab"` (the default, matching the repo formatter
 	 * convention the extraction source committed its files under) or a
-	 * space count.
+	 * space count — a non-negative integer (`0` emits multi-line output
+	 * with no leading indentation). Counts above 10 are honored as given,
+	 * deliberately diverging from `JSON.stringify`'s silent clamp to 10.
+	 * A negative or fractional count is a wiring mistake and throws (the
+	 * serializer alters nothing silently — not even its own options).
 	 */
 	readonly indent?: "tab" | number;
 }
@@ -103,7 +107,7 @@ export class CanonicalJson {
 	 * behind a span.
 	 */
 	static serializeResult(value: unknown, options?: CanonicalJsonOptions): Result.Result<string, CanonicalJsonError> {
-		const unit = options?.indent === undefined || options.indent === "tab" ? "\t" : " ".repeat(options.indent);
+		const unit = options?.indent === undefined || options.indent === "tab" ? "\t" : indentUnit(options.indent);
 		try {
 			return Result.succeed(`${emit(value, "", 0, unit)}\n`);
 		} catch (cause) {
@@ -124,6 +128,17 @@ export class CanonicalJson {
 			Effect.fromResult(CanonicalJson.serializeResult(value, options)),
 	);
 }
+
+// A numeric indent must be a non-negative integer: `" ".repeat` throws a
+// bare RangeError on negatives and silently floors fractions — both are
+// wiring mistakes (an option, not document data), so they throw with a
+// message naming the contract rather than failing typed or being rewritten.
+const indentUnit = (indent: number): string => {
+	if (!Number.isInteger(indent) || indent < 0) {
+		throw new Error(`indent must be "tab" or a non-negative integer space count, got ${indent}`);
+	}
+	return " ".repeat(indent);
+};
 
 const emit = (value: unknown, path: string, depth: number, unit: string): string => {
 	if (value === null) {
