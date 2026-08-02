@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-15
-last-synced: 2026-07-15
+updated: 2026-08-02
+last-synced: 2026-08-02
 completeness: 95
 related:
   - ../architecture.md
@@ -47,9 +47,11 @@ Class-based throughout: instance methods are the canonical form, cross-cutting o
 
 Plain `Schema.Class` — no `_tag`, because the serialized form is the version string via `FromString`. Fields: `major`/`minor`/`patch` as non-negative safe integers, `prerelease` as an array of string-or-number identifiers, `build` as an array of strings. Construct via `SemVer.make(...)` so validation runs. Field checks are `Schema.is*` combinators (`Schema.isInt()`, `Schema.isBetween(...)`, `Schema.isPattern(regex)`). Prerelease string identifiers require at least one non-digit — all-numeric identifiers decode as numbers — keeping `FromString` round-trips canonical. The identifier pattern is written **lookahead-free** because fast-check's `stringMatching` cannot synthesize lookahead, which is what makes `Schema.toArbitrary` + `it.effect.prop` work.
 
-- Schema exports: the class and `SemVer.FromString`.
-- Statics: `parse`; `Order` and `OrderWithBuild` (`Order.Order<SemVer>` consts); dual statics `compare`, `gt`, `gte`, `lt`, `lte`, `equal`, `neq`, `truncate`; array helpers `sort`, `rsort`, `max`, `min` (`Option` for absence); pure grouping statics `groupBy` (immutable record return), `latestByMajor`, `latestByMinor`.
+- Schema exports: the class, `SemVer.FromString` and the string-level checks `ExactVersionString` / `PinnableVersionString`.
+- Statics: `parse`; validity predicates `isValid` and `isPinnable`; `Order` and `OrderWithBuild` (`Order.Order<SemVer>` consts); dual statics `compare`, `gt`, `gte`, `lt`, `lte`, `equal`, `neq`, `truncate`; array helpers `sort`, `rsort`, `max`, `min` (`Option` for absence); pure grouping statics `groupBy` (immutable record return), `latestByMajor`, `latestByMinor`.
 - Instance: `compare`/`gt`/`gte`/`lt`/`lte`/`equal`/`neq`, getters `isStable` and `isPrerelease`, the fluent `bump` namespace (`v.bump.major()`, `minor`, `patch`, `prerelease(id?)`, `release`, with node-semver-compatible prerelease semantics) and `toString` as the encode direction.
+
+String-level validity is a **lexically paired surface** (3e98b704): the `isValid` boolean pairs with the `ExactVersionString` `Schema.String` check and `isPinnable` with `PinnableVersionString`, each schema check refined by its same-stem predicate so the two levels cannot drift and the pairing is discoverable by name. All four **reject surrounding whitespace**, deliberately diverging from `parseResult`, which trims its input to match node-semver's constructor (the trim lives in `internal/grammar.ts`'s `parseVersion`, and `parseResult`'s TSDoc now documents the posture explicitly): the parser canonicalizes, while the predicates answer "is this string, byte for byte, a version?" — padded input is the caller's bug to surface, not this package's to hide. "Pinnable" additionally excludes build metadata: the corepack `<name>@<version>[+<integrity>]` pin notion, where the first `+` after the version always begins the integrity component, so a version carrying build identifiers would encode to a string that re-parses differently. `PinnableVersionString` is consumed **by identity** in [`@effected/package-json`](package-json.md)'s `PackageManager` — downstream never re-derives it. The as-built detail lives in the package CLAUDE.md; this doc records only the decisions.
 
 There is **no `SemVer.diff`**: a delegating static would create a `SemVer`↔`VersionDiff` import cycle (`VersionDiff` fields reference `SemVer`, and `noImportCycles` is error-level), so `VersionDiff.between(a, b)` is the single canonical diff entry point.
 
