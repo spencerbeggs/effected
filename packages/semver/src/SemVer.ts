@@ -177,6 +177,12 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 	 * identifiers and partially consumed input.
 	 *
 	 * @remarks
+	 * **Surrounding whitespace is TRIMMED before parsing**, matching
+	 * node-semver's constructor: `" 1.2.3"` parses successfully. When padded
+	 * input should be the caller's error rather than silently canonicalized,
+	 * reach for {@link SemVer.isValid} / {@link SemVer.ExactVersionString}
+	 * (or their pinnable twins), which deliberately reject it.
+	 *
 	 * {@link SemVer.parse} is defined in terms of this function; the two never
 	 * diverge. Reach for the `Effect` variant inside Effect code — it carries
 	 * the `SemVer.parse` tracing span — and for this one at synchronous
