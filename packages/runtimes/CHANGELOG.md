@@ -1,5 +1,13 @@
 # @effected/runtimes
 
+## 0.2.2
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/semver | dependency | updated | 0.2.1 | 0.3.0 |
+
 ## 0.2.1
 
 ### Maintenance
