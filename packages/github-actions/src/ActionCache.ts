@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
+import { GlobPattern, GlobSet } from "@effected/glob";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -61,9 +62,31 @@ export class ActionCacheError extends Schema.TaggedErrorClass<ActionCacheError>(
  */
 export interface ActionCacheShape {
 	/**
-	 * Archive `paths` and store them under `key`.
+	 * Archive the files and directories matching `paths` and store them under
+	 * `key`.
 	 *
 	 * @remarks
+	 * `paths` is a list of glob **patterns**, resolved with `actions/cache`
+	 * parity before `tar` ever sees them: a pattern may match directories (a
+	 * matched directory is archived recursively, never expanded into its
+	 * descendants), a pattern that matches nothing — including a literal path
+	 * that is not on disk — is silently dropped, and a list that resolves to
+	 * nothing at all fails typed rather than reserving an entry no archive will
+	 * ever back. A leading `~` expands to the caller's home directory, relative
+	 * patterns root at `GITHUB_WORKSPACE` (falling back to the working
+	 * directory), and a leading `!` marks an exclusion.
+	 *
+	 * The entry **version** is a digest of the literal pattern list, exactly as
+	 * `actions/cache` computes it — resolution feeds `tar` only, never the
+	 * version — so {@link ActionCacheShape.restore | restore}, which resolves
+	 * nothing, derives the same version from the same list for free.
+	 *
+	 * One deliberate divergence from the toolkit: where `actions/cache` re-roots
+	 * every match relative to the workspace, resolved paths here stay
+	 * **absolute** and are archived with `tar -P`, so a restore puts every file
+	 * back where it came from regardless of the restoring step's working
+	 * directory.
+	 *
 	 * A key that already exists is a **success**: cache entries are immutable, so
 	 * another job having written it first is the outcome the caller wanted.
 	 */
@@ -76,6 +99,11 @@ export interface ActionCacheShape {
 	 * `Option.none()` is a miss, not a failure — a cold cache is the normal state
 	 * of a new branch. Passing a {@link CacheKey} supplies its restore-key ladder
 	 * automatically; passing a `string` and no ladder means "this key or nothing".
+	 *
+	 * `paths` only derives the entry version and MUST be the same literal list
+	 * the save used — no glob resolution happens here, because none is needed:
+	 * extraction consumes no path list (the archive already names its contents),
+	 * and `actions/cache` likewise hashes the un-resolved list on both sides.
 	 */
 	readonly restore: (
 		paths: ReadonlyArray<string>,
@@ -96,6 +124,15 @@ const SERVICE = "github.actions.results.api.v1.CacheService";
  * because upstream does not sort them: sorting here would compute a version no
  * other cache step in the workflow agrees with, and the entry a sibling step
  * wrote would simply never be found.
+ *
+ * **The digest covers the LITERAL pattern list, never the resolved paths.**
+ * That is upstream's choice, not ours: `getCacheVersion` hashes the caller's
+ * `paths` argument verbatim (`actions/toolkit`, `cache/src/internal/`
+ * `cacheUtils.ts:136-159`), and both `saveCacheV2` (`cache/src/cache.ts:689`)
+ * and `restoreCacheV2` (`cache.ts:361`) hand it the un-resolved list — restore
+ * never resolves at all. Hashing the resolved list here would compute a
+ * version the restore side cannot reproduce, and every save would be an entry
+ * no restore ever finds.
  */
 const versionOf = (paths: ReadonlyArray<string>): string =>
 	createHash("sha256")
@@ -243,22 +280,149 @@ const make = (
 		const moved = (key: string) =>
 			Effect.mapError((cause: BlobTransferError) => new ActionCacheError({ reason: "transferFailed", key, cause }));
 
+		/** Platform separators to the dialect's — applied to paths WE produce, never to the caller's pattern text, where a backslash is minimatch's escape character. */
+		const posix = (value: string): string => value.replaceAll("\\", "/");
+
+		/**
+		 * Resolve the caller's patterns to the concrete files and directories
+		 * `tar` will archive, with `actions/cache` parity.
+		 *
+		 * @remarks
+		 * The toolkit resolves through `@actions/glob` with `implicitDescendants`
+		 * disabled (`cacheUtils.ts:48-70`): a matched directory is answered as
+		 * itself and `tar` recurses into it, a pattern that matches nothing —
+		 * including a literal path that is not on disk — contributes nothing
+		 * (`internal-globber.ts:90-100` existence-filters every search path), a
+		 * leading `~` expands to the home directory with the expansion
+		 * glob-escaped (`internal-pattern.ts:226-234`), and blank or `#` members
+		 * are skipped (the toolkit joins the list with newlines, where both are
+		 * inert). A fully empty resolution is the toolkit's hard
+		 * "Path Validation Error" (`cache.ts:662-666`) and a typed failure here.
+		 *
+		 * Two knowing departures: matches stay ABSOLUTE for the `-P` archive
+		 * posture rather than being re-rooted at the workspace (the version
+		 * hashes the literal list, so the wire protocol never sees the
+		 * difference), and the walk does not follow directory symlinks, where
+		 * the toolkit's globber does.
+		 */
+		const resolvePaths = (
+			patterns: ReadonlyArray<string>,
+			key: string,
+		): Effect.Effect<ReadonlyArray<string>, ActionCacheError> =>
+			Effect.gen(function* () {
+				const failed = (detail: string, cause?: unknown) =>
+					new ActionCacheError({ reason: "archiveFailed", key, detail, ...(cause === undefined ? {} : { cause }) });
+				const cleaned = patterns.map((pattern) => pattern.trim()).filter((p) => p !== "" && !p.startsWith("#"));
+				// The toolkit roots relative patterns at the process working directory
+				// and relativizes matches against GITHUB_WORKSPACE; on a runner the two
+				// are the same directory, and the variable is the one a test controls.
+				const workspace = Option.getOrElse(yield* env.getOptional("GITHUB_WORKSPACE"), () => ".");
+				const base = posix(path.resolve(workspace));
+
+				const rooted: Array<string> = [];
+				for (const pattern of cleaned) {
+					const excluded = pattern.startsWith("!");
+					let target = excluded ? pattern.slice(1) : pattern;
+					if (target === "~" || target.startsWith("~/")) {
+						let home = yield* env.getOptional("HOME");
+						if (Option.isNone(home)) {
+							home = yield* env.getOptional("USERPROFILE");
+						}
+						if (Option.isNone(home)) {
+							return yield* Effect.fail(
+								failed(`cannot expand "~" in "${pattern}" — neither HOME nor USERPROFILE is set`),
+							);
+						}
+						target = `${GlobPattern.escape(posix(path.resolve(home.value)))}${target.slice(1)}`;
+					}
+					if (!path.isAbsolute(target)) {
+						// The prepended root is escaped, as the toolkit escapes its
+						// (`Pattern.globEscape`) — a `[` in a directory name is a path
+						// here, not a character class.
+						target = `${GlobPattern.escape(base)}/${target}`;
+					}
+					rooted.push(excluded ? `!${target}` : target);
+				}
+
+				const set = yield* GlobSet.compile(rooted).pipe(
+					Effect.mapError((cause) => failed(`"${cause.pattern}" is not a usable glob pattern`, cause)),
+				);
+
+				// Search roots: the longest literal prefix of every include — the same
+				// derivation as `@actions/glob`'s search paths, with descendant roots
+				// folded into their ancestors so nothing is walked twice.
+				const roots: Array<string> = [];
+				const addRoot = (root: string) => {
+					if (root !== "" && !roots.includes(root)) {
+						roots.push(root);
+					}
+				};
+				for (const literal of set.literals) {
+					addRoot(literal);
+				}
+				for (const wildcard of set.wildcards) {
+					// A whole-pattern negation only filters; it contributes no root.
+					if (wildcard.negated) {
+						continue;
+					}
+					const prefix = wildcard.enumerationPrefix;
+					addRoot(prefix === "" ? base : prefix === "/" ? "/" : prefix.slice(0, -1));
+				}
+				const under = (child: string, parent: string) =>
+					parent === "/" ? child !== "/" : child.startsWith(`${parent}/`);
+				const searchRoots = roots.filter((root) => !roots.some((other) => other !== root && under(root, other)));
+
+				const matched: Array<string> = [];
+				const seen = new Set<string>();
+				const admit = (candidate: string) => {
+					if (!seen.has(candidate) && set.matches(candidate)) {
+						seen.add(candidate);
+						matched.push(candidate);
+					}
+				};
+				for (const root of searchRoots) {
+					// Existence IS the filter: a literal that is not on disk and a
+					// pattern whose literal prefix directory is absent both contribute
+					// nothing, exactly as the toolkit's globber skips an ENOENT search
+					// path. `stat` follows symlinks, so a broken link is also nothing.
+					const info = yield* fs.stat(root).pipe(Effect.option);
+					if (Option.isNone(info)) {
+						continue;
+					}
+					admit(root);
+					if (info.value.type === "Directory") {
+						const entries = yield* fs
+							.readDirectory(root, { recursive: true })
+							.pipe(Effect.mapError((cause) => failed(`could not enumerate "${root}"`, cause)));
+						for (const entry of entries) {
+							admit(`${root}/${posix(entry)}`);
+						}
+					}
+				}
+				if (matched.length === 0) {
+					return yield* Effect.fail(failed(`no file or directory matched the cache paths: ${cleaned.join(", ")}`));
+				}
+				return matched;
+			});
+
 		return {
 			save: Effect.fn("ActionCache.save")(function* (paths: ReadonlyArray<string>, key: string | CacheKey) {
 				const { primary } = ladder(key, undefined);
 				yield* Effect.annotateCurrentSpan({ key: primary });
+				// The LITERAL list, before resolution — see `versionOf` for why.
 				const version = versionOf(paths);
 				if (paths.length === 0) {
 					return yield* Effect.fail(
 						new ActionCacheError({ reason: "archiveFailed", key: primary, detail: "no paths were given to cache" }),
 					);
 				}
+				const resolved = yield* resolvePaths(paths, primary);
 				yield* withArchive(primary, (archive) =>
 					Effect.gen(function* () {
 						// `-P` keeps leading separators, so an absolute path is stored
 						// verbatim and restored where it came from rather than under the
 						// working directory of whichever step happens to restore it.
-						yield* tar(["czPf", archive, ...paths], primary, false);
+						yield* tar(["czPf", archive, ...resolved], primary, false);
 						const size = yield* fs
 							.stat(archive)
 							.pipe(Effect.mapError((cause) => new ActionCacheError({ reason: "archiveFailed", key: primary, cause })));

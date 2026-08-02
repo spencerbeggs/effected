@@ -104,6 +104,62 @@ describe("ActionState", () => {
 			).run,
 	);
 
+	describe("save-time round-trip validation", () => {
+		it.effect("a schema whose encoded form is not plain JSON fails AT SAVE, naming the key", () => {
+			// The regression that cost a real matrix round: Schema.Option's encoded
+			// form is an Option INSTANCE — JSON.stringify serializes it via toJSON
+			// to {"_id":"Option",…}, the save "succeeds", and post's decode fails
+			// `malformed` with no pointer to the cause. The round-trip must decode
+			// the PARSED value: a mutant that re-decodes the encoded value instead
+			// passes an Option instance straight through and goes green here.
+			const { files, run } = live(
+				Effect.gen(function* () {
+					return yield* Effect.flip(
+						(yield* ActionState).save("choice", Option.some("x"), Schema.Option(Schema.String)),
+					);
+				}),
+			);
+			return Effect.map(run, (error) => {
+				assert.strictEqual(error._tag, "ActionStateError");
+				assert.strictEqual(error.reason, "notPlainJson");
+				assert.strictEqual(error.key, "choice");
+				assert.include(error.message, "plain JSON");
+				// The failure must precede the write: a state file carrying the bad
+				// value would resurrect the phase-later mystery this exists to kill.
+				assert.isUndefined(files.written.get("/rf/state"));
+			});
+		});
+
+		it.effect("Schema.OptionFromNullOr is the sanctioned spelling and still saves", () => {
+			const { files, run } = live(
+				Effect.gen(function* () {
+					const state = yield* ActionState;
+					yield* state.save("some", Option.some("x"), Schema.OptionFromNullOr(Schema.String));
+					yield* state.save("none", Option.none<string>(), Schema.OptionFromNullOr(Schema.String));
+				}),
+			);
+			return Effect.map(run, () => {
+				const body = files.written.get("/rf/state") ?? "";
+				assert.include(body, '"x"');
+				assert.include(body, "null");
+			});
+		});
+
+		it.effect(
+			"an unstringifiable encoded form fails typed rather than as a defect",
+			() =>
+				live(
+					Effect.gen(function* () {
+						// JSON.stringify THROWS on a bigint; before the round-trip that
+						// left `save` through the defect channel, not the typed one.
+						const error = yield* Effect.flip((yield* ActionState).save("big", { n: 1n }, Schema.Any));
+						assert.strictEqual(error.reason, "notPlainJson");
+						assert.strictEqual(error.key, "big");
+					}),
+				).run,
+		);
+	});
+
 	describe("saveSecret", () => {
 		it.effect("masks the secret BEFORE persisting it", () => {
 			const { files, run } = live(

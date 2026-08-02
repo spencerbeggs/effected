@@ -125,6 +125,22 @@ foreign/partial entry and is reinstalled over, not answered. The bun path in
 `PackageManagerInstaller` deliberately does not route through it — integrity
 verification and zip extraction sit between its download and chmod.
 
+`ActionCache.save` (2026-08-02) resolves its `paths` as glob patterns before
+`tar`, with `actions/cache` parity: matched directories archive recursively,
+non-matching patterns (including absent literals) drop silently, an empty
+resolution fails typed, and `versionOf` hashes the **literal** pattern list on
+both save and restore — exactly as the toolkit's `getCacheVersion` does — so
+restore resolves nothing and the versions agree for free. Resolved paths stay
+absolute for the `-P` posture (a documented divergence from the toolkit's
+workspace-relative entries). The engine is `@effected/glob`, never
+`@actions/glob`.
+
+`ActionState.save` (2026-08-02) proves at save time that the encoded form
+survives `JSON.stringify`/`parse` and re-decodes, failing typed
+(`notPlainJson`, naming the key) instead of leaving a `malformed` mystery for
+a later phase — the schema's encoded form must be plain JSON
+(`Schema.OptionFromNullOr`, not `Schema.Option`).
+
 `CacheKey.withRestoreDepths` (2026-08-02) lets a key carry an explicit
 restore-key ladder — each depth is the number of leading segments a rung keeps,
 emitted in the order given — because the default every-prefix ladder drops

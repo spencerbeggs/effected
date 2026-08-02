@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -224,23 +224,30 @@ describe("ActionCache", () => {
 		}),
 	);
 
-	it.effect("fails with tar's own complaint when the archive cannot be built", () =>
-		withScratch((root) =>
-			Effect.gen(function* () {
-				const { transfer } = fileTransfer();
-				const { calls, fetch } = twirpFetch({});
-				const error = yield* Effect.flip(
-					Effect.flatMap(ActionCache, (cache) => cache.save([join(root, "absent")], "k")).pipe(
-						Effect.provide(live(fetch, transfer)),
-					),
-				);
-				assert.strictEqual(error.reason, "archiveFailed");
-				// The exit code says it failed; only stderr says why, and the difference
-				// between "no such file" and "tar is not installed" is the whole message.
-				assert.isDefined(error.stderr);
-				assert.lengthOf(calls, 0);
-			}),
-		),
+	it.effect("fails with tar's own complaint when the archive cannot be extracted", () =>
+		Effect.gen(function* () {
+			// A missing path no longer reaches tar (resolution existence-filters
+			// it), so the stderr channel is proved on the extract side: bytes that
+			// are not a gzip archive.
+			const corrupt: FileBlobTransfer = {
+				uploadFile: () => Effect.void,
+				downloadToFile: (_url, file) =>
+					Effect.tryPromise({
+						try: () => writeFile(file, "this is not an archive"),
+						catch: (cause) => new BlobTransferError({ reason: "downloadFailed", cause }),
+					}),
+			};
+			const { fetch } = twirpFetch({
+				GetCacheEntryDownloadURL: () => json({ ok: true, signedDownloadUrl: "https://blob.example/junk" }),
+			});
+			const error = yield* Effect.flip(
+				Effect.flatMap(ActionCache, (cache) => cache.restore(["x"], "k")).pipe(Effect.provide(live(fetch, corrupt))),
+			);
+			assert.strictEqual(error.reason, "archiveFailed");
+			// The exit code says it failed; only stderr says why, and the difference
+			// between "not in gzip format" and "tar is not installed" is the whole message.
+			assert.isDefined(error.stderr);
+		}),
 	);
 
 	it.effect("treats a create conflict as a save that already happened", () =>
@@ -312,6 +319,193 @@ describe("ActionCache", () => {
 			assert.include(error.message, "ACTIONS_RESULTS_URL");
 		}),
 	);
+
+	describe("glob resolution on save", () => {
+		/** A tree with two node_modules at different depths and a bystander file. */
+		const tree = (root: string) => {
+			const aDep = join(root, "a", "node_modules", "pkg", "dep.txt");
+			const bDep = join(root, "b", "node_modules", "dep.txt");
+			const bystander = join(root, "src", "keep.ts");
+			for (const file of [aDep, bDep, bystander]) {
+				mkdirSync(join(file, ".."), { recursive: true });
+				writeFileSync(file, `contents of ${file}`);
+			}
+			return { aDep, bDep, bystander };
+		};
+
+		const backend = (url = "https://blob.example/resolved") =>
+			twirpFetch({
+				CreateCacheEntry: () => json({ ok: true, signedUploadUrl: url }),
+				FinalizeCacheEntryUpload: () => json({ ok: true }),
+				GetCacheEntryDownloadURL: () => json({ ok: true, signedDownloadUrl: url }),
+			});
+
+		it.effect("resolves `**/` patterns to real directories and archives them recursively", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// The real-runner repro: `tar: **/node_modules: Cannot stat` — the
+					// pattern must be resolved BEFORE tar, and a matched directory is
+					// archived recursively (implicitDescendants stays off, as in
+					// actions/toolkit cacheUtils.ts:48-70; tar's own recursion does the
+					// descending). Handing the pattern to tar verbatim fails this test
+					// with tar's exact production complaint.
+					const { aDep, bDep, bystander } = tree(root);
+					const { transfer } = fileTransfer();
+					const { fetch } = backend();
+					const scope = live(fetch, transfer);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save([`${root}/**/node_modules`], "k")).pipe(
+						Effect.provide(scope),
+					);
+					rmSync(join(root, "a"), { recursive: true });
+					rmSync(join(root, "b"), { recursive: true });
+					rmSync(bystander);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore([`${root}/**/node_modules`], "k")).pipe(
+						Effect.provide(scope),
+					);
+					assert.strictEqual(readFileSync(aDep, "utf8"), `contents of ${aDep}`);
+					assert.strictEqual(readFileSync(bDep, "utf8"), `contents of ${bDep}`);
+					// The bystander never matched, so the archive must not resurrect it.
+					assert.isFalse(existsSync(bystander));
+				}),
+			),
+		);
+
+		it.effect("hashes the LITERAL pattern list into the version, on save AND restore", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// actions/toolkit hashes the caller's un-resolved list on both
+					// sides (getCacheVersion, cacheUtils.ts:136-159; cache.ts:689 and
+					// :361) — restore resolves nothing, so hashing the RESOLVED list on
+					// save would compute a version restore can never reproduce, and
+					// every save would be an entry no restore finds.
+					tree(root);
+					const literals = [`${root}/**/node_modules`, `${root}/src`];
+					const { transfer } = fileTransfer();
+					const { calls, fetch } = backend();
+					const scope = live(fetch, transfer);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save(literals, "k")).pipe(Effect.provide(scope));
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore(literals, "k")).pipe(Effect.provide(scope));
+					const create = calls.find((call) => call.method === "CreateCacheEntry");
+					const lookup = calls.find((call) => call.method === "GetCacheEntryDownloadURL");
+					assert.strictEqual(create?.body.version, versionOf(literals));
+					assert.strictEqual(lookup?.body.version, versionOf(literals));
+				}),
+			),
+		);
+
+		it.effect("drops a pattern that matches nothing and saves the rest", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// Toolkit parity: the globber simply yields nothing for a pattern
+					// with no matches — and for a LITERAL path that is not on disk,
+					// which goes through the same existence filter
+					// (internal-globber.ts:90-100). Neither is an error while anything
+					// else matched.
+					const file = join(root, "payload.txt");
+					writeFileSync(file, "kept");
+					const { blobs, transfer } = fileTransfer();
+					const { fetch } = backend();
+					yield* Effect.flatMap(ActionCache, (cache) =>
+						cache.save([file, `${root}/nothing-*`, join(root, "absent-literal")], "k"),
+					).pipe(Effect.provide(live(fetch, transfer)));
+					assert.strictEqual(blobs.size, 1, "the archive with the surviving path was uploaded");
+				}),
+			),
+		);
+
+		it.effect("fails typed, before the backend, when nothing at all matches", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					const { transfer } = fileTransfer();
+					const { calls, fetch } = twirpFetch({});
+					const error = yield* Effect.flip(
+						Effect.flatMap(ActionCache, (cache) => cache.save([`${root}/nothing-*`], "k")).pipe(
+							Effect.provide(live(fetch, transfer)),
+						),
+					);
+					assert.strictEqual(error.reason, "archiveFailed");
+					assert.include(error.detail, "matched");
+					// Reserving an entry for an archive that will never exist leaves a
+					// key that answers "present" and serves nothing — same rule as the
+					// empty input list, which is the toolkit's hard Path Validation
+					// Error (cache.ts:662-666).
+					assert.lengthOf(calls, 0);
+				}),
+			),
+		);
+
+		it.effect("roots a relative pattern at GITHUB_WORKSPACE", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// The canonical actions/cache idiom, exactly as a workflow writes it.
+					const { aDep } = tree(root);
+					const { transfer } = fileTransfer();
+					const { fetch } = backend();
+					const scope = live(fetch, transfer, { GITHUB_WORKSPACE: root });
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save(["**/node_modules"], "k")).pipe(
+						Effect.provide(scope),
+					);
+					rmSync(join(root, "a"), { recursive: true });
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore(["**/node_modules"], "k")).pipe(
+						Effect.provide(scope),
+					);
+					assert.strictEqual(readFileSync(aDep, "utf8"), `contents of ${aDep}`);
+				}),
+			),
+		);
+
+		it.effect("expands a leading ~ against HOME", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					const file = join(root, "payload.txt");
+					writeFileSync(file, "from home");
+					const { blobs, transfer } = fileTransfer();
+					const { fetch } = backend();
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save(["~/payload.txt"], "k")).pipe(
+						Effect.provide(live(fetch, transfer, { HOME: root })),
+					);
+					assert.strictEqual(blobs.size, 1);
+				}),
+			),
+		);
+
+		it.effect("a `!` exclusion filters what the includes matched", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					const { aDep, bDep } = tree(root);
+					const { transfer } = fileTransfer();
+					const { fetch } = backend();
+					const patterns = [`${root}/**/node_modules`, `!${root}/b/**`];
+					const scope = live(fetch, transfer);
+					yield* Effect.flatMap(ActionCache, (cache) => cache.save(patterns, "k")).pipe(Effect.provide(scope));
+					rmSync(join(root, "a"), { recursive: true });
+					rmSync(join(root, "b"), { recursive: true });
+					yield* Effect.flatMap(ActionCache, (cache) => cache.restore(patterns, "k")).pipe(Effect.provide(scope));
+					assert.strictEqual(readFileSync(aDep, "utf8"), `contents of ${aDep}`);
+					assert.isFalse(existsSync(bDep));
+				}),
+			),
+		);
+
+		it.effect("an uncompilable pattern fails typed, naming it", () =>
+			withScratch((root) =>
+				Effect.gen(function* () {
+					// The engine refuses a pattern past its 64KB guard — the one way a
+					// pattern fails to COMPILE rather than merely failing to match.
+					const { transfer } = fileTransfer();
+					const { calls, fetch } = twirpFetch({});
+					const error = yield* Effect.flip(
+						Effect.flatMap(ActionCache, (cache) => cache.save([`${root}/${"a".repeat(70_000)}`], "k")).pipe(
+							Effect.provide(live(fetch, transfer)),
+						),
+					);
+					assert.strictEqual(error.reason, "archiveFailed");
+					assert.include(error.detail, "not a usable glob pattern");
+					assert.lengthOf(calls, 0);
+				}),
+			),
+		);
+	});
 
 	describe("test double", () => {
 		it.effect("an unstubbed member dies rather than reporting a miss", () =>
