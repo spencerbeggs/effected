@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-02
-last-synced: 2026-08-02
+updated: 2026-08-03
+last-synced: 2026-08-03
 completeness: 85
 related:
   - architecture.md
@@ -25,6 +25,7 @@ related:
   - packages/npm.md
   - packages/commands.md
   - packages/github.md
+  - packages/jsonl.md
   - consumers/README.md
 ---
 
@@ -64,7 +65,7 @@ The release criterion is "the kit can replace the business logic of these five."
 
 ## The gate
 
-The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion — a historical set, and the table below is the record of why each one had to exist before the kit could publish at all. The kit is now twenty-six publishable packages ([package-inventory.md](package-inventory.md)); what came after the gate is [below](#the-github-split-wave).
+The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion — a historical set, and the table below is the record of why each one had to exist before the kit could publish at all. The kit is now twenty-seven publishable packages ([package-inventory.md](package-inventory.md)), twenty-six of them published; what came after the gate is [below](#the-github-split-wave), and the one unpublished package is [`jsonl`](#built-but-unpublished).
 
 | Package | Tier | Why it is on the gate |
 | --- | --- | --- |
@@ -105,3 +106,7 @@ The lasting point for a reader deciding what a future release contains: **gate m
 ### Not on the gate
 
 - `@effected/json-schema` — off the roadmap entirely. Its core value is superseded by v4's `Schema.toJsonSchemaDocument`, and `xdg`'s dependency on it was a dead facade that was cut.
+
+### Built but unpublished
+
+- [`@effected/jsonl`](packages/jsonl.md) — built 2026-08-03 on `feat/package-jsonl`, design doc first. **The kit's one unpublished package**, at `0.0.0` with no release yet. It was never on the gate, nothing in the kit depends on it, and it gates nothing — so it joins the stream the same way `markdown` and `schemastore` did: **in the next coordinated wave whose changesets name it, never solo.** Its intended proving consumer, a dogfood MCP server, lives in an external repo and is not a deliverable here, so first publication is not blocked on that consumer existing.
