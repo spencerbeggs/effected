@@ -38,14 +38,14 @@
 		"@effected/store": "workspace:*",
 		"@effected/xdg": "workspace:*",
 		"@savvy-web/bundler": "^2.1.2",
-		"@types/node": "catalog:silk",
+		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"typescript": "catalog:silk"
+		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"@effected/config-file": "workspace:~",
-		"@effected/store": "workspace:~",
-		"@effected/xdg": "workspace:~",
+		"@effected/config-file": "workspace:^",
+		"@effected/store": "workspace:^",
+		"@effected/xdg": "workspace:^",
 		"effect": "catalog:effect:peers"
 	},
 	"engines": {

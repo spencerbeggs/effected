@@ -35,10 +35,10 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@savvy-web/bundler": "^2.1.2",
-		"@types/node": "catalog:silk",
+		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"rolldown-pnpm-config": "^0.5.6",
-		"typescript": "catalog:silk"
+		"typescript": "catalog:build"
 	},
 	"engines": {
 		"node": ">=24.11.0"

@@ -182,7 +182,7 @@ console.log(Effect.runSync(program));
 // => ["^4.0.0", "^1.4.0"]
 ```
 
-The `workspace:` range modifier is honored: `workspace:*` takes the bare version, `workspace:^` and `workspace:~` prefix it, and an explicit modifier is used as-is. The projection is `@effected/npm`'s `DependencySpecifier` statics with full pnpm publish semantics: the alias form `workspace:<name>@<range>` resolves the *target* package's version and becomes the `npm:<name>@<range>` alias pnpm publishes, and a blank catalog name selects the default catalog. A failed catalog assembly surfaces typed as `@effected/npm`'s `CatalogAssemblyError`, alongside the contracts' `DependencyResolutionError`.
+The `workspace:` range modifier is honored: `workspace:*` takes the bare version, `workspace:^` and `workspace:^` prefix it, and an explicit modifier is used as-is. The projection is `@effected/npm`'s `DependencySpecifier` statics with full pnpm publish semantics: the alias form `workspace:<name>@<range>` resolves the *target* package's version and becomes the `npm:<name>@<range>` alias pnpm publishes, and a blank catalog name selects the default catalog. A failed catalog assembly surfaces typed as `@effected/npm`'s `CatalogAssemblyError`, alongside the contracts' `DependencyResolutionError`.
 
 ## Errors
 

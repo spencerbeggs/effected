@@ -150,7 +150,7 @@ and TOML engines into their bundle. **Tree-shaking dies silently** — no error,
 warning, just a fat bundle. Free-standing named exports, one module each, are the
 whole reason the consolidation was safe to do.
 
-`@effected/{jsonc,toml,yaml,walker}` are each a `workspace:~` peer (so a
+`@effected/{jsonc,toml,yaml,walker}` are each a `workspace:^` peer (so a
 published patch floats) mirrored by a plain `workspace:*` `devDependency` — the
 two specifiers now deliberately differ (the `@effected/walker` precedent).
 Runtime `dependencies` stays empty.

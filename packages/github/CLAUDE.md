@@ -16,7 +16,7 @@ Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 2).
 | `@octokit/plugin-paginate-rest` | `composePaginateRest.iterator` + the `PaginatingEndpoints` type |
 | `@octokit/types` | the generated `Endpoints` map. **Ships no JavaScript** — types only |
 | `universal-github-app-jwt` | signs the App JWT. Zero dependencies |
-| `@effected/semver` (`workspace:~`) | `GitTag.latestSemver` |
+| `@effected/semver` (`workspace:^`) | `GitTag.latestSemver` |
 
 **`@octokit/rest` and `@octokit/auth-app` are deliberately absent.** The rest
 wrapper only adds `plugin-request-log` (which we would immediately silence) and

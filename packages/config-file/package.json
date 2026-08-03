@@ -52,15 +52,15 @@
 		"@effected/walker": "workspace:*",
 		"@effected/yaml": "workspace:*",
 		"@savvy-web/bundler": "^2.1.2",
-		"@types/node": "catalog:silk",
+		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"typescript": "catalog:silk"
+		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"@effected/jsonc": "workspace:~",
-		"@effected/toml": "workspace:~",
-		"@effected/walker": "workspace:~",
-		"@effected/yaml": "workspace:~",
+		"@effected/jsonc": "workspace:^",
+		"@effected/toml": "workspace:^",
+		"@effected/walker": "workspace:^",
+		"@effected/yaml": "workspace:^",
 		"effect": "catalog:effect:peers"
 	},
 	"engines": {

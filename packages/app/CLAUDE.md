@@ -27,7 +27,7 @@ runtime dependencies of its own** and does no IO the three packages beneath it
 do not already do. Its tier is inherited, not earned.
 
 `peerDependencies` is `effect` plus `@effected/xdg`, `@effected/store` and
-`@effected/config-file` (each `workspace:~`, so a published patch floats,
+`@effected/config-file` (each `workspace:^`, so a published patch floats,
 mirrored into `devDependencies` as the plain `workspace:*` — the two
 specifiers now deliberately differ).
 They are **peers, not regular dependencies**, because each appears in this

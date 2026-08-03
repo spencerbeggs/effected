@@ -24,7 +24,7 @@
 		"build:prod": "node savvy.build.ts --target prod",
 		"ci:build": "CI=\"true\" turbo run build:dev build:prod --log-order=grouped --output-logs=full --log-prefix=none",
 		"ci:test": "CI=\"true\" vitest run --passWithNoTests",
-		"claude": "claude --plugin-dir plugin",
+		"claude": "claude --plugin-dir plugin --plugin-dir=../../savvy-web/systems/plugins/silk",
 		"dev": "turbo run dev --filter=docs",
 		"lint": "biome check --max-diagnostics=none",
 		"lint:fix": "biome check --write --max-diagnostics=none",

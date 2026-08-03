@@ -10,14 +10,14 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@rspress/core": "catalog:silk",
-		"@rspress/plugin-sitemap": "^2.0.17",
-		"@types/node": "catalog:silk",
-		"@types/react": "catalog:silk",
-		"@types/react-dom": "catalog:silk",
-		"react": "catalog:silk",
-		"react-dom": "catalog:silk",
+		"@rspress/core": "catalog:docs",
+		"@rspress/plugin-sitemap": "catalog:docs",
+		"@types/node": "catalog:docs",
+		"@types/react": "catalog:docs",
+		"@types/react-dom": "catalog:docs",
+		"react": "catalog:docs",
+		"react-dom": "catalog:docs",
 		"rspress-plugin-api-extractor": "^0.8.2",
-		"rspress-plugin-mermaid": "^1.0.1"
+		"rspress-plugin-mermaid": "catalog:docs"
 	}
 }

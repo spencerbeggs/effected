@@ -35,12 +35,12 @@
 		"@effect/vitest": "catalog:effect",
 		"@effected/glob": "workspace:*",
 		"@savvy-web/bundler": "^2.1.2",
-		"@types/node": "catalog:silk",
+		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"typescript": "catalog:silk"
+		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"@effected/glob": "workspace:~",
+		"@effected/glob": "workspace:^",
 		"effect": "catalog:effect:peers"
 	},
 	"engines": {

@@ -8,7 +8,7 @@ Monorepo workspace tooling as Effect services: workspace root discovery, package
 
 **Integrated**, and the `@pnpm/catalogs.*` quartet is why. Those four packages *are* pnpm's catalog semantics, versioned to pnpm majors; reimplementing them means owning a moving spec with no oracle. They are confined to `src/internal/catalogs.ts` — **the only module that may import them**, so the tier-3 blast radius is one file.
 
-Other runtime deps are `workspace:~` edges: `@effected/commands`, `@effected/git`, `@effected/glob`, `@effected/lockfiles`, `@effected/walker`, `@effected/yaml`, `@effected/package-json`, `@effected/npm`. `effect` is a peer.
+Other runtime deps are `workspace:^` edges: `@effected/commands`, `@effected/git`, `@effected/glob`, `@effected/lockfiles`, `@effected/walker`, `@effected/yaml`, `@effected/package-json`, `@effected/npm`. `effect` is a peer.
 
 **The `@effected/commands` edge points at a CONTRACT, and its direction is load-bearing.** `commands` is boundary tier and must stay there: a `commands` → `workspaces` edge would make it integrated and, through the planned `npm` → `commands` edge, drag `npm`, `lockfiles` (**pure**) and `package-json` up a tier too. So `commands` declares `LocalExec` and we implement it (`Workspaces.localExecLayer`) — the `@effected/npm` `CatalogResolver` precedent. Taking a boundary-tier edge costs us nothing under R2 (we are already integrated for `@pnpm/catalogs.*`). **Never invert this**: nothing in `commands` may import this package.
 
