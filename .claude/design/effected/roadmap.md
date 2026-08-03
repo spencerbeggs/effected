@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-07-26
-last-synced: 2026-07-26
+updated: 2026-08-02
+last-synced: 2026-08-02
 completeness: 88
 related:
   - releases.md
@@ -24,6 +24,7 @@ related:
   - packages/github.md
   - packages/github-actions.md
   - packages/sbom.md
+  - packages/schemastore.md
   - packages/npm.md
   - consumers/README.md
 ---
@@ -32,7 +33,7 @@ related:
 
 ## Overview
 
-The migration program is complete and the `0.1.0` gate was met by nineteen publishable packages (eighteen libraries plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library)), shipped as an explicit pre-release. The kit is now twenty-five publishable packages, all published: `markdown` shipped after the gate, and the five [github-split](#the-github-split-program-2026-07-25) packages published at `0.1.0` in the 2026-07-26 wave ([releases.md](releases.md#the-github-split-wave)). This doc records what comes after `0.1.0`. The decisions below are settled, recorded with their reasoning so they are not re-litigated; each new package gets its own spec → plan → implement cycle per the [migration playbook](migration-playbook.md). [releases.md](releases.md)'s gate table and [package-inventory.md](package-inventory.md) stay authoritative for the shipped set.
+The migration program is complete and the `0.1.0` gate was met by nineteen publishable packages (eighteen libraries plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library)), shipped as an explicit pre-release. The kit is now twenty-six publishable packages, all published: `markdown` shipped after the gate, the five [github-split](#the-github-split-program-2026-07-25) packages published at `0.1.0` in the 2026-07-26 wave ([releases.md](releases.md#the-github-split-wave)) and `schemastore` published at `0.1.0` in the 2026-08-03 wave. This doc records what comes after `0.1.0`. The decisions below are settled, recorded with their reasoning so they are not re-litigated; each new package gets its own spec → plan → implement cycle per the [migration playbook](migration-playbook.md). [releases.md](releases.md)'s gate table and [package-inventory.md](package-inventory.md) stay authoritative for the shipped set.
 
 The nineteenth package, **`@effected/spdx`** (pure, invention), landed after the gate was first declared and joined it: it vendors the SPDX license and exception datasets as pure schemas so [`@effected/package-json`](packages/package-json.md) can delegate its `license` validation and drop `spdx-expression-parse`, the kit's last foreign runtime dependency. That delegation retiered package-json from integrated to boundary. It followed the design-doc-first playbook cycle; [packages/spdx.md](packages/spdx.md) is authoritative.
 
@@ -52,7 +53,7 @@ Two program decisions bind future work rather than just this wave. **`@effect/pl
 
 ## Post-0.1.0 packages
 
-In priority order. `markdown`, `commands` and `templates` have all shipped; the rest are open.
+In priority order. `markdown`, `commands`, `templates` and `schemastore` have all shipped; the rest are open.
 
 ### `@effected/commands`
 
@@ -77,6 +78,10 @@ Naming: recommended `@effected/plugin`. `@effected/config` is rejected because i
 `rspress-plugin-api-extractor` already parses and emits markdown via `mdast-util-from-markdown`, `mdast-util-to-hast` and `gray-matter`, so a low-level markdown package has a real identified consumer rather than a speculative one. It is not a release gate: the plugin can keep its `mdast` dependencies and swap everything else.
 
 **The package has shipped** (pure tier): implementation phases P1-P5 complete 2026-07-19 — CommonMark plus the gfm dialect with full conformance, frontmatter with the codec modules and the schema resolver, edit/format with canonical stringify, and the mdast projection, visitor and navigation surface — first published at `0.2.0` in that day's release wave, with the github-split program's section finders since. What remains is **P6, and it is consumer-side**: the docs pass and the `rspress-plugin-api-extractor` swap, which is a consumer port rather than package work. Details in [packages/markdown.md](packages/markdown.md).
+
+### `@effected/schemastore`
+
+The one shipped package this list never sequenced: it went design doc → build → publish inside the silk-runtime-action dogfood loop rather than through a roadmap slot. **Designed and built 2026-07-28** ([packages/schemastore.md](packages/schemastore.md)): SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning and lints assembled from Effect Schema sources over core's `JsonSchema` pipeline, generalizing silk-release-action's `generate-schema.ts` with the silk-runtime-action rebuild as the second named consumer. Boundary tier with no third-party runtime dependency — the ajv question resolved as the `SchemaValidator` contract seam, the contract-inversion pattern again. **Published at `0.1.0` in the 2026-08-03 wave** (release PR #216).
 
 ### `@effected/vfs`
 
