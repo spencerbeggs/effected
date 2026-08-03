@@ -1,5 +1,21 @@
 # @effected/walker
 
+## 0.3.4
+
+### Dependencies
+
+| Dependency     | Type       | Action  | From  | To    |
+| -------------- | ---------- | ------- | ----- | ----- |
+| @effected/glob | dependency | updated | 0.2.1 | 0.2.2 |
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.3.3
 
 ### Refactoring

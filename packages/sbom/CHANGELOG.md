@@ -1,5 +1,22 @@
 # @effected/sbom
 
+## 0.2.2
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From  | To    |
+| ---------------------- | ---------- | ------- | ----- | ----- |
+| @effected/package-json | dependency | updated | 0.7.1 | 0.7.2 |
+| @effected/spdx         | dependency | updated | 0.1.1 | 0.1.2 |
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.2.1
 
 ### Dependencies

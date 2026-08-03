@@ -1,5 +1,23 @@
 # @effected/app
 
+## 0.5.1
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To     |
+| --------------------- | ---------- | ------- | ----- | ------ |
+| @effected/config-file | dependency | updated | 0.2.0 | 0.2.1  |
+| @effected/store       | dependency | updated | 0.1.2 | 0.1.3  |
+| @effected/xdg         | dependency | updated | 0.1.9 | 0.1.10 |
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.5.0
 
 ### Features

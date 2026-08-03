@@ -1,5 +1,24 @@
 # @effected/lockfiles
 
+## 0.3.1
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/jsonc  | dependency | updated | 0.5.1 | 0.5.2 |
+| @effected/npm    | dependency | updated | 0.8.0 | 0.8.1 |
+| @effected/semver | dependency | updated | 0.3.0 | 0.3.1 |
+| @effected/yaml   | dependency | updated | 0.6.0 | 0.6.1 |
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.3.0
 
 ### Features

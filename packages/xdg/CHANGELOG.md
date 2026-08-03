@@ -1,5 +1,22 @@
 # @effected/xdg
 
+## 0.1.10
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.2.0 | 0.2.1 |
+| @effected/walker      | dependency | updated | 0.3.3 | 0.3.4 |
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.1.9
 
 ### Refactoring

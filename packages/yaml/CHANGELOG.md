@@ -1,5 +1,15 @@
 # @effected/yaml
 
+## 0.6.1
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.6.0
 
 ### Breaking Changes
