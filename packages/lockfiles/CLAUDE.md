@@ -13,7 +13,7 @@ Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` J
 `src/index.ts` is the only re-exporting module. Its full export list:
 
 - `Lockfile`, `LockfileParseError`, `LockfileFramingError` — from `src/Lockfile.ts`
-- `LockfileFormat`, `filenameFor`, `fromFilename` — from `src/LockfileFormat.ts`
+- `LockfileFormat`, `filenameFor`, `filenamesFor`, `fromFilename` — from `src/LockfileFormat.ts`. `filenamesFor(format)` is every filename a format is genuinely written under, primary first (npm adds `npm-shrinkwrap.json`, bun adds the binary `bun.lockb`; pnpm/yarn are single-element) — detection vocabulary, not parse routing: `bun.lockb` is not a parse target and `fromFilename` keeps answering for the primary names only. Workspace-config extras (`pnpm-workspace.yaml`, `.pnpmfile.cjs`, yarn PnP files) are a consumer's cache policy and stay out.
 - `LockfileImporter` — from `src/LockfileImporter.ts`
 - `ImporterDependency` — from `src/ImporterDependency.ts`
 - `LockfileIntegrity`, `WorkspaceManifest` — from `src/LockfileIntegrity.ts`
@@ -62,10 +62,10 @@ Per-format raw schemas and transforms are **private** in `src/internal/{bun,npm,
 
 ## Testing and building
 
-Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`. 92 tests across five families: per-format fixture tests (`Lockfile.test.ts` over `__test__/fixtures/{pnpm,npm,yarn,bun}/v*`), seam-repair tests (`withImporterNames` in `Lockfile.test.ts`, `LockfileIntegrity.test.ts`), the importer surface (`importers.test.ts` — `Lockfile.importers`, `importer(path)`), the hostility suite (`hostile.test.ts`) and codec round-trips (`roundtrip.property.test.ts`, `it.effect.prop` over `Schema.toArbitrary`).
+Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`. 94 tests across five families: per-format fixture tests (`Lockfile.test.ts` over `__test__/fixtures/{pnpm,npm,yarn,bun}/v*`), seam-repair tests (`withImporterNames` in `Lockfile.test.ts`, `LockfileIntegrity.test.ts`), the importer surface (`importers.test.ts` — `Lockfile.importers`, `importer(path)`), the hostility suite (`hostile.test.ts`) and codec round-trips (`roundtrip.property.test.ts`, `it.effect.prop` over `Schema.toArbitrary`).
 
 ```bash
-pnpm vitest run packages/lockfiles          # 92 tests, from the repo root
+pnpm vitest run packages/lockfiles          # 94 tests, from the repo root
 pnpm build --filter @effected/lockfiles     # from the repo root
 ```
 

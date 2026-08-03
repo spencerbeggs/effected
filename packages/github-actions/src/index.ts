@@ -49,6 +49,7 @@ export {
 	CheckState,
 	projectCheckState,
 } from "./CheckState.js";
+export { ChildEnv, type PathPrependEnv, type PathPrependOptions } from "./ChildEnv.js";
 export {
 	DetachedProcess,
 	DetachedProcessError,

@@ -166,6 +166,45 @@ describe("CacheKey", () => {
 		});
 	});
 
+	describe("digest — the string-segment digest", () => {
+		it("is sha256, lowercase hex, truncated to eight characters by default", () => {
+			// The empty string's sha256 is the best-known vector there is; a literal,
+			// so a swapped algorithm or an uppercase digest fails here rather than
+			// producing a plausible key that matches nothing.
+			assert.strictEqual(CacheKey.digest(""), "e3b0c442");
+			assert.strictEqual(CacheKey.digest("main"), CacheKey.digest("main"));
+		});
+
+		it("takes an explicit length, up to the whole digest", () => {
+			assert.strictEqual(CacheKey.digest("", 12), "e3b0c44298fc");
+			const full = CacheKey.digest("", 64);
+			assert.strictEqual(full, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+			assert.strictEqual(CacheKey.digest("main", 64).length, 64);
+		});
+
+		it("distinguishes the two call sites it exists for", () => {
+			// A version list and a branch name must never collide into one segment.
+			assert.notStrictEqual(CacheKey.digest("node:24.4.0,pnpm:10.13.1"), CacheKey.digest("feat/topic"));
+		});
+
+		it("always satisfies the segment grammar, even for hostile input", () => {
+			// The guarantee is structural — lowercase hex has no comma, no newline,
+			// and is nonempty — so the digest of anything drops into `of` unchecked.
+			for (const hostile of ["", "a,b", "line\nbreak", "\r\n", "-", ","]) {
+				const key = CacheKey.of("Linux", CacheKey.digest(hostile));
+				assert.match(key.key, /^Linux-[0-9a-f]{8}$/);
+			}
+		});
+
+		it("throws a RangeError on a length outside 1..64 or a fractional one", () => {
+			// A bad length is wiring, not data: 64 is all sha256 has, and answering
+			// fewer characters than asked would be a silent lie.
+			for (const bad of [0, -1, 1.5, 65, Number.NaN]) {
+				assert.throws(() => CacheKey.digest("main", bad), RangeError);
+			}
+		});
+	});
+
 	describe("hashFiles", () => {
 		it.effect("hashes files the way @actions/glob does", () =>
 			hashing(

@@ -7,7 +7,7 @@ runner it is executing inside.
 Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 3).
 
 **Status: complete** (2026-07-25; the `@effected/sbom` seam adapters and the
-GitHub-surfaces reporting suite landed 2026-07-26) — 443 tests, zero-warning
+GitHub-surfaces reporting suite landed 2026-07-26) — 492 tests, zero-warning
 build. The design doc's as-built section is the authority on what exists and
 why; read it before adding a module.
 
@@ -159,6 +159,13 @@ the policy up through the same typed-key path; depths outside
 **zero rungs**, so an exact-match-only restore sends an empty `restore_keys`
 and never falls back; only *absence* means the default every-prefix ladder.
 
+`CacheKey.digest(input, length = 8)` (2026-08-02) is the segment-safe short
+digest for **non-file** key segments (a version list, a branch name) —
+sha256, lowercase hex, truncated, guaranteed to satisfy the segment grammar,
+so it drops into `CacheKey.of` unchecked. A length outside `1..64` (or a
+fractional one) is wiring, not data, and throws a `RangeError`. File content
+stays with `hashFiles`.
+
 ### The results backend is only reachable from a `uses:` step
 
 `ActionCache`, `Artifact` and `GitHubCacheBlobStore` all speak the Twirp v2
@@ -185,6 +192,30 @@ admitted in a comment that it was not parallel-safe.
 The honest cost: a variable exported mid-run by `exportVariable` is not observed
 by an already-seeded reader. That matches GitHub's model, where `exportVariable`
 targets *subsequent* steps.
+
+`GitHubContext.headRef` (2026-08-02) is an `Option<string>`: outside pull
+requests the runner does not merely omit `GITHUB_HEAD_REF`, it may write the
+**empty string**, and both spellings of absence decode to `None` — the trap is
+in the type, not a call-site check. The derived `branch` accessor owns the
+universal fallback (headRef when present, else `refName`), so no consumer
+hand-rolls the chain again. Encoded form is `string | null`
+(`Schema.OptionFromNullOr`), so an encoded context stays plain JSON.
+
+### Child PATH prepends go through `ChildEnv`
+
+`ChildEnv` (2026-08-02) is the pure value-builder for core's spawn options —
+zero imports, `WorkflowCommand`'s posture, an exact-empty-edge-set assertion in
+the reachability suite. `prependPath(dirs, { base, platform })` answers
+`{ env, extendEnv: true }` as **one value** (a bare `env` silently replaces the
+child's whole environment), writing through the inherited `PATH` key's own
+casing (Windows spells it `Path`, and emitting `PATH` beside it leaves the
+winner to a Node-internal case-insensitive dedupe), with the platform's
+delimiter and no empty trailing entry for an absent inherited value.
+`needsShell(platform)` is the CVE-2024-27980 win32 rule for `.cmd` shims. Two
+compositions: a spawner call spreads the whole pair; `DetachedProcess.spawn`
+merges over the parent itself and takes `.env` alone. `base` and `platform`
+are **required** — this module reads nothing ambient, per the
+`ActionEnvironment` invariant above.
 
 ### Runner-file delimiters are derived, never random
 

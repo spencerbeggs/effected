@@ -3,12 +3,15 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-28
-updated: 2026-07-28
-last-synced: 2026-07-28
+updated: 2026-08-02
+last-synced: 2026-08-02
 completeness: 95
 related:
   - ../effect-standards.md
   - ../migration-playbook.md
+  - ../package-inventory.md
+  - ../releases.md
+  - ../roadmap.md
   - config-file.md
   - semver.md
 ---
@@ -118,4 +121,4 @@ The repo's CLAUDE.md records that `@effected/json-schema` is off the roadmap ent
 
 ## Status and sequencing
 
-Design-first per the [migration playbook](../migration-playbook.md); this doc was that first step, and **both phases are now implemented** at `packages/schemastore` (phase 1 commit a74420d02, phase 2 commit e3430d58, both 2026-07-28), landing with a zero-warning build. No consumer has adopted the package yet. It is **not** on any current release gate — the silk-runtime-action dogfood loop is active and holds releases — and it remains absent from `package-inventory.md` and `roadmap.md` until sequenced there.
+Design-first per the [migration playbook](../migration-playbook.md); this doc was that first step, and **both phases are now implemented** at `packages/schemastore` (phase 1 commit a74420d02, phase 2 commit e3430d58, both 2026-07-28), landing with a zero-warning build. **The package published at `0.1.0` in the 2026-08-03 wave** (wave PR #215, release PR #216 — the wave's one first publish) and the kit-catalog integration is done: it carries its row in [package-inventory.md](../package-inventory.md), its shipped entry in [roadmap.md](../roadmap.md) and its wave record in [releases.md](../releases.md). The outstanding item is the package README, tracked as [effected#218](https://github.com/spencerbeggs/effected/issues/218). No consumer has adopted the published package yet; silk-release-action's `generate-schema.ts` swap and the silk-runtime-action rebuild remain the two named consumers.

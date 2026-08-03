@@ -84,6 +84,7 @@ const LIGHT_MODULES = [
 	"BlobStore.ts",
 	"BlobTransfer.ts",
 	"CacheKey.ts",
+	"ChildEnv.ts",
 	"CheckDocument.ts",
 	"CheckState.ts",
 	"GitHubMarkdown.ts",
@@ -164,6 +165,9 @@ describe("bundle reachability", () => {
 		// the one piece of this package a non-Actions consumer might legitimately
 		// want, and it stays a pure string renderer so it costs nothing to take.
 		assert.deepStrictEqual([...reachableBareImports("WorkflowCommand.ts")], []);
+		// Same posture for the child-env helper: a pure value builder for core's
+		// CommandOptions contract, importing nothing — not even `effect`.
+		assert.deepStrictEqual([...reachableBareImports("ChildEnv.ts")], []);
 		// The default runtime does NOT reach Azure, and that is the reason the
 		// cache, artifact and blob services are left out of it: folding them in
 		// would put a blob-storage client in the bundle of every action that

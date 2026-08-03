@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-07-26
-last-synced: 2026-07-26
+updated: 2026-08-02
+last-synced: 2026-08-02
 completeness: 85
 related:
   - architecture.md
@@ -34,7 +34,7 @@ related:
 
 The kit did not release package-by-package on its way in: every package published together at `0.1.0`, pinned against one `effect` beta, and `1.0.0` waits for Effect v4 GA. `0.1.0` shipped as an explicit **pre-release**: nothing here claims stability, and consumer ports proceed against real published packages as post-`0.1.0` dogfooding rather than being gated behind a synthetic proof.
 
-That first wave was the gate. **Since it, releases go out in changeset-driven waves** — a subset of packages at a time, whatever the pending changesets name — and a package that was never on the gate joins the stream the same way any version bump does. `@effected/markdown` is the worked example: never a gate package, first published at `0.2.0` in the 2026-07-19 wave.
+That first wave was the gate. **Since it, releases go out in changeset-driven waves** — a subset of packages at a time, whatever the pending changesets name — and a package that was never on the gate joins the stream the same way any version bump does. `@effected/markdown` is the worked example: never a gate package, first published at `0.2.0` in the 2026-07-19 wave. [`@effected/schemastore`](packages/schemastore.md) repeated the shape in the 2026-08-03 wave (twelve packages, release PR #216, cut from the runtime-action dogfood squash PR #215): designed and built inside the dogfood loop, first published at `0.1.0`.
 
 ## Versioning
 
@@ -64,7 +64,7 @@ The release criterion is "the kit can replace the business logic of these five."
 
 ## The gate
 
-The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion — a historical set, and the table below is the record of why each one had to exist before the kit could publish at all. The kit is now twenty-five publishable packages ([package-inventory.md](package-inventory.md)); what came after the gate is [below](#the-github-split-wave).
+The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion — a historical set, and the table below is the record of why each one had to exist before the kit could publish at all. The kit is now twenty-six publishable packages ([package-inventory.md](package-inventory.md)); what came after the gate is [below](#the-github-split-wave).
 
 | Package | Tier | Why it is on the gate |
 | --- | --- | --- |

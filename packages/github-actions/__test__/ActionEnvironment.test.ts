@@ -129,6 +129,42 @@ describe("ActionEnvironment", () => {
 			),
 		);
 
+		it.effect("projects headRef and derives branch from it in a PR context", () =>
+			live(
+				Effect.gen(function* () {
+					const ctx = yield* (yield* ActionEnvironment).github;
+					assert.deepStrictEqual(ctx.headRef, Option.some("feat/topic"));
+					// On a PR the short ref is the useless merge ref; branch is the
+					// human's branch — the headRef.
+					assert.strictEqual(ctx.branch, "feat/topic");
+				}),
+				{ ...BASE, GITHUB_EVENT_NAME: "pull_request", GITHUB_REF_NAME: "123/merge", GITHUB_HEAD_REF: "feat/topic" },
+			),
+		);
+
+		it.effect("headRef is none in a push context, and branch falls back to refName", () =>
+			live(
+				Effect.gen(function* () {
+					const ctx = yield* (yield* ActionEnvironment).github;
+					assert.isTrue(Option.isNone(ctx.headRef));
+					assert.strictEqual(ctx.branch, "main");
+				}),
+			),
+		);
+
+		it.effect("an empty GITHUB_HEAD_REF reads as absent — the runner writes it empty outside PRs", () =>
+			live(
+				Effect.gen(function* () {
+					const ctx = yield* (yield* ActionEnvironment).github;
+					// The trap: a raw env read reports "" as present, and a cache key
+					// built from it gains an empty branch segment. The type refuses it.
+					assert.isTrue(Option.isNone(ctx.headRef));
+					assert.strictEqual(ctx.branch, "main");
+				}),
+				{ ...BASE, GITHUB_HEAD_REF: "" },
+			),
+		);
+
 		it.effect("projects the runner context", () =>
 			live(
 				Effect.gen(function* () {

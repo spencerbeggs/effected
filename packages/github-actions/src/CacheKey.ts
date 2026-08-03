@@ -252,6 +252,50 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 	}
 
 	/**
+	 * A segment-safe short digest of a string.
+	 *
+	 * @remarks
+	 * {@link CacheKey.hashFiles} covers file *content*; this covers the key
+	 * segments built from **non-file** inputs — a sorted version list, a branch
+	 * name — that every compound key hashes and truncates by hand, each caller
+	 * re-deciding the length and the placement. One home for the derivation:
+	 * SHA-256, lowercase hex, the first `length` characters.
+	 *
+	 * The answer is **guaranteed to satisfy the segment grammar**: lowercase hex
+	 * is nonempty (for any permitted `length`) and can never contain the comma
+	 * or newline the restore-key protocol reserves, so the result drops straight
+	 * into {@link CacheKey.of} with nothing to check at the call site.
+	 *
+	 * Deterministic and pure — the same input always answers the same digest,
+	 * which is the entire point of putting one in a cache key. Distinct inputs
+	 * are only *probably* distinct, as with any truncated hash; eight hex
+	 * characters (32 bits) is the conventional balance between key legibility
+	 * and collision risk for cache segments.
+	 *
+	 * A `length` outside `1..64` (or a fractional one) is a wiring mistake, not
+	 * data, and **throws a `RangeError`** rather than failing typed: 64 is all
+	 * SHA-256 has, and asking for more would silently answer fewer characters
+	 * than the caller believes it got.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CacheKey } from "@effected/github-actions";
+	 *
+	 * const key = CacheKey.of(
+	 *   "Linux",
+	 *   CacheKey.digest("node:24.4.0,pnpm:10.13.1"),
+	 *   CacheKey.digest("feat/my-branch"),
+	 * );
+	 * ```
+	 */
+	static digest(input: string, length: number = 8): string {
+		if (!Number.isInteger(length) || length < 1 || length > 64) {
+			throw new RangeError(`A digest length must be an integer between 1 and 64, got ${length}`);
+		}
+		return createHash("sha256").update(input).digest("hex").slice(0, length);
+	}
+
+	/**
 	 * Hash a set of files into a single digest.
 	 *
 	 * @remarks
