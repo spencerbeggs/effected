@@ -1,5 +1,25 @@
 # @effected/npm
 
+## 0.8.0
+
+### Features
+
+* `PackageManagerCache.defaultDirectory(manager, { platform, home })` is a
+  pure, no-IO facts table answering where each package manager caches by
+  default: `npm`, `pnpm`, `yarn-classic`, `yarn-berry` (split from a bare
+  `yarn` because the two majors document different cache locations) and
+  `bun`. Every cell is verified against the manager's own documentation or
+  source, cited on the member — two of the three rows this replaces in prior
+  art were wrong (pnpm's macOS store is not the Linux XDG path, and yarn
+  Classic's cache was never `~/.yarn/cache`).
+
+````ts
+import { PackageManagerCache } from "@effected/npm";
+
+PackageManagerCache.defaultDirectory("pnpm", { platform: "darwin", home: "/Users/ci" });
+// => "/Users/ci/Library/pnpm/store"
+``` [#219](https://github.com/spencerbeggs/effected/pull/219) Thanks [@spencerbeggs](https://github.com/spencerbeggs)!
+
 ## 0.7.0
 
 ### Features
@@ -20,17 +40,17 @@
 
   decode("sha512.deadbeef"); // success
   decode("sha512-3q2+7w=="); // failure — SRI form
-  ```
-
-  ### `PackageManagerPin`
-
-  A new schema for the corepack pin grammar itself — `<name>@<version>[+<integrity>]`, closed to the four package managers the kit can provision (`npm`, `pnpm`, `yarn`, `bun`) via `PackageManagerPinName`. Consumed by `@effected/github-actions`' `PackageManagerInstaller` to provision an exact package-manager version on a runner, and shares its version and integrity schemas with `@effected/package-json`'s `PackageManager` field model. [#215][#215]
+````
 
 ### Dependencies
 
 | Dependency       | Type       | Action  | From  | To    |
 | ---------------- | ---------- | ------- | ----- | ----- |
 | @effected/semver | dependency | updated | 0.2.1 | 0.3.0 |
+
+### `PackageManagerPin`
+
+A new schema for the corepack pin grammar itself — `<name>@<version>[+<integrity>]`, closed to the four package managers the kit can provision (`npm`, `pnpm`, `yarn`, `bun`) via `PackageManagerPinName`. Consumed by `@effected/github-actions`' `PackageManagerInstaller` to provision an exact package-manager version on a runner, and shares its version and integrity schemas with `@effected/package-json`'s `PackageManager` field model. [#215][#215]
 
 ### Patch Changes
 

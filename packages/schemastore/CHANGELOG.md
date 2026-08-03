@@ -1,5 +1,21 @@
 # @effected/schemastore
 
+## 0.1.1
+
+### Documentation
+
+* Added the package README, which ships in the published artifact.
+* Corrected the package-documentation usage example so the lint advisory it
+  describes actually fires against the shown output — the prior example's
+  schema had no `description` at all, so the advisory it was meant to
+  demonstrate never triggered. [#219][#219]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#219]: https://github.com/spencerbeggs/effected/pull/219
+
 ## 0.1.0
 
 ### Features
