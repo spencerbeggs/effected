@@ -347,7 +347,7 @@ only**: a caller needing to repair state between attempts (reset a working tree,
 - **`effect-v4-testing`** — stub the spawner (`ChildProcessSpawner.make(mockSpawn)`), not `Run` —
   `Run` is free functions, so there is nothing service-shaped to mock.
 - **`effected-packages`** — the full `@effected/commands` package profile and where it sits among
-  the kit's 25 packages.
+  the kit's 27 packages.
 - **`actions-cache-and-artifacts`**, **`actions-state-and-secrets`**, **`release-and-publish`**,
   **`testing-actions`** — being authored in parallel; they cover what `@effected/github-actions`,
   `@effected/npm` and test doubles built on top of this package do that this package deliberately

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-02
-last-synced: 2026-08-02
+updated: 2026-08-03
+last-synced: 2026-08-03
 completeness: 88
 related:
   - releases.md
@@ -25,6 +25,7 @@ related:
   - packages/github-actions.md
   - packages/sbom.md
   - packages/schemastore.md
+  - packages/jsonl.md
   - packages/npm.md
   - consumers/README.md
 ---
@@ -33,7 +34,7 @@ related:
 
 ## Overview
 
-The migration program is complete and the `0.1.0` gate was met by nineteen publishable packages (eighteen libraries plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library)), shipped as an explicit pre-release. The kit is now twenty-six publishable packages, all published: `markdown` shipped after the gate, the five [github-split](#the-github-split-program-2026-07-25) packages published at `0.1.0` in the 2026-07-26 wave ([releases.md](releases.md#the-github-split-wave)) and `schemastore` published at `0.1.0` in the 2026-08-03 wave. This doc records what comes after `0.1.0`. The decisions below are settled, recorded with their reasoning so they are not re-litigated; each new package gets its own spec → plan → implement cycle per the [migration playbook](migration-playbook.md). [releases.md](releases.md)'s gate table and [package-inventory.md](package-inventory.md) stay authoritative for the shipped set.
+The migration program is complete and the `0.1.0` gate was met by nineteen publishable packages (eighteen libraries plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library)), shipped as an explicit pre-release. The kit is now twenty-seven publishable packages, twenty-six of them published: `markdown` shipped after the gate, the five [github-split](#the-github-split-program-2026-07-25) packages published at `0.1.0` in the 2026-07-26 wave ([releases.md](releases.md#the-github-split-wave)) and `schemastore` published at `0.1.0` in the 2026-08-03 wave. `jsonl` is built and [awaiting a wave](releases.md#built-but-unpublished). This doc records what comes after `0.1.0`. The decisions below are settled, recorded with their reasoning so they are not re-litigated; each new package gets its own spec → plan → implement cycle per the [migration playbook](migration-playbook.md). [releases.md](releases.md)'s gate table and [package-inventory.md](package-inventory.md) stay authoritative for the shipped set.
 
 The nineteenth package, **`@effected/spdx`** (pure, invention), landed after the gate was first declared and joined it: it vendors the SPDX license and exception datasets as pure schemas so [`@effected/package-json`](packages/package-json.md) can delegate its `license` validation and drop `spdx-expression-parse`, the kit's last foreign runtime dependency. That delegation retiered package-json from integrated to boundary. It followed the design-doc-first playbook cycle; [packages/spdx.md](packages/spdx.md) is authoritative.
 
@@ -53,7 +54,7 @@ Two program decisions bind future work rather than just this wave. **`@effect/pl
 
 ## Post-0.1.0 packages
 
-In priority order. `markdown`, `commands`, `templates` and `schemastore` have all shipped; the rest are open.
+In priority order. `markdown`, `commands`, `templates` and `schemastore` have all shipped, and `jsonl` is **built but unpublished**; the rest are open.
 
 ### `@effected/commands`
 
@@ -82,6 +83,16 @@ Naming: recommended `@effected/plugin`. `@effected/config` is rejected because i
 ### `@effected/schemastore`
 
 The one shipped package this list never sequenced: it went design doc → build → publish inside the silk-runtime-action dogfood loop rather than through a roadmap slot. **Designed and built 2026-07-28** ([packages/schemastore.md](packages/schemastore.md)): SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning and lints assembled from Effect Schema sources over core's `JsonSchema` pipeline, generalizing silk-release-action's `generate-schema.ts` with the silk-runtime-action rebuild as the second named consumer. Boundary tier with no third-party runtime dependency — the ajv question resolved as the `SchemaValidator` contract seam, the contract-inversion pattern again. **Published at `0.1.0` in the 2026-08-03 wave** (release PR #216).
+
+### `@effected/jsonl`
+
+The second package this list never sequenced, and like `schemastore` it went design doc → build in one pass. **Designed and built 2026-08-03** ([packages/jsonl.md](packages/jsonl.md)) on `feat/package-jsonl`: append-only, schema-validated JSONL journals as a definable service — the envelope contract, the `Slice` read vocabulary shared by every read surface, cooperative multi-writer rules, and a watcher that makes two instances over one file observe each other. Boundary tier, zero runtime dependencies, zero `@effected` edges. **Built but unpublished** — it ships in a future coordinated wave ([releases.md](releases.md#built-but-unpublished)).
+
+Its subject is not the JSONL *format* — that is a two-sentence spec — but **the file as a live object**: last-valid-line semantics, torn tails, concurrent readers, and filtered reads that cost the tail rather than the history. The pressure is the token economy of AI applications, and the grounding precedent is the silk dogfood mailbox's 224-line `journal-append.sh`.
+
+**Three of four acceptance criteria hold; the fourth does not**, and that is the roadmap-relevant part. Criterion 4 — collapsing the dogfood file fan-out into one journal partitioned by `scope` — **failed on two counts**: terminal and quiescent semantics are journal-wide, so one scope's terminal event freezes every other scope's appends; and `latest` has no sliced counterpart, so per-scope current state costs `O(history)`. The verified split is that **`Slice` is load-bearing for subscription, query and projection, and is not load-bearing for current-state or lifecycle.**
+
+That yields one **open, consumer-gated workstream**: `latest(slice)` as a per-scope `SubscriptionRef` plus per-scope terminal semantics. Evidence-gated like everything else here — build it when a real consumer needs the collapse, not before.
 
 ### `@effected/vfs`
 

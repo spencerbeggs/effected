@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-08-02
-last-synced: 2026-08-02
+updated: 2026-08-03
+last-synced: 2026-08-03
 completeness: 88
 related:
   - architecture.md
@@ -38,6 +38,7 @@ related:
   - packages/github-actions.md
   - packages/sbom.md
   - packages/schemastore.md
+  - packages/jsonl.md
   - consumers/README.md
 ---
 
@@ -45,7 +46,7 @@ related:
 
 ## Overview
 
-The current `@effected/*` package set and where each package came from. The kit is **twenty-six publishable packages** — twenty-five libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). All twenty-six have published: the five from the [github-split program](#the-github-split-packages) joined the release stream in the 2026-07-26 wave ([releases.md](releases.md#the-github-split-wave)), closing the then-last unpublished gap, and `schemastore` published first in the 2026-08-03 wave (twelve packages, release PR #216). Tier definitions are in [effect-standards.md](effect-standards.md); the release history and consumer mapping are in [releases.md](releases.md); post-`0.1.0` work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
+The current `@effected/*` package set and where each package came from. The kit is **twenty-seven publishable packages** — twenty-six libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). **Twenty-six have published**: the five from the [github-split program](#the-github-split-packages) joined the release stream in the 2026-07-26 wave ([releases.md](releases.md#the-github-split-wave)), closing the then-last unpublished gap, and `schemastore` published first in the 2026-08-03 wave (twelve packages, release PR #216). **`jsonl` is the one unpublished package** — built 2026-08-03, design doc first, awaiting a future wave. Tier definitions are in [effect-standards.md](effect-standards.md); the release history and consumer mapping are in [releases.md](releases.md); post-`0.1.0` work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
 
 The kit's scope is closed by the consuming applications in [releases.md](releases.md), not by the number of `*-effect` source repos. A source repo is not by itself a commitment to migrate it: `json-schema-effect` fell off under that test (see [Off the roadmap](#off-the-roadmap)).
 
@@ -53,7 +54,7 @@ The kit's scope is closed by the consuming applications in [releases.md](release
 
 Provenance is one of: **port** (redesigned from a v3 `*-effect` source repo under `/Users/spencer/workspaces/spencerbeggs/`, or from a `@savvy-web/*` package), **extraction** (carved out of another package during its port), **part-port** (one service generalized out of a source package, the rest invented) or **invention** (new, scoped by a consumer survey rather than a source repo).
 
-All twenty-six published packages — nineteen of them were the `0.1.0` gate set ([releases.md](releases.md#the-gate)); `markdown` joined the release stream in the 2026-07-19 wave, the github-split five joined it in the 2026-07-26 wave (sixteen packages, release PR #181) and `schemastore` in the 2026-08-03 wave — the worked examples of how a package that was never on the gate ships:
+All twenty-seven publishable packages — nineteen of them were the `0.1.0` gate set ([releases.md](releases.md#the-gate)); `markdown` joined the release stream in the 2026-07-19 wave, the github-split five joined it in the 2026-07-26 wave (sixteen packages, release PR #181) and `schemastore` in the 2026-08-03 wave — the worked examples of how a package that was never on the gate ships. `jsonl` is built but **not yet published**:
 
 | Package | Tier | Provenance | Design doc |
 | --- | --- | --- | --- |
@@ -82,6 +83,7 @@ All twenty-six published packages — nineteen of them were the `0.1.0` gate set
 | `@effected/github-actions` | integrated | port-with-redesign of the same package's Actions half; the runner-side runtime | [packages/github-actions.md](packages/github-actions.md) |
 | `@effected/sbom` | integrated | port-with-redesign of the same package's `Attest` knot; owned CycloneDX 1.6 emitter plus Sigstore signing | [packages/sbom.md](packages/sbom.md) |
 | `@effected/schemastore` | boundary | invention; SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning and lints from Effect Schema sources — generalizes silk-release-action's schema-generation script | [packages/schemastore.md](packages/schemastore.md) |
+| `@effected/jsonl` | boundary | invention; append-only schema-validated JSONL journals as a definable service — envelope contract, `Slice` read vocabulary, cooperative writers and a watcher. **Built 2026-08-03, unpublished** | [packages/jsonl.md](packages/jsonl.md) |
 | `@effected/pnpm-plugin-effect` | companion — no tier | invention; publishes the `effect`/`effectPeers` catalogs | [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md) |
 
 Tiers classify libraries by dependency surface; the companion is not a library and carries no tier. Notable structural facts that recur across the kit:
