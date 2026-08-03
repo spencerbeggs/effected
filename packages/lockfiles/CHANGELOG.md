@@ -1,5 +1,29 @@
 # @effected/lockfiles
 
+## 0.3.0
+
+### Features
+
+* `filenamesFor(format)` returns every filename a format is genuinely written
+  under, primary name first — npm's `npm-shrinkwrap.json` alternate and bun's
+  older binary `bun.lockb` variant, in addition to the conventional name.
+  `filenameFor` now delegates to it, so the conventional-name behavior is
+  unchanged.
+
+````ts
+import { filenamesFor } from "@effected/lockfiles";
+
+filenamesFor("npm"); // ["package-lock.json", "npm-shrinkwrap.json"]
+``` [#219](https://github.com/spencerbeggs/effected/pull/219) Thanks [@spencerbeggs](https://github.com/spencerbeggs)!
+
+### Patch Changes
+
+### Dependencies
+
+| Dependency    | Type       | Action  | From  | To    |
+| ------------- | ---------- | ------- | ----- | ----- |
+| @effected/npm | dependency | updated | 0.7.0 | 0.8.0 |
+
 ## 0.2.3
 
 ### Dependencies
@@ -44,11 +68,11 @@
 
   dep.peerSuffix;
   // after:  "(effect@4.0.0-beta.101)(ioredis@5.11.1)"
-  ```
+````
 
-  Consumers that stripped the suffix themselves can delete that code and read `version` directly. Non-registry resolutions such as `link:../utils` and `file:...` still pass through verbatim, and the bun, npm and yarn formats never populate `peerSuffix`.
+Consumers that stripped the suffix themselves can delete that code and read `version` directly. Non-registry resolutions such as `link:../utils` and `file:...` still pass through verbatim, and the bun, npm and yarn formats never populate `peerSuffix`.
 
-  The same splitter now serves the pnpm `packages:` key parser, so both halves of the model normalize identically.
+The same splitter now serves the pnpm `packages:` key parser, so both halves of the model normalize identically.
 
 ### Tests
 

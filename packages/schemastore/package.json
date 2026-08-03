@@ -1,6 +1,6 @@
 {
 	"name": "@effected/schemastore",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": true,
 	"description": "Build, version and lint SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources: document assembly, catalog entries, versioned catalogs and canonical JSON serialization.",
 	"keywords": ["schemastore", "json-schema", "draft-07", "catalog", "effect", "schema", "effected"],
