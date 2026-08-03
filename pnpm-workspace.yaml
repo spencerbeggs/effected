@@ -27,7 +27,7 @@ catalogs:
     "@effect/sql-sqlite-bun": 4.0.0-beta.101
     "@effect/sql-sqlite-do": 4.0.0-beta.101
     "@effect/sql-sqlite-node": 4.0.0-beta.101
-    "@effect/sql-sqlite-react-native": 4.0.0-beta.101
+    "@effect/sql-sqlite-react-native": 4.0.0-beta.102
     "@effect/sql-sqlite-wasm": 4.0.0-beta.101
     "@effect/tsgo": 0.24.3
     "@effect/vitest": 4.0.0-beta.101
@@ -56,7 +56,7 @@ catalogs:
     "@effect/sql-sqlite-bun": 4.0.0-beta.101
     "@effect/sql-sqlite-do": 4.0.0-beta.101
     "@effect/sql-sqlite-node": 4.0.0-beta.101
-    "@effect/sql-sqlite-react-native": 4.0.0-beta.101
+    "@effect/sql-sqlite-react-native": 4.0.0-beta.102
     "@effect/sql-sqlite-wasm": 4.0.0-beta.101
     "@effect/tsgo": 0.24.3
     "@effect/vitest": 4.0.0-beta.101
@@ -196,7 +196,7 @@ catalogs:
     "@effect/sql-sqlite-bun": 4.0.0-beta.101
     "@effect/sql-sqlite-do": 4.0.0-beta.101
     "@effect/sql-sqlite-node": 4.0.0-beta.101
-    "@effect/sql-sqlite-react-native": 4.0.0-beta.101
+    "@effect/sql-sqlite-react-native": 4.0.0-beta.102
     "@effect/sql-sqlite-wasm": 4.0.0-beta.101
     "@effect/tsgo": 0.24.3
     "@effect/vitest": 4.0.0-beta.101
