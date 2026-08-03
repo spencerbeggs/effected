@@ -79,6 +79,32 @@ describe("JsonlEvent", () => {
 	});
 });
 
+describe("Envelope registry cache", () => {
+	it("freezes the registry on first lookup, converting post-lookup mutation from silent-stale to a loud throw", () => {
+		// A fresh registry array — never passed to decodeResult before — so this
+		// test observes the cache's FIRST population rather than reusing the
+		// module-level `registry` some other test may already have indexed.
+		const isolatedRegistry = [MailReceived, Unlinked, Relinked] as const;
+
+		const first = tagged(ok(Envelope.decodeResult(isolatedRegistry, line(envelopeText()))), "mail-received");
+		assert.deepStrictEqual(first.data, { round: 7, from: "silk" });
+
+		assert.throws(
+			() => (isolatedRegistry as unknown as Array<unknown>).push(JsonlEvent.make("extra", { data: Schema.Void })),
+			TypeError,
+		);
+
+		// The cache still serves the ORIGINAL definitions correctly — there is no
+		// stale data to serve, because the freeze converted the mutation attempt
+		// into a throw instead of letting it through.
+		const second = tagged(
+			ok(Envelope.decodeResult(isolatedRegistry, line(envelopeText({ data: { round: 9, from: "x" } })))),
+			"mail-received",
+		);
+		assert.deepStrictEqual(second.data, { round: 9, from: "x" });
+	});
+});
+
 describe("Envelope.frameResult", () => {
 	it("decodes the frame WITHOUT decoding the payload", () => {
 		// The payload here would fail its registered schema; the frame does not care.

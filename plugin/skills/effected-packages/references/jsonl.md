@@ -20,7 +20,7 @@ import { Journal, JsonlEvent, Line, Envelope } from "@effected/jsonl";
 
 | Tag | Recovery |
 | --- | --- |
-| `MalformedLine` | Not valid JSON. Check `line.terminated`: `false` means a torn tail the next append will complete; `true` means a permanent hole. |
+| `MalformedLine` | Not valid JSON. Check `line.terminated`: `false` means an unterminated fragment — only completion of the same interrupted write can make it valid, not a later append (which starts after the partial bytes); if the writer never returns, it is a permanent malformed tail. `true` means a permanent hole. |
 | `UnknownEvent` | A tag this registry doesn't define — treat as hostile/foreign-writer input, skip forward, do not crash the reader. |
 | `InvalidData` | JSON but not an envelope, or an envelope whose `data` failed its registered schema. `error` carries the full `SchemaError` issue tree. |
 | `UnserializableData` | Payload validated but `JSON.stringify` threw (a `bigint` or reference cycle) — the caller must change the payload *shape*, not the value. |

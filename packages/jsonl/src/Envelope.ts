@@ -115,6 +115,14 @@ const indexRegistry = (events: JsonlEvent.Registry): Map<string, JsonlEvent.Any>
 	if (cached !== undefined) {
 		return cached;
 	}
+	// `events` is typed `ReadonlyArray`, so this freeze imposes only what the
+	// type already claims. Without it, a caller holding the underlying mutable
+	// array could mutate it after this lookup and the cache would keep serving
+	// the stale, pre-mutation definitions with no signal anything was wrong.
+	// Freezing converts that silent-stale failure into a loud one: a later
+	// mutation attempt throws a `TypeError` (in strict mode) instead of being
+	// accepted and ignored by the index.
+	Object.freeze(events);
 	const index = new Map(events.map((event) => [event.tag, event] as const));
 	registryIndex.set(events, index);
 	return index;
