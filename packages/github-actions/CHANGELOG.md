@@ -1,5 +1,26 @@
 # @effected/github-actions
 
+## 0.4.1
+
+### Dependencies
+
+| Dependency          | Type       | Action  | From  | To    |
+| ------------------- | ---------- | ------- | ----- | ----- |
+| @effected/github    | dependency | updated | 0.2.1 | 0.2.2 |
+| @effected/glob      | dependency | updated | 0.2.1 | 0.2.2 |
+| @effected/markdown  | dependency | updated | 0.4.1 | 0.4.2 |
+| @effected/npm       | dependency | updated | 0.8.0 | 0.8.1 |
+| @effected/sbom      | dependency | updated | 0.2.1 | 0.2.2 |
+| @effected/templates | dependency | updated | 0.1.0 | 0.1.1 |
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.4.0
 
 ### Features

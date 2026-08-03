@@ -1,5 +1,22 @@
 # @effected/npm
 
+## 0.8.1
+
+### Dependencies
+
+| Dependency         | Type       | Action  | From  | To    |
+| ------------------ | ---------- | ------- | ----- | ----- |
+| @effected/commands | dependency | updated | 0.2.0 | 0.2.1 |
+| @effected/semver   | dependency | updated | 0.3.0 | 0.3.1 |
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.8.0
 
 ### Features

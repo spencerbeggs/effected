@@ -1,5 +1,22 @@
 # @effected/tsconfig-json
 
+## 0.4.1
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/jsonc  | dependency | updated | 0.5.1 | 0.5.2 |
+| @effected/walker | dependency | updated | 0.3.3 | 0.3.4 |
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.4.0
 
 ### Features

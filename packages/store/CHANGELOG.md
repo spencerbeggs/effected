@@ -1,5 +1,15 @@
 # @effected/store
 
+## 0.1.3
+
+### Maintenance
+
+* Switching internal dependency versioning from `~` to `^` ranges.
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.1.2
 
 ### Dependencies
