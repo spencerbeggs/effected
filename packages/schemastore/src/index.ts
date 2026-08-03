@@ -18,7 +18,10 @@
  * import { CatalogEntry, DocumentLint, StoreDocument } from "@effected/schemastore";
  * import { Effect, Schema } from "effect";
  *
- * const Config = Schema.Struct({ name: Schema.String });
+ * // The description carries no docs URL, so the lint's advisory fires.
+ * const Config = Schema.Struct({ name: Schema.String }).annotate({
+ *   description: "Build configuration",
+ * });
  *
  * const program = Effect.gen(function* () {
  *   const document = yield* StoreDocument.fromSchema(Config, {
