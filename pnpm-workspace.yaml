@@ -15,7 +15,7 @@ catalogs:
     "@effect/opentelemetry": 4.0.0-beta.101
     "@effect/platform-browser": 4.0.0-beta.101
     "@effect/platform-bun": 4.0.0-beta.101
-    "@effect/platform-node": 4.0.0-beta.101
+    "@effect/platform-node": 4.0.0-beta.102
     "@effect/platform-node-shared": 4.0.0-beta.101
     "@effect/sql-clickhouse": 4.0.0-beta.101
     "@effect/sql-d1": 4.0.0-beta.101
@@ -44,7 +44,7 @@ catalogs:
     "@effect/opentelemetry": 4.0.0-beta.101
     "@effect/platform-browser": 4.0.0-beta.101
     "@effect/platform-bun": 4.0.0-beta.101
-    "@effect/platform-node": 4.0.0-beta.101
+    "@effect/platform-node": 4.0.0-beta.102
     "@effect/platform-node-shared": 4.0.0-beta.101
     "@effect/sql-clickhouse": 4.0.0-beta.101
     "@effect/sql-d1": 4.0.0-beta.101
@@ -184,7 +184,7 @@ catalogs:
     "@effect/opentelemetry": 4.0.0-beta.101
     "@effect/platform-browser": 4.0.0-beta.101
     "@effect/platform-bun": 4.0.0-beta.101
-    "@effect/platform-node": 4.0.0-beta.101
+    "@effect/platform-node": 4.0.0-beta.102
     "@effect/platform-node-shared": 4.0.0-beta.101
     "@effect/sql-clickhouse": 4.0.0-beta.101
     "@effect/sql-d1": 4.0.0-beta.101
