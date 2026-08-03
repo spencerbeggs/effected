@@ -62,29 +62,29 @@ catalogs:
     "@effect/vitest": 4.0.0-beta.101
     effect: 4.0.0-beta.101
   effect3:
-    "@effect/ai": ^0.36.0
-    "@effect/ai-amazon-bedrock": ^0.16.1
+    "@effect/ai": ^0.37.0
+    "@effect/ai-amazon-bedrock": ^0.17.0
     "@effect/ai-anthropic": ^0.26.0
-    "@effect/ai-google": ^0.15.0
+    "@effect/ai-google": ^0.16.0
     "@effect/ai-openai": ^0.40.1
-    "@effect/cli": ^0.75.2
-    "@effect/cluster": ^0.59.0
-    "@effect/experimental": ^0.60.0
-    "@effect/language-service": ^0.86.6
+    "@effect/cli": ^0.77.0
+    "@effect/cluster": ^0.60.2
+    "@effect/experimental": ^0.61.1
+    "@effect/language-service": ^0.87.1
     "@effect/opentelemetry": ^0.63.0
-    "@effect/platform": ^0.96.2
+    "@effect/platform": ^0.97.1
     "@effect/platform-browser": ^0.76.0
     "@effect/platform-bun": ^0.90.0
     "@effect/platform-node": ^0.107.0
     "@effect/platform-node-shared": ^0.60.0
-    "@effect/printer": ^0.49.0
-    "@effect/printer-ansi": ^0.49.0
-    "@effect/rpc": ^0.75.1
-    "@effect/sql": ^0.51.1
+    "@effect/printer": ^0.51.0
+    "@effect/printer-ansi": ^0.51.0
+    "@effect/rpc": ^0.76.2
+    "@effect/sql": ^0.52.1
     "@effect/sql-clickhouse": ^0.49.0
     "@effect/sql-d1": ^0.49.0
-    "@effect/sql-drizzle": ^0.50.0
-    "@effect/sql-kysely": ^0.47.0
+    "@effect/sql-drizzle": ^0.51.0
+    "@effect/sql-kysely": ^0.48.0
     "@effect/sql-libsql": ^0.41.0
     "@effect/sql-mssql": ^0.52.0
     "@effect/sql-mysql2": ^0.52.0
@@ -94,34 +94,34 @@ catalogs:
     "@effect/sql-sqlite-node": ^0.52.0
     "@effect/sql-sqlite-react-native": ^0.54.0
     "@effect/sql-sqlite-wasm": ^0.52.0
-    "@effect/typeclass": ^0.40.0
+    "@effect/typeclass": ^0.41.0
     "@effect/vitest": ^0.29.0
-    "@effect/workflow": ^0.18.2
+    "@effect/workflow": ^0.19.1
     effect: ^3.21.4
   effect3:peers:
-    "@effect/ai": ^0.36.0
-    "@effect/ai-amazon-bedrock": ^0.16.1
+    "@effect/ai": ^0.37.0
+    "@effect/ai-amazon-bedrock": ^0.17.0
     "@effect/ai-anthropic": ^0.26.0
-    "@effect/ai-google": ^0.15.0
+    "@effect/ai-google": ^0.16.0
     "@effect/ai-openai": ^0.40.1
-    "@effect/cli": ^0.75.2
-    "@effect/cluster": ^0.59.0
-    "@effect/experimental": ^0.60.0
-    "@effect/language-service": ^0.86.6
+    "@effect/cli": ^0.77.0
+    "@effect/cluster": ^0.60.2
+    "@effect/experimental": ^0.61.1
+    "@effect/language-service": ^0.87.1
     "@effect/opentelemetry": ^0.63.0
     "@effect/platform": ^0.96.0
     "@effect/platform-browser": ^0.76.0
     "@effect/platform-bun": ^0.90.0
     "@effect/platform-node": ^0.107.0
     "@effect/platform-node-shared": ^0.60.0
-    "@effect/printer": ^0.49.0
-    "@effect/printer-ansi": ^0.49.0
-    "@effect/rpc": ^0.75.1
+    "@effect/printer": ^0.51.0
+    "@effect/printer-ansi": ^0.51.0
+    "@effect/rpc": ^0.76.2
     "@effect/sql": ^0.51.0
     "@effect/sql-clickhouse": ^0.49.0
     "@effect/sql-d1": ^0.49.0
-    "@effect/sql-drizzle": ^0.50.0
-    "@effect/sql-kysely": ^0.47.0
+    "@effect/sql-drizzle": ^0.51.0
+    "@effect/sql-kysely": ^0.48.0
     "@effect/sql-libsql": ^0.41.0
     "@effect/sql-mssql": ^0.52.0
     "@effect/sql-mysql2": ^0.52.0
@@ -131,34 +131,34 @@ catalogs:
     "@effect/sql-sqlite-node": ^0.52.0
     "@effect/sql-sqlite-react-native": ^0.54.0
     "@effect/sql-sqlite-wasm": ^0.52.0
-    "@effect/typeclass": ^0.40.0
+    "@effect/typeclass": ^0.41.0
     "@effect/vitest": ^0.29.0
-    "@effect/workflow": ^0.18.2
+    "@effect/workflow": ^0.19.1
     effect: ^3.21.0
   effect3Peers:
-    "@effect/ai": ^0.36.0
-    "@effect/ai-amazon-bedrock": ^0.16.1
+    "@effect/ai": ^0.37.0
+    "@effect/ai-amazon-bedrock": ^0.17.0
     "@effect/ai-anthropic": ^0.26.0
-    "@effect/ai-google": ^0.15.0
+    "@effect/ai-google": ^0.16.0
     "@effect/ai-openai": ^0.40.1
-    "@effect/cli": ^0.75.2
-    "@effect/cluster": ^0.59.0
-    "@effect/experimental": ^0.60.0
-    "@effect/language-service": ^0.86.6
+    "@effect/cli": ^0.77.0
+    "@effect/cluster": ^0.60.2
+    "@effect/experimental": ^0.61.1
+    "@effect/language-service": ^0.87.1
     "@effect/opentelemetry": ^0.63.0
     "@effect/platform": ^0.96.0
     "@effect/platform-browser": ^0.76.0
     "@effect/platform-bun": ^0.90.0
     "@effect/platform-node": ^0.107.0
     "@effect/platform-node-shared": ^0.60.0
-    "@effect/printer": ^0.49.0
-    "@effect/printer-ansi": ^0.49.0
-    "@effect/rpc": ^0.75.1
+    "@effect/printer": ^0.51.0
+    "@effect/printer-ansi": ^0.51.0
+    "@effect/rpc": ^0.76.2
     "@effect/sql": ^0.51.0
     "@effect/sql-clickhouse": ^0.49.0
     "@effect/sql-d1": ^0.49.0
-    "@effect/sql-drizzle": ^0.50.0
-    "@effect/sql-kysely": ^0.47.0
+    "@effect/sql-drizzle": ^0.51.0
+    "@effect/sql-kysely": ^0.48.0
     "@effect/sql-libsql": ^0.41.0
     "@effect/sql-mssql": ^0.52.0
     "@effect/sql-mysql2": ^0.52.0
@@ -168,9 +168,9 @@ catalogs:
     "@effect/sql-sqlite-node": ^0.52.0
     "@effect/sql-sqlite-react-native": ^0.54.0
     "@effect/sql-sqlite-wasm": ^0.52.0
-    "@effect/typeclass": ^0.40.0
+    "@effect/typeclass": ^0.41.0
     "@effect/vitest": ^0.29.0
-    "@effect/workflow": ^0.18.2
+    "@effect/workflow": ^0.19.1
     effect: ^3.21.0
   effectPeers:
     "@effect/ai-anthropic": 4.0.0-beta.101
