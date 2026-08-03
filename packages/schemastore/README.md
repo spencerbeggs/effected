@@ -75,7 +75,7 @@ console.log(Effect.runSync(program));
 // }
 ```
 
-`fromSchema` runs the whole pipeline — 2020-12 generation, Draft-07 lowering, the `$ref` rewrite and the annotation re-graft — so every `$ref` in a built document already resolves against its `$defs` pool. `toJson()` is the flat publication shape (`$defs` omitted when empty) and `serializeResult` routes through the owned canonical serializer, tab-indented with a single trailing newline. A schema core cannot convert fails typed as `SchemaConversionError` carrying the `$id` and the structured cause.
+`fromSchema` runs the whole pipeline — 2020-12 generation, Draft-07 lowering, the `$ref` rewrite and the annotation re-graft — so every `$ref` in a built document already resolves against its `$defs` pool. `toJson()` is the flat publication shape (`$defs` omitted when empty) and `serializeResult` routes through the owned canonical serializer, tab-indented with a single trailing newline. If core cannot convert a schema, the failure is typed as `SchemaConversionError` and carries the `$id` and the structured cause.
 
 ## Two rules to read first
 
@@ -163,7 +163,7 @@ The keyword walk is position-aware: a *property* named `unevaluatedProperties` i
 
 ## Real-engine validation
 
-SchemaStore's own gate is ajv strict mode, and `SchemaValidator` is the seam that reaches it without ajv ever entering this package's dependency graph. The contract's channel convention: findings are values — an ajv strict-mode compile failure is a report, not an error — and the error channel is reserved for the engine failing as a mechanism (`SchemaValidatorError`). The package ships `noop` (validates nothing) and `makeTest` / `layerTest` (unstubbed members die naming themselves); the consumer closes the seam at the application edge:
+SchemaStore's own gate is ajv strict mode, and `SchemaValidator` is the seam that reaches it without ajv ever entering this package's dependency graph. The contract's channel convention: findings are values — an ajv strict-mode compile failure is a report, not an error — and the error channel is reserved for the engine failing as a mechanism (`SchemaValidatorError`). The package ships `noop` (validates nothing) and `makeTest` / `layerTest` (unstubbed members die naming themselves); the consumer closes the seam at the application edge. The `ajv` import below (like `@effect/platform-node` in the file-writing example) is the consumer's own dependency — install it to run the example; nothing here depends on it:
 
 ```ts
 import { SchemaValidator, StoreDocument, ValidationFinding } from "@effected/schemastore";
