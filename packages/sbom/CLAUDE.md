@@ -19,8 +19,8 @@ module, ~380 KB.
 | Edge | Why |
 | --- | --- |
 | `@sigstore/sign`, `@sigstore/bundle` | signing. **`SigstoreSigner.ts` only** |
-| `@effected/spdx` (`workspace:~`) | license identifier vs expression, on components |
-| `@effected/package-json` (`workspace:~`) | manifest-derived metadata (**type-only** in `src/`; `Package` / `Person` / `Repository` re-exported from the entry point) |
+| `@effected/spdx` (`workspace:^`) | license identifier vs expression, on components |
+| `@effected/package-json` (`workspace:^`) | manifest-derived metadata (**type-only** in `src/`; `Package` / `Person` / `Repository` re-exported from the entry point) |
 | `effect` (peer) | core |
 
 **`@cyclonedx/cyclonedx-library` is deliberately absent** — 6.6 MB with seven

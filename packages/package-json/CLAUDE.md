@@ -8,7 +8,7 @@ changing the public surface, the `rest` wire transform, or the error taxonomy.
 ## Tier: boundary
 
 **Boundary tier**, driven by the IO boundary. It carries no third-party runtime
-dependency — its `dependencies` are `workspace:~` edges to pure `@effected`
+dependency — its `dependencies` are `workspace:^` edges to pure `@effected`
 packages plus the `effect` peer — so it never rises to integrated.
 All IO **lives in `src/PackageJsonFile.ts`** — one module, one `Context.Service`,
 two methods (`read`, `write`). Every other module is pure. Keep it that way: if a
@@ -18,7 +18,7 @@ the caller. `PackageJsonFile` reads and writes over core `FileSystem` / `Path`
 consumer provides `@effect/platform-node` at the edge.
 
 It depends on `@effected/npm`, `@effected/semver` and `@effected/spdx` via
-`workspace:~`. **Core SPDX license validity is delegated to `@effected/spdx`**
+`workspace:^`. **Core SPDX license validity is delegated to `@effected/spdx`**
 (`License.ts` calls its `isValidExpression`); this package keeps only its
 npm-specific `UNLICENSED` and `SEE LICENSE IN` cases. That delegation dropped the
 former `spdx-expression-parse` runtime dependency and its ambient shim — the dep

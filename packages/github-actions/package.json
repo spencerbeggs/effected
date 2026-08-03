@@ -33,20 +33,20 @@
 	},
 	"dependencies": {
 		"@azure/storage-blob": "^12.33.0",
-		"@effected/github": "workspace:~",
-		"@effected/glob": "workspace:~",
-		"@effected/markdown": "workspace:~",
-		"@effected/npm": "workspace:~",
-		"@effected/sbom": "workspace:~",
-		"@effected/templates": "workspace:~"
+		"@effected/github": "workspace:^",
+		"@effected/glob": "workspace:^",
+		"@effected/markdown": "workspace:^",
+		"@effected/npm": "workspace:^",
+		"@effected/sbom": "workspace:^",
+		"@effected/templates": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
-		"@savvy-web/bundler": "^2.1.0",
-		"@types/node": "catalog:silk",
+		"@savvy-web/bundler": "^2.1.2",
+		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"typescript": "catalog:silk"
+		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
 		"@effect/platform-node": "catalog:effect:peers",

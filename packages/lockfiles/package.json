@@ -37,16 +37,16 @@
 		"@effected/npm": "workspace:*",
 		"@effected/semver": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@savvy-web/bundler": "^2.1.0",
-		"@types/node": "catalog:silk",
+		"@savvy-web/bundler": "^2.1.2",
+		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"typescript": "catalog:silk"
+		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"@effected/jsonc": "workspace:~",
-		"@effected/npm": "workspace:~",
-		"@effected/semver": "workspace:~",
-		"@effected/yaml": "workspace:~",
+		"@effected/jsonc": "workspace:^",
+		"@effected/npm": "workspace:^",
+		"@effected/semver": "workspace:^",
+		"@effected/yaml": "workspace:^",
 		"effect": "catalog:effect:peers"
 	},
 	"engines": {

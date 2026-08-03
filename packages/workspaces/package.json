@@ -44,15 +44,15 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effected/commands": "workspace:~",
-		"@effected/git": "workspace:~",
-		"@effected/glob": "workspace:~",
-		"@effected/lockfiles": "workspace:~",
-		"@effected/npm": "workspace:~",
-		"@effected/package-json": "workspace:~",
-		"@effected/semver": "workspace:~",
-		"@effected/walker": "workspace:~",
-		"@effected/yaml": "workspace:~",
+		"@effected/commands": "workspace:^",
+		"@effected/git": "workspace:^",
+		"@effected/glob": "workspace:^",
+		"@effected/lockfiles": "workspace:^",
+		"@effected/npm": "workspace:^",
+		"@effected/package-json": "workspace:^",
+		"@effected/semver": "workspace:^",
+		"@effected/walker": "workspace:^",
+		"@effected/yaml": "workspace:^",
 		"@pnpm/catalogs.config": "^1100.0.0",
 		"@pnpm/catalogs.protocol-parser": "^1100.0.0",
 		"@pnpm/catalogs.resolver": "^1100.0.0",
@@ -61,10 +61,10 @@
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
-		"@savvy-web/bundler": "^2.1.0",
-		"@types/node": "catalog:silk",
+		"@savvy-web/bundler": "^2.1.2",
+		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"typescript": "catalog:silk"
+		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effect:peers"

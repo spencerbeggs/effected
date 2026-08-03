@@ -13,7 +13,7 @@ An **internal package with no source repo** — not migrated from a `*-effect` r
 
 **Boundary tier since the Phase 5 extension (2026-07-25) — this package was pure, and the change is deliberate.** `NpmRegistry` and `PackagePublish` perform IO themselves through core contracts in `R` (`HttpClient`, `ChildProcessSpawner`, `FileSystem`, `Crypto`), which is [R4](../../.claude/design/effected/effect-standards.md#dependency-policy)'s definition of boundary. It is **not** R2: the `@effected/commands` edge is boundary with zero runtime deps and does not propagate.
 
-Peers on `effect` plus one pure-to-pure `@effected/semver` edge — `workspace:~` in `peerDependencies` (so a published patch floats), mirrored by the plain `workspace:*` in `devDependencies`, never `dependencies` — used only to detect ranges in `DependencySpecifier`. `@effected/commands` is a `workspace:~` **dependency**. Still zero *external* runtime deps.
+Peers on `effect` plus one pure-to-pure `@effected/semver` edge — `workspace:^` in `peerDependencies` (so a published patch floats), mirrored by the plain `workspace:*` in `devDependencies`, never `dependencies` — used only to detect ranges in `DependencySpecifier`. `@effected/commands` is a `workspace:^` **dependency**. Still zero *external* runtime deps.
 
 ### The guardrail, and it is enforced
 

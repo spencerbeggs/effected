@@ -35,14 +35,14 @@
 		"@effect/vitest": "catalog:effect",
 		"@effected/config-file": "workspace:*",
 		"@effected/walker": "workspace:*",
-		"@savvy-web/bundler": "^2.1.0",
-		"@types/node": "catalog:silk",
+		"@savvy-web/bundler": "^2.1.2",
+		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"typescript": "catalog:silk"
+		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"@effected/config-file": "workspace:~",
-		"@effected/walker": "workspace:~",
+		"@effected/config-file": "workspace:^",
+		"@effected/walker": "workspace:^",
 		"effect": "catalog:effect:peers"
 	},
 	"engines": {

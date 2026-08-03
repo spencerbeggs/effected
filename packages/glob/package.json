@@ -33,11 +33,11 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
-		"@savvy-web/bundler": "^2.1.0",
-		"@types/node": "catalog:silk",
+		"@savvy-web/bundler": "^2.1.2",
+		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"minimatch": "10.2.5",
-		"typescript": "catalog:silk"
+		"minimatch": "10.2.6",
+		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effect:peers"
