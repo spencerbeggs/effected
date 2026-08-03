@@ -25,6 +25,7 @@ const VOCABULARY = [
 	"IntegrityHash.ts",
 	"DependencySpecifier.ts",
 	"PackageManagerPin.ts",
+	"PackageManagerCache.ts",
 	"DependencySection.ts",
 	"ReleaseAgeGate.ts",
 	"CatalogResolver.ts",

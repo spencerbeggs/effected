@@ -42,6 +42,22 @@ export class GitHubContext extends Schema.Class<GitHubContext>("GitHubContext")(
 	ref: Schema.String,
 	/** The short ref, e.g. `main`. */
 	refName: Schema.String,
+	/**
+	 * The source branch of the pull request, when the event has one.
+	 *
+	 * @remarks
+	 * `GITHUB_HEAD_REF` is only set for `pull_request` events — and on every
+	 * other event the runner does not merely omit it, it may write the **empty
+	 * string**, which a raw `process.env` read happily reports as present. That
+	 * trap is encoded in the type: absent and `""` both decode to
+	 * `Option.none()`, so a consumer cannot build a cache key segment out of an
+	 * empty branch name by accident. For "the branch a human means", use
+	 * {@link GitHubContext.branch}, which owns the fallback to `refName`.
+	 *
+	 * The encoded form is `string | null` rather than a serialized `Option`, so
+	 * an encoded context stays plain JSON.
+	 */
+	headRef: Schema.OptionFromNullOr(Schema.String),
 	sha: Schema.String,
 	workflow: Schema.String,
 	job: Schema.String,
@@ -53,7 +69,22 @@ export class GitHubContext extends Schema.Class<GitHubContext>("GitHubContext")(
 	apiUrl: Schema.String,
 	graphqlUrl: Schema.String,
 	workspace: Schema.String,
-}) {}
+}) {
+	/**
+	 * The branch a human means: `headRef` when present (a pull request, where
+	 * `refName` is the useless `123/merge`), otherwise `refName`.
+	 *
+	 * @remarks
+	 * This is the universal branch-scoped-cache-key fallback chain, written
+	 * once. On a `push` or any other non-PR event `headRef` is `Option.none()`
+	 * — including when the runner wrote it as the empty string — so the answer
+	 * is the short ref. Note that on a tag push `refName` names the tag, not a
+	 * branch; a consumer that must distinguish still has the full `ref`.
+	 */
+	get branch(): string {
+		return Option.getOrElse(this.headRef, () => this.refName);
+	}
+}
 
 /**
  * The runner's own context, projected from the `RUNNER_*` variables.
@@ -176,6 +207,9 @@ const make = (
 				const runAttempt = yield* Effect.flatMap(get("GITHUB_RUN_ATTEMPT"), (raw) =>
 					numeric("GITHUB_RUN_ATTEMPT", raw),
 				);
+				// GITHUB_HEAD_REF is absent outside pull requests — and the runner may
+				// write it as the empty string, which `lookup` already reads as absent.
+				const headRef = yield* lookup("GITHUB_HEAD_REF");
 				const [eventName, actor, serverUrl, apiUrl, graphqlUrl, workspace] = yield* Effect.all([
 					get("GITHUB_EVENT_NAME"),
 					get("GITHUB_ACTOR"),
@@ -189,6 +223,7 @@ const make = (
 					repositoryOwner,
 					ref,
 					refName,
+					headRef,
 					sha,
 					workflow,
 					job,

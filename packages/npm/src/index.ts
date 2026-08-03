@@ -68,6 +68,11 @@ export {
 	type SeededVersion,
 } from "./NpmRegistry.js";
 export {
+	CachingPackageManager,
+	type DefaultCacheDirectoryOptions,
+	PackageManagerCache,
+} from "./PackageManagerCache.js";
+export {
 	InvalidPackageManagerPinError,
 	PackageManagerPin,
 	PackageManagerPinName,
