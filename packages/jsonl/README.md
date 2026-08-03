@@ -21,9 +21,11 @@ Append-only, schema-validated JSONL journals as a definable Effect service. The 
 
 ## Why @effected/jsonl
 
-The naive way to consume a JSONL journal is to read the file and hand the whole thing to whatever asked — a model, a dashboard, a hook — which makes the cost of answering a question about the last line grow with the age of the file. Every read surface here takes the same filter instead: `query`, `changes` and `projection` all accept a `Slice` of events, scopes and a half-open time range, filtering runs on envelope fields, and no operation ever materializes the file in memory. Asking for the current state of one mailbox costs the tail of the journal; sharing a journal with a noisy neighbour costs nothing for the neighbour's lines.
+The naive way to consume a JSONL journal is to read the file and hand the whole thing to whatever asked — a model, a dashboard, a hook — which makes the cost of answering a question about the last line grow with the age of the file. Every read surface here takes the same filter instead: `query`, `changes` and `projection` all accept a `Slice` of events, scopes and a half-open time range, and filtering runs on envelope fields — a non-matching line's payload schema is never invoked at all. Asking for the current state of one mailbox costs the tail of the journal; sharing a journal with a noisy neighbour costs nothing for the neighbour's lines.
 
-The other half is that the read path works without an Effect runtime at all. `Line` and `Envelope` are synchronous and `Result`-returning, so a `PreToolUse` hook or a shell-adjacent script can walk back to the last valid envelope with no layer graph to build — and the service itself is held to the same bounded-tail discipline it asks of them.
+Two costs are worth stating exactly rather than leaving to be discovered. `latest` — and every `lastValid`-backed read — is a **bounded tail window** that widens only when it has to, so "what is the current state" never costs the history. A **historical** read is bounded by its `cursor`: `query()` with no cursor reads from the start of the file in one allocation, so an unsliced query over a large journal does hold that journal in memory. Persisting `line.end` and resuming from it is what keeps that read the size of the remainder, and it is the same value a resumable consumer already keeps.
+
+The other half is that the read path works without an Effect runtime at all. `Line` and `Envelope` are synchronous and `Result`-returning, so a `PreToolUse` hook or a shell-adjacent script can walk back to the last valid envelope with no layer graph to build — and the service's own `latest` is held to the same bounded-tail discipline it asks of them.
 
 ## Install
 
@@ -115,14 +117,20 @@ const readTail = (path: string, window: number): string => {
     closeSync(fd);
   }
   const text = new TextDecoder().decode(bytes);
-  // A window that does not start at 0 opens mid-line — drop that fragment.
-  return start === 0 ? text : text.slice(text.indexOf("\n") + 1);
+  if (start === 0) return text;
+  // A window that does not start at 0 opens mid-line — drop that fragment. With
+  // no newline anywhere in it, the whole window IS one fragment and there is
+  // nothing usable here: return nothing rather than a half a line.
+  const newline = text.indexOf("\n");
+  return newline === -1 ? "" : text.slice(newline + 1);
 };
 
 const current = Envelope.lastValidResult(events, readTail(".claude/dogfood/mailbox.jsonl", 8_192));
 // Option.some(envelope) once a valid envelope is in the window.
-// Option.none() means the last line is longer than the window, not that the
-// journal is empty: widen the window and read again.
+// Option.none() means no valid envelope was found in the supplied text — the
+// last line may be longer than the window, the window may hold only a torn
+// fragment, or the journal may genuinely be empty. Widen and read again before
+// concluding it is the last of those.
 if (Option.isSome(current)) {
   current.value.event; // the tag
   current.value.line.end; // its logical byte offset, for a resumable cursor
@@ -148,9 +156,9 @@ Eight tagged errors, one recovery each, routed with `Effect.catchTag`. Causes �
 
 | Tag | Means | Recovery |
 | --- | --- | --- |
-| `MalformedLine` | A line is not parseable JSON, or is not an object. Most often a tail caught mid-write. | Read the last valid envelope instead; a torn tail resolves itself once the writer finishes the line. |
+| `MalformedLine` | A line is not parseable JSON. Most often a tail caught mid-write. | Read the last valid envelope instead; a torn tail resolves itself once the writer finishes the line. Check `line.terminated`: `false` is a fragment the next append completes, `true` is a permanent hole. |
 | `UnknownEvent` | The line's `event` tag is not in this registry — commonly a file written by another version of the same application. | Register the event, or route the line to a migration path. Never a defect: an old file is hostile input in the technical sense. |
-| `InvalidData` | The payload did not satisfy the schema registered for its event. Carries the structured issue tree. | Report the issue; do not run on data you could not validate. |
+| `InvalidData` | Valid JSON that is not an envelope, or an envelope whose payload did not satisfy the schema registered for its event. Carries the structured issue tree. | Report the issue; do not run on data you could not validate. |
 | `UnserializableData` | `JSON.stringify` threw on a payload that satisfied its schema — a `BigInt`, a circular structure. | Fix the value at the call site. Nothing was written. |
 | `TerminalViolation` | An append landed on a journal whose tail is a `terminal` event. | Append an event declared `reopen`, or accept that the journal is over. |
 | `JournalClosed` | An append arrived after the layer's scope began closing. | A lifecycle fact, not a data one: build a new layer, or stop appending. |

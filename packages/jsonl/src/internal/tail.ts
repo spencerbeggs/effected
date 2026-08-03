@@ -1,11 +1,18 @@
 /**
  * The bounded tail read.
  *
- * The service is **bound** to this: `latest` and every `lastValid`-backed read
- * go through it, and a whole-file read anywhere in the service is a defect.
- * `Line.lastValid` takes whole text, so "just read the file" is the easy wrong
- * move — it makes the cost of answering "what is the current state" grow with
- * the age of the journal, which is the thing this package exists to avoid.
+ * `latest` and every `lastValid`-backed read go through this: `Line.lastValid`
+ * takes whole text, so "just read the file" is the easy wrong move — it makes
+ * the cost of answering "what is the current state" grow with the age of the
+ * journal, which is the thing this package exists to avoid.
+ *
+ * **The scope of that, honestly**: it binds the tail reads. The historical read
+ * (`Journal`'s `readFrom`, behind `query` and the replay half of `changes`)
+ * currently reads its whole requested region in one allocation bounded by the
+ * file's size, and is bounded by the caller's `cursor` rather than by a window.
+ * Paging it through {@link readRangeText} is spencerbeggs/effected#233; until
+ * that lands, this module's discipline is a property of the tail reads, not of
+ * every read in the service.
  *
  * @internal
  */
@@ -96,6 +103,13 @@ export const probeBomBytes = (
  *    offset the package emits; doing it explicitly keeps the convention stated.
  *    A `U+FEFF` anywhere else is content and is left alone.
  * 3. **Never read the whole file** unless the file is smaller than the window.
+ *
+ * **`window` is not clamped**, deliberately. `Journal`'s historical read sizes
+ * its window to the region it has to return, so a clamp here would silently
+ * truncate that read rather than bound it. The clamp belongs with the paged
+ * rewrite of that read — one that emits per window and can therefore honour a
+ * maximum — and is carried on spencerbeggs/effected#233, not added underneath
+ * it.
  *
  * @internal
  */

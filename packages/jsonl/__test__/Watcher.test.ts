@@ -98,6 +98,110 @@ describe("watcher — external growth", () => {
 		}),
 	);
 
+	it.effect("an append past an UN-INGESTED external line takes its offsets from the file", () =>
+		Effect.gen(function* () {
+			// The two-writer case. `O_APPEND` lands at the real end of the file, so a
+			// local append that trusts its own `consumed` cursor while a cooperating
+			// writer's bytes sit un-ingested stamps offsets the line is not at,
+			// re-publishes itself on the next ingest, and skips the external line
+			// entirely.
+			const { memfs, scope, journal } = yield* openJournal("");
+			// Collected into an array rather than awaited through `take(n)`: a
+			// missing publish must fail by naming the envelope that never arrived,
+			// not by hanging until the runner's timeout — which costs seconds, says
+			// nothing about what broke, and is this repo's one documented unreliable
+			// failure mode.
+			const delivered: Array<number> = [];
+			const running = yield* Effect.forkChild(
+				Stream.runForEach(journal.changes(), (envelope) =>
+					Effect.sync(() => {
+						delivered.push(envelope.data.round);
+					}),
+				),
+			);
+			yield* Effect.yieldNow;
+
+			const first = yield* journal.append("noted", { round: 1 });
+			// On disk, and deliberately NOT poked: the watcher has not caught up.
+			const foreign = line(2);
+			externalAppend(memfs, foreign);
+			const third = yield* journal.append("noted", { round: 3 });
+
+			assert.strictEqual(
+				third.line.offset,
+				first.line.end + foreign.length,
+				"the offset is where the write actually landed, not where the cursor was",
+			);
+			assert.strictEqual(third.line.end - third.line.offset, third.line.length + 1, "and its end tiles from there");
+
+			for (let attempt = 0; attempt < 100 && delivered.length < 3; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			yield* Fiber.interrupt(running);
+			assert.deepStrictEqual(delivered, [1, 2, 3], "the external line was published, in file order, before ours");
+
+			// Nothing is published twice when the watcher finally does fire.
+			const afterwards: Array<number> = [];
+			const later = yield* Effect.forkChild(
+				Stream.runForEach(journal.changes(), (envelope) =>
+					Effect.sync(() => {
+						afterwards.push(envelope.data.round);
+					}),
+				),
+			);
+			yield* Effect.yieldNow;
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+			yield* journal.append("noted", { round: 4 });
+			for (let attempt = 0; attempt < 100 && afterwards.length < 1; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			// Give a spurious re-publish every chance to arrive before concluding
+			// there was none.
+			for (let turn = 0; turn < 20; turn++) {
+				yield* Effect.yieldNow;
+			}
+			yield* Fiber.interrupt(later);
+			assert.deepStrictEqual(afterwards, [4], "the late poke re-publishes nothing");
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
+	it.effect("an external append LARGER than one read chunk is ingested once, whole", () =>
+		Effect.gen(function* () {
+			// `readRangeText` reads in 64 KiB chunks, so a bigger range exercises its
+			// multi-chunk loop — the path that produces duplicated text and duplicate
+			// publishes if a handle does not advance its own read position.
+			const { memfs, scope, journal } = yield* openJournal("");
+			const local = yield* journal.append("noted", { round: 1 });
+			const padding = "x".repeat(80 * 1024);
+			const big = `${JSON.stringify({
+				at: "2026-01-01T00:00:00.000Z",
+				event: "noted",
+				data: { round: 2 },
+				pad: padding,
+			})}\n`;
+			assert.isAbove(big.length, 64 * 1024, "the append genuinely spans more than one read chunk");
+
+			const running = yield* Effect.forkChild(Stream.runCollect(journal.changes().pipe(Stream.take(2))));
+			yield* Effect.yieldNow;
+			externalAppend(memfs, big);
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+			yield* journal.append("noted", { round: 3 });
+
+			const delivered = yield* Fiber.join(running);
+			assert.deepStrictEqual(
+				delivered.map((envelope) => envelope.data),
+				[{ round: 2 }, { round: 3 }],
+				"the oversized line was published exactly once",
+			);
+			assert.strictEqual(delivered[0]?.line.offset, local.line.end, "and its offset describes the file");
+			assert.strictEqual(delivered[0]?.line.end, local.line.end + big.length, "over its whole length");
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
 	it.effect("a multi-byte payload survives the byte→string seam", () =>
 		Effect.gen(function* () {
 			const { memfs, scope, journal } = yield* openJournal("");
@@ -164,12 +268,31 @@ describe("watcher — resync", () => {
 		}),
 	);
 
+	it.effect("REPLACEMENT is detected by identity, not by size", () =>
+		Effect.gen(function* () {
+			const { memfs, scope, journal } = yield* openJournal(line(1) + line(2));
+			const running = yield* Effect.forkChild(Stream.runCollect(journal.changes()));
+			yield* Effect.yieldNow;
+
+			// A wholesale rewrite that leaves the file NO SMALLER than it was: a size
+			// check structurally cannot see this, and only the inode comparison can.
+			memfs.replace(PATH, line(8) + line(9) + line(10));
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+
+			const failure = yield* Effect.flip(Fiber.join(running));
+			assert.instanceOf(failure, JournalResync);
+			assert.strictEqual((failure as JournalResync).reason, "replaced", "the breach names identity, not truncation");
+			yield* Scope.close(scope, Exit.void);
+		}),
+	);
+
 	it.effect("resync RE-ARMS: appends to the replacement file are observed", () =>
 		Effect.gen(function* () {
 			const { memfs, scope, journal } = yield* openJournal(line(1) + line(2));
 
 			// Replace the file wholesale, then append to the replacement.
-			memfs.write(PATH, line(9));
+			memfs.replace(PATH, line(9));
 			memfs.poke(PATH);
 			yield* Effect.yieldNow;
 
@@ -196,15 +319,129 @@ describe("watcher — activation over a missing file", () => {
 
 			yield* journal.create;
 			externalAppend(memfs, line(42));
-			// The directory poke carries a BARE BASENAME, as the node backend does —
-			// so this also exercises the rule that event.path is never used to open
-			// anything.
-			memfs.poke(PATH);
+			// The DIRECTORY event — creation — carries a BARE BASENAME, as the node
+			// backend does, so this also exercises the rule that event.path is never
+			// used to open anything.
+			memfs.pokeParent(PATH);
 			yield* Effect.yieldNow;
 			yield* Effect.yieldNow;
 
 			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
 			assert.deepStrictEqual(current.data, { round: 42 }, "observed without a layer rebuild");
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.timeout(Duration.seconds(10))),
+	);
+
+	it.effect("activation HANDS OFF from the directory watch to the file watch", () =>
+		Effect.gen(function* () {
+			// A non-recursive directory watch reports creation, not a child's later
+			// appends. Staying on it after activation therefore leaves the journal
+			// permanently blind to external growth — and the only way to see that is
+			// a double whose content events reach file watchers only.
+			const { memfs, scope, journal } = yield* openJournal(undefined);
+			yield* journal.create;
+			memfs.pokeParent(PATH);
+
+			for (let attempt = 0; attempt < 50 && memfs.watcherCount(PATH) === 0; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			assert.isAbove(memfs.watcherCount(PATH), 0, "the journal itself is being watched once it exists");
+			assert.strictEqual(memfs.watcherCount("/journal"), 0, "and the activation watch has been let go");
+
+			// A CONTENT event, which only the file watch receives.
+			externalAppend(memfs, line(43));
+			memfs.poke(PATH);
+			yield* Effect.yieldNow;
+			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			assert.deepStrictEqual(current.data, { round: 43 }, "an append after activation is observed");
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.timeout(Duration.seconds(10))),
+	);
+});
+
+describe("watcher — path conventions", () => {
+	it.effect("activates over a BACKSLASH-separated path", () =>
+		Effect.gen(function* () {
+			// A `/`-only split returns -1 here, which makes the whole path its own
+			// basename and points the activation watch at the process working
+			// directory: a journal created after its layer was built is then never
+			// observed, on every Windows consumer.
+			const windowsPath = "C:\\journal\\watch.jsonl";
+			const memfs = makeMemFs();
+			memfs.mkdir("C:\\journal");
+			const layer = WatchJournal.layer({ path: windowsPath }).pipe(Layer.provide(memfs.layer));
+			const scope = yield* Scope.make();
+			const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
+			const journal = Context.get(context, WatchJournal);
+			for (let attempt = 0; attempt < 50 && memfs.watcherCount("C:\\journal") === 0; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			assert.isAbove(memfs.watcherCount("C:\\journal"), 0, "the activation watch found the parent directory");
+
+			yield* journal.create;
+			memfs.write(windowsPath, line(7));
+			memfs.pokeParent(windowsPath);
+			for (let attempt = 0; attempt < 50 && memfs.watcherCount(windowsPath) === 0; attempt++) {
+				yield* Effect.yieldNow;
+			}
+
+			const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
+			assert.deepStrictEqual(current.data, { round: 7 }, "the creation event matched on the basename");
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.timeout(Duration.seconds(10))),
+	);
+
+	it.effect("a watch that FAILS to arm does not kill the supervisor", () =>
+		Effect.gen(function* () {
+			// The journal vanishes in the instant between the existence check and
+			// the watch, which is what the real backend reports as a typed
+			// filesystem failure — it stats the path first and fails. `Effect.ignore`
+			// absorbs a typed failure and NOT a throw, so a double that threw would
+			// hand the supervisor a defect and kill the fibre outright: the journal
+			// would then never fall back to the activation watch, and would be
+			// silently blind for the rest of its scope.
+			const memfs = makeMemFs();
+			memfs.mkdir("/journal");
+			memfs.write(PATH, line(1));
+			memfs.beforeWatch((target) => {
+				if (target === PATH) memfs.unlink(PATH);
+			});
+
+			const layer = WatchJournal.layer({ path: PATH }).pipe(Layer.provide(memfs.layer));
+			const scope = yield* Scope.make();
+			const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
+			const journal = Context.get(context, WatchJournal);
+
+			for (let attempt = 0; attempt < 50 && memfs.watcherCount("/journal") === 0; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			assert.isAbove(
+				memfs.watcherCount("/journal"),
+				0,
+				"the supervisor survived the failed watch and fell back to activation",
+			);
+
+			// And the journal is still a working one.
+			yield* journal.create;
+			const appended = yield* journal.append("noted", { round: 1 });
+			assert.strictEqual(appended.line.offset, 0, "local appends keep working regardless");
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.timeout(Duration.seconds(10))),
+	);
+
+	it.effect("takes the activation directory from the config when given one", () =>
+		Effect.gen(function* () {
+			// The escape hatch for a path whose parent is not a plain prefix of it.
+			const memfs = makeMemFs();
+			memfs.mkdir("/elsewhere");
+			const layer = WatchJournal.layer({ path: PATH, directory: "/elsewhere" }).pipe(Layer.provide(memfs.layer));
+			const scope = yield* Scope.make();
+			yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
+			for (let attempt = 0; attempt < 50 && memfs.watcherCount("/elsewhere") === 0; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			assert.isAbove(memfs.watcherCount("/elsewhere"), 0, "the configured directory is the watch target");
+			assert.strictEqual(memfs.watcherCount("/journal"), 0, "and the derived one is not consulted");
 			yield* Scope.close(scope, Exit.void);
 		}).pipe(Effect.timeout(Duration.seconds(10))),
 	);

@@ -7,7 +7,7 @@ import type {
 	EnvelopeWithTag,
 	JsonlEvent as JsonlEventType,
 } from "../src/index.js";
-import { Envelope, JsonlEvent } from "../src/index.js";
+import { Envelope, Journal, JsonlEvent } from "../src/index.js";
 
 /**
  * The assertions in this file are COMPILE-TIME. `types:check` is what runs
@@ -145,3 +145,28 @@ const readSurfacesAreNarrowed = (): void => {
 	assertType<Equals<import("effect").Stream.Success<typeof projected>, number>>();
 };
 void readSurfacesAreNarrowed;
+
+// ── the layer's error channel is honest ─────────────────────────────────────
+//
+// A runtime test cannot catch this one: an EACCES surfaces as a typed Fail
+// whatever the declared channel says, so a layer typed `never` fails at
+// runtime in exactly the same shape while no caller can name the error. The
+// assertion has to be a type.
+
+class TypedJournal extends Journal.Service<TypedJournal>()("test/TypedJournal", { events: registry }) {}
+
+type LayerError =
+	ReturnType<typeof TypedJournal.layer> extends import("effect").Layer.Layer<infer _Self, infer E, infer _R>
+		? E
+		: never;
+
+declare const platformError: import("effect").PlatformError.PlatformError;
+
+const layerErrorIsHonest = (): void => {
+	// Assignable INTO the channel, which `never` is not: narrowing the layer's
+	// error back to `never` makes this line an error, and construction failures
+	// become defects nobody can catch.
+	const carried: LayerError = platformError;
+	void carried;
+};
+void layerErrorIsHonest;

@@ -97,6 +97,60 @@ describe("Journal integration", () => {
 		),
 	);
 
+	it.effect("a FOREIGN writer's line between two appends leaves offsets that tile the file", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const path = yield* Path.Path;
+			const dir = yield* fs.makeTempDirectoryScoped();
+			const file = path.join(dir, "two-writers.jsonl");
+			const layer = TmpJournal.layer({ path: file });
+			const scope = yield* Scope.make();
+			const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
+			const journal = Context.get(context, TmpJournal);
+			yield* journal.create;
+
+			const first = yield* journal.append("started", { round: 1, phase: "ours" });
+
+			// A cooperating foreign writer, honouring the contract exactly: ONE
+			// `writeAll` of a complete line to a handle opened `O_APPEND`. Whether
+			// our watcher has ingested it yet is a race we must not depend on — and
+			// the point of the case: our next append lands after these bytes on
+			// disk, wherever our own cursor happened to be.
+			const foreign = `${JSON.stringify({
+				at: "2026-01-01T00:00:00.000Z",
+				event: "started",
+				data: { round: 2, phase: "theirs" },
+			})}\n`;
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const handle = yield* fs.open(file, { flag: "a" });
+					yield* handle.writeAll(new TextEncoder().encode(foreign));
+				}),
+			);
+
+			const third = yield* journal.append("started", { round: 3, phase: "ours" });
+
+			const text = yield* fs.readFileString(file);
+			const lines = Line.split(text);
+			assert.strictEqual(lines.length, 3, "three lines, one per writer's write");
+			assert.strictEqual(first.line.offset, lines[0]?.offset, "our first append is where the file says");
+			assert.strictEqual(first.line.end, lines[0]?.end);
+			assert.strictEqual(third.line.offset, lines[2]?.offset, "and so is the one that followed the foreign line");
+			assert.strictEqual(third.line.end, lines[2]?.end);
+
+			const all = yield* Stream.runCollect(journal.query());
+			assert.deepStrictEqual(
+				all.map((envelope) => envelope.data.round),
+				[1, 2, 3],
+				"every line reads back, in file order",
+			);
+			for (let index = 0; index < all.length - 1; index++) {
+				assert.strictEqual(all[index]?.line.end, all[index + 1]?.line.offset, "no gap and no overlap");
+			}
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.scoped, Effect.provide(platform)),
+	);
+
 	it.effect("latest survives a process-style reopen — a second layer reads the first's writes", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
@@ -136,7 +190,7 @@ describe("Journal integration", () => {
 				event: "started",
 				data: { round: 1, phase: "p" },
 			})}\n`;
-			yield* fs.writeFile(file, new TextEncoder().encode(`﻿${line}`));
+			yield* fs.writeFile(file, new TextEncoder().encode(`\uFEFF${line}`));
 
 			const layer = TmpJournal.layer({ path: file });
 			const seen = yield* Effect.gen(function* () {
@@ -155,39 +209,47 @@ describe("Journal integration", () => {
 	// `it.live` rather than `it.effect`: this one waits on a REAL filesystem
 	// event, and under the TestClock a timeout could never fire, so a failure
 	// would present as a hang instead of a failure.
-	it.live("TWO journal layers over ONE file observe each other's appends", () =>
-		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem;
-			const path = yield* Path.Path;
-			const dir = yield* fs.makeTempDirectoryScoped();
-			const file = path.join(dir, "shared.jsonl");
+	//
+	// The per-test timeout is raised ABOVE the effect's own 20s bound on purpose.
+	// At vitest's 5s default the guard below is unreachable — the runner kills
+	// the test first, and the careful "fails rather than hangs" wiring never
+	// runs.
+	it.live(
+		"TWO journal layers over ONE file observe each other's appends",
+		() =>
+			Effect.gen(function* () {
+				const fs = yield* FileSystem.FileSystem;
+				const path = yield* Path.Path;
+				const dir = yield* fs.makeTempDirectoryScoped();
+				const file = path.join(dir, "shared.jsonl");
 
-			// Two independently-built layers over the same path — the stand-in for
-			// two processes, or two MCP servers in sibling repos.
-			const writerLayer = TmpJournal.layer({ path: file });
-			const readerLayer = TmpJournal.layer({ path: file });
+				// Two independently-built layers over the same path — the stand-in for
+				// two processes, or two MCP servers in sibling repos.
+				const writerLayer = TmpJournal.layer({ path: file });
+				const readerLayer = TmpJournal.layer({ path: file });
 
-			const writerScope = yield* Scope.make();
-			const readerScope = yield* Scope.make();
-			const writerContext = yield* Layer.build(writerLayer).pipe(Effect.provideService(Scope.Scope, writerScope));
-			const writer = Context.get(writerContext, TmpJournal);
-			yield* writer.create;
+				const writerScope = yield* Scope.make();
+				const readerScope = yield* Scope.make();
+				const writerContext = yield* Layer.build(writerLayer).pipe(Effect.provideService(Scope.Scope, writerScope));
+				const writer = Context.get(writerContext, TmpJournal);
+				yield* writer.create;
 
-			const readerContext = yield* Layer.build(readerLayer).pipe(Effect.provideService(Scope.Scope, readerScope));
-			const reader = Context.get(readerContext, TmpJournal);
+				const readerContext = yield* Layer.build(readerLayer).pipe(Effect.provideService(Scope.Scope, readerScope));
+				const reader = Context.get(readerContext, TmpJournal);
 
-			// The reader waits on its own subscription. No polling loop, no sleep —
-			// the fiber simply blocks until the watcher publishes.
-			const observing = yield* Effect.forkChild(Stream.runCollect(reader.changes().pipe(Stream.take(1))));
+				// The reader waits on its own subscription. No polling loop, no sleep —
+				// the fiber simply blocks until the watcher publishes.
+				const observing = yield* Effect.forkChild(Stream.runCollect(reader.changes().pipe(Stream.take(1))));
 
-			yield* writer.append("started", { round: 1, phase: "from-the-writer" });
+				yield* writer.append("started", { round: 1, phase: "from-the-writer" });
 
-			const seen = yield* Fiber.join(observing);
-			assert.strictEqual(seen.length, 1, "the reader observed the writer's append");
-			assert.deepStrictEqual(seen[0]?.data, { round: 1, phase: "from-the-writer" });
+				const seen = yield* Fiber.join(observing);
+				assert.strictEqual(seen.length, 1, "the reader observed the writer's append");
+				assert.deepStrictEqual(seen[0]?.data, { round: 1, phase: "from-the-writer" });
 
-			yield* Scope.close(readerScope, Exit.void);
-			yield* Scope.close(writerScope, Exit.void);
-		}).pipe(Effect.scoped, Effect.provide(platform), Effect.timeout(Duration.seconds(20))),
+				yield* Scope.close(readerScope, Exit.void);
+				yield* Scope.close(writerScope, Exit.void);
+			}).pipe(Effect.scoped, Effect.provide(platform), Effect.timeout(Duration.seconds(20))),
+		30_000,
 	);
 });

@@ -57,7 +57,9 @@ read path **untranslated** rather than being wrapped.
 - **`JsonlError`** — the eight-tag error taxonomy (below).
 - **`Journal`** — the one service, generic over a registry:
   `Journal.Service<Self>()(id, { events })` produces a per-registry class whose
-  `.layer(config)` builds a scoped `Layer<Self, never, FileSystem.FileSystem>`.
+  `.layer(config)` builds a scoped
+  `Layer<Self, PlatformError, FileSystem.FileSystem>` — a **missing** journal
+  constructs cleanly (decision 10), an **unreadable** one fails typed.
   Exposes `append`, `appendPatch`, `latest` (`SubscriptionRef` of
   `Option<Envelope>`), `quiescent`, `query`, `changes`, `projection`, `create`,
   `remove`. **Bind `.layer(...)`'s result to a const and provide that const** —
@@ -77,8 +79,13 @@ read path **untranslated** rather than being wrapped.
   same-prototype requirement would reject the case that matters most.
 - **`internal/tail.ts`** — bounded-window file reads (`readTail`,
   `readTailUntil`, `readRangeText`, `probeBomBytes`): the mechanism that keeps
-  `lastValid`/`query`/`changes` costing the size of the answer, not the age of
-  the journal. Never exported.
+  **`latest` and the `lastValid`-backed reads** costing the size of the answer,
+  not the age of the journal. Never exported. **`query` and the replay half of
+  `changes` are NOT window-bounded as built** — `Journal`'s `readFrom` reads its
+  whole requested region (`cursor` to end of file) in one allocation and buffers
+  the matches, so an unsliced `query()` over a large journal does hold it in
+  memory. That is stated in the TSDoc rather than implied away; paging it is
+  spencerbeggs/effected#233, not a claim the package currently makes.
 
 ## The envelope contract
 

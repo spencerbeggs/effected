@@ -7,8 +7,10 @@ import {
 	Effect,
 	Exit,
 	Fiber,
+	FileSystem,
 	Layer,
 	Option,
+	PlatformError,
 	PubSub,
 	Result,
 	Schema,
@@ -63,10 +65,13 @@ const harness = (seed?: string) => {
 	return { memfs, layer };
 };
 
+// The layer's error channel carries `PlatformError`: a missing journal is legal
+// and constructs cleanly, but an unreadable one is a real failure rather than a
+// defect nobody can catch.
 const runJournal = <A, E>(
 	seed: string | undefined,
 	body: (journal: MailJournal["Service"], memfs: MemFs) => Effect.Effect<A, E>,
-): Effect.Effect<A, E> =>
+): Effect.Effect<A, E | PlatformError.PlatformError> =>
 	Effect.gen(function* () {
 		const { memfs, layer } = harness(seed);
 		return yield* Effect.gen(function* () {
@@ -95,6 +100,34 @@ describe("Journal — layer and lifecycle", () => {
 				assert.isDefined(journal.append);
 			}),
 		),
+	);
+
+	it.effect("an UNREADABLE journal fails construction TYPED, never as a defect", () =>
+		Effect.gen(function* () {
+			// A missing file is a legal state; a file that exists and cannot be read
+			// is a real failure. Typing the layer's error channel `never` would make
+			// this arrive as a defect no caller could catch.
+			const denied = FileSystem.layerNoop({
+				exists: () => Effect.succeed(true),
+				open: (() =>
+					Effect.fail(
+						PlatformError.systemError({
+							_tag: "PermissionDenied",
+							module: "FileSystem",
+							method: "open",
+							pathOrDescriptor: PATH,
+						}),
+					)) as never,
+			});
+			const layer = MailJournal.layer({ path: PATH }).pipe(Layer.provide(denied));
+			const scope = yield* Scope.make();
+			const exit = yield* Effect.exit(Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope)));
+			assert.isTrue(Exit.isFailure(exit), "construction fails rather than presenting an empty journal");
+			const cause = (exit as Exit.Failure<never, unknown>).cause;
+			assert.isTrue(Cause.hasFails(cause), "typed failure");
+			assert.isFalse(Cause.hasDies(cause), "never a defect");
+			yield* Scope.close(scope, Exit.void);
+		}),
 	);
 
 	it.effect("append against a missing journal fails typed AND creates no file", () =>
@@ -334,7 +367,7 @@ describe("Journal — bounded tail reads", () => {
 
 describe("Journal — BOM", () => {
 	it.effect("reads a BOM'd journal cleanly — the first line is not malformed", () =>
-		runJournal(`﻿${envelopeLine(1)}${envelopeLine(2)}`, (journal) =>
+		runJournal(`\uFEFF${envelopeLine(1)}${envelopeLine(2)}`, (journal) =>
 			Effect.gen(function* () {
 				const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
 				assert.strictEqual(started(current).data.round, 2);
@@ -343,7 +376,7 @@ describe("Journal — BOM", () => {
 	);
 
 	it.effect("makes offsets POST-BOM relative — the first line begins at 0", () =>
-		runJournal(`﻿${envelopeLine(1)}`, (journal) =>
+		runJournal(`\uFEFF${envelopeLine(1)}`, (journal) =>
 			Effect.gen(function* () {
 				const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
 				assert.strictEqual(current.line.offset, 0, "the BOM does not shift the first line");
@@ -356,12 +389,12 @@ describe("Journal — BOM", () => {
 			const withInner = `${JSON.stringify({
 				at: at("2026-01-01T00:00:00.000Z"),
 				event: "started",
-				data: { round: 1, phase: "a﻿b" },
+				data: { round: 1, phase: "a\uFEFFb" },
 			})}\n`;
 			return yield* runJournal(withInner, (journal) =>
 				Effect.gen(function* () {
 					const current = Option.getOrThrow(yield* SubscriptionRef.get(journal.latest));
-					assert.strictEqual(started(current).data.phase, "a﻿b", "an interior BOM is content");
+					assert.strictEqual(started(current).data.phase, "a\uFEFFb", "an interior BOM is content");
 				}),
 			);
 		}),

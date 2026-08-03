@@ -33,7 +33,21 @@ const schemaError = (() => {
 
 describe("error messages render", () => {
 	it("MalformedLine", () => {
-		assert.include(new MalformedLine({ line: slice }).message, "12");
+		const message = new MalformedLine({ line: slice }).message;
+		assert.include(message, "12");
+		assert.include(message, "malformed line", "a terminated line is a hole in the history");
+	});
+
+	it("MalformedLine distinguishes an UNTERMINATED tail", () => {
+		// The two cases have different recoveries — a torn tail heals when the
+		// writer finishes its line, a terminated malformed line never does — so the
+		// rendering has to tell them apart, and the branch that does needs a
+		// fixture that reaches it.
+		// Unterminated, so `end` is exactly `offset + length`.
+		const torn = new LineSlice({ offset: 12, end: 15, length: 3, text: '{"a', terminated: false });
+		const message = new MalformedLine({ line: torn }).message;
+		assert.include(message, "unterminated final line");
+		assert.include(message, "12");
 	});
 
 	it("UnknownEvent", () => {

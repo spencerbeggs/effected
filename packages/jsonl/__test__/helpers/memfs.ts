@@ -1,5 +1,5 @@
 import type { Layer } from "effect";
-import { Effect, FileSystem, Option, Queue, Stream } from "effect";
+import { Effect, FileSystem, Option, PlatformError, Queue, Stream } from "effect";
 
 /**
  * A tiny in-memory `FileSystem`, implementing exactly the surface the journal
@@ -34,19 +34,57 @@ export interface MemFs {
 	readonly bytes: (path: string) => Uint8Array | undefined;
 	/** Seed a path with raw bytes, bypassing the journal. */
 	readonly write: (path: string, bytes: Uint8Array | string) => void;
+	/**
+	 * Delete a path behind the journal's back, synchronously.
+	 *
+	 * The counterpart to {@link MemFs.write}, and the only way to make a file
+	 * vanish inside {@link MemFs.beforeWatch}'s window — where a hook is
+	 * synchronous and cannot run the layer's own `remove`.
+	 */
+	readonly unlink: (path: string) => void;
 	/** Whether a path exists. */
 	readonly has: (path: string) => boolean;
 	/** Every path currently present. */
 	readonly paths: () => ReadonlyArray<string>;
 	/**
-	 * Deliver a watch event for `path` to every registered watcher of it or of
-	 * its parent directory.
+	 * Deliver a **content** watch event for `path` to the watchers of that path.
 	 *
 	 * The deterministic seam: watcher behaviour is driven explicitly instead of
 	 * racing a real filesystem, so offset bookkeeping, resync and activation are
 	 * timer-free unit tests.
+	 *
+	 * Routing is deliberately honest: a content append reaches the watchers of
+	 * the **file**, never those of its parent directory. A double that notified
+	 * both would keep a journal that never handed off from its activation
+	 * directory watch to its file watch looking healthy — the exact defect the
+	 * handoff exists to prevent.
 	 */
 	readonly poke: (path: string) => void;
+	/**
+	 * Deliver a **structural** watch event for `path` to the watchers of its
+	 * parent directory, carrying a bare basename as the node backend does.
+	 *
+	 * This is creation/removal — the only thing a non-recursive directory watch
+	 * reports reliably. Content appends are {@link MemFs.poke}'s.
+	 */
+	readonly pokeParent: (path: string) => void;
+	/**
+	 * Suspend the next `readAlloc` so a concurrent append can be landed inside a
+	 * read.
+	 *
+	 * The only deterministic way to place a write in the window a read straddles.
+	 * `sampleFirst` (the default) models `read(2)`: the bytes are taken before
+	 * the suspension, so the reader receives the file as of the moment it
+	 * sampled. Pass `false` to suspend before sampling, so the read observes the
+	 * write.
+	 *
+	 * @returns `entered`, which resolves once the gated read is suspended, and
+	 *   `release`, which lets it finish.
+	 */
+	readonly gateNextRead: (options?: { readonly sampleFirst?: boolean }) => {
+		readonly entered: Promise<void>;
+		readonly release: () => void;
+	};
 	/**
 	 * How many watchers are registered for a path.
 	 *
@@ -77,6 +115,14 @@ export interface MemFs {
 	readonly beforeWatch: (hook: (target: string) => void) => void;
 }
 
+/**
+ * Index of the last separator, on either convention.
+ *
+ * A real filesystem knows its own separator; this double is asked to model both
+ * so a Windows-shaped path can be exercised without a Windows runner.
+ */
+const lastSeparator = (path: string): number => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+
 export const makeMemFs = (): MemFs => {
 	const files = new Map<string, Uint8Array>();
 	const encoder = new TextEncoder();
@@ -101,9 +147,14 @@ export const makeMemFs = (): MemFs => {
 		inodes.set(path, nextInode++);
 	};
 
+	/** The read gate: set by {@link MemFs.gateNextRead}, consumed by one `readAlloc`. */
+	let readGate:
+		| { readonly promise: Promise<void>; readonly enter: () => void; readonly sampleFirst: boolean }
+		| undefined;
+
 	const write = (path: string, bytes: Uint8Array | string): void => {
 		files.set(path, typeof bytes === "string" ? encoder.encode(bytes) : bytes);
-		const parent = path.slice(0, Math.max(0, path.lastIndexOf("/")));
+		const parent = path.slice(0, Math.max(0, lastSeparator(path)));
 		if (parent !== "") directories.add(parent);
 		inodeOf(path);
 	};
@@ -125,10 +176,28 @@ export const makeMemFs = (): MemFs => {
 				sync: Effect.void,
 				read: () => Effect.succeed(0 as never),
 				readAlloc: (size: FileSystem.SizeInput) =>
-					Effect.sync(() => {
+					Effect.gen(function* () {
+						const gate = readGate;
+						if (gate?.sampleFirst === false) {
+							readGate = undefined;
+							gate.enter();
+							yield* Effect.promise(() => gate.promise);
+						}
 						const current = files.get(path) ?? new Uint8Array(0);
-						const slice = current.subarray(position, position + Number(size));
-						return slice.length === 0 ? Option.none<Uint8Array>() : Option.some(new Uint8Array(slice));
+						// A real handle advances its own position; a double that does not
+						// makes every chunked read re-read the same bytes, so the
+						// multi-chunk path in `readRangeText` would never be exercised.
+						const slice = new Uint8Array(current.subarray(position, position + Number(size)));
+						position += slice.length;
+						if (gate?.sampleFirst === true) {
+							readGate = undefined;
+							gate.enter();
+							// Suspend AFTER sampling, exactly as a `read(2)` that raced a
+							// concurrent append behaves: the bytes are the file as of the
+							// moment the read took them.
+							yield* Effect.promise(() => gate.promise);
+						}
+						return slice.length === 0 ? Option.none<Uint8Array>() : Option.some(slice);
 					}),
 				truncate: () => Effect.void,
 				write: (buffer: Uint8Array) =>
@@ -166,34 +235,50 @@ export const makeMemFs = (): MemFs => {
 	};
 
 	const layer = FileSystem.layerNoop({
+		// Shaped like the real backend, and the shape is load-bearing: it `stat`s
+		// the path OUTSIDE the callback and unwraps the result, so a missing path
+		// fails the STREAM typed. Failing inside `Stream.callback` would not do —
+		// that effect is forked, so its failure never reaches the stream and the
+		// watch would hang instead of ending. And a raw `throw` here would be a
+		// defect, which `Effect.ignore` does not absorb, so the double would kill
+		// the supervisor fibre where the real backend merely ends a watch.
 		watch: ((target: string) =>
-			Stream.callback<FileSystem.WatchEvent>((queue) =>
-				Effect.acquireRelease(
-					Effect.sync(() => {
-						beforeWatchHook?.(target);
-						// Mirrors the real backend: watching a path that does not exist
-						// fails, which is precisely why activation needs the parent
-						// directory rather than the journal itself.
-						const isDirectory =
-							directories.has(target) || [...files.keys()].some((file) => file.startsWith(`${target}/`));
-						if (!files.has(target) && !isDirectory) {
-							throw new Error(`ENOENT: ${target}`);
-						}
-						const listener = (event: FileSystem.WatchEvent): void => {
-							Queue.offerUnsafe(queue, event);
-						};
-						const set = watchers.get(target) ?? new Set();
-						set.add(listener);
-						watchers.set(target, set);
-						return listener;
-					}),
-					(listener) => Effect.sync(() => watchers.get(target)?.delete(listener)),
-				).pipe(
-					// The callback effect COMPLETING ends the stream, so it must stay
-					// alive for as long as the watch should. Without this the stream
-					// ended the instant it registered.
-					Effect.andThen(Effect.never),
-				),
+			Stream.unwrap(
+				Effect.gen(function* () {
+					beforeWatchHook?.(target);
+					const isDirectory =
+						directories.has(target) || [...files.keys()].some((file) => file.startsWith(`${target}/`));
+					if (!files.has(target) && !isDirectory) {
+						return yield* Effect.fail(
+							PlatformError.systemError({
+								_tag: "NotFound",
+								module: "FileSystem",
+								method: "watch",
+								pathOrDescriptor: target,
+								description: "no such file or directory",
+							}),
+						);
+					}
+					return Stream.callback<FileSystem.WatchEvent>((queue) =>
+						Effect.acquireRelease(
+							Effect.sync(() => {
+								const listener = (event: FileSystem.WatchEvent): void => {
+									Queue.offerUnsafe(queue, event);
+								};
+								const set = watchers.get(target) ?? new Set();
+								set.add(listener);
+								watchers.set(target, set);
+								return listener;
+							}),
+							(listener) => Effect.sync(() => watchers.get(target)?.delete(listener)),
+						).pipe(
+							// The callback effect COMPLETING ends the stream, so it must stay
+							// alive for as long as the watch should. Without this the stream
+							// ended the instant it registered.
+							Effect.andThen(Effect.never),
+						),
+					);
+				}),
 			)) as never,
 		exists: (path: string) =>
 			Effect.sync(() => {
@@ -213,6 +298,11 @@ export const makeMemFs = (): MemFs => {
 		remove: (path: string) =>
 			Effect.sync(() => {
 				files.delete(path);
+				// The inode goes with the file. Keeping it would hand a
+				// remove-then-recreate cycle the OLD identity, so `identityOf` would see
+				// one continuous file and the `"replaced"` resync branch would be
+				// unreachable through this double.
+				inodes.delete(path);
 			}),
 		open: ((path: string, options?: { readonly flag?: string }) =>
 			Effect.acquireRelease(openFile(path, options?.flag ?? "r"), () => Effect.void)) as never,
@@ -233,16 +323,34 @@ export const makeMemFs = (): MemFs => {
 			releaseGate = undefined;
 		},
 		poke: (path) => {
-			const event = { _tag: "Update", path } as unknown as FileSystem.WatchEvent;
-			notify(path, event);
-			const directory = path.slice(0, Math.max(0, path.lastIndexOf("/"))) || ".";
+			// CONTENT events go to the file's own watchers and nowhere else. A
+			// non-recursive directory watch does not reliably report a child's
+			// appends, so routing them there too would make a journal that never
+			// handed off from the activation watch to the file watch look healthy.
+			notify(path, { _tag: "Update", path } as unknown as FileSystem.WatchEvent);
+		},
+		pokeParent: (path) => {
+			const directory = path.slice(0, Math.max(0, lastSeparator(path))) || ".";
 			// A directory watcher receives the BARE BASENAME, as the node backend
 			// does — which is why the activation path must never use event.path to
-			// open anything.
+			// open anything. The tag is `Remove` for a creation, which is what the
+			// probe measured the node backend reporting.
 			notify(directory, {
 				_tag: "Remove",
-				path: path.slice(path.lastIndexOf("/") + 1),
+				path: path.slice(lastSeparator(path) + 1),
 			} as unknown as FileSystem.WatchEvent);
+		},
+		gateNextRead: (options) => {
+			let enter: () => void = () => {};
+			const entered = new Promise<void>((resolve) => {
+				enter = resolve;
+			});
+			let release: () => void = () => {};
+			const promise = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			readGate = { promise, enter, sampleFirst: options?.sampleFirst ?? true };
+			return { entered, release };
 		},
 		watcherCount: (target) => watchers.get(target)?.size ?? 0,
 		existsCalls: () => existsCallCount,
@@ -258,6 +366,10 @@ export const makeMemFs = (): MemFs => {
 		},
 		bytes: (path) => files.get(path),
 		write,
+		unlink: (path) => {
+			files.delete(path);
+			inodes.delete(path);
+		},
 		has: (path) => files.has(path),
 		paths: () => [...files.keys()],
 	};

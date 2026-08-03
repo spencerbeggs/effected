@@ -96,12 +96,14 @@ Facts about them that change how you depend on them:
   (`PublishabilityDetector.npm`), so a policy that wraps npm semantics does not
   have to re-enter the tag it is replacing.
 
-## Local-build dogfood state (updated 2026-07-26)
+## Local-build dogfood state (updated 2026-08-03)
 
-**All twenty-five are published.** `commands`, `templates`, `github`,
-`github-actions` and `sbom` — the github-split five — published for the first
-time in the 2026-07-26 wave (16 packages, PR #181) at `0.1.0`; nothing in the
-kit still sits at `0.0.0`. A downstream repo mid-dogfood-loop may still
+**Twenty-six of the twenty-seven are published.** `commands`, `templates`,
+`github`, `github-actions` and `sbom` — the github-split five — published for
+the first time in the 2026-07-26 wave (16 packages, PR #181) at `0.1.0`, and
+`schemastore` in the 2026-08-03 wave. The exception is **`jsonl`**, built
+2026-08-03 and still at `0.0.0`: it is unreleased and ships in a future
+coordinated wave, never solo. A downstream repo mid-dogfood-loop may still
 consume unreleased branch work from the local `effected` checkout via `file:`
 overrides until the next wave lands. Everything published is `0.x` and
 unstable; the kit releases in waves, never one package at a time.

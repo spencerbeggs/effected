@@ -13,7 +13,7 @@ import { Journal, JsonlEvent, Line, Envelope } from "@effected/jsonl";
 ## Core API
 
 - **`JsonlEvent.make(tag, { data, terminal?, reopen? })`** — defines one event: a string tag, the payload schema (`data` bounded to `Schema.Codec<unknown, unknown, never, never>` — no services in either direction, so a schema needing one fails at registration), and two lifecycle flags. `terminal: true` marks the event quiescent — once it is the tail, further appends fail `TerminalViolation` unless the appending event is `reopen: true`. A `const` array of definitions is the registry (`JsonlEvent.Registry`); the derived envelope union comes from it, never a hand-written `Schema.Union`.
-- **`Journal.Service<Self>()(id, { events })`** — a per-registry `Context.Service` class factory (mirrors `ConfigFile.Service<Self, A>()(id)`). Extend it for identity: `class MailJournal extends Journal.Service<MailJournal>()("app/MailJournal", { events }) {}`. Its static `.layer(config: { path, capacity?, shutdownPublishTimeout? })` builds a scoped `Layer<Self, never, FileSystem.FileSystem>`. **Bind the layer to a `const` and provide that const** — calling `.layer(...)` twice mints two independent journals (two semaphores, two hubs, two `latest` refs) over the same file, unserialized against each other; layers memoize by reference, not by config equality.
+- **`Journal.Service<Self>()(id, { events })`** — a per-registry `Context.Service` class factory (mirrors `ConfigFile.Service<Self, A>()(id)`). Extend it for identity: `class MailJournal extends Journal.Service<MailJournal>()("app/MailJournal", { events }) {}`. Its static `.layer(config: { path, directory?, capacity?, shutdownPublishTimeout? })` builds a scoped `Layer<Self, PlatformError, FileSystem.FileSystem>` — a *missing* journal constructs cleanly, but one that exists and cannot be read fails typed rather than as an uncatchable defect. **Bind the layer to a `const` and provide that const** — calling `.layer(...)` twice mints two independent journals (two semaphores, two hubs, two `latest` refs) over the same file, unserialized against each other; layers memoize by reference, not by config equality.
 - **`JournalShape`** (the service surface) — `append(event, data, { scope? })` (validates, encodes, one atomic `writeAll` of the complete line, serialized by a one-permit semaphore; `at` is stamped from the Effect `Clock`, never caller-supplied); `appendPatch(event, patch, { scope? })` (read the last valid envelope, **shallow**-merge `patch` over its `data` under the same write lock, validate, append — the `journal-append.sh` inherit-and-patch idiom as a typed API); `latest: SubscriptionRef<Option<Envelope>>` (the current last valid envelope); `quiescent: Effect<boolean>` (derived from `latest`, never tracked separately); `query(slice?)` (historical, finite `Stream`); `changes(slice?)` (live `Stream`, replay-from-`cursor` plus tail as one seam, ends on a terminal event or scope close); `projection(initial, fold, slice?)` (a running fold, scoped to its own slice); `create` / `remove` (explicit file lifecycle — a missing journal is legal; nothing materializes it implicitly).
 - **`Slice<R, T>` / `CursoredSlice<R, T>`** — the one filter shape every read surface takes: `events?` (narrows the stream's element type to those tag variants), `scopes?`, `from?` (**inclusive**), `to?` (**exclusive** — half-open, so adjacent time windows tile without double-delivering an envelope on the seam), plus `cursor?` (a `CursoredSlice`) to resume from a logical byte offset. All fields combine with AND; an omitted field does not filter, an empty `events: []` or `scopes: []` matches nothing.
 - **The eight-tag error taxonomy** (`JsonlError`) — every tag names a distinct recovery, causes carried structurally (never stringified), `PlatformError` passes through untranslated rather than joining the union.
@@ -38,7 +38,7 @@ Define a registry, build the journal layer once, append and read the current sta
 ```ts
 import { Journal, JsonlEvent } from "@effected/jsonl";
 import { NodeFileSystem } from "@effect/platform-node";
-import { Effect, Schema } from "effect";
+import { Effect, Schema, SubscriptionRef } from "effect";
 
 const MailReceived = JsonlEvent.make("mail-received", { data: Schema.Struct({ round: Schema.Number }) });
 const Unlinked = JsonlEvent.make("unlinked", { data: Schema.Void, terminal: true });
@@ -53,8 +53,10 @@ const program = Effect.gen(function* () {
   const journal = yield* MailJournal;
   yield* journal.create;
   yield* journal.append("mail-received", { round: 7 }, { scope: "silk-runtime-action" });
-  const latest = yield* journal.latest; // SubscriptionRef<Option<Envelope>>
-  return yield* latest.get;
+  // `latest` IS the ref, not an effect that yields one: read it with the
+  // standalone accessor.
+  return yield* SubscriptionRef.get(journal.latest); // Option<Envelope>
+
 }).pipe(Effect.scoped, Effect.provide(MailJournalLive), Effect.provide(NodeFileSystem.layer));
 ```
 

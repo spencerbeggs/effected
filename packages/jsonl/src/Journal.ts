@@ -5,6 +5,7 @@
  */
 import type { Duration as DurationType, PlatformError, Scope, Take } from "effect";
 import {
+	Channel,
 	Context,
 	DateTime,
 	Deferred,
@@ -124,13 +125,23 @@ export interface JournalShape<R extends JsonlEvent.Registry> {
 	/**
 	 * Historical read: a finite `Stream` of the envelopes matching `slice`.
 	 *
-	 * Streaming-only — the file is never held in memory — and every element
-	 * carries its logical byte offsets on `line`, so iteration is resumable
-	 * across process restarts by persisting `line.end` and passing it back as
-	 * `cursor`.
+	 * Every element carries its logical byte offsets on `line`, so iteration is
+	 * resumable across process restarts by persisting `line.end` and passing it
+	 * back as `cursor`.
 	 *
 	 * Filtering happens on the envelope **frame**, strictly before the payload
 	 * schema runs, so a non-matching line's `data` is never decoded.
+	 *
+	 * @remarks
+	 * **Cost, stated rather than implied.** As built, the requested region —
+	 * `cursor` to the end of the file — is read in ONE allocation bounded by the
+	 * file's size, and the matching envelopes are buffered before the first is
+	 * emitted. An unsliced `query()` over a large journal therefore does hold
+	 * that journal in memory; a `cursor` is what bounds the read, which is
+	 * precisely what a resuming consumer already persists. The window-bounded
+	 * reads are `latest` and the `lastValid`-backed paths. Emitting per window,
+	 * so an unsliced query costs a window rather than a file, is tracked as
+	 * spencerbeggs/effected#233.
 	 */
 	readonly query: <T extends JsonlEvent.Tag<R> = JsonlEvent.Tag<R>>(
 		slice?: CursoredSlice<R, T> | undefined,
@@ -206,6 +217,21 @@ export interface JournalConfig {
 	/** Path to the journal file. It need not exist yet. */
 	readonly path: string;
 	/**
+	 * The directory to watch while the journal does not exist yet.
+	 *
+	 * Defaults to `path`'s parent, derived by taking everything before its last
+	 * `/` or `\`. That derivation is the one piece of path arithmetic this
+	 * package performs, and it is here so the common case needs no second field;
+	 * name the directory explicitly when your path convention does not survive
+	 * it — a drive-relative Windows path, or a path whose parent is not a plain
+	 * prefix of it.
+	 *
+	 * It is used for exactly one thing: `FileSystem.watch` on a journal that has
+	 * not been created yet. Once the journal exists the watch moves to the file
+	 * itself and this value is not consulted again.
+	 */
+	readonly directory?: string | undefined;
+	/**
 	 * Capacity of the internal subscriber hub. Bounded with backpressure: the
 	 * journal never drops an envelope for a slow subscriber, so slowness shows
 	 * up at the producer where it is visible rather than as a silent gap in
@@ -255,30 +281,69 @@ const ARM_YIELDS = 3;
 /** The erased shape the engine actually builds, before the registry types go on. */
 type ErasedShape = JournalShape<JsonlEvent.Registry>;
 
-const decodeWindow = <R extends JsonlEvent.Registry>(
-	events: R,
-	window: TailWindow,
-): Option.Option<EnvelopeUnion<R>> => {
-	const lines = Line.split(window.text);
-	for (let index = lines.length - 1; index >= 0; index--) {
-		const line = lines[index];
-		if (line === undefined || line.text.trim() === "") continue;
-		// Re-base the slice onto the journal's own offsets: the window's text
-		// starts at `window.start`, so a slice offset within it is relative.
-		const rebased = new LineSlice({
-			offset: line.offset + window.start,
-			end: line.end + window.start,
-			length: line.length,
-			text: line.text,
-			terminated: line.terminated,
-		});
-		const decoded = Envelope.decodeResult(events, rebased);
-		if (Result.isSuccess(decoded)) {
-			return Option.some(decoded.success);
-		}
-	}
-	return Option.none();
+/**
+ * Index of the last path separator, on either convention.
+ *
+ * Both are checked because a Windows path contains no `/` at all: matching only
+ * on `/` returns `-1` there, which makes the whole path its own basename and
+ * points the activation watch at the process working directory — a journal
+ * created after its layer was built is then never observed.
+ */
+const lastSeparator = (path: string): number => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+
+/**
+ * The last segment of a path.
+ *
+ * Used for **comparison only** — matching a watch event's basename against the
+ * journal's filename. `event.path` is never opened or read, on any watch.
+ */
+const basenameOf = (path: string): string => path.slice(lastSeparator(path) + 1);
+
+/**
+ * The directory a path sits in — the single derived path this package ever
+ * hands to the filesystem, and only as {@link JournalConfig.directory}'s
+ * default.
+ *
+ * Path arithmetic is otherwise forbidden here: paths are opaque strings handed
+ * straight to `FileSystem`. This one derivation exists because the activation
+ * watch has to name a directory and the layer takes only a file path; a caller
+ * whose path convention this does not fit (a drive-relative Windows path, say)
+ * names the directory explicitly instead.
+ */
+const parentOf = (path: string): string => {
+	const separator = lastSeparator(path);
+	if (separator < 0) return ".";
+	// A separator at index 0 means the file sits in the root directory, which is
+	// that separator itself — slicing to an empty string would name nothing.
+	return separator === 0 ? path.slice(0, 1) : path.slice(0, separator);
 };
+
+/**
+ * The last valid envelope in a tail window, with its offsets rebased onto the
+ * journal.
+ *
+ * The walk-back itself is **not** reimplemented here: `Envelope.lastValidResult`
+ * is the binding definition of "the journal's current state" — which lines
+ * count as blank, which failures are walked over, where it stops — and a second
+ * copy of those rules would only be a place for them to drift apart. All this
+ * adds is the one thing the pure core cannot know: the window's text begins at
+ * `window.start`, so every offset inside it is relative to that.
+ */
+const decodeWindow = <R extends JsonlEvent.Registry>(events: R, window: TailWindow): Option.Option<EnvelopeUnion<R>> =>
+	Option.map(
+		Envelope.lastValidResult(events, window.text),
+		(envelope) =>
+			({
+				...envelope,
+				line: new LineSlice({
+					offset: envelope.line.offset + window.start,
+					end: envelope.line.end + window.start,
+					length: envelope.line.length,
+					text: envelope.line.text,
+					terminated: envelope.line.terminated,
+				}),
+			}) as EnvelopeUnion<R>,
+	);
 
 const makeEngine = (
 	events: JsonlEvent.Registry,
@@ -350,6 +415,56 @@ const makeEngine = (
 		});
 
 		/**
+		 * Read `[from, to)` and decode the complete lines in it, in file order.
+		 *
+		 * The one decode loop the external-growth paths share. Both the watcher's
+		 * catch-up ingest and an append whose bytes landed past another writer's
+		 * need the same thing — "decode this gap" — and two copies of a loop that
+		 * rebases offsets and tolerates a torn tail is exactly the drift that
+		 * produces a cursor bug on one path only.
+		 *
+		 * `advanced` is where the last COMPLETE line ended: an unterminated final
+		 * line is not consumed, so a torn tail holds the offset until its writer
+		 * finishes it. A line that fails to decode is skipped rather than fatal —
+		 * a foreign writer's unknown tag must not blind this reader to the lines
+		 * after it.
+		 */
+		const decodeRange = (
+			from: number,
+			to: number,
+		): Effect.Effect<
+			{ readonly decoded: ReadonlyArray<EnvelopeUnion<JsonlEvent.Registry>>; readonly advanced: number },
+			PlatformError.PlatformError
+		> =>
+			Effect.gen(function* () {
+				const text = yield* readRangeText(fs, config.path, from + bomBytes, to - from);
+				const lines = Line.split(text);
+				const decoded: Array<EnvelopeUnion<JsonlEvent.Registry>> = [];
+				let advanced = from;
+				for (const line of lines) {
+					if (!line.terminated) {
+						break;
+					}
+					advanced = line.end + from;
+					if (line.text.trim() === "") {
+						continue;
+					}
+					const rebased = new LineSlice({
+						offset: line.offset + from,
+						end: line.end + from,
+						length: line.length,
+						text: line.text,
+						terminated: true,
+					});
+					const envelope = Envelope.decodeResult(events, rebased);
+					if (Result.isSuccess(envelope)) {
+						decoded.push(envelope.success);
+					}
+				}
+				return { decoded, advanced };
+			});
+
+		/**
 		 * The one write path.
 		 *
 		 * `build` runs **inside the write permit**, so an inherit-and-patch reads
@@ -370,7 +485,7 @@ const makeEngine = (
 					return yield* new JournalClosed({ event });
 				}
 
-				const { envelope, predecessor, baton } = yield* writePermit.withPermits(1)(
+				const { envelope, external, predecessor, baton } = yield* writePermit.withPermits(1)(
 					Effect.gen(function* () {
 						if (closed) {
 							return yield* new JournalClosed({ event });
@@ -396,7 +511,6 @@ const makeEngine = (
 							return yield* encoded.failure;
 						}
 						const bytes = new TextEncoder().encode(encoded.success);
-						const offset = consumed;
 
 						// ONE `writeAll` of the complete line to an O_APPEND handle. This
 						// is a write LOOP, not a single syscall — atomicity is an OS
@@ -405,17 +519,46 @@ const makeEngine = (
 						// is no byte count to inspect: `writeAll` either wrote everything
 						// or failed, and any failure here means POSSIBLY TORN, never
 						// "nothing was written".
-						yield* Effect.scoped(
+						const end = yield* Effect.scoped(
 							Effect.gen(function* () {
 								const file = yield* fs.open(config.path, { flag: "a" });
 								yield* file.writeAll(bytes);
+								// The offsets come from the FILE, never from `consumed`.
+								// O_APPEND lands at the real end, which is past `consumed`
+								// whenever a cooperating writer's bytes have not been
+								// ingested yet — and stamping `consumed` on the line then
+								// describes a position the line is not at, re-publishes this
+								// line on the next ingest, and skips the external bytes in
+								// between. An `fstat` on our own handle right after the write
+								// is the cheapest true answer.
+								const info = yield* file.stat;
+								return Number(info.size) - bomBytes;
 							}),
 						);
-						consumed = offset + bytes.length;
+						const offset = end - bytes.length;
+
+						// Whatever sits between our last ingest and where this line
+						// actually landed belongs to another writer and PRECEDES ours in
+						// the file, so it is decoded here and published first: the hub
+						// carries one file-ordered sequence either way. A torn fragment at
+						// the end of that gap is skipped rather than held, because our own
+						// line has already been written after it and the offset cannot
+						// wait for a writer that lost the race.
+						//
+						// Reading inside the write permit is legal under pin 1 and a hub
+						// publish is not: the prohibition is on SUSPENDING ON A SUBSCRIBER
+						// while holding the lock. A read completes on its own. It also
+						// costs nothing in the common case, where the gap is empty and no
+						// read is issued at all.
+						const external = offset > consumed ? (yield* decodeRange(consumed, offset)).decoded : [];
+						// Trust the file: on the (contract-breaching) shrink case this
+						// moves backwards rather than pretending the line is somewhere it
+						// is not. The watcher's own resync check is what names the breach.
+						consumed = end;
 
 						const line = new LineSlice({
 							offset,
-							end: consumed,
+							end,
 							length: bytes.length - 1,
 							text: encoded.success.slice(0, -1),
 							terminated: true,
@@ -432,7 +575,7 @@ const makeEngine = (
 						const previous = publishBaton;
 						const mine = Deferred.makeUnsafe<void>();
 						publishBaton = mine;
-						return { envelope: decoded.success, predecessor: previous, baton: mine };
+						return { envelope: decoded.success, external, predecessor: previous, baton: mine };
 					}),
 				);
 
@@ -446,7 +589,18 @@ const makeEngine = (
 				// arriving between the baton link and the handler's installation
 				// would leave every later append waiting on a baton nobody passes.
 				yield* Effect.uninterruptibleMask((restore) =>
-					restore(Deferred.await(predecessor).pipe(Effect.andThen(PubSub.publish(hub, [envelope])))).pipe(
+					restore(
+						Effect.gen(function* () {
+							yield* Deferred.await(predecessor);
+							// Anything that landed in the file ahead of this line goes into
+							// the hub ahead of it too, so the sequence a subscriber sees is
+							// the file's order however the bytes got there.
+							for (const preceding of external) {
+								yield* PubSub.publish(hub, [preceding]);
+							}
+							yield* PubSub.publish(hub, [envelope]);
+						}),
+					).pipe(
 						// The baton MUST be passed even on failure or interruption, or
 						// every later append waits forever on a predecessor that will
 						// never finish.
@@ -463,11 +617,20 @@ const makeEngine = (
 		): Effect.Effect<EnvelopeUnion<JsonlEvent.Registry>, JournalWriteError> => appendWith(event, () => data, scope);
 
 		/**
-		 * Stream the file from `cursor`, frame-filtered before payload decode.
+		 * Read the file from `cursor`, frame-filtered before payload decode.
 		 *
-		 * Reads in bounded windows rather than slurping the file: the whole point
-		 * of the package is that answering a question costs the size of the answer,
-		 * not the age of the journal.
+		 * **What this actually does, as built**: ONE read of the requested region
+		 * — `cursor` to the end of the file, bounded by the file's size — whose
+		 * matching envelopes are buffered and then emitted. It is bounded by the
+		 * cursor, not by a window, so an unsliced read over a large journal holds
+		 * that journal in memory. The frame filter still runs per line before any
+		 * payload schema, so the filter-before-decode guarantee is untouched;
+		 * what is not true here is the "never held in memory" half.
+		 *
+		 * Paging this — read one window, emit its envelopes, carry the
+		 * unterminated tail into the next read — is spencerbeggs/effected#233,
+		 * rather than something attempted alongside the correctness fixes around
+		 * it.
 		 */
 		const readFrom = (
 			slice: CursoredSlice<JsonlEvent.Registry, never> | undefined,
@@ -562,17 +725,43 @@ const makeEngine = (
 					// already happened. Ending here is what makes "terminates rather
 					// than hangs" true.
 					const alreadyQuiescent = yield* isTerminalTail;
-					const history = slice?.cursor === undefined ? Stream.empty : readFrom(slice);
+					const replay = slice?.cursor === undefined ? Stream.empty : readFrom(slice);
 					if (alreadyQuiescent || closed) {
-						return history as Stream.Stream<EnvelopeUnion<JsonlEvent.Registry>, JournalReadError | JsonlError>;
+						return replay as Stream.Stream<EnvelopeUnion<JsonlEvent.Registry>, JournalReadError | JsonlError>;
 					}
-					const live = Stream.fromPubSubTake(hub).pipe(
+					// SUBSCRIBE BEFORE REPLAYING, and do it here rather than through
+					// `Stream.fromPubSubTake`. That constructor subscribes on its first
+					// pull, which `Stream.concat` does not reach until the replay has
+					// finished — and a hub has no replay of its own, so every append
+					// published while the history was being read was dropped on the
+					// floor. Subscribing in the effect the stream is unwrapped from puts
+					// the subscription strictly before the first byte is read; the scope
+					// is the stream's own, so it is released with the stream.
+					const subscription = yield* PubSub.subscribe(hub);
+					// The overlap that early subscription creates, and the reason the
+					// join still cannot duplicate: a line can be on disk when the replay
+					// reads it AND still in flight to the hub, so it arrives twice.
+					// Offsets are monotonic in file order, so the last replayed `end` is
+					// exactly the boundary between "already delivered" and "new".
+					let replayedThrough = slice?.cursor ?? 0;
+					const history = replay.pipe(
+						Stream.tap((envelope) =>
+							Effect.sync(() => {
+								replayedThrough = Math.max(replayedThrough, envelope.line.end);
+							}),
+						),
+					);
+					const live = Stream.fromChannel(Channel.fromEffectTake(PubSub.take(subscription))).pipe(
 						// The terminal envelope ends THIS subscription, whatever the
 						// slice says: the journal is finished, so there is nothing more
 						// to wait for. `takeUntil` runs before the slice filter so a
 						// terminal event that the slice excludes still ends the stream —
-						// but is not delivered.
+						// but is not delivered. It also runs before the de-duplication
+						// filter, so a terminal envelope that the replay already
+						// delivered still ends the stream rather than being dropped and
+						// leaving the subscriber waiting on a journal that is over.
 						Stream.takeUntil(isTerminalEnvelope),
+						Stream.filter((envelope) => envelope.line.offset >= replayedThrough),
 					);
 					// ONE seam: history and tail are the same stream, filtered the same
 					// way downstream, so a consumer cannot see a gap or a duplicate at
@@ -648,37 +837,11 @@ const makeEngine = (
 				const { envelopes, predecessor, baton } = yield* writePermit.withPermits(1)(
 					Effect.gen(function* () {
 						// Re-read under the permit: a local append may have advanced
-						// `consumed` while we were waiting for it.
+						// `consumed` while we were waiting for it, and may have taken the
+						// pending bytes with it.
+						// An empty range decodes to nothing rather than needing a guard.
 						const from = consumed;
-						const text = yield* readRangeText(fs, config.path, from + bomBytes, logicalSize - from);
-						const lines = Line.split(text);
-						const decoded: Array<EnvelopeUnion<JsonlEvent.Registry>> = [];
-						let advanced = from;
-						for (const line of lines) {
-							// A torn tail holds the offset: an unterminated final line is not
-							// consumed, so the next poke re-reads it once the writer finishes.
-							if (!line.terminated) {
-								break;
-							}
-							advanced = line.end + from;
-							if (line.text.trim() === "") {
-								continue;
-							}
-							const rebased = new LineSlice({
-								offset: line.offset + from,
-								end: line.end + from,
-								length: line.length,
-								text: line.text,
-								terminated: true,
-							});
-							const envelope = Envelope.decodeResult(events, rebased);
-							if (Result.isSuccess(envelope)) {
-								decoded.push(envelope.success);
-							}
-							// A line we cannot decode is skipped rather than fatal: a foreign
-							// writer's unknown tag must not blind this reader to the lines
-							// after it.
-						}
+						const { decoded, advanced } = yield* decodeRange(from, logicalSize);
 						consumed = advanced;
 						if (decoded.length > 0) {
 							yield* SubscriptionRef.set(latest, Option.some(decoded[decoded.length - 1] as never));
@@ -788,6 +951,13 @@ const makeEngine = (
 		 *   event whose path BASENAME matches the journal filename is an untyped
 		 *   poke meaning "re-stat the journal yourself".
 		 *
+		 * The directory watch is an **activation** watch and nothing more: it ends
+		 * as soon as the journal exists, and the supervisor then arms the file
+		 * watch. Staying on it would be silently wrong rather than merely
+		 * redundant — a non-recursive directory watch reports creation, not a
+		 * child's later content appends, so a journal that never handed off would
+		 * observe its own appends and no external ones.
+		 *
 		 * `event.path` is **never** used to open or read anything, on either watch.
 		 * It can be a bare basename that resolves against the process CWD; the
 		 * journal's own configured path is the only path this service touches. The
@@ -796,8 +966,8 @@ const makeEngine = (
 		 *
 		 * No timer anywhere. Activation is event-driven.
 		 */
-		const basename = config.path.slice(config.path.lastIndexOf("/") + 1);
-		const directory = config.path.slice(0, Math.max(0, config.path.lastIndexOf("/"))) || ".";
+		const basename = basenameOf(config.path);
+		const directory = config.directory ?? parentOf(config.path);
 
 		const watchJournal = fs.watch(config.path).pipe(
 			// The event is a poke, never a source of paths. Re-stat and ingest.
@@ -806,10 +976,15 @@ const makeEngine = (
 		);
 
 		const watchForCreation = fs.watch(directory).pipe(
-			Stream.filter((event) => {
-				const path = event.path;
-				return path.slice(path.lastIndexOf("/") + 1) === basename;
-			}),
+			Stream.filter((event) => basenameOf(event.path) === basename),
+			// END once the journal exists. A directory watch reports creation, not a
+			// child's later content appends, so staying on it after activation
+			// leaves the journal silently blind to external growth. Ending here is
+			// what returns control to the supervisor loop, which then arms the FILE
+			// watch. `takeUntilEffect` runs before the ingest below, and the element
+			// that satisfies it is still emitted, so the creation event that ends
+			// this watch is also the one that catches the journal up.
+			Stream.takeUntilEffect(() => exists()),
 			Stream.runForEach(() => ingest),
 			Effect.ignore,
 		);
@@ -939,6 +1114,12 @@ export interface JournalClass<Self, Id extends string, R extends JsonlEvent.Regi
 	 * Build the layer for this journal.
 	 *
 	 * @remarks
+	 * **Construction can fail with a `PlatformError`, and that is deliberate.** A
+	 * journal file that does not exist yet is a legal state and constructs
+	 * cleanly — but a file that exists and cannot be read (`EACCES`, a bad
+	 * handle) is a real failure, and typing this channel `never` would have made
+	 * it arrive as an untypeable defect that no caller could catch.
+	 *
 	 * **Bind the result to a const and provide that const.** Layers are memoized
 	 * by reference, so calling this twice mints **two independent journals over
 	 * one file** — two semaphores, two hubs, two `latest` refs — and their
@@ -954,7 +1135,7 @@ export interface JournalClass<Self, Id extends string, R extends JsonlEvent.Regi
 	 * Effect.provide(program, MailJournal.layer({ path }));
 	 * ```
 	 */
-	readonly layer: (config: JournalConfig) => Layer.Layer<Self, never, FileSystem.FileSystem>;
+	readonly layer: (config: JournalConfig) => Layer.Layer<Self, PlatformError.PlatformError, FileSystem.FileSystem>;
 }
 
 /**
@@ -989,14 +1170,23 @@ export const Journal = {
 		): JournalClass<Self, Id, R> => {
 			class JournalService extends Context.Service<Self, JournalShape<R>>()(id) {
 				static readonly events = options.events;
-				static readonly layer = (config: JournalConfig): Layer.Layer<Self, never, FileSystem.FileSystem> =>
+				static readonly layer = (
+					config: JournalConfig,
+				): Layer.Layer<Self, PlatformError.PlatformError, FileSystem.FileSystem> =>
 					Layer.effect(
 						JournalService,
 						Effect.gen(function* () {
 							const fs = yield* FileSystem.FileSystem;
 							return yield* makeEngine(options.events, config, fs);
 							// Cast two: the engine is built type-erased and typed once here.
-						}) as unknown as Effect.Effect<JournalShape<R>, never, FileSystem.FileSystem | Scope.Scope>,
+							// It narrows the SHAPE and nothing else — the error channel is
+							// `makeEngine`'s own, so an unreadable journal stays catchable
+							// instead of becoming a defect the caller cannot name.
+						}) as unknown as Effect.Effect<
+							JournalShape<R>,
+							PlatformError.PlatformError,
+							FileSystem.FileSystem | Scope.Scope
+						>,
 					);
 			}
 			// Cast one: the class's static side carries `events`/`layer`, which the

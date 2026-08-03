@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Context, DateTime, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream } from "effect";
 import { Journal, JsonlEvent } from "../src/index.js";
+import type { MemFs } from "./helpers/memfs.js";
 import { makeMemFs } from "./helpers/memfs.js";
 
 const PATH = "/journal/read.jsonl";
@@ -41,6 +42,34 @@ const harness = (seed: string) => {
 	memfs.write(PATH, seed);
 	return { memfs, layer: ReadJournal.layer({ path: PATH }).pipe(Layer.provide(memfs.layer)) };
 };
+
+/** Append behind the journal's back — a cooperating foreign writer. */
+const externalAppend = (memfs: MemFs, text: string): void => {
+	const current = memfs.bytes(PATH);
+	const addition = new TextEncoder().encode(text);
+	const next = new Uint8Array((current?.length ?? 0) + addition.length);
+	if (current !== undefined) next.set(current);
+	next.set(addition, current?.length ?? 0);
+	memfs.write(PATH, next);
+};
+
+/**
+ * Build the journal in its own scope, with its watcher armed.
+ *
+ * The join tests need the memfs itself — to gate a read and to poke the
+ * watcher — which the `Effect.provide` form deliberately hides.
+ */
+const openJournal = (seed: string) =>
+	Effect.gen(function* () {
+		const { memfs, layer } = harness(seed);
+		const scope = yield* Scope.make();
+		const context = yield* Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope));
+		for (let attempt = 0; attempt < 50 && memfs.watcherCount(PATH) === 0; attempt++) {
+			yield* Effect.yieldNow;
+		}
+		assert.isAbove(memfs.watcherCount(PATH), 0, "the watcher armed before the test drove it");
+		return { memfs, scope, journal: Context.get(context, ReadJournal) };
+	});
 
 const withJournal = <A, E>(seed: string, body: (journal: ReadJournal["Service"]) => Effect.Effect<A, E>) =>
 	Effect.gen(function* () {
@@ -288,6 +317,78 @@ describe("changes", () => {
 		),
 	);
 
+	it.effect("an append landing DURING the replay is delivered, not lost at the join", () =>
+		Effect.gen(function* () {
+			// The join test that CAN see the gap. The append has to land strictly
+			// after the replay has sampled the file and strictly before a
+			// subscribe-after-replay implementation would have attached — anywhere
+			// else and the test passes whatever the ordering is, which is exactly how
+			// the previous version of this test passed against the defect.
+			const { memfs, scope, journal } = yield* openJournal(line("mine", { round: 1 }) + line("mine", { round: 2 }));
+			const collected: Array<number> = [];
+			const gate = memfs.gateNextRead();
+			const running = yield* Effect.forkChild(
+				Stream.runForEach(journal.changes({ cursor: 0, events: ["mine"] }), (envelope) =>
+					Effect.sync(() => {
+						collected.push(envelope.data.round);
+					}),
+				),
+			);
+
+			// The replay's read has taken its bytes and is suspended inside the handle.
+			yield* Effect.promise(() => gate.entered);
+			yield* journal.append("mine", { round: 3 });
+			gate.release();
+
+			for (let attempt = 0; attempt < 100 && collected.length < 3; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			yield* Fiber.interrupt(running);
+			assert.deepStrictEqual(collected, [1, 2, 3], "the append published during the replay survived the join");
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.timeout(Duration.seconds(10))),
+	);
+
+	it.effect("an envelope in BOTH the replay and the live tail is delivered ONCE", () =>
+		Effect.gen(function* () {
+			// The other half of subscribing before replaying: a line already on disk
+			// when the replay reads it can still be in flight to the hub, so it
+			// arrives twice unless the overlap is de-duplicated on the byte offset.
+			const { memfs, scope, journal } = yield* openJournal(line("mine", { round: 1 }) + line("mine", { round: 2 }));
+			externalAppend(memfs, line("mine", { round: 3 }));
+
+			const collected: Array<number> = [];
+			const gate = memfs.gateNextRead();
+			const running = yield* Effect.forkChild(
+				Stream.runForEach(journal.changes({ cursor: 0, events: ["mine"] }), (envelope) =>
+					Effect.sync(() => {
+						collected.push(envelope.data.round);
+					}),
+				),
+			);
+
+			// The replay has round 3 in its snapshot; the poke makes the watcher
+			// ingest and publish that same line while the replay is still suspended.
+			yield* Effect.promise(() => gate.entered);
+			memfs.poke(PATH);
+			for (let turn = 0; turn < 20; turn++) {
+				yield* Effect.yieldNow;
+			}
+			gate.release();
+
+			for (let attempt = 0; attempt < 100 && collected.length < 3; attempt++) {
+				yield* Effect.yieldNow;
+			}
+			// Give a duplicate every chance to arrive before concluding it did not.
+			for (let turn = 0; turn < 20; turn++) {
+				yield* Effect.yieldNow;
+			}
+			yield* Fiber.interrupt(running);
+			assert.deepStrictEqual(collected, [1, 2, 3], "the overlapping envelope is delivered exactly once");
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.timeout(Duration.seconds(10))),
+	);
+
 	it.effect("replay-from-cursor and the live tail are ONE stream", () =>
 		withJournal(line("mine", { round: 1 }) + line("mine", { round: 2 }), (journal) =>
 			Effect.gen(function* () {
@@ -343,14 +444,26 @@ describe("consumption postures", () => {
 		),
 	);
 
-	it.effect("latest-wins: toQueue with a sliding strategy keeps the newest", () =>
+	it.effect("latest-wins: toQueue with a sliding strategy keeps the NEWEST", () =>
 		withJournal(seed, (journal) =>
 			Effect.gen(function* () {
-				const queue = yield* Stream.toQueue(journal.query(), { capacity: 1, strategy: "sliding" });
+				const queue = yield* Stream.toQueue(journal.query({ events: ["mine"] }), {
+					capacity: 1,
+					strategy: "sliding",
+				});
 				// A sliding queue of capacity 1 keeps only the most recent element.
-				yield* Effect.yieldNow;
+				// WHICH element survives is the whole property: a length assertion
+				// alone passes just as happily on a dropping queue, which keeps the
+				// oldest and discards the state a status display actually wants.
+				for (let turn = 0; turn < 20; turn++) {
+					yield* Effect.yieldNow;
+				}
 				const taken = yield* Queue.takeAll(queue);
-				assert.isAtMost(taken.length, 1, "a sliding queue drops rather than growing");
+				assert.deepStrictEqual(
+					taken.map((envelope) => envelope.data.round),
+					[3],
+					"the newest element survived and the older ones slid out",
+				);
 			}).pipe(Effect.scoped),
 		),
 	);
@@ -358,10 +471,19 @@ describe("consumption postures", () => {
 	it.effect("batch-draining: a bounded queue plus takeAll amortizes a burst", () =>
 		withJournal(seed, (journal) =>
 			Effect.gen(function* () {
-				const queue = yield* Stream.toQueue(journal.query(), { capacity: 16 });
-				yield* Effect.yieldNow;
+				const queue = yield* Stream.toQueue(journal.query({ events: ["mine"] }), { capacity: 16 });
+				// Let the whole burst land before taking: a take that races the
+				// producer proves nothing about amortizing, because ONE element also
+				// satisfies "at least one".
+				for (let turn = 0; turn < 20; turn++) {
+					yield* Effect.yieldNow;
+				}
 				const batch = yield* Queue.takeAll(queue);
-				assert.isAtLeast(batch.length, 1, "a burst is drained in one take");
+				assert.deepStrictEqual(
+					batch.map((envelope) => envelope.data.round),
+					[1, 2, 3],
+					"the entire burst is drained in ONE take",
+				);
 			}).pipe(Effect.scoped),
 		),
 	);
