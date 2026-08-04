@@ -58,6 +58,17 @@ _tools_block() {
 	done
 }
 
+@test "designing-an-action is registered under skills, in action-engineer" {
+	# Pins the fix for the round-2 audit finding: action-engineer had no path,
+	# preloaded or on-demand, to the one skill that sequences a whole action
+	# build. A future edit that silently drops it from frontmatter must fail
+	# here instead of round-tripping that audit.
+	_skills_block "$AGENTS/action-engineer.md" | grep -qx -- "designing-an-action" || {
+		echo "agent action-engineer does not list designing-an-action under skills:" >&2
+		return 1
+	}
+}
+
 @test "no skill name leaks into an agent's tools block" {
 	# A skill in tools: is the exact bug this file exists to catch — it would
 	# still satisfy any test that merely greps the file for the skill name.
