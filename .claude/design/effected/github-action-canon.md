@@ -24,7 +24,7 @@ related:
 
 ## Overview
 
-This is the canonical shape of a GitHub Action repository built on `@effected` — its file layout, the order its pieces are designed in, the rules that are settled, and the hazards that must be considered before building. It is the register for **why** each rule exists; the teaching surface is the plugin's Actions skill suite ([plugin.md](plugin.md#skill-catalog)), entered through [`building-a-github-action`](../../../plugin/skills/building-a-github-action/SKILL.md) for capability routing and [`designing-an-action`](../../../plugin/skills/designing-an-action/SKILL.md) for the build sequence.
+This is the canonical shape of a GitHub Action repository built on `@effected` — its file layout, the order its pieces are designed in, the rules that are settled, and the hazards that must be considered before building. It is the register for **why** each rule exists; the teaching surface is the plugin's Actions skill suite ([plugin.md](plugin.md#skill-catalog)), entered through [`building-a-github-action`](../../../plugin/skills/building-a-github-action/SKILL.md) for capability routing, [`designing-an-action`](../../../plugin/skills/designing-an-action/SKILL.md) for the build sequence, and [`structuring-an-action`](../../../plugin/skills/structuring-an-action/SKILL.md) for the repository shape. The skills state the rules timelessly for a reader in a consumer repository; the incidents, run ids and issue numbers that justify them stay here.
 
 The canon was derived on 2026-08-03 from the three actions that had actually completed the migration onto `@effected/github-actions` — **silk-release-action v4.0.4**, **silk-runtime-action v1.3.2** and **silk-update-action v4.3.2** — audited construct by construct against their shipped source, incidents and issue trails, and ratified the same day. Their migration maps (what came from where) live under [consumers/](consumers/README.md); this document records what the three of them, taken together, prove a fourth action should look like.
 
@@ -38,6 +38,7 @@ The worked example is **savvy-web/github-action-template**, regenerated to this 
 | --- | --- |
 | This document | The rules, the rationale, the incident citations, the resolved decisions and their revisability. |
 | `designing-an-action` | The build sequence as a process an agent executes — recon, frozen spec, API dossier, walking skeleton, TDD fill. |
+| `structuring-an-action` | The repository shape this document specifies, taught as an annotated tree with structural standards a consumer-repo reader can apply directly. |
 | `building-a-github-action` | Capability → package → skill routing. Rows route; they do not teach. |
 | `actions-*` skills | The per-capability depth (runtime, inputs/outputs, state and secrets, reporting, cache and artifacts, testing). |
 | The template repo | The scaffolding that starts a new action already conforming. |
