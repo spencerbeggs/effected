@@ -1,279 +1,45 @@
 ---
 name: actions-inputs-outputs
-description: Use when reading @effected/github-actions inputs through ActionInput (Config-based — there is no ActionInputs service and ActionInputError does not survive; INPUT_ variable mangling; the Config.withDefault trap that silently swallows a malformed input behind a default) or writing outputs through ActionOutputs (set, setJson, summary, exportVariable, addPath, setFailed, setSecret; the derived runner-file heredoc delimiter; GITHUB_OUTPUT/GITHUB_ENV/GITHUB_PATH/GITHUB_STEP_SUMMARY). Also covers designing a machine-readable, schema-backed output contract for a workflow or LLM consumer. Trigger phrases — action input, action output, INPUT_ mangling, ConfigError, dry-run silently defaulted, runner file delimiter, setJson, output contract, JSON Schema drift test.
+description: Use when reading a GitHub Action's inputs through ActionInput, writing outputs through ActionOutputs, or designing a machine-readable, schema-backed output contract for a workflow or LLM consumer.
+when_to_use: action input, action output, INPUT_ mangling, ConfigError, dry-run silently defaulted, runner file delimiter, setJson, output contract, JSON Schema drift test, ActionInputs service, ActionInputError
 ---
 
 # Actions inputs & outputs
 
-The runner-file I/O surface of `@effected/github-actions`: reading what a
-workflow author configured, and publishing what the action produced. Both
-modules live in `packages/github-actions/src/`, both fail through structured
-errors, and neither ever spells a runner variable name — that mangling lives
-in exactly one function per direction.
+The runner-file I/O surface of `@effected/github-actions`: reading what a workflow author configured, and publishing what the action produced. Both modules fail through structured errors, and neither ever spells a runner variable name — that mangling lives in exactly one function per direction.
 
-For everything else the runtime provides — `ActionState`, `Secret`,
-`GitHubToken`, the default layer composition — see `actions-runtime`. For
-`Redacted`/masking mechanics and cross-phase state, see
-`actions-state-and-secrets`. For the job summary sink and log annotations
-beyond `setFailed`/`setSecret`, see `actions-reporting`. For test doubles and
-harness patterns across this package, see `testing-actions`. General Effect
-v4 `Config`/`Schema` rules live in `effect-v4-schema` and `effect-v4-idioms`;
-this skill carries only the Actions-specific instance of those rules.
+For everything else the runtime provides — `ActionState`, `Secret`, `GitHubToken`, the default layer composition — see `actions-runtime`. For `Redacted`/masking mechanics and cross-phase state, see `actions-state-and-secrets`. For the job summary sink and log annotations beyond `setFailed`/`setSecret`, see `actions-reporting`. For test doubles, see `testing-actions`. General Effect v4 `Config`/`Schema` rules live in `effect-v4-schema` and `effect-v4-idioms`; this skill carries only the Actions-specific instance of those rules.
 
-## Inputs: `Config`, not a service
+## What you have
 
-**Every action input read goes through `ActionInput.*` — the blessed typed
-surface. A bare `Config.string("some-input")` is the false-green this skill
-exists to name.** A real action shipped exactly this: `Config.string("dry-run")`
-typechecks, compiles clean, and passes a test suite that injects its own
-`ConfigProvider` keyed by the plain input name — because the test's provider
-never has to agree with the runner's own key derivation. Under the real
-runner the variable is `INPUT_DRY-RUN`, not `DRY-RUN` or `DRY_RUN`, so the
-bare read found nothing; `Config.withDefault(false)` (see the trap below)
-silently supplied the default; and a `dry-run: true` workflow dispatch
-executed its mutations for real.
-
-**Since the 2026-07-25 ruling, that class is dead at the root under
-`Action.run`**: the runtime installs `ActionInput.layerDefault`, whose
-provider resolves a bare flat name through the `INPUT_` derivation first and
-the ambient lookup unchanged second (`ActionInput.ts:366-408`) — so a
-side-stepped read degrades to the right answer instead of to the default.
-The accessors stay the rule, not a relic: they carry the parsing (`boolean`,
-`list`, `pairs`, `schema`) and the typed `ConfigError`s the provider cannot.
-And the suite-level trap survives outside the runtime: a test that injects
-its own plain-named `ConfigProvider` and never composes `ActionRuntime.layer`
-still resolves nothing the runner would — **the fix is never "spell `INPUT_`
-by hand" — it is "call `ActionInput.boolean("dry-run")` and let this module
-own the mangling."**
-
-There is no `ActionInputs` service and `ActionInputError` **does not
-survive** — an input failure is a `Config.ConfigError`
-(`packages/github-actions/CLAUDE.md`, "Errors"). `ActionInput` is a static
-namespace of `Config.Config<A>` factories
-(`packages/github-actions/src/ActionInput.ts:88-409`):
-
-| Accessor | Returns | Notes |
+| Construct | Import | Reach for it when |
 | --- | --- | --- |
-| `ActionInput.string(name)` | `Config.Config<string>` | `Config.string(inputVariable(name))` (`ActionInput.ts:102-104`) |
-| `ActionInput.boolean(name)` | `Config.Config<boolean>` | YAML 1.2 core schema: `true\|True\|TRUE\|false\|False\|FALSE` only (`ActionInput.ts:116-135`) |
-| `ActionInput.integer(name)` | `Config.Config<number>` | `Config.int(inputVariable(name))` (`ActionInput.ts:144-146`) |
-| `ActionInput.redacted(name)` | `Config.Config<Redacted.Redacted<string>>` | `Config.redacted(inputVariable(name))` (`ActionInput.ts:156-158`) |
-| `ActionInput.lines(name)` | `Config.Config<ReadonlyArray<string>>` | Splits on `\n`, trims, drops blanks (`ActionInput.ts:171-180`) |
-| `ActionInput.list(name)` | `Config.Config<ReadonlyArray<string>>` | Accepts a JSON array, a YAML bullet list, or comma/newline-separated values (`ActionInput.ts:216-245`) |
-| `ActionInput.pairs(name)` | `Config.Config<Record<string, string>>` | One `key=value` per line, `#` comments stripped, splits on the **first** `=` only (`ActionInput.ts:257-275`) |
-| `ActionInput.schema(name, schema)` | `Config.Config<A>` | JSON-parses the raw string, then decodes through `schema` (`ActionInput.ts:287-301`) |
+| `ActionInput.string` / `.boolean` / `.integer` / `.redacted` | `import { ActionInput } from "@effected/github-actions"` | reading a single-value input with the runner's own parsing rules |
+| `ActionInput.lines` / `.list` / `.pairs` | same | reading a multi-value or key/value input without hand-rolling a splitter |
+| `ActionInput.schema(name, schema)` | same | an input carries genuinely nested structure and is worth decoding as JSON |
+| `ActionOutputs.set` / `.exportVariable` / `.addPath` | `import { ActionOutputs } from "@effected/github-actions"` | publishing a plain output, an env var for later steps, or a PATH prefix |
+| `ActionOutputs.setJson` | same | publishing a structured output through a `Schema` codec |
+| `ActionOutputs.summary` | same | appending to the job summary (full sink detail in `actions-reporting`) |
+| `ActionOutputs.setFailed` / `.setSecret` | same | rendering `::error::`/`::add-mask::` directly, outside the normal failure path |
 
-Every one of these is keyed by `inputVariable(name)`
-(`ActionInput.ts:19`):
+## Standards
 
-```ts
-export const inputVariable = (name: string): string => `INPUT_${name.replaceAll(" ", "_").toUpperCase()}`;
-```
+- **Read every input through `ActionInput`'s accessors — never a bare `Config.string`/`Config.boolean` spelled by hand.** The accessors own the `INPUT_` name mangling (uppercase, spaces to underscores, dashes survive) and carry the parsing and typed `ConfigError`s a bare read cannot. `ActionRuntime.layer` installs a provider that also resolves a bare flat name through the same derivation, but a program that reads inputs directly still owns none of the parsing — write `ActionInput.boolean("dry-run")`, not `INPUT_DRY-RUN` spelled anywhere.
+- **Give every hand-built `Config.ConfigError` its `actual`.** `Config.withDefault`/`Config.option` fall back only for data an issue classifies as *missing* — an `InvalidValue` whose `actual` is `Option.none()` reads as missing even when the input was present and malformed. Construct with `Option.some(actual)` so a present-but-invalid value fails instead of silently defaulting.
+- **Design a state or output field's encoded form as plain JSON before deciding how to test it.** A `setJson` payload, a runner-file write, and cross-phase state all round-trip through `JSON.stringify`/`parse`; a value whose encoded form isn't a JSON primitive fails one step later than the mistake.
+- **Build a `CheckRunOutput`/`ActionOutputs` object with a conditional spread when a field is `optionalKey`.** The key may be omitted; the value must never be an explicit `undefined` passed to it.
+- **Publish a `setJson` contract from a schema the projection also produces from — never duplicate the shape.** See `references/output-contracts.md`.
+- **An empty string reads as absent, everywhere in this surface.** The runner sets an unsupplied optional input to `""`; treat that the same as a missing key, not a supplied empty value.
 
-**GitHub uppercases and replaces SPACES with underscores — DASHES SURVIVE.**
-The input `sbom-config` arrives as `INPUT_SBOM-CONFIG`, not
-`INPUT_SBOM_CONFIG` (`ActionInput.ts:8-10`; asserted directly in
-`__test__/ActionInput.test.ts:18-31`, including a regression case named for
-"the bug that shipped": a consumer once read
-`process.env["INPUT_SBOM_CONFIG"]` directly and silently got nothing). The
-same rule for a multi-word action name: `upgrade-runtime-node` arrives as
-`INPUT_UPGRADE-RUNTIME-NODE`. A hand-written test key of
-`INPUT_UPGRADE_RUNTIME_NODE` — underscores where the dashes belong — reads
-nothing, and a test built that way passes for the wrong reason: it never
-asked the runner's real key to resolve at all. Read every input through
-`ActionInput` — no caller spells `INPUT_*` itself.
+## Footguns
 
-An **empty string reads as absent**, both for `ActionInput`'s accessors and
-for `ActionInput.provider` (`ActionInput.ts:309-311`, `:318-319`): the runner
-sets an unsupplied optional input to `""`, and treating that as present
-would make every unset optional input look supplied.
+- A bare `Config.string("dry-run")` can typecheck, compile clean, and pass a test suite whose injected `ConfigProvider` is keyed by the plain name — and still read nothing against the real runner, silently falling back to a default. See `references/input-validation.md`.
+- GitHub uppercases and replaces spaces with underscores in a runner variable name, but dashes survive — a hand-written test key with underscores where dashes belong reads nothing and passes for the wrong reason. See `references/input-validation.md`.
+- `ActionEnvironment` snapshots `process.env` once at layer construction, so a value exported mid-run through `exportVariable` is never observed by the same process's own reader — that's GitHub's model, not a bug. Assert against the written `GITHUB_ENV` file, not a same-process readback.
+- A runner-file block write uses a derived delimiter, never a fixed or random one — a value containing an un-derived delimiter would terminate its own block early and corrupt every entry written after it in the same file.
 
-```ts
-import { ActionInput } from "@effected/github-actions";
-import { Effect } from "effect";
+## Additional resources
 
-const program = Effect.gen(function* () {
- const dryRun = yield* ActionInput.boolean("dry-run");
- const paths = yield* ActionInput.list("paths");
- const token = yield* ActionInput.redacted("token");
-});
-```
-
-### Two providers: `layerDefault` is in the runtime, `layer()` never is
-
-`ActionInput.layerDefault` (`ActionInput.ts:402-408`) **is** composed into
-`ActionRuntime.layer` since the 2026-07-25 ruling. Its provider,
-`ActionInput.providerOver(ambient)` (`ActionInput.ts:366-377`), touches only
-a **flat, single string-segment** name — the only shape the runner could have
-set — trying `inputVariable(name)` through the ambient provider first, then
-the name unchanged; nested and numeric paths pass through untouched. The
-pinned consequences: a supplied input **shadows** an env var of the same
-bare name in any casing of the read (the derivation uppercases); an
-unsupplied input (`""`) does not shadow, because the attempt resolves
-through the ambient provider's empty-is-absent rule; and the `ActionInput.*`
-accessors are unchanged — their `INPUT_` names re-mangle to `INPUT_INPUT_…`,
-never match, and fall through to the ambient lookup they always used
-(`__test__/ActionInput.test.ts`, "providerOver — the runtime's default
-resolution").
-
-`ActionInput.layer(env?)` installs `ActionInput.provider` — a
-`ConfigProvider` that joins a path with `_`, replaces spaces with underscores
-and uppercases the whole (`ActionInput.ts:316-321`, `:334-336`). It is
-**never** composed into `ActionRuntime.layer`, and the original probe result
-still holds: `ActionInput`'s own `inputVariable` already fully mangles the
-key before any `Config` read happens, and at beta.101 the ambient default
-`ConfigProvider` resolves that exact variable with the same
-empty-string-is-absent semantics — so installing it in production buys
-nothing for inputs, while its uppercasing would silently re-mangle the key
-of every **other** `Config` the program reads. That cost is exactly why the
-ruling shipped a *different*, narrower provider instead of this one. It
-stays exported for the one case it was built for: resolving inputs from an
-explicit record in a test, without mutating `process.env`.
-
-```ts
-// Test-only — never composed into a running action's default layer:
-const value = yield* Effect.provide(ActionInput.string("dry-run"), ActionInput.layer({ "INPUT_DRY-RUN": "true" }));
-```
-
-### The `Config.withDefault` trap
-
-**The most valuable thing in this skill.** `Config.withDefault` and
-`Config.option` fall back only for **missing** data — and "missing" is
-judged from the *issue*, not the combinator: an `InvalidValue` whose `actual`
-is `Option.none()` is classified as missing data
-(`.repos/effect/packages/effect/src/Config.ts:298-325`,
-`isMissingDataOnly`, confirmed at line 304:
-`Option.isNone(issue.actual) || (Option.isSome(issue.actual) && issue.actual.value === undefined)`).
-`Config.withDefault`'s own TSDoc states "validation errors still propagate" —
-true, **provided** the validation error correctly carries what it rejected.
-
-A hand-built `Config.ConfigError` that omits `actual` therefore looks exactly
-like missing data to `withDefault`/`option`, and gets silently swallowed by
-any default placed on top of it — even though the input was **present and
-malformed**, not absent.
-
-This shipped as a real defect in `ActionInput.boolean`: a malformed
-`dry-run` input resolved to `false` under a `withDefault(false)`, and a
-rehearsal run performed real mutations
-(`.claude/plans/2026-07-25-github-split-decisions-log.md:420-426`;
-`packages/github-actions/CLAUDE.md`, "Errors"). The fix is in
-`ActionInput.ts:33-34`:
-
-```ts
-const configError = (message: string, actual: unknown): Config.ConfigError =>
- new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue(Option.some(actual), { message })));
-```
-
-`Option.some(actual)` is load-bearing. **Any typed `ConfigError` built in
-this package (or a downstream one) must carry its `actual`.** The wrong
-version — `Option.none()`, or a bare `Config.ConfigError` built without
-routing through `SchemaIssue.InvalidValue` at all — compiles, typechecks,
-and passes every test that does not specifically stack a `withDefault` on
-top of the failing config. Test for it directly: assert that
-`yourConfig.pipe(Config.withDefault(fallback))` still **fails** — not
-falls back — when fed a present-but-malformed value.
-
-## Outputs: `ActionOutputs`
-
-`ActionOutputs` (`packages/github-actions/src/ActionOutputs.ts:149-172`) is a
-`Context.Service` requiring `ActionEnvironment | FileSystem.FileSystem` to
-build. Its shape (`ActionOutputsShape`, `ActionOutputs.ts:70-89`):
-
-| Member | Signature | Target |
-| --- | --- | --- |
-| `set` | `(name, value) => Effect<void, ActionOutputError>` | `GITHUB_OUTPUT` |
-| `setJson` | `<A, I>(name, value: A, schema: Schema.Codec<A, I>) => Effect<void, ActionOutputError>` | `GITHUB_OUTPUT`, JSON-encoded through `schema` |
-| `summary` | `(content) => Effect<void, ActionOutputError>` | `GITHUB_STEP_SUMMARY` |
-| `exportVariable` | `(name, value) => Effect<void, ActionOutputError>` | `GITHUB_ENV` |
-| `addPath` | `(path) => Effect<void, ActionOutputError>` | `GITHUB_PATH` |
-| `setFailed` | `(message) => Effect<void>` | stdout, `::error::` workflow command |
-| `setSecret` | `(value) => Effect<void>` | stdout, `::add-mask::` workflow command |
-
-`ActionOutputError` (`ActionOutputs.ts:10-38`) carries a closed `reason`:
-`unavailable` (the runner-file variable itself is unset — usually means the
-code is not running on a runner), `writeFailed`, `invalidName`, or
-`encodeFailed` (a `setJson` value did not satisfy its schema).
-
-### Where the runner files come from
-
-`ActionOutputs`' internal `append` resolves the destination path by asking
-`ActionEnvironment.get(file)` for the runner-file **variable name** —
-`"GITHUB_OUTPUT"`, `"GITHUB_ENV"`, `"GITHUB_PATH"`, `"GITHUB_STEP_SUMMARY"`
-(`ActionOutputs.ts:95-103`). `ActionEnvironment` is the **one** reader of
-`process.env` in the package, snapshotted once into an immutable map when its
-`.layer` builds (`ActionEnvironment.ts:294-304`); `get` fails typed
-(`ActionEnvironmentError`, `reason: "unavailable"` maps through to
-`ActionOutputError`'s `unavailable`) rather than resolving to `undefined`
-when a variable is not set — which is exactly what happens when this code
-runs off a real runner. Full context/override mechanics
-(`GitHubContext`, `RunnerContext`, `withEnv`, fiber-local overrides):
-`actions-runtime`.
-
-### Runner-file delimiters are derived, never random
-
-Every block write goes through `appendBlock`, which wraps the value in a
-heredoc-shaped block (`ActionOutputs.ts:105-111`):
-
-```ts
-const delimiterFor = (value: string): string => {
- let delimiter = BASE_DELIMITER; // "EFFECTED_EOF"
- while (value.includes(delimiter)) {
-  delimiter = `${delimiter}_`;
- }
- return delimiter;
-};
-```
-
-GitHub's own toolkit picks a random UUID here and accepts the (tiny) chance
-of collision. Extending `EFFECTED_EOF` with `_` until it is absent from the
-value makes collision **impossible** rather than improbable, needs no
-`Crypto` in `R`, and is deterministic under test
-(`ActionOutputs.ts:43-60`; exercised directly in
-`__test__/ActionOutputs.test.ts:67-83`, which writes a value containing the
-literal string `EFFECTED_EOF` and asserts the delimiter grew past it). A
-value that contained an un-derived, fixed delimiter would terminate its
-block early and corrupt every entry written after it in the same file — a
-value-controlled injection into the runner's own file. `isUsableName`
-(`ActionOutputs.ts:63`) applies the same discipline to the **name** half:
-a name containing `\r` or `\n` is refused (`reason: "invalidName"`) before
-anything is written, rather than corrupting the block structure.
-
-### `exportVariable` targets subsequent steps, not this one
-
-`ActionEnvironment` snapshots `process.env` once, at layer construction. A
-variable exported mid-run through `ActionOutputs.exportVariable` is **not**
-observed by an already-seeded `ActionEnvironment` reader in the same
-process — that is GitHub's own model (`exportVariable` affects steps that
-run *after* the current one), not a bug in this package
-(`ActionEnvironment.ts:113-129`, `ActionOutputs.ts:139-146`). Do not write a
-test asserting a same-process readback of an exported variable; assert
-against the written `GITHUB_ENV` file content instead, as
-`__test__/ActionOutputs.test.ts:100-114` does.
-
-```ts
-import { ActionOutputs } from "@effected/github-actions";
-import { Effect, Schema } from "effect";
-
-const Result = Schema.Struct({ count: Schema.Number, tag: Schema.String });
-
-const program = Effect.gen(function* () {
- const outputs = yield* ActionOutputs;
- yield* outputs.set("version", "1.2.3");
- yield* outputs.setJson("result", { count: 2, tag: "ok" }, Result);
- yield* outputs.exportVariable("CACHE_HIT", "true");
- yield* outputs.summary("## Done\n");
-});
-```
-
-## Machine-readable output contracts
-
-Designing a `setJson` payload as a stable contract for a downstream workflow
-step or an LLM consumer — `Schema` as the single source of truth,
-`Schema.toJsonSchemaDocument`, annotation conventions, and a committed-schema
-drift test — is its own reference.
-
-**Load when:** authoring or reviewing a `setJson` output meant to be
-consumed outside the action itself (a downstream job, a bot, an LLM reading
-workflow output).
-
-→ [references/output-contracts.md](references/output-contracts.md)
+- [references/input-validation.md](references/input-validation.md) — the `Config.withDefault` trap in full, the `inputVariable` mangling rule with its dash/underscore trap, the two config providers (`layerDefault` vs the record-backed `layer()`), and the three-way sync discipline between `action.yml`, an input names tuple and the decoded shape. Load when: designing or reviewing an inputs module, or chasing why a malformed input silently defaulted.
+- [references/output-contracts.md](references/output-contracts.md) — `ActionOutputs`' full member table, the runner-file delimiter and name-validation rules, and the pattern for a `setJson` payload meant to be consumed outside the action: schema as encoder, pure projections, `Schema.toJsonSchemaDocument`, and a committed-schema drift test. Load when: authoring or reviewing `ActionOutputs` usage, or a `setJson` output meant for a downstream job, a bot, or an LLM reader.
+- [references/json-contracts.md](references/json-contracts.md) — when a JSON-shaped input earns a published, `@effected/schemastore`-generated JSON Schema versus staying an internal `ActionInput.schema` decode. Load when: an input is genuinely nested structure rather than a flat or line-list value, and workflow authors would benefit from editor completion on it.

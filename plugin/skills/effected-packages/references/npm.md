@@ -31,6 +31,8 @@ Depth — the doubles, the auth/nerf-dart mechanics, the digest pair, the execut
 - **`NpmExecutor`** — which npm runs: `NpmExecutor.ambient` or `NpmExecutor.dlx("npm@11")` through `LocalExec.applyDlx`; `dlx` with no project-local launcher fails typed rather than degrading to the ambient npm.
 - **`RegistryKind` / `classifyRegistry(registry?)`** — `"npm" | "github-packages" | "jsr" | "custom"`; absent classifies as `"npm"`; subdomain matching requires a leading dot.
 - **`ReleaseAgeGate` / `PartialReleaseAgeGate`** — pnpm-parity publish-age gating: `combine` (the single clamping authority), `matchesExclude`/`isExcluded` (`@pnpm/matcher` parity — `*` crosses `/`, deliberately NOT `@effected/glob`'s dialect), `filterVersions`.
+- **`PackageManagerPin`** — a `Schema.Class` pinning one package manager to an exact version (`PackageManagerPinName`: `npm | pnpm | yarn | bun`; `InvalidPackageManagerPinError` on a malformed pin). A plain value, not a service — costs nothing in `R`. Consumed by `@effected/github-actions`'s `PackageManagerInstaller` as the argument to `install`, confined to that one module by the reachability suite (see `actions-cache-and-artifacts`).
+- **`PackageManagerCache`** — `CachingPackageManager` (`npm | pnpm | yarn-classic | yarn-berry | bun` — yarn is two rows because the cache location differs by major and a bare `yarn` name doesn't say which), `DefaultCacheDirectoryOptions`: a pure fact table answering "where does manager X cache by default on platform Y," each row cited against the manager's own authority. Replaces shelling `npm config get cache` / `pnpm store path` per run for a value that is always the default on a freshly provisioned machine.
 
 ## Usage
 

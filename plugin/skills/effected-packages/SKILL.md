@@ -55,10 +55,17 @@ against its services, or test code that uses it.
 | `@effected/app` | the application control plane: one layer wiring XDG dirs + Store + Cache + config | wiring an APPLICATION's local state in one move | integrated | [app.md](./references/app.md) |
 | `@effected/pnpm-plugin-effect` | pnpm catalogs pinning the Effect ecosystem (companion — config, not code) | setting up Effect version pinning in a pnpm workspace | — | [pnpm-plugin-effect.md](./references/pnpm-plugin-effect.md) |
 
-**Seven rows have no `references/` file yet** — `markdown`, `spdx`, and the five
-github-split packages (`commands`, `templates`, `github`, `github-actions`,
-`sbom`). Read the package's own `CLAUDE.md` for depth on those; it is the
-authority either way, and `references/` files for the five are a later pass.
+**Eight rows have no `references/` file yet** — `markdown`, `spdx`,
+`schemastore` (published in the same 2026-08-03 wave this note was last
+updated, and previously missing from this count), and the five github-split
+packages (`commands`, `templates`, `github`, `github-actions`, `sbom`). Read
+the package's own `CLAUDE.md` for depth on those; it is the authority either
+way, and `references/` files for the eight are a later pass. For `github`,
+`github-actions` and `commands` specifically, the depth lives one level up
+from a single reference file: `building-a-github-action` routes a 13-skill
+suite (capability references plus `designing-an-action`'s build sequence)
+covering these three packages and `npm`/`sbom` in far more depth than a
+`references/*.md` file would — start there, not only at the `CLAUDE.md`.
 Facts about them that change how you depend on them:
 
 - **`@effected/markdown` peers on `@effected/yaml` / `@effected/toml` /
@@ -169,3 +176,13 @@ Three standing directives for a downstream repo rebuilding against this kit:
 `effect-v4-module-index` routes Effect core; this skill routes the kit. Check
 core first — the kit deliberately requires core contracts (`FileSystem`,
 `ChildProcessSpawner`) rather than re-declaring them.
+
+**Construct-level coverage — does every export get named somewhere in
+`skills/` — is checked, not maintained by hand here.**
+`plugin/__test__/construct-coverage.bats` walks each covered package's
+`src/index.ts` export list against every skill file, phased in starting from
+six packages (`github-actions`, `github`, `commands`, `npm`, `schemastore`,
+`jsonl`). This file's prose is what that check verifies isn't silently
+orphaned, not the source of truth for whether a given export is covered — a
+hand-maintained claim of completeness drifts the same way this file's own
+stale reference-file count once did.
