@@ -1,6 +1,7 @@
 ---
 name: actions-state-and-secrets
-description: Use when persisting values across an Action's pre/main/post phase boundary, handling a Redacted secret anywhere in @effected/github-actions, deciding whether a value belongs in ActionState or ActionOutputs, framing a blob with metadata for the cache or an S3-compatible store, reaping a detached child by a pid that round-tripped through GITHUB_STATE, or rendering an Action's top-level failure. Covers ActionState.save/get/saveSecret, the BlobEnvelope wire format, Secret's declassification seam (forChildEnv/forRunnerFile/forSigning/adopt), the structural no-Redacted.value scan, DryRun, Action.run's failure rendering, and the DetachedProcess bare-pid guard.
+description: Use when persisting values across a GitHub Action's pre/main/post phase boundary, handling a Redacted secret anywhere in @effected/github-actions, deciding whether a value belongs in ActionState or ActionOutputs, framing a blob with metadata for a cache or object store, reaping a detached child process, or rendering an Action's top-level failure.
+when_to_use: ActionState, Redacted secret, BlobEnvelope, Secret.forChildEnv, Secret.forRunnerFile, Secret.forSigning, Secret.adopt, DryRun, DetachedProcess, GITHUB_STATE, ChildEnv PATH prepend
 ---
 
 # Actions state and secrets

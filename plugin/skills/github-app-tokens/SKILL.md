@@ -1,6 +1,7 @@
 ---
 name: github-app-tokens
-description: Use when a token needs to come into existence, live somewhere, and die — GitHubClient.layerFromToken/layerFromConfig, GitHubApp.clientLayer and the module-split rule behind it, GitHubApp.token/scopedToken/revoke/identity, TokenPermissions.assertSufficient/assertExact, InstallationToken.isExpired, or GitHubToken.provision/read/clientLayer/dispose across an Action's pre/main/post phases. Trigger phrases include GitHubApp, installation token, App JWT, token bridge, GitHubTokenError, botIdentity, TokenPermissionError, revoke on release, acquireUseRelease token, GITHUB_STATE persisted token, plain GITHUB_TOKEN input.
+description: Use when a GitHub credential needs to come into existence, live somewhere, and die — constructing a client from a plain token or a GitHub App, or wiring GitHubToken's provision/read/clientLayer/dispose lifecycle across an Action's pre/main/post phases.
+when_to_use: GitHubApp, installation token, App JWT, token bridge, GitHubTokenError, botIdentity, TokenPermissionError, revoke on release, acquireUseRelease token, GITHUB_STATE persisted token, plain GITHUB_TOKEN input
 ---
 
 # GitHub App tokens: the credential lifecycle

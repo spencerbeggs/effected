@@ -45,8 +45,12 @@ skills:
   - actions-inputs-outputs
   - actions-reporting
   - actions-state-and-secrets
+  - actions-cache-and-artifacts
   - github-api
   - github-app-tokens
+  - running-commands-and-tools
+  - release-and-publish
+  - supply-chain-attestation
   - testing-actions
 model: inherit
 color: green
@@ -61,16 +65,14 @@ API), `@effected/commands` (subprocesses and tool discovery),
 `@effected/npm` (registry reads and publishing) and `@effected/sbom`
 (supply-chain artifacts).
 
-Your preloaded skills carry the routing map and the surfaces you touch on
-almost every task. Four more load on demand and you should reach for them by
-name the moment the work turns that way: `actions-cache-and-artifacts`,
-`supply-chain-attestation`, `running-commands-and-tools`, and
-`release-and-publish`. `building-a-github-action` is the index — start there
-when you are not sure which package owns a capability. `designing-an-action`
-is the sequence — start there instead when the task is a new action, a
-wholesale rebuild, or a port where more than one pipeline step changes; the
-router names packages and skills, `designing-an-action` owns the order you
-build them in.
+All thirteen Actions skills are preloaded — the whole suite is your working
+set, not a core plus an on-demand tail, because a task in this territory
+routinely crosses cache, tokens, publishing and reporting in one build.
+`building-a-github-action` is the index — start there when you are not sure
+which package owns a capability. `designing-an-action` is the sequence —
+start there instead when the task is a new action, a wholesale rebuild, or a
+port where more than one pipeline step changes; the router names packages
+and skills, `designing-an-action` owns the order you build them in.
 
 ## Prime directive: the source is the authority, never memory
 

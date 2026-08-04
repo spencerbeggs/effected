@@ -1,6 +1,7 @@
 ---
 name: testing-actions
-description: Use when writing or reviewing tests for @effected/github-actions, @effected/github, @effected/sbom or @effected/commands — test a GitHub Action, stub the GitHub API, mock GitHubClient, write a service's layerTest/makeTest double, test the pre/main/post lifecycle through Action.run, assert on action outputs or masked secrets, drive the octokit fetch harness, sign a Sigstore bundle with a stub Signer/Witness, or debug why a test is hitting the real network or hanging. Covers which service doubles answer versus die loudly and why, the scripted-fetch harness that runs the REAL octokit client, real-IO recipes for ToolInstaller/BlobStore/HTTP, the two-latch withEnv concurrency instance, the Azure/Redacted.value/Sigstore reachability walkers, and the recorded discriminating mutants for this domain. Does not repeat it.effect, Effect.flip/result, layer() memoization, TestClock, property tests or the false-greens catalog — that is effect-v4-testing; this is its GitHub Actions/GitHub API/supply-chain instance.
+description: Use when writing or reviewing tests for @effected/github-actions, @effected/github, @effected/sbom or @effected/commands — stubbing the GitHub API, writing a service's layerTest or makeTest double, testing the pre/main/post lifecycle through Action.run, or debugging why a test hits the real network or hangs.
+when_to_use: makeTest, layerTest, scripted fetch harness, GitHubClient.layerFixture, two-latch withEnv, reachability walker, discriminating mutant, Sigstore stub Signer, mock GitHubClient
 ---
 
 # Testing GitHub Actions, GitHub API and supply-chain code

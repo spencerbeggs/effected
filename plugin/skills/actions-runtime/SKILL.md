@@ -1,6 +1,7 @@
 ---
 name: actions-runtime
-description: Use when writing or reviewing a GitHub Action's pre/main/post entry point on @effected/github-actions — wiring Action.run, ActionRuntime.layer, the ActionServices union, an extra ActionRunOptions.layer, or deciding whether ActionCache/Artifact/GitHubCacheBlobStore belong in the runtime. Trigger phrases include Action.run, ActionRuntime, ActionServices, ActionRunOptions.layer, describeCause, GitHubToken.clientLayer, action entry point, pre/main/post script.
+description: Use when writing or reviewing a GitHub Action's pre/main/post entry point on @effected/github-actions — wiring Action.run, ActionRuntime.layer, the ActionServices union, an extra ActionRunOptions.layer, or deciding whether ActionCache, Artifact or GitHubCacheBlobStore belong in the runtime.
+when_to_use: Action.run, ActionRuntime, ActionServices, ActionRunOptions.layer, describeCause, GitHubToken.clientLayer, action entry point, pre/main/post script, isDebug, MinimumLogLevel
 ---
 
 # Actions runtime

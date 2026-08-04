@@ -1,6 +1,7 @@
 ---
 name: github-api
-description: Use when calling GitHub's REST or GraphQL API from Effect v4 code through @effected/github — typing a client.request call by route, choosing paginate vs paginateStream, reaching for requestDecoded as an escape hatch, building a GitBranch/GitTag upsert, classifying or catching a GitHubError, wiring a resource service's layer, or working with Repo, RetryPolicy, GraphQLDocument, TokenPermissions, CheckRunOutput, or CommentMarker. Does not cover GitHub App authentication or client construction (github-app-tokens), check-run/PR-comment reporting workflows (actions-reporting), the octokit test harness (testing-actions), or attestation upload (supply-chain-attestation).
+description: Use when calling GitHub's REST or GraphQL API from Effect v4 code through @effected/github — typing a client.request call by route, choosing paginate vs paginateStream, building a GitBranch or GitTag upsert, classifying or catching a GitHubError, or wiring a resource service's layer.
+when_to_use: client.request, requestDecoded, GitHubError, Repo, RetryPolicy, GraphQLDocument, TokenPermissions, CheckRunOutput, CommentMarker, GitBranch upsert, GitTag upsert, GitHub REST API, GitHub GraphQL API
 ---
 
 # `@effected/github`: calling GitHub from Effect v4

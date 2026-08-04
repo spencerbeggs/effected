@@ -1,6 +1,7 @@
 ---
 name: release-and-publish
-description: Use when publishing a package to npm, reading the npm registry from Effect v4, checking whether a version is already published, cutting a release tag or GitHub release from an action, deciding npm publish from CI, distinguishing GitHub Packages from the npm registry, applying a release-age gate before resolving a candidate version, tracking tags like v1/v1.2 for GitHub Actions distribution, or wiring @effected/npm, @effected/workspaces and @effected/github together for a release pipeline. Does not cover generic REST/GraphQL calls (github-api), subprocess execution (running-commands-and-tools), SBOM/attestation (supply-chain-attestation), the Actions runtime (actions-runtime), or test harnesses (testing-actions).
+description: Use when publishing a package to npm, reading the npm registry from Effect v4, checking whether a version is already published, cutting a release tag or GitHub release from an action, applying a release-age gate, or deriving tracking tags for GitHub Actions distribution.
+when_to_use: NpmRegistry, PackagePublish, NpmExecutor, npm publish from CI, GitHub Packages vs npm registry, ReleaseAgeGate, VersioningStrategy, ReleaseTag, TrackingTag, macOS npm cache EACCES
 ---
 
 # Release and publish

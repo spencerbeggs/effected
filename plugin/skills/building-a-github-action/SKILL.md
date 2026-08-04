@@ -1,6 +1,7 @@
 ---
 name: building-a-github-action
-description: Use FIRST when building, extending or reviewing a GitHub Action, a release/publish pipeline, or any Effect v4 program that talks to the GitHub API — to decide which @effected package owns a capability and which skill teaches it. Answers "how do I build an action", "which service handles X", "does the kit ship Y", and "what replaced @actions/core / @savvy-web/github-action-effects". Trigger phrases include build a GitHub Action, new action, action.yml, GITHUB_TOKEN, GitHub App token, workflow command, job summary, check run, cache in an action, upload an artifact, publish to npm from CI, SBOM, attestation. Rows route; they do not teach.
+description: Use FIRST when building, extending or reviewing a GitHub Action, a release/publish pipeline, or any Effect v4 program that talks to the GitHub API, to decide which @effected package owns a capability and which skill teaches it. Answers which service handles a capability, whether the kit already ships it, and what the modern @effected equivalent of a legacy Actions toolkit call is.
+when_to_use: build a GitHub Action, new action, action.yml, GITHUB_TOKEN, GitHub App token, workflow command, job summary, check run, cache in an action, upload an artifact, publish to npm from CI, SBOM, attestation
 ---
 
 # Building a GitHub Action

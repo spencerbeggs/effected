@@ -1,6 +1,7 @@
 ---
 name: supply-chain-attestation
-description: Use when generating a CycloneDX SBOM, checking NTIA minimum elements, building an in-toto statement or a SLSA provenance predicate, signing into a Sigstore DSSE bundle, attesting a build, wiring an Actions OIDC token into a signature, or uploading an attestation to GitHub — the @effected/sbom + @effected/github-actions + @effected/github pipeline that mints, signs and stores a supply-chain attestation.
+description: Use when generating a CycloneDX SBOM, checking NTIA minimum elements, building an in-toto statement or a SLSA provenance predicate, signing into a Sigstore DSSE bundle, or uploading an attestation to GitHub.
+when_to_use: Sbom.generate, NtiaReport, InTotoStatement, SlsaProvenance, SigstoreSigner, OidcTokenIssuer, ActionsProvenance, ActionsIdentityToken, Attestation.upload
 ---
 
 # Supply-chain attestation

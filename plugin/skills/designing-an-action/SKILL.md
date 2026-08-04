@@ -1,6 +1,7 @@
 ---
 name: designing-an-action
-description: Use when designing a NEW GitHub Action, rebuilding or porting an existing action onto the @effected suite, or planning any multi-step action build — before writing the spec, the plan, or any module. Triggers include design a new action, rebuild an action, port an action to effected, greenfield action rebuild, action walking skeleton, contracts-first build, parity contract, action.yml parity, replace @actions/* or @savvy-web/github-action-effects wholesale. For a single feature added to an existing action, skip this and load the matching actions-* skill; for capability routing load building-a-github-action; this skill sequences the whole build.
+description: Use when designing a NEW GitHub Action, rebuilding or porting an existing action onto the @effected suite, or planning any multi-step action build, before writing the spec, the plan, or any module. For a single feature added to an existing action, load the matching actions-* skill instead; for capability routing, load building-a-github-action.
+when_to_use: design a new action, rebuild an action, port an action to effected, greenfield action rebuild, action walking skeleton, contracts-first build, parity contract, action.yml parity, replace a legacy Actions toolkit wholesale
 ---
 
 # Designing an action
