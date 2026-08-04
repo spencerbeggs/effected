@@ -338,6 +338,18 @@ attempt. `Retry.transient(options?)` returns ready-made `{ while, schedule, time
 only**: a caller needing to repair state between attempts (reset a working tree, say) composes
 `Effect.retryOrElse` or `Effect.tapError` itself.
 
+## `ScriptedSpawner` — the shipped scripted-`ChildProcessSpawner` double
+
+`packages/commands/src/ScriptedSpawner.ts` exports `ScriptedSpawner`,
+`SpawnScript`, `SpawnRecord` and `ScriptResult` — a scripted
+`ChildProcessSpawner` implementation for tests that need a specific sequence
+of commands to return specific output without a real subprocess.
+`testing-actions` describes "the scripted spawner" as a recipe (the
+`Layer.mergeAll(scriptedSpawner, NodeServices.layer)` ordering trap in
+particular); this is the actual shipped class that recipe is built around —
+reach for it by name instead of hand-rolling a `ChildProcessSpawner.make`
+stub per suite.
+
 ## Point elsewhere, don't restate
 
 - **`effect-v4-module-index`** — what `effect/unstable/process` declares (`ChildProcess` /

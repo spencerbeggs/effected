@@ -26,6 +26,34 @@ storage-specific instance of each.
 | Same, in S3 / R2 / MinIO / Spaces | `BlobStore` over `BlobStore.layerS3(config)` | `BlobStore.layerS3(config)` | `HttpClient \| ActionOutputs` | same |
 | A cache key, its restore-key ladder, and `hashFiles` | `CacheKey` | none — a pure `Schema.Class` with `Effect.fn` statics | `FileSystem` (`hashFiles`), `+ Path` (`matchingFiles`) | `CacheKeyError` |
 | Download, extract and cache a toolchain | `ToolInstaller` | `ToolInstaller.layer` | `ActionEnvironment \| FileSystem \| Path \| HttpClient \| ChildProcessSpawner` | `ToolInstallerError` |
+| Pin and install an exact npm/pnpm/yarn/bun on the runner | `PackageManagerInstaller` | `PackageManagerInstaller.layer` | `ActionEnvironment \| FileSystem \| Path \| ChildProcessSpawner \| ToolInstaller` | `PackageManagerInstallerError` |
+
+### `PackageManagerInstaller`: exact-version npm/pnpm/yarn/bun over `ToolInstaller`
+
+`PackageManagerInstaller.install(pin, options?)` (`packages/github-actions/src/PackageManagerInstaller.ts`)
+answers an `InstalledPackageManager` — a `Schema.Union` discriminated on
+`source`: `AmbientPackageManager` (the runner's own toolchain already had the
+exact pinned version — nothing downloaded, nothing cached, `bins` are bare
+command names resolved through `PATH`, and there is **no `binDir`**) or
+`CachedPackageManager` (found in or installed into the runner's tool cache —
+carries an `addPath`-able `binDir`, with shims written into the **staged**
+entry for the npm-registry managers, bun's own directory for bun). **A
+consumer that always reads `binDir` breaks on the ambient answer** — branch on
+`source` first. `options.allowAmbient` (default `true`) suppresses the ambient
+probe entirely when the run is about to replace the runner's Node with a
+pinned one, so a stale ambient npm never shadows it.
+
+`install`'s `pin` argument is `@effected/npm`'s `PackageManagerPin` — a plain
+`Schema.Class`, not a service, so it costs nothing in `R`. The dependency this
+module actually takes on `@effected/npm` is confined to importing that one
+type, on the same confinement terms as the Azure adapters (see Trap 2): not
+reachable from `ActionRuntime.layer` or any light module, so taking
+`PackageManagerInstaller` costs a consumer one explicit layer line, same as
+`ActionCache`. `ToolInstaller` answers "is this tool cached, and can I
+install it" for an arbitrary toolchain; `PackageManagerInstaller` answers the
+narrower, sharper question "give me an exact npm/pnpm/yarn/bun" and is what
+you reach for when a workflow needs a specific package-manager version rather
+than a generic download.
 
 **Only `ActionCache`, `Artifact` and `GitHubCacheBlobStore.layer` speak to the
 Actions results backend** (`ACTIONS_RESULTS_URL` / `ACTIONS_RUNTIME_TOKEN`) —

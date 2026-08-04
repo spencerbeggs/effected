@@ -407,6 +407,36 @@ schema is the missing validating constructor, refusing the bad value **on
 the way out of `ActionState`** — before it can ever reach `reap` — so the
 runtime guard in `reap` is the second of two defenses, not the only one.
 
+## `ChildEnv`: safely prepending directories to a child's `PATH`
+
+`ChildEnv` (`packages/github-actions/src/ChildEnv.ts`) is a pure, total,
+service-free class — same species as `Secret`'s statics — for the one
+recurring need a `DetachedProcess.spawn` caller (or any spawn call adding a
+directory to `PATH`) hits three ways at once:
+
+- **`env` without `extendEnv: true` replaces the child's whole
+  environment** — core's `ChildProcess.CommandOptions.env` is a replacement,
+  not a merge, unless `extendEnv` says otherwise, so a bare `{ env }` costs
+  the child everything, including the `PATH` being extended.
+- **Windows spells it `Path`, and casing decides who wins** — the
+  environment block is case-insensitive on `win32`, and Node's merge keeps
+  the lexicographically first spelling, an undocumented internal nothing
+  obliges it to keep. `ChildEnv.pathKeyOf(base)` finds the base's own casing
+  (`Path`, `PATH`, or `PATH` when absent) and writes through it, rather than
+  gambling on the dedupe.
+- **`.cmd` shims need a shell since CVE-2024-27980** — `ChildEnv.needsShell(platform)`
+  is that predicate, kept separate because it belongs on the spawn call, not
+  in the environment.
+
+`ChildEnv.prependPath(dirs, { base, platform })` answers a `PathPrependEnv` —
+`{ env, extendEnv: true }` as **one value**, never `env` alone — with the
+platform's delimiter (`;` on `win32`, `:` elsewhere) and no empty trailing
+entry for an absent inherited `PATH`. `base` and `platform` are **required**,
+not defaulted: this module reads nothing ambient, the same invariant
+`ActionEnvironment` enforces for `process.env` generally. Two compositions:
+spread the whole pair into a spawner call's options, or merge `.env` alone
+over the parent's own block (`DetachedProcess.spawn`'s shape).
+
 ## Where the rest of this territory lives
 
 Name these by, don't restate their contents:

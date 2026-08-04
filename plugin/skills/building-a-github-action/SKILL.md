@@ -30,6 +30,15 @@ For anything outside these five — globs, semver, lockfiles, JSONC/YAML/TOML,
 XDG paths, git introspection, managed file sections — consult
 `effected-packages` before writing it by hand.
 
+## Designing a new action? Stop here first
+
+This table routes a capability to the package and skill that own it — it does
+not sequence a build. If the task is a new action, a wholesale rebuild, or a
+port where more than one pipeline step changes, load `designing-an-action`
+first: recon → frozen parity contract → API dossier → contracts-first walking
+skeleton → TDD fill. Come back to this table during that sequence's Phase A/B
+to look up which package and skill owns each piece as you build it.
+
 ## I need to… → reach for…
 
 | I need to… | Reach for | Skill |
@@ -50,6 +59,7 @@ XDG paths, git introspection, managed file sections — consult
 | handle a secret without leaking it | `Secret`, `Redacted`, `Redaction` | `actions-state-and-secrets` |
 | decide whether a failure should fail the run | `Action.run`'s contract, `DryRun` | `actions-state-and-secrets` |
 | kill a background process started in `main` | `DetachedProcess.reap` | `actions-state-and-secrets` |
+| safely prepend a directory to a spawned child's `PATH` | `ChildEnv.prependPath` | `actions-state-and-secrets` |
 | call any GitHub REST or GraphQL endpoint | `GitHubClient.request` / `.graphql` / `.paginate` | `github-api` |
 | create a branch, tag, release, commit, PR | the resource services (`GitBranch`, `GitTag`, …) | `github-api` |
 | authenticate as a GitHub App | `GitHubApp`, `GitHubApp.clientLayer` | `github-app-tokens` |
@@ -58,6 +68,7 @@ XDG paths, git introspection, managed file sections — consult
 | upload or download a workflow artifact | `Artifact` | `actions-cache-and-artifacts` |
 | store a blob (GitHub cache or S3-compatible) | `BlobStore`, `GitHubCacheBlobStore`, `BlobEnvelope` | `actions-cache-and-artifacts` |
 | install a toolchain on the runner | `ToolInstaller` | `actions-cache-and-artifacts` |
+| pin and install an exact npm/pnpm/yarn/bun on the runner | `PackageManagerInstaller` | `actions-cache-and-artifacts` |
 | compute a cache key from file contents | `CacheKey` | `actions-cache-and-artifacts` |
 | run a subprocess and get a typed result | `Run.collect` / `text` / `lines` / `json` | `running-commands-and-tools` |
 | ask whether a CLI tool is installed | `ToolDiscovery` | `running-commands-and-tools` |
@@ -100,7 +111,7 @@ flows that span services. Each arrow is a real member, verified against source.
 | `ReportBuilder` | **no kit successor, by decision** — report *shaping* is consumer policy. Compose `GitHubMarkdown` pieces, or reach for `@effected/markdown` |
 | `ErrorAccumulator` | **no kit successor, by decision** — it is core composition: `Effect.partition(items, f)` returns `[failures, successes]` and never fails (`.repos/effect/packages/effect/src/Effect.ts:556`), and `Effect.all(effects, { mode: "result" })` is the same idea per-effect |
 | an ANSI / colour API | does not exist and must not be invented — GitHub's log viewer colours the workflow commands itself |
-| the nine `*Test` doubles and the `./testing` subpath | gone — every service ships `makeTest` / `layerTest` from its own module |
+| the predecessor's nine `*Test` doubles and the `./testing` subpath | gone — every service ships its own `makeTest` / `layerTest` from its own module instead; that is not a like-for-like swap in count — 32 services across `github-actions`, `github`, `commands` and `sbom` ship one today (tallied 2026-08-03, `grep -rl makeTest` over the four packages' `src/`), not nine |
 | `Action.resolveLogLevel` | **no successor by that name** — `ActionEnvironment.isDebug` (`Effect.Effect<boolean>`, reading `RUNNER_DEBUG === "1"`) is what a program reaches for instead; see `actions-runtime` |
 
 **A bare `Config.*` read on an action input is a false green in tests, not a
