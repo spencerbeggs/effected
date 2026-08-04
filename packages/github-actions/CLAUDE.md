@@ -278,6 +278,16 @@ Design detail is in the doc's two dated sections; these are the rules.
 - **`ActionLogger.withBuffer({ onSuccess: "discard" })` discards a success and
   nothing else** — failure, defect and interruption all flush, and step
   debugging overrides the discard.
+- **`ActionLogger.withStep(name, effect, options?)` (2026-08-04) is the
+  summary-line composition** `withBuffer` alone cannot reach: discard-on-success
+  plus **one** info line (`summary`, default `✅ <name>`), and a `❌ <name>`
+  header emitted through `Console` — ahead of the flush, and deliberately not a
+  second `::error::` beside the one `Action.run` renders. The summary is emitted
+  **outside** the buffered region; inside, it would be discarded with the
+  transcript it replaces, and a green step would print nothing. It survives step
+  debugging. Ported from the legacy `Step.groupStep`, whose shape was
+  independently derived wrong three times during one port because `group` +
+  `withBuffer` looks like complete parity.
 
 ## Errors
 
@@ -305,6 +315,15 @@ here must carry its `actual`.
   exceptions, each with a stated reason: `ActionEnvironment` seeds the twelve
   `GITHUB_*` variables, `ActionLogger` defaults to silent, `DryRun` defaults to
   rehearsing (the safe direction).
+- **`ActionEnvironment.makeTest`/`layerTest` take the payload as a second
+  argument** (2026-08-04), serving `payload` **directly** rather than through a
+  `GITHUB_EVENT_PATH` read. `layerTest` hard-provides `FileSystem.layerNoop({})`
+  and `make` captures the filesystem at construction, so seeding the path
+  through `overrides` sends the read to a noop filesystem — there was no route
+  to a payload through the standard double, and a consuming action whose whole
+  detection algorithm is a function of the payload rebuilt `makeTest` plus its
+  own filesystem stub at every site. `undefined` means *not served*, so an
+  unarranged payload still fails typed naming `GITHUB_EVENT_PATH`.
 - **`OidcTokenIssuer.layerFor(claims)`** returns a **real decodable** unsigned
   JWT built from the same claims `claims()` reports. That is what makes the
   provenance path reachable; the source package's synthetic non-JWT made it

@@ -302,6 +302,105 @@ describe("ActionLogger", () => {
 		);
 	});
 
+	describe("steps", () => {
+		/** `withStep` renders its summary through `Effect.logInfo`, so the log-to-
+		 * workflow-command logger has to be installed for the line to be observable
+		 * — the same one `Action.run` installs. */
+		const stepped = <A, E>(program: Effect.Effect<A, E, ActionLogger>, env: Readonly<Record<string, string>> = {}) =>
+			live(program.pipe(Effect.provide(ActionLogger.layerLogger)), env);
+
+		it.effect("trades the transcript for exactly one summary line on success", () =>
+			stepped(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					const value = yield* logger.withStep(
+						"install",
+						Effect.as(Effect.andThen(Effect.logInfo("resolving"), Effect.logInfo("done")), 7),
+					);
+					assert.strictEqual(value, 7);
+					// The whole point: two verbose lines in, one summary line out. This is
+					// the step `withBuffer({ onSuccess: "discard" })` alone cannot reach —
+					// it leaves ZERO lines, which is why the recipe kept coming out wrong.
+					assert.deepStrictEqual(yield* lines, ["✅ install"]);
+				}),
+			),
+		);
+
+		it.effect("a supplied summary replaces the default line", () =>
+			stepped(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					yield* logger.withStep("install", Effect.logInfo("resolving"), { summary: "installed 42 packages" });
+					assert.deepStrictEqual(yield* lines, ["installed 42 packages"]);
+				}),
+			),
+		);
+
+		it.effect("emits the failure header BEFORE the transcript it announces", () =>
+			stepped(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					yield* Effect.flip(
+						logger.withStep("install", Effect.andThen(Effect.logInfo("resolving"), Effect.fail("boom"))),
+					);
+					const captured = yield* lines;
+					const header = captured.indexOf("❌ install");
+					const flushed = captured.findIndex((line) => line.includes('Buffered output for "install"'));
+					assert.isAtLeast(header, 0, "the failure header must be emitted");
+					assert.isBelow(header, flushed, "the header introduces the transcript, so it cannot follow it");
+					assert.deepStrictEqual(bufferedFor("install", captured), ["resolving"]);
+					// The success line is a statement about success; a failed step must not
+					// claim one. Mutating the `Effect.tap` to `Effect.onExit` fails here.
+					assert.isFalse(captured.includes("✅ install"));
+				}),
+			),
+		);
+
+		it.effect("the summary is never captured by the buffer it replaces", () =>
+			stepped(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					yield* logger.withStep("install", Effect.logInfo("resolving"));
+					const captured = yield* lines;
+					// Emitting the summary INSIDE the buffered region would discard it
+					// along with the transcript, leaving a green step with no line at all.
+					assert.deepStrictEqual(captured, ["✅ install"]);
+				}),
+			),
+		);
+
+		it.effect("warnings still go out live rather than into the discarded transcript", () =>
+			stepped(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					yield* logger.withStep("install", Effect.andThen(Effect.logWarning("deprecated"), Effect.logInfo("done")));
+					assert.deepStrictEqual(yield* lines, ["::warning::deprecated", "✅ install"]);
+				}),
+			),
+		);
+
+		it.effect("keeps the summary when step debugging turns buffering off", () =>
+			stepped(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					yield* logger.withStep("install", Effect.logInfo("resolving"));
+					// Verbose output goes live AND the summary still lands: someone asking
+					// for debug output has not asked to lose the line naming what passed.
+					assert.deepStrictEqual(yield* lines, ["resolving", "✅ install"]);
+				}),
+				{ RUNNER_DEBUG: "1" },
+			),
+		);
+
+		it.effect("the test double passes the effect through without a summary", () =>
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				assert.strictEqual(yield* logger.withStep("step", Effect.succeed("value")), "value");
+				assert.deepStrictEqual(yield* lines, []);
+			}).pipe(Effect.provide(ActionLogger.layerTest())),
+		);
+	});
+
 	describe("silence", () => {
 		it.effect("layerSilent drops log output entirely", () =>
 			Effect.gen(function* () {

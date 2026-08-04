@@ -14,7 +14,12 @@ export {
 	RunnerContext,
 } from "./ActionEnvironment.js";
 export { ActionInput } from "./ActionInput.js";
-export { ActionLogger, type ActionLoggerShape, type WithBufferOptions } from "./ActionLogger.js";
+export {
+	ActionLogger,
+	type ActionLoggerShape,
+	type WithBufferOptions,
+	type WithStepOptions,
+} from "./ActionLogger.js";
 export { ActionOutputError, ActionOutputs, type ActionOutputsShape } from "./ActionOutputs.js";
 export { ActionState, ActionStateError, type ActionStateShape } from "./ActionState.js";
 export { ActionsIdentityToken } from "./ActionsIdentityToken.js";

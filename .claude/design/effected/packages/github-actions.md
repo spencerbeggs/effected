@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-02
-last-synced: 2026-08-02
+updated: 2026-08-04
+last-synced: 2026-08-04
 completeness: 100
 related:
   - ../effect-standards.md
@@ -136,6 +136,12 @@ The layer seeds an immutable env map from `process.env` once at construction and
 
 The cost is honest and must be documented: a variable exported by `ActionOutputs.exportVariable` mid-run, or set by a child process, is not observed by an already-seeded reader. That is the correct trade — an action's environment is fixed at start by GitHub's own model, and `exportVariable` targets *subsequent steps*, not the current one.
 
+### `makeTest`/`layerTest` gained an optional payload argument (silk-router-action round 4, 2026-08-04)
+
+`ActionEnvironment.makeTest(overrides?, payload?)` and `layerTest(overrides?, payload?)` take an optional second positional argument that serves the webhook payload **directly**, instead of routing it through a `GITHUB_EVENT_PATH` filesystem read. The reason it was needed: `layerTest` hard-provides `FileSystem.layerNoop({})`, and `make` captures the filesystem at construction — so seeding `GITHUB_EVENT_PATH` through `overrides` sends the read to a noop filesystem, and there was no route to a payload through the standard double. A consuming action whose entire phase-detection algorithm is a pure function of the payload (roughly 600 lines of tests) had to drop to `makeTest` and hand-compose a filesystem stub at every call site to work around it.
+
+`undefined` still means "not served": an unarranged payload fails typed, naming `GITHUB_EVENT_PATH`, exactly as before — the second argument is additive and preserves the die-on-unstubbed posture rather than opening a silent-default escape hatch.
+
 ## `ActionInput` — `Config`-backed, and richer than `@actions/core`
 
 Inputs are read through a `ConfigProvider` that owns the `INPUT_` name mangling, never through `process.env` directly. This closes a documented production bug: silk-release-action read `process.env["INPUT_SBOM_CONFIG"]` and silently got nothing, because GitHub's real variable is `INPUT_SBOM-CONFIG` — the runner uppercases and replaces **spaces** with underscores, and leaves dashes alone (spec §5). A `Config`-backed accessor makes that class of bug unrepresentable, because no consumer spells the variable name.
@@ -165,6 +171,17 @@ export class ActionInput {
 
 **Absence is one rule across every accessor**: a missing input and an input set to `""` are both *missing data*, because the runner writes `""` for an input the workflow omitted. An **optional** input therefore needs `Config.withDefault` (or `Config.option`) at the call site or the read fails outright — the single contract worth reading before any member below.
 
+### An input whose contract is "empty disables it" needs `Config.option`, not `Config.withDefault` (silk-router-action round 4, 2026-08-04)
+
+An input whose documented meaning is "set it empty to disable this" is **unimplementable via `Config.withDefault`**: empty is classified missing before the default is consulted, so the default substitutes and the disable state is unreachable. `Config.option` is the shape that distinguishes the states, because it surfaces missing-vs-present as `Option` rather than collapsing missing into a fallback value.
+
+This is confirmed against `actions/runner` source, not inferred: `ActionRunner.cs:206-218` applies the manifest default only under `if (!inputs.ContainsKey(key))`, and `Handler.cs:181-195` writes every declared input to `INPUT_<MANGLED>` as `value ?? string.Empty` — confirmed further by a live runner probe, not just the source read. Two consequences follow:
+
+- The runner publishes a variable for **every** declared input, so "absent" is a state a runner never actually produces.
+- An input declaring no manifest default arrives set-and-empty when unsupplied, so deleting a manifest default does not restore a fallback — it silently flips every unsupplied run onto the disabled branch.
+
+**The `provider`/`providerOver`/`layerDefault` trap:** never compose a bare `ConfigProvider.fromEnv` beneath them. `fromEnv` uppercases the config path, so an input-name key never matches and the read silently takes its default — this fails **green** in test code, and `layerDefault`'s own docstring had been recommending exactly that shape. Relatedly, `providerOver`'s single-segment retry makes the obvious mangled-key test non-discriminating: swapping `ActionInput.string` for a bare `Config.string` leaves the suite green, so a test asserting the mangling must not rely on that substitution alone to prove it.
+
 **`ActionInput` is grouped statics, not a namespace object over engines** — every accessor reaches `Config` and nothing heavier, which is the [sanctioned carve-out](../effect-standards.md#no-barrel-re-exports) exactly. It carries that group in the house form: a **static class with a private constructor**, so every member's TSDoc survives into the built declarations ([the container rule](../effect-standards.md#a-sanctioned-grouped-statics-container-is-a-static-class-not-an-as-const-object-2026-07-25)).
 
 **`ActionsConfigProvider` is subsumed, and the subsumption must be confirmed rather than assumed.** The source package exports a bare `ConfigProvider` that maps a config path to `INPUT_<NAME>`; two silk-release-action test files install it directly. Everything it does is folded into this module — the provider becomes an implementation detail behind the accessors, which is what removes the opportunity to spell a variable name wrongly. **At implementation, diff its behavior against the accessors before deleting it** (empty-string-is-absent, the space-to-underscore rule, and the fact that dashes are *not* translated), and record the result here. A subsumption claim that was never checked is how a footgun survives a port. **Discharged:** all three axes were probed against the installed beta rather than assumed, and the two findings that came out of it — what the *ambient* provider already does, and what the runtime therefore installs — are ruled [below](#the-config-provider-the-runtime-does-not-install).
@@ -181,6 +198,16 @@ Two friction fixes:
 
 - **`ActionLogger.layerSilent()`** — the spec counts `Effect.provide(Logger.layer([]))` **13 times** in silk-release-action and **23** in silk-sync-action, purely to silence logs in tests. One named layer replaces all 36.
 - **The buffered step renderer stays**, because it is what makes an action's log readable, but `withBuffer` is no longer wrapped around the whole program by `Action.run` implicitly — an unhandled defect inside a buffer swallowed the output in the source package. `Action.run` flushes buffers on every exit path, including a defect. Since 2026-07-26 it also takes `{ onSuccess: "flush" | "discard" }`, so a step can be quiet when it succeeds and still spill its transcript when it does not — see [the reporting suite](#the-github-surfaces-reporting-suite-2026-07-26).
+
+### `ActionLogger.withStep` (silk-router-action round 4, 2026-08-04)
+
+`ActionLogger.withStep(name, effect, options?)` and the exported `WithStepOptions` type wrap `withBuffer` in the one-line-success shape a named step actually wants: buffer with discard-on-success, emit exactly one info summary line on success (`summary`, default `✅ <name>`), and a `❌ <name>` header ahead of the spilled transcript on failure.
+
+The failure header goes through `Console` rather than `Effect.logError`, so it lands ahead of the flush and does not mint a second `::error::` beside the one `Action.run` already renders for the cause.
+
+The success summary is emitted **outside** the buffered region — inside, it would be discarded with the transcript it replaces, leaving a green step with no line at all — and it survives step debugging, which forces a flush regardless of outcome.
+
+It ports the legacy `@savvy-web/github-action-effects` `Step.groupStep`, whose shape was independently derived wrong three times during one port — twice by agents, once by the orchestrator — because `group` + `withBuffer` looks like complete parity until you notice nothing emits the success line.
 
 ## Secrets: the declassification seam
 
@@ -436,6 +463,14 @@ Four modules answering silk-release-action's dogfood item 2: an action that repo
 **`ManagedDocument.ts` — pure, over `@effected/templates`.** A marker-delimited document: a sentinel `<!-- ns:key -->` identifies *this* action's document among many, and named regions inside it are replaced from current state while every byte the human wrote around them survives. Create-or-update is **one parse**, not a find-then-branch. It is a thin domain fixing of [`SectionDocument`](templates.md#sectiondocument--the-pure-core) — HTML comment style, the `MANAGED REGION` phrase, `ns.key.region` wire keys — and deliberately *not* a second engine: the region grammar, the line-ending invariant and the idempotence proof all stay in `templates`, which is the package that has them under test.
 
 **`GitHubMarkdown.ts` — the fluent writer, and the only importer of the engine.** `table` / `heading` / `link` / `code` / `codeBlock` / `list` / `details` / `raw`. Every member takes **pre-rendered markdown** and returns a `string`, so compositions read as plain string assembly; what the writer owns is the *structure*. A cell carrying `>=1 || <2` renders with its pipes escaped instead of shifting every column after it; a fence inside a code block widens the fence; a URL with spaces is angle-bracketed. The predecessor's string-joining fallback arm is the live table-corruption defect this module exists to delete, which is why the impossible serializer arm is a **defect, not a fallback**: `Markdown.stringifyResult` is total over the fixed-shape two-level trees this module builds, and quietly degrading to string joining on a tree that cannot occur is how the corruption came back last time.
+
+### The render-cannot-fail invariant (silk-router-action round 4, 2026-08-04)
+
+`Markdown.stringifyResult`'s only failure is the nesting-depth guard (cap 256, `@effected/markdown`'s `internal/limits.ts:9`), and it is **unreachable from `GitHubMarkdown`** — not because these trees happen to be small, but because their depth does not depend on input. Every member takes pre-rendered markdown and wraps it in exactly one passthrough node, so a composition nests **strings**, not nodes, and the deepest tree any member can build is a table's five levels, whatever it is handed. Pinned by tests nesting the writer's own output 1000 deep.
+
+Consumers therefore need not `Effect.try`-wrap a render. One call site was, defensively, because nothing on the public surface said whether wrapping was prudence or superstition — and wrapping also widens the catch to anything else thrown inside the builder, hiding a real defect behind a caught error. The one reachable throw in this area is `tableFor`'s **codec** — `Schema.encodeSync` for a value smuggled past the types — not the serializer.
+
+**Maintenance note:** a future member that accepts a node, or that re-parses a fragment back into one, makes depth input-dependent and collapses this argument. If that ever lands, the render-cannot-fail claim must be re-earned, not assumed.
 
 `tableFor(schema)` (round 3) is the same argument one level up: **a table's columns are defined once, by a row schema.** Column order is field declaration order, each header is the field's `title` annotation (falling back to the property name, overridable per column), and each cell is the field value's **encoded** form — a branded or typed field projects through its own codec instead of being respelled at every call site, and a row can no longer transpose columns because it is a typed object rather than a positional array. The one place the types get strict: a field whose encoded side is **not** a string has no string projection to borrow, so its column's `format` — and therefore `columns` and `options` themselves — becomes **required** rather than defaulting to `String(value)`. An absent optional field renders an empty cell without consulting codec or formatter.
 
@@ -747,8 +782,11 @@ Adoption started immediately, against `@savvy-web/silk-release-action`, and thre
 | 1 | writing the `IdentityToken` adapter itself, from a contract in `sbom` against a service here | `ActionsIdentityToken.layer`; `ActionLogger.withBuffer`'s `onSuccess` option; `Secret.forSigning`'s TSDoc rescoped from "signing" to "any in-process use" |
 | 2 | marker parsing, GFM escaping, a debounce and a check vocabulary — with the escaping wrong in production; and an eleven-field claim rename | the [four reporting modules](#the-github-surfaces-reporting-suite-2026-07-26); [`ActionsProvenance.capture`](#the-effectedsbom-seam-adapters-2026-07-26) |
 | 3 | respelling a table's columns at every call site | `GitHubMarkdown.tableFor(schema)` |
+| 4 | a **triage** round, not a build round: `@savvy-web/silk-router-action`, 2026-08-04, over effected#247-254 filed from its port off the legacy toolkit | six triaged address-now and implemented on this branch: `ActionEnvironment.makeTest`/`layerTest`'s payload argument, `ActionLogger.withStep`, the `Config.option`/`Config.withDefault` disable-input ruling, and the render-cannot-fail invariant recorded above |
 
-Not one of them is a *service gap* of the kind the surveys found before the port — every round is a **projection** a consumer had to write between two things this kit already owned, and got wrong in a way that typechecked. That is the class this package should keep absorbing, and the reason `tableFor`'s formatter is type-*required* rather than defaulted: the defect these modules delete is never "no API for it", it is "the obvious spelling is silently wrong".
+Round 4 also closed two issues without a code change: **#249 discarded** — core's `FileSystem.makeNoop` already fails on unstubbed members, so the reported footgun traced back to the consumer's own `readFileString` override, and the residual composability ask belongs upstream in `Effect-TS/effect`, not here. **#250 deferred** — `optionalDependencies` was rejected outright for the six Azure/markdown-class dependencies: all six are hard static imports that throw at module load rather than degrade, and three of the six sit on the common reporting path, so the easy subpath split does not work.
+
+Not one of the four rounds is a *service gap* of the kind the surveys found before the port — every round is a **projection** a consumer had to write between two things this kit already owned, and got wrong in a way that typechecked. That is the class this package should keep absorbing, and the reason `tableFor`'s formatter is type-*required* rather than defaulted: the defect these modules delete is never "no API for it", it is "the obvious spelling is silently wrong".
 
 Three dependency edges came with them — `@effected/templates`, `@effected/markdown` and `@effected/sbom` — and each is confined to the modules that earn it, with `markdown`'s [measured like Azure's](#bundle-reachability-confining-azure).
 

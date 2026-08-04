@@ -12,6 +12,12 @@ The core commitment: the whole pipeline exists as typed contracts with inert stu
 
 Use this for a new action from its metadata file up, a wholesale rebuild replacing a legacy toolkit under a parity contract, or a port where more than one pipeline step changes. **Not** for adding one input, one step, or one report to an action that already has this shape — load the matching `actions-*` skill and work within the existing contracts instead.
 
+## Porting off the legacy toolkit? Start with the symbol map
+
+If the action already exists on `@savvy-web/github-action-effects` and the port changes every import and no pipeline step, read [references/porting-off-a-legacy-toolkit.md](references/porting-off-a-legacy-toolkit.md) **first**. It is a symbol-keyed lookup table — one port reconstructed it by hand from vendored source before discovering the work was mechanical.
+
+Read it first, then run the sequence below anyway. The table compresses the design exploration, not the verification: the frozen parity contract in Phase 0 caught an action that had four inputs where three separate sources claimed five, and an import-only port is exactly the shape where nobody thinks to check.
+
 ## The sequence
 
 **Phase −1: Recon.** Cheap, wide, evidence-only — no design decisions yet.

@@ -200,4 +200,57 @@ describe("GitHubMarkdown", () => {
 			assert.strictEqual(table.render([{ name: "build", outcome: "queued" }]), before);
 		});
 	});
+
+	describe("a render cannot fail — the reason consumers need not Effect.try-wrap", () => {
+		// The serializer's ONLY failure is the nesting-depth guard (cap 256). What
+		// makes it unreachable is not that the writer's trees are small, but that
+		// their depth does not depend on input at all: every member takes
+		// PRE-RENDERED markdown and wraps it in exactly one passthrough node. A
+		// composition nests strings, never nodes. These tests pin that property,
+		// because the docstring telling consumers not to wrap is only as good as
+		// the invariant behind it.
+
+		it("nesting the writer's own output 1000 deep does not deepen the tree", () => {
+			let nested = "leaf";
+			for (let index = 0; index < 1000; index += 1) {
+				nested = GitHubMarkdown.list([nested]);
+			}
+			// Four times the depth cap, and it renders: each `list` call serialized
+			// its argument to a STRING, so the tree handed to the serializer was the
+			// same three levels deep every time.
+			assert.include(nested, "leaf");
+		});
+
+		it("a deeply nested fragment from elsewhere is one passthrough node, not a tree", () => {
+			// The adversarial case the guard exists for: markup that WOULD nest 500
+			// deep if it were parsed. It is not parsed — it passes through.
+			const deep = "> ".repeat(500).concat("quoted");
+			const out = GitHubMarkdown.table(["Note"], [[deep]]);
+			assert.include(out, "quoted");
+		});
+
+		it("every serializing member survives input that is pathological for its own construct", () => {
+			// Each member's own escaping hazard, at size — fences inside code
+			// blocks, pipes and newlines inside cells, backticks inside inline code,
+			// parens inside a URL. None reaches the serializer's failure arm.
+			const hostile = "`".repeat(300).concat("\n```\n| a | b |\n");
+			assert.isString(GitHubMarkdown.codeBlock(hostile, "text"));
+			assert.isString(GitHubMarkdown.code(hostile));
+			assert.isString(GitHubMarkdown.table(["A"], [[hostile]]));
+			assert.isString(GitHubMarkdown.list([hostile]));
+			assert.isString(GitHubMarkdown.link(hostile, "https://example.dev/a(b) c"));
+		});
+
+		it("the one reachable throw is the CODEC, and only for a value smuggled past the types", () => {
+			const Row = Schema.Struct({ name: Schema.String });
+			const table = GitHubMarkdown.tableFor(Row);
+			// A well-typed row is total...
+			assert.include(table.render([{ name: "build" }]), "| build |");
+			// ...but the cell goes through encodeSync, so a value cast past the types
+			// still throws. This is why the guidance is "the serializer cannot fail",
+			// not "tableFor cannot throw" — the two are different claims and only
+			// one of them is unconditional.
+			assert.throws(() => table.render([{ name: 7 } as unknown as { name: string }]));
+		});
+	});
 });

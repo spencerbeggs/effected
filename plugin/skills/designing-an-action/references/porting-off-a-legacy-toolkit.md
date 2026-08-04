@@ -1,0 +1,39 @@
+# Porting off `@savvy-web/github-action-effects`
+
+A symbol-keyed lookup for an action moving from the legacy `@savvy-web/github-action-effects` toolkit onto the `@effected` suite. Grep the legacy column for what the code you are porting says today; the kit column is what replaces it.
+
+Companion to [`porting.md`](./porting.md), which owns the *process* — freezing a parity contract, the known-unknowns ledger, the legacy-as-oracle rule. This file owns the mechanical half: which symbol became which. A port that changes every import and no pipeline step is mostly this table plus a test-double migration.
+
+The kit column is verified against the packages in this repo. The legacy column is reconstructed from a real port and is the less reliable half — if a legacy symbol is not here, it is not evidence the kit lacks a replacement. Check [`building-a-github-action`](../../building-a-github-action/SKILL.md) before concluding anything is missing.
+
+## The map
+
+| `@savvy-web/github-action-effects` | `@effected/*` | Notes |
+| --- | --- | --- |
+| `Step.groupStep(name, effect)` | `ActionLogger.group` + `ActionLogger.withStep` | `withStep` is the summary-line half: quiet on success bar one line, `❌ <name>` plus the transcript on failure. `withBuffer({ onSuccess: "discard" })` is *not* the equivalent — it leaves a green step with zero lines. |
+| `GithubMarkdown` | `GitHubMarkdown` | Capital H. Same surface: `table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details`, `raw`. |
+| `GitHubClientLive.fromEnv()` | `GitHubClient.layerFromConfig({ name: "token" })` | Fails with core's `Config.ConfigError` — an honest "no token configured". The legacy layer failed with a wire-failure type, which is why one consumer wrapped it in `Layer.orDie`. Drop that wrapper. |
+| `<Service>Test`, the `/testing` subpath | `Service.makeTest(overrides?)` / `Service.layerTest(overrides?)` | No `./testing` subpath exists; the doubles live on the service. Unstubbed members **die naming themselves**, with three documented exceptions (`ActionEnvironment`, `ActionLogger`, `DryRun`). |
+| `MainLive` / `PreLive` / `PostLive` hand-composition | `ActionRuntime.layer`, or `Action.run(program, { layer })` | Bound constants, never factories — layers memoize by reference. An extra layer passed to `Action.run` may require anything the runtime provides. |
+| `gh.rest("…", octokit => …)` | the named resource method | e.g. `PullRequest.listAssociatedWithCommit`. The route is the key: typed params, typed response, zero casts, pagination included. |
+| `Config.string("x")` | `ActionInput.string("x")` | The accessor owns the `INPUT_` derivation. Never spell a runner variable; if a test truly must, derive it with `ActionInput.variable`. |
+
+## Three that are not renames
+
+Straight substitution through the table leaves these wrong, and each cost a real port something.
+
+**The per-step summary line.** `withStep` did not exist when the first port ran, and its shape was independently derived wrong three times — twice by agents, once by a human — because `group` + `withBuffer` looks like complete parity. If the code you are porting predates `withStep`, it may contain a hand-rolled approximation missing the success line; replace it with `withStep` rather than porting it.
+
+**Test-environment injection.** A legacy suite injecting a deterministic environment with `ConfigProvider.fromEnv({ env })` must move to `ActionInput.provider(env)`. `fromEnv` uppercases the config path, so an input-name key never matches and every read falls through to its default — **green, in test code**, with the test's name claiming it proved the input was read. One port shipped this in its integration harness for several commits. See `ActionInput.provider`'s docstring for the full account.
+
+**Optional inputs whose empty value means something.** `Config.withDefault` classifies an explicitly-empty input as missing and substitutes the default, so an input documented as "set it empty to disable this" cannot work that way. `Config.option` distinguishes the states, and its correctness depends on `action.yml` declaring a non-empty default. See `ActionInput.string`'s docstring.
+
+## Sequence
+
+The table is not the plan. `porting.md`'s process still applies in full — in particular the frozen parity contract, which on one port caught that the action had four inputs where three separate sources claimed five. What an import-only port can compress is the design exploration, not the verification:
+
+1. Freeze the parity contract from `action.yml` (`porting.md`).
+2. Stash the legacy implementation as an oracle; exclude it from lint, typecheck and bundling. Never import it.
+3. Sweep the table over every import, and resolve anything it does not cover through the router.
+4. Migrate the test doubles **before** converting the test harness (`porting.md`).
+5. Fill in step by step against the oracle, mutating the edges before declaring green.

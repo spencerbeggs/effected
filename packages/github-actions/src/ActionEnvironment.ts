@@ -360,14 +360,51 @@ export class ActionEnvironment extends Context.Service<ActionEnvironment, Action
 	 * context variables have one obviously-correct shape, and requiring each
 	 * suite to restate them produced a byte-identical block duplicated six times
 	 * across the consumers. Overrides merge on top.
+	 *
+	 * The optional second argument serves {@link ActionEnvironmentShape.payload}
+	 * **directly**, replacing the `GITHUB_EVENT_PATH` read rather than seeding a
+	 * path and a file behind it. That is the only route to a payload through the
+	 * standard double: `TEST_DEFAULTS` deliberately omits `GITHUB_EVENT_PATH`, so
+	 * an unserved payload fails typed and names the variable — the die-on-
+	 * unstubbed posture the rest of this package keeps.
+	 *
+	 * `undefined` means *not served*, so a suite cannot arrange `undefined` as
+	 * the payload itself. A webhook payload is always a JSON object; the case
+	 * does not arise, and reserving the sentinel keeps the argument optional.
 	 */
 	static readonly makeTest = (
 		overrides: Readonly<Record<string, string>> = {},
-	): Effect.Effect<ActionEnvironmentShape, never, FileSystem.FileSystem> => make({ ...TEST_DEFAULTS, ...overrides });
+		payload?: unknown,
+	): Effect.Effect<ActionEnvironmentShape, never, FileSystem.FileSystem> =>
+		Effect.map(make({ ...TEST_DEFAULTS, ...overrides }), (shape) =>
+			payload === undefined ? shape : { ...shape, payload: Effect.succeed(payload) },
+		);
 
-	/** {@link ActionEnvironment.makeTest} behind a layer, with `FileSystem` stubbed out. */
-	static readonly layerTest = (overrides: Readonly<Record<string, string>> = {}): Layer.Layer<ActionEnvironment> =>
-		Layer.effect(ActionEnvironment, ActionEnvironment.makeTest(overrides)).pipe(
+	/**
+	 * {@link ActionEnvironment.makeTest} behind a layer, with `FileSystem` stubbed
+	 * out.
+	 *
+	 * @remarks
+	 * The stub is why the payload has to be served here rather than through the
+	 * filesystem: `make` captures the filesystem at construction, so seeding
+	 * `GITHUB_EVENT_PATH` through `overrides` would send the read to a noop
+	 * filesystem and fail. Pass the payload as the second argument instead.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ActionEnvironment } from "@effected/github-actions";
+	 *
+	 * const layer = ActionEnvironment.layerTest(
+	 *   { GITHUB_EVENT_NAME: "pull_request" },
+	 *   { pull_request: { number: 42 } },
+	 * );
+	 * ```
+	 */
+	static readonly layerTest = (
+		overrides: Readonly<Record<string, string>> = {},
+		payload?: unknown,
+	): Layer.Layer<ActionEnvironment> =>
+		Layer.effect(ActionEnvironment, ActionEnvironment.makeTest(overrides, payload)).pipe(
 			Layer.provide(FileSystem.layerNoop({})),
 		);
 }

@@ -10,14 +10,20 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "74ac691bc0c7ea5b39613f8f2c6c7f995ff9c96889be1ba5e5834a01f4e2a832",
-			"recordedAt": "2026-07-25"
+			"hash": "c6ba20a06f24431cacae200aef0d91fb39ab6d7b194f475ae58e96de19675965",
+			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/formatter-convention.md",
 			"hash": "55f9023b52d2e66f9bd0ce20c071bee7e08c8ce6d2576ffd923f807815a3510e",
 			"recordedAt": "2026-07-25"
+		},
+		{
+			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/github-action-canon.md",
+			"hash": "642f1363c4fdf00c97300e8637056d8e7ed804ecce59d9781b4eec55ea213ba5",
+			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -28,14 +34,14 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "3f04bb59f76510ddb0f8bca207f72c54a60f9630a3a19469006247ed747a2457",
-			"recordedAt": "2026-07-26"
+			"hash": "dfbbb6051ede6a3789eef50c5f49e3ae77e28934d1e58ccc8bd5e4bf3b5f60a8",
+			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-setup.md",
-			"hash": "ab35b2a196e93a12f748c056954c473c616814ea204019fec575120d4e0d0ad8",
-			"recordedAt": "2026-07-16"
+			"hash": "90137254622c51cbc50a0acb370b70413d4c6183b30d7d4fe2dc09b11e2dda76",
+			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -46,20 +52,20 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/plugin.md",
-			"hash": "aa48eda66de12f488847b468c09d641d0428a281f7d9193b89f05fa2217bf1de",
-			"recordedAt": "2026-07-26"
+			"hash": "51f5ce5f1b8b595bcf0da480d0f99ed9d7bcb6c8a7ba5ef9c0ff6b0ba8cb7e6e",
+			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/releases.md",
-			"hash": "9679687027c58c27fdc214b6694901557c26ce6086950a80bcbbd7fcb17b5b14",
-			"recordedAt": "2026-07-26"
+			"hash": "0975053717e44dfb7ba868349e1cdd86059ab5f7659abbb739f79dbae5b26d40",
+			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/roadmap.md",
-			"hash": "9f7250d67e8600b7a5ea9bdbbb45d22920b394086c4803ae52beba3428ac151f",
-			"recordedAt": "2026-07-26"
+			"hash": "425767ae1431a39bb7e398717081db5a4d2b886dbc718ed7305bcf50e73afce1",
+			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "packages/app/CLAUDE.md",
@@ -88,8 +94,8 @@
 		{
 			"source": "packages/github-actions/CLAUDE.md",
 			"target": ".claude/design/effected/packages/github-actions.md",
-			"hash": "d63bc044fb7a34cc3e6ef55b30215e6aee09149d2cff652f7c152684d78a4dce",
-			"recordedAt": "2026-07-26"
+			"hash": "3b521b5b75377cbf7592ae3753cf71f0e6be5e7dc9fa67f839bdb675c5cfecf8",
+			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "packages/github/CLAUDE.md",
