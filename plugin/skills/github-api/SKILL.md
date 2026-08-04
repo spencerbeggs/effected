@@ -41,6 +41,12 @@ routing index, not the catalogue.
   `params` and the returned data from the route string alone — never invent
   an `operation: string` wrapper, a callback, or a cast; a cast in
   route-typed code is a defect, not a shortcut.
+- **Let the route decide what's paginatable, at compile time.** `RestRoute`
+  covers every documented route; `RestPaginatingRoute` is the narrower set
+  `client.paginate` actually accepts, so a non-paginating route handed to it
+  is rejected before the request is ever built. See
+  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)
+  for the full type-level surface (`RestParams`, `RestData`, `RestExtras`).
 - **`requestDecoded` is an escape hatch from the route table, never from
   typing.** Reach for it only when a route is absent from GitHub's OpenAPI
   map or its live shape diverges, and always pass the schema — a shape
@@ -113,7 +119,9 @@ routing index, not the catalogue.
   Load when: you need a specific method's signature or return type for any
   of the fourteen resource services.
 - [references/pagination-retry-errors.md](references/pagination-retry-errors.md) —
-  the pagination engine's request-budget semantics, the retry/backoff
-  schedule, and the full `GitHubError`/`GitHubGraphQLError` classification
-  and GraphQL-document mechanics. Load when: tuning a paginating call,
+  the route-typing type-level surface (`RestParams`, `RestData`,
+  `RestExtras`, `RestPaginatingRoute`), the pagination engine's
+  request-budget semantics, the retry/backoff schedule, and the full
+  `GitHubError`/`GitHubGraphQLError` classification and GraphQL-document
+  mechanics. Load when: typing a route by hand, tuning a paginating call,
   debugging a retry sequence, or classifying/catching a GitHub error.

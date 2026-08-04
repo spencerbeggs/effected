@@ -84,19 +84,25 @@ Versions pass through verbatim — every character semver permits is a legal
 path character, so encoding them would only produce a longer string
 meaning the same thing.
 
-## Three error channels the port deleted, and why they could not fire
+## An error channel that cannot fire is a defect, not a feature
 
-`Sbom.generate`/`toJson` used to have an error channel possible only
-because a third-party CycloneDX library might throw — a possibility
-introduced by that dependency, not by the model. A SLSA-building error
-guarded string interpolation over claims that were already present and
-validated. NTIA's "dependency relationship" check used to test for
-`undefined` against a field this model declares **required** — a check
-that cannot fail. Owned models built over validated schema classes cannot
-fail this way, so all three became plain functions. Generalize the rule:
-**audit every ported error channel for whether it can actually fire** —
-three unreachable channels in one source package is a pattern, not a
-coincidence.
+`Sbom.generate`/`toJson` are total, plain functions — no error channel at
+all. An owned model built over a validated schema class cannot fail the
+way a channel guarding a third-party library's own possible throw would
+need to; once the model validates the shape, the channel that used to
+guard an unvalidated one has nothing left to catch. NTIA's "dependency
+relationship" check is total for the same reason: the field it would
+test is declared **required** on the model, so the missing-field case the
+check would guard against cannot occur. A SLSA-building error channel
+guarding string interpolation over already-present, already-validated
+claims is the same shape again — nothing behind it can throw.
+
+Generalize the rule: **audit every ported error channel for whether it
+can actually fire.** An error channel that exists only because a
+dependency, or an unvalidated shape, *might* throw is a defect to delete
+once the model itself makes that failure unreachable — never a channel to
+carry forward out of caution. Three such channels surviving in one source
+package is a pattern, not a coincidence.
 
 **The oracle rule for ported cryptography and encodings**: when an
 implementation and a remembered constant disagree, neither is the oracle —

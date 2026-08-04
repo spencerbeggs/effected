@@ -4,6 +4,29 @@ Load when: tuning a paginating call's request budget, debugging a retry
 sequence, or classifying/catching a `GitHubError` or `GitHubGraphQLError`.
 `SKILL.md` states the standards this reference explains the mechanism for.
 
+## Route typing: the type-level surface behind `client.request`
+
+`RestRoute` is every REST route GitHub documents, as a `"<METHOD> <path>"`
+literal — the key the whole typed surface turns on. `RestParams<R>` and
+`RestData<R>`, both generic over `R extends RestRoute`, resolve a route
+literal's parameter shape and response shape straight out of the generated
+endpoint map GitHub's own OpenAPI description produces — a caller never names
+a payload type by hand, and the map costs zero runtime bytes since it ships
+as types only.
+
+`RestParams<R>` intersects a **three-field** `RestExtras` (`headers`,
+`mediaType`, `baseUrl`) — never octokit's own, more permissive parameters
+type, whose open index signature would silently accept a misspelled
+parameter as if it were real. These three survive because real call sites
+need exactly them: `headers` for a release asset's content type and an API
+version pin, `mediaType` for a raw content read, `baseUrl` for the uploads
+host a release-asset upload targets.
+
+`RestPaginatingRoute` is narrower than `RestRoute` — only the routes GitHub's
+pagination plugin actually knows how to walk. Handing a non-paginating route
+to `client.paginate` is therefore a **compile** error, not a runtime
+surprise: the type system rejects it before the request is ever built.
+
 ## Pagination: one engine, forwarded budgets
 
 There is exactly one pagination implementation in `@effected/github` — the

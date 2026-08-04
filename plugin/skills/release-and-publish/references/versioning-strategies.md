@@ -97,11 +97,12 @@ import { Layer } from "effect";
 const WorkspacesLayer = Workspaces.layer().pipe(Layer.provide(PublishabilityDetector.layerNpm));
 ```
 
-This is a correctness fix, not missing ergonomics. When a composite used to
-supply npm semantics itself, last-wins layer merging meant the natural
-override spelling silently resolved back to the default, with no type
-error, for the one service deciding whether a package publishes and to
-which registry.
+This is a correctness fix, not missing ergonomics: a swappable contract that
+also ships an ambient default sets exactly this trap. Layer merging
+resolves a duplicate service last-wins, so the natural override spelling —
+composing a caller's own policy alongside the composite — silently loses to
+the composite's own default, with no type error, for the one service
+deciding whether a package publishes and to which registry.
 
 Two house rules this seam produced, general past this one contract:
 

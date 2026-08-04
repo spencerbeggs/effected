@@ -99,9 +99,12 @@ directory to `PATH`) hits three ways at once:
   nothing obliges it to keep. `ChildEnv.pathKeyOf(base)` finds the base's
   own casing (`Path`, `PATH`, or `PATH` when absent) and writes through it,
   rather than gambling on the dedupe.
-- **`.cmd` shims need a shell** — a known Node/Windows spawn hazard.
-  `ChildEnv.needsShell(platform)` is that predicate, kept separate because
-  it belongs on the spawn call, not in the environment.
+- **`.cmd` shims need a shell** — the Node/Windows spawn hazard tracked as
+  CVE-2024-27980: spawning a `.cmd`/`.bat` shim without a shell lets
+  argument content reach `cmd.exe`'s own parsing rules, an injection risk
+  a shelled spawn closes. `ChildEnv.needsShell(platform)` is that
+  predicate, kept separate because it belongs on the spawn call, not in
+  the environment.
 
 `ChildEnv.prependPath(dirs, { base, platform })` answers a `PathPrependEnv`
 — `{ env, extendEnv: true }` as **one value**, never `env` alone — with

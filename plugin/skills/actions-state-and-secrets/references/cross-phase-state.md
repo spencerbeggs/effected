@@ -132,5 +132,6 @@ handle a case that doesn't exist, and it makes the type a documented lie.
 When porting a member from a legacy implementation, either demonstrate the
 failure path with a test, or delete the reason from the signature. An
 input-validation error channel replaced entirely by `Config.ConfigError`
-is the clearest instance of this discipline in the wild: the standalone
-error type simply doesn't survive the port.
+is the clearest instance of this discipline in the wild: once `Config`
+owns the failure mode, a standalone error type for the same case has
+nothing left to guard and no reason to exist.
