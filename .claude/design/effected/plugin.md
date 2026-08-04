@@ -3,14 +3,15 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-02
-last-synced: 2026-08-02
+updated: 2026-08-04
+last-synced: 2026-08-04
 completeness: 90
 related:
   - architecture.md
   - effect-standards.md
   - migration-playbook.md
   - releases.md
+  - github-action-canon.md
 ---
 
 # The "effected" Claude Code plugin
@@ -72,6 +73,8 @@ Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `descrip
 - `testing-actions` — the test machinery across all four packages, `ScriptedSpawner` included.
 
 **Five of the original twelve were hardened by the silk-release-action dogfood** (rounds 1-3, 2026-07-26), which is the [improve loop](#the-improve-skill) running on a suite that had never met a real consumer. Every edit was a *falsified claim* rather than a gap: `testing-actions` gained the layer merge-order collision trap, the lazy-death double rule and the `layerTest` `GITHUB_SERVER_URL` false green; `building-a-github-action` gained a call-sequences table and the reconciliation between its bare-`Config` warning and the `layerDefault` fact; `supply-chain-attestation` now routes to `ActionsIdentityToken.layer` and `ActionsProvenance.capture` instead of describing the adapter a consumer would write; `effect-v4-construct-map` records that `Schema.DateTimeUtc` encodes to a `DateTime.Utc`, **not** an ISO string (`DateTimeUtcFromString` is the string codec); and `effect-api-extractor-bases` gained a fifth `{@link}` failure — a re-exported cross-package `Schema.Class` resolves to "not supported yet by the resolver", so it takes backticks. Recorded because it is the loop's first evidence at suite scale: a skill suite written against shipped surfaces still carries false claims until something consumes it.
+
+**The suite is the teaching surface for the [GitHub Action repository canon](github-action-canon.md)** (derived from the three migrated actions and ratified 2026-08-03): `designing-an-action` carries its design sequence, `building-a-github-action` its capability routing, and the `actions-*` skills its per-capability depth. The canon document is the register — an incident amends it first, then the skill that teaches the affected step, then the template repo.
 
 ## Specialist agents
 
