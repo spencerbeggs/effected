@@ -69,13 +69,14 @@ _tools_block() {
 	}
 }
 
-@test "all thirteen Actions skills are registered under skills, in action-engineer" {
+@test "all fourteen Actions skills are registered under skills, in action-engineer" {
 	# Pins the forward decision in the skills-rewrite spec: the whole Actions
 	# suite is preloaded, not a core plus an on-demand tail. A future edit that
 	# drops one of the four skills the split used to defer on demand
 	# (actions-cache-and-artifacts, supply-chain-attestation,
-	# running-commands-and-tools, release-and-publish) must fail here.
-	local expected="building-a-github-action designing-an-action actions-runtime actions-inputs-outputs actions-reporting actions-state-and-secrets actions-cache-and-artifacts github-api github-app-tokens running-commands-and-tools release-and-publish supply-chain-attestation testing-actions"
+	# running-commands-and-tools, release-and-publish), or drops the net-new
+	# structuring-an-action, must fail here.
+	local expected="building-a-github-action designing-an-action structuring-an-action actions-runtime actions-inputs-outputs actions-reporting actions-state-and-secrets actions-cache-and-artifacts github-api github-app-tokens running-commands-and-tools release-and-publish supply-chain-attestation testing-actions"
 	for skill in $expected; do
 		_skills_block "$AGENTS/action-engineer.md" | grep -qx -- "$skill" || {
 			echo "agent action-engineer does not list $skill under skills:" >&2
