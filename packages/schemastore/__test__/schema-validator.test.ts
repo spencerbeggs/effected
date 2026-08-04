@@ -55,10 +55,18 @@ describe("SchemaValidator", () => {
 		it("keeps ajv's structured path and keyword on a meta-schema failure", () => {
 			const findings = validate({ type: "nope" });
 			assert.isAtLeast(findings.length, 1);
-			const first = findings[0];
-			assert.strictEqual(first?.path, "/type");
-			assert.strictEqual(first?.keyword, "enum");
-			assert.isString(first?.message);
+			// `allErrors: true` makes ajv report several failures for this
+			// document (the `enum` and `anyOf` branches both at `/type`), and
+			// their order is ajv's internal business — select the finding
+			// rather than indexing position 0, so an ajv patch that reorders
+			// them does not fail this test.
+			const enumFinding = findings.find((finding) => finding.keyword === "enum");
+			assert.isDefined(enumFinding, "ajv's structured keyword should survive into a finding");
+			assert.strictEqual(enumFinding?.path, "/type");
+			assert.isString(enumFinding?.message);
+			// The point of the test: the structure is preserved rather than
+			// collapsed into one root-pathed finding.
+			assert.isTrue(findings.every((finding) => finding.path.length > 0));
 		});
 
 		it("reports a strict-mode rejection as a finding, not an error", () => {

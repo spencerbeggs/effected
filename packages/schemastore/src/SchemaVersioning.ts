@@ -19,6 +19,13 @@ import { Effect, Option, Order, Result, Schema } from "effect";
 // labels differing only in build would compare equal and both claim to be
 // the latest version.
 const isVersionLabel = (input: string): boolean => {
+	// `SemVer.parseResult` TRIMS its input, so `" 1.2.3 "` parses — and the
+	// label round-trips verbatim into file names, schema URLs and catalog
+	// keys, which would emit `agripparc- 1.2.3 .json`. The anchored regex
+	// this replaced rejected padding for free; `isValid` restores that.
+	if (!SemVer.isValid(input)) {
+		return false;
+	}
 	const parsed = SemVer.parseResult(input);
 	return Result.isSuccess(parsed) && parsed.success.build.length === 0;
 };

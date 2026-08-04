@@ -6,6 +6,7 @@ import {
 	SchemaPipeline,
 	SchemaTarget,
 	SchemaValidator,
+	StoreDocument,
 	ValidationFinding,
 } from "../src/index.js";
 
@@ -73,7 +74,7 @@ describe("SchemaPipeline", () => {
 					writeFileString: () => Effect.die(new Error("must not write a document that failed its gate")),
 				});
 				// A validator that rejects, standing in for a real engine finding.
-				const rejecting = Layer.succeed(SchemaValidator, {
+				const rejecting = SchemaValidator.layerTest({
 					validate: () =>
 						Effect.succeed([ValidationFinding.make({ path: "/type", message: "rejected", keyword: "type" })]),
 				});
@@ -99,7 +100,7 @@ describe("SchemaPipeline", () => {
 					SchemaPipeline.run([target], { blocking: () => false }),
 					layers(
 						writable(),
-						Layer.succeed(SchemaValidator, {
+						SchemaValidator.layerTest({
 							validate: () => Effect.succeed([ValidationFinding.make({ path: "", message: "ignored" })]),
 						}),
 					),
@@ -114,7 +115,7 @@ describe("SchemaPipeline", () => {
 				const written: Array<string> = [];
 				// Rejects only the FIRST target, so the second would pass on
 				// its own — it must still never be reached.
-				const selective = Layer.succeed(SchemaValidator, {
+				const selective = SchemaValidator.layerTest({
 					validate: (document) =>
 						Effect.succeed(
 							document.$id === "https://example.com/config.schema.json"
@@ -147,7 +148,7 @@ describe("SchemaPipeline", () => {
 	// through the pipeline's only entry point, and the docs say so rather
 	// than implying the lint gate is what stops a bad document here.
 	describe("what the lint gate can actually see", () => {
-		it("a schema-derived document carries no undeclared keyword, so UnknownKeyword cannot fire", () =>
+		it.effect("a schema-derived document carries no undeclared keyword, so UnknownKeyword cannot fire", () =>
 			Effect.gen(function* () {
 				const annotated = SchemaTarget.make({
 					schema: Schema.Struct({
@@ -163,13 +164,24 @@ describe("SchemaPipeline", () => {
 					"the lowering dropped the undeclared keys before the lint ran",
 				);
 				assert.isFalse(results[0]?.blocked);
-			}));
+
+				// Prove the MECHANISM, not just the absence: an isEmpty
+				// assertion would pass vacuously if the document never carried
+				// the keys for some other reason. The declared family survives
+				// the lowering via the carriers; the undeclared ones do not.
+				const emitted = (yield* StoreDocument.fromSchema(annotated.schema, { $id: annotated.$id })).toJson();
+				assert.property(emitted, "markdownDescription");
+				assert.notProperty(emitted, "x-bogus-root");
+				const name = (emitted.properties as Record<string, Record<string, unknown>>).name;
+				assert.notProperty(name, "x-not-declared");
+			}),
+		);
 	});
 
 	describe("PipelineFinding", () => {
 		it.effect("label falls back to the gate when the finding names no check", () =>
 			Effect.gen(function* () {
-				const unnamed = Layer.succeed(SchemaValidator, {
+				const unnamed = SchemaValidator.layerTest({
 					validate: () => Effect.succeed([ValidationFinding.make({ path: "", message: "no keyword" })]),
 				});
 				const results = yield* Effect.provide(
@@ -183,7 +195,7 @@ describe("SchemaPipeline", () => {
 
 		it.effect("label uses the check name when the gate named one", () =>
 			Effect.gen(function* () {
-				const keyworded = Layer.succeed(SchemaValidator, {
+				const keyworded = SchemaValidator.layerTest({
 					validate: () => Effect.succeed([ValidationFinding.make({ path: "/type", message: "bad", keyword: "type" })]),
 				});
 				const results = yield* Effect.provide(
@@ -215,7 +227,7 @@ describe("SchemaPipeline", () => {
 		// mistaken for clean drift, but it also does not stop the walk.
 		it.effect("marks a gate-failing target blocked instead of failing", () =>
 			Effect.gen(function* () {
-				const rejecting = Layer.succeed(SchemaValidator, {
+				const rejecting = SchemaValidator.layerTest({
 					validate: () => Effect.succeed([ValidationFinding.make({ path: "", message: "rejected" })]),
 				});
 				const results = yield* Effect.provide(
@@ -231,7 +243,7 @@ describe("SchemaPipeline", () => {
 		// several broken documents learns all of them in one run.
 		it.effect("reports EVERY target even when an earlier one is blocked", () =>
 			Effect.gen(function* () {
-				const selective = Layer.succeed(SchemaValidator, {
+				const selective = SchemaValidator.layerTest({
 					validate: (document) =>
 						Effect.succeed(
 							document.$id === "https://example.com/config.schema.json"

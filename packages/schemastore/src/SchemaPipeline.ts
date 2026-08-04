@@ -162,7 +162,6 @@ const defaultBlocking = (finding: PipelineFinding): boolean => finding.severity 
 
 // Collect both gates' findings for one target, normalized.
 const gather = (
-	target: SchemaTarget,
 	document: StoreDocument,
 	options?: SchemaPipelineOptions,
 ): Effect.Effect<ReadonlyArray<PipelineFinding>, SchemaValidatorError, SchemaValidator> =>
@@ -265,7 +264,7 @@ export class SchemaPipeline {
 			const results: Array<PipelineResult> = [];
 			for (const target of targets) {
 				const document = yield* StoreDocument.fromSchema(target.schema, { $id: target.$id });
-				const findings = yield* gather(target, document, options);
+				const findings = yield* gather(document, options);
 				yield* gate(target, findings, options);
 				const { outcome, change } = yield* files.write(target.path, document, options?.write);
 				results.push({ $id: target.$id, path: target.path, outcome, change, findings });
@@ -301,7 +300,7 @@ export class SchemaPipeline {
 			const results: Array<PipelineCheckResult> = [];
 			for (const target of targets) {
 				const document = yield* StoreDocument.fromSchema(target.schema, { $id: target.$id });
-				const findings = yield* gather(target, document, options);
+				const findings = yield* gather(document, options);
 				const { wouldWrite, change } = yield* files.check(target.path, document, options?.write);
 				results.push({
 					$id: target.$id,

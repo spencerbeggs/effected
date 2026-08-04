@@ -40,7 +40,22 @@ describe("SchemaVersioning", () => {
 		});
 
 		it("rejects malformed labels typed", () => {
-			for (const label of ["", "v1.2.3", "1.2.3.4", "01.2.3", "1..2", "1.2.3-", "1.2.3+build"]) {
+			for (const label of [
+				"",
+				"v1.2.3",
+				"1.2.3.4",
+				"01.2.3",
+				"1..2",
+				"1.2.3-",
+				"1.2.3+build",
+				// SemVer.parseResult trims, so these parse if the label is not
+				// guarded — and the padding would survive into the emitted
+				// file name and URL verbatim.
+				" 1.2.3",
+				"1.2.3 ",
+				" 1.2.3 ",
+				"\t1.2.3",
+			]) {
 				const result = SchemaVersioning.parseResult(label);
 				assert.isTrue(Result.isFailure(result), label);
 				const error = (result as Result.Failure<SchemaVersion, InvalidSchemaVersionError>).failure;
