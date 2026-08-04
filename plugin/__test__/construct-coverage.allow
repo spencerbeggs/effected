@@ -51,15 +51,20 @@ UploadResult
 # service (GitBranch, GitCommit, GitHubApp, GitHubClient, GitHubCommit,
 # GitHubContent, GitHubIssue, GitHubRelease, GitHubRepository, GitTag,
 # PullRequestComment, PullRequest, WorkflowDispatch, ArtifactMetadata,
-# Attestation, CheckRun, Rest); the octokit fixture-double helper type.
+# Attestation, CheckRun, Rest); the octokit fixture-double helper type; the
+# PermissionResult array-element types of the already-documented
+# TokenPermissions comparator (ExtraPermission, PermissionGap).
 ArtifactMetadataShape
 AttestationShape
 CheckRunShape
+ExtraPermission
 FileMode
 FileStatus
+GitBranchShape
 GitCommitShape
 GitHubAppOptions
 GitHubClientOptions
+GitHubClientShape
 GitHubCommitShape
 GitHubContentShape
 GitHubFixtures
@@ -69,8 +74,10 @@ GitHubRepositoryShape
 GitTagShape
 GraphQLErrorEntry
 MergeMethod
+PermissionGap
 PullRequestCommentShape
 PullRequestShape
+RepositoryPatch
 RestData
 RestExtras
 RestItem
@@ -88,11 +95,13 @@ ToolDiscoveryShape
 ToolResolutionFailure
 
 # npm — detail types/predicates of the already-documented DependencySpecifier
-# and IntegrityHash brands, and NpmRegistry's seeded-double value shape.
+# and IntegrityHash brands, NpmRegistry's seeded-double value shape, and the
+# Shape interface of the already-documented PackagePublish service.
 ClassifiedSpecifier
 IntegrityAlgorithm
 isValidDependencySpecifier
 isValidIntegrityHash
+PackagePublishShape
 SeededVersion
 
 # schemastore — KNOWN GAP, not a detail-type exemption: this package has no
