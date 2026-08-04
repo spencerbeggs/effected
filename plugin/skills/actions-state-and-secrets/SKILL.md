@@ -286,43 +286,13 @@ exceptions — `ActionEnvironmentTest` seeding the twelve `GITHUB_*` variables,
 `actions-inputs-outputs`; named here only so a reader doesn't wonder if they
 exist.)
 
-## Failure: who renders it, and how much
+## Failure: what this package's error channels decide before `Action.run` ever sees them
 
-`Action.run` is the **only** place that renders a top-level failure. You
-never write an exit handler in an action's `main`/`pre`/`post` script — you
-write the program, and `Action.run(program, options)` owns turning a failed
-`Exit` into the runner's own vocabulary (`Action.ts:189-227`).
-
-```ts
-export const describeCause = (cause: Cause.Cause<unknown>): string => {
- const failure = Cause.findErrorOption(cause);
- if (Option.isSome(failure)) {
-  return describeError(failure.value);
- }
- const defect = Cause.findDefect(cause);
- if (Result.isSuccess(defect)) {
-  return `[defect] ${describeError(defect.success)}`;
- }
- const pretty = Cause.pretty(cause);
- return pretty.trim() === "" ? "the action failed with no diagnostic information" : pretty;
-};
-```
-
-(`Action.ts:114-125`.) `describeError` renders `[Tag]: message` for any typed
-failure or defect carrying a `_tag` (`Action.ts:128-135`) — the one line a
-human scanning a workflow log for the first red line needs. **An interruption
-has neither a `_tag` nor a message**, and `Cause.pretty(cause)` is the honest
-answer for that case: there is no tag to synthesize one from, so falling back
-to the full cause render (or an explicit "no diagnostic information" string
-when even that is blank) is correct, not a shortcut.
-
-Rendering depth is deliberate and asymmetric (`Action.run`,
-`Action.ts:201-219`): one `::error::` line carrying `describeCause`'s output
-and the process exit code always fire; the **full** `Cause.pretty` render —
-span trace included — goes out behind `::debug::`, visible only when a
-workflow author turns on step debugging. A predecessor spliced a JS stack
-into the *visible* error; in a bundled action that stack points at one line
-of `dist/main.js` and tells a reader nothing.
+`Action.run` is the **only** place that renders a top-level failure, and it
+does that once, consistently, from `describeCause`/`describeError` and the
+`::error::`/`::debug::` rendering-depth split — see `actions-runtime` for the
+mechanics; this section covers only what happens upstream of that, inside
+this package's own error channels, before a `Cause` ever reaches `Action.run`.
 
 **Demote vs. die is a call each error channel makes for itself, not
 `Action.run`.** `GitHubToken.provision`'s identity-resolution degrades a

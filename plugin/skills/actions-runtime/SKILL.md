@@ -70,6 +70,10 @@ the executable spec for all of this — read it before changing any of the above
 
 ### `describeCause` / `describeError`
 
+This is the one place these are documented — `actions-state-and-secrets` and
+any other skill that touches a failure `Action.run` eventually renders points
+here rather than restating the code block below.
+
 ```ts
 export const describeCause = (cause: Cause.Cause<unknown>): string
 ```
