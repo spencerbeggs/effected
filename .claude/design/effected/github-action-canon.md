@@ -5,7 +5,7 @@ category: architecture
 created: 2026-08-04
 updated: 2026-08-04
 last-synced: 2026-08-04
-completeness: 88
+completeness: 90
 related:
   - plugin.md
   - effect-standards.md
@@ -30,7 +30,7 @@ The canon was derived on 2026-08-03 from the three actions that had actually com
 
 **Every rule here is anchored to an incident.** Nothing in the canon is a style preference: each item cites the run, issue or file where its absence cost something. Where three actions disagreed, the disagreement is resolved below with the evidence that settled it — and where the resolution was a judgement call rather than a forced one, that is marked as revisable rather than silently hardened.
 
-The worked example is **savvy-web/github-action-template**, which is being regenerated to this specification (§[The template repo](#the-template-repo)). The template is the executable copy of this document; when the two disagree, this document is the register and the template is the bug — unless the template's divergence is itself a new incident, in which case it amends the canon.
+The worked example is **savvy-web/github-action-template**, regenerated to this specification (§[The template repo](#the-template-repo)). The template is the executable copy of this document; when the two disagree, this document is the register and the template is the bug — unless the template's divergence is itself a new incident, in which case it amends the canon, as the regeneration's five refinements did.
 
 ### Division of labor with the skills
 
@@ -56,9 +56,9 @@ src/
   post.ts                       # duration/cleanup; never fails the workflow
   program.ts                    # pure composition: readInputs -> steps -> output fold -> report
   steps/                        # one module per orchestration unit
-  services/                     # reusable Context.Service classes, only for shared capability
-  shims/                        # blessed local shims for checked-absent kit surfaces
-  layers/app.ts                 # per-entry layers over ActionRuntime.layer
+  services/                     # documented convention: Context.Service classes for shared capability
+  shims/                        # documented convention: blessed shims for checked-absent kit surfaces
+  layers/app.ts                 # per-entry layers — only when a service must be provided OUTSIDE program
   schema/
     inputs.ts                   # INPUT_NAMES tuple + readInputs
     outputs.ts                  # OUTPUT_NAMES tuple + fold from all-disabled defaults
@@ -71,16 +71,17 @@ __test__/
   integration/                  # *.int.test.ts + fixtures/
   utils/                        # doubles and adapters — helper code, not tests
   CLAUDE.md                     # test conventions + the collection contract
-vitest.config.ts                # AgentPlugin, strict thresholds, explicit includes, collected-count gate
+vitest.config.ts                # AgentPlugin, strict thresholds, structural placement test, gate on the Tests: line
+vitest.setup.ts                 # strips GITHUB_ACTIONS / INPUT_* / STATE_* from the test process env
 docs/                           # numbered user docs
 .github/workflows/              # act-test, branch-sync, claude, dco, project-listener, release, silk-update, self-dogfood
 .github/actions/local/          # committed persistLocal output — the act/CI smoke target
 lib/configs/                    # markdownlint-cli2, commitlint, lint-staged
 CLAUDE.md                       # how to use this repo + the shim register
-package.json                    # @effected/* caret deps; effect + @effect/platform-node from catalog:effect
+package.json                    # deps enter when src imports them; @effected/* at caret; effect + @effect/platform-node from catalog:effect
 pnpm-workspace.yaml             # packages [.], autoInstallPeers, configDependencies
 tsconfig.json                   # extends @savvy-web/github-action-builder/tsconfig/action.json — nothing else
-turbo.json / biome.jsonc / .husky/ / .actrc / .changeset/ / vitest.setup.ts
+turbo.json / biome.jsonc / .husky/ / .actrc / .changeset/
 dist/                           # committed bundles + a dist-freshness CI check
 LICENSE / DCO / CODE_OF_CONDUCT / CONTRIBUTING / SECURITY / README / issue templates / dependabot / devcontainer / .vscode
 ```
@@ -97,13 +98,15 @@ Non-compilable scripts live here per the silk defaults, and that is deliberate r
 
 ### `src/`
 
-- **Entries are uniform.** Every entry point ends with the same idiom — `if (process.env.GITHUB_ACTIONS) { /* v8 ignore next */ await Action.run(program, { layer }) }` — so the program stays importable without executing. One idiom on all entries, not one for main and another for post.
+- **Entries are uniform.** Every entry point ends with the same idiom — `if (process.env.GITHUB_ACTIONS) { /* v8 ignore next */ await Action.run(program, { layer }) }` — so the program stays importable without executing. One idiom on all entries, not one for main and another for post. The idiom only holds if the **test process** does not look like a runner: see [the test-process environment](#the-test-process-environment).
+- **Entries are layer-less by default.** The template's entries pass no `layer` at all: `DryRun` and anything else configuration-derived is provided *inside* `program` from the decoded inputs, through `makeAppLayer(value)`. An entry grows a `layer` argument back only when a service must be provided **outside** `program` — before the inputs are decoded, or across a boundary `program` does not own. Starting layer-less and growing on demand is what keeps the "add only what `ActionRuntime.layer` omits" rule honest; starting with a populated `MainLive` invites provisioning that nothing requires.
 - **`main.ts` is thin**: a program import and the guard. Nothing else belongs in it.
 - **`post.ts` is double-netted**: `catch` *and* `catchDefect`. Post never fails the workflow.
 - **`program.ts` is pure composition**: `readInputs` → steps in order → output fold → report. It holds only cross-step joins — no I/O, no formatting, no step bodies.
 - **`steps/` are orchestration units, not services.** One module per step, each declaring a result type, a `Data.TaggedError` with a `reason` literal union, and an **explicitly annotated** `R`. Pure decision tables are split from their effectful halves.
 - **`services/` is for shared capability only.** A `Context.Service` class earns its place by being used across steps or across actions; a step used once does not become a service.
-- **`layers/app.ts` holds per-entry layers** — `PreLive`/`PostLive` minimal, `MainLive` full. Add only what `ActionRuntime.layer` omits; require the rest, never rebuild it. `Layer.unwrap` over `ActionInput` only when the layer is genuinely config-dependent; a static `const` otherwise. Configuration passes as values through `makeAppLayer(value, options)` so the layers themselves stay config-free.
+- **`services/` and `shims/` are documented conventions, not tracked empty directories.** An action that needs neither ships neither; the convention lives in `src/CLAUDE.md` and the shim register lives in the root `CLAUDE.md`, so the slot is discoverable without an empty directory pretending the repo has something in it. (A `.gitkeep` under a convention directory is the same fossil as a no-op guard script.)
+- **`layers/app.ts` holds per-entry layers when there are any** — `PreLive`/`PostLive` minimal, `MainLive` full. Add only what `ActionRuntime.layer` omits; require the rest, never rebuild it. `Layer.unwrap` over `ActionInput` only when the layer is genuinely config-dependent; a static `const` otherwise. Configuration passes as values through `makeAppLayer(value, options)` so the layers themselves stay config-free.
 - **`schema/inputs.ts`** exports an `INPUT_NAMES` const tuple (names as data) and `readInputs`, decoded **once** and exported separately, carrying cross-field interaction validation. Defaults mirror `action.yml`.
 - **`schema/outputs.ts`** exports an `OUTPUT_NAMES` tuple and the fold from **all-disabled defaults**, so every output is emitted exactly once on **every** abort path.
 - **`state.ts`** holds `STATE_KEYS` and `Schema.Class` bundles whose every field's *encoded* form is JSON-safe (`Schema.OptionFromNullOr`, never `Schema.Option`), with branded ids where a zero value would be invalid (`ProcessId`).
@@ -113,9 +116,15 @@ Non-compilable scripts live here per the silk defaults, and that is deliberate r
 
 ### `__test__/`
 
-Tests live in `__test__/` only (§[B1](#b1--tests-live-in-__test__-only)): `unit/` mirroring `src/` module for module, `integration/` holding `*.int.test.ts` with real `fixtures/` (silk-update-action's real tarballs and before/after lockfiles are the realism bar), and `utils/` holding doubles — recording wrappers over the kit's `layerTest` (wrapped in `Effect.suspend` so an eager recorder cannot lie), `ScriptedSpawner` adapters. `utils/` is helper code, not tests, and the vitest include globs must say so.
+Tests live in `__test__/` only (§[B1](#b1--tests-live-in-__test__-only)): `unit/` mirroring `src/` module for module, `integration/` holding `*.int.test.ts` with real `fixtures/` (silk-update-action's real tarballs and before/after lockfiles are the realism bar), and `utils/` holding doubles — recording wrappers over the kit's `layerTest` (wrapped in `Effect.suspend` so an eager recorder cannot lie), `ScriptedSpawner` adapters. `utils/` is helper code, not tests.
 
-`vitest.config.ts` uses the `AgentPlugin` with strict thresholds and `include: ["src/**/*.ts"]` for coverage so never-imported files score zero rather than vanishing, plus explicit test include globs and a collected-count assertion.
+`vitest.config.ts` uses the `AgentPlugin` with strict thresholds and `include: ["src/**/*.ts"]` for coverage, so a never-imported file scores zero rather than vanishing from the report.
+
+**How the collection contract is enforced depends on the runner.** Under the `AgentPlugin`'s project discovery there is no root include glob to narrow, so a config-level include list cannot be the enforcement point. The realization is a **structural placement test** — any `*.test.ts` outside `unit/` or `integration/*.int.test.ts` fails the suite — paired with gating on the `Tests:` line rather than the exit code. Same guarantee as the include-glob form, reached the way the runner actually works: a test file in a place nothing collects becomes a failure instead of a silence.
+
+#### The test-process environment
+
+`vitest.setup.ts` **strips `GITHUB_ACTIONS`, every `INPUT_*` and every `STATE_*` from the test process environment.** This is what lets the uniform entry-guard idiom coexist with running tests inside a runner: without it, a CI test process that imports a guarded entry module satisfies `process.env.GITHUB_ACTIONS` and **executes the action** as an import side effect. The guard is not wrong — the ambient environment is — and the setup file is where that is fixed, once, for the whole suite. Stripping `INPUT_*` and `STATE_*` alongside it keeps a test from silently reading the *host* workflow's inputs or state when a fixture forgets to seed its own.
 
 ### Repository scaffolding
 
@@ -135,7 +144,7 @@ Order matters — this is the sequence in which an action's design decisions are
 - **5. Set the secret-masking policy.** Mask everything supplied *before* any decision about whether it will be used (silk-runtime-action's `maskSuppliedSecrets`). A plaintext appears only through a named `Secret.*` member; a new declassification need is a new member, never an inline `Redacted.value`.
 - **6. Decide failure posture per step.** Three tiers: fail the job; degrade to a warning (the tagged error is "the shape a failure takes before it is logged"); or double-net with `catch` plus `catchDefect` (post, summary writes). **Fail the effect — never `setFailed` and return**: silk-release-action's `errors.ts` cites the incident by run id where 4 of 8 targets failed and the run reported green. Outputs are emitted on every abort path.
 - **7. Audit the error taxonomy.** The mirror rule: **no error class without a constructor site, and no `new Error` where a step failure needs a tag.** silk-update-action shipped 5 dead classes out of 8 while its real failures used untyped `Error`; silk-runtime-action carried a phantom `reason` literal with no producer.
-- **8. Compose layers minimally.** Add only what `ActionRuntime.layer` omits; per-entry layers; `Layer.unwrap` only when config-dependent; bind shared layers to a single `const`, because memoization is by reference. Prove there is no over-provision with a typed `ActionServices` test double — an added requirement must fail to compile (silk-runtime-action's `layers.test.ts`).
+- **8. Compose layers minimally.** Start layer-less — provide configuration-derived services inside `program` from the decoded inputs — and grow a per-entry layer only when a service must be provided outside `program`. Add only what `ActionRuntime.layer` omits; `Layer.unwrap` only when config-dependent; bind shared layers to a single `const`, because memoization is by reference. Prove there is no over-provision with a typed `ActionServices` test double — an added requirement must fail to compile (silk-runtime-action's `layers.test.ts`).
 - **9. Design reporting on one stack.** The kit suite — `GitHubMarkdown`, `CheckState`, `CheckDocument`, `ManagedDocument` — conditioned on what the installed kit actually covers; a genuine gap goes through a shim, not a hand-rolled namespace object. (silk-release-action accreted three and a half markdown stacks; silk-update-action re-implemented one the kit already shipped.) Check conclusions include `neutral`. Sticky comments follow silk-release-action's five managed-section rules: write the running state before doing the work, never blank a section, sha-stamp staleness, keep sections independent, and write monotonically. **Payload budgets are a design step**: the 65535-byte check-body cap forced silk-release-action to strip release notes at runtime — design the truncation instead of discovering it.
 - **10. Write the logging contract.** A run-context opening block; the detect-headline pattern (what was detected first, evidence at debug); every skipped step logging `Step: X — SKIPPED: <reason>`; warnings reserved for acceptance signals; a closing Result block. Enforce it with a test that asserts on the captured log stream — the log **is** the decision record.
 - **11. Compose steps into a pipeline.** One module per step; `program.ts` is pure composition holding only cross-step joins; the output fold starts from all-disabled defaults so a feature that never ran still reports its default. silk-update-action's 550-line comment-divider `innerProgram` is the recorded anti-pattern; silk-runtime-action's `steps/` is the model.
@@ -146,6 +155,7 @@ Order matters — this is the sequence in which an action's design decisions are
 ### Cross-cutting invariants
 
 - **Dependency honesty.** Every declared `@effected/*` dependency is either imported by `src/` **or** is a required peer dependency of another declared dependency — peer closures are legitimate un-imported dependencies. The structural import-walker test must resolve the peer closure before flagging anything; silk-runtime-action appeared to declare 10 unused dependencies out of 16, and which of those were peer-required had to be established before deleting any.
+- **Dependency honesty outranks any suggested starting set.** A scaffold declares only what its own `src/` imports — the template ships `@effected/github-actions`, `effect` and `@effect/platform-node` and nothing else. There is no "common set" of `github`/`commands`/`semver` to pre-declare: a dependency enters when a step imports it, and the optional App-auth chapter documents adding `@effected/github` as part of the edit that lands `pre.ts`. A pre-declared dependency is an unused one on day one, which is exactly the state the invariant exists to forbid — and it teaches the scaffold's first reader that unused declarations are normal.
 - **Kit-static seams are defaulted parameters, not service wrappers.** silk-runtime-action's `DetachedProcessOps` is the shape: a seam that keeps `R` — and therefore every consumer's layer stack — unchanged.
 - **`ActionEnvironment` is the only environment authority.** Ambient `process.env` appears only at named bridge sites (release#192: duplicate `GITHUB_SHA` reads with divergent fallbacks).
 - **No `as never` on the `R` channel** (release#192). A dropped layer must fail to compile, not die at runtime; production entry points are zero-arg by construction.
@@ -155,7 +165,9 @@ Order matters — this is the sequence in which an action's design decisions are
 
 ### B1 — Tests live in `__test__/` only
 
-`unit/` plus `integration/*.int.test.ts`. Rider: explicit vitest include globs and a **collected-count assertion**, gating on the `Tests:` line rather than the exit code. Evidence: silk-release-action carried three coexisting test layouts, and `__test__/utils/*.test.ts` was silently never collected — a green exit code over tests that never ran.
+`unit/` plus `integration/*.int.test.ts`. Rider: the collection contract is enforced executably and the gate is the `Tests:` line, never the exit code. Evidence: silk-release-action carried three coexisting test layouts, and `__test__/utils/*.test.ts` was silently never collected — a green exit code over tests that never ran.
+
+The rider's *form* follows the runner. Under the `AgentPlugin`'s project discovery there is no root include glob to narrow, so the template realizes it as a **structural placement test** (any `*.test.ts` outside the two sanctioned locations fails the suite) rather than an include list plus a collected-count assertion. What is canon is that an uncollected test file must produce a failure; which mechanism produces it is the runner's business.
 
 ### B2 — `it.effect` plus `assert.*` is template canon
 
@@ -212,14 +224,14 @@ Consider each of these before building; none of them produces a compile error, w
 
 ## The template repo
 
-`savvy-web/github-action-template` is being regenerated to this specification as the worked example. The plan is keep / kill / build.
+`savvy-web/github-action-template` is the worked example, **regenerated to this specification on branch `feat/effected-migration` as one coherent commit**, with every verification gate green — including a runner-style smoke test of the built bundles, which is the only check that sees what `vitest` structurally cannot. The regeneration produced five refinements that are folded into the rules above rather than kept as a template-only appendix: the dependency set, layer-less entries, the placement-test realization of B1's rider, `services/`/`shims/` as conventions rather than tracked empty directories, and the test-process environment rule (which is new canon, not a restatement). The plan it executed was keep / kill / build.
 
 **Keep — verified current:** `pnpm-workspace.yaml` exactly as it stands (its `configDependencies` already match all three migrated actions); `tsconfig`, `turbo`, `biome`, `husky` and `lib/configs`; the devDependency trio (builder, silk, vitest-agent); repository hygiene (LICENSE, DCO, code of conduct, contributing, security, issue templates, dependabot, devcontainer, `.vscode`, `.actrc`); the `branch-sync`, `claude`, `dco`, `release` and `silk-update` workflows; `.changeset/config.json` with a templated `repo` field; the `action.yml` skeleton (node24, dist entries, branding); and the vitest `AgentPlugin` shape, upgraded to the config described above.
 
 **Kill:** `@savvy-web/github-action-effects` ^3.1.0 (the dead predecessor); the three zero-byte `src` entries; `lib/scripts/generate-schema.ts` (a commented-out corpse leaked from silk-release-action) along with the broken `generate:schema` script and the `ajv` devDependency; `.github/workflows/branch-sync copy.yml` (tracked junk); the stale `types/global.d.ts`; every "github-action-effect" wording in the README, `action.yml` and description; the coverage `none` thresholds; and `--pass-with-no-tests` on `ci:test`.
 
-**Build, to the structure above:** the `@effected/*` dependencies (a `github-actions` floor, with `github`/`commands`/`semver` as the common set) plus `@effect/vitest`; the working skeleton — uniform-guard entries, `program.ts`, one demo step in `steps/` that exercises a SKIPPED path, per-entry `layers/app.ts`, `state.ts` demonstrating a start-time → duration round trip, `schema/inputs.ts` and `outputs.ts` with the three-way sync test, and `format.ts`; `__test__/unit` with real `it.effect` tests (program log stream, state round-trip, input sync) plus the structural tests (dependency honesty, `@effect/vitest` imported, collected count); `act-test.yml`, `project-listener.yml` and the self-dogfood workflow; `persistLocal: enabled`; the effected Claude Code plugin installed by default via marketplace config, matching the migrated actions, with the three-tier `CLAUDE.md` written as general how-to-use-this-repo docs that lean on the plugin's skills and agents; `docs/` including the App-auth optional chapter (B3) and the forensic-comment library (B9); the `ci:version` and `claude` scripts; and the dist-freshness check.
+**Build, to the structure above:** `@effected/github-actions`, `effect` and `@effect/platform-node` as the **whole** runtime dependency set, plus `@effect/vitest` — dependency honesty decides the list, so nothing else is declared until `src/` imports it; the working skeleton — layer-less uniform-guard entries, `program.ts`, one demo step in `steps/` that exercises a SKIPPED path, `state.ts` demonstrating a start-time → duration round trip, `schema/inputs.ts` and `outputs.ts` with the three-way sync test, and `format.ts`; `__test__/unit` with real `it.effect` tests (program log stream, state round-trip, input sync) plus the structural tests (dependency honesty, `@effect/vitest` imported, test placement); `vitest.setup.ts` scrubbing the runner variables; `act-test.yml`, `project-listener.yml` and the self-dogfood workflow; `persistLocal: enabled`; the effected Claude Code plugin installed by default via marketplace config, matching the migrated actions, with the three-tier `CLAUDE.md` written as general how-to-use-this-repo docs that lean on the plugin's skills and agents, and carrying the `services/`/`shims/` conventions and the shim register; `docs/` including the App-auth optional chapter (B3, which documents adding `@effected/github` as part of landing `pre.ts`) and the forensic-comment library (B9); the `ci:version` and `claude` scripts; and the dist-freshness check.
 
 `package.json` scripts settle at `ci:version` (savvy changeset version), `claude` (with `--plugin-dir`), `validate`, and `ci:test = vitest run --coverage` with **no** `--pass-with-no-tests`.
 
-**Delivery rule.** The regeneration lands as **one coherent commit**. The current half-migrated state — a current `pnpm-workspace.yaml` sitting next to dead dependencies — had two auditors reading opposite conclusions from adjacent files. The template is never patched incrementally across the old/new boundary.
+**Delivery rule.** The regeneration landed as **one coherent commit**, and any future one does the same. The half-migrated state it replaced — a current `pnpm-workspace.yaml` sitting next to dead dependencies — had two auditors reading opposite conclusions from adjacent files. The template is never patched incrementally across the old/new boundary.
