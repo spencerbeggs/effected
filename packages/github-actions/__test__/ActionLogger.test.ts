@@ -392,6 +392,27 @@ describe("ActionLogger", () => {
 			),
 		);
 
+		it.effect("under step debugging a FAILING step emits the header after the live transcript", () =>
+			stepped(
+				Effect.gen(function* () {
+					const logger = yield* ActionLogger;
+					yield* Effect.flip(
+						logger.withStep("install", Effect.andThen(Effect.logInfo("resolving"), Effect.fail("boom"))),
+					);
+					const captured = yield* lines;
+					// The documented ordering ("header first, then the transcript") is a
+					// property of the BUFFERED path only. With step debugging on,
+					// withBuffer returns the effect unbuffered, so its output has already
+					// gone out live by the time tapCause fires and the header lands LAST.
+					// Pinned rather than papered over: the docstring is qualified to
+					// match. The debug suite previously only exercised a successful step,
+					// so this ordering was undocumented and unverified.
+					assert.deepStrictEqual(captured, ["resolving", "❌ install"]);
+				}),
+				{ RUNNER_DEBUG: "1" },
+			),
+		);
+
 		it.effect("the test double passes the effect through without a summary", () =>
 			Effect.gen(function* () {
 				const logger = yield* ActionLogger;

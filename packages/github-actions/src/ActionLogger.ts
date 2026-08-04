@@ -219,6 +219,13 @@ export interface ActionLoggerShape {
 	 * 3. on failure a `❌ <name>` header lands **first**, then the transcript
 	 *    spills beneath it.
 	 *
+	 * The ordering in (3) is a property of the **buffered** path. With step
+	 * debugging on, nothing is buffered — verbose output has already gone out
+	 * live by the time the failure fires — so the header lands *after* the
+	 * transcript it would otherwise introduce. That is the honest trade of
+	 * asking for live output, not a defect, and both orderings are pinned by
+	 * test.
+	 *
 	 * The header and the summary are the whole difference from `withBuffer`, and
 	 * they are why this is a member rather than a documented recipe: the recipe
 	 * was independently derived wrong three times by careful readers during one

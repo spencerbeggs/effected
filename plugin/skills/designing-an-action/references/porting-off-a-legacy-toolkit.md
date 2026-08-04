@@ -33,7 +33,7 @@ Straight substitution through the table leaves these wrong, and each cost a real
 The table is not the plan. `porting.md`'s process still applies in full — in particular the frozen parity contract, which on one port caught that the action had four inputs where three separate sources claimed five. What an import-only port can compress is the design exploration, not the verification:
 
 1. Freeze the parity contract from `action.yml` (`porting.md`).
-2. Stash the legacy implementation as an oracle; exclude it from lint, typecheck and bundling. Never import it.
+2. Preserve a copy of the legacy implementation as an oracle — it must stay readable for the whole port while being excluded from lint, typecheck and bundling. Never import it. (Copy it; do not reach for `git stash`, which this repo forbids for exactly the reason it sounds like the right tool here.)
 3. Sweep the table over every import, and resolve anything it does not cover through the router.
 4. Migrate the test doubles **before** converting the test harness (`porting.md`).
 5. Fill in step by step against the oracle, mutating the edges before declaring green.

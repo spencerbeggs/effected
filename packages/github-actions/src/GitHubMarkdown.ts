@@ -156,10 +156,13 @@ const passthrough = (value: string): Html => Html.make({ value });
  * table-corruption defect this module exists to delete.
  *
  * What makes the guard unreachable is not that these trees are small; it is
- * that **their depth does not depend on input**. Every member takes
- * pre-rendered markdown and wraps it in exactly one `passthrough` node, so a
- * composition nests strings rather than nodes and the deepest tree the writer
- * can build is a table's five levels, whatever it is handed. Pinned by
+ * that **their depth does not depend on input**. A fragment handed to a
+ * member always becomes a **leaf**, never a subtree: the composition members
+ * (`table`, `list`, `link`) wrap it in a single `passthrough` node, and the
+ * content members (`code`, `codeBlock`) carry it as a node's `value` string.
+ * Either way nothing re-parses a fragment into child nodes, so a composition
+ * nests strings rather than nodes and the deepest tree the writer can build
+ * is a table's five levels, whatever it is handed. Pinned by
  * `__test__/GitHubMarkdown.test.ts`, which nests the writer's own output a
  * thousand deep — four times the cap — and still renders.
  *
@@ -192,17 +195,20 @@ const block = (node: Root["children"][number]): string => render(Root.make({ chi
  * an action that never renders markdown never links the engine.
  *
  * **Renders cannot fail, so do not `Effect.try`-wrap them.** The serializer's
- * single failure mode is a nesting-depth guard, and no input can reach it:
- * every member here takes pre-rendered markdown and passes it through as one
- * opaque node, so a composition nests strings rather than nodes and the tree's
- * depth is fixed by the construct, not by what it is handed. A test nests the
- * writer's own output a thousand deep and still renders. Wrapping is
- * boilerplate that also widens the catch to anything else thrown inside the
- * builder — a reporting surface degrading for reasons it did not intend.
+ * single failure mode is a nesting-depth guard, and no input can reach it: a
+ * fragment handed to a member becomes a leaf — a passthrough node or a node's
+ * `value` string — never a parsed subtree, so a composition nests strings
+ * rather than nodes and the tree's depth is fixed by the construct, not by
+ * what it is handed. A test nests the writer's own output a thousand deep and
+ * still renders. Wrapping is boilerplate that also widens the catch to
+ * anything else thrown inside the builder — a reporting surface degrading for
+ * reasons it did not intend.
  *
- * The one exception is {@link GitHubMarkdown.tableFor}, and it is the *codec*
- * rather than the serializer: cells encode through the row schema, so a value
- * smuggled past the types throws its `SchemaError`. Well-typed rows are total.
+ * Two exceptions, both in {@link GitHubMarkdown.tableFor} and neither in the
+ * serializer. Cells encode through the row schema, so a value smuggled past
+ * the types throws its `SchemaError`; and a column's own `format` function is
+ * called directly, so its totality is the caller's to guarantee. Well-typed
+ * rows through the default codec are total.
  *
  * @example
  * ```ts
@@ -269,12 +275,18 @@ export class GitHubMarkdown {
 	 * past the types throws the codec's `SchemaError` as a defect — same
 	 * posture as the serializer arm above, **not** a silent fallback.
 	 *
-	 * This is the **one** place in the writer where a throw is reachable at
-	 * runtime, and it is the codec, not the serializer — see the no-wrapping
-	 * remark on {@link GitHubMarkdown}. A caller holding only well-typed rows
-	 * (the normal case, and what the types express) still needs no wrapping;
-	 * a caller feeding rows decoded from somewhere untyped should decode
-	 * through the schema rather than guard the render.
+	 * This is the **only** member where a throw is reachable at runtime, and
+	 * neither route is the serializer — see the no-wrapping remark on
+	 * {@link GitHubMarkdown}. There are two:
+	 *
+	 * - the **codec**, for a value smuggled past the types. A caller holding
+	 *   only well-typed rows (the normal case, and what the types express)
+	 *   needs no wrapping; a caller feeding rows decoded from somewhere
+	 *   untyped should decode through the schema rather than guard the render.
+	 * - a column's own **`format`** function, which is called directly and
+	 *   bypasses the codec entirely. Nothing here can make user code total, so
+	 *   a `format` that can throw makes its render able to throw — keep
+	 *   formatters total, or guard at the formatter rather than the render.
 	 *
 	 * Only string-keyed fields become columns; symbol keys are not
 	 * enumerable table columns.

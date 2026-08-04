@@ -250,7 +250,36 @@ describe("GitHubMarkdown", () => {
 			// still throws. This is why the guidance is "the serializer cannot fail",
 			// not "tableFor cannot throw" — the two are different claims and only
 			// one of them is unconditional.
-			assert.throws(() => table.render([{ name: 7 } as unknown as { name: string }]));
+			let caught: unknown;
+			try {
+				table.render([{ name: 7 } as unknown as { name: string }]);
+			} catch (error) {
+				caught = error;
+			}
+			// Assert WHICH failure, not merely that one happened: a bare
+			// `assert.throws` would stay green if the serializer or a stray
+			// TypeError started throwing instead, which is the exact confusion this
+			// block exists to settle.
+			assert.strictEqual((caught as { readonly _tag?: string })?._tag, "SchemaError");
+		});
+
+		it("a user-supplied format function is the other way a render can throw", () => {
+			const Row = Schema.Struct({ count: Schema.Number });
+			// `format` bypasses the codec entirely, so its totality is the caller's
+			// to guarantee — the no-wrapping guidance covers the writer's own
+			// machinery, not arbitrary user code the writer calls.
+			const table = GitHubMarkdown.tableFor(Row, {
+				columns: {
+					count: {
+						format: (value) => {
+							if (value === 0) throw new RangeError("nope");
+							return String(value);
+						},
+					},
+				},
+			});
+			assert.include(table.render([{ count: 3 }]), "| 3 |");
+			assert.throws(() => table.render([{ count: 0 }]), RangeError);
 		});
 	});
 });
