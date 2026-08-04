@@ -43,6 +43,19 @@ that as `Option.none()` instead — reach for `getOptional` at exactly the call
 sites where "an earlier phase didn't run" is a normal outcome, not a bug (see
 `GitHubToken.dispose`, below).
 
+**Design every state field's encoded form as plain JSON — `Schema.OptionFromNullOr`,
+never `Schema.Option`.** An `Option` field's encoded form under `Schema.Option`
+is an `Option` *instance*, not a JSON primitive; `JSON.stringify` serializes it
+through its own `toJSON` into a shape the matching decode then rejects. The
+failure lands one phase later than the mistake: `save` in `main` reports
+success, and `get`/`getOptional` in `post` cannot decode the value it wrote.
+Since 2026-08-02 `save` catches the general case at write time — it proves the
+encoded form survives `JSON.stringify`/`parse` and fails typed
+(`reason: "notPlainJson"`, naming the key) rather than leaving a `malformed`
+mystery for the later phase — but the fix at design time is cheaper than the
+fix at test time: pick `Schema.OptionFromNullOr` for every optional field in a
+state bundle from the start.
+
 **Only `saveSecret` masks — `save` does not, and the distinction is the whole
 API surface for choosing between them.** Verified at `ActionState.ts:114-116`:
 
@@ -155,7 +168,13 @@ export class Secret {
 - **`forChildEnv`** — declassify a whole set for a detached child's
   environment. Masks every entry before any plaintext is returned, including
   when one entry's masking would otherwise race the caller reading a partial
-  record (`Secret.ts:56-65`).
+  record (`Secret.ts:56-65`). **"A whole set" includes a set of one** — a
+  single `STATE_`-persisted secret exported as a single process-level
+  environment variable is `Secret.forChildEnv({ VAR_NAME: theSecret })`, the
+  same call with a one-entry record, not a signal that a narrower member is
+  missing. Reach for `forSigning` only when the caller genuinely needs the
+  raw string in-process (an HMAC, a signature) rather than an environment
+  entry to hand a child.
 - **`forRunnerFile`** — declassify one secret for `GITHUB_STATE` or
   `GITHUB_OUTPUT`. Both are plaintext by GitHub's protocol regardless; the
   mask is the only defense available (`Secret.ts:74-80`).

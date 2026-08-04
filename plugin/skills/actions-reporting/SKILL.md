@@ -82,7 +82,11 @@ const program = Effect.gen(function* () {
   (`ActionEnvironment.isDebug`, which reads `RUNNER_DEBUG === "1"`) or the
   ambient minimum log level is already
   `Debug` or lower (`ActionLogger.ts:231-235`): someone who asked for verbose
-  output gets it live, not replayed at the end.
+  output gets it live, not replayed at the end. **`isDebug` alone does not
+  lower that ambient minimum** — a program that wants `Effect.logDebug` calls
+  to actually fire (not just render differently once they do) still has to
+  wire `isDebug` into `References.MinimumLogLevel` itself; see
+  `actions-runtime`'s `isDebug` → `MinimumLogLevel` bridge for the boilerplate.
 - **`notice(message, properties?)`** — emits `::notice::`
   (`ActionLogger.ts:190-197, 262-263`). A dedicated member, not a log level,
   because Effect has no level between `Info` and `Warn` to map a notice onto.
