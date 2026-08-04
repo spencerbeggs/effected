@@ -176,3 +176,13 @@ Three standing directives for a downstream repo rebuilding against this kit:
 `effect-v4-module-index` routes Effect core; this skill routes the kit. Check
 core first — the kit deliberately requires core contracts (`FileSystem`,
 `ChildProcessSpawner`) rather than re-declaring them.
+
+**Construct-level coverage — does every export get named somewhere in
+`skills/` — is checked, not maintained by hand here.**
+`plugin/__test__/construct-coverage.bats` walks each covered package's
+`src/index.ts` export list against every skill file, phased in starting from
+six packages (`github-actions`, `github`, `commands`, `npm`, `schemastore`,
+`jsonl`). This file's prose is what that check verifies isn't silently
+orphaned, not the source of truth for whether a given export is covered — a
+hand-maintained claim of completeness drifts the same way this file's own
+stale reference-file count once did.
