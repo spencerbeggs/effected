@@ -15,6 +15,19 @@ const Team = Schema.Struct({
 const $id = "https://example.com/team.schema.json";
 
 describe("StoreDocument", () => {
+	describe("draft07", () => {
+		it("fills $schema with the meta-schema constant so hand-built values need not import it", () => {
+			const document = StoreDocument.draft07({ $id: "https://example.com/x.schema.json", root: { type: "object" } });
+			assert.strictEqual(document.$schema, DRAFT_07_META_SCHEMA);
+			assert.deepStrictEqual(document.defs, {});
+			assert.deepStrictEqual(document.toJson(), {
+				$schema: DRAFT_07_META_SCHEMA,
+				$id: "https://example.com/x.schema.json",
+				type: "object",
+			});
+		});
+	});
+
 	describe("fromSchema", () => {
 		it.effect("assembles $schema, $id, root and the $defs pool", () =>
 			Effect.gen(function* () {

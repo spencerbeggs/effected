@@ -10,7 +10,7 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "c6ba20a06f24431cacae200aef0d91fb39ab6d7b194f475ae58e96de19675965",
+			"hash": "9f31f317d5f35ab97fc0e1acdf7f042503db8dff1f7cc3e6adb92d2a68a4c148",
 			"recordedAt": "2026-08-04"
 		},
 		{
@@ -22,7 +22,7 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/github-action-canon.md",
-			"hash": "642f1363c4fdf00c97300e8637056d8e7ed804ecce59d9781b4eec55ea213ba5",
+			"hash": "97f480dff29eba01f73b2d02387e43aa322bfb0d2327660354ecb1a69f328721",
 			"recordedAt": "2026-08-04"
 		},
 		{
@@ -34,7 +34,7 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "dfbbb6051ede6a3789eef50c5f49e3ae77e28934d1e58ccc8bd5e4bf3b5f60a8",
+			"hash": "28d524358aa17cf6dd37b8b4776c1aac8d16b93a34bcbd1fc11920986ae76510",
 			"recordedAt": "2026-08-04"
 		},
 		{
@@ -58,13 +58,13 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/releases.md",
-			"hash": "0975053717e44dfb7ba868349e1cdd86059ab5f7659abbb739f79dbae5b26d40",
+			"hash": "7c5178acbe570fc2603c585f546f9dc450ec55eecb2c66ec0111be6286fd1041",
 			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/roadmap.md",
-			"hash": "425767ae1431a39bb7e398717081db5a4d2b886dbc718ed7305bcf50e73afce1",
+			"hash": "6aca158748ad24d2bcb4a7c3f820f5f82615647e052f4c284802db162bdbea36",
 			"recordedAt": "2026-08-04"
 		},
 		{
@@ -168,6 +168,12 @@
 			"target": ".claude/design/effected/packages/sbom.md",
 			"hash": "0d835d3bc76109ce5733a98c3d027ef46fecc784f5120294caaf6625eb157988",
 			"recordedAt": "2026-07-26"
+		},
+		{
+			"source": "packages/schemastore/CLAUDE.md",
+			"target": ".claude/design/effected/packages/schemastore.md",
+			"hash": "40eddde3ffd21469d9a952541d0aad54b44c0b70c3bf7e88a557b98d6af627f5",
+			"recordedAt": "2026-08-04"
 		},
 		{
 			"source": "packages/semver/CLAUDE.md",

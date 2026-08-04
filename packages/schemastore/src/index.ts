@@ -9,9 +9,11 @@
  * makes necessary), the annotation carriers that re-graft the non-standard
  * language-server keyword families the lowering drops, the catalog-entry
  * vocabulary with both versioning modes, the structural and hygiene lints,
- * canonical JSON text, write-if-changed file IO (`SchemaFile`), and the
- * `SchemaValidator` contract seam a consumer closes with a real engine
- * (ajv) at the edge.
+ * canonical JSON text, content-comparing write-if-changed file IO
+ * (`SchemaFile`), change classification for the versioning decision
+ * (`DocumentDiff`), real-engine validation over ajv (`SchemaValidator`,
+ * which ships closed — no adapter to write), and the emit pipeline over all
+ * of it (`SchemaPipeline`).
  *
  * @example
  * ```ts
@@ -51,16 +53,29 @@ export {
 	NonJsonValueError,
 } from "./CanonicalJson.js";
 export { CatalogEntry, CatalogLintFinding } from "./CatalogEntry.js";
+export { DocumentDiff, type SchemaChange } from "./DocumentDiff.js";
 export { DocumentLint, DocumentLintFinding } from "./DocumentLint.js";
 export { KeywordFamilies } from "./KeywordFamilies.js";
 export {
+	type CheckResult,
 	SchemaFile,
 	SchemaFileNotFoundError,
 	SchemaFileReadError,
 	type SchemaFileShape,
 	SchemaFileWriteError,
+	type SchemaWriteOptions,
+	type WriteChange,
 	type WriteOutcome,
+	type WriteResult,
 } from "./SchemaFile.js";
+export {
+	type PipelineCheckResult,
+	PipelineFinding,
+	type PipelineResult,
+	SchemaGateError,
+	SchemaPipeline,
+	type SchemaPipelineOptions,
+} from "./SchemaPipeline.js";
 export { SchemaTarget } from "./SchemaTarget.js";
 export {
 	SchemaValidator,

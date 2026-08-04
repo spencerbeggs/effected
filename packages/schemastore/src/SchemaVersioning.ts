@@ -1,20 +1,27 @@
 import { SemVer } from "@effected/semver";
 import { Effect, Option, Order, Result, Schema } from "effect";
 
-/**
- * SchemaStore version labels are dotted numerics with one to three
- * components and an optional prerelease — `1`, `1.2`, `1.2.3`,
- * `1.2-beta.1` — per the catalog's versioned-schema convention
- * (`agripparc-1.2.json`). They are deliberately NOT strict SemVer: most
- * real catalog labels are two-part. Leading zeros are rejected on every
- * numeric identifier — core components and numeric prerelease identifiers
- * alike (SemVer §9 semantics: `0` is legal, `01` is not, alphanumerics
- * like `0abc` are) — so no two distinct labels can collide under numeric
- * ordering, and every accepted label survives the SemVer pad the ordering
- * performs (see `orderingKey`).
- */
-const VERSION_PATTERN =
-	/^(0|[1-9]\d*)(\.(0|[1-9]\d*)){0,2}(-(0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?$/;
+// Version labels are STRICT SemVer: all three components always present,
+// optional prerelease, with `@effected/semver` doing the enforcing rather
+// than a regex maintained alongside it.
+//
+// The file-name CONVENTION stays SchemaStore's (`<name>-<version>.json`,
+// per its CONTRIBUTING guide and the `agripparc-1.2.json` corpus); only the
+// label grammar is narrowed. The store's own labels are commonly two-part
+// and therefore not SemVer at all, so a fixed three-component label is the
+// one deliberate divergence: it is unambiguous to split back out of a file
+// name or URL, which is what a consumer actually does with it. Anything
+// submitted to SchemaStore proper will carry a third component its
+// neighbours lack — valid, just not identical in style.
+//
+// Build metadata (`+build`) is rejected, as it was under the previous
+// grammar: it is hostile in a URL, and SemVer precedence IGNORES it, so two
+// labels differing only in build would compare equal and both claim to be
+// the latest version.
+const isVersionLabel = (input: string): boolean => {
+	const parsed = SemVer.parseResult(input);
+	return Result.isSuccess(parsed) && parsed.success.build.length === 0;
+};
 
 /**
  * Indicates that a string is not a valid SchemaStore version label.
@@ -36,15 +43,23 @@ export class InvalidSchemaVersionError extends Schema.TaggedErrorClass<InvalidSc
 }
 
 /**
- * A SchemaStore version label: a branded string validated against the
- * catalog's version grammar (`major[.minor[.patch]][-prerelease]`). The
- * label round-trips verbatim into file names and catalog `versions` keys;
- * ordering pads it to a full SemVer internally (see
- * {@link SchemaVersioning.Order}).
+ * A schema version label: a branded string holding a **full three-component
+ * SemVer** — `major.minor.patch` with an optional prerelease, validated by
+ * `@effected/semver` itself. Build metadata is rejected (see below).
+ *
+ * `1.2` and `1` are NOT accepted, though SchemaStore's own corpus uses such
+ * labels: requiring all three components makes a label unambiguous to split
+ * back out of `<name>-<version>.json` or its URL, which is what consumers
+ * do with it. The file-name convention around the label stays SchemaStore's.
+ *
+ * The label round-trips verbatim into file names and catalog `versions`
+ * keys; ordering parses it directly (see {@link SchemaVersioning.Order}).
  *
  * @public
  */
-export const SchemaVersion = Schema.String.check(Schema.isPattern(VERSION_PATTERN)).pipe(Schema.brand("SchemaVersion"));
+export const SchemaVersion = Schema.String.check(
+	Schema.makeFilter((value) => (isVersionLabel(value) ? undefined : "must be a full major.minor.patch SemVer label")),
+).pipe(Schema.brand("SchemaVersion"));
 
 /**
  * The type of a validated SchemaStore version label.
@@ -53,23 +68,12 @@ export const SchemaVersion = Schema.String.check(Schema.isPattern(VERSION_PATTER
  */
 export type SchemaVersion = typeof SchemaVersion.Type;
 
-// Pads a validated label to a full three-component SemVer string so
-// `@effected/semver` can order it: "1.2" -> "1.2.0", "2-beta" -> "2.0.0-beta".
+// A validated label IS a SemVer string, so ordering is a plain parse — the
+// zero-padding the old two-part grammar needed is gone with it.
 const orderingKey = (label: SchemaVersion): SemVer => {
-	const hyphen = label.indexOf("-");
-	const core = hyphen === -1 ? label : label.slice(0, hyphen);
-	const prerelease = hyphen === -1 ? "" : label.slice(hyphen);
-	const parts = core.split(".");
-	while (parts.length < 3) {
-		parts.push("0");
-	}
-	const result = SemVer.parseResult(`${parts.join(".")}${prerelease}`);
+	const result = SemVer.parseResult(label);
 	if (Result.isFailure(result)) {
-		// Unreachable for a validated label: the grammar rejects leading-zero
-		// numeric identifiers everywhere strict SemVer does (core components
-		// AND numeric prerelease identifiers), so the zero-pad always parses
-		// — the closure test over the accepted corpus pins this property.
-		// A failure here is a programmer error.
+		// Unreachable for a validated label: the brand's filter IS this parse.
 		throw new Error(`SchemaVersion ordering invariant violated for label "${label}"`);
 	}
 	return result.success;
@@ -102,24 +106,21 @@ export interface CatalogUrls {
 	/** The catalog `url` — the unversioned file, or the latest versioned file. */
 	readonly url: string;
 	/**
-	 * The versioned catalog's `versions` map (label → url). Labels are
-	 * inserted in ascending version order, but JavaScript object semantics
-	 * cap what insertion can promise: integer-like labels (bare majors such
-	 * as `2`) always enumerate first, numerically, ahead of every dotted
-	 * label — see {@link SchemaVersioning.catalogUrls} for the exact
-	 * enumeration contract. Read version ordering from the labels, never
-	 * from key position.
+	 * The versioned catalog's `versions` map (label → url), inserted — and,
+	 * since a three-component label can never be integer-like, enumerated
+	 * and serialized — in ascending version order.
 	 */
 	readonly versions?: Readonly<Record<string, string>>;
 }
 
 /**
  * Both SchemaStore catalog modes as pure derivations: unversioned (a plain
- * `name.json` file, `url` only) and versioned (`name-<version>.json` files,
- * a `versions` map, and `url` pointing at the latest version).
+ * `name.json` file, `url` only) and versioned (`name-<version>.json` files
+ * — SchemaStore's own suffix convention — a `versions` map, and `url`
+ * pointing at the latest version).
  *
- * Version ordering follows SemVer precedence over labels padded to three
- * components, so `1.10` sorts above `1.9` and `2-beta` below `2`.
+ * Version labels are full three-component SemVer, so ordering is plain
+ * SemVer precedence: `1.10.0` above `1.9.0`, `2.0.0-beta` below `2.0.0`.
  *
  * @public
  */
@@ -131,7 +132,7 @@ export class SchemaVersioning {
 	 * {@link SchemaVersioning.parse} is the same check behind a span.
 	 */
 	static parseResult(input: string): Result.Result<SchemaVersion, InvalidSchemaVersionError> {
-		return VERSION_PATTERN.test(input)
+		return isVersionLabel(input)
 			? Result.succeed(input as SchemaVersion)
 			: Result.fail(InvalidSchemaVersionError.make({ input }));
 	}
@@ -147,9 +148,9 @@ export class SchemaVersioning {
 	);
 
 	/**
-	 * `Order` instance over version labels: SemVer precedence after padding
-	 * missing components with zeros. `1.10` sorts above `1.9` (numeric, not
-	 * lexical) and `2-beta` below `2` (prerelease precedence).
+	 * `Order` instance over version labels: plain SemVer precedence.
+	 * `1.10.0` sorts above `1.9.0` (numeric, not lexical) and `2.0.0-beta`
+	 * below `2.0.0` (prerelease precedence).
 	 */
 	static readonly Order: Order.Order<SchemaVersion> = Order.make((a, b) =>
 		SemVer.Order(orderingKey(a), orderingKey(b)),
@@ -195,16 +196,13 @@ export class SchemaVersioning {
 	 * a contradiction (versioned mode with no versions) and throws — pass
 	 * `undefined` for the unversioned mode.
 	 *
-	 * Labels are inserted in ascending {@link SchemaVersioning.Order}, but
-	 * the SchemaStore catalog format requires `versions` to be a JSON
-	 * *object*, and JavaScript enumerates array-index-like keys first: a
-	 * bare-major label (`"2"`) always enumerates — and therefore
-	 * serializes — before every dotted label, regardless of insertion. The
-	 * resulting enumeration order is: bare-major labels ascending
-	 * numerically, then all other labels ascending. For label sets with no
-	 * bare majors this is fully ascending; mixed sets interleave, so
-	 * consumers must derive ordering from the labels themselves (as
-	 * {@link SchemaVersioning.latest} does), never from key position.
+	 * Labels are inserted in ascending {@link SchemaVersioning.Order} and
+	 * stay that way on serialization. Requiring three components is what
+	 * buys this: JavaScript enumerates array-index-like keys first, so the
+	 * old grammar's bare-major label (`"2"`) jumped ahead of every dotted
+	 * one regardless of insertion order. No SemVer label is integer-like,
+	 * so that hazard is gone. Deriving ordering from the labels themselves
+	 * (as {@link SchemaVersioning.latest} does) is still the robust read.
 	 */
 	static catalogUrls(options: {
 		readonly baseUrl: string;

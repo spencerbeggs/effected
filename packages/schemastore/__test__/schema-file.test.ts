@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path, PlatformError, Result } from "effect";
 import {
+	DocumentDiff,
 	NonJsonValueError,
 	SchemaFile,
 	SchemaFileNotFoundError,
@@ -54,7 +55,7 @@ describe("SchemaFile", () => {
 					}),
 					fs,
 				);
-				assert.strictEqual(outcome, "written");
+				assert.deepStrictEqual(outcome, { outcome: "written", change: "created" });
 				assert.strictEqual(written.length, 1);
 				assert.strictEqual(written[0]?.path, "schemas/x.schema.json");
 				assert.strictEqual(written[0]?.text, canonicalText);
@@ -76,7 +77,7 @@ describe("SchemaFile", () => {
 					}),
 					fs,
 				);
-				assert.strictEqual(outcome, "unchanged");
+				assert.deepStrictEqual(outcome, { outcome: "unchanged", change: "none" });
 			}),
 		);
 
@@ -99,7 +100,116 @@ describe("SchemaFile", () => {
 					}),
 					fs,
 				);
-				assert.strictEqual(outcome, "written");
+				assert.deepStrictEqual(outcome, { outcome: "written", change: "contract" });
+				assert.isTrue(wrote);
+			}),
+		);
+
+		// The reported failure (spencerbeggs/effected#262): a repo whose
+		// pre-commit hook formats JSON reflows the emitted file, so the bytes
+		// stop matching CanonicalJson's while the content never changed. A
+		// byte comparison rewrites forever and "unchanged" becomes
+		// unreachable.
+		it.effect("answers unchanged without writing when a formatter reflowed the file but the content is equal", () =>
+			Effect.gen(function* () {
+				// What Biome would leave behind: same document, collapsed
+				// arrays and spaces instead of tabs.
+				const reflowed = JSON.stringify(JSON.parse(canonicalText), null, 2);
+				assert.notStrictEqual(reflowed, canonicalText, "the reflowed text must differ byte-wise");
+				const fs = FileSystem.layerNoop({
+					readFileString: () => Effect.succeed(reflowed),
+					makeDirectory: () => Effect.die(new Error("makeDirectory must not run for an unchanged file")),
+					writeFileString: () => Effect.die(new Error("writeFileString must not run for an unchanged file")),
+				});
+				const outcome = yield* run(
+					Effect.gen(function* () {
+						const files = yield* SchemaFile;
+						return yield* files.write("schemas/x.schema.json", document);
+					}),
+					fs,
+				);
+				assert.deepStrictEqual(outcome, { outcome: "unchanged", change: "none" });
+			}),
+		);
+
+		it.effect('compare: "bytes" opts back in to the byte comparison, and still classifies the content', () =>
+			Effect.gen(function* () {
+				const reflowed = JSON.stringify(JSON.parse(canonicalText), null, 2);
+				let wrote = false;
+				const fs = FileSystem.layerNoop({
+					readFileString: () => Effect.succeed(reflowed),
+					makeDirectory: () => Effect.void,
+					writeFileString: () =>
+						Effect.suspend(() => {
+							wrote = true;
+							return Effect.void;
+						}),
+				});
+				const outcome = yield* run(
+					Effect.gen(function* () {
+						const files = yield* SchemaFile;
+						return yield* files.write("schemas/x.schema.json", document, { compare: "bytes" });
+					}),
+					fs,
+				);
+				// It wrote (the bytes differed) but nothing about the content
+				// moved — the two fields are independent by design.
+				assert.deepStrictEqual(outcome, { outcome: "written", change: "none" });
+				assert.isTrue(wrote);
+			}),
+		);
+
+		it.effect('reports change "annotations" when only prose moved — the signal that no new version is needed', () =>
+			Effect.gen(function* () {
+				const previous = StoreDocument.make({
+					$schema: "http://json-schema.org/draft-07/schema#",
+					$id: "https://example.com/x.schema.json",
+					root: { type: "object", description: "Prior wording" },
+					defs: {},
+				});
+				const fs = FileSystem.layerNoop({
+					readFileString: () => Effect.succeed(Result.getOrThrow(previous.serializeResult())),
+					makeDirectory: () => Effect.void,
+					writeFileString: () => Effect.void,
+				});
+				const described = StoreDocument.make({
+					$schema: "http://json-schema.org/draft-07/schema#",
+					$id: "https://example.com/x.schema.json",
+					root: { type: "object", description: "Reworded, same contract" },
+					defs: {},
+				});
+				const outcome = yield* run(
+					Effect.gen(function* () {
+						const files = yield* SchemaFile;
+						return yield* files.write("schemas/x.schema.json", described);
+					}),
+					fs,
+				);
+				assert.strictEqual(outcome.outcome, "written");
+				assert.strictEqual(outcome.change, "annotations");
+			}),
+		);
+
+		it.effect("an existing file that does not parse is repaired, classified conservatively as a contract change", () =>
+			Effect.gen(function* () {
+				let wrote = false;
+				const fs = FileSystem.layerNoop({
+					readFileString: () => Effect.succeed("{ not json"),
+					makeDirectory: () => Effect.void,
+					writeFileString: () =>
+						Effect.suspend(() => {
+							wrote = true;
+							return Effect.void;
+						}),
+				});
+				const outcome = yield* run(
+					Effect.gen(function* () {
+						const files = yield* SchemaFile;
+						return yield* files.write("schemas/x.schema.json", document);
+					}),
+					fs,
+				);
+				assert.deepStrictEqual(outcome, { outcome: "written", change: "contract" });
 				assert.isTrue(wrote);
 			}),
 		);
@@ -199,6 +309,73 @@ describe("SchemaFile", () => {
 					fs,
 				);
 				assert.instanceOf(error, NonJsonValueError);
+			}),
+		);
+	});
+
+	describe("check", () => {
+		it.effect("classifies without touching the filesystem — the drift-check half of the pair", () =>
+			Effect.gen(function* () {
+				const reflowed = JSON.stringify(JSON.parse(canonicalText), null, 2);
+				const fs = FileSystem.layerNoop({
+					readFileString: () => Effect.succeed(reflowed),
+					makeDirectory: () => Effect.die(new Error("check must never write")),
+					writeFileString: () => Effect.die(new Error("check must never write")),
+				});
+				const change = yield* run(
+					Effect.gen(function* () {
+						const files = yield* SchemaFile;
+						return yield* files.check("schemas/x.schema.json", document);
+					}),
+					fs,
+				);
+				// Content is clean AND the writer would do nothing — the two
+				// answers agree under the default compare mode.
+				assert.deepStrictEqual(change, { wouldWrite: false, change: "none" });
+				assert.isTrue(DocumentDiff.isClean(change.change));
+			}),
+		);
+
+		// The asymmetry the adopter hit: under bytes mode `change` and
+		// "would the writer act" are different questions, and check must
+		// answer both or the pair disagrees.
+		it.effect('under compare: "bytes", wouldWrite tracks the writer while change tracks content', () =>
+			Effect.gen(function* () {
+				const reflowed = JSON.stringify(JSON.parse(canonicalText), null, 2);
+				const result = yield* run(
+					Effect.gen(function* () {
+						const files = yield* SchemaFile;
+						return yield* files.check("schemas/x.schema.json", document, { compare: "bytes" });
+					}),
+					FileSystem.layerNoop({ readFileString: () => Effect.succeed(reflowed) }),
+				);
+				assert.deepStrictEqual(result, { wouldWrite: true, change: "none" });
+			}),
+		);
+
+		it.effect('answers "created" for a missing file, and "contract" for drifted content', () =>
+			Effect.gen(function* () {
+				const missing = yield* run(
+					Effect.gen(function* () {
+						const files = yield* SchemaFile;
+						return yield* files.check("schemas/x.schema.json", document);
+					}),
+					// layerNoop's readFileString fails NotFound by default.
+					FileSystem.layerNoop({}),
+				);
+				assert.deepStrictEqual(missing, { wouldWrite: true, change: "created" });
+				assert.isFalse(DocumentDiff.isClean(missing.change), "a file that did not exist is not clean");
+
+				const drifted = yield* run(
+					Effect.gen(function* () {
+						const files = yield* SchemaFile;
+						return yield* files.check("schemas/x.schema.json", document);
+					}),
+					FileSystem.layerNoop({
+						readFileString: () => Effect.succeed(JSON.stringify({ type: "array" })),
+					}),
+				);
+				assert.deepStrictEqual(drifted, { wouldWrite: true, change: "contract" });
 			}),
 		);
 	});

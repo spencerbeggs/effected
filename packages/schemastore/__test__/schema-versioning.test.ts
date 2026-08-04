@@ -7,20 +7,29 @@ const version = (label: string): SchemaVersion => Result.getOrThrow(SchemaVersio
 
 describe("SchemaVersioning", () => {
 	describe("parse", () => {
-		it("accepts one- to three-component labels with optional prerelease", () => {
-			for (const label of ["1", "1.2", "1.2.3", "0.4", "2-beta", "1.2-rc.1"]) {
+		it("accepts full three-component SemVer labels with optional prerelease", () => {
+			for (const label of ["1.2.3", "0.4.0", "2.0.0-beta", "1.2.0-rc.1", "10.20.30"]) {
 				assert.isTrue(Result.isSuccess(SchemaVersioning.parseResult(label)), label);
+			}
+		});
+
+		// The deliberate divergence from SchemaStore's own corpus, which uses
+		// labels like `agripparc-1.2`: a partial label cannot be split back
+		// out of a file name unambiguously.
+		it("rejects the partial labels SchemaStore's corpus uses", () => {
+			for (const label of ["1", "1.2", "0.4", "2-beta"]) {
+				assert.isTrue(Result.isFailure(SchemaVersioning.parseResult(label)), label);
 			}
 		});
 
 		it("accepts SemVer §9-legal prerelease identifiers: zero itself and leading-zero alphanumerics", () => {
-			for (const label of ["1.2-0", "1.2-0abc", "1.2-rc.0", "1.2-01a", "1.2-0.3.7"]) {
+			for (const label of ["1.2.0-0", "1.2.0-0abc", "1.2.0-rc.0", "1.2.0-01a", "1.2.0-0.3.7"]) {
 				assert.isTrue(Result.isSuccess(SchemaVersioning.parseResult(label)), label);
 			}
 		});
 
-		it("rejects leading-zero NUMERIC prerelease identifiers (they cannot survive the ordering pad)", () => {
-			for (const label of ["1.2-01", "1.2-00", "1.2-1.02", "1.2.3-01"]) {
+		it("rejects leading-zero NUMERIC prerelease identifiers", () => {
+			for (const label of ["1.2.0-01", "1.2.0-00", "1.2.0-1.02", "1.2.3-01"]) {
 				const result = SchemaVersioning.parseResult(label);
 				assert.isTrue(Result.isFailure(result), label);
 				assert.instanceOf(
@@ -31,7 +40,7 @@ describe("SchemaVersioning", () => {
 		});
 
 		it("rejects malformed labels typed", () => {
-			for (const label of ["", "v1.2", "1.2.3.4", "01.2", "1..2", "1.2-", "1.2+build"]) {
+			for (const label of ["", "v1.2.3", "1.2.3.4", "01.2.3", "1..2", "1.2.3-", "1.2.3+build"]) {
 				const result = SchemaVersioning.parseResult(label);
 				assert.isTrue(Result.isFailure(result), label);
 				const error = (result as Result.Failure<SchemaVersion, InvalidSchemaVersionError>).failure;
@@ -42,8 +51,8 @@ describe("SchemaVersioning", () => {
 
 		it.effect("Effect form derives from the Result primitive", () =>
 			Effect.gen(function* () {
-				const parsed = yield* SchemaVersioning.parse("1.2");
-				assert.strictEqual(parsed, "1.2");
+				const parsed = yield* SchemaVersioning.parse("1.2.0");
+				assert.strictEqual(parsed, "1.2.0");
 				const error = yield* Effect.flip(SchemaVersioning.parse("nope"));
 				assert.strictEqual(error._tag, "InvalidSchemaVersionError");
 			}),
@@ -52,22 +61,19 @@ describe("SchemaVersioning", () => {
 
 	describe("Order and latest", () => {
 		it("orders numerically, not lexically", () => {
-			assert.isAbove(SchemaVersioning.Order(version("1.10"), version("1.9")), 0);
-			assert.isBelow(SchemaVersioning.Order(version("1.2"), version("1.2.1")), 0);
-			assert.strictEqual(SchemaVersioning.Order(version("1.2"), version("1.2.0")), 0);
+			assert.isAbove(SchemaVersioning.Order(version("1.10.0"), version("1.9.0")), 0);
+			assert.isBelow(SchemaVersioning.Order(version("1.2.0"), version("1.2.1")), 0);
 		});
 
 		it("ranks prereleases below their release", () => {
-			assert.isBelow(SchemaVersioning.Order(version("2-beta"), version("2")), 0);
+			assert.isBelow(SchemaVersioning.Order(version("2.0.0-beta"), version("2.0.0")), 0);
 		});
 
-		it("every grammar-accepted label survives the ordering pad (the closure invariant)", () => {
-			// The Order pads a label to full SemVer and re-parses it through
-			// @effected/semver; the grammar must therefore admit nothing that
-			// parse rejects, or ordering throws on grammar-valid input (the
-			// recorded 1.2-01 regression). Sweep a generated corpus of core ×
-			// prerelease combinations: whatever the grammar accepts must order.
-			const cores = ["0", "1", "1.2", "1.2.3", "10.20.30", "0.0.0"];
+		it("every accepted label orders without throwing (the closure invariant)", () => {
+			// The brand's filter and Order's parse are now the SAME call, so
+			// this can no longer diverge the way the padded grammar could —
+			// the sweep stays as a regression pin on that property.
+			const cores = ["0.0.0", "1.0.0", "1.2.0", "1.2.3", "10.20.30"];
 			const prereleases = [
 				"",
 				"-0",
@@ -100,10 +106,13 @@ describe("SchemaVersioning", () => {
 		});
 
 		it("latest picks the highest label and none for empty input", () => {
-			const labels = ["1.9", "1.10", "1.2.3"].map(version);
-			assert.deepStrictEqual(SchemaVersioning.latest(labels), Option.some(version("1.10")));
+			const labels = ["1.9.0", "1.10.0", "1.2.3"].map(version);
+			assert.deepStrictEqual(SchemaVersioning.latest(labels), Option.some(version("1.10.0")));
 			// A higher-major prerelease still outranks a lower major.
-			assert.deepStrictEqual(SchemaVersioning.latest([...labels, version("2-beta")]), Option.some(version("2-beta")));
+			assert.deepStrictEqual(
+				SchemaVersioning.latest([...labels, version("2.0.0-beta")]),
+				Option.some(version("2.0.0-beta")),
+			);
 			assert.deepStrictEqual(SchemaVersioning.latest([]), Option.none());
 		});
 	});
@@ -111,7 +120,8 @@ describe("SchemaVersioning", () => {
 	describe("fileName and schemaUrl", () => {
 		it("derives unversioned and versioned file names", () => {
 			assert.strictEqual(SchemaVersioning.fileName("agripparc"), "agripparc.json");
-			assert.strictEqual(SchemaVersioning.fileName("agripparc", version("1.2")), "agripparc-1.2.json");
+			// SchemaStore's own suffix convention, with a full SemVer label.
+			assert.strictEqual(SchemaVersioning.fileName("agripparc", version("1.2.0")), "agripparc-1.2.0.json");
 		});
 
 		it("throws on names that are not simple file base names", () => {
@@ -142,38 +152,32 @@ describe("SchemaVersioning", () => {
 			const urls = SchemaVersioning.catalogUrls({
 				baseUrl: "https://example.com",
 				name: "agripparc",
-				versions: ["1.4", "1.2", "1.3"].map(version),
+				versions: ["1.4.0", "1.2.0", "1.3.0"].map(version),
 			});
-			assert.strictEqual(urls.url, "https://example.com/agripparc-1.4.json");
+			assert.strictEqual(urls.url, "https://example.com/agripparc-1.4.0.json");
 			assert.deepStrictEqual(urls.versions, {
-				"1.2": "https://example.com/agripparc-1.2.json",
-				"1.3": "https://example.com/agripparc-1.3.json",
-				"1.4": "https://example.com/agripparc-1.4.json",
+				"1.2.0": "https://example.com/agripparc-1.2.0.json",
+				"1.3.0": "https://example.com/agripparc-1.3.0.json",
+				"1.4.0": "https://example.com/agripparc-1.4.0.json",
 			});
-			assert.deepStrictEqual(Object.keys(urls.versions ?? {}), ["1.2", "1.3", "1.4"]);
+			assert.deepStrictEqual(Object.keys(urls.versions ?? {}), ["1.2.0", "1.3.0", "1.4.0"]);
 		});
 
-		it("bare-major labels enumerate first — the JS-object caveat the docs record, pinned", () => {
+		// Requiring three components RETIRES the JS-object caveat the docs
+		// used to record: a bare-major label ("2") is array-index-like and
+		// enumerated ahead of every dotted key regardless of insertion order.
+		// No SemVer label can be integer-like, so insertion order now holds
+		// all the way through serialization.
+		it("no label is array-index-like, so ascending insertion order survives serialization", () => {
 			const urls = SchemaVersioning.catalogUrls({
 				baseUrl: "https://example.com",
 				name: "cfg",
-				versions: ["1.5", "2"].map(version),
+				versions: ["2.0.0", "1.5.0"].map(version),
 			});
-			// "2" is the latest, so url points at it…
-			assert.strictEqual(urls.url, "https://example.com/cfg-2.json");
-			// …but as an array-index-like key it also ENUMERATES first, ahead
-			// of the ascending insertion order ("1.5" was inserted first).
-			// This is JavaScript object semantics, not a choice this package
-			// can serialize around: key order is not the ordering contract.
-			assert.deepStrictEqual(Object.keys(urls.versions ?? {}), ["2", "1.5"]);
-			// The serialized catalog emits that same enumeration order.
+			assert.strictEqual(urls.url, "https://example.com/cfg-2.0.0.json");
+			assert.deepStrictEqual(Object.keys(urls.versions ?? {}), ["1.5.0", "2.0.0"]);
 			const text = Result.getOrThrow(CanonicalJson.serializeResult(urls.versions));
-			assert.isBelow(text.indexOf('"2"'), text.indexOf('"1.5"'));
-			// The map's CONTENT is authoritative regardless of key position.
-			assert.deepStrictEqual(urls.versions, {
-				"1.5": "https://example.com/cfg-1.5.json",
-				"2": "https://example.com/cfg-2.json",
-			});
+			assert.isBelow(text.indexOf('"1.5.0"'), text.indexOf('"2.0.0"'));
 		});
 
 		it("throws on the versioned/empty contradiction", () => {

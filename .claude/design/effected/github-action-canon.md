@@ -182,6 +182,8 @@ Ratified 2026-08-03. The default path needs no App credentials: silk-runtime-act
 
 Mandatory whenever a JSON contract crosses the action boundary, input or output: Effect Schema → [`@effected/schemastore`](packages/schemastore.md) → committed, ajv-validated, drift-tested files. silk-release-action's `generate-schema` proves the value, but it predates the package — new work uses `StoreDocument`, not a hand-rolled lowering. Flat, line-list actions skip this entirely.
 
+From `schemastore` `0.2.0` the whole loop is a shipped surface and an action repo should write none of it by hand: `SchemaPipeline.run` is the generate → lint → validate → gate → write sequence, `SchemaValidator.layer` is a real ajv engine rather than an adapter the repo writes, and the drift test is `SchemaPipeline.check` — **not** a text comparison of the committed file, because `write` compares parsed content and a repo whose formatter touches JSON will otherwise report drift forever ([packages/schemastore.md](packages/schemastore.md#write-if-changed-bytes-or-content)). Version labels in emitted file names are full three-component SemVer.
+
 ### B5 — Line-list inputs first
 
 JSON inputs only for genuinely nested structure, which then triggers B4. silk-update-action's line-lists read better in workflow YAML; silk-release-action's `SilkReleaseConfig` earned its JSON.

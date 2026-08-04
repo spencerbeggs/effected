@@ -46,6 +46,7 @@ ToolDownloadOptions
 ToolInstallerShape
 UploadOptions
 UploadResult
+WithStepOptions
 
 # github — Shape/Options/detail types of an already-documented resource
 # service (GitBranch, GitCommit, GitHubApp, GitHubClient, GitHubCommit,
@@ -103,44 +104,6 @@ isValidDependencySpecifier
 isValidIntegrityHash
 PackagePublishShape
 SeededVersion
-
-# schemastore — KNOWN GAP, not a detail-type exemption: this package has no
-# references/ file in effected-packages (round-1 audit finding, tracked
-# separately). Every top-level export is genuinely uncovered by the plugin
-# today, including substantial ones (AnnotationCarriers, CanonicalJson,
-# CatalogEntry, KeywordFamilies, SchemaTarget, SchemaVersioning, StoreDocument
-# is covered by name via CLAUDE.md pointers elsewhere but its options/error
-# types are not) — allow-listed so this check can ship without blocking on
-# authoring a full package reference in the same change. Writing
-# references/schemastore.md removes this whole block, not just entries.
-AnnotationCarriers
-CanonicalJson
-CanonicalJsonError
-CanonicalJsonOptions
-CarrierDepthExceededError
-CatalogEntry
-CatalogLintFinding
-CatalogUrls
-DocumentLintFinding
-DRAFT_07_META_SCHEMA
-InvalidSchemaVersionError
-JsonDepthExceededError
-KeywordFamilies
-NonJsonValueError
-SchemaConversionError
-SchemaFileNotFoundError
-SchemaFileReadError
-SchemaFileShape
-SchemaFileWriteError
-SchemaTarget
-SchemaValidatorError
-SchemaValidatorOptions
-SchemaValidatorShape
-SchemaVersion
-SchemaVersioning
-StoreDocumentOptions
-ValidationFinding
-WriteOutcome
 
 # jsonl — detail types of the already-documented Envelope/Journal/JsonlEvent/
 # Line surfaces.

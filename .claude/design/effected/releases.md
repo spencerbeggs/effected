@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-03
-last-synced: 2026-08-03
+updated: 2026-08-04
+last-synced: 2026-08-04
 completeness: 85
 related:
   - architecture.md
@@ -43,6 +43,8 @@ Version and stability are separate axes.
 
 - **Version.** Every package stays below `1.0.0` until Effect `4.0.0` GA, pinning a single Effect v4 beta throughout development. Graduation to `1.0.0` follows Effect `4.0.0`. Until then the `effect` peer range names the beta pinned in the `effect` catalog in `pnpm-workspace.yaml`, and a beta bump is a coordinated change across the whole kit.
 - **Stability.** A per-package `stable | unstable` axis independent of the version number. **All packages are `unstable` for `0.1.0`.** Consumers pin exact versions, so an accidental break surfaces in their type-checking rather than silently through a range — the pre-release contract made mechanical, and the safety valve that lets `0.1.0` publish before the consumer ports run.
+
+That safety valve started paying out. [`@effected/schemastore`](packages/schemastore.md)'s pending `0.2.0` — the first release cut from a package's own external adoption rather than from in-kit work — carries breaking changes in a **minor** bump: `SchemaFile.write`'s return type, a narrowed `SchemaVersion` grammar and a tier flip to integrated. That is the contract working as designed, not an exception to it. **Below `1.0.0`, breaking changes ride minors and the exact-pin discipline is what makes them survivable**, so read a minor here as "may break" and consult the package's changeset before advancing a pin.
 
 `@effected/pnpm-plugin-effect` publishes with the kit, not apart from it. It is the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) — published and installable but not a library, exposing no API and carrying no tier. Its reason to exist is consumer-facing: it carries the two Effect catalogs this repo pins against, so a consumer can hold their own `effect` versions and peer floors at the values the kit was built and tested against. **Installing it is optional for the consumer; shipping it is not optional for the release.** Do not read `"private": true` in a source manifest as evidence about release intent — every source manifest here is private, and the bundler's `publishConfig` transform emits the publishable manifest at build time ([architecture.md](architecture.md)).
 

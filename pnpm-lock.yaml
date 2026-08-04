@@ -553,6 +553,9 @@ importers:
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver/dist/dev/pkg
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect

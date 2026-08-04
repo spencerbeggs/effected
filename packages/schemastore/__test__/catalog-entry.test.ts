@@ -25,13 +25,13 @@ describe("CatalogEntry", () => {
 				fileMatch: ["agripparc.yaml"],
 				baseUrl: "https://example.com/schemas",
 				fileBaseName: "agripparc",
-				versions: ["1.2", "1.4", "1.3"].map(version),
+				versions: ["1.2.0", "1.4.0", "1.3.0"].map(version),
 			});
-			assert.strictEqual(entry.url, "https://example.com/schemas/agripparc-1.4.json");
+			assert.strictEqual(entry.url, "https://example.com/schemas/agripparc-1.4.0.json");
 			assert.deepStrictEqual(entry.versions, {
-				"1.2": "https://example.com/schemas/agripparc-1.2.json",
-				"1.3": "https://example.com/schemas/agripparc-1.3.json",
-				"1.4": "https://example.com/schemas/agripparc-1.4.json",
+				"1.2.0": "https://example.com/schemas/agripparc-1.2.0.json",
+				"1.3.0": "https://example.com/schemas/agripparc-1.3.0.json",
+				"1.4.0": "https://example.com/schemas/agripparc-1.4.0.json",
 			});
 		});
 	});
@@ -43,10 +43,10 @@ describe("CatalogEntry", () => {
 					name: "agripparc",
 					description: "Agripparc config",
 					fileMatch: ["agripparc.yaml"],
-					url: "https://example.com/agripparc-1.4.json",
+					url: "https://example.com/agripparc-1.4.0.json",
 					versions: {
-						"1.2": "https://example.com/agripparc-1.2.json",
-						"1.4": "https://example.com/agripparc-1.4.json",
+						"1.2.0": "https://example.com/agripparc-1.2.0.json",
+						"1.4.0": "https://example.com/agripparc-1.4.0.json",
 					},
 				};
 				const entry = yield* Schema.decodeUnknownEffect(CatalogEntry)(raw);
@@ -78,7 +78,7 @@ describe("CatalogEntry", () => {
 					description: "Agripparc config",
 					fileMatch: ["agripparc.yaml"],
 					baseUrl: "https://example.com",
-					versions: ["1.2", "1.3"].map(version),
+					versions: ["1.2.0", "1.3.0"].map(version),
 				});
 				const encoded = yield* Schema.encodeUnknownEffect(CatalogEntry)(entry);
 				const decoded = yield* Schema.decodeUnknownEffect(CatalogEntry)(encoded);

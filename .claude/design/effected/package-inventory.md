@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-08-03
-last-synced: 2026-08-03
+updated: 2026-08-04
+last-synced: 2026-08-04
 completeness: 88
 related:
   - architecture.md
@@ -82,7 +82,7 @@ All twenty-seven publishable packages — nineteen of them were the `0.1.0` gate
 | `@effected/github` | integrated | port-with-redesign of `@savvy-web/github-action-effects`' GitHub half; owns the octokit runtime | [packages/github.md](packages/github.md) |
 | `@effected/github-actions` | integrated | port-with-redesign of the same package's Actions half; the runner-side runtime | [packages/github-actions.md](packages/github-actions.md) |
 | `@effected/sbom` | integrated | port-with-redesign of the same package's `Attest` knot; owned CycloneDX 1.6 emitter plus Sigstore signing | [packages/sbom.md](packages/sbom.md) |
-| `@effected/schemastore` | boundary | invention; SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning and lints from Effect Schema sources — generalizes silk-release-action's schema-generation script | [packages/schemastore.md](packages/schemastore.md) |
+| `@effected/schemastore` | integrated (was boundary) | invention; SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning, lints and the emit pipeline from Effect Schema sources — generalizes silk-release-action's schema-generation script | [packages/schemastore.md](packages/schemastore.md) |
 | `@effected/jsonl` | boundary | invention; append-only schema-validated JSONL journals as a definable service — envelope contract, `Slice` read vocabulary, cooperative writers and a watcher. **Built 2026-08-03, unpublished** | [packages/jsonl.md](packages/jsonl.md) |
 | `@effected/pnpm-plugin-effect` | companion — no tier | invention; publishes the `effect`/`effectPeers` catalogs | [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md) |
 
@@ -91,6 +91,7 @@ Tiers classify libraries by dependency surface; the companion is not a library a
 - **`app` is a thin composition layer, not an umbrella.** It wires `xdg`, `config-file` and `store` into an application control plane and the glue that exists only when all three are present. It owns no domain logic, defines no service/schema/error and **re-exports nothing** — a consumer wanting config files alone takes `config-file` alone, so the [no-barrel-re-exports](effect-standards.md#no-barrel-re-exports) rule holds. Nothing may depend on it: a library taking an application control plane would be an [R2](effect-standards.md#dependency-policy) tier-3 leak.
 - **`npm`'s contracts are implemented by `workspaces`.** `package-json` defines `CatalogResolver`/`WorkspaceResolver` but cannot implement them; `workspaces` ships the layers, because catalog resolution needs `pnpm-workspace.yaml` plus the lockfile and workspace-version resolution needs the discovered package list. Provide either alongside `Package.resolve` and a manifest's `catalog:` / `workspace:` specifiers resolve for real. The same inversion now runs twice: `commands` declares `LocalExec` and `workspaces` ships that layer too ([packages/workspaces.md](packages/workspaces.md)).
 - **`npm` is boundary, not integrated, and a guardrail keeps it there.** Its `NpmRegistry`/`PackagePublish` services do IO themselves through core-declared contracts in `R`, which is what boundary means (R4) — but only while they stay core-contracts-plus-`commands`. The first non-core runtime dependency makes the package integrated, and R2 would then drag `lockfiles` (pure) and `package-json` (boundary) with it; the recorded answer to that day is a split, not an accepted retier. The rule and its reachability test are in [packages/npm.md](packages/npm.md#the-tier-ruling-pure--boundary-deliberately-with-a-guardrail).
+- **`schemastore` is the kit's one accepted retier**, boundary → integrated on 2026-08-04 by owner decision when `ajv` became a direct dependency and `SchemaValidator.layer` started shipping a real engine instead of a contract seam the consumer had to close. It is the counter-case to `npm`'s guardrail above: nothing in the kit depends on `schemastore`, so R2 propagates to no one, and the package is build-time tooling a consumer installs as a devDependency — the cost R1 exists to prevent was never actually paid here. The reasoning is recorded in [packages/schemastore.md](packages/schemastore.md#the-validation-seam-the-ajv-question); read it before citing this as precedent, because the two facts that made it safe are what make it narrow.
 - **`workspaces`' `@pnpm/catalogs.*` deps are what make it integrated**, confined to one internal module so the tier-3 blast radius is a single file. Its git reads run through `@effected/git` (`ChangeDetector` and the snapshot service), one boundary edge that keeps it integrated.
 - **`store` is named for its primitive, not its backend** — a schema-versioned migrated `SqlClient` and a `key → Uint8Array` cache sharing one migration-ledger engine, so a non-SQLite implementation never forces a rename. Its single `@effect/sql-sqlite-node` dependency is what makes it tier 3, and is why the SQLite services were split out of `xdg`.
 

@@ -1,4 +1,4 @@
-import { assert, describe, layer } from "@effect/vitest";
+import { assert, describe, it, layer } from "@effect/vitest";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { SchemaValidator, SchemaValidatorError, ValidationFinding } from "../src/index.js";
 
@@ -24,6 +24,78 @@ const stubEngine = Layer.succeed(SchemaValidator, {
 });
 
 describe("SchemaValidator", () => {
+	// The shipped ajv layer — the seam is closed by default now, so these
+	// pin the ENGINE's behavior, not an adapter's.
+	describe("the shipped ajv layer", () => {
+		const validate = (document: Record<string, unknown>, options?: { strict?: boolean }) =>
+			Effect.runSync(
+				Effect.provide(
+					Effect.gen(function* () {
+						const validator = yield* SchemaValidator;
+						return yield* validator.validate(document, options);
+					}),
+					SchemaValidator.layer,
+				),
+			);
+
+		it("answers a clean pass for a valid Draft-07 document", () => {
+			assert.deepStrictEqual(
+				validate({
+					$schema: "http://json-schema.org/draft-07/schema#",
+					$id: "https://example.com/x.schema.json",
+					type: "object",
+					properties: { name: { type: "string" } },
+				}),
+				[],
+			);
+		});
+
+		// The wasted-structure complaint from the adoption: a real
+		// implementation maps ajv's errors rather than collapsing them.
+		it("keeps ajv's structured path and keyword on a meta-schema failure", () => {
+			const findings = validate({ type: "nope" });
+			assert.isAtLeast(findings.length, 1);
+			const first = findings[0];
+			assert.strictEqual(first?.path, "/type");
+			assert.strictEqual(first?.keyword, "enum");
+			assert.isString(first?.message);
+		});
+
+		it("reports a strict-mode rejection as a finding, not an error", () => {
+			const findings = validate({ type: "object", nonsenseKeyword: true });
+			assert.strictEqual(findings.length, 1);
+			assert.strictEqual(findings[0]?.path, "");
+			assert.include(findings[0]?.message ?? "", "nonsenseKeyword");
+		});
+
+		it("strict: false accepts what strict mode rejects", () => {
+			assert.deepStrictEqual(validate({ type: "object", nonsenseKeyword: true }, { strict: false }), []);
+		});
+
+		// The consistency invariant: ajv must not reject what DocumentLint
+		// deliberately allows. One KeywordFamilies predicate governs both.
+		it("accepts the declared language-server families under strict mode", () => {
+			assert.deepStrictEqual(
+				validate({
+					$schema: "http://json-schema.org/draft-07/schema#",
+					type: "object",
+					markdownDescription: "**docs**",
+					"x-taplo": { hidden: true },
+					properties: {
+						name: { type: "string", "x-intellij-html-description": "<b>name</b>", enumDescriptions: ["a"] },
+					},
+				}),
+				[],
+			);
+		});
+
+		it("validates documents sharing an $id across calls without collision", () => {
+			const document = { $id: "https://example.com/same.schema.json", type: "object" };
+			assert.deepStrictEqual(validate(document), []);
+			assert.deepStrictEqual(validate(document), []);
+		});
+	});
+
 	layer(SchemaValidator.noop)((it) => {
 		it.effect("the noop layer validates nothing and answers a clean pass", () =>
 			Effect.gen(function* () {

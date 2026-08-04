@@ -27,6 +27,10 @@ Every package is `unstable` for the `0.1.0` release; see [release strategy](#rel
 | [@effected/store](packages/store) | unstable | Durable local state on SQLite: a schema-versioned migrated store and a TTL cache with eviction, over one shared migration ledger |
 | [@effected/workspaces](packages/workspaces) | unstable | Monorepo tooling as Effect services: root discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
 | [@effected/app](packages/app) | unstable | The application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite store, a TTL cache and a config file to the same place |
+| [@effected/github](packages/github) | unstable | Typed GitHub REST and GraphQL services over the octokit core request surface, with app auth and resource helpers |
+| [@effected/github-actions](packages/github-actions) | unstable | The GitHub Actions runtime: env, inputs, outputs, state, logging, cache, artifacts, blob storage, OIDC and the token bridge |
+| [@effected/sbom](packages/sbom) | unstable | CycloneDX 1.6 SBOM construction, SLSA provenance, NTIA validation and Sigstore signing as typed services |
+| [@effected/schemastore](packages/schemastore) | unstable | Build, validate, version and publish SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources, with ajv strict-mode validation and a content-comparing emit pipeline |
 
 ### Boundary
 
@@ -38,6 +42,10 @@ Every package is `unstable` for the `0.1.0` release; see [release strategy](#rel
 | [@effected/runtimes](packages/runtimes) | unstable | Resolve semver-compatible Node.js, Bun and Deno runtime versions from live feeds, with an offline snapshot fallback |
 | [@effected/tsconfig-json](packages/tsconfig-json) | unstable | tsconfig.json handling as Effect schemas: JSONC document and compiler-option schemas, tsc-parity extends-chain resolution, nearest-config discovery and a portable subset for virtual TypeScript environments |
 | [@effected/git](packages/git) | unstable | Typed git introspection over Effect core's ChildProcessSpawner: file content and trees at any ref, typed diffs and status, branch, commit and config probes — plus a clearly-marked mutating tier (checkout, fetch, submodules, sparse checkout, config, add) |
+| [@effected/npm](packages/npm) | unstable | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers, plus the kit's shared dependency vocabulary, a tolerant `Manifest` model, and the registry and publish services |
+| [@effected/commands](packages/commands) | unstable | Structured command running and CLI tool discovery over Effect's core ChildProcessSpawner contract |
+| [@effected/templates](packages/templates) | unstable | Managed-section blocks in user-editable files: parse, reconcile, sync and check delimited regions |
+| [@effected/jsonl](packages/jsonl) | unstable | Append-only, schema-validated JSONL journals as a definable Effect service |
 
 ### Pure
 
@@ -47,9 +55,10 @@ Every package is `unstable` for the `0.1.0` release; see [release strategy](#rel
 | [@effected/jsonc](packages/jsonc) | unstable | Zero-dependency JSONC parsing, editing and formatting as Effect schemas |
 | [@effected/yaml](packages/yaml) | unstable | Zero-dependency YAML parsing, editing and formatting as Effect schemas |
 | [@effected/toml](packages/toml) | unstable | TOML 1.0.0 parsing, editing and formatting as Effect schemas: typed diagnostics, a lossless CST and first-class date-time values |
-| [@effected/npm](packages/npm) | unstable | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers, plus the kit's shared dependency vocabulary and a tolerant `Manifest` model with manifest-level resolution |
 | [@effected/glob](packages/glob) | unstable | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
 | [@effected/lockfiles](packages/lockfiles) | unstable | Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
+| [@effected/spdx](packages/spdx) | unstable | SPDX license identifiers, exceptions and license expressions as Effect Schema classes |
+| [@effected/markdown](packages/markdown) | unstable | CommonMark 0.31.2 and GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, edit, format and project to and from mdast |
 
 ### Companion
 
