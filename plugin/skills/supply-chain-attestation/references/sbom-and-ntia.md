@@ -87,10 +87,10 @@ meaning the same thing.
 ## An error channel that cannot fire is a defect, not a feature
 
 `Sbom.generate`/`toJson` are total, plain functions — no error channel at
-all. An owned model built over a validated schema class cannot fail the
-way a channel guarding a third-party library's own possible throw would
-need to; once the model validates the shape, the channel that used to
-guard an unvalidated one has nothing left to catch. NTIA's "dependency
+all. An owned model built over a validated schema class needs no such
+channel: once the shape itself is guaranteed there is nothing left for
+it to catch, unlike a channel guarding a third-party library's own
+possible throw. NTIA's "dependency
 relationship" check is total for the same reason: the field it would
 test is declared **required** on the model, so the missing-field case the
 check would guard against cannot occur. A SLSA-building error channel
