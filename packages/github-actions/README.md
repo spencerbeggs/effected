@@ -202,7 +202,16 @@ The debounce is trailing with a max-wait, so a burst of reports coalesces into o
 
 ## Testing
 
-Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`, with unstubbed members dying loudly and naming themselves — three recorded exceptions state why they default instead: `ActionEnvironment.makeTest` seeds the twelve `GITHUB_*`/`RUNNER_*` variables, `ActionLogger.makeTest` defaults to silent, and `DryRun.makeTest` defaults to rehearsing, the safe direction:
+Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`, with unstubbed members dying loudly and naming themselves — three recorded exceptions state why they default instead: `ActionEnvironment.makeTest` seeds the twelve `GITHUB_*`/`RUNNER_*` variables, `ActionLogger.makeTest` defaults to silent, and `DryRun.makeTest` defaults to rehearsing, the safe direction. `ActionEnvironment.makeTest`/`layerTest` also take the webhook event payload as an optional second argument, serving it directly instead of routing it through a `GITHUB_EVENT_PATH` filesystem read the stubbed filesystem could never satisfy:
+
+```ts
+import { ActionEnvironment } from "@effected/github-actions";
+
+const layer = ActionEnvironment.layerTest(
+  { GITHUB_EVENT_NAME: "pull_request" },
+  { pull_request: { number: 42 } },
+);
+```
 
 ```ts
 import { ActionOutputs } from "@effected/github-actions";
@@ -221,7 +230,7 @@ const TestOutputs = ActionOutputs.layerTest({
 - `ActionInput` — typed input accessors (`string`, `boolean`, `integer`, `redacted`, `lines`, `list`, `pairs`, `schema`) sharing one absence rule, plus the `INPUT_`-aware `ConfigProvider` `Action.run` installs by default.
 - `ActionOutputs` — step outputs, JSON outputs, the job summary, exported variables, `PATH` additions, failure annotations and log masking.
 - `ActionState` / `ActionEnvironment` — persisted `pre`/`main`/`post` state, and the fiber-local `GITHUB_*`/`RUNNER_*` context read once from `process.env`.
-- `ActionLogger` — collapsible groups, buffered step transcripts (`withBuffer({ onSuccess: "discard" })` keeps a green log to one line per step, while a failure, defect or interruption still flushes), `::notice::` annotations, and the `Logger` that renders every `Effect.log*` as a workflow command.
+- `ActionLogger` — collapsible groups, buffered step transcripts (`withBuffer({ onSuccess: "discard" })` drops a green step's transcript entirely, while a failure, defect or interruption still flushes it), `withStep(name, effect, options?)` for the same buffering plus one summary line on success and a `❌ <name>` header above the transcript on failure, `::notice::` annotations, and the `Logger` that renders every `Effect.log*` as a workflow command.
 - `DryRun` — the rehearsal guard every mutation goes through, driven by the `dry-run` input by default.
 - `Secret` — the one declassification seam between a `Redacted` value and a plain string, masking before it returns plaintext.
 - `GitHubToken` — the App-token lifecycle shaped like the `pre`/`main`/`post` workflow: mint, verify scopes, persist, read, revoke.

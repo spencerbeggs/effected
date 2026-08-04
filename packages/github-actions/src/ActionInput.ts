@@ -114,6 +114,43 @@ export class ActionInput {
 	 * Every accessor on this class shares the rule, so an **optional** input
 	 * needs `Config.withDefault` (or `Config.option`) at the call site or the
 	 * read fails outright.
+	 *
+	 * **An input whose documented meaning is "set it empty to disable this"
+	 * cannot be read with `Config.withDefault`.** Empty is classified as missing
+	 * *before* the default is consulted, so the default substitutes and the
+	 * documented behavior can never happen. A live action shipped exactly that
+	 * for its whole lifetime: `action.yml` promised `release-prefix: ""` would
+	 * disable retry, and it never could. `Config.option` is the shape that
+	 * distinguishes the states:
+	 *
+	 * ```ts
+	 * Config.option(ActionInput.string("release-prefix"))
+	 * // WITH a non-empty default in action.yml:
+	 * //   unsupplied     -> Some("release:")   (the manifest default, via the runner)
+	 * //   explicit ""    -> None
+	 * //   explicit value -> Some(value)
+	 * // WITHOUT a default in action.yml:
+	 * //   unsupplied     -> None               (the runner still writes the variable, empty)
+	 * ```
+	 *
+	 * Both rows matter: "the runner writes `""` for an unsupplied input" is the
+	 * no-default case, and it is the manifest default — when there is one — that
+	 * makes the unsupplied and explicitly-empty cases distinguishable at all.
+	 *
+	 * Two consequences follow from how the runner actually behaves, both
+	 * confirmed against `actions/runner` and on a live runner:
+	 *
+	 * - **The runner publishes a variable for every declared input**, so *absent*
+	 *   is a state a runner never produces. The `Some` branch above depends on
+	 *   `action.yml` declaring a **non-empty default** — a fact in a different
+	 *   file, invisible at this call site. Deleting that default does not restore
+	 *   a fallback; an input declaring no default arrives set-and-empty when
+	 *   unsupplied, silently flipping every unsupplied run to `None`. Pin the
+	 *   default with a test if a read depends on it.
+	 * - **A bare test environment inverts the unsupplied case.** Omitting the key
+	 *   in a test means genuinely absent, which no runner emits, so a test named
+	 *   "unsupplied" asserts the opposite of production and passes. Arrange the
+	 *   manifest default explicitly instead of omitting the key.
 	 */
 	static string(name: string): Config.Config<string> {
 		return Config.string(inputVariable(name));
@@ -351,6 +388,22 @@ export class ActionInput {
 	 *
 	 * Taking the environment as an argument rather than reading `process.env`
 	 * is what makes inputs testable without mutating the test process.
+	 *
+	 * **A bare `ConfigProvider.fromEnv` cannot serve input-name keys.** Composed
+	 * beneath this provider or {@link ActionInput.providerOver}, it uppercases
+	 * the config path, so `{ "target-branch": "trunk" }` is looked up as
+	 * `TARGET-BRANCH`, never matches, and the read falls through to whatever
+	 * default the call site supplies. It **fails green**: nothing errors, the
+	 * suite passes against the default, and the test's name claims it proved the
+	 * input was read. A consuming action's integration harness did exactly this
+	 * and stayed green across several commits while a supplied `target-branch`
+	 * silently did nothing.
+	 *
+	 * Runner-variable keys (`INPUT_TARGET-BRANCH`, `PLAIN_VAR`) are unaffected —
+	 * they are already in the spelling `fromEnv` produces, and they resolve. The
+	 * hazard is specific to keying a `fromEnv` record by **input name**. Passing
+	 * the record to *this* function instead removes the distinction: it
+	 * dual-accepts both spellings, so neither can miss.
 	 */
 	static provider(env: Readonly<Record<string, string | undefined>> = process.env): ConfigProvider.ConfigProvider {
 		/** Unset, and the `""` the runner writes for an unsupplied input, are both absent. */
@@ -424,6 +477,22 @@ export class ActionInput {
 	 * `ActionInput` accessors themselves are unaffected — they read
 	 * `INPUT_<MANGLED>` names, whose re-mangled form (`INPUT_INPUT_…`) never
 	 * matches, so they fall through to the ambient lookup they always used.
+	 *
+	 * **A bare `ConfigProvider.fromEnv({ env })` here serves only runner-variable
+	 * keys.** `INPUT_TARGET-BRANCH` and `PLAIN_VAR` resolve; an input-name key
+	 * like `target-branch` is uppercased to `TARGET-BRANCH`, never matches, and
+	 * fails green — see {@link ActionInput.provider} for the mechanism. Use
+	 * `ActionInput.provider(env)`, which dual-accepts both spellings.
+	 *
+	 * **The single-segment retry above makes the obvious test
+	 * non-discriminating**, which is worth knowing before writing one. Because a
+	 * bare `Config.string("release-branch")` resolves through the same `INPUT_`
+	 * derivation as `ActionInput.string("release-branch")`, a test meant to prove
+	 * the accessor reads the mangled key passes just as well with the accessor
+	 * swapped for a bare `Config`. Only a bare `fromEnv` underneath tells them
+	 * apart — and that is the one shape you should never reach for. Test the
+	 * derivation through `ActionInput.variable` instead of trying to catch it by
+	 * substitution.
 	 */
 	static providerOver(ambient: ConfigProvider.ConfigProvider): ConfigProvider.ConfigProvider {
 		return ConfigProvider.orElse(
@@ -449,9 +518,16 @@ export class ActionInput {
 	 * `ConfigProvider` layer still wins by normal layer precedence.
 	 *
 	 * The ambient half is whatever provider is **explicitly installed** when the
-	 * layer builds — which is how a test injects a deterministic environment by
-	 * providing `ConfigProvider.layer(ConfigProvider.fromEnv({ env }))` beneath
-	 * the runtime. When none is installed, a **fresh** `ConfigProvider.fromEnv()`
+	 * layer builds — which is how a test injects a deterministic environment, by
+	 * providing `ConfigProvider.layer(ActionInput.provider(env))` beneath the
+	 * runtime. Prefer `ActionInput.provider` over a bare
+	 * `ConfigProvider.fromEnv({ env })`: `fromEnv` serves runner-variable keys
+	 * fine, but uppercases the config path, so a record keyed by **input name**
+	 * never matches and every such read silently takes its default while the
+	 * suite stays green ({@link ActionInput.provider} has the full account).
+	 * `ActionInput.provider` dual-accepts both spellings, so neither can miss.
+	 *
+	 * When none is installed, a **fresh** `ConfigProvider.fromEnv()`
 	 * is built rather than reading the reference's default: v4 caches that
 	 * default once per process, and a snapshot taken before the runner's
 	 * variables are visible would resurrect exactly the missed-input class this

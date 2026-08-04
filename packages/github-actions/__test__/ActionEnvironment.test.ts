@@ -343,5 +343,48 @@ describe("ActionEnvironment", () => {
 				assert.strictEqual((yield* env.github).eventName, "push");
 			}).pipe(Effect.provide(ActionEnvironment.layerTest({ GITHUB_REPOSITORY: "acme/widget" }))),
 		);
+
+		it.effect("layerTest serves a payload directly, with no filesystem in R", () =>
+			Effect.gen(function* () {
+				const env = yield* ActionEnvironment;
+				// The type is half the assertion: an event-driven suite gets its payload
+				// from the STANDARD double, without dropping to makeTest and hand-rolling
+				// a filesystem stub at every site.
+				const payload: Effect.Effect<unknown, unknown> = env.payload;
+				const value = (yield* payload) as { readonly pull_request?: { readonly number?: number } };
+				assert.strictEqual(value.pull_request?.number, 42);
+			}).pipe(
+				Effect.provide(
+					ActionEnvironment.layerTest({ GITHUB_EVENT_NAME: "pull_request" }, { pull_request: { number: 42 } }),
+				),
+			),
+		);
+
+		it.effect("layerTest serves the payload without routing through GITHUB_EVENT_PATH", () =>
+			Effect.gen(function* () {
+				const env = yield* ActionEnvironment;
+				// The discriminating part: the layer hard-provides FileSystem.layerNoop,
+				// so a payload arriving through a file read would fail here. Seeding the
+				// path as WELL as the payload must change nothing — the served value
+				// replaces the read rather than backing it.
+				assert.deepStrictEqual(yield* env.payload, { served: true });
+			}).pipe(Effect.provide(ActionEnvironment.layerTest({ GITHUB_EVENT_PATH: "/event.json" }, { served: true }))),
+		);
+
+		it.effect("an unserved payload fails typed and names the variable", () =>
+			Effect.gen(function* () {
+				// TEST_DEFAULTS omits GITHUB_EVENT_PATH on purpose: a suite that forgot
+				// to arrange a payload gets a loud failure naming what is missing, not a
+				// plausible empty object.
+				const error = yield* Effect.flip((yield* ActionEnvironment).payload);
+				assert.strictEqual(error.name, "GITHUB_EVENT_PATH");
+			}).pipe(Effect.provide(ActionEnvironment.layerTest())),
+		);
+
+		it.effect("a served payload may be any JSON value, not only an object", () =>
+			Effect.gen(function* () {
+				assert.deepStrictEqual(yield* (yield* ActionEnvironment).payload, []);
+			}).pipe(Effect.provide(ActionEnvironment.layerTest({}, []))),
+		);
 	});
 });

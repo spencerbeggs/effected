@@ -157,6 +157,22 @@ export interface WithBufferOptions {
 }
 
 /**
+ * Options for {@link ActionLoggerShape.withStep}.
+ *
+ * @public
+ */
+export interface WithStepOptions {
+	/**
+	 * The info line emitted when the step **succeeds**.
+	 *
+	 * @remarks
+	 * Defaults to `✅ <name>`. This is the line the buffered transcript is traded
+	 * for: a green step reports that it happened and nothing else.
+	 */
+	readonly summary?: string;
+}
+
+/**
  * The {@link ActionLogger} service shape.
  *
  * @public
@@ -188,6 +204,44 @@ export interface ActionLoggerShape {
 		options?: WithBufferOptions,
 	) => Effect.Effect<A, E, R>;
 	/**
+	 * Run a named step: quiet when it succeeds, its full transcript when it does
+	 * not.
+	 *
+	 * @remarks
+	 * The composition a release log actually wants, and the one
+	 * {@link ActionLoggerShape.withBuffer} alone does not reach. Buffering with
+	 * `{ onSuccess: "discard" }` gets a green step to *zero* lines; this trades
+	 * that transcript for exactly one:
+	 *
+	 * 1. verbose output is captured rather than printed live,
+	 * 2. on success the transcript is dropped and a single info line — `summary`,
+	 *    default `✅ <name>` ({@link WithStepOptions}) — goes out in its place,
+	 * 3. on failure a `❌ <name>` header lands **first**, then the transcript
+	 *    spills beneath it.
+	 *
+	 * The ordering in (3) is a property of the **buffered** path. With step
+	 * debugging on, nothing is buffered — verbose output has already gone out
+	 * live by the time the failure fires — so the header lands *after* the
+	 * transcript it would otherwise introduce. That is the honest trade of
+	 * asking for live output, not a defect, and both orderings are pinned by
+	 * test.
+	 *
+	 * The header and the summary are the whole difference from `withBuffer`, and
+	 * they are why this is a member rather than a documented recipe: the recipe
+	 * was independently derived wrong three times by careful readers during one
+	 * port, because `group` + `withBuffer` looks like complete parity until you
+	 * notice nothing emits the success line.
+	 *
+	 * The summary survives step debugging. Buffering is skipped when the runner
+	 * asks for verbose output, but the line naming what succeeded is still the
+	 * cheapest thing in the log.
+	 */
+	readonly withStep: <A, E, R>(
+		name: string,
+		effect: Effect.Effect<A, E, R>,
+		options?: WithStepOptions,
+	) => Effect.Effect<A, E, R>;
+	/**
 	 * Emit a `::notice::` annotation.
 	 *
 	 * @remarks
@@ -214,6 +268,39 @@ const make = Effect.gen(function* () {
 
 	const flushActive = Effect.flatMap(ActiveBuffer, (state) => (state === null ? Effect.void : flush(state)));
 
+	const withBuffer = <A, E, R>(label: string, effect: Effect.Effect<A, E, R>, options?: WithBufferOptions) =>
+		Effect.gen(function* () {
+			const minimum = yield* References.MinimumLogLevel;
+			const stepDebug = yield* env.isDebug;
+			if (stepDebug || LogLevel.isLessThanOrEqualTo(minimum, "Debug")) {
+				return yield* effect;
+			}
+
+			const state: BufferState = { label, entries: [] };
+			const buffering = Logger.make<unknown, void>((options) => {
+				if (LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Warn")) {
+					const annotations = options.fiber.getRef(References.CurrentLogAnnotations);
+					options.fiber.getRef(Console.Console).log(renderEntry(options.logLevel, options.message, annotations));
+					return;
+				}
+				state.entries.push(formatMessage(options.message));
+			});
+
+			return yield* effect.pipe(
+				// `All` so debug output is captured rather than dropped: the whole
+				// point of a buffer is that the verbose transcript exists if the step
+				// fails.
+				Effect.provideService(References.MinimumLogLevel, "All"),
+				Effect.provideService(Logger.CurrentLoggers, new Set([buffering])),
+				Effect.provideService(ActiveBuffer, state),
+				Effect.onExit((exit) =>
+					// Only a SUCCESS is ever discarded: a failure, a defect or an
+					// interruption is exactly the moment the transcript was kept for.
+					Exit.isSuccess(exit) && options?.onSuccess === "discard" ? discard(state) : flush(state),
+				),
+			);
+		});
+
 	return {
 		group: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
 			Effect.acquireUseRelease(
@@ -226,38 +313,22 @@ const make = Effect.gen(function* () {
 				() => Console.log(WorkflowCommand.endGroup()),
 			),
 
-		withBuffer: <A, E, R>(label: string, effect: Effect.Effect<A, E, R>, options?: WithBufferOptions) =>
-			Effect.gen(function* () {
-				const minimum = yield* References.MinimumLogLevel;
-				const stepDebug = yield* env.isDebug;
-				if (stepDebug || LogLevel.isLessThanOrEqualTo(minimum, "Debug")) {
-					return yield* effect;
-				}
+		withBuffer,
 
-				const state: BufferState = { label, entries: [] };
-				const buffering = Logger.make<unknown, void>((options) => {
-					if (LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Warn")) {
-						const annotations = options.fiber.getRef(References.CurrentLogAnnotations);
-						options.fiber.getRef(Console.Console).log(renderEntry(options.logLevel, options.message, annotations));
-						return;
-					}
-					state.entries.push(formatMessage(options.message));
-				});
-
-				return yield* effect.pipe(
-					// `All` so debug output is captured rather than dropped: the whole
-					// point of a buffer is that the verbose transcript exists if the step
-					// fails.
-					Effect.provideService(References.MinimumLogLevel, "All"),
-					Effect.provideService(Logger.CurrentLoggers, new Set([buffering])),
-					Effect.provideService(ActiveBuffer, state),
-					Effect.onExit((exit) =>
-						// Only a SUCCESS is ever discarded: a failure, a defect or an
-						// interruption is exactly the moment the transcript was kept for.
-						Exit.isSuccess(exit) && options?.onSuccess === "discard" ? discard(state) : flush(state),
-					),
-				);
-			}),
+		withStep: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>, options?: WithStepOptions) =>
+			withBuffer(
+				name,
+				// Written through `Console` rather than `Effect.logError`, so it lands
+				// ahead of the flush instead of into the buffer it is announcing — and
+				// so a failed step does not mint a second `::error::` beside the one
+				// `Action.run` already renders for the failure itself.
+				Effect.tapCause(effect, () => Console.log(`❌ ${name}`)),
+				{ onSuccess: "discard" },
+			).pipe(
+				// Outside the buffered region on purpose: a line emitted inside it is
+				// discarded with the transcript it was meant to replace.
+				Effect.tap(() => Effect.logInfo(options?.summary ?? `✅ ${name}`)),
+			),
 
 		notice: (message: string, properties: AnnotationProperties = {}) =>
 			Console.log(WorkflowCommand.notice(message, properties)),
@@ -327,6 +398,7 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	static readonly makeTest = (overrides: Partial<ActionLoggerShape> = {}): ActionLoggerShape => ({
 		group: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
 		withBuffer: <A, E, R>(_label: string, effect: Effect.Effect<A, E, R>) => effect,
+		withStep: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
 		notice: () => Effect.void,
 		annotated: <A, E, R>(_properties: AnnotationProperties, effect: Effect.Effect<A, E, R>) => effect,
 		...overrides,

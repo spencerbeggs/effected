@@ -150,11 +150,25 @@ const passthrough = (value: string): Html => Html.make({ value });
  *
  * @remarks
  * `Markdown.stringifyResult` is total over every tree this module can
- * construct — its only failure is the hardening depth cap, which a
- * fixed-shape two-level tree cannot reach — so the impossible arm is a
- * defect, **not** a silent fallback to unescaped string joining. The
- * predecessor's fallback arm is the live table-corruption defect this module
- * exists to delete.
+ * construct — its only failure is the hardening nesting-depth guard (cap
+ * 256) — so the impossible arm is a defect, **not** a silent fallback to
+ * unescaped string joining. The predecessor's fallback arm is the live
+ * table-corruption defect this module exists to delete.
+ *
+ * What makes the guard unreachable is not that these trees are small; it is
+ * that **their depth does not depend on input**. A fragment handed to a
+ * member always becomes a **leaf**, never a subtree: the composition members
+ * (`table`, `list`, `link`) wrap it in a single `passthrough` node, and the
+ * content members (`code`, `codeBlock`) carry it as a node's `value` string.
+ * Either way nothing re-parses a fragment into child nodes, so a composition
+ * nests strings rather than nodes and the deepest tree the writer can build
+ * is a table's five levels, whatever it is handed. Pinned by
+ * `__test__/GitHubMarkdown.test.ts`, which nests the writer's own output a
+ * thousand deep — four times the cap — and still renders.
+ *
+ * Keep that property when adding a member: a member that accepts a *node*, or
+ * that re-parses a fragment into one, makes depth input-dependent and this
+ * whole argument — and the no-wrapping guidance on the class — collapses.
  */
 const render = (root: Root): string => Result.getOrThrow(Markdown.stringifyResult(root)).trimEnd();
 
@@ -179,6 +193,22 @@ const block = (node: Root["children"][number]): string => render(Root.make({ chi
  * This module is the package's **only** importer of `@effected/markdown` — a
  * structural test pins that, on the same terms as the Azure confinement — so
  * an action that never renders markdown never links the engine.
+ *
+ * **Renders cannot fail, so do not `Effect.try`-wrap them.** The serializer's
+ * single failure mode is a nesting-depth guard, and no input can reach it: a
+ * fragment handed to a member becomes a leaf — a passthrough node or a node's
+ * `value` string — never a parsed subtree, so a composition nests strings
+ * rather than nodes and the tree's depth is fixed by the construct, not by
+ * what it is handed. A test nests the writer's own output a thousand deep and
+ * still renders. Wrapping is boilerplate that also widens the catch to
+ * anything else thrown inside the builder — a reporting surface degrading for
+ * reasons it did not intend.
+ *
+ * Two exceptions, both in {@link GitHubMarkdown.tableFor} and neither in the
+ * serializer. Cells encode through the row schema, so a value smuggled past
+ * the types throws its `SchemaError`; and a column's own `format` function is
+ * called directly, so its totality is the caller's to guarantee. Well-typed
+ * rows through the default codec are total.
  *
  * @example
  * ```ts
@@ -244,6 +274,19 @@ export class GitHubMarkdown {
 	 * schema's type, so encoding them is total in practice; a value smuggled
 	 * past the types throws the codec's `SchemaError` as a defect — same
 	 * posture as the serializer arm above, **not** a silent fallback.
+	 *
+	 * This is the **only** member where a throw is reachable at runtime, and
+	 * neither route is the serializer — see the no-wrapping remark on
+	 * {@link GitHubMarkdown}. There are two:
+	 *
+	 * - the **codec**, for a value smuggled past the types. A caller holding
+	 *   only well-typed rows (the normal case, and what the types express)
+	 *   needs no wrapping; a caller feeding rows decoded from somewhere
+	 *   untyped should decode through the schema rather than guard the render.
+	 * - a column's own **`format`** function, which is called directly and
+	 *   bypasses the codec entirely. Nothing here can make user code total, so
+	 *   a `format` that can throw makes its render able to throw — keep
+	 *   formatters total, or guard at the formatter rather than the render.
 	 *
 	 * Only string-keyed fields become columns; symbol keys are not
 	 * enumerable table columns.
