@@ -416,6 +416,48 @@ bot identity rather than `github-actions[bot]`, or needs an installation
 token whose lifecycle this package's revoke-on-release and
 revoke-on-expiry-boundary guarantees are worth having.
 
+## The complete recipe, both directions
+
+The panel's canon ships a token-minimal template by default — most actions
+never need App auth. When one does, this is the whole working lifecycle, not
+a partial sketch: five elements, each already documented above and gathered
+here as one sequence so a template's optional App-auth module has a single
+place to copy from.
+
+1. **`pre.ts` provisions, with required-scope verification.** `GitHubToken.provision({ appId, privateKey, installationId?, owner?, required })` —
+   the `required` permission map turns a misconfigured installation into a
+   typed failure in `pre`, not a `403` mid-`main`. This is `TokenPermissions.assertSufficient`
+   under the hood (see "The lightweight alternative" above); leaving `required`
+   unset skips verification entirely, silently, so a working App-auth module
+   always sets it.
+2. **The mint is persisted as an envelope, not read back from the App.**
+   `provision` calls `ActionState.saveSecret` internally — nothing in `pre.ts`
+   touches `ActionState` directly; see `actions-state-and-secrets` for the
+   masking-before-persistence ordering this relies on.
+3. **`main.ts` reads back through `clientLayer()`, never through `GitHubApp` again.**
+   `GitHubToken.clientLayer()` builds a `GitHubClient` from the persisted
+   token and fails typed (`reason: "expired"`) rather than surfacing an
+   unexplained `401` — `main` never re-authenticates as the App, because the
+   App's private key never crosses the `pre`/`main` process boundary.
+4. **`post.ts` disposes unconditionally, double-netted.** `GitHubToken.dispose()`
+   is already a no-op when `pre` never provisioned and skips an already-expired
+   token on its own — but the call still needs the same belt-and-braces every
+   `post` phase needs generally (`designing-an-action`'s failure-posture step):
+   `wrap the dispose call in catch + catchDefect` so a revoke failure (network
+   hiccup, GitHub outage) degrades to a logged warning rather than turning a
+   green run red on the way out. A `post` phase that fails the workflow over a
+   token it was only trying to clean up is strictly worse than a live token
+   that expires in an hour on its own.
+5. **Add/remove is a documented, symmetric edit, not a one-way door.** Adding
+   App auth to an action that started token-minimal: create `pre.ts` + a
+   `PreLive` layer, add two inputs to `action.yml` (the App id and private
+   key), and in `main.ts` swap `GitHubClient.layerFromConfig()` for
+   `GitHubToken.clientLayer()`; create `post.ts` + a `PostLive` layer calling
+   `dispose()` per item 4. Removing it later is the exact inverse: delete
+   `pre.ts`/`post.ts` and their two inputs, and swap `GitHubToken.clientLayer()`
+   back to `GitHubClient.layerFromConfig()` in `main.ts`. Neither direction
+   touches any other step — the token source is the only thing that changes.
+
 ## Pointers
 
 - **The request surface** (`client.request`, `GitHubError`'s `kind`

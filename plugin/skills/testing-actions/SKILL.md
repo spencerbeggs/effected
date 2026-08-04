@@ -22,7 +22,11 @@ Every service in these four packages ships `makeTest(overrides?)` +
 `layerTest(overrides?)` (`Layer.succeed(Self, Self.makeTest(overrides))`).
 **Every unstubbed member dies, naming itself** — there is no `./testing`
 subpath, and none of the predecessor's nine `*Test` doubles survives as a
-whole-service `Layer.succeed`.
+whole-service `Layer.succeed`. That "nine" is the predecessor's retired
+count, not today's: 32 services across `github-actions`, `github`, `commands`
+and `sbom` ship a `makeTest`/`layerTest` pair today (tallied 2026-08-03,
+`grep -rl makeTest` over the four packages' `src/`) — a ~4× larger surface
+than the number that describes what's gone, not what exists.
 
 **Writing a new double: the death must be LAZY.** The unstubbed default is
 `() => Effect.sync(() => { throw ... })` (or `Effect.die` built lazily), never

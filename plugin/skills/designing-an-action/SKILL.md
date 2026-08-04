@@ -50,8 +50,20 @@ Cheap, wide, evidence-only. No design decisions yet.
    package's constraints later re-litigates its own decisions.
 4. **Present the human 2–4 real decisions with recommended defaults**: where
    the legacy code goes, the dependency link posture, how strict the parity
-   contract is. Get them answered before writing a line of design. Everything
-   else is not a decision — do not pad the list.
+   contract is, and — when the action needs GitHub App auth — token scope
+   verification and lifecycle placement, decided now rather than discovered
+   while wiring `main.ts` (`github-app-tokens` carries the complete
+   provision/read/dispose recipe; this is the decision to name it here, not
+   to restate it). Get them answered before writing a line of design.
+   Everything else is not a decision — do not pad the list.
+5. **A recon that finds a checked-absent kit surface is a decision point, not
+   a workaround license.** "Wait for the kit" silently produces the raw
+   subprocess calls and copy-pasted regexes recon exists to prevent
+   (effected#193, effected#194). When step 2 turns up a capability the
+   installed kit genuinely does not ship, ask the user whether to dogfood the
+   fix upstream now or write a local shim — never decide silently either way
+   — and either way file an issue against `effected` plus a linked tracking
+   ticket wherever the shim lands.
 
 ## Phase 0: Spec with a frozen parity contract
 
@@ -109,11 +121,30 @@ stay green is a wiring bug found while wiring is the only thing that exists.
 4. **Cross-phase state** — `Schema.Class` state records keyed by a
    `STATE_KEYS` const; any pid field uses the kit's validating `ProcessId`
    brand so a truncated state file fails typed
-   (`actions-state-and-secrets`).
+   (`actions-state-and-secrets`). **Every field's encoded form must survive
+   `JSON.stringify` → `GITHUB_STATE` → `JSON.parse` intact**: an `Option`
+   field is `Schema.OptionFromNullOr`, never `Schema.Option` — the latter's
+   encoded form is an `Option` *instance*, and a `main` phase that "saved
+   successfully" leaves `post` unable to decode it. Apply this at design
+   time, proactively, for every field — do not wait to discover it as a
+   test-time trap.
 5. **Step contracts** — one module per pipeline step, each exporting: a
    result type, a tagged error with a `reason` literal union (plus stored
    `message`, optional `cause`), a declared requirement channel `R`, and a
    stub that succeeds with a documented inert value. **Stubs never fail.**
+
+   **Decide failure posture per step, now, not while wiring `main.ts`.**
+   Three tiers: fail-the-job (the tagged error propagates and the run goes
+   red), degrade-to-warning (the step logs and the program continues with a
+   documented fallback), or double-netted (`post` and summary writes: wrap in
+   both `catch` and `catchDefect`, because **a `post` phase must never turn a
+   green run red** — `GitHubToken.dispose`'s belt-and-braces in
+   `actions-state-and-secrets` is the worked example, and the rule
+   generalizes to every `post` step, not only token cleanup). Record the
+   tier per step alongside its contract; fail the effect itself when the
+   tier says fail-the-job — never `setFailed` followed by a plain `return`,
+   which reports success to the runner's own exit-code channel while the
+   log says otherwise.
 
    **The R channel.** The asymmetry: a too-narrow `R` is a breaking change
    to the composing program the moment Phase B needs the missing service,
@@ -132,10 +163,59 @@ stay green is a wiring bug found while wiring is the only thing that exists.
    `pnpm build --filter <pkg>` — **never** `node savvy.build.ts --target
    prod`, which skips `build:dev` and leaves a truncated gate shaped like a
    clean one); smoke-run.
+
+   **The logging contract is part of this step, not an afterthought.** A
+   run-context opening block; every skipped step logs `Step: X — SKIPPED:
+   <reason>`, not silence; warnings reserved for acceptance signals rather
+   than routine status; a closing result block. Test-enforce it by asserting
+   on the captured log stream — the log is the decision record a human (or
+   the next agent) reads first, and an assertion on it is the only thing
+   that catches a skip that silently stopped logging.
+
+   **Compose layers minimally, and check it.** Add only what
+   `ActionRuntime.layer` doesn't already provide (`actions-runtime`'s "one
+   line, not a default" section is the reference for what's already there);
+   `Layer.unwrap` only when the layer is genuinely config-dependent, a bound
+   `const` otherwise. Prove no over-provision with a typed test double: a
+   program typed against `ActionServices` plus only the extra services it
+   actually needs should fail to *compile*, not merely fail a runtime
+   assertion, the moment an unused requirement is added.
+
+   **Bundle truth is a design step, not a discovery.** `vitest` runs source
+   and can never see a bundler failure, so the skeleton needs its own
+   verification that the *built* artifact works: a dist-freshness check
+   (rebuild and diff) and, wherever the bundle needs one, a guard proving a
+   native dynamic import actually survives the bundler pass. Non-compilable
+   guard scripts like this live in `lib/scripts/` per the repo's own
+   convention (changes under `lib/` invalidate the build cache, which is the
+   point — a stale guard silently passing is worse than no guard). The slot
+   for this checkpoint is canon even when the action has nothing to assert
+   yet; a no-op guard is not. Pair this with a load-bearing rule for any
+   build-time data your action bakes in: a decode failure at that stage is a
+   **defect**, never degraded to an empty result — `Effect.orElseSucceed(()
+   => [])` turned one real broken bundle into a truthful-sounding "no
+   versions found" (update#187).
+
+   **Dependency honesty is checked here, not assumed.** Every declared
+   `@effected/*` dependency must be imported by `src/`, or be a required
+   peer dependency of another declared dependency — a structural
+   import-walker test that flags an "unused" dependency must resolve the
+   peer closure first; a required peer is a legitimate un-imported
+   dependency, not a stale one to delete on sight.
 7. **Only then, Phase B** — fill each step's business logic in TDD
    red/green/refactor against the frozen contract, one step per plan, using
    the legacy implementation as a behavioral oracle: stashed verbatim,
    excluded from tooling, **never imported**.
+
+   **Porting onto new test infrastructure: doubles first, runner conversion
+   separately.** When Phase B is also migrating a test suite onto
+   `@effect/vitest`, port the ported service's test doubles before
+   converting the harness itself — converting the runner first installs a
+   `TestClock` at the epoch across the whole suite, so a real `Effect.sleep`
+   still living in `src` hangs to the real vitest timeout, naming nothing.
+   The suite mid-port is the characterization gate the port depends on
+   staying green (effected#185); a gate rewritten alongside the thing it
+   gates is not a gate.
 
 ## Execution discipline
 
@@ -163,7 +243,11 @@ What makes the multi-agent execution smooth rather than chaotic:
   contract — in the kit's world that is a conventional type, a DCO
   Signed-off-by trailer, and a plain-prose body with no markdown), and
   milestone end-to-end runs after the
-  skeleton and after designated Phase B steps.
+  skeleton and after designated Phase B steps. **Doc-refresh belongs in the
+  same milestone gate**: the package's `CLAUDE.md` (or the action repo's own
+  three-tier `CLAUDE.md`) and any shim register stay current as part of the
+  definition of done, not a follow-up — a stale doc teaches the next agent
+  the dead API it describes.
 
 ## Red flags
 
@@ -179,6 +263,12 @@ What makes the multi-agent execution smooth rather than chaotic:
   primary source.
 - An `R` channel declared from intuition rather than the oracle's actual
   service usage.
+- **An error class with no test that constructs it.** `actions-state-and-secrets`
+  names the rule in full ("audit every ported error channel for whether it
+  can actually fire"); this is the checkpoint in the one skill that walks
+  the whole build where that audit actually happens. The mirror form is
+  just as real: a step failure reported through an untyped `new Error`
+  where a tagged error belongs is the same defect from the other side.
 
 ## Where the depth lives
 
@@ -191,3 +281,9 @@ What makes the multi-agent execution smooth rather than chaotic:
 | cache, artifacts, tool installs | `actions-cache-and-artifacts` |
 | test seams, doubles, discriminating mutants | `testing-actions` |
 | schema vocabulary for the domain module | `effect-v4-schema` |
+| logs, summaries, check runs, sticky PR comments | `actions-reporting` |
+| the GitHub REST/GraphQL client itself | `github-api` |
+| App auth, the token lifecycle, `GitHubToken`'s recipe | `github-app-tokens` |
+| subprocesses, tool discovery, redaction | `running-commands-and-tools` |
+| npm publish, release tags, versioning strategy | `release-and-publish` |
+| SBOM, attestation, Sigstore signing | `supply-chain-attestation` |
