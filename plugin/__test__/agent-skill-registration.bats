@@ -58,6 +58,33 @@ _tools_block() {
 	done
 }
 
+@test "designing-an-action is registered under skills, in action-engineer" {
+	# Pins the fix for the round-2 audit finding: action-engineer had no path,
+	# preloaded or on-demand, to the one skill that sequences a whole action
+	# build. A future edit that silently drops it from frontmatter must fail
+	# here instead of round-tripping that audit.
+	_skills_block "$AGENTS/action-engineer.md" | grep -qx -- "designing-an-action" || {
+		echo "agent action-engineer does not list designing-an-action under skills:" >&2
+		return 1
+	}
+}
+
+@test "all fourteen Actions skills are registered under skills, in action-engineer" {
+	# Pins the forward decision in the skills-rewrite spec: the whole Actions
+	# suite is preloaded, not a core plus an on-demand tail. A future edit that
+	# drops one of the four skills the split used to defer on demand
+	# (actions-cache-and-artifacts, supply-chain-attestation,
+	# running-commands-and-tools, release-and-publish), or drops the net-new
+	# structuring-an-action, must fail here.
+	local expected="building-a-github-action designing-an-action structuring-an-action actions-runtime actions-inputs-outputs actions-reporting actions-state-and-secrets actions-cache-and-artifacts github-api github-app-tokens running-commands-and-tools release-and-publish supply-chain-attestation testing-actions"
+	for skill in $expected; do
+		_skills_block "$AGENTS/action-engineer.md" | grep -qx -- "$skill" || {
+			echo "agent action-engineer does not list $skill under skills:" >&2
+			return 1
+		}
+	done
+}
+
 @test "no skill name leaks into an agent's tools block" {
 	# A skill in tools: is the exact bug this file exists to catch — it would
 	# still satisfy any test that merely greps the file for the skill name.
@@ -73,7 +100,7 @@ _tools_block() {
 }
 
 @test "every skill an agent names actually exists on disk" {
-	for agent in effect-developer effect-migrator effect-reviewer; do
+	for agent in effect-developer effect-migrator effect-reviewer action-engineer; do
 		while IFS= read -r name; do
 			[ -f "$PLUGIN_ROOT/skills/$name/SKILL.md" ] || {
 				echo "agent $agent names skill '$name', which has no SKILL.md" >&2

@@ -12,7 +12,7 @@ The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.101`. The 
 
 ## Design Documentation
 
-Nine foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
+Ten foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
 
 - Architecture → `@./.claude/design/effected/architecture.md` — Load when: changing repo structure, build pipeline, tooling, or workspace/catalog setup.
 - Effect standards → `@./.claude/design/effected/effect-standards.md` — Load when: designing or porting a library API, or making dependency/peer-closure decisions.
@@ -23,6 +23,7 @@ Nine foundational design docs live in `.claude/design/effected/` (config: `.clau
 - Package setup → `@./.claude/design/effected/package-setup.md` — Load when: scaffolding or adding a new workspace package.
 - Formatter convention → `@./.claude/design/effected/formatter-convention.md` — Load when: designing a formatting or parsing entry point, or deciding whether a pure boundary exposes a sync `Result` primitive alongside its `Effect` form.
 - Plugin → `@./.claude/design/effected/plugin.md` — Load when: working in `plugin/` on the "effected" Claude Code plugin.
+- GitHub Action canon → `@./.claude/design/effected/github-action-canon.md` — Load when: building or reviewing a GitHub Action repository on the kit, or editing the Actions skill suite that teaches it.
 
 ### Migration Status
 

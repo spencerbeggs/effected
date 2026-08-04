@@ -77,7 +77,7 @@ Available via the Skill tool (several also auto-load on trigger):
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the
   malformed-input-fails-as-a-typed-error-never-a-defect invariant.
 
-The GitHub Actions / API suite — thirteen skills over @effected/github-actions,
+The GitHub Actions / API suite — fourteen skills over @effected/github-actions,
 github, commands, npm and sbom. START at the router; the rest are named by it
 and load on demand:
 - building-a-github-action — the ROUTER: which package owns a capability,
@@ -89,6 +89,10 @@ and load on demand:
   persisted API dossier, a contracts-first walking skeleton whose stubs
   succeed, then TDD fill per step. The router routes capabilities; this
   sequences the whole build.
+- structuring-an-action — the canonical repo SHAPE: the annotated file tree,
+  where a piece of code belongs (entry point, step, shared service, shim),
+  and the structural standards and footguns that keep it that way. Designing
+  owns the order you build in; this owns the shape you build into.
 - actions-runtime — Action.run, ActionServices, ActionRuntime.layer, the extra
   layer that may require anything the runtime provides, failure rendering.
 - actions-inputs-outputs — ActionInput (Config, INPUT_ mangling) and
