@@ -1,6 +1,6 @@
 {
 	"name": "@effected/commands",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"private": true,
 	"description": "Structured command running and CLI tool discovery over Effect's core ChildProcessSpawner contract.",
 	"keywords": ["command", "subprocess", "tool-discovery", "spawn", "effect", "effected"],
