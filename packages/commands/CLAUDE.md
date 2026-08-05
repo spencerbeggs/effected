@@ -45,9 +45,12 @@ helper. `Run` is **free functions**, not a service, for exactly this reason.
   backstop for secrets a caller forgot to declare.
 - `Retry.ts` — `isTransient` / `transient()` / `TRANSIENT_PATTERNS`. Vocabulary
   for `Effect.retry({ while, schedule, times })`, **not** a retrying runner.
-- `Run.ts` — `collect` / `collectTee` / `text` / `lines` / `json` / `exitCode` /
-  `succeeds` / `stream` / `detach` / `extendEnv`, `CommandOutput`,
-  `CommandFailedError`, `CommandOutputError`.
+- `Run.ts` — `collect` / `collectTee` / `text` / `lines` / `json` / `jsonLine` /
+  `exitCode` / `succeeds` / `stream` / `detach` / `extendEnv`, `CommandOutput`,
+  `CommandFailedError`, `CommandOutputError` (`kind` + `command` + optional
+  `cause`, plus optional `exitCode` / `stderr` / `stdout` context — **already
+  redacted**, carried by the combinators that parse independently of the exit
+  code so a bad payload is diagnosable without a re-run).
 - `ScriptedSpawner.ts` — the **public scripted-spawner test double**:
   `ScriptedSpawner.make(script)` returns `{ layer, spawns }` — a Layer providing
   core's `ChildProcessSpawner` answering from the script, plus the spawn log
@@ -91,18 +94,33 @@ is not theory — flipping it to `{ concurrency: 1 }` makes
 A mock spawner over in-memory streams **cannot** reproduce it, and pressure on
 one stream does not discriminate. **Do not delete that e2e test.**
 
-### A non-zero exit is a RESULT, not an error — for three of the combinators
+### A non-zero exit is a RESULT, not an error — for four of the combinators
 
-`collect`, `exitCode` and `succeeds` report the exit code (core's contract:
-`handle.exitCode` succeeds with any code). `text`, `lines` and `json` treat a
-non-zero exit as a typed `CommandFailedError`. The split is deliberate; do not
-"fix" either half.
+`collect`, `exitCode`, `succeeds` and `jsonLine` report the exit code rather
+than failing on it (core's contract: `handle.exitCode` succeeds with any code).
+`text`, `lines` and `json` treat a non-zero exit as a typed
+`CommandFailedError`. The split is deliberate; do not "fix" either half.
 
 `Run.text` also **trims** the result — leading and trailing whitespace, not
 just a trailing newline. That silently corrupts fixed-column output whose
 columns start with whitespace (`git status --porcelain`'s leading-space status
 column). Parse that kind of output from `Run.collect`'s untrimmed
 `CommandOutput.stdout`, never from `Run.text`'s return value.
+
+### `Run.jsonLine` is framing, not a lenient `Run.json`
+
+It parses the **last non-empty stdout line** (split on `\r?\n`, whitespace-only
+lines dropped), so a child's own `console.log` noise before the payload is
+tolerated — and it parses **regardless of the exit code**, because a protocol
+payload discriminates success in-band (its own `ok` field) and outranks the
+code: a child that crashed *after* flushing still reported. Callers who want
+exit-code semantics over whole-stdout JSON use `Run.json`; the two are not
+interchangeable. No usable payload — no non-empty line, a last line that is not
+JSON (`"notJson"`), JSON that fails decode (`"schema"`) — is a typed
+`CommandOutputError` carrying the exit code and both redacted streams.
+`@effected/workspaces`' `ConfigDependencyHooks.layerSubprocess` is the in-kit
+consumer; it deleted a hand-rolled copy of this framing, so **do not re-hand-roll
+last-line parsing** at a call site.
 
 ### Absence is a spawn failure, never an exit code
 
@@ -219,7 +237,7 @@ requirement.
 
 ## Testing
 
-131 tests in `__test__/`: 121 unit (Redaction 17, Run 36, Retry 12, LocalExec
+141 tests in `__test__/`: 131 unit (Redaction 17, Run 46, Retry 12, LocalExec
 14, ToolDiscovery 33, ScriptedSpawner 9) and 10 e2e. `@effect/vitest`,
 `it.effect`, `assert.*` — never `expect`.
 

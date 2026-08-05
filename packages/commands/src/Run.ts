@@ -218,6 +218,12 @@ export class CommandFailedError extends Schema.TaggedErrorClass<CommandFailedErr
  * distinguishable is the point — a schema drift and a crashed tool call for
  * different responses.
  *
+ * The context fields (`exitCode`, `stderr`, `stdout`) are populated by
+ * {@link Run.jsonLine}, whose payload framing parses regardless of exit code —
+ * when no payload arrives, the exit code and captured streams are the only
+ * evidence of what actually went wrong. Both streams are **always** stored
+ * redacted.
+ *
  * @public
  */
 export class CommandOutputError extends Schema.TaggedErrorClass<CommandOutputError>()("CommandOutputError", {
@@ -227,15 +233,25 @@ export class CommandOutputError extends Schema.TaggedErrorClass<CommandOutputErr
 	command: Schema.String,
 	/** The underlying parse or decode failure. */
 	cause: Schema.optionalKey(Schema.Defect()),
+	/** The exit code, when the combinator parses independently of it. */
+	exitCode: Schema.optionalKey(Schema.Number),
+	/** Captured standard error, redacted, when the process ran. */
+	stderr: Schema.optionalKey(Schema.String),
+	/** Captured standard output, redacted, when the process ran. */
+	stdout: Schema.optionalKey(Schema.String),
 }) {
 	override get message(): string {
+		const parts: Array<string> = [];
 		if (this.kind === "notJson") {
-			return `Command "${this.command}" did not produce JSON`;
+			parts.push(`Command "${this.command}" did not produce JSON`);
+		} else if (this.kind === "schema") {
+			parts.push(`Command "${this.command}" produced JSON that did not match the expected schema`);
+		} else {
+			parts.push(`Command "${this.command}" produced more output than the configured limit`);
 		}
-		if (this.kind === "schema") {
-			return `Command "${this.command}" produced JSON that did not match the expected schema`;
-		}
-		return `Command "${this.command}" produced more output than the configured limit`;
+		if (this.exitCode !== undefined) parts.push(`(exit ${this.exitCode})`);
+		if (this.stderr !== undefined && this.stderr.trim().length > 0) parts.push(`:\n${tail(this.stderr)}`);
+		return parts.join(" ");
 	}
 }
 
@@ -362,6 +378,44 @@ const json = Effect.fn("Run.json")(function* <A, I>(
 	);
 });
 
+// Implementation of Run.jsonLine; the public contract lives on the static.
+const jsonLine = Effect.fn("Run.jsonLine")(function* <A, I>(
+	command: ChildProcess.Command,
+	schema: Schema.Codec<A, I>,
+	options?: RunOptions,
+) {
+	yield* annotate(command);
+	const described = describeCommand(command);
+	const output = yield* collectClassified(command, options, undefined);
+	// The run's context travels on every output error: when the payload line is
+	// missing or unusable, the exit code and captured streams (already redacted
+	// by collectClassified) are the only evidence of what actually went wrong.
+	const context = { exitCode: output.exitCode, stderr: output.stderr, stdout: output.stdout };
+	const line = output.stdout
+		.split(/\r?\n/)
+		.filter((candidate) => candidate.trim().length > 0)
+		.at(-1);
+	if (line === undefined) {
+		return yield* Effect.fail(
+			new CommandOutputError({
+				kind: "notJson",
+				command: described.command,
+				cause: new Error("stdout carried no non-empty line"),
+				...context,
+			}),
+		);
+	}
+	const parsed = yield* Effect.try({
+		try: () => JSON.parse(line) as unknown,
+		catch: (cause) => new CommandOutputError({ kind: "notJson", command: described.command, cause, ...context }),
+	});
+	return yield* Schema.decodeUnknownEffect(schema)(parsed).pipe(
+		Effect.catch((cause) =>
+			Effect.fail(new CommandOutputError({ kind: "schema", command: described.command, cause, ...context })),
+		),
+	);
+});
+
 // Implementation of Run.exitCode; the public contract lives on the static.
 const exitCode = Effect.fn("Run.exitCode")(function* (command: ChildProcess.Command, options?: RunOptions) {
 	yield* annotate(command);
@@ -427,11 +481,12 @@ const extendEnv: {
  * second one is the re-declaration this package exists not to repeat. Tests
  * stub the spawner (`ChildProcessSpawner.make(mockSpawn)`), not these.
  *
- * A non-zero exit is a *result* for {@link Run.collect}, {@link Run.exitCode}
- * and {@link Run.succeeds}, and a typed *failure* for {@link Run.text},
- * {@link Run.lines} and {@link Run.json} — the split is deliberate, matching
- * core (where a non-zero exit is a success) at the reporting level while giving
- * the interpreting helpers the ergonomics callers actually want.
+ * A non-zero exit is a *result* for {@link Run.collect}, {@link Run.exitCode},
+ * {@link Run.succeeds} and {@link Run.jsonLine}, and a typed *failure* for
+ * {@link Run.text}, {@link Run.lines} and {@link Run.json} — the split is
+ * deliberate, matching core (where a non-zero exit is a success) at the
+ * reporting level while giving the interpreting helpers the ergonomics callers
+ * actually want.
  *
  * The interpreting helpers also **trim**: {@link Run.text} strips leading and
  * trailing whitespace from the whole result — not just a trailing newline —
@@ -498,8 +553,42 @@ export class Run {
 	 * Fails with {@link CommandOutputError} when stdout is not JSON or does not
 	 * decode; a non-zero exit fails with {@link CommandFailedError}, matching
 	 * {@link Run.text} and {@link Run.lines}.
+	 *
+	 * This parses the **whole** of stdout and requires a zero exit. For a
+	 * protocol payload framed as the final stdout line — tolerant of noise
+	 * before it and of a non-zero exit — use {@link Run.jsonLine} instead.
 	 */
 	static readonly json = json;
+
+	/**
+	 * Runs `command`, parses the **last non-empty stdout line** as JSON and
+	 * decodes it against `schema` — the framing variant of {@link Run.json},
+	 * for a child that reports through a single JSON protocol payload on its
+	 * final line.
+	 *
+	 * @remarks
+	 * The framing tolerates noise **before** the payload (a subprocess-loaded
+	 * hook's own `console.log`, a tool's warnings) and trailing newlines: lines
+	 * are split on `\r?\n` and whitespace-only lines are dropped before the last
+	 * one is taken. The tolerance is positional, not volumetric: the whole of
+	 * stdout is still captured under {@link RunOptions.maxOutputBytes} (default
+	 * {@link DEFAULT_MAX_OUTPUT_BYTES}, 16 MiB), so a child whose noise exceeds
+	 * the ceiling fails typed as `"tooLarge"` before the last line is ever
+	 * examined — raise the ceiling for a child known to be loud in volume.
+	 *
+	 * Unlike {@link Run.json}, this parses **regardless of the exit code** — a
+	 * deliberate posture, not an oversight. A protocol payload discriminates
+	 * success in-band (its own `ok` field, its own error shape), so the payload
+	 * outranks the exit code: a child that crashes *after* flushing its payload
+	 * still reported, and a caller that wants exit-code semantics has
+	 * {@link Run.json}. When no usable payload arrives — no non-empty line, a
+	 * last line that is not JSON (`"notJson"`), or JSON that does not decode
+	 * (`"schema"`) — the typed {@link CommandOutputError} carries the exit code
+	 * and both captured streams (redacted) as context, so the failure is
+	 * diagnosable without re-running. A spawn failure or an opted-in timeout
+	 * still fails with {@link CommandFailedError}.
+	 */
+	static readonly jsonLine = jsonLine;
 
 	/**
 	 * Runs `command` and resolves with its exit code alone.

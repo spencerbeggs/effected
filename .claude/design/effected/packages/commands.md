@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-07-26
-last-synced: 2026-07-26
-completeness: 91
+updated: 2026-08-05
+last-synced: 2026-08-05
+completeness: 92
 related:
   - ../effect-standards.md
   - ../roadmap.md
@@ -184,6 +184,10 @@ const lines: (command: ChildProcess.Command, options?: RunOptions) =>
 const json: <A, I>(command: ChildProcess.Command, schema: Schema.Codec<A, I>, options?: RunOptions) =>
   Effect.Effect<A, CommandFailedError | CommandOutputError, ChildProcessSpawner>;
 
+/** The LAST non-empty stdout line parsed as JSON and decoded through `schema`. Parses regardless of exit code. */
+const jsonLine: <A, I>(command: ChildProcess.Command, schema: Schema.Codec<A, I>, options?: RunOptions) =>
+  Effect.Effect<A, CommandFailedError | CommandOutputError, ChildProcessSpawner>;
+
 /** The exit code. Never fails on a non-zero exit; a spawn failure or timeout still fails typed. */
 const exitCode: (command: ChildProcess.Command, options?: RunOptions) =>
   Effect.Effect<number, CommandFailedError, ChildProcessSpawner>;
@@ -223,6 +227,19 @@ const info = yield* Run.json(ChildProcess.make("deno", ["info", "--json"]), Deno
 ```
 
 `text` trims; `json` parses **and decodes through a schema**, so the failure modes (`notJson`, `schema`) are distinguishable rather than one `reason` string. This is the fluency test for the package: if a consumer still writes `JSON.parse(output.stdout) as X`, `Run.json` failed.
+
+### As built: `Run.jsonLine` (2026-08-05)
+
+The shape above has a second occupant `json` cannot serve: a child that **talks a protocol** rather than printing a document. `@effected/workspaces`' subprocess pnpmfile replay ([workspaces.md](workspaces.md#configdependencyhooks--the-opt-in-replay-seam)) runs foreign code that may `console.log` whatever it likes and may crash after reporting, and answers on a single final JSON line. `Run.json` is wrong for it twice over — it parses the *whole* of stdout, and it requires a zero exit — so the consumer hand-rolled last-line framing plus its own success/failure discrimination. `Run.jsonLine` is that framing, promoted: split stdout on `\r?\n`, drop whitespace-only lines, `JSON.parse` the last one, decode it through the schema.
+
+Two properties are the design, not conveniences:
+
+- **It tolerates noise before the payload.** The payload's *position* is the frame. A hook's own logging, a tool's warnings — anything a child writes before its final line is ignored rather than fatal, which is what makes the combinator usable against code the caller does not control.
+- **It parses regardless of the exit code**, and that is a posture rather than an oversight. A protocol payload discriminates success **in-band** (its own `ok` field, its own error shape), so the payload outranks the exit code: a child that crashes *after* flushing its payload still reported. This puts `jsonLine` on the non-zero-is-a-*result* side of the [module's documented split](#run--structured-running-over-a-core-command) alongside `collect` / `exitCode` / `succeeds`, while `json` stays on the fails-typed side with `text` / `lines`. A caller who wants exit-code semantics already has `json`, so the two combinators cover both readings and neither has to guess.
+
+When no usable payload arrives the typed `CommandOutputError` carries the run's context (exit code, both streams, redacted) — see [Errors](#errors-two-both-structurally-routable). A spawn failure or an opted-in timeout still fails as `CommandFailedError`.
+
+The workspaces consumer was refactored onto it in the same round, deleting its hand-rolled last-line scan and its `ok`-discrimination in favour of a strict `Schema.Union` envelope — the fluency test applied to itself: framing knowledge belongs here, not respelled per consumer.
 
 ### Detached children: core already does this, and the consumer did not know
 
@@ -267,13 +284,20 @@ export class CommandOutputError extends Schema.TaggedErrorClass<CommandOutputErr
   kind: Schema.Literals(["notJson", "schema", "tooLarge"]),
   command: Schema.String,
   cause: Schema.optionalKey(Schema.Defect()),
-}) {}
+  /** Run context, populated by the combinators that parse independently of the exit code (2026-08-05). */
+  exitCode: Schema.optionalKey(Schema.Number),
+  stderr: Schema.optionalKey(Schema.String),
+  stdout: Schema.optionalKey(Schema.String),
+}) {
+  override get message(): string; // the kind's sentence, then "(exit N)", then a tail-truncated stderr
+}
 ```
 
 - **Few mandatory fields, ergonomic statics** — the program's non-negotiable. Three required fields on the common error (`kind`, `command`, `args`), everything else optional, and every construction site goes through a static that fills the rest from the `Command` value it already has.
 - **No `reason: string`.** v3's `CommandRunnerError` carried `reason` and consumers matched substrings on it (`native-version.ts`'s `TRANSIENT_REASONS.some((code) => reason.includes(code))`). `kind` plus the structured fields replace it; `message` is a rendering, never a routing surface.
 - **Tail-truncated `message`.** v3's `MAX_OUTPUT_CHARS = 2000` tail-bound formatter is ported as-is and its reasoning with it: npm writes warnings first and the real error last, so truncating the head is the only useful direction.
 - **`stdout` is carried alongside `stderr`** for the same v3-discovered reason — npm routes real errors to stdout often enough that dropping it hid causes.
+- **`CommandOutputError` gained the same three context fields** (2026-08-05, with [`Run.jsonLine`](#as-built-runjsonline-2026-08-05)). They are `optionalKey` and populated only by a combinator that parses **independently of the exit code**: there, a missing or unusable payload leaves the exit code and the captured streams as the only evidence of what went wrong, and without them a caller has to re-run the child to find out. Both streams are stored **redacted** — the error is a value that gets logged, so the redaction that applies to captured output applies to the copy carried on the error. `message` renders the kind's sentence, then `(exit N)`, then the tail-truncated `stderr`, so the tail-truncation rule above holds on both errors.
 
 ### `Redaction` — value-based first, heuristic second
 
@@ -440,7 +464,7 @@ Build: `savvy.build.ts` carries the narrow `_base` suppression (`{ messageId: "a
 ## Consumers
 
 - **`@effected/npm`** (Phase 5) — `PackagePublish` runs `npm publish` through `Run`, with the publish token in `RunOptions.redact`.
-- **`@effected/workspaces`** — implements `LocalExec` (`Workspaces.localExecLayer`); takes the only inbound edge.
+- **`@effected/workspaces`** — implements `LocalExec` (`Workspaces.localExecLayer`); takes the only inbound edge. Since 2026-08-05 it is also a `Run` **caller**: `ConfigDependencyHooks.layerSubprocess` runs its `node` replay child through [`Run.jsonLine`](#as-built-runjsonline-2026-08-05), which is where that combinator's demand came from.
 - **`@effected/github-actions`** (Phase 3) and the six consumer repos — the `CommandRunner` replacement: git plumbing through `@effected/git` where a typed method exists, everything else through `Run`. It also owns the two halves of `silk-runtime-action`'s detached-server lifecycle this package declines (pid reaping, readiness polling) and inherits `Run.detach` for the spawn half.
 - **`silk-runtime-action`** — the sixth consumer, surveyed in `2026-07-25-silk-runtime-action-survey.md`: package-manager cache-dir interrogation through `Run.text` / `Run.json`, the detached turbo-cache server through `Run.detach`, and the deletion of its hand-rolled `node:child_process` spawn.
 

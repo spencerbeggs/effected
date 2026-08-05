@@ -223,6 +223,7 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 ## Features
 
 - `Workspaces.layer` / `Workspaces.layerWithGit` / `Workspaces.resolvers` — the composite layers, split on requirements rather than feature flags: a filesystem, a filesystem plus a subprocess, and the two `@effected/npm` resolver contracts.
+- `Workspaces.layerWithConfigDependencies` / `Workspaces.layerWithConfigDependenciesSubprocess` — opt in to replaying a pnpm config dependency's pnpmfile hooks, which is what lets catalogs and `releaseAgeGate()` see the entries a hook injects. The default layer runs no config-dependency code at all. The two spellings differ only in where the replay happens: in process, or in a `node` child process for a consumer whose code is bundled (a GitHub Action, say), where the in-process form's computed dynamic import cannot survive the bundler. The subprocess form asks for core's `ChildProcessSpawner`; `WorkspaceCatalogs` carries the same pair.
 - `Workspaces.resolverLayer` / `Workspaces.resolveManifest` — the one-call manifest-resolution path: a fresh, unmemoized layer per call so root discovery follows your cwd, and one-shot resolution of a whole `Manifest` against the real workspace.
 - `WorkspaceRoot` — root discovery from a `cwd`, over `WORKSPACE_MARKERS`.
 - `WorkspaceDiscovery` — package enumeration with a bounded descent for segment-crossing `packages/**` patterns, per-package lookup and the `makeTest` / `layerTest` in-memory test doubles.
