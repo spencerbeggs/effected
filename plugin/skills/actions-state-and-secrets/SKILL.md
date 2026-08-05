@@ -38,6 +38,15 @@ For general Effect v4 service/layer shape, typed errors, `Cause`, and `Scope`, s
 - `DetachedProcess.reap` takes a plain `number`: an absent state key, a truncated file, or a bad parse all decode to `0`, and `process.kill(0, …)` signals the caller's entire process group. See `references/detached-processes.md`.
 - `env` passed to a spawn call without `extendEnv: true` replaces the child's whole environment, including the `PATH` a caller meant to extend. See `references/detached-processes.md`.
 - `BlobEnvelope`'s wire format, five-reason error union, and why a legacy raw blob decodes as a clean miss rather than garbage live in `actions-cache-and-artifacts`, not here — don't re-derive the frame shape from this skill's description alone.
+- **A `Schema.Redacted` field persisted as JSON round-trips to the literal string `<redacted>`.** This is core Effect behavior, not a kit choice, and it is silent — the write succeeds, the read succeeds, and the value is garbage. Probed against beta.101:
+
+  ```text
+  Schema.Redacted(Schema.String)      encode -> a Redacted object
+                                      JSON.stringify of that -> "<redacted>"
+  Schema.RedactedFromValue(Schema.String)  encode -> "s3cret"   (the real value)
+  ```
+
+  `Redacted`'s own `toString`/`toJSON` are what emit the sentinel, so **anything** that serializes a `Redacted` — `JSON.stringify`, a log line, a state field — gets `<redacted>` rather than the secret. That is the right default and the reason it exists. But it means `Schema.Redacted` is the wrong schema for a value you intend to read back: use **`Schema.RedactedFromValue`**, whose encoded form *is* the underlying value (and which takes `disallowEncode` when you want the write to fail loudly instead). In an Actions context the read-back path is `ActionState.saveSecret`, which masks at the write. One consumer lost real time to a token-theft theory before finding the sentinel was simply the encoder's output.
 
 ## Additional resources
 

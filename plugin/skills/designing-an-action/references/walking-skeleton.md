@@ -31,3 +31,26 @@ The real entry point wiring, the real layer composition, steps composed under wh
 ## 7. Only then, fill
 
 With all six pieces green and stubbed, fill each step's real logic in behavior-driven red/green/refactor cycles against the now-frozen contract, one step at a time. See [porting.md](porting.md) for treating a legacy implementation as the oracle this phase tests against, and for the doubles-before-runner-conversion ordering when this phase also migrates test infrastructure.
+
+## Porting an existing action: stub the imports, not the action
+
+The seven pieces above describe a **greenfield** build, where "all stubs, all green" is free because there is nothing yet to break. Applied literally to an action that already works, it says to stub out working code and live with a red suite for the length of the port — which is both demoralizing and unsafe, because a red suite destroys the one signal that matters mid-port: telling *not ported yet* apart from *ported and broken*.
+
+Port against the same discipline, scoped differently:
+
+- **Stub only the files that import the legacy package.** Everything else stays live and stays green. The skeleton is the seam, not the whole action.
+- **Move the tests for stubbed behavior to `it.todo`**, each carrying a restore instruction: what it asserted, and why it cannot be restored verbatim. The `it.todo` count is then the remaining work, readable at any commit.
+- **Keep the originals as a gitignored oracle** ([porting.md](porting.md)), and delete that scaffolding as part of the fill.
+
+Green then means "everything not yet ported still works" at every intermediate commit, which is a claim worth having.
+
+### A failing stub and a failing *test of* a stub are different things
+
+Piece 5 says stubs never fail, and that a failing stub means the discipline is being skipped. That rule is about the stub, not about tests of it — and a test **of** a stub necessarily fails, because a placeholder return value cannot satisfy an assertion about real behavior.
+
+| what is red | meaning |
+| --- | --- |
+| the stub itself fails | a bug in the skeleton — fix it now |
+| a test asserting real behavior against a stub | expected; belongs in `it.todo`, not in the red count |
+
+Conflating the two is what pushes a porting suite red for weeks. The second case is not a failure to be tolerated, it is a test that has not been re-enabled yet — and `it.todo` says exactly that, to the reporter and to the next reader.

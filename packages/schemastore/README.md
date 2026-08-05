@@ -240,14 +240,25 @@ const targets = [
   }),
 ];
 
-const program = SchemaPipeline.run(targets).pipe(
-  Effect.provide(Layer.mergeAll(SchemaFile.layer, SchemaValidator.layer)),
-  Effect.provide(NodeServices.layer),
+// One named layer, composed once, provided at the boundary.
+const AppLayer = Layer.mergeAll(SchemaFile.layer, SchemaValidator.layer).pipe(
+  Layer.provide(NodeServices.layer),
 );
+
+const program = SchemaPipeline.run(targets).pipe(Effect.provide(AppLayer));
 
 Effect.runPromise(program).then(console.log);
 // => [{ $id, path, outcome: "written", change: "created", findings: [] }]
 ```
+
+`NodeServices` is composed **into** the layer with `Layer.provide` rather than
+stacked onto the program with a second `Effect.provide`. Both run correctly
+here — `SchemaFile` holds no state, so nothing observes the difference — but
+the composed form is the shape to copy. Stacking `Effect.provide` calls at the
+call site is how a layer ends up built more than once, and the first stateful
+service you add is where that starts to matter. Binding the composition to a
+named `const` also makes it reusable: a drift test and the generator that
+provide the same value cannot disagree about what the layer contains.
 
 A target names its schema, its `$id` and where the file goes. `name` is optional and only catalog naming reads it, so a file-only target like the one above does not repeat its path's basename; supply it when you also pass a `version`, since versioned naming is `<name>-<version>.json`.
 

@@ -17,10 +17,34 @@ The kit column is verified against the packages in this repo. The legacy column 
 | `MainLive` / `PreLive` / `PostLive` hand-composition | `ActionRuntime.layer`, or `Action.run(program, { layer })` | Bound constants, never factories — layers memoize by reference. An extra layer passed to `Action.run` may require anything the runtime provides. |
 | `gh.rest("…", octokit => …)` | the named resource method | e.g. `PullRequest.listAssociatedWithCommit`. The route is the key: typed params, typed response, zero casts, pagination included. |
 | `Config.string("x")` | `ActionInput.string("x")` | The accessor owns the `INPUT_` derivation. Never spell a runner variable; if a test truly must, derive it with `ActionInput.variable`. |
+| `getSha(name)` | `GitBranch.sha(name)` | Plain rename. `GitBranch.shaOption` is the `Option`-returning form when absence is not an error. |
+| `commitFiles(branch, message, [{ path, content }])` | `GitCommit.commitFiles({ branch, message, changes })` | **A reshape, not a rename — see below.** |
+| `getOrCreate({ …, autoMerge })` | `PullRequest.upsert` **+** `PullRequest.setAutoMerge` | **Splits into two calls with different error channels — see below.** |
+| `client.repo` | `yield* Repo` | Not a property access. `Repo` is a `Context.Service`, and it is in the `R` of every resource method (`Effect.Effect<A, GitHubError, Repo>`), so it is provided once at the boundary rather than threaded as a receiver. |
+| `GitHubNotFoundError`, `GitHubRateLimitError`, `GitHubAuthError`, … | one `GitHubError` | Routing moves from the type to the **`kind`** field, so `catchTag`-per-error becomes one handler switching on `kind`. `setAutoMerge` is the exception that proves it: it fails with `GitHubGraphQLError`, because it is the one GraphQL mutation on the surface. |
+| `GitHubClientLive` + `RepoLive` + the app-auth layer | `GitHubApp.layer` | Subsumes all three. `GitHubApp.layerWith(options)` when the defaults do not fit; `GitHubApp.layerTest(overrides?)` in tests. |
 
-## Three that are not renames
+## Five that are not renames
 
 Straight substitution through the table leaves these wrong, and each cost a real port something.
+
+**`commitFiles` changed shape.** Legacy took three positional arguments with plain-object file entries; the kit takes a **single options object** whose `changes` are `FileContent` / `FileDeletion` **class instances**, not object literals:
+
+```ts
+// legacy
+commitFiles(branch, message, [{ path: "a.json", content: text }]);
+
+// kit
+GitCommit.commitFiles({
+  branch,
+  message,
+  changes: [new FileContent({ path: "a.json", content: text })],
+});
+```
+
+An agent sweeping the table mechanically produces the positional call, or passes literals where instances are required. This is the one entry whose miss is a *silent miscompile* shape rather than a lookup failure — the deletion half (`FileDeletion`) has no legacy counterpart at all, so a port that only translates what it sees never discovers it.
+
+**`getOrCreate({ autoMerge })` splits, and the split is the point.** `PullRequest.upsert` opens or updates; `PullRequest.setAutoMerge` is a separate explicit call. Keeping them separate is deliberate: the legacy surface fired auto-merge from an `Effect.tap` *after* the create succeeded, so a create that worked surfaced an auto-merge failure as if the create had failed. The two now have different error channels — `upsert` fails with `GitHubError`, `setAutoMerge` with `GitHubGraphQLError` — which is what lets a caller let an auto-merge failure not fail PR creation. Collapsing them back into one helper for "parity" reintroduces the bug.
 
 **The per-step summary line.** `withStep` did not exist when the first port ran, and its shape was independently derived wrong three times — twice by agents, once by a human — because `group` + `withBuffer` looks like complete parity. If the code you are porting predates `withStep`, it may contain a hand-rolled approximation missing the success line; replace it with `withStep` rather than porting it.
 

@@ -4,6 +4,48 @@ Loaded from `effect-v4-testing`. Each entry below is a green run that proves
 nothing, with the probe or migration that exposed it. The main skill carries the
 one-line rules; this file carries the evidence.
 
+## A plain `it()` that RETURNS an Effect never runs
+
+The cheapest false green in the catalogue, and the only one visible by grep:
+
+```ts
+// Reports GREEN without evaluating a single assertion.
+it("blocked fires on a gate failure", () =>
+  Effect.gen(function* () {
+    const result = yield* SchemaPipeline.checkOne(brokenTarget);
+    assert.isTrue(result.blocked);
+  }),
+);
+```
+
+An Effect is a description. Vitest receives a value that is not a promise,
+does nothing with it, and passes. `Effect.gen`'s body never executes, so
+`checkOne` is never called and `assert.isTrue` is never reached. Nothing warns
+at any layer — not the type checker (the callback's return type is unconstrained),
+not the runtime, not the reporter.
+
+It is the inverse of the laundering mistake the main skill already bans:
+
+| shape | runs? | symptom |
+| --- | --- | --- |
+| `it(..., () => Effect.runPromise(p))` | yes | correct pass/fail, execution laundered |
+| `it(..., () => p)` | **no** | always green, zero assertions evaluated |
+
+Only the first one *looks* wrong, which is why the second survives review.
+The fix in both directions is `it.effect`.
+
+**What it cost.** This shipped in `@effected/schemastore`. The vacuous test was
+the one pinning a reachability finding a downstream consumer had reported as an
+observation; when the consumer was told "our tests prove this," the cited test
+had never run. That is the real hazard — a false green is not only a missed
+regression, it is admissible-looking evidence in a conversation.
+
+**Detect it structurally.** An `it(` whose callback returns an `Effect.*`
+expression without `runPromise`/`runSync` is always a bug, so it is a
+one-rule source-text check (see
+[structural-checks.md](./structural-checks.md)) rather than something to
+re-notice in review.
+
 ## `0 tests passed` is a FAILED run, not an empty one
 
 A module-level throw — most commonly the `Context.Service` TDZ (see

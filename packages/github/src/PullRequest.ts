@@ -14,6 +14,16 @@ export const MergeMethod = Schema.Literals(["merge", "squash", "rebase"]);
 /**
  * A pull request, projected to what callers read.
  *
+ * @remarks
+ * This is the **domain** shape, and the only pull-request type this package
+ * exports. The wire shape GitHub actually answers with is the private
+ * `RawPull` interface further down this module, and the two are deliberately
+ * different: `RawPull` nests `head`/`base` as `{ ref, sha }` and spells the
+ * link `html_url`, where this class flattens them to `head`/`headSha` and
+ * spells it `url`. Reading the wrong one produces code that typechecks against
+ * a member set the boundary will never hand it. If you are writing a test
+ * double or a fixture, this is the type you build.
+ *
  * @public
  */
 export class PullRequestInfo extends Schema.Class<PullRequestInfo>("PullRequestInfo")({
@@ -86,6 +96,20 @@ const GRAPHQL_MERGE_METHOD = { merge: "MERGE", squash: "SQUASH", rebase: "REBASE
  */
 export interface PullRequestShape {
 	readonly get: (number: number) => Effect.Effect<PullRequestInfo, GitHubError, Repo>;
+	/**
+	 * Open, closed or all pull requests, optionally filtered.
+	 *
+	 * @remarks
+	 * `head` accepts **either** the qualified `owner:ref` GitHub's filter wants
+	 * or a bare `ref`, which is qualified with the current repo's owner on the
+	 * way out. That matters because `PullRequestInfo.head` is the *bare*
+	 * ref (`raw.head.ref`), so feeding this method its own projection's value
+	 * back in is correct — it is only the raw REST route that would silently
+	 * return nothing for an unqualified ref. A consumer filtering the full list
+	 * client-side to work around that no longer needs to.
+	 *
+	 * Pass a qualified `owner:ref` explicitly to search across a fork.
+	 */
 	readonly list: (options?: {
 		readonly head?: string | undefined;
 		readonly base?: string | undefined;
@@ -210,6 +234,12 @@ const unstubbed = (member: string): never => {
 	throw new Error(`PullRequest.makeTest: ${member}() was called but not stubbed — pass an override.`);
 };
 
+/**
+ * The raw REST wire shape, as GitHub answers it — **not** the domain type.
+ * {@link PullRequestInfo} is what callers read; `project` below is the one
+ * conversion between them. Private on purpose: nothing outside this module
+ * should hold a value of this shape.
+ */
 interface RawPull {
 	readonly number: number;
 	readonly node_id: string;
