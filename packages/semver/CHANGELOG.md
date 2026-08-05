@@ -1,5 +1,18 @@
 # @effected/semver
 
+## 0.3.2
+
+### Documentation
+
+* The dual matching statics on `Range` — `satisfies`, `filter`, `maxSatisfying`, `minSatisfying` — now state their data-first argument order explicitly: the subject comes first, the range second. "Dual API" alone did not say which order the data-first form takes, and the order is not recoverable from the call site when the two parameters are distinct classes.
+* `Range.satisfies` additionally documents the failure a flipped call produces. TypeScript rejects it outright, so it only reaches callers without type checking — including untyped runtime probes — where it dispatches data-first and dies with `TypeError: range.test is not a function`, a message naming the parameter that received the version and so reading as a defect inside the package rather than a caller error. [#268][#268]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#268]: https://github.com/spencerbeggs/effected/pull/268
+
 ## 0.3.1
 
 ### Maintenance

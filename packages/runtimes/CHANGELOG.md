@@ -1,5 +1,17 @@
 # @effected/runtimes
 
+## 0.2.5
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/semver | dependency | updated | 0.3.1 | 0.3.2 |
+
+* | Dependency       | Type       | Action  | From  | To    |                                                          |
+  | ---------------- | ---------- | ------- | ----- | ----- | -------------------------------------------------------- |
+  | @effected/semver | dependency | updated | 0.3.1 | 0.3.2 | Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
 ## 0.2.4
 
 ### Maintenance

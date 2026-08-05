@@ -1,5 +1,27 @@
 # @effected/schemastore
 
+## 0.2.1
+
+### Documentation
+
+* The README quick-start now composes one named layer and provides it once at the boundary, rather than stacking two `Effect.provide` calls at the call site. Both run correctly for this package — `SchemaFile` holds no state — but the stacked form is how a layer ends up built more than once, and the example is what consumers copy. The named const is also reusable, so a drift test and the generator providing the same value cannot disagree about what the layer contains. [#268][#268]
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/semver | dependency | updated | 0.3.1 | 0.3.2 |
+
+* | Dependency       | Type       | Action  | From  | To    |                                                          |
+  | ---------------- | ---------- | ------- | ----- | ----- | -------------------------------------------------------- |
+  | @effected/semver | dependency | updated | 0.3.1 | 0.3.2 | Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#268]: https://github.com/spencerbeggs/effected/pull/268
+
 ## 0.2.0
 
 ### Breaking Changes

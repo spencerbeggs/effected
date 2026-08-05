@@ -1,5 +1,18 @@
 # @effected/lockfiles
 
+## 0.3.2
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/npm    | dependency | updated | 0.8.1 | 0.8.2 |
+| @effected/semver | dependency | updated | 0.3.1 | 0.3.2 |
+
+* | Dependency       | Type           | Action  | From  | To    |                                                          |
+  | ---------------- | -------------- | ------- | ----- | ----- | -------------------------------------------------------- |
+  | @effected/semver | peerDependency | updated | 0.3.1 | 0.3.2 | Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
 ## 0.3.1
 
 ### Dependencies

@@ -1,5 +1,21 @@
 # @effected/workspaces
 
+## 0.9.5
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From  | To    |
+| ---------------------- | ---------- | ------- | ----- | ----- |
+| @effected/lockfiles    | dependency | updated | 0.3.1 | 0.3.2 |
+| @effected/npm          | dependency | updated | 0.8.1 | 0.8.2 |
+| @effected/package-json | dependency | updated | 0.7.2 | 0.7.3 |
+| @effected/semver       | dependency | updated | 0.3.1 | 0.3.2 |
+
+* | Dependency             | Type       | Action  | From  | To    |                                                          |
+  | ---------------------- | ---------- | ------- | ----- | ----- | -------------------------------------------------------- |
+  | @effected/package-json | dependency | updated | 0.7.2 | 0.7.3 |                                                          |
+  | @effected/semver       | dependency | updated | 0.3.1 | 0.3.2 | Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
 ## 0.9.4
 
 ### Dependencies
