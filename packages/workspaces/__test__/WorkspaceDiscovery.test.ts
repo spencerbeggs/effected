@@ -1,4 +1,5 @@
 import { assert, describe, it, layer } from "@effect/vitest";
+import { WorkspaceResolver } from "@effected/npm";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import {
 	PackageNotFoundError,
@@ -660,4 +661,35 @@ describe("WorkspaceDiscovery.makeTest — overrides win over derivation", () => 
 			assert.deepStrictEqual(yield* double.listPackages(), []);
 		}),
 	);
+});
+
+// ── duplicate names: first match wins, as `Array.find` did ──────────────────
+
+const duplicateNames: Tree = {
+	"/repo/package.json": rootManifest(["packages/*"]),
+	"/repo/packages/alpha/package.json": manifest("@x/dup", { version: "1.0.0" }),
+	"/repo/packages/beta/package.json": manifest("@x/dup", { version: "2.0.0" }),
+};
+
+describe("WorkspaceDiscovery — duplicate package names", () => {
+	// Discovery does not reject duplicate `name` values, so the name indexes must
+	// keep the FIRST match. A plain `new Map(all.map(...))` keeps the last, which
+	// silently changes which package a name resolves to.
+	layer(discoveryOver(duplicateNames))((it) => {
+		it.effect("getPackage returns the first package declaring the name", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const found = yield* discovery.getPackage("@x/dup");
+				assert.strictEqual(found.relativePath, "packages/alpha");
+				assert.strictEqual(found.version, "1.0.0");
+			}),
+		);
+
+		it.effect("versionOf resolves the first package's version", () =>
+			Effect.gen(function* () {
+				const resolver = yield* WorkspaceResolver;
+				assert.deepStrictEqual(yield* resolver.versionOf("@x/dup"), Option.some("1.0.0"));
+			}).pipe(Effect.provide(WorkspaceDiscovery.workspaceResolver)),
+		);
+	});
 });

@@ -422,7 +422,12 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 			const packagesByName = (all: ReadonlyArray<WorkspacePackage>): ReadonlyMap<string, WorkspacePackage> => {
 				const cached = packageIndexes.get(all);
 				if (cached !== undefined) return cached;
-				const index = new Map(all.map((pkg) => [pkg.name, pkg]));
+				// First-write-wins, matching the `all.find` this index replaced: discovery does not
+				// reject duplicate names, and a plain `new Map(all.map(...))` would keep the last.
+				const index = new Map<string, WorkspacePackage>();
+				for (const pkg of all) {
+					if (!index.has(pkg.name)) index.set(pkg.name, pkg);
+				}
 				packageIndexes.set(all, index);
 				return index;
 			};
@@ -632,7 +637,11 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 			const versionsByName = (all: ReadonlyArray<WorkspacePackage>): ReadonlyMap<string, string> => {
 				const cached = versionIndexes.get(all);
 				if (cached !== undefined) return cached;
-				const index = new Map(all.map((pkg) => [pkg.name, pkg.version]));
+				// First-write-wins, matching the `all.find` this index replaced.
+				const index = new Map<string, string>();
+				for (const pkg of all) {
+					if (!index.has(pkg.name)) index.set(pkg.name, pkg.version);
+				}
 				versionIndexes.set(all, index);
 				return index;
 			};
