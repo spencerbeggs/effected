@@ -417,6 +417,16 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 				return Option.none();
 			};
 
+			const packageIndexes = new WeakMap<ReadonlyArray<WorkspacePackage>, ReadonlyMap<string, WorkspacePackage>>();
+
+			const packagesByName = (all: ReadonlyArray<WorkspacePackage>): ReadonlyMap<string, WorkspacePackage> => {
+				const cached = packageIndexes.get(all);
+				if (cached !== undefined) return cached;
+				const index = new Map(all.map((pkg) => [pkg.name, pkg]));
+				packageIndexes.set(all, index);
+				return index;
+			};
+
 			return {
 				info: Effect.fn("WorkspaceDiscovery.info")(function* () {
 					const state = yield* memo;
@@ -434,7 +444,7 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 
 				getPackage: Effect.fn("WorkspaceDiscovery.getPackage")(function* (name: string) {
 					const all = yield* packages;
-					const found = all.find((pkg) => pkg.name === name);
+					const found = packagesByName(all).get(name);
 					if (found !== undefined) return found;
 					return yield* Effect.fail(new PackageNotFoundError({ name, available: all.map((pkg) => pkg.name) }));
 				}),
@@ -618,10 +628,18 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 		WorkspaceResolver,
 		Effect.gen(function* () {
 			const discovery = yield* WorkspaceDiscovery;
+			const versionIndexes = new WeakMap<ReadonlyArray<WorkspacePackage>, ReadonlyMap<string, string>>();
+			const versionsByName = (all: ReadonlyArray<WorkspacePackage>): ReadonlyMap<string, string> => {
+				const cached = versionIndexes.get(all);
+				if (cached !== undefined) return cached;
+				const index = new Map(all.map((pkg) => [pkg.name, pkg.version]));
+				versionIndexes.set(all, index);
+				return index;
+			};
 			return {
 				versionOf: (packageName: string) =>
 					discovery.listPackages().pipe(
-						Effect.map((all) => Option.fromUndefinedOr(all.find((pkg) => pkg.name === packageName)?.version)),
+						Effect.map((all) => Option.fromUndefinedOr(versionsByName(all).get(packageName))),
 						Effect.mapError((cause) => new DependencyResolutionError({ specifier: `workspace:${packageName}`, cause })),
 					),
 			};
