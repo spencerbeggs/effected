@@ -17,9 +17,17 @@ export interface SchemaTarget {
 	readonly schema: Schema.Constraint;
 	/** The canonical `$id` URL the generated document declares. */
 	readonly $id: string;
-	/** The catalog/file base name (`name.json` / `name-<version>.json`). */
-	readonly name: string;
-	/** The destination path the document is written to (phase-2 `SchemaFile`). */
+	/**
+	 * The catalog/file base name (`name.json` / `name-<version>.json`).
+	 *
+	 * Only the catalog path consumes it — a target that merely emits a file
+	 * to `path` needs no name, and inventing one to
+	 * satisfy the constructor duplicates the basename with no invariant
+	 * tying the two together. Required whenever `version` is present, since
+	 * versioned catalog naming is defined in terms of it.
+	 */
+	readonly name?: string;
+	/** The destination path the document is written to (`SchemaFile`). */
 	readonly path: string;
 	/** The version label, for versioned catalog mode. Omit for unversioned. */
 	readonly version?: SchemaVersion;
@@ -35,26 +43,59 @@ export class SchemaTarget {
 	private constructor() {}
 
 	/**
-	 * Builds a target. `$id`, `name` and `path` must be non-empty — an
-	 * empty identity is a wiring mistake and throws.
+	 * Builds an unversioned target. `name` is optional — only catalog
+	 * naming reads it, so a target that merely emits a file needs none.
+	 */
+	static make(options: {
+		readonly schema: Schema.Constraint;
+		readonly $id: string;
+		readonly name?: string;
+		readonly path: string;
+	}): SchemaTarget;
+	/**
+	 * Builds a versioned target. `name` is **required** here: versioned
+	 * catalog naming is `name-<version>.json`, so a version without a name
+	 * cannot be resolved — the overload pair makes that unrepresentable
+	 * rather than a runtime throw.
 	 */
 	static make(options: {
 		readonly schema: Schema.Constraint;
 		readonly $id: string;
 		readonly name: string;
 		readonly path: string;
+		readonly version: SchemaVersion;
+	}): SchemaTarget;
+	/**
+	 * Builds a target. `$id` and `path` must be non-empty — an empty
+	 * identity is a wiring mistake and throws, as does an empty `name` when
+	 * one is given. The `name`-with-`version` invariant is enforced by the
+	 * overloads above; the runtime check remains for untyped callers.
+	 */
+	static make(options: {
+		readonly schema: Schema.Constraint;
+		readonly $id: string;
+		readonly name?: string;
+		readonly path: string;
 		readonly version?: SchemaVersion;
 	}): SchemaTarget {
-		for (const key of ["$id", "name", "path"] as const) {
+		for (const key of ["$id", "path"] as const) {
 			if (options[key].length === 0) {
 				throw new Error(`SchemaTarget.make requires a non-empty "${key}"`);
 			}
 		}
+		if (options.name !== undefined && options.name.length === 0) {
+			throw new Error('SchemaTarget.make requires a non-empty "name" when one is given');
+		}
+		if (options.version !== undefined && options.name === undefined) {
+			throw new Error(
+				'SchemaTarget.make requires a "name" when "version" is given (catalog naming is name-<version>.json)',
+			);
+		}
 		return {
 			schema: options.schema,
 			$id: options.$id,
-			name: options.name,
 			path: options.path,
+			...(options.name !== undefined ? { name: options.name } : {}),
 			...(options.version !== undefined ? { version: options.version } : {}),
 		};
 	}

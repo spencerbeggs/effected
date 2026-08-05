@@ -29,7 +29,7 @@ describe("SchemaFile (integration)", () => {
 					const target = join(directory, "schemas", "json", "config.schema.json");
 
 					const first = yield* files.write(target, document);
-					assert.strictEqual(first, "written");
+					assert.deepStrictEqual(first, { outcome: "written", change: "created" });
 					const bytes = readFileSync(target, "utf8");
 					assert.strictEqual(bytes, Result.getOrThrow(document.serializeResult()));
 					// The carried annotation reached the committed file.
@@ -42,7 +42,7 @@ describe("SchemaFile (integration)", () => {
 					utimesSync(target, new Date(0), new Date(0));
 					const pinnedMtimeMs = statSync(target).mtimeMs;
 					const second = yield* files.write(target, document);
-					assert.strictEqual(second, "unchanged");
+					assert.deepStrictEqual(second, { outcome: "unchanged", change: "none" });
 					assert.strictEqual(statSync(target).mtimeMs, pinnedMtimeMs);
 				} finally {
 					rmSync(directory, { recursive: true, force: true });
@@ -60,7 +60,7 @@ describe("SchemaFile (integration)", () => {
 					writeFileSync(target, '{"drifted": true}\n');
 
 					const outcome = yield* files.write(target, document);
-					assert.strictEqual(outcome, "written");
+					assert.strictEqual(outcome.outcome, "written");
 
 					// The drift-test recipe: read the file back and compare with
 					// the canonical serialization of the freshly built document.

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-03
-last-synced: 2026-08-03
+updated: 2026-08-04
+last-synced: 2026-08-04
 completeness: 88
 related:
   - releases.md
@@ -82,7 +82,9 @@ Naming: recommended `@effected/plugin`. `@effected/config` is rejected because i
 
 ### `@effected/schemastore`
 
-The one shipped package this list never sequenced: it went design doc → build → publish inside the silk-runtime-action dogfood loop rather than through a roadmap slot. **Designed and built 2026-07-28** ([packages/schemastore.md](packages/schemastore.md)): SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning and lints assembled from Effect Schema sources over core's `JsonSchema` pipeline, generalizing silk-release-action's `generate-schema.ts` with the silk-runtime-action rebuild as the second named consumer. Boundary tier with no third-party runtime dependency — the ajv question resolved as the `SchemaValidator` contract seam, the contract-inversion pattern again. **Published at `0.1.0` in the 2026-08-03 wave** (release PR #216).
+The one shipped package this list never sequenced: it went design doc → build → publish inside the silk-runtime-action dogfood loop rather than through a roadmap slot. **Designed and built 2026-07-28** ([packages/schemastore.md](packages/schemastore.md)): SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning and lints assembled from Effect Schema sources over core's `JsonSchema` pipeline, generalizing silk-release-action's `generate-schema.ts` with the silk-runtime-action rebuild as the second named consumer. It built boundary tier with the ajv question resolved as the `SchemaValidator` contract seam. **Published at `0.1.0` in the 2026-08-03 wave** (release PR #216).
+
+**A `0.2.0` is pending, and it is the first package here reshaped by adoption rather than by design.** A three-round dogfood loop with `claude-code-marketplace-manager` produced it, and two of its changes reverse decisions this doc recorded as settled: **ajv is now a direct dependency and `SchemaValidator.layer` ships a real engine, flipping the package to integrated tier** ([package-inventory.md](package-inventory.md)), and **version labels narrowed to full three-component SemVer**, enforced by `@effected/semver`, in place of the store-native partial grammar. Alongside them: content-rather-than-byte comparison in `SchemaFile.write` (effected#262) with a matching non-writing `check`, a `DocumentDiff` module classifying a change as annotations-only or contract, and `SchemaPipeline` — the generate → lint → validate → gate → write loop shipped once instead of copied per consumer. The reasoning for each lives in [packages/schemastore.md](packages/schemastore.md); the roadmap-relevant lesson is that the two reversals share a cause — **boilerplate every consumer copies is a default the package failed to ship**, and both seams were drawn to avoid a cost that build-time tooling never actually pays.
 
 ### `@effected/jsonl`
 

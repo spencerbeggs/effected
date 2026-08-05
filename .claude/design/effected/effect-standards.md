@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-07-28
-last-synced: 2026-07-28
+updated: 2026-08-04
+last-synced: 2026-08-04
 completeness: 95
 related:
   - architecture.md
@@ -82,6 +82,8 @@ A **companion** package is published and installable but is **not a library**: i
 Four rules govern how tier and dependencies relate. The framing default is to stay as Effect-native as possible — a program built only from Effect primitives composes and typechecks as one thing — but that default is tier-scoped, not global.
 
 **R1 — tiers 1 and 2 take no external runtime dependencies.** Pure and boundary packages peer-depend on `effect` and may take `@effected/*` edges (`workspace:~`, regardless of whether the edge is a peer or a regular dependency), nothing else. Moving a package to tier 3 (integrated) is a decision recorded in that package's design doc, never a default.
+
+**The worked example of exercising that clause is `@effected/schemastore`** (boundary → integrated, 2026-08-04, taking `ajv`): the first package in the kit to be retiered after publishing. What made it admissible is worth naming, because R1's cost model is what the retier has to argue against — nothing in the kit depends on it, so [R2](#dependency-policy) propagates the tier to nobody, and it is build-time tooling a consumer installs as a devDependency, so the runtime-graph weight R1 guards against was never on anyone's bill. Note also what it *replaced*: a contract seam every consumer closed with the same copied adapter. **A seam that every consumer closes identically is not a boundary, it is an unshipped default** — which is the strongest available argument for a retier, and the one to look for before accepting another. The full reasoning is in [packages/schemastore.md](packages/schemastore.md#the-validation-seam-the-ajv-question); the contrasting case, a package that declined the same move, is `npm`'s guardrail in [package-inventory.md](package-inventory.md).
 
 R1 **replaces** the old inference chain "parsing has no IO, so a format package is pure, so it may not take a runtime dependency." That chain is broken by the three-tier scheme: tier 3 is now defined by *dependencies alone*, so a package that does no IO can still legally be tier 3. `@effected/toml` and `@effected/glob` vendor their engines **because of R1**, not because they happen to lack IO. The supporting economics are unchanged: `smol-toml` is BSD-3-Clause and zero-dependency, and `@effected/jsonc` and `@effected/yaml` already vendor ported-with-attribution engines into `src/internal/` the same way — so vendoring *is* the wrapper, hardened per the input-hardening standards below. R1 is the reason; the low cost is why R1 rarely bites. The rule bites only where the third-party code is large, encumbered or itself dependency-laden, and in that case a tier-1/2 shape was wrong to begin with.
 

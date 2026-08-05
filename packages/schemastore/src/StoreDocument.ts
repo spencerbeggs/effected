@@ -142,6 +142,41 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 	defs: Schema.Record(Schema.String, Schema.Unknown),
 }) {
 	/**
+	 * Builds a Draft-07 document from its parts, filling `$schema` with
+	 * {@link DRAFT_07_META_SCHEMA}.
+	 *
+	 * `fromSchema` sets the meta-schema unconditionally; hand-building a
+	 * value with `make` otherwise means importing the constant just to
+	 * repeat what the package already knows. `$schema` stays a real field
+	 * rather than a defaulted one — it declares the document's dialect, and
+	 * a document that does not say which dialect it is written in is worse
+	 * than one that repeats itself — so this is a constructor, not a
+	 * default.
+	 *
+	 * @example
+	 * ```ts
+	 * import { StoreDocument } from "@effected/schemastore";
+	 *
+	 * const document = StoreDocument.draft07({
+	 *   $id: "https://example.com/config.schema.json",
+	 *   root: { type: "object" },
+	 * });
+	 * ```
+	 */
+	static draft07(options: {
+		readonly $id: string;
+		readonly root: Record<string, unknown>;
+		readonly defs?: Record<string, unknown>;
+	}): StoreDocument {
+		return StoreDocument.make({
+			$schema: DRAFT_07_META_SCHEMA,
+			$id: options.$id,
+			root: options.root,
+			defs: options.defs ?? {},
+		});
+	}
+
+	/**
 	 * Builds the document for an Effect Schema source. Pure and
 	 * synchronous — the primitive form; {@link StoreDocument.fromSchema} is
 	 * the same pipeline behind a span.

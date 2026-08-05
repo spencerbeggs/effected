@@ -2,7 +2,7 @@
 	"name": "@effected/schemastore",
 	"version": "0.1.2",
 	"private": true,
-	"description": "Build, version and lint SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources: document assembly, catalog entries, versioned catalogs and canonical JSON serialization.",
+	"description": "Build, validate, version and publish SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources: document assembly, ajv strict-mode validation, structural lints, catalog entries, canonical JSON and a content-comparing emit pipeline.",
 	"keywords": ["schemastore", "json-schema", "draft-07", "catalog", "effect", "schema", "effected"],
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/schemastore#readme",
 	"bugs": {
@@ -32,7 +32,8 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effected/semver": "workspace:^"
+		"@effected/semver": "workspace:^",
+		"ajv": "^8.20.0"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
