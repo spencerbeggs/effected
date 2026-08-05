@@ -1,5 +1,19 @@
 # @effected/workspaces
 
+## 0.9.6
+
+### Performance
+
+* `WorkspaceDiscovery.getPackage` and the `workspaceResolver` layer's `versionOf` now look names up through a name index cached against the memoized package list, instead of scanning the list on every call.
+
+  * Duplicate package names still resolve to the first matching package, unchanged from the previous linear scan [#277][#277]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#277]: https://github.com/spencerbeggs/effected/pull/277
+
 ## 0.9.5
 
 ### Dependencies
