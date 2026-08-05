@@ -324,8 +324,12 @@ process.stdout.write("\\n" + JSON.stringify(payload) + "\\n", () => process.exit
 const REPLAY_TIMEOUT = Duration.seconds(30);
 
 /**
- * The subprocess protocol payload — the child's final stdout line, framed and
- * parsed by `Run.jsonLine`. The envelope is strict (a payload without a usable
+ * The subprocess protocol payload — a single JSON line near the end of the
+ * child's stdout, framed and parsed by `Run.jsonLine`, which scans lines from
+ * the end for the first that decodes (so a hook logging after the payload —
+ * e.g. from `process.on("exit", ...)` — cannot displace it). The `ok`
+ * discriminant is what keeps an accidental log line from satisfying the
+ * envelope. The envelope is strict (a payload without a usable
  * `ok` discriminant is a mechanism failure, typed); the `config` slice inside a
  * success stays `Unknown` because a hook's returned *data* is tolerantly
  * threaded (`configOf`), never fatal.
@@ -538,8 +542,9 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 
 							// Root, seed and names travel via argv — never interpolated into the
 							// script, and `ChildProcess.make` spawns without a shell. `Run.jsonLine`
-							// owns the framing: the payload is the last non-empty stdout line —
-							// tolerant of a hook's own console noise — parsed REGARDLESS of the
+							// owns the framing: scanning stdout lines from the end, the payload is
+							// the last line that decodes under the envelope — tolerant of a hook's
+							// own console noise before AND after it — parsed REGARDLESS of the
 							// exit code, since the envelope's `ok` discriminates in-band. No valid
 							// payload (a crash, a non-zero exit with no result, garbage output) is
 							// a mechanism failure, typed, with the exit code and stderr carried as

@@ -408,6 +408,91 @@ describe("Run.jsonLine", () => {
 			}
 		}),
 	);
+
+	it.effect("a trailing log line AFTER the payload is tolerated — the exit-hook case (#292)", () =>
+		// The controlled pair from the consumer evidence: a pnpmfile hook logging
+		// from `process.on("exit", ...)` writes after the payload has flushed and
+		// used to win the "last non-empty line" and break the parse. The scan
+		// from the end now walks past it to the payload.
+		Effect.gen(function* () {
+			const payload = yield* withScript(
+				() => Run.jsonLine(cmd(), Payload),
+				() => ({ stdout: '{"ok":true}\ncleanup: hook exiting\n', exit: 0 }),
+			);
+			assert.deepStrictEqual(payload, { ok: true });
+		}),
+	);
+
+	it.effect("a trailing line that is valid JSON but fails the schema does not displace the payload", () =>
+		Effect.gen(function* () {
+			const payload = yield* withScript(
+				() => Run.jsonLine(cmd(), Payload),
+				() => ({ stdout: '{"ok":true}\n{"cleanup":"done"}\n', exit: 0 }),
+			);
+			assert.deepStrictEqual(payload, { ok: true });
+		}),
+	);
+
+	it.effect("noise on BOTH sides of the payload is tolerated", () =>
+		Effect.gen(function* () {
+			const payload = yield* withScript(
+				() => Run.jsonLine(cmd(), Payload),
+				() => ({ stdout: 'hook says hello\n{"ok":false}\nnot json at all\n \n', exit: 0 }),
+			);
+			assert.deepStrictEqual(payload, { ok: false });
+		}),
+	);
+
+	it.effect("when MULTIPLE lines decode under the schema, the LAST one wins — the documented consequence", () =>
+		// A child must not emit two schema-valid lines; when one does anyway,
+		// the scan from the end makes the later line the payload. Pinned so the
+		// documented tie-break cannot drift silently.
+		Effect.gen(function* () {
+			const payload = yield* withScript(
+				() => Run.jsonLine(cmd(), Payload),
+				() => ({ stdout: '{"ok":true}\n{"ok":false}\n', exit: 0 }),
+			);
+			assert.deepStrictEqual(payload, { ok: false });
+		}),
+	);
+
+	it.effect("nothing decodes but a line parsed as JSON: kind 'schema' with the LAST parseable line's issue", () =>
+		// The near-miss diagnostic: the last JSON-parseable line is the most
+		// probable intended payload, so its decode failure rides as the cause
+		// even when garbage lines follow it.
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				withScript(
+					() => Run.jsonLine(cmd(), Payload),
+					() => ({ stdout: '{"ok":"yes"}\ntrailing garbage line\n', stderr: "hook stderr", exit: 3 }),
+				),
+			);
+			assert.instanceOf(error, CommandOutputError);
+			if (error instanceof CommandOutputError) {
+				assert.strictEqual(error.kind, "schema");
+				assert.strictEqual(error.exitCode, 3);
+				assert.strictEqual(error.stderr, "hook stderr");
+				assert.isDefined(error.cause, "the last parseable line's decode failure must ride as the cause");
+			}
+		}),
+	);
+
+	it.effect("no line anywhere is JSON: kind 'notJson', still carrying the run context", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				withScript(
+					() => Run.jsonLine(cmd(), Payload),
+					() => ({ stdout: "line one\nline two\n", exit: 5 }),
+				),
+			);
+			assert.instanceOf(error, CommandOutputError);
+			if (error instanceof CommandOutputError) {
+				assert.strictEqual(error.kind, "notJson");
+				assert.strictEqual(error.exitCode, 5);
+				assert.strictEqual(error.stdout, "line one\nline two\n");
+			}
+		}),
+	);
 });
 
 describe("Run.exitCode", () => {
