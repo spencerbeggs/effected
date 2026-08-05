@@ -1,5 +1,19 @@
 # @effected/github-actions
 
+## 0.5.1
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/github | dependency | updated | 0.2.2 | 0.2.3 |
+| @effected/npm    | dependency | updated | 0.8.1 | 0.8.2 |
+| @effected/sbom   | dependency | updated | 0.2.2 | 0.2.3 |
+
+* | Dependency       | Type       | Action  | From  | To    |                                                          |
+  | ---------------- | ---------- | ------- | ----- | ----- | -------------------------------------------------------- |
+  | @effected/github | dependency | updated | 0.2.2 | 0.2.3 | Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
 ## 0.5.0
 
 ### Features

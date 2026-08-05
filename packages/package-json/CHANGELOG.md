@@ -1,5 +1,28 @@
 # @effected/package-json
 
+## 0.7.3
+
+### Documentation
+
+* Corrected the README's list of `workspace:` range modifiers, where a find-and-replace had turned `workspace:~` into a second `workspace:^`. The three specifiers are `workspace:*`, `workspace:^` and `workspace:~`. [#268][#268]
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/npm    | dependency | updated | 0.8.1 | 0.8.2 |
+| @effected/semver | dependency | updated | 0.3.1 | 0.3.2 |
+
+* | Dependency       | Type       | Action  | From  | To    |                                                          |
+  | ---------------- | ---------- | ------- | ----- | ----- | -------------------------------------------------------- |
+  | @effected/semver | dependency | updated | 0.3.1 | 0.3.2 | Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#268]: https://github.com/spencerbeggs/effected/pull/268
+
 ## 0.7.2
 
 ### Dependencies

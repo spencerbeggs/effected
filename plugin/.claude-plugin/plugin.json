@@ -1,7 +1,7 @@
 {
 	"name": "effected",
 	"description": "Effect v4 development skills, a GitHub Actions and GitHub API suite, specialist subagents (developer, reviewer, migrator, action-engineer), and a session briefing — distilled from the @effected package migrations and the official Effect-TS v4 guides. Covers the @effected kit index, the house style, Schema-as-classes, services & layers, core idioms, observability, testing, the v3→v4 migration reference with its ordered checklist, API-surface and hardening discipline, and twelve skills for building GitHub Actions, calling the GitHub API, running commands, publishing releases and attesting supply-chain artifacts",
-	"version": "0.7.1",
+	"version": "0.7.2",
 	"author": {
 		"name": "C. Spencer Beggs",
 		"url": "https://spencerbeg.gs"

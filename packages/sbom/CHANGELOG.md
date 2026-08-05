@@ -1,5 +1,17 @@
 # @effected/sbom
 
+## 0.2.3
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From  | To    |
+| ---------------------- | ---------- | ------- | ----- | ----- |
+| @effected/package-json | dependency | updated | 0.7.2 | 0.7.3 |
+
+* | Dependency             | Type       | Action  | From  | To    |                                                          |
+  | ---------------------- | ---------- | ------- | ----- | ----- | -------------------------------------------------------- |
+  | @effected/package-json | dependency | updated | 0.7.2 | 0.7.3 | Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
 ## 0.2.2
 
 ### Dependencies
