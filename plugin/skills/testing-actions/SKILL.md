@@ -88,6 +88,27 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
   still real; check the captured console output rather than assuming the
   test silently didn't fail.
 
+## Migrating a suite: doubles first, runner second
+
+When a port moves a suite onto the kit **and** onto `@effect/vitest`, those
+are two migrations and they must not share a commit. Port the service
+doubles first, keeping the existing runner; convert to `@effect/vitest` as a
+separate follow-up.
+
+The reason is specific. Converting the runner installs a `TestClock` **at the
+epoch** and a shared `TestConsole` across every converted test in one move. Any
+`Effect.sleep` still live in `src` — release-age gates, SBOM timestamps,
+`@effected/github` `Resilience` schedules — then stops advancing and hangs to
+the Vitest timeout **naming nothing**: no service, no step, no clock. The
+failure surfaces at the point furthest from its cause.
+
+The deeper reason is that the existing passing suite **is** the characterization
+gate for the port, and a gate rewritten alongside the thing it gates is not a
+gate. `effect-v4-testing` documents TestClock-at-epoch as a false green in
+isolation; this is its sequencing consequence.
+
+Full process context: [`designing-an-action`](../designing-an-action/references/porting.md).
+
 ## Additional resources
 
 - [references/doubles-catalog.md](references/doubles-catalog.md) — the

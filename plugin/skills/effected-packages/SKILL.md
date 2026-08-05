@@ -31,7 +31,7 @@ against its services, or test code that uses it.
 | `@effected/jsonc` | JSONC parse/edit/format schemas, AST, comment-preserving edits, visitor stream | reading or editing JSON-with-comments (tsconfig, VS Code-style config) | pure | [jsonc.md](./references/jsonc.md) |
 | `@effected/yaml` | YAML 1.2 parse/edit/format schemas, error-tolerant AST, edits, visitor | any YAML read/write/transform | pure | [yaml.md](./references/yaml.md) |
 | `@effected/toml` | TOML 1.0.0 parse/edit/format schemas, lossless CST, date-time value classes | any TOML read/write/transform | pure | [toml.md](./references/toml.md) |
-| `@effected/markdown` | CommonMark 0.31.2 + GFM parse/edit/format as pure schemas: mdast-shaped nodes with byte offsets, offset-splice edits, node-level modify, `Mdast` projection both ways, `Stream` visitor, frontmatter codecs, section finders (`firstSection` / `sectionByHeading`) | reading, editing, querying or rewriting markdown — instead of `remark`/`mdast-util-*`/`gray-matter` | pure | the package's own `CLAUDE.md` |
+| `@effected/markdown` | CommonMark 0.31.2 + GFM parse/edit/format as pure schemas: 28 constructible mdast-shaped node classes with byte offsets, offset-splice edits, node-level modify, `Mdast` projection both ways, `Stream` visitor, frontmatter codecs, section finders (`firstSection` / `sectionByHeading`) | reading, editing, querying or rewriting markdown — **and building it**: `new Table(...)` → `Markdown.stringify` — instead of `remark`/`mdast-util-*`/`gray-matter` | pure | [markdown.md](./references/markdown.md) |
 | `@effected/spdx` | SPDX license IDs, exceptions and license *expressions* as Schema classes, with a hardened depth-capped expression parser and vendored SPDX datasets | validating or parsing a license field / expression (`MIT OR Apache-2.0 WITH …`) | pure | the package's own `CLAUDE.md` |
 | `@effected/glob` | full minimatch dialect as pure string→predicate schemas (`GlobPattern`, `GlobSet`) | matching path strings against globs without touching the fs | pure | [glob.md](./references/glob.md) |
 | `@effected/npm` | resolver CONTRACTS for `catalog:`/`workspace:` specifiers + shared dependency vocabulary, **plus** `NpmRegistry` (reads over `HttpClient`) and `PackagePublish` (the npm CLI over `commands`) | typing dependency specifiers; reading a registry; packing/publishing | boundary | [npm.md](./references/npm.md) |
@@ -55,17 +55,16 @@ against its services, or test code that uses it.
 | `@effected/app` | the application control plane: one layer wiring XDG dirs + Store + Cache + config | wiring an APPLICATION's local state in one move | integrated | [app.md](./references/app.md) |
 | `@effected/pnpm-plugin-effect` | pnpm catalogs pinning the Effect ecosystem (companion — config, not code) | setting up Effect version pinning in a pnpm workspace | — | [pnpm-plugin-effect.md](./references/pnpm-plugin-effect.md) |
 
-**Eight rows have no `references/` file yet** — `markdown`, `spdx`,
-`schemastore` (published in the same 2026-08-03 wave this note was last
-updated, and previously missing from this count), and the five github-split
-packages (`commands`, `templates`, `github`, `github-actions`, `sbom`). Read
-the package's own `CLAUDE.md` for depth on those; it is the authority either
-way, and `references/` files for the eight are a later pass. For `github`,
-`github-actions` and `commands` specifically, the depth lives one level up
-from a single reference file: `building-a-github-action` routes a 13-skill
-suite (capability references plus `designing-an-action`'s build sequence)
-covering these three packages and `npm`/`sbom` in far more depth than a
-`references/*.md` file would — start there, not only at the `CLAUDE.md`.
+**Six rows have no `references/` file yet** — `spdx` and the five
+github-split packages (`commands`, `templates`, `github`, `github-actions`,
+`sbom`). Read the package's own `CLAUDE.md` for depth on those; it is the
+authority either way, and `references/` files for the six are a later pass.
+For `github`, `github-actions` and `commands` specifically, the depth lives
+one level up from a single reference file: `building-a-github-action` routes
+a 14-skill suite (capability references plus `designing-an-action`'s build
+sequence) covering these three packages and `npm`/`sbom` in far more depth
+than a `references/*.md` file would — start there, not only at the
+`CLAUDE.md`.
 Facts about them that change how you depend on them:
 
 - **`@effected/markdown` peers on `@effected/yaml` / `@effected/toml` /

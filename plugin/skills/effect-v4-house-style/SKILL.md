@@ -160,6 +160,36 @@ section.
   bind the result to a `const` or the resource builds twice. Consistent
   wording beats novel prose.
 
+### When misuse is SILENT, document the wrong spelling and what it cost
+
+For any API whose wrong call sequence **typechecks, runs, and reports
+success**, ordinary "here is the right way" documentation does not work. The
+reader is not looking anything up — they already believe they know the shape,
+and nothing will contradict them. `GitBranch.upsert`
+(`packages/github/src/GitBranch.ts`) is the worked example, mirrored as a
+"Never" in `packages/github/CLAUDE.md`. Three ingredients, all cheap:
+
+1. **Spell out the wrong sequence literally** — "never `upsert(branch,
+   targetHead)` followed by `commitFiles`". It must match what the reader is
+   *about to write*, not only what they should write instead. Prose describing
+   the correct shape never collides with a plan; the wrong spelling does.
+2. **State what it cost, concretely.** The ~3-second window where the branch
+   equals its base, an open PR with an empty diff, GitHub auto-closing it, a
+   consumer losing its release PR while the run reported success. Severity is
+   what converts "noted" into "stop".
+3. **Name the consumer that hit it.** That is how a reader recognizes their
+   own code in the description.
+
+It works. A port onto the kit read that docstring, recognized the sequence in
+the action it was porting, and flagged it as a decision needing a human ruling
+— finding a live bug instead of faithfully reproducing it. Literal parity
+would have carried the defect forward.
+
+Apply it deliberately to the other ordering-sensitive and upsert-shaped
+surfaces, not just where someone has already been burned. The test for whether
+an API qualifies: **would the wrong call go green?** If yes, the anti-pattern
+belongs in the docstring.
+
 ## Services and layers
 
 The mechanics live in `effect-v4-services-layers`; the house habits:

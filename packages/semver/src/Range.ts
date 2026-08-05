@@ -143,19 +143,50 @@ export class Range extends Schema.Class<Range>("Range")({
 	/**
 	 * Test whether a version satisfies a range; see {@link Range.test} for the
 	 * prerelease matching rule. Dual API.
+	 *
+	 * @remarks
+	 * **Data-first order is `(version, range)`** — the version being tested
+	 * comes first, the range it is tested against second. The data-last form
+	 * takes the range: `Range.satisfies(range)` applied to a version.
+	 *
+	 * Worth stating because the two parameters are distinct classes and the
+	 * order is not recoverable from the call site. TypeScript rejects a flipped
+	 * call outright, so this only bites callers without type checking — which
+	 * includes the untyped `node --input-type=module` probes this repo's own
+	 * evidence ladder calls for. There, `Range.satisfies(range, version)`
+	 * dispatches data-first, binds the `Range` to `version`, and dies with
+	 * `TypeError: range.test is not a function` — a message naming the
+	 * parameter that received the *version*, so it reads as a defect inside
+	 * this package rather than a caller error.
+	 *
+	 * The same order and the same hazard apply to `Range.filter`,
+	 * {@link Range.maxSatisfying} and {@link Range.minSatisfying}: subject
+	 * first, range second.
 	 */
 	static readonly satisfies: {
 		(range: Range): (version: SemVer) => boolean;
 		(version: SemVer, range: Range): boolean;
 	} = Fn.dual(2, (version: SemVer, range: Range): boolean => range.test(version));
 
-	/** Filter versions that satisfy a range, preserving order. Dual API. */
+	/**
+	 * Filter versions that satisfy a range, preserving order. Dual API.
+	 *
+	 * @remarks
+	 * Data-first order is `(versions, range)` — see {@link Range.satisfies}
+	 * for why the order is spelled out.
+	 */
 	static readonly filter: {
 		(range: Range): (versions: ReadonlyArray<SemVer>) => ReadonlyArray<SemVer>;
 		(versions: ReadonlyArray<SemVer>, range: Range): ReadonlyArray<SemVer>;
 	} = Fn.dual(2, (versions: ReadonlyArray<SemVer>, range: Range): ReadonlyArray<SemVer> => range.filter(versions));
 
-	/** Highest satisfying version, or `Option.none()`. Dual API. */
+	/**
+	 * Highest satisfying version, or `Option.none()`. Dual API.
+	 *
+	 * @remarks
+	 * Data-first order is `(versions, range)` — see {@link Range.satisfies}
+	 * for why the order is spelled out.
+	 */
 	static readonly maxSatisfying: {
 		(range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;
 		(versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;
@@ -167,7 +198,13 @@ export class Range extends Schema.Class<Range>("Range")({
 		return best === undefined ? Option.none() : Option.some(best);
 	});
 
-	/** Lowest satisfying version, or `Option.none()`. Dual API. */
+	/**
+	 * Lowest satisfying version, or `Option.none()`. Dual API.
+	 *
+	 * @remarks
+	 * Data-first order is `(versions, range)` — see {@link Range.satisfies}
+	 * for why the order is spelled out.
+	 */
 	static readonly minSatisfying: {
 		(range: Range): (versions: ReadonlyArray<SemVer>) => Option.Option<SemVer>;
 		(versions: ReadonlyArray<SemVer>, range: Range): Option.Option<SemVer>;
