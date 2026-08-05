@@ -1,5 +1,13 @@
 # @effected/npm
 
+## 0.8.3
+
+### Dependencies
+
+| Dependency         | Type       | Action  | From  | To    |
+| ------------------ | ---------- | ------- | ----- | ----- |
+| @effected/commands | dependency | updated | 0.2.1 | 0.3.0 |
+
 ## 0.8.2
 
 ### Dependencies
