@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-26
-last-synced: 2026-07-26
+updated: 2026-08-05
+last-synced: 2026-08-05
 completeness: 95
 related:
   - ../effect-standards.md
@@ -17,6 +17,7 @@ related:
   - npm.md
   - package-json.md
   - git.md
+  - commands.md
 ---
 
 # @effected/workspaces design
@@ -43,10 +44,10 @@ Runtime dependencies:
 | `@effected/package-json` (`workspace:~`) | the full-manifest bridge and the corepack `packageManager` codec |
 | `@effected/npm` (`workspace:~`) | the resolver **contracts** this package implements |
 | `@effected/git` (`workspace:~`) | typed git introspection — `ChangeDetector` and `WorkspaceSnapshots` run on its `Git` service |
-| `@effected/commands` (`workspace:~`) | the `LocalExec` **contract** this package implements — a boundary-tier edge, so [R2](../effect-standards.md#dependency-policy) does not propagate anything |
+| `@effected/commands` (`workspace:~`) | the `LocalExec` **contract** this package implements, and — since 2026-08-05 — `Run.jsonLine`, which `ConfigDependencyHooks.layerSubprocess` runs its replay child through; a boundary-tier edge either way, so [R2](../effect-standards.md#dependency-policy) does not propagate anything |
 | `effect` (peer) | core |
 
-There is no `minimatch` dependency — dependency-pattern matching and the enumerator's mini-glob both run on `@effected/glob`'s vendored engine. Subprocess spawning lives entirely behind `@effected/git`'s `ChildProcessSpawner` contract; there is no `node:child_process` anywhere here. Two modules are Node-only, and both are opt-in rather than on the main path. `ConfigDependencyHooks.layerLive` does an in-process dynamic `import()` of a config dependency's pnpmfile — a built-in/dynamic-import, not a dependency, so it does not affect tier, and its TSDoc names it plainly. `src/node-sync.ts` imports `node:fs` / `node:path`, but it is a **separate entry point** (`@effected/workspaces/node-sync`) that the index never re-exports, so nothing reaches it unless a consumer imports the subpath by name — the main entry stays platform-free (see [the escape hatch](#workspacessync--the-escape-hatch)). `WorkspacesSync` itself imports `node:*` not at all: since the 2026-07-16 retrofit its file and path operations are consumer-supplied.
+There is no `minimatch` dependency — dependency-pattern matching and the enumerator's mini-glob both run on `@effected/glob`'s vendored engine. Subprocess spawning lives entirely behind core's `ChildProcessSpawner` contract — required in `R`, never backed here; there is no `node:child_process` anywhere. Two modules are Node-only, and both are opt-in rather than on the main path. `ConfigDependencyHooks` does an in-process dynamic `import()` of a config dependency's pnpmfile under `layerLive`, and spawns a `node` child that performs the same import under `layerSubprocess` ([the seam](#configdependencyhooks--the-opt-in-replay-seam)) — a built-in/dynamic-import and a spawner requirement, not dependencies, so neither affects tier, and both TSDocs name what they do plainly. `src/node-sync.ts` imports `node:fs` / `node:path`, but it is a **separate entry point** (`@effected/workspaces/node-sync`) that the index never re-exports, so nothing reaches it unless a consumer imports the subpath by name — the main entry stays platform-free (see [the escape hatch](#workspacessync--the-escape-hatch)). `WorkspacesSync` itself imports `node:*` not at all: since the 2026-07-16 retrofit its file and path operations are consumer-supplied.
 
 ## Implementing @effected/npm's resolver contracts
 
@@ -278,7 +279,7 @@ Module-per-concept.
 | `src/WorkspaceCatalogs.ts` | `CatalogSet` class, `WorkspaceCatalogs` service + layer, the `catalogResolver` layer |
 | `src/WorkspaceSnapshots.ts` | `WorkspaceSnapshots` service + layers, the snapshot error unions |
 | `src/WorkspaceStateSnapshot.ts` | `WorkspaceStateSnapshot` and `PackageStateSnapshot` value classes |
-| `src/ConfigDependencyHooks.ts` | `ConfigDependencyHooks` contract service, `layerLive`, `layerNoop`, the `HookInjection` result type (`catalogs` + `releaseAge`) |
+| `src/ConfigDependencyHooks.ts` | `ConfigDependencyHooks` contract service, `layerLive`, `layerSubprocess` (with the static replay script), `layerNoop`, the `HookInjection` result type (`catalogs` + `releaseAge`) |
 | `src/LockfileReader.ts` | `LockfileReader` service + layer (the IO half of `@effected/lockfiles`), `LockfileReadError` |
 | `src/Publishability.ts` | `PublishTarget`, `PublishabilityDetectorShape`, `PublishabilityDetector` service + default layer |
 | `src/ReleaseTag.ts` | `TagStyle`, `TagFormatOptions`, the `ReleaseTag` value class, the `TrackingTag` alias family with `TrackingTagOptions`, and `classifyTag` / `TagClassification` — a leaf importing nothing else here |
@@ -411,7 +412,7 @@ Root resolution is one concern, applied uniformly: every root-consuming layer is
 
 `CatalogSet` is the immutable, fully-normalized catalog collection with the one resolution semantic (constructors plus `merge` and `rangeOf`). It carries statics for its three sources: `fromLockfile`, `fromBunBlocks` and `fromManifestWorkspaces`. `WorkspaceCatalogs` assembles it with pnpm's precedence and memoizes. **`internal/catalogs.ts` is the only module that imports `@pnpm/catalogs.*`** — the tier-3 blast radius is one file.
 
-**`WorkspaceCatalogs.releaseAgeGate(): Effect<ReleaseAgeGate, CatalogAssemblyFailure>`** (2026-07-21) assembles the workspace's effective pnpm release-age gate. It folds the inline `pnpm-workspace.yaml` `minimumReleaseAge` / `minimumReleaseAgeExclude` keys and the hook contributions ([ConfigDependencyHooks](#configdependencyhooks--the-opt-in-replay-seam)) through `ReleaseAgeGate.combine` (strictest-wins — [npm.md](npm.md#releaseagegate-the-release-age-gate-vocabulary)), reusing **the same single memoized `assemble` pass** as `set` — one root discovery, one YAML read, one hook replay, both outputs (`CatalogSet` and `ReleaseAgeGate`) memoized together, so the config-dependency code runs exactly once. Present-but-malformed inline release-age values **hard-fail** as `CatalogAssemblyError(source: "manifest")` — the same load-bearing posture as a malformed inline catalog block (a silently-ignored gate is the "install refuses a too-young version the resolver already picked" bug); absent keys contribute nothing. Under the default layer (no-op hooks) the gate sees inline values only; under `layerWithConfigDependencies` it sees both. A bun/npm workspace (no `pnpm-workspace.yaml`) has no release-age keys, so the gate is inert. There is **deliberately no top-level `Workspaces.releaseAgeGate` convenience** — the service method is the surface.
+**`WorkspaceCatalogs.releaseAgeGate(): Effect<ReleaseAgeGate, CatalogAssemblyFailure>`** (2026-07-21) assembles the workspace's effective pnpm release-age gate. It folds the inline `pnpm-workspace.yaml` `minimumReleaseAge` / `minimumReleaseAgeExclude` keys and the hook contributions ([ConfigDependencyHooks](#configdependencyhooks--the-opt-in-replay-seam)) through `ReleaseAgeGate.combine` (strictest-wins — [npm.md](npm.md#releaseagegate-the-release-age-gate-vocabulary)), reusing **the same single memoized `assemble` pass** as `set` — one root discovery, one YAML read, one hook replay, both outputs (`CatalogSet` and `ReleaseAgeGate`) memoized together, so the config-dependency code runs exactly once. Present-but-malformed inline release-age values **hard-fail** as `CatalogAssemblyError(source: "manifest")` — the same load-bearing posture as a malformed inline catalog block (a silently-ignored gate is the "install refuses a too-young version the resolver already picked" bug); absent keys contribute nothing. Under the default layer (no-op hooks) the gate sees inline values only; under `layerWithConfigDependencies` (or its [subprocess twin](#layersubprocess--the-same-replay-where-a-bundler-cannot-reach-it)) it sees both. A bun/npm workspace (no `pnpm-workspace.yaml`) has no release-age keys, so the gate is inert. There is **deliberately no top-level `Workspaces.releaseAgeGate` convenience** — the service method is the surface.
 
 The reader is **PM-aware**. File presence picks the reader: `pnpm-workspace.yaml` present → the pnpm path; absent → the root `package.json` `workspaces.catalog` / `catalogs` path (bun's analogue). The catalog readers **hard-fail by design** because their output is load-bearing for diffing — a silently-empty read is the "every dependency looks added" bug:
 
@@ -470,9 +471,9 @@ Two properties are load-bearing and easy to break: the join is by dependency **n
 
 ### ConfigDependencyHooks — the opt-in replay seam
 
-`ConfigDependencyHooks` is a contract service with two layers. `layerLive` does an in-process dynamic `import()` of each config dependency's `pnpmfile.cjs` and replays its `updateConfig` hooks over the inline-catalog seed — in-process code loading, no subprocess. `layerNoop` is the no-execution stand-in.
+`ConfigDependencyHooks` is a contract service with three layers. `layerLive` does an in-process dynamic `import()` of each config dependency's pnpmfile (`.mjs` before `.cjs`, pnpm 11's loader order) and replays its `updateConfig` hooks over the inline-catalog seed — in-process code loading, no subprocess. `layerSubprocess` ([below](#layersubprocess--the-same-replay-where-a-bundler-cannot-reach-it)) performs that same replay in a `node` child process. `layerNoop` is the no-execution stand-in.
 
-- **Opt-in by layer choice.** The default `WorkspaceCatalogs.layer` and `Workspaces.layer` wire `layerNoop` — they **never** execute config-dependency code. `layerWithConfigDependencies` opts into `layerLive`.
+- **Opt-in by layer choice.** The default `WorkspaceCatalogs.layer` and `Workspaces.layer` wire `layerNoop` — they **never** execute config-dependency code. `layerWithConfigDependencies` opts into `layerLive`, `layerWithConfigDependenciesSubprocess` into `layerSubprocess`.
 - **Assembly precedence** is lockfile < inline < hook-injected, merged per-dependency within a catalog, with the hooks seeded by the inline catalogs — matching pnpm's own behavior.
 - **Failure is typed, never silent.** A config dependency that fails to load or replay fails with a `"hooks"`-source `CatalogAssemblyError`.
 - **Security guard:** `layerLive` rejects a config-dependency name containing a `..` path segment **before** building the `import()` target, so a malicious `configDependencies` entry cannot escape the intended directory.
@@ -481,6 +482,20 @@ Two properties are load-bearing and easy to break: the join is by dependency **n
 
 - **Release-age keys thread last-hook-wins.** `minimumReleaseAge` / `minimumReleaseAgeExclude` are read off the one final threaded config object, so when two hooks both set a key the later write wins — pnpm's single-mutable-config-object behavior.
 - **A malformed release-age value is tolerantly dropped**, keeping the prior threaded value — matching the catalog slice's tolerant `configOf`. `CatalogAssemblyError` stays reserved for a load/replay *mechanism* failure, not a hook's returned *data*. The `releaseAge` contribution is a `PartialReleaseAgeGate` because a consumer folds it into an effective gate with `ReleaseAgeGate.combine` alongside the inline values ([npm.md](npm.md#releaseagegate-the-release-age-gate-vocabulary)); hooks setting no release-age keys contribute an empty gate.
+
+#### layerSubprocess — the same replay where a bundler cannot reach it
+
+**In-process replay is unreachable in a bundled consumer** (2026-08-05, [effected#280](https://github.com/spencerbeggs/effected/issues/280), a dogfood request from silk-update-action). `layerLive` computes its `import()` target at runtime, and a bundler — rspack, here — compiles a *computed* dynamic import into a context module that resolves against a build-time directory listing, so at runtime it throws `Cannot find module 'file:///…'`. Every bundled GitHub Action hits this, which means `releaseAgeGate()` — the reason an Action opts into hooks at all — was simply not callable there. **`ConfigDependencyHooks.layerSubprocess` is the same replay with every computed load moved out of the bundle graph**, and the two layers are drop-in interchangeable.
+
+- **The replay program is a static string constant, passed via argv.** `node --input-type=module -e <script> <root> <seedJSON> <...names>`, read back in the child as `process.argv.slice(1)`. Static is the whole mechanism: a bundler rewrites the *program text* it can see, so the text must carry **no interpolated runtime value** — the root, the seed and the dependency names travel as arguments, never spliced into the script. `ChildProcess.make` spawns without a shell, so argv is argv.
+- **Typed-semantics parity is the contract, and it is pinned by test, not by intent.** The script mirrors the in-process module exactly: `pnpmfile.mjs` before `pnpmfile.cjs`, the missing-pnpmfile skip discriminated by `ERR_MODULE_NOT_FOUND` **for the candidate itself** (`err.url` equality — so a module the pnpmfile *imports* going missing is a real failure, not a skip), the same hook-locator shapes, the same **synchronous** hook call, and the same tolerant threading of returned data. An integration test drives both layers against one on-disk fixture and asserts they answer identically.
+- **Per-dependency error attribution crosses the process boundary.** The child prints one final JSON line — `{ ok: true, config }` or `{ ok: false, name, message, stack? }` naming the offending dependency — and exits through the write callback so the payload flushes even if a hook left the event loop occupied. The parent decodes that envelope through a strict `Schema.Union` with [`Run.jsonLine`](commands.md#as-built-runjsonline-2026-08-05), which owns the last-line framing and its noise tolerance (a hook's own `console.log` is not fatal). A serialized failure maps 1:1 onto `layerLive`'s `hooks`-source `CatalogAssemblyError`, dependency name intact; the child-side stack is preserved on the rebuilt cause.
+- **The guard runs before any spawn.** Every dependency name is `..`-checked up front, so a malicious `configDependencies` entry never reaches a subprocess at all — the guard is strictly earlier than `layerLive`'s, never later.
+- **Empty `configDependencies` spawns nothing** and returns the seed, so opting into this layer costs a workspace without config dependencies zero processes.
+- **Folding and normalization stay in the parent.** The child returns only the raw threaded config slice; `configToEntries` / `normalize` run through the same `@pnpm/catalogs`-derived path `layerLive` uses. The script cannot import kit code, and duplicating catalog semantics into a string literal is exactly the drift this package refuses elsewhere.
+- **Transport failure is typed, never silent.** `node` absent, an exit with no usable payload, unparseable output — all `hooks`-source `CatalogAssemblyError`, never a defect and never a skip that would silently drop hook-injected catalogs.
+
+**The cost is one requirement: core's `ChildProcessSpawner`**, resolved at layer-build time via `Layer.effect` so the service `Shape` is unchanged. It surfaces in `R` on the two new composites — `WorkspaceCatalogs.layerWithConfigDependenciesSubprocess(options?)` and `Workspaces.layerWithConfigDependenciesSubprocess(options?)` — and the consumer discharges it once at the edge (`@effect/platform-node`'s `NodeServices.layer`), the [`layerWithGit` precedent](#git-integration) and R3's free-because-core-declared rule. `Workspaces.compose` became generic in `R` to thread it; the existing composites pin `compose<never>` and their signatures are unchanged.
 
 ## Error handling
 
@@ -535,6 +550,7 @@ Mutation-proven edges:
 - A bun or npm workspace read at a ref must not collapse to the root package alone; `at("HEAD")` and `worktree()` agree on a clean tree (which also pins the unconditional inline-bun-catalog read).
 - The double-default rejection (`workspaces.catalog` plus `workspaces.catalogs.default`), checked structurally.
 - Hook replay through the opt-in layer against a fixture pnpmfile; the default layer provably never loads it.
+- Subprocess/in-process replay parity: unit coverage over `@effected/commands`' public `ScriptedSpawner` for the argv shape, the pre-spawn `..` guard, the no-deps no-spawn case and the envelope's failure arms, plus an **integration** suite that runs the real `node` child against on-disk fixtures and pins the parity properties by construction — `pnpmfile.mjs` winning over `.cjs`, the `err.url` skip discrimination (a pnpmfile whose own import is missing fails, a wholly absent pnpmfile skips), the synchronous hook call, and tolerant value threading.
 - Release-age assembly: inline `minimumReleaseAge` / `minimumReleaseAgeExclude` folded through `ReleaseAgeGate.combine`, a malformed inline value hard-failing typed; hook-injected release-age via fixture pnpmfiles (`age-1440`, `age-4320` strictest-wins, `age-garbage` tolerantly dropped); the default no-op layer sees inline only.
 - TTL-cache discipline: a failed `at(ref)` init is retried, not memoized.
 

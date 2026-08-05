@@ -76,8 +76,8 @@
 		{
 			"source": "packages/commands/CLAUDE.md",
 			"target": ".claude/design/effected/packages/commands.md",
-			"hash": "498ce52aa24851d9dcadc948eb022950623d8343ee8768a12cf44a03e553cbde",
-			"recordedAt": "2026-07-26"
+			"hash": "8100d58b2a1589790d758554441d8facb420b17a1be6e1f50aa04b1a964c7d50",
+			"recordedAt": "2026-08-05"
 		},
 		{
 			"source": "packages/config-file/CLAUDE.md",
@@ -238,8 +238,8 @@
 		{
 			"source": "packages/workspaces/CLAUDE.md",
 			"target": ".claude/design/effected/packages/workspaces.md",
-			"hash": "497d1149a8c7d98b2812d036f5b66f8b599a5514b1ae45cebe715d630a087c72",
-			"recordedAt": "2026-07-26"
+			"hash": "918410cbc87c7be14dcb2a1968c5d4cc0e6f867bf755a0f5fe6c6b40768de2ae",
+			"recordedAt": "2026-08-05"
 		},
 		{
 			"source": "packages/xdg/CLAUDE.md",

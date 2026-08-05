@@ -269,6 +269,147 @@ describe("Run.json", () => {
 	);
 });
 
+describe("Run.jsonLine", () => {
+	const Payload = Schema.Struct({ ok: Schema.Boolean });
+
+	it.effect("parses and decodes a clean single-line payload", () =>
+		Effect.gen(function* () {
+			const payload = yield* withScript(
+				() => Run.jsonLine(cmd(), Payload),
+				() => ({ stdout: '{"ok":true}', exit: 0 }),
+			);
+			assert.deepStrictEqual(payload, { ok: true });
+		}),
+	);
+
+	it.effect("takes the LAST non-empty line — noise before the payload is tolerated", () =>
+		Effect.gen(function* () {
+			const payload = yield* withScript(
+				() => Run.jsonLine(cmd(), Payload),
+				() => ({ stdout: 'hook says hello\n{not json either\n{"ok":true}', exit: 0 }),
+			);
+			assert.deepStrictEqual(payload, { ok: true });
+		}),
+	);
+
+	it.effect("trailing newlines and whitespace-only lines after the payload are ignored", () =>
+		Effect.gen(function* () {
+			const payload = yield* withScript(
+				() => Run.jsonLine(cmd(), Payload),
+				() => ({ stdout: '{"ok":false}\n \n\n', exit: 0 }),
+			);
+			assert.deepStrictEqual(payload, { ok: false });
+		}),
+	);
+
+	it.effect("handles CRLF framing", () =>
+		Effect.gen(function* () {
+			const payload = yield* withScript(
+				() => Run.jsonLine(cmd(), Payload),
+				() => ({ stdout: 'noise\r\n{"ok":true}\r\n', exit: 0 }),
+			);
+			assert.deepStrictEqual(payload, { ok: true });
+		}),
+	);
+
+	it.effect("a NON-ZERO exit with a valid payload still succeeds — the payload outranks the exit code", () =>
+		// The documented posture: a protocol payload discriminates success
+		// in-band, so a child that crashes AFTER flushing its payload still
+		// reported. Callers wanting exit-code semantics use Run.json.
+		Effect.gen(function* () {
+			const payload = yield* withScript(
+				() => Run.jsonLine(cmd(), Payload),
+				() => ({ stdout: '{"ok":false}', stderr: "crashed after reporting", exit: 7 }),
+			);
+			assert.deepStrictEqual(payload, { ok: false });
+		}),
+	);
+
+	it.effect("empty stdout fails with kind 'notJson', carrying exit code and stderr as context", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				withScript(
+					() => Run.jsonLine(cmd(), Payload),
+					() => ({ stdout: "", stderr: "boom from node", exit: 7 }),
+				),
+			);
+			assert.instanceOf(error, CommandOutputError);
+			if (error instanceof CommandOutputError) {
+				assert.strictEqual(error.kind, "notJson");
+				assert.strictEqual(error.exitCode, 7);
+				assert.strictEqual(error.stderr, "boom from node");
+				assert.include(error.message, "exit 7");
+				assert.include(error.message, "boom from node");
+			}
+		}),
+	);
+
+	it.effect("a garbage last line fails with kind 'notJson', carrying the captured stdout", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				withScript(
+					() => Run.jsonLine(cmd(), Payload),
+					() => ({ stdout: "definitely not json\nnor this\n", exit: 0 }),
+				),
+			);
+			assert.instanceOf(error, CommandOutputError);
+			if (error instanceof CommandOutputError) {
+				assert.strictEqual(error.kind, "notJson");
+				assert.strictEqual(error.exitCode, 0);
+				assert.strictEqual(error.stdout, "definitely not json\nnor this\n");
+			}
+		}),
+	);
+
+	it.effect("a schema mismatch fails with kind 'schema' — distinguishable from notJson", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				withScript(
+					() => Run.jsonLine(cmd(), Payload),
+					() => ({ stdout: '{"ok":"yes"}', exit: 0 }),
+				),
+			);
+			assert.instanceOf(error, CommandOutputError);
+			if (error instanceof CommandOutputError) {
+				assert.strictEqual(error.kind, "schema");
+				assert.strictEqual(error.exitCode, 0);
+			}
+		}),
+	);
+
+	it.effect("a spawn failure still fails as CommandFailedError, never an output failure", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				withScript(
+					() => Run.jsonLine(cmd("missing"), Payload),
+					() => ScriptedSpawner.notFound("missing"),
+				),
+			);
+			assert.instanceOf(error, CommandFailedError);
+			if (error instanceof CommandFailedError) {
+				assert.strictEqual(error.kind, "spawn");
+			}
+		}),
+	);
+
+	it.effect("the context carried on the error is redacted", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				withScript(
+					() => Run.jsonLine(cmd(), Payload, { redact: [Redacted.make("s3cr3t")] }),
+					() => ({ stdout: "token is s3cr3t", stderr: "auth failed for s3cr3t", exit: 1 }),
+				),
+			);
+			assert.instanceOf(error, CommandOutputError);
+			if (error instanceof CommandOutputError) {
+				assert.notInclude(error.stdout ?? "", "s3cr3t");
+				assert.notInclude(error.stderr ?? "", "s3cr3t");
+				assert.notInclude(error.message, "s3cr3t");
+			}
+		}),
+	);
+});
+
 describe("Run.exitCode", () => {
 	it.effect("returns a non-zero code without failing", () =>
 		Effect.gen(function* () {

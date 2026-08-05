@@ -58,15 +58,18 @@ export type WorkspacesServices =
 	| LockfileReader
 	| WorkspaceCatalogs;
 
-// Shared composition helper for Workspaces.layer and
-// Workspaces.layerWithConfigDependencies; the public contracts live on those
-// statics.
-const compose = (
+// Shared composition helper for Workspaces.layer,
+// Workspaces.layerWithConfigDependencies and
+// Workspaces.layerWithConfigDependenciesSubprocess; the public contracts live
+// on those statics. Generic in R so a catalogs factory carrying an extra
+// requirement (the subprocess variant's ChildProcessSpawner) threads it
+// through to the composite's R unchanged.
+const compose = <R = never>(
 	options: WorkspacesOptions | undefined,
 	catalogsFactory: (
 		options?: WorkspacesOptions,
-	) => Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path>,
-): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> => {
+	) => Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path | R>,
+): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path | R> => {
 	const roots = WorkspaceRoot.layer;
 	const detector = PackageManagerDetector.layer;
 	const discovery = WorkspaceDiscovery.layer(options).pipe(Layer.provide(roots));
@@ -95,7 +98,7 @@ const compose = (
 const layer = (
 	options?: WorkspacesOptions,
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
-	compose(options, WorkspaceCatalogs.layer);
+	compose<never>(options, WorkspaceCatalogs.layer);
 
 // Implementation of Workspaces.layerWithGit; the public contract lives on the static.
 const layerWithGit = (
@@ -123,7 +126,16 @@ const resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver, never, Workspa
 const layerWithConfigDependencies = (
 	options?: WorkspacesOptions,
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
-	compose(options, WorkspaceCatalogs.layerWithConfigDependencies);
+	compose<never>(options, WorkspaceCatalogs.layerWithConfigDependencies);
+
+// Implementation of Workspaces.layerWithConfigDependenciesSubprocess; the public contract lives on the static.
+const layerWithConfigDependenciesSubprocess = (
+	options?: WorkspacesOptions,
+): Layer.Layer<
+	WorkspacesServices,
+	never,
+	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+> => compose<ChildProcessSpawner.ChildProcessSpawner>(options, WorkspaceCatalogs.layerWithConfigDependenciesSubprocess);
 
 // Implementation of Workspaces.resolverLayer; the public contract lives on the static.
 const resolverLayer = (
@@ -249,6 +261,33 @@ export class Workspaces {
 	 * **Bind the result to a `const`.**
 	 */
 	static readonly layerWithConfigDependencies = layerWithConfigDependencies;
+
+	/**
+	 * The git-free composite with config-dependency hook replay in a `node`
+	 * **child process** —
+	 * {@link WorkspaceCatalogs.layerWithConfigDependenciesSubprocess} in place of
+	 * the in-process replay.
+	 *
+	 * @remarks
+	 * Same typed semantics as {@link Workspaces.layerWithConfigDependencies}; the
+	 * difference is mechanism, and it matters in exactly one environment class: a
+	 * **bundled** consumer. The in-process replay's computed dynamic `import()`
+	 * is compiled by bundlers (rspack among them) into a context module that
+	 * throws `Cannot find module 'file:///…'` at runtime, which makes
+	 * `WorkspaceCatalogs.releaseAgeGate()` unreachable from any bundled GitHub
+	 * Action. Here the computed import runs inside a `node` child process whose
+	 * program text is a static string handed over argv, so nothing computed
+	 * enters the bundle graph.
+	 *
+	 * The extra requirement is core's `ChildProcessSpawner`, provided once at
+	 * the edge (`@effect/platform-node`'s `NodeServices.layer`) — the same
+	 * sanctioned R-widening as {@link Workspaces.layerWithGit}, and the reason
+	 * this is a separate composite rather than a flag: a consumer that keeps the
+	 * in-process replay should not have to be able to spawn a subprocess.
+	 *
+	 * **Bind the result to a `const`.**
+	 */
+	static readonly layerWithConfigDependenciesSubprocess = layerWithConfigDependenciesSubprocess;
 
 	/**
 	 * The git-free composite plus {@link ChangeDetector} and

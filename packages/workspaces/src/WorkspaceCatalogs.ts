@@ -15,6 +15,7 @@ import {
 } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
@@ -695,6 +696,34 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	): Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path> =>
 		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options)).pipe(
 			Layer.provide(ConfigDependencyHooks.layerLive),
+		);
+
+	/**
+	 * The opt-in layer that replays config-dependency `pnpmfile` hooks in a
+	 * `node` **child process**: it wires
+	 * {@link ConfigDependencyHooks.layerSubprocess} in place of the in-process
+	 * `layerLive`.
+	 *
+	 * @remarks
+	 * Same typed semantics as {@link WorkspaceCatalogs.layerWithConfigDependencies}
+	 * — the two hook layers are drop-in interchangeable — but the replay's
+	 * computed dynamic `import()` runs in the subprocess, so it survives bundling
+	 * (a bundler compiles a computed in-process `import()` into a context module
+	 * that cannot resolve at runtime — every bundled GitHub Action hits this).
+	 * The cost is one extra requirement: core's `ChildProcessSpawner`, provided
+	 * once at the edge (`@effect/platform-node`'s `NodeServices.layer`) — the
+	 * same sanctioned R-widening as `Workspaces.layerWithGit`. Parameterized, so
+	 * bind it to a `const` and reuse it.
+	 */
+	static readonly layerWithConfigDependenciesSubprocess = (
+		options?: WorkspaceCatalogsOptions,
+	): Layer.Layer<
+		WorkspaceCatalogs,
+		never,
+		WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+	> =>
+		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options)).pipe(
+			Layer.provide(ConfigDependencyHooks.layerSubprocess),
 		);
 
 	/**

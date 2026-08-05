@@ -19,9 +19,11 @@
 
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { Run } from "@effected/commands";
 import type { PartialReleaseAgeGate } from "@effected/npm";
 import { CatalogAssemblyError } from "@effected/npm";
-import { Context, Effect, Layer, Predicate, Result } from "effect";
+import { Context, Effect, Layer, Predicate, Result, Schema } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import type { CatalogEntries } from "./internal/catalogs.js";
 import { normalize } from "./internal/catalogs.js";
 
@@ -211,6 +213,130 @@ const updateConfigOf = (mod: unknown): UpdateConfig | undefined => {
 };
 
 /**
+ * The subprocess replay program {@link ConfigDependencyHooks.layerSubprocess}
+ * hands to `node --input-type=module -e`.
+ *
+ * @remarks
+ * A **static** string constant, deliberately: a bundler compiles a *computed*
+ * dynamic `import()` into a context module that cannot resolve a runtime path
+ * (`Cannot find module 'file:///…'`), so the computed import has to run in a
+ * child process whose program text carries **no interpolated runtime value** —
+ * the workspace root, the seed and the dependency names all arrive via argv
+ * (`process.argv.slice(1)` under `-e`), never spliced into the script.
+ *
+ * The script mirrors this module's in-process semantics exactly so the two
+ * layers are drop-in interchangeable: `pnpmfile.mjs` before `pnpmfile.cjs`
+ * (pnpm 11's loader order), the `ERR_MODULE_NOT_FOUND`-for-the-candidate-itself
+ * skip discrimination (`err.url` equality), the same hook-locator shapes, the
+ * same tolerant threading of returned data (`configOf` / `finiteNumberOr` /
+ * `stringArrayOr` clones below), and the same synchronous hook call. Only the
+ * *mechanism* failures are reported: the script prints one final line of JSON —
+ * `{ ok: true, config }` on success, `{ ok: false, name, message, stack? }`
+ * naming the offending dependency on a load/replay failure — and exits through
+ * the write callback so the payload is flushed even if a hook left the event
+ * loop occupied. The final-line framing tolerates a hook's own `console.log`
+ * noise on stdout.
+ */
+const REPLAY_SCRIPT = `
+const [root, seedJson, ...names] = process.argv.slice(1);
+const { pathToFileURL } = await import("node:url");
+const { join } = await import("node:path");
+const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const finiteNumberOr = (value, fallback) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
+const stringArrayOr = (value, fallback) =>
+	Array.isArray(value) && value.every((entry) => typeof entry === "string") ? value : fallback;
+const configOf = (value, fallback) =>
+	isObject(value)
+		? {
+				catalog: isObject(value.catalog) ? value.catalog : fallback.catalog,
+				catalogs: isObject(value.catalogs) ? value.catalogs : fallback.catalogs,
+				minimumReleaseAge: finiteNumberOr(value.minimumReleaseAge, fallback.minimumReleaseAge),
+				minimumReleaseAgeExclude: stringArrayOr(value.minimumReleaseAgeExclude, fallback.minimumReleaseAgeExclude),
+			}
+		: fallback;
+const failure = (name, cause) => ({
+	ok: false,
+	name,
+	message: cause instanceof Error ? cause.message : String(cause),
+	...(cause instanceof Error && typeof cause.stack === "string" ? { stack: cause.stack } : {}),
+});
+const replay = async () => {
+	let catalog = {};
+	const catalogs = {};
+	for (const [name, entries] of Object.entries(JSON.parse(seedJson))) {
+		if (name === "default") catalog = { ...entries };
+		else catalogs[name] = { ...entries };
+	}
+	let config = { catalog, catalogs, minimumReleaseAge: undefined, minimumReleaseAgeExclude: undefined };
+	for (const name of names) {
+		let loaded;
+		let found = false;
+		for (const filename of ["pnpmfile.mjs", "pnpmfile.cjs"]) {
+			const candidate = pathToFileURL(join(root, "node_modules", ".pnpm-config", name, filename)).href;
+			try {
+				loaded = await import(candidate);
+				found = true;
+				break;
+			} catch (cause) {
+				const url =
+					isObject(cause) && cause.code === "ERR_MODULE_NOT_FOUND" && typeof cause.url === "string"
+						? cause.url
+						: undefined;
+				if (url === candidate) continue;
+				return failure(name, cause);
+			}
+		}
+		if (!found) continue;
+		let hook;
+		for (const candidate of [loaded, isObject(loaded) ? loaded.default : undefined]) {
+			if (!isObject(candidate)) continue;
+			if (isObject(candidate.hooks) && typeof candidate.hooks.updateConfig === "function") {
+				hook = candidate.hooks.updateConfig;
+				break;
+			}
+			if (typeof candidate.updateConfig === "function") {
+				hook = candidate.updateConfig;
+				break;
+			}
+		}
+		if (hook === undefined) continue;
+		try {
+			config = configOf(hook(config), config);
+		} catch (cause) {
+			return failure(name, cause);
+		}
+	}
+	return { ok: true, config };
+};
+const payload = await replay();
+process.stdout.write("\\n" + JSON.stringify(payload) + "\\n", () => process.exit(0));
+`;
+
+/**
+ * The subprocess protocol payload — the child's final stdout line, framed and
+ * parsed by `Run.jsonLine`. The envelope is strict (a payload without a usable
+ * `ok` discriminant is a mechanism failure, typed); the `config` slice inside a
+ * success stays `Unknown` because a hook's returned *data* is tolerantly
+ * threaded (`configOf`), never fatal.
+ */
+const ReplayPayload = Schema.Union([
+	Schema.Struct({ ok: Schema.Literal(true), config: Schema.Unknown }),
+	Schema.Struct({
+		ok: Schema.Literal(false),
+		name: Schema.optionalKey(Schema.String),
+		message: Schema.optionalKey(Schema.String),
+		stack: Schema.optionalKey(Schema.String),
+	}),
+]);
+
+/** Rebuild the subprocess's serialized failure as an `Error`, preserving the child-side stack when it carried one. */
+const replayFailureCause = (payload: { readonly message?: string; readonly stack?: string }): Error => {
+	const error = new Error(payload.message ?? "config dependency hook replay failed");
+	if (payload.stack !== undefined) error.stack = payload.stack;
+	return error;
+};
+
+/**
  * Replays a workspace's `configDependencies` `updateConfig` hooks over the inline
  * catalogs — the opt-in seam that lets hook-injected catalogs participate in
  * assembly.
@@ -320,4 +446,117 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 				return { catalogs: configToEntries(config), releaseAge: releaseAgeOf(config) };
 			}),
 	});
+
+	/**
+	 * The subprocess layer: replays each config dependency's pnpmfile in a `node`
+	 * child process instead of an in-process dynamic `import()`, with identical
+	 * typed semantics to {@link ConfigDependencyHooks.layerLive} — the two are
+	 * drop-in interchangeable.
+	 *
+	 * @remarks
+	 * `layerLive` computes the `import()` path at runtime, and a bundler (rspack,
+	 * for one) compiles a *computed* dynamic import into a context module that
+	 * throws `Cannot find module 'file:///…'` at runtime — so in any bundled
+	 * consumer, a GitHub Action above all, the in-process replay is unreachable.
+	 * This layer keeps every computed load out of the bundle graph: the replay
+	 * program is a **static** string constant passed via argv
+	 * (`node --input-type=module -e <script> <root> <seed> <...names>`), and the
+	 * child process performs the computed imports where no bundler rewrote them.
+	 * A subprocess also keeps config-dependency code out of the consumer's own
+	 * process.
+	 *
+	 * The contract's semantics are unchanged, not the downstream fail-open shape:
+	 * an empty `configDependencies` returns the seed without spawning anything; a
+	 * `..` path segment in a dependency name fails typed **before** any spawn; a
+	 * missing pnpmfile (neither `.mjs` nor `.cjs`) is the one legitimate skip,
+	 * discriminated inside the child by `err.url` equality exactly as
+	 * `layerLive` discriminates in process; any other load failure — a syntax
+	 * error, a throwing top level, an `ERR_MODULE_NOT_FOUND` for a module the
+	 * pnpmfile itself imports — and a hook that throws when called are serialized
+	 * back per-name and surface typed as a `hooks`-source `CatalogAssemblyError`
+	 * naming that dependency. A hook's returned *data* stays tolerantly threaded
+	 * (last well-formed write wins), never fatal. Spawn and transport failures —
+	 * `node` absent, a non-zero exit without a result payload, unparseable
+	 * output — fail typed too, never a defect and never a silent skip.
+	 *
+	 * Catalog folding and normalization stay in the **parent** (the same
+	 * `@pnpm/catalogs`-derived path `layerLive` uses); the child returns only the
+	 * raw threaded config slice, since the script cannot import kit code.
+	 *
+	 * Requires core's `ChildProcessSpawner`, resolved when the layer is built —
+	 * the consumer provides it once at the edge (`@effect/platform-node`'s
+	 * `NodeServices.layer`), the same discharge `@effected/git` uses. Wired by
+	 * `WorkspaceCatalogs.layerWithConfigDependenciesSubprocess` /
+	 * `Workspaces.layerWithConfigDependenciesSubprocess`.
+	 */
+	static readonly layerSubprocess: Layer.Layer<ConfigDependencyHooks, never, ChildProcessSpawner.ChildProcessSpawner> =
+		Layer.effect(
+			ConfigDependencyHooks,
+			Effect.gen(function* () {
+				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+				return {
+					inject: (root, configDependencies, seed) =>
+						Effect.gen(function* () {
+							const names = Object.keys(configDependencies);
+							if (names.length === 0) return { catalogs: seed, releaseAge: {} };
+
+							// Validate every name BEFORE spawning: a `..` segment would escape
+							// `.pnpm-config` inside the child. Fails typed on the same
+							// `hooks`-source path as layerLive — never a silent skip, and no
+							// subprocess ever sees the malicious name.
+							for (const name of names) {
+								if (hasTraversalSegment(name)) {
+									return yield* Effect.fail(
+										new CatalogAssemblyError({
+											source: "hooks",
+											path: name,
+											cause: new Error(`config dependency name has a '..' path segment: ${name}`),
+										}),
+									);
+								}
+							}
+
+							// Root, seed and names travel via argv — never interpolated into the
+							// script, and `ChildProcess.make` spawns without a shell. `Run.jsonLine`
+							// owns the framing: the payload is the last non-empty stdout line —
+							// tolerant of a hook's own console noise — parsed REGARDLESS of the
+							// exit code, since the envelope's `ok` discriminates in-band. No valid
+							// payload (a crash, a non-zero exit with no result, garbage output) is
+							// a mechanism failure, typed, with the exit code and stderr carried as
+							// context on the `CommandOutputError` cause.
+							const command = ChildProcess.make("node", [
+								"--input-type=module",
+								"-e",
+								REPLAY_SCRIPT,
+								root,
+								JSON.stringify(seed),
+								...names,
+							]);
+							const payload = yield* Run.jsonLine(command, ReplayPayload).pipe(
+								Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+								Effect.catch((cause) => Effect.fail(new CatalogAssemblyError({ source: "hooks", path: root, cause }))),
+							);
+
+							// A serialized per-name failure: the child discriminated a real
+							// load/replay failure from the legitimate missing-pnpmfile skip, so
+							// this maps 1:1 onto layerLive's typed error, attribution intact.
+							if (payload.ok === false) {
+								return yield* Effect.fail(
+									new CatalogAssemblyError({
+										source: "hooks",
+										path: payload.name ?? root,
+										cause: replayFailureCause(payload),
+									}),
+								);
+							}
+
+							// The child returned the raw threaded config slice; fold and normalize
+							// in the parent exactly as layerLive does, reading the slice tolerantly
+							// against the seed (a hook's returned data is never fatal).
+							const config = configOf(payload.config, seedToConfig(seed));
+							return { catalogs: configToEntries(config), releaseAge: releaseAgeOf(config) };
+						}),
+				};
+			}),
+		);
 }
