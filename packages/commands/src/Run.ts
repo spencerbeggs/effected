@@ -1,5 +1,5 @@
 import type { Duration, Redacted } from "effect";
-import { Effect, Function as Fn, PlatformError, Schema, Stdio, Stream } from "effect";
+import { Effect, Function as Fn, PlatformError, Result, Schema, Stdio, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { OutputTooLarge, collectBounded } from "./internal/capture.js";
 import { REDACTED, Redaction } from "./Redaction.js";
@@ -391,11 +391,8 @@ const jsonLine = Effect.fn("Run.jsonLine")(function* <A, I>(
 	// missing or unusable, the exit code and captured streams (already redacted
 	// by collectClassified) are the only evidence of what actually went wrong.
 	const context = { exitCode: output.exitCode, stderr: output.stderr, stdout: output.stdout };
-	const line = output.stdout
-		.split(/\r?\n/)
-		.filter((candidate) => candidate.trim().length > 0)
-		.at(-1);
-	if (line === undefined) {
+	const candidates = output.stdout.split(/\r?\n/).filter((candidate) => candidate.trim().length > 0);
+	if (candidates.length === 0) {
 		return yield* Effect.fail(
 			new CommandOutputError({
 				kind: "notJson",
@@ -405,14 +402,34 @@ const jsonLine = Effect.fn("Run.jsonLine")(function* <A, I>(
 			}),
 		);
 	}
-	const parsed = yield* Effect.try({
-		try: () => JSON.parse(line) as unknown,
-		catch: (cause) => new CommandOutputError({ kind: "notJson", command: described.command, cause, ...context }),
-	});
-	return yield* Schema.decodeUnknownEffect(schema)(parsed).pipe(
-		Effect.catch((cause) =>
-			Effect.fail(new CommandOutputError({ kind: "schema", command: described.command, cause, ...context })),
-		),
+	// Scan from the END: the first candidate that both JSON-parses and decodes
+	// under the schema is the payload. The near-miss diagnostics below record
+	// the FIRST failure of each kind encountered by the scan — i.e. the LAST
+	// non-empty line's parse error and the LAST parseable line's decode issue —
+	// because the line nearest the end is the most probable intended payload.
+	let notJsonCause: unknown;
+	let schemaCause: unknown;
+	for (let index = candidates.length - 1; index >= 0; index--) {
+		const candidate = candidates[index];
+		if (candidate === undefined) continue;
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(candidate) as unknown;
+		} catch (cause) {
+			notJsonCause ??= cause;
+			continue;
+		}
+		const decoded = yield* Effect.result(Schema.decodeUnknownEffect(schema)(parsed));
+		if (Result.isSuccess(decoded)) return decoded.success;
+		schemaCause ??= decoded.failure;
+	}
+	// Nothing decoded anywhere. When at least one line parsed as JSON, the
+	// near-miss is a schema drift — report kind "schema" with the last
+	// parseable line's decode failure; otherwise nothing was JSON at all.
+	return yield* Effect.fail(
+		schemaCause !== undefined
+			? new CommandOutputError({ kind: "schema", command: described.command, cause: schemaCause, ...context })
+			: new CommandOutputError({ kind: "notJson", command: described.command, cause: notJsonCause, ...context }),
 	);
 });
 
@@ -555,38 +572,54 @@ export class Run {
 	 * {@link Run.text} and {@link Run.lines}.
 	 *
 	 * This parses the **whole** of stdout and requires a zero exit. For a
-	 * protocol payload framed as the final stdout line — tolerant of noise
-	 * before it and of a non-zero exit — use {@link Run.jsonLine} instead.
+	 * protocol payload located by scanning stdout lines from the end — tolerant
+	 * of noise around it and of a non-zero exit — use {@link Run.jsonLine}
+	 * instead.
 	 */
 	static readonly json = json;
 
 	/**
-	 * Runs `command`, parses the **last non-empty stdout line** as JSON and
-	 * decodes it against `schema` — the framing variant of {@link Run.json},
-	 * for a child that reports through a single JSON protocol payload on its
-	 * final line.
+	 * Runs `command` and, **scanning stdout lines from the end**, resolves with
+	 * the first line that both parses as JSON and decodes against `schema` —
+	 * the framing variant of {@link Run.json}, for a child that reports through
+	 * a single JSON protocol payload near the end of its output.
 	 *
 	 * @remarks
-	 * The framing tolerates noise **before** the payload (a subprocess-loaded
-	 * hook's own `console.log`, a tool's warnings) and trailing newlines: lines
-	 * are split on `\r?\n` and whitespace-only lines are dropped before the last
-	 * one is taken. The tolerance is positional, not volumetric: the whole of
-	 * stdout is still captured under {@link RunOptions.maxOutputBytes} (default
+	 * The framing tolerates noise on **both sides** of the payload: noise before
+	 * it (a subprocess-loaded hook's own `console.log`, a tool's warnings) and
+	 * noise after it (a hook logging from `process.on("exit", ...)` fires after
+	 * the payload has flushed — the trigger for widening the old "last non-empty
+	 * line must decode" contract, spencerbeggs/effected#292). Lines are split on
+	 * `\r?\n`, whitespace-only lines are dropped, and the scan runs from the last
+	 * line backwards until one decodes. The tolerance is positional, not
+	 * volumetric: the whole of stdout is still captured under
+	 * {@link RunOptions.maxOutputBytes} (default
 	 * {@link DEFAULT_MAX_OUTPUT_BYTES}, 16 MiB), so a child whose noise exceeds
-	 * the ceiling fails typed as `"tooLarge"` before the last line is ever
-	 * examined — raise the ceiling for a child known to be loud in volume.
+	 * the ceiling fails typed as `"tooLarge"` before any line is examined —
+	 * raise the ceiling for a child known to be loud in volume.
+	 *
+	 * The scan's consequence: when **multiple** lines decode under `schema`, the
+	 * **last** one wins. A child must therefore never emit two schema-valid
+	 * lines, and a consumer schema should be shaped so an accidental log line
+	 * cannot satisfy it — a discriminated envelope with a required literal field
+	 * (`ok: true | false`, the shape `@effected/workspaces`' `ReplayPayload`
+	 * uses) rather than a permissive record a stray `console.log(someObject)`
+	 * might match.
 	 *
 	 * Unlike {@link Run.json}, this parses **regardless of the exit code** — a
 	 * deliberate posture, not an oversight. A protocol payload discriminates
 	 * success in-band (its own `ok` field, its own error shape), so the payload
 	 * outranks the exit code: a child that crashes *after* flushing its payload
 	 * still reported, and a caller that wants exit-code semantics has
-	 * {@link Run.json}. When no usable payload arrives — no non-empty line, a
-	 * last line that is not JSON (`"notJson"`), or JSON that does not decode
-	 * (`"schema"`) — the typed {@link CommandOutputError} carries the exit code
-	 * and both captured streams (redacted) as context, so the failure is
-	 * diagnosable without re-running. A spawn failure or an opted-in timeout
-	 * still fails with {@link CommandFailedError}.
+	 * {@link Run.json}. When no line decodes anywhere, the typed
+	 * {@link CommandOutputError} carries the exit code and both captured streams
+	 * (redacted) as context, so the failure is diagnosable without re-running.
+	 * Its `kind` preserves the near-miss diagnostic: `"schema"` when at least
+	 * one line parsed as JSON but none decoded — with the **last parseable
+	 * line's** decode failure as `cause`, that line being the most probable
+	 * intended payload — and `"notJson"` only when no non-empty line was JSON at
+	 * all (carrying the last non-empty line's parse error). A spawn failure or
+	 * an opted-in timeout still fails with {@link CommandFailedError}.
 	 */
 	static readonly jsonLine = jsonLine;
 

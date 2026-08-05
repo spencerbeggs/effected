@@ -109,18 +109,25 @@ column). Parse that kind of output from `Run.collect`'s untrimmed
 
 ### `Run.jsonLine` is framing, not a lenient `Run.json`
 
-It parses the **last non-empty stdout line** (split on `\r?\n`, whitespace-only
-lines dropped), so a child's own `console.log` noise before the payload is
-tolerated — and it parses **regardless of the exit code**, because a protocol
-payload discriminates success in-band (its own `ok` field) and outranks the
-code: a child that crashed *after* flushing still reported. Callers who want
-exit-code semantics over whole-stdout JSON use `Run.json`; the two are not
-interchangeable. No usable payload — no non-empty line, a last line that is not
-JSON (`"notJson"`), JSON that fails decode (`"schema"`) — is a typed
-`CommandOutputError` carrying the exit code and both redacted streams.
-`@effected/workspaces`' `ConfigDependencyHooks.layerSubprocess` is the in-kit
-consumer; it deleted a hand-rolled copy of this framing, so **do not re-hand-roll
-last-line parsing** at a call site.
+Scanning stdout lines from the **end** (split on `\r?\n`, whitespace-only lines
+dropped), it takes the first line that both JSON-parses and decodes under the
+schema — so a child's own `console.log` noise is tolerated on **both** sides of
+the payload (#292 widened the old "last non-empty line must decode" contract
+after an exit-hook log line displaced a consumer's payload). The consequence:
+if multiple lines decode, the **last** wins — a child must not emit two
+schema-valid lines, and a consumer envelope should be discriminated (a required
+`ok` literal) so an accidental log line cannot satisfy it. It parses
+**regardless of the exit code**, because a protocol payload discriminates
+success in-band (its own `ok` field) and outranks the code: a child that
+crashed *after* flushing still reported. Callers who want exit-code semantics
+over whole-stdout JSON use `Run.json`; the two are not interchangeable. Nothing
+decoding anywhere is a typed `CommandOutputError` carrying the exit code and
+both redacted streams — kind `"schema"` with the last JSON-parseable line's
+decode issue as `cause` when at least one line parsed, `"notJson"` only when no
+line anywhere was JSON. `@effected/workspaces`'
+`ConfigDependencyHooks.layerSubprocess` is the in-kit consumer; it deleted a
+hand-rolled copy of this framing, so **do not re-hand-roll last-line parsing**
+at a call site.
 
 ### Absence is a spawn failure, never an exit code
 
@@ -237,7 +244,7 @@ requirement.
 
 ## Testing
 
-141 tests in `__test__/`: 131 unit (Redaction 17, Run 46, Retry 12, LocalExec
+147 tests in `__test__/`: 137 unit (Redaction 17, Run 52, Retry 12, LocalExec
 14, ToolDiscovery 33, ScriptedSpawner 9) and 10 e2e. `@effect/vitest`,
 `it.effect`, `assert.*` — never `expect`.
 
