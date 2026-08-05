@@ -11,7 +11,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ScriptedSpawner } from "@effected/commands";
 import { CatalogAssemblyError } from "@effected/npm";
-import { Effect, Layer } from "effect";
+import { Effect, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import { ConfigDependencyHooks } from "../src/index.js";
 
 const ROOT = "/repo";
@@ -120,6 +121,24 @@ describe("ConfigDependencyHooks.layerSubprocess — transport failures are typed
 			const error = yield* Effect.flip(hooks.inject(ROOT, { dep: "1.0.0" }, SEED));
 			assert.instanceOf(error, CatalogAssemblyError);
 			assert.strictEqual(error.source, "hooks");
+		}).pipe(Effect.provide(layer));
+	});
+
+	it.effect("a replay that never settles fails typed at the thirty-second ceiling", () => {
+		// A pnpmfile that loops or awaits forever presents as a child that never
+		// exits: `hang: true` makes the scripted handle's exitCode never resolve.
+		// The replay's hard-coded timeout must kill it and surface through the
+		// same typed `hooks`-source path as any other transport failure — never a
+		// hang of the memoized assemble pass, never a defect.
+		const { layer } = harness(() => ({ hang: true }));
+		return Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			const fiber = yield* Effect.forkChild(Effect.flip(hooks.inject(ROOT, { dep: "1.0.0" }, SEED)));
+			yield* TestClock.adjust("31 seconds");
+			const error = yield* Fiber.join(fiber);
+			assert.instanceOf(error, CatalogAssemblyError);
+			assert.strictEqual(error.source, "hooks");
+			assert.strictEqual(error.path, ROOT);
 		}).pipe(Effect.provide(layer));
 	});
 

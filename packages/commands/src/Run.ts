@@ -570,7 +570,11 @@ export class Run {
 	 * The framing tolerates noise **before** the payload (a subprocess-loaded
 	 * hook's own `console.log`, a tool's warnings) and trailing newlines: lines
 	 * are split on `\r?\n` and whitespace-only lines are dropped before the last
-	 * one is taken.
+	 * one is taken. The tolerance is positional, not volumetric: the whole of
+	 * stdout is still captured under {@link RunOptions.maxOutputBytes} (default
+	 * {@link DEFAULT_MAX_OUTPUT_BYTES}, 16 MiB), so a child whose noise exceeds
+	 * the ceiling fails typed as `"tooLarge"` before the last line is ever
+	 * examined — raise the ceiling for a child known to be loud in volume.
 	 *
 	 * Unlike {@link Run.json}, this parses **regardless of the exit code** — a
 	 * deliberate posture, not an oversight. A protocol payload discriminates

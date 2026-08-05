@@ -22,7 +22,7 @@ import { pathToFileURL } from "node:url";
 import { Run } from "@effected/commands";
 import type { PartialReleaseAgeGate } from "@effected/npm";
 import { CatalogAssemblyError } from "@effected/npm";
-import { Context, Effect, Layer, Predicate, Result, Schema } from "effect";
+import { Context, Duration, Effect, Layer, Predicate, Result, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import type { CatalogEntries } from "./internal/catalogs.js";
 import { normalize } from "./internal/catalogs.js";
@@ -313,6 +313,17 @@ process.stdout.write("\\n" + JSON.stringify(payload) + "\\n", () => process.exit
 `;
 
 /**
+ * The ceiling on one subprocess replay. A config dependency's `updateConfig`
+ * reads and rewrites a config object — no install work, no network — so thirty
+ * seconds is generous. Without a ceiling a pnpmfile that loops or awaits a
+ * promise that never settles hangs `inject`, and through it the one memoized
+ * {@link WorkspaceCatalogs} assemble pass every catalog read blocks on. Expiry
+ * kills the child (`Run` scopes it) and surfaces as a `CommandFailedError`
+ * through the same typed transport-failure path as any other mechanism failure.
+ */
+const REPLAY_TIMEOUT = Duration.seconds(30);
+
+/**
  * The subprocess protocol payload — the child's final stdout line, framed and
  * parsed by `Run.jsonLine`. The envelope is strict (a payload without a usable
  * `ok` discriminant is a mechanism failure, typed); the `config` slice inside a
@@ -479,6 +490,15 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * `node` absent, a non-zero exit without a result payload, unparseable
 	 * output — fail typed too, never a defect and never a silent skip.
 	 *
+	 * Two bounds this layer imposes that `layerLive` cannot: the replay is
+	 * given thirty seconds (a pnpmfile that loops or awaits forever fails typed
+	 * instead of hanging the memoized assemble pass — a subprocess is killable,
+	 * while `layerLive`'s in-process synchronous hook call is not interruptible
+	 * by any means, so the asymmetry is inherent, not a parity violation), and
+	 * the child's stdout is captured under `Run.jsonLine`'s 16 MiB default
+	 * ceiling (a hook that logs more than that fails typed as `tooLarge`, where
+	 * `layerLive` — which captures nothing — would succeed).
+	 *
 	 * Catalog folding and normalization stay in the **parent** (the same
 	 * `@pnpm/catalogs`-derived path `layerLive` uses); the child returns only the
 	 * raw threaded config slice, since the script cannot import kit code.
@@ -532,7 +552,12 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 								JSON.stringify(seed),
 								...names,
 							]);
-							const payload = yield* Run.jsonLine(command, ReplayPayload).pipe(
+							// The replay executes arbitrary config-dependency code; bound it, or a
+							// spinning pnpmfile hangs catalog assembly for the whole program. On
+							// expiry `Run` kills the child and fails with a `CommandFailedError`,
+							// which the catch below maps onto the same typed `hooks` failure as
+							// any other transport failure.
+							const payload = yield* Run.jsonLine(command, ReplayPayload, { timeout: REPLAY_TIMEOUT }).pipe(
 								Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 								Effect.catch((cause) => Effect.fail(new CatalogAssemblyError({ source: "hooks", path: root, cause }))),
 							);

@@ -41,6 +41,8 @@ const NESTED_DEP_NAME = "cfg-fixture-nested-missing";
 const SYNTAX_DEP_NAME = "cfg-fixture-syntax-error";
 // A config dependency whose hook throws when CALLED.
 const THROWING_DEP_NAME = "cfg-fixture-throwing";
+// A config dependency whose hook returns a MALFORMED value for every key.
+const MALFORMED_DEP_NAME = "cfg-fixture-malformed";
 const AGE_4320_DEP_NAME = "cfg-fixture-age-4320";
 const AGE_1440_DEP_NAME = "cfg-fixture-age-1440";
 const SEED = { default: { effect: "^4.0.0" } } as const;
@@ -85,6 +87,14 @@ beforeAll(() => {
 	writeFileSync(
 		join(throwingDir, "pnpmfile.mjs"),
 		'export const hooks = {\n\tupdateConfig() {\n\t\tthrow new Error("hook exploded");\n\t},\n};\n',
+	);
+	// A pnpmfile whose hook returns garbage for EVERY config key — the bad slice
+	// both layers must thread tolerantly, and identically.
+	const malformedDir = configDepDir(MALFORMED_DEP_NAME);
+	mkdirSync(malformedDir, { recursive: true });
+	writeFileSync(
+		join(malformedDir, "pnpmfile.mjs"),
+		'export const hooks = {\n\tupdateConfig() {\n\t\treturn { catalog: 42, catalogs: ["nope"], minimumReleaseAge: "soon", minimumReleaseAgeExclude: "nope" };\n\t},\n};\n',
 	);
 	// Config dependencies whose hooks set pnpm's release-age keys.
 	const age4320Dir = configDepDir(AGE_4320_DEP_NAME);
@@ -220,7 +230,11 @@ describe("ConfigDependencyHooks.layerSubprocess — load/replay failures name th
 
 describe("ConfigDependencyHooks.layerSubprocess — drop-in interchangeable with layerLive", () => {
 	it.effect("the two layers produce identical HookInjections for the same root and dependencies", () => {
-		const deps = { [DEP_NAME]: "1.0.0", [AGE_1440_DEP_NAME]: "1.0.0" };
+		// The malformed hook sits BETWEEN two well-formed ones: both layers must
+		// thread its garbage tolerantly (each key falls back to the PRIOR threaded
+		// value, not the seed), through their separate configOf/finiteNumberOr/
+		// stringArrayOr copies — the same bad slice exercised on both sides.
+		const deps = { [DEP_NAME]: "1.0.0", [MALFORMED_DEP_NAME]: "1.0.0", [AGE_1440_DEP_NAME]: "1.0.0" };
 		const run = (layer: Layer.Layer<ConfigDependencyHooks>) =>
 			Effect.gen(function* () {
 				const hooks = yield* ConfigDependencyHooks;
@@ -230,6 +244,12 @@ describe("ConfigDependencyHooks.layerSubprocess — drop-in interchangeable with
 			const inProcess = yield* run(ConfigDependencyHooks.layerLive);
 			const subprocess = yield* run(HooksSubprocess);
 			assert.deepStrictEqual(subprocess, inProcess);
+			// The parity is over a WELL-FORMED outcome, not shared garbage: the
+			// first hook's catalog injections survived the malformed rewrite …
+			assert.strictEqual(subprocess.catalogs.default?.["hooked-dep"], "^9.9.9");
+			assert.strictEqual(subprocess.catalogs.extra?.["extra-dep"], "^1.2.3");
+			// … and the LAST hook's release-age keys landed on the threaded object.
+			assert.deepStrictEqual(subprocess.releaseAge, { ageMinutes: 1440, exclude: ["@scope/b"] });
 		});
 	});
 });
