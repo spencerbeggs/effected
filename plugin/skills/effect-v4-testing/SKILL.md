@@ -97,7 +97,8 @@ describe("Jsonc", () => {
   | `it(..., () => Effect.runPromise(p))` | yes | correct result, execution laundered |
   | `it(..., () => p)` | **no** | always green, no assertion ever evaluated |
 
-  Both are `it.effect`. This shipped in `@effected/schemastore` and was caught
+  The fix in both directions is `it.effect`. This shipped in
+  `@effected/schemastore` and was caught
   only in review — and the vacuous test was the one cited as proof to a
   downstream consumer who had reported the very finding it failed to pin. A
   false green does not merely miss a regression; it gets used as evidence. The

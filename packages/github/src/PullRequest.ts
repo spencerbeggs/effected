@@ -102,13 +102,18 @@ export interface PullRequestShape {
 	 * @remarks
 	 * `head` accepts **either** the qualified `owner:ref` GitHub's filter wants
 	 * or a bare `ref`, which is qualified with the current repo's owner on the
-	 * way out. That matters because `PullRequestInfo.head` is the *bare*
-	 * ref (`raw.head.ref`), so feeding this method its own projection's value
-	 * back in is correct — it is only the raw REST route that would silently
-	 * return nothing for an unqualified ref. A consumer filtering the full list
-	 * client-side to work around that no longer needs to.
+	 * way out. So for a pull request opened **from the current repository**,
+	 * feeding this method `PullRequestInfo.head` — which is the bare
+	 * `raw.head.ref` — round-trips correctly, and a consumer filtering the full
+	 * list client-side because the raw REST route ignores an unqualified ref no
+	 * longer needs to.
 	 *
-	 * Pass a qualified `owner:ref` explicitly to search across a fork.
+	 * **The round trip does not hold for a fork-originated pull request.**
+	 * `PullRequestInfo` projects only the ref and drops the source owner, so
+	 * qualifying it here prefixes the *current* repo's owner and names a branch
+	 * in the wrong account — the filter then matches nothing, silently. When the
+	 * head may live in a fork, pass a qualified `owner:ref` built from the source
+	 * owner rather than from anything this projection carries.
 	 */
 	readonly list: (options?: {
 		readonly head?: string | undefined;

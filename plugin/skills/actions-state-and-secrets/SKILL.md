@@ -46,7 +46,7 @@ For general Effect v4 service/layer shape, typed errors, `Cause`, and `Scope`, s
   Schema.RedactedFromValue(Schema.String)  encode -> "s3cret"   (the real value)
   ```
 
-  `Redacted`'s own `toString`/`toJSON` are what emit the sentinel, so **anything** that serializes a `Redacted` — `JSON.stringify`, a log line, a state field — gets `<redacted>` rather than the secret. That is the right default and the reason it exists. But it means `Schema.Redacted` is the wrong schema for a value you intend to read back: use **`Schema.RedactedFromValue`**, whose encoded form *is* the underlying value (and which takes `disallowEncode` when you want the write to fail loudly instead). In an Actions context the read-back path is `ActionState.saveSecret`, which masks at the write. One consumer lost real time to a token-theft theory before finding the sentinel was simply the encoder's output.
+  `Redacted`'s own `toString`/`toJSON` are what emit the sentinel, so **anything** that serializes a `Redacted` — `JSON.stringify`, a log line, a state field — gets `<redacted>` rather than the secret. That is the right default and the reason it exists. But it means `Schema.Redacted` is the wrong schema for a value you intend to read back: use **`Schema.RedactedFromValue`**, whose encoded form *is* the underlying value (and which takes `disallowEncode` when you want the write to fail loudly instead). In an Actions context that round trip is `ActionState.saveSecret` on the way in — it masks before persisting — and `ActionState.get` / `getOptional` on the way back out. One consumer lost real time to a token-theft theory before finding the sentinel was simply the encoder's output.
 
 ## Additional resources
 
