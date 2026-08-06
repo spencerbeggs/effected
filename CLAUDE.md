@@ -142,7 +142,7 @@ Why these hold (the `autoInstallPeers` mechanics, the `lock` vs `interop` catalo
 
 All commits require conventional commit format (`feat`, `fix`, `chore`, ...) and a DCO signoff (`Signed-off-by: Name <email>`).
 
-Commit bodies are **plain prose** — no backticks, bullets, or code spans (`silk/body-no-markdown`). `design:` is not a valid commit type.
+Commit bodies allow dash bullets (the preferred shape) but no markdown headers, numbered lists, code fences, links, or more than two inline-code spans (`silk/body-no-markdown`). `design:` is not a valid commit type.
 
 ## Testing
 

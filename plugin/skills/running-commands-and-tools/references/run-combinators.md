@@ -6,7 +6,7 @@ output, tuning `RunOptions`, or classifying a `CommandFailedError`/
 
 ## The combinator table
 
-All nine combinators take a core `ChildProcess.Command` plus optional
+All ten combinators take a core `ChildProcess.Command` plus optional
 `RunOptions`, and require `ChildProcessSpawner` in `R` (`collectTee`
 additionally requires `Stdio`):
 
@@ -17,6 +17,7 @@ additionally requires `Stdio`):
 | `Run.text` | trimmed stdout | typed `CommandFailedError` |
 | `Run.lines` | trimmed, non-empty stdout lines | typed `CommandFailedError` |
 | `Run.json` | stdout parsed as JSON and schema-decoded | typed `CommandFailedError` |
+| `Run.jsonLine` | the LAST stdout line that both JSON-parses and schema-decodes | a **result** — it decodes regardless of the exit code |
 | `Run.exitCode` | just the exit code | a **result** |
 | `Run.succeeds` | did it run and exit zero? | never fails — answers `false` |
 | `Run.stream` | decoded stdout lines as they arrive | typed failure on the stream |
@@ -27,13 +28,36 @@ If a consumer still writes `JSON.parse(output.stdout) as X`, reach for
 a `"notJson"` failure from a `"schema"` failure rather than collapsing both
 into one `reason` string.
 
-## Trap 1 — a non-zero exit is a RESULT, not an error, for exactly three combinators
+## Trap 1 — a non-zero exit is a RESULT, not an error, for exactly four combinators
 
-`collect`, `exitCode` and `succeeds` report the exit code — this is core's
-own contract: the spawner's exit-code member succeeds with any code. `text`,
-`lines` and `json` treat a non-zero exit as a typed `CommandFailedError`
-(`kind: "nonZero"`) instead. The split is deliberate — do not "fix" either
-half to match the other.
+`collect`, `exitCode`, `succeeds` and `jsonLine` report the exit code — this
+is core's own contract: the spawner's exit-code member succeeds with any code.
+`text`, `lines` and `json` treat a non-zero exit as a typed
+`CommandFailedError` (`kind: "nonZero"`) instead. The split is deliberate — do
+not "fix" either half to match the other.
+
+## Trap 1b — `Run.jsonLine` is FRAMING, not a lenient `Run.json`
+
+`jsonLine` splits stdout on `\r?\n`, drops whitespace-only lines, scans **from
+the end**, and takes the first line that both JSON-parses and decodes under the
+schema. That tolerates a child's own logging on **both** sides of the payload —
+a banner before it and an exit-hook line after it. Three consequences:
+
+- **If several lines decode, the last one wins.** A child must not emit two
+  schema-valid lines, and a protocol envelope should be discriminated (a
+  required `ok` literal) so an accidental log line cannot satisfy it.
+- **It parses regardless of the exit code**, because a protocol payload
+  discriminates success in-band and outranks the code: a child that crashed
+  *after* flushing its result still reported. Want exit-code semantics over
+  whole-stdout JSON? That is `Run.json`; the two are not interchangeable.
+- **Nothing decoding anywhere is a typed `CommandOutputError`** carrying the
+  exit code and both redacted streams — `kind: "schema"` with the last
+  JSON-parseable line's decode issue as `cause` when at least one line parsed,
+  `"notJson"` only when no line anywhere was JSON.
+
+`@effected/workspaces`' `ConfigDependencyHooks.layerSubprocess` is the in-kit
+consumer, and adopting `jsonLine` deleted a hand-rolled copy of this framing —
+**do not re-hand-roll last-line parsing at a call site.**
 
 ## Trap 2 — collecting streams sequentially deadlocks
 
@@ -131,7 +155,10 @@ command could not be run, or ran and failed"; its `.notFound` getter is the
 structural "tool is not installed" signal, read by both `ToolDiscovery` and
 `Retry`. `CommandOutputError` (`kind: "notJson" | "schema" | "tooLarge"`) is
 "the command ran, but its output is unusable" — a genuinely separate
-condition, because the process itself succeeded. Both carry `command`/`args`
+condition, because the process itself succeeded. It also carries **optional
+`exitCode` / `stderr` / `stdout` context, already redacted**, filled in by the
+combinators that parse independently of the exit code (`jsonLine`), so a bad
+payload is diagnosable without re-running the command. Both carry `command`/`args`
 **redacted** and a tail-truncated `message` — tools write warnings first and
 the real error last, so truncating from the head, not the tail, keeps the
 useful part.

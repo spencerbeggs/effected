@@ -17,6 +17,7 @@ zero `@effected/*` edges, zero `node:` imports.
 | Construct | Import | Reach for it when |
 | --- | --- | --- |
 | `Run.collect`, `.collectTee`, `.text`, `.lines`, `.json`, `.exitCode`, `.succeeds`, `.stream`, `.detach` | `import { Run } from "@effected/commands"` | Running a core `ChildProcess.Command` and capturing typed output |
+| `Run.jsonLine` | `@effected/commands` | Framing ONE schema-decoded JSON payload line out of a child's otherwise noisy stdout (a subprocess protocol envelope) |
 | `ToolDiscovery`, `Tool.named` | `@effected/commands` | Checking whether a CLI tool is installed, and which copy (local vs global) to run |
 | `LocalExec`, `ExecContext` | `@effected/commands` | Prefixing a command through the project's local launcher (`npx`/`pnpm exec`/`yarn exec`/`bun x`) |
 | `Redaction` | `@effected/commands` | Scrubbing a secret from argv or captured stdout/stderr |
@@ -33,10 +34,21 @@ zero `@effected/*` edges, zero `node:` imports.
   `effect/unstable/process` already declares the vocabulary, and `Run` is
   free functions for exactly this reason: core's spawner already *is* the
   runner service.
-- **A non-zero exit is a result for `collect`/`exitCode`/`succeeds`, a
-  typed error for `text`/`lines`/`json`.** The split mirrors core's own
-  contract and is deliberate — do not "fix" either half to match the
-  other.
+- **A non-zero exit is a result for `collect`/`exitCode`/`succeeds`/
+  `jsonLine`, a typed error for `text`/`lines`/`json`.** The split mirrors
+  core's own contract and is deliberate — do not "fix" either half to
+  match the other.
+- **A JSON protocol payload from a child goes through `Run.jsonLine`, never
+  a hand-rolled last-line parse.** It scans stdout lines from the **end**
+  and takes the first that both JSON-parses and schema-decodes, so a
+  child's own `console.log` noise is tolerated on *both* sides of the
+  payload. Two consequences to design for: if several lines decode, the
+  **last** wins, so give the envelope a required discriminant (an `ok`
+  literal) that an accidental log line cannot satisfy; and it parses
+  **regardless of the exit code**, because an in-band `ok` field outranks
+  the code — a child that crashed after flushing still reported. Whole-
+  stdout JSON with exit-code semantics is `Run.json`; the two are not
+  interchangeable.
 - **Add env vars on top of the parent environment through
   `Run.extendEnv`, never a bare `setEnv`.** A bare `setEnv` replaces the
   child's whole environment (no `PATH`, no `HOME`) unless `extendEnv` is

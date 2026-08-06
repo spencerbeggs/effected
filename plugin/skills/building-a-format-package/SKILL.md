@@ -47,6 +47,34 @@ member's module graph, silently. This is the config-file codec rule
 and it recurs in every format package that offers per-format variants
 (markdown's frontmatter codecs).
 
+### A format module INSIDE an existing package may collapse the surface
+
+Not every format earns a package. When a format exists only to serve one host
+package — `@effected/git`'s `GitConfig`/`Gitmodules` is the precedent — build it
+as a pure module set inside that package and collapse the canonical modules
+that no longer pay for themselves. What held and what folded there:
+
+- **Kept, always**: the pure document facade (parse / lossless `stringify`
+  that is byte-for-byte identity on an unmodified document / surgical edits),
+  the typed parse-vs-edit error split, `parse` derived from `parseResult` per
+  Result-parity, and the `internal/` cycle firewall — the engine emits raw
+  records plus diagnostics and never imports the public classes.
+- **Folded**: `Document`, `Edit` and `Diagnostic` collapsed into the one
+  concept module (`GitConfig.ts` owns the document, the splice-based edit
+  statics and `GitConfigDiagnostic` together), with the scanner and splice
+  primitives split out into `internal/`. Nothing is lost because there is no
+  second consumer to parity against, and the parity contract's whole point —
+  a consumer moving between two format packages meets the same field names —
+  does not apply to a module only one package imports.
+- **The typed view rides on top as its own module** (`Gitmodules.ts`), whose
+  mutation statics compile into the document model's surgical edits, so the
+  file's own formatting survives an edit.
+
+Promote it to a package the moment a second package needs it — that is the
+trigger, not size. Until then, the collapse is the correct shape, not a
+shortcut, and this paragraph exists so the next such build does not re-derive
+it from `@effected/git`'s source.
+
 ## Engine origin: own it (R1)
 
 Pure and boundary packages take **no external runtime dependency**
