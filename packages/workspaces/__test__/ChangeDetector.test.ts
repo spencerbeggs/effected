@@ -34,40 +34,19 @@ type WorkingChanges = (
 /**
  * A `Git` stub with only the two methods `ChangeDetector` exercises supplied;
  * every other method fails loudly as a defect if the detector ever reaches it,
- * so the test proves no repository is touched. `Layer.succeed(Git, …)` — the
- * seam git.md documents for change-detection consumers.
+ * so the test proves no repository is touched. `Git.layerTest` — the shipped
+ * double git.md documents for change-detection consumers.
  */
 const stubGit = (impl: {
 	readonly changedFiles?: ChangedFiles;
 	readonly workingChanges?: WorkingChanges;
 }): Layer.Layer<Git> =>
-	Layer.succeed(Git, {
+	// Git.layerTest fills every unstubbed method with a defect naming itself,
+	// so the test still proves no repository is touched — without this file
+	// re-enumerating (and drifting from) the full GitShape surface.
+	Git.layerTest({
 		changedFiles: impl.changedFiles ?? (() => Effect.succeed([])),
 		workingChanges: impl.workingChanges ?? (() => Effect.succeed([])),
-		show: () => Effect.die("Git.show not stubbed"),
-		lsTree: () => Effect.die("Git.lsTree not stubbed"),
-		refExists: () => Effect.die("Git.refExists not stubbed"),
-		mergeBase: () => Effect.die("Git.mergeBase not stubbed"),
-		revParse: () => Effect.die("Git.revParse not stubbed"),
-		checkout: () => Effect.die("Git.checkout not stubbed"),
-		nameStatus: () => Effect.die("Git.nameStatus not stubbed"),
-		unstagedChanges: () => Effect.die("Git.unstagedChanges not stubbed"),
-		stagedChanges: () => Effect.die("Git.stagedChanges not stubbed"),
-		untrackedFiles: () => Effect.die("Git.untrackedFiles not stubbed"),
-		defaultBranch: () => Effect.die("Git.defaultBranch not stubbed"),
-		currentBranch: () => Effect.die("Git.currentBranch not stubbed"),
-		repoRoot: () => Effect.die("Git.repoRoot not stubbed"),
-		commitInfo: () => Effect.die("Git.commitInfo not stubbed"),
-		configGet: () => Effect.die("Git.configGet not stubbed"),
-		remoteUrl: () => Effect.die("Git.remoteUrl not stubbed"),
-		status: () => Effect.die("Git.status not stubbed"),
-		fetch: () => Effect.die("Git.fetch not stubbed"),
-		fetchAny: () => Effect.die("Git.fetchAny not stubbed"),
-		submoduleUpdate: () => Effect.die("Git.submoduleUpdate not stubbed"),
-		submoduleAdd: () => Effect.die("Git.submoduleAdd not stubbed"),
-		sparseCheckoutSet: () => Effect.die("Git.sparseCheckoutSet not stubbed"),
-		configSet: () => Effect.die("Git.configSet not stubbed"),
-		add: () => Effect.die("Git.add not stubbed"),
 	});
 
 const detectorOver = (git: Layer.Layer<Git>) => {

@@ -9,14 +9,41 @@
  */
 
 export {
+	BranchEntry,
 	CommitInfo,
+	ConfigListEntry,
+	DirtyWorktreeError,
 	Git,
 	GitCommandError,
 	type GitShape,
+	LsFilesEntry,
+	LsRemoteEntry,
 	LsTreeEntry,
+	MergeConflictError,
 	NameStatusEntry,
+	NonFastForwardError,
 	NotARepositoryError,
+	RefEntry,
+	StashEntry,
 	StatusEntry,
+	type StatusRenderOptions,
+	SubmoduleStatusEntry,
 	UnknownRefError,
+	WorktreeEntry,
 } from "./Git.js";
-export { GitCommand } from "./GitCommand.js";
+export { GitCommand, type GitInvocation } from "./GitCommand.js";
+export {
+	GitConfig,
+	GitConfigDiagnostic,
+	GitConfigEditError,
+	GitConfigEntry,
+	GitConfigInclude,
+	GitConfigParseError,
+	GitConfigSection,
+} from "./GitConfig.js";
+export {
+	Gitmodules,
+	GitmodulesDecodeError,
+	GitmodulesEntry,
+	type GitmodulesParseError,
+} from "./Gitmodules.js";

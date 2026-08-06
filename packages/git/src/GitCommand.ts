@@ -1,8 +1,64 @@
+import { Stream } from "effect";
 import { ChildProcess } from "effect/unstable/process";
 
 /**
- * Builds a `git` `ChildProcess.StandardCommand` with the argv this package
- * classifies against.
+ * A pure `git` invocation: the spawnable command plus the diagnostic argv the
+ * error taxonomy is allowed to persist.
+ *
+ * @remarks
+ * `command.args` holds the raw argv git actually receives; `redactedArgs` is
+ * the same argv with every sensitive positional masked — a config value
+ * replaced by `<redacted>` entirely, and a URL's embedded userinfo (an
+ * `https://user:token@host/...` credential) replaced by `<redacted>@`. The
+ * redaction mask lives here, on the pure constructor, because the
+ * constructor is the one place that knows which positionals are sensitive;
+ * the `Git` service's `classify` step persists ONLY `redactedArgs` into
+ * `GitCommandError.args` and `GitCommandError.message`, so raw argv never
+ * survives into an error value. For a constructor with no sensitive
+ * positionals the two argvs are element-wise identical.
+ *
+ * @public
+ */
+export interface GitInvocation {
+	/** The spawnable, cwd-less command carrying the raw argv. */
+	readonly command: ChildProcess.StandardCommand;
+	/** The argv with sensitive positionals masked — the only argv diagnostics may persist. */
+	readonly redactedArgs: ReadonlyArray<string>;
+}
+
+/** The mask every whole-value sensitive positional is replaced with. */
+const REDACTED = "<redacted>";
+
+/**
+ * One argv segment: a plain string, or a sensitive positional tagged with the
+ * mask to apply in `redactedArgs` — `"value"` replaces the whole segment,
+ * `"url"` masks only an embedded `scheme://userinfo@` credential.
+ */
+type GitArg = string | { readonly redact: "value" | "url"; readonly value: string };
+
+// Tags a whole-value sensitive positional (a config value that may be a secret).
+const secretValue = (value: string): GitArg => ({ redact: "value", value });
+
+// Tags a URL positional whose embedded userinfo (if any) must be masked.
+const secretUrl = (value: string): GitArg => ({ redact: "url", value });
+
+/**
+ * Masks the userinfo component of a URL (`scheme://user:token@host/...` →
+ * `scheme://<redacted>@host/...`). A value carrying no embedded userinfo — a
+ * remote name, a credential-free URL, an scp-style `host:path` — passes
+ * through untouched, so the common case stays fully debuggable.
+ *
+ * The userinfo match is greedy (`[^/]*@` — everything through the LAST `@`
+ * before the first path slash): URL authorities split at the last `@`, so a
+ * password containing a literal `@` (`user:p\@ss\@host/...`) must be
+ * consumed whole or its tail would survive into `redactedArgs`.
+ */
+const redactUrlUserinfo = (value: string): string =>
+	value.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/]*@/i, `$1${REDACTED}@`);
+
+/**
+ * Builds a `git` {@link GitInvocation} with the argv this package classifies
+ * against.
  *
  * @remarks
  * `LC_ALL=C` is pinned on every invocation because git's stderr
@@ -18,55 +74,72 @@ import { ChildProcess } from "effect/unstable/process";
  * the working directory per invocation via `ChildProcess.setCwd`, which
  * returns a new command and leaves this one unchanged.
  */
-const git = (args: ReadonlyArray<string>): ChildProcess.StandardCommand =>
-	ChildProcess.make("git", args, { env: { LC_ALL: "C" }, extendEnv: true });
+const git = (args: ReadonlyArray<GitArg>, stdin?: string): GitInvocation => {
+	const raw = args.map((arg) => (typeof arg === "string" ? arg : arg.value));
+	const redactedArgs = args.map((arg) =>
+		typeof arg === "string" ? arg : arg.redact === "value" ? REDACTED : redactUrlUserinfo(arg.value),
+	);
+	return {
+		command: ChildProcess.make("git", raw, {
+			env: { LC_ALL: "C" },
+			extendEnv: true,
+			// stdin is baked into the pure command value (check-ignore's --stdin
+			// form): a single UTF-8 chunk, closed when done. Constructors without
+			// stdin leave the option unset entirely.
+			...(stdin !== undefined ? { stdin: Stream.make(new TextEncoder().encode(stdin)) } : {}),
+		}),
+		redactedArgs,
+	};
+};
 
 // Implementation of GitCommand.show; the public contract lives on the static.
-const show = (ref: string, path: string): ChildProcess.StandardCommand => git(["show", `${ref}:${path}`]);
+const show = (ref: string, path: string): GitInvocation => git(["show", `${ref}:${path}`]);
 
 // Implementation of GitCommand.lsTree; the public contract lives on the static.
-const lsTree = (ref: string, pathspec: ReadonlyArray<string> = []): ChildProcess.StandardCommand =>
+const lsTree = (ref: string, pathspec: ReadonlyArray<string> = []): GitInvocation =>
 	git(["ls-tree", "-r", "-z", ref, ...(pathspec.length > 0 ? ["--", ...pathspec] : [])]);
 
 // Implementation of GitCommand.refExists; the public contract lives on the static.
-const refExists = (ref: string): ChildProcess.StandardCommand => git(["cat-file", "-e", ref]);
+const refExists = (ref: string): GitInvocation => git(["cat-file", "-e", ref]);
 
 // Implementation of GitCommand.mergeBase; the public contract lives on the static.
-const mergeBase = (a: string, b: string): ChildProcess.StandardCommand => git(["merge-base", a, b]);
+const mergeBase = (a: string, b: string): GitInvocation => git(["merge-base", a, b]);
 
 // Implementation of GitCommand.changedFiles; the public contract lives on the static.
-const changedFiles = (base: string, head: string, relative = false): ChildProcess.StandardCommand =>
+const changedFiles = (base: string, head: string, relative = false): GitInvocation =>
 	git(["diff", "--name-only", "-z", relative ? "--relative" : "--no-relative", `${base}...${head}`]);
 
 // Implementation of GitCommand.unstagedChanges; the public contract lives on the static.
-const unstagedChanges = (relative = false): ChildProcess.StandardCommand =>
+const unstagedChanges = (relative = false): GitInvocation =>
 	git(["diff", "--name-only", "-z", relative ? "--relative" : "--no-relative"]);
 
 // Implementation of GitCommand.stagedChanges; the public contract lives on the static.
-const stagedChanges = (relative = false): ChildProcess.StandardCommand =>
+const stagedChanges = (relative = false): GitInvocation =>
 	git(["diff", "--name-only", "-z", relative ? "--relative" : "--no-relative", "--cached"]);
 
 // Implementation of GitCommand.untrackedFiles; the public contract lives on the static.
-const untrackedFiles = (relative = false): ChildProcess.StandardCommand =>
+const untrackedFiles = (relative = false): GitInvocation =>
 	git(["ls-files", "--others", "--exclude-standard", "-z", ...(relative ? [] : ["--full-name"])]);
 
 // Implementation of GitCommand.revParse; the public contract lives on the static.
-const revParse = (ref: string): ChildProcess.StandardCommand => git(["rev-parse", "--verify", ref]);
+const revParse = (ref: string): GitInvocation => git(["rev-parse", "--verify", ref]);
 
 // Implementation of GitCommand.checkout; the public contract lives on the static.
-const checkout = (ref: string, detach = false): ChildProcess.StandardCommand =>
+const checkout = (ref: string, detach = false): GitInvocation =>
 	git(["checkout", ...(detach ? ["--detach"] : []), ref]);
 
 // Implementation of GitCommand.fetch; the public contract lives on the static.
-const fetch = (remote: string, ref: string, depth?: number, tag = false): ChildProcess.StandardCommand =>
-	git(["fetch", ...(depth !== undefined ? ["--depth", String(depth)] : []), remote, ...(tag ? ["tag"] : []), ref]);
+const fetch = (remote: string, ref: string, depth?: number, tag = false): GitInvocation =>
+	git([
+		"fetch",
+		...(depth !== undefined ? ["--depth", String(depth)] : []),
+		secretUrl(remote),
+		...(tag ? ["tag"] : []),
+		ref,
+	]);
 
 // Implementation of GitCommand.submoduleUpdate; the public contract lives on the static.
-const submoduleUpdate = (
-	init = false,
-	depth?: number,
-	paths: ReadonlyArray<string> = [],
-): ChildProcess.StandardCommand =>
+const submoduleUpdate = (init = false, depth?: number, paths: ReadonlyArray<string> = []): GitInvocation =>
 	git([
 		"submodule",
 		"update",
@@ -76,22 +149,62 @@ const submoduleUpdate = (
 	]);
 
 // Implementation of GitCommand.submoduleAdd; the public contract lives on the static.
-const submoduleAdd = (url: string, path: string, depth?: number): ChildProcess.StandardCommand =>
-	git(["submodule", "add", ...(depth !== undefined ? ["--depth", String(depth)] : []), "--", url, path]);
+const submoduleAdd = (url: string, path: string, depth?: number): GitInvocation =>
+	git(["submodule", "add", ...(depth !== undefined ? ["--depth", String(depth)] : []), "--", secretUrl(url), path]);
 
 // Implementation of GitCommand.sparseCheckoutSet; the public contract lives on the static.
-const sparseCheckoutSet = (patterns: ReadonlyArray<string>, cone: boolean): ChildProcess.StandardCommand =>
+const sparseCheckoutSet = (patterns: ReadonlyArray<string>, cone: boolean): GitInvocation =>
 	git(["sparse-checkout", "set", cone ? "--cone" : "--no-cone", ...patterns]);
 
 // Implementation of GitCommand.configSet; the public contract lives on the static.
-const configSet = (key: string, value: string, file?: string): ChildProcess.StandardCommand =>
-	git(["config", ...(file !== undefined ? ["-f", file] : []), key, value]);
+const configSet = (key: string, value: string, file?: string): GitInvocation =>
+	git(["config", ...(file !== undefined ? ["-f", file] : []), key, secretValue(value)]);
 
 // Implementation of GitCommand.add; the public contract lives on the static.
-const add = (paths: ReadonlyArray<string>): ChildProcess.StandardCommand => git(["add", "--", ...paths]);
+const add = (paths: ReadonlyArray<string>): GitInvocation => git(["add", "--", ...paths]);
+
+// Implementation of GitCommand.reset; the public contract lives on the static.
+const reset = (mode: "soft" | "mixed" | "hard" = "mixed", ref?: string): GitInvocation =>
+	git(["reset", `--${mode}`, ...(ref !== undefined ? [ref] : [])]);
+
+// Implementation of GitCommand.clean; the public contract lives on the static.
+const clean = (directories = false, ignored = false, paths: ReadonlyArray<string> = []): GitInvocation =>
+	git([
+		"clean",
+		"--force",
+		...(directories ? ["-d"] : []),
+		...(ignored ? ["-x"] : []),
+		...(paths.length > 0 ? ["--", ...paths] : []),
+	]);
+
+// Implementation of GitCommand.restore; the public contract lives on the static.
+const restore = (paths: ReadonlyArray<string>, source?: string, staged = false, worktree = false): GitInvocation =>
+	git([
+		"restore",
+		...(source !== undefined ? ["--source", source] : []),
+		...(staged ? ["--staged"] : []),
+		...(worktree ? ["--worktree"] : []),
+		"--",
+		...paths,
+	]);
+
+// Implementation of GitCommand.branchCreate; the public contract lives on the static.
+const branchCreate = (name: string, startPoint?: string, checkout = false, force = false): GitInvocation =>
+	checkout
+		? git(["checkout", force ? "-B" : "-b", name, ...(startPoint !== undefined ? [startPoint] : [])])
+		: git(["branch", ...(force ? ["-f"] : []), name, ...(startPoint !== undefined ? [startPoint] : [])]);
+
+// Implementation of GitCommand.branchDelete; the public contract lives on the static.
+const branchDelete = (name: string, force = false): GitInvocation => git(["branch", force ? "-D" : "-d", name]);
+
+// Implementation of GitCommand.isShallow; the public contract lives on the static.
+const isShallow = (): GitInvocation => git(["rev-parse", "--is-shallow-repository"]);
+
+// Implementation of GitCommand.fetchUnshallow; the public contract lives on the static.
+const fetchUnshallow = (remote = "origin"): GitInvocation => git(["fetch", "--unshallow", secretUrl(remote)]);
 
 // Implementation of GitCommand.nameStatus; the public contract lives on the static.
-const nameStatus = (base: string, head: string | undefined, relative = false): ChildProcess.StandardCommand =>
+const nameStatus = (base: string, head: string | undefined, relative = false): GitInvocation =>
 	git([
 		"diff",
 		"--name-status",
@@ -101,36 +214,256 @@ const nameStatus = (base: string, head: string | undefined, relative = false): C
 	]);
 
 // Implementation of GitCommand.defaultBranch; the public contract lives on the static.
-const defaultBranch = (remote = "origin"): ChildProcess.StandardCommand =>
+const defaultBranch = (remote = "origin"): GitInvocation =>
 	git(["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
 
 // Implementation of GitCommand.currentBranch; the public contract lives on the static.
-const currentBranch = (): ChildProcess.StandardCommand => git(["rev-parse", "--abbrev-ref", "HEAD"]);
+const currentBranch = (): GitInvocation => git(["rev-parse", "--abbrev-ref", "HEAD"]);
 
 // Implementation of GitCommand.repoRoot; the public contract lives on the static.
-const repoRoot = (): ChildProcess.StandardCommand => git(["rev-parse", "--show-toplevel"]);
+const repoRoot = (): GitInvocation => git(["rev-parse", "--show-toplevel"]);
 
 // Implementation of GitCommand.commitInfo; the public contract lives on the static.
-const commitInfo = (ref = "HEAD"): ChildProcess.StandardCommand => git(["log", "-1", "--format=%H%x00%G?%x00%B", ref]);
+const commitInfo = (ref = "HEAD"): GitInvocation => git(["log", "-1", "--format=%H%x00%G?%x00%B", ref]);
 
 // Implementation of GitCommand.configGet; the public contract lives on the static.
-const configGet = (key: string): ChildProcess.StandardCommand => git(["config", "--get", key]);
+const configGet = (key: string): GitInvocation => git(["config", "--get", key]);
 
 // Implementation of GitCommand.remoteUrl; the public contract lives on the static.
-const remoteUrl = (remote = "origin"): ChildProcess.StandardCommand => git(["remote", "get-url", remote]);
+const remoteUrl = (remote = "origin"): GitInvocation => git(["remote", "get-url", remote]);
 
 // Implementation of GitCommand.status; the public contract lives on the static.
-const status = (): ChildProcess.StandardCommand => git(["status", "--porcelain", "-z"]);
+const status = (): GitInvocation => git(["status", "--porcelain", "-z"]);
+
+// Implementation of GitCommand.submoduleStatus; the public contract lives on the static.
+const submoduleStatus = (paths: ReadonlyArray<string> = [], recursive = false): GitInvocation =>
+	git(["submodule", "status", ...(recursive ? ["--recursive"] : []), ...(paths.length > 0 ? ["--", ...paths] : [])]);
+
+// Implementation of GitCommand.submoduleInit; the public contract lives on the static.
+const submoduleInit = (paths: ReadonlyArray<string> = []): GitInvocation =>
+	git(["submodule", "init", ...(paths.length > 0 ? ["--", ...paths] : [])]);
+
+// Implementation of GitCommand.submoduleDeinit; the public contract lives on the static.
+const submoduleDeinit = (paths: ReadonlyArray<string>, all = false, force = false): GitInvocation =>
+	git(["submodule", "deinit", ...(force ? ["--force"] : []), ...(all ? ["--all"] : ["--", ...paths])]);
+
+// Implementation of GitCommand.submoduleSync; the public contract lives on the static.
+const submoduleSync = (paths: ReadonlyArray<string> = [], recursive = false): GitInvocation =>
+	git(["submodule", "sync", ...(recursive ? ["--recursive"] : []), ...(paths.length > 0 ? ["--", ...paths] : [])]);
+
+// Implementation of GitCommand.submoduleSetUrl; the public contract lives on the static.
+const submoduleSetUrl = (path: string, url: string): GitInvocation =>
+	git(["submodule", "set-url", "--", path, secretUrl(url)]);
+
+// Implementation of GitCommand.submoduleSetBranch; the public contract lives on the static.
+const submoduleSetBranch = (path: string, branch?: string): GitInvocation =>
+	git(["submodule", "set-branch", ...(branch === undefined ? ["--default"] : ["--branch", branch]), "--", path]);
+
+// Implementation of GitCommand.submoduleAbsorbgitdirs; the public contract lives on the static.
+const submoduleAbsorbgitdirs = (paths: ReadonlyArray<string> = []): GitInvocation =>
+	git(["submodule", "absorbgitdirs", ...(paths.length > 0 ? ["--", ...paths] : [])]);
+
+// Implementation of GitCommand.submoduleForeach; the public contract lives on the static.
+const submoduleForeach = (command: string, recursive = false): GitInvocation =>
+	git(["submodule", "foreach", ...(recursive ? ["--recursive"] : []), command]);
+
+// Implementation of GitCommand.lsRemote; the public contract lives on the static.
+const lsRemote = (remote: string, heads = false, tags = false, patterns: ReadonlyArray<string> = []): GitInvocation =>
+	git(["ls-remote", ...(heads ? ["--heads"] : []), ...(tags ? ["--tags"] : []), secretUrl(remote), ...patterns]);
+
+// Implementation of GitCommand.remoteAdd; the public contract lives on the static.
+const remoteAdd = (name: string, url: string): GitInvocation => git(["remote", "add", name, secretUrl(url)]);
+
+// Implementation of GitCommand.remoteRemove; the public contract lives on the static.
+const remoteRemove = (name: string): GitInvocation => git(["remote", "remove", name]);
+
+// Implementation of GitCommand.remoteSetUrl; the public contract lives on the static.
+const remoteSetUrl = (name: string, url: string): GitInvocation => git(["remote", "set-url", name, secretUrl(url)]);
+
+// Renders a stash index into git's reflog-style stash ref. The interpolation is
+// injection-safe by construction: the service refuses a non-integer index
+// before any spawn, and an integer cannot begin with `-`... a negative integer
+// can, which is exactly why the service guard requires a NON-NEGATIVE integer.
+const stashRef = (index: number): string => `stash@{${index}}`;
+
+// Implementation of GitCommand.stashPush; the public contract lives on the static.
+const stashPush = (message?: string, includeUntracked = false, paths: ReadonlyArray<string> = []): GitInvocation =>
+	git([
+		"stash",
+		"push",
+		...(includeUntracked ? ["--include-untracked"] : []),
+		...(message !== undefined ? ["-m", message] : []),
+		...(paths.length > 0 ? ["--", ...paths] : []),
+	]);
+
+// Implementation of GitCommand.stashPop; the public contract lives on the static.
+const stashPop = (index?: number): GitInvocation =>
+	git(["stash", "pop", ...(index !== undefined ? [stashRef(index)] : [])]);
+
+// Implementation of GitCommand.stashApply; the public contract lives on the static.
+const stashApply = (index?: number): GitInvocation =>
+	git(["stash", "apply", ...(index !== undefined ? [stashRef(index)] : [])]);
+
+// Implementation of GitCommand.stashDrop; the public contract lives on the static.
+const stashDrop = (index?: number): GitInvocation =>
+	git(["stash", "drop", ...(index !== undefined ? [stashRef(index)] : [])]);
+
+// Implementation of GitCommand.stashList; the public contract lives on the static.
+const stashList = (): GitInvocation => git(["stash", "list", "-z", "--format=%gd%x1f%H%x1f%gs"]);
+
+// Implementation of GitCommand.branchList; the public contract lives on the static.
+const branchList = (remotes = false, all = false): GitInvocation =>
+	git([
+		"branch",
+		"--list",
+		...(all ? ["--all"] : remotes ? ["--remotes"] : []),
+		"--format=%(HEAD)%00%(refname:short)%00%(objectname)",
+	]);
+
+// Implementation of GitCommand.tagCreate; the public contract lives on the static.
+const tagCreate = (name: string, ref?: string, message?: string, force = false): GitInvocation =>
+	git([
+		"tag",
+		...(force ? ["--force"] : []),
+		...(message !== undefined ? ["-m", message] : []),
+		name,
+		...(ref !== undefined ? [ref] : []),
+	]);
+
+// Implementation of GitCommand.tagDelete; the public contract lives on the static.
+const tagDelete = (name: string): GitInvocation => git(["tag", "--delete", name]);
+
+// Implementation of GitCommand.tagList; the public contract lives on the static.
+const tagList = (pattern?: string): GitInvocation =>
+	git(["tag", "--list", ...(pattern !== undefined ? [pattern] : [])]);
+
+// Implementation of GitCommand.forEachRef; the public contract lives on the static.
+const forEachRef = (patterns: ReadonlyArray<string> = []): GitInvocation =>
+	git(["for-each-ref", "--format=%(refname)%00%(objectname)%00%(objecttype)", ...patterns]);
+
+// Implementation of GitCommand.revList; the public contract lives on the static.
+const revList = (ref: string, limit?: number, firstParent = false): GitInvocation =>
+	git([
+		"rev-list",
+		...(limit !== undefined ? [`--max-count=${limit}`] : []),
+		...(firstParent ? ["--first-parent"] : []),
+		ref,
+	]);
+
+// Implementation of GitCommand.commit; the public contract lives on the static.
+const commit = (message: string, all = false, allowEmpty = false, amend = false, author?: string): GitInvocation =>
+	git([
+		"commit",
+		...(all ? ["--all"] : []),
+		...(allowEmpty ? ["--allow-empty"] : []),
+		...(amend ? ["--amend"] : []),
+		...(author !== undefined ? [`--author=${author}`] : []),
+		"-m",
+		message,
+	]);
+
+// Implementation of GitCommand.push; the public contract lives on the static.
+const push = (
+	remote: string,
+	refspec?: string,
+	force = false,
+	forceWithLease = false,
+	tags = false,
+	setUpstream = false,
+): GitInvocation =>
+	git([
+		"push",
+		...(force ? ["--force"] : []),
+		...(forceWithLease ? ["--force-with-lease"] : []),
+		...(tags ? ["--tags"] : []),
+		...(setUpstream ? ["--set-upstream"] : []),
+		secretUrl(remote),
+		...(refspec !== undefined ? [refspec] : []),
+	]);
+
+// Implementation of GitCommand.pull; the public contract lives on the static.
+const pull = (remote: string, ref?: string, rebase = false, ffOnly = false): GitInvocation =>
+	git([
+		"pull",
+		...(rebase ? ["--rebase"] : []),
+		...(ffOnly ? ["--ff-only"] : []),
+		secretUrl(remote),
+		...(ref !== undefined ? [ref] : []),
+	]);
+
+// Implementation of GitCommand.configList; the public contract lives on the static.
+const configList = (file?: string): GitInvocation =>
+	git(["config", ...(file !== undefined ? ["-f", file] : []), "--list", "-z"]);
+
+// Implementation of GitCommand.configGetAll; the public contract lives on the static.
+const configGetAll = (key: string, file?: string): GitInvocation =>
+	git(["config", ...(file !== undefined ? ["-f", file] : []), "--get-all", "-z", key]);
+
+// Implementation of GitCommand.configUnset; the public contract lives on the static.
+const configUnset = (key: string, file?: string, all = false): GitInvocation =>
+	git(["config", ...(file !== undefined ? ["-f", file] : []), all ? "--unset-all" : "--unset", key]);
+
+// Implementation of GitCommand.rm; the public contract lives on the static.
+const rm = (paths: ReadonlyArray<string>, cached = false, recursive = false, force = false): GitInvocation =>
+	git([
+		"rm",
+		...(cached ? ["--cached"] : []),
+		...(recursive ? ["-r"] : []),
+		...(force ? ["--force"] : []),
+		"--",
+		...paths,
+	]);
+
+// Implementation of GitCommand.mv; the public contract lives on the static.
+const mv = (source: string, destination: string, force = false): GitInvocation =>
+	git(["mv", ...(force ? ["--force"] : []), "--", source, destination]);
+
+// Implementation of GitCommand.checkIgnore; the public contract lives on the static.
+const checkIgnore = (paths: ReadonlyArray<string>): GitInvocation =>
+	git(["check-ignore", "-z", "--stdin"], paths.map((path) => `${path}\0`).join(""));
+
+// Implementation of GitCommand.worktreeAdd; the public contract lives on the static.
+const worktreeAdd = (path: string, ref?: string, detach = false, force = false): GitInvocation =>
+	git([
+		"worktree",
+		"add",
+		...(force ? ["--force"] : []),
+		...(detach ? ["--detach"] : []),
+		path,
+		...(ref !== undefined ? [ref] : []),
+	]);
+
+// Implementation of GitCommand.worktreeList; the public contract lives on the static.
+const worktreeList = (): GitInvocation => git(["worktree", "list", "--porcelain", "-z"]);
+
+// Implementation of GitCommand.worktreeRemove; the public contract lives on the static.
+const worktreeRemove = (path: string, force = false): GitInvocation =>
+	git(["worktree", "remove", ...(force ? ["--force"] : []), path]);
+
+// Implementation of GitCommand.lsFiles; the public contract lives on the static.
+const lsFiles = (pathspec: ReadonlyArray<string> = []): GitInvocation =>
+	git(["ls-files", "--stage", "-z", ...(pathspec.length > 0 ? ["--", ...pathspec] : [])]);
 
 /**
- * Pure constructors for the `git` `ChildProcess.Command` values this package
+ * Pure constructors for the `git` {@link GitInvocation} values this package
  * spawns.
  *
  * @remarks
- * Every constructor returns a cwd-less, argv-only `Command` — no spawning,
- * no working directory baked in. `Git` applies the working directory per
- * call with `ChildProcess.setCwd` and owns the actual spawn, timeout, and
- * error classification.
+ * Every constructor returns a cwd-less, argv-only {@link GitInvocation} — no
+ * spawning, no working directory baked in. `Git` applies the working
+ * directory per call with `ChildProcess.setCwd` on `invocation.command` and
+ * owns the actual spawn, timeout, and error classification.
+ *
+ * **Redaction policy.** A constructor whose argv carries a sensitive
+ * positional — a config value (`configSet`), or a URL that may embed
+ * userinfo (the remote of `fetch`, `fetchUnshallow`, `lsRemote`, `push` and
+ * `pull`, and the url of `submoduleAdd`, `submoduleSetUrl`, `remoteAdd` and
+ * `remoteSetUrl`) —
+ * masks it in {@link GitInvocation.redactedArgs}: a config value becomes
+ * `<redacted>` wholesale, a URL keeps everything but its `userinfo@`
+ * component. The `Git` service persists only the redacted argv in error
+ * values, and its span annotations carry stable identifiers only (`cwd`,
+ * keys, paths, remote/ref names) — never config values, never URLs.
  *
  * @public
  */
@@ -239,8 +572,112 @@ export class GitCommand {
 	/**
 	 * Mutating: `git fetch [--depth <n>] <remote> [tag] <ref>` — fetches the given
 	 * ref from a remote, optionally with a depth limit and the `tag` keyword.
+	 *
+	 * @remarks
+	 * `remote` may be a URL as well as a remote name; an embedded
+	 * `userinfo@` credential is masked in {@link GitInvocation.redactedArgs}.
 	 */
 	static readonly fetch = fetch;
+
+	/**
+	 * Mutating: `git fetch --unshallow <remote>` — converts a shallow clone
+	 * into a complete one by fetching the missing history.
+	 *
+	 * @remarks
+	 * `--unshallow` is a distinct MODE, not a depth value: git rejects it
+	 * outright in a repository that is not shallow, with
+	 * `--unshallow on a complete repository does not make sense`, so it
+	 * cannot be expressed as `fetch`'s `depth` option. The caller decides
+	 * whether to run it — probe with `Git.isShallow` first.
+	 *
+	 * `remote` may be a URL as well as a remote name; an embedded `userinfo@`
+	 * credential is masked in {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly fetchUnshallow = fetchUnshallow;
+
+	/**
+	 * `git rev-parse --is-shallow-repository` — prints `true` when the
+	 * repository is a shallow clone, `false` otherwise.
+	 *
+	 * @remarks
+	 * A dedicated probe constructor, deliberately separate from
+	 * {@link GitCommand.revParse}: `revParse` takes a REF and resolves it,
+	 * while this takes nothing and answers a repository-shape question.
+	 * Folding the flag into `revParse` would make that constructor
+	 * sometimes-takes-a-ref, sometimes-takes-a-flag.
+	 */
+	static readonly isShallow = isShallow;
+
+	/**
+	 * Mutating: `git reset --soft|--mixed|--hard [<ref>]` — moves `HEAD` (and,
+	 * per mode, the index and working tree) to `ref`.
+	 *
+	 * @remarks
+	 * The mode flag is always explicit — `--mixed` is emitted for the default
+	 * rather than omitted — so the argv states what runs. `ref` may be any
+	 * commit-ish, including a gitlink sha.
+	 */
+	static readonly reset = reset;
+
+	/**
+	 * Mutating: `git clean --force [-d] [-x] [-- <paths>...]` — deletes
+	 * untracked files from the working tree.
+	 *
+	 * @remarks
+	 * `--force` is unconditional: this constructor exists so a consumer can
+	 * restore a tree to a known state (e.g. before retrying a non-idempotent
+	 * operation), and without `--force` git refuses to clean at all under the
+	 * default `clean.requireForce` config — a clean that silently did nothing
+	 * would hand the retry the same dirty tree. `-d` removes untracked
+	 * directories too; `-x` removes ignored files as well. The literal `--`
+	 * separator makes the optional pathspec injection-safe by construction.
+	 */
+	static readonly clean = clean;
+
+	/**
+	 * Mutating: `git restore [--source <ref>] [--staged] [--worktree] -- <paths...>`
+	 * — restores the given paths from the index (or from `source`), the
+	 * `checkout -- <paths>`-shaped operation.
+	 *
+	 * @remarks
+	 * This is a separate constructor precisely because {@link GitCommand.checkout}'s
+	 * service guard refuses `--` and option-like refs by design — `restore` is
+	 * git's own verb for pathspec restoration, and its paths always sit behind
+	 * a literal `--`, so they are injection-safe by construction. With neither
+	 * `staged` nor `worktree` set, git defaults to restoring the working tree.
+	 */
+	static readonly restore = restore;
+
+	/**
+	 * Mutating: `git branch [-f] <name> [<start-point>]`, or
+	 * `git checkout (-b | -B) <name> [<start-point>]` when `checkout` is true —
+	 * creates a branch, optionally from an explicit start point, optionally
+	 * switching to it, optionally force-resetting an existing branch.
+	 *
+	 * @remarks
+	 * Branch creation is a branch-member concern, NOT a widening of
+	 * {@link GitCommand.checkout}: `checkout`'s contract stays "move to an
+	 * existing ref" and its option-like-ref refusal stays intact. The `-b` /
+	 * `-B` here is this constructor's own literal, never caller data.
+	 *
+	 * `force` with `checkout` exists because the delete-then-create longhand
+	 * (`branch -D` swallowed, then `checkout -b`) papers over a real edge:
+	 * `git branch -D` refuses to delete the currently checked-out branch,
+	 * while `checkout -B` resets it fine — one invocation handles both
+	 * states.
+	 */
+	static readonly branchCreate = branchCreate;
+
+	/**
+	 * Mutating: `git branch -d <name>` (or `-D` when `force` is true) —
+	 * deletes a local branch.
+	 *
+	 * @remarks
+	 * The default `-d` refuses to delete a branch not fully merged — a typed
+	 * failure, which is usually the honest answer. `force: true` emits `-D`
+	 * and deletes regardless.
+	 */
+	static readonly branchDelete = branchDelete;
 
 	/**
 	 * Mutating: `git submodule update [--init] [--depth <n>] [-- <paths>...]` — updates
@@ -254,6 +691,10 @@ export class GitCommand {
 	 * Mutating: `git submodule add [--depth <n>] -- <url> <path>` — registers and
 	 * initializes a new submodule. The literal `--` separator makes the url and path
 	 * injection-safe by construction.
+	 *
+	 * @remarks
+	 * An embedded `userinfo@` credential in `url` is masked in
+	 * {@link GitInvocation.redactedArgs}.
 	 */
 	static readonly submoduleAdd = submoduleAdd;
 
@@ -268,6 +709,13 @@ export class GitCommand {
 	/**
 	 * Mutating: `git config [-f <file>] <key> <value>` — writes a configuration value,
 	 * optionally into an explicit configuration file (e.g., `.gitmodules`).
+	 *
+	 * @remarks
+	 * `value` may be a secret (a token, a credential-bearing URL), so it is
+	 * masked wholesale — as `<redacted>` — in
+	 * {@link GitInvocation.redactedArgs}. The key and file stay visible: they
+	 * are stable identifiers, and they are what a caller debugging a failed
+	 * write actually needs.
 	 */
 	static readonly configSet = configSet;
 
@@ -359,4 +807,335 @@ export class GitCommand {
 	 * Each entry is a pair of status codes followed by a space and the path.
 	 */
 	static readonly status = status;
+
+	/**
+	 * `git submodule status [--recursive] [-- <paths>...]` — one line per
+	 * registered submodule: a state prefix, the checked-out (or gitlink) sha,
+	 * the path, and — when the submodule is initialized — a `git describe`
+	 * suffix in parentheses.
+	 *
+	 * @remarks
+	 * `git submodule status` has no `-z` mode, so its output is line-based —
+	 * the one path-emitting constructor in this package that cannot follow
+	 * the `-z` rule. A submodule path containing a newline would corrupt the
+	 * parse; accepted as a git-imposed limitation.
+	 */
+	static readonly submoduleStatus = submoduleStatus;
+
+	/**
+	 * Mutating: `git submodule init [-- <paths>...]` — registers the
+	 * submodules from `.gitmodules` into `.git/config` (all of them, or only
+	 * `paths`), without cloning or checking anything out.
+	 */
+	static readonly submoduleInit = submoduleInit;
+
+	/**
+	 * Mutating: `git submodule deinit [--force] (--all | -- <paths>...)` —
+	 * unregisters submodules: clears their working trees and removes their
+	 * `.git/config` registration. The literal `--` separator makes the
+	 * pathspec injection-safe by construction.
+	 */
+	static readonly submoduleDeinit = submoduleDeinit;
+
+	/**
+	 * Mutating: `git submodule sync [--recursive] [-- <paths>...]` —
+	 * re-copies each submodule's URL from `.gitmodules` into `.git/config`
+	 * (and into the submodule's own `remote.origin.url`), so a `.gitmodules`
+	 * URL change actually reaches git's live configuration.
+	 */
+	static readonly submoduleSync = submoduleSync;
+
+	/**
+	 * Mutating: `git submodule set-url -- <path> <url>` — rewrites the
+	 * submodule's URL in `.gitmodules` and synchronizes it into
+	 * `.git/config`. The literal `--` separator makes the path and url
+	 * injection-safe by construction.
+	 *
+	 * @remarks
+	 * An embedded `userinfo@` credential in `url` is masked in
+	 * {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly submoduleSetUrl = submoduleSetUrl;
+
+	/**
+	 * Mutating: `git submodule set-branch (--branch <branch> | --default) -- <path>`
+	 * — records (or clears, when `branch` is omitted) the branch a submodule
+	 * tracks in `.gitmodules`. The literal `--` separator makes the path
+	 * injection-safe by construction.
+	 */
+	static readonly submoduleSetBranch = submoduleSetBranch;
+
+	/**
+	 * Mutating: `git submodule absorbgitdirs [-- <paths>...]` — moves each
+	 * submodule's embedded `.git` directory into the superproject's
+	 * `.git/modules/` and leaves a gitfile pointer behind.
+	 */
+	static readonly submoduleAbsorbgitdirs = submoduleAbsorbgitdirs;
+
+	/**
+	 * Mutating: `git submodule foreach [--recursive] <command>` — runs a shell
+	 * command in every checked-out submodule. `command` is a single shell
+	 * string, evaluated by git in each submodule's directory; it can mutate
+	 * anything, which is why the constructor is marked mutating regardless of
+	 * what the command does.
+	 *
+	 * @remarks
+	 * This is the ONE constructor whose argument cannot be made injection-safe
+	 * by construction: git evaluates `command` with `sh -c`, so every character
+	 * of it is shell code — a `--` separator or quoting cannot help. Callers
+	 * must treat `command` as a trusted literal and never interpolate untrusted
+	 * data into it.
+	 */
+	static readonly submoduleForeach = submoduleForeach;
+
+	/**
+	 * `git ls-remote [--heads] [--tags] <remote> [<patterns>...]` — the refs a
+	 * remote advertises (sha + refname), optionally filtered to branch heads,
+	 * tags, and/or shell-glob patterns.
+	 *
+	 * @remarks
+	 * A read that talks to the NETWORK, not to the local repository — the one
+	 * non-mutating constructor in this package that does. An embedded
+	 * `userinfo@` credential in `remote` is masked in
+	 * {@link GitInvocation.redactedArgs}. An annotated tag advertises two
+	 * entries: `refs/tags/<name>` (the tag object) and `refs/tags/<name>^{}`
+	 * (the peeled commit).
+	 */
+	static readonly lsRemote = lsRemote;
+
+	/**
+	 * Mutating: `git remote add <name> <url>` — registers a new remote.
+	 *
+	 * @remarks
+	 * An embedded `userinfo@` credential in `url` is masked in
+	 * {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly remoteAdd = remoteAdd;
+
+	/**
+	 * Mutating: `git remote remove <name>` — deletes a remote and its
+	 * remote-tracking refs and configuration.
+	 */
+	static readonly remoteRemove = remoteRemove;
+
+	/**
+	 * Mutating: `git remote set-url <name> <url>` — rewrites a remote's fetch
+	 * URL.
+	 *
+	 * @remarks
+	 * An embedded `userinfo@` credential in `url` is masked in
+	 * {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly remoteSetUrl = remoteSetUrl;
+
+	/**
+	 * Mutating: `git stash push [--include-untracked] [-m <message>] [-- <paths>...]`
+	 * — saves the working tree (and index) state onto the stash stack. The
+	 * literal `--` separator makes the optional pathspec injection-safe by
+	 * construction; the message rides behind `-m`, which git consumes as a
+	 * value even when it begins with `-`.
+	 */
+	static readonly stashPush = stashPush;
+
+	/**
+	 * Mutating: `git stash pop [stash@{n}]` — applies a stash entry and drops
+	 * it on success. The stash ref is rendered from an INTEGER index by this
+	 * package, never caller text.
+	 */
+	static readonly stashPop = stashPop;
+
+	/**
+	 * Mutating: `git stash apply [stash@{n}]` — applies a stash entry and
+	 * keeps it on the stack. The stash ref is rendered from an INTEGER index
+	 * by this package, never caller text.
+	 */
+	static readonly stashApply = stashApply;
+
+	/**
+	 * Mutating: `git stash drop [stash@{n}]` — deletes a stash entry without
+	 * applying it. The stash ref is rendered from an INTEGER index by this
+	 * package, never caller text.
+	 */
+	static readonly stashDrop = stashDrop;
+
+	/**
+	 * `git stash list -z --format=%gd%x1f%H%x1f%gs` — every stash entry as a
+	 * NUL-terminated record of unit-separated fields: the reflog selector
+	 * (`stash@{0}`), the stash commit sha, and the reflog subject.
+	 *
+	 * @remarks
+	 * The `%x1f` (ASCII unit separator) field separator plus `-z` record
+	 * terminator keeps the parse split-safe: a stash message cannot contain
+	 * either byte (reflog subjects are single-line).
+	 */
+	static readonly stashList = stashList;
+
+	/**
+	 * `git branch --list [--remotes | --all] --format=%(HEAD)%00%(refname:short)%00%(objectname)`
+	 * — every branch as a NUL-separated triple: the current-branch marker, the
+	 * short name, and the tip sha.
+	 *
+	 * @remarks
+	 * Records are newline-separated, which is split-safe here: git refnames
+	 * cannot contain a newline (or a space), so the only NUL bytes are the
+	 * format's own field separators. `all` wins over `remotes` when both are
+	 * set.
+	 */
+	static readonly branchList = branchList;
+
+	/**
+	 * Mutating: `git tag [--force] [-m <message>] <name> [<ref>]` — creates a
+	 * lightweight tag, or an annotated one when `message` is given (`-m`
+	 * implies `-a`).
+	 */
+	static readonly tagCreate = tagCreate;
+
+	/** Mutating: `git tag --delete <name>` — deletes a local tag. */
+	static readonly tagDelete = tagDelete;
+
+	/**
+	 * `git tag --list [<pattern>]` — tag names, optionally filtered by a
+	 * shell-glob pattern, one per line (refnames cannot contain newlines).
+	 */
+	static readonly tagList = tagList;
+
+	/**
+	 * `git for-each-ref --format=%(refname)%00%(objectname)%00%(objecttype) [<patterns>...]`
+	 * — every matching ref as a NUL-separated triple: full refname, sha, and
+	 * object type.
+	 *
+	 * @remarks
+	 * The format is this package's own fixed triple — the parse contract and
+	 * the argv are decided together, so the format string is a constructor
+	 * literal, never caller data. An annotated tag's `objecttype` is `tag`
+	 * (the tag object), not `commit`.
+	 */
+	static readonly forEachRef = forEachRef;
+
+	/**
+	 * `git rev-list [--max-count=<n>] [--first-parent] <ref-or-range>` — commit
+	 * shas reachable from the ref (or range, e.g. `main..feat`), newest first.
+	 */
+	static readonly revList = revList;
+
+	/**
+	 * Mutating: `git commit [--all] [--allow-empty] [--amend] [--author=<author>] -m <message>`
+	 * — records a commit. The message always rides argv behind `-m` (git
+	 * consumes it as a value even when it begins with `-`); committer identity
+	 * comes from the caller's environment — this constructor sets no
+	 * `GIT_AUTHOR_*`/`GIT_COMMITTER_*` variables, and the optional `author`
+	 * override is the fused `--author=` form.
+	 */
+	static readonly commit = commit;
+
+	/**
+	 * Mutating: `git push [--force | --force-with-lease] [--tags] [--set-upstream] <remote> [<refspec>]`
+	 * — updates remote refs.
+	 *
+	 * @remarks
+	 * `remote` may be a URL as well as a remote name; an embedded `userinfo@`
+	 * credential is masked in {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly push = push;
+
+	/**
+	 * Mutating: `git pull [--rebase] [--ff-only] <remote> [<ref>]` — fetches
+	 * and integrates.
+	 *
+	 * @remarks
+	 * `remote` may be a URL as well as a remote name; an embedded `userinfo@`
+	 * credential is masked in {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly pull = pull;
+
+	/**
+	 * `git config [-f <file>] --list -z` — every configuration entry in scope
+	 * (or in the given file only), NUL-terminated, the key separated from the
+	 * value by a newline within each record.
+	 *
+	 * @remarks
+	 * `-z` is load-bearing: a config VALUE may contain newlines; only the NUL
+	 * record terminator plus first-newline field split parses it losslessly.
+	 * A valueless key (git's boolean-true shorthand) emits no newline at all.
+	 */
+	static readonly configList = configList;
+
+	/**
+	 * `git config [-f <file>] --get-all -z <key>` — every value of a
+	 * (possibly multi-valued) key, NUL-terminated. An unset key exits 1 with
+	 * silent stderr.
+	 */
+	static readonly configGetAll = configGetAll;
+
+	/**
+	 * Mutating: `git config [-f <file>] (--unset | --unset-all) <key>` —
+	 * removes a key (or, with `all`, every value of a multi-valued key).
+	 *
+	 * @remarks
+	 * git exits 5, silently, when the key was not set — a loud failure by
+	 * this package's classification, deliberately: an unset that silently did
+	 * nothing is indistinguishable from one that worked.
+	 */
+	static readonly configUnset = configUnset;
+
+	/**
+	 * Mutating: `git rm [--cached] [-r] [--force] -- <paths...>` — removes
+	 * paths from the index (and, without `cached`, the working tree). The
+	 * literal `--` separator makes the pathspec injection-safe by
+	 * construction.
+	 */
+	static readonly rm = rm;
+
+	/**
+	 * Mutating: `git mv [--force] -- <source> <destination>` — moves or
+	 * renames a tracked path. The literal `--` separator makes both positionals
+	 * injection-safe by construction.
+	 */
+	static readonly mv = mv;
+
+	/**
+	 * `git check-ignore -z --stdin` — which of the given paths git would
+	 * ignore, paths fed NUL-separated via stdin and answers returned
+	 * NUL-separated.
+	 *
+	 * @remarks
+	 * The `--stdin -z` form is the only fully robust one: `-z` without
+	 * `--stdin` is rejected by git outright, and the non-`-z` output C-quotes
+	 * special-character paths. Feeding paths via stdin also makes them
+	 * injection-safe by construction — nothing caller-controlled enters the
+	 * argv. When NO path is ignored, git exits 1 with silent stderr.
+	 */
+	static readonly checkIgnore = checkIgnore;
+
+	/**
+	 * Mutating: `git worktree add [--force] [--detach] <path> [<ref>]` —
+	 * creates a linked working tree at `path`, checked out at `ref` (or the
+	 * branch named after `path`'s basename).
+	 */
+	static readonly worktreeAdd = worktreeAdd;
+
+	/**
+	 * `git worktree list --porcelain -z` — every working tree as a block of
+	 * NUL-terminated attributes (`worktree <path>`, `HEAD <sha>`,
+	 * `branch <ref>` / `detached`, `bare`, `locked [<reason>]`,
+	 * `prunable [<reason>]`), blocks separated by an empty attribute.
+	 */
+	static readonly worktreeList = worktreeList;
+
+	/** Mutating: `git worktree remove [--force] <path>` — removes a linked working tree. */
+	static readonly worktreeRemove = worktreeRemove;
+
+	/**
+	 * `git ls-files --stage -z [-- <pathspec>...]` — every INDEX entry (mode,
+	 * oid, stage number, path), NUL-terminated, optionally scoped to
+	 * `pathspec`.
+	 *
+	 * @remarks
+	 * The index-side sibling of {@link GitCommand.lsTree}: `lsTree` reads a
+	 * COMMITTED tree at a ref, while this reads the staging area — the only
+	 * place a staged-but-uncommitted gitlink (`160000 <oid> 0 <path>`) is
+	 * visible. `-z` is load-bearing twice over: paths may contain newlines,
+	 * and the non-`-z` output C-quotes special-character paths.
+	 */
+	static readonly lsFiles = lsFiles;
 }

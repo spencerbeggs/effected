@@ -88,8 +88,8 @@
 		{
 			"source": "packages/git/CLAUDE.md",
 			"target": ".claude/design/effected/packages/git.md",
-			"hash": "b0494c8e3df04090bbd222e4d80f0c9e82169f0cd7375a938a92fce6d4f87437",
-			"recordedAt": "2026-07-25"
+			"hash": "0fd74961bc4ca51288baabc0ea5c970bad6579603d76f13044992d8038d0b7e6",
+			"recordedAt": "2026-08-05"
 		},
 		{
 			"source": "packages/github-actions/CLAUDE.md",
@@ -238,7 +238,7 @@
 		{
 			"source": "packages/workspaces/CLAUDE.md",
 			"target": ".claude/design/effected/packages/workspaces.md",
-			"hash": "918410cbc87c7be14dcb2a1968c5d4cc0e6f867bf755a0f5fe6c6b40768de2ae",
+			"hash": "7cc0c535854e7694c215d160850791dd25462cce62d70fced3c2bcada106c5f1",
 			"recordedAt": "2026-08-05"
 		},
 		{

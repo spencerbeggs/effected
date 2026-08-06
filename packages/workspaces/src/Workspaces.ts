@@ -299,7 +299,8 @@ export class Workspaces {
 	 * never detects changes or reads at a ref should not have to be able to
 	 * spawn a subprocess. The consumer provides `ChildProcessSpawner` once at
 	 * the edge (`@effect/platform-node`'s `NodeServices.layer`); a test
-	 * provides `Layer.succeed(Git, …)` and needs no repository on disk.
+	 * provides `Git.layerTest({ … })` — git's own shipped double, whose
+	 * unstubbed members die named — and needs no repository on disk.
 	 */
 	static readonly layerWithGit = layerWithGit;
 
@@ -349,9 +350,14 @@ export class Workspaces {
 	 * import { Workspaces } from "@effected/workspaces";
 	 * import { Layer } from "effect";
 	 *
+	 * // Bound to consts per the warning above: each factory call mints a
+	 * // fresh layer reference, and layers memoize by reference.
+	 * const LocalExecLayer = Workspaces.localExecLayer();
+	 * const WorkspacesLayer = Workspaces.layer();
+	 *
 	 * const AppLayer = ToolDiscovery.layer.pipe(
-	 *   Layer.provide(Workspaces.localExecLayer()),
-	 *   Layer.provide(Workspaces.layer()),
+	 *   Layer.provide(LocalExecLayer),
+	 *   Layer.provide(WorkspacesLayer),
 	 *   Layer.provide(NodeServices.layer),
 	 * );
 	 * ```

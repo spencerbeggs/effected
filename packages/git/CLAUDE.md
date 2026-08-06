@@ -1,10 +1,15 @@
 # @effected/git
 
 Typed git introspection over core's `ChildProcessSpawner`: a read tier that
-reads a repository's state at any ref without checking it out, plus a
-clearly-marked mutating tier (`checkout`, `fetch`, `fetchAny`,
-`submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`)
-that changes it. The
+reads a repository's state at any ref without checking it out (including the
+network read `lsRemote` and the index read `lsFiles`), plus a clearly-marked
+mutating tier — checkout/fetch, the working-tree restore trio and the stash
+family, branches and tags, remotes, worktrees, `commit`/`push`/`pull`, the
+submodule tier, sparse checkout, config writes and staging — that changes
+it. Since the 2026-08-05 git-suite slice it also carries a **pure
+git-config core**: `GitConfig` (a lossless, surgical-edit git-config
+document model) with `Gitmodules` (the typed `.gitmodules` view) on top, no
+subprocess anywhere near them. The
 nineteenth library package, created inside the monorepo for the point-in-time
 port rather than migrated from a v3 source repo; it absorbed the git half of
 workspaces' `GitReader`, which is now gone — `@effected/workspaces` runs
@@ -30,7 +35,30 @@ tests** (`__test__/integration/Git.int.test.ts`) — the `@effected/workspaces`
 `peerDependencies`; a consumer of this package chooses its own platform
 backend.
 
-## Three source modules
+## The redaction policy (#86) — documented, not just convention
+
+Every `GitCommand` constructor returns a **`GitInvocation`** — the spawnable
+`ChildProcess.StandardCommand` plus `redactedArgs`, the same argv with every
+sensitive positional masked. The mask lives on the pure constructor because
+the constructor is the one place that knows which positionals are sensitive:
+`configSet`'s value is masked wholesale as `<redacted>` (a config value can
+be a secret), and URL positionals (the remote of `fetch`, `fetchUnshallow`,
+`lsRemote`, `push` and `pull`, and the url of `submoduleAdd`,
+`submoduleSetUrl`, `remoteAdd` and `remoteSetUrl`) keep everything but an
+embedded `userinfo@` credential — a plain remote name or credential-free URL
+passes through untouched. The userinfo mask is greedy through the LAST `@`
+before the first path slash, so a password containing a literal `@` is
+masked whole. `classify` persists ONLY `redactedArgs` into
+`GitCommandError.args`, and `message` renders that redacted vector, so raw
+argv never survives into an error value; a pre-spawn guard refusal of a
+sensitive value reports `<redacted>` too. The second half of the policy:
+**span annotations carry stable identifiers only** — `cwd`, refs, keys,
+paths, remote names — never config values and never URLs. A new method must
+follow both halves before it ships; a constructor with no sensitive
+positional produces element-wise identical raw and redacted argvs, pinned by
+the `assertGitCommand` helper's default.
+
+## Six source modules
 
 `GitCommand` is a static class with a private constructor, not an `as const`
 namespace object — an `as const` object's member types are inferred in the
@@ -38,18 +66,33 @@ built `.d.ts` and lose their TSDoc entirely, while a class's `static readonly`
 declarations keep it (the `@effected/commands` precedent, `11a121e0`). Call
 syntax is unaffected (`GitCommand.show(...)`).
 
-- `GitCommand.ts` — 24 pure constructors returning core
-  `ChildProcess.StandardCommand` values. Read tier: `show`, `lsTree`,
+- `GitCommand.ts` — 67 pure constructors returning `GitInvocation` values
+  (the core `ChildProcess.StandardCommand` plus the redacted argv — see the
+  redaction policy above). Read tier: `show`, `lsTree`, `lsFiles`,
   `refExists`, `mergeBase`, `changedFiles`, `unstagedChanges`,
-  `stagedChanges`, `untrackedFiles`, `revParse`, `nameStatus`,
+  `stagedChanges`, `untrackedFiles`, `revParse`, `isShallow`, `nameStatus`,
   `defaultBranch`, `currentBranch`, `repoRoot`, `commitInfo`, `configGet`,
-  `remoteUrl`, `status`. Mutating tier: `checkout`, `fetch`,
-  `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`.
-  (`Git.workingChanges` and `Git.fetchAny` are the 25th and 26th `Git`
-  service methods, but each composes existing methods —
+  `configList`, `configGetAll`, `remoteUrl`, `status`, `submoduleStatus`,
+  `lsRemote` (the one network read), `stashList`, `branchList`, `tagList`,
+  `forEachRef`, `revList`, `checkIgnore`, `worktreeList`. Mutating tier:
+  `checkout`, `fetch`, `fetchUnshallow`, `reset`, `clean`, `restore`,
+  `branchCreate`, `branchDelete`, `submoduleUpdate`, `submoduleAdd`,
+  `submoduleInit`, `submoduleDeinit`, `submoduleSync`, `submoduleSetUrl`,
+  `submoduleSetBranch`, `submoduleAbsorbgitdirs`, `submoduleForeach`,
+  `sparseCheckoutSet`, `configSet`, `configUnset`, `add`, `rm`, `mv`,
+  `remoteAdd`, `remoteRemove`, `remoteSetUrl`, `stashPush`, `stashPop`,
+  `stashApply`, `stashDrop`, `tagCreate`, `tagDelete`, `commit`, `push`,
+  `pull`, `worktreeAdd`, `worktreeRemove`.
+  (`Git.workingChanges` and `Git.fetchAny` compose existing methods —
   `unstagedChanges` + `stagedChanges` + `untrackedFiles`, and tag-form
-  `fetch` then plain `fetch` — rather than adding its own `GitCommand`
-  constructor.) `changedFiles` and the three
+  `fetch` then plain `fetch` — rather than adding their own `GitCommand`
+  constructors.) `checkIgnore` is the one constructor carrying STDIN baked
+  into the pure command value (`check-ignore -z --stdin` — the only fully
+  robust form, and nothing caller-controlled enters the argv); the stash
+  index constructors render `stash@{n}` from an INTEGER the service
+  validates (`rejectNonNaturalNumber` — a NaN or fractional index is
+  refused typed, pre-spawn, because every relational guard admits NaN).
+  `changedFiles` and the three
   working-tree diff constructors take a `relative` flag whose diff flag is
   **explicit in both branches** — `true` passes `--relative`, `false` passes
   `--no-relative`. The `--no-relative` is load-bearing: git honors a configured
@@ -75,8 +118,42 @@ syntax is unaffected (`GitCommand.show(...)`).
   surface), the error
   taxonomy (`GitCommandError`, `NotARepositoryError`, `UnknownRefError`), the
   parsed-result models (`LsTreeEntry`, `NameStatusEntry`, `CommitInfo`,
-  `StatusEntry`), and the private `classify`/`runClassified` pair where git's
-  stderr/exit-code taxonomy is read exactly once.
+  `StatusEntry`, `SubmoduleStatusEntry`), and the private
+  `classify`/`runClassified` pair where git's
+  stderr/exit-code taxonomy is read exactly once. `submoduleStatus` is the
+  ONE path-emitting parser without a `-z` rule to lean on — git offers no
+  `-z` for `submodule status`, so its parse is line-based and a path
+  containing a newline (or a literal space-parenthesis suffix mimicking the
+  describe parenthesis) would corrupt it; a
+  recorded git-imposed limitation, not an oversight.
+- `GitConfig.ts` — the pure git-config document model: `GitConfig` (text +
+  structural index; `stringify` is byte-for-byte identity on unmodified
+  documents), `GitConfigSection`/`GitConfigEntry`/`GitConfigInclude`,
+  `GitConfigDiagnostic`, and the typed `GitConfigParseError` /
+  `GitConfigEditError`. Semantics are git-config, NOT generic INI:
+  case-insensitive section/key names, case-SENSITIVE quoted subsections, the
+  deprecated `[a.b]` dotted form (its subsection compares case-insensitively),
+  multi-valued keys (`getAll`/`append`), the bare-`key` boolean shorthand,
+  quoting/escapes/continuations, and `include`/`includeIf` surfaced by
+  `includes()` but never resolved. Edits (`set`/`append`/`unset`/`unsetAll`/
+  `addSection`/`removeSection`/`renameSection`) are text splices + re-parse,
+  so git's own formatting survives; malformed INPUT fails typed, while a
+  hand-built `GitConfig.make` over unparseable text dies as a defect (bad
+  wiring, not bad input). `parse` derives from `parseResult` per
+  Result-parity.
+- `Gitmodules.ts` — the typed `.gitmodules` view: `GitmodulesEntry`
+  (`name`/`path`/`url` plus optional `branch`/`shallow`/`update`/`ignore`/
+  `fetchRecurseSubmodules`), decode via `fromConfigResult`/`parseResult`/
+  `parse`, the `FromString` codec, canonical `stringify`, and entry-level
+  mutation statics (`setUrl`/`setPath`/`setBranch`/`setShallow`/`add`/
+  `remove`/`rename`) that compile into `GitConfig`'s surgical edits so a
+  mutated `.gitmodules` keeps its formatting. `update` stays a raw string
+  deliberately (git accepts `!command` values).
+- `internal/config.ts` — the git-config engine: the line-oriented scanner
+  emitting raw records + diagnostics (the cycle firewall — it never imports
+  the public classes) and the splice/serialize primitives the facade
+  compiles edits into. No recursion anywhere, so no depth cap is needed —
+  the scanner is a single loop over lines.
 
 ## LC_ALL=C + extendEnv: true
 
@@ -92,10 +169,11 @@ merge explicitly rather than rely on an implementation-specific default.
 ## Classification happens once
 
 Every `Git` method funnels its run through the private `classify` step in
-`Git.ts` — nowhere else in the package inspects `stderr` or `exitCode`.
-`classify` takes a `ClassifyKind`
-(`"show" | "refExists" | "quiet" | "noSuchRemote" | "generic"`) that gates
-which method-specific rows apply on top of the shared taxonomy:
+`Git.ts` — nowhere else in the package inspects `stderr`, `stdout` or
+`exitCode`. `classify` takes a `ClassifyKind`
+(`"show" | "refExists" | "quiet" | "noSuchRemote" | "push" | "merge" |
+"generic"`) that gates which method-specific rows apply on top of the shared
+taxonomy:
 
 | stderr / exit shape | kind gate | classification | surfaces as |
 | --- | --- | --- | --- |
@@ -106,6 +184,9 @@ which method-specific rows apply on top of the shared taxonomy:
 | `exitCode === 1` and `stderr === ""` | `"quiet"` only | `absent` | `Option.none()` |
 | contains `"No such remote"` | `"noSuchRemote"` only | `absent` | `Option.none()` |
 | `exitCode === 1` | `"refExists"` only | `refMissing` | `false` |
+| stderr has `"[rejected]"` AND one of `non-fast-forward` / `fetch first` / `stale info` | `"push"` only | `nonFastForward` | `NonFastForwardError` |
+| stderr contains `"would be overwritten by"` | `"merge"` only | `dirtyWorktree` | `DirtyWorktreeError` |
+| STDOUT **or** stderr contains `"CONFLICT ("` / `"Automatic merge failed"` / `"could not apply"` | `"merge"` only | `mergeConflict` | `MergeConflictError` |
 | spawn-level `PlatformError` | any | `failure` | `GitCommandError` with `detail` set, no `exitCode` |
 | per-run timeout (30s) | any | `failure` | `GitCommandError` with `detail: "timed out after 30s"`, no `exitCode` |
 | anything else non-zero | any | `failure` | `GitCommandError` with `exitCode` + `stderr` |
@@ -116,7 +197,23 @@ for every method that reaches `classify`, but in practice only `fetch`,
 `submoduleUpdate` and `submoduleAdd` produce it — it is the typed signal a
 tag-then-branch fetch fallback (`Effect.catchTag`) branches on.
 
-`"quiet"` backs `defaultBranch` and `configGet`: both run their git command
+The `"push"` and `"merge"` kinds (2026-08-05 round 2) are the request's
+"typed errors only where consumers branch" rule made structural: `"push"`
+backs only `push` (rejected-non-fast-forward, incl. the `--force-with-lease`
+`stale info` lease failure — probed against git 2.54, whose remote-moved
+wording is `fetch first`, NOT the classic `non-fast-forward`); `"merge"`
+backs only `pull`, `stashPop` and `stashApply` (`DirtyWorktreeError` before
+git touches anything, `MergeConflictError` once markers are written). The
+merge-conflict row is the ONE place `classify` reads STDOUT: git's merge
+machinery reports `CONFLICT (` / `Automatic merge failed` on stdout (probed
+for pull and stash pop alike), while a rebase-mode pull's `could not apply`
+lands on stderr. Because the rows are kind-gated, **no pre-existing member's
+error union changed** — `checkout` with dirty-worktree stderr still fails
+`GitCommandError`, pinned by a zero-churn regression test.
+
+`"quiet"` backs `defaultBranch` and `configGet` — and, round 2,
+`configGetAll` (unset key → `[]`) and `checkIgnore` (`git check-ignore`
+exits 1 silently when NO path is ignored → `[]`). Both original occupants run their git command
 with `--quiet`/rely on a silent exit 1 to mean "unset", so any exit-1 WITH
 stderr text is a real failure, not an absence. `"noSuchRemote"` backs
 `remoteUrl`: `git remote get-url` prints `"No such remote '<name>'"` on a
@@ -172,9 +269,24 @@ newline-split parse would silently corrupt any path containing one. Every one
 bakes `-z` into the argv unconditionally — there is no non-`-z` code path to
 regress into.
 
-## The three parsed models
+## The parsed models
 
-`Git.ts` defines three `Schema.Class` models beyond `LsTreeEntry`, each
+`Git.ts` defines ten `Schema.Class` models beyond `LsTreeEntry`. The round-2
+seven, each backing one list parser: `LsRemoteEntry` (`sha` + full `ref`,
+`^{}` peel entries preserved, plus the pure decode-side statics `shortName`
+and `nearMatches` — the systems#357 near-miss suggestion helper; the
+suggestion policy deliberately lives on the entry VALUE, not in the
+service), `StashEntry` (from the fixed `-z` `%gd%x1f%H%x1f%gs` format —
+array position IS the current stash index), `BranchEntry` (NUL-separated
+for-each-ref format on `git branch --list`; `current` decodes the `*`
+marker), `RefEntry` (the fixed `%(refname)%00%(objectname)%00%(objecttype)`
+triple), `ConfigListEntry` (`--list -z`, first-newline key/value split so
+multi-line values survive; a valueless boolean-shorthand key surfaces as
+`""`), `WorktreeEntry` (porcelain `-z` attribute blocks: `head`/`branch`
+optional, `detached`/`bare` flags, `locked`/`prunable` reasons), and
+`LsFilesEntry` (`ls-files --stage -z`: mode/oid/stage/path — the INDEX-side
+sibling of `LsTreeEntry`, the only read that sees a staged-but-uncommitted
+`160000` gitlink; systems#424's addendum ask). The original three, each
 backing exactly one `-z`-terminated parser:
 
 - `NameStatusEntry` — `nameStatus`'s `git diff --name-status -z` parser
@@ -211,10 +323,21 @@ exists precisely so the `Set` dedups: from a nested `cwd` the diffs and
 
 ## The mutating tier
 
-Eighteen of `Git`'s twenty-six methods only read repository state at an
-arbitrary `ref` without touching the working tree. Eight are mutating:
-`checkout`, `fetch`, `fetchAny`, `submoduleUpdate`, `submoduleAdd`,
-`sparseCheckoutSet`, `configSet`, `add`. The tier rule is simple and absolute: every mutating
+Thirty-one of `Git`'s sixty-nine methods only read repository state
+without touching the working tree (`lsRemote` reads over the NETWORK —
+still a read). Thirty-eight are mutating:
+`checkout`, `fetch`, `fetchAny`, `fetchUnshallow`, `reset`, `clean`,
+`restore`, `branchCreate`, `branchDelete`, `submoduleUpdate`,
+`submoduleAdd`, `submoduleInit`, `submoduleDeinit`, `submoduleSync`,
+`submoduleSetUrl`, `submoduleSetBranch`, `submoduleAbsorbgitdirs`,
+`submoduleForeach`, `sparseCheckoutSet`, `configSet`, `configUnset`, `add`,
+`rm`, `mv`, `remoteAdd`, `remoteRemove`, `remoteSetUrl`, `stashPush`,
+`stashPop`, `stashApply`, `stashDrop`, `tagCreate`, `tagDelete`, `commit`,
+`push`, `pull`, `worktreeAdd`, `worktreeRemove`.
+(`submoduleStatus` is the one
+submodule-tier READ; `submoduleForeach` is marked mutating because the
+shell command it runs can mutate anything, regardless of what it does.)
+The tier rule is simple and absolute: every mutating
 method's TSDoc opens with the literal word `"Mutating:"`, and that is the
 ONLY signal a caller gets — nothing in this package serializes concurrent
 access. A caller running two mutating calls (or a mutating call alongside a
@@ -245,18 +368,76 @@ rejection with zero further spawns. `NotARepositoryError` propagates from the
 tag attempt — the plain form would fail identically. When both attempts fail,
 the PLAIN fetch's error surfaces; the tag attempt's failure is discarded.
 
+## The working-tree restore trio, branches and the shallow pair (#193)
+
+The 2026-08-05 mutating-tier slice closed silk-release-action's raw-spawn
+census. Postures that are decisions, not defaults:
+
+- **`reset` and `clean` fail LOUDLY on any non-zero exit** (`GitCommandError`,
+  `kind: "failed"`) — they exist so a consumer can restore a tree before
+  retrying a non-idempotent operation (`@changesets/apply-release-plan`
+  deletes the changesets it consumes), and a reset that silently did nothing
+  would hand the retry the same dirty tree. `clean` passes `--force`
+  unconditionally for the same reason: under default `clean.requireForce`,
+  a forceless clean is a guaranteed no-op.
+- **`restore` is a separate member**, git's own verb for the
+  `checkout -- <paths>` shape — `checkout`'s option-like-ref refusal is NOT
+  weakened. `restore`'s paths sit behind a literal `--`; only its `source`
+  ref is guarded.
+- **Branch creation is a branch member, not a checkout option**:
+  `branchCreate(cwd, name, { startPoint?, checkout?, force? })` emits
+  `git branch [-f] <name> [<start>]`, or `git checkout (-b | -B) <name>
+  [<start>]` with `checkout: true` (one member, two argvs — the `-b`/`-B` is
+  the constructor's own literal). `force` with `checkout` exists because the
+  delete-then-create longhand swallows a real edge: `branch -D` refuses the
+  currently checked-out branch, `checkout -B` resets it fine.
+  `branchDelete` emits `-d`, or `-D` with `force: true`.
+- **`isShallow(cwd)` is a dedicated predicate** (`rev-parse
+  --is-shallow-repository`, stdout `true`/`false`), deliberately not folded
+  into `revParse` — that member's contract stays "resolve this REF".
+- **`fetchUnshallow` is a distinct mode, and the CALLER guards.** git rejects
+  `--unshallow` in a non-shallow repo; the method does not tolerate that
+  (tolerating would swallow every other fetch failure shape) — probe with
+  `isShallow` first. Its remote is a URL positional and rides the `secretUrl`
+  redaction mask.
+
+## StatusEntry porcelain rendering (#289)
+
+`StatusEntry.toLine()` renders one `XY <path>` line; `StatusEntry.format(entries)`
+newline-joins them (no trailing newline). **The rename convention is decided
+here, once**: the default renders a rename/copy entry's NEW path only — the
+entry's current path, the one a line-oriented consumer can open — a recorded
+divergence from git's own non-`-z` `orig -> new` rendering, which is opt-in
+via `{ renames: "arrow" }`. Second recorded divergence: no C-quoting of
+special-character paths; the rendering targets whitespace-insensitive text
+consumers, and machine parsers should consume the decoded entries directly.
+
 ## Testing and building
 
-135 tests in `__test__/`: 30 `GitCommand` (pure constructor shape + the
-`setCwd` non-mutation guarantee, covering all 24 constructors), 6
-`internal/run` (including defect passthrough through `available`), 71 `Git`
-(the full classification matrix across all five `ClassifyKind`s, the
+379 tests in `__test__/`: the `GitCommand` constructor suite (pure
+invocation shape + the `setCwd` non-mutation guarantee, all 67 constructors,
+plus the redaction-mask block asserting `redactedArgs` for the sensitive
+constructors — now including `lsRemote`/`remoteAdd`/`remoteSetUrl`/`push`/
+`pull` URL remotes — and identity for the rest), 6
+`internal/run` (including defect passthrough through `available`), the `Git`
+suite (the full classification matrix across all seven `ClassifyKind`s, the
 option-injection guard block — every guarded positional has a no-spawn
 rejection test — `workingChanges`' union/dedup, `fetchAny`'s
 tag-then-plain fallback matrix — single-spawn success, both fallback
 triggers, plain-error surfacing, `NotARepositoryError` short-circuit, and a
-no-spawn guard rejection — and the parsers
-for `NameStatusEntry`/`CommitInfo`/`StatusEntry`, mocked spawner), and 28
+no-spawn guard rejection — the parsers
+for `NameStatusEntry`/`CommitInfo`/`StatusEntry`/`SubmoduleStatusEntry`, the
+submodule tier incl. redaction-through-classify assertions, mocked spawner —
+plus the round-2 block: lsRemote parse + `nearMatches`, the stash family
+incl. the NaN/fractional index refusals, the refs/history/config/misc tiers,
+the push/merge classification matrix with its zero-churn gating control, and
+redaction-through-classify for the URL-carrying members),
+the `GitConfig` suite (a 27-case conformance corpus — count-guarded — each
+case asserting lookups AND byte-for-byte round-trip, the malformed-input
+family proving typed failure never defect, and the surgical-edit family),
+the `Gitmodules` suite (decode incl. git boolean vocabulary, typed decode
+errors naming entry+field, the `FromString` codec, and mutation-compiles-to-
+surgical-edit assertions), and 28
 integration split across two files: 14 in
 `__test__/integration/Git.int.test.ts` (the original surface —
 show/lsTree/refExists/mergeBase/changedFiles/workingChanges/revParse/checkout
@@ -301,5 +482,10 @@ pnpm build --filter @effected/git   # from the repo root
   "ae-forgotten-export", pattern: "_base" }`) for the synthesized bases behind
   every `Schema.TaggedErrorClass`/`Schema.Class` export (`GitCommandError`,
   `NotARepositoryError`, `UnknownRefError`, `LsTreeEntry`, `NameStatusEntry`,
-  `CommitInfo`, `StatusEntry`, `Git`). Never widen it.
+  `CommitInfo`, `StatusEntry`, `SubmoduleStatusEntry`, `Git`, the round-2
+  models and errors (`LsRemoteEntry`, `StashEntry`, `BranchEntry`,
+  `RefEntry`, `ConfigListEntry`, `WorktreeEntry`, `LsFilesEntry`,
+  `NonFastForwardError`, `MergeConflictError`, `DirtyWorktreeError`), and
+  the `GitConfig`/`Gitmodules` class families — 29 suppressed entries at
+  last clean build). Never widen it.
 - Never run `node savvy.build.ts --target prod` directly.

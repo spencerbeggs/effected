@@ -2,13 +2,24 @@ import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Fiber, Option, PlatformError, Result } from "effect";
 import { TestClock } from "effect/testing";
 import {
+	BranchEntry,
+	ConfigListEntry,
+	DirtyWorktreeError,
 	Git,
 	GitCommandError,
+	LsFilesEntry,
+	LsRemoteEntry,
 	LsTreeEntry,
+	MergeConflictError,
 	NameStatusEntry,
+	NonFastForwardError,
 	NotARepositoryError,
+	RefEntry,
+	StashEntry,
 	StatusEntry,
+	SubmoduleStatusEntry,
 	UnknownRefError,
+	WorktreeEntry,
 } from "../src/Git.js";
 import type { ScriptResult } from "./fixtures.js";
 import { scripted } from "./fixtures.js";
@@ -899,6 +910,387 @@ describe("Git", () => {
 		);
 	});
 
+	describe("StatusEntry porcelain rendering (#289)", () => {
+		const entries = [
+			StatusEntry.make({ x: "M", y: " ", path: "a.txt" }),
+			StatusEntry.make({ x: "R", y: " ", path: "renamed.txt", origPath: "sub/c.txt" }),
+			StatusEntry.make({ x: "?", y: "?", path: "untracked.txt" }),
+		];
+
+		it("toLine renders `XY <path>` — a rename emits the NEW path by default", () => {
+			assert.strictEqual(entries[0]?.toLine(), "M  a.txt");
+			// The kit's decided rename convention: the entry's CURRENT path.
+			assert.strictEqual(entries[1]?.toLine(), "R  renamed.txt");
+			assert.strictEqual(entries[2]?.toLine(), "?? untracked.txt");
+		});
+
+		it("renames: 'arrow' opts into git's own non-`-z` `orig -> new` form", () => {
+			assert.strictEqual(entries[1]?.toLine({ renames: "arrow" }), "R  sub/c.txt -> renamed.txt");
+			// Non-rename entries are unaffected by the option.
+			assert.strictEqual(entries[0]?.toLine({ renames: "arrow" }), "M  a.txt");
+		});
+
+		it("format joins one line per entry with no trailing newline; an empty array is the empty string", () => {
+			assert.strictEqual(StatusEntry.format(entries), "M  a.txt\nR  renamed.txt\n?? untracked.txt");
+			assert.strictEqual(
+				StatusEntry.format(entries, { renames: "arrow" }),
+				"M  a.txt\nR  sub/c.txt -> renamed.txt\n?? untracked.txt",
+			);
+			assert.strictEqual(StatusEntry.format([]), "");
+		});
+
+		it.effect("format round-trips what parseStatus decoded", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.status(cwd);
+				});
+				const output = ["M  a.txt", "R  renamed.txt", "sub/c.txt"].join("\0");
+				const parsed = yield* run(program, () => ({ stdout: `${output}\0`, exit: 0 }));
+				assert.strictEqual(StatusEntry.format(parsed), "M  a.txt\nR  renamed.txt");
+			}),
+		);
+	});
+
+	describe("working-tree restore tier (#193)", () => {
+		const neverSpawn = (): ScriptResult => {
+			throw new Error("spawned — the option-injection guard did not fire");
+		};
+
+		it.effect("reset defaults to an explicit --mixed with no ref", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.reset(cwd);
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["reset", "--mixed"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("reset --hard to a ref composes mode and ref", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.reset(cwd, { mode: "hard", ref: "abc123" });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["reset", "--hard", "abc123"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("a failed reset fails LOUDLY as GitCommandError — never a silent no-op", () =>
+			Effect.gen(function* () {
+				// The binding posture from the consumer census: a reset that silently
+				// did nothing would hand a retry of a non-idempotent operation the
+				// same dirty tree. Non-zero exit MUST surface typed.
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.reset(cwd, { mode: "hard" });
+				});
+				const failure = yield* Effect.flip(run(program, () => ({ stderr: "fatal: bad boom\n", exit: 128 })));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "failed");
+					assert.strictEqual(failure.exitCode, 128);
+				}
+			}),
+		);
+
+		it.effect("reset refuses an option-like ref before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.reset(cwd, { ref: "--hard" });
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+
+		it.effect("clean composes --force, -d, -x and a -- pathspec", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.clean(cwd, { directories: true, ignored: true, paths: ["dist"] });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["clean", "--force", "-d", "-x", "--", "dist"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("a failed clean fails LOUDLY as GitCommandError", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.clean(cwd, { directories: true });
+				});
+				const failure = yield* Effect.flip(run(program, () => ({ stderr: "fatal: cannot clean\n", exit: 1 })));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "failed");
+				}
+			}),
+		);
+
+		it.effect("restore puts paths behind a literal -- (the `checkout -- .` shape)", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.restore(cwd, ["."]);
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["restore", "--", "."]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("restore composes --source/--staged/--worktree, guarding the source ref pre-spawn", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.restore(cwd, ["a.txt"], { source: "HEAD~1", staged: true, worktree: true });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["restore", "--source", "HEAD~1", "--staged", "--worktree", "--", "a.txt"]);
+					return { exit: 0 };
+				});
+				const guarded = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.restore(cwd, ["a.txt"], { source: "--staged" });
+				});
+				const failure = yield* Effect.flip(run(guarded, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+	});
+
+	describe("branch tier (#193)", () => {
+		const neverSpawn = (): ScriptResult => {
+			throw new Error("spawned — the option-injection guard did not fire");
+		};
+
+		it.effect("branchCreate builds `git branch <name> <start>` by default", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.branchCreate(cwd, "feat/x", { startPoint: "origin/main" });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["branch", "feat/x", "origin/main"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("branchCreate with checkout builds `git checkout -b <name> <start>`", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.branchCreate(cwd, "feat/x", { startPoint: "origin/main", checkout: true });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["checkout", "-b", "feat/x", "origin/main"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("branchCreate with force emits checkout -B (with checkout) or branch -f (without)", () =>
+			Effect.gen(function* () {
+				const invocations: Array<ReadonlyArray<string>> = [];
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					yield* git.branchCreate(cwd, "release/next", { startPoint: "origin/main", checkout: true, force: true });
+					yield* git.branchCreate(cwd, "release/next", { startPoint: "origin/main", force: true });
+				});
+				yield* run(program, (args) => {
+					invocations.push(args);
+					return { exit: 0 };
+				});
+				assert.deepStrictEqual(invocations, [
+					["checkout", "-B", "release/next", "origin/main"],
+					["branch", "-f", "release/next", "origin/main"],
+				]);
+			}),
+		);
+
+		it.effect("branchCreate with force keeps the option-injection guard — no spawn on an option-like name", () =>
+			Effect.gen(function* () {
+				const guarded = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.branchCreate(cwd, "-B", { checkout: true, force: true });
+				});
+				const failure = yield* Effect.flip(run(guarded, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+
+		it.effect("branchCreate guards BOTH the name and the start point pre-spawn", () =>
+			Effect.gen(function* () {
+				const badName = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.branchCreate(cwd, "-b");
+				});
+				const nameFailure = yield* Effect.flip(run(badName, neverSpawn));
+				assert.instanceOf(nameFailure, GitCommandError);
+				const badStart = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.branchCreate(cwd, "feat/x", { startPoint: "--track" });
+				});
+				const startFailure = yield* Effect.flip(run(badStart, neverSpawn));
+				assert.instanceOf(startFailure, GitCommandError);
+				if (startFailure instanceof GitCommandError) {
+					assert.strictEqual(startFailure.kind, "refused");
+				}
+			}),
+		);
+
+		it.effect("branchDelete builds -d by default, -D when forced, guarding the name", () =>
+			Effect.gen(function* () {
+				const invocations: Array<ReadonlyArray<string>> = [];
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					yield* git.branchDelete(cwd, "feat/x");
+					yield* git.branchDelete(cwd, "feat/x", { force: true });
+				});
+				yield* run(program, (args) => {
+					invocations.push(args);
+					return { exit: 0 };
+				});
+				assert.deepStrictEqual(invocations, [
+					["branch", "-d", "feat/x"],
+					["branch", "-D", "feat/x"],
+				]);
+				const guarded = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.branchDelete(cwd, "-D");
+				});
+				const failure = yield* Effect.flip(run(guarded, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
+		it.effect("an unmerged branch under plain -d fails typed as GitCommandError", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.branchDelete(cwd, "feat/x");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stderr: "error: the branch 'feat/x' is not fully merged\n", exit: 1 })),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "failed");
+				}
+			}),
+		);
+	});
+
+	describe("shallow tier (#193)", () => {
+		it.effect("isShallow parses `true` and `false` stdout into a boolean", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.isShallow(cwd);
+				});
+				const shallow = yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["rev-parse", "--is-shallow-repository"]);
+					return { stdout: "true\n", exit: 0 };
+				});
+				assert.isTrue(shallow);
+				const complete = yield* run(program, () => ({ stdout: "false\n", exit: 0 }));
+				assert.isFalse(complete);
+			}),
+		);
+
+		it.effect("fetchUnshallow builds `git fetch --unshallow <remote>`", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchUnshallow(cwd, { remote: "upstream" });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["fetch", "--unshallow", "upstream"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("fetchUnshallow in a NON-shallow repo fails typed — the caller guards with isShallow", () =>
+			Effect.gen(function* () {
+				// The documented posture: --unshallow is a distinct mode git rejects
+				// on a complete repository; this method does not tolerate it, so the
+				// pairing is isShallow -> fetchUnshallow.
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchUnshallow(cwd);
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr: "fatal: --unshallow on a complete repository does not make sense\n",
+						exit: 128,
+					})),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "failed");
+					assert.strictEqual(failure.exitCode, 128);
+				}
+			}),
+		);
+
+		it.effect("fetchUnshallow persists only the REDACTED remote through classify (#86)", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchUnshallow(cwd, { remote: "https://x:ghp_secret@github.com/a/r.git" });
+				});
+				const failure = yield* Effect.flip(run(program, () => ({ stderr: "fatal: nope\n", exit: 128 })));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.deepStrictEqual([...failure.args], ["fetch", "--unshallow", "https://<redacted>@github.com/a/r.git"]);
+					assert.notInclude(failure.message, "ghp_secret");
+				}
+			}),
+		);
+
+		it.effect("fetchUnshallow refuses an option-like remote before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchUnshallow(cwd, { remote: "--upload-pack=evil" });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => {
+						throw new Error("spawned — the option-injection guard did not fire");
+					}),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+	});
+
 	describe("mutating tier", () => {
 		it.effect("checkout --detach passes the flag through", () =>
 			Effect.gen(function* () {
@@ -1123,6 +1515,35 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("submoduleUpdate and submoduleAdd refuse a non-natural depth before any spawn", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const record = () => {
+					spawned = true;
+					return { exit: 0 };
+				};
+				const updateProgram = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleUpdate(cwd, { depth: Number.NaN });
+				});
+				const updateFailure = yield* Effect.flip(run(updateProgram, record));
+				assert.instanceOf(updateFailure, GitCommandError);
+				if (updateFailure instanceof GitCommandError) {
+					assert.strictEqual(updateFailure.kind, "refused");
+				}
+				const addProgram = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleAdd(cwd, { url: "https://example.com/r.git", path: ".repos/r", depth: 1.5 });
+				});
+				const addFailure = yield* Effect.flip(run(addProgram, record));
+				assert.instanceOf(addFailure, GitCommandError);
+				if (addFailure instanceof GitCommandError) {
+					assert.strictEqual(addFailure.kind, "refused");
+				}
+				assert.isFalse(spawned);
+			}),
+		);
+
 		it.effect("sparseCheckoutSet is explicit about the cone flag and guards patterns", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {
@@ -1257,6 +1678,49 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("fetch refuses a NaN depth before any spawn", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "main", depth: Number.NaN });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isFalse(spawned);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+					assert.include(failure.detail ?? "", "non-negative integer");
+				}
+			}),
+		);
+
+		it.effect("fetch refuses a fractional depth before any spawn", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "main", depth: 1.5 });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isFalse(spawned);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+
 		it.effect("add stages paths behind -- so option-like paths are inert", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {
@@ -1267,6 +1731,849 @@ describe("Git", () => {
 					assert.deepStrictEqual(args, ["add", "--", ".gitmodules", "-weird-but-legal-behind-dashdash"]);
 					return { exit: 0 };
 				});
+			}),
+		);
+	});
+
+	describe("submodule tier", () => {
+		const neverSpawn = (): ScriptResult => {
+			throw new Error("spawned — the pre-spawn guard did not fire");
+		};
+
+		it.effect("submoduleStatus decodes every state prefix, the describe suffix and a path with spaces", () =>
+			Effect.gen(function* () {
+				const sha = "a".repeat(40);
+				const output = [
+					` ${sha} .repos/effect (effect@4.0.0-beta.101)`,
+					`-${sha} vendor/uninitialized`,
+					`+${sha} vendor/out of sync (v1.0-2-gabcdef)`,
+					`U${sha} vendor/conflicted`,
+					"",
+				].join("\n");
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleStatus(cwd);
+				});
+				const entries = yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["submodule", "status"]);
+					return { stdout: output, exit: 0 };
+				});
+				assert.deepStrictEqual(entries, [
+					SubmoduleStatusEntry.make({
+						state: "current",
+						sha,
+						path: ".repos/effect",
+						describe: "effect@4.0.0-beta.101",
+					}),
+					SubmoduleStatusEntry.make({ state: "uninitialized", sha, path: "vendor/uninitialized" }),
+					SubmoduleStatusEntry.make({
+						state: "outOfSync",
+						sha,
+						path: "vendor/out of sync",
+						describe: "v1.0-2-gabcdef",
+					}),
+					SubmoduleStatusEntry.make({ state: "conflict", sha, path: "vendor/conflicted" }),
+				]);
+			}),
+		);
+
+		it.effect("submoduleInit passes its pathspec behind --", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleInit(cwd, { paths: [".repos/effect"] });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["submodule", "init", "--", ".repos/effect"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("submoduleDeinit with neither paths nor all is refused typed, before any spawn", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleDeinit(cwd, {});
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+					assert.include(failure.detail ?? "", "paths or all");
+				}
+			}),
+		);
+
+		it.effect("submoduleDeinit --all --force builds the flag form", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleDeinit(cwd, { all: true, force: true });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["submodule", "deinit", "--force", "--all"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("submoduleSync classifies not-a-repository typed", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleSync(cwd);
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stderr: "fatal: not a git repository\n", exit: 128 })),
+				);
+				assert.instanceOf(failure, NotARepositoryError);
+			}),
+		);
+
+		it.effect("a failing submoduleSetUrl persists ONLY the redacted url in args and message", () =>
+			Effect.gen(function* () {
+				const secret = "https://x-access-token:ghp_secret@github.com/a/r.git";
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleSetUrl(cwd, ".repos/r", secret);
+				});
+				const failure = yield* Effect.flip(
+					run(program, (args) => {
+						// The SPAWNED argv carries the real url — git needs it.
+						assert.include(args, secret);
+						return { stderr: "fatal: no submodule mapping found\n", exit: 1 };
+					}),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.notInclude(failure.args.join(" "), "ghp_secret");
+					assert.include(failure.args.join(" "), "https://<redacted>@github.com/a/r.git");
+					assert.notInclude(failure.message, "ghp_secret");
+					assert.include(failure.message, "<redacted>");
+				}
+			}),
+		);
+
+		it.effect("a failing configSet persists <redacted> for the value in args and message", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configSet(cwd, "http.extraheader", "AUTHORIZATION: bearer tok123");
+				});
+				const failure = yield* Effect.flip(run(program, () => ({ stderr: "error: cannot write\n", exit: 255 })));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.notInclude(failure.args.join(" "), "tok123");
+					assert.deepStrictEqual([...failure.args], ["config", "http.extraheader", "<redacted>"]);
+					assert.notInclude(failure.message, "tok123");
+				}
+			}),
+		);
+
+		it.effect("a REFUSED option-like configSet value is reported redacted too", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configSet(cwd, "alias.x", "--secret-looking-value");
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+					assert.deepStrictEqual([...failure.args], ["<redacted>"]);
+					assert.notInclude(failure.detail ?? "", "--secret-looking-value");
+				}
+			}),
+		);
+
+		it.effect("submoduleSetBranch refuses an option-like branch before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleSetBranch(cwd, ".repos/r", { branch: "-b" });
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+
+		it.effect("submoduleSetBranch with no branch clears to --default", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleSetBranch(cwd, ".repos/r");
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["submodule", "set-branch", "--default", "--", ".repos/r"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("submoduleAbsorbgitdirs runs bare or scoped", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleAbsorbgitdirs(cwd, { paths: [".repos/r"] });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["submodule", "absorbgitdirs", "--", ".repos/r"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("submoduleForeach returns the collected stdout", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleForeach(cwd, "git rev-parse HEAD", { recursive: true });
+				});
+				const output = yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["submodule", "foreach", "--recursive", "git rev-parse HEAD"]);
+					return { stdout: "Entering '.repos/effect'\nabc123\n", exit: 0 };
+				});
+				assert.strictEqual(output, "Entering '.repos/effect'\nabc123\n");
+			}),
+		);
+
+		it.effect("submoduleForeach refuses an option-like command before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleForeach(cwd, "--recursive");
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+
+		it.effect("an unrecognized submodule failure falls through to GitCommandError with exit and stderr", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleDeinit(cwd, { paths: [".repos/r"] });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stderr: "error: the following file has local modifications\n", exit: 1 })),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "failed");
+					assert.strictEqual(failure.exitCode, 1);
+					assert.include(failure.stderr, "local modifications");
+				}
+			}),
+		);
+	});
+});
+
+describe("Git — remaining tiers (round 2)", () => {
+	const neverSpawn = (): ScriptResult => {
+		throw new Error("spawned — the pre-spawn guard did not fire");
+	};
+
+	// The ASCII unit separator stashList's fixed --format uses between fields.
+	const US = "\u001f";
+
+	describe("lsRemote", () => {
+		it.effect("parses sha<TAB>refname lines, peeled ^{} entries included", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.lsRemote(cwd, "origin", { tags: true });
+				});
+				const sha = "9d41fb9d5825a52a6ab6d3232a8c7a111920bf94";
+				const peeled = "ac28891d7c72307eb31c5bbe6c5e35ae4a7788c9";
+				const output = [
+					`${sha}\trefs/tags/effect@4.0.0-beta.101`,
+					`${peeled}\trefs/tags/v1`,
+					`${sha}\trefs/tags/v1^{}`,
+					"",
+				].join("\n");
+				const result = yield* run(program, () => ({ stdout: output, exit: 0 }));
+				assert.deepStrictEqual(result, [
+					LsRemoteEntry.make({ sha, ref: "refs/tags/effect@4.0.0-beta.101" }),
+					LsRemoteEntry.make({ sha: peeled, ref: "refs/tags/v1" }),
+					LsRemoteEntry.make({ sha, ref: "refs/tags/v1^{}" }),
+				]);
+			}),
+		);
+
+		it("nearMatches surfaces a monorepo-prefixed tag for a bare wanted ref, and nothing else", () => {
+			const entries = [
+				LsRemoteEntry.make({ sha: "a".repeat(40), ref: "refs/tags/effect@4.0.0-beta.101" }),
+				LsRemoteEntry.make({ sha: "b".repeat(40), ref: "refs/tags/4.0.0-beta.101-rc" }),
+				LsRemoteEntry.make({ sha: "c".repeat(40), ref: "refs/heads/main" }),
+			];
+			// The systems#357 story: the caller wanted `4.0.0-beta.101`, the remote
+			// advertises `effect@4.0.0-beta.101` — a near miss behind a separator.
+			const matches = LsRemoteEntry.nearMatches(entries, "4.0.0-beta.101");
+			assert.deepStrictEqual(
+				matches.map((entry) => entry.ref),
+				["refs/tags/effect@4.0.0-beta.101"],
+			);
+			// An exact match is a MATCH, not a near miss.
+			const exact = LsRemoteEntry.nearMatches([LsRemoteEntry.make({ sha: "d".repeat(40), ref: "refs/tags/v1" })], "v1");
+			assert.deepStrictEqual(exact, []);
+		});
+
+		it("shortName strips ref prefixes and the ^{} peel suffix", () => {
+			assert.strictEqual(LsRemoteEntry.shortName("refs/tags/v1^{}"), "v1");
+			assert.strictEqual(LsRemoteEntry.shortName("refs/heads/feat/x"), "feat/x");
+			assert.strictEqual(LsRemoteEntry.shortName("HEAD"), "HEAD");
+		});
+
+		it.effect("an unreachable remote stays a plain GitCommandError — no dedicated type", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.lsRemote(cwd, "https://127.0.0.1:1/nope.git");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr: "fatal: unable to access 'https://127.0.0.1:1/nope.git/': Failed to connect\n",
+						exit: 128,
+					})),
+				);
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
+		it.effect("a failing lsRemote persists only the REDACTED remote in the error argv", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.lsRemote(cwd, "https://user:tok@example.com/r.git");
+				});
+				const failure = yield* Effect.flip(run(program, () => ({ stderr: "fatal: boom\n", exit: 128 })));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.deepStrictEqual([...failure.args], ["ls-remote", "https://<redacted>@example.com/r.git"]);
+					assert.notInclude(failure.message, "user:tok");
+				}
+			}),
+		);
+
+		it.effect("guards the remote and every pattern before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.lsRemote(cwd, "origin", { patterns: ["--upload-pack=evil"] });
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+	});
+
+	describe("remote management", () => {
+		it.effect("remoteAdd persists a redacted url on failure", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.remoteAdd(cwd, "up", "https://user:tok@example.com/r.git");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stderr: "error: remote up already exists\n", exit: 3 })),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.deepStrictEqual([...failure.args], ["remote", "add", "up", "https://<redacted>@example.com/r.git"]);
+				}
+			}),
+		);
+
+		it.effect("remoteRemove of a missing remote fails loudly — not an absence degrade", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.remoteRemove(cwd, "nope");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stderr: "error: No such remote: 'nope'\n", exit: 2 })),
+				);
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
+		it.effect("remoteSetUrl guards the name before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.remoteSetUrl(cwd, "--push", "https://example.com/r.git");
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+	});
+
+	describe("stash", () => {
+		it.effect("stashList parses NUL-terminated unit-separated records", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.stashList(cwd);
+				});
+				const output =
+					`stash@{0}${US}9082ed4f3a84eac9fe9f84f1792959f4e6704642${US}WIP on main: 9d41fb9 one\0` +
+					`stash@{1}${US}a5ba0f23294307d84952fdec58bd058d3c8d068c${US}On main: first msg\0`;
+				const result = yield* run(program, () => ({ stdout: output, exit: 0 }));
+				assert.deepStrictEqual(result, [
+					StashEntry.make({
+						ref: "stash@{0}",
+						sha: "9082ed4f3a84eac9fe9f84f1792959f4e6704642",
+						message: "WIP on main: 9d41fb9 one",
+					}),
+					StashEntry.make({
+						ref: "stash@{1}",
+						sha: "a5ba0f23294307d84952fdec58bd058d3c8d068c",
+						message: "On main: first msg",
+					}),
+				]);
+			}),
+		);
+
+		it.effect("stashPop maps the dirty-worktree refusal to DirtyWorktreeError", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.stashPop(cwd);
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr:
+							"error: Your local changes to the following files would be overwritten by merge:\n\tg.txt\nPlease commit your changes or stash them before you merge.\nAborting\n",
+						exit: 1,
+					})),
+				);
+				assert.instanceOf(failure, DirtyWorktreeError);
+			}),
+		);
+
+		it.effect("stashApply maps a STDOUT conflict report to MergeConflictError", () =>
+			Effect.gen(function* () {
+				// git's merge machinery reports conflicts on stdout (probed): the
+				// classification must read stdout, not just stderr.
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.stashApply(cwd, { index: 0 });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stdout: "Auto-merging f.txt\nCONFLICT (content): Merge conflict in f.txt\n",
+						stderr: "",
+						exit: 1,
+					})),
+				);
+				assert.instanceOf(failure, MergeConflictError);
+			}),
+		);
+
+		it.effect("a NaN stash index is refused before any spawn", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.stashPop(cwd, { index: Number.NaN });
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+					assert.include(failure.detail ?? "", "non-negative integer");
+				}
+			}),
+		);
+
+		it.effect("a fractional stash index is refused before any spawn", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.stashDrop(cwd, { index: 1.5 });
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
+		it.effect("popping an empty stash stays a loud GitCommandError", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.stashPop(cwd);
+				});
+				const failure = yield* Effect.flip(run(program, () => ({ stderr: "No stash entries found.\n", exit: 1 })));
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+	});
+
+	describe("refs tier", () => {
+		it.effect("branchList decodes the HEAD marker and NUL-separated fields", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.branchList(cwd);
+				});
+				const sha = "9d41fb9d5825a52a6ab6d3232a8c7a111920bf94";
+				const output = `*\0main\0${sha}\n \0other\0${sha}\n`;
+				const result = yield* run(program, () => ({ stdout: output, exit: 0 }));
+				assert.deepStrictEqual(result, [
+					BranchEntry.make({ name: "main", sha, current: true }),
+					BranchEntry.make({ name: "other", sha, current: false }),
+				]);
+			}),
+		);
+
+		it.effect("forEachRef decodes the fixed refname/sha/objecttype triple", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.forEachRef(cwd, { patterns: ["refs/tags"] });
+				});
+				const output = [`refs/tags/v1\0${"a".repeat(40)}\0tag`, `refs/tags/v2\0${"b".repeat(40)}\0commit`].join("\n");
+				const result = yield* run(program, () => ({ stdout: `${output}\n`, exit: 0 }));
+				assert.deepStrictEqual(result, [
+					RefEntry.make({ ref: "refs/tags/v1", sha: "a".repeat(40), objectType: "tag" }),
+					RefEntry.make({ ref: "refs/tags/v2", sha: "b".repeat(40), objectType: "commit" }),
+				]);
+			}),
+		);
+
+		it.effect("revList returns the sha lines; a NaN limit is refused pre-spawn", () =>
+			Effect.gen(function* () {
+				const listing = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.revList(cwd, "HEAD", { limit: 2, firstParent: true });
+				});
+				const result = yield* run(listing, () => ({ stdout: `${"a".repeat(40)}\n${"b".repeat(40)}\n`, exit: 0 }));
+				assert.deepStrictEqual(result, ["a".repeat(40), "b".repeat(40)]);
+				const guarded = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.revList(cwd, "HEAD", { limit: Number.NaN });
+				});
+				const failure = yield* Effect.flip(run(guarded, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+
+		it.effect("tagCreate guards the name and the start ref before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.tagCreate(cwd, "v1", { ref: "--annotate" });
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+
+		it.effect("tagList splits names on newlines", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.tagList(cwd, { pattern: "v*" });
+				});
+				const result = yield* run(program, () => ({ stdout: "v1\nv2\n", exit: 0 }));
+				assert.deepStrictEqual(result, ["v1", "v2"]);
+			}),
+		);
+	});
+
+	describe("history tier", () => {
+		it.effect("push maps the fetch-first rejection to NonFastForwardError, refspec attached", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.push(cwd, { refspec: "main" });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr:
+							"To /up\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to '/up'\n",
+						exit: 1,
+					})),
+				);
+				assert.instanceOf(failure, NonFastForwardError);
+				if (failure instanceof NonFastForwardError) {
+					assert.strictEqual(failure.refspec, "main");
+				}
+			}),
+		);
+
+		it.effect("push maps a --force-with-lease stale-info rejection to NonFastForwardError too", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.push(cwd, { refspec: "main:lease-target", forceWithLease: true });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr: "To /up\n ! [rejected]        main -> lease-target (stale info)\nerror: failed to push some refs\n",
+						exit: 1,
+					})),
+				);
+				assert.instanceOf(failure, NonFastForwardError);
+			}),
+		);
+
+		it.effect("a push failure WITHOUT the rejection line stays GitCommandError", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.push(cwd, { refspec: "main" });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stderr: "fatal: unable to access remote: connection refused\n", exit: 128 })),
+				);
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
+		it.effect("a failing push persists only the REDACTED remote URL", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.push(cwd, { remote: "https://x:tok@github.com/a/r.git", refspec: "main" });
+				});
+				const failure = yield* Effect.flip(run(program, () => ({ stderr: "fatal: boom\n", exit: 128 })));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.deepStrictEqual([...failure.args], ["push", "https://<redacted>@github.com/a/r.git", "main"]);
+					assert.notInclude(failure.message, "x:tok");
+				}
+			}),
+		);
+
+		it.effect("pull maps a merge-machinery STDOUT conflict to MergeConflictError", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.pull(cwd, { ref: "main" });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stdout:
+							"Auto-merging f.txt\nCONFLICT (content): Merge conflict in f.txt\nAutomatic merge failed; fix conflicts and then commit the result.\n",
+						stderr: "From /up\n * branch            main       -> FETCH_HEAD\n",
+						exit: 1,
+					})),
+				);
+				assert.instanceOf(failure, MergeConflictError);
+			}),
+		);
+
+		it.effect("a rebase-mode pull's could-not-apply lands on stderr and still classifies as conflict", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.pull(cwd, { ref: "main", rebase: true });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr: "Rebasing (1/1)error: could not apply 06b4752... r2\nCould not apply 06b4752...\n",
+						exit: 1,
+					})),
+				);
+				assert.instanceOf(failure, MergeConflictError);
+			}),
+		);
+
+		it.effect("pull maps the pre-merge dirty refusal to DirtyWorktreeError", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.pull(cwd, { ref: "main" });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stdout: "Updating 9d41fb9..733772c\n",
+						stderr:
+							"error: Your local changes to the following files would be overwritten by merge:\n\tf.txt\nPlease commit your changes or stash them before you merge.\nAborting\n",
+						exit: 1,
+					})),
+				);
+				assert.instanceOf(failure, DirtyWorktreeError);
+			}),
+		);
+
+		it.effect("the merge rows are GATED: checkout with conflict-shaped stderr stays GitCommandError", () =>
+			Effect.gen(function* () {
+				// Zero-churn guarantee: an existing member's union never picks up the
+				// new classifications — only push/pull/stashPop/stashApply carry them.
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.checkout(cwd, "main");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({
+						stderr: "error: Your local changes to the following files would be overwritten by checkout:\n",
+						exit: 1,
+					})),
+				);
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
+		it.effect("commit failure (nothing to commit) stays a loud GitCommandError", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.commit(cwd, "msg");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stdout: "nothing to commit, working tree clean\n", exit: 1 })),
+				);
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+	});
+
+	describe("config tier", () => {
+		it.effect("configList parses NUL records with first-newline key/value split — multi-line values survive", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configList(cwd, { file: ".cfg" });
+				});
+				const output = "a.b\none\0a.b\ntwo\0x.y\nline1\nline2\0shorthand.flag\0";
+				const result = yield* run(program, () => ({ stdout: output, exit: 0 }));
+				assert.deepStrictEqual(result, [
+					ConfigListEntry.make({ key: "a.b", value: "one" }),
+					ConfigListEntry.make({ key: "a.b", value: "two" }),
+					ConfigListEntry.make({ key: "x.y", value: "line1\nline2" }),
+					// A valueless key is git's boolean-true shorthand.
+					ConfigListEntry.make({ key: "shorthand.flag", value: "" }),
+				]);
+			}),
+		);
+
+		it.effect("configGetAll returns every value in order, and degrades an unset key to []", () =>
+			Effect.gen(function* () {
+				const listing = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configGetAll(cwd, "a.b");
+				});
+				const values = yield* run(listing, () => ({ stdout: "one\0two\0", exit: 0 }));
+				assert.deepStrictEqual(values, ["one", "two"]);
+				const unset = yield* run(listing, () => ({ exit: 1 }));
+				assert.deepStrictEqual(unset, []);
+			}),
+		);
+
+		it.effect("configUnset of a never-set key fails loudly (git exits 5, silently)", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configUnset(cwd, "missing.key");
+				});
+				const failure = yield* Effect.flip(run(program, () => ({ exit: 5 })));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.exitCode, 5);
+				}
+			}),
+		);
+	});
+
+	describe("misc tier", () => {
+		it.effect("checkIgnore returns the ignored subset and degrades none-ignored to []", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.checkIgnore(cwd, ["ig.txt", "vis.txt"]);
+				});
+				const some = yield* run(program, () => ({ stdout: "ig.txt\0", exit: 0 }));
+				assert.deepStrictEqual(some, ["ig.txt"]);
+				const none = yield* run(program, () => ({ exit: 1 }));
+				assert.deepStrictEqual(none, []);
+			}),
+		);
+
+		it.effect("worktreeList parses porcelain -z blocks: attached, detached, bare and locked", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.worktreeList(cwd);
+				});
+				const sha = "9d41fb9d5825a52a6ab6d3232a8c7a111920bf94";
+				const output =
+					`worktree /repo\0HEAD ${sha}\0branch refs/heads/main\0\0` +
+					`worktree /wt2\0HEAD ${sha}\0detached\0\0` +
+					`worktree /bare\0bare\0\0` +
+					`worktree /locked\0HEAD ${sha}\0detached\0locked reason text\0\0`;
+				const result = yield* run(program, () => ({ stdout: output, exit: 0 }));
+				assert.deepStrictEqual(result, [
+					WorktreeEntry.make({ path: "/repo", head: sha, branch: "refs/heads/main", detached: false, bare: false }),
+					WorktreeEntry.make({ path: "/wt2", head: sha, detached: true, bare: false }),
+					WorktreeEntry.make({ path: "/bare", detached: false, bare: true }),
+					WorktreeEntry.make({ path: "/locked", head: sha, detached: true, bare: false, locked: "reason text" }),
+				]);
+			}),
+		);
+
+		it.effect("worktreeAdd guards path and ref before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.worktreeAdd(cwd, "--force-move");
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+			}),
+		);
+
+		it.effect("lsFiles parses index entries — the staged gitlink a HEAD-side read misses", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.lsFiles(cwd, { pathspec: [".repos/effect"] });
+				});
+				const gitlink = "3a65aa2fd529914855a65806f87d44f8cb158079";
+				const blob = "78981922613b2afb6025042ff6bd878ac1994e85";
+				const output = `100644 ${blob} 0\tfile with space.txt\0` + `160000 ${gitlink} 0\t.repos/effect\0`;
+				const result = yield* run(program, () => ({ stdout: output, exit: 0 }));
+				assert.deepStrictEqual(result, [
+					LsFilesEntry.make({ mode: "100644", oid: blob, stage: 0, path: "file with space.txt" }),
+					LsFilesEntry.make({ mode: "160000", oid: gitlink, stage: 0, path: ".repos/effect" }),
+				]);
+			}),
+		);
+
+		it.effect("lsFiles preserves a path containing a newline (the -z rule)", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.lsFiles(cwd);
+				});
+				const blob = "78981922613b2afb6025042ff6bd878ac1994e85";
+				const result = yield* run(program, () => ({ stdout: `100644 ${blob} 0\tline\none.txt\0`, exit: 0 }));
+				assert.deepStrictEqual(result, [
+					LsFilesEntry.make({ mode: "100644", oid: blob, stage: 0, path: "line\none.txt" }),
+				]);
 			}),
 		);
 	});
