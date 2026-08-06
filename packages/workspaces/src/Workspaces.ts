@@ -349,9 +349,14 @@ export class Workspaces {
 	 * import { Workspaces } from "@effected/workspaces";
 	 * import { Layer } from "effect";
 	 *
+	 * // Bound to consts per the warning above: each factory call mints a
+	 * // fresh layer reference, and layers memoize by reference.
+	 * const LocalExecLayer = Workspaces.localExecLayer();
+	 * const WorkspacesLayer = Workspaces.layer();
+	 *
 	 * const AppLayer = ToolDiscovery.layer.pipe(
-	 *   Layer.provide(Workspaces.localExecLayer()),
-	 *   Layer.provide(Workspaces.layer()),
+	 *   Layer.provide(LocalExecLayer),
+	 *   Layer.provide(WorkspacesLayer),
 	 *   Layer.provide(NodeServices.layer),
 	 * );
 	 * ```

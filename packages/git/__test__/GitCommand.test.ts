@@ -1,19 +1,28 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ChildProcess } from "effect/unstable/process";
 
+import type { GitInvocation } from "../src/GitCommand.js";
 import { GitCommand } from "../src/GitCommand.js";
 
 const expectedEnv = { LC_ALL: "C" };
 
 /**
  * Asserts the argv/env/extendEnv/no-cwd shape shared by every `GitCommand`
- * constructor.
+ * constructor. `expectedRedacted` defaults to the raw argv — a constructor
+ * with no sensitive positional must produce an element-wise identical
+ * `redactedArgs`.
  */
-const assertGitCommand = (command: ChildProcess.Command, expectedArgs: ReadonlyArray<string>): void => {
+const assertGitCommand = (
+	invocation: GitInvocation,
+	expectedArgs: ReadonlyArray<string>,
+	expectedRedacted: ReadonlyArray<string> = expectedArgs,
+): void => {
+	const command = invocation.command;
 	assert.isTrue(ChildProcess.isStandardCommand(command));
 	if (!ChildProcess.isStandardCommand(command)) return;
 	assert.strictEqual(command.command, "git");
 	assert.deepStrictEqual(command.args, expectedArgs);
+	assert.deepStrictEqual(invocation.redactedArgs, expectedRedacted);
 	assert.deepStrictEqual(command.options.env, expectedEnv);
 	assert.strictEqual(command.options.extendEnv, true);
 	assert.isUndefined(command.options.cwd);
@@ -135,15 +144,19 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.sparseCheckoutSet(["src"], true), ["sparse-checkout", "set", "--cone", "src"]);
 	});
 
-	it("configSet writes a key, optionally into an explicit file", () => {
-		assertGitCommand(GitCommand.configSet("user.name", "Test"), ["config", "user.name", "Test"]);
-		assertGitCommand(GitCommand.configSet("submodule.a.shallow", "true", ".gitmodules"), [
-			"config",
-			"-f",
-			".gitmodules",
-			"submodule.a.shallow",
-			"true",
-		]);
+	it("configSet writes a key, optionally into an explicit file — and masks the value in redactedArgs", () => {
+		// The raw argv carries the real value (git needs it); the redacted argv
+		// masks it wholesale — a config value can be a secret (#86).
+		assertGitCommand(
+			GitCommand.configSet("user.name", "Test"),
+			["config", "user.name", "Test"],
+			["config", "user.name", "<redacted>"],
+		);
+		assertGitCommand(
+			GitCommand.configSet("submodule.a.shallow", "true", ".gitmodules"),
+			["config", "-f", ".gitmodules", "submodule.a.shallow", "true"],
+			["config", "-f", ".gitmodules", "submodule.a.shallow", "<redacted>"],
+		);
 	});
 
 	it("add stages paths behind a literal --", () => {
@@ -151,7 +164,7 @@ describe("GitCommand", () => {
 	});
 
 	it("setCwd returns a NEW command and leaves the original untouched", () => {
-		const original = GitCommand.show("HEAD", "package.json");
+		const original = GitCommand.show("HEAD", "package.json").command;
 		const withCwd = ChildProcess.setCwd(original, "/repo");
 
 		assert.notStrictEqual(withCwd, original);
@@ -232,5 +245,475 @@ describe("GitCommand", () => {
 
 	it("status builds `git status --porcelain -z`", () => {
 		assertGitCommand(GitCommand.status(), ["status", "--porcelain", "-z"]);
+	});
+
+	describe("working-tree restore tier", () => {
+		it("reset emits the mode flag explicitly, even for git's own default", () => {
+			assertGitCommand(GitCommand.reset(), ["reset", "--mixed"]);
+			assertGitCommand(GitCommand.reset("hard", "HEAD~1"), ["reset", "--hard", "HEAD~1"]);
+			assertGitCommand(GitCommand.reset("soft", "abc123"), ["reset", "--soft", "abc123"]);
+		});
+
+		it("clean always passes --force, composing -d, -x and a -- pathspec", () => {
+			assertGitCommand(GitCommand.clean(), ["clean", "--force"]);
+			assertGitCommand(GitCommand.clean(true), ["clean", "--force", "-d"]);
+			assertGitCommand(GitCommand.clean(true, true, ["dist"]), ["clean", "--force", "-d", "-x", "--", "dist"]);
+		});
+
+		it("restore puts paths behind a literal --, composing --source/--staged/--worktree", () => {
+			assertGitCommand(GitCommand.restore(["."]), ["restore", "--", "."]);
+			assertGitCommand(GitCommand.restore(["a.txt", "b.txt"], "HEAD", true, true), [
+				"restore",
+				"--source",
+				"HEAD",
+				"--staged",
+				"--worktree",
+				"--",
+				"a.txt",
+				"b.txt",
+			]);
+		});
+	});
+
+	describe("branch tier", () => {
+		it("branchCreate builds `git branch <name> [<start>]` by default", () => {
+			assertGitCommand(GitCommand.branchCreate("feat/x"), ["branch", "feat/x"]);
+			assertGitCommand(GitCommand.branchCreate("feat/x", "origin/main"), ["branch", "feat/x", "origin/main"]);
+		});
+
+		it("branchCreate with checkout builds `git checkout -b <name> [<start>]`", () => {
+			assertGitCommand(GitCommand.branchCreate("feat/x", undefined, true), ["checkout", "-b", "feat/x"]);
+			assertGitCommand(GitCommand.branchCreate("feat/x", "origin/main", true), [
+				"checkout",
+				"-b",
+				"feat/x",
+				"origin/main",
+			]);
+		});
+
+		it("branchCreate with force builds `git branch -f`, and with checkout `git checkout -B`", () => {
+			// The four checkout x force combinations, exhaustively: force alone
+			// adds -f to the branch form; force + checkout swaps -b for -B (the
+			// one-invocation replacement for the delete-then-create longhand).
+			assertGitCommand(GitCommand.branchCreate("feat/x", "origin/main", false, false), [
+				"branch",
+				"feat/x",
+				"origin/main",
+			]);
+			assertGitCommand(GitCommand.branchCreate("feat/x", "origin/main", false, true), [
+				"branch",
+				"-f",
+				"feat/x",
+				"origin/main",
+			]);
+			assertGitCommand(GitCommand.branchCreate("feat/x", "origin/main", true, false), [
+				"checkout",
+				"-b",
+				"feat/x",
+				"origin/main",
+			]);
+			assertGitCommand(GitCommand.branchCreate("feat/x", "origin/main", true, true), [
+				"checkout",
+				"-B",
+				"feat/x",
+				"origin/main",
+			]);
+		});
+
+		it("branchDelete builds -d by default and -D when forced", () => {
+			assertGitCommand(GitCommand.branchDelete("feat/x"), ["branch", "-d", "feat/x"]);
+			assertGitCommand(GitCommand.branchDelete("feat/x", true), ["branch", "-D", "feat/x"]);
+		});
+	});
+
+	describe("shallow tier", () => {
+		it("isShallow builds `git rev-parse --is-shallow-repository`", () => {
+			assertGitCommand(GitCommand.isShallow(), ["rev-parse", "--is-shallow-repository"]);
+		});
+
+		it("fetchUnshallow builds `git fetch --unshallow <remote>`", () => {
+			assertGitCommand(GitCommand.fetchUnshallow(), ["fetch", "--unshallow", "origin"]);
+			assertGitCommand(GitCommand.fetchUnshallow("upstream"), ["fetch", "--unshallow", "upstream"]);
+		});
+	});
+
+	describe("submodule tier", () => {
+		it("submoduleStatus composes --recursive and a -- pathspec", () => {
+			assertGitCommand(GitCommand.submoduleStatus(), ["submodule", "status"]);
+			assertGitCommand(GitCommand.submoduleStatus([".repos/effect"], true), [
+				"submodule",
+				"status",
+				"--recursive",
+				"--",
+				".repos/effect",
+			]);
+		});
+
+		it("submoduleInit scopes to a -- pathspec when given", () => {
+			assertGitCommand(GitCommand.submoduleInit(), ["submodule", "init"]);
+			assertGitCommand(GitCommand.submoduleInit([".repos/effect"]), ["submodule", "init", "--", ".repos/effect"]);
+		});
+
+		it("submoduleDeinit passes --force and either --all or a -- pathspec", () => {
+			assertGitCommand(GitCommand.submoduleDeinit([".repos/effect"]), ["submodule", "deinit", "--", ".repos/effect"]);
+			assertGitCommand(GitCommand.submoduleDeinit([], true, true), ["submodule", "deinit", "--force", "--all"]);
+		});
+
+		it("submoduleSync composes --recursive and a -- pathspec", () => {
+			assertGitCommand(GitCommand.submoduleSync(), ["submodule", "sync"]);
+			assertGitCommand(GitCommand.submoduleSync([".repos/effect"], true), [
+				"submodule",
+				"sync",
+				"--recursive",
+				"--",
+				".repos/effect",
+			]);
+		});
+
+		it("submoduleSetUrl puts path and url behind a literal --, masking url userinfo", () => {
+			assertGitCommand(GitCommand.submoduleSetUrl(".repos/r", "https://example.com/r.git"), [
+				"submodule",
+				"set-url",
+				"--",
+				".repos/r",
+				"https://example.com/r.git",
+			]);
+			assertGitCommand(
+				GitCommand.submoduleSetUrl(".repos/r", "https://user:pass@example.com/r.git"),
+				["submodule", "set-url", "--", ".repos/r", "https://user:pass@example.com/r.git"],
+				["submodule", "set-url", "--", ".repos/r", "https://<redacted>@example.com/r.git"],
+			);
+		});
+
+		it("submoduleSetBranch passes --branch, or --default when the branch is omitted", () => {
+			assertGitCommand(GitCommand.submoduleSetBranch(".repos/r", "main"), [
+				"submodule",
+				"set-branch",
+				"--branch",
+				"main",
+				"--",
+				".repos/r",
+			]);
+			assertGitCommand(GitCommand.submoduleSetBranch(".repos/r"), [
+				"submodule",
+				"set-branch",
+				"--default",
+				"--",
+				".repos/r",
+			]);
+		});
+
+		it("submoduleAbsorbgitdirs scopes to a -- pathspec when given", () => {
+			assertGitCommand(GitCommand.submoduleAbsorbgitdirs(), ["submodule", "absorbgitdirs"]);
+			assertGitCommand(GitCommand.submoduleAbsorbgitdirs([".repos/r"]), [
+				"submodule",
+				"absorbgitdirs",
+				"--",
+				".repos/r",
+			]);
+		});
+
+		it("submoduleForeach passes one shell command string, optionally --recursive", () => {
+			assertGitCommand(GitCommand.submoduleForeach("git rev-parse HEAD"), [
+				"submodule",
+				"foreach",
+				"git rev-parse HEAD",
+			]);
+			assertGitCommand(GitCommand.submoduleForeach("pwd", true), ["submodule", "foreach", "--recursive", "pwd"]);
+		});
+	});
+
+	describe("remote tier", () => {
+		it("lsRemote composes --heads/--tags before the remote and patterns after it", () => {
+			assertGitCommand(GitCommand.lsRemote("origin"), ["ls-remote", "origin"]);
+			assertGitCommand(GitCommand.lsRemote("origin", true, true, ["v*", "effect@*"]), [
+				"ls-remote",
+				"--heads",
+				"--tags",
+				"origin",
+				"v*",
+				"effect@*",
+			]);
+		});
+
+		it("remoteAdd / remoteRemove / remoteSetUrl build the remote subcommands", () => {
+			assertGitCommand(GitCommand.remoteAdd("up", "https://example.com/r.git"), [
+				"remote",
+				"add",
+				"up",
+				"https://example.com/r.git",
+			]);
+			assertGitCommand(GitCommand.remoteRemove("up"), ["remote", "remove", "up"]);
+			assertGitCommand(GitCommand.remoteSetUrl("up", "https://example.com/r.git"), [
+				"remote",
+				"set-url",
+				"up",
+				"https://example.com/r.git",
+			]);
+		});
+	});
+
+	describe("stash tier", () => {
+		it("stashPush composes --include-untracked, -m and a -- pathspec", () => {
+			assertGitCommand(GitCommand.stashPush(), ["stash", "push"]);
+			assertGitCommand(GitCommand.stashPush("wip", true, ["a.txt"]), [
+				"stash",
+				"push",
+				"--include-untracked",
+				"-m",
+				"wip",
+				"--",
+				"a.txt",
+			]);
+		});
+
+		it("stashPop / stashApply / stashDrop render an integer index as stash@{n}, or omit it", () => {
+			assertGitCommand(GitCommand.stashPop(), ["stash", "pop"]);
+			assertGitCommand(GitCommand.stashPop(1), ["stash", "pop", "stash@{1}"]);
+			assertGitCommand(GitCommand.stashApply(0), ["stash", "apply", "stash@{0}"]);
+			assertGitCommand(GitCommand.stashDrop(2), ["stash", "drop", "stash@{2}"]);
+		});
+
+		it("stashList pins the -z unit-separated format", () => {
+			assertGitCommand(GitCommand.stashList(), ["stash", "list", "-z", "--format=%gd%x1f%H%x1f%gs"]);
+		});
+	});
+
+	describe("refs tier", () => {
+		it("branchList pins the NUL-separated format; --all wins over --remotes", () => {
+			const format = "--format=%(HEAD)%00%(refname:short)%00%(objectname)";
+			assertGitCommand(GitCommand.branchList(), ["branch", "--list", format]);
+			assertGitCommand(GitCommand.branchList(true), ["branch", "--list", "--remotes", format]);
+			assertGitCommand(GitCommand.branchList(true, true), ["branch", "--list", "--all", format]);
+		});
+
+		it("tagCreate composes --force and -m before the name, the start ref after it", () => {
+			assertGitCommand(GitCommand.tagCreate("v1"), ["tag", "v1"]);
+			assertGitCommand(GitCommand.tagCreate("v1", "abc123", "release v1", true), [
+				"tag",
+				"--force",
+				"-m",
+				"release v1",
+				"v1",
+				"abc123",
+			]);
+		});
+
+		it("tagDelete / tagList build the tag subcommands", () => {
+			assertGitCommand(GitCommand.tagDelete("v1"), ["tag", "--delete", "v1"]);
+			assertGitCommand(GitCommand.tagList(), ["tag", "--list"]);
+			assertGitCommand(GitCommand.tagList("v*"), ["tag", "--list", "v*"]);
+		});
+
+		it("forEachRef pins the refname/objectname/objecttype format, patterns after it", () => {
+			assertGitCommand(GitCommand.forEachRef(), [
+				"for-each-ref",
+				"--format=%(refname)%00%(objectname)%00%(objecttype)",
+			]);
+			assertGitCommand(GitCommand.forEachRef(["refs/tags"]), [
+				"for-each-ref",
+				"--format=%(refname)%00%(objectname)%00%(objecttype)",
+				"refs/tags",
+			]);
+		});
+
+		it("revList composes --max-count and --first-parent before the ref", () => {
+			assertGitCommand(GitCommand.revList("HEAD"), ["rev-list", "HEAD"]);
+			assertGitCommand(GitCommand.revList("main..feat", 5, true), [
+				"rev-list",
+				"--max-count=5",
+				"--first-parent",
+				"main..feat",
+			]);
+		});
+	});
+
+	describe("history tier", () => {
+		it("commit rides the message behind -m, flags and --author= before it", () => {
+			assertGitCommand(GitCommand.commit("one line"), ["commit", "-m", "one line"]);
+			assertGitCommand(GitCommand.commit("msg", true, true, true, "A <a@b.c>"), [
+				"commit",
+				"--all",
+				"--allow-empty",
+				"--amend",
+				"--author=A <a@b.c>",
+				"-m",
+				"msg",
+			]);
+		});
+
+		it("push composes force/lease/tags/upstream flags before remote and refspec", () => {
+			assertGitCommand(GitCommand.push("origin"), ["push", "origin"]);
+			assertGitCommand(GitCommand.push("origin", "main:main", false, true, true, true), [
+				"push",
+				"--force-with-lease",
+				"--tags",
+				"--set-upstream",
+				"origin",
+				"main:main",
+			]);
+			assertGitCommand(GitCommand.push("origin", "main", true), ["push", "--force", "origin", "main"]);
+		});
+
+		it("pull composes --rebase and --ff-only before remote and ref", () => {
+			assertGitCommand(GitCommand.pull("origin"), ["pull", "origin"]);
+			assertGitCommand(GitCommand.pull("origin", "main", true, true), [
+				"pull",
+				"--rebase",
+				"--ff-only",
+				"origin",
+				"main",
+			]);
+		});
+	});
+
+	describe("config tier", () => {
+		it("configList / configGetAll pin -z and scope to -f when a file is given", () => {
+			assertGitCommand(GitCommand.configList(), ["config", "--list", "-z"]);
+			assertGitCommand(GitCommand.configList(".gitmodules"), ["config", "-f", ".gitmodules", "--list", "-z"]);
+			assertGitCommand(GitCommand.configGetAll("remote.origin.fetch"), [
+				"config",
+				"--get-all",
+				"-z",
+				"remote.origin.fetch",
+			]);
+			assertGitCommand(GitCommand.configGetAll("submodule.a.url", ".gitmodules"), [
+				"config",
+				"-f",
+				".gitmodules",
+				"--get-all",
+				"-z",
+				"submodule.a.url",
+			]);
+		});
+
+		it("configUnset picks --unset or --unset-all", () => {
+			assertGitCommand(GitCommand.configUnset("a.b"), ["config", "--unset", "a.b"]);
+			assertGitCommand(GitCommand.configUnset("a.b", ".gitmodules", true), [
+				"config",
+				"-f",
+				".gitmodules",
+				"--unset-all",
+				"a.b",
+			]);
+		});
+	});
+
+	describe("misc tier", () => {
+		it("rm composes --cached/-r/--force ahead of a literal -- pathspec", () => {
+			assertGitCommand(GitCommand.rm(["a.txt"]), ["rm", "--", "a.txt"]);
+			assertGitCommand(GitCommand.rm([".repos/r"], true, true, true), [
+				"rm",
+				"--cached",
+				"-r",
+				"--force",
+				"--",
+				".repos/r",
+			]);
+		});
+
+		it("mv places source and destination behind a literal --", () => {
+			assertGitCommand(GitCommand.mv("a.txt", "b.txt"), ["mv", "--", "a.txt", "b.txt"]);
+			assertGitCommand(GitCommand.mv("a.txt", "b.txt", true), ["mv", "--force", "--", "a.txt", "b.txt"]);
+		});
+
+		it("checkIgnore uses the --stdin -z form: no caller path ever enters the argv", () => {
+			const invocation = GitCommand.checkIgnore(["ig.txt", "path with space.txt"]);
+			assertGitCommand(invocation, ["check-ignore", "-z", "--stdin"]);
+			// The paths ride stdin, NUL-terminated — baked into the command value.
+			assert.isDefined(invocation.command.options.stdin);
+		});
+
+		it("worktreeAdd / worktreeList / worktreeRemove build the worktree subcommands", () => {
+			assertGitCommand(GitCommand.worktreeAdd("../wt"), ["worktree", "add", "../wt"]);
+			assertGitCommand(GitCommand.worktreeAdd("../wt", "HEAD", true, true), [
+				"worktree",
+				"add",
+				"--force",
+				"--detach",
+				"../wt",
+				"HEAD",
+			]);
+			assertGitCommand(GitCommand.worktreeList(), ["worktree", "list", "--porcelain", "-z"]);
+			assertGitCommand(GitCommand.worktreeRemove("../wt"), ["worktree", "remove", "../wt"]);
+			assertGitCommand(GitCommand.worktreeRemove("../wt", true), ["worktree", "remove", "--force", "../wt"]);
+		});
+
+		it("lsFiles pins --stage -z and scopes to a -- pathspec when given", () => {
+			assertGitCommand(GitCommand.lsFiles(), ["ls-files", "--stage", "-z"]);
+			assertGitCommand(GitCommand.lsFiles([".repos/effect"]), ["ls-files", "--stage", "-z", "--", ".repos/effect"]);
+		});
+	});
+
+	describe("redaction masks (#86)", () => {
+		it("lsRemote masks an embedded userinfo credential in a URL remote", () => {
+			assertGitCommand(
+				GitCommand.lsRemote("https://user:tok@example.com/r.git", false, true),
+				["ls-remote", "--tags", "https://user:tok@example.com/r.git"],
+				["ls-remote", "--tags", "https://<redacted>@example.com/r.git"],
+			);
+		});
+
+		it("remoteAdd and remoteSetUrl mask an embedded userinfo credential in the url", () => {
+			assertGitCommand(
+				GitCommand.remoteAdd("up", "https://user:tok@example.com/r.git"),
+				["remote", "add", "up", "https://user:tok@example.com/r.git"],
+				["remote", "add", "up", "https://<redacted>@example.com/r.git"],
+			);
+			assertGitCommand(
+				GitCommand.remoteSetUrl("up", "https://user:tok@example.com/r.git"),
+				["remote", "set-url", "up", "https://user:tok@example.com/r.git"],
+				["remote", "set-url", "up", "https://<redacted>@example.com/r.git"],
+			);
+		});
+
+		it("push and pull mask an embedded userinfo credential in a URL remote", () => {
+			assertGitCommand(
+				GitCommand.push("https://x-access-token:ghp_secret@github.com/a/r.git", "main"),
+				["push", "https://x-access-token:ghp_secret@github.com/a/r.git", "main"],
+				["push", "https://<redacted>@github.com/a/r.git", "main"],
+			);
+			assertGitCommand(
+				GitCommand.pull("https://x-access-token:ghp_secret@github.com/a/r.git", "main"),
+				["pull", "https://x-access-token:ghp_secret@github.com/a/r.git", "main"],
+				["pull", "https://<redacted>@github.com/a/r.git", "main"],
+			);
+		});
+		it("fetch masks an embedded userinfo credential in the remote, and only then", () => {
+			// A plain remote name (the common case) is untouched — full debuggability.
+			assertGitCommand(GitCommand.fetch("origin", "main"), ["fetch", "origin", "main"]);
+			// A URL remote with embedded credentials keeps everything BUT the userinfo.
+			assertGitCommand(
+				GitCommand.fetch("https://x-access-token:ghp_secret@github.com/a/r.git", "main"),
+				["fetch", "https://x-access-token:ghp_secret@github.com/a/r.git", "main"],
+				["fetch", "https://<redacted>@github.com/a/r.git", "main"],
+			);
+		});
+
+		it("submoduleAdd masks an embedded userinfo credential in the url", () => {
+			assertGitCommand(
+				GitCommand.submoduleAdd("https://user:pass@example.com/r.git", ".repos/r"),
+				["submodule", "add", "--", "https://user:pass@example.com/r.git", ".repos/r"],
+				["submodule", "add", "--", "https://<redacted>@example.com/r.git", ".repos/r"],
+			);
+		});
+
+		it("fetchUnshallow masks an embedded userinfo credential in a URL remote", () => {
+			assertGitCommand(
+				GitCommand.fetchUnshallow("https://x-access-token:ghp_secret@github.com/a/r.git"),
+				["fetch", "--unshallow", "https://x-access-token:ghp_secret@github.com/a/r.git"],
+				["fetch", "--unshallow", "https://<redacted>@github.com/a/r.git"],
+			);
+		});
+
+		it("a credential-free url passes through redactedArgs untouched", () => {
+			assertGitCommand(GitCommand.submoduleAdd("https://example.com/r.git", ".repos/r"), [
+				"submodule",
+				"add",
+				"--",
+				"https://example.com/r.git",
+				".repos/r",
+			]);
+		});
 	});
 });
