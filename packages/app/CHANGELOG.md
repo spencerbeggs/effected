@@ -1,5 +1,16 @@
 # @effected/app
 
+## 0.8.0
+
+### Documentation
+
+* Removes `@savvy-web/github-action-effects` skills
+* Skills detail using expanded `@effected/git` package
+
+### Minor Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.7.2
 
 ### Documentation

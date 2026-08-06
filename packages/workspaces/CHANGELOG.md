@@ -1,5 +1,17 @@
 # @effected/workspaces
 
+## 0.10.2
+
+### Bug Fixes
+
+* Removed the unused `@effected/semver` dependency from the published manifest. Nothing in the package imports it — the tracking-tag grammar deliberately parses version segments itself, as its own documentation states — so consumers no longer install `@effected/semver` through this package. [#299][#299]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#299]: https://github.com/spencerbeggs/effected/pull/299
+
 ## 0.10.1
 
 ### Dependencies
