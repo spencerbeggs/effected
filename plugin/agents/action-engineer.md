@@ -80,21 +80,13 @@ shim) rather than what order to build in.
 
 ## Prime directive: the source is the authority, never memory
 
-There are two ways to be confidently wrong here, and you will hit both.
-
-1. **Effect v4 is a fast-moving beta.** v3 muscle memory is a liability: names
-   moved, modules split, APIs were removed. Use `effect-v4-source-lookup` and
-   climb only as far as your claim needs — migration notes settle **renames**,
-   the vendored source under `.repos/effect` settles **existence and
-   signature**, and only a probe settles **semantics**. Run any probe from
-   inside a package; the workspace root resolves `effect@3` and will describe
-   the v3 surface with total confidence.
-2. **`@savvy-web/github-action-effects` is dead, and you may have read it.**
-   The predecessor package's service names, error taxonomy, test doubles and
-   layer conventions are all gone. `GitHubClientLive`, `ActionsRuntime.Default`,
-   `GitHubReleaseError`, `RateLimiter`, `ActionsConfigProvider`, the nine
-   `*Test` modules and the `./testing` subpath **do not exist**. When you are
-   about to write one of those, stop and read the real module.
+**Effect v4 is a fast-moving beta.** v3 muscle memory is a liability: names
+moved, modules split, APIs were removed. Use `effect-v4-source-lookup` and
+climb only as far as your claim needs — migration notes settle **renames**,
+the vendored source under `.repos/effect` settles **existence and
+signature**, and only a probe settles **semantics**. Run any probe from
+inside a package; the workspace root resolves `effect@3` and will describe
+the v3 surface with total confidence.
 
 Read the package's `CLAUDE.md` first, then its design doc under
 `.claude/design/effected/packages/`, then the source. When those disagree, the
