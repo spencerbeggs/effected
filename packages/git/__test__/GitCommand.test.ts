@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { Effect, Stream } from "effect";
 import { ChildProcess } from "effect/unstable/process";
 
 import type { GitInvocation } from "../src/GitCommand.js";
@@ -617,12 +618,29 @@ describe("GitCommand", () => {
 			assertGitCommand(GitCommand.mv("a.txt", "b.txt", true), ["mv", "--force", "--", "a.txt", "b.txt"]);
 		});
 
-		it("checkIgnore uses the --stdin -z form: no caller path ever enters the argv", () => {
-			const invocation = GitCommand.checkIgnore(["ig.txt", "path with space.txt"]);
-			assertGitCommand(invocation, ["check-ignore", "-z", "--stdin"]);
-			// The paths ride stdin, NUL-terminated — baked into the command value.
-			assert.isDefined(invocation.command.options.stdin);
-		});
+		it.effect("checkIgnore uses the --stdin -z form: no caller path ever enters the argv", () =>
+			Effect.gen(function* () {
+				const invocation = GitCommand.checkIgnore(["ig.txt", "path with space.txt"]);
+				assertGitCommand(invocation, ["check-ignore", "-z", "--stdin"]);
+				// The paths ride stdin as NUL-TERMINATED records (every path,
+				// including the last, is followed by a NUL) — baked into the pure
+				// command value, never entering the argv.
+				const stdin = invocation.command.options.stdin;
+				assert.isDefined(stdin);
+				assert.isFalse(typeof stdin === "string");
+				if (stdin === undefined || typeof stdin === "string") return;
+				const chunks = yield* Stream.runCollect(stdin as Stream.Stream<Uint8Array>);
+				const decoded = new TextDecoder().decode(
+					chunks.reduce((acc, chunk) => {
+						const merged = new Uint8Array(acc.length + chunk.length);
+						merged.set(acc);
+						merged.set(chunk, acc.length);
+						return merged;
+					}, new Uint8Array(0)),
+				);
+				assert.strictEqual(decoded, "ig.txt\0path with space.txt\0");
+			}),
+		);
 
 		it("worktreeAdd / worktreeList / worktreeRemove build the worktree subcommands", () => {
 			assertGitCommand(GitCommand.worktreeAdd("../wt"), ["worktree", "add", "../wt"]);
@@ -704,6 +722,21 @@ describe("GitCommand", () => {
 				["fetch", "--unshallow", "https://x-access-token:ghp_secret@github.com/a/r.git"],
 				["fetch", "--unshallow", "https://<redacted>@github.com/a/r.git"],
 			);
+		});
+
+		it("a password containing a literal @ is masked whole — no credential tail survives", () => {
+			// URL authorities split at the LAST @ before the first path slash; a
+			// first-@ mask would leave `ss@github.com...` (the password tail) in
+			// redactedArgs, which classify persists into GitCommandError.
+			assertGitCommand(
+				GitCommand.push("https://user:p@ss@github.com/a/r.git", "main"),
+				["push", "https://user:p@ss@github.com/a/r.git", "main"],
+				["push", "https://<redacted>@github.com/a/r.git", "main"],
+			);
+		});
+
+		it("a path-embedded @ without userinfo is untouched", () => {
+			assertGitCommand(GitCommand.fetch("https://host:8080/a@b", "main"), ["fetch", "https://host:8080/a@b", "main"]);
 		});
 
 		it("a credential-free url passes through redactedArgs untouched", () => {

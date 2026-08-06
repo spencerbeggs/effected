@@ -195,6 +195,17 @@ describe("Gitmodules", () => {
 		it("renders nothing for zero entries", () => {
 			assert.strictEqual(Gitmodules.make({ entries: [] }).stringify(), "");
 		});
+
+		it("a hand-built entry name with a newline is refused at construction — render cannot emit a broken document", () => {
+			// serializeHeader escapes only `"` and `\` (git's subsection grammar
+			// has no newline escape), so a name containing a line break would
+			// serialize across lines and not re-decode to the same entries. The
+			// constructor refuses it, matching GitConfig.addSection's [\n\r\0]
+			// subsection refusal. v4 constructors validate, so this throws.
+			for (const name of ['"]\nurl = evil\n[x "', "cr\rbad", "nul\0bad"]) {
+				assert.throws(() => GitmodulesEntry.make({ name, path: "p", url: "u" }));
+			}
+		});
 	});
 
 	describe("entry-level mutations compile to surgical GitConfig edits", () => {

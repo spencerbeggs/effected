@@ -1515,6 +1515,35 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("submoduleUpdate and submoduleAdd refuse a non-natural depth before any spawn", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const record = () => {
+					spawned = true;
+					return { exit: 0 };
+				};
+				const updateProgram = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleUpdate(cwd, { depth: Number.NaN });
+				});
+				const updateFailure = yield* Effect.flip(run(updateProgram, record));
+				assert.instanceOf(updateFailure, GitCommandError);
+				if (updateFailure instanceof GitCommandError) {
+					assert.strictEqual(updateFailure.kind, "refused");
+				}
+				const addProgram = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleAdd(cwd, { url: "https://example.com/r.git", path: ".repos/r", depth: 1.5 });
+				});
+				const addFailure = yield* Effect.flip(run(addProgram, record));
+				assert.instanceOf(addFailure, GitCommandError);
+				if (addFailure instanceof GitCommandError) {
+					assert.strictEqual(addFailure.kind, "refused");
+				}
+				assert.isFalse(spawned);
+			}),
+		);
+
 		it.effect("sparseCheckoutSet is explicit about the cone flag and guards patterns", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {
@@ -1646,6 +1675,49 @@ describe("Git", () => {
 				);
 				assert.isTrue(Exit.isFailure(exit));
 				assert.isFalse(spawned);
+			}),
+		);
+
+		it.effect("fetch refuses a NaN depth before any spawn", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "main", depth: Number.NaN });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isFalse(spawned);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+					assert.include(failure.detail ?? "", "non-negative integer");
+				}
+			}),
+		);
+
+		it.effect("fetch refuses a fractional depth before any spawn", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "main", depth: 1.5 });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.isFalse(spawned);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
 			}),
 		);
 

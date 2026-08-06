@@ -42,10 +42,13 @@ Every `GitCommand` constructor returns a **`GitInvocation`** — the spawnable
 sensitive positional masked. The mask lives on the pure constructor because
 the constructor is the one place that knows which positionals are sensitive:
 `configSet`'s value is masked wholesale as `<redacted>` (a config value can
-be a secret), and URL positionals (`fetch`'s remote, `submoduleAdd`'s and
-`submoduleSetUrl`'s url) keep everything but an embedded `userinfo@`
-credential — a plain remote name or credential-free URL passes through
-untouched. `classify` persists ONLY `redactedArgs` into
+be a secret), and URL positionals (the remote of `fetch`, `fetchUnshallow`,
+`lsRemote`, `push` and `pull`, and the url of `submoduleAdd`,
+`submoduleSetUrl`, `remoteAdd` and `remoteSetUrl`) keep everything but an
+embedded `userinfo@` credential — a plain remote name or credential-free URL
+passes through untouched. The userinfo mask is greedy through the LAST `@`
+before the first path slash, so a password containing a literal `@` is
+masked whole. `classify` persists ONLY `redactedArgs` into
 `GitCommandError.args`, and `message` renders that redacted vector, so raw
 argv never survives into an error value; a pre-spawn guard refusal of a
 sensitive value reports `<redacted>` too. The second half of the policy:
@@ -411,13 +414,13 @@ consumers, and machine parsers should consume the decoded entries directly.
 
 ## Testing and building
 
-372 tests in `__test__/`: the `GitCommand` constructor suite (pure
+379 tests in `__test__/`: the `GitCommand` constructor suite (pure
 invocation shape + the `setCwd` non-mutation guarantee, all 67 constructors,
 plus the redaction-mask block asserting `redactedArgs` for the sensitive
 constructors — now including `lsRemote`/`remoteAdd`/`remoteSetUrl`/`push`/
 `pull` URL remotes — and identity for the rest), 6
 `internal/run` (including defect passthrough through `available`), the `Git`
-suite (the full classification matrix across all five `ClassifyKind`s, the
+suite (the full classification matrix across all seven `ClassifyKind`s, the
 option-injection guard block — every guarded positional has a no-spawn
 rejection test — `workingChanges`' union/dedup, `fetchAny`'s
 tag-then-plain fallback matrix — single-spawn success, both fallback

@@ -10,8 +10,19 @@ import { serializeHeader, serializeValue } from "./internal/config.js";
  * @public
  */
 export class GitmodulesEntry extends Schema.Class<GitmodulesEntry>("GitmodulesEntry")({
-	/** The submodule's logical name — the section's subsection, case-sensitive. */
-	name: Schema.String,
+	/**
+	 * The submodule's logical name — the section's subsection, case-sensitive.
+	 *
+	 * @remarks
+	 * Constrained to exclude newline, carriage return and NUL: `render` quotes
+	 * and escapes header names for `"` and `\` only (git's subsection grammar
+	 * has no newline escape), so an unconstrained name could serialize a
+	 * document that does not re-parse to the same entries. The parse side can
+	 * never produce such a name — the scanner refuses a header broken across
+	 * lines — so the check bites only on hand-built entries, matching
+	 * `GitConfig.addSection`'s refusal of `[\n\r\0]` subsections.
+	 */
+	name: Schema.String.check(Schema.isPattern(/^[^\n\r\0]*$/)),
 	/** The submodule's path relative to the superproject root (`submodule.<name>.path`). */
 	path: Schema.String,
 	/** The submodule's remote URL (`submodule.<name>.url`). */

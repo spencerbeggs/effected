@@ -178,21 +178,32 @@ export class GitConfigInclude extends Schema.Class<GitConfigInclude>("GitConfigI
 	condition: Schema.optionalKey(Schema.String),
 }) {}
 
-/** Computes the zero-based line/character of `offset` in `text`. */
-const positionOf = (text: string, offset: number): { readonly line: number; readonly character: number } => {
-	let line = 0;
-	let lineStart = 0;
-	for (let i = 0; i < offset && i < text.length; i += 1) {
-		if (text[i] === "\n") {
-			line += 1;
-			lineStart = i + 1;
-		}
+/** The offset of every line start in `text`, ascending — computed once per parse so mapping many diagnostics stays linear. */
+const lineStarts = (text: string): ReadonlyArray<number> => {
+	const starts = [0];
+	for (let i = 0; i < text.length; i += 1) {
+		if (text[i] === "\n") starts.push(i + 1);
 	}
-	return { line, character: offset - lineStart };
+	return starts;
 };
 
-const toDiagnostic = (text: string, raw: RawDiagnostic): GitConfigDiagnostic => {
-	const { line, character } = positionOf(text, raw.offset);
+/** Computes the zero-based line/character of `offset` against a precomputed line index (binary search). */
+const positionOf = (
+	starts: ReadonlyArray<number>,
+	offset: number,
+): { readonly line: number; readonly character: number } => {
+	let low = 0;
+	let high = starts.length - 1;
+	while (low < high) {
+		const mid = (low + high + 1) >> 1;
+		if ((starts[mid] as number) <= offset) low = mid;
+		else high = mid - 1;
+	}
+	return { line: low, character: offset - (starts[low] as number) };
+};
+
+const toDiagnostic = (starts: ReadonlyArray<number>, raw: RawDiagnostic): GitConfigDiagnostic => {
+	const { line, character } = positionOf(starts, raw.offset);
 	return GitConfigDiagnostic.make({
 		code: raw.code,
 		message: raw.message,
@@ -302,10 +313,11 @@ export class GitConfig extends Schema.Class<GitConfig>("GitConfig")({
 	static parseResult(text: string): Result.Result<GitConfig, GitConfigParseError> {
 		const raw = scan(text);
 		if (raw.diagnostics.length > 0) {
+			const starts = lineStarts(text);
 			return Result.fail(
 				new GitConfigParseError({
 					input: text,
-					diagnostics: raw.diagnostics.map((diagnostic) => toDiagnostic(text, diagnostic)),
+					diagnostics: raw.diagnostics.map((diagnostic) => toDiagnostic(starts, diagnostic)),
 				}),
 			);
 		}
@@ -533,7 +545,14 @@ const validateAddress = (
 	key: string | undefined,
 	value: string | undefined,
 ): GitConfigEditError | undefined => {
-	if (!isValidSectionName(section)) return editError(op, "invalidSectionName", section, subsection, key);
+	// A dot is legal in the header GRAMMAR but never in a writable section
+	// NAME: the scanner treats any unquoted dot as the deprecated
+	// `[section.subsection]` form and splits at the first dot, so a dotted
+	// name written here (`addSection("a.b")` → `[a.b]`) would re-parse as
+	// section "a" subsection "b" and never match its own address again.
+	if (!isValidSectionName(section) || section.includes(".")) {
+		return editError(op, "invalidSectionName", section, subsection, key);
+	}
 	if (subsection !== undefined && /[\n\r\0]/.test(subsection)) {
 		return editError(op, "invalidSubsection", section, subsection, key);
 	}

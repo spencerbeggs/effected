@@ -47,9 +47,14 @@ const secretUrl = (value: string): GitArg => ({ redact: "url", value });
  * `scheme://<redacted>@host/...`). A value carrying no embedded userinfo — a
  * remote name, a credential-free URL, an scp-style `host:path` — passes
  * through untouched, so the common case stays fully debuggable.
+ *
+ * The userinfo match is greedy (`[^/]*@` — everything through the LAST `@`
+ * before the first path slash): URL authorities split at the last `@`, so a
+ * password containing a literal `@` (`user:p\@ss\@host/...`) must be
+ * consumed whole or its tail would survive into `redactedArgs`.
  */
 const redactUrlUserinfo = (value: string): string =>
-	value.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, `$1${REDACTED}@`);
+	value.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/]*@/i, `$1${REDACTED}@`);
 
 /**
  * Builds a `git` {@link GitInvocation} with the argv this package classifies
@@ -451,7 +456,9 @@ const lsFiles = (pathspec: ReadonlyArray<string> = []): GitInvocation =>
  *
  * **Redaction policy.** A constructor whose argv carries a sensitive
  * positional — a config value (`configSet`), or a URL that may embed
- * userinfo (`fetch`'s remote, `submoduleAdd`'s and `submoduleSetUrl`'s url) —
+ * userinfo (the remote of `fetch`, `fetchUnshallow`, `lsRemote`, `push` and
+ * `pull`, and the url of `submoduleAdd`, `submoduleSetUrl`, `remoteAdd` and
+ * `remoteSetUrl`) —
  * masks it in {@link GitInvocation.redactedArgs}: a config value becomes
  * `<redacted>` wholesale, a URL keeps everything but its `userinfo@`
  * component. The `Git` service persists only the redacted argv in error
@@ -871,6 +878,13 @@ export class GitCommand {
 	 * string, evaluated by git in each submodule's directory; it can mutate
 	 * anything, which is why the constructor is marked mutating regardless of
 	 * what the command does.
+	 *
+	 * @remarks
+	 * This is the ONE constructor whose argument cannot be made injection-safe
+	 * by construction: git evaluates `command` with `sh -c`, so every character
+	 * of it is shell code — a `--` separator or quoting cannot help. Callers
+	 * must treat `command` as a trusted literal and never interpolate untrusted
+	 * data into it.
 	 */
 	static readonly submoduleForeach = submoduleForeach;
 

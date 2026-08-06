@@ -186,8 +186,10 @@ const corpus: ReadonlyArray<CorpusCase> = [
 describe("GitConfig", () => {
 	describe("conformance corpus", () => {
 		it("the corpus walk found the expected number of cases", () => {
-			// A silently-empty corpus would green every loop below.
-			assert.isAtLeast(corpus.length, 25);
+			// A silently-empty (or silently-shrunk) corpus would green every loop
+			// below. The exact count is the guard: adding a case updates it here
+			// AND in CLAUDE.md's test inventory.
+			assert.strictEqual(corpus.length, 27);
 		});
 
 		for (const c of corpus) {
@@ -419,6 +421,31 @@ describe("GitConfig", () => {
 			const doc = parse("[branch.master]\n\tremote = origin\n");
 			const edited = ok(doc.renameSection("branch", "master", "branch", "main"));
 			assert.strictEqual(edited.stringify(), '[branch "main"]\n\tremote = origin\n');
+		});
+
+		it("a dotted section NAME is refused on every write — it could never round-trip", () => {
+			// The scanner splits any unquoted dot in a header at the first dot
+			// (the deprecated [section.subsection] form), so `addSection("a.b")`
+			// would serialize `[a.b]` and re-parse as section "a" subsection "b" —
+			// an address the caller could never match again (and a repeated
+			// `set("x.y", ...)` would append duplicate sections forever). Address
+			// the dotted form as (name, subsection) instead.
+			const doc = parse("");
+			for (const attempt of [
+				doc.addSection("a.b", undefined),
+				doc.set("x.y", undefined, "k", "v"),
+				doc.append("x.y", undefined, "k", "v"),
+				parse("[a]\n").renameSection("a", undefined, "a.b", undefined),
+			]) {
+				assert.isTrue(Result.isFailure(attempt));
+				if (Result.isFailure(attempt)) {
+					assert.strictEqual(attempt.failure.reason, "invalidSectionName");
+				}
+			}
+			// The same address expressed as (name, subsection) works and round-trips.
+			const edited = ok(doc.addSection("a", "b"));
+			assert.strictEqual(edited.stringify(), '[a "b"]\n');
+			assert.deepStrictEqual(ok(edited.set("a", "b", "k", "v")).get("a", "b", "k"), Option.some("v"));
 		});
 
 		it("invalid names and values are refused typed", () => {

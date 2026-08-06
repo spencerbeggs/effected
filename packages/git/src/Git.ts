@@ -1435,6 +1435,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		const tag = options.tag ?? false;
 		yield* Effect.annotateCurrentSpan({ cwd, ref: options.ref, tag });
 		yield* rejectOptionLikeRefs(cwd, [remote, options.ref]);
+		yield* rejectNonNaturalNumber(cwd, "a fetch depth", options.depth);
 		const classified = yield* runFor(GitCommand.fetch(remote, options.ref, options.depth, tag), cwd, "generic");
 		switch (classified._tag) {
 			case "success":
@@ -1477,6 +1478,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 	) {
 		const init = options?.init ?? false;
 		yield* Effect.annotateCurrentSpan({ cwd, init });
+		yield* rejectNonNaturalNumber(cwd, "a submodule update depth", options?.depth);
 		const classified = yield* runFor(
 			GitCommand.submoduleUpdate(init, options?.depth, options?.paths ?? []),
 			cwd,
@@ -1503,6 +1505,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		// The url is deliberately NOT annotated: a URL can embed userinfo, and
 		// span annotations carry stable identifiers only (the #86 policy).
 		yield* Effect.annotateCurrentSpan({ cwd, path: options.path });
+		yield* rejectNonNaturalNumber(cwd, "a submodule add depth", options.depth);
 		const classified = yield* runFor(GitCommand.submoduleAdd(options.url, options.path, options.depth), cwd, "generic");
 		switch (classified._tag) {
 			case "success":
