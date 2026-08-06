@@ -465,6 +465,11 @@ that it is empty.
 
 - **The assertion must DISCRIMINATE** — confirm the test fails *for the right
   reason*, not merely that it fails.
+- **Read the failure TEXT; never infer a catch from a missing pass line.** A
+  mutant is verified only once you have seen the assertion message and it names
+  the property you expected to break. Empty output means the tooling is
+  suspect — a grep too narrow to match the failure, a filter that dropped it —
+  not that the mutant died.
 - **Never verify a change by grepping for the text you just wrote.** Grep finds
   the declaration; only a mutation finds the emit site.
 - **A semantics-preserving perf fix cannot be pinned** — report it as
@@ -500,7 +505,8 @@ that poisons only its vitest half while the typecheck half genuinely passes);
 `PubSub.takeAll` hanging on an empty subscription; timing gates lying by ~18×
 under coverage; a green suite that fails the vitest **process** because a test
 left `process.exitCode` set; a big green count for a surface the suite never
-calls. Each with its probe →
+calls; a helper used on **both sides** of every comparison, which agrees with
+itself however broken it is. Each with its probe →
 **[references/false-greens.md](./references/false-greens.md)**.
 
 **Zero collected tests is never a pass. Read the Tests line, not the exit

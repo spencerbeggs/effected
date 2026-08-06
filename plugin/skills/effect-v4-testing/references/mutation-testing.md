@@ -107,6 +107,33 @@ Do not run the mutant expecting to watch it go red. Run it to **find out** — i
 one session it turned up three separate tests that were green, plausible, and
 **structurally incapable of failing**. None was found by reading the test.
 
+### How to READ the run: the failure text, never a missing pass line
+
+A mutation run is verified when you have **seen the assertion message** and it
+names the property you expected to break. Inferring the catch from the *absence*
+of a pass line is the same defect the technique exists to expose: evidence-shaped
+output carrying no information.
+
+Twice in one branch a run's failure text was swallowed by a too-narrow grep, and
+the empty result was nearly recorded as "the mutant was caught." Both runs had
+genuinely failed — the evidence simply was not in the filtered output.
+
+The operating rules:
+
+- **Empty output indicts the tooling, not the mutant.** A run that prints
+  nothing means the filter, the reporter or the invocation is wrong. Re-run
+  unfiltered before drawing any conclusion.
+- **Grep for the test NAME or the file, not for a phrase you expect in the
+  failure.** You do not know what the failure will say — that is why you are
+  running it — and a pattern written from your expectation matches only the
+  outcome you already assumed.
+- **Read the Tests line every time.** `0 tests passed` or a filter that matched
+  no test is a run that never happened; see
+  [false-greens.md](./false-greens.md).
+- **Quote the message when you report the result.** "Mutant caught" with no
+  quoted assertion text is an unverified claim; write it down as unverified
+  rather than letting it read as established.
+
 **The assertion must DISCRIMINATE.** After mutating, it is not enough that the
 test fails; confirm it fails **for the right reason**.
 

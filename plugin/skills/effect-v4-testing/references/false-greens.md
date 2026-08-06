@@ -327,6 +327,38 @@ calibrated together; whichever is lower is the effective bound (the toml scale
 suite shipped a 30s `assert.isBelow` under the 5s default and CI red-flagged the
 *same* test twice before the timeout argument was added).
 
+## A helper used on BOTH sides of a comparison is not tested by that comparison
+
+A broken helper still agrees with itself. If every test that touches a helper
+feeds its output into both sides of an equality, the helper is unverified no
+matter how many tests are green — the suite is structurally incapable of
+failing in response to a change in it.
+
+The real case: a lockfile comparator built a composite map key,
+`` `${dep.name}\0${dep.depType}` ``, and used it symmetrically for the "before"
+and the "after" side. A one-character change to that separator — the exact edit
+under review — could not have been caught by any of the suite's 546 tests,
+because both sides would compute the same wrong key and compare equal. The same
+shape covers a normalizer applied to expected and actual, a serializer used to
+build the fixture *and* to render the result, and a sort comparator used on both
+lists before `deepStrictEqual`.
+
+The tell is structural, and cheap to check once you know to look: **does any
+test observe the helper's output directly, or only comparisons of it against
+itself?** If only the latter, add one test that asserts the literal output —
+`assert.strictEqual(key(dep), "lodash dependencies")`. One direct
+assertion converts the whole symmetric suite from decoration into a gate.
+
+When the value under test is an escape sequence or any character you cannot see
+in a diff, assert it a second way that cannot share the mistake — an
+equivalence probe (`` `x\0y` === `x${String.fromCharCode(0)}y` ``), a byte
+comparison, or a codepoint assertion. Comparing an invisible character against a
+copy of itself is the symmetric trap one level down.
+
+The general form, worth applying to any green signal: **ask what specific
+change would have turned this red. If the answer is "nothing", the signal is
+decoration.**
+
 ## A big green count is not evidence for a surface the suite never calls
 
 Before trusting a suite as the regression gate for a change, confirm the suite

@@ -92,22 +92,20 @@ This table routes a capability to the package and skill that own it; it does not
 - No rate-limiter subsystem or proactive throttling — one `RetryPolicy` lives inside the client, and `client.rateLimit` exposes the headers for a caller that wants to pace itself.
 - No per-resource error classes — one `GitHubError` carries a `kind` discriminant.
 - No separate GraphQL client construct — GraphQL is a member of the client.
-- No report-shaping construct — report shaping is consumer policy; compose `GitHubMarkdown` pieces or reach for `@effected/markdown`.
+- No report-shaping construct — but **`GitHubMarkdown` does ship the GFM writer** (`table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details`, `raw`), from `@effected/github-actions`, and `ManagedDocument` / `CheckDocument` ship the document surfaces. "Shaping" means the arrangement of a report — which facts, in which order — not the primitives. Never hand-roll a markdown writer: compose `GitHubMarkdown` pieces, or reach for `@effected/markdown` for a document you build as a tree. See `actions-reporting`.
 - No fan-out-and-accumulate construct — `Effect.partition(items, f)` returns `[failures, successes]` and never fails; `Effect.all(effects, { mode: "result" })` is the per-effect form.
 - No ANSI/colour API — GitHub's log viewer colours the workflow commands itself; do not invent one.
 - No shared `*Test` module family or a `./testing` subpath — every service ships its own `makeTest`/`layerTest`. Grep the installed packages for `makeTest` to see the current set; it is large, not a handful.
 - No named log-level resolver — `ActionEnvironment.isDebug` (`Effect.Effect<boolean>`, reads `RUNNER_DEBUG === "1"`) is what a program reaches for instead.
 
-## Renamed, not absent
+## Present, and easy to miss
 
-These exist. They are listed separately because a rename filed under the absence list above reads as a gap — one port planned a hand-rolled markdown writer off exactly that misreading, and the migration turned out to be three characters.
+These exist, and each one has been mistaken for a gap at least once. A capability filed under the absence list above when it actually ships is the expensive misreading — one build planned a hand-rolled markdown writer off exactly that mistake.
 
-- **`GitHubMarkdown` (capital H)** was `GithubMarkdown`. The GFM writer: `table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details`, `raw`.
-- **`ActionInput.string("x")`** was `Config.string("x")` — the accessor now owns the `INPUT_` derivation.
-- **`Service.makeTest` / `Service.layerTest`** were `<Service>Test` on a `/testing` subpath.
-- **`ActionRuntime.layer`** was a hand-composed `MainLive`.
-
-Porting a whole action off `@savvy-web/github-action-effects`? The full symbol map is [`references/porting-off-a-legacy-toolkit.md`](../designing-an-action/references/porting-off-a-legacy-toolkit.md) under `designing-an-action`. Start there rather than rediscovering it symbol by symbol.
+- **`GitHubMarkdown` (capital H)** — the GFM writer: `table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details`, `raw`.
+- **`ActionInput.string("x")`** — the accessor owns the `INPUT_` derivation; you never spell it yourself.
+- **`Service.makeTest` / `Service.layerTest`** — on the service itself, not on a `/testing` subpath.
+- **`ActionRuntime.layer`** — the composed runtime; never hand-compose a `MainLive`.
 
 ## The suite
 
