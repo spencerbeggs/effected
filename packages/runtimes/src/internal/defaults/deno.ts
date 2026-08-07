@@ -8,6 +8,7 @@ import type { RawRelease } from "../types.js";
  * @internal
  */
 export const denoDefaults: ReadonlyArray<RawRelease> = [
+	{ version: "2.9.5", date: "2026-08-06T15:05:43Z" },
 	{ version: "2.9.4", date: "2026-07-23T16:59:31Z" },
 	{ version: "2.9.3", date: "2026-07-15T15:35:06Z" },
 	{ version: "2.9.2", date: "2026-07-08T14:36:21Z" },
