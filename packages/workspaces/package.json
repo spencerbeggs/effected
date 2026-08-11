@@ -50,6 +50,7 @@
 		"@effected/lockfiles": "workspace:^",
 		"@effected/npm": "workspace:^",
 		"@effected/package-json": "workspace:^",
+		"@effected/semver": "workspace:^",
 		"@effected/walker": "workspace:^",
 		"@effected/yaml": "workspace:^",
 		"@pnpm/catalogs.config": "^1100.0.0",
@@ -60,7 +61,7 @@
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
-		"@savvy-web/bundler": "^2.1.6",
+		"@savvy-web/bundler": "^2.1.7",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
