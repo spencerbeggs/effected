@@ -18,7 +18,7 @@ catalogs:
     "@effect/platform-node": 4.0.0-beta.101
     "@effect/platform-node-shared": 4.0.0-beta.101
     "@effect/sql-clickhouse": 4.0.0-beta.101
-    "@effect/sql-d1": 4.0.0-beta.101
+    "@effect/sql-d1": 4.0.0-beta.106
     "@effect/sql-libsql": 4.0.0-beta.101
     "@effect/sql-mssql": 4.0.0-beta.101
     "@effect/sql-mysql2": 4.0.0-beta.101
@@ -47,7 +47,7 @@ catalogs:
     "@effect/platform-node": 4.0.0-beta.101
     "@effect/platform-node-shared": 4.0.0-beta.101
     "@effect/sql-clickhouse": 4.0.0-beta.101
-    "@effect/sql-d1": 4.0.0-beta.101
+    "@effect/sql-d1": 4.0.0-beta.106
     "@effect/sql-libsql": 4.0.0-beta.101
     "@effect/sql-mssql": 4.0.0-beta.101
     "@effect/sql-mysql2": 4.0.0-beta.101
@@ -187,7 +187,7 @@ catalogs:
     "@effect/platform-node": 4.0.0-beta.101
     "@effect/platform-node-shared": 4.0.0-beta.101
     "@effect/sql-clickhouse": 4.0.0-beta.101
-    "@effect/sql-d1": 4.0.0-beta.101
+    "@effect/sql-d1": 4.0.0-beta.106
     "@effect/sql-libsql": 4.0.0-beta.101
     "@effect/sql-mssql": 4.0.0-beta.101
     "@effect/sql-mysql2": 4.0.0-beta.101
