@@ -1,4 +1,11 @@
 {
 	"$schema": "https://json.schemastore.org/tsconfig.json",
+	"compilerOptions": {
+		// Aligns the root with the package bases (@savvy-web/bundler/tsconfig/ecma.json
+		// sets it too); without it the root check compiles effect's published d.ts,
+		// which is self-inconsistent at 4.0.0-beta.105+ (Effect-TS/effect#7187:
+		// Schema.d.ts references the @internal-stripped SchemaAST.Sentinel).
+		"skipLibCheck": true
+	},
 	"extends": "@savvy-web/silk/tsconfig/node/root.json"
 }

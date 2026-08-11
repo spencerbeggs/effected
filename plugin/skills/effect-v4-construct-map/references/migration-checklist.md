@@ -243,11 +243,25 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
   tests asserting constraint text on `.message` must format
   `SchemaIssue.makeFormatterDefault()(error.cause)` instead (probed beta.105;
   `decodeUnknownSync`'s `SchemaError.message` stays formatted);
-  `Schema.makeEffect` fails with `SchemaIssue.Issue`, not `SchemaError`;
+  `<schema>.makeEffect` (an instance method — there is no module-level
+  `Schema.makeEffect`) fails with `SchemaIssue.Issue`, not `SchemaError`;
   JSON Schema `$defs` keys for class schemas gained an `Encoded` suffix
   fallback (`Person` → `PersonEncoded`); and `Schema.toArbitrary` now returns
   a factory taking the fast-check module (`toArbitrary(S)(FastCheck)`), with
   `toArbitraryLazy` removed (beta.106). Full table in [schema.md](./schema.md).
+- **Verify the advance UNCACHED, and check the ROOT tsconfig, not only package
+  bases.** Two false negatives hit live on one wave migration
+  (rspress-plugin-api-extractor → beta.107): a turbo typecheck task whose
+  declared `inputs` cover only source files serves a stale CACHE HIT after a
+  dependency advance — the bump touches neither source nor the task's inputs —
+  so `typecheck` reports green against the OLD beta; force it
+  (`TURBO_FORCE=true`) once after any dependency advance. And
+  Effect-TS/effect#7187 (`Schema.d.ts` referencing the `@internal`-stripped
+  `SchemaAST.Sentinel`) has a third outcome besides "base sets `skipLibCheck`"
+  and "patch the dist d.ts": workspace bases set it but the repo-root tsconfig
+  does not — per-package checks pass while root `tsc`/`tsgo` (often first seen
+  in a lint-staged commit hook, only when a `.ts` file is staged) fails
+  `TS2694`; align the root config with the bases.
 - `Schema.Schema<A, I>` (two params) → `Schema.Codec<A, I>`; `Schema.Schema`
   takes one.
 
