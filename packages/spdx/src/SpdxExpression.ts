@@ -1,4 +1,4 @@
-import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import type { RawExpression } from "./internal/parser.js";
 import { parse as parseRaw } from "./internal/parser.js";
 import { InvalidSpdxExpressionError } from "./License.js";
@@ -231,7 +231,7 @@ const FromString: Schema.Codec<SpdxExpression, string> = Schema.String.pipe(
 				const result = parseResult(input);
 				return Result.isSuccess(result)
 					? Effect.succeed(result.success)
-					: Effect.fail(new SchemaIssue.InvalidValue(Option.some(input), { message: result.failure.message }));
+					: Effect.fail(new SchemaIssue.InvalidValue({ message: result.failure.message }, input));
 			},
 			// `decodeTo`'s encode runs the union's encode FIRST, so `expression` is
 			// the tagged POJO (a plain `Object`, not a class instance) — calling

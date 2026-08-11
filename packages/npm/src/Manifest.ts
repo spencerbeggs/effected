@@ -30,7 +30,7 @@ import { WorkspaceResolver } from "./WorkspaceResolver.js";
  *
  * @public
  */
-export class ManifestDecodeError extends Schema.TaggedErrorClass<ManifestDecodeError>()("ManifestDecodeError", {
+export class ManifestDecodeError extends Schema.TaggedError<ManifestDecodeError>()("ManifestDecodeError", {
 	/** The underlying `SchemaError`, preserved structurally rather than stringified. */
 	cause: Schema.Defect(),
 }) {
@@ -50,7 +50,7 @@ export class ManifestDecodeError extends Schema.TaggedErrorClass<ManifestDecodeE
  *
  * @public
  */
-export class UnresolvedDependencyError extends Schema.TaggedErrorClass<UnresolvedDependencyError>()(
+export class UnresolvedDependencyError extends Schema.TaggedError<UnresolvedDependencyError>()(
 	"UnresolvedDependencyError",
 	{
 		/** The manifest field the dependency is declared under. */

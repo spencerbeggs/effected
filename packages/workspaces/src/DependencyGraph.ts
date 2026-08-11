@@ -25,7 +25,7 @@ import { WorkspacePackage } from "./WorkspacePackage.js";
  *
  * @public
  */
-export class CyclicDependencyError extends Schema.TaggedErrorClass<CyclicDependencyError>()("CyclicDependencyError", {
+export class CyclicDependencyError extends Schema.TaggedError<CyclicDependencyError>()("CyclicDependencyError", {
 	/** The packages participating in the cycle. */
 	cycle: Schema.Array(Schema.String),
 }) {

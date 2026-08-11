@@ -125,7 +125,7 @@ export class ExecContext extends Schema.Class<ExecContext>("ExecContext")({
  *
  * @public
  */
-export class LocalExecError extends Schema.TaggedErrorClass<LocalExecError>()("LocalExecError", {
+export class LocalExecError extends Schema.TaggedError<LocalExecError>()("LocalExecError", {
 	/** The directory whose context could not be determined, when one is known. */
 	directory: Schema.optionalKey(Schema.String),
 	/** The underlying failure. */

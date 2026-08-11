@@ -24,7 +24,7 @@ const GIT_TIMEOUT = Duration.seconds(30);
  *
  * @public
  */
-export class GitCommandError extends Schema.TaggedErrorClass<GitCommandError>()("GitCommandError", {
+export class GitCommandError extends Schema.TaggedError<GitCommandError>()("GitCommandError", {
 	/**
 	 * Discriminates a pre-spawn guard rejection from a genuine git failure.
 	 * `"refused"` — a pre-spawn guard (an option-like ref) rejected the
@@ -66,7 +66,7 @@ export class GitCommandError extends Schema.TaggedErrorClass<GitCommandError>()(
  *
  * @public
  */
-export class NotARepositoryError extends Schema.TaggedErrorClass<NotARepositoryError>()("NotARepositoryError", {
+export class NotARepositoryError extends Schema.TaggedError<NotARepositoryError>()("NotARepositoryError", {
 	/** The working directory that is not a git repository. */
 	cwd: Schema.String,
 }) {
@@ -81,7 +81,7 @@ export class NotARepositoryError extends Schema.TaggedErrorClass<NotARepositoryE
  *
  * @public
  */
-export class UnknownRefError extends Schema.TaggedErrorClass<UnknownRefError>()("UnknownRefError", {
+export class UnknownRefError extends Schema.TaggedError<UnknownRefError>()("UnknownRefError", {
 	/** The ref (or ref range) that failed to resolve. */
 	ref: Schema.String,
 	/** The working directory the ref was resolved against. */
@@ -105,7 +105,7 @@ export class UnknownRefError extends Schema.TaggedErrorClass<UnknownRefError>()(
  *
  * @public
  */
-export class NonFastForwardError extends Schema.TaggedErrorClass<NonFastForwardError>()("NonFastForwardError", {
+export class NonFastForwardError extends Schema.TaggedError<NonFastForwardError>()("NonFastForwardError", {
 	/** The working directory the push ran in. */
 	cwd: Schema.String,
 	/** The refspec that was rejected, when the caller passed one. */
@@ -132,7 +132,7 @@ export class NonFastForwardError extends Schema.TaggedErrorClass<NonFastForwardE
  *
  * @public
  */
-export class MergeConflictError extends Schema.TaggedErrorClass<MergeConflictError>()("MergeConflictError", {
+export class MergeConflictError extends Schema.TaggedError<MergeConflictError>()("MergeConflictError", {
 	/** The working directory the merge ran in. */
 	cwd: Schema.String,
 }) {
@@ -155,7 +155,7 @@ export class MergeConflictError extends Schema.TaggedErrorClass<MergeConflictErr
  *
  * @public
  */
-export class DirtyWorktreeError extends Schema.TaggedErrorClass<DirtyWorktreeError>()("DirtyWorktreeError", {
+export class DirtyWorktreeError extends Schema.TaggedError<DirtyWorktreeError>()("DirtyWorktreeError", {
 	/** The working directory whose local changes blocked the operation. */
 	cwd: Schema.String,
 }) {

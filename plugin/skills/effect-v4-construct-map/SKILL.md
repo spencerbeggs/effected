@@ -50,8 +50,9 @@ The mappings this split makes non-guessable:
 | `NodeContext.layer` | **`NodeServices.layer`** (`@effect/platform-node`) | provides `ChildProcessSpawner \| Crypto \| FileSystem \| Path \| Stdio \| Terminal` |
 
 **The rule this section exists for:** before designing any service, seam, or
-vocabulary, grep the vendored core (`.repos/effect/packages/effect/src`,
-including `unstable/`) for an existing contract. If core declares it, require
+vocabulary, grep the vendored core (the tree's `packages/effect/src`,
+including `unstable/` — resolve the root via `effect-v4-source-lookup`) for an
+existing contract. If core declares it, require
 it in `R` and let the app provide the platform layer — do not re-declare or
 re-implement it. A parallel subprocess vocabulary survived four review gates
 in this repo before a source check deleted it.
@@ -119,35 +120,29 @@ far from the mistake.
   Reach for the v3 name and you get `undefined is not a function` at the call
   site — which reads like a bad import, not a rename.
 
-## The `Config.withDefault` trap: a default swallows validation failures
+## The `Config.withDefault` trap: retired in beta.102–105
 
-`Config.withDefault` and `Config.option` fall back for **missing data only** —
-but "missing" is judged from the **issue**, not from whether the key was there.
-`isMissingDataOnly` (`Config.ts:298`) classifies an `InvalidValue` or
-`InvalidType` as *missing* whenever its `actual` is `Option.none()`
-(`Config.ts:304`):
+`Config.withDefault` and `Config.option` fall back for **missing data only**.
+Through beta.101, "missing" was judged from the **issue**: `isMissingDataOnly`
+classified an `InvalidValue`/`InvalidType` whose `actual` was `Option.none()`
+as missing, so a hand-built `SchemaIssue` that omitted its `actual` was
+silently swallowed by any default downstream. This shipped as a live defect:
+an action input written `dry-run: yes` failed validation, classified as
+missing, fell back to `false` — and the rehearsal performed real mutations.
+The fix then was carrying `Option.some(rawValue)` in the issue.
 
-```ts
-case "InvalidType":
-case "InvalidValue":
-  return Option.isNone(issue.actual) || (Option.isSome(issue.actual) && issue.actual.value === undefined)
-```
-
-So a **hand-built** `SchemaIssue` that omits its `actual` is indistinguishable
-from an absent key, and **every validation failure is silently swallowed by any
-default downstream**. The value the user actually supplied is never reported and
-never rejected.
-
-This shipped as a live defect: an action input written `dry-run: yes` failed
-validation, classified as missing, fell back to the boolean default — `false` —
-and the rehearsal performed real mutations. The fix was one field: carry
-`Option.some(rawValue)` in the issue.
-
-> **Always populate `actual` in a hand-built `SchemaIssue` under `Config`.** It
-> is not cosmetic diagnostic detail; it is the discriminator between "you did not
-> set this" and "what you set is wrong." Getting it wrong is API semantics, not a
-> typo, so nothing in the types or the tests points at it — a config test that
-> only exercises the *absent* case passes either way.
+**beta.102–105 removed both the trap and the fix.** Issues no longer carry an
+`actual: Option` at all (`SchemaIssue.InvalidValue` is now
+`(annotations?, input?, options?)`, input retained only under `reportInput:
+true`), `isMissingDataOnly` is gone from `Config.ts`, and the evaluator tracks
+input evidence itself (`hasInput` on the resolution, `Config.ts:180–194`).
+Probed on beta.105: a present-but-malformed value **fails** through
+`withDefault`, and so does a hand-built
+`new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue({ message })))`
+with no input attached — neither silently defaults. Do not port the
+`Option.some(actual)` ritual forward (it no longer compiles); do keep the
+regression test — assert that a config under `withDefault` still fails, not
+falls back, when fed a present-but-malformed value.
 
 ## These look like values but are calls
 
@@ -162,8 +157,8 @@ Every row verified at rung 2 against the vendored source at
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9548` — `export function Defect(options?: ErrorOptions): Defect`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.Error()` | `Schema.Error` | `Schema.ts:9471` — `export function Error(options?: ErrorOptions): Error`. Same shape, same optional-`options` trap, one page away in the same module. |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:10747` — `export function Defect(options?: ErrorOptions): Defect`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:10647` — `export function ErrorInstance(options?: ErrorOptions): ErrorInstance`. Same shape, same optional-`options` trap, one page away in the same module. (beta.102–105 renamed it from `Schema.Error`; `Schema.Error` is now the error-**class factory** at `Schema.ts:14405` — see schema.md.) |
 | `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:379` — `export const layer: (options?: TestClock.Options) => Layer.Layer<TestClock>`. **A function returning a Layer**, unlike almost every other `layer` in core. |
 | `Schema.Literals(["a","b"])` | `Schema.Literals` / `Schema.Literal("a","b")` | `Schema.ts:4851` — takes ONE array argument. (The variadic `Schema.Literal` trap is separate and worse: it keeps only the first literal at runtime. See the rename table above.) |
 

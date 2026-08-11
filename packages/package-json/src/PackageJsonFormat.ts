@@ -31,15 +31,12 @@ import { renderJson, resolveIndent, sortKeys } from "./internal/format.js";
  *
  * @public
  */
-export class PackageJsonSyntaxError extends Schema.TaggedErrorClass<PackageJsonSyntaxError>()(
-	"PackageJsonSyntaxError",
-	{
-		/** Which syntactic precondition failed. */
-		reason: Schema.Literals(["invalid-json", "not-an-object"]),
-		/** The underlying `SyntaxError` for `"invalid-json"`, preserved structurally. */
-		cause: Schema.optionalKey(Schema.Defect()),
-	},
-) {
+export class PackageJsonSyntaxError extends Schema.TaggedError<PackageJsonSyntaxError>()("PackageJsonSyntaxError", {
+	/** Which syntactic precondition failed. */
+	reason: Schema.Literals(["invalid-json", "not-an-object"]),
+	/** The underlying `SyntaxError` for `"invalid-json"`, preserved structurally. */
+	cause: Schema.optionalKey(Schema.Defect()),
+}) {
 	override get message(): string {
 		return this.reason === "invalid-json"
 			? "package.json text is not valid JSON"

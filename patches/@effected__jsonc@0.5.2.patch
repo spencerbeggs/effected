@@ -1,0 +1,35 @@
+diff --git a/Jsonc.js b/Jsonc.js
+index f2988f6..0a1fd35 100644
+--- a/Jsonc.js
++++ b/Jsonc.js
+@@ -32,7 +32,7 @@ var JsoncParseErrorDetail = class extends Schema.Class("JsoncParseErrorDetail")(
+ *
+ * @public
+ */
+-var JsoncParseError = class extends Schema.TaggedErrorClass()("JsoncParseError", {
++var JsoncParseError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("JsoncParseError", {
+ 	errors: Schema.Array(JsoncParseErrorDetail),
+ 	input: Schema.String
+ }) {
+@@ -104,7 +104,7 @@ var JsoncStringifyOptions = class extends Schema.Class("JsoncStringifyOptions")(
+ *
+ * @public
+ */
+-var JsoncStringifyError = class extends Schema.TaggedErrorClass()("JsoncStringifyError", {
++var JsoncStringifyError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("JsoncStringifyError", {
+ 	code: JsoncStringifyErrorCode,
+ 	detail: Schema.String,
+ 	value: Schema.Unknown
+diff --git a/JsoncModifier.js b/JsoncModifier.js
+index 0a30059..bf0387b 100644
+--- a/JsoncModifier.js
++++ b/JsoncModifier.js
+@@ -26,7 +26,7 @@ import { Effect, Schema } from "effect";
+ *
+ * @public
+ */
+-var JsoncModificationError = class extends Schema.TaggedErrorClass()("JsoncModificationError", {
++var JsoncModificationError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("JsoncModificationError", {
+ 	path: Schema.Array(Schema.Union([Schema.String, Schema.Number])),
+ 	expected: Schema.Literals(["object", "array"]),
+ 	depth: Schema.Number,

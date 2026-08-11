@@ -48,6 +48,88 @@ describe("Yaml", () => {
 			}),
 		);
 
+		describe("explicit keys with compact collection values (regression)", () => {
+			// YAML 1.2 §8.2.2: l-block-map-explicit-value is `:` s-l+block-indented,
+			// and s-l+block-indented admits ns-l-compact-mapping — so a compact
+			// mapping starting on the `:` line IS the value. pnpm 11 writes lockfile
+			// snapshot keys longer than 1024 chars in exactly this form.
+			it.effect("parses a compact mapping starting on the ':' line", () =>
+				Effect.gen(function* () {
+					const value = yield* Yaml.parse("? k1\n: dependencies:\n    x: 1\n");
+					assert.deepStrictEqual(value, { k1: { dependencies: { x: 1 } } });
+				}),
+			);
+
+			it.effect("parses two explicit entries with compact-mapping values", () =>
+				Effect.gen(function* () {
+					const value = yield* Yaml.parse("? k1\n: dependencies:\n    x: 1\n? k2\n: dependencies:\n    y: 2\n");
+					assert.deepStrictEqual(value, {
+						k1: { dependencies: { x: 1 } },
+						k2: { dependencies: { y: 2 } },
+					});
+				}),
+			);
+
+			it.effect("parses two explicit entries with single-pair compact-mapping values", () =>
+				Effect.gen(function* () {
+					const value = yield* Yaml.parse("? k1\n: x: 1\n? k2\n: y: 2\n");
+					assert.deepStrictEqual(value, { k1: { x: 1 }, k2: { y: 2 } });
+				}),
+			);
+
+			it.effect("parses two explicit entries whose mapping values start on the next line", () =>
+				Effect.gen(function* () {
+					const value = yield* Yaml.parse("? k1\n:\n  dependencies:\n    x: 1\n? k2\n:\n  dependencies:\n    y: 2\n");
+					assert.deepStrictEqual(value, {
+						k1: { dependencies: { x: 1 } },
+						k2: { dependencies: { y: 2 } },
+					});
+				}),
+			);
+
+			it.effect("still parses a compact sequence starting on the ':' line", () =>
+				Effect.gen(function* () {
+					const value = yield* Yaml.parse("? k1\n: - a\n  - b\n");
+					assert.deepStrictEqual(value, { k1: ["a", "b"] });
+				}),
+			);
+
+			it.effect("still parses explicit keys with scalar values", () =>
+				Effect.gen(function* () {
+					const value = yield* Yaml.parse("? alpha\n: 1\n? beta\n: 2\n");
+					assert.deepStrictEqual(value, { alpha: 1, beta: 2 });
+				}),
+			);
+
+			it.effect("parses a pnpm-lockfile-shaped snapshots section with >1024-char explicit keys", () =>
+				Effect.gen(function* () {
+					// pnpm emits `? 'key'` / `  : dependencies:` once the key exceeds
+					// the 1024-char implicit-key limit; the whole entry is indented
+					// inside the `snapshots:` mapping.
+					const k1 = `pkg-a@1.0.0(${"a".repeat(1100)})`;
+					const k2 = `pkg-b@2.0.0(${"b".repeat(1100)})`;
+					const text = [
+						"snapshots:",
+						`  ? '${k1}'`,
+						"  : dependencies:",
+						"      dep-one: 1.2.3",
+						"      dep-two: 4.5.6",
+						`  ? '${k2}'`,
+						"  : dependencies:",
+						"      dep-three: 7.8.9",
+						"",
+					].join("\n");
+					const value = yield* Yaml.parse(text);
+					assert.deepStrictEqual(value, {
+						snapshots: {
+							[k1]: { dependencies: { "dep-one": "1.2.3", "dep-two": "4.5.6" } },
+							[k2]: { dependencies: { "dep-three": "7.8.9" } },
+						},
+					});
+				}),
+			);
+		});
+
 		describe("duplicate-key identity distinguishes YAML node type, not just JS value", () => {
 			// Keys are the same mapping key only when they are the same YAML node —
 			// same type and value. An !!int and an !!float that resolve to equal JS

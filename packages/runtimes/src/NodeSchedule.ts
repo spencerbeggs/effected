@@ -34,7 +34,7 @@ export type NodePhase = typeof NodePhase.Type;
  *
  * @public
  */
-export class InvalidScheduleDateError extends Schema.TaggedErrorClass<InvalidScheduleDateError>()(
+export class InvalidScheduleDateError extends Schema.TaggedError<InvalidScheduleDateError>()(
 	"InvalidScheduleDateError",
 	{
 		/** The schedule key whose entry failed, e.g. `"v20"`. */

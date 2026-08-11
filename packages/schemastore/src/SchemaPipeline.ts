@@ -65,7 +65,7 @@ export class PipelineFinding extends Schema.Class<PipelineFinding>("PipelineFind
  *
  * @public
  */
-export class SchemaGateError extends Schema.TaggedErrorClass<SchemaGateError>()("SchemaGateError", {
+export class SchemaGateError extends Schema.TaggedError<SchemaGateError>()("SchemaGateError", {
 	/** The `$id` of the target that failed the gate. */
 	$id: Schema.String,
 	/** Every finding that blocked, in discovery order. */

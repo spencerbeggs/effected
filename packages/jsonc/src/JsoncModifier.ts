@@ -34,15 +34,12 @@ import type { JsoncPath } from "./JsoncNode.js";
  *
  * @public
  */
-export class JsoncModificationError extends Schema.TaggedErrorClass<JsoncModificationError>()(
-	"JsoncModificationError",
-	{
-		path: Schema.Array(Schema.Union([Schema.String, Schema.Number])),
-		expected: Schema.Literals(["object", "array"]),
-		depth: Schema.Number,
-		offset: Schema.optionalKey(Schema.Number),
-	},
-) {
+export class JsoncModificationError extends Schema.TaggedError<JsoncModificationError>()("JsoncModificationError", {
+	path: Schema.Array(Schema.Union([Schema.String, Schema.Number])),
+	expected: Schema.Literals(["object", "array"]),
+	depth: Schema.Number,
+	offset: Schema.optionalKey(Schema.Number),
+}) {
 	override get message(): string {
 		const at = this.offset !== undefined ? ` (offset ${this.offset})` : "";
 		return `Modification failed at path [${this.path.join(", ")}]${at}: expected ${this.expected} at depth ${this.depth}`;

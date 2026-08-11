@@ -48,7 +48,7 @@ export const GitHubErrorKind = Schema.Literals([
  *
  * @public
  */
-export class GitHubError extends Schema.TaggedErrorClass<GitHubError>()("GitHubError", {
+export class GitHubError extends Schema.TaggedError<GitHubError>()("GitHubError", {
 	/** Structural routing. Branch on this, never on the rendered message. */
 	kind: GitHubErrorKind,
 	/** What was attempted: a resource method (`"GitBranch.upsert"`) or a raw route. */

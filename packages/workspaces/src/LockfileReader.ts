@@ -26,7 +26,7 @@ import { WorkspaceRoot } from "./WorkspaceRoot.js";
  *
  * @public
  */
-export class LockfileReadError extends Schema.TaggedErrorClass<LockfileReadError>()("LockfileReadError", {
+export class LockfileReadError extends Schema.TaggedError<LockfileReadError>()("LockfileReadError", {
 	/** Absolute path to the lockfile that could not be read. */
 	lockfilePath: Schema.String,
 	// `LockfileFormat` is @effected/lockfiles' own schema, not a re-spelling of it.

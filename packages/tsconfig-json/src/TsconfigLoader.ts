@@ -54,7 +54,7 @@ const MAX_EXTENDS_DEPTH = 32;
  *
  * @public
  */
-export class TsconfigExtendsError extends Schema.TaggedErrorClass<TsconfigExtendsError>()("TsconfigExtendsError", {
+export class TsconfigExtendsError extends Schema.TaggedError<TsconfigExtendsError>()("TsconfigExtendsError", {
 	/** The config whose `extends` could not be resolved. */
 	path: Schema.String,
 	/** The target that failed: the spec, the re-entered path, or the refused path. */

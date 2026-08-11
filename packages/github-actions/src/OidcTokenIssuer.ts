@@ -8,7 +8,7 @@ import { ActionEnvironment } from "./ActionEnvironment.js";
  *
  * @public
  */
-export class OidcTokenError extends Schema.TaggedErrorClass<OidcTokenError>()("OidcTokenError", {
+export class OidcTokenError extends Schema.TaggedError<OidcTokenError>()("OidcTokenError", {
 	/**
 	 * `unavailable` — the runner did not publish the token-service variables,
 	 * which almost always means the workflow is missing `permissions: id-token:

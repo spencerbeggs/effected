@@ -17,7 +17,7 @@ import { CONFLICT, isOk, stringField, twirpCall } from "./internal/twirp.js";
  *
  * @public
  */
-export class ActionCacheError extends Schema.TaggedErrorClass<ActionCacheError>()("ActionCacheError", {
+export class ActionCacheError extends Schema.TaggedError<ActionCacheError>()("ActionCacheError", {
 	/**
 	 * `misconfigured` — the results backend is not reachable from here (see
 	 * {@link ActionCache}). `unreachable` — it could not be contacted, or

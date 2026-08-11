@@ -87,6 +87,17 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
   unserializable-cause line in the reporter's output — the failure is
   still real; check the captured console output rather than assuming the
   test silently didn't fail.
+- An `Effect.catch` whose target's error channel is `never` is dead code,
+  and the compiler will not tell you — `catch` over `never` is well-typed,
+  it just never fires. Before writing a handler, check the callee's
+  declared `E`; if it is `never`, the handler and every branch downstream
+  of it (the `null` result, the `❌` log line, the failure verdict) are
+  unreachable, and no test can exercise them because the type system has
+  already ruled the path out. A failure path that cannot fire is worse
+  than none: it reads as coverage to every reviewer who scans past it.
+  This is the catch-side mirror of `structuring-an-action`'s declaration
+  rule (a tagged error only when the step can actually fail) — audit both
+  directions.
 
 ## Migrating a suite: doubles first, runner second
 

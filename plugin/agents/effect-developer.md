@@ -89,7 +89,7 @@ beats nothing at all — write the control first and watch it fail.
    nearest sibling package for the house idioms before writing.
 3. **Design at the schema/service boundary.** Model data with `Schema.Class`
    variants (the class IS the schema); wire dependencies with `Context.Service`
-   + `Layer`; keep the error channel typed (`Schema.TaggedErrorClass`, never a
+   + `Layer`; keep the error channel typed (`Schema.TaggedError`, never a
    `reason: string`).
 4. **Write, then verify.** Run the host repo's own gates: its typecheck, its
    linter, and the relevant tests. Prefer structured tools when the session
@@ -100,7 +100,7 @@ beats nothing at all — write the control first and watch it fail.
 
 ## Non-negotiables (from the skills — invoke them for the detail)
 
-+ **Schema**: prefer `Class`/`TaggedClass`/`TaggedErrorClass` for named models,
++ **Schema**: prefer `Class`/`TaggedClass`/`TaggedError` for named models,
   `Struct` for inline shapes; construct with `X.make` (idiomatic default) —
   `new` only as a deliberate hot-path exception, and NEVER pass explicit
   `undefined` for an `optionalKey` field (use conditional spreads). See

@@ -377,7 +377,7 @@ console.log(MyString2.encodeSync(1))
 **Example** (Using a tuple to validate the constructor arguments)
 
 ```ts
-import { Schema } from "effect"
+import { Schema, SchemaIssue } from "effect"
 
 const PersonConstructorArguments = Schema.Tuple([Schema.String, Schema.Finite])
 
@@ -393,13 +393,24 @@ try {
 } catch (error) {
   if (error instanceof Error) {
     console.log(error.message)
+    // "Schema validation failed" — since beta.102–105 `make` throws the
+    // generic message with the SchemaIssue.Issue on error.cause; format it:
+    console.log(SchemaIssue.makeFormatterDefault()(error.cause as SchemaIssue.Issue))
   }
 }
 /*
-Expected a finite number, got NaN
+Schema validation failed
+Expected a finite number
   at [1]
 */
 ```
+
+Formatting trap: through beta.101 the thrown `error.message` carried the
+constraint text itself; a test asserting on it now sees only
+`"Schema validation failed"` — format `error.cause` with
+`SchemaIssue.makeFormatterDefault()` instead. (`Schema.decodeUnknownSync` is
+different: it throws a `SchemaError` whose `.message` is still formatted, with
+the structured issue on `.issue`.)
 
 **Example** (Inheritance)
 
@@ -605,14 +616,18 @@ try {
 } catch (error: any) {
   console.log(error.message)
 }
-// Expected a === b, got {"a":"a","b":"b"}
+// "Schema validation failed" — class construction throws the generic message
+// (beta.102–105); the constraint text lives on error.cause:
+// SchemaIssue.makeFormatterDefault()(error.cause) // => "Expected a === b"
 
 try {
   Schema.decodeUnknownSync(A)({ a: "a", b: "b" })
 } catch (error: any) {
   console.log(error.message)
 }
-// Expected a === b, got {"a":"a","b":"b"}
+// "Expected a === b" — decodeUnknownSync throws a SchemaError whose .message
+// IS formatted (issue on .issue; the input tail appears only under the
+// reportInput parse option)
 ```
 
 #### Branded Classes
@@ -892,19 +907,21 @@ console.log(Schema.decodeUnknownSync(Animal)({ _tag: "Cat", lives: 9 }))
 
 All features from `Class` are available: `extend`, `annotate`, `check`, branded classes, and recursive definitions.
 
-### ErrorClass
+### Error
 
 ```ts
 import { Schema } from "effect"
 
-class E extends Schema.ErrorClass<E>("E")({
+class E extends Schema.Error<E>("E")({
   id: Schema.Number
 }) {}
 ```
 
-### TaggedErrorClass
+Naming trap: beta.102–105 renamed `Schema.ErrorClass` back to `Schema.Error` (and `Schema.TaggedErrorClass` back to `Schema.TaggedError`), keeping the same curried call shapes — code written against earlier v4 betas fails with "ErrorClass is not a function". The schema for plain `Error` *instances* (formerly `Schema.Error` in earlier betas) is now `Schema.ErrorInstance`.
 
-`TaggedErrorClass` combines `ErrorClass` with an automatic `_tag` field, giving you a tagged error that can be caught with `Effect.catchTag`.
+### TaggedError
+
+`TaggedError` combines `Error` with an automatic `_tag` field, giving you a tagged error that can be caught with `Effect.catchTag`.
 
 Like `TaggedClass`, the tag value doubles as the identifier by default, and you can pass an explicit identifier as the first argument to override it.
 
@@ -913,7 +930,7 @@ Like `TaggedClass`, the tag value doubles as the identifier by default, and you 
 ```ts
 import { Effect, Schema } from "effect"
 
-class HttpError extends Schema.TaggedErrorClass<HttpError>()("HttpError", {
+class HttpError extends Schema.TaggedError<HttpError>()("HttpError", {
   status: Schema.Number,
   message: Schema.String
 }) {}
@@ -932,11 +949,11 @@ const recovered = program.pipe(
 ```ts
 import { Effect, Schema } from "effect"
 
-class NotFound extends Schema.TaggedErrorClass<NotFound>()("NotFound", {
+class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
   path: Schema.String
 }) {}
 
-class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()("Unauthorized", {
+class Unauthorized extends Schema.TaggedError<Unauthorized>()("Unauthorized", {
   reason: Schema.String
 }) {}
 
@@ -957,4 +974,4 @@ const recovered = program.pipe(
 )
 ```
 
-All features from `ErrorClass` are available: `extend`, `annotate`, and `check`.
+All features from `Error` are available: `extend`, `annotate`, and `check`.

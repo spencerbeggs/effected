@@ -39,19 +39,16 @@ export interface ValidationRule {
  *
  * @public
  */
-export class PackageValidationError extends Schema.TaggedErrorClass<PackageValidationError>()(
-	"PackageValidationError",
-	{
-		/** The aggregated rule failures. */
-		failures: Schema.Array(
-			Schema.Struct({
-				rule: Schema.String,
-				message: Schema.String,
-				path: Schema.Option(Schema.String),
-			}),
-		),
-	},
-) {
+export class PackageValidationError extends Schema.TaggedError<PackageValidationError>()("PackageValidationError", {
+	/** The aggregated rule failures. */
+	failures: Schema.Array(
+		Schema.Struct({
+			rule: Schema.String,
+			message: Schema.String,
+			path: Schema.Option(Schema.String),
+		}),
+	),
+}) {
 	override get message(): string {
 		const lines = this.failures.map((failure) => {
 			const path = Option.match(failure.path, { onNone: () => "", onSome: (value) => ` (at ${value})` });

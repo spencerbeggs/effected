@@ -47,7 +47,7 @@ import { descend } from "@effected/walker";
 import { GlobPattern } from "@effected/glob";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 
-class InvalidGlobError extends Schema.TaggedErrorClass<InvalidGlobError>()("InvalidGlobError", {
+class InvalidGlobError extends Schema.TaggedError<InvalidGlobError>()("InvalidGlobError", {
   glob: Schema.String,
   reason: Schema.String,
 }) {}

@@ -18,7 +18,7 @@ import type { RetryPolicy } from "./Resilience.js";
  *
  * @public
  */
-export class GitHubAppError extends Schema.TaggedErrorClass<GitHubAppError>()("GitHubAppError", {
+export class GitHubAppError extends Schema.TaggedError<GitHubAppError>()("GitHubAppError", {
 	/** Which step failed. */
 	kind: Schema.Literals(["jwt", "token", "revoke", "identity", "installation"]),
 	/** Human-readable cause. */

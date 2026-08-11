@@ -18,7 +18,7 @@ import type { StoreDocument } from "./StoreDocument.js";
  *
  * @public
  */
-export class SchemaFileReadError extends Schema.TaggedErrorClass<SchemaFileReadError>()("SchemaFileReadError", {
+export class SchemaFileReadError extends Schema.TaggedError<SchemaFileReadError>()("SchemaFileReadError", {
 	/** The path that could not be read. */
 	path: Schema.String,
 	/** The underlying filesystem failure, preserved structurally. */
@@ -35,13 +35,10 @@ export class SchemaFileReadError extends Schema.TaggedErrorClass<SchemaFileReadE
  *
  * @public
  */
-export class SchemaFileNotFoundError extends Schema.TaggedErrorClass<SchemaFileNotFoundError>()(
-	"SchemaFileNotFoundError",
-	{
-		/** The path where the schema file was expected. */
-		path: Schema.String,
-	},
-) {
+export class SchemaFileNotFoundError extends Schema.TaggedError<SchemaFileNotFoundError>()("SchemaFileNotFoundError", {
+	/** The path where the schema file was expected. */
+	path: Schema.String,
+}) {
 	override get message(): string {
 		return `Schema file not found at "${this.path}"`;
 	}
@@ -54,7 +51,7 @@ export class SchemaFileNotFoundError extends Schema.TaggedErrorClass<SchemaFileN
  *
  * @public
  */
-export class SchemaFileWriteError extends Schema.TaggedErrorClass<SchemaFileWriteError>()("SchemaFileWriteError", {
+export class SchemaFileWriteError extends Schema.TaggedError<SchemaFileWriteError>()("SchemaFileWriteError", {
 	/** The path that could not be written. */
 	path: Schema.String,
 	/** The underlying filesystem failure, preserved structurally. */

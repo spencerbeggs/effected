@@ -66,7 +66,7 @@ export interface MdastNode {
  *
  * @public
  */
-export class MdastDecodeError extends Schema.TaggedErrorClass<MdastDecodeError>()("MdastDecodeError", {
+export class MdastDecodeError extends Schema.TaggedError<MdastDecodeError>()("MdastDecodeError", {
 	/** The structured schema issue. Never a string. */
 	issue: Schema.Defect(),
 }) {

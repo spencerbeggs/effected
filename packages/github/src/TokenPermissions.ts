@@ -66,7 +66,7 @@ export class PermissionResult extends Schema.Class<PermissionResult>("Permission
  *
  * @public
  */
-export class TokenPermissionError extends Schema.TaggedErrorClass<TokenPermissionError>()("TokenPermissionError", {
+export class TokenPermissionError extends Schema.TaggedError<TokenPermissionError>()("TokenPermissionError", {
 	/** Which assertion failed. */
 	kind: Schema.Literals(["insufficient", "excess"]),
 	/** The comparison that produced it. */

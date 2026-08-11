@@ -14,13 +14,10 @@ import { Schema } from "effect";
  *
  * @public
  */
-export class InvalidSpdxLicenseError extends Schema.TaggedErrorClass<InvalidSpdxLicenseError>()(
-	"InvalidSpdxLicenseError",
-	{
-		/** The raw input string that failed validation. */
-		input: Schema.String,
-	},
-) {
+export class InvalidSpdxLicenseError extends Schema.TaggedError<InvalidSpdxLicenseError>()("InvalidSpdxLicenseError", {
+	/** The raw input string that failed validation. */
+	input: Schema.String,
+}) {
 	override get message(): string {
 		return `Invalid SPDX license "${this.input}": not a recognized identifier or expression`;
 	}

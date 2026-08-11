@@ -9,7 +9,7 @@
 // `TomlDiagnostic` instances and the tagged `TomlParseError`. The dependency
 // edge runs facade → engine only.
 
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { isRawTomlError } from "./internal/diagnostics.js";
 import { isGuardExceeded } from "./internal/limits.js";
 import { parseExpressions } from "./internal/parser.js";
@@ -121,7 +121,7 @@ export class TomlDocument extends Schema.Class<TomlDocument>("TomlDocument")({
 				SchemaTransformation.transformOrFail({
 					decode: (input: string) =>
 						TomlDocument.parse(input).pipe(
-							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(input), { message: error.message })),
+							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, input)),
 						),
 					encode: (doc: TomlDocument) => Effect.succeed(doc.stringify()),
 				}),

@@ -407,6 +407,11 @@ function parseBlockMappingInner(state: ParserState, indent: number): CstNode {
 
 		// Block map key indicator (?)
 		if (token.kind === "block-map-key") {
+			// A `?` at a shallower column than this mapping belongs to an
+			// ancestor mapping's next explicit entry — stop so the parent
+			// consumes it. Without this, a nested map swallows the sibling
+			// `? key` and mis-nests subsequent entries.
+			if (token.column < indent && children.length > 0) break;
 			sawExplicitKey = true;
 			const leaf = consumeLeafToken(state);
 			if (leaf) children.push(leaf);
@@ -415,6 +420,9 @@ function parseBlockMappingInner(state: ParserState, indent: number): CstNode {
 
 		// Block map value indicator (:)
 		if (token.kind === "block-map-value") {
+			// A `:` at a shallower column belongs to an ancestor mapping
+			// (e.g. the explicit-value indicator of the parent's next entry).
+			if (token.column < indent && children.length > 0) break;
 			const leaf = consumeLeafToken(state);
 			if (leaf) children.push(leaf);
 			// After ":", consume the value. Pass explicitKey context so
@@ -520,7 +528,7 @@ function parseBlockMappingInner(state: ParserState, indent: number): CstNode {
 /**
  * Parse the value part after a ":" in a block mapping.
  */
-function parseBlockValue(state: ParserState, _parentIndent: number, explicitKey = false): CstNode[] {
+function parseBlockValue(state: ParserState, parentIndent: number, explicitKey = false): CstNode[] {
 	const nodes: CstNode[] = [];
 
 	while (!atEnd(state)) {
@@ -569,6 +577,22 @@ function parseBlockValue(state: ParserState, _parentIndent: number, explicitKey 
 			// actual entry column to use as the sequence indent.
 			const seqIndent = findFirstSeqEntryColumn(state, token.column);
 			nodes.push(parseBlockSequence(state, seqIndent));
+			break;
+		}
+
+		// Compact mapping starting on the same line as ":" in an explicit
+		// mapping (YAML 1.2 §8.2.2: l-block-map-explicit-value admits
+		// s-l+block-indented, which includes ns-l-compact-mapping). E.g.
+		// `? key\n: dependencies:\n    x: 1` — the whole compact mapping is
+		// the value. For implicit keys (`key: a: 1`) this stays invalid and
+		// the tokens are left for the composer to reject (ZCZC preserved).
+		if (
+			explicitKey &&
+			token.kind === "scalar" &&
+			!isBlockScalarToken(state) &&
+			hasImplicitMapAhead(state, parentIndent)
+		) {
+			nodes.push(parseImplicitBlockMapping(state, parentIndent));
 			break;
 		}
 
@@ -813,6 +837,10 @@ function parseImplicitBlockMappingInner(state: ParserState, seqIndent: number): 
 		// Stop at next sequence entry at same or lower indent
 		if (token.kind === "block-seq-entry" && token.column <= seqIndent) break;
 
+		// Stop at an explicit-key indicator (`?`) at or below the parent
+		// indent — it introduces the parent mapping's next entry.
+		if (token.kind === "block-map-key" && token.column <= seqIndent) break;
+
 		// Trivia
 		if (isTrivia(token)) {
 			children.push(...consumeTrivia(state));
@@ -821,6 +849,10 @@ function parseImplicitBlockMappingInner(state: ParserState, seqIndent: number): 
 
 		// Block map value indicator (:)
 		if (token.kind === "block-map-value") {
+			// A `:` at or below the parent indent terminates this compact
+			// mapping — it is the parent's next value indicator (e.g. the
+			// `:` of a following explicit entry), not one of our pairs.
+			if (token.column <= seqIndent && children.length > 0) break;
 			const leaf = consumeLeafToken(state);
 			if (leaf) children.push(leaf);
 			// After ":", consume the value

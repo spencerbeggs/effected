@@ -121,7 +121,7 @@ const tail = (text: string): string => {
  *
  * @public
  */
-export class CommandFailedError extends Schema.TaggedErrorClass<CommandFailedError>()("CommandFailedError", {
+export class CommandFailedError extends Schema.TaggedError<CommandFailedError>()("CommandFailedError", {
 	/** Why it failed. */
 	kind: Schema.Literals(["nonZero", "spawn", "timeout"]),
 	/** The executable (or `"a | b"` for a pipeline). */
@@ -226,7 +226,7 @@ export class CommandFailedError extends Schema.TaggedErrorClass<CommandFailedErr
  *
  * @public
  */
-export class CommandOutputError extends Schema.TaggedErrorClass<CommandOutputError>()("CommandOutputError", {
+export class CommandOutputError extends Schema.TaggedError<CommandOutputError>()("CommandOutputError", {
 	/** Which way the output was unusable. */
 	kind: Schema.Literals(["notJson", "schema", "tooLarge"]),
 	/** The executable that produced it. */

@@ -368,7 +368,7 @@ const schema = Schema.Finite.pipe(
         const user = yield* Effect.result(myapi(n))
 
         // If the result is an error, return a SchemaIssue
-        return Result.isFailure(user) ? new SchemaIssue.InvalidValue(Option.some(n), { title: "not found" }) : undefined // No issue, value is valid
+        return Result.isFailure(user) ? new SchemaIssue.InvalidValue({ title: "not found" }, n) : undefined // No issue, value is valid
       })
     ),
     encode: SchemaGetter.passthrough()

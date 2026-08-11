@@ -5,7 +5,7 @@ import { Config, Context, Effect, Layer, Result, Schema } from "effect";
  *
  * @public
  */
-export class InvalidRepoRefError extends Schema.TaggedErrorClass<InvalidRepoRefError>()("InvalidRepoRefError", {
+export class InvalidRepoRefError extends Schema.TaggedError<InvalidRepoRefError>()("InvalidRepoRefError", {
 	/** What was handed in. */
 	input: Schema.String,
 }) {

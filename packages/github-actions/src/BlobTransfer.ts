@@ -6,7 +6,7 @@ import { Schema } from "effect";
  *
  * @public
  */
-export class BlobTransferError extends Schema.TaggedErrorClass<BlobTransferError>()("BlobTransferError", {
+export class BlobTransferError extends Schema.TaggedError<BlobTransferError>()("BlobTransferError", {
 	/** Which direction failed. */
 	reason: Schema.Literals(["uploadFailed", "downloadFailed"]),
 	/** The underlying failure, preserved structurally. */

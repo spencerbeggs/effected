@@ -813,13 +813,26 @@ export function buildPairs(items: SemanticItem[], pairs: YamlPair[], text: strin
 			// pair, not our value. This prevents greedily consuming
 			// `"quoted key":` as the value of a preceding null-key entry
 			// (S3PD) while preserving rejection of `a: b: c: d` (ZCZ6).
+			// Anchor the synthetic null key at its `:` indicator so diagnostics
+			// that point at the key (e.g. DuplicateKey) carry a real position
+			// instead of 0:0.
 			const valueNode = consumeValueNodeForNullKey(items, i, text, valueSepOffset);
 			if (valueNode) {
-				const nullKey = new YamlScalar({ value: null, style: "plain" as ScalarStyle, offset: 0, length: 0 });
+				const nullKey = new YamlScalar({
+					value: null,
+					style: "plain" as ScalarStyle,
+					offset: valueSepOffset,
+					length: 0,
+				});
 				pairs.push(new YamlPair({ key: nullKey, value: valueNode.node ?? null }));
 				i = valueNode.nextIdx;
 			} else {
-				const nullKey = new YamlScalar({ value: null, style: "plain" as ScalarStyle, offset: 0, length: 0 });
+				const nullKey = new YamlScalar({
+					value: null,
+					style: "plain" as ScalarStyle,
+					offset: valueSepOffset,
+					length: 0,
+				});
 				pairs.push(new YamlPair({ key: nullKey, value: null }));
 			}
 			continue;

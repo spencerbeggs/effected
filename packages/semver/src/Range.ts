@@ -14,7 +14,7 @@ import { SemVer } from "./SemVer.js";
  *
  * @public
  */
-export class InvalidRangeError extends Schema.TaggedErrorClass<InvalidRangeError>()("InvalidRangeError", {
+export class InvalidRangeError extends Schema.TaggedError<InvalidRangeError>()("InvalidRangeError", {
 	/** The raw input string that failed to parse. */
 	input: Schema.String,
 	/** The character position where parsing failed, if available. */
@@ -77,9 +77,10 @@ export class Range extends Schema.Class<Range>("Range")({
 					return result.ok
 						? Effect.succeed({ sets: normalizeSets(result.value) })
 						: Effect.fail(
-								new SchemaIssue.InvalidValue(Option.some(input), {
-									message: `Invalid range expression: "${result.input}" at position ${result.position}`,
-								}),
+								new SchemaIssue.InvalidValue(
+									{ message: `Invalid range expression: "${result.input}" at position ${result.position}` },
+									input,
+								),
 							);
 				},
 				encode: (parts) => Effect.succeed(formatRange(parts.sets)),
@@ -378,7 +379,7 @@ export class Range extends Schema.Class<Range>("Range")({
  *
  * @public
  */
-export class UnsatisfiableConstraintError extends Schema.TaggedErrorClass<UnsatisfiableConstraintError>()(
+export class UnsatisfiableConstraintError extends Schema.TaggedError<UnsatisfiableConstraintError>()(
 	"UnsatisfiableConstraintError",
 	{
 		/** The ranges whose intersection is empty. */

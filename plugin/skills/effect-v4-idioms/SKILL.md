@@ -10,7 +10,7 @@ runtime, equality. For *which module* to reach for in the first place (what is
 `Sink`, `RcMap`, `Latch`…), consult `effect-v4-module-index` — this skill owns
 patterns, not the map. This is the *how to write it well* companion to
 `effect-v4-construct-map` (which owns the flat v3→v4 rename tables and the
-`Context.Service` / `Schema.TaggedErrorClass` migration rows — cross-reference it
+`Context.Service` / `Schema.TaggedError` migration rows — cross-reference it
 rather than duplicate). Every identifier below was probed against
 `effect@4.0.0-beta.94+`; when you reach past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)
@@ -250,8 +250,11 @@ more `Config` facts worth carrying, both probed on beta.94:
 
 ## Yieldable errors — schema-backed error classes
 
-Define errors as `Schema.TaggedErrorClass` (see `effect-v4-construct-map` for
-the full migration row). The payoff at the call site: an instance is yieldable —
+Define errors as `Schema.TaggedError` (see `effect-v4-construct-map` for
+the full migration row). Naming trap: beta.102–105 renamed
+`Schema.TaggedErrorClass` back to `Schema.TaggedError` (same curried call
+shape); code written against earlier v4 betas fails with "TaggedErrorClass is
+not a function". The payoff at the call site: an instance is yieldable —
 `yield* new MyError({...})` fails the effect — and it is `instanceof Error`.
 Capture unknown throwables with a `Schema.Defect()` field — `Schema.Defect` is a
 **callable** in beta.94, not a bare schema value. The bare `cause: Schema.Defect`
@@ -259,7 +262,7 @@ typechecks but throws at construction (`Cannot read properties of undefined
 (reading 'encoding')`); you must call it:
 
 ```ts
-class ParseError extends Schema.TaggedErrorClass<ParseError>()("ParseError", {
+class ParseError extends Schema.TaggedError<ParseError>()("ParseError", {
   cause: Schema.Defect() // NOT Schema.Defect — the bare form throws when constructed
 }) {}
 

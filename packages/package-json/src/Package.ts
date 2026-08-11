@@ -110,7 +110,7 @@ export const RepositoryField = Schema.Union([Schema.String, Schema.Record(Schema
  *
  * @public
  */
-export class PackageDecodeError extends Schema.TaggedErrorClass<PackageDecodeError>()("PackageDecodeError", {
+export class PackageDecodeError extends Schema.TaggedError<PackageDecodeError>()("PackageDecodeError", {
 	/** The underlying `SchemaError`, preserved structurally rather than stringified. */
 	cause: Schema.Defect(),
 }) {

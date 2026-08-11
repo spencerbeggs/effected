@@ -60,7 +60,7 @@ export interface CompileAndExpandOptions extends DescendOptions {
  *
  * @public
  */
-export class GlobExpansionError extends Schema.TaggedErrorClass<GlobExpansionError>()("GlobExpansionError", {
+export class GlobExpansionError extends Schema.TaggedError<GlobExpansionError>()("GlobExpansionError", {
 	/** The glob pattern's source text, as handed to {@link compileAndExpand}. */
 	pattern: Schema.String,
 	/** The underlying typed failure, intact: a compile guard trip or a descent failure. */

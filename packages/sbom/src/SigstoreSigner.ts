@@ -62,7 +62,7 @@ export type SigningErrorKind = typeof SigningErrorKind.Type;
  *
  * @public
  */
-export class SigningError extends Schema.TaggedErrorClass<SigningError>()("SigningError", {
+export class SigningError extends Schema.TaggedError<SigningError>()("SigningError", {
 	/** Which step failed. */
 	kind: SigningErrorKind,
 	/** The underlying failure, preserved structurally. */

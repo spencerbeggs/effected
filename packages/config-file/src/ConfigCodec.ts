@@ -10,7 +10,7 @@ import { Schema } from "effect";
  *
  * @public
  */
-export class ConfigCodecError extends Schema.TaggedErrorClass<ConfigCodecError>()("ConfigCodecError", {
+export class ConfigCodecError extends Schema.TaggedError<ConfigCodecError>()("ConfigCodecError", {
 	/** The codec that failed, e.g. `"json"`. */
 	codec: Schema.String,
 	/** Which direction failed. */

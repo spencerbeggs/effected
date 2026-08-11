@@ -24,7 +24,7 @@ export class GraphQLErrorEntry extends Schema.Class<GraphQLErrorEntry>("GraphQLE
  *
  * @public
  */
-export class GitHubGraphQLError extends Schema.TaggedErrorClass<GitHubGraphQLError>()("GitHubGraphQLError", {
+export class GitHubGraphQLError extends Schema.TaggedError<GitHubGraphQLError>()("GitHubGraphQLError", {
 	/**
 	 * Structural routing, mirroring `GitHubError`'s.
 	 *

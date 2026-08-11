@@ -31,7 +31,7 @@ import { Schema } from "effect";
  *
  * @public
  */
-export class CatalogAssemblyError extends Schema.TaggedErrorClass<CatalogAssemblyError>()("CatalogAssemblyError", {
+export class CatalogAssemblyError extends Schema.TaggedError<CatalogAssemblyError>()("CatalogAssemblyError", {
 	/**
 	 * Which input failed: `manifest` for a file-level or top-level shape problem,
 	 * `catalog` for a malformed catalog block or the double-default duplication,

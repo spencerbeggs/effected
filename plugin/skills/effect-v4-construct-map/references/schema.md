@@ -37,7 +37,7 @@ when you only need the decoded type.
 | `RedactedFromSelf` | `Redacted` (input already `Redacted`) |
 | `Redacted` | `RedactedFromValue` (decodes raw → wraps) |
 | `EitherFromSelf` | `Result` |
-| `TaggedError` / `Data.TaggedError` | `TaggedErrorClass` (schema-backed, yieldable, serializable, `instanceof Error`) |
+| `TaggedError` / `Data.TaggedError` | `TaggedError` (schema-backed, yieldable, serializable, `instanceof Error`) — early v4 betas called it `TaggedErrorClass`; beta.102–105 renamed it back, so only the *signature* differs from v3 (see below) |
 | `decodeUnknown` | `decodeUnknownEffect` |
 | `decode` | `decodeEffect` |
 | `decodeUnknownEither` | `decodeUnknownResult` (`Result` is v4's `Either`) or `decodeUnknownExit` |
@@ -172,7 +172,9 @@ deep-structural by default, so `Schema.Data` is unnecessary).
 - `asserts(schema)(input)` → `asserts(schema, input)` (single call, no longer curried).
 - `format(schema)` → `SchemaRepresentation.fromAST(S.ast)` → `toMultiDocument` → `toCodeDocument`.
 - `ParseResult.ArrayFormatter.formatError(err)` →
-  `SchemaIssue.makeFormatterStandardSchemaV1()(err.cause).issues`.
+  `SchemaIssue.makeFormatterStandardSchemaV1()(err.issue).issues` — a
+  `SchemaError` carries its structured issue on `.issue`, not `.cause`
+  (probed beta.105).
 - `Capitalize` / `Lowercase` / etc. →
   `String.pipe(decodeTo(String.check(isCapitalized()), SchemaTransformation.capitalize()))`.
 - `NonEmptyTrimmedString` → `Trimmed.check(isNonEmpty())`.
@@ -188,6 +190,28 @@ deep-structural by default, so `Schema.Data` is unnecessary).
 | `ParseResult` (transformations: `transform`, `transformOrFail`, `capitalize`) | `SchemaTransformation` |
 | `ParseResult` (`format` machinery) | `SchemaRepresentation` |
 | `Either` | `Result` |
+
+## beta.101 → beta.107 (v4-internal)
+
+Not v3→v4 rows — the v4 beta line moved under code written against beta.101
+and earlier. The Schema-error rows landed in beta.102–105 (verified against the
+vendored tree and by probe at beta.105; beta.106/.107 are patch-level for this
+surface, with the one construct change in the last row):
+
+| beta.101 and earlier | beta.105+ |
+| --- | --- |
+| `Schema.TaggedErrorClass<E>()("Tag", fields)` | `Schema.TaggedError<E>()("Tag", fields)` — renamed **back** to the v3 name, identical curried shape (`Schema.ts:14466`); the old name fails with "TaggedErrorClass is not a function" |
+| `Schema.ErrorClass<E>("E")(fields)` | `Schema.Error<E>("E")(fields)` (`Schema.ts:14405`); the *instance* schema formerly at `Schema.Error` is now `Schema.ErrorInstance` (`Schema.ts:10647`) |
+| `new SchemaIssue.InvalidValue(Option.some(input), { message })` | `new SchemaIssue.InvalidValue({ message }, input)` — `(annotations?, input?, options?)`, no `Option` wrapper (`SchemaIssue.ts:572`); input retained on the issue only under `reportInput: true` parse option (`SchemaIssue.ts:151`). `InvalidType` is `(ast, input?, options?)` (`SchemaIssue.ts:511`) |
+| throwing constructor/adapter errors carry the constraint text in `.message` | `X.make` / class `new` / `Schema.asserts` / `SchemaParser`'s sync/promise adapters throw a plain `Error` with the generic `.message` `"Schema validation failed"` and the `SchemaIssue.Issue` on `.cause` — format with `SchemaIssue.makeFormatterDefault()(error.cause)` (probed beta.105). `Schema.decodeUnknownSync` still throws `SchemaError`, whose `.message` IS formatted and whose issue sits on `.issue` |
+| `Schema.makeEffect` fails with `SchemaError` | fails with `SchemaIssue.Issue` directly; `Schema.withConstructorDefault` accepts an Effect failing with `SchemaIssue.Issue` (changelog PR #7093) |
+| `Schema.toArbitrary(S)` returns a fast-check `Arbitrary` directly; `Schema.toArbitraryLazy` for deferral | beta.106: `Schema.toArbitrary(S)` returns a FACTORY taking the fast-check module — `Schema.toArbitrary(S)(FastCheck)` (`Schema.ts:14554`); `Schema.toArbitraryLazy` is removed (changelog PR #7148). Passing the factory where an `Arbitrary` is expected fails to type-check |
+
+One-line JSON Schema note: an encoded-side definition with no identifier of its
+own is now named `${typeIdentifier}Encoded` (`internal/schema/toRepresentation.ts:53`),
+so `$defs` keys for `Schema.Class`-based schemas changed (`Person` →
+`PersonEncoded`) — annotate the encoded side at the definition site if a stable
+name is needed.
 
 ## Derived tooling
 

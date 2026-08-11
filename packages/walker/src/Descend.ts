@@ -41,7 +41,7 @@ export interface DescendOptions {
  *
  * @public
  */
-export class DescendError extends Schema.TaggedErrorClass<DescendError>()("DescendError", {
+export class DescendError extends Schema.TaggedError<DescendError>()("DescendError", {
 	/** The glob pattern's source text. */
 	pattern: Schema.String,
 	// Schema.Literals, not Schema.Literal: the v3 variadic Literal silently

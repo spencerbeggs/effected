@@ -35,7 +35,9 @@ describe("StoreDocument", () => {
 				assert.strictEqual(document.$schema, DRAFT_07_META_SCHEMA);
 				assert.strictEqual(document.$id, $id);
 				assert.strictEqual(document.root.type, "object");
-				assert.property(document.defs, "Person");
+				// beta.105 names the encoded-side definition with an `Encoded` suffix
+				// when the encoded AST carries no identifier of its own.
+				assert.property(document.defs, "PersonEncoded");
 			}),
 		);
 
@@ -46,7 +48,7 @@ describe("StoreDocument", () => {
 				// The Draft-07 lowering emits canonical #/definitions refs; the
 				// assembled document keeps the pool under $defs, so every ref
 				// must point there and none may survive in the lowered form.
-				assert.include(text, '"#/$defs/Person"');
+				assert.include(text, '"#/$defs/PersonEncoded"');
 				assert.notInclude(text, "#/definitions/");
 			}),
 		);

@@ -106,7 +106,7 @@ clean; validate late (shape first, business-rule `.check(...)` after).
 | Attribute | The decision |
 | ----------- | -------------- |
 | **Kind** | One aggregate error vs. several granular tagged errors? Recoverable typed error vs. a genuine defect? (Malformed *input* is always a typed error, never a defect — the `hardening-a-parser-port` invariant.) |
-| **Shape** | `Schema.TaggedErrorClass` with which structured fields? What does a caller need to *recover* — a `retryAfter`, a source position, a field path? |
+| **Shape** | `Schema.TaggedError` with which structured fields? What does a caller need to *recover* — a `retryAfter`, a source position, a field path? |
 | **Audience** | Who consumes it? *End user* (a human-readable `message`), *calling code* (a stable `_tag` + structured fields to branch on), or *operator* (surfaced via a log/span). Most errors serve two of these; state which. |
 
 **Input vs. wiring — the ruling.** Malformed *runtime input* is always a
@@ -126,7 +126,8 @@ The baseline failure this fixes: agents produce a good error by instinct but nev
 
 **Contract inventory — the gate that runs before any service is modeled.**
 Before designing any service, seam, or vocabulary, grep the vendored core
-(`.repos/effect/packages/effect/src`, **including `effect/unstable/*`**)
+(the tree's `packages/effect/src`, **including `effect/unstable/*`** — resolve
+the root via `effect-v4-source-lookup`)
 for an existing contract. If core declares it, **require it in `R`** — do not
 re-declare it, re-implement it, or wrap it in a parallel vocabulary; the app
 provides the platform layer at the edge. Evidence for why this is a hard gate:

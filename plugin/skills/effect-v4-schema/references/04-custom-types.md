@@ -110,7 +110,7 @@ const URLSchema = Schema.declare(
           decode: (s) =>
             Effect.try({
               try: () => new URL(s),
-              catch: (e) => new SchemaIssue.InvalidValue(Option.some(s), { message: globalThis.String(e) })
+              catch: (e) => new SchemaIssue.InvalidValue({ message: globalThis.String(e) }, s)
             }),
           // URL -> JSON string (always succeeds)
           encode: (url) => Effect.succeed(url.href)

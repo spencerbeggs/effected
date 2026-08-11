@@ -201,7 +201,10 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
   `*Sync`/`*Option`/`*Promise` variants (`encodeSync`, `decodeUnknownSync`, …)
   survive unchanged, and typed `encodeSync` beats `encodeUnknownSync` when the
   input is already `S["Type"]` — `equivalence`/`arbitrary`/`pretty` →
-  `toEquivalence`/`toArbitrary`/`toFormatter`, `TaggedError`→`TaggedErrorClass`,
+  `toEquivalence`/`toArbitrary`/`toFormatter`, `TaggedError`→`TaggedError`
+  (the name is BACK since beta.102–105 — early v4 betas said
+  `TaggedErrorClass`, and code written against those fails with
+  "TaggedErrorClass is not a function"; only the v4 signature differs from v3),
   `*FromSelf` suffix dropped (`DateFromSelf`→`Date`, …) — EXCEPT `Redacted`
   (section 2).
 - **Variadic → array**: `Literal("a","b")` → `Literals(["a","b"])` (the
@@ -220,7 +223,9 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
 - **`Schema.transform(...)` as a top-level call does not exist** — it is
   `from.pipe(Schema.decodeTo(to, SchemaTransformation.transform({...})))`;
   `transformOrFail` callbacks now return real `Effect`s failing
-  `SchemaIssue.InvalidValue`, not `ParseResult.*`.
+  `SchemaIssue.InvalidValue`, not `ParseResult.*` — constructed as
+  `new SchemaIssue.InvalidValue({ message }, input)` since beta.102–105
+  (`(annotations?, input?, options?)`, no `Option` wrapper).
 - **`Schema.optionalWith`** — seven option combinations map to seven
   structurally different v4 expressions; classify each call site by its exact
   options before picking a template (decision tree in the official
@@ -228,6 +233,21 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
 - **Failure model**: decode failures are `Schema.SchemaError` carrying a
   `SchemaIssue` in `.issue` — v3 `ParseResult`-based catches match nothing.
   `ArrayFormatter.formatError` → `SchemaIssue.makeFormatterStandardSchemaV1()`.
+- **beta.101 → beta.107 (v4-internal)**: if the code was written against an
+  earlier v4 beta, also sweep the internal moves — `TaggedErrorClass` /
+  `ErrorClass` back to `TaggedError` / `Error` (same shapes; the instance
+  schema is now `ErrorInstance`); `InvalidValue` to
+  `(annotations?, input?, options?)`; the throwing constructor/adapter paths
+  (`X.make`, class `new`, `asserts`, `SchemaParser` sync/promise) now throw a
+  generic `"Schema validation failed"` `Error` with the issue on `.cause` —
+  tests asserting constraint text on `.message` must format
+  `SchemaIssue.makeFormatterDefault()(error.cause)` instead (probed beta.105;
+  `decodeUnknownSync`'s `SchemaError.message` stays formatted);
+  `Schema.makeEffect` fails with `SchemaIssue.Issue`, not `SchemaError`;
+  JSON Schema `$defs` keys for class schemas gained an `Encoded` suffix
+  fallback (`Person` → `PersonEncoded`); and `Schema.toArbitrary` now returns
+  a factory taking the fast-check module (`toArbitrary(S)(FastCheck)`), with
+  `toArbitraryLazy` removed (beta.106). Full table in [schema.md](./schema.md).
 - `Schema.Schema<A, I>` (two params) → `Schema.Codec<A, I>`; `Schema.Schema`
   takes one.
 

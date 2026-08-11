@@ -11,7 +11,7 @@
 // failure. The dependency edge runs facade -> engine only, so
 // `noImportCycles` stays satisfied.
 
-import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import type { BlockPassResult } from "./internal/blockParser.js";
 import { parseBlocks } from "./internal/blockParser.js";
 import { isGuardExceeded, isRawMarkdownError } from "./internal/carriers.js";
@@ -73,7 +73,7 @@ export class MarkdownParseOptions extends Schema.Class<MarkdownParseOptions>("Ma
  *
  * @public
  */
-export class MarkdownParseError extends Schema.TaggedErrorClass<MarkdownParseError>()("MarkdownParseError", {
+export class MarkdownParseError extends Schema.TaggedError<MarkdownParseError>()("MarkdownParseError", {
 	diagnostic: MarkdownDiagnostic,
 }) {
 	override get message(): string {
@@ -97,12 +97,9 @@ export class MarkdownParseError extends Schema.TaggedErrorClass<MarkdownParseErr
  *
  * @public
  */
-export class MarkdownStringifyError extends Schema.TaggedErrorClass<MarkdownStringifyError>()(
-	"MarkdownStringifyError",
-	{
-		diagnostic: MarkdownDiagnostic,
-	},
-) {
+export class MarkdownStringifyError extends Schema.TaggedError<MarkdownStringifyError>()("MarkdownStringifyError", {
+	diagnostic: MarkdownDiagnostic,
+}) {
 	override get message(): string {
 		const { code, message } = this.diagnostic;
 		return `Markdown stringify failed: ${code} ${message}`;
@@ -307,12 +304,12 @@ export class Markdown {
 					decode: (input: string) =>
 						Effect.mapError(
 							Markdown.parse(input, options),
-							(error) => new SchemaIssue.InvalidValue(Option.some(input), { message: error.message }),
+							(error) => new SchemaIssue.InvalidValue({ message: error.message }, input),
 						),
 					encode: (value: Root) =>
 						Effect.mapError(
 							Markdown.stringify(value),
-							(error) => new SchemaIssue.InvalidValue(Option.some(value), { message: error.message }),
+							(error) => new SchemaIssue.InvalidValue({ message: error.message }, value),
 						),
 				}),
 			),

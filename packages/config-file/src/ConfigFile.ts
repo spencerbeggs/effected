@@ -15,13 +15,10 @@ import type { ConfigSource, MergeStrategy, NonEmptySources } from "./MergeStrate
  *
  * @public
  */
-export class ConfigFileNotFoundError extends Schema.TaggedErrorClass<ConfigFileNotFoundError>()(
-	"ConfigFileNotFoundError",
-	{
-		/** The names of the resolvers that were probed, in order. */
-		searched: Schema.Array(Schema.String),
-	},
-) {
+export class ConfigFileNotFoundError extends Schema.TaggedError<ConfigFileNotFoundError>()("ConfigFileNotFoundError", {
+	/** The names of the resolvers that were probed, in order. */
+	searched: Schema.Array(Schema.String),
+}) {
 	override get message(): string {
 		return `No config file found (searched: ${this.searched.join(", ")})`;
 	}
@@ -36,7 +33,7 @@ export class ConfigFileNotFoundError extends Schema.TaggedErrorClass<ConfigFileN
  *
  * @public
  */
-export class ConfigFileReadError extends Schema.TaggedErrorClass<ConfigFileReadError>()("ConfigFileReadError", {
+export class ConfigFileReadError extends Schema.TaggedError<ConfigFileReadError>()("ConfigFileReadError", {
 	/** The path that could not be read. */
 	path: Schema.String,
 	/** The underlying failure, preserved structurally. */
@@ -52,7 +49,7 @@ export class ConfigFileReadError extends Schema.TaggedErrorClass<ConfigFileReadE
  *
  * @public
  */
-export class ConfigFileWriteError extends Schema.TaggedErrorClass<ConfigFileWriteError>()("ConfigFileWriteError", {
+export class ConfigFileWriteError extends Schema.TaggedError<ConfigFileWriteError>()("ConfigFileWriteError", {
 	/** The path that could not be written. */
 	path: Schema.String,
 	/** The underlying failure, preserved structurally. */
@@ -78,7 +75,7 @@ export class ConfigFileWriteError extends Schema.TaggedErrorClass<ConfigFileWrit
  *
  * @public
  */
-export class ConfigDefaultPathMissingError extends Schema.TaggedErrorClass<ConfigDefaultPathMissingError>()(
+export class ConfigDefaultPathMissingError extends Schema.TaggedError<ConfigDefaultPathMissingError>()(
 	"ConfigDefaultPathMissingError",
 	{},
 ) {
@@ -100,7 +97,7 @@ export class ConfigDefaultPathMissingError extends Schema.TaggedErrorClass<Confi
  *
  * @public
  */
-export class ConfigValidationError extends Schema.TaggedErrorClass<ConfigValidationError>()("ConfigValidationError", {
+export class ConfigValidationError extends Schema.TaggedError<ConfigValidationError>()("ConfigValidationError", {
 	/** The offending file, absent when `validate` was called on an in-memory value. */
 	path: Schema.Option(Schema.String),
 	/** The structured schema issue. Never a string. */

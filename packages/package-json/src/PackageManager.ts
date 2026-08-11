@@ -28,8 +28,7 @@ import { Effect, Exit, Option, Schema, SchemaIssue, SchemaTransformation } from 
 // `PackageManagerPin`'s four literals — see the class remarks for why.
 const PACKAGE_MANAGER_NAME_RE = /^[a-z]+$/;
 
-const invalid = (input: string, message: string) =>
-	Effect.fail(new SchemaIssue.InvalidValue(Option.some(input), { message }));
+const invalid = (input: string, message: string) => Effect.fail(new SchemaIssue.InvalidValue({ message }, input));
 
 /**
  * A structured `packageManager` value with `name`, `version` and an optional

@@ -228,7 +228,7 @@ export const TsconfigJsonFromString: Schema.Codec<typeof TsconfigJson.Type, stri
  *
  * @public
  */
-export class TsconfigParseError extends Schema.TaggedErrorClass<TsconfigParseError>()("TsconfigParseError", {
+export class TsconfigParseError extends Schema.TaggedError<TsconfigParseError>()("TsconfigParseError", {
 	/** The file path that failed to parse, or `""` when not file-bound. */
 	path: Schema.String,
 	/** The underlying decode failure. */

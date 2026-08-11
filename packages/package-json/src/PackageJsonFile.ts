@@ -17,7 +17,7 @@ import { Package } from "./Package.js";
  *
  * @public
  */
-export class PackageJsonReadError extends Schema.TaggedErrorClass<PackageJsonReadError>()("PackageJsonReadError", {
+export class PackageJsonReadError extends Schema.TaggedError<PackageJsonReadError>()("PackageJsonReadError", {
 	/** The path that could not be read. */
 	path: Schema.String,
 	/** The underlying failure, preserved structurally. */
@@ -34,7 +34,7 @@ export class PackageJsonReadError extends Schema.TaggedErrorClass<PackageJsonRea
  *
  * @public
  */
-export class PackageJsonNotFoundError extends Schema.TaggedErrorClass<PackageJsonNotFoundError>()(
+export class PackageJsonNotFoundError extends Schema.TaggedError<PackageJsonNotFoundError>()(
 	"PackageJsonNotFoundError",
 	{
 		/** The path where package.json was expected. */
@@ -51,7 +51,7 @@ export class PackageJsonNotFoundError extends Schema.TaggedErrorClass<PackageJso
  *
  * @public
  */
-export class PackageJsonParseError extends Schema.TaggedErrorClass<PackageJsonParseError>()("PackageJsonParseError", {
+export class PackageJsonParseError extends Schema.TaggedError<PackageJsonParseError>()("PackageJsonParseError", {
 	/** The path whose contents failed to parse as JSON. */
 	path: Schema.String,
 	/** The underlying `SyntaxError`, preserved structurally. */
@@ -69,7 +69,7 @@ export class PackageJsonParseError extends Schema.TaggedErrorClass<PackageJsonPa
  *
  * @public
  */
-export class PackageJsonWriteError extends Schema.TaggedErrorClass<PackageJsonWriteError>()("PackageJsonWriteError", {
+export class PackageJsonWriteError extends Schema.TaggedError<PackageJsonWriteError>()("PackageJsonWriteError", {
 	/** The path that could not be written. */
 	path: Schema.String,
 	/** The underlying filesystem failure, preserved structurally. Narrowed to the write failure only. */

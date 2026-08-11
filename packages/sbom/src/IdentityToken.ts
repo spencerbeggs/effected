@@ -25,7 +25,7 @@ import { Context, Effect, Layer, Redacted, Schema } from "effect";
  *
  * @public
  */
-export class IdentityTokenError extends Schema.TaggedErrorClass<IdentityTokenError>()("IdentityTokenError", {
+export class IdentityTokenError extends Schema.TaggedError<IdentityTokenError>()("IdentityTokenError", {
 	/** The audience the token was requested for. */
 	audience: Schema.String,
 	/** The underlying failure, preserved structurally. */

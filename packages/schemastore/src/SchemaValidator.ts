@@ -15,7 +15,7 @@ import { KeywordFamilies } from "./KeywordFamilies.js";
  *
  * @public
  */
-export class SchemaValidatorError extends Schema.TaggedErrorClass<SchemaValidatorError>()("SchemaValidatorError", {
+export class SchemaValidatorError extends Schema.TaggedError<SchemaValidatorError>()("SchemaValidatorError", {
 	/** The underlying engine failure, preserved structurally. */
 	cause: Schema.Defect(),
 }) {

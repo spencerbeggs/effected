@@ -14,7 +14,7 @@
 // The dependency edge runs facade → engine only, so `noImportCycles` stays
 // satisfied.
 
-import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { buildAnchorMap } from "./internal/composer/anchors.js";
 import { composeAllDocuments, composeFirstDocument } from "./internal/composer/document.js";
 import type { RawDiagnostic } from "./internal/diagnostics.js";
@@ -147,7 +147,7 @@ export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("Ya
  *
  * @public
  */
-export class YamlParseError extends Schema.TaggedErrorClass<YamlParseError>()("YamlParseError", {
+export class YamlParseError extends Schema.TaggedError<YamlParseError>()("YamlParseError", {
 	diagnostics: Schema.Array(YamlDiagnostic),
 	input: Schema.String,
 }) {
@@ -166,7 +166,7 @@ export class YamlParseError extends Schema.TaggedErrorClass<YamlParseError>()("Y
  *
  * @public
  */
-export class YamlStringifyError extends Schema.TaggedErrorClass<YamlStringifyError>()("YamlStringifyError", {
+export class YamlStringifyError extends Schema.TaggedError<YamlStringifyError>()("YamlStringifyError", {
 	diagnostics: Schema.Array(YamlDiagnostic),
 	value: Schema.Unknown,
 }) {
@@ -637,11 +637,11 @@ export class Yaml {
 				SchemaTransformation.transformOrFail({
 					decode: (input: string) =>
 						Yaml.parse(input, options).pipe(
-							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(input), { message: error.message })),
+							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, input)),
 						),
 					encode: (value: unknown) =>
 						stringifyOrFail(value).pipe(
-							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(value), { message: error.message })),
+							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, value)),
 						),
 				}),
 			),
@@ -670,7 +670,7 @@ export class Yaml {
 				SchemaTransformation.transformOrFail({
 					decode: (input: string) =>
 						Yaml.parseAll(input, options).pipe(
-							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(input), { message: error.message })),
+							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, input)),
 						),
 					encode: (values: ReadonlyArray<unknown>) =>
 						Effect.gen(function* () {
@@ -678,9 +678,7 @@ export class Yaml {
 							const parts: Array<string> = [];
 							for (let index = 0; index < values.length; index++) {
 								const yaml = yield* stringifyOrFail(values[index]).pipe(
-									Effect.mapError(
-										(error) => new SchemaIssue.InvalidValue(Option.some(values), { message: error.message }),
-									),
+									Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, values)),
 								);
 								parts.push(index > 0 ? `---\n${yaml}` : yaml);
 							}

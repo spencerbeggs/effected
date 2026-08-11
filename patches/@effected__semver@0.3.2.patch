@@ -1,0 +1,79 @@
+diff --git a/Comparator.js b/Comparator.js
+index 0ec5c9e..78cd5b4 100644
+--- a/Comparator.js
++++ b/Comparator.js
+@@ -12,7 +12,7 @@ import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } fro
+ *
+ * @public
+ */
+-var InvalidComparatorError = class extends Schema.TaggedErrorClass()("InvalidComparatorError", {
++var InvalidComparatorError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("InvalidComparatorError", {
+ 	/** The raw input string that failed to parse. */
+ 	input: Schema.String,
+ 	/** The character position where parsing failed, if available. */
+diff --git a/Range.js b/Range.js
+index 0815ba5..01002ce 100644
+--- a/Range.js
++++ b/Range.js
+@@ -15,7 +15,7 @@ import { Effect, Function, Option, Result, Schema, SchemaIssue, SchemaTransforma
+ *
+ * @public
+ */
+-var InvalidRangeError = class extends Schema.TaggedErrorClass()("InvalidRangeError", {
++var InvalidRangeError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("InvalidRangeError", {
+ 	/** The raw input string that failed to parse. */
+ 	input: Schema.String,
+ 	/** The character position where parsing failed, if available. */
+@@ -282,7 +282,7 @@ sets: Schema.Array(Schema.Array(Comparator)) }) {
+ *
+ * @public
+ */
+-var UnsatisfiableConstraintError = class extends Schema.TaggedErrorClass()("UnsatisfiableConstraintError", { 
++var UnsatisfiableConstraintError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("UnsatisfiableConstraintError", { 
+ /** The ranges whose intersection is empty. */
+ constraints: Schema.Array(Range) }) {
+ 	get message() {
+diff --git a/SemVer.js b/SemVer.js
+index 84dcc8e..e4e8c4a 100644
+--- a/SemVer.js
++++ b/SemVer.js
+@@ -14,7 +14,7 @@ import { Effect, Equal, Function, Hash, Option, Order, Result, Schema, SchemaIss
+ * @see {@link https://semver.org | SemVer 2.0.0 Specification}
+ * @public
+ */
+-var InvalidVersionError = class extends Schema.TaggedErrorClass()("InvalidVersionError", {
++var InvalidVersionError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("InvalidVersionError", {
+ 	/** The raw input string that failed to parse. */
+ 	input: Schema.String,
+ 	/** The character position where parsing failed, if available. */
+diff --git a/VersionCache.js b/VersionCache.js
+index 77243c0..24fe5a9 100644
+--- a/VersionCache.js
++++ b/VersionCache.js
+@@ -10,7 +10,7 @@ import { Context, Effect, Layer, Option, Ref, Schema } from "effect";
+ *
+ * @public
+ */
+-var EmptyCacheError = class extends Schema.TaggedErrorClass()("EmptyCacheError", {}) {
++var EmptyCacheError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("EmptyCacheError", {}) {
+ 	get message() {
+ 		return "Version cache is empty";
+ 	}
+@@ -21,7 +21,7 @@ var EmptyCacheError = class extends Schema.TaggedErrorClass()("EmptyCacheError",
+ *
+ * @public
+ */
+-var VersionNotFoundError = class extends Schema.TaggedErrorClass()("VersionNotFoundError", { 
++var VersionNotFoundError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("VersionNotFoundError", { 
+ /** The version that was not found. */
+ version: SemVer }) {
+ 	get message() {
+@@ -35,7 +35,7 @@ version: SemVer }) {
+ *
+ * @public
+ */
+-var UnsatisfiedRangeError = class extends Schema.TaggedErrorClass()("UnsatisfiedRangeError", {
++var UnsatisfiedRangeError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("UnsatisfiedRangeError", {
+ 	/** The range that could not be satisfied. */
+ 	range: Range,
+ 	/** The versions that were available for matching. */

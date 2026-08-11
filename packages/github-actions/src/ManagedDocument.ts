@@ -39,7 +39,7 @@ const REGION_DIALECT: SectionDialect = SectionDialect.make({
  *
  * @public
  */
-export class ManagedDocumentError extends Schema.TaggedErrorClass<ManagedDocumentError>()("ManagedDocumentError", {
+export class ManagedDocumentError extends Schema.TaggedError<ManagedDocumentError>()("ManagedDocumentError", {
 	/** Which ambiguity or refusal was found. */
 	kind: Schema.Literals([
 		"unterminatedRegion",

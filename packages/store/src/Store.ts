@@ -69,7 +69,7 @@ export class StoreMigrationStatus extends Schema.Class<StoreMigrationStatus>("St
  *
  * @public
  */
-export class StoreError extends Schema.TaggedErrorClass<StoreError>()("StoreError", {
+export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
 	/** The store operation that failed. */
 	operation: Schema.Literals(["setup", "migrate", "rollback", "status"]),
 	/** The underlying failure, preserved structurally. */
@@ -92,7 +92,7 @@ export class StoreError extends Schema.TaggedErrorClass<StoreError>()("StoreErro
  *
  * @public
  */
-export class StoreMigrationError extends Schema.TaggedErrorClass<StoreMigrationError>()("StoreMigrationError", {
+export class StoreMigrationError extends Schema.TaggedError<StoreMigrationError>()("StoreMigrationError", {
 	/** Whether the failure happened applying (`up`) or unwinding (`down`). */
 	direction: Schema.Literals(["up", "down"]),
 	/** The failing migration's id. */

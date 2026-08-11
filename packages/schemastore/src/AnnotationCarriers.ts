@@ -11,7 +11,7 @@ import { KeywordFamilies } from "./KeywordFamilies.js";
  *
  * @public
  */
-export class CarrierDepthExceededError extends Schema.TaggedErrorClass<CarrierDepthExceededError>()(
+export class CarrierDepthExceededError extends Schema.TaggedError<CarrierDepthExceededError>()(
 	"CarrierDepthExceededError",
 	{
 		/** JSON pointer (in the lowered document's coordinates) where the cap was hit. */

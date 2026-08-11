@@ -74,7 +74,7 @@ const algorithmOf = (value: string): Option.Option<IntegrityAlgorithm> => {
  *
  * @public
  */
-export class InvalidIntegrityHashError extends Schema.TaggedErrorClass<InvalidIntegrityHashError>()(
+export class InvalidIntegrityHashError extends Schema.TaggedError<InvalidIntegrityHashError>()(
 	"InvalidIntegrityHashError",
 	{
 		/** The raw input string that failed validation. */

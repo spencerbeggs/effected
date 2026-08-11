@@ -113,7 +113,7 @@ const lockfileArb: FastCheck.Arbitrary<Lockfile> = FastCheck.record({
 	format: FastCheck.constantFrom("bun", "npm", "pnpm", "yarn"),
 	lockfileVersion: FastCheck.constantFrom("9.0", "6.0", "3"),
 	packages: FastCheck.array(resolvedPackageArb, { maxLength: 4 }),
-	workspaceDependencies: FastCheck.array(Schema.toArbitrary(WorkspaceDependency), { maxLength: 3 }),
+	workspaceDependencies: FastCheck.array(Schema.toArbitrary(WorkspaceDependency)(FastCheck), { maxLength: 3 }),
 	importers: FastCheck.array(lockfileImporterArb, { maxLength: 3 }),
 }).map((r) => Lockfile.make(r));
 

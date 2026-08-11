@@ -1,4 +1,4 @@
-import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { formatComparator, parseComparator } from "./internal/grammar.js";
 import { SemVer } from "./SemVer.js";
 
@@ -11,15 +11,12 @@ import { SemVer } from "./SemVer.js";
  *
  * @public
  */
-export class InvalidComparatorError extends Schema.TaggedErrorClass<InvalidComparatorError>()(
-	"InvalidComparatorError",
-	{
-		/** The raw input string that failed to parse. */
-		input: Schema.String,
-		/** The character position where parsing failed, if available. */
-		position: Schema.optionalKey(Schema.Number),
-	},
-) {
+export class InvalidComparatorError extends Schema.TaggedError<InvalidComparatorError>()("InvalidComparatorError", {
+	/** The raw input string that failed to parse. */
+	input: Schema.String,
+	/** The character position where parsing failed, if available. */
+	position: Schema.optionalKey(Schema.Number),
+}) {
 	override get message(): string {
 		const base = `Invalid comparator: "${this.input}"`;
 		return this.position !== undefined ? `${base} at position ${this.position}` : base;
@@ -70,9 +67,10 @@ export class Comparator extends Schema.Class<Comparator>("Comparator")({
 					return result.ok
 						? Effect.succeed(result.value)
 						: Effect.fail(
-								new SchemaIssue.InvalidValue(Option.some(input), {
-									message: `Invalid comparator: "${result.input}" at position ${result.position}`,
-								}),
+								new SchemaIssue.InvalidValue(
+									{ message: `Invalid comparator: "${result.input}" at position ${result.position}` },
+									input,
+								),
 							);
 				},
 				encode: (parts) => Effect.succeed(formatComparator(parts)),

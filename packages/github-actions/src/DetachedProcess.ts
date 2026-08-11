@@ -9,7 +9,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
  *
  * @public
  */
-export class DetachedProcessError extends Schema.TaggedErrorClass<DetachedProcessError>()("DetachedProcessError", {
+export class DetachedProcessError extends Schema.TaggedError<DetachedProcessError>()("DetachedProcessError", {
 	/**
 	 * `logUnavailable` — the log file could not be opened, so there is nowhere
 	 * for the child's output to go. `spawnFailed` — the child did not start.

@@ -78,7 +78,7 @@ export class PublishTime extends Schema.Class<PublishTime>("PublishTime")({
  *
  * @public
  */
-export class RegistryReadError extends Schema.TaggedErrorClass<RegistryReadError>()("RegistryReadError", {
+export class RegistryReadError extends Schema.TaggedError<RegistryReadError>()("RegistryReadError", {
 	/** Why the read failed. */
 	kind: Schema.Literals(["transport", "status", "decode"]),
 	/** The package that was being read. */

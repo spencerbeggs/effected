@@ -65,7 +65,7 @@ export const CurrentPlatform: Context.Reference<XdgPlatform> = Context.Reference
  *
  * @public
  */
-export class XdgEnvError extends Schema.TaggedErrorClass<XdgEnvError>()("XdgEnvError", {
+export class XdgEnvError extends Schema.TaggedError<XdgEnvError>()("XdgEnvError", {
 	/** The environment variable that was required and not found. */
 	variable: Schema.String,
 	/** The underlying failure, preserved structurally. */

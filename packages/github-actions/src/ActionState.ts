@@ -7,7 +7,7 @@ import { ActionOutputs } from "./ActionOutputs.js";
  *
  * @public
  */
-export class ActionStateError extends Schema.TaggedErrorClass<ActionStateError>()("ActionStateError", {
+export class ActionStateError extends Schema.TaggedError<ActionStateError>()("ActionStateError", {
 	/**
 	 * `missing` — no value was saved under this key in an earlier phase.
 	 * `malformed` — a value is there but is not JSON, or does not satisfy the

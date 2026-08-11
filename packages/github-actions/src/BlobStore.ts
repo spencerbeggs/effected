@@ -12,7 +12,7 @@ import { Secret } from "./Secret.js";
  *
  * @public
  */
-export class BlobStoreError extends Schema.TaggedErrorClass<BlobStoreError>()("BlobStoreError", {
+export class BlobStoreError extends Schema.TaggedError<BlobStoreError>()("BlobStoreError", {
 	/**
 	 * `unreachable` — the store could not be contacted. `refused` — it answered,
 	 * unhappily; `status` says how. `misconfigured` — the layer was built with

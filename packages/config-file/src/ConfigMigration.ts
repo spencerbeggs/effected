@@ -12,7 +12,7 @@ import type { ConfigCodec, ConfigCodecError } from "./ConfigCodec.js";
  *
  * @public
  */
-export class ConfigMigrationError extends Schema.TaggedErrorClass<ConfigMigrationError>()("ConfigMigrationError", {
+export class ConfigMigrationError extends Schema.TaggedError<ConfigMigrationError>()("ConfigMigrationError", {
 	/** The target version of the step that failed. `0` when reading the version failed. */
 	version: Schema.Number,
 	/** The name of the step that failed; empty when reading the version failed. */

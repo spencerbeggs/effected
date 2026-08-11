@@ -30,7 +30,7 @@ import { Effect, Exit, Option, Schema, SchemaIssue, SchemaTransformation } from 
  *
  * @public
  */
-export class InvalidDependencySpecifierError extends Schema.TaggedErrorClass<InvalidDependencySpecifierError>()(
+export class InvalidDependencySpecifierError extends Schema.TaggedError<InvalidDependencySpecifierError>()(
 	"InvalidDependencySpecifierError",
 	{
 		/** The raw input string that failed validation. */
@@ -294,11 +294,7 @@ const fromString: Schema.Codec<ClassifiedSpecifier, string> = Schema.String.pipe
 			decode: (input) =>
 				isValidDependencySpecifier(input)
 					? Effect.succeed(classify(input))
-					: Effect.fail(
-							new SchemaIssue.InvalidValue(Option.some(input), {
-								message: `Invalid dependency specifier: "${input}"`,
-							}),
-						),
+					: Effect.fail(new SchemaIssue.InvalidValue({ message: `Invalid dependency specifier: "${input}"` }, input)),
 			encode: (classified) => Effect.succeed(classified.raw),
 		}),
 	),

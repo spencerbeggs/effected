@@ -1,4 +1,4 @@
-import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import type { GitConfigEditError, GitConfigParseError } from "./GitConfig.js";
 import { GitConfig } from "./GitConfig.js";
 import { serializeHeader, serializeValue } from "./internal/config.js";
@@ -49,7 +49,7 @@ export class GitmodulesEntry extends Schema.Class<GitmodulesEntry>("GitmodulesEn
  *
  * @public
  */
-export class GitmodulesDecodeError extends Schema.TaggedErrorClass<GitmodulesDecodeError>()("GitmodulesDecodeError", {
+export class GitmodulesDecodeError extends Schema.TaggedError<GitmodulesDecodeError>()("GitmodulesDecodeError", {
 	/** The submodule name (the section's subsection) that failed to decode. */
 	name: Schema.String,
 	/** The field the failure is about, when it is field-specific. */
@@ -274,7 +274,7 @@ export class Gitmodules extends Schema.Class<Gitmodules>("Gitmodules")({
 					const result = Gitmodules.parseResult(text);
 					return Result.isSuccess(result)
 						? Effect.succeed(result.success)
-						: Effect.fail(new SchemaIssue.InvalidValue(Option.some(text), { message: result.failure.message }));
+						: Effect.fail(new SchemaIssue.InvalidValue({ message: result.failure.message }, text));
 				},
 				encode: (fields) => Effect.succeed(render(fields)),
 			}),

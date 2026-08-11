@@ -16,7 +16,7 @@ import { CONFLICT, field, isOk, stringField, twirpCall } from "./internal/twirp.
  *
  * @public
  */
-export class ArtifactError extends Schema.TaggedErrorClass<ArtifactError>()("ArtifactError", {
+export class ArtifactError extends Schema.TaggedError<ArtifactError>()("ArtifactError", {
 	/**
 	 * `misconfigured` — the results backend is not reachable from here (see
 	 * {@link Artifact}). `unreachable` — it could not be contacted, or answered

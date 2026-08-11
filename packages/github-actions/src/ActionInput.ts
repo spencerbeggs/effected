@@ -1,5 +1,5 @@
 import type { Layer, Redacted } from "effect";
-import { Config, ConfigProvider, Context, Effect, Option, Schema, SchemaIssue } from "effect";
+import { Config, ConfigProvider, Context, Effect, Schema, SchemaIssue } from "effect";
 
 /**
  * The variable name the runner publishes an input under.
@@ -31,7 +31,7 @@ export const inputVariable = (name: string): string => `INPUT_${name.replaceAll(
  * meant to rehearse.
  */
 const configError = (message: string, actual: unknown): Config.ConfigError =>
-	new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue(Option.some(actual), { message })));
+	new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue({ message }, actual)));
 
 /** YAML 1.2 core-schema booleans, which is what the runner documents. */
 const TRUE = new Set(["true", "True", "TRUE"]);
