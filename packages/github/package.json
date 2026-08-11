@@ -34,7 +34,7 @@
 	"dependencies": {
 		"@effected/semver": "workspace:^",
 		"@octokit/core": "^7.0.6",
-		"@octokit/plugin-paginate-rest": "^14.0.0",
+		"@octokit/plugin-paginate-rest": "^15.0.0",
 		"@octokit/types": "^16.0.0",
 		"universal-github-app-jwt": "^2.2.2"
 	},
