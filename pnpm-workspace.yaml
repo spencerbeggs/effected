@@ -23,7 +23,7 @@ catalogs:
     "@effect/sql-mssql": 4.0.0-beta.101
     "@effect/sql-mysql2": 4.0.0-beta.101
     "@effect/sql-pg": 4.0.0-beta.101
-    "@effect/sql-pglite": 4.0.0-beta.101
+    "@effect/sql-pglite": 4.0.0-beta.106
     "@effect/sql-sqlite-bun": 4.0.0-beta.101
     "@effect/sql-sqlite-do": 4.0.0-beta.101
     "@effect/sql-sqlite-node": 4.0.0-beta.101
@@ -52,7 +52,7 @@ catalogs:
     "@effect/sql-mssql": 4.0.0-beta.101
     "@effect/sql-mysql2": 4.0.0-beta.101
     "@effect/sql-pg": 4.0.0-beta.101
-    "@effect/sql-pglite": 4.0.0-beta.101
+    "@effect/sql-pglite": 4.0.0-beta.106
     "@effect/sql-sqlite-bun": 4.0.0-beta.101
     "@effect/sql-sqlite-do": 4.0.0-beta.101
     "@effect/sql-sqlite-node": 4.0.0-beta.101
@@ -192,7 +192,7 @@ catalogs:
     "@effect/sql-mssql": 4.0.0-beta.101
     "@effect/sql-mysql2": 4.0.0-beta.101
     "@effect/sql-pg": 4.0.0-beta.101
-    "@effect/sql-pglite": 4.0.0-beta.101
+    "@effect/sql-pglite": 4.0.0-beta.106
     "@effect/sql-sqlite-bun": 4.0.0-beta.101
     "@effect/sql-sqlite-do": 4.0.0-beta.101
     "@effect/sql-sqlite-node": 4.0.0-beta.101
