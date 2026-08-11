@@ -1,5 +1,28 @@
 # @effected/tsconfig-json
 
+## 0.5.0
+
+### Refactoring
+
+* Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required. [#322][#322]
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/jsonc  | dependency | updated | 0.5.2 | 0.6.0 |
+| @effected/walker | dependency | updated | 0.3.4 | 0.4.0 |
+
+* | Dependency | Type           | Action  | From           | To             |
+  | :--------- | :------------- | :------ | :------------- | :------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#322]: https://github.com/spencerbeggs/effected/pull/322
+
 ## 0.4.1
 
 ### Dependencies

@@ -1,5 +1,34 @@
 # @effected/workspaces
 
+## 0.11.0
+
+### Refactoring
+
+* Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required. [#322][#322]
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From  | To    |
+| ---------------------- | ---------- | ------- | ----- | ----- |
+| @effected/commands     | dependency | updated | 0.3.1 | 0.4.0 |
+| @effected/git          | dependency | updated | 0.6.0 | 0.7.0 |
+| @effected/glob         | dependency | updated | 0.2.2 | 0.3.0 |
+| @effected/lockfiles    | dependency | updated | 0.3.2 | 0.4.0 |
+| @effected/npm          | dependency | updated | 0.8.3 | 0.9.0 |
+| @effected/package-json | dependency | updated | 0.7.3 | 0.8.0 |
+| @effected/walker       | dependency | updated | 0.3.4 | 0.4.0 |
+| @effected/yaml         | dependency | updated | 0.6.1 | 0.7.0 |
+
+* | Dependency | Type           | Action  | From           | To             |
+  | :--------- | :------------- | :------ | :------------- | :------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#322]: https://github.com/spencerbeggs/effected/pull/322
+
 ## 0.10.2
 
 ### Bug Fixes
