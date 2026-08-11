@@ -20,7 +20,7 @@ catalogs:
     "@effect/sql-clickhouse": 4.0.0-beta.101
     "@effect/sql-d1": 4.0.0-beta.101
     "@effect/sql-libsql": 4.0.0-beta.101
-    "@effect/sql-mssql": 4.0.0-beta.101
+    "@effect/sql-mssql": 4.0.0-beta.106
     "@effect/sql-mysql2": 4.0.0-beta.101
     "@effect/sql-pg": 4.0.0-beta.101
     "@effect/sql-pglite": 4.0.0-beta.101
@@ -49,7 +49,7 @@ catalogs:
     "@effect/sql-clickhouse": 4.0.0-beta.101
     "@effect/sql-d1": 4.0.0-beta.101
     "@effect/sql-libsql": 4.0.0-beta.101
-    "@effect/sql-mssql": 4.0.0-beta.101
+    "@effect/sql-mssql": 4.0.0-beta.106
     "@effect/sql-mysql2": 4.0.0-beta.101
     "@effect/sql-pg": 4.0.0-beta.101
     "@effect/sql-pglite": 4.0.0-beta.101
@@ -189,7 +189,7 @@ catalogs:
     "@effect/sql-clickhouse": 4.0.0-beta.101
     "@effect/sql-d1": 4.0.0-beta.101
     "@effect/sql-libsql": 4.0.0-beta.101
-    "@effect/sql-mssql": 4.0.0-beta.101
+    "@effect/sql-mssql": 4.0.0-beta.106
     "@effect/sql-mysql2": 4.0.0-beta.101
     "@effect/sql-pg": 4.0.0-beta.101
     "@effect/sql-pglite": 4.0.0-beta.101
