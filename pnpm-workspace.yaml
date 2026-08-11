@@ -10,7 +10,7 @@ catalogs:
     "@effect/ai-openrouter": 4.0.0-beta.101
     "@effect/atom-react": 4.0.0-beta.101
     "@effect/atom-solid": 4.0.0-beta.101
-    "@effect/atom-vue": 4.0.0-beta.101
+    "@effect/atom-vue": 4.0.0-beta.106
     "@effect/openapi-generator": 4.0.0-beta.101
     "@effect/opentelemetry": 4.0.0-beta.101
     "@effect/platform-browser": 4.0.0-beta.101
@@ -39,7 +39,7 @@ catalogs:
     "@effect/ai-openrouter": 4.0.0-beta.101
     "@effect/atom-react": 4.0.0-beta.101
     "@effect/atom-solid": 4.0.0-beta.101
-    "@effect/atom-vue": 4.0.0-beta.101
+    "@effect/atom-vue": 4.0.0-beta.106
     "@effect/openapi-generator": 4.0.0-beta.101
     "@effect/opentelemetry": 4.0.0-beta.101
     "@effect/platform-browser": 4.0.0-beta.101
@@ -179,7 +179,7 @@ catalogs:
     "@effect/ai-openrouter": 4.0.0-beta.101
     "@effect/atom-react": 4.0.0-beta.101
     "@effect/atom-solid": 4.0.0-beta.101
-    "@effect/atom-vue": 4.0.0-beta.101
+    "@effect/atom-vue": 4.0.0-beta.106
     "@effect/openapi-generator": 4.0.0-beta.101
     "@effect/opentelemetry": 4.0.0-beta.101
     "@effect/platform-browser": 4.0.0-beta.101
