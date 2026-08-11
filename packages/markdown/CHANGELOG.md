@@ -1,5 +1,34 @@
 # @effected/markdown
 
+## 0.5.0
+
+### Bug Fixes
+
+* Construction/decode failures now throw a generic `"Schema validation failed"` message with the structured `SchemaIssue.Issue` available on `error.cause` — format it with `SchemaIssue.makeFormatterDefault()` for a human-readable report. [#322][#322]
+
+### Refactoring
+
+* Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required.
+* Updated internal `SchemaIssue.InvalidValue` construction to the new `(annotations, input)` argument order (the `Option`-wrapped first argument is gone).
+
+### Dependencies
+
+| Dependency      | Type       | Action  | From  | To    |
+| --------------- | ---------- | ------- | ----- | ----- |
+| @effected/jsonc | dependency | updated | 0.5.2 | 0.6.0 |
+| @effected/toml  | dependency | updated | 0.3.2 | 0.4.0 |
+| @effected/yaml  | dependency | updated | 0.6.1 | 0.7.0 |
+
+* | Dependency | Type           | Action  | From           | To             |
+  | :--------- | :------------- | :------ | :------------- | :------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#322]: https://github.com/spencerbeggs/effected/pull/322
+
 ## 0.4.2
 
 ### Dependencies
