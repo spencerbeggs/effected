@@ -57,7 +57,7 @@ export interface FindWorkspaceRootOptions {
  *
  * @public
  */
-export class WorkspaceRootNotFoundError extends Schema.TaggedErrorClass<WorkspaceRootNotFoundError>()(
+export class WorkspaceRootNotFoundError extends Schema.TaggedError<WorkspaceRootNotFoundError>()(
 	"WorkspaceRootNotFoundError",
 	{
 		/** The directory the ascent started from. */

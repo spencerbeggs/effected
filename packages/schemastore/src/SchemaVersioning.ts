@@ -37,7 +37,7 @@ const isVersionLabel = (input: string): boolean => {
  *
  * @public
  */
-export class InvalidSchemaVersionError extends Schema.TaggedErrorClass<InvalidSchemaVersionError>()(
+export class InvalidSchemaVersionError extends Schema.TaggedError<InvalidSchemaVersionError>()(
 	"InvalidSchemaVersionError",
 	{
 		/** The raw input string that failed to parse. */

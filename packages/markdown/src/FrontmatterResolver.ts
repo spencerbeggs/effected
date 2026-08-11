@@ -115,7 +115,7 @@ export type SchemaDeclaration =
  *
  * @public
  */
-export class SchemaDeclarationInvalidError extends Schema.TaggedErrorClass<SchemaDeclarationInvalidError>()(
+export class SchemaDeclarationInvalidError extends Schema.TaggedError<SchemaDeclarationInvalidError>()(
 	"SchemaDeclarationInvalidError",
 	{
 		/** Why the value failed to classify. */
@@ -136,7 +136,7 @@ export class SchemaDeclarationInvalidError extends Schema.TaggedErrorClass<Schem
  *
  * @public
  */
-export class SchemaDeclarationMissingError extends Schema.TaggedErrorClass<SchemaDeclarationMissingError>()(
+export class SchemaDeclarationMissingError extends Schema.TaggedError<SchemaDeclarationMissingError>()(
 	"SchemaDeclarationMissingError",
 	{},
 ) {
@@ -152,13 +152,10 @@ export class SchemaDeclarationMissingError extends Schema.TaggedErrorClass<Schem
  *
  * @public
  */
-export class SchemaNameUnknownError extends Schema.TaggedErrorClass<SchemaNameUnknownError>()(
-	"SchemaNameUnknownError",
-	{
-		/** The declaration that failed to resolve, when one exists. */
-		declaration: Schema.optionalKey(SchemaDeclaration),
-	},
-) {
+export class SchemaNameUnknownError extends Schema.TaggedError<SchemaNameUnknownError>()("SchemaNameUnknownError", {
+	/** The declaration that failed to resolve, when one exists. */
+	declaration: Schema.optionalKey(SchemaDeclaration),
+}) {
 	override get message(): string {
 		return "the $schema declaration names no registered schema";
 	}
@@ -173,7 +170,7 @@ export class SchemaNameUnknownError extends Schema.TaggedErrorClass<SchemaNameUn
  *
  * @public
  */
-export class SchemaVersionUnresolvableError extends Schema.TaggedErrorClass<SchemaVersionUnresolvableError>()(
+export class SchemaVersionUnresolvableError extends Schema.TaggedError<SchemaVersionUnresolvableError>()(
 	"SchemaVersionUnresolvableError",
 	{
 		/** The registered name whose version could not be satisfied. */

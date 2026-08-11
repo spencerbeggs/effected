@@ -56,7 +56,7 @@ export class GitConfigDiagnostic extends Schema.Class<GitConfigDiagnostic>("GitC
  *
  * @public
  */
-export class GitConfigParseError extends Schema.TaggedErrorClass<GitConfigParseError>()("GitConfigParseError", {
+export class GitConfigParseError extends Schema.TaggedError<GitConfigParseError>()("GitConfigParseError", {
 	/** The raw input that failed to parse. */
 	input: Schema.String,
 	/** Every structural problem found, in document order. */
@@ -75,7 +75,7 @@ export class GitConfigParseError extends Schema.TaggedErrorClass<GitConfigParseE
  *
  * @public
  */
-export class GitConfigEditError extends Schema.TaggedErrorClass<GitConfigEditError>()("GitConfigEditError", {
+export class GitConfigEditError extends Schema.TaggedError<GitConfigEditError>()("GitConfigEditError", {
 	/** The edit operation that was refused. */
 	op: Schema.Literals(["set", "append", "unset", "unsetAll", "addSection", "removeSection", "renameSection"]),
 	/** Why it was refused. */

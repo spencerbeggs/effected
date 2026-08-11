@@ -1,12 +1,12 @@
 ---
 name: effect-api-extractor-bases
-description: Use when API Extractor reports ae-forgotten-export for the anonymous base of an Effect class factory (Schema.Class, TaggedClass, TaggedErrorClass, Opaque, Context.Service) under the silk bundler — and for the OTHER ae-*/tsdoc-* diagnostics a package build surfaces, ae-unresolved-link above all ({@link} selector rules for merged value+type names, namespace-object members, inherited members, schema-declared Schema.Class fields, and cross-package symbols, where backticks are the only correct form), plus how to read issues.json without being fooled. The house policy for bases is to write the factory INLINE and suppress the synthesized X_base warning narrowly via savvy.build.ts meta.tsdoc.suppressWarnings [{ messageId ae-forgotten-export, pattern _base }] — no @public base const, no hand-written annotation. Yields a zero-warning issues.json with the base warnings in the suppressed bucket.
+description: Use when API Extractor reports ae-forgotten-export for the anonymous base of an Effect class factory (Schema.Class, TaggedClass, TaggedError, Opaque, Context.Service) under the silk bundler — and for the OTHER ae-*/tsdoc-* diagnostics a package build surfaces, ae-unresolved-link above all ({@link} selector rules for merged value+type names, namespace-object members, inherited members, schema-declared Schema.Class fields, and cross-package symbols, where backticks are the only correct form), plus how to read issues.json without being fooled. The house policy for bases is to write the factory INLINE and suppress the synthesized X_base warning narrowly via savvy.build.ts meta.tsdoc.suppressWarnings [{ messageId ae-forgotten-export, pattern _base }] — no @public base const, no hand-written annotation. Yields a zero-warning issues.json with the base warnings in the suppressed bucket.
 ---
 
 # API Extractor × Effect class factories
 
 `class X extends Schema.Class<X>("X")({...}) {}` (and `TaggedClass` /
-`TaggedErrorClass` / `Opaque` / `Context.Service`) produces an anonymous
+`TaggedError` / `Opaque` / `Context.Service`) produces an anonymous
 heritage type. API Extractor reports it as `ae-forgotten-export` on a
 synthesized `X_base` symbol — CI-fatal under the silk bundler.
 
@@ -73,7 +73,7 @@ Confirmed clean (`warnings: 0`, the `*_base` in `suppressed`) with `tsgo`
 green and **no hand-written annotations** on:
 
 - `Schema.Opaque`, `Schema.asClass`, `Schema.Class`, `TaggedClass`,
-  `TaggedErrorClass`.
+  `TaggedError`.
 - **Recursive `Schema.Class` + `Schema.suspend`** (a node whose field
   references itself): the inline form has **no TS2506** and needs none of the
   old `Schema.Schema<Self>` base-annotation gymnastics — that failure mode was

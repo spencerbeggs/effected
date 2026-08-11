@@ -7,7 +7,7 @@ import { Effect, FileSystem, Option, Path, Schema } from "effect";
  *
  * @public
  */
-export class CacheKeyError extends Schema.TaggedErrorClass<CacheKeyError>()("CacheKeyError", {
+export class CacheKeyError extends Schema.TaggedError<CacheKeyError>()("CacheKeyError", {
 	/**
 	 * `readFailed` — a file or directory that was going to be hashed could not be
 	 * read. `badPattern` — a glob pattern would not compile. Key *derivation*

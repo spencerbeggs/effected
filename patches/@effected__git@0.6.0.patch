@@ -1,0 +1,93 @@
+diff --git a/Git.js b/Git.js
+index a3b65420371aa08b6bab13b7a9dbc223f0fd84f7..169cb244a15b16b3b26ccf4aadaebed48feefad7 100644
+--- a/Git.js
++++ b/Git.js
+@@ -22,7 +22,7 @@ const GIT_TIMEOUT = Duration.seconds(30);
+ *
+ * @public
+ */
+-var GitCommandError = class extends Schema.TaggedErrorClass()("GitCommandError", {
++var GitCommandError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("GitCommandError", {
+ 	/**
+ 	* Discriminates a pre-spawn guard rejection from a genuine git failure.
+ 	* `"refused"` — a pre-spawn guard (an option-like ref) rejected the
+@@ -61,7 +61,7 @@ var GitCommandError = class extends Schema.TaggedErrorClass()("GitCommandError",
+ *
+ * @public
+ */
+-var NotARepositoryError = class extends Schema.TaggedErrorClass()("NotARepositoryError", { 
++var NotARepositoryError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("NotARepositoryError", { 
+ /** The working directory that is not a git repository. */
+ cwd: Schema.String }) {
+ 	/** Renders the failing directory into a one-line message. */
+@@ -74,7 +74,7 @@ cwd: Schema.String }) {
+ *
+ * @public
+ */
+-var UnknownRefError = class extends Schema.TaggedErrorClass()("UnknownRefError", {
++var UnknownRefError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("UnknownRefError", {
+ 	/** The ref (or ref range) that failed to resolve. */
+ 	ref: Schema.String,
+ 	/** The working directory the ref was resolved against. */
+@@ -97,7 +97,7 @@ var UnknownRefError = class extends Schema.TaggedErrorClass()("UnknownRefError",
+ *
+ * @public
+ */
+-var NonFastForwardError = class extends Schema.TaggedErrorClass()("NonFastForwardError", {
++var NonFastForwardError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("NonFastForwardError", {
+ 	/** The working directory the push ran in. */
+ 	cwd: Schema.String,
+ 	/** The refspec that was rejected, when the caller passed one. */
+@@ -121,7 +121,7 @@ var NonFastForwardError = class extends Schema.TaggedErrorClass()("NonFastForwar
+ *
+ * @public
+ */
+-var MergeConflictError = class extends Schema.TaggedErrorClass()("MergeConflictError", { 
++var MergeConflictError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("MergeConflictError", { 
+ /** The working directory the merge ran in. */
+ cwd: Schema.String }) {
+ 	/** Renders the conflicted merge into a one-line message. */
+@@ -142,7 +142,7 @@ cwd: Schema.String }) {
+ *
+ * @public
+ */
+-var DirtyWorktreeError = class extends Schema.TaggedErrorClass()("DirtyWorktreeError", { 
++var DirtyWorktreeError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("DirtyWorktreeError", { 
+ /** The working directory whose local changes blocked the operation. */
+ cwd: Schema.String }) {
+ 	/** Renders the blocked operation into a one-line message. */
+diff --git a/GitConfig.js b/GitConfig.js
+index 26acf5f025f2e536c3fb986e56de854c3035a172..420dca13ca9bea0ee15adf1daccd6bb959a40ebb 100644
+--- a/GitConfig.js
++++ b/GitConfig.js
+@@ -44,7 +44,7 @@ var GitConfigDiagnostic = class extends Schema.Class("GitConfigDiagnostic")({
+ *
+ * @public
+ */
+-var GitConfigParseError = class extends Schema.TaggedErrorClass()("GitConfigParseError", {
++var GitConfigParseError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("GitConfigParseError", {
+ 	/** The raw input that failed to parse. */
+ 	input: Schema.String,
+ 	/** Every structural problem found, in document order. */
+@@ -62,7 +62,7 @@ var GitConfigParseError = class extends Schema.TaggedErrorClass()("GitConfigPars
+ *
+ * @public
+ */
+-var GitConfigEditError = class extends Schema.TaggedErrorClass()("GitConfigEditError", {
++var GitConfigEditError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("GitConfigEditError", {
+ 	/** The edit operation that was refused. */
+ 	op: Schema.Literals([
+ 		"set",
+diff --git a/Gitmodules.js b/Gitmodules.js
+index c6c37c80715d28362f3e5be211454a172d01e39c..f5120c94a6245e8c990eb7bed33fd69659afa273 100644
+--- a/Gitmodules.js
++++ b/Gitmodules.js
+@@ -53,7 +53,7 @@ var GitmodulesEntry = class extends Schema.Class("GitmodulesEntry")({
+ *
+ * @public
+ */
+-var GitmodulesDecodeError = class extends Schema.TaggedErrorClass()("GitmodulesDecodeError", {
++var GitmodulesDecodeError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("GitmodulesDecodeError", {
+ 	/** The submodule name (the section's subsection) that failed to decode. */
+ 	name: Schema.String,
+ 	/** The field the failure is about, when it is field-specific. */

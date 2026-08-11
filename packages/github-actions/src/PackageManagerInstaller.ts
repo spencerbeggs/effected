@@ -12,7 +12,7 @@ import { ToolInstaller } from "./ToolInstaller.js";
  *
  * @public
  */
-export class PackageManagerInstallerError extends Schema.TaggedErrorClass<PackageManagerInstallerError>()(
+export class PackageManagerInstallerError extends Schema.TaggedError<PackageManagerInstallerError>()(
 	"PackageManagerInstallerError",
 	{
 		/**

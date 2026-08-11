@@ -44,7 +44,7 @@ export interface SbomJsonOptions {
  *
  * @public
  */
-export class SbomWriteError extends Schema.TaggedErrorClass<SbomWriteError>()("SbomWriteError", {
+export class SbomWriteError extends Schema.TaggedError<SbomWriteError>()("SbomWriteError", {
 	/** The path that could not be written. */
 	path: Schema.String,
 	/** The underlying failure, preserved structurally. */

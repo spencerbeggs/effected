@@ -31,7 +31,7 @@ const EMPTY_IMPORTERS: ReadonlyArray<LockfileImporter> = [];
  *
  * @public
  */
-export class LockfileParseError extends Schema.TaggedErrorClass<LockfileParseError>()("LockfileParseError", {
+export class LockfileParseError extends Schema.TaggedError<LockfileParseError>()("LockfileParseError", {
 	format: LockfileFormat,
 	stage: Schema.Literals(["syntax", "validation"]),
 	cause: Schema.Defect(),
@@ -75,7 +75,7 @@ export class LockfileParseError extends Schema.TaggedErrorClass<LockfileParseErr
  *
  * @public
  */
-export class LockfileFramingError extends Schema.TaggedErrorClass<LockfileFramingError>()("LockfileFramingError", {
+export class LockfileFramingError extends Schema.TaggedError<LockfileFramingError>()("LockfileFramingError", {
 	format: LockfileFormat,
 	reason: Schema.Literals(["noLockfileDocument", "noImporters", "unexpectedDocuments"]),
 	documents: Schema.Int,

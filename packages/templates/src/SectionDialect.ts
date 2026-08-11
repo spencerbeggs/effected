@@ -19,7 +19,7 @@ export type Eol = "\n" | "\r\n";
  *
  * @public
  */
-export class SectionRenderError extends Schema.TaggedErrorClass<SectionRenderError>()("SectionRenderError", {
+export class SectionRenderError extends Schema.TaggedError<SectionRenderError>()("SectionRenderError", {
 	/**
 	 * `markerInContent` — the content carries a line the scanner would read as
 	 * a marker, which would move the block boundary and let the next sync

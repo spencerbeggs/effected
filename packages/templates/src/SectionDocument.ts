@@ -22,7 +22,7 @@ import { CheckOutcome } from "./SectionOutcome.js";
  *
  * @public
  */
-export class SectionParseError extends Schema.TaggedErrorClass<SectionParseError>()("SectionParseError", {
+export class SectionParseError extends Schema.TaggedError<SectionParseError>()("SectionParseError", {
 	/** Which ambiguity was found. */
 	reason: Schema.Literals(SCAN_FAILURE_REASONS),
 	/** 1-based line of the offending marker. */

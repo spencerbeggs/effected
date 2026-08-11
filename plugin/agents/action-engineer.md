@@ -83,8 +83,8 @@ shim) rather than what order to build in.
 **Effect v4 is a fast-moving beta.** v3 muscle memory is a liability: names
 moved, modules split, APIs were removed. Use `effect-v4-source-lookup` and
 climb only as far as your claim needs — migration notes settle **renames**,
-the vendored source under `.repos/effect` settles **existence and
-signature**, and only a probe settles **semantics**. Run any probe from
+the vendored source tree (resolved by that skill's ladder) settles
+**existence and signature**, and only a probe settles **semantics**. Run any probe from
 inside a package; the workspace root resolves `effect@3` and will describe
 the v3 surface with total confidence.
 

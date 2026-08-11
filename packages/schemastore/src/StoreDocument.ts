@@ -26,7 +26,7 @@ export const DRAFT_07_META_SCHEMA = "http://json-schema.org/draft-07/schema#";
  *
  * @public
  */
-export class SchemaConversionError extends Schema.TaggedErrorClass<SchemaConversionError>()("SchemaConversionError", {
+export class SchemaConversionError extends Schema.TaggedError<SchemaConversionError>()("SchemaConversionError", {
 	/** The `$id` of the document that failed to build. */
 	$id: Schema.String,
 	/** The underlying conversion failure. */

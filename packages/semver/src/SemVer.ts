@@ -24,7 +24,7 @@ import { compareBuild, comparePrereleaseIdentifier } from "./internal/order.js";
  * @see {@link https://semver.org | SemVer 2.0.0 Specification}
  * @public
  */
-export class InvalidVersionError extends Schema.TaggedErrorClass<InvalidVersionError>()("InvalidVersionError", {
+export class InvalidVersionError extends Schema.TaggedError<InvalidVersionError>()("InvalidVersionError", {
 	/** The raw input string that failed to parse. */
 	input: Schema.String,
 	/** The character position where parsing failed, if available. */
@@ -110,9 +110,10 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 					return result.ok
 						? Effect.succeed(result.value)
 						: Effect.fail(
-								new SchemaIssue.InvalidValue(Option.some(input), {
-									message: `Invalid version string: "${result.input}" at position ${result.position}`,
-								}),
+								new SchemaIssue.InvalidValue(
+									{ message: `Invalid version string: "${result.input}" at position ${result.position}` },
+									input,
+								),
 							);
 				},
 				encode: (parts) => Effect.succeed(formatVersion(parts)),

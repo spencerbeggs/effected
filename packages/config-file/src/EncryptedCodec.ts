@@ -15,7 +15,7 @@ import { IV_LENGTH, decrypt, deriveKey, encrypt, fromBase64, randomIv, toBase64 
  *
  * @public
  */
-export class ConfigEncryptionError extends Schema.TaggedErrorClass<ConfigEncryptionError>()("ConfigEncryptionError", {
+export class ConfigEncryptionError extends Schema.TaggedError<ConfigEncryptionError>()("ConfigEncryptionError", {
 	/** Which cryptographic stage failed. */
 	phase: Schema.Literals(["key-derivation", "encrypt", "decrypt", "encoding"]),
 	/** The underlying failure, preserved structurally. */

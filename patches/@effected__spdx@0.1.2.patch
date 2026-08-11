@@ -1,0 +1,13 @@
+diff --git a/License.js b/License.js
+index 05bd9b6..2cc313e 100644
+--- a/License.js
++++ b/License.js
+@@ -16,7 +16,7 @@ import { Effect, Result, Schema } from "effect";
+ * @see {@link https://spdx.github.io/spdx-spec/v2.3/SPDX-license-expressions/ | SPDX License Expressions}
+ * @public
+ */
+-var InvalidSpdxExpressionError = class extends Schema.TaggedErrorClass()("InvalidSpdxExpressionError", { 
++var InvalidSpdxExpressionError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("InvalidSpdxExpressionError", { 
+ /** The raw input string that failed to validate. */
+ input: Schema.String }) {
+ 	get message() {

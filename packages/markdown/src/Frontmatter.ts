@@ -30,7 +30,7 @@ import { FrontmatterFormat } from "./MarkdownNode.js";
  *
  * @public
  */
-export class FrontmatterFormatMismatchError extends Schema.TaggedErrorClass<FrontmatterFormatMismatchError>()(
+export class FrontmatterFormatMismatchError extends Schema.TaggedError<FrontmatterFormatMismatchError>()(
 	"FrontmatterFormatMismatchError",
 	{
 		/** The format the codec decodes. */
@@ -56,15 +56,12 @@ export class FrontmatterFormatMismatchError extends Schema.TaggedErrorClass<Fron
  *
  * @public
  */
-export class FrontmatterDecodeError extends Schema.TaggedErrorClass<FrontmatterDecodeError>()(
-	"FrontmatterDecodeError",
-	{
-		/** The format that failed to parse. */
-		format: FrontmatterFormat,
-		/** The underlying format-package failure, preserved structurally. */
-		cause: Schema.Defect(),
-	},
-) {
+export class FrontmatterDecodeError extends Schema.TaggedError<FrontmatterDecodeError>()("FrontmatterDecodeError", {
+	/** The format that failed to parse. */
+	format: FrontmatterFormat,
+	/** The underlying format-package failure, preserved structurally. */
+	cause: Schema.Defect(),
+}) {
 	override get message(): string {
 		return `frontmatter ${this.format} content failed to parse`;
 	}
@@ -82,15 +79,12 @@ export class FrontmatterDecodeError extends Schema.TaggedErrorClass<FrontmatterD
  *
  * @public
  */
-export class FrontmatterEncodeError extends Schema.TaggedErrorClass<FrontmatterEncodeError>()(
-	"FrontmatterEncodeError",
-	{
-		/** The format that failed to serialize. */
-		format: FrontmatterFormat,
-		/** The underlying format-package failure, preserved structurally. */
-		cause: Schema.Defect(),
-	},
-) {
+export class FrontmatterEncodeError extends Schema.TaggedError<FrontmatterEncodeError>()("FrontmatterEncodeError", {
+	/** The format that failed to serialize. */
+	format: FrontmatterFormat,
+	/** The underlying format-package failure, preserved structurally. */
+	cause: Schema.Defect(),
+}) {
 	override get message(): string {
 		return `frontmatter ${this.format} content failed to serialize`;
 	}
@@ -176,13 +170,10 @@ export type FrontmatterMissingReason = typeof FrontmatterMissingReason.Type;
  *
  * @public
  */
-export class FrontmatterMissingError extends Schema.TaggedErrorClass<FrontmatterMissingError>()(
-	"FrontmatterMissingError",
-	{
-		/** Why there is no capture: no block at all, or capture left off. */
-		reason: FrontmatterMissingReason,
-	},
-) {
+export class FrontmatterMissingError extends Schema.TaggedError<FrontmatterMissingError>()("FrontmatterMissingError", {
+	/** Why there is no capture: no block at all, or capture left off. */
+	reason: FrontmatterMissingReason,
+}) {
 	override get message(): string {
 		return this.reason === "captureDisabled"
 			? "the source opens with a frontmatter block, but it was not captured; parse with `frontmatter: true`"
@@ -203,7 +194,7 @@ export class FrontmatterMissingError extends Schema.TaggedErrorClass<Frontmatter
  *
  * @public
  */
-export class FrontmatterValidationError extends Schema.TaggedErrorClass<FrontmatterValidationError>()(
+export class FrontmatterValidationError extends Schema.TaggedError<FrontmatterValidationError>()(
 	"FrontmatterValidationError",
 	{
 		/** The structured schema issue. Never a string. */

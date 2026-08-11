@@ -115,7 +115,7 @@ const corepackHint = (manifest: Record<string, unknown>): Option.Option<ManagerH
  *
  * @public
  */
-export class PackageManagerDetectionError extends Schema.TaggedErrorClass<PackageManagerDetectionError>()(
+export class PackageManagerDetectionError extends Schema.TaggedError<PackageManagerDetectionError>()(
 	"PackageManagerDetectionError",
 	{
 		/** The workspace root that was probed. */

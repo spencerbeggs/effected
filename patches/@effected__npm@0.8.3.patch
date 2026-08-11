@@ -1,0 +1,113 @@
+diff --git a/CatalogAssemblyError.js b/CatalogAssemblyError.js
+index 0dd93cf..217edec 100644
+--- a/CatalogAssemblyError.js
++++ b/CatalogAssemblyError.js
+@@ -22,7 +22,7 @@ import { Schema } from "effect";
+ *
+ * @public
+ */
+-var CatalogAssemblyError = class extends Schema.TaggedErrorClass()("CatalogAssemblyError", {
++var CatalogAssemblyError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("CatalogAssemblyError", {
+ 	/**
+ 	* Which input failed: `manifest` for a file-level or top-level shape problem,
+ 	* `catalog` for a malformed catalog block or the double-default duplication,
+diff --git a/DependencySpecifier.js b/DependencySpecifier.js
+index 5c580a8..f9f3b23 100644
+--- a/DependencySpecifier.js
++++ b/DependencySpecifier.js
+@@ -10,7 +10,7 @@ import { Range } from "@effected/semver";
+ *
+ * @public
+ */
+-var InvalidDependencySpecifierError = class extends Schema.TaggedErrorClass()("InvalidDependencySpecifierError", { 
++var InvalidDependencySpecifierError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("InvalidDependencySpecifierError", { 
+ /** The raw input string that failed validation. */
+ input: Schema.String }) {
+ 	get message() {
+diff --git a/IntegrityHash.js b/IntegrityHash.js
+index f3f6c4f..4193f8f 100644
+--- a/IntegrityHash.js
++++ b/IntegrityHash.js
+@@ -27,7 +27,7 @@ const algorithmOf = (value) => {
+ *
+ * @public
+ */
+-var InvalidIntegrityHashError = class extends Schema.TaggedErrorClass()("InvalidIntegrityHashError", { 
++var InvalidIntegrityHashError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("InvalidIntegrityHashError", { 
+ /** The raw input string that failed validation. */
+ input: Schema.String }) {
+ 	get message() {
+diff --git a/Manifest.js b/Manifest.js
+index d0bc18a..926f012 100644
+--- a/Manifest.js
++++ b/Manifest.js
+@@ -16,7 +16,7 @@ import { Effect, Option, Schema, SchemaTransformation } from "effect";
+ *
+ * @public
+ */
+-var ManifestDecodeError = class extends Schema.TaggedErrorClass()("ManifestDecodeError", { 
++var ManifestDecodeError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("ManifestDecodeError", { 
+ /** The underlying `SchemaError`, preserved structurally rather than stringified. */
+ cause: Schema.Defect() }) {
+ 	/** Summarizes the decode failure in one line. */
+@@ -34,7 +34,7 @@ cause: Schema.Defect() }) {
+ *
+ * @public
+ */
+-var UnresolvedDependencyError = class extends Schema.TaggedErrorClass()("UnresolvedDependencyError", {
++var UnresolvedDependencyError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("UnresolvedDependencyError", {
+ 	/** The manifest field the dependency is declared under. */
+ 	field: DependencyField,
+ 	/** The dependency's package name. */
+diff --git a/NpmRegistry.js b/NpmRegistry.js
+index ed84b5e..896e57a 100644
+--- a/NpmRegistry.js
++++ b/NpmRegistry.js
+@@ -56,7 +56,7 @@ var PublishTime = class extends Schema.Class("PublishTime")({
+ *
+ * @public
+ */
+-var RegistryReadError = class extends Schema.TaggedErrorClass()("RegistryReadError", {
++var RegistryReadError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("RegistryReadError", {
+ 	/** Why the read failed. */
+ 	kind: Schema.Literals([
+ 		"transport",
+diff --git a/PackageManagerPin.js b/PackageManagerPin.js
+index 12a3646..cf51c07 100644
+--- a/PackageManagerPin.js
++++ b/PackageManagerPin.js
+@@ -15,7 +15,7 @@ import { SemVer } from "@effected/semver";
+ *
+ * @public
+ */
+-var InvalidPackageManagerPinError = class extends Schema.TaggedErrorClass()("InvalidPackageManagerPinError", {
++var InvalidPackageManagerPinError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("InvalidPackageManagerPinError", {
+ 	/** The raw input string that failed validation. */
+ 	input: Schema.String,
+ 	/**
+diff --git a/PublishError.js b/PublishError.js
+index cc751ac..77e8676 100644
+--- a/PublishError.js
++++ b/PublishError.js
+@@ -20,7 +20,7 @@ import { Schema } from "effect";
+ *
+ * @public
+ */
+-var PublishError = class extends Schema.TaggedErrorClass()("PublishError", {
++var PublishError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PublishError", {
+ 	/** Which step failed. */
+ 	kind: Schema.Literals([
+ 		"auth",
+diff --git a/WorkspaceResolver.js b/WorkspaceResolver.js
+index fa8128c..ab3631c 100644
+--- a/WorkspaceResolver.js
++++ b/WorkspaceResolver.js
+@@ -14,7 +14,7 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
+ *
+ * @public
+ */
+-var DependencyResolutionError = class extends Schema.TaggedErrorClass()("DependencyResolutionError", {
++var DependencyResolutionError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("DependencyResolutionError", {
+ 	specifier: Schema.String,
+ 	cause: Schema.Defect()
+ }) {

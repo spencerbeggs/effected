@@ -10,7 +10,7 @@ import { VersionDiff } from "./VersionDiff.js";
  *
  * @public
  */
-export class EmptyCacheError extends Schema.TaggedErrorClass<EmptyCacheError>()("EmptyCacheError", {}) {
+export class EmptyCacheError extends Schema.TaggedError<EmptyCacheError>()("EmptyCacheError", {}) {
 	override get message(): string {
 		return "Version cache is empty";
 	}
@@ -22,7 +22,7 @@ export class EmptyCacheError extends Schema.TaggedErrorClass<EmptyCacheError>()(
  *
  * @public
  */
-export class VersionNotFoundError extends Schema.TaggedErrorClass<VersionNotFoundError>()("VersionNotFoundError", {
+export class VersionNotFoundError extends Schema.TaggedError<VersionNotFoundError>()("VersionNotFoundError", {
 	/** The version that was not found. */
 	version: SemVer,
 }) {
@@ -38,7 +38,7 @@ export class VersionNotFoundError extends Schema.TaggedErrorClass<VersionNotFoun
  *
  * @public
  */
-export class UnsatisfiedRangeError extends Schema.TaggedErrorClass<UnsatisfiedRangeError>()("UnsatisfiedRangeError", {
+export class UnsatisfiedRangeError extends Schema.TaggedError<UnsatisfiedRangeError>()("UnsatisfiedRangeError", {
 	/** The range that could not be satisfied. */
 	range: Range,
 	/** The versions that were available for matching. */

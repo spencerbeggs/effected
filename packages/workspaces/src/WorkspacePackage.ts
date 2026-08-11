@@ -84,17 +84,14 @@ export interface DependencyDiff {
  *
  * @public
  */
-export class WorkspaceManifestError extends Schema.TaggedErrorClass<WorkspaceManifestError>()(
-	"WorkspaceManifestError",
-	{
-		/** Absolute path to the `package.json` that failed. */
-		packageJsonPath: Schema.String,
-		/** Whether the file could not be read, or read but not decoded. */
-		kind: Schema.Literals(["read", "decode"]),
-		/** The originating failure, preserved rather than flattened to a string. */
-		cause: Schema.Defect(),
-	},
-) {
+export class WorkspaceManifestError extends Schema.TaggedError<WorkspaceManifestError>()("WorkspaceManifestError", {
+	/** Absolute path to the `package.json` that failed. */
+	packageJsonPath: Schema.String,
+	/** Whether the file could not be read, or read but not decoded. */
+	kind: Schema.Literals(["read", "decode"]),
+	/** The originating failure, preserved rather than flattened to a string. */
+	cause: Schema.Defect(),
+}) {
 	/** Renders the path and failure kind into a one-line message. */
 	override get message(): string {
 		return `Failed to ${this.kind} package.json at ${this.packageJsonPath}`;

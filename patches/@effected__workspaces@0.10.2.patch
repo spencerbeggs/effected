@@ -1,0 +1,109 @@
+diff --git a/ChangeDetector.js b/ChangeDetector.js
+index 203a166..7b4c092 100644
+--- a/ChangeDetector.js
++++ b/ChangeDetector.js
+@@ -51,7 +51,7 @@ var ChangeDetectionOptions = class extends Schema.Class("ChangeDetectionOptions"
+ *
+ * @public
+ */
+-var ChangeDetectionError = class extends Schema.TaggedErrorClass()("ChangeDetectionError", {
++var ChangeDetectionError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("ChangeDetectionError", {
+ 	/** The operation that could not run. */
+ 	operation: Schema.String,
+ 	/** The originating failure. */
+diff --git a/DependencyGraph.js b/DependencyGraph.js
+index 5e30356..689ebda 100644
+--- a/DependencyGraph.js
++++ b/DependencyGraph.js
+@@ -14,7 +14,7 @@ import { Effect, Schema } from "effect";
+ *
+ * @public
+ */
+-var CyclicDependencyError = class extends Schema.TaggedErrorClass()("CyclicDependencyError", { 
++var CyclicDependencyError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("CyclicDependencyError", { 
+ /** The packages participating in the cycle. */
+ cycle: Schema.Array(Schema.String) }) {
+ 	/** Renders the cycle members into a one-line message. */
+diff --git a/LockfileReader.js b/LockfileReader.js
+index 48efa6d..776521d 100644
+--- a/LockfileReader.js
++++ b/LockfileReader.js
+@@ -14,7 +14,7 @@ import { Lockfile, LockfileFormat, LockfileIntegrity, filenameFor } from "@effec
+ *
+ * @public
+ */
+-var LockfileReadError = class extends Schema.TaggedErrorClass()("LockfileReadError", {
++var LockfileReadError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("LockfileReadError", {
+ 	/** Absolute path to the lockfile that could not be read. */
+ 	lockfilePath: Schema.String,
+ 	/** The format the detected package manager implies. */
+diff --git a/PackageManagerName.js b/PackageManagerName.js
+index 881715d..fa41a40 100644
+--- a/PackageManagerName.js
++++ b/PackageManagerName.js
+@@ -86,7 +86,7 @@ const corepackHint = (manifest) => {
+ *
+ * @public
+ */
+-var PackageManagerDetectionError = class extends Schema.TaggedErrorClass()("PackageManagerDetectionError", {
++var PackageManagerDetectionError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PackageManagerDetectionError", {
+ 	/** The workspace root that was probed. */
+ 	root: Schema.String,
+ 	/** The marker files probed, in the order they were probed. */
+diff --git a/WorkspaceDiscovery.js b/WorkspaceDiscovery.js
+index 3ce1e75..0a9bc37 100644
+--- a/WorkspaceDiscovery.js
++++ b/WorkspaceDiscovery.js
+@@ -17,7 +17,7 @@ import { DependencyResolutionError, WorkspaceResolver } from "@effected/npm";
+ *
+ * @public
+ */
+-var WorkspaceDiscoveryError = class extends Schema.TaggedErrorClass()("WorkspaceDiscoveryError", {
++var WorkspaceDiscoveryError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("WorkspaceDiscoveryError", {
+ 	/** The workspace root discovery was running against. */
+ 	root: Schema.String,
+ 	/** The file that failed. */
+@@ -46,7 +46,7 @@ var WorkspaceDiscoveryError = class extends Schema.TaggedErrorClass()("Workspace
+ *
+ * @public
+ */
+-var WorkspacePatternError = class extends Schema.TaggedErrorClass()("WorkspacePatternError", {
++var WorkspacePatternError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("WorkspacePatternError", {
+ 	/** The workspace root the patterns were expanded against. */
+ 	root: Schema.String,
+ 	/** The offending pattern, verbatim. */
+@@ -76,7 +76,7 @@ var WorkspacePatternError = class extends Schema.TaggedErrorClass()("WorkspacePa
+ *
+ * @public
+ */
+-var PackageNotFoundError = class extends Schema.TaggedErrorClass()("PackageNotFoundError", {
++var PackageNotFoundError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PackageNotFoundError", {
+ 	/** The name that was requested. */
+ 	name: Schema.String,
+ 	/** Every workspace package name that does exist. */
+diff --git a/WorkspacePackage.js b/WorkspacePackage.js
+index 28de426..8d30275 100644
+--- a/WorkspacePackage.js
++++ b/WorkspacePackage.js
+@@ -47,7 +47,7 @@ const DependencyMap = Schema.Record(Schema.String, Schema.String).pipe(Schema.wi
+ *
+ * @public
+ */
+-var WorkspaceManifestError = class extends Schema.TaggedErrorClass()("WorkspaceManifestError", {
++var WorkspaceManifestError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("WorkspaceManifestError", {
+ 	/** Absolute path to the `package.json` that failed. */
+ 	packageJsonPath: Schema.String,
+ 	/** Whether the file could not be read, or read but not decoded. */
+diff --git a/WorkspaceRoot.js b/WorkspaceRoot.js
+index ad6ff2e..8e8106f 100644
+--- a/WorkspaceRoot.js
++++ b/WorkspaceRoot.js
+@@ -17,7 +17,7 @@ const WORKSPACE_MARKERS = ["pnpm-workspace.yaml", "package.json"];
+ *
+ * @public
+ */
+-var WorkspaceRootNotFoundError = class extends Schema.TaggedErrorClass()("WorkspaceRootNotFoundError", {
++var WorkspaceRootNotFoundError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("WorkspaceRootNotFoundError", {
+ 	/** The directory the ascent started from. */
+ 	searchPath: Schema.String,
+ 	/** The marker filenames probed at each ancestor. */

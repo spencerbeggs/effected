@@ -67,7 +67,7 @@ export class TomlFormattingOptions extends Schema.Class<TomlFormattingOptions>("
  *
  * @public
  */
-export class TomlModificationError extends Schema.TaggedErrorClass<TomlModificationError>()("TomlModificationError", {
+export class TomlModificationError extends Schema.TaggedError<TomlModificationError>()("TomlModificationError", {
 	diagnostic: TomlDiagnostic,
 }) {
 	override get message(): string {

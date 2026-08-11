@@ -7,7 +7,7 @@ import { WorkflowCommand } from "./WorkflowCommand.js";
  *
  * @public
  */
-export class ActionOutputError extends Schema.TaggedErrorClass<ActionOutputError>()("ActionOutputError", {
+export class ActionOutputError extends Schema.TaggedError<ActionOutputError>()("ActionOutputError", {
 	/**
 	 * `unavailable` — the runner file variable is not set, which usually means
 	 * the code is running outside a GitHub runner. `writeFailed` — the file

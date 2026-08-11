@@ -13,7 +13,7 @@ import { MAX_NESTING_DEPTH } from "./internal/limits.js";
  *
  * @public
  */
-export class NonJsonValueError extends Schema.TaggedErrorClass<NonJsonValueError>()("NonJsonValueError", {
+export class NonJsonValueError extends Schema.TaggedError<NonJsonValueError>()("NonJsonValueError", {
 	/** JSON pointer to the offending value (`""` is the document root). */
 	path: Schema.String,
 	/** The `typeof`/structural description of the rejected value. */
@@ -33,15 +33,12 @@ export class NonJsonValueError extends Schema.TaggedErrorClass<NonJsonValueError
  *
  * @public
  */
-export class JsonDepthExceededError extends Schema.TaggedErrorClass<JsonDepthExceededError>()(
-	"JsonDepthExceededError",
-	{
-		/** JSON pointer to the node where the cap was hit. */
-		path: Schema.String,
-		/** The nesting cap that was exceeded. */
-		maxDepth: Schema.Number,
-	},
-) {
+export class JsonDepthExceededError extends Schema.TaggedError<JsonDepthExceededError>()("JsonDepthExceededError", {
+	/** JSON pointer to the node where the cap was hit. */
+	path: Schema.String,
+	/** The nesting cap that was exceeded. */
+	maxDepth: Schema.Number,
+}) {
 	override get message(): string {
 		return `JSON nesting exceeds ${this.maxDepth} levels at "${this.path}"`;
 	}

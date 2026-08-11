@@ -72,7 +72,7 @@ export class ChangeDetectionOptions extends Schema.Class<ChangeDetectionOptions>
  *
  * @public
  */
-export class ChangeDetectionError extends Schema.TaggedErrorClass<ChangeDetectionError>()("ChangeDetectionError", {
+export class ChangeDetectionError extends Schema.TaggedError<ChangeDetectionError>()("ChangeDetectionError", {
 	/** The operation that could not run. */
 	operation: Schema.String,
 	/** The originating failure. */

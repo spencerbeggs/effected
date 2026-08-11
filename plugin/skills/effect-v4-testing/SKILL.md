@@ -375,6 +375,21 @@ If a test hangs for exactly five seconds, suspect wall-clock time first.
 virtual clock — once as **ten unrelated timeouts**. Decode with
 `new Response(init.body).text()`.
 
+### Real async I/O in the effect under test desyncs the drain loop — use `it.live`
+
+Driving the clock only works when everything the effect awaits is *scheduled on
+that clock*. An effect that interleaves **real filesystem I/O** with sleeps —
+`fs.open` → real await → retry `Effect.sleep` — races `TestClock.adjust`: the
+sleep created *after* resuming from the real await is not yet registered when
+`adjust`'s drain loop re-checks, so the test hangs or flakes depending on how
+the real I/O lands (hit live in a two-latch concurrency test over real file
+locks, savvy-web/systems 2026-08). This is not fixable by adjusting harder:
+virtual time cannot know when un-clocked real work will complete. The escape
+hatch is **`it.live` for exactly those tests** — real clock, real I/O, one
+timeline — placed **outside** the `layer()` block per the `MethodsNonLive`
+shape above. Keep the rest of the suite on `it.effect`; the hatch is per-test,
+not per-file.
+
 ### …and it starts at the EPOCH, so clock *reads* return 1970
 
 The quiet half: `it.effect` starts the `TestClock` at time zero, so anything

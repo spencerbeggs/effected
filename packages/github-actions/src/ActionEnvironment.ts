@@ -12,16 +12,13 @@ import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect";
  *
  * @public
  */
-export class ActionEnvironmentError extends Schema.TaggedErrorClass<ActionEnvironmentError>()(
-	"ActionEnvironmentError",
-	{
-		reason: Schema.Literals(["missing", "malformed"]),
-		/** The environment variable involved. */
-		name: Schema.String,
-		/** What was wrong, when the reason is `malformed`. */
-		detail: Schema.optionalKey(Schema.String),
-	},
-) {
+export class ActionEnvironmentError extends Schema.TaggedError<ActionEnvironmentError>()("ActionEnvironmentError", {
+	reason: Schema.Literals(["missing", "malformed"]),
+	/** The environment variable involved. */
+	name: Schema.String,
+	/** What was wrong, when the reason is `malformed`. */
+	detail: Schema.optionalKey(Schema.String),
+}) {
 	override get message(): string {
 		return this.reason === "missing"
 			? `Required environment variable "${this.name}" is not set`

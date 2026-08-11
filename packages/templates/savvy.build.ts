@@ -4,7 +4,7 @@ await build({
 	meta: {
 		localPaths: ["../../website/lib/models/templates"],
 		tsdoc: {
-			// Effect's class factories (Schema.Class, Schema.TaggedErrorClass,
+			// Effect's class factories (Schema.Class, Schema.TaggedError,
 			// Context.Service) synthesize an anonymous heritage type that API
 			// Extractor reports as a forgotten export on `X_base`. The emitted
 			// .d.ts names it as a module-local, non-exported `declare const`

@@ -47,7 +47,7 @@ const SchemaErrorFromSelf = Schema.declare(SchemaError.isSchemaError);
  *
  * @public
  */
-export class MalformedLine extends Schema.TaggedErrorClass<MalformedLine>()("MalformedLine", {
+export class MalformedLine extends Schema.TaggedError<MalformedLine>()("MalformedLine", {
 	/** The offending line, with its byte offsets into the source. */
 	line: LineSlice,
 }) {
@@ -68,7 +68,7 @@ export class MalformedLine extends Schema.TaggedErrorClass<MalformedLine>()("Mal
  *
  * @public
  */
-export class UnknownEvent extends Schema.TaggedErrorClass<UnknownEvent>()("UnknownEvent", {
+export class UnknownEvent extends Schema.TaggedError<UnknownEvent>()("UnknownEvent", {
 	/** The offending line, with its byte offsets into the source. */
 	line: LineSlice,
 	/** The unrecognized tag as it appeared on the envelope. */
@@ -95,7 +95,7 @@ export class UnknownEvent extends Schema.TaggedErrorClass<UnknownEvent>()("Unkno
  *
  * @public
  */
-export class InvalidData extends Schema.TaggedErrorClass<InvalidData>()("InvalidData", {
+export class InvalidData extends Schema.TaggedError<InvalidData>()("InvalidData", {
 	/** The offending line, with its byte offsets into the source. */
 	line: LineSlice,
 	/**
@@ -121,7 +121,7 @@ export class InvalidData extends Schema.TaggedErrorClass<InvalidData>()("Invalid
  *
  * @public
  */
-export class TerminalViolation extends Schema.TaggedErrorClass<TerminalViolation>()("TerminalViolation", {
+export class TerminalViolation extends Schema.TaggedError<TerminalViolation>()("TerminalViolation", {
 	/** The tag of the event whose append was refused. */
 	event: Schema.String,
 	/** The terminal event currently at the tail of the journal. */
@@ -144,7 +144,7 @@ export class TerminalViolation extends Schema.TaggedErrorClass<TerminalViolation
  *
  * @public
  */
-export class JournalNotFound extends Schema.TaggedErrorClass<JournalNotFound>()("JournalNotFound", {
+export class JournalNotFound extends Schema.TaggedError<JournalNotFound>()("JournalNotFound", {
 	/** The path that does not exist. */
 	path: Schema.String,
 }) {
@@ -175,7 +175,7 @@ export class JournalNotFound extends Schema.TaggedErrorClass<JournalNotFound>()(
  *
  * @public
  */
-export class UnserializableData extends Schema.TaggedErrorClass<UnserializableData>()("UnserializableData", {
+export class UnserializableData extends Schema.TaggedError<UnserializableData>()("UnserializableData", {
 	/** The event tag whose payload could not be serialized. */
 	event: Schema.String,
 	/** The value `JSON.stringify` threw, carried structurally. */
@@ -204,7 +204,7 @@ export class UnserializableData extends Schema.TaggedErrorClass<UnserializableDa
  *
  * @public
  */
-export class JournalClosed extends Schema.TaggedErrorClass<JournalClosed>()("JournalClosed", {
+export class JournalClosed extends Schema.TaggedError<JournalClosed>()("JournalClosed", {
 	/** The tag of the event whose append was refused. */
 	event: Schema.String,
 }) {
@@ -241,7 +241,7 @@ export class JournalClosed extends Schema.TaggedErrorClass<JournalClosed>()("Jou
  *
  * @public
  */
-export class JournalResync extends Schema.TaggedErrorClass<JournalResync>()("JournalResync", {
+export class JournalResync extends Schema.TaggedError<JournalResync>()("JournalResync", {
 	/** The journal path whose file changed identity or shrank. */
 	path: Schema.String,
 	/** Which contract breach was detected. Diagnostic; the recovery is the same. */

@@ -73,7 +73,7 @@ export class ResolvedTool extends Schema.Class<ResolvedTool>("ResolvedTool")({
  *
  * @public
  */
-export class ToolNotFoundError extends Schema.TaggedErrorClass<ToolNotFoundError>()("ToolNotFoundError", {
+export class ToolNotFoundError extends Schema.TaggedError<ToolNotFoundError>()("ToolNotFoundError", {
 	/** The tool that was looked for. */
 	tool: Schema.String,
 	/** The locations its `source` requirement demanded. */
@@ -90,7 +90,7 @@ export class ToolNotFoundError extends Schema.TaggedErrorClass<ToolNotFoundError
  *
  * @public
  */
-export class ToolVersionMismatchError extends Schema.TaggedErrorClass<ToolVersionMismatchError>()(
+export class ToolVersionMismatchError extends Schema.TaggedError<ToolVersionMismatchError>()(
 	"ToolVersionMismatchError",
 	{
 		/** The tool. */
@@ -118,7 +118,7 @@ export class ToolVersionMismatchError extends Schema.TaggedErrorClass<ToolVersio
  *
  * @public
  */
-export class ToolRefusedError extends Schema.TaggedErrorClass<ToolRefusedError>()("ToolRefusedError", {
+export class ToolRefusedError extends Schema.TaggedError<ToolRefusedError>()("ToolRefusedError", {
 	/** The refused name. */
 	tool: Schema.String,
 }) {

@@ -1,0 +1,13 @@
+diff --git a/GlobPattern.js b/GlobPattern.js
+index 2c84398..e95699d 100644
+--- a/GlobPattern.js
++++ b/GlobPattern.js
+@@ -15,7 +15,7 @@ import { Effect, Result, Schema, SchemaTransformation } from "effect";
+ *
+ * @public
+ */
+-var GlobPatternError = class extends Schema.TaggedErrorClass()("GlobPatternError", {
++var GlobPatternError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("GlobPatternError", {
+ 	pattern: Schema.String,
+ 	reason: Schema.Literals([
+ 		"PatternTooLong",

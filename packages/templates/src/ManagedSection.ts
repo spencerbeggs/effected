@@ -21,7 +21,7 @@ import type { CheckOutcome, SyncOutcome } from "./SectionOutcome.js";
  *
  * @public
  */
-export class SectionFileError extends Schema.TaggedErrorClass<SectionFileError>()("SectionFileError", {
+export class SectionFileError extends Schema.TaggedError<SectionFileError>()("SectionFileError", {
 	/** The file the operation was against. */
 	path: Schema.String,
 	/** Which half of the read-modify-write failed. */

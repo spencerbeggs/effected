@@ -6,7 +6,7 @@
 // data on `errors`/`warnings` while fatal ones fail `parse`/`parseAll` with a
 // typed `YamlParseError`.
 
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { composeAllDocuments, composeFirstDocument } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
@@ -105,14 +105,12 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 				SchemaTransformation.transformOrFail({
 					decode: (input: string) =>
 						YamlDocument.parse(input, options).pipe(
-							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(input), { message: error.message })),
+							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, input)),
 						),
 					encode: (doc: YamlDocument) =>
 						doc
 							.stringify()
-							.pipe(
-								Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(doc), { message: error.message })),
-							),
+							.pipe(Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, doc))),
 				}),
 			),
 		);

@@ -84,37 +84,28 @@ a test, without mutating `process.env`.
 const value = yield* Effect.provide(ActionInput.string("dry-run"), ActionInput.layer({ "INPUT_DRY-RUN": "true" }));
 ```
 
-## The `Config.withDefault` trap
+## The `Config.withDefault` trap — retired in effect beta.102–105
 
-**The most valuable thing in this reference.** `Config.withDefault` and
-`Config.option` fall back only for **missing** data — and "missing" is
-judged from the *issue*, not the combinator: an `InvalidValue` whose
-`actual` is `Option.none()` is classified as missing data.
-`Config.withDefault`'s own contract states that validation errors still
-propagate — true, **provided** the validation error correctly carries what
-it rejected.
+`Config.withDefault` and `Config.option` fall back only for **missing**
+data. Through effect 4.0.0-beta.101, "missing" was judged from the *issue*:
+an `InvalidValue` whose `actual` was `Option.none()` was classified as
+missing data, so a hand-built `Config.ConfigError` that omitted `actual`
+got silently swallowed by any default placed on top of it — a boolean input
+that decoded wrong under `withDefault(false)` silently resolved to `false`,
+and a dry-run flag misread that way ran its mutations for real. The fix
+then was constructing the issue with `Option.some(actual)`.
 
-A hand-built `Config.ConfigError` that omits `actual` therefore looks
-exactly like missing data to `withDefault`/`option`, and gets silently
-swallowed by any default placed on top of it — even though the input was
-**present and malformed**, not absent. A boolean input that decodes wrong
-under a `withDefault(false)` silently resolves to `false` instead of
-failing — and a dry-run flag misread that way runs its mutations for real.
-
-The fix constructs a `Config.ConfigError` carrying its rejected value
-explicitly:
-
-```ts
-const configError = (message: string, actual: unknown): Config.ConfigError =>
-  new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue(Option.some(actual), { message })));
-```
-
-`Option.some(actual)` is load-bearing. **Any typed `ConfigError` built in
-this package (or a downstream one) must carry its `actual`.** The wrong
-version — `Option.none()`, or a bare `Config.ConfigError` built without
-routing through `SchemaIssue.InvalidValue` at all — compiles, typechecks,
-and passes every test that does not specifically stack a `withDefault` on
-top of the failing config. Test for it directly: assert that
+**beta.102–105 removed both the trap and the fix.** `SchemaIssue`s no
+longer carry an `actual: Option` (`InvalidValue` is now
+`(annotations?, input?, options?)`, input retained only under
+`reportInput: true`), and `Config` judges missing-vs-invalid from its own
+evaluator's input evidence, not the issue. Probed on beta.105: a
+present-but-malformed value **fails** through `withDefault`, and so does a
+hand-built
+`new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue({ message })))`
+with no input attached — neither silently defaults. Do not port the
+`Option.some(actual)` construction forward (it no longer type-checks).
+The regression test is still worth keeping: assert that
 `yourConfig.pipe(Config.withDefault(fallback))` still **fails** — not falls
 back — when fed a present-but-malformed value.
 

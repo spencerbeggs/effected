@@ -1,0 +1,15 @@
+diff --git a/dist/SchemaAST.d.ts b/dist/SchemaAST.d.ts
+index e9dcd28..3adde27 100644
+--- a/dist/SchemaAST.d.ts
++++ b/dist/SchemaAST.d.ts
+@@ -1554,4 +1554,8 @@ export declare const resolveTitle: (ast: AST) => string | undefined;
+  * @since 4.0.0
+  */
+ export declare const resolveDescription: (ast: AST) => string | undefined;
+-//# sourceMappingURL=SchemaAST.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=SchemaAST.d.ts.map/** Re-added by local patch: `@internal`-stripped from the published d.ts while `Schema.d.ts` still references `SchemaAST.Sentinel` publicly (upstream packaging bug, present at 4.0.0-beta.105 through .107). */
++export type Sentinel = {
++    readonly key: PropertyKey;
++    readonly literal: LiteralValue | symbol;
++};

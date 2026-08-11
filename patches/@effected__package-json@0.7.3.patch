@@ -1,0 +1,105 @@
+diff --git a/License.js b/License.js
+index 9490e677cff591c93f5003afa8821291cd86f196..897b412f095a635ae2f5a62119358b21f231edd2 100644
+--- a/License.js
++++ b/License.js
+@@ -10,7 +10,7 @@ import { isValidExpression } from "@effected/spdx";
+ *
+ * @public
+ */
+-var InvalidSpdxLicenseError = class extends Schema.TaggedErrorClass()("InvalidSpdxLicenseError", { 
++var InvalidSpdxLicenseError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("InvalidSpdxLicenseError", { 
+ /** The raw input string that failed validation. */
+ input: Schema.String }) {
+ 	get message() {
+diff --git a/Package.js b/Package.js
+index 047e3933f975e11885f6c8af26d686e4a6c66a24..4415922c4a1fddf8b2db4362c3943ccf8d08b9d4 100644
+--- a/Package.js
++++ b/Package.js
+@@ -80,7 +80,7 @@ const RepositoryField = Schema.Union([Schema.String, Schema.Record(Schema.String
+ *
+ * @public
+ */
+-var PackageDecodeError = class extends Schema.TaggedErrorClass()("PackageDecodeError", { 
++var PackageDecodeError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PackageDecodeError", { 
+ /** The underlying `SchemaError`, preserved structurally rather than stringified. */
+ cause: Schema.Defect() }) {
+ 	get message() {
+diff --git a/PackageJsonFile.js b/PackageJsonFile.js
+index a8dda5b45f84a8cbb5a5768f177f0185496b815d..3ade66394c3b9abdf557010a954ee21621088271 100644
+--- a/PackageJsonFile.js
++++ b/PackageJsonFile.js
+@@ -8,7 +8,7 @@ import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
+ *
+ * @public
+ */
+-var PackageJsonReadError = class extends Schema.TaggedErrorClass()("PackageJsonReadError", {
++var PackageJsonReadError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PackageJsonReadError", {
+ 	/** The path that could not be read. */
+ 	path: Schema.String,
+ 	/** The underlying failure, preserved structurally. */
+@@ -24,7 +24,7 @@ var PackageJsonReadError = class extends Schema.TaggedErrorClass()("PackageJsonR
+ *
+ * @public
+ */
+-var PackageJsonNotFoundError = class extends Schema.TaggedErrorClass()("PackageJsonNotFoundError", { 
++var PackageJsonNotFoundError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PackageJsonNotFoundError", { 
+ /** The path where package.json was expected. */
+ path: Schema.String }) {
+ 	get message() {
+@@ -36,7 +36,7 @@ path: Schema.String }) {
+ *
+ * @public
+ */
+-var PackageJsonParseError = class extends Schema.TaggedErrorClass()("PackageJsonParseError", {
++var PackageJsonParseError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PackageJsonParseError", {
+ 	/** The path whose contents failed to parse as JSON. */
+ 	path: Schema.String,
+ 	/** The underlying `SyntaxError`, preserved structurally. */
+@@ -53,7 +53,7 @@ var PackageJsonParseError = class extends Schema.TaggedErrorClass()("PackageJson
+ *
+ * @public
+ */
+-var PackageJsonWriteError = class extends Schema.TaggedErrorClass()("PackageJsonWriteError", {
++var PackageJsonWriteError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PackageJsonWriteError", {
+ 	/** The path that could not be written. */
+ 	path: Schema.String,
+ 	/** The underlying filesystem failure, preserved structurally. Narrowed to the write failure only. */
+diff --git a/PackageJsonFormat.js b/PackageJsonFormat.js
+index a2100aa10c8f78e28acfea68d767e0b7026c5765..3c345f6ae3d5904d16409dbf58b4c7aefbe03e98 100644
+--- a/PackageJsonFormat.js
++++ b/PackageJsonFormat.js
+@@ -14,7 +14,7 @@ import { Result, Schema } from "effect";
+ *
+ * @public
+ */
+-var PackageJsonSyntaxError = class extends Schema.TaggedErrorClass()("PackageJsonSyntaxError", {
++var PackageJsonSyntaxError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PackageJsonSyntaxError", {
+ 	/** Which syntactic precondition failed. */
+ 	reason: Schema.Literals(["invalid-json", "not-an-object"]),
+ 	/** The underlying `SyntaxError` for `"invalid-json"`, preserved structurally. */
+diff --git a/PackageName.js b/PackageName.js
+index ee77e907f25a8ed1df3b6a972f08c90235c2b577..691250bf05e61387c9e4e3a62301fa47e62b57f0 100644
+--- a/PackageName.js
++++ b/PackageName.js
+@@ -9,7 +9,7 @@ import { Option, Schema } from "effect";
+ *
+ * @public
+ */
+-var InvalidPackageNameError = class extends Schema.TaggedErrorClass()("InvalidPackageNameError", { 
++var InvalidPackageNameError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("InvalidPackageNameError", { 
+ /** The raw input string that failed validation. */
+ input: Schema.String }) {
+ 	get message() {
+diff --git a/PackageValidator.js b/PackageValidator.js
+index e7b4b40f8152c47e58c61ad778a7a4e79639786f..5a36c6d7c6fa4dfb262ffccbbe9fcc3ad50a2332 100644
+--- a/PackageValidator.js
++++ b/PackageValidator.js
+@@ -9,7 +9,7 @@ import { Context, Effect, HashMap, Layer, Option, Result, Schema } from "effect"
+ *
+ * @public
+ */
+-var PackageValidationError = class extends Schema.TaggedErrorClass()("PackageValidationError", { 
++var PackageValidationError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("PackageValidationError", { 
+ /** The aggregated rule failures. */
+ failures: Schema.Array(Schema.Struct({
+ 	rule: Schema.String,

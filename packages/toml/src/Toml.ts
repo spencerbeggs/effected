@@ -9,7 +9,7 @@
 // TomlParseError / TomlStringifyError. The dependency edge runs facade →
 // engine only, so `noImportCycles` stays satisfied.
 
-import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { isRawTomlError } from "./internal/diagnostics.js";
 import { isGuardExceeded } from "./internal/limits.js";
 import { parseExpressions } from "./internal/parser.js";
@@ -42,7 +42,7 @@ export class TomlStringifyOptions extends Schema.Class<TomlStringifyOptions>("To
  *
  * @public
  */
-export class TomlParseError extends Schema.TaggedErrorClass<TomlParseError>()("TomlParseError", {
+export class TomlParseError extends Schema.TaggedError<TomlParseError>()("TomlParseError", {
 	diagnostics: Schema.Array(TomlDiagnostic),
 }) {
 	override get message(): string {
@@ -61,7 +61,7 @@ export class TomlParseError extends Schema.TaggedErrorClass<TomlParseError>()("T
  *
  * @public
  */
-export class TomlStringifyError extends Schema.TaggedErrorClass<TomlStringifyError>()("TomlStringifyError", {
+export class TomlStringifyError extends Schema.TaggedError<TomlStringifyError>()("TomlStringifyError", {
 	diagnostic: TomlDiagnostic,
 }) {
 	override get message(): string {
@@ -305,11 +305,11 @@ export class Toml {
 				SchemaTransformation.transformOrFail({
 					decode: (input: string) =>
 						Toml.parse(input).pipe(
-							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(input), { message: error.message })),
+							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, input)),
 						),
 					encode: (value: unknown) =>
 						Effect.fromResult(Toml.stringifyResult(value)).pipe(
-							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(value), { message: error.message })),
+							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, value)),
 						),
 				}),
 			),

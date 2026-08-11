@@ -10,9 +10,10 @@ for it**. This skill exists so the other skills can stop explaining what things
 are and spend their space on patterns — and so no one designs a capability core
 already ships (the `effect-v4-planning` contract-inventory gate).
 
-**Where things live.** Every row's source is
-`.repos/effect/packages/effect/src/<Name>.ts` (testing modules under
-`src/testing/`, unstable namespaces under `src/unstable/<ns>/`). The vendored
+**Where things live.** Every row's source is the vendored tree's
+`packages/effect/src/<Name>.ts` (testing modules under
+`src/testing/`, unstable namespaces under `src/unstable/<ns>/`; resolve the
+tree root via `effect-v4-source-lookup`). The vendored
 submodule is pinned to the installed beta and is the authority on existence,
 signatures, and — read alongside a probe — semantics (`effect-v4-source-lookup`
 owns the evidence ladder). It is also the **style oracle**: before building

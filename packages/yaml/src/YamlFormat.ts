@@ -74,7 +74,7 @@ export class YamlFormattingOptions extends Schema.Class<YamlFormattingOptions>("
  *
  * @public
  */
-export class YamlModificationError extends Schema.TaggedErrorClass<YamlModificationError>()("YamlModificationError", {
+export class YamlModificationError extends Schema.TaggedError<YamlModificationError>()("YamlModificationError", {
 	path: Schema.Array(Schema.Union([Schema.String, Schema.Number])),
 	diagnostics: Schema.Array(YamlDiagnostic),
 }) {

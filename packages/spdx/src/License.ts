@@ -15,7 +15,7 @@ import { DEPRECATED_LICENSE_IDS, LICENSE_IDS } from "./internal/licenseIds.js";
  * @see {@link https://spdx.github.io/spdx-spec/v2.3/SPDX-license-expressions/ | SPDX License Expressions}
  * @public
  */
-export class InvalidSpdxExpressionError extends Schema.TaggedErrorClass<InvalidSpdxExpressionError>()(
+export class InvalidSpdxExpressionError extends Schema.TaggedError<InvalidSpdxExpressionError>()(
 	"InvalidSpdxExpressionError",
 	{
 		/** The raw input string that failed to validate. */

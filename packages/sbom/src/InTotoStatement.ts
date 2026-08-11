@@ -45,7 +45,7 @@ export type PredicateType = string;
  *
  * @public
  */
-export class InvalidSha256DigestError extends Schema.TaggedErrorClass<InvalidSha256DigestError>()(
+export class InvalidSha256DigestError extends Schema.TaggedError<InvalidSha256DigestError>()(
 	"InvalidSha256DigestError",
 	{
 		/** The offending input, preserved verbatim. */

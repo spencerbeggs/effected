@@ -5,7 +5,7 @@ import { Action, ActionEnvironment, ActionInput, ActionOutputs, ActionRuntime, d
 
 class Extra extends Context.Service<Extra, { readonly describe: Effect.Effect<string, unknown> }>()("test/Extra") {}
 
-class Boom extends Schema.TaggedErrorClass<Boom>()("Boom", { detail: Schema.String }) {
+class Boom extends Schema.TaggedError<Boom>()("Boom", { detail: Schema.String }) {
 	override get message(): string {
 		return `it went wrong: ${this.detail}`;
 	}

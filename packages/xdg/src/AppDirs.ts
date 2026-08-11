@@ -30,7 +30,7 @@ export type AppDirKind = typeof AppDirKind.Type;
  *
  * @public
  */
-export class AppDirsError extends Schema.TaggedErrorClass<AppDirsError>()("AppDirsError", {
+export class AppDirsError extends Schema.TaggedError<AppDirsError>()("AppDirsError", {
 	/** Which directory kind failed. */
 	directory: AppDirKind,
 	/** The path that could not be created. */

@@ -19,7 +19,7 @@ import { Schema } from "effect";
  *
  * @public
  */
-export class PublishError extends Schema.TaggedErrorClass<PublishError>()("PublishError", {
+export class PublishError extends Schema.TaggedError<PublishError>()("PublishError", {
 	/** Which step failed. */
 	kind: Schema.Literals(["auth", "pack", "publish", "output", "digest", "executor"]),
 	/** The package directory or tarball the step was working on. */

@@ -62,7 +62,7 @@ export class JsoncParseErrorDetail extends Schema.Class<JsoncParseErrorDetail>("
  *
  * @public
  */
-export class JsoncParseError extends Schema.TaggedErrorClass<JsoncParseError>()("JsoncParseError", {
+export class JsoncParseError extends Schema.TaggedError<JsoncParseError>()("JsoncParseError", {
 	errors: Schema.Array(JsoncParseErrorDetail),
 	input: Schema.String,
 }) {
@@ -141,7 +141,7 @@ export class JsoncStringifyOptions extends Schema.Class<JsoncStringifyOptions>("
  *
  * @public
  */
-export class JsoncStringifyError extends Schema.TaggedErrorClass<JsoncStringifyError>()("JsoncStringifyError", {
+export class JsoncStringifyError extends Schema.TaggedError<JsoncStringifyError>()("JsoncStringifyError", {
 	code: JsoncStringifyErrorCode,
 	detail: Schema.String,
 	value: Schema.Unknown,
@@ -607,13 +607,13 @@ export class Jsonc {
 						const { value, errors } = parseValueInternal(input, flags);
 						if (errors.length > 0) {
 							const aggregate = new JsoncParseError({ errors: toDetails(input, errors), input });
-							return Effect.fail(new SchemaIssue.InvalidValue(Option.some(input), { message: aggregate.message }));
+							return Effect.fail(new SchemaIssue.InvalidValue({ message: aggregate.message }, input));
 						}
 						return Effect.succeed(value);
 					},
 					encode: (value: unknown) =>
 						Effect.fromResult(Jsonc.stringifyResult(value)).pipe(
-							Effect.mapError((error) => new SchemaIssue.InvalidValue(Option.some(value), { message: error.message })),
+							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, value)),
 						),
 				}),
 			),

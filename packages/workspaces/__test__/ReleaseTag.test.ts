@@ -7,7 +7,24 @@
 // at all.
 
 import { assert, describe, it } from "@effect/vitest";
+import { SchemaIssue } from "effect";
 import { ReleaseTag } from "../src/index.js";
+
+// beta.105 gives construction throws the generic message "Schema validation
+// failed" and carries the structured issue in `cause`; formatting the cause is
+// what keeps these assertions discriminating (a bare `assert.throws` also
+// passes when the static does not exist at all).
+const formatIssue = SchemaIssue.makeFormatterDefault();
+const assertRefusesEmpty = (thunk: () => unknown): void => {
+	let thrown: unknown;
+	try {
+		thunk();
+	} catch (error) {
+		thrown = error;
+	}
+	assert.instanceOf(thrown, Error);
+	assert.match(formatIssue((thrown as Error).cause as SchemaIssue.Issue), /length of at least 1/);
+};
 
 describe("ReleaseTag.single", () => {
 	it("is the bare version — no prefix", () => {
@@ -85,11 +102,11 @@ describe("ReleaseTag — formatting is total", () => {
 		// Matched on the message so the assertion discriminates: a bare
 		// `assert.throws` also passes when the static does not exist at all, which
 		// is exactly the vacuous green this file must not ship.
-		assert.throws(() => ReleaseTag.single(""), /length of at least 1/);
-		assert.throws(() => ReleaseTag.scoped("pkg", ""), /length of at least 1/);
+		assertRefusesEmpty(() => ReleaseTag.single(""));
+		assertRefusesEmpty(() => ReleaseTag.scoped("pkg", ""));
 	});
 
 	it("an empty package name is refused too", () => {
-		assert.throws(() => ReleaseTag.scoped("", "1.0.0"), /length of at least 1/);
+		assertRefusesEmpty(() => ReleaseTag.scoped("", "1.0.0"));
 	});
 });

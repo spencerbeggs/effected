@@ -140,7 +140,7 @@ export class CacheEvent extends Schema.Class<CacheEvent>("CacheEvent")({
  *
  * @public
  */
-export class CacheError extends Schema.TaggedErrorClass<CacheError>()("CacheError", {
+export class CacheError extends Schema.TaggedError<CacheError>()("CacheError", {
 	/** The cache operation that failed. */
 	operation: Schema.Literals([
 		"setup",

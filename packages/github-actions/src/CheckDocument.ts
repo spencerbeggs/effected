@@ -41,7 +41,7 @@ export class CheckReport extends Schema.Class<CheckReport>("CheckReport")({
  *
  * @public
  */
-export class CheckDocumentError extends Schema.TaggedErrorClass<CheckDocumentError>()("CheckDocumentError", {
+export class CheckDocumentError extends Schema.TaggedError<CheckDocumentError>()("CheckDocumentError", {
 	/** Which half failed: regenerating the document, or writing it. */
 	kind: Schema.Literals(["render", "sink"]),
 	/** The underlying failure. */

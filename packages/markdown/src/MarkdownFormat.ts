@@ -148,7 +148,7 @@ export type MarkdownModificationErrorCode = typeof MarkdownModificationErrorCode
  *
  * @public
  */
-export class MarkdownModificationError extends Schema.TaggedErrorClass<MarkdownModificationError>()(
+export class MarkdownModificationError extends Schema.TaggedError<MarkdownModificationError>()(
 	"MarkdownModificationError",
 	{
 		code: MarkdownModificationErrorCode,

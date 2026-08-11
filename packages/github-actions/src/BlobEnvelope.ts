@@ -5,7 +5,7 @@ import { Result, Schema } from "effect";
  *
  * @public
  */
-export class BlobEnvelopeError extends Schema.TaggedErrorClass<BlobEnvelopeError>()("BlobEnvelopeError", {
+export class BlobEnvelopeError extends Schema.TaggedError<BlobEnvelopeError>()("BlobEnvelopeError", {
 	/**
 	 * `notAnEnvelope` — the magic prefix is absent, so these are raw bytes
 	 * written before this format existed (or by something else entirely).

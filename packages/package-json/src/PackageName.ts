@@ -15,13 +15,10 @@ import { Option, Schema } from "effect";
  *
  * @public
  */
-export class InvalidPackageNameError extends Schema.TaggedErrorClass<InvalidPackageNameError>()(
-	"InvalidPackageNameError",
-	{
-		/** The raw input string that failed validation. */
-		input: Schema.String,
-	},
-) {
+export class InvalidPackageNameError extends Schema.TaggedError<InvalidPackageNameError>()("InvalidPackageNameError", {
+	/** The raw input string that failed validation. */
+	input: Schema.String,
+}) {
 	override get message(): string {
 		return `Invalid package name "${this.input}": does not satisfy npm naming rules`;
 	}

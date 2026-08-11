@@ -9,7 +9,7 @@ import { ActionEnvironment } from "./ActionEnvironment.js";
  *
  * @public
  */
-export class ToolInstallerError extends Schema.TaggedErrorClass<ToolInstallerError>()("ToolInstallerError", {
+export class ToolInstallerError extends Schema.TaggedError<ToolInstallerError>()("ToolInstallerError", {
 	/**
 	 * `downloadFailed` — the archive could not be fetched. `extractFailed` — the
 	 * extraction tool refused the archive or is not installed. `cacheFailed` —

@@ -25,8 +25,12 @@ The guide's headline rule — reach for a **named class** for anything real, and
 
 - reusable named model → `Schema.Class`
 - reusable tagged-union member → `Schema.TaggedClass`
-- reusable error payload → `Schema.TaggedErrorClass`
+- reusable error payload → `Schema.TaggedError`
 - small local/anonymous object shape → `Schema.Struct`
+
+(beta.102–105 renamed `Schema.TaggedErrorClass` back to `Schema.TaggedError`,
+same curried call shape — earlier-v4 code using the `*Class` name fails with
+"TaggedErrorClass is not a function".)
 
 ```ts
 export class User extends Schema.Class<User>("User")({
@@ -38,7 +42,7 @@ class Circle extends Schema.TaggedClass<Circle>()("Circle", {
  radius: Schema.Number,
 }) {}
 
-class NotFound extends Schema.TaggedErrorClass<NotFound>()("NotFound", {
+class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
  id: Schema.String,
 }) {}
 ```
@@ -279,7 +283,7 @@ Schema.String.pipe(
  Schema.decodeTo(
   Target,
   SchemaTransformation.transformOrFail({
-   decode: (s) => /* Effect.succeed(...) | Effect.fail(new SchemaIssue.InvalidValue(Option.some(s))) */,
+   decode: (s) => /* Effect.succeed(...) | Effect.fail(new SchemaIssue.InvalidValue({ message: "…" }, s)) */,
    encode: (v) => Effect.succeed(/* … */),
   }),
  ),
@@ -291,7 +295,7 @@ const NumberFromString = Schema.String.pipe(
   decode: SchemaGetter.transformOrFail((s) => {
    const n = Number.parse(s);
    return n === undefined
-    ? Effect.fail(new SchemaIssue.InvalidValue(Option.some(s)))
+    ? Effect.fail(new SchemaIssue.InvalidValue({ message: "not a number" }, s))
     : Effect.succeed(n);
   }),
   encode: SchemaGetter.String(),
@@ -300,8 +304,17 @@ const NumberFromString = Schema.String.pipe(
 ```
 
 Failures come from `effect/SchemaIssue` — `InvalidValue` (ctor), `MissingKey`,
-`Composite`. A failed parse throws a `Schema.SchemaError` whose `.issue`/`.cause`
-holds a `SchemaIssue`.
+`Composite`. Signature trap: since beta.102–105 `InvalidValue` is
+`(annotations?, input?, options?)` (`SchemaIssue.ts:572`) — the earlier v4 shape
+`new SchemaIssue.InvalidValue(Option.some(s), { message })` no longer
+type-checks (the `Option` wrapper is gone, the argument order flipped, and the
+input is retained only under `reportInput: true`). A failed
+`decodeUnknownSync` parse throws a `Schema.SchemaError` whose `.issue` holds the
+`SchemaIssue` and whose `.message` renders it via the default formatter; the
+throwing **constructor/adapter** paths (`X.make`, class `new`, `Schema.asserts`,
+`SchemaParser`'s sync/promise adapters) instead throw a plain `Error` with the
+generic message `"Schema validation failed"` and the issue on `.cause` — format
+it with `SchemaIssue.makeFormatterDefault()(error.cause)` (probed beta.105).
 
 ### String codecs as class statics (`FromString`)
 
@@ -317,7 +330,7 @@ static readonly FromString: Schema.Codec<SemVer, string> = Schema.String.pipe(
     const result = parseVersion(input); // pure internal grammar
     return result.ok
      ? Effect.succeed(result.value) // To["Encoded"]: plain field record
-     : Effect.fail(new SchemaIssue.InvalidValue(Option.some(input), { message: /* … */ }));
+     : Effect.fail(new SchemaIssue.InvalidValue({ message: /* … */ }, input));
    },
    encode: (parts) => Effect.succeed(formatVersion(parts)),
   }),
@@ -341,7 +354,7 @@ static readonly FromString: Schema.Codec<SemVer, string> = Schema.String.pipe(
   ...)`) otherwise trips TypeScript's circular-inference error. Annotating with
   the instance type (not `typeof SemVer`) breaks the cycle.
 - Keep a `parse` static (`Effect.fn("X.parse")`) that raises the concept's own
-  `Schema.TaggedErrorClass` with rich payload (`input`, `position`) by calling
+  `Schema.TaggedError` with rich payload (`input`, `position`) by calling
   the same internal grammar directly — `SchemaError` never escapes the package,
   and the schema path and the parse path cannot drift because both delegate to
   one implementation.

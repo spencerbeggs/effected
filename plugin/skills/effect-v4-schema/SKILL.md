@@ -26,13 +26,18 @@ lines).
 Each row is a hard house default; reasoning and worked code in
 [house-style.md](./references/house-style.md).
 
+Naming trap: beta.102–105 renamed `Schema.TaggedErrorClass` back to
+`Schema.TaggedError` (same curried call shape; `Schema.ErrorClass` likewise
+became `Schema.Error`) — code written against earlier v4 betas fails with
+"TaggedErrorClass is not a function" (`Schema.ts:14466`).
+
 | Do | Not |
 | --- | --- |
-| `Schema.Class` / `TaggedClass` / `TaggedErrorClass` for any reusable model, union member, or error | a bare `Schema.Struct` for a domain type — `Struct` is for throwaway inline shapes |
-| `X.make({...})` as the default constructor — EXCEPT `TaggedErrorClass`, where failing with the yieldable `yield* new SomeError({...})` is the house idiom (glob, workspaces, walker all construct errors with `new`) | `new X({...})` for models outside a measured hot path (both validate identically) |
+| `Schema.Class` / `TaggedClass` / `TaggedError` for any reusable model, union member, or error | a bare `Schema.Struct` for a domain type — `Struct` is for throwaway inline shapes |
+| `X.make({...})` as the default constructor — EXCEPT `TaggedError`, where failing with the yieldable `yield* new SomeError({...})` is the house idiom (glob, workspaces, walker all construct errors with `new`) | `new X({...})` for models outside a measured hot path (both validate identically) |
 | reach for `{ disableChecks: true }` only to accept *trusted* data that would fail a `.check(...)` | reach for it as a **speed** switch — despite a docstring promising to "skip validation", it gates only the check phase: type errors still throw, the structural re-parse still runs, and a depth-20 build measured 2671 ms with it vs 2711 ms without |
 | know which nested-class row you are in — a **self-recursive** field (any AST node) takes only real instances and checks them by instance alone; a **foreign** class field takes a literal, deep-validates it, and hands back a re-constructed value ([table](#a-nested-schemaclass-field-self-recursive-behaves-nothing-like-foreign)) | assume the two behave alike, or assert a nested class value with `strictEqual` — a foreign field is re-constructed, so `Outer.make({ inner: x }).inner !== x` |
-| dodge the class factory's reserved static names when designing domain statics — every `Schema.Class`/`TaggedClass`/`TaggedErrorClass` base already declares `identifier`, `fields`, `ast`, `pipe`, `rebuild`, `make`, `makeOption`, `makeEffect`, `annotate`, `annotateKey`, `check`, `extend`, `mapFields` (vendored `Schema.ts` `makeClass`) | a domain static reusing one of those names — an incompatible signature is a TS2417 compile error (*static side incorrectly extends base*); the lockfiles port had to rename an approved `LockfileIntegrity.check(lockfile, manifests)` design to `compare` on exactly this |
+| dodge the class factory's reserved static names when designing domain statics — every `Schema.Class`/`TaggedClass`/`TaggedError` base already declares `identifier`, `fields`, `ast`, `pipe`, `rebuild`, `make`, `makeOption`, `makeEffect`, `annotate`, `annotateKey`, `check`, `extend`, `mapFields` (vendored `Schema.ts` `makeClass`) | a domain static reusing one of those names — an incompatible signature is a TS2417 compile error (*static side incorrectly extends base*); the lockfiles port had to rename an approved `LockfileIntegrity.check(lockfile, manifests)` design to `compare` on exactly this |
 | name a validating string constructor `parse` / `parseResult` — **`make` is reserved and cannot be overloaded**, and this pair is the kit-wide shape ([worked example](#the-reserved-make-collision-parse--parseresult-is-the-house-resolution)) | `static make(raw: string)` on a `Schema.Class` — TS2417, every time |
 | conditional-spread an absent optional field | pass an explicit `undefined` for a `Schema.optionalKey` — a *present* `undefined` throws |
 | cross-field validation on a class: pass a **checked Struct** to the factory — `Schema.Class<X>("X")(Schema.Struct(fields).check(...))`; `check` returns `this["Rebuild"]` (`Schema.ts:187`), so a checked `Struct<Fields>` is still a `Struct<Fields>` the factory accepts, and the check sees the whole record (worked precedent: `CacheKey`'s restore-depths bound against its own segment count) | per-field checks that need a sibling's value (a field check sees only its field), or validating cross-field invariants in a `parse` wrapper the direct `make` path never runs |
@@ -42,9 +47,9 @@ Each row is a hard house default; reasoning and worked code in
 | `Schema.Literals(["a", "b", "c"])` for any multi-literal union (reason fields, enums) | the v3 variadic `Schema.Literal("a", "b", "c")` — v4 `Literal` takes ONE argument; tsgo rejects the variadic call (TS2554), but the **runtime silently keeps only the first literal**, so a suite run before typecheck green-lights a schema that rejects every other member |
 | `Source.pipe(decodeTo(Target, SchemaTransformation.transform({...})))` | a top-level `Schema.transform` / `transformOrFail` — **not callable** — both are `undefined` on the `Schema` namespace, re-verified beta.101 |
 | pin `transformOrFail`'s type params explicitly when a union codec's members carry instance methods — `SchemaTransformation.transformOrFail<(typeof Classified)["Encoded"], string>({...})` | relying on inference after adding an instance method to a `Schema.TaggedClass` union member — `transformOrFail` unifies one `T` from decode-out and encode-in, and `decodeTo` pins both to the union's **Encoded** side, which no longer satisfies the method-bearing instance type; the existing codec breaks at the declaration site (hit on beta.98 adding a method to a `DependencySpecifier.FromString` member) |
-| return an **`Effect`** from both `transformOrFail` callbacks, failing with `SchemaIssue.InvalidValue(Option.some(value), { message })` ([contract](#transformorfails-callback-contract)) | return a `Result` (or a bare value) from a `transformOrFail` callback — the signature demands `Effect<T, SchemaIssue.Issue, R>` (`SchemaTransformation.ts:286`); a `Result` is not an Effect and will not bridge itself |
+| return an **`Effect`** from both `transformOrFail` callbacks, failing with `SchemaIssue.InvalidValue({ message }, value)` ([contract](#transformorfails-callback-contract)) | return a `Result` (or a bare value) from a `transformOrFail` callback — the signature demands `Effect<T, SchemaIssue.Issue, R>` (`SchemaTransformation.ts:286`); a `Result` is not an Effect and will not bridge itself |
 | a `FromString` `Schema.Codec<Self, string>` static (string = the encoded form of the same schema) | a second parser divorced from the schema |
-| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction (`Schema.ts:9548` is a *function*; `Schema.Error` at `:9471` is the same trap — full list of the call-not-value family in **`effect-v4-construct-map`**) |
+| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction (`Schema.ts:10747` is a *function*; `Schema.ErrorInstance` at `:10647` is the same trap — beta.102–105 renamed it from `Schema.Error`, which is now the error-**class factory** at `:14405`, not an instance schema — full list of the call-not-value family in **`effect-v4-construct-map`**) |
 | `Schema.decodeUnknownEffect` / `encodeUnknownEffect` in Effect flows | `*Sync` outside a genuine sync boundary |
 | `Schema.DurationFromMillis` / `Schema.DateTimeUtcFromString` (composed with `Schema.fromJsonString` for byte stores) when the value must **serialize** | `Schema.Duration` / `Schema.DateTimeUtc` in a persisted or wire schema — both are `declare` schemas with **no JSON encoding** (`Schema.ts:10575,11972`), so they round-trip in memory and fail at the serialization boundary; the ts-vfs cache metadata hit exactly this |
 | annotate recursive `Schema.suspend` refs `Schema.Codec<T>` (services default `never`) | `Schema.Schema<T>` as the suspend annotation — it compiles at the declaration but leaves `DecodingServices` `unknown`, so every decode entrypoint rejects the schema (`unknown is not assignable to never`, probed beta.94); a schema nobody decodes directly hides the trap until a consumer tries |
@@ -140,8 +145,8 @@ export function transformOrFail<T, E, RD = never, RE = never>(options: {
 }): Transformation<T, E, RD, RE>
 ```
 
-The house failure shape is `InvalidValue` carrying the offending value in an
-`Option` plus a message:
+The house failure shape is `InvalidValue` carrying a message annotation, with
+the offending value as the second argument:
 
 ```ts
 Schema.String.pipe(Schema.decodeTo(Schema.Date,
@@ -149,14 +154,20 @@ Schema.String.pipe(Schema.decodeTo(Schema.Date,
     decode: (s) => {
       const d = new Date(s);
       return isNaN(d.getTime())
-        ? Effect.fail(new SchemaIssue.InvalidValue(Option.some(s), { message: "Invalid date" }))
+        ? Effect.fail(new SchemaIssue.InvalidValue({ message: "Invalid date" }, s))
         : Effect.succeed(d);
     },
     encode: (d) => Effect.succeed(d.toISOString()),
   })))
 ```
 
-Note `Option.some(s)` — the value is wrapped, not passed bare. If your
+Signature trap: beta.102–105 changed the constructor to
+`(annotations?, input?, options?)` (`SchemaIssue.ts:572`) — the earlier v4
+shape `new SchemaIssue.InvalidValue(Option.some(s), { message })` no longer
+type-checks: the `Option` wrapper is gone and the argument order flipped.
+The input is retained on the issue only when parse options set
+`reportInput: true` (`SchemaIssue.ts:151`); `InvalidType` is now
+`(ast, input?, options?)` (`SchemaIssue.ts:511`). If your
 transformation is infallible, use `SchemaTransformation.transform` (plain
 values, no Effect) instead; reach for `transformOrFail` only when it can fail.
 
@@ -276,7 +287,7 @@ A "class IS the schema" homogeneous union reads as symmetric and is not.
 
 ## The `message` getter: ternary chain, not an exhaustive switch
 
-Every `TaggedErrorClass` with a multi-reason `message` hits this. A `switch` over
+Every `TaggedError` with a multi-reason `message` hits this. A `switch` over
 a `Schema.Literals`-typed `reason` in which **every case returns** is exhaustive,
 and tsgo is happy — but Biome's `lint/suspicious/useGetterReturn` sees a getter
 with no terminal return and fails the lint gate:

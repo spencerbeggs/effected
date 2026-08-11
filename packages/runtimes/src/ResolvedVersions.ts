@@ -90,17 +90,14 @@ export class ResolvedVersions extends Schema.Class<ResolvedVersions>("ResolvedVe
  *
  * @public
  */
-export class NoMatchingVersionError extends Schema.TaggedErrorClass<NoMatchingVersionError>()(
-	"NoMatchingVersionError",
-	{
-		/** The runtime that was searched. */
-		runtime: Runtime,
-		/** The semver range that matched nothing. */
-		constraint: Schema.String,
-		/** The lifecycle phases the search was restricted to. Node only. */
-		phases: Schema.optionalKey(Schema.Array(NodePhase)),
-	},
-) {}
+export class NoMatchingVersionError extends Schema.TaggedError<NoMatchingVersionError>()("NoMatchingVersionError", {
+	/** The runtime that was searched. */
+	runtime: Runtime,
+	/** The semver range that matched nothing. */
+	constraint: Schema.String,
+	/** The lifecycle phases the search was restricted to. Node only. */
+	phases: Schema.optionalKey(Schema.Array(NodePhase)),
+}) {}
 
 /**
  * An explicit `defaultVersion` was asked for and nothing matched it.
@@ -117,7 +114,7 @@ export class NoMatchingVersionError extends Schema.TaggedErrorClass<NoMatchingVe
  *
  * @public
  */
-export class UnresolvableDefaultError extends Schema.TaggedErrorClass<UnresolvableDefaultError>()(
+export class UnresolvableDefaultError extends Schema.TaggedError<UnresolvableDefaultError>()(
 	"UnresolvableDefaultError",
 	{
 		/** The runtime that was searched. */
@@ -136,7 +133,7 @@ export class UnresolvableDefaultError extends Schema.TaggedErrorClass<Unresolvab
  *
  * @public
  */
-export class FreshnessError extends Schema.TaggedErrorClass<FreshnessError>()("FreshnessError", {
+export class FreshnessError extends Schema.TaggedError<FreshnessError>()("FreshnessError", {
 	/** The runtime whose feed could not be reached. */
 	runtime: Runtime,
 	/** The underlying transport or parse failure. */

@@ -1,0 +1,26 @@
+diff --git a/Descend.js b/Descend.js
+index 02deacf..de6cda0 100644
+--- a/Descend.js
++++ b/Descend.js
+@@ -9,7 +9,7 @@ import { Effect, FileSystem, Path, Schema } from "effect";
+ *
+ * @public
+ */
+-var DescendError = class extends Schema.TaggedErrorClass()("DescendError", {
++var DescendError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("DescendError", {
+ 	/** The glob pattern's source text. */
+ 	pattern: Schema.String,
+ 	reason: Schema.Literals(["unreadableDirectory", "depthExceeded"]),
+diff --git a/Expand.js b/Expand.js
+index 008abf4..f0bf33d 100644
+--- a/Expand.js
++++ b/Expand.js
+@@ -21,7 +21,7 @@ import { GlobPattern, GlobPatternError } from "@effected/glob";
+ *
+ * @public
+ */
+-var GlobExpansionError = class extends Schema.TaggedErrorClass()("GlobExpansionError", {
++var GlobExpansionError = class extends (Schema.TaggedErrorClass ?? Schema.TaggedError)()("GlobExpansionError", {
+ 	/** The glob pattern's source text, as handed to {@link compileAndExpand}. */
+ 	pattern: Schema.String,
+ 	/** The underlying typed failure, intact: a compile guard trip or a descent failure. */

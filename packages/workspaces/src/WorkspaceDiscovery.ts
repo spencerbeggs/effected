@@ -28,19 +28,16 @@ import { WorkspaceRoot } from "./WorkspaceRoot.js";
  *
  * @public
  */
-export class WorkspaceDiscoveryError extends Schema.TaggedErrorClass<WorkspaceDiscoveryError>()(
-	"WorkspaceDiscoveryError",
-	{
-		/** The workspace root discovery was running against. */
-		root: Schema.String,
-		/** The file that failed. */
-		path: Schema.String,
-		/** What went wrong with it. */
-		kind: Schema.Literals(["read", "invalidJson", "invalidShape", "invalidYaml", "missingName", "missingVersion"]),
-		/** The originating failure, if there was one. */
-		cause: Schema.Defect(),
-	},
-) {
+export class WorkspaceDiscoveryError extends Schema.TaggedError<WorkspaceDiscoveryError>()("WorkspaceDiscoveryError", {
+	/** The workspace root discovery was running against. */
+	root: Schema.String,
+	/** The file that failed. */
+	path: Schema.String,
+	/** What went wrong with it. */
+	kind: Schema.Literals(["read", "invalidJson", "invalidShape", "invalidYaml", "missingName", "missingVersion"]),
+	/** The originating failure, if there was one. */
+	cause: Schema.Defect(),
+}) {
 	/** Renders the failing file and kind into a one-line message. */
 	override get message(): string {
 		return `Workspace discovery failed at ${this.path} (${this.kind})`;
@@ -54,7 +51,7 @@ export class WorkspaceDiscoveryError extends Schema.TaggedErrorClass<WorkspaceDi
  *
  * @public
  */
-export class WorkspacePatternError extends Schema.TaggedErrorClass<WorkspacePatternError>()("WorkspacePatternError", {
+export class WorkspacePatternError extends Schema.TaggedError<WorkspacePatternError>()("WorkspacePatternError", {
 	/** The workspace root the patterns were expanded against. */
 	root: Schema.String,
 	/** The offending pattern, verbatim. */
@@ -79,7 +76,7 @@ export class WorkspacePatternError extends Schema.TaggedErrorClass<WorkspacePatt
  *
  * @public
  */
-export class PackageNotFoundError extends Schema.TaggedErrorClass<PackageNotFoundError>()("PackageNotFoundError", {
+export class PackageNotFoundError extends Schema.TaggedError<PackageNotFoundError>()("PackageNotFoundError", {
 	/** The name that was requested. */
 	name: Schema.String,
 	/** Every workspace package name that does exist. */

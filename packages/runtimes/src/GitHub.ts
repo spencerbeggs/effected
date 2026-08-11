@@ -21,7 +21,7 @@ import { paginate } from "./internal/http.js";
  *
  * @public
  */
-export class AuthenticationError extends Schema.TaggedErrorClass<AuthenticationError>()("AuthenticationError", {
+export class AuthenticationError extends Schema.TaggedError<AuthenticationError>()("AuthenticationError", {
 	/** How the request was authenticated when it was rejected. */
 	method: Schema.Literals(["token", "anonymous"]),
 }) {}
@@ -34,7 +34,7 @@ export class AuthenticationError extends Schema.TaggedErrorClass<AuthenticationE
  *
  * @public
  */
-export class RateLimitError extends Schema.TaggedErrorClass<RateLimitError>()("RateLimitError", {
+export class RateLimitError extends Schema.TaggedError<RateLimitError>()("RateLimitError", {
 	/** Seconds to wait before retrying, when GitHub said. */
 	retryAfter: Schema.optionalKey(Schema.Number),
 	/** The request quota for the window. */
@@ -48,7 +48,7 @@ export class RateLimitError extends Schema.TaggedErrorClass<RateLimitError>()("R
  *
  * @public
  */
-export class NetworkError extends Schema.TaggedErrorClass<NetworkError>()("NetworkError", {
+export class NetworkError extends Schema.TaggedError<NetworkError>()("NetworkError", {
 	/** The URL that failed. */
 	url: Schema.String,
 	/** The HTTP status, when there was a response at all. */
@@ -64,7 +64,7 @@ export class NetworkError extends Schema.TaggedErrorClass<NetworkError>()("Netwo
  *
  * @public
  */
-export class ResponseParseError extends Schema.TaggedErrorClass<ResponseParseError>()("ResponseParseError", {
+export class ResponseParseError extends Schema.TaggedError<ResponseParseError>()("ResponseParseError", {
 	/** The URL whose body could not be decoded. */
 	source: Schema.String,
 	/** The decoding failure. */

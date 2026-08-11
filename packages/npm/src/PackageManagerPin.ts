@@ -12,7 +12,7 @@
 // fallback to build-metadata parsing.
 
 import { SemVer } from "@effected/semver";
-import { Effect, Exit, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Exit, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { CorepackIntegrityHash } from "./IntegrityHash.js";
 
 /**
@@ -27,7 +27,7 @@ import { CorepackIntegrityHash } from "./IntegrityHash.js";
  *
  * @public
  */
-export class InvalidPackageManagerPinError extends Schema.TaggedErrorClass<InvalidPackageManagerPinError>()(
+export class InvalidPackageManagerPinError extends Schema.TaggedError<InvalidPackageManagerPinError>()(
 	"InvalidPackageManagerPinError",
 	{
 		/** The raw input string that failed validation. */
@@ -175,7 +175,7 @@ export class PackageManagerPin extends Schema.Class<PackageManagerPin>("PackageM
 					const parsed = PackageManagerPin.parseResult(input);
 					return Result.isSuccess(parsed)
 						? Effect.succeed(parsed.success)
-						: Effect.fail(new SchemaIssue.InvalidValue(Option.some(input), { message: parsed.failure.message }));
+						: Effect.fail(new SchemaIssue.InvalidValue({ message: parsed.failure.message }, input));
 				},
 				encode: (pin: PackageManagerPin) => Effect.succeed(pin.toString()),
 			}),

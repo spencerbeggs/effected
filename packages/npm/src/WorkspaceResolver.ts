@@ -23,7 +23,7 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
  *
  * @public
  */
-export class DependencyResolutionError extends Schema.TaggedErrorClass<DependencyResolutionError>()(
+export class DependencyResolutionError extends Schema.TaggedError<DependencyResolutionError>()(
 	"DependencyResolutionError",
 	{
 		specifier: Schema.String,

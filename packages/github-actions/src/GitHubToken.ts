@@ -11,7 +11,7 @@ import { Secret } from "./Secret.js";
  *
  * @public
  */
-export class GitHubTokenError extends Schema.TaggedErrorClass<GitHubTokenError>()("GitHubTokenError", {
+export class GitHubTokenError extends Schema.TaggedError<GitHubTokenError>()("GitHubTokenError", {
 	/**
 	 * One reason, deliberately: everything else that can go wrong here already
 	 * has an owner — persistence is an `ActionStateError`, minting is a
