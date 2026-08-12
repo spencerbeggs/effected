@@ -143,7 +143,9 @@ export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("Ya
  * Error-recovery parse failure: aggregates every fatal {@link YamlDiagnostic}
  * encountered, so a single failure reports the whole batch. Raised by
  * {@link Yaml.parse}, {@link Yaml.parseAll}, `YamlDocument.parse`/`parseAll`
- * and the decode direction of the schema factories.
+ * and the decode direction of the schema factories. The error itself has no
+ * `code` field: read the code from the diagnostics —
+ * `error.diagnostics[0].code` is the primary failure.
  *
  * @public
  */
@@ -162,7 +164,8 @@ export class YamlParseError extends Schema.TaggedError<YamlParseError>()("YamlPa
  * Stringification failure (the circular-reference guard), carrying structured
  * {@link YamlDiagnostic} entries and the offending value. Raised by
  * {@link Yaml.stringify}, `YamlDocument#stringify` and the encode direction of
- * the schema factories.
+ * the schema factories. The error itself has no `code` field: read the code
+ * from the diagnostics — `error.diagnostics[0].code` is the primary failure.
  *
  * @public
  */

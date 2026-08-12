@@ -75,7 +75,9 @@ export class YamlFormattingOptions extends Schema.Class<YamlFormattingOptions>("
  * (`DirectiveCarryingDocument` — modify does not re-emit directive lines, and
  * dropping a `%TAG` would orphan the shorthand tags that depend on it).
  * Carries structured {@link YamlDiagnostic} entries — never a collapsed
- * `reason` string (the structure-preserving-errors house rule).
+ * `reason` string (the structure-preserving-errors house rule). The error
+ * itself has no `code` field: read the code from the diagnostics —
+ * `error.diagnostics[0].code` is the primary failure.
  *
  * @public
  */
