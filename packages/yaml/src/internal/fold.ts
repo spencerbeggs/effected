@@ -365,15 +365,23 @@ export function renderBlockFolded(
 			// Exception: if the next non-empty content is more-indented, the
 			// reader already preserves the linebreak, so skip the extra line.
 			if (prevNonEmpty && !prevMoreIndented) {
-				// Look ahead to find the next non-empty line
+				// Look ahead to find the next non-empty line. The extra empty
+				// line compensates for the reader preserving (not folding) the
+				// break BEFORE an interior blank run — but only when content
+				// follows. A TRAILING blank run has no fold to reverse: those
+				// breaks are governed by chomping and map 1:1 to value
+				// newlines, so emitting the compensation line there would grow
+				// a keep-chomp scalar by one newline per round-trip.
+				let hasNextContent = false;
 				let nextContentMoreIndented = false;
 				for (let j = i + 1; j < valueLines.length; j++) {
 					if (valueLines[j] !== "") {
+						hasNextContent = true;
 						nextContentMoreIndented = valueLines[j].startsWith(" ") || valueLines[j].startsWith("\t");
 						break;
 					}
 				}
-				if (!nextContentMoreIndented) {
+				if (hasNextContent && !nextContentMoreIndented) {
 					outputLines.push("");
 				}
 			}

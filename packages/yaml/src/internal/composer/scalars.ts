@@ -1102,23 +1102,32 @@ function decodeBlockScalar(raw: string, fullText?: string, nodeOffset?: number):
 				prevMoreIndented = isMoreIndented;
 			}
 		}
+		// The break terminating the last CONTENT line exists only when there
+		// was content; a body of nothing but empty lines contributes exactly
+		// one break per empty line under keep (and nothing under clip — the
+		// spec excludes the final break when there are no non-empty lines).
+		// Without the hadContent gate, `>2+` over an empty body counted one
+		// break too many — a value that then GREW on every format round-trip.
 		if (hadContent || trailingNewlines.length > 0) {
 			if (chomp === "keep") {
-				result += "\n";
+				if (hadContent) result += "\n";
 				for (const _nl of trailingNewlines) result += "\n";
 			} else if (chomp !== "strip") {
-				result += "\n";
+				if (hadContent) result += "\n";
 			}
 		}
 		value = result;
 	} else {
 		value = lines.join("\n");
+		// Mirror of the folded gate above: the terminating break belongs to
+		// the last content line, not to an all-empty body (`|2+\n\n` is one
+		// kept break, not two; `|2\n\n` under clip is the empty string).
 		if (lines.length > 0 || trailingNewlines.length > 0) {
 			if (chomp === "keep") {
-				value += "\n";
+				if (lines.length > 0) value += "\n";
 				for (const _nl of trailingNewlines) value += "\n";
 			} else if (chomp !== "strip") {
-				value += "\n";
+				if (lines.length > 0) value += "\n";
 			}
 		}
 	}

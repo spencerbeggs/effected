@@ -9,7 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Stream } from "effect";
+import { Effect, Result, Stream } from "effect";
 import { Yaml, YamlDocument, YamlFormat, YamlMap, YamlScalar, YamlSeq, YamlVisitor } from "../src/index.js";
 
 const firstMap = (doc: YamlDocument): YamlMap => {
@@ -665,5 +665,66 @@ describe("comment fidelity (#127)", () => {
 				);
 			}),
 		);
+	});
+
+	// ── Format properties over the fidelity inputs ──────────────────────────
+	//
+	// Fixed-point fixtures pin bytes for shapes we know about; the two
+	// properties below hold for EVERY fidelity input, known or not:
+	// idempotence (format∘format === format — a second pass that moves is
+	// rewriting content) and meaning preservation (parse∘format === parse).
+	// The keep-chomp growth regression violated both while every byte fixture
+	// of the day stayed green — hence properties, not more fixtures.
+	describe("format properties over the fidelity inputs", () => {
+		const fileFixtures: ReadonlyArray<readonly [string, string, { indentSequences?: boolean }]> = [
+			[
+				"workflow.yaml",
+				readFileSync(new URL("./fixtures/comment-fidelity/workflow.yaml", import.meta.url), "utf8"),
+				{ indentSequences: true },
+			],
+			[
+				"dependabot.yaml",
+				readFileSync(new URL("./fixtures/comment-fidelity/dependabot.yaml", import.meta.url), "utf8"),
+				{ indentSequences: true },
+			],
+		];
+		const inlineInputs: ReadonlyArray<string> = [
+			"a: 1\n\n# section\nb: 2\n",
+			"a: 1 # trailing a\nb: 2\n",
+			"a: 1\n# line one\n# line two\nb: 2\n",
+			"a: 1\n\nb: 2\n",
+			"a:\n  b: 1\n  # end of a\nc: 2\n",
+			"steps:\n  # first step\n  - build\n  # mid\n  - test # inline\n",
+			"# hdr\n# hdr2\n\nversion: 2\n",
+			"# hdr\n\n---\nversion: 2\n",
+			"m:\n  a: 1\n\n  # c\n",
+			"m:\n  a: |\n    text\n\n  # c\n",
+			"m:\n  a: |\n    text\n\n  # c1\n  b: 2\n\n  # c2\n  # c3\n\n  # c4\n",
+			"a: 1\n\n# c\nb: 2\n",
+			"a: |\n  text\n\n# c\nb: 2\n",
+			"m:\n  a: 1\n\n# tail\nnext: 2\n",
+			"a: |+\n  text\n\nb: 1\n",
+			"a: >+\n  text\n\n# tail\n",
+			"# header\n# section\na: 1 # trailing\n...\n# tail\n",
+		];
+
+		for (const [name, fixture, options] of fileFixtures) {
+			it(`idempotence + meaning preservation — ${name}`, () => {
+				const once = YamlFormat.formatToString(fixture, undefined, options);
+				assert.strictEqual(YamlFormat.formatToString(once, undefined, options), once);
+				assert.deepStrictEqual(Result.getOrThrow(Yaml.parseResult(once)), Result.getOrThrow(Yaml.parseResult(fixture)));
+			});
+		}
+
+		for (const input of inlineInputs) {
+			it(`idempotence + meaning preservation — ${JSON.stringify(input)}`, () => {
+				const once = YamlFormat.formatToString(input);
+				assert.strictEqual(YamlFormat.formatToString(once), once);
+				assert.deepStrictEqual(
+					Result.getOrThrow(Yaml.parseAllResult(once)),
+					Result.getOrThrow(Yaml.parseAllResult(input)),
+				);
+			});
+		}
 	});
 });

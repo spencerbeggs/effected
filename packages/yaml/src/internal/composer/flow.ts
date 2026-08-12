@@ -10,7 +10,14 @@ import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./
 import type { SemanticItem } from "./block.js";
 import { buildPairs, checkDuplicateKeys, checkMultilineImplicitKeys } from "./block.js";
 import type { CommentFields } from "./comments.js";
-import { hasBlankLineAbove, isOwnLineAt, joinComments, rawCommentText, withCommentFields } from "./comments.js";
+import {
+	blankLineAboveStart,
+	hasBlankLineAbove,
+	isOwnLineAt,
+	joinComments,
+	rawCommentText,
+	withCommentFields,
+} from "./comments.js";
 import {
 	collectMultilineKey,
 	collectMultilinePlainScalar,
@@ -528,9 +535,17 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 		}
 		return out;
 	};
+	// A blank line counts as a BETWEEN-items blank only when it sits after the
+	// previous item's end. Flow items routinely share a line with preceding
+	// structure (`? [a, b]` after a blank line), and the purely-local
+	// "blank line above" check would otherwise attribute the blank above that
+	// SHARED line to a mid-line item — re-emitting it inside the collection
+	// and breaking format idempotence.
+	const blankIsBetweenItems = (anchorOffset: number): boolean =>
+		blankLineAboveStart(state.text, anchorOffset) >= lastItemEnd;
 	const acceptOwnLineComment = (cText: string, cOff: number): void => {
 		const blankAbove = cOff >= 0 && hasBlankLineAbove(state.text, cOff);
-		if (blankAbove && pending.length === 0 && lastItemEnd >= 0) {
+		if (blankAbove && pending.length === 0 && lastItemEnd >= 0 && blankIsBetweenItems(cOff)) {
 			pendingSpace = true;
 		}
 		pending.push({ text: cText, offset: cOff, blankAbove: blankAbove && pending.length > 0 });
@@ -541,7 +556,7 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 		if (anchorOffset >= 0 && hasBlankLineAbove(state.text, anchorOffset)) {
 			if (commentBefore !== undefined) {
 				commentBefore = `${commentBefore}\n`;
-			} else if (!pendingSpace && lastItemEnd >= 0) {
+			} else if (!pendingSpace && lastItemEnd >= 0 && blankIsBetweenItems(anchorOffset)) {
 				pendingSpace = true;
 			}
 		}

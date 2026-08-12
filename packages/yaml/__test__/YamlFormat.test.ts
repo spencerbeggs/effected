@@ -539,4 +539,58 @@ describe("YamlFormat", () => {
 			}),
 		);
 	});
+
+	describe("keep-chomp block scalars — trailing blanks are VALUE, never doubled (P0 regression)", () => {
+		// Under `+` chomping the trailing line breaks are part of the scalar's
+		// value; the composer's blank-line-fidelity capture must not ALSO record
+		// them as spaceBefore (or a leading-blank embed on a terminal comment
+		// run), or emission renders both and the document grows one newline per
+		// format pass — non-idempotent, meaning-changing whitespace rot. The
+		// downstream scope table (savvy-web-systems, 2026-08-12) plus the shapes
+		// the diagnosis found beyond it, each pinned as a byte fixed point.
+		const fixedPoints: ReadonlyArray<readonly [string, string]> = [
+			// The scope table — previously-growing rows.
+			["|+ keep, trailing blank, sibling follows", "a: |+\n  text\n\nb: 1\n"],
+			[">+ folded keep, trailing blank, sibling follows", "a: >+\n  text\n\nb: 1\n"],
+			["|2+ explicit indent + keep, trailing blank", "a: |2+\n  text\n\nb: 1\n"],
+			// The scope table — stable controls that must stay stable.
+			["|+ keep, no trailing blank", "a: |+\n  text\nb: 1\n"],
+			["|+ keep at EOF, no sibling", "a: |+\n  text\n\n"],
+			["| clip, trailing blank", "a: |\n  text\n\nb: 1\n"],
+			["|- strip, trailing blank", "a: |-\n  text\n\nb: 1\n"],
+			// Beyond the table: every other site the same capture reaches.
+			["|+ keep, two trailing blanks, sibling", "a: |+\n  text\n\n\nb: 1\n"],
+			["|+ keep, terminal comment run", "a: |+\n  text\n\n# tail\n"],
+			["|+ keep, comment run then sibling", "a: |+\n  text\n\n# c\nb: 1\n"],
+			["|+ keep, comment run, stylistic blank, sibling", "a: |+\n  text\n\n# c\n\nb: 1\n"],
+			["seq: |+ keep item, blank, next item", "- |+\n  text\n\n- 2\n"],
+			["seq: |+ keep item, blank, terminal comment", "- |+\n  text\n\n# tail\n"],
+			["nested map |+ keep, blank, outer sibling", "m:\n  a: |+\n    text\n\nb: 1\n"],
+			["nested seq |+ keep, blank, outer sibling", "m:\n  - |+\n    text\n\nb: 1\n"],
+			["nested >+ folded keep, blank, outer sibling", "m:\n  a: >+\n    text\n\nb: 1\n"],
+			["doc root |+ keep, trailing comment", "|+\n  text\n\n# tail\n"],
+			["doc root |+ keep at EOF", "|+\n  text\n\n"],
+		];
+
+		for (const [name, text] of fixedPoints) {
+			it(`fixed point: ${name}`, () => {
+				const once = YamlFormat.formatToString(text);
+				assert.strictEqual(once, text);
+				// Idempotence is implied by the fixed point, but assert the second
+				// pass explicitly so a future non-fixed-point normalization of one
+				// of these shapes still has to prove it converges.
+				assert.strictEqual(YamlFormat.formatToString(once), once);
+			});
+		}
+
+		it.effect("keep-chomp trailing newlines stay in the VALUE across a format pass", () =>
+			Effect.gen(function* () {
+				const text = "a: |+\n  text\n\nb: 1\n";
+				const before = yield* Yaml.parse(text);
+				const after = yield* Yaml.parse(YamlFormat.formatToString(text));
+				assert.deepStrictEqual(before, { a: "text\n\n", b: 1 });
+				assert.deepStrictEqual(after, before);
+			}),
+		);
+	});
 });

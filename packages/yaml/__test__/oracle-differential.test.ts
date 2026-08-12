@@ -29,8 +29,8 @@
 // text containing `:` / `#` / tab, blank line before the dedent).
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
-import { Yaml } from "../src/index.js";
+import { Effect, Result } from "effect";
+import { Yaml, YamlFormat } from "../src/index.js";
 
 interface OracleCase {
 	readonly name: string;
@@ -319,5 +319,40 @@ describe("oracle-differential (yaml@2.9.0 semantic expectations)", () => {
 				assert.deepStrictEqual(docs, [{ outer: { b: 2 } }, { next: 1 }]);
 			}),
 		);
+	});
+
+	// ── Format properties over the whole battery ────────────────────────────
+	//
+	// A parse-only differential is structurally blind to format-round-trip
+	// defects (the keep-chomp growth shipped past this file untouched), so the
+	// two properties that WOULD have caught it — and the original P0's write
+	// side, and the %TAG orphaning — run here over every input above:
+	//
+	//   1. IDEMPOTENCE: format(format(x)) === format(x). A formatter that
+	//      moves on the second pass is rewriting content, not style.
+	//   2. MEANING-PRESERVATION: parse(format(x)) deep-equals parse(x). When
+	//      format refuses an input it returns it byte-identical, so the
+	//      property holds trivially — asserted, not skipped.
+	describe("format properties", () => {
+		const allInputs: ReadonlyArray<readonly [string, string]> = [
+			...groups.flatMap(([groupName, cases]) => cases.map((c) => [`${groupName}: ${c.name}`, c.input] as const)),
+			["multi-document boundaries: trailing comment before ---", "outer:\n  b: 2 # note\n---\nnext: 1\n"],
+		];
+
+		for (const [name, input] of allInputs) {
+			it(`idempotence — ${name}`, () => {
+				const once = YamlFormat.formatToString(input);
+				const twice = YamlFormat.formatToString(once);
+				assert.strictEqual(twice, once);
+			});
+
+			it(`meaning preservation — ${name}`, () => {
+				const before = Yaml.parseAllResult(input);
+				const after = Yaml.parseAllResult(YamlFormat.formatToString(input));
+				assert.isTrue(Result.isSuccess(before));
+				assert.isTrue(Result.isSuccess(after));
+				assert.deepStrictEqual(Result.getOrThrow(after), Result.getOrThrow(before));
+			});
+		}
 	});
 });

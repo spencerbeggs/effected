@@ -108,11 +108,70 @@ export function isOwnLineAt(text: string, offset: number): boolean {
  * {@link isOwnLineAt} for why span-based gap checks are not used.
  */
 export function hasBlankLineAbove(text: string, offset: number): boolean {
+	return blankLineAboveStart(text, offset) >= 0;
+}
+
+/**
+ * Start offset of the blank line immediately above the line containing
+ * `offset`, or `-1` when that line is not blank. The offset form of
+ * {@link hasBlankLineAbove}, for callers that must locate the blank line
+ * (e.g. to test whether it falls inside a preceding scalar token's span).
+ */
+export function blankLineAboveStart(text: string, offset: number): number {
 	const lineBreak = text.lastIndexOf("\n", Math.max(0, offset - 1));
-	if (lineBreak < 0) return false;
+	if (lineBreak < 0) return -1;
 	const prevBreak = text.lastIndexOf("\n", lineBreak - 1);
 	const prevLine = text.slice(prevBreak + 1, lineBreak);
-	return prevLine.trim() === "";
+	return prevLine.trim() === "" ? prevBreak + 1 : -1;
+}
+
+/**
+ * The deepest trailing scalar reached by descending last-child edges from
+ * `node` (a map's last pair's value, a seq's last item) — the node whose
+ * token span a textually-following blank line could fall inside.
+ */
+function deepestTrailingScalar(node: YamlNode): YamlScalar | undefined {
+	let current: YamlNode = node;
+	for (;;) {
+		if (current instanceof YamlScalar) return current;
+		if (current instanceof YamlMap) {
+			const last = current.items[current.items.length - 1];
+			if (last === undefined) return undefined;
+			current = last.value ?? last.key;
+			continue;
+		}
+		if (current instanceof YamlSeq) {
+			const last = current.items[current.items.length - 1];
+			if (last === undefined) return undefined;
+			current = last;
+			continue;
+		}
+		return undefined; // alias — carries no chomp
+	}
+}
+
+/**
+ * True when the blank line immediately above `offset` is CONTENT of the
+ * preceding keep-chomp block scalar, not a stylistic blank. Under `+`
+ * chomping the trailing line breaks are part of the scalar's VALUE (the
+ * composer already stores them there), so recording the same blank line as
+ * `spaceBefore` (or a leading-blank embed on a terminal comment run) would
+ * double-count it: emission renders both the kept newline and the stylistic
+ * blank, growing the document on every format pass. Clip/strip scalars are
+ * deliberately NOT excluded — their emission drops the trailing blank from
+ * the value, so the `spaceBefore` capture is exactly what re-creates it.
+ *
+ * `prev` is the last composed node before `offset` (a pair's value, a seq
+ * item); the check descends to its deepest trailing scalar and requires the
+ * blank line to start inside that scalar's token span.
+ */
+export function blankAboveIsKeepChompContent(text: string, offset: number, prev: YamlNode | undefined): boolean {
+	if (prev === undefined) return false;
+	const scalar = deepestTrailingScalar(prev);
+	if (scalar === undefined || scalar.chomp !== "keep") return false;
+	if (scalar.style !== "block-literal" && scalar.style !== "block-folded") return false;
+	const start = blankLineAboveStart(text, offset);
+	return start >= scalar.offset && start < scalar.offset + scalar.length;
 }
 
 /**

@@ -11,6 +11,7 @@ import type { CstNode } from "../cst.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import type { CommentFields, EscapedComment } from "./comments.js";
 import {
+	blankAboveIsKeepChompContent,
 	columnAt,
 	hasBlankLineAbove,
 	isOwnLineAt,
@@ -831,8 +832,11 @@ export function buildPairs(
 	}
 	let pending: PendingComment[] = [];
 	let pendingSpace = false;
-	// End offset of the last completed pair's content (-1 before the first).
+	// End offset of the last completed pair's content (-1 before the first),
+	// and the content node it belongs to — the anchor for the keep-chomp
+	// blank-line gate (a blank inside a `|+` scalar's span is VALUE, not style).
 	let lastEnd = -1;
+	let lastNode: YamlNode | undefined;
 	// Column of this mapping's first key — the yardstick for the terminal
 	// column partition. -1 until the first key is seen.
 	let contentColumn = -1;
@@ -862,7 +866,7 @@ export function buildPairs(
 				// A blank line between the comment run and the node embeds as a
 				// trailing empty line in the comment string (reference parity).
 				commentBefore = `${commentBefore}\n`;
-			} else if (!pendingSpace && lastEnd >= 0) {
+			} else if (!pendingSpace && lastEnd >= 0 && !blankAboveIsKeepChompContent(text, anchorOffset, lastNode)) {
 				pendingSpace = true;
 			}
 		}
@@ -905,7 +909,8 @@ export function buildPairs(
 				// before the FIRST comment of a run becomes spaceBefore; a
 				// blank line WITHIN the run embeds as an empty line in the
 				// joined comment string (reference parity).
-				const blankAbove = cOff >= 0 && hasBlankLineAbove(text, cOff);
+				const blankAbove =
+					cOff >= 0 && hasBlankLineAbove(text, cOff) && !blankAboveIsKeepChompContent(text, cOff, lastNode);
 				if (blankAbove && pending.length === 0 && lastEnd >= 0) {
 					pendingSpace = true;
 				}
@@ -939,9 +944,11 @@ export function buildPairs(
 				pairs.push(new YamlPair({ key: nullKey, value: valueNode.node ?? null, ...pendingFields }));
 				i = valueNode.nextIdx;
 				lastEnd = valueNode.node ? nodeEnd(valueNode.node) : valueSepOffset + 1;
+				lastNode = valueNode.node ?? undefined;
 			} else {
 				pairs.push(new YamlPair({ key: nullKey, value: null, ...pendingFields }));
 				lastEnd = valueSepOffset + 1;
+				lastNode = undefined;
 			}
 			continue;
 		}
@@ -993,6 +1000,7 @@ export function buildPairs(
 					);
 					i = valueResult.nextIdx;
 					lastEnd = valNode ? nodeEnd(valNode) : sepOffset + 1;
+					lastNode = valNode ?? undefined;
 				} else {
 					pairs.push(
 						new YamlPair({
@@ -1003,6 +1011,7 @@ export function buildPairs(
 						}),
 					);
 					lastEnd = sepOffset + 1;
+					lastNode = undefined;
 				}
 			} else {
 				// Key with no value
@@ -1015,6 +1024,7 @@ export function buildPairs(
 					}),
 				);
 				lastEnd = keyNode ? nodeEnd(keyNode) : lastEnd;
+				if (keyNode) lastNode = keyNode;
 			}
 			continue;
 		}
@@ -1035,7 +1045,8 @@ export function buildPairs(
 			first !== undefined &&
 			lastEnd >= 0 &&
 			first.offset >= 0 &&
-			hasBlankLineAbove(text, first.offset)
+			hasBlankLineAbove(text, first.offset) &&
+			!blankAboveIsKeepChompContent(text, first.offset, lastNode)
 			? `\n${joined}`
 			: joined;
 	};
@@ -1598,6 +1609,9 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 	let pending: PendingSeqComment[] = [];
 	let pendingSpace = false;
 	let lastItemEnd = -1;
+	// The last pushed item node — the anchor for the keep-chomp blank-line
+	// gate (a blank inside a `|+` item's span is VALUE, not style).
+	let lastItemNode: YamlNode | undefined;
 	const joinPending = (parts: ReadonlyArray<PendingSeqComment>): string | undefined => {
 		if (parts.length === 0) return undefined;
 		let out = (parts[0] as PendingSeqComment).text;
@@ -1608,7 +1622,8 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 		return out;
 	};
 	const acceptOwnLineComment = (cText: string, cOff: number): void => {
-		const blankAbove = cOff >= 0 && hasBlankLineAbove(state.text, cOff);
+		const blankAbove =
+			cOff >= 0 && hasBlankLineAbove(state.text, cOff) && !blankAboveIsKeepChompContent(state.text, cOff, lastItemNode);
 		if (blankAbove && pending.length === 0 && lastItemEnd >= 0) {
 			pendingSpace = true;
 		}
@@ -1623,7 +1638,11 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 			if (node.length > 0 && hasBlankLineAbove(state.text, node.offset)) {
 				if (commentBefore !== undefined) {
 					commentBefore = `${commentBefore}\n`;
-				} else if (!pendingSpace && lastItemEnd >= 0) {
+				} else if (
+					!pendingSpace &&
+					lastItemEnd >= 0 &&
+					!blankAboveIsKeepChompContent(state.text, node.offset, lastItemNode)
+				) {
 					pendingSpace = true;
 				}
 			}
@@ -1638,6 +1657,7 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 			pendingSpace = false;
 			rawItems.push(decorated);
 			lastItemEnd = node.offset + node.length;
+			lastItemNode = node;
 			// Re-inject comments escaped by a nested compose — see pushNode.
 			if (state.escapedComments.length > 0) {
 				for (const ec of state.escapedComments) acceptOwnLineComment(ec.text, ec.offset);
@@ -1866,7 +1886,8 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 			first !== undefined &&
 			lastItemEnd >= 0 &&
 			first.offset >= 0 &&
-			hasBlankLineAbove(state.text, first.offset)
+			hasBlankLineAbove(state.text, first.offset) &&
+			!blankAboveIsKeepChompContent(state.text, first.offset, lastItemNode)
 			? `\n${joined}`
 			: joined;
 	};
