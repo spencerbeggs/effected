@@ -16,7 +16,7 @@ import type { ParseOptionsInput } from "../options.js";
 import type { RawDirective, RawYamlDocument } from "../raw-document.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import { composeBlockMap, composeBlockSeq, composeFlatBlockMap } from "./block.js";
-import { hasBlankLineAbove, rawCommentText } from "./comments.js";
+import { hasBlankLineAbove, hasBlankLineBelow, rawCommentText } from "./comments.js";
 import { composeFlowMap, composeFlowSeq } from "./flow.js";
 import {
 	collectMultilinePlainScalar,
@@ -233,6 +233,9 @@ export function composeDocument(
 	let contents: YamlNode | null = null;
 	let documentComment: string | undefined;
 	let documentCommentAfter: string | undefined;
+	// Offset of the LAST leading-comment line — used after the loop to embed a
+	// blank line separating the header block from the first content node.
+	let lastLeadingCommentOffset = -1;
 	// A comment after the `...` marker is the TRAILING block even when the
 	// document is empty (`---\n...\n# tail\n` has no contents to flip the
 	// header/trailer split below).
@@ -313,6 +316,7 @@ export function composeDocument(
 				documentComment = `${documentComment}\n`;
 			}
 			documentComment = documentComment === undefined ? text : `${documentComment}\n${text}`;
+			lastLeadingCommentOffset = child.offset;
 			i++;
 			continue;
 		}
@@ -629,6 +633,14 @@ export function composeDocument(
 			if (after === "\t") hasDocStartTab = true;
 			break;
 		}
+	}
+
+	// A blank line separating the leading header comment block from the first
+	// content node embeds as a trailing empty line in the stored comment —
+	// the same model the block composer applies to a pair's `commentBefore`
+	// run (a `.github/dependabot.yml`-style header roundtrips its blank).
+	if (documentComment !== undefined && contents !== null && hasBlankLineBelow(state.text, lastLeadingCommentOffset)) {
+		documentComment = `${documentComment}\n`;
 	}
 
 	// Escaped comments that reached document scope have no carrier on the

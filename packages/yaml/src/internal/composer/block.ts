@@ -1024,7 +1024,21 @@ export function buildPairs(
 	// the mapping's content column become the collection's trailing comment;
 	// SHALLOWER ones belong to an outer scope and escape (reference parity —
 	// a column-0 `# tail` after a nested block documents the next outer key).
+	// A blank line between the last pair and the terminal run embeds as a
+	// LEADING empty line in the joined string — the mirror of the
+	// trailing-blank embed on a `commentBefore` run.
 	if (pending.length === 0) return undefined;
+	const withLeadingBlank = (parts: ReadonlyArray<PendingComment>): string | undefined => {
+		const joined = joinPending(parts);
+		const first = parts[0];
+		return joined !== undefined &&
+			first !== undefined &&
+			lastEnd >= 0 &&
+			first.offset >= 0 &&
+			hasBlankLineAbove(text, first.offset)
+			? `\n${joined}`
+			: joined;
+	};
 	if (escaped !== undefined && contentColumn > 0) {
 		const kept: PendingComment[] = [];
 		for (const part of pending) {
@@ -1034,9 +1048,9 @@ export function buildPairs(
 				kept.push(part);
 			}
 		}
-		return joinPending(kept);
+		return withLeadingBlank(kept);
 	}
-	return joinPending(pending);
+	return withLeadingBlank(pending);
 }
 
 interface ConsumedValue {
@@ -1842,7 +1856,20 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 
 	// Own-line comments after the last item: terminal comments at (or beyond)
 	// the sequence's indent become its trailing comment; shallower ones
-	// escape to the outer scope (reference parity).
+	// escape to the outer scope (reference parity). A blank line between the
+	// last item and the terminal run embeds as a LEADING empty line —
+	// mirroring buildPairs.
+	const withLeadingBlank = (parts: ReadonlyArray<PendingSeqComment>): string | undefined => {
+		const joined = joinPending(parts);
+		const first = parts[0];
+		return joined !== undefined &&
+			first !== undefined &&
+			lastItemEnd >= 0 &&
+			first.offset >= 0 &&
+			hasBlankLineAbove(state.text, first.offset)
+			? `\n${joined}`
+			: joined;
+	};
 	let seqTrailing: string | undefined;
 	if (pending.length > 0) {
 		if (seqIndent > 0) {
@@ -1854,9 +1881,9 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 					kept.push(part);
 				}
 			}
-			seqTrailing = joinPending(kept);
+			seqTrailing = withLeadingBlank(kept);
 		} else {
-			seqTrailing = joinPending(pending);
+			seqTrailing = withLeadingBlank(pending);
 		}
 	}
 	const seqComment =

@@ -445,6 +445,70 @@ describe("comment fidelity (#127)", () => {
 		);
 	});
 
+	describe("blank-line fidelity — header block and terminal comment run (systems item 10)", () => {
+		// Both repro shapes are CAPTURE-side embeds: a blank line adjacent to a
+		// comment run stores as an empty line in the joined comment string
+		// (trailing for the document header, leading for a collection's
+		// terminal run), so emission needs no new state.
+
+		it("keeps the blank line between a document-header comment block and the first key (fixed point)", () => {
+			for (const text of ["# hdr\n# hdr2\n\nversion: 2\n", "# hdr\n\nversion: 2\n"]) {
+				assert.strictEqual(YamlFormat.formatToString(text), text);
+			}
+		});
+
+		it("keeps the blank line between a doc-header block and a `---` marker (fixed point)", () => {
+			const text = "# hdr\n\n---\nversion: 2\n";
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it("roundtrips a dependabot-style header byte-intact (fixed point)", () => {
+			const fixture = readFileSync(new URL("./fixtures/comment-fidelity/dependabot.yaml", import.meta.url), "utf8");
+			assert.strictEqual(YamlFormat.formatToString(fixture, undefined, { indentSequences: true }), fixture);
+		});
+
+		it.effect("captures the header's trailing blank as a trailing empty line in doc.comment", () =>
+			Effect.gen(function* () {
+				const doc = yield* YamlDocument.parse("# hdr\n\nversion: 2\n");
+				assert.strictEqual(doc.comment, " hdr\n");
+			}),
+		);
+
+		it("keeps the blank line before a nested mapping's terminal comment run (claude.yml reduction, fixed point)", () => {
+			for (const text of [
+				"m:\n  a: 1\n\n  # c\n",
+				"m:\n  a: |\n    text\n\n  # c\n",
+				"m:\n  a: |\n    text\n\n  # c1\n  b: 2\n\n  # c2\n  # c3\n\n  # c4\n",
+			]) {
+				assert.strictEqual(YamlFormat.formatToString(text), text);
+			}
+		});
+
+		it("keeps the blank line before a block sequence's terminal comment run (fixed point)", () => {
+			const text = "s:\n  - 1\n\n  # c\n";
+			assert.strictEqual(YamlFormat.formatToString(text, undefined, { indentSequences: true }), text);
+		});
+
+		it("controls: pre-existing blank-line shapes stay untouched", () => {
+			for (const text of [
+				"a: 1\n\nb: 2\n",
+				"a: 1\n\n# c\nb: 2\n",
+				"a: |\n  text\n\n# c\nb: 2\n",
+				"# hdr\nversion: 2\n", // no blank — none invented
+				"m:\n  a: 1\n  # c\n", // terminal run without a blank — none invented
+				"m:\n  a: 1\n\n# tail\nnext: 2\n", // escaped-to-outer comment keeps its blank
+			]) {
+				assert.strictEqual(YamlFormat.formatToString(text), text);
+			}
+		});
+
+		it("accepted normalizations hold: blank runs collapse to one, whitespace-only lines strip", () => {
+			assert.strictEqual(YamlFormat.formatToString("a: 1\n\n\nb: 2\n"), "a: 1\n\nb: 2\n");
+			assert.strictEqual(YamlFormat.formatToString("# hdr\n\n\nversion: 2\n"), "# hdr\n\nversion: 2\n");
+			assert.strictEqual(YamlFormat.formatToString("a: 1\n   \nb: 2\n"), "a: 1\n\nb: 2\n");
+		});
+	});
+
 	describe("visitor", () => {
 		it.effect("Comment events discriminate leading from trailing placement", () =>
 			Effect.gen(function* () {

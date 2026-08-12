@@ -115,6 +115,21 @@ export function hasBlankLineAbove(text: string, offset: number): boolean {
 }
 
 /**
+ * True when the line immediately below the line containing `offset` is blank
+ * (empty or horizontal whitespace only) AND is itself followed by another
+ * line. Purely local, the mirror of {@link hasBlankLineAbove} — used to embed
+ * a blank line AFTER a comment run as a trailing empty line in the stored
+ * comment string.
+ */
+export function hasBlankLineBelow(text: string, offset: number): boolean {
+	const lineEnd = text.indexOf("\n", Math.max(0, offset));
+	if (lineEnd < 0) return false;
+	const nextEnd = text.indexOf("\n", lineEnd + 1);
+	if (nextEnd < 0) return false;
+	return text.slice(lineEnd + 1, nextEnd).trim() === "";
+}
+
+/**
  * The stored text of a comment token: the RAW post-`#` slice, reference
  * parity with the `yaml` npm package — `# section` stores `" section"`,
  * `#no-space` stores `"no-space"`, `#   aligned` keeps its alignment.
