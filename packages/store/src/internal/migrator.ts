@@ -150,10 +150,11 @@ export const rollbackTo = (
 			WHERE id > ${toId}
 			ORDER BY id DESC
 		`.pipe(Effect.mapError(ledgerFailure));
+		const migrationsById = new Map(migrations.map((migration) => [migration.id, migration]));
 
 		const rolledBack: Array<MigratorRecord> = [];
 		for (const row of rows) {
-			const migration = migrations.find((candidate) => candidate.id === row.id);
+			const migration = migrationsById.get(row.id);
 			yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
