@@ -33,8 +33,12 @@ export class YamlDirective extends Schema.Class<YamlDirective>("YamlDirective")(
 /**
  * A parsed YAML document: the root {@link (YamlNode:type)} (or `null` when
  * empty), recovered `errors` and `warnings` as {@link YamlDiagnostic} data,
- * the {@link YamlDirective} list, an optional document-level comment, and the
- * `---`/`...` framing flags (absent flags read as `false`).
+ * the {@link YamlDirective} list, the optional document-level comments
+ * (`comment` is the LEADING header block, `commentAfter` the trailing block
+ * after the content or the `...` marker — the reference `yaml` package calls
+ * these `commentBefore`/`comment`; the naming here keeps the pre-existing
+ * `comment`-as-header field stable), and the `---`/`...` framing flags
+ * (absent flags read as `false`).
  *
  * Construct via `YamlDocument.parse` / `parseAll`; `YamlDocument.make` is for
  * synthetic documents.
@@ -47,6 +51,7 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	warnings: Schema.Array(YamlDiagnostic),
 	directives: Schema.Array(YamlDirective),
 	comment: Schema.optionalKey(Schema.String),
+	commentAfter: Schema.optionalKey(Schema.String),
 	hasDocumentStart: Schema.optionalKey(Schema.Boolean),
 	hasDocumentEnd: Schema.optionalKey(Schema.Boolean),
 	hasDocumentStartTab: Schema.optionalKey(Schema.Boolean),
@@ -214,6 +219,19 @@ const toStringifyInput = (options?: YamlStringifyOptions) =>
 				forceDefaultStyles: options.forceDefaultStyles,
 			};
 
+/**
+ * Materialize a raw engine document into the public class — including
+ * documents whose diagnostics are fatal, which `YamlDocument.parse` refuses.
+ * The lint layer builds its context through this so linting runs on
+ * malformed input; it is NOT a second public parse entry point (not
+ * re-exported from the package index).
+ *
+ * @internal
+ */
+export function documentFromRaw(raw: RawYamlDocument, text: string): YamlDocument {
+	return fromRawDocument(raw, text);
+}
+
 /** Materialize a raw engine document into the public class. */
 function fromRawDocument(raw: RawYamlDocument, text: string): YamlDocument {
 	return new YamlDocument({
@@ -222,6 +240,7 @@ function fromRawDocument(raw: RawYamlDocument, text: string): YamlDocument {
 		warnings: raw.warnings.map((w) => YamlDiagnostic.fromRaw(w, text)),
 		directives: raw.directives.map((d) => new YamlDirective({ name: d.name, parameters: d.parameters })),
 		...(raw.comment !== undefined ? { comment: raw.comment } : {}),
+		...(raw.commentAfter !== undefined ? { commentAfter: raw.commentAfter } : {}),
 		hasDocumentStart: raw.hasDocumentStart,
 		hasDocumentEnd: raw.hasDocumentEnd,
 		hasDocumentStartTab: raw.hasDocumentStartTab,
@@ -236,6 +255,7 @@ function toRawDocument(doc: YamlDocument): RawYamlDocument {
 		warnings: [],
 		directives: doc.directives,
 		...(doc.comment !== undefined ? { comment: doc.comment } : {}),
+		...(doc.commentAfter !== undefined ? { commentAfter: doc.commentAfter } : {}),
 		hasDocumentStart: doc.hasDocumentStart ?? false,
 		hasDocumentEnd: doc.hasDocumentEnd ?? false,
 		hasDocumentStartTab: doc.hasDocumentStartTab ?? false,

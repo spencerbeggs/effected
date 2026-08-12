@@ -37,6 +37,9 @@ export type { YamlPath, YamlSegment } from "./YamlEdit.js";
 export { YamlEdit, YamlRange } from "./YamlEdit.js";
 export type { YamlRangeLike } from "./YamlFormat.js";
 export { YamlFormat, YamlFormattingOptions, YamlModificationError } from "./YamlFormat.js";
+export { YamlLint, YamlLintConfig, YamlLintRuleSetting } from "./YamlLint.js";
+export type { LintContext, LintLine, YamlRule } from "./YamlLintRule.js";
+export { YamlLintDiagnostic, YamlLintSeverity } from "./YamlLintRule.js";
 export type { YamlAliasEncoded, YamlMapEncoded, YamlScalarEncoded, YamlSeqEncoded } from "./YamlNode.js";
 export {
 	CollectionStyle,
@@ -50,4 +53,5 @@ export {
 	YamlScalar,
 	YamlSeq,
 } from "./YamlNode.js";
+export { YamlToken, YamlTokenKind, YamlTokens } from "./YamlToken.js";
 export { YamlVisitor, YamlVisitorEvent } from "./YamlVisitor.js";

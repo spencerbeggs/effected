@@ -9,6 +9,7 @@ import type { CstNode } from "../cst.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import type { SemanticItem } from "./block.js";
 import { buildPairs, checkDuplicateKeys, checkMultilineImplicitKeys } from "./block.js";
+import { joinComments, rawCommentText, withCommentFields } from "./comments.js";
 import {
 	collectMultilineKey,
 	collectMultilinePlainScalar,
@@ -184,10 +185,16 @@ function composeFlowMapInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 	);
 
 	const items = flattenFlowChildren(content, state);
-	buildPairs(items, pairs, state.text);
+	const trailingComment = buildPairs(items, pairs, state.text);
 
 	if (state.options.uniqueKeys) checkDuplicateKeys(pairs, state);
 
+	const mapComment =
+		meta?.comment !== undefined
+			? trailingComment !== undefined
+				? `${meta.comment}\n${trailingComment}`
+				: meta.comment
+			: trailingComment;
 	const map = new YamlMap({
 		items: pairs,
 		style: "flow" as CollectionStyle,
@@ -195,7 +202,7 @@ function composeFlowMapInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 		length: cst.length,
 		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
 		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
-		...(meta?.comment !== undefined ? { comment: meta.comment } : {}),
+		...(mapComment !== undefined ? { comment: mapComment } : {}),
 	});
 
 	if (meta?.anchor) registerAnchor(map, meta.anchor, state, cst.offset);
@@ -262,7 +269,8 @@ export function flattenFlowChildren(children: readonly CstNode[], state: Compose
 		if (child.type === "comment") {
 			items.push({
 				kind: "comment",
-				comment: child.source.startsWith("#") ? child.source.slice(1).trim() : child.source,
+				comment: rawCommentText(child.source),
+				offset: child.offset,
 			});
 			continue;
 		}
@@ -489,6 +497,10 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 	}
 	if (current.length > 0) segments.push(current);
 
+	// Own-line comments left over after the last item become the sequence's
+	// trailing comment (mirroring buildPairs' leftover contract).
+	let seqTrailing: string | undefined;
+
 	for (const segment of segments) {
 		// Check if this segment contains a value separator (implicit mapping)
 		const hasValueSep = segment.some((c) => c.type === "whitespace" && c.source === ":");
@@ -499,7 +511,7 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 			const content = segment.filter((c) => !(c.type === "whitespace" && c.source.trim() === ""));
 			const semItems = flattenFlowChildren(content, state);
 			const pairs: YamlPair[] = [];
-			buildPairs(semItems, pairs, state.text);
+			const segTrailing = buildPairs(semItems, pairs, state.text);
 			// Only check multiline keys for implicit mappings (no `?` marker).
 			// Explicit keys (with `?`) are allowed to span multiple lines.
 			const hasExplicitKey = segment.some((c) => c.type === "whitespace" && c.source === "?");
@@ -513,22 +525,52 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 					style: "flow" as CollectionStyle,
 					offset: firstPair.key.offset,
 					length: 0,
+					...(segTrailing !== undefined ? { comment: segTrailing } : {}),
 				});
 				items.push(map);
+			} else if (segTrailing !== undefined) {
+				seqTrailing = joinComments(seqTrailing, segTrailing);
 			}
 		} else {
-			// Process as plain sequence items
+			// Process as plain sequence items. Comments before an item in the
+			// segment lead it (`commentBefore`); comments after the segment's
+			// item trail it (`comment`).
 			// Keep newlines so flattenFlowChildren can merge multi-line plain scalars
 			const content = segment.filter((c) => !(c.type === "whitespace" && c.source.trim() === ""));
 			const semItems = flattenFlowChildren(content, state);
+			let pendingBefore: string | undefined;
+			let pushedIdx = -1;
 			for (const si of semItems) {
-				if (si.kind === "node" && si.node) {
-					items.push(si.node);
+				if (si.kind === "comment") {
+					const cText = si.comment ?? "";
+					if (pushedIdx >= 0) {
+						const prev = items[pushedIdx];
+						if (prev) items[pushedIdx] = withCommentFields(prev, { comment: cText });
+					} else {
+						pendingBefore = joinComments(pendingBefore, cText);
+					}
+					continue;
 				}
+				if (si.kind === "node" && si.node) {
+					const node =
+						pendingBefore !== undefined ? withCommentFields(si.node, { commentBefore: pendingBefore }) : si.node;
+					pendingBefore = undefined;
+					items.push(node);
+					pushedIdx = items.length - 1;
+				}
+			}
+			if (pendingBefore !== undefined) {
+				seqTrailing = joinComments(seqTrailing, pendingBefore);
 			}
 		}
 	}
 
+	const seqComment =
+		meta?.comment !== undefined
+			? seqTrailing !== undefined
+				? `${meta.comment}\n${seqTrailing}`
+				: meta.comment
+			: seqTrailing;
 	const seq = new YamlSeq({
 		items,
 		style: "flow" as CollectionStyle,
@@ -536,7 +578,7 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 		length: cst.length,
 		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
 		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
-		...(meta?.comment !== undefined ? { comment: meta.comment } : {}),
+		...(seqComment !== undefined ? { comment: seqComment } : {}),
 	});
 
 	if (meta?.anchor) registerAnchor(seq, meta.anchor, state, cst.offset);

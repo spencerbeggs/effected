@@ -16,6 +16,7 @@ import type { ParseOptionsInput } from "../options.js";
 import type { RawDirective, RawYamlDocument } from "../raw-document.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import { composeBlockMap, composeBlockSeq, composeFlatBlockMap } from "./block.js";
+import { hasBlankLineAbove, rawCommentText } from "./comments.js";
 import { composeFlowMap, composeFlowSeq } from "./flow.js";
 import {
 	collectMultilinePlainScalar,
@@ -28,7 +29,7 @@ import {
 	resolveScalar,
 } from "./scalars.js";
 import type { ComposerState, FlowComposers, NodeMeta } from "./state.js";
-import { clearMeta, createState, hasMeta, sameLine } from "./state.js";
+import { clearMeta, commentProps, createState, hasMeta, sameLine } from "./state.js";
 import { parseDirective, validateTagHandlesInDocument } from "./tags.js";
 
 /** The flow-composer dispatch wired into every state this module creates. */
@@ -231,6 +232,7 @@ export function composeDocument(
 	const directives: RawDirective[] = [];
 	let contents: YamlNode | null = null;
 	let documentComment: string | undefined;
+	let documentCommentAfter: string | undefined;
 
 	// Whether this document has a `---` marker — used to determine if
 	// metadata (tag/anchor) applies to the root mapping or the first key.
@@ -297,9 +299,27 @@ export function composeDocument(
 			continue;
 		}
 
-		// Comments (before content)
+		// Comments (before content) — consecutive leading comment lines join
+		// with `\n` so a multi-line document header survives intact; a blank
+		// line within the run embeds as an empty line (reference parity).
 		if (child.type === "comment" && contents === null) {
-			documentComment = child.source.startsWith("#") ? child.source.slice(1).trim() : child.source;
+			const text = rawCommentText(child.source);
+			if (documentComment !== undefined && hasBlankLineAbove(state.text, child.offset)) {
+				documentComment = `${documentComment}\n`;
+			}
+			documentComment = documentComment === undefined ? text : `${documentComment}\n${text}`;
+			i++;
+			continue;
+		}
+		// Comments after content (including after a `...` marker) — the
+		// document's TRAILING comment block (`commentAfter`), reference parity
+		// with the yaml npm package's doc.comment.
+		if (child.type === "comment") {
+			const text = rawCommentText(child.source);
+			if (documentCommentAfter !== undefined && hasBlankLineAbove(state.text, child.offset)) {
+				documentCommentAfter = `${documentCommentAfter}\n`;
+			}
+			documentCommentAfter = documentCommentAfter === undefined ? text : `${documentCommentAfter}\n${text}`;
 			i++;
 			continue;
 		}
@@ -606,6 +626,11 @@ export function composeDocument(
 		}
 	}
 
+	// Escaped comments that reached document scope have no carrier on the
+	// document model (its one `comment` field is the LEADING header) — drop
+	// them and clear the queue so nothing leaks into a following document.
+	state.escapedComments.length = 0;
+
 	return {
 		contents,
 		errors: [...state.errors],
@@ -615,6 +640,7 @@ export function composeDocument(
 		hasDocumentEnd: hasDocEnd,
 		hasDocumentStartTab: hasDocStartTab,
 		...(documentComment !== undefined ? { comment: documentComment } : {}),
+		...(documentCommentAfter !== undefined ? { commentAfter: documentCommentAfter } : {}),
 	};
 }
 
@@ -868,7 +894,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 			style: node.style,
 			...(node.tag !== undefined ? { tag: node.tag } : {}),
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
-			...(node.comment !== undefined ? { comment: node.comment } : {}),
+			...commentProps(node),
 			...(node.chomp !== undefined ? { chomp: node.chomp } : {}),
 			...(node.raw !== undefined ? { raw: node.raw } : {}),
 			sourceMultiline: true,
@@ -882,7 +908,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 				new YamlPair({
 					key: decorateSourceMultiline(pair.key, text) ?? pair.key,
 					value: pair.value === null ? null : decorateSourceMultiline(pair.value, text),
-					...(pair.comment !== undefined ? { comment: pair.comment } : {}),
+					...commentProps(pair),
 				}),
 		);
 		const multiline = isSourceMultiline(text, node.offset, node.length);
@@ -891,7 +917,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 			style: node.style,
 			...(node.tag !== undefined ? { tag: node.tag } : {}),
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
-			...(node.comment !== undefined ? { comment: node.comment } : {}),
+			...commentProps(node),
 			...(multiline ? { sourceMultiline: true } : {}),
 			offset: node.offset,
 			length: node.length,
@@ -905,7 +931,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 			style: node.style,
 			...(node.tag !== undefined ? { tag: node.tag } : {}),
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
-			...(node.comment !== undefined ? { comment: node.comment } : {}),
+			...commentProps(node),
 			...(multiline ? { sourceMultiline: true } : {}),
 			offset: node.offset,
 			length: node.length,
@@ -923,6 +949,7 @@ function decorateDocumentSourceMultiline(doc: RawYamlDocument, text: string): Ra
 		warnings: doc.warnings,
 		directives: doc.directives,
 		...(doc.comment !== undefined ? { comment: doc.comment } : {}),
+		...(doc.commentAfter !== undefined ? { commentAfter: doc.commentAfter } : {}),
 		hasDocumentStart: doc.hasDocumentStart,
 		hasDocumentEnd: doc.hasDocumentEnd,
 		hasDocumentStartTab: doc.hasDocumentStartTab,

@@ -157,7 +157,7 @@ function formatDocument(text: string, options: YamlFormattingOptions | undefined
 		errors: doc.errors,
 		warnings: doc.warnings,
 		directives: doc.directives,
-		...(preserveComments ? definedFields({ comment: doc.comment }) : {}),
+		...(preserveComments ? definedFields({ comment: doc.comment, commentAfter: doc.commentAfter }) : {}),
 		hasDocumentStart: doc.hasDocumentStart,
 		hasDocumentEnd: doc.hasDocumentEnd,
 		hasDocumentStartTab: doc.hasDocumentStartTab,
@@ -205,7 +205,11 @@ function modifyNode(node: YamlNode, path: YamlPath, depth: number, value: unknow
 				newItems[pairIndex] = YamlPair.make({
 					key: oldPair.key,
 					value: newValueNode,
-					...definedFields({ comment: oldPair.comment }),
+					...definedFields({
+						commentBefore: oldPair.commentBefore,
+						comment: oldPair.comment,
+						spaceBefore: oldPair.spaceBefore,
+					}),
 				});
 				return rebuildMap(node, newItems);
 			}
@@ -234,7 +238,11 @@ function modifyNode(node: YamlNode, path: YamlPath, depth: number, value: unknow
 		newItems[pairIndex] = YamlPair.make({
 			key: pair.key,
 			value: newValue,
-			...definedFields({ comment: pair.comment }),
+			...definedFields({
+				commentBefore: pair.commentBefore,
+				comment: pair.comment,
+				spaceBefore: pair.spaceBefore,
+			}),
 		});
 		return rebuildMap(node, newItems);
 	}
@@ -282,7 +290,9 @@ function rebuildMap(node: YamlMap, items: ReadonlyArray<YamlPair>): YamlMap {
 		...definedFields({
 			tag: node.tag,
 			anchor: node.anchor,
+			commentBefore: node.commentBefore,
 			comment: node.comment,
+			spaceBefore: node.spaceBefore,
 			sourceMultiline: node.sourceMultiline,
 		}),
 		offset: node.offset,
@@ -297,7 +307,9 @@ function rebuildSeq(node: YamlSeq, items: ReadonlyArray<YamlNode>): YamlSeq {
 		...definedFields({
 			tag: node.tag,
 			anchor: node.anchor,
+			commentBefore: node.commentBefore,
 			comment: node.comment,
+			spaceBefore: node.spaceBefore,
 			sourceMultiline: node.sourceMultiline,
 		}),
 		offset: node.offset,

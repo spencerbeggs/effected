@@ -1,0 +1,73 @@
+// Batch-7 (#129): indentation — built last, after the harness proved itself
+// on the twelve mechanical rules. Style only: structural legality is
+// parse-validity's business.
+
+import { assert } from "@effect/vitest";
+import { YamlLint } from "../../src/index.js";
+import { testRule } from "./harness.js";
+
+const found = YamlLint.builtins.find((r) => r.id === "indentation");
+assert.isDefined(found);
+if (found === undefined) throw new Error("indentation missing from builtins");
+
+testRule(found, [
+	{
+		name: "a consistently 2-space document passes",
+		input: "a:\n  b:\n    c: 1\nd:\n  e: 2\n",
+		expected: [],
+	},
+	{
+		name: "a consistently 4-space document passes under consistent",
+		input: "a:\n    b:\n        c: 1\n",
+		expected: [],
+	},
+	{
+		name: "a drifting level is flagged against the first observed unit",
+		input: "a:\n  b: 1\nc:\n    d: 1\n",
+		expected: [{ line: 3, character: 0, messageIncludes: "expected 2" }],
+	},
+	{
+		name: "spaces: 4 pins the unit explicitly",
+		input: "a:\n  b: 1\n",
+		setting: { spaces: 4 },
+		expected: [{ line: 1, character: 0, messageIncludes: "expected 4" }],
+	},
+	{
+		name: "sequence indent style is consistent: the first occurrence decides",
+		input: "a:\n  - x\nb:\n- y\n",
+		expected: [{ line: 3, character: 0, messageIncludes: "should be indented" }],
+	},
+	{
+		name: "indentSequences: true demands indented sequences",
+		input: "a:\n- x\n",
+		setting: { indentSequences: true },
+		expected: [{ line: 1, character: 0, messageIncludes: "should be indented" }],
+	},
+	{
+		name: "indentSequences: false forbids indented sequences",
+		input: "a:\n  - x\n",
+		setting: { indentSequences: false },
+		expected: [{ line: 1, character: 0, messageIncludes: "should not be indented" }],
+	},
+	{
+		// Content lines stay ABOVE the detected block-scalar indent — a
+		// shallower line would terminate the scalar and reject the document,
+		// making the fixture vacuous.
+		name: "block-scalar content lines are the value's business",
+		input: "a: |\n  deep\n   deeper\nb: 1\n",
+		expected: [],
+	},
+	{
+		// The closer sits at column 2, NOT column 0 — this parser rejects a
+		// col-0 flow closer (pre-existing strictness), and a fixture on a
+		// rejected shape asserts nothing.
+		name: "flow collection continuation lines are flow syntax, not block indent",
+		input: "a: {\n      x: 1,\n      y: 2\n  }\nb: 1\n",
+		expected: [],
+	},
+	{
+		name: "comment lines are not block structure",
+		input: "a:\n  b: 1\n      # deep comment\nc: 2\n",
+		expected: [],
+	},
+]);

@@ -1,0 +1,61 @@
+// key-duplicates (#129): duplicate mapping keys, reported at every
+// occurrence AFTER the first. Detection walks the composed AST with the same
+// key identity the engine's own duplicate check uses (type AND value — an
+// `!!int 1` never collides with the string `"1"`), and runs on the lint
+// context's uniqueKeys-disabled compose so the policy is fully owned here.
+// No fix: dropping a pair changes what the document means.
+
+import { Schema } from "effect";
+import type { LintContext, YamlRule } from "../../YamlLintRule.js";
+import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import type { YamlNode } from "../../YamlNode.js";
+import { YamlMap, YamlScalar, YamlSeq } from "../../YamlNode.js";
+import { keyIdentity } from "../composer/block.js";
+
+/** Options for `key-duplicates` (severity only — duplicates are duplicates). */
+export const keyDuplicatesOptions = Schema.Struct({
+	severity: Schema.optionalKey(YamlLintSeverity),
+});
+
+const walk = (node: YamlNode | null, text: string, out: Array<YamlLintDiagnostic>, ctx: LintContext): void => {
+	if (node === null) return;
+	if (node instanceof YamlMap) {
+		const seen = new Set<string>();
+		for (const pair of node.items) {
+			if (pair.key instanceof YamlScalar) {
+				const id = keyIdentity(pair.key, text);
+				if (seen.has(id)) {
+					const line = ctx.lines.filter((l) => l.offset <= pair.key.offset).at(-1);
+					out.push(
+						new YamlLintDiagnostic({
+							rule: "key-duplicates",
+							severity: "error",
+							message: `Duplicate key: ${String(pair.key.value)}`,
+							offset: pair.key.offset,
+							length: pair.key.length,
+							line: line?.number ?? 0,
+							character: line === undefined ? 0 : pair.key.offset - line.offset,
+						}),
+					);
+				}
+				seen.add(id);
+			}
+			walk(pair.key, text, out, ctx);
+			walk(pair.value, text, out, ctx);
+		}
+		return;
+	}
+	if (node instanceof YamlSeq) {
+		for (const item of node.items) walk(item, text, out, ctx);
+	}
+};
+
+/** Duplicate mapping keys anywhere in the document. */
+export const keyDuplicates: YamlRule = {
+	id: "key-duplicates",
+	check: (ctx) => {
+		const out: Array<YamlLintDiagnostic> = [];
+		walk(ctx.document.contents, ctx.text, out, ctx);
+		return out;
+	},
+};

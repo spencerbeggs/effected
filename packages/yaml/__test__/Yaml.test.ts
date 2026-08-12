@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
 import { Yaml, YamlParseError, YamlParseOptions, YamlStringifyError, YamlStringifyOptions } from "../src/index.js";
@@ -252,6 +253,120 @@ describe("Yaml", () => {
 				assert.strictEqual(result.failure.diagnostics[0]?.code, "NestingDepthExceeded");
 			}),
 		);
+
+		describe("explicit-key spill past the 1024-char implicit-key limit (#323)", () => {
+			// YAML 1.2 §8.1.3: the `:` of an implicit block-mapping key must sit at
+			// most 1024 characters after the key's start. A RENDERED key longer than
+			// 1024 must spill to explicit-key form (`? key` / `: value`) or strict
+			// parsers reject the output. The expected bytes are oracle-authored
+			// fixtures (yaml@2.9.0, generated once — see fixtures/explicit-key/
+			// ORACLE.md); the reference package is not a dependency of this run.
+			const k1 = `pkg-a@1.0.0(${"a".repeat(1100)})`;
+			const k2 = `pkg-b@2.0.0(${"b".repeat(1100)})`;
+			const fixture = (name: string): string =>
+				readFileSync(new URL(`./fixtures/explicit-key/${name}.yaml`, import.meta.url), "utf8");
+
+			// Emit-side twins of PR #322's parse-side compact-value regression
+			// cases: every compact form the parser learned to read is a form the
+			// emitter is pinned against.
+			const cases: ReadonlyArray<[name: string, value: unknown]> = [
+				["scalar-value", { [k1]: "value-one" }],
+				["null-value", { [k1]: null }],
+				["seq-value", { [k1]: ["first", "second"] }],
+				["map-value", { [k1]: { dependencies: { "dep-one": "1.2.3", "dep-two": "4.5.6" } } }],
+				["single-pair-map-value", { [k1]: { x: 1 } }],
+				["two-entries", { [k1]: { x: 1 }, [k2]: { y: 2 } }],
+				[
+					"pnpm-snapshots",
+					{
+						snapshots: {
+							[k1]: { dependencies: { "dep-one": "1.2.3", "dep-two": "4.5.6" } },
+							[k2]: { dependencies: { "dep-three": "7.8.9" } },
+						},
+					},
+				],
+				["boundary-1024-implicit", { ["k".repeat(1024)]: 1 }],
+				["boundary-1025-explicit", { ["k".repeat(1025)]: 1 }],
+			];
+
+			for (const [name, value] of cases) {
+				it.effect(`emits the oracle shape and roundtrips: ${name}`, () =>
+					Effect.gen(function* () {
+						const text = yield* Yaml.stringify(value);
+						assert.strictEqual(text, fixture(name));
+						// The spilled output must parse back through OUR parser to the
+						// same value (PR #322 taught the parser these compact forms).
+						assert.deepStrictEqual(yield* Yaml.parse(text), value);
+					}),
+				);
+			}
+
+			it.effect("the threshold applies to the RENDERED key, not the source scalar", () =>
+				Effect.gen(function* () {
+					// A leading space forces single-quoting under the default
+					// quoteStyle, so a 1023-char source key renders as 1025 chars
+					// (`'` + 1023 + `'`) and must spill…
+					const quoted1025 = ` ${"a".repeat(1022)}`;
+					const spilled = yield* Yaml.stringify({ [quoted1025]: 1 });
+					assert.isTrue(spilled.startsWith("? '"), "1025-char rendered key must spill");
+					assert.deepStrictEqual(yield* Yaml.parse(spilled), { [quoted1025]: 1 });
+					// …while a 1022-char source key renders as exactly 1024 chars and
+					// stays implicit.
+					const quoted1024 = ` ${"a".repeat(1021)}`;
+					const implicit = yield* Yaml.stringify({ [quoted1024]: 1 });
+					assert.isFalse(implicit.startsWith("? "), "1024-char rendered key stays implicit");
+					assert.deepStrictEqual(yield* Yaml.parse(implicit), { [quoted1024]: 1 });
+				}),
+			);
+
+			it.effect("flow context never spills — only block mappings have implicit-key limits", () =>
+				Effect.gen(function* () {
+					const long = "f".repeat(1100);
+					const text = yield* Yaml.stringify({ [long]: 1 }, { defaultCollectionStyle: "flow" });
+					assert.notInclude(text, "? ");
+					assert.isTrue(text.startsWith("{"));
+					assert.deepStrictEqual(yield* Yaml.parse(text), { [long]: 1 });
+				}),
+			);
+
+			it.effect("compact continuation alignment is structural — indent: 4 must still roundtrip", () =>
+				Effect.gen(function* () {
+					// Compact continuation lines align with the first item after
+					// `? `/`: `, which always sits two columns in — padding them with
+					// ctx.indent instead silently re-nests the value on reparse once
+					// indent !== 2. (Deliberate divergence from yaml@2.9.0, whose
+					// indent-4 compact output fails its own strict reparse.)
+					const seqVal = { [k1]: ["first", "second"] };
+					const seqText = yield* Yaml.stringify(seqVal, { indent: 4 });
+					assert.include(seqText, ": - first\n  - second");
+					assert.deepStrictEqual(yield* Yaml.parse(seqText), seqVal);
+
+					// Flat two-pair map: sibling pairs must align at column 2.
+					const mapVal = { [k1]: { "dep-one": "1.2.3", "dep-two": "4.5.6" } };
+					const mapText = yield* Yaml.stringify(mapVal, { indent: 4 });
+					assert.include(mapText, ": dep-one: 1.2.3\n  dep-two: 4.5.6");
+					assert.deepStrictEqual(yield* Yaml.parse(mapText), mapVal);
+
+					// Nested map: children indent relative to the compact column.
+					const nestedVal = { [k1]: { dependencies: { x: 1 } } };
+					const nestedText = yield* Yaml.stringify(nestedVal, { indent: 4 });
+					assert.include(nestedText, ": dependencies:\n      x: 1");
+					assert.deepStrictEqual(yield* Yaml.parse(nestedText), nestedVal);
+				}),
+			);
+
+			it.effect("a long-key entry with a compact sequence value still roundtrips (#322 twin)", () =>
+				Effect.gen(function* () {
+					// The compact-sequence explicit-value branch is deliberately
+					// untouched by `indentSequences`; the spill routes into it.
+					const value = { [k1]: ["a", "b"] };
+					const spilledDefault = yield* Yaml.stringify(value);
+					const spilledIndented = yield* Yaml.stringify(value, { indentSequences: true });
+					assert.strictEqual(spilledDefault, spilledIndented);
+					assert.deepStrictEqual(yield* Yaml.parse(spilledDefault), value);
+				}),
+			);
+		});
 
 		describe("indentSequences", () => {
 			// The `indentSequences: true` expected strings are byte-for-byte the

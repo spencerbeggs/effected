@@ -78,7 +78,61 @@ const bump = Effect.gen(function* () {
 
 Passing `value === undefined` removes the target key or element; a path whose final segment is missing from a mapping appends a new pair after the last one. When you only need reformatting rather than a value change, `YamlFormat.format` / `formatToString` run the same non-mutating diff pipeline and are **pure and total** — malformed input yields no edits rather than corrupting the document.
 
-> **Folding is a value-path feature only.** `YamlStringifyOptions.lineWidth` folds long scalars on `Yaml.stringify` / `Yaml.stringifySync`, but `YamlDocument#stringify` and the `YamlFormat` helpers accept the option and deliberately ignore it. If you need column folding, render the plain value with `Yaml.stringify(doc.toValue(), options)` — at the cost of the framing and styles the document path preserves.
+Comment fidelity is not only a property of the edit path: it is also readable. `YamlScalar`, `YamlMap`, `YamlSeq` and `YamlPair` carry `commentBefore` (the own-line block above the node), `comment` (strictly the trailing comment on the node's own line) and `spaceBefore` (a blank line preceded it), and `YamlDocument` carries the header block as `comment` and the trailing one as `commentAfter`. Comment text is the raw slice after the `#`, so a rule or a report can render it exactly as written. `YamlVisitor` tags each `Comment` event with `placement: "leading" | "trailing"` for the same reason. When you want the comments gone, `YamlFormattingOptions.make({ preserveComments: false })` strips them:
+
+```ts with-api
+import { YamlFormat, YamlFormattingOptions } from "@effected/yaml";
+
+const source = 'node: "20.11.0" # LTS\n\n# why the port\nport: 3000\n';
+
+console.log(YamlFormat.formatToString(source, undefined, YamlFormattingOptions.make({ preserveComments: false })));
+// node: "20.11.0"
+// port: 3000
+```
+
+> **Folding is a value-path feature only.** `YamlStringifyOptions.lineWidth` folds long scalars on `Yaml.stringify` / `Yaml.stringifyResult`, but `YamlDocument#stringify` and the `YamlFormat` helpers accept the option and deliberately ignore it. If you need column folding, render the plain value with `Yaml.stringify(doc.toValue(), options)` — at the cost of the framing and styles the document path preserves.
+
+## Pattern: linting, autofix and a rule of your own
+
+`YamlLint` is the pure half of a yamllint-class linter: `run` returns positioned diagnostics, `fix` returns the repaired text, and `builtins` is the 14-rule catalog. There is no file discovery, no config-file resolution and no writing to disk — those belong to whatever runner you wrap it in, which is also why the whole surface is synchronous.
+
+Config is a `rules` map validated against the catalog, so the failure you care about happens early: a misspelled option key on a built-in rule, an out-of-range numeric, or an attempt to disable the always-on `parse-validity` rule all fail schema validation instead of being silently ignored. Presets are ordinary values — compose one by spreading its `rules`.
+
+```ts with-api
+import { YamlLint, YamlLintConfig, YamlLintDiagnostic } from "@effected/yaml";
+import type { YamlRule } from "@effected/yaml";
+
+// A custom rule is the same shape as a built-in: an id and a `check`.
+const headerComment: YamlRule = {
+	id: "header-comment",
+	*check(ctx) {
+		if (ctx.document.comment !== undefined) return;
+		yield YamlLintDiagnostic.make({
+			rule: "header-comment",
+			severity: "warning",
+			message: "Document has no header comment",
+			offset: 0,
+			length: 0,
+			line: 0,
+			character: 0,
+		});
+	},
+};
+
+const config = YamlLintConfig.make({
+	rules: { ...YamlLintConfig.relaxed.rules, "line-length": { max: 100 }, "header-comment": "warning" },
+});
+
+const diagnostics = YamlLint.run("port: 3000\n", [...YamlLint.builtins, headerComment], config);
+console.log(diagnostics.map((d) => d.rule));
+// [ "header-comment" ]
+```
+
+Custom rules join the run by array concatenation — there is no registry and no privileged built-in mechanism a rule of yours cannot reach. Each `check` reads a `LintContext` holding the source text, its positioned lines, one materialized token array and the composed `YamlDocument`; the engine tokenizes and composes once per run, so a rule never parses again.
+
+`YamlLint.fix` applies each diagnostic's `fix` through `YamlEdit.applyAll`, never through a reformat, which is what makes autofix comment-safe: a rule whose repair would need the document reflowed (`indentation`, for one) reports and ships no fix rather than rewriting lines it was not asked about. When two fixes overlap or start at the same offset, the earlier one wins and the later is dropped — its diagnostic still shows up in `run`. Input with a fatal parse error fails `fix` with a `YamlParseError` on the same principle.
+
+The token stream underneath is public: `YamlTokens.tokenize` is a synchronous `Result` that always succeeds, reporting lexical problems as `error`-kind tokens rather than through the failure channel, and `YamlTokens.stream` derives an Effect `Stream` from the same walk for consumers that would rather pull tokens than hold them.
 
 ## Pattern: streaming scans with the visitor
 
@@ -101,7 +155,7 @@ const usesDeprecatedAction = (source: string) =>
 	});
 ```
 
-The visitor is **infallible at the type level**: diagnostics recovered while composing — fatal or not — arrive as `Error` events inside the stream rather than failing it. That makes it the right tool for a linter that reports every problem as data:
+The visitor is **infallible at the type level**: diagnostics recovered while composing — fatal or not — arrive as `Error` events inside the stream rather than failing it. That makes it a good fit for a scan that reports every problem as data:
 
 ```ts with-api
 import { YamlVisitor, YamlVisitorEvent } from "@effected/yaml";
@@ -124,7 +178,7 @@ const lint = (source: string) =>
 
 Malformed input is a certainty when you parse files a human or a feed produced. `@effected/yaml` treats depth and reference-expansion as denial-of-service vectors and bounds them: a "billion laughs" alias bomb — a chain of anchors each aliasing the one below it — stays under a static alias count and still exhausts the heap the moment the tree is _materialized_. The parser budgets the materialization, and an exceeded budget surfaces as a `YamlParseError` carrying an `AliasCountExceeded` diagnostic, never as a defect. Tighten the budget through `YamlParseOptions.maxAliasCount` for untrusted input.
 
-Some callers cannot `await` an Effect at all — a `vitest.config.ts` read at config-load time is the motivating case. `Yaml.parseSync` runs the same engine inline and returns a `Result`, preserving the contract that malformed and adversarial input fails typed rather than throwing:
+Some callers cannot `await` an Effect at all — a `vitest.config.ts` read at config-load time is the motivating case. `Yaml.parseResult` runs the same engine inline and returns a `Result`, preserving the contract that malformed and adversarial input fails typed rather than throwing:
 
 ```ts with-api
 import { Yaml, YamlParseOptions } from "@effected/yaml";
@@ -132,7 +186,7 @@ import { Result } from "effect";
 
 // Config-time: no runtime, no await, but still no thrown parse errors.
 const raw = 'coverage: true\nreporters:\n  - default\n';
-const result = Yaml.parseSync(raw, YamlParseOptions.make({ maxAliasCount: 32 }));
+const result = Yaml.parseResult(raw, YamlParseOptions.make({ maxAliasCount: 32 }));
 
 const config = Result.isFailure(result)
 	? // `result.failure` is a YamlParseError with positioned diagnostics.
@@ -142,7 +196,7 @@ const config = Result.isFailure(result)
 	: result.success;
 ```
 
-`Yaml.stringifySync` is the encode-side counterpart, returning a `Result<string, YamlStringifyError>` for the same config-time constraint.
+`Yaml.stringifyResult` is the encode-side counterpart, returning a `Result<string, YamlStringifyError>` for the same config-time constraint.
 
 ## Failure modes worth knowing
 
@@ -182,11 +236,11 @@ const program = Effect.gen(function* () {
 // }))
 
 // Sync surfaces need no runtime — assert on the Result directly.
-const parsed = Yaml.parseSync("port: 3000");
+const parsed = Yaml.parseResult("port: 3000");
 const port = Result.isSuccess(parsed) ? parsed.success : undefined;
 ```
 
-Because parsing, editing and equality are pure over strings, most tests need no layers at all — feed a string, assert on the value, the edit array, or the boolean. Reserve `Effect.gen` for the fallible entry points where the error channel is the thing under test, and prefer `parseSync` / `stringifySync` when a `Result` assertion reads more directly than running an Effect.
+Because parsing, editing and equality are pure over strings, most tests need no layers at all — feed a string, assert on the value, the edit array, or the boolean. Reserve `Effect.gen` for the fallible entry points where the error channel is the thing under test, and prefer `parseResult` / `stringifyResult` when a `Result` assertion reads more directly than running an Effect.
 
 ## Learn more
 

@@ -86,7 +86,12 @@ export type ScalarChomp = typeof ScalarChomp.Type;
  * - `style` — the scalar presentation style in the source document.
  * - `tag` — optional explicit YAML tag (e.g. `!!str`, `!!int`).
  * - `anchor` — optional anchor name for aliasing.
- * - `comment` — optional trailing or leading comment text.
+ * - `commentBefore` — own-line comment text directly above the node
+ *   (multiple consecutive comment lines join with `\n`).
+ * - `comment` — trailing comment text on the node's line (strictly trailing;
+ *   own-line comments live on `commentBefore`).
+ * - `spaceBefore` — `true` when a blank line precedes the node (and its
+ *   `commentBefore` block, when present) in the source.
  * - `chomp` — block-scalar chomping indicator, when the scalar is a block
  *   scalar.
  * - `raw` — the raw source text, preserved when it differs from the resolved
@@ -102,7 +107,9 @@ export class YamlScalar extends Schema.TaggedClass<YamlScalar>()("YamlScalar", {
 	tag: Schema.optionalKey(Schema.String),
 	style: ScalarStyle,
 	anchor: Schema.optionalKey(Schema.String),
+	commentBefore: Schema.optionalKey(Schema.String),
 	comment: Schema.optionalKey(Schema.String),
+	spaceBefore: Schema.optionalKey(Schema.Boolean),
 	chomp: Schema.optionalKey(ScalarChomp),
 	raw: Schema.optionalKey(Schema.String),
 	sourceMultiline: Schema.optionalKey(Schema.Boolean),
@@ -241,12 +248,20 @@ export type YamlNode = YamlScalar | YamlMap | YamlSeq | YamlAlias;
  * A YAML key-value pair AST node, representing one entry within a mapping.
  * `value` is `null` when absent (e.g. `key:` with no value).
  *
+ * - `commentBefore` — own-line comment text directly above the pair's key
+ *   (multiple consecutive comment lines join with `\n`).
+ * - `comment` — trailing comment text on the pair's line (strictly trailing).
+ * - `spaceBefore` — `true` when a blank line precedes the pair (and its
+ *   `commentBefore` block, when present) in the source.
+ *
  * @public
  */
 export class YamlPair extends Schema.TaggedClass<YamlPair>()("YamlPair", {
 	key: Schema.suspend((): typeof YamlNode => YamlNode),
 	value: Schema.NullOr(Schema.suspend((): typeof YamlNode => YamlNode)),
+	commentBefore: Schema.optionalKey(Schema.String),
 	comment: Schema.optionalKey(Schema.String),
+	spaceBefore: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 /**
@@ -254,6 +269,11 @@ export class YamlPair extends Schema.TaggedClass<YamlPair>()("YamlPair", {
  * entries.
  *
  * - `style` — the presentation style: `"block"` or `"flow"`.
+ * - `commentBefore` — own-line comment text directly above the mapping.
+ * - `comment` — trailing comment text: own-line comment lines after the
+ *   mapping's last entry (still at the mapping's item indent), or a same-line
+ *   trailing comment for a flow mapping.
+ * - `spaceBefore` — `true` when a blank line precedes the mapping.
  * - `sourceMultiline` — `true` when the source span covers two or more lines;
  *   used by the canonical stringifier. Absent on synthetic nodes.
  *
@@ -264,7 +284,9 @@ export class YamlMap extends Schema.TaggedClass<YamlMap>()("YamlMap", {
 	tag: Schema.optionalKey(Schema.String),
 	anchor: Schema.optionalKey(Schema.String),
 	style: CollectionStyle,
+	commentBefore: Schema.optionalKey(Schema.String),
 	comment: Schema.optionalKey(Schema.String),
+	spaceBefore: Schema.optionalKey(Schema.Boolean),
 	sourceMultiline: Schema.optionalKey(Schema.Boolean),
 	offset: Schema.Number,
 	length: Schema.Number,
@@ -294,6 +316,12 @@ export class YamlMap extends Schema.TaggedClass<YamlMap>()("YamlMap", {
  * A YAML sequence AST node, representing an ordered list of
  * {@link (YamlNode:type)} values.
  *
+ * - `commentBefore` — own-line comment text directly above the sequence.
+ * - `comment` — trailing comment text: own-line comment lines after the
+ *   sequence's last item (still at the sequence's item indent), or a
+ *   same-line trailing comment for a flow sequence.
+ * - `spaceBefore` — `true` when a blank line precedes the sequence.
+ *
  * @public
  */
 export class YamlSeq extends Schema.TaggedClass<YamlSeq>()("YamlSeq", {
@@ -301,7 +329,9 @@ export class YamlSeq extends Schema.TaggedClass<YamlSeq>()("YamlSeq", {
 	tag: Schema.optionalKey(Schema.String),
 	anchor: Schema.optionalKey(Schema.String),
 	style: CollectionStyle,
+	commentBefore: Schema.optionalKey(Schema.String),
 	comment: Schema.optionalKey(Schema.String),
+	spaceBefore: Schema.optionalKey(Schema.Boolean),
 	sourceMultiline: Schema.optionalKey(Schema.Boolean),
 	offset: Schema.Number,
 	length: Schema.Number,
