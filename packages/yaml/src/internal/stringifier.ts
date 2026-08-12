@@ -1106,13 +1106,26 @@ function pushExplicitKeyValueLines(
 	const valIsScalar = valNode instanceof YamlScalar;
 	const isInlineQuoted = valIsScalar && (firstStripped.startsWith("'") || firstStripped.startsWith('"'));
 	if (isBlockScalarHeader || isInlineQuoted) {
+		const headerIdx = lines.length;
+		if (isBlockScalarHeader) {
+			// #341: the block-scalar HEADER line carries the scalar's own
+			// captured header comment (`: | # c`); when the scalar carries
+			// none, the returned index lets the caller place the pair-level
+			// comment there instead (one comment slot per line).
+			const scalarComment = !ctx.forceDefaultStyles && valNode instanceof YamlScalar ? valNode.comment : undefined;
+			lines.push(scalarComment !== undefined ? `: ${first}${renderTrailingComment(scalarComment)}` : `: ${first}`);
+			for (let v = 1; v < valLines.length; v++) {
+				lines.push(valLines[v]);
+			}
+			return scalarComment !== undefined ? -1 : headerIdx;
+		}
 		lines.push(`: ${first}`);
 		for (let v = 1; v < valLines.length; v++) {
 			lines.push(valLines[v]);
 		}
 		// A multi-line quoted scalar closes on its last line, which can carry
-		// a trailing comment; a block-scalar body cannot.
-		return isBlockScalarHeader ? -1 : lines.length - 1;
+		// a trailing comment.
+		return lines.length - 1;
 	}
 	if (first.startsWith("-")) {
 		// Block sequence value — compact notation: first item on the colon
@@ -1404,14 +1417,23 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			const valIsScalar = valNode instanceof YamlScalar;
 			const isInlineQuoted = valIsScalar && (firstStripped.startsWith("'") || firstStripped.startsWith('"'));
 			if (isBlockScalarHeader || isInlineQuoted) {
+				const headerIdx = lines.length;
 				lines.push(`${keyStr}${sep} ${first}`);
 				for (let i = 1; i < valLines.length; i++) {
 					lines.push(valLines[i]);
 				}
-				// A multi-line quoted scalar closes on its last line, which can
-				// carry the trailing comment; a block-scalar body cannot, so the
-				// comment is dropped there.
-				appendTrailing(isBlockScalarHeader ? -1 : lines.length - 1, pair.comment);
+				if (isBlockScalarHeader) {
+					// #341: the block-scalar HEADER line legally carries a trailing
+					// comment (`key: | # c`). The scalar's own captured header
+					// comment wins; a pair-level comment relocates there only when
+					// the scalar carries none (one comment slot per line).
+					const scalarComment = valNode instanceof YamlScalar ? valNode.comment : undefined;
+					appendTrailing(headerIdx, scalarComment ?? pair.comment);
+				} else {
+					// A multi-line quoted scalar closes on its last line, which can
+					// carry the trailing comment.
+					appendTrailing(lines.length - 1, pair.comment);
+				}
 			} else {
 				// Check if this is a block map value with metadata prefix
 				const isBlockMapValue =
@@ -1575,13 +1597,15 @@ function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext, depth: numb
 			const isInlineScalar =
 				isBlockScalarHeader || (itemIsScalar && (firstStripped.startsWith("'") || firstStripped.startsWith('"')));
 			if (isInlineScalar) {
+				const headerIdx = lines.length;
 				lines.push(`- ${first}`);
 				for (let i = 1; i < itemLines.length; i++) {
 					lines.push(itemLines[i]);
 				}
-				// A multi-line quoted scalar closes on its last line, which can
-				// carry the trailing comment; a block-scalar body cannot.
-				appendItemTrailing(isBlockScalarHeader ? -1 : lines.length - 1);
+				// #341: a block scalar's HEADER line legally carries the item's
+				// trailing comment (`- | # c`); a multi-line quoted scalar closes
+				// on its last line, which carries it instead.
+				appendItemTrailing(isBlockScalarHeader ? headerIdx : lines.length - 1);
 			} else {
 				// Nested mapping or sequence — indent continuation lines by one level
 				lines.push(first === "" ? "-" : `- ${first}`);

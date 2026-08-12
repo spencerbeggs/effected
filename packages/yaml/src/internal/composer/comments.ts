@@ -29,11 +29,18 @@
 // 2. ALIAS comments drop. `YamlAlias` carries no comment fields (the #127
 //    split covers the four classes); a comment attributed to an alias node
 //    is dropped.
-// 3. TRAILING-comment drop on block-scalar values and multi-line complex
-//    keys: neither shape has a line that can carry a `#` comment without
-//    changing what reparses (a block-scalar body would absorb it; a
-//    multi-line key would swallow it into the key content), so the comment
-//    is dropped rather than relocated.
+// 3. TRAILING-comment drop on multi-line complex keys only: a multi-line
+//    key has no line that can carry a `#` comment without swallowing it
+//    into the key content, so the pair's comment is dropped there. Block
+//    scalars are no longer part of this divergence (#341): the header line
+//    carries a comment legally (`key: | # c`), `makeScalar` captures it as
+//    the SCALAR's `comment` (reference parity — the comment sits inside the
+//    scalar's own CST token) and the stringifier re-emits it on the header
+//    line in the pair, seq-item and explicit-key paths. Residual drops: a
+//    pair-level comment on a block-scalar-valued pair whose scalar already
+//    carries a header comment (one comment slot per line), and a DOCUMENT-
+//    ROOT block scalar's header comment, which is captured on the node but
+//    has no emission path.
 // 4. FLOW comment layout normalizes. A comment-carrying flow collection
 //    re-emits in multi-line flow layout (single-line flow cannot carry `#`
 //    without swallowing the closing bracket); byte-stable from the second

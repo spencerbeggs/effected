@@ -238,7 +238,10 @@ describe("comment fidelity (#127)", () => {
 				// the closing bracket), so comment-carrying flow collections
 				// re-emit in multi-line flow layout — semantics preserved.
 				const doc = yield* YamlDocument.parse("m: { a: 1, # c\n  b: 2 }\n");
+				// Pin the exact FIRST emission (multi-line flow layout), not just
+				// comment presence — see the seq own-line pin below.
 				const out = yield* doc.stringify();
+				assert.strictEqual(out, "m:\n  {\n    a: 1, # c\n    b: 2\n  }\n");
 				assert.include(out, "a: 1, # c");
 				assert.include(out, "{");
 				assert.deepStrictEqual(yield* Yaml.parse(out), { m: { a: 1, b: 2 } });
@@ -251,7 +254,10 @@ describe("comment fidelity (#127)", () => {
 		it.effect("emits comment-carrying flow sequences in multi-line flow layout", () =>
 			Effect.gen(function* () {
 				const doc = yield* YamlDocument.parse("s: [ one, # c\n  two ]\n");
+				// Pin the exact FIRST emission (multi-line flow layout), not just
+				// comment presence.
 				const out = yield* doc.stringify();
+				assert.strictEqual(out, "s:\n  [\n    one, # c\n    two\n  ]\n");
 				assert.include(out, "# c");
 				assert.include(out, "[");
 				assert.deepStrictEqual(yield* Yaml.parse(out), { s: ["one", "two"] });
@@ -296,7 +302,10 @@ describe("comment fidelity (#127)", () => {
 				const doc = yield* YamlDocument.parse("[ a,\nb\n# own\n]\n");
 				const seq = doc.contents as YamlSeq;
 				assert.strictEqual(seq.comment, " own");
+				// Pin the exact FIRST emission — a stringifier that dropped or
+				// relocated `# own` could still fixed-point on its reduced output.
 				const out = yield* doc.stringify();
+				assert.strictEqual(out, "[\n  a,\n  b\n  # own\n]\n");
 				const again = yield* YamlDocument.parse(out);
 				assert.strictEqual(yield* again.stringify(), out);
 			}),
@@ -314,6 +323,86 @@ describe("comment fidelity (#127)", () => {
 				assert.strictEqual(yield* again.stringify(), out);
 			}),
 		);
+
+		describe("block-scalar header comments (#341)", () => {
+			// The header line is the ONE line of a block scalar that legally
+			// carries a `#` comment; the lexer packs it inside the scalar's CST
+			// token, so makeScalar captures it as the SCALAR's trailing comment
+			// (reference `yaml` parity) and the stringifier re-emits it on the
+			// header line. Each case is a byte-pinned fixed point.
+			const roundtrips: ReadonlyArray<readonly [string, string]> = [
+				["map literal", "a: | # hdr\n  body\n"],
+				["map folded", "a: > # hdr\n  body\n"],
+				["seq literal", "- | # hdr\n  body\n"],
+				["seq folded", "- > # hdr\n  body\n"],
+				["map strip-chomp", "a: |- # hdr\n  body\n"],
+				["seq strip-chomp", "- |- # hdr\n  body\n"],
+			];
+			for (const [name, source] of roundtrips) {
+				it.effect(`roundtrips byte-intact: ${name}`, () =>
+					Effect.gen(function* () {
+						const doc = yield* YamlDocument.parse(source);
+						const out = yield* doc.stringify();
+						assert.strictEqual(out, source);
+						const again = yield* YamlDocument.parse(out);
+						assert.strictEqual(yield* again.stringify(), out);
+					}),
+				);
+			}
+
+			it.effect("captures the header comment on the SCALAR node, not the pair", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("a: | # hdr\n  body\n");
+					const pair = firstMap(doc).items[0];
+					assert.isUndefined(pair?.comment);
+					assert.instanceOf(pair?.value, YamlScalar);
+					assert.strictEqual((pair?.value as YamlScalar).comment, " hdr");
+					assert.strictEqual((pair?.value as YamlScalar).value, "body\n");
+				}),
+			);
+
+			it.effect("captures a seq item's header comment on the item scalar", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("- | # hdr\n  body\n");
+					assert.instanceOf(doc.contents, YamlSeq);
+					const item = (doc.contents as YamlSeq).items[0];
+					assert.instanceOf(item, YamlScalar);
+					assert.strictEqual((item as YamlScalar).comment, " hdr");
+				}),
+			);
+
+			it.effect("emits the header comment on an explicit-key spill pair's value header", () =>
+				Effect.gen(function* () {
+					const key = `pkg-a@1.0.0(${"a".repeat(1100)})`;
+					const source = `? ${key}\n: | # hdr\n  body\n`;
+					const doc = yield* YamlDocument.parse(source);
+					const out = yield* doc.stringify();
+					assert.strictEqual(out, source);
+					const again = yield* YamlDocument.parse(out);
+					assert.strictEqual(yield* again.stringify(), out);
+				}),
+			);
+
+			it.effect("a +/- inside the header comment is not a chomp indicator (regression)", () =>
+				Effect.gen(function* () {
+					// getBlockChomp once scanned the whole header line, so a `+` in
+					// `# x+y` parsed as keep-chomp and re-emitted as `|+`, changing
+					// what the document means.
+					const doc = yield* YamlDocument.parse("a: | # x+y\n  body\n");
+					const scalar = firstMap(doc).items[0]?.value as YamlScalar;
+					assert.strictEqual(scalar.chomp, "clip");
+					assert.strictEqual(yield* doc.stringify(), "a: | # x+y\n  body\n");
+
+					const doc2 = yield* YamlDocument.parse("a: | # strip-me\n  body\n");
+					assert.strictEqual((firstMap(doc2).items[0]?.value as YamlScalar).chomp, "clip");
+				}),
+			);
+
+			it("survives the YamlFormat path", () => {
+				const text = "a: | # hdr\n  body\nb: 1\n";
+				assert.strictEqual(YamlFormat.formatToString(text), text);
+			});
+		});
 
 		it.effect("canonical mode (forceDefaultStyles) stays comment-free — the conformance contract", () =>
 			Effect.gen(function* () {
