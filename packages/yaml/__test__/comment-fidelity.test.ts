@@ -311,6 +311,80 @@ describe("comment fidelity (#127)", () => {
 			}),
 		);
 
+		describe("flow blank-line fidelity (PR #338 review)", () => {
+			// Closers sit indented past the block level so #340 strictness
+			// accepts the parse. First emission is the multi-line flow
+			// re-layout (expected); each pin asserts the exact first output
+			// INCLUDING the blank line, then the fixed point.
+
+			it.effect("flow seq: the blank line before an own-line comment run survives", () =>
+				Effect.gen(function* () {
+					const source = "a: [\n  1,\n\n  # c\n  2\n  ]\n";
+					const doc = yield* YamlDocument.parse(source);
+					const seq = firstMap(doc).items[0]?.value;
+					assert.instanceOf(seq, YamlSeq);
+					const second = (seq as YamlSeq).items[1] as YamlScalar;
+					assert.strictEqual(second.commentBefore, " c");
+					assert.strictEqual(second.spaceBefore, true);
+					const out = YamlFormat.formatToString(source);
+					assert.strictEqual(out, "a:\n  [\n    1,\n\n    # c\n    2\n  ]\n");
+					assert.strictEqual(YamlFormat.formatToString(out), out);
+				}),
+			);
+
+			it.effect("flow map control: the blank line before an own-line comment run stays preserved", () =>
+				Effect.gen(function* () {
+					const source = "m: {\n  a: 1,\n\n  # c\n  b: 2\n  }\n";
+					const doc = yield* YamlDocument.parse(source);
+					const map = firstMap(doc).items[0]?.value;
+					assert.instanceOf(map, YamlMap);
+					assert.strictEqual((map as YamlMap).items[1]?.commentBefore, " c");
+					assert.strictEqual((map as YamlMap).items[1]?.spaceBefore, true);
+					const out = YamlFormat.formatToString(source);
+					assert.strictEqual(out, "m:\n  {\n    a: 1,\n\n    # c\n    b: 2\n  }\n");
+					assert.strictEqual(YamlFormat.formatToString(out), out);
+				}),
+			);
+
+			it.effect("flow seq: the blank line before the TERMINAL comment run survives as a leading embed", () =>
+				Effect.gen(function* () {
+					const source = "a: [\n  1,\n  2\n\n  # tail\n  ]\n";
+					const doc = yield* YamlDocument.parse(source);
+					const seq = firstMap(doc).items[0]?.value;
+					assert.instanceOf(seq, YamlSeq);
+					assert.strictEqual((seq as YamlSeq).comment, "\n tail");
+					const out = YamlFormat.formatToString(source);
+					assert.strictEqual(out, "a:\n  [\n    1,\n    2\n\n    # tail\n  ]\n");
+					assert.strictEqual(YamlFormat.formatToString(out), out);
+				}),
+			);
+
+			it.effect("flow seq: a blank WITHIN a comment run embeds as an empty line", () =>
+				Effect.gen(function* () {
+					const source = "a: [\n  1,\n\n  # c1\n\n  # c2\n  2\n  ]\n";
+					const doc = yield* YamlDocument.parse(source);
+					const seq = firstMap(doc).items[0]?.value;
+					assert.instanceOf(seq, YamlSeq);
+					const second = (seq as YamlSeq).items[1] as YamlScalar;
+					assert.strictEqual(second.commentBefore, " c1\n\n c2");
+					assert.strictEqual(second.spaceBefore, true);
+					const out = YamlFormat.formatToString(source);
+					assert.strictEqual(out, "a:\n  [\n    1,\n\n    # c1\n\n    # c2\n    2\n  ]\n");
+					assert.strictEqual(YamlFormat.formatToString(out), out);
+				}),
+			);
+
+			it.effect("flow seq nested in a block mapping keeps the blank line", () =>
+				Effect.gen(function* () {
+					const source = "top:\n  inner: [\n    1,\n\n    # c\n    2\n    ]\n";
+					const out = YamlFormat.formatToString(source);
+					assert.strictEqual(out, "top:\n  inner:\n    [\n      1,\n\n      # c\n      2\n    ]\n");
+					assert.strictEqual(YamlFormat.formatToString(out), out);
+					assert.deepStrictEqual(yield* Yaml.parse(out), { top: { inner: [1, 2] } });
+				}),
+			);
+		});
+
 		it.effect("emits comments on explicit-key spill pairs (#323 interaction)", () =>
 			Effect.gen(function* () {
 				const key = `pkg-a@1.0.0(${"a".repeat(1100)})`;

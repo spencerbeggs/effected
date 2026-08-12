@@ -1197,7 +1197,9 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 				const pair = items[fi] as YamlPair;
 				if (pair.spaceBefore === true) flowLines.push("");
 				if (pair.commentBefore !== undefined) {
-					for (const cl of commentBlockLines(pair.commentBefore)) flowLines.push(`${flowPad}${cl}`);
+					// An embedded blank line (`""`) stays unpadded — padding it
+					// would emit a whitespace-only line.
+					for (const cl of commentBlockLines(pair.commentBefore)) flowLines.push(cl === "" ? "" : `${flowPad}${cl}`);
 				}
 				const keyStr = pair.key ? stringifyMappingKeyLines(pair.key, ctx, depth + 1).join(" ") : "null";
 				const valStr = pair.value ? stringifyNodeLines(pair.value, ctx, depth + 1).join(" ") : "null";
@@ -1206,7 +1208,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 				flowLines.push(`${flowPad}${keyStr}: ${valStr}${comma}${trailing}`);
 			}
 			if (node.comment !== undefined) {
-				for (const cl of commentBlockLines(node.comment)) flowLines.push(`${flowPad}${cl}`);
+				for (const cl of commentBlockLines(node.comment)) flowLines.push(cl === "" ? "" : `${flowPad}${cl}`);
 			}
 			flowLines.push("}");
 			return flowLines;
@@ -1546,7 +1548,9 @@ function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext, depth: numb
 				const fields = itemFields(item);
 				if (fields?.spaceBefore === true) flowLines.push("");
 				if (fields?.commentBefore !== undefined) {
-					for (const cl of commentBlockLines(fields.commentBefore)) flowLines.push(`${flowPad}${cl}`);
+					// An embedded blank line (`""`) stays unpadded — padding it
+					// would emit a whitespace-only line.
+					for (const cl of commentBlockLines(fields.commentBefore)) flowLines.push(cl === "" ? "" : `${flowPad}${cl}`);
 				}
 				const itemStr = stringifyNodeLines(item, ctx, depth + 1).join(" ");
 				const comma = fi < items.length - 1 ? "," : "";
@@ -1554,7 +1558,7 @@ function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext, depth: numb
 				flowLines.push(`${flowPad}${itemStr}${comma}${trailing}`);
 			}
 			if (node.comment !== undefined) {
-				for (const cl of commentBlockLines(node.comment)) flowLines.push(`${flowPad}${cl}`);
+				for (const cl of commentBlockLines(node.comment)) flowLines.push(cl === "" ? "" : `${flowPad}${cl}`);
 			}
 			flowLines.push("]");
 			return flowLines;

@@ -9,7 +9,8 @@ import type { CstNode } from "../cst.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import type { SemanticItem } from "./block.js";
 import { buildPairs, checkDuplicateKeys, checkMultilineImplicitKeys } from "./block.js";
-import { isOwnLineAt, joinComments, rawCommentText, withCommentFields } from "./comments.js";
+import type { CommentFields } from "./comments.js";
+import { hasBlankLineAbove, isOwnLineAt, joinComments, rawCommentText, withCommentFields } from "./comments.js";
 import {
 	collectMultilineKey,
 	collectMultilinePlainScalar,
@@ -504,8 +505,56 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 	// own-line comment belongs to the FOLLOWING item even when a comma splits
 	// the segment before that item arrives; a same-line comment trails the
 	// last pushed item even when the comma sits between them (`a, # c`).
-	let pendingBefore: string | undefined;
+	// Blank lines follow the house encoding (mirroring buildPairs and the
+	// block-seq walk): a blank before the FIRST comment of a run — or before
+	// a comment-free item — sets `spaceBefore`; a blank WITHIN a run embeds
+	// as an empty line in the joined string; a blank BETWEEN the run and its
+	// item embeds as a trailing empty line.
+	interface PendingFlowComment {
+		text: string;
+		offset: number;
+		blankAbove: boolean;
+	}
+	let pending: PendingFlowComment[] = [];
+	let pendingSpace = false;
+	let lastItemEnd = -1;
 	let pushedIdx = -1;
+	const joinPending = (parts: ReadonlyArray<PendingFlowComment>): string | undefined => {
+		if (parts.length === 0) return undefined;
+		let out = (parts[0] as PendingFlowComment).text;
+		for (let k = 1; k < parts.length; k++) {
+			const part = parts[k] as PendingFlowComment;
+			out += part.blankAbove ? `\n\n${part.text}` : `\n${part.text}`;
+		}
+		return out;
+	};
+	const acceptOwnLineComment = (cText: string, cOff: number): void => {
+		const blankAbove = cOff >= 0 && hasBlankLineAbove(state.text, cOff);
+		if (blankAbove && pending.length === 0 && lastItemEnd >= 0) {
+			pendingSpace = true;
+		}
+		pending.push({ text: cText, offset: cOff, blankAbove: blankAbove && pending.length > 0 });
+	};
+	/** The pending comment fields for the item being pushed, then reset. */
+	const takePendingFields = (anchorOffset: number): CommentFields => {
+		let commentBefore = joinPending(pending);
+		if (anchorOffset >= 0 && hasBlankLineAbove(state.text, anchorOffset)) {
+			if (commentBefore !== undefined) {
+				commentBefore = `${commentBefore}\n`;
+			} else if (!pendingSpace && lastItemEnd >= 0) {
+				pendingSpace = true;
+			}
+		}
+		const fields: CommentFields = {
+			...(commentBefore !== undefined ? { commentBefore } : {}),
+			...(pendingSpace ? { spaceBefore: true } : {}),
+		};
+		pending = [];
+		pendingSpace = false;
+		return fields;
+	};
+	const hasPendingFields = (fields: CommentFields): boolean =>
+		fields.commentBefore !== undefined || fields.spaceBefore === true;
 
 	for (const segment of segments) {
 		// Check if this segment contains a value separator (implicit mapping)
@@ -526,17 +575,24 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 			}
 			const firstPair = pairs[0];
 			if (firstPair) {
+				// Anchor the blank-above check at the segment's first token
+				// (comment or key) — the analog of buildPairs anchoring at the
+				// key it is about to construct. Comments INSIDE the segment
+				// attach to the pair via buildPairs; a blank line ABOVE the
+				// segment is this item's spaceBefore.
+				const segFirst = content[0];
+				const fields = takePendingFields(segFirst !== undefined ? segFirst.offset : -1);
 				const map = new YamlMap({
 					items: pairs,
 					style: "flow" as CollectionStyle,
 					offset: firstPair.key.offset,
 					length: 0,
-					...(pendingBefore !== undefined ? { commentBefore: pendingBefore } : {}),
+					...fields,
 					...(segTrailing !== undefined ? { comment: segTrailing } : {}),
 				});
-				pendingBefore = undefined;
 				items.push(map);
 				pushedIdx = items.length - 1;
+				lastItemEnd = map.offset + map.length;
 			} else if (segTrailing !== undefined) {
 				seqTrailing = joinComments(seqTrailing, segTrailing);
 			}
@@ -559,24 +615,36 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 						const prev = items[pushedIdx];
 						if (prev) items[pushedIdx] = withCommentFields(prev, { comment: cText });
 					} else {
-						pendingBefore = joinComments(pendingBefore, cText);
+						acceptOwnLineComment(cText, si.offset ?? -1);
 					}
 					continue;
 				}
 				if (si.kind === "node" && si.node) {
-					const node =
-						pendingBefore !== undefined ? withCommentFields(si.node, { commentBefore: pendingBefore }) : si.node;
-					pendingBefore = undefined;
+					const fields = takePendingFields(si.node.length > 0 ? si.node.offset : -1);
+					const node = hasPendingFields(fields) ? withCommentFields(si.node, fields) : si.node;
 					items.push(node);
 					pushedIdx = items.length - 1;
+					lastItemEnd = si.node.offset + si.node.length;
 				}
 			}
 		}
 	}
 	// Own-line comments with no following item are the sequence's trailing
-	// comment (hoisted leftover — mirrors buildPairs' contract).
-	if (pendingBefore !== undefined) {
-		seqTrailing = joinComments(seqTrailing, pendingBefore);
+	// comment (hoisted leftover — mirrors buildPairs' contract). A blank line
+	// between the last item and the terminal run embeds as a LEADING empty
+	// line in the joined string.
+	if (pending.length > 0) {
+		const joined = joinPending(pending);
+		const first = pending[0];
+		const withLead =
+			joined !== undefined &&
+			first !== undefined &&
+			lastItemEnd >= 0 &&
+			first.offset >= 0 &&
+			hasBlankLineAbove(state.text, first.offset)
+				? `\n${joined}`
+				: joined;
+		if (withLead !== undefined) seqTrailing = joinComments(seqTrailing, withLead);
 	}
 
 	const seqComment =
