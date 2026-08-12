@@ -83,7 +83,7 @@ A comment between a `---` marker and the first content node hoists above the mar
 
 ### Block-scalar header comments (#341)
 
-A trailing comment on a block-scalar header (`key: | # c`, `key: > # c`, `- | # c`, `- > # c`, every chomp/indicator spelling, and the explicit-key branch) now captures and re-emits byte-faithfully, closing the last recorded comment-fidelity divergence from #127.
+A trailing comment on a block-scalar header (`key: | # c`, `key: > # c`, `- | # c`, `- > # c`, every chomp/indicator spelling, and the explicit-key branch) now captures and re-emits byte-faithfully, closing the last recorded comment-fidelity divergence from #127. Explicit chomp (`|+`) and indentation (`|2`) indicators are preserved on the fidelity path too, carried by a new optional `blockIndent` field on `YamlScalar` (additive); when a pair comment and a scalar header comment coexist, the pair comment keeps the key line and the header spills to its own indented line so both survive.
 
 ## Bug Fixes
 
