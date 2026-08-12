@@ -1054,6 +1054,27 @@ function consumeValueNode(
 	text: string,
 	sepOffset: number,
 ): ConsumedValue | null {
+	// Peek past comments to the first node WITHOUT consuming anything: a node
+	// on a LATER line than our `:` that is immediately followed by its own
+	// value-sep is the next pair's KEY, not this pair's value — the pending
+	// pair's value is empty/null (#339: `key:\nother: 1` composed `other` as
+	// the value of `key` and then paired the orphaned `:` with an empty key).
+	// Same-line nodes stay consumed so `a: b: c: d` keeps its original,
+	// error-flagged pairing (ZCZ6). Mirrors consumeValueNodeForNullKey (S3PD).
+	// Returning null consumes nothing, so any comments re-enter the main loop
+	// and attribute to the surrounding pairs as usual.
+	let peek = startIdx;
+	while (peek < items.length && items[peek]?.kind === "comment") peek++;
+	const candidate = peek < items.length ? items[peek] : undefined;
+	if (
+		candidate?.kind === "node" &&
+		peek + 1 < items.length &&
+		items[peek + 1]?.kind === "value-sep" &&
+		candidate.node !== undefined &&
+		text.slice(sepOffset, candidate.node.offset).includes("\n")
+	) {
+		return null;
+	}
 	let i = startIdx;
 	const sameLineComments: string[] = [];
 	const leadingComments: string[] = [];

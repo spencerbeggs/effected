@@ -13,7 +13,10 @@
 // - Oracle: `yaml@2.9.0` (`YAML.parse` defaults; `parseAllDocuments` for the
 //   multi-document case)
 // - Authored: 2026-08-12, offline, in a scratch script outside the test run
-// - The oracle is NOT a dependency of this suite — the committed expected
+// - Case matrix extended from the savvy-web-systems dogfood sweep of the same
+//   date (51 cases, double-oracle: yaml@2.9.0 + js-yaml@4.3.1, a case counted
+//   only where both agreed)
+// - The oracles are NOT dependencies of this suite — the committed expected
 //   literals are the contract. Never regenerate them with our own parser.
 //
 // Coverage: a trailing comment in every structural position where a block
@@ -174,7 +177,7 @@ const flowAndBlockScalarCases: ReadonlyArray<OracleCase> = [
 	// column 0 in this position is a KNOWN pre-existing strictness divergence:
 	// our engine rejects it with a typed InvalidIndentation while yaml@2.9.0
 	// accepts it leniently. That divergence is comment-independent (the
-	// no-comment control fails identically) and is tracked outside this file.
+	// no-comment control fails identically) and is tracked as issue #340.
 	{
 		name: "comment inside a multi-line flow map before }",
 		input: "m: {\n  a: 1 # note\n  }\nsibling: 2\n",
@@ -199,6 +202,59 @@ const flowAndBlockScalarCases: ReadonlyArray<OracleCase> = [
 		name: "# inside a block-scalar body is content, not a comment",
 		input: "outer:\n  text: |\n    body # not a comment\nsibling: 3\n",
 		expected: { outer: { text: "body # not a comment\n" }, sibling: 3 },
+	},
+];
+
+// The #339 family: an empty value whose pair ends at the line boundary. The
+// next line's key was composed as the VALUE of the empty pair, and the
+// orphaned `:` then paired with an empty-string key — the same shred
+// signature as the trailing-comment defect but a distinct mechanism (the
+// composer's consumeValueNode, not the CST parser's value loop; these fail
+// identically with and without a comment).
+const emptyValueCases: ReadonlyArray<OracleCase> = [
+	{
+		name: "empty value then a sibling key",
+		input: "key:\nother: 1\n",
+		expected: { key: null, other: 1 },
+	},
+	{
+		name: "empty value with a trailing comment then a sibling key",
+		input: "key: # c\nother: 1\n",
+		expected: { key: null, other: 1 },
+	},
+	{
+		name: "two empty values then a sibling key",
+		input: "a:\nb:\nc: 1\n",
+		expected: { a: null, b: null, c: 1 },
+	},
+	{
+		name: "empty value then a sibling with a nested mapping value",
+		input: "key:\nother:\n  x: 1\n",
+		expected: { key: null, other: { x: 1 } },
+	},
+	{
+		// The GitHub-workflow trigger pattern: a nested empty value, then a
+		// dedent to the next top-level key.
+		name: "nested empty value then dedent (workflow trigger shape)",
+		input: "on:\n  workflow_dispatch:\njobs:\n  build: 1\n",
+		expected: { on: { workflow_dispatch: null }, jobs: { build: 1 } },
+	},
+	{
+		name: "empty value at deeper nesting then a multi-level dedent",
+		input: "a:\n  b:\n    c:\nd: 1\n",
+		expected: { a: { b: { c: null } }, d: 1 },
+	},
+	{
+		name: "empty value as the last key before EOF",
+		input: "a:\n  b:\n",
+		expected: { a: { b: null } },
+	},
+	{
+		// The over-correction guard: a MORE-indented next line is this pair's
+		// legitimate nested value, not a sibling — must keep parsing as before.
+		name: "empty-looking value whose next line is more indented (nested value)",
+		input: "key:\n  nested: 1\n",
+		expected: { key: { nested: 1 } },
 	},
 ];
 
@@ -238,6 +294,7 @@ const groups: ReadonlyArray<readonly [string, ReadonlyArray<OracleCase>]> = [
 	["stream boundaries", streamBoundaryCases],
 	["hardening variants", hardeningCases],
 	["flow and block-scalar boundaries", flowAndBlockScalarCases],
+	["empty values before a sibling key", emptyValueCases],
 	["real-world shapes", realWorldCases],
 ];
 
