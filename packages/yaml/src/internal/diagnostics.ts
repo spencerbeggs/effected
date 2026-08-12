@@ -60,6 +60,10 @@ export const YAML_STRINGIFY_ERROR_CODES = ["CircularReference"] as const;
  * parser/composer. `MultiDocumentStream` is the single-document-contract
  * refusal: `modify` re-emits exactly one document, so a multi-document
  * stream fails typed rather than silently truncating documents 2..n.
+ * `DirectiveCarryingDocument` is the directive refusal: the stringifier does
+ * not re-emit `%YAML`/`%TAG` directive lines, and re-emitting a document
+ * without its `%TAG` orphans every shorthand tag that depends on it — the
+ * output would be unparseable — so modify fails typed rather than corrupting.
  */
 export const YAML_MODIFY_ERROR_CODES = [
 	"EmptyDocument",
@@ -67,6 +71,7 @@ export const YAML_MODIFY_ERROR_CODES = [
 	"InvalidIndex",
 	"NotNavigable",
 	"MultiDocumentStream",
+	"DirectiveCarryingDocument",
 ] as const;
 
 /** The lexer-stage error-code union. */

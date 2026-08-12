@@ -173,6 +173,45 @@ describe("YamlFormat", () => {
 		});
 	});
 
+	describe("single-document %YAML/%TAG directives — refused, never corrupted", () => {
+		// Probe-verified downstream (independent oracle): the pre-fix path
+		// dropped the %TAG line but kept the !e!foo shorthand that depends on
+		// it, so the output failed TAG_RESOLVE_FAILED — a formatter turning a
+		// valid file into one no parser can read. Directive re-emission is
+		// unimplemented; until it lands, directive-carrying input is refused.
+		it("a %TAG document is left byte-identical — never re-emitted without the directive its tags depend on", () => {
+			const text = "%TAG !e! tag:example.com,2000:\n---\na: !e!foo bar\n";
+			assert.deepStrictEqual(YamlFormat.format(text), []);
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it("a %YAML 1.2 document is left byte-identical", () => {
+			const text = "%YAML 1.2\n---\na:   1\n";
+			assert.deepStrictEqual(YamlFormat.format(text), []);
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it.effect("modify fails typed with DirectiveCarryingDocument, never re-emits without the directive", () =>
+			Effect.gen(function* () {
+				const text = "%TAG !e! tag:example.com,2000:\n---\na: !e!foo bar\nb: 1\n";
+				const error = yield* Effect.flip(YamlFormat.modify(text, ["b"], 2));
+				assert.instanceOf(error, YamlModificationError);
+				assert.strictEqual(error.diagnostics[0]?.code, "DirectiveCarryingDocument");
+				assert.notProperty(error, "reason");
+			}),
+		);
+
+		it("a literal %TAG inside scalar content is content, not a directive — formats normally", () => {
+			// The refusal must be directive-token-level, never text scanning: a
+			// "%TAG ..." line inside a block scalar and a "%TAG" mid-scalar are
+			// both content, and the badly-spaced sibling key still reformats.
+			const text = 'a:   1\nnote: "contains %TAG inside"\ntext: |\n  %TAG !e! tag:example.com,2000:\n';
+			const out = YamlFormat.formatToString(text);
+			assert.strictEqual(out, 'a: 1\nnote: "contains %TAG inside"\ntext: |\n  %TAG !e! tag:example.com,2000:\n');
+			assert.isTrue(Yaml.equals(out, text));
+		});
+	});
+
 	describe("format — indentSequences", () => {
 		// Exercises the AST (node-path) stringifier: YamlFormattingOptions
 		// derives every YamlStringifyOptions field, including indentSequences.

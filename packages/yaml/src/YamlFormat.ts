@@ -68,9 +68,12 @@ export class YamlFormattingOptions extends Schema.Class<YamlFormattingOptions>("
 
 /**
  * Raised when `YamlFormat.modify` cannot navigate the requested path against
- * the composed AST (a structural mismatch), the source fails to parse, or the
+ * the composed AST (a structural mismatch), the source fails to parse, the
  * source is a multi-document stream (`MultiDocumentStream` — a path names no
- * particular document of a stream, so modify refuses rather than guessing).
+ * particular document of a stream, so modify refuses rather than guessing),
+ * or the document carries `%YAML`/`%TAG` directives
+ * (`DirectiveCarryingDocument` — modify does not re-emit directive lines, and
+ * dropping a `%TAG` would orphan the shorthand tags that depend on it).
  * Carries structured {@link YamlDiagnostic} entries — never a collapsed
  * `reason` string (the structure-preserving-errors house rule).
  *
@@ -160,13 +163,18 @@ function toOutputDocument(doc: RawYamlDocument, preserveComments: boolean): RawY
 /**
  * Format a document via the parse → stringify round-trip and diff the
  * output against the source, returning `undefined` when the input has a
- * fatal parse error (never corrupt malformed input). A multi-document
- * stream routes to {@link formatStream}, which formats every document.
+ * fatal parse error (never corrupt malformed input) or carries
+ * `%YAML`/`%TAG` directives — `stringifyDocument` does not re-emit
+ * directive lines, and dropping a `%TAG` while keeping the shorthand tags
+ * that depend on it would turn a valid document into an unparseable one.
+ * A multi-document stream routes to {@link formatStream}, which formats
+ * every document and shares the same directive refusal.
  */
 function formatDocument(text: string, options: YamlFormattingOptions | undefined): string | undefined {
 	const { document: doc, documentCount } = composeFirstDocumentCounted(text, {});
 	if (documentCount > 1) return formatStream(text, options);
 	if (doc.errors.some((e) => isFatalCode(e.code))) return undefined;
+	if (doc.directives.length > 0) return undefined;
 
 	return stringifyDocument(toOutputDocument(doc, options?.preserveComments ?? true), toStringifyInput(options));
 }
@@ -184,10 +192,10 @@ function formatDocument(text: string, options: YamlFormattingOptions | undefined
  *   does not re-emit directive lines, and dropping a `%TAG` would change
  *   what the re-emitted document means.
  *
- * The single-document path deliberately does not share the directive
- * refusal: its (pre-existing) contract already re-emits directive-carrying
- * documents without the directive line, and tightening that here would be a
- * silent behavior change to the released path.
+ * The single-document path ({@link formatDocument}) shares the directive
+ * refusal: re-emitting a directive-carrying document without its directive
+ * line while keeping the dependent shorthand tags produced unparseable
+ * output (probe-verified downstream against an independent oracle).
  */
 function formatStream(text: string, options: YamlFormattingOptions | undefined): string | undefined {
 	const { documents, streamErrors } = composeAllDocuments(text, {});
@@ -387,6 +395,15 @@ function rebuildSeq(node: YamlSeq, items: ReadonlyArray<YamlNode>): YamlSeq {
  * guessing. Parse a stream with {@link Yaml.parseAll} /
  * `Yaml.parseAllResult`.
  *
+ * **Directive-carrying input is refused on every path.** The stringifier does
+ * not re-emit `%YAML`/`%TAG` directive lines, and re-emitting a document
+ * without its `%TAG` while keeping the shorthand tags that depend on it
+ * (`!e!foo`) turns a valid file into one no parser can read. So
+ * `format`/`formatToString` leave such input byte-identical (no edits), and
+ * `modify`/`modifyToString` fail typed with a `DirectiveCarryingDocument`
+ * diagnostic. Directive re-emission is unimplemented, not undesired — the
+ * refusal is the floor that stops corruption until it lands.
+ *
  * @public
  */
 export class YamlFormat {
@@ -408,6 +425,13 @@ export class YamlFormat {
 	 * (untouched) because they cannot be re-emitted faithfully: a stream with
 	 * a fatal diagnostic in any document (the same posture as single-document
 	 * input) and a stream carrying `%YAML`/`%TAG` directives.
+	 *
+	 * **Directive-carrying documents yield `[]` on the single-document path
+	 * too.** Directive lines are not re-emitted, and dropping a `%TAG` while
+	 * keeping the shorthand tags that depend on it would turn a valid document
+	 * into an unparseable one — so a document carrying `%YAML`/`%TAG`
+	 * directives is left untouched. Detection is directive-token-level: a
+	 * literal `%TAG` inside a scalar is content and formats normally.
 	 *
 	 * @remarks
 	 * The positional `range` argument takes precedence over
@@ -445,9 +469,10 @@ export class YamlFormat {
 	 *
 	 * Inherits the {@link YamlFormat.format} contract: a multi-document stream
 	 * is formatted whole — every document re-emitted in order — and input
-	 * that cannot be formatted faithfully (a fatal parse error, or a stream
-	 * carrying `%YAML`/`%TAG` directives) is returned byte-identical — never
-	 * a truncated first document.
+	 * that cannot be formatted faithfully (a fatal parse error, or any
+	 * document — single or in a stream — carrying `%YAML`/`%TAG` directives)
+	 * is returned byte-identical — never a truncated first document, never a
+	 * document re-emitted without the directive its tags depend on.
 	 */
 	static formatToString(text: string, range?: YamlRangeLike, options?: YamlFormattingOptions): string {
 		return YamlEdit.applyAll(text, YamlFormat.format(text, range, options));
@@ -469,6 +494,15 @@ export class YamlFormat {
 	 * unlike {@link YamlFormat.format}, which formats a stream whole because
 	 * formatting needs no target). Detection is CST-level: a `---` inside a
 	 * block scalar or quoted string is content, not a document boundary.
+	 *
+	 * **Directive-carrying documents are refused.** A document carrying
+	 * `%YAML`/`%TAG` directives fails with {@link YamlModificationError}
+	 * carrying a `DirectiveCarryingDocument` diagnostic: modify re-emits the
+	 * whole document and does not re-emit directive lines, so applying it
+	 * would drop the `%TAG` while keeping the shorthand tags that depend on
+	 * it — unparseable output. A typed refusal beats silent corruption;
+	 * directive re-emission is unimplemented, not undesired. A literal
+	 * `%TAG` inside a scalar is content and does not trigger the refusal.
 	 *
 	 * @remarks
 	 * `options` is a bare {@link YamlStringifyOptions} — it controls only the
@@ -505,6 +539,23 @@ export class YamlFormat {
 				diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, text)),
 			});
 		}
+		if (doc.directives.length > 0) {
+			return yield* new YamlModificationError({
+				path,
+				diagnostics: [
+					YamlDiagnostic.fromRaw(
+						{
+							code: "DirectiveCarryingDocument",
+							message:
+								"Cannot modify a document carrying %YAML/%TAG directives: modify does not re-emit directive lines, and dropping a %TAG orphans the shorthand tags that depend on it",
+							offset: 0,
+							length: 0,
+						},
+						text,
+					),
+				],
+			});
+		}
 
 		let newContents: YamlNode | null;
 		try {
@@ -531,7 +582,8 @@ export class YamlFormat {
 	 * Modify `text` and apply the resulting edits in one step
 	 * (`YamlEdit.applyAll ∘ modify`). Inherits the {@link YamlFormat.modify}
 	 * error channel, including the single-document contract's
-	 * `MultiDocumentStream` refusal.
+	 * `MultiDocumentStream` refusal and the `DirectiveCarryingDocument`
+	 * refusal of `%YAML`/`%TAG`-carrying documents.
 	 */
 	static readonly modifyToString = Effect.fn("YamlFormat.modifyToString")(function* (
 		text: string,
