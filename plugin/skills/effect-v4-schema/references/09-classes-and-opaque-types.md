@@ -4,6 +4,13 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107. Three upstream claims were FALSIFIED and are
+corrected inline, each marked with a trap note: Schema.asClass (removed — extend the schema directly),
+the `serialization: { json }` annotation key and SchemaUtils.getNativeClassSchema (neither exists),
+and makeFilter's `title` annotation (the default formatter reads `expected`). The class-factory call
+shapes, Schema.Opaque, Schema.instanceOf, Schema.link, Schema.toCodecJson, Schema.revealCodec,
+Effect.catchTag/catchTags and the throw-shape comments were re-verified and are correct.
 -->
 
 # Classes and Opaque Types
@@ -313,7 +320,13 @@ g(A.make({ a: "a" })) // error: Argument of type 'A' is not assignable to parame
 
 ## Schema as a Class
 
-`Schema.asClass` turns any schema into a class that can be extended with `extends`. The resulting class inherits the full schema API (e.g. `annotate`) and supports static methods that reference `this`.
+Naming trap: **`Schema.asClass` does not exist** — it is `undefined` on the
+`Schema` namespace at `effect@4.0.0-beta.107`, and the wrapper it named is gone.
+Any schema can now be extended with `extends` **directly**, with no wrapper call.
+Code written against the `asClass` spelling fails with "Schema.asClass is not a
+function". The examples below are corrected to the beta.107 spelling.
+
+Extending a schema this way inherits the full schema API (e.g. `annotate`) and supports static methods that reference `this`.
 
 Unlike `Schema.Opaque`, it does **not** make the decoded type nominally distinct, and unlike `Schema.Class`, it does **not** create prototype-backed instances with methods or constructors. It is a lightweight way to attach custom static helpers to a schema.
 
@@ -322,7 +335,7 @@ Unlike `Schema.Opaque`, it does **not** make the decoded type nominally distinct
 ```ts
 import { Schema } from "effect"
 
-class MyString extends Schema.asClass(Schema.String) {
+class MyString extends Schema.String {
   static readonly decodeUnknownSync = Schema.decodeUnknownSync(this)
 }
 
@@ -335,9 +348,7 @@ console.log(MyString.decodeUnknownSync("a"))
 ```ts
 import { Schema } from "effect"
 
-class MyStruct extends Schema.asClass(
-  Schema.Struct({ name: Schema.String })
-) {
+class MyStruct extends Schema.Struct({ name: Schema.String }) {
   static readonly decodeUnknownSync = Schema.decodeUnknownSync(this)
 }
 
@@ -347,12 +358,12 @@ console.log(MyStruct.decodeUnknownSync({ name: "a" }))
 
 ### Subclassing
 
-You can extend an `asClass` class to layer on more static helpers:
+You can extend a schema class to layer on more static helpers:
 
 ```ts
 import { Schema } from "effect"
 
-class MyString extends Schema.asClass(Schema.FiniteFromString) {
+class MyString extends Schema.FiniteFromString {
   static readonly decodeUnknownSync = Schema.decodeUnknownSync(this)
 }
 
@@ -410,7 +421,8 @@ constraint text itself; a test asserting on it now sees only
 `"Schema validation failed"` — format `error.cause` with
 `SchemaIssue.makeFormatterDefault()` instead. (`Schema.decodeUnknownSync` is
 different: it throws a `SchemaError` whose `.message` is still formatted, with
-the structured issue on `.issue`.)
+the structured issue on `.issue`.) Both halves re-probed unchanged at
+beta.107.
 
 **Example** (Inheritance)
 
@@ -521,7 +533,7 @@ class PersonWithEmail extends Person {
 **Example** (Extending Data.Error)
 
 ```ts
-import { Data, Effect, identity, Schema, SchemaTransformation, SchemaUtils } from "effect"
+import { Data, Effect, identity, Schema, SchemaTransformation } from "effect"
 
 const Props = Schema.Struct({
   message: Schema.String
@@ -563,14 +575,25 @@ const transformation = SchemaTransformation.transform<Err, (typeof Props)["Type"
 
 const schema = Schema.instanceOf(Err, {
   title: "Err",
-  serialization: {
-    json: () => Schema.link<Err>()(Props, transformation)
-  }
+  // NOT `serialization: { json: ... }` — see the trap below
+  toCodecJson: () => Schema.link<Err>()(Props, transformation)
 }).pipe(Schema.encodeTo(Props, transformation))
-
-// built-in helper?
-const builtIn = SchemaUtils.getNativeClassSchema(Err, { encoding: Props })
 ```
+
+Two traps in this example, both corrected above — the upstream prose carries the
+uncorrected form:
+
+- **`serialization: { json: ... }` is not an annotation key.** `instanceOf`'s
+  second parameter is an `Annotations.Declaration` (`Schema.ts:6477`), whose
+  serialization hooks are `toCodec`, `toCodecJson`, `toCodecStringTree` and
+  `toCodecIso`. There is no `serialization` key anywhere in `Schema.ts`. The
+  earlier `Person` examples in this file already use the correct `toCodecJson`
+  spelling; this one did not.
+- **`SchemaUtils` does not exist**, and neither does `getNativeClassSchema` —
+  there is no such module in `effect` at `4.0.0-beta.107`, and no such symbol
+  anywhere in `packages/effect/src`. The upstream snippet's own `// built-in
+  helper?` comment marks it as speculative; it was never a real API. The
+  `SchemaUtils` import has been dropped from the example above.
 
 ### Class API
 
@@ -608,7 +631,7 @@ class A extends Schema.Class<A>("A")(
   Schema.Struct({
     a: Schema.String,
     b: Schema.String
-  }).check(Schema.makeFilter(({ a, b }) => a === b, { title: "a === b" }))
+  }).check(Schema.makeFilter(({ a, b }) => a === b, { expected: "a === b" }))
 ) {}
 
 try {
@@ -617,7 +640,7 @@ try {
   console.log(error.message)
 }
 // "Schema validation failed" — class construction throws the generic message
-// (beta.102–105); the constraint text lives on error.cause:
+// (beta.102–105, re-probed beta.107); the constraint text lives on error.cause:
 // SchemaIssue.makeFormatterDefault()(error.cause) // => "Expected a === b"
 
 try {
@@ -629,6 +652,16 @@ try {
 // IS formatted (issue on .issue; the input tail appears only under the
 // reportInput parse option)
 ```
+
+Annotation trap: upstream writes this filter as
+`Schema.makeFilter(({ a, b }) => a === b, { title: "a === b" })` and still
+claims the output `"Expected a === b"`. It is not — **the default formatter
+reads the `expected` annotation, not `title`**, falling back to the literal
+string `<filter>` (`SchemaIssue.ts:1099-1104`). Probed at beta.107, the `title`
+spelling prints `"Expected <filter>"` from both the `make` path and
+`decodeUnknownSync`. The example above is corrected to `expected`. Returning a
+`string` from the predicate is the other way to get a real message and needs no
+annotation.
 
 #### Branded Classes
 

@@ -4,6 +4,17 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107: every named member exists and every code block
+with imports typechecks. Falsifications corrected inline with trap notes: `Schema.Record`'s
+`keyValueCombiner` option (Record takes exactly two arguments — the whole "combine" example was
+removed), `Schema.asTaggedUnion` in prose (the export is `toTaggedUnion`), `import { Struct } from
+"effect/data"` (no such subpath), and the inferred-type spelling `Schema.Array$<...>` (beta.107 emits
+`Schema.$Array<...>`). Restored two accurate sections the split had dropped: the duplicate-discriminant
+throw and the `discriminants` property. PROBED: default-mode messages carry no `, got X` suffix and
+render as `SchemaError(...)`, not `SchemaError: ...` — every expected-output block was corrected.
+NOT PROBED (left as-is): the concurrency-order claim for duplicate transformed record keys, and the
+JSON/derivation output blobs.
 -->
 
 # Defining Composite Schemas
@@ -530,9 +541,9 @@ const schema = Schema.Struct({
 
 console.log(String(Schema.decodeUnknownExit(schema)({})))
 /*
-Failure(Cause([Fail(SchemaError: Username is required
+Failure(Cause([Fail(SchemaError(Username is required
   at ["username"]
-)]))
+))]))
 */
 ```
 
@@ -551,9 +562,9 @@ const schema = Schema.Struct({
 
 console.log(String(Schema.decodeUnknownExit(schema)({ a: "a", b: "b" }, { onExcessProperty: "error" })))
 /*
-Failure(Cause([Fail(SchemaError: Custom message
+Failure(Cause([Fail(SchemaError(Custom message
   at ["b"]
-)]))
+))]))
 */
 ```
 
@@ -823,7 +834,7 @@ console.log(
     })
   )
 )
-// Failure(Cause([Fail(SchemaError: Expected a === b, got {"a":"a","b":"b","c":"c"})]))
+// Failure(Cause([Fail(SchemaError(Expected a === b))]))
 ```
 
 #### Mapping individual fields
@@ -922,10 +933,12 @@ Use `Struct.evolveKeys` to rename field keys while keeping the corresponding val
 
 **Example** (Uppercasing keys in a struct)
 
+> **Beta trap.** `Struct` is a top-level `effect` module. There is no
+> `effect/data` subpath — `import { Struct } from "effect/data"` does not
+> resolve.
+
 ```ts
-import { String } from "effect"
-import { Schema } from "effect"
-import { Struct } from "effect/data"
+import { Schema, String, Struct } from "effect"
 
 /*
 const schema: Schema.Struct<{
@@ -1097,9 +1110,9 @@ const schema = Schema.Tuple([
 
 console.log(String(Schema.decodeUnknownExit(schema)([])))
 /*
-Failure(Cause([Fail(SchemaError: this element is required
+Failure(Cause([Fail(SchemaError(this element is required
   at [0]
-)]))
+))]))
 */
 ```
 
@@ -1300,7 +1313,7 @@ import { Schema } from "effect"
 const schema = Schema.UniqueArray(Schema.String)
 
 console.log(String(Schema.decodeUnknownExit(schema)(["a", "b", "a"])))
-// Failure(Cause([Fail(SchemaError: Expected an array with unique items, got ["a","b","a"])]))
+// Failure(Cause([Fail(SchemaError(Expected an array with unique items))]))
 ```
 
 ## Records
@@ -1328,9 +1341,12 @@ console.log(Schema.decodeUnknownSync(schema)({ a_b: 1, c_d: 2 }))
 // { aB: 1, cD: 2 }
 ```
 
-By default, if a transformation results in duplicate keys, the last value wins.
+When parsing sequentially, transformed keys are applied in selection order, so
+the later selected property wins if a transformation produces a duplicate key.
+With concurrency greater than `1`, completion order determines which value is
+retained.
 
-**Example** (Merging transformed keys by keeping the last one)
+**Example** (Keeping the later selected value when parsing sequentially)
 
 ```ts
 import { Schema, SchemaTransformation } from "effect"
@@ -1343,34 +1359,12 @@ console.log(Schema.decodeUnknownSync(schema)({ a_b: 1, aB: 2 }))
 // { aB: 2 }
 ```
 
-You can customize how key conflicts are resolved by providing a `combine` function.
-
-**Example** (Combining values for conflicting keys)
-
-```ts
-import { Schema, SchemaTransformation } from "effect"
-
-const SnakeToCamel = Schema.String.pipe(Schema.decode(SchemaTransformation.snakeToCamel()))
-
-const schema = Schema.Record(SnakeToCamel, Schema.Number, {
-  keyValueCombiner: {
-    decode: {
-      // When decoding, combine values of conflicting keys by summing them
-      combine: ([_, v1], [k2, v2]) => [k2, v1 + v2] // you can pass a Semigroup to combine keys
-    },
-    encode: {
-      // Same logic applied when encoding
-      combine: ([_, v1], [k2, v2]) => [k2, v1 + v2]
-    }
-  }
-})
-
-console.log(Schema.decodeUnknownSync(schema)({ a_b: 1, aB: 2 }))
-// { aB: 3 }
-
-console.log(Schema.encodeUnknownSync(schema)({ a_b: 1, aB: 2 }))
-// { a_b: 3 }
-```
+> **Beta trap.** There is no way to customize conflict resolution.
+> `Schema.Record` takes exactly two arguments — `(key, value)` — with no options
+> object and no `keyValueCombiner`. Earlier drafts of this guide showed a
+> `combine` callback that summed conflicting values; passing it is
+> `TS2554: Expected 2 arguments, but got 3`. Selection order, or completion
+> order under concurrency, is the only resolution there is.
 
 ### Number Keys
 
@@ -1390,7 +1384,7 @@ console.log(String(Schema.decodeUnknownExit(schema)({ 1.1: "ignored" })))
 // Success({})
 
 console.log(String(Schema.decodeUnknownExit(schema)({ 1: null })))
-// Failure(Cause([Fail(SchemaError(Expected string, got null
+// Failure(Cause([Fail(SchemaError(Expected string
 //  at ["1"]))]))
 ```
 
@@ -1500,7 +1494,7 @@ import { Schema } from "effect"
 const schema = Schema.Union([Schema.NonEmptyString, Schema.Number])
 
 console.log(String(Schema.decodeUnknownExit(schema)("")))
-// Failure(Cause([Fail(SchemaError: Expected a value with a length of at least 1, got "")]))
+// Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 1))]))
 ```
 
 If none of the union members match the input, the union fails with a message at the top level.
@@ -1513,7 +1507,7 @@ import { Schema } from "effect"
 const schema = Schema.Union([Schema.NonEmptyString, Schema.Number])
 
 console.log(String(Schema.decodeUnknownExit(schema)(null)))
-// Failure(Cause([Fail(SchemaError: Expected string | number, got null)]))
+// Failure(Cause([Fail(SchemaError(Expected string | number))]))
 ```
 
 This behavior is especially helpful when working with literal values. Instead of producing a separate error for each literal (as in version 3), the schema reports a single, clear message.
@@ -1526,7 +1520,7 @@ import { Schema } from "effect"
 const schema = Schema.Literals(["a", "b"])
 
 console.log(String(Schema.decodeUnknownExit(schema)(null)))
-// Failure(Cause([Fail(SchemaError: Expected "a" | "b", got null)]))
+// Failure(Cause([Fail(SchemaError(Expected "a" | "b"))]))
 ```
 
 ### Exclusive Unions
@@ -1543,7 +1537,7 @@ const schema = Schema.Union([Schema.Struct({ a: Schema.String }), Schema.Struct(
 })
 
 console.log(String(Schema.decodeUnknownExit(schema)({ a: "a", b: 1 })))
-// Failure(Cause([Fail(SchemaError: Expected exactly one member to match the input {"a":"a","b":1})]))
+// Failure(Cause([Fail(SchemaError(Expected exactly one member to match the input {"a":"a","b":1}))]))
 ```
 
 ### Deriving Unions
@@ -1584,9 +1578,9 @@ import { Schema, Tuple } from "effect"
 
 /*
 const schema: Schema.Union<readonly [
-  Schema.Array$<Schema.String>,
+  Schema.$Array<Schema.String>,
   Schema.Number,
-  Schema.Array$<Schema.Boolean>
+  Schema.$Array<Schema.Boolean>
 ]>
 */
 const schema = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]).mapMembers(
@@ -1609,9 +1603,9 @@ import { Schema, Tuple } from "effect"
 
 /*
 const schema: Schema.Union<readonly [
-  Schema.Array$<Schema.String>,
-  Schema.Array$<Schema.Number>,
-  Schema.Array$<Schema.Boolean>
+  Schema.$Array<Schema.String>,
+  Schema.$Array<Schema.Number>,
+  Schema.$Array<Schema.Boolean>
 ]>
 */
 const schema = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]).mapMembers(Tuple.map(Schema.Array))
@@ -1686,7 +1680,12 @@ The result is a tagged union schema with built-in helpers based on the tag value
 
 ### Augmenting Tagged Unions
 
-The `asTaggedUnion` function enhances a tagged union schema by adding helper methods for working with its members.
+The `toTaggedUnion` function enhances a tagged union schema by adding helper methods for working with its members.
+
+> **Beta trap.** The name is `Schema.toTaggedUnion`. `Schema.asTaggedUnion` is
+> `undefined` — the prose here used to say `asTaggedUnion` while the example
+> below correctly called `toTaggedUnion`, so a reader who trusted the sentence
+> got a runtime `TypeError` from the wrong name.
 
 You need to specify the name of the tag field used to differentiate between variants.
 
@@ -1712,6 +1711,12 @@ This helper has some advantages over a dedicated constructor:
 - You can choose among multiple possible tag fields if present.
 - It supports unions that include nested unions.
 
+Each member must have a unique discriminant property key. `toTaggedUnion` throws
+`Error: Duplicate discriminant: <value>` when it encounters a duplicate. Numeric
+and string values that resolve to the same property key, such as `1` and `"1"`,
+are considered duplicates — the implementation normalizes numeric literals with
+`String(literal)` before checking.
+
 **Note**. If the tag is the standard `_tag` field, you can use `Schema.TaggedUnion` instead.
 
 #### Accessing Members by Tag
@@ -1724,6 +1729,18 @@ The `cases` property gives direct access to each member schema of the union.
 const A = tagged.cases.A
 const B = tagged.cases.B
 const C = tagged.cases.C
+```
+
+#### Accessing Discriminant Values
+
+The `discriminants` property contains the decoded discriminant values in the same order as the flattened union members. Its type preserves the exact tuple of values.
+
+**Example** (Deriving a literal schema from discriminants)
+
+```ts
+const Tags = Schema.Literals(tagged.discriminants)
+
+// Schema.Literals<readonly ["A", "B", "C"]>
 ```
 
 #### Checking Membership in a Subset of Tags

@@ -123,8 +123,11 @@ but that is style, not the rule.
 ## Auditing console output is not a `console.*` grep
 
 `it.effect` installs `TestConsole`, and Effect's **default logger writes through
-the same ref** (`packages/effect/src/Logger.ts:273`, `:310`, `:354` all read
-`options.fiber.getRef(effect.ConsoleRef)`). So `Effect.log` / `logWarning` /
+the same ref** — `Console.Console` *is* `effect.ConsoleRef` (`Console.ts:83`),
+`TestConsole.layer` sets that exact reference (`testing/TestConsole.ts:294`), and
+`Logger.ts:269`, `:309`, `:363` all read
+`options.fiber.getRef(effect.ConsoleRef)` (line numbers at beta.107). So
+`Effect.log` / `logWarning` /
 `logError` are intercepted identically to `Console.*`. One repo's audit cleared
 a package by grepping `Console.*` and missed three live `Effect.logWarning`
 sites.

@@ -1,6 +1,6 @@
 # Services & Layers — v3 → v4
 
-Verified against `effect@4.0.0-beta.94+`. Idiomatic form → see
+Verified against `effect@4.0.0-beta.107`. Idiomatic form → see
 `effect-v4-services-layers`.
 
 `Context.Tag`, `Context.GenericTag`, `Effect.Tag`, and `Effect.Service` **all
@@ -23,7 +23,8 @@ arg order (the reverse of v3).
 
 > `Layer.effect` / `Layer.succeed` are **dual**: both the curried
 > `Layer.effect(Svc)(effect)` and data-first `Layer.effect(Svc, effect)`
-> compile in beta.94.
+> compile — the two overloads are declared side by side at `Layer.ts`'s
+> `export const effect`, still true at beta.107.
 
 ## The tag's *parameter type* is `Context.Key`, not `Context.Tag`
 
@@ -42,12 +43,15 @@ Three facts that cost real debugging time:
 - **`Context.Key` is type-only.** `typeof Context.Key === "undefined"` at
   runtime, indistinguishable from "removed" under the obvious probe. So is
   `Context.Tag`. Check the `.d.ts`, not `typeof`.
-- **`Key<out Identifier, out Shape>` — `Shape` is covariant.** A tag for a wider
-  service satisfies a parameter typed for a narrower one. `Service` and
-  `ServiceClass` are declared `in out Shape`, but **both extend `Key`**, so the
-  invariance does not save you. Consequence: you *cannot* subtract a method from
+- **`Key<out Identifier, out Shape>` — `Shape` is covariant** (`Context.ts:64`).
+  A tag for a wider service satisfies a parameter typed for a narrower one.
+  `Service` (`:98`) and `ServiceClass` (`:123`) are declared `in out Shape`, but
+  **both extend `Key`**, so the invariance does not save you. Consequence: you *cannot* subtract a method from
   a service at a layer boundary — a "read-only" overload will typecheck and then
   the method will be missing at runtime. A service's shape is fixed at its
   `Context.Service` declaration.
-- **`Context.Key` extends `Effect`.** `Effect.flatMap(tag, f)` needs no
-  `.asEffect()`.
+- **`Context.Key` extends `Effect`** (`Context.ts:64` —
+  `Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>`), so
+  a tag goes straight into `Effect.flatMap(tag, f)` and `yield* tag` with no
+  conversion. There is nothing to convert *with*: `asEffect` has zero
+  occurrences core-wide at beta.107.

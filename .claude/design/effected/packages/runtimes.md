@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-07-22
-last-synced: 2026-07-22
+updated: 2026-08-12
+last-synced: 2026-08-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -23,197 +23,123 @@ related:
 
 `@effected/runtimes` resolves semver-compatible versions of Node.js, Bun and Deno from live release feeds, with a bundled offline snapshot as a fallback. Three resolver services, three cache strategies each, over one parameterized internal engine. **Boundary tier.**
 
-The `runtime-resolver` **binary is not part of the kit** — it ships from the external `runtime-resolver` repo against the published `@effected/runtimes`. Keeping the CLI in a different repo is what keeps `@effect/platform-node` (the integrated-tier dependency a CLI needs) out of this library's consumers; the library reaches the five gate applications, the binary does not.
+**The library and its CLI live in different repositories, deliberately.** A `runtime-resolver` binary ships from the external `runtime-resolver` repo against the published `@effected/runtimes`; nothing in this workspace builds it. A CLI needs `@effect/platform-node`, which is an integrated-tier dependency, and keeping the binary out is what keeps that dependency out of this library's consumers. The library reaches the consuming applications; the binary does not.
 
 ## Tier and dependencies
 
-IO through `effect`-core abstractions only (`HttpClient`); the consumer provides the platform layer at the edge. No external runtime dependency.
+IO through `effect`-core abstractions only; the consumer provides the platform layer at the edge. **No external runtime dependency, and it must stay that way** — that constraint is the reason for the repository split above.
 
-- `peerDependencies`: `effect`.
-- `dependencies`: `@effected/semver` (`workspace:~`) — all version math.
-- `prepare`: `turbo run build:dev` (required by the `workspace:~` edge — see [package-setup.md](../package-setup.md#cross-package-build-dependencies)).
+`peerDependencies` is `effect`; `dependencies` is `@effected/semver` and nothing else, for all version math. That workspace edge requires the `prepare` script (see [package-setup.md](../package-setup.md#cross-package-build-dependencies)).
 
-The version math is [@effected/semver](semver.md)'s `SemVer` and `Range` used directly (`Range.test`, `SemVer.compare`), **not** its `VersionCache` service: `VersionCache` is a singleton `Context.Service`, and the resolver needs three independent indices (Node, Bun, Deno) live at once, which a singleton cannot provide without three tags.
+The version math uses [@effected/semver](semver.md)'s `SemVer` and `Range` **directly**, not its `VersionCache` service: `VersionCache` is a singleton `Context.Service`, and this package needs three independent indices — Node, Bun, Deno — live at once, which a singleton cannot provide without three tags.
 
 ## HTTP over core, no Octokit
 
-All network access goes through `HttpClient` from `effect/unstable/http`, with the consumer providing `FetchHttpClient.layer` at the edge. `FetchHttpClient.layer` is `Layer<HttpClient>` with **no** requirements of its own, so providing the platform layer costs a consumer one import from `effect`. There is no `octokit` / `@octokit/auth-app` dependency — the two REST GETs the library needs (`/repos/{o}/{r}/tags`, `/repos/{o}/{r}/releases`) go straight through `HttpClient`, which R1 permits and Octokit would not.
+All network access goes through `HttpClient` from `effect/unstable/http`, with the consumer providing a fetch-backed layer at the edge. That layer has no requirements of its own, so providing it costs a consumer one import from `effect`. There is **no octokit dependency**: the two authenticated REST reads the library needs go straight through `HttpClient`, which [R1](../effect-standards.md#dependency-policy) permits and Octokit would not.
 
-**GitHub App auth is a pluggable seam, not a built-in.** JWT signing plus installation-token exchange would put a runtime dependency in a tier-2 package. Instead `GitHubAuth` is a service whose shape is "produce request headers," with three layers in-package (`anonymous`, `token`, `layerConfig`); App auth is reachable by a consumer supplying their own `Layer<GitHubAuth>`. Nothing in the five consuming applications needs App auth today.
+**GitHub App auth is a pluggable seam, not a built-in.** JWT signing plus installation-token exchange would put a runtime dependency in a boundary-tier package. Instead `GitHubAuth` is a service whose shape is "produce request headers", with anonymous, token and config-driven layers in-package; App auth is reachable by a consumer supplying their own layer. Nothing in the consuming applications needs it today — this is a recorded deviation, not an oversight to "fix" by adding a dependency.
 
-This package and [@effected/git](git.md) independently drew the same conclusion about core: **core declares service abstractions it implements for no runtime.** Anything reaching for a subprocess, terminal or CLI framework needs a platform package, and a library that reaches for one becomes tier 3 for its consumers. That is why the CLI is external and why git owns a `ChildProcessSpawner` seam.
+This package and [@effected/git](git.md) independently drew the same conclusion about core: **core declares service abstractions it implements for no runtime.** Anything reaching for a subprocess, terminal or CLI framework needs a platform package, and a library that reaches for one becomes tier 3 for its consumers. That is why the CLI is external and why git owns a spawner seam.
 
 ## Module layout
 
-```text
-src/
-  index.ts              # public surface, re-exports only
-  ResolvedVersions.ts   # Runtime / Source / Increments literals; ResolvedVersions class;
-                        #   NoMatchingVersionError; FreshnessError
-  GitHub.ts             # AuthenticationError, RateLimitError, NetworkError, ResponseParseError;
-                        #   GitHubAuth service + layers (anonymous / token / layerConfig);
-                        #   GitHubTag, GitHubRelease schemas; GitHubClient service + layers
-  NodeSchedule.ts       # NodePhase literal; NodeScheduleEntry; NodeSchedule class + phaseFor;
-                        #   NodeScheduleData, NodeReleaseLine, isLtsPhase, nodeReleaseLine,
-                        #   InvalidScheduleDateError
-  NodeRelease.ts        # NodeRelease class (version / npm / date)
-  NodeResolver.ts       # NodeResolverOptions schema; NodeResolver service + 3 strategy layers
-  BunResolver.ts        # BunRelease class; BunResolverOptions; BunResolver + 3 strategy layers
-  DenoResolver.ts       # DenoRelease class; DenoResolverOptions; DenoResolver + 3 strategy layers
-  internal/
-    http.ts             # getJson over HttpClient; status -> typed error ladder; rate-limit backoff
-    releaseIndex.ts     # generic Ref-backed index over releases + provenance
-    strategy.ts         # auto / fresh / offline construction, parameterized once
-    feeds.ts            # the upstream feeds and raw-record -> domain-release transforms
-    githubRuntime.ts    # the layer builder Bun and Deno share (same resolver, different repo)
-    resolve.ts          # the filter / group / rank / package pipeline, written once
-    limits.ts           # pagination and payload bounds
-    types.ts            # shared internal types
-    defaults/
-      node.ts bun.ts deno.ts   # generated offline snapshots
-__test__/
-```
+Public concept modules under `src/` — the three resolvers, plus `ResolvedVersions.ts`, `GitHub.ts`, `NodeSchedule.ts` and `NodeRelease.ts` — over an `internal/` engine. See `src/` for the exact split.
 
-The strategy collapse is the layout's centerpiece: `internal/strategy.ts` is parameterized once, so the three public resolver files expose the strategies as named layer constants rather than each owning a hand-written cache-and-fetcher stack. `githubRuntime.ts` is the shared Bun/Deno builder — they are the same resolver pointed at a different repository (`oven-sh` vs `denoland`) — and `resolve.ts` is the single filter/group/rank/package pipeline. `NodeRelease.ts` and `NodeSchedule.ts` stay split for Node alone because the schedule is a separate concept with its own lifecycle model and Node's release carries an extra `npm` field.
+The **strategy collapse is the layout's centerpiece**: `internal/strategy.ts` is parameterized once, so the three public resolver files expose the strategies as named layer constants rather than each owning a hand-written cache-and-fetcher stack. `internal/githubRuntime.ts` is the shared Bun/Deno layer builder — the two are the same resolver pointed at a different repository — and `internal/resolve.ts` is the single filter/group/rank/package pipeline. `NodeRelease.ts` and `NodeSchedule.ts` stay split for Node alone, because the schedule is a separate concept with its own lifecycle model and Node's release carries an extra field.
+
+`internal/defaults/` holds the three generated offline snapshots; see [Bundled defaults regeneration](#bundled-defaults-regeneration).
+
+## Cache-strategy-as-layer
+
+The package's signature DX, and the shape most worth not breaking. Each resolver exposes three layer **constants**, bound as constants per the memoization discipline:
+
+- **`layer`** — auto: fetch live, fall back to the bundled snapshot **and say so**.
+- **`layerFresh`** — live data or a typed failure.
+- **`layerOffline`** — the snapshot. No IO, no requirements.
+
+**Every layer is lazy, and that is load-bearing.** Acquisition performs no IO, so merging all three resolvers fetches nothing. The first `resolve` runs the population behind `internal/once.ts` — a semaphore-plus-`Ref` run-once gate chosen over `Effect.cached`, which memoizes the whole `Exit` and would let one transient failure, or an interrupted first resolve, poison the layer for its lifetime. Success is memoized, including the auto strategy's snapshot fallback; a **failed** fresh population is not, so the next resolve retries. Concurrent first resolves serialize on the gate and share one fetch. Do not replace the gate with `Effect.cached`, and do not move the fetch back into `Layer.effect`.
+
+**The lazy timing moves the strategy's error channel out of the layer and into `resolve`.** All three layers have `E = never`; `resolve`'s error union carries the freshness failure on all three resolvers. That is the accepted cost of one `Context.Service` shape per resolver: `layer` and `layerOffline` advertise a failure they never produce. `internal/strategy.ts` still types each strategy exactly — only the fresh loader can fail, the auto loader falls back instead — and the requirement channels stay per-strategy, so the offline layer requires nothing.
+
+The requirement channels differ, and it is not an accident: **Node needs only `HttpClient`**, because its dist index and release schedule are unauthenticated, while **Bun and Deno need `GitHubClient`** and its authenticated REST. So Node resolution works with zero GitHub credentials, and `GitHubAuth` is a dependency only of the two GitHub-backed resolvers. A pre-provided default client layer bundles the common auth-plus-HTTP wiring into one import, while the un-provided one stays exported for consumers supplying their own.
 
 ## Design decisions
 
 ### Provenance lives in the engine state
 
-`internal/releaseIndex.ts` holds a `Ref<{ releases, source }>`; whichever strategy populates it sets `source` at load time — `"api"` for a live fetch, `"cache"` for the bundled snapshot, including the Auto strategy's fallback path. Resolvers read it. The Auto strategy additionally `Effect.logWarning`s on fallback, so serving a stale snapshot is never silent.
+The release index holds a `Ref` of releases plus a source marker; whichever strategy populates it sets that marker at load time — live for a fetch, cache for the bundled snapshot, including the auto strategy's fallback path. Resolvers read it, and the auto strategy additionally logs a warning on fallback, so serving a stale snapshot is never silent. **Do not let the source marker become a constant** — an advertised provenance field hardcoded to "live" makes a stale answer indistinguishable from a fresh one.
 
-### Node schedule keyed by release line, not by major
+### The Node schedule is keyed by release line, not by major
 
-`NodeRelease` is a clean `Schema.Class`:
+Node's release repository publishes `v0.8`, `v0.10` and `v0.12` as three distinct lines with their own start and end dates, all of which `Number.parseInt` maps to major `0`; keying by major would collapse them onto whichever iteration order yielded first. Schedule entries therefore carry a **line** (`"20"`, or `"0.10"`), phase lookups take a version rather than a bare major, and asking for the bare major `0` honestly returns `None`. A fixture of modern majors *structurally cannot* catch a regression here, which is why the fixtures carry the dotted lines on purpose. A schedule feed carrying an undecodable date fails typed rather than dying.
 
-```ts
-export class NodeRelease extends Schema.Class<NodeRelease>("NodeRelease")({
-  version: SemVer,
-  npm: SemVer,
-  date: Schema.DateTimeUtc,
-}) {}
-```
-
-Phase is a function of `(release, schedule, now)`, with the schedule owned by the release index, not the model. `NodeSchedule.phaseFor(version, now)` takes an explicit reference date, so phase logic is testable without stubbing a `Date`. `Schema.DateTimeUtcFromString` decodes the raw feeds' date strings.
-
-The schedule is **keyed by release line, not by major**. `nodejs/Release` publishes `v0.8`, `v0.10` and `v0.12` as three distinct lines with their own start and end dates, all of which `Number.parseInt` maps to major `0`; keying by major would collapse them onto whichever `Object.entries` yields first. `NodeScheduleEntry` carries a `line` (`"20"`, or `"0.10"`), `phaseFor` / `entryFor` take a version rather than a bare major, and the public `nodeReleaseLine({ major, minor })` exposes the mapping. Asking for the bare major `0` returns `None`. A schedule feed carrying an undecodable date fails typed (`InvalidScheduleDateError`) rather than dying.
+Phase is a function of `(release, schedule, now)`, with the schedule owned by the release index rather than the model — **the domain model holds no `Ref`**. The reference date is explicit, so phase logic is testable without stubbing a `Date`.
 
 ### Concurrency-safe index
 
-The release index is `Ref`-backed, and `load` is a single atomic `Ref.set`. An index inconsistency (a version present in the index but absent from its lookup map) is a programmer error and stays an `Effect.die` defect.
-
-### Error ladder
-
-Six `Schema.TaggedErrorClass` classes. No error carries a free-text `message` field — that would duplicate what the structured fields encode.
-
-| error | fields | audience |
-| --- | --- | --- |
-| `NoMatchingVersionError` | `runtime`, `constraint`, `phases?` | calling code (`_tag` branch) + end user |
-| `UnresolvableDefaultError` | `runtime`, `defaultVersion` | end user (you named a default that does not exist) |
-| `FreshnessError` | `runtime`, `cause: Schema.Defect()` | end user (the fresh strategy could not reach the network) |
-| `AuthenticationError` | `method` | end user (fix your credentials) |
-| `RateLimitError` | `retryAfter?`, `limit`, `remaining` | calling code (`retryAfter` drives the retry schedule) |
-| `NetworkError` | `url`, `status?`, `cause: Schema.Defect()` | operator |
-| `ResponseParseError` | `source`, `cause: Schema.Defect()` | operator — a feed changed shape |
-
-Three distinctions the pipeline must not collapse:
-
-- **An invalid semver range surfaces as `InvalidRangeError`, not `NoMatchingVersionError`.** The resolver error channel is `InvalidRangeError | NoMatchingVersionError | UnresolvableDefaultError`, where `InvalidRangeError` is [@effected/semver](semver.md)'s (consumers import it from there — the no-barrel rule forbids re-exporting a dependency's surface). Swallowing a range failure into an empty result would report a typo as "no versions found."
-- **An unresolvable `defaultVersion` fails (`UnresolvableDefaultError`); an absent one falls back.** `default` is an `optionalKey`, and Node alone falls back to the LTS pick when no default was requested. A caller who names a version that does not exist gets a real error rather than LTS handed to them as though they had asked for it.
-- **`AuthenticationError.method` is passed down, not assumed.** `mapHttpFailure` takes the auth mode the caller actually used, so the `"anonymous"` arm is reachable and the unauthenticated nodejs.org feeds are not mislabelled as token rejections.
-
-The "no versions matched" error is `NoMatchingVersionError`, not `VersionNotFoundError`, because [@effected/semver](semver.md) already exports a `VersionNotFoundError` with that `_tag` for a different condition. Two classes sharing a `_tag` in one channel breaks `catchTag` routing, and both meet in the resolver's channel.
-
-### Config, not process.env
-
-`GitHubAuth.layerConfig` uses `Config` with the precedence `GITHUB_PERSONAL_ACCESS_TOKEN` > `GITHUB_TOKEN` > unauthenticated, warns on ambiguity, is testable by swapping a `ConfigProvider`, and holds the token `Redacted`.
-
-### GitHubClient is honestly scoped
-
-The JSON-over-HTTP machinery lives in `internal/http.ts`. The Node dist-index and schedule fetchers use it **without** auth headers; `GitHubClient` keeps only the two authenticated REST list operations. `GitHub.ts` owns the four HTTP errors — one concept (typed HTTP transport failure) that the nodejs.org fetchers reuse rather than minting a parallel ladder.
+The release index is `Ref`-backed and its load is a single atomic set. An index inconsistency — a version present in the index but absent from its lookup map — is a programmer error and stays a defect.
 
 ### Wall-clock time via Clock
 
-Every default reference time is `DateTime.now` (Clock-derived), so `TestClock` drives phase logic without stubbing a `Date`.
+Every default reference time is `DateTime.now`, so `TestClock` drives phase logic. No `new Date()`.
 
-### Options are schemas
+### Error ladder
 
-`NodeResolverOptions` / `BunResolverOptions` / `DenoResolverOptions` are `Schema.Struct`s with `Schema.optionalKey` fields and `Schema.Literals` for `phases` / `increments`.
+Seven `Schema.TaggedError` classes across `ResolvedVersions.ts` and `GitHub.ts`; see those files for the fields. No error carries a free-text `message` field — that would duplicate what the structured fields encode.
 
-## Service and layer shapes
+Four distinctions the pipeline must not collapse:
 
-```ts
-class NodeResolver extends Context.Service<NodeResolver, {
-  readonly resolve: (options?: NodeResolverOptions) =>
-    Effect.Effect<ResolvedVersions, InvalidRangeError | NoMatchingVersionError>;
-}>()("@effected/runtimes/NodeResolver") {
-  static readonly layer: Layer.Layer<NodeResolver, never, HttpClient>;        // auto
-  static readonly layerFresh: Layer.Layer<NodeResolver, FreshnessError, HttpClient>;
-  static readonly layerOffline: Layer.Layer<NodeResolver>;                    // no requirements
-}
-```
+- **An invalid semver range surfaces as `InvalidRangeError`, not "no versions found".** That error is [@effected/semver](semver.md)'s, and consumers import it from there — the [no-barrel rule](../effect-standards.md#no-barrel-re-exports) forbids re-exporting a dependency's surface. Swallowing a range failure into an empty result would report a typo as a not-found.
+- **An unresolvable requested default fails; an absent one falls back.** These are different questions. Node alone falls back to the LTS pick when no default was requested, so silently omitting an unmatched default would hand the caller LTS as though they had asked for it.
+- **The authentication method is passed down, not assumed**, so the anonymous arm is reachable and the unauthenticated feeds are not mislabelled as token rejections.
+- **The no-match error is `NoMatchingVersionError`, never `VersionNotFoundError`.** [@effected/semver](semver.md) already exports a `VersionNotFoundError` with that `_tag` for a different condition, and both meet in this package's error channel. Two classes sharing a `_tag` break `catchTag` routing.
 
-Cache-strategy-as-layer — the package's signature DX — is three named layer **constants** per resolver (bound to constants, per the memoization discipline). `layer` is the Auto strategy.
+### Config, not process.env
 
-The requirement channels fall out of the data sources: **Node needs only `HttpClient`** (nodejs.org's dist index and `raw.githubusercontent.com`'s `schedule.json` are unauthenticated), while **Bun and Deno need `GitHubClient`** (authenticated REST). So `NodeResolver` works with zero GitHub credentials, and `GitHubAuth` is a dependency only of the two GitHub-backed resolvers. `layerOffline` requires nothing.
+The config-driven auth layer resolves its token through `Config` with a documented precedence between the two conventional environment variables, warns on ambiguity, is testable by swapping a `ConfigProvider`, and holds the token `Redacted`.
 
-`GitHub.ts` exports `GitHubClient.layerDefault` = `GitHubClient.layer` provided with `GitHubAuth.layerConfig` + `FetchHttpClient.layer`, so the common wiring is one import; the un-provided `GitHubClient.layer` stays exported for consumers supplying their own auth or HTTP client.
+### GitHubClient is honestly scoped
+
+The JSON-over-HTTP machinery lives in `internal/http.ts`, and the unauthenticated Node fetchers use it **without** auth headers; `GitHubClient` keeps only the authenticated REST list operations. `GitHub.ts` owns the HTTP error family — one concept, typed HTTP transport failure — which the unauthenticated fetchers reuse rather than minting a parallel ladder.
 
 ## Observability
 
-Named `Effect.fn` spans on each service's public fallible methods, uniformly: `"NodeResolver.resolve"`, `"BunResolver.resolve"`, `"DenoResolver.resolve"`, `"GitHubClient.listTags"`, `"GitHubClient.listReleases"`. `Effect.annotateCurrentSpan({ runtime, range })` carries stable identifiers, no payloads, no tokens. `Effect.logWarning` on the Auto strategy's snapshot fallback and on ambiguous GitHub credentials; no other logging. No metrics, no OTel import — telemetry-agnostic.
+Named `Effect.fn` spans on each service's public fallible methods, uniformly, with span annotations carrying stable identifiers — no payloads, no tokens. Warnings on the auto strategy's snapshot fallback and on ambiguous credentials; no other logging. No metrics, no OTel import — telemetry-agnostic.
 
 ## Hardening
 
-The engine consumes untrusted JSON from three network feeds. There is no recursion over that input, so the depth-guard family does not apply. What does:
+The engine consumes untrusted JSON from three network feeds. There is no recursion over that input, so the depth-guard family does not apply. What does, all of it about a remote server driving a local loop:
 
-- **Malformed feed payloads fail typed** (`ResponseParseError`), never as a defect. `internal/http.ts` decodes with `Schema.decodeUnknownEffect` and maps `SchemaError` at the boundary.
-- **Pagination is bounded.** `internal/limits.ts` holds a default page cap, replacing an unbounded loop driven by a remote server's paging.
-- **Numeric bounds are integer-guarded.** `perPage` / `pages` are guarded with `!Number.isInteger(n) || n < 1` and a **defect** — developer wiring, not data.
-- **A server-supplied `retry-after` is bounded before it becomes a sleep.** It is honored as the retry delay, capped at 60s, and a negative value is discarded in favour of the exponential schedule. The rate-limit backoff (`internal/http.ts`) uses `Schedule.exponential` under `Schedule.passthrough` with `Schedule.modifyDelay` reading the failure's `retryAfter` from the passed-through `output`.
-- **A `403` is classified, not assumed.** GitHub returns `403` for an exhausted rate limit *and* for permission and resource failures. Classification uses the documented signals — `x-ratelimit-remaining: 0` for the primary limit, `retry-after` for the secondary — and a `403` with neither stays a `NetworkError` carrying the status, so it is not retried. A `429` is definitionally a rate limit. Classification is from status and headers, never body-message inspection.
+- **Malformed feed payloads fail typed**, never as a defect; decoding happens at the boundary and schema failures are mapped there.
+- **Pagination is bounded.** `internal/limits.ts` holds a hard page ceiling above whatever the caller asks for, replacing an unbounded loop driven by a remote server's paging.
+- **Numeric bounds are integer-guarded and die.** The guard tests `Number.isInteger` explicitly, never a bare `< 1`, because every relational comparison against `NaN` is `false`. These are developer wiring errors, so they are **defects**.
+- **A server-supplied `retry-after` is bounded before it becomes a sleep.** Honoring it is right — guessing a backoff against a header the server actually sent is both ruder and less effective — which makes it untrusted input on a control path: it is capped, and a negative value is discarded in favour of the exponential schedule.
+- **A `403` is classified, not assumed.** GitHub returns `403` for an exhausted rate limit *and* for permission and resource failures. Classification uses the documented headers — the remaining-quota header for the primary limit, `retry-after` for the secondary — and a `403` with neither stays a transport error carrying the status, so it is not retried. A `429` is definitionally a rate limit. Classification is from status and headers, never body-message inspection.
 
 ## Bundled defaults regeneration
 
-`lib/scripts/generate-defaults.ts` refreshes the three offline snapshots under `internal/defaults/` (see [Module layout](#module-layout)) by fetching the live feeds through the package's own `internal/feeds.ts` — the same tag-strip/skip/parse rules the runtime resolvers use, single-sourced rather than reimplemented as a standalone client. It is a devDep script, not library surface: run by hand or by CI, never by the test suite, because it performs network IO.
+`lib/scripts/generate-defaults.ts` refreshes the three offline snapshots by fetching the live feeds through the package's own `internal/feeds.ts` — the same tag-strip, skip and parse rules the runtime resolvers use, single-sourced rather than reimplemented as a standalone client. It is a devDep script, not library surface: run by hand or by CI, never by the test suite, because it performs network IO.
 
-It rewrites each snapshot by parsing the target file with `oxc-parser` and splicing only the byte-span of each exported const's initializer, leaving headers, imports, TSDoc and type annotations untouched — the same technique [@effected/spdx](spdx.md#vendored-data-and-regeneration)'s `generate-data.ts` uses for its vendored license data. Records are written in feed order; the script never re-sorts, so the generated diff reflects only what upstream actually changed.
+It rewrites each snapshot by parsing the target file with `oxc-parser` and splicing only the byte span of each exported const's initializer, leaving headers, imports, TSDoc and type annotations untouched — the same technique [@effected/spdx](spdx.md#vendored-data-and-regeneration) uses for its vendored license data. Records are written in feed order; the script never re-sorts, so the generated diff reflects only what upstream actually changed.
 
-Two invariants keep a bad fetch from corrupting the fallback the Auto and Offline strategies depend on:
+Two invariants keep a bad fetch from corrupting the fallback the auto and offline strategies depend on:
 
-- **Every record is filtered through the library's own `tryParseSemVer` before writing**, so a snapshot holds only resolvable versions — the same rule the runtime resolvers apply to live data, reused rather than reimplemented for generated data.
-- **A zero-length result from any feed — either release list or the Node schedule — refuses the write outright.** A failed or truncated fetch must never overwrite a good offline snapshot with an empty one; the script dies loudly instead of committing silently wrong data.
+- **Every record is filtered through the library's own parse before writing**, so a snapshot holds only resolvable versions — the same rule the resolvers apply to live data.
+- **A zero-length result from any feed refuses the write outright.** A failed or truncated fetch must never overwrite a good snapshot with an empty one; the script dies loudly instead of committing silently wrong data.
 
-`oxc-parser` is a **script-only devDependency**: nothing under `src/**` imports it, and the [tier and dependencies](#tier-and-dependencies) boundary — `@effected/semver` alone — is unchanged. `tsx`, the runner that executes the script, comes from the `@savvy-web/silk` toolchain rather than being a package-local dependency.
+`oxc-parser` is a **script-only devDependency**: nothing under `src/**` imports it, so the [dependency boundary](#tier-and-dependencies) is unchanged.
 
-`.github/workflows/update-runtime-defaults.yml` runs the generator daily. When it produces a diff, the workflow writes a `patch` changeset under a `## Maintenance` heading and opens an auto-merging PR carrying both the regenerated snapshots and the changeset. The workflow's build-and-test step runs with `--coverage.enabled=false`: this repo's vitest config enforces global coverage thresholds that a single-package subset run cannot meet, and that mismatch would abort the job for a reason unrelated to whether the regenerated data is correct.
+A scheduled workflow runs the generator daily. When it produces a diff, it writes a patch changeset and opens an auto-merging PR carrying both the regenerated snapshots and the changeset. Its build-and-test step runs with coverage disabled: this repo's vitest config enforces global coverage thresholds that a single-package subset run cannot meet, and that mismatch would abort the job for a reason unrelated to whether the regenerated data is correct.
 
 ## Testing
 
-`@effect/vitest` throughout; `it.effect` the default; `assert.*`, never `expect`; tests in `__test__/`, organized by seam.
+Suites in `__test__/`, organized by seam. The generator script has no suite entry and the suite must never invoke it — it performs live network IO. It is verified functionally instead, on the [spdx](spdx.md#vendored-data-and-regeneration) precedent: run it against the live feeds, confirm the diff touches only the snapshot bodies, that a second run is idempotent, and that the package builds and stays green on the regenerated data.
 
-`lib/scripts/generate-defaults.ts` has no suite entry and the test suite must never invoke it — it performs live network IO. It is verified functionally instead, on the [@effected/spdx](spdx.md#vendored-data-and-regeneration) `generate-data.ts` precedent: run it against the live feeds and confirm the diff touches only the snapshot bodies, that a second run is idempotent, and that the package builds and its suite stays green on the regenerated data.
+The suite-boundary seams that make the whole stack testable without network: the fetch reference is a `Context.Reference`, so a group can run the **real** HTTP stack against canned responses, exercising request construction, status mapping and schema decoding; `Layer.mock` stands in for the GitHub client in resolver tests that do not care about transport; a swapped `ConfigProvider` drives the auth precedence tests; and `TestClock` drives the rate-limit retry delays.
 
-Suite-boundary seams:
+Deno has no suite of its own — it and Bun are the same shared builder, so a separate suite would re-test one code path.
 
-- **`FetchHttpClient.Fetch`** — a `Context.Reference<typeof globalThis.fetch>`. A `layer(...)` group provides `Layer.provide(FetchHttpClient.layer, Layer.succeed(FetchHttpClient.Fetch)(fakeFetch))`, so the whole HTTP stack runs against canned responses, exercising real request construction, status mapping and schema decoding.
-- **`Layer.mock(GitHubClient, {...})`** for resolver tests that do not care about transport.
-- **`ConfigProvider`** swapped at the boundary for `GitHubAuth.layerConfig` precedence tests.
-- **`TestClock`** for Node phase logic (mostly clock-free via the explicit `phaseFor` reference date) and for the rate-limit retry delays.
-
-`DenoResolver` has no suite of its own — it and `BunResolver` are the same `githubRuntime.ts` builder, so a separate suite would re-test one code path. `ResolvedVersions`, `NodeRelease` and the release index are exercised through the resolver suites that own them.
-
-Edges the suite pins (mutate-the-edges discipline):
-
-- The Auto fallback sets `source: "cache"` **and** the live path sets `"api"`.
-- An invalid range surfaces `InvalidRangeError`, not `NoMatchingVersionError`.
-- `increments: "minor"` groups by minor, not major.
-- A phase filter excluding every release yields `NoMatchingVersionError`, not an empty success.
-- **The dotted `0.x` lines**: a schedule fixture carrying `v0.8` / `v0.10` / `v0.12` with real dates, asserted at a reference date where the lines disagree (June 2015: `v0.8` dead, `v0.12` current), pinned at the `NodeResolver` seam as well as on `NodeSchedule`.
-- An unresolvable `defaultVersion` fails while an absent one falls back to LTS — both halves.
-- A `403` with quota remaining is a `NetworkError` and is not retried, while a `403` with `x-ratelimit-remaining: 0` is — assert the call *count*.
-- The `retry-after` is honored, capped and non-negative — assert the *timing* (advance the clock to just short of the expected delay and assert the retry has not fired).
-- `layerFresh` failures assert the error *type*, not merely that an exit failed — a `NetworkError` leaking through unwrapped is exactly what `FreshnessError` exists to catch.
+The mutation-prone edges the suite pins: that the auto fallback and the live path each set their own provenance; that an invalid range surfaces the range error rather than a no-match; that a phase filter excluding every release yields a typed failure rather than an empty success; **the dotted `0.x` lines**, asserted at a reference date where the lines disagree, pinned at the resolver seam as well as on the schedule; that an unresolvable requested default fails while an absent one falls back, both halves; that a `403` with quota remaining is not retried while one with exhausted quota is, asserted on the call *count*; that `retry-after` is honored, capped and non-negative, asserted on the *timing*; and that fresh-strategy failures assert the error **type**, since a raw transport error leaking through unwrapped is exactly what the freshness error exists to catch.
 
 ## Build
 

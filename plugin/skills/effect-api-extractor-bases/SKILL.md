@@ -72,8 +72,11 @@ feel like fixing.
 Confirmed clean (`warnings: 0`, the `*_base` in `suppressed`) with `tsgo`
 green and **no hand-written annotations** on:
 
-- `Schema.Opaque`, `Schema.asClass`, `Schema.Class`, `TaggedClass`,
-  `TaggedError`.
+- `Schema.Opaque`, `Schema.Class`, `TaggedClass`, `TaggedError`.
+  (Naming trap: this list used to include `Schema.asClass`, which **does not
+  exist** — zero occurrences in `Schema.ts` at beta.107. To give a schema value
+  a class identity you subclass it directly: `class MyString extends
+  Schema.String {}`.)
 - **Recursive `Schema.Class` + `Schema.suspend`** (a node whose field
   references itself): the inline form has **no TS2506** and needs none of the
   old `Schema.Schema<Self>` base-annotation gymnastics — that failure mode was

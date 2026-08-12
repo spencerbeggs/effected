@@ -3,151 +3,142 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-08-12
+last-synced: 2026-08-12
 completeness: 95
 related:
   - ../architecture.md
   - ../effect-standards.md
+  - ../formatter-convention.md
   - ../package-inventory.md
-  - semver.md
-  - package-json.md
-  - npm.md
   - yaml.md
   - toml.md
   - markdown.md
+  - config-file.md
 ---
 
 # @effected/jsonc design
 
 ## Overview
 
-`@effected/jsonc` is zero-dependency JSONC parsing, editing and formatting as Effect schemas — a **pure-tier** package. All inputs are strings; all outputs are values, edits, streams or domain errors. Its load-bearing shape: a zero-dependency scanner/parser core, an edits-not-mutations model (byte-minimal edits that preserve comments and whitespace, the core value proposition over `JSON.parse`/`stringify` round-trips), a parent-pointer-free AST, a single aggregate parse error and string→domain schema factories.
+`@effected/jsonc` is zero-dependency JSONC parsing, editing and formatting as Effect schemas. All inputs are strings; all outputs are values, edits, streams or domain errors. Four things define its shape: a vendored zero-dependency scanner/parser core, an **edits-not-mutations** model (byte-minimal edits that preserve comments and whitespace — the whole value proposition over a `JSON.parse`/`stringify` round-trip), a parent-pointer-free AST and a single aggregate parse error.
 
-It is the reference template for [`@effected/yaml`](yaml.md): the two packages share a structural vocabulary bound by the [parity convention](#jsoncyaml-parity-convention).
+It is the reference template for [`@effected/yaml`](yaml.md); the two share a structural vocabulary bound by the [parity convention](#jsoncyaml-parity-convention).
 
 ## Tier and dependencies
 
-Pure tier — no IO anywhere. `peerDependencies`: `effect` only (`catalog:effect`). No `@effect/platform*` imports, no `node:` imports, no cross-`@effected` edges outbound; `@effected/config-file` and `@effected/workspaces` depend on this package, not the reverse. `"sideEffects": false`.
+Pure tier — no IO anywhere. `effect` is the only peer. No `@effect/platform*` imports, no `node:` imports and no outbound `@effected` edges; [`config-file`](config-file.md) and `workspaces` depend on this package, never the reverse. `"sideEffects": false`.
 
 ## Module layout
 
-Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept); every non-entrypoint module imports explicitly from defining modules — no barrels. See `src/` for the full set:
+Module-per-concept per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept); `src/index.ts` is the only re-exporting module and carries the full export list.
 
-- `Jsonc.ts` — the facade: statics `parse`, `parseResult`, `parseTree`, `parseTreeResult`, `stringify`, `stringifyResult`, `stripComments`, `equals`, `equalsValue`, the schema factories `schema(Target, options?)` / `fromString(options?)` / `bind(Target)` and the `JsoncFromString` default-options schema. Owns the `JsoncBoundCodec` interface and `JsoncParseOptions`, `JsoncParseError`, `JsoncParseErrorDetail`, the `JsoncParseErrorCode` literal set and their stringify counterparts `JsoncStringifyOptions`, `JsoncStringifyError` and `JsoncStringifyErrorCode`.
-- `JsoncNode.ts` — the recursive AST node (`Schema.Class` + `Schema.suspend`, no parent pointers). Owns `JsoncNodeType` and the `JsoncPath` / `JsoncSegment` type aliases.
-- `JsoncEdit.ts` — the edit `Schema.Class` plus `applyAll(text, edits)`. Owns the shared edit vocabulary `JsoncRange` and `JsoncFormattingOptions`.
-- `JsoncFormatter.ts` — `format` and the `formatToString` convenience.
-- `JsoncModifier.ts` — `modify` and `JsoncModificationError`.
-- `JsoncVisitor.ts` — the event union and `visit(text, options?) -> Stream`.
-- `internal/` — the private scanner, the recursive-descent parser (owning the single scan-error→parse-code mapping), the scanner-based navigator, the shared `skipBalancedValue` and `limits.ts`.
+- `Jsonc.ts` — the facade: a namespace object of statics over the parser and schema layers, not a schema class. Owns the parse and stringify option/error vocabulary.
+- `JsoncNode.ts` — the recursive AST node, with the `JsoncPath` / `JsoncSegment` aliases.
+- `JsoncEdit.ts` — the edit class plus `applyAll`, and the shared `JsoncRange` / `JsoncFormattingOptions` vocabulary.
+- `JsoncFormatter.ts`, `JsoncModifier.ts`, `JsoncVisitor.ts` — formatting, path modification and the SAX stream.
+- `internal/` — the private engine: scanner, recursive-descent parser, scanner-based navigator, the shared `skipBalancedValue` and `limits.ts`.
 
-`JsoncFormatter` is its own module rather than folded into the facade: a standalone formatter keeps the facade small and makes the jsonc/yaml surfaces structurally symmetric (`YamlFormatter` has the identical shape).
+`JsoncFormatter` is its own module rather than folded into the facade: a standalone formatter keeps the facade small and makes the jsonc and yaml surfaces structurally symmetric.
+
+The engine in `internal/` is **vendored** — ported with attribution to Microsoft's `jsonc-parser` design (MIT). That is house policy for pure-tier format packages: vendor and attribute, never take a runtime dependency.
+
+## Engine/facade split as a cycle firewall
+
+`noImportCycles` is error-level, so the split is structural, not stylistic. `internal/` returns raw records — `{ code, offset, length }` parse errors, `_tag`-discriminated navigate results — and the facade materializes the `Schema.Class` types and tagged errors from them, deriving each detail's `line`/`character` from its `offset` against the source text. Offsets are the engine's single positional currency; the scanner tracks no line or column of its own.
+
+An internal module importing a facade module fails the lint. The one permitted edge is `internal/parser.ts` → `JsoncNode.ts`, which is exactly why the depth cap lives in the zero-dependency leaf `internal/limits.ts`: every recursive surface imports one constant without closing a cycle.
 
 ## Effect-wrapping policy
 
-The package-wide rule, and the template for `@effected/yaml`: **pure synchronous methods where nothing can fail; `Effect` only where the error channel is real.** This makes fallible operations legible at the call site — an `Effect` return type *means* "this can produce a `JsoncParseError`" — and keeps the flagship pure operations ergonomic without forcing callers into `runSync`.
+The package-wide rule, and the template `@effected/yaml` follows: **pure synchronous methods where nothing can fail; `Effect` only where the error channel is real.** This makes fallibility legible at the call site — an `Effect` return type *means* "this can produce a `JsoncParseError`" — and keeps the flagship pure operations ergonomic without forcing callers into `runSync`.
 
-- **Pure synchronous** (no `Effect`): node value extraction (`JsoncNode.toValue`), edit application (`JsoncEdit.applyAll`, `JsoncFormatter.formatToString`), formatting (`JsoncFormatter.format` — computing edits never fails), comment stripping (`Jsonc.stripComments`) and semantic equality (`Jsonc.equals` / `equalsValue`).
-- **`Effect`** (real typed `E`): `Jsonc.parse`, `Jsonc.parseTree`, `Jsonc.stringify`, `JsoncModifier.modify` and the schema decode path.
-- **`Result`** (sync escape hatch): `Jsonc.parseResult` returns a v4 `Result<unknown, JsoncParseError>` for callers outside the Effect runtime — jsonc's counterpart to yaml's [`parseResult` posture](yaml.md#effect-wrapping-policy). `Jsonc.parse` is *defined in terms of it* (`Effect.fromResult` behind the named span), so the two variants cannot diverge; the `@remarks` steer Effect consumers to `parse` for the span. `Jsonc.stringifyResult` is the symmetric twin on the stringify side, with `Jsonc.stringify` defined in terms of it the same way. `Jsonc.parseTreeResult` (2026-07-20, the last item of the kit-wide Result-parity ticket #115) completes the set on the tree path — `Result<Option<JsoncNode>, JsoncParseError>` — with `Jsonc.parseTree` defined in terms of it behind its span.
-- **`Stream`** for the visitor: `JsoncVisitor.visit` returns `Stream<JsoncVisitorEvent>`, demand-driven and `Stream.take`-friendly; malformed input surfaces as error events in the union.
+- **Pure synchronous:** node value extraction, edit application, formatting (computing edits never fails), comment stripping and semantic equality.
+- **`Effect`:** parsing, stringifying, modification and the schema decode path.
+- **`Result`:** every fallible operation also has a synchronous `Result` twin, and the `Effect` form is *defined in terms of it* via `Effect.fromResult` behind the named span. The two cannot diverge, and callers outside an Effect runtime pay nothing. Kit convention — [formatter-convention.md](../formatter-convention.md).
+- **`Stream`** for the visitor: demand-driven and `Stream.take`-friendly, with malformed input surfacing as error events in the union rather than a failure channel.
 
-`equals` / `equalsValue` are pure total booleans with a hardened contract: inputs with **any** parse errors compare unequal (return `false`) rather than comparing the recovery parser's best-effort output, so malformed input is never equal to anything. They run the recovery parser but short-circuit to `false` whenever either side produced parse errors, comparing recovered values only when both sides parsed cleanly.
+`equals` and `equalsValue` are pure total booleans with a hardened contract: input with **any** parse errors compares unequal rather than comparing the recovery parser's best-effort output. Malformed input is never equal to anything, including itself.
 
-## Public API
+## Public API shapes
 
-Class-based DX throughout: statics and instance methods on the schema classes, single-optional-parameter statics rather than overload-object signatures. See `src/` for exact signatures; the shapes below are the load-bearing ones.
+Class-based DX throughout: statics and instance methods on the schema classes, single-optional-parameter statics rather than overload-object signatures. The load-bearing shapes:
 
-### Jsonc (facade)
+**`JsoncNode`** is a `Schema.Class` recursive AST node via `Schema.suspend`, with **no parent pointers** — circular references would break structural equality, serialization and Schema encode/decode. Absence is always `Option`, never a `NotFound` error. Its **tight token-end offset discipline** — node spans never swallow trailing whitespace or comments — is a load-bearing invariant with its own regression tests.
 
-A namespace object of statics over the parser and schema layers, not a schema class.
+**`JsoncEdit.applyAll`** applies edits in reverse-offset order and **rejects overlapping edits as a defect**. Overlapping splices are a caller wiring error on a hand-constructed array, not recoverable input, so the defect channel is right — a programmer-error guard, not input hardening. All four format siblings share this posture.
 
-- `parse(text, options?)` → `Effect<unknown, JsoncParseError>` — error-recovery parsing that collects all parse-error details and fails once with the aggregate. Returns `unknown`, never `any`.
-- `parseResult(text, options?)` → `Result<unknown, JsoncParseError>` — the synchronous `Result` variant with identical error-recovery semantics; `parse` delegates to it (see [Effect-wrapping policy](#effect-wrapping-policy)).
-- `stringify(value, options?)` → `Effect<string, JsoncStringifyError>` and `stringifyResult(value, options?)` → `Result<string, JsoncStringifyError>` — plain values → JSONC text (landed 2026-07-19, closing the surface-parity gap [markdown](markdown.md) recorded). Default output is **byte-identical to `JSON.stringify(value, null, 2)`**. `JsoncStringifyOptions` reuses the `JsoncFormattingOptions` vocabulary rather than JSON's `space` — `tabSize` (default `2`, `0` for compact single-line) and `insertSpaces` (default `true`, tabs when `false`) — so one indent vocabulary covers the formatter and the emitter. Nested unrepresentable values (`undefined`, functions, symbols) follow `JSON.stringify`'s documented semantics exactly — dropped from objects, `null` in arrays — rather than inventing a stricter contract.
-- `parseTree(text, options?)` → `Effect<Option<JsoncNode>, JsoncParseError>` — `Option.none()` for empty input, the aggregate error for malformed input. `parseTreeResult(text, options?)` → `Result<Option<JsoncNode>, JsoncParseError>` is the synchronous variant with identical semantics; `parseTree` delegates to it the same way `parse` delegates to `parseResult`.
-- `stripComments(text, replaceCh?)` → `string` — offset-preserving (replaces comment bytes with `replaceCh`, default space).
-- `equals` / `equalsValue` → `boolean` — key-order-independent for objects, order-sensitive for arrays, comments/formatting ignored.
-- The schema factories and `JsoncFromString` — see [Schema transformation strategy](#schema-transformation-strategy).
+**`JsoncModifier.modify`** treats `value === undefined` as delete (comma handling included) and appends on insert. Navigation goes through `internal/navigate.ts`, a scanner-based navigator resolving segments through structural tokens rather than a raw substring match — a correctness property, since a naive backwards string search breaks on keys containing quotes.
 
-`JsoncParseOptions` models its fields as plain `Schema.optionalKey` and applies defaults at the implementation level (`options?.field ?? default`), which keeps the `@public` base annotations tractable. `allowTrailingComma` defaults to `true` — the deliberate tsconfig / VS-Code-settings default. `JsoncFormattingOptions` follows the same bare-`optionalKey` pattern.
+**Option fields are plain `Schema.optionalKey`** with defaults applied at the implementation level (`options?.field ?? default`), which keeps the `@public` base annotations tractable. `allowTrailingComma` defaults to `true`, matching the tsconfig / VS Code settings dialect the format exists to serve.
 
-### JsoncNode
+`JsoncModifyOptions.formattingOptions` accepts `JsoncFormattingOptionsLike` — the class instance *or* a structurally-matching plain literal — because only the option fields are read and nothing decodes, so requiring construction would buy validation the modifier never performs. This follows the `YamlRangeLike` posture in [yaml](yaml.md) rather than inventing a second convention. **`JsoncFormattingOptions` remains the canonical stored form**: the `Like` type is an input accommodation at the boundary, not a second representation.
 
-A `Schema.Class` recursive AST node via `Schema.suspend`, with **no parent pointers** (circular refs would break structural equality, serialization and Schema encode/decode). Construct via `JsoncNode.make(...)`, never `new`. Instance methods `find(path)`, `findAtOffset(offset)`, `pathAt(offset)`, `toValue()`; absence is always `Option`, never a `NotFound` error.
+## Value stringify is plain JSON
 
-The **tight token-end offset discipline** — node spans never swallow trailing whitespace or comments — is a load-bearing invariant with its own regression tests. The recursive class is written **inline** with the synthesized `_base` symbol suppressed in `savvy.build.ts`; only the `Schema.suspend` callback's own return-type annotation survives, since a recursive `suspend` still needs it.
+`Jsonc.stringify` writes exactly what `JSON.stringify(value, null, 2)` writes. Comments live only in the document and edit layers, so they never survive a value round-trip.
 
-### JsoncEdit and JsoncFormatter
+Its options reuse the `JsoncFormattingOptions` vocabulary (`tabSize`, `insertSpaces`) rather than JSON's `space`, so one indent vocabulary covers the formatter and the emitter.
 
-`JsoncEdit` holds `offset`, `length`, `content`; `applyAll(text, edits)` applies in reverse-offset order (byte-minimal, comment/whitespace preserving) and **rejects overlapping edits as a defect** (2026-07-19). Overlapping splices are a caller wiring error, not recoverable input, so a defect is the right channel — this adopts [toml](toml.md)'s posture and harmonizes the guard across all four format siblings, closing what the [markdown](markdown.md) P4 parity note flagged as a divergence. It owns `JsoncRange` and `JsoncFormattingOptions`. `JsoncFormatter.format` computes edits (pure, never fails); `formatToString` is `applyAll ∘ format`.
-
-### JsoncModifier
-
-`modify(text, path, value, options?)` → `Effect<ReadonlyArray<JsoncEdit>, JsoncModificationError>`. `value === undefined` means delete (including comma handling); insertion appends after the last property/element. Navigation goes through `internal/navigate.ts`, a tested scanner-based navigator that resolves segments through structural tokens rather than a raw substring match — a correctness property, since a naive backwards string search breaks on keys containing quotes.
-
-`JsoncModifyOptions.formattingOptions` is typed `JsoncFormattingOptionsLike` — a `JsoncFormattingOptions` **instance or a structurally-matching plain literal**, so a caller writes `{ insertSpaces: false, tabSize: 2 }` without constructing the class. Only the option fields are read, and nothing decodes, so requiring construction bought validation the modifier never performs. This follows the established `YamlRangeLike` posture in [@effected/yaml](yaml.md) rather than inventing a second convention, and the widening is source-compatible — every existing instance call site still typechecks. **`JsoncFormattingOptions` remains the canonical stored form**: the `Like` type is an *input* accommodation at the boundary, not a second representation, so anything held or passed onward is still the class.
-
-### JsoncVisitor
-
-`visit(text, options?)` → `Stream<JsoncVisitorEvent>`, wrapping the generator with `Stream.fromIterable`. The event union is a `Data.taggedEnum`, making events serializable; begin/property/literal events carry `path` context and malformed-input error events are part of the union.
+The typed failure set is closed by the underlying primitive rather than invented: circular references and `bigint` are the two exceptions `JSON.stringify` throws, and a top-level unrepresentable is the case where it returns `undefined` instead of a string. **Nested** unrepresentables — functions, `undefined`, symbols — follow `JSON.stringify`'s documented semantics exactly: dropped from objects, `null` in arrays. Do not "harden" that into a typed error; it is JSON's contract, matched on purpose.
 
 ## Schema transformation strategy
 
-The `JsoncFromString` default-options singleton and the factories are both flagship DX, mirroring semver's `SemVer.FromString` + factory-statics arrangement:
+The transformation layer mirrors semver's `FromString` + factory-statics arrangement, and is the reason an Effect-native JSONC library exists at all:
 
-- `Jsonc.JsoncFromString` — a `Schema<unknown, string>` transformation using the default `JsoncParseOptions`; the zero-config entry point.
-- `Jsonc.fromString(options?)` — a factory returning a `Schema<unknown, string>` bound to the supplied options; `JsoncFromString` is `Jsonc.fromString()` with defaults.
-- `Jsonc.schema(Target, options?)` — composes `fromString(options)` with a target `Schema`, yielding the `Schema<A, string>` pipeline that is the reason an Effect-native JSONC library exists. **Generics parity fix (2026-07-19):** the signature was `schema<T, E>` returning `Schema.Codec<T, string>`, which **dropped a target's service requirements** — a target carrying decoding or encoding dependencies came out with `R = never` and the requirement silently vanished from the type. It now reads `schema<T, E, RD, RE>` → `Schema.Codec<T, string, RD, RE>`, matching yaml and toml, which had the generics from the start. Runtime is untouched; only the type-level thread was missing.
-- `Jsonc.bind(Target)` → `JsoncBoundCodec<T, RD, RE>` (2026-07-19) — `{ schema, decode, encode }`: the composed `schema` plus both directions derived from it once via `Schema.decodeEffect`/`Schema.encodeEffect`. **Thin sugar, deliberately**: it introduces no new error taxonomy — both directions fail `Schema.SchemaError`, exactly as calling the two `Schema` helpers by hand would, and the target's `RD`/`RE` requirements flow through. The value is call-site ergonomics: a consumer binds once and never touches generic `Schema` machinery again. Schema-producing like its neighbors, so the returned codec goes in a `const`.
+- `Jsonc.JsoncFromString` — the pre-bound zero-config `Schema<unknown, string>` on default options.
+- `Jsonc.fromString(options?)` — the same, bound to supplied options.
+- `Jsonc.schema(Target, options?)` — composes with a target schema to yield a `Schema<A, string>` pipeline. Its generics thread the target's **decode and encode requirements** through to the result; a signature that dropped them would silently vanish a target's service requirements into `R = never`.
+- `Jsonc.bind(Target)` — `{ schema, decode, encode }`, both directions derived once from the composed schema. Deliberately thin sugar: it introduces **no new error taxonomy**, both directions failing `Schema.SchemaError` exactly as calling the `Schema` helpers by hand would. The value is that a consumer binds once and never touches generic `Schema` machinery again.
 
-Decode is driven by the internal parser (value mode); encode is `Jsonc.stringifyResult` (2026-07-19 — previously a bare `JSON.stringify` call whose circular-reference and `bigint` failures escaped as **defects**; both are now typed `JsoncStringifyError` failures on the encode channel). The **domain `JsoncParseError` is constructed directly by the `parse` / `parseTree` path**, which bypasses `Schema` entirely — so `SchemaError` never escapes as the documented contract of those methods. The raw schema decode path fails with a `SchemaError` carrying a `SchemaIssue.InvalidValue` whose message is the aggregate parse message; consumers wanting the domain error from a schema pipeline normalize at the boundary with `Effect.catchTag("SchemaError", ...)`, the same shape semver ships.
+Decode is driven by the internal parser in value mode; encode goes through the stringify path, so circular-reference and `bigint` failures are typed on the encode channel rather than escaping as defects.
 
-**Memoization by reference.** `fromString(options)` and `schema(Target, options)` are schema-*producing* functions, so each call returns a fresh instance; v4 schema derivation caches key by reference and are not shared across calls with structurally-equal options. Consumers on a hot path should bind the produced schema to a `const` once. `JsoncFromString` is the pre-bound singleton precisely so the common default case needs no such discipline.
+The **domain `JsoncParseError` is constructed directly by the `parse`/`parseTree` path**, bypassing `Schema` entirely — that is the documented contract of those methods, and it is why `SchemaError` never escapes them. The raw schema decode path is the exception: it fails with a `SchemaError` whose issue message is the aggregate parse message, and consumers wanting the domain error normalize at the boundary with `Effect.catchTag("SchemaError", ...)`, the same shape semver ships.
+
+**Memoization by reference.** `fromString` and `schema` are schema-*producing* functions, so each call returns a fresh instance, and v4 derivation caches key by reference — structurally-equal options do not share. Bind the produced schema to a `const` on a hot path. `JsoncFromString` is the pre-bound singleton precisely so the common default case needs no such discipline.
 
 ## Error set
 
-A restrained aggregate design (the best error shape in this vocabulary, and correct where a per-error-class explosion would be wrong):
+A restrained aggregate design, correct where a per-error-class explosion would be wrong. Parsing is **error-recovering**: it collects every parse-error detail and fails once with an aggregate carrying the whole batch plus the input, rather than failing at the first bad byte. Each detail is a `Schema.Class` (not an error) carrying a code and a position.
 
-| Error | Raised by | Payload |
-| --- | --- | --- |
-| `JsoncParseError` | `parse` / `parseTree`; schema decode | `errors: ReadonlyArray<JsoncParseErrorDetail>`, `input: string` |
-| `JsoncStringifyError` | `stringify` / `stringifyResult`; schema encode | `code: JsoncStringifyErrorCode`, `detail`, `value` |
-| `JsoncModificationError` | `JsoncModifier.modify` | `path`, `expected: "object" \| "array"`, `depth`, optional `offset` (reserved, currently unpopulated) |
-
-`JsoncStringifyErrorCode` is a three-member literal set naming exactly the failures `JSON.stringify` documents: `CircularReference` (a reference cycle, so no finite output exists), `BigIntValue` (a `bigint` anywhere in the value) and `TopLevelUnrepresentable` (the top-level value is `undefined`, a function or a symbol, where `JSON.stringify` returns `undefined` instead of a string). The implementation classifies the two exceptions `JSON.stringify` throws and detects the third by the `undefined` return, so the vocabulary is closed by the underlying primitive rather than invented.
-
-`JsoncParseErrorDetail` is a `Schema.Class` (not an error) carrying `code: JsoncParseErrorCode`, `offset`, `length`, `line`, `character` — one detail per recovered parse error, so a single `JsoncParseError` reports the whole batch. Both errors are `Schema.TaggedErrorClass` with `message` derived via getter, never preformatted strings.
-
-**Import-cycle firewall.** `JsoncParseError` is owned by the facade, but the internal parser must not import it (`Jsonc.ts → internal/parser.ts → Jsonc.ts` would be a cycle, and `noImportCycles` is error-level). `internal/parser.ts` owns the parse-error-code const and returns raw `{ code, offset, length }` records; `Jsonc.ts` builds the public `JsoncParseErrorCode` schema from that const, computes each detail's `line`/`character` from `offset` against the source text, and constructs the aggregate. Because offsets are the parser's single positional currency, the scanner tracks no `line`/`character` of its own. `internal/navigate.ts` is symmetric: it returns plain navigation results and `JsoncModifier.ts` constructs `JsoncModificationError`.
+Errors are `Schema.TaggedError` with `message` derived via getter from structured fields, never a preformatted string, and never a `reason: string`. See `src/Jsonc.ts` and `src/JsoncModifier.ts` for the current set.
 
 ## Input hardening
 
-Per the [input-hardening standard](../effect-standards.md#input-hardening-standards), deeply-nested hostile input must fail through the typed channel rather than overflowing the stack. Collection-nesting depth is capped at a shared `MAX_NESTING_DEPTH` in `src/internal/limits.ts` — a zero-dependency leaf so every recursive surface imports the same cap without an import cycle. The cap mirrors `@effected/yaml`'s composer cap for cross-package parity.
+Per the [input-hardening standard](../effect-standards.md#input-hardening-standards), deeply-nested hostile input must fail through the typed channel — never as a `Cause.Die`, never as a stack overflow.
 
-jsonc's recursion is spread across five independent surfaces, each guarded separately: the recursive-descent parser's value and tree modes (a `NestingDepthExceeded` code, with over-deep containers consumed iteratively via bracket-counting so recovery still makes progress); `JsoncNode.toValue`/`findAtOffset`/`buildPath`; the `equals`/`equalsValue` structural walk (over-deep comparison returns `false`); the visitor SAX walk (in-band error event); and the modifier's navigation. The bracket-counting skip plus the malformed-closer guard have **one implementation**, `skipBalancedValue` in `src/internal/skip.ts`, parameterized over a token cursor so the parser, navigator and visitor each keep their own advance discipline over a shared algorithm.
+Collection-nesting depth is capped by a shared constant in `src/internal/limits.ts`, a zero-dependency leaf so every recursive surface imports the same cap without closing a cycle. The cap mirrors yaml's composer cap for cross-package parity.
 
-**Tree construction is validation-free.** A naive `parseTree` is exponential in nesting depth, because `Schema.Class` construction re-parses the recursive `children` field. The parser builds nodes through an internal `makeNodeUnsafe` path in `JsoncNode.ts` (never re-exported) that assigns props onto the class prototype directly; the parser guarantees validity by construction, since every field comes off a scanner token. Public `JsoncNode.make` and `new` stay fully validating. The one contract the unsafe path carries: absent optional fields must be omitted, never passed as explicit `undefined`.
+jsonc's recursion is spread across several independent surfaces — the parser's value and tree modes, the node walkers, the structural-equality walk, the visitor and the modifier's navigation — and **each is guarded separately**; there is no single choke point. Over-deep containers are consumed iteratively by bracket counting so recovery still makes progress. That skip algorithm plus its malformed-closer guard has **one implementation**, `skipBalancedValue` in `src/internal/skip.ts`, parameterized over a token cursor so the parser, navigator and visitor each keep their own advance discipline over a shared algorithm.
+
+**Tree construction is validation-free.** A naive `parseTree` is exponential in nesting depth, because `Schema.Class` construction re-validates the recursive `children` field once per level. The parser builds nodes through an internal unsafe path in `JsoncNode.ts` (never re-exported) that assigns props onto the prototype directly; validity is guaranteed by construction, since every field comes off a scanner token. Public `JsoncNode.make` and `new` stay fully validating. The one contract the unsafe path carries: absent optional fields must be omitted, never passed as explicit `undefined`.
 
 ## Equal and Hash semantics
 
-`Schema.Class` structural equality (`Equal.equals` on nodes) is load-bearing for the visitor/token tests. `Jsonc.equals`/`equalsValue` implement the *semantic* (comment/format-ignoring, key-order-independent) equality distinct from structural `Equal.equals`, so they stay explicit statics. The AST nodes use structural equality with no custom `[Equal.symbol]`; if a node ever customizes equality it MUST override `[Hash.symbol]` too (`Equal.equals` fast-paths on hash mismatch), with a regression test pinning hash agreement.
+The AST nodes use plain `Schema.Class` structural equality with no custom `[Equal.symbol]`, and that equality is load-bearing for the visitor and token tests. `Jsonc.equals`/`equalsValue` implement the *semantic* equality — comment- and format-ignoring, key-order-independent for objects, order-sensitive for arrays — which is a different relation, so they stay explicit statics rather than overriding structural equality.
+
+If a node ever customizes equality it MUST override `[Hash.symbol]` too, since `Equal.equals` fast-paths on hash mismatch.
 
 ## jsonc/yaml parity convention
 
-There is **no shared-package extraction**: a possible later `@effected/text-edit` micro-kernel covering Edit/Range/Path/diff is deferred until the shapes prove identical in use ([package-inventory.md](../package-inventory.md)). In its place, a binding convention: `JsoncEdit`, `JsoncRange`, `JsoncPath`, `JsoncSegment` and the parse-error-detail-with-position shape (`JsoncParseErrorDetail`'s fields) are **structurally identical** to their `Yaml*` counterparts — same field names, types, optionality and `applyAll`/`equals`/`schema` semantics. The point is codec-generic consumer code: one function over "a document codec's Edit/Range/Path" works against both packages.
+There is deliberately **no shared-package extraction**: a possible `@effected/text-edit` micro-kernel over Edit/Range/Path/diff is deferred until the shapes prove identical in use. In its place, a binding convention: `JsoncEdit`, `JsoncRange`, `JsoncPath`, `JsoncSegment` and the parse-error-detail shape are **structurally identical** to their `Yaml*` counterparts — same field names, types and optionality, with the same `applyAll`/`equals`/`schema` semantics. The point is codec-generic consumer code: one function over "a document codec's Edit/Range/Path" works against both packages.
 
-`YamlFormattingOptions` is the one exception — it derives its shared fields from `YamlStringifyOptions` at runtime by spreading `.fields`, which is not structurally identical even though field names and semantics line up (see [yaml.md's options derivation](yaml.md#options-derivation)). `JsoncModificationError` is deliberately not bound by the convention: its `expected`/`depth` fields differ from yaml's because the underlying failures differ; the convention binds Edit/Range/Path, not this error.
+Two exceptions are recorded rather than fixed. `YamlFormattingOptions` derives its shared fields from `YamlStringifyOptions` at runtime by spreading `.fields`, which is not structurally identical even though the names and semantics line up ([yaml's options derivation](yaml.md#options-derivation)). And `JsoncModificationError` is not bound by the convention at all — its fields differ from yaml's because the underlying failures differ. The convention binds Edit/Range/Path, not the errors.
 
 ## Observability
 
-Per the observability standard, `Effect.fn("name")` at public *fallible* boundaries only: `parse`, `parseTree`, `stringify` and `modify`. Pure synchronous operations are not instrumented — no `Effect`, no span. `parseResult`, `parseTreeResult` and `stringifyResult` carry no span (they are not Effects); `parse`, `parseTree` and `stringify` keep their spans while delegating, so Effect consumers lose nothing by the delegation. `JsoncVisitor.visit` is **not** span-wrapped: stream construction is lazy and pure, with no clean `Effect.fn` boundary to attach a span to without forcing the stream into an effect it does not need. The library stays telemetry-agnostic — applications compose `@effect/opentelemetry` at the edge.
+`Effect.fn("name")` at public *fallible* boundaries only — parse, tree parse, stringify and modify. Pure synchronous operations are not instrumented: no `Effect`, no span. The `Result` twins carry no span, since they are not Effects; their `Effect` counterparts keep theirs while delegating, so Effect consumers lose nothing.
+
+`JsoncVisitor.visit` is **not** span-wrapped: stream construction is lazy and pure, with no clean `Effect.fn` boundary to attach a span to without forcing the stream into an effect it does not need.
+
+The library stays telemetry-agnostic — applications compose `@effect/opentelemetry` at the edge.
 
 ## API Extractor bases
 
-Per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), every Effect class factory is written **inline** with no exported `*_base` const; the synthesized `_base` heritage symbols are suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern) and land in the `issues.json` `suppressed` bucket, keeping it zero-warning. Genuinely-reusable public schemas (`JsoncParseErrorCode`, field schemas that are real API) remain `@public` on their own merit.
+Per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), every Effect class factory is written **inline** with no exported `*_base` const; the synthesized `_base` heritage symbols are suppressed narrowly in `savvy.build.ts` and land in the `issues.json` `suppressed` bucket, keeping it zero-warning. Never widen the suppression. Genuinely reusable public schemas stay `@public` on their own merit.
 
 ## Testing
 
-`@effect/vitest` with `it.effect` as the default mode; tests in `__test__/` split per concept. Construct instances via `X.make(...)`, never `new`. The suite covers every behavior contract: token-end offset discipline, edits-not-mutations byte-minimality, `equals`/`equalsValue` equality semantics, `modify` delete/insert contracts, `stripComments` offset preservation, the `schema` decode/encode pipeline and quote-containing-key navigation through `internal/navigate.ts`. Property tests via `it.effect.prop` with `Schema.toArbitrary` assert `applyAll ∘ format` idempotence and `parse ∘ stripComments` agreement with `JSON.parse`. Hardening regressions pin deep and wide documents plus structural equality between parser-built and `make`-built nodes.
+`@effect/vitest` with `it.effect` as the default mode; `__test__/` splits per concept. Construct instances via `X.make(...)`, never `new`.
+
+The suite is organized around behavior contracts rather than methods: token-end offset discipline, edit byte-minimality, the two equality semantics, delete and insert contracts, offset-preserving comment stripping, the schema decode/encode pipeline and quote-containing-key navigation. Property tests via `it.effect.prop` assert format idempotence and that parsing comment-stripped text agrees with `JSON.parse`. Hardening regressions pin deep and wide documents, plus structural equality between parser-built and `make`-built nodes.

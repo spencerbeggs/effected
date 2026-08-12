@@ -4,6 +4,14 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107. The Elysia example cannot be typechecked
+end-to-end (external modules), so its Effect-side members were checked individually. FALSIFIED and
+corrected inline: `Schema.toJsonSchema` with `{ target, referenceStrategy }` (the entry point is
+`toJsonSchemaDocument`, whose only options are `additionalProperties` / `generateDescriptions` /
+`includeAnnotationKey`; the draft is always 2020-12 and draft-07 is reached afterwards via
+`JsonSchema.toDocumentDraft07`) and `Schema.ValidDate` (does not exist — `Schema.Date` is already the
+valid-date schema). NOT PROBED: the TanStack Form and Elysia integrations were not run.
 -->
 
 # Integrations
@@ -214,6 +222,15 @@ export default function App() {
 
 #### Elysia
 
+> **Beta trap (two of them).** `Schema.toJsonSchema` does not exist — the entry
+> point is `Schema.toJsonSchemaDocument(schema, options?)`, and its options are
+> only `{ additionalProperties?, generateDescriptions?, includeAnnotationKey? }`.
+> There is no `target` and no `referenceStrategy`; the draft is always
+> 2020-12, and draft-07 is reached afterwards through
+> `JsonSchema.toDocumentDraft07(document)`. And `Schema.ValidDate` does not
+> exist either — `Schema.Date` is already the valid-date schema.
+
+
 ```ts
 import { node } from "@elysiajs/node"
 import { openapi } from "@elysiajs/openapi"
@@ -241,10 +258,9 @@ function decodingStringSchema<T, E, RE>(schema: Schema.Codec<T, E, never, RE>) {
 }
 
 function mapJsonSchema(schema: Schema.Top) {
-  return Schema.toJsonSchema(schema.ast.annotations?.direction === "encoding" ? Schema.flip(schema) : schema, {
-    target: "draft-2020-12", // or "draft-07"
-    referenceStrategy: "skip"
-  }).schema
+  return Schema.toJsonSchemaDocument(
+    schema.ast.annotations?.direction === "encoding" ? Schema.flip(schema) : schema
+  ).schema
 }
 
 // ----------------------------------------------------
@@ -283,7 +299,7 @@ new Elysia({ adapter: node() })
       response: {
         200: encodingJsonSchema(
           Schema.Struct({
-            date: Schema.ValidDate
+            date: Schema.Date
           })
         )
       }

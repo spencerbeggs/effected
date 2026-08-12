@@ -6,9 +6,10 @@ real thing except for **one** method, which fails on demand — fail
 
 `FileSystem.layerNoop` covers the all-stub case and `Layer.mock` covers the
 partial-stub case; neither decorates a *real* implementation. There is no
-`FileSystem.layerWith` and no `Layer.mapService` in `effect@4.0.0-beta.101`
-(`Layer.ts` exports checked) — the scaffold below is the house recipe until a
-kit helper exists ([#145](https://github.com/spencerbeggs/effected/issues/145)).
+`FileSystem.layerWith` and no `Layer.mapService` in `effect@4.0.0-beta.107`
+(`Layer.ts` / `FileSystem.ts` exports re-checked 2026-08-12) — the scaffold below
+is the house recipe until a kit helper exists
+([#145](https://github.com/spencerbeggs/effected/issues/145)).
 
 ## The scaffold: `Layer.effect` + spread the base + `Layer.provide(base)`
 
@@ -54,7 +55,7 @@ not alongside.
 
 If the thing under test is a layer that *consumes* the service (rather than the
 test body reading it directly), `Layer.updateService` writes the same decoration
-in one call (`packages/effect/src/Layer.ts:1999`; it is defined as
+in one call (`Layer.ts:2063`; it is defined as
 `provide(layer, effect(service, map(service, f)))`, so the decorated service is
 built from the surrounding context and the result requires that service):
 
@@ -71,8 +72,8 @@ plumbing is written for you.
 
 ## Partial stubs of any service: `Layer.mock`
 
-`Layer.mock(Key, partial)` (`Layer.ts:2262`, `@since 3.17.0`, present at
-beta.101) builds a service from a partial implementation; any missing member
+`Layer.mock(Key, partial)` (`Layer.ts:2304`, `@since 3.17.0`, present at
+beta.107) builds a service from a partial implementation; any missing member
 that is an `Effect` / `Stream` / `Channel` — or a function returning one — dies
 with an `UnimplementedError` naming the method when it is exercised. Non-effect
 properties are still required.
@@ -92,7 +93,7 @@ that, the scaffold above.
 
 ## Two instances of one layer in a single composition
 
-`Layer.fresh(L)` (`Layer.ts:2100`) rebuilds with a new `MemoMap`, so two
+`Layer.fresh(L)` (`Layer.ts:2160`) rebuilds with a new `MemoMap`, so two
 branches of one composition get separate instances. It does **not** reset state
 between tests inside a `layer(...)` group — that group builds its whole layer
 once, and `fresh` only affects sharing *within* that single build.

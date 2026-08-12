@@ -1,13 +1,17 @@
 ---
 name: effect-v4-cli
-description: Use when building or porting a command-line tool on Effect v4 — @effect/cli is DEAD on the v4 line (its latest peers on effect ^3.21.x), and the CLI framework now lives in core as effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a no-match must not), and the two different `Command`s (spawning is core's effect/unstable/process, NOT unstable/cli). Verified against effect@4.0.0-beta.101.
+description: Use when building or porting a command-line tool on Effect v4 — @effect/cli is DEAD on the v4 line (its latest peers on effect ^3.21.x), and the CLI framework now lives in core as effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a no-match must not), and the two different `Command`s (spawning is core's effect/unstable/process, NOT unstable/cli). Verified against effect@4.0.0-beta.107.
 ---
 
 # Effect v4 CLIs
 
-**Do not install `@effect/cli`.** Its latest release is `0.75.2`, it declares
-`peerDependencies: { effect: "^3.21.2" }`, and it publishes **no beta
-dist-tag** — there is no v4 line. Installing it drags a v3 `effect` and the
+**Do not install `@effect/cli`.** Its latest release is `0.77.0`, it declares
+`peerDependencies: { effect: "^3.22.1", "@effect/platform": "^0.97.1",
+"@effect/printer": "^0.51.0", "@effect/printer-ansi": "^0.51.0" }`, and its
+only dist-tags are `latest` and `snapshot` — **no `beta` tag, so there is no v4
+line**. It keeps shipping releases on the v3 line, so "it was updated recently"
+is not evidence of v4 support; check the `effect` peer range, which is the
+thing that has never crossed to `^4`. Installing it drags a v3 `effect` and the
 `@effect/platform` / `@effect/printer` peer chain into a v4 package.
 
 The CLI framework moved **into core**:
@@ -17,10 +21,11 @@ The CLI framework moved **into core**:
 | `@effect/cli` | **`effect/unstable/cli`** |
 | `@effect/platform` `HttpClient` | **`effect/unstable/http`** |
 
-`effect/unstable/cli` exports `Argument`, `CliError`, `CliOutput`, `Command`,
-`Completions`, `Flag`, `GlobalFlag`, `HelpDoc`, `Param`, `Primitive`, `Prompt`.
-Note the v3→v4 vocabulary shift: an option is a **`Flag`**, not an `Option` (the
-name `Option` belongs to the data type).
+`effect/unstable/cli` exports twelve modules: `Argument`, `CliConfig`,
+`CliError`, `CliOutput`, `Command`, `Completions`, `Flag`, `GlobalFlag`,
+`HelpDoc`, `Param`, `Primitive`, `Prompt`. Note the v3→v4 vocabulary shift: an
+option is a **`Flag`**, not an `Option` (the name `Option` belongs to the data
+type).
 
 `effect/unstable/http` carries `HttpClient` and `FetchHttpClient`.
 **`FetchHttpClient.layer` is `Layer<HttpClient>` with no error channel and no
@@ -30,7 +35,7 @@ not become integrated tier on the HTTP client's account.
 ## `Command.Environment` — the fact that decides your package tier
 
 ~~~ts
-// effect/unstable/cli/Command.ts:355
+// effect/unstable/cli/Command.ts:391
 export type Environment =
   FileSystem.FileSystem | Path.Path | Terminal.Terminal | ChildProcessSpawner | Stdio.Stdio
 ~~~
@@ -40,10 +45,10 @@ almost none of them for Node:**
 
 | service | what core actually ships |
 | --- | --- |
-| `Path` | `Path.layer` — a real implementation (posix) |
-| `FileSystem` | `FileSystem.layerNoop(partial)` — a **stub factory**, for tests |
-| `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape |
-| `Terminal` | **no layer at all** |
+| `Path` | `Path.layer` — a real implementation (posix), `Path.ts:867` |
+| `FileSystem` | `FileSystem.layerNoop(partial)` — a **stub factory**, for tests (`FileSystem.ts:954`) |
+| `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape (`Stdio.ts:152`) |
+| `Terminal` | **no layer at all** — `Terminal.ts` declares no `layer` export |
 | `ChildProcessSpawner` | the contract and the `ChildProcess` command values, but **no layer** — see below |
 
 So a CLI you actually intend to run needs `@effect/platform-node` for the real
@@ -65,8 +70,8 @@ modules (`unstable/process/index.ts`):
 
 | you want | v4 |
 | --- | --- |
-| `@effect/platform/Command` (build a command value) | **`effect/unstable/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:583,670,702,766,804`). **Warning:** `setEnv` never sets `extendEnv`, so the child's env is ONLY what you pass — it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`) |
-| `@effect/platform/CommandExecutor` (run it) | **`effect/unstable/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:241`) |
+| `@effect/platform/Command` (build a command value) | **`effect/unstable/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:603,693,727,792,831`). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:405`) |
+| `@effect/platform/CommandExecutor` (run it) | **`effect/unstable/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:252`) |
 
 > **Do not hand-roll a `node:child_process` layer or a parallel
 > `Command`/`CommandRunner` vocabulary.** One did survive four review gates in
@@ -89,9 +94,12 @@ Everything follows from that one fact:
 > **A usage error must FAIL. A no-match result must NOT.**
 
 `CliError.UserError` is the general-purpose failure for "the user asked for
-something invalid". The full `CliError` union is `UnrecognizedOption`,
-`DuplicateOption`, `MissingOption`, `MissingArgument`, `InvalidValue`,
-`UnknownSubcommand`, `ShowHelp`, `UserError`.
+something invalid". The full `CliError` union is nine members
+(`CliError.ts:74`): `UnrecognizedOption`, `DuplicateOption`, `MissingOption`,
+`MissingArgument`, `UnexpectedArgument`, `InvalidValue`, `UnknownSubcommand`,
+`ShowHelp`, `UserError`. An exhaustive `catchTags` or `Match` that omits
+`UnexpectedArgument` will not compile — and one written before it existed is
+exactly the shape that breaks on a beta advance.
 
 ~~~ts
 import { CliError } from "effect/unstable/cli"

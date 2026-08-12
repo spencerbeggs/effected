@@ -1,6 +1,6 @@
 ---
 name: effect-v4-idioms
-description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Verified against effect@4.0.0-beta.94+.
+description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Verified against effect@4.0.0-beta.107.
 ---
 
 # Effect v4 core idioms
@@ -11,8 +11,8 @@ runtime, equality. For *which module* to reach for in the first place (what is
 patterns, not the map. This is the *how to write it well* companion to
 `effect-v4-construct-map` (which owns the flat v3→v4 rename tables and the
 `Context.Service` / `Schema.TaggedError` migration rows — cross-reference it
-rather than duplicate). Every identifier below was probed against
-`effect@4.0.0-beta.94+`; when you reach past this list, run one runtime probe
+rather than duplicate). Every identifier below was verified to exist against
+`effect@4.0.0-beta.107`; when you reach past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)
 before writing — v4 betas move fast and muscle memory lies.
 
@@ -130,7 +130,7 @@ you covered.
 
 Core `FileSystem` / `Path` operations fail with `PlatformError`, and its shape
 is not guessable: `effect` re-exports the module **as a namespace**
-(`export * as PlatformError from "./PlatformError.ts"`, index.ts:397) and the
+(`export * as PlatformError from "./PlatformError.ts"`, index.ts:402) and the
 error **class** is declared inside it (PlatformError.ts:157, a
 `Data.TaggedError("PlatformError")`). So the type you write is the doubled
 `PlatformError.PlatformError`:
@@ -153,8 +153,10 @@ Written once it looks like a typo — which is exactly why it gets replaced with
 `unknown`. Do not: typing a `FileSystem`-backed channel `unknown` violates the
 house standard (never collapse errors to `string`/`unknown` early) when the
 precise type is one `import type` away. `fs.exists: (path: string) =>
-Effect.Effect<boolean, PlatformError>` (FileSystem.ts:134) — verified against
-beta.94.
+Effect.Effect<boolean, PlatformError>` (FileSystem.ts:143) — verified against
+beta.107. The `reason` field is where the detail lives: a `PlatformError` wraps
+a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
+carrying a normalized `SystemErrorTag`), `PlatformError.ts:36,109,157`.
 
 **New in v4** — recover a nested `reason` without stripping the parent error
 from the channel (e.g. an `AiError` whose `reason` is a `RateLimitError`):
@@ -171,30 +173,49 @@ someAiCall.pipe(
 several reason tags at once; `Effect.catchEager(handler)` is the optimization
 variant of `catch` that runs synchronous recovery immediately.
 
-## Yieldable trait — not everything is an Effect
+## Yieldable — not everything is an Effect
 
-v4 narrows the old "many types ARE Effects" model to a **`Yieldable`** trait:
-`yield*`-able in a generator, but not assignable to `Effect`.
+v4 dropped the v3 "many types ARE Effects" model, and what replaced it is
+narrower than the migration notes say. **The notes are the trap here.**
+`migration/yieldable.md` documents a `Yieldable` trait whose contract is
+`asEffect(): Effect<A, E, R>`, lists `Option` and `Result` as implementors, and
+states "the runtime calls `.asEffect()` internally when yielding". **None of
+that holds at beta.107**: `asEffect` has zero occurrences in the entire core
+source, in the vendored tree and in `node_modules` alike, and
+`typeof Option.some(1).asEffect` is `undefined`. Rung 1 is prescriptive and it
+has gone stale here; the source settles it.
 
-Still yield directly (no call needed): `Effect`, `Option` (fails
-`NoSuchElementError`), `Config` (fails `ConfigError`), and any
-`Context.Service`.
+Directly yieldable at beta.107 — probed, with an `Effect.succeed` control that
+passed:
 
-**`Result` is NOT on that list.** `yield* Result.fail("boom")` inside
-`Effect.gen` dies as a **defect** — `Fiber.runLoop: Not a valid effect:
-failure("boom")` — and the success case dies identically, as
-`Not a valid effect: success(42)` (re-probed beta.99; `Result`'s
-`[Symbol.iterator]` serves `Result.gen` only, `internal/result.ts:22`). Note the
-success case fails too: this is not "errors need a bridge", it is "`Result` is
-not an Effect at all". The bridge is **`Effect.fromResult`** (`Effect.ts:1781`):
+| Value | `yield*` inside `Effect.gen` |
+| --- | --- |
+| `Effect` | works |
+| `Config` | works — it **is** an `Effect` (`Config<T> extends Effect<T, ConfigError>`, `Config.ts:108`) |
+| any `Context.Service` | works |
+| `Option` | **dies as a defect** |
+| `Result` | **dies as a defect** |
+
+**`Option` and `Result` are both off the list, and both die the same way.**
+`yield* Option.some(7)` exits `Failure` with
+`Die("Fiber.runLoop: Not a valid effect: some(7)")`; `Option.none()`,
+`Result.succeed(42)` and `Result.fail("boom")` die identically (probed
+beta.107; the `Result` control reproduced the beta.99 record exactly, which is
+what proved the harness could observe a defect at all). Note the **success**
+cases die too: this is not "errors need a bridge", it is "these are not Effects
+at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
+rejects anything carrying no `evaluate` (`internal/effect.ts:671`).
+
+The bridge is a module function on `Effect`, one per type:
 
 ```ts
-const value = yield* Effect.fromResult(Fmt.parseResult(text))  // fails typed with the Result's E
+const u = yield* Effect.fromOption(maybeUser)              // Effect.ts:1816 — fails NoSuchElementError
+const v = yield* Effect.fromResult(Fmt.parseResult(text))  // Effect.ts:1777 — fails typed with the Result's E
 ```
 
-`Result` also has **no `.asEffect()`** — `Result.fail("x").asEffect` is
-`undefined` at beta.99, so the materialize-with-`.asEffect()` advice below
-does not apply to it either. `Effect.fromResult` is the only bridge.
+`Effect.fromOption` takes an optional second argument for the failure
+(`Effect.fromOption(maybeUser, () => new UserMissing())`), so the
+`NoSuchElementError` default is not something you have to live with.
 
 To read a `Result` **outside** an Effect, narrow with `Result.isSuccess` /
 `Result.isFailure`, then read the value off **`.success` / `.failure`** — not
@@ -207,7 +228,7 @@ else report(r.failure)                    // NOT r.left / r.right (v3 Either)
 ```
 
 The `Success` variant carries `.success` and the `Failure` variant `.failure`
-(`Result.ts:104,149`); there is no `.value`, and the v3 `Either` `.right` /
+(`Result.ts:161,99`); there is no `.value`, and the v3 `Either` `.right` /
 `.left` names are gone. A read through `.value` compiles against `unknown` in
 a loose context and returns `undefined` at runtime with no error — the exact
 silent miss that cost a round-4 consumer a debugging cycle.
@@ -220,25 +241,26 @@ const v = yield* Deferred.await(deferred) // NOT yield* deferred
 const r = yield* Fiber.join(fiber)     // NOT yield* fiber  (Fiber is not an Effect)
 ```
 
-To hand a Yieldable to a data-first combinator, materialize it with
-`.asEffect()` — or just stay in a generator:
+To hand an `Option` or a `Result` to a data-first combinator, go through the
+same bridge — or just stay in a generator:
 
 ```ts
-Effect.map(Option.some(42).asEffect(), (n) => n + 1)
+Effect.map(Effect.fromOption(Option.some(42)), (n) => n + 1)
 ```
 
-**`Config` is the exception — it already IS an `Effect`, and has no
-`.asEffect()`.** `Config<T>` is an `Effect<T, ConfigError>`, so it pipes straight
-into the combinators:
+**`Config` needs no bridge — it already IS an `Effect`.** `Config<T>` extends
+`Effect<T, ConfigError>` (`Config.ts:108`), so it pipes straight into the
+combinators, and there is no `Effect.fromConfig` to reach for:
 
 ```ts
 Config.string("PORT").pipe(Effect.catchTag("ConfigError", () => Effect.succeed("8080")))
 ```
 
-`Config.string("PORT").asEffect()` **throws** (`typeof` is `undefined`) *and*
-fails tsgo. The `.asEffect()` habit generalizes from `Option`, and `Config` sits
-in the same "yieldable" list above — which is exactly what makes it a trap. Two
-more `Config` facts worth carrying, both probed on beta.94:
+That `Config` sits beside `Option` in every "yieldable" list ever written — and
+yet needs the opposite treatment — is exactly what makes the pair a trap: the
+one that looks like it needs converting does not, and the one that looks
+interchangeable with it dies. Two more `Config` facts worth carrying, both
+probed on beta.94 and re-verified at beta.107:
 
 - **`ConfigError` is not on the `effect` root.** It is `Config.ConfigError`;
   importing it from `"effect"` yields `undefined`, and a `catchTag` against that
@@ -444,7 +466,10 @@ reporting, but it is no longer what keeps the event loop from draining.
 
 ## FiberRef is gone — use `Context.Reference`
 
-`FiberRef` (and `FiberRefs`, `Differ`) is removed. Fiber-local state is now a
+`FiberRef` and `FiberRefs` are removed (zero occurrences in core at beta.107).
+**`Differ` is not** — it survives as a top-level module (`Differ.ts:27`,
+`interface Differ<in out T, in out Patch>`) for patch-based value updates; it
+simply no longer has a `FiberRef` to serve. Fiber-local state is now a
 `Context.Reference` — a service with a default value. Read it by yielding it,
 and scope a new value with `Effect.provideService` (there is no free-floating
 `FiberRef.set` mutation and no `Effect.locally`):
@@ -462,8 +487,18 @@ program.pipe(Effect.provideService(Verbose, true))
 ```
 
 Built-in fiber refs moved to the `References` module — read them the same way:
-`yield* References.CurrentLogLevel`, `References.CurrentConcurrency`,
-`References.MinimumLogLevel`, etc.
+`yield* References.CurrentLogLevel`, `References.MinimumLogLevel`,
+`References.TracerEnabled`, `References.CurrentLogAnnotations`, etc.
+
+**There is no `References.CurrentConcurrency`** — the module's own header prose
+says the references "cover concurrency, scheduling, logging, tracing"
+(`References.ts:4`), but no concurrency reference is exported at beta.107, and
+a `yield*` against the remembered v3 name gets `undefined`. Concurrency is an
+*option* in v4 (`{ concurrency }` on `Effect.all` and friends), not an ambient
+reference. The twelve that do exist: `CurrentLogAnnotations`, `CurrentLogLevel`,
+`CurrentLogSpans`, `CurrentStackFrame`, `MinimumLogLevel`, `TracerEnabled`,
+`TracerSpanAnnotations`, `TracerSpanLinks`, `TracerTimingEnabled`,
+`UnhandledLogLevel`, `CurrentLoggers`, `LogToStderr`.
 
 ## Runtime and entrypoints
 

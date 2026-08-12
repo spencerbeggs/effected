@@ -3,119 +3,94 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-02
-last-synced: 2026-08-02
+updated: 2026-08-12
+last-synced: 2026-08-12
 completeness: 95
 related:
   - ../architecture.md
   - ../effect-standards.md
+  - ../formatter-convention.md
   - ../package-inventory.md
+  - package-json.md
 ---
 
 # @effected/semver design
 
 ## Overview
 
-`@effected/semver` is strict SemVer 2.0.0 as Effect Schema classes: parse, compare, range matching, range algebra and a cache service, all pure. Class-based DX is the north star — instance methods are the canonical form, cross-cutting operations are dual statics on the owning class, and there are no floating functions.
+`@effected/semver` is strict SemVer 2.0.0 as Effect Schema classes: parse, compare, range matching, range algebra and a cache service, all pure. It is the repo's DX north star — when an API shape is in question elsewhere in the kit, this package is the precedent.
 
 ## Tier and dependencies
 
-Pure tier — no IO anywhere. `peerDependencies`: `effect` only. No cross-`@effected` edges; downstream packages depend on semver, never the reverse. `"sideEffects": false`.
+Pure tier — no IO anywhere. `effect` is the only peer; there are no cross-`@effected` edges, and the dependency direction is one-way: downstream packages depend on semver, never the reverse. `"sideEffects": false`.
 
 ## Module layout
 
-Module-per-concept per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept):
+Module-per-concept per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept). One module per domain concept — `SemVer`, `Comparator`, `Range`, `VersionDiff`, `VersionCache` — each owning its own tagged errors rather than the kind-based `errors/` + `schemas/` folders the v3 source used. `src/index.ts` is the only re-exporting module; see it for the full export list.
 
-- `src/index.ts` — public surface, re-exports only.
-- `src/SemVer.ts` — the `SemVer` domain class (`Schema.Class`), `SemVer.FromString`, all version statics and instance methods including the `bump` namespace and the pure grouping statics (`groupBy`, `latestByMajor`, `latestByMinor`); owns `InvalidVersionError`.
-- `src/Comparator.ts` — `Comparator` class, `Comparator.FromString`, `parse`, instance `test`; owns `InvalidComparatorError`.
-- `src/Range.ts` — `Range` class plus the `ComparatorSet` type, `Range.FromString`, `parse`, matching and algebra statics, instance `test`/`filter`; owns `InvalidRangeError` and `UnsatisfiableConstraintError`.
-- `src/VersionDiff.ts` — `VersionDiff` (`Schema.TaggedClass`) with static `between`.
-- `src/VersionCache.ts` — the `VersionCache` service plus `VersionCache.layer`; owns `EmptyCacheError`, `VersionNotFoundError`, `UnsatisfiedRangeError`.
-- `src/internal/grammar.ts` — the recursive-descent parser, plain synchronous code returning `ParseResult` values.
-- `src/internal/desugar.ts` — caret/tilde/x-range/hyphen desugaring.
-- `src/internal/normalize.ts` — comparator sort plus semantic dedupe (build-ignoring).
-- `src/internal/order.ts` — the shared compare primitives, so spec ordering rules live once and the `SemVer`↔`Range` cycle stays broken.
+`src/internal/` holds the parsing pipeline: `grammar.ts` (recursive descent), `desugar.ts` (caret/tilde/x-range/hyphen), `normalize.ts` (comparator sort plus build-ignoring dedupe) and `order.ts`. `order.ts` exists to break a cycle: both `SemVer` and `Range` need the spec's compare primitives, so they live once in a module neither imports from the other.
 
-Every non-entrypoint module imports explicitly from its defining module; no barrels beyond `index.ts`.
+## API posture
 
-## Public API
+Class-based throughout. Instance methods are the canonical form, cross-cutting operations are `Fn.dual` statics on the owning class, and there are no floating functions. Construct via `.make()` (or the positional `SemVer.of`), never `new`, so validation runs.
 
-Class-based throughout: instance methods are the canonical form, cross-cutting operations are dual statics on the owning class.
+The class *is* the schema. `SemVer`, `Comparator` and `Range` are plain `Schema.Class` — no `_tag`, because the serialized form is the canonical string via each class's `FromString` transformation. `VersionDiff` is the one `Schema.TaggedClass`, the single concept where serialized tag discrimination earns its keep.
 
-### SemVer
+Two constraints on `SemVer`'s field checks are load-bearing:
 
-Plain `Schema.Class` — no `_tag`, because the serialized form is the version string via `FromString`. Fields: `major`/`minor`/`patch` as non-negative safe integers, `prerelease` as an array of string-or-number identifiers, `build` as an array of strings. Construct via `SemVer.make(...)` so validation runs. Field checks are `Schema.is*` combinators (`Schema.isInt()`, `Schema.isBetween(...)`, `Schema.isPattern(regex)`). Prerelease string identifiers require at least one non-digit — all-numeric identifiers decode as numbers — keeping `FromString` round-trips canonical. The identifier pattern is written **lookahead-free** because fast-check's `stringMatching` cannot synthesize lookahead, which is what makes `Schema.toArbitrary` + `it.effect.prop` work.
+- Prerelease string identifiers must carry at least one non-digit, so all-numeric identifiers decode as numbers and `FromString` round-trips stay canonical.
+- The identifier pattern is written **lookahead-free**, because fast-check's `stringMatching` cannot synthesize lookahead. This is what makes `Schema.toArbitrary(SemVer)` — and therefore the `it.effect.prop` round-trip tests — work at all.
 
-- Schema exports: the class, `SemVer.FromString` and the string-level checks `ExactVersionString` / `PinnableVersionString`.
-- Statics: `parse`; validity predicates `isValid` and `isPinnable`; `Order` and `OrderWithBuild` (`Order.Order<SemVer>` consts); dual statics `compare`, `gt`, `gte`, `lt`, `lte`, `equal`, `neq`, `truncate`; array helpers `sort`, `rsort`, `max`, `min` (`Option` for absence); pure grouping statics `groupBy` (immutable record return), `latestByMajor`, `latestByMinor`.
-- Instance: `compare`/`gt`/`gte`/`lt`/`lte`/`equal`/`neq`, getters `isStable` and `isPrerelease`, the fluent `bump` namespace (`v.bump.major()`, `minor`, `patch`, `prerelease(id?)`, `release`, with node-semver-compatible prerelease semantics) and `toString` as the encode direction.
+There is deliberately **no `SemVer.diff`**: `VersionDiff`'s fields reference `SemVer`, so a delegating static would create an import cycle and `noImportCycles` is error-level. `VersionDiff.between(a, b)` is the single canonical diff entry point.
 
-String-level validity is a **lexically paired surface** (3e98b704): the `isValid` boolean pairs with the `ExactVersionString` `Schema.String` check and `isPinnable` with `PinnableVersionString`, each schema check refined by its same-stem predicate so the two levels cannot drift and the pairing is discoverable by name. All four **reject surrounding whitespace**, deliberately diverging from `parseResult`, which trims its input to match node-semver's constructor (the trim lives in `internal/grammar.ts`'s `parseVersion`, and `parseResult`'s TSDoc now documents the posture explicitly): the parser canonicalizes, while the predicates answer "is this string, byte for byte, a version?" — padded input is the caller's bug to surface, not this package's to hide. "Pinnable" additionally excludes build metadata: the corepack `<name>@<version>[+<integrity>]` pin notion, where the first `+` after the version always begins the integrity component, so a version carrying build identifiers would encode to a string that re-parses differently. `PinnableVersionString` is consumed **by identity** in [`@effected/package-json`](package-json.md)'s `PackageManager` — downstream never re-derives it. The as-built detail lives in the package CLAUDE.md; this doc records only the decisions.
+Grouping (`groupBy`, `latestByMajor`, `latestByMinor`) lives on `SemVer` as pure statics rather than on `VersionCache` — grouping needs no state, and putting it on the service would make a pure operation require a layer.
 
-There is **no `SemVer.diff`**: a delegating static would create a `SemVer`↔`VersionDiff` import cycle (`VersionDiff` fields reference `SemVer`, and `noImportCycles` is error-level), so `VersionDiff.between(a, b)` is the single canonical diff entry point.
+## Result is the primitive
 
-### Comparator
+The synchronous `Result` form holds the engine and the `Effect` form derives from it: each `parseResult` (and `Range.intersectResult`) runs the grammar, and its `Effect` twin is `Effect.fromResult(...)` behind the existing span. The two cannot drift, and synchronous callers never pay for a runtime. This is the kit convention — see [formatter-convention.md](../formatter-convention.md), decision 6.
 
-Plain `Schema.Class`. Fields: `operator` literal (`=`, `>`, `>=`, `<`, `<=`) and `version: SemVer`. Statics `parse`, `FromString`; instance `test(version)`, `toString`.
+The comparison statics are deliberately out of scope: already plain, total and dual, so a `Result` twin would be dead surface.
 
-### Range
+## String-level validity
 
-Plain `Schema.Class` holding `sets` (an array of comparator sets; the `ComparatorSet` type is exported). Statics `parse`, `FromString`; dual matching statics `satisfies`, `filter`, `maxSatisfying`, `minSatisfying` (`Option` for absence); algebra statics `union`, `intersect`, `isSubset`, `equivalent`, `simplify`. `intersect` carries a typed failure (`UnsatisfiableConstraintError`) rather than returning an unsatisfiable range. `isSubset` is documented as a conservative approximation. Instance `test(version)`, `filter(versions)`, `toString`.
+String validity is a **lexically paired surface** (3e98b704): the `isValid` boolean pairs with the `ExactVersionString` `Schema.String` check, and `isPinnable` with `PinnableVersionString`. Each schema check is refined by its same-stem predicate, so the two levels cannot drift and the pairing is discoverable by name.
 
-### VersionDiff
+All four **reject surrounding whitespace**, deliberately diverging from `parseResult`, which trims to match node-semver's constructor. The parser canonicalizes; the predicates answer "is this string, byte for byte, a version?" Padded input is the caller's bug to surface, not this package's to hide.
 
-`Schema.TaggedClass` — the one concept where serialized tag discrimination earns its keep. Fields: `type` literal, `from`/`to` SemVers, `major`/`minor`/`patch` deltas. Static `between(a, b)` is the single canonical diff entry point. Instance `toString`.
+"Pinnable" additionally excludes build metadata. This encodes the corepack `<name>@<version>[+<integrity>]` pin notion, where the first `+` after the version always begins the integrity component — a version carrying build identifiers would encode to a string that re-parses differently. `PinnableVersionString` is consumed **by identity** in [`@effected/package-json`](package-json.md)'s `PackageManager`; downstream must never re-derive it.
 
-### VersionCache
+## Schema transformations
 
-A `Context.Service` class with `VersionCache.layer` bound once (`Layer.effect` — `Ref` construction is effectful; the layer requires nothing). State is a `Ref<ReadonlyArray<SemVer>>` kept sorted and deduplicated by SemVer precedence via binary search; membership and dedupe ignore build metadata. Interface:
+Each `FromString` is a `Schema.decodeTo` transformation from `Schema.String` to the domain class: decode runs the internal pipeline (grammar → desugar → normalize for ranges), encode is `toString`. One source of truth yields round-tripping and `Schema.toArbitrary` derivation for property tests.
 
-- Mutation: `load`, `add`, `remove`.
-- Query: `versions()`, `latest()`, `oldest()` — all thunks. `latest`/`oldest` fail `EmptyCacheError`; `versions()` never fails and returns a possibly-empty array.
-- `filter(range)` never fails — empty cache and no-matches both return `[]`.
-- Resolution: `resolve(range)` fails `UnsatisfiedRangeError`; `resolveString(input)` fails `InvalidRangeError | UnsatisfiedRangeError`.
-- Navigation: `diff(a, b)`, `next(version)`, `prev(version)` fail `VersionNotFoundError` when the pivot is not cached; `next`/`prev` additionally return `Option` for "pivot at the boundary." The error-plus-`Option` layering is two distinct absences and is documented on the interface.
+Domain errors carry structured `input`/`position` payloads and derive `message` from a getter — never a preformatted string — so a serialized error stays reconstructible. The `FromString` transformations fail with `SchemaIssue.InvalidValue` instead; `SchemaError` never escapes the package.
 
-Grouping (`groupBy`/`latestByMajor`/`latestByMinor`) lives on `SemVer` as pure statics, not on the service.
+`Range.intersect` carries a typed failure rather than returning an unsatisfiable range, so an impossible constraint set is a failure the caller must handle rather than a value that silently matches nothing. `Range.isSubset` (and therefore `equivalent` and `simplify`) is a conservative approximation — false negatives are expected and safe; read the in-source remark before "fixing" it.
 
-## Schema transformation strategy
+## VersionCache
 
-`SemVer.FromString`, `Range.FromString` and `Comparator.FromString` are decode/encode transformations from `Schema.String` to the domain class via `Schema.decodeTo`. Decode runs the internal grammar (grammar → desugar → normalize for ranges); encode is `toString`. One source of truth yields round-tripping and `Schema.toArbitrary` derivation for property tests.
+A `Context.Service` over a `Ref<ReadonlyArray<SemVer>>` kept sorted and deduplicated by SemVer precedence via binary search; membership and dedupe ignore build metadata. `VersionCache.layer` is bound once with `Layer.effect` (`Ref` construction is effectful) and requires nothing.
 
-The `parse` statics call the grammar directly and construct domain errors with exact `input`/`position`; the `FromString` transformations use the same grammar and fail with `SchemaIssue.InvalidValue` carrying a message. `SchemaError` never escapes the package.
-
-## Error set
-
-Each error is a single `Schema.TaggedErrorClass` in its concept's module, with payload fields referencing the schema classes directly (so `UnsatisfiedRangeError` is fully serializable) and `message` derived via getter from structured fields — never preformatted strings.
-
-| Error | Raised by | Payload |
-| --- | --- | --- |
-| `InvalidVersionError` | `SemVer.parse` / `SemVer.FromString` decode | `input`, `position?` |
-| `InvalidRangeError` | `Range.parse` / `Range.FromString` decode; `VersionCache.resolveString` | `input`, `position?` |
-| `InvalidComparatorError` | `Comparator.parse` / `Comparator.FromString` decode | `input`, `position?` |
-| `UnsatisfiableConstraintError` | `Range.intersect` (empty cross-product) | `constraints: ReadonlyArray<Range>` |
-| `UnsatisfiedRangeError` | `VersionCache.resolve` / `resolveString` | `range: Range`, `available: ReadonlyArray<SemVer>` |
-| `VersionNotFoundError` | `VersionCache.diff` / `next` / `prev` | `version: SemVer` |
-| `EmptyCacheError` | `VersionCache.latest` / `oldest` | none |
+The absence semantics are the design decision worth knowing: the service layers *two distinct kinds of absence*. "Nothing is cached" and "the pivot version is not cached" are typed failures; "the pivot sits at the boundary" and "no version matched" are `Option` and `[]` respectively. A caller that conflates them will mishandle an empty cache.
 
 ## Equal and Hash semantics
 
-`SemVer` customizes structural equality: it ignores build metadata (SemVer spec §10) while including prerelease identifiers (§11). This is load-bearing — cache dedupe and `Equal.equals` both inherit spec semantics from it. Because `Equal.equals` fast-paths on hash mismatch, the class overrides **both** `[Equal.symbol]` and `[Hash.symbol]`; overriding equality alone silently fails. Regression tests pin build-ignoring equality and hash agreement.
+`SemVer` customizes structural equality to ignore build metadata (SemVer §10) while including prerelease identifiers (§11). This is load-bearing — `VersionCache` dedupe and `Equal.equals` both inherit spec semantics from it.
+
+Because `Equal.equals` fast-paths on hash mismatch, the class overrides **both** `[Equal.symbol]` and `[Hash.symbol]`. Overriding equality alone silently fails.
 
 ## Observability
 
-Named `Effect.fn` spans on the effectful, failure-carrying public boundaries only: `SemVer.parse`, `Range.parse`, `Comparator.parse`, `Range.intersect` and every fallible `VersionCache` boundary (`resolve`, `resolveString`, `diff`, `next`, `prev`, `latest`, `oldest`). Pure synchronous comparisons, bumps and matching are not instrumented; internal grammar helpers get no spans. The library is telemetry-agnostic — no OTel configuration anywhere.
+Named `Effect.fn` spans on the effectful, failure-carrying public boundaries only — the `parse` statics, `Range.intersect` and every fallible `VersionCache` method. Pure synchronous comparisons, bumps and matching are not instrumented, and internal grammar helpers get no spans. The library is telemetry-agnostic; no OTel configuration lives here.
 
 ## Testing
 
-`@effect/vitest` with `it.effect` as the default mode; `assert.*`, never `expect`. Tests live in `packages/semver/__test__/`.
+`@effect/vitest` with `it.effect` as the default mode, in `packages/semver/__test__/`. Three things there are structural rather than incidental:
 
-- `VersionCache` suites use top-level `layer(VersionCache.layer)((it) => {...})` groups — built once, memoized, no per-test `Effect.provide`.
-- Parse/print round-trip properties via `it.effect.prop` with `Schema.toArbitrary(SemVer)`: `decode(encode(v))` round-trips and generated versions satisfy the field constraints. Derivation works because the field checks are lookahead-free.
-- A node-semver-compatible spec-compliance fixture suite is the redesign's safety net.
-- Regression tests pin build-ignoring equality and prerelease bump semantics (identifier switch resets the counter, `1.0.0` → `1.0.1-0`).
+- `VersionCache` suites use one top-level `layer(VersionCache.layer)((it) => {...})` group, so the layer is built once and memoized instead of provided per test.
+- Round-trip properties run through `it.effect.prop` with `Schema.toArbitrary(SemVer)` — the payoff for the lookahead-free identifier pattern.
+- A node-semver-compatible spec-compliance fixture suite is the safety net for any grammar change.
 
 ## Build
 
-Class factories are written inline (`export class X extends Schema.Class<X>("X")({...}) {}`) with the synthesized `_base` heritage symbols suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern), keeping `dist/prod/issues.json` zero-warning via the `suppressed` bucket. This tracks the ratified policy in [effect-standards.md](../effect-standards.md#api-extractor--effect-class-factories).
+Class factories are written inline (`export class X extends Schema.Class<X>("X")({...}) {}`), which synthesizes `_base` heritage symbols api-extractor cannot resolve. `savvy.build.ts` suppresses them **narrowly** (`ae-forgotten-export` scoped to the `_base` pattern), keeping `dist/prod/issues.json` zero-warning via the `suppressed` bucket. Never widen it — sibling packages depend on this precedent staying narrow. Policy: [effect-standards.md](../effect-standards.md#api-extractor--effect-class-factories).

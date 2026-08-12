@@ -3,29 +3,19 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-04
-last-synced: 2026-08-04
-completeness: 88
+updated: 2026-08-12
+last-synced: 2026-08-12
+completeness: 85
 related:
   - releases.md
   - package-inventory.md
   - architecture.md
   - effect-standards.md
   - migration-playbook.md
-  - packages/runtimes.md
-  - packages/app.md
-  - packages/tsconfig-json.md
-  - packages/git.md
-  - packages/spdx.md
-  - packages/package-json.md
   - packages/markdown.md
-  - packages/commands.md
-  - packages/templates.md
-  - packages/github.md
-  - packages/github-actions.md
-  - packages/sbom.md
-  - packages/schemastore.md
   - packages/jsonl.md
+  - packages/toml.md
+  - packages/jsonc.md
   - packages/npm.md
   - consumers/README.md
 ---
@@ -34,80 +24,60 @@ related:
 
 ## Overview
 
-The migration program is complete and the `0.1.0` gate was met by nineteen publishable packages (eighteen libraries plus the [companion](effect-standards.md#companion-packages-published-but-not-a-library)), shipped as an explicit pre-release. The kit is now twenty-seven publishable packages, twenty-six of them published: `markdown` shipped after the gate, the five [github-split](#the-github-split-program-2026-07-25) packages published at `0.1.0` in the 2026-07-26 wave ([releases.md](releases.md#the-github-split-wave)) and `schemastore` published at `0.1.0` in the 2026-08-03 wave. `jsonl` is built and [awaiting a wave](releases.md#built-but-unpublished). This doc records what comes after `0.1.0`. The decisions below are settled, recorded with their reasoning so they are not re-litigated; each new package gets its own spec → plan → implement cycle per the [migration playbook](migration-playbook.md). [releases.md](releases.md)'s gate table and [package-inventory.md](package-inventory.md) stay authoritative for the shipped set.
+**Open work only.** What the kit has already shipped is in [package-inventory.md](package-inventory.md), and how it releases is in [releases.md](releases.md); both stay authoritative for the shipped set, and nothing here restates them. This document holds the workstreams that are decided but unbuilt, the standing decisions that bind future work, and the things deliberately declined — recorded with their reasoning so they are not re-litigated.
 
-The nineteenth package, **`@effected/spdx`** (pure, invention), landed after the gate was first declared and joined it: it vendors the SPDX license and exception datasets as pure schemas so [`@effected/package-json`](packages/package-json.md) can delegate its `license` validation and drop `spdx-expression-parse`, the kit's last foreign runtime dependency. That delegation retiered package-json from integrated to boundary. It followed the design-doc-first playbook cycle; [packages/spdx.md](packages/spdx.md) is authoritative.
+Everything here is **evidence-gated**: a package or capability enters when a named consumer needs it, never speculatively. Each new package still runs the design-doc-first cycle in the [migration playbook](migration-playbook.md).
 
-The consumer ports — including `rspress-plugin-api-extractor`, the one representative consumer once chosen to prove the gate before publishing — run as post-`0.1.0` dogfooding against real published packages, with the [pre-release framing](releases.md#versioning) as the safety valve. Publishing early gets consumers onto real `@effected/*` packages sooner and surfaces integration problems as they actually arise.
+## Standing decisions
 
-## Application-tier abstractions to evaluate
+Two decisions taken during the github-split program bind work beyond it, so they live here rather than in a package doc.
 
-Core's `effect/unstable/workflow` (durable workflows: `Workflow`, `Activity`, `DurableClock`/`DurableDeferred`/`DurableQueue`, `WorkflowEngine`) is a strong abstraction for **applications** — long-running, resumable, multi-step operations with retry semantics. It is not kit-library surface, but the consumer ports should evaluate it where the shape fits: DepsRegen's plan/execute phases, silk-update-action's multi-step update runs and any future release automation are the natural candidates. Evidence-driven like everything here: adopt it where a consumer's port genuinely has durable multi-step state, never speculatively.
+- **`@effect/platform-node` is a required peer in exactly one package**, `github-actions`, because a GitHub Action has one platform and pretending otherwise taxes every consumer. The licence is scoped to that overlay and does not generalize to the next Node-shaped package.
+- **Contract inversion is the kit's default answer to a tier-dragging edge.** When package A needs behaviour that only package B can implement, A declares the narrow contract and B ships the layer: `@effected/npm` declares the resolver contracts and `@effected/workspaces` implements them; `@effected/commands` declares `LocalExec` and `workspaces` implements that too. The alternative — a direct edge from A to B — propagates B's tier under [R2](effect-standards.md#dependency-policy).
 
-## The github-split program (2026-07-25)
-
-A seven-phase program that replaces `@savvy-web/github-action-effects` (42 services, ~360 flat exports, five incompatible test-double conventions) and upstreams the mechanism half of `@savvy-web/silk-effects`. Phases 1-5 landed five packages — `commands`, `templates`, `github`, `github-actions`, `sbom` — plus the `@effected/npm` registry/publish extension that [retiered it to boundary](packages/npm.md#the-tier-ruling-pure--boundary-deliberately-with-a-guardrail), and extensions to `workspaces`, `config-file`, `package-json` and `markdown`. Phase 6 closed the wave with the fluency audit and a documentation reconciliation. The five packages **published at `0.1.0` in the 2026-07-26 wave** (the program ran without changesets by design; the finalize pass staged them and release PR #181 shipped sixteen packages — [releases.md](releases.md#the-github-split-wave)). Phase 7 — rewriting the savvy-web `github-actions` Claude Code plugin's skill suite into this repo's [plugin](plugin.md) against the new surfaces — **landed 2026-07-25**: twelve actions-suite skills and the `action-engineer` agent, with the old plugin replaced rather than moved. **The program is complete.**
-
-The program plan is `2026-07-25-github-split-master.md`, with a decisions log and the silk-runtime-action survey beside it; plans are local-only and gitignored, so cite them by name. What survives the plans is documentation: one migration map per consumer repo under [consumers/](consumers/README.md), and the [fluency audit](consumers/fluency-audit.md) — the five known-bad call sites rewritten against the shipped APIs, which was the program's acceptance gate. Two of those maps' repos, silk-update-action and savvy-web/systems, are also `0.1.0` gate consumers; the other five are new to the kit's orbit.
-
-Two program decisions bind future work rather than just this wave. **`@effect/platform-node` is a required peer in exactly one package**, `github-actions`, because a GitHub Action has one platform and pretending otherwise taxes every consumer — the licence is scoped to that overlay and does not generalize to the next Node-shaped package. And **the contract-inversion pattern is now the kit's default answer to a tier-dragging edge**: `commands` declares `LocalExec` and `workspaces` implements it, the second use of the shape `@effected/npm`'s resolvers established.
-
-## Post-0.1.0 packages
-
-In priority order. `markdown`, `commands`, `templates` and `schemastore` have all shipped, and `jsonl` is **built but unpublished**; the rest are open.
-
-### `@effected/commands`
-
-A generalization of silk-effects' ToolDiscovery service: resolve CLI tools globally on PATH vs locally via the detected package manager's exec (pnpm/npm/yarn/bun), configurable version extraction, source constraints and version-mismatch policies, plus structured command running over core's `effect/unstable/process`. This pattern has been reinvented repeatedly across Spencer's repos; it earns a package. **Designed and built 2026-07-25** ([packages/commands.md](packages/commands.md)) as Phase 1a of the github-split program: the contract-inversion option was **chosen** — `commands` declares the narrow `LocalExec` contract and `@effected/workspaces` ships the layer implementing it, so `commands` stays boundary tier with zero `@effected` edges and zero runtime deps, and the R2 chain that a direct workspaces edge would have dragged through `npm`, `lockfiles` and `package-json` never forms. The v3 `process.cwd()` coupling is discharged structurally: `commands` never touches a path or an ambient cwd; the cwd question lives in workspaces' layer.
-
-This is not a gate package, and it owns no platform seam. Core declares `ChildProcessSpawner`, `@effect/platform-node`'s `NodeServices.layer` provides it, and requiring a core-declared service in `R` costs a consumer nothing ([R3](effect-standards.md#dependency-policy), the walker/xdg `FileSystem` pattern) — so `@effected/git` requires the spawner in `R` directly and nothing on the gate needs this package.
-
-### `@effected/templates`
-
-**Designed and built 2026-07-25** ([packages/templates.md](packages/templates.md)) as Phase 1b of the github-split program. v1 scope is **managed sections only**, ported from silk-effects' ManagedSection: delimited BEGIN/END managed-section blocks inside user-editable files, with a parameterized marker phrase and comment-style set, read/isManaged/write/sync/check/remove, and the `syncMany` document-reconciliation algorithm. Whole-file templating joins later only when a v4 consumer demands a concrete shape.
-
-The port drew a line worth keeping for the next one: **the mechanism upstreams, the content and policy do not.** Section keys, comment-style choices and what a block says stay with the consumer, so no silk vocabulary appears in the package — not in a type name, not in a default.
+## Open packages
 
 ### The config companion
 
-A silk-pattern companion package — the pattern `@vitest-agent/plugin` and `@savvy-web/silk` follow: ship config JSON files and peer-depend on the mcp/cli tools, so consumers' Claude Code plugins and tooling stay on the same versions. It ships preconfigured tsconfigs, including the tsgo LSP tsconfig once [the spike](#the-tsgo-lsp-track) proves out.
+A silk-pattern companion package, following `@vitest-agent/plugin` and `@savvy-web/silk`: ship config JSON files and peer-depend on the mcp/cli tools, so a consumer's Claude Code plugin and tooling stay on the same versions. It ships preconfigured tsconfigs, including the tsgo LSP tsconfig once [the spike](#the-tsgo-lsp-track) proves out.
 
 Naming: recommended `@effected/plugin`. `@effected/config` is rejected because it reads as a sibling of `@effected/config-file` and would confuse every import list. Companion category, no tier, like `pnpm-plugin-effect` ([effect-standards.md](effect-standards.md#companion-packages-published-but-not-a-library)).
 
-### `@effected/markdown`
-
-`rspress-plugin-api-extractor` already parses and emits markdown via `mdast-util-from-markdown`, `mdast-util-to-hast` and `gray-matter`, so a low-level markdown package has a real identified consumer rather than a speculative one. It is not a release gate: the plugin can keep its `mdast` dependencies and swap everything else.
-
-**The package has shipped** (pure tier): implementation phases P1-P5 complete 2026-07-19 — CommonMark plus the gfm dialect with full conformance, frontmatter with the codec modules and the schema resolver, edit/format with canonical stringify, and the mdast projection, visitor and navigation surface — first published at `0.2.0` in that day's release wave, with the github-split program's section finders since. What remains is **P6, and it is consumer-side**: the docs pass and the `rspress-plugin-api-extractor` swap, which is a consumer port rather than package work. Details in [packages/markdown.md](packages/markdown.md).
-
-### `@effected/schemastore`
-
-The one shipped package this list never sequenced: it went design doc → build → publish inside the silk-runtime-action dogfood loop rather than through a roadmap slot. **Designed and built 2026-07-28** ([packages/schemastore.md](packages/schemastore.md)): SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning and lints assembled from Effect Schema sources over core's `JsonSchema` pipeline, generalizing silk-release-action's `generate-schema.ts` with the silk-runtime-action rebuild as the second named consumer. It built boundary tier with the ajv question resolved as the `SchemaValidator` contract seam. **Published at `0.1.0` in the 2026-08-03 wave** (release PR #216).
-
-**A `0.2.0` is pending, and it is the first package here reshaped by adoption rather than by design.** A three-round dogfood loop with `claude-code-marketplace-manager` produced it, and two of its changes reverse decisions this doc recorded as settled: **ajv is now a direct dependency and `SchemaValidator.layer` ships a real engine, flipping the package to integrated tier** ([package-inventory.md](package-inventory.md)), and **version labels narrowed to full three-component SemVer**, enforced by `@effected/semver`, in place of the store-native partial grammar. Alongside them: content-rather-than-byte comparison in `SchemaFile.write` (effected#262) with a matching non-writing `check`, a `DocumentDiff` module classifying a change as annotations-only or contract, and `SchemaPipeline` — the generate → lint → validate → gate → write loop shipped once instead of copied per consumer. The reasoning for each lives in [packages/schemastore.md](packages/schemastore.md); the roadmap-relevant lesson is that the two reversals share a cause — **boilerplate every consumer copies is a default the package failed to ship**, and both seams were drawn to avoid a cost that build-time tooling never actually pays.
-
-### `@effected/jsonl`
-
-The second package this list never sequenced, and like `schemastore` it went design doc → build in one pass. **Designed and built 2026-08-03** ([packages/jsonl.md](packages/jsonl.md)) on `feat/package-jsonl`: append-only, schema-validated JSONL journals as a definable service — the envelope contract, the `Slice` read vocabulary shared by every read surface, cooperative multi-writer rules, and a watcher that makes two instances over one file observe each other. Boundary tier, zero runtime dependencies, zero `@effected` edges. **Built but unpublished** — it ships in a future coordinated wave ([releases.md](releases.md#built-but-unpublished)).
-
-Its subject is not the JSONL *format* — that is a two-sentence spec — but **the file as a live object**: last-valid-line semantics, torn tails, concurrent readers, and filtered reads that cost the tail rather than the history. The pressure is the token economy of AI applications, and the grounding precedent is the silk dogfood mailbox's 224-line `journal-append.sh`.
-
-**Three of four acceptance criteria hold; the fourth does not**, and that is the roadmap-relevant part. Criterion 4 — collapsing the dogfood file fan-out into one journal partitioned by `scope` — **failed on two counts**: terminal and quiescent semantics are journal-wide, so one scope's terminal event freezes every other scope's appends; and `latest` has no sliced counterpart, so per-scope current state costs `O(history)`. The verified split is that **`Slice` is load-bearing for subscription, query and projection, and is not load-bearing for current-state or lifecycle.**
-
-That yields one **open, consumer-gated workstream**: `latest(slice)` as a per-scope `SubscriptionRef` plus per-scope terminal semantics. Evidence-gated like everything else here — build it when a real consumer needs the collapse, not before.
-
 ### `@effected/vfs`
 
-Out of the ts-vfs work: the TypeScript-specific part it exercised (a `Vfs` keyed by `node_modules/`-prefixed paths, merge/prefix helpers, an environment seam) is a flavor of a generic virtual filesystem rather than the whole of it. Evidence-gated like everything here — build it only when a **second** VFS consumer materializes beyond the TypeScript one, never speculatively.
+A `Vfs` keyed by `node_modules/`-prefixed paths, with merge/prefix helpers and an environment seam, is a flavor of a generic virtual filesystem rather than the whole of it. Build it only when a **second** VFS consumer materializes beyond the TypeScript one that motivated the shape, never speculatively.
 
-## Kit workstreams from the markdown sprint
+## Open workstreams
 
-Recorded 2026-07-19 as findings from the `@effected/markdown` implementation sprint (P1-P5 on `feat/markdown`, see [packages/markdown.md](packages/markdown.md)), in execution order.
+### `jsonl`: per-scope current state and lifecycle
 
-1. **Effect beta nosebleed policy** — advance the effect catalogs to the newest beta (the catalog pins `.101` as of 2026-07-24) promptly after each phase of major work: the effect team publishes caret peer ranges, so live applications already resolve the newest beta and the kit should test against what consumers actually run. The advance is the user-run `pnpm pnpm:up`/`pnpm pnpm:export` flow with the `.repos/effect` re-pin in the same commit and a full-kit verification after.
-2. **`Jsonc.stringify` and frontmatter completion** — add a canonical stringify to `@effected/jsonc` for surface parity with yaml and toml (design-doc pass on [packages/jsonc.md](packages/jsonc.md) first), then complete the markdown frontmatter story: replace the `JSON.stringify` fallback in the round-trip property and lift `MarkdownFormat.modify`'s frontmatter refusal so frontmatter updates flow through the edit layer.
-3. **Edit-parity hardening** — backport toml's `applyAll` overlap guard to jsonc and yaml, standardize the format range-filter posture (three postures are currently documented across the four format packages) and promote the parity contract in [effect-standards.md](effect-standards.md) from shape-identical to behavior-identical.
-4. **TOML 1.1 investigation** — a design-doc note in [packages/toml.md](packages/toml.md) enumerating the 1.1 delta set (draft spec — verify release status first) against the engine, shaped as a dialect/version option per the markdown dialect-registry pattern; implement when 1.1 tags a release or behind a draft flag on application demand.
+[`@effected/jsonl`](packages/jsonl.md) shipped with three of its four acceptance criteria met. The fourth — collapsing a dogfood file fan-out into one journal partitioned by `scope` — failed on two counts: terminal and quiescent semantics are journal-wide, so one scope's terminal event freezes every other scope's appends; and `latest` has no sliced counterpart, so per-scope current state costs `O(history)`.
+
+The verified boundary is that **`Slice` is load-bearing for subscription, query and projection, and is not load-bearing for current-state or lifecycle.** The open work is `latest(slice)` as a per-scope `SubscriptionRef` plus per-scope terminal semantics. Consumer-gated: build it when a real consumer needs the collapse.
+
+### `markdown`: the consumer-side finish
+
+[`@effected/markdown`](packages/markdown.md) is complete as a package. What remains is consumer-side — the docs pass and the `rspress-plugin-api-extractor` swap — and it is a consumer port rather than package work.
+
+### Format-package parity hardening
+
+Three items remain from the format-package sweep, in execution order:
+
+1. **Frontmatter completion in `markdown`** — replace the `JSON.stringify` fallback in the round-trip property and lift `MarkdownFormat.modify`'s frontmatter refusal so frontmatter updates flow through the edit layer. (`Jsonc.stringify` and the `applyAll` overlap guards, the sweep's other two items, have landed.)
+2. **Format range-filter posture** — the four format packages document three different postures; standardize on one.
+3. **Promote the parity contract** in [effect-standards.md](effect-standards.md) from shape-identical to behavior-identical, once the two items above make that assertable.
+
+### TOML 1.1
+
+A design-doc note in [packages/toml.md](packages/toml.md) enumerating the 1.1 delta set against the engine — verify the spec's release status first, it was a draft when this was recorded — shaped as a dialect/version option per the markdown dialect-registry pattern. Implement when 1.1 tags a release, or behind a draft flag on application demand.
+
+### Effect beta cadence
+
+Advance the Effect catalogs to the newest beta promptly after each phase of major work: the Effect team publishes caret peer ranges, so live applications already resolve the newest beta and the kit should test against what consumers actually run. The advance is the user-run `pnpm pnpm:up` / `pnpm pnpm:export` flow, with the `.repos/effect` re-pin folded into the same commit ([architecture.md](architecture.md#re-pinning-when-the-effect-catalog-bumps)) and a full-kit verification after.
+
+## Application-tier abstractions to evaluate
+
+Core's `effect/unstable/workflow` (durable workflows: `Workflow`, `Activity`, `DurableClock`/`DurableDeferred`/`DurableQueue`, `WorkflowEngine`) is a strong abstraction for **applications** — long-running, resumable, multi-step operations with retry semantics. It is not kit-library surface, but the consumer ports should evaluate it where the shape fits: DepsRegen's plan/execute phases, silk-update-action's multi-step update runs and any future release automation are the natural candidates. Adopt it where a consumer's port genuinely has durable multi-step state, never speculatively.
 
 ## The tsgo LSP track
 
@@ -117,17 +87,20 @@ Parallel and experimental. A time-boxed spike **in this repo** proving end-to-en
 
 External repos. These are **pull, not push** — they proceed whenever their inputs exist and never block kit packages. All run against real published packages.
 
-- **rspress-plugin-api-extractor** — a full application port, not a dependency swap: the plugin's v3 `*-effect` dependencies cannot coexist with the v4 kit. Twoslash type-checking keeps `typescript@6` as a direct dependency, the sanctioned island until the TypeScript 7.1 JS API exists. Consumes `ts-vfs` from its own repo.
-- **@savvy-web/bundler** (savvy-web/systems) — its TS usage is syntactic parser plus config API only, no type checker. `tsconfig-json` replaces `meta/tsconfig-resolver.ts`; the `dts/` AST walkers wrap plain `typescript` calls in Effect.
-- **vitest-agent**, **@soda3js/config** and the **runtime-resolver CLI re-ship**.
-- **silk-update-action** and **savvy-web/systems** (DepsRegen, plus the `savvy` CLI and MCP adapters over it) — the two consumers that scoped workspaces' point-in-time functionality; they migrate off `workspaces-effect`.
-- **The github-split consumers** — silk-release-action, silk-sync-action, silk-router-action, silk-runtime-action and claude-code-marketplace-manager, all pinned at `@savvy-web/github-action-effects@3.x` and migrating deliberately. Nothing forces a synchronized cutover; the per-repo maps in [consumers/](consumers/README.md) record what each replaces and carry the status column that moves as they land.
+**The github-split consumers are done.** silk-release-action, silk-runtime-action, silk-update-action, silk-sync-action, silk-router-action and claude-code-marketplace-manager all consume `@effected/*` directly, and `@savvy-web/github-action-effects` appears in none of their manifests — the predecessor package and its plugin are gone from `savvy-web/systems` entirely. What that migration produced is no longer a roadmap item: the shape a kit-based action takes is [github-action-canon.md](github-action-canon.md), derived from three of those repos' shipped source.
 
-  **silk-release-action went first, and its feedback is a workstream** (rounds 1-3, 2026-07-26). Three rounds of upstream hardening landed across seven packages — six new `@effected/github-actions` modules, the shapes listed under [breaking shapes](consumers/README.md#breaking-shapes-from-dogfood-rounds-13-silk-release-action-2026-07-26), and four plugin skills. The pattern is worth carrying into the remaining ports: **not one round reported a missing capability.** Every item was a *projection* the consumer had to write between two things the kit already owned — OIDC claims to a provenance predicate, check state to a document, a row type to a table — and got wrong in a way that typechecked. Expect the same class from the next consumer, and prefer absorbing the projection over documenting the hazard.
+Still open:
+
+- **rspress-plugin-api-extractor** — a full application port, not a dependency swap: the plugin's v3 `*-effect` dependencies cannot coexist with the v4 kit. Twoslash type-checking keeps `typescript@6` as a direct dependency, the sanctioned island until the TypeScript 7.1 JS API exists.
+- **@savvy-web/bundler** (savvy-web/systems) — its TS usage is syntactic parser plus config API only, no type checker. `tsconfig-json` replaces its tsconfig resolver; the `dts/` AST walkers wrap plain `typescript` calls in Effect.
+- **vitest-agent**, **@soda3js/config** and the **runtime-resolver CLI re-ship**.
+- **savvy-web/systems'** DepsRegen, plus the `savvy` CLI and MCP adapters over it — the consumer that scoped `workspaces`' point-in-time functionality alongside silk-update-action.
+
+**The dogfood pattern to expect from a port:** not one round of the ports run so far reported a missing capability. Every item was a *projection* the consumer had to write between two things the kit already owned — OIDC claims to a provenance predicate, check state to a document, a row type to a table — and got wrong in a way that typechecked. Prefer absorbing the projection over documenting the hazard.
 
 ## The TypeScript 5→6→7 posture
 
-TypeScript 7 (the Go rewrite) ships tsc but no JS-compatible API until 7.1, whose timing is unknown. The rule that threads through everything: **`@effected/*` packages never import `typescript`**. `tsconfig-json` owns the version-coupled enum mappings as data. Direct TS-API usage is confined to external consumers — the api-extractor plugin carries `typescript@6` directly for Twoslash — until the TS 7.1 JS API exists, at which point the island is revisited. The bundler left its TypeScript 6 island at 2.0: it now peers on `typescript@^7`, satisfied by the workspace's `catalog:silk` pin (TypeScript 7.0.2), which every package typechecks under. Because `@effected/ts-vfs` (the one package that kept the compiler behind optional peers) has left the kit, the posture holds at the package-set level, not only behind optional peers.
+TypeScript 7 (the Go rewrite) ships tsc but no JS-compatible API until 7.1, whose timing is unknown. The rule that threads through everything: **`@effected/*` packages never import `typescript`**. `tsconfig-json` owns the version-coupled enum mappings as data. Direct TS-API usage is confined to external consumers — the api-extractor plugin carries `typescript@6` directly for Twoslash — until the TS 7.1 JS API exists, at which point the island is revisited. The workspace itself typechecks under TypeScript 7 (`catalog:build`), and because the one package that kept the compiler behind optional peers is [no longer in the kit](package-inventory.md#not-in-the-kit), the posture holds at the package-set level rather than only behind optional peers.
 
 ## Decided against
 

@@ -130,9 +130,10 @@ against a code path that was only *described*, never run.
 
 `FileSystem.layerNoop(partial)` wraps `makeNoop`, and every member you do not
 override fails with `notFound(<method>, path)` — a **typed `PlatformError`**,
-not a defect (`packages/effect/src/FileSystem.ts:852` for the constructor,
-`:912` for `makeNoop`, `:961` for the `readFile` member; `layerNoop` at `:1041`
-is `Layer.succeed(FileSystem)(makeNoop(fileSystem))`).
+not a defect (`FileSystem.ts:764` for the `notFound` constructor, `:825` for
+`makeNoop`, `:873` / `:876` for the `readFile` / `readFileString` members;
+`layerNoop` at `:954` is `Layer.succeed(FileSystem)(makeNoop(fileSystem))`).
+Line numbers re-checked at beta.107.
 
 That is a false green for any package whose domain treats `NotFound` as
 "absent": a stub with `readFileString` overridden, code that later switches to
@@ -144,7 +145,8 @@ supply, not merely that the call succeeded.
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`
-(`FileSystem.ts:789-800`), and `TextDecoder` defaults to `ignoreBOM: false`,
+(`FileSystem.ts:701-712`, the decode itself at `:704`), and `TextDecoder`
+defaults to `ignoreBOM: false`,
 which consumes the mark. "Read the file as a string" therefore looks lossless
 and is not. A round-trip test that reads with `readFileString` and writes back
 cannot see the BOM it just dropped; read bytes and decode with

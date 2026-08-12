@@ -3,9 +3,9 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-08-04
-last-synced: 2026-08-04
-completeness: 88
+updated: 2026-08-12
+last-synced: 2026-08-12
+completeness: 90
 related:
   - architecture.md
   - effect-standards.md
@@ -46,15 +46,15 @@ related:
 
 ## Overview
 
-The current `@effected/*` package set and where each package came from. The kit is **twenty-seven publishable packages** — twenty-six libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). **Twenty-six have published**: the five from the [github-split program](#the-github-split-packages) joined the release stream in the 2026-07-26 wave ([releases.md](releases.md#the-github-split-wave)), closing the then-last unpublished gap, and `schemastore` published first in the 2026-08-03 wave (twelve packages, release PR #216). **`jsonl` is the one unpublished package** — built 2026-08-03, design doc first, awaiting a future wave. Tier definitions are in [effect-standards.md](effect-standards.md); the release history and consumer mapping are in [releases.md](releases.md); post-`0.1.0` work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
+The current `@effected/*` package set and where each package came from. The kit is **twenty-seven publishable packages** — twenty-six libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library) — and **all twenty-seven have published**. The directory listing of `packages/` is the authority on membership; this document is the authority on where each package came from and why it is shaped the way it is. Tier definitions are in [effect-standards.md](effect-standards.md); the release mechanics and consumer mapping are in [releases.md](releases.md); open work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
 
-The kit's scope is closed by the consuming applications in [releases.md](releases.md), not by the number of `*-effect` source repos. A source repo is not by itself a commitment to migrate it: `json-schema-effect` fell off under that test (see [Off the roadmap](#off-the-roadmap)).
+The kit's scope is closed by the consuming applications in [releases.md](releases.md), not by how many predecessor libraries exist. A predecessor is not by itself a commitment to carry it forward: the JSON Schema package fell off under that test (see [Off the roadmap](#off-the-roadmap)).
 
 ## The packages
 
-Provenance is one of: **port** (redesigned from a v3 `*-effect` source repo under `/Users/spencer/workspaces/spencerbeggs/`, or from a `@savvy-web/*` package), **extraction** (carved out of another package during its port), **part-port** (one service generalized out of a source package, the rest invented) or **invention** (new, scoped by a consumer survey rather than a source repo).
+Provenance is one of: **port** (redesigned from a v3 `*-effect` repo or a `@savvy-web/*` package), **extraction** (carved out of another package during its build), **part-port** (one service generalized out of a predecessor, the rest invented) or **invention** (new, scoped by a consumer survey rather than by an existing implementation).
 
-All twenty-seven publishable packages — nineteen of them were the `0.1.0` gate set ([releases.md](releases.md#the-gate)); `markdown` joined the release stream in the 2026-07-19 wave, the github-split five joined it in the 2026-07-26 wave (sixteen packages, release PR #181) and `schemastore` in the 2026-08-03 wave — the worked examples of how a package that was never on the gate ships. `jsonl` is built but **not yet published**:
+Nineteen of these were the `0.1.0` gate set ([releases.md](releases.md#the-gate)); the other eight joined the release stream afterwards, which is the ordinary path for a package the gate never named.
 
 | Package | Tier | Provenance | Design doc |
 | --- | --- | --- | --- |
@@ -62,7 +62,7 @@ All twenty-seven publishable packages — nineteen of them were the `0.1.0` gate
 | `@effected/jsonc` | pure | port of `jsonc-effect` | [packages/jsonc.md](packages/jsonc.md) |
 | `@effected/yaml` | pure | port of `yaml-effect`; largest package in the repo | [packages/yaml.md](packages/yaml.md) |
 | `@effected/package-json` | boundary | port of `package-json-effect`; IO confined to one `PackageJsonFile.ts` module, SPDX validity delegated to `@effected/spdx` | [packages/package-json.md](packages/package-json.md) |
-| `@effected/npm` | boundary (was pure) | extraction from `package-json`; holds the `CatalogResolver`/`WorkspaceResolver` contracts and the dependency-resolution vocabulary, plus the `NpmRegistry`/`PackagePublish` services added 2026-07-25 | [packages/npm.md](packages/npm.md) |
+| `@effected/npm` | boundary (was pure) | extraction from `package-json`; holds the `CatalogResolver`/`WorkspaceResolver` contracts and the dependency-resolution vocabulary, plus the `NpmRegistry`/`PackagePublish` services | [packages/npm.md](packages/npm.md) |
 | `@effected/config-file` | boundary | port of `config-file-effect`; carries the four codecs as free-standing named exports | [packages/config-file.md](packages/config-file.md) |
 | `@effected/walker` | boundary | extraction from `config-file`; upward path traversal | [packages/walker.md](packages/walker.md) |
 | `@effected/glob` | pure | invention; vendored minimatch dialect as pure string→predicate schemas | [packages/glob.md](packages/glob.md) |
@@ -83,17 +83,28 @@ All twenty-seven publishable packages — nineteen of them were the `0.1.0` gate
 | `@effected/github-actions` | integrated | port-with-redesign of the same package's Actions half; the runner-side runtime | [packages/github-actions.md](packages/github-actions.md) |
 | `@effected/sbom` | integrated | port-with-redesign of the same package's `Attest` knot; owned CycloneDX 1.6 emitter plus Sigstore signing | [packages/sbom.md](packages/sbom.md) |
 | `@effected/schemastore` | integrated (was boundary) | invention; SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning, lints and the emit pipeline from Effect Schema sources — generalizes silk-release-action's schema-generation script | [packages/schemastore.md](packages/schemastore.md) |
-| `@effected/jsonl` | boundary | invention; append-only schema-validated JSONL journals as a definable service — envelope contract, `Slice` read vocabulary, cooperative writers and a watcher. **Built 2026-08-03, unpublished** | [packages/jsonl.md](packages/jsonl.md) |
-| `@effected/pnpm-plugin-effect` | companion — no tier | invention; publishes the `effect`/`effectPeers` catalogs | [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md) |
+| `@effected/jsonl` | boundary | invention; append-only schema-validated JSONL journals as a definable service — envelope contract, `Slice` read vocabulary, cooperative writers and a watcher | [packages/jsonl.md](packages/jsonl.md) |
+| `@effected/pnpm-plugin-effect` | companion — no tier | invention; publishes the Effect catalogs the kit pins against | [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md) |
 
 Tiers classify libraries by dependency surface; the companion is not a library and carries no tier. Notable structural facts that recur across the kit:
 
 - **`app` is a thin composition layer, not an umbrella.** It wires `xdg`, `config-file` and `store` into an application control plane and the glue that exists only when all three are present. It owns no domain logic, defines no service/schema/error and **re-exports nothing** — a consumer wanting config files alone takes `config-file` alone, so the [no-barrel-re-exports](effect-standards.md#no-barrel-re-exports) rule holds. Nothing may depend on it: a library taking an application control plane would be an [R2](effect-standards.md#dependency-policy) tier-3 leak.
-- **`npm`'s contracts are implemented by `workspaces`.** `package-json` defines `CatalogResolver`/`WorkspaceResolver` but cannot implement them; `workspaces` ships the layers, because catalog resolution needs `pnpm-workspace.yaml` plus the lockfile and workspace-version resolution needs the discovered package list. Provide either alongside `Package.resolve` and a manifest's `catalog:` / `workspace:` specifiers resolve for real. The same inversion now runs twice: `commands` declares `LocalExec` and `workspaces` ships that layer too ([packages/workspaces.md](packages/workspaces.md)).
-- **`npm` is boundary, not integrated, and a guardrail keeps it there.** Its `NpmRegistry`/`PackagePublish` services do IO themselves through core-declared contracts in `R`, which is what boundary means (R4) — but only while they stay core-contracts-plus-`commands`. The first non-core runtime dependency makes the package integrated, and R2 would then drag `lockfiles` (pure) and `package-json` (boundary) with it; the recorded answer to that day is a split, not an accepted retier. The rule and its reachability test are in [packages/npm.md](packages/npm.md#the-tier-ruling-pure--boundary-deliberately-with-a-guardrail).
-- **`schemastore` is the kit's one accepted retier**, boundary → integrated on 2026-08-04 by owner decision when `ajv` became a direct dependency and `SchemaValidator.layer` started shipping a real engine instead of a contract seam the consumer had to close. It is the counter-case to `npm`'s guardrail above: nothing in the kit depends on `schemastore`, so R2 propagates to no one, and the package is build-time tooling a consumer installs as a devDependency — the cost R1 exists to prevent was never actually paid here. The reasoning is recorded in [packages/schemastore.md](packages/schemastore.md#the-validation-seam-the-ajv-question); read it before citing this as precedent, because the two facts that made it safe are what make it narrow.
+- **`npm`'s contracts are implemented by `workspaces`.** `npm` defines `CatalogResolver`/`WorkspaceResolver` but cannot implement them; `workspaces` ships the layers, because catalog resolution needs `pnpm-workspace.yaml` plus the lockfile and workspace-version resolution needs the discovered package list. Provide either alongside `Package.resolve` and a manifest's `catalog:` / `workspace:` specifiers resolve for real. The same inversion now runs twice: `commands` declares `LocalExec` and `workspaces` ships that layer too ([packages/workspaces.md](packages/workspaces.md)).
+- **`npm` is boundary, not integrated, and a guardrail keeps it there.** Its `NpmRegistry`/`PackagePublish` services do IO themselves through core-declared contracts in `R`, which is what boundary means (R4) — but only while they stay core-contracts-plus-`commands`. The first non-core runtime dependency makes the package integrated, and R2 would then drag `lockfiles` (pure) and `package-json` (boundary) with it; the recorded answer to that day is a split, not an accepted retier. The rule and its reachability test are in [packages/npm.md](packages/npm.md#the-tier-guardrail-and-it-is-enforced).
+- **`schemastore` is the kit's one accepted retier**, boundary → integrated when `ajv` became a direct dependency and `SchemaValidator.layer` started shipping a real engine instead of a contract seam the consumer had to close. It is the counter-case to `npm`'s guardrail above: nothing in the kit depends on `schemastore`, so R2 propagates to no one, and the package is build-time tooling a consumer installs as a devDependency — the cost R1 exists to prevent was never actually paid here. The reasoning is recorded in [packages/schemastore.md](packages/schemastore.md#the-validation-gate-ajv-ships-closed); read it before citing this as precedent, because the two facts that made it safe are what make it narrow.
 - **`workspaces`' `@pnpm/catalogs.*` deps are what make it integrated**, confined to one internal module so the tier-3 blast radius is a single file. Its git reads run through `@effected/git` (`ChangeDetector` and the snapshot service), one boundary edge that keeps it integrated.
 - **`store` is named for its primitive, not its backend** — a schema-versioned migrated `SqlClient` and a `key → Uint8Array` cache sharing one migration-ledger engine, so a non-SQLite implementation never forces a rename. Its single `@effect/sql-sqlite-node` dependency is what makes it tier 3, and is why the SQLite services were split out of `xdg`.
+
+### Packages whose design doc is split
+
+Four packages are large enough that their doc is a parent overview plus one child per subsystem. The parent in the table above is still the entry point — it links its children and they link back — but the children are where the depth lives, so go straight to one when you know which subsystem you need.
+
+| Package | Child docs |
+| --- | --- |
+| `github` | [rest](packages/github-rest.md), [graphql](packages/github-graphql.md), [auth](packages/github-auth.md), [resources](packages/github-resources.md), [errors and resilience](packages/github-errors.md) |
+| `github-actions` | [runtime](packages/github-actions-runtime.md), [storage and provisioning](packages/github-actions-storage.md), [reporting](packages/github-actions-reporting.md), [OIDC and attestation](packages/github-actions-attestation.md) |
+| `jsonl` | [the journal service](packages/jsonl-journal.md), [the read surfaces](packages/jsonl-reads.md) |
+| `workspaces` | [the release surface](packages/workspaces-release.md) |
 
 ## The four codecs live in `config-file`
 
@@ -103,9 +114,7 @@ The `jsonc`, `yaml` and `toml` **format** packages remain independent — they a
 
 ## The github-split packages
 
-Five packages joined the kit through the [github-split program](releases.md#the-github-split-wave) — `commands`, `templates`, `github`, `github-actions` and `sbom`, listed with the rest of the published set in the main table above. They sat unpublished only because the program ran without changesets by design; the **2026-07-26 wave** (release PR #181, sixteen packages) named them and they published at `0.1.0` each, alongside eleven extended packages. [releases.md](releases.md#the-github-split-wave) carries the wave's exact versions.
-
-The program (2026-07-25, plan `2026-07-25-github-split-master.md`; plans are local-only, so cite by name) replaces `@savvy-web/github-action-effects` wholesale and upstreams the mechanism half of `@savvy-web/silk-effects`. Its consumer migration maps and the Phase 6 fluency audit are under [consumers/](consumers/README.md).
+Five packages — `commands`, `templates`, `github`, `github-actions` and `sbom` — entered the kit together, as one program that replaced `@savvy-web/github-action-effects` wholesale and upstreamed the mechanism half of `@savvy-web/silk-effects`. They are grouped here because their design decisions were taken jointly and only make sense against each other; each is listed with the rest of the published set in the table above. **The replacement is complete on both sides**: the predecessor package no longer exists and none of the six consumer repos declares it. The per-repo migration maps are under [consumers/](consumers/README.md), and what the migration taught about building an action on the kit is [github-action-canon.md](github-action-canon.md).
 
 Three structural facts from it recur, each argued in the package's own doc:
 
@@ -113,14 +122,16 @@ Three structural facts from it recur, each argued in the package's own doc:
 - **`commands` stays boundary only because the workspaces edge inverts.** A direct `commands` → `workspaces` edge would have made four packages integrated, a pure one among them.
 - **`sbom` declines `@cyclonedx/cyclonedx-library` (6.6 MB, seven optional peers) and owns its emitter** — the `toml`/`glob` economics again, with the added reason that the library's `spdx-expression-parse` peer is the engine [`@effected/spdx`](packages/spdx.md) exists to replace.
 
-The program also **extended five published packages** rather than adding to them: `npm` (retiered, above), `workspaces` (release/tracking tags, versioning strategy, the `LocalExec` layer and the publishability seam), `config-file` (`ConfigFile.read`), `package-json` (the location fields, and the `Person` stale-wire fix) and `markdown` (the section finders). Each package's doc carries its own as-built section.
+The program also **extended five already-published packages** rather than adding new ones: `npm` (retiered, above), `workspaces` (release/tracking tags, versioning strategy, the `LocalExec` layer and the publishability seam), `config-file`, `package-json` and `markdown`. Each package's doc carries its own as-built section.
 
-**The dogfood that followed added three in-kit edges, all onto `github-actions`** (silk-release-action rounds 1-3, 2026-07-26): `@effected/templates`, `@effected/markdown` and `@effected/sbom`. None changes a tier — `github-actions` is already integrated and nothing depends on it — and each is confined to the modules that earn it, with `markdown`'s pinned by the same bundle-reachability suite that pins Azure's. One of them is the inverted-contract pattern closing: `sbom` declared `IdentityToken` and `github-actions` now ships the layer. Worth recording as the shape adoption takes: the dogfood asked for **projections between packages the kit already had**, not for new capabilities, so the edges it produced all point from the integrated overlay downward.
+**`github-actions` carries three in-kit edges the consumer dogfood added** — `@effected/templates`, `@effected/markdown` and `@effected/sbom`. None changes a tier (`github-actions` is already integrated and nothing depends on it), and each is confined to the modules that earn it, with `markdown`'s confinement pinned by the same bundle-reachability suite that pins Azure's. One of them is the inverted-contract pattern closing: `sbom` declares `IdentityToken` and `github-actions` ships the layer. Worth recording as the shape adoption takes: the dogfood asked for **projections between packages the kit already had**, not for new capabilities, so the edges it produced all point from the integrated overlay downward.
 
 ## Not in the kit
 
-- `@effected/ts-vfs` (port of `type-registry-effect`) — ported, then returned to the external `type-registry-effect` repo, where its consumer `rspress-plugin-api-extractor` consumes it from source. It carries the `typescript@^6` / `@typescript/vfs` peers, so keeping it out preserves the kit's "no `@effected/*` package imports `typescript`" posture. See [releases.md](releases.md#the-five-applications).
-- `@effected/runtime-resolver-cli` — the `runtime-resolver` binary re-ships from the external `runtime-resolver` repo against the published `@effected/runtimes`, so the library's consumers never install `@effect/platform-node`. See [packages/runtimes.md](packages/runtimes.md).
+Two packages were built here and then moved out. Both are recorded because the reason generalizes — a package that would drag a peer the kit refuses belongs outside it — and because their names still appear in consumer repos.
+
+- **`ts-vfs`** lives in the external `type-registry-effect` repo, where its consumer `rspress-plugin-api-extractor` takes it from source. It carries the `typescript` / `@typescript/vfs` peers, so keeping it out preserves the kit's "no `@effected/*` package imports `typescript`" posture. See [releases.md](releases.md#the-five-applications).
+- **The `runtime-resolver` binary** ships from the external `runtime-resolver` repo against the published `@effected/runtimes`, so the library's consumers never install `@effect/platform-node`. See [packages/runtimes.md](packages/runtimes.md).
 
 ## Off the roadmap
 
@@ -137,5 +148,6 @@ Downstream projects that consume published `@effected` packages but stay in thei
 - silk-update-action (savvy-web)
 - savvy-web/systems (via `@savvy-web/silk-effects`' DepsRegen)
 - the `@savvy-web/*` silk system
+- the github-split orbit: silk-release-action, silk-sync-action, silk-router-action, silk-runtime-action and spencerbeggs/claude-code-marketplace-manager
 
-The github-split program added five more, surveyed but never modified during it: silk-release-action, silk-sync-action, silk-router-action, silk-runtime-action and spencerbeggs/claude-code-marketplace-manager. One migration map per repo, with what each replaces and where that code lives today, is in [consumers/](consumers/README.md).
+One migration map per repo, with what each replaces and where that code lives today, is in [consumers/](consumers/README.md).

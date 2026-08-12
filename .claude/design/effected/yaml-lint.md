@@ -3,11 +3,12 @@ status: draft
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-08-12
+last-synced: 2026-08-12
 completeness: 55
 related:
   - formatter-convention.md
+  - sync-primitive-policy.md
   - effect-standards.md
   - packages/yaml.md
 ---
@@ -16,11 +17,11 @@ related:
 
 ## Overview
 
-A proposal for a yamllint-class lint system inside pure-tier `@effected/yaml`: a real rule-engine framework whose first built-in rule is parse-validity, with a formatter tie-in for autofix. It records the decisions of a brainstorming session that was paused mid-way — a release is being cut and this work is **not** in it. It is a proposal for future work, not shipped behavior.
+A design for a yamllint-class lint system inside pure-tier `@effected/yaml`: a rule-engine framework whose first built-in rule is parse-validity, with a formatter tie-in for autofix. **Nothing here is built** — no `YamlToken.ts` or `YamlLint.ts` exists in the package, and this document is the design that would be implemented, tracked as [issue #129](https://github.com/spencerbeggs/effected/issues/129).
 
 The choice made was "both, layered": not a bare validity checker and not a formatter dressed up as a linter, but a rule engine with validity as rule #1. Consumers register custom rules alongside the built-ins; config references rules by id; a subset of rules can carry a surgical, comment-safe fix.
 
-**Status (2026-07-20): the core is decided — the tier boundary, the four verbs, the token stream, the rule model, the diagnostic type, the autofix substrate and the facade. Three areas are open** and were not settled before the session was interrupted: the config schema and severity model, the v1 built-in rule set, and the testing approach. Those are recorded as [open questions](#open-questions) with their known direction, and must not be invented past what is written here.
+**The core is decided** — the tier boundary, the four verbs, the token stream, the rule model, the diagnostic type, the autofix substrate and the facade. **Three areas are open**: the config schema and severity model, the v1 built-in rule set, and the testing approach. They are recorded as [open questions](#open-questions) with their known direction, and must not be invented past what is written here.
 
 ## What it builds on versus what is new
 
@@ -46,7 +47,7 @@ The lint system is mostly composition over surfaces `@effected/yaml` already shi
 
 **v1 is the pure half only, and it stays inside pure-tier `@effected/yaml`**: the rule engine, the built-in rule catalog, and a config *schema* — a validating `Schema.Struct`, **not** a config-file loader. Everything with a tier smell is deferred to a later, separate boundary or integrated package (or the host): file discovery, config-file loading, reading and writing files, a CLI, and autofix-to-disk.
 
-This is the load-bearing decision, and the rationale is a direct lesson from this program: putting IO, a CLI or config-file loading into pure-tier `yaml` would repeat the exact tier violation that produced the glob→walker cycle earlier in the migration, and that [`effect-standards.md`](effect-standards.md#dependency-policy) exists to prevent. A pure package that owns its parser must not also own its runner. The pure engine stays pure — strings in, diagnostics or edits out — and the runner is someone else's tier. The same reasoning already governs the fidelity suites in [formatter-convention.md](formatter-convention.md#tier-discipline-applies): a pure-tier package must not smuggle IO in, not even for a good-looking convenience.
+This is the load-bearing decision. Putting IO, a CLI or config-file loading into pure-tier `yaml` would repeat the tier violation that [`effect-standards.md`](effect-standards.md#dependency-policy) exists to prevent. A pure package that owns its parser must not also own its runner. The pure engine stays pure — strings in, diagnostics or edits out — and the runner is someone else's tier. The same reasoning already governs the fidelity suites in [formatter-convention.md](formatter-convention.md#tier-discipline-applies): a pure-tier package must not smuggle IO in, not even for a good-looking convenience.
 
 ## The four verbs, composed
 
@@ -63,7 +64,7 @@ The system is four verbs over one document, three of which already exist:
 
 New `YamlToken.ts` promotes today's internal CST token to public surface. A `YamlToken` is a `Schema.Class` carrying `kind`, `offset`, `length`, `line`, `character` and `text`. (The internal token in `src/internal/token.ts` names two fields differently — `value` and `column`; promotion reconciles the spelling to the positioned-diagnostic vocabulary the public surface already uses in `YamlDiagnostic`.)
 
-The primitive follows the kit's sync-`Result` convention ([formatter-convention Decision 6](formatter-convention.md#decision-6--the-sync-primitive-policy)):
+The primitive follows the kit's [sync primitive policy](sync-primitive-policy.md):
 
 - **primitive** — `YamlTokens.tokenize(text, options?): Result<ReadonlyArray<YamlToken>, YamlParseError>`.
 - **derived** — `YamlTokens.stream(text, options?): Stream<YamlToken>`, parallel to the existing `YamlVisitor.visit`.
@@ -151,10 +152,10 @@ All three are new. They build on the existing `YamlVisitor`, `YamlDocument`/`Yam
 
 ## Open questions
 
-The session was interrupted before these were settled. The direction is recorded where one exists; the choice is **not** made, and must not be invented past what is written.
+The direction is recorded where one exists; the choice is **not** made, and must not be invented past what is written.
 
 1. **Config schema and severity model.** The direction was an Effect-native `Schema.Struct` structurally shaped like Python yamllint's config: a rule-id → enable/disable/severity-plus-per-rule-options map, with severity levels error/warning/off and possibly `extends` presets (default/relaxed). It is a validating schema, not a loader — the loader is deferred with the rest of the [pure/impure split](#the-governing-constraint-v1-is-the-pure-half-only). What is **not** settled is how close to yamllint it sits: yamllint-wire-compatible (consume an existing `.yamllint`), kit-native-but-yamllint-shaped (same structure, kit spelling), or a fresh schema owing yamllint nothing. Open.
 
 2. **The v1 built-in rule set.** parse-validity is always-on and is rule #1. Beyond it, the v1 catalog is a YAGNI curation of the yamllint rule set, and *which* rules ship is open. Candidates: line-length, trailing-spaces, empty-lines, eof-newline, document-start, document-end, key-duplicates, indentation, quoted-strings, truthy, comments-spacing, colon-spacing, hyphen-spacing. The selection among these is not made.
 
-3. **Testing approach.** Not yet discussed. The binding constraint carried over from this program's fidelity lessons ([formatter-convention.md](formatter-convention.md#decision-5--the-fidelity-obligation)) is that rules and the token stream each need fixtures **plus** mutation/differential proof that a test can fail — a rule whose test cannot fail is not tested. The token stream additionally wants its own conformance check that it round-trips positions faithfully: every token's `offset`/`length` must slice the exact source span it claims. How this is structured — shared harness, per-rule fixtures, differential against Python yamllint — is open.
+3. **Testing approach.** Not yet designed. The binding constraint carried over from the kit's [fidelity obligation](formatter-convention.md#decision-5--the-fidelity-obligation) is that rules and the token stream each need fixtures **plus** mutation/differential proof that a test can fail — a rule whose test cannot fail is not tested. The token stream additionally wants its own conformance check that it round-trips positions faithfully: every token's `offset`/`length` must slice the exact source span it claims. How this is structured — shared harness, per-rule fixtures, differential against Python yamllint — is open.

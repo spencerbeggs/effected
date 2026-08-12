@@ -11,7 +11,7 @@ A pnpm config dependency that centralizes Effect-ecosystem versioning through tw
 
 It is not an app-kit library. The three-tier taxonomy that classifies the other packages — pure, boundary, integrated — does not apply to it, because it is not a library at all: it ships catalogs and a pnpmfile, not an API. There is nothing to import and nothing to call.
 
-It is still a public package, and it [ships in the same `0.1.0` release](/docs) as the libraries. Nothing in this repo has published yet.
+It is still a public package on npm, and it [publishes the same way](/docs) the libraries do.
 
 Every `@effected/*` package pins its Effect versions through these catalogs, and the plugin exists so your workspace can do the same. Installing it is **optional**, and what it buys you is version agreement: your `effect` dependencies and peer floors sit at exactly the values this kit was built and tested against, rather than at whatever your own resolution produces. That pays off most when you adopt the kit itself — an application wiring up `@effected/*` packages takes their pinned Effect versions in one step instead of reconstructing them by hand.
 

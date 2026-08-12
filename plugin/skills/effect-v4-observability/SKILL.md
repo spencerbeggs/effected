@@ -5,7 +5,8 @@ description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry t
 
 # Effect v4 observability
 
-Effect-core APIs below are verified against `effect@4.0.0-beta.94+`.
+Every Effect-core name below was verified to exist against the vendored
+`effect@4.0.0-beta.107` source, and every claimed absence verified absent there.
 `@effect/opentelemetry` is **not installed** in this monorepo — every
 `@effect/opentelemetry` example is *shape per the official guide; verify against
 the installed package when first adopted*. v4 betas move fast; when an API is not
@@ -41,7 +42,7 @@ those never ran or cannot fail. The blind spot reads as signal.
 
 `Effect.fn`, `Effect.fnUntraced`, `Effect.withSpan`, `Effect.withSpanScoped`,
 `Effect.withParentSpan`, `Effect.annotateCurrentSpan`, `Effect.withLogSpan` — all
-present as `function` in beta.94.
+still exported from `Effect.ts` at beta.107.
 
 ```ts
 import { Effect } from "effect"
@@ -106,7 +107,7 @@ const sync = Effect.fn("User.sync")(function* (id: string) {
 ## Structured logging
 
 `Effect.log`, `logTrace`, `logDebug`, `logInfo`, `logWarning`, `logError`,
-`logFatal`, `annotateLogs` — all `function` in beta.94. They flow through the
+`logFatal`, `annotateLogs` — all still exported at beta.107. They flow through the
 current fiber: span context, annotations, and log spans attach automatically.
 
 ```ts
@@ -122,9 +123,10 @@ through the engine — a public boundary may log, the hot path does not.
 
 ## Metrics
 
-Probed beta.94 `Metric` surface: `counter`, `gauge`, `histogram`, `frequency`,
+The `Metric` surface at beta.107: `counter`, `gauge`, `histogram`, `frequency`,
 `summary`, `timer`, `withAttributes`, `withConstantInput`, `linearBoundaries`,
-`exponentialBoundaries`, `boundariesFromIterable` — all `function`.
+`exponentialBoundaries`, `boundariesFromIterable` — all exported from
+`Metric.ts`.
 
 ```ts
 import { Effect, Metric } from "effect"
@@ -143,11 +145,14 @@ const loadUser = Effect.fn("loadUser")(
 )
 ```
 
-**v3 → v4 metric deltas** (all confirmed by probe):
+**v3 → v4 metric deltas** (each absence verified absent in the beta.107 source):
 
-- `Metric.tagged` / `Metric.taggedWithLabels` are **gone** (`typeof` →
-  `undefined`). Use `Metric.withAttributes({ ... })`; the global
-  `Metric.CurrentMetricAttributes` fiber ref carries ambient attributes.
+- `Metric.tagged` / `Metric.taggedWithLabels` are **gone**. Use
+  `Metric.withAttributes({ ... })`; ambient attributes ride on
+  `Metric.CurrentMetricAttributes` (`Metric.ts:1608`) — a **`Context.Reference`**,
+  not a fiber ref. `FiberRef` no longer exists in v4 at all, so read and scope it
+  the way `effect-v4-idioms` describes for any reference: `yield*` it to read,
+  `Effect.provideService` to scope a value.
 - Histogram boundaries: `Metric.linearBoundaries`, `Metric.exponentialBoundaries`,
   `Metric.boundariesFromIterable` (v3's `MetricBoundaries.*` names are not on the
   `Metric` surface). `Metric.timer` exists; v3 `timerWithBoundaries` does not.

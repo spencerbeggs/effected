@@ -1,20 +1,27 @@
 # Platform — v3 → v4
 
-Verified against `effect@4.0.0-beta.98` / `@effect/platform-node@4.0.0-beta.98`.
-For the CLI and HTTP surfaces that moved into core, see `effect-v4-cli`.
+Verified against `effect@4.0.0-beta.107` / `@effect/platform-node@4.0.0-beta.107`
+(the satellite re-checked directly against the installed package, not inferred
+from core). For the CLI and HTTP surfaces that moved into core, see
+`effect-v4-cli`.
 
 ## `@effect/platform-node`
 
-`NodeContext` **does not exist** in `@effect/platform-node@4.0.0-beta.98`. The
-aggregate is `NodeServices`. And `NodeFileSystem.layer` alone does not satisfy
+`NodeContext` **does not exist** in `@effect/platform-node@4.0.0-beta.107` —
+there is no `NodeContext.d.ts` in `dist/`. The aggregate is `NodeServices`, and
+its layer is plain `Layer.Layer<NodeServices>` with no error channel and no
+requirements, where
+`NodeServices = ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal`.
+`NodeFileSystem.layer` alone does not satisfy
 `FileSystem.FileSystem | Path.Path` — compose
 `Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)`.
 
 ### `NodeHttpClient.layer` was removed
 
-`@effect/platform-node@4.0.0-beta.98`'s `NodeHttpClient` exports `layerUndici`
-and `layerNodeHttp` (plus their `*NoDispatcher` / `*NoAgent` variants) — there is
-**no** `NodeHttpClient.layer`. A v3 layer that reached for `NodeHttpClient.layer`
+`@effect/platform-node@4.0.0-beta.107`'s `NodeHttpClient` exports `layerUndici`,
+`layerUndiciNoDispatcher`, `layerNodeHttp`, `layerNodeHttpNoAgent`,
+`layerDispatcher`, `layerAgent` and `layerAgentOptions` — there is **no**
+`NodeHttpClient.layer`. A v3 layer that reached for `NodeHttpClient.layer`
 now picks `layerUndici` or `layerNodeHttp` explicitly. Plain `FetchHttpClient`
 (no platform package) lives in `effect/unstable/http` — see `effect-v4-cli`.
 

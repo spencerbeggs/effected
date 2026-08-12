@@ -9,9 +9,9 @@ was written down.
 
 The house rule is **no non-effectful members on a service shape**, because
 `Layer.mock` takes `PartialEffectful<S>` and one plain member makes *every*
-member required (`Layer.ts:2190`). That rule targets **mixed** shapes: methods
-plus a stray pure helper, where the helper revokes the optionality the methods
-were relying on.
+member required (`Layer.ts:2230` at beta.107). That rule targets **mixed**
+shapes: methods plus a stray pure helper, where the helper revokes the
+optionality the methods were relying on.
 
 A shape that is **entirely one immutable value** is not that case. Consider a
 service whose whole contract is a resolved record — the runner's environment,

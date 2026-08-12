@@ -4,13 +4,24 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107: `make`, `makeSync`/`makeOption`, `MakeOptions`,
+the default-value and refinement constructor behaviour all check out, and every code block typechecks.
+FALSIFIED and corrected inline: `Schema.makeOption` as a module member (it is a method on the schema,
+plus a standalone `SchemaParser.makeOption`) and `Schema.brand<"a">()` (brand takes the identifier as a
+value argument — the type-argument-only call is `TS2554: Expected 1 arguments, but got 0`).
+NOT PROBED: the effectful-default and nested-default runtime behaviour described in the last two sections.
 -->
 
 # Constructors
 
 A constructor creates a value of the schema's type, running all validations at the time of creation. If the value does not satisfy the schema, the constructor throws an error. Every schema exposes a `make` method for this purpose.
 
-For an alternative that does not throw on schema validation failures, use `Schema.makeOption` (or `SchemaParser.makeOption`), which returns `Option.Some` on success and `Option.None` for schema issues. Non-schema failures, such as defects, still throw.
+For an alternative that does not throw on schema validation failures, use the schema's own `makeOption` method (`schema.makeOption(input)`) or the standalone `SchemaParser.makeOption(schema)`, which returns `Option.Some` on success and `Option.None` for schema issues. Non-schema failures, such as defects, still throw.
+
+> **Beta trap.** `Schema.makeOption` is `undefined`. `makeOption` lives on the
+> schema instance (alongside `make`) and, in standalone form, on `SchemaParser`
+> — not on the `Schema` module.
 
 ```ts
 import { Schema, SchemaParser } from "effect"
@@ -52,11 +63,16 @@ Branding adds an invisible marker to a type so that values from different domain
 ```ts
 import { Schema } from "effect"
 
-const schema = Schema.String.pipe(Schema.brand<"a">())
+const schema = Schema.String.pipe(Schema.brand("a"))
 
 // make(input: string, options?: Schema.MakeOptions): string & Brand<"a">
 schema.make
 ```
+
+> **Beta trap.** `Schema.brand` takes the identifier as a *value* argument:
+> `Schema.brand("a")`. The type-argument-only spelling `Schema.brand<"a">()`
+> fails with `TS2554: Expected 1 arguments, but got 0`. The brand string is
+> inferred from the argument, so no explicit type argument is needed.
 
 However, when a branded schema is part of a composite (such as a struct), you must pass a branded value.
 
@@ -64,7 +80,7 @@ However, when a branded schema is part of a composite (such as a struct), you mu
 import { Schema } from "effect"
 
 const schema = Schema.Struct({
-  a: Schema.String.pipe(Schema.brand<"a">()),
+  a: Schema.String.pipe(Schema.brand("a")),
   b: Schema.Number
 })
 

@@ -120,6 +120,15 @@ it**. `package.json` stays `"private": true`.
 
 ## Open questions (design-doc OPEN items)
 
-- `enumerationPrefix`/`crossesSegments` validate against the real workspaces
-  enumerator when that package ports; their `matchBase`/win32 interaction is
-  undefined (documented for default-options patterns only).
+- **The enumeration contract is materially de-risked, not closed.**
+  `enumerationPrefix`/`crossesSegments` have now held unmodified under three
+  independent consumers — `@effected/workspaces`' enumerator (shipped; the
+  "when that package ports" caveat this item used to carry is spent),
+  `@effected/walker`'s `descend`, and `@effected/github-actions`' cache
+  search-root derivation, the last under real filesystem enumeration. What
+  remains open is narrower: **no dedicated conformance run against a reference
+  enumerator** has been performed, so nothing asserts case-by-case agreement
+  with `@actions/glob` or another reference implementation. See
+  `@../../.claude/design/effected/packages/glob.md`.
+- Both getters are computed under default options; their `matchBase`/win32
+  interaction stays undefined (documented for default-options patterns only).

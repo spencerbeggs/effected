@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-07-25
-last-synced: 2026-07-25
-completeness: 92
+updated: 2026-08-12
+last-synced: 2026-08-12
+completeness: 93
 related:
   - ../architecture.md
   - ../effect-standards.md
@@ -13,219 +13,190 @@ related:
   - ../formatter-convention.md
   - semver.md
   - jsonc.md
-  - yaml.md
   - npm.md
   - spdx.md
+  - sbom.md
 ---
 
 # @effected/package-json design
 
 ## Overview
 
-`@effected/package-json` is package.json parsing, editing, validation and file IO as Effect schemas — a **boundary-tier** manifest library and the kit's reference for the pure/IO boundary discipline. The `Package` rich `Schema.Class` is the domain model with computed getters, immutable-mutation statics, a round-trip-fidelity `rest` catch-all and semantic field decoding (`version`→`SemVer`, `packageManager`, `person`, SPDX `license`, branded names). All IO is confined to a single module, `PackageJsonFile`, over core `FileSystem` / `Path`.
+`@effected/package-json` is package.json parsing, editing, validation and file IO as Effect schemas — a **boundary-tier** manifest library and the kit's reference for pure/IO boundary discipline. The rich `Package` `Schema.Class` is the domain model: computed getters, immutable-mutation statics, a round-trip-fidelity `rest` catch-all and semantic field decoding. All IO is confined to a single module.
 
 ## Tier and dependencies
 
-**Boundary tier — one package, IO confined to a single module.** In v4 the fs split motivation evaporates because `FileSystem`/`Path` live in `effect` core: a pure core and a hypothetical fs package would have the identical peer closure (`effect`), so splitting would only isolate ~115 lines of IO behind paired versioning for no gain. `sideEffects: false` lets bundlers tree-shake the fs code out of pure usage.
+**Boundary tier, set by the file IO in `PackageJsonFile.ts` and nothing more** — the package carries no runtime dependency outside `effect` core. Its `@effected` edges (semver, npm and spdx, all `workspace:^`) are to pure packages, and [R2 propagates only tier-3](../effect-standards.md#dependency-policy), so none of them lifts the tier.
 
-The tier is **boundary**, set by the file IO in `PackageJsonFile.ts` and nothing more: the package carries no runtime dependency outside `effect` core. It was integrated until `spdx-expression-parse` — its one foreign runtime dependency — was removed by delegating SPDX-expression validity to [`@effected/spdx`](spdx.md), a pure `@effected` package reached via `workspace:~`. A `workspace:~` edge to a pure package does not re-lift the tier ([R2 propagates only tier-3](../effect-standards.md#dependency-policy)), exactly as the existing `@effected/semver` and `@effected/npm` edges do not.
+`effect` is the only peer: there is **no `@effect/platform` peer**, because `FileSystem` and `Path` live in core. `@effect/platform-node` stays a devDependency for integration tests that provide a real filesystem; consumers of the file API provide their own platform implementation at the edge.
 
-- `peerDependencies`: `effect` only (`catalog:effect`) — no `@effect/platform` peer, since FileSystem is core.
-- `dependencies`: `@effected/semver` (`workspace:~` — `SemVer` instances appear in `Package`'s API, but consumers read the decoded value far more than they construct their own, so a regular dependency rather than a peer); `@effected/npm` (`workspace:~` — the resolver contracts and shared specifier/integrity vocabulary); `@effected/spdx` (`workspace:~` — SPDX-expression validity for the `license` field).
-- `devDependencies`: `@effect/platform-node` (`catalog:effect`) for integration tests that provide a real `FileSystem`; the usual `@effect/vitest`, `@types/node`, `typescript`.
-
-Peer closure holds: `effect` has no peers, and `@effected/semver` / `@effected/npm` / `@effected/spdx` each declare only `effect`. `@effect/platform-node` stays devDependencies-only; consumers of the file API provide their own platform implementation at the edge.
+**The IO is deliberately not split into its own package.** In v4 the motivation evaporates: platform abstractions live in core, so a pure core and a hypothetical fs package would have the identical peer closure, and splitting would isolate a hundred-odd lines of IO behind paired versioning for no gain. `"sideEffects": false` already lets bundlers tree-shake the fs code out of pure usage. It remains a one-module extraction if that ever changes.
 
 ## Module layout
 
-Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept). Each concept file owns its `Schema.Class` model(s), the errors that concept raises and — if it is a service — the `Context.Service` class plus its layer(s). See `src/`:
+Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept). Each concept file owns its `Schema.Class` models, the errors that concept raises and — if it is a service — the `Context.Service` class plus its layers.
 
-- `Package.ts` — the core model, computed getters, dual mutation statics, `copyWith`, `resolve`, the wire transform and `.extend()` story, `PackageDecodeError`, and the reusable `@public` field codecs (`BinField`, `DependencyMapField`, `ExportsField`, `PublishConfigField`, `RepositoryField`, `StringMapField`, `PeerDependenciesMetaField`).
-- `PackageName.ts`, `License.ts`, `PackageManager.ts`, `Person.ts`, `Repository.ts`, `DevEngines.ts`, `Dependency.ts` — the leaf concepts, each with its statics and errors. `Repository.ts` holds both location models (`Repository` and `Bugs`): they share the shorthand-or-object encoding and the wire-provenance machinery, so splitting them would duplicate it.
-- `PackageValidator.ts` — the `Context.Service`, `ValidationRule` interface, `defaultRules` and the parameterized `layer({ rules })` factory.
-- `PackageJsonFile.ts` — **the only IO module**: one `Context.Service`, `read` + `write` over core `FileSystem`, and its read/write error tags.
-- `PackageJsonFormat.ts` — the **decode-free** formatting seam: `sortValue` (value→value) and `formatToString` (bytes→bytes), plus `PackageJsonSyntaxError` and `PackageFormatTextOptions`. See [the formatting seam](#the-decode-free-formatting-seam).
-- `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions, shared by the write options, `Package.toJsonString` and `PackageJsonFormat`. Holds `KEY_ORDER` and its `sort-package-json@4.0.0` provenance comment — see [formatting](#formatting-byte-agreement-with-the-ecosystem-oracle).
+- `Package.ts` — the core model, the wire transform and `.extend()` story, and the reusable `@public` field codecs.
+- The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `Person.ts`, `Repository.ts`, `DevEngines.ts`, `Dependency.ts`. `Repository.ts` holds both location models, because they share the shorthand-or-object encoding and the wire-provenance machinery and splitting them would duplicate it.
+- `PackageValidator.ts` — the validation service, its rule interface, the default rule set and a parameterized layer factory.
+- `PackageJsonFile.ts` — **the only IO module**: one service, read and write over core `FileSystem`/`Path`, plus its error tags.
+- `PackageJsonFormat.ts` — the **decode-free** formatting seam. See [the formatting seam](#the-decode-free-formatting-seam).
+- `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions shared by the write options, the model's serializer and the format seam. Holds the key order and its provenance comment.
 
-`DependencySpecifier` is **not** defined here — the specifier taxonomy lives in [`@effected/npm`](npm.md) and `index.ts` re-exports it for surface compatibility. The package ships a single entry point (`src/index.ts`); there is no `./schema` subpath, and field codecs are either `@public` consts on their owning concept or `internal/` privates.
+The package ships a single entry point; there is no `./schema` subpath, and field codecs are either `@public` consts on their owning concept or `internal/` privates. **`DependencySpecifier` is not defined here** — the specifier taxonomy lives in [`@effected/npm`](npm.md), because lockfiles is its second consumer; `index.ts` re-exports it for surface compatibility.
 
 ## Effect-wrapping policy
 
-The [jsonc/yaml wrapping policy](jsonc.md#effect-wrapping-policy) applies, adapted for a service-bearing boundary library: **pure synchronous where nothing can fail; `Effect` where the error channel is real (including all service IO); no `Effect.runSync` inside getters, ever.**
+The [jsonc/yaml wrapping policy](jsonc.md#effect-wrapping-policy) applies, adapted for a service-bearing boundary library: **pure synchronous where nothing can fail; `Effect` where the error channel is real, including all service IO; no `Effect.runSync` inside a getter, ever.**
 
-- **Pure synchronous**: computed getters (`isPrivate`, `isScoped`, `isESM`, `hasDependency`), the specifier taxonomy statics, `PackageName` predicates, the format functions and `Package.toJsonString(options)`. Absence is `Option` (from `HashMap.get`) or a plain optional field, never a wrapping `Effect`.
-- **`Effect`**: the effectful mutation statics that validate (`setVersion`, `setName`, `setLicense`), `Package.resolve`, decode-from-unknown, and every `PackageJsonFile`/`PackageValidator` operation.
+Pure and synchronous: the computed getters, the specifier-taxonomy statics, the name predicates, the format functions and the serializer. Absence is `Option` or a plain optional field, never a wrapping `Effect`.
 
-Range detection inside the specifier taxonomy decodes `@effected/semver`'s `Range.FromString` **purely** via `Schema.decodeUnknownExit(Range.FromString)` + `Exit.isSuccess`, so no effect runs inside a getter.
+`Effect`: the mutation statics that validate, `Package.resolve`, decode-from-unknown and every file and validator operation.
 
-## Public API
+The one place this could quietly break is range detection inside the specifier taxonomy, which decodes semver's range codec **purely** via `Schema.decodeUnknownExit` plus an exit check — so no effect runs inside a getter.
 
-Class-based DX throughout, per the semver north star; the class IS the schema, so there are no `*Schema` suffixes or type-alias re-exports. See `src/` for exact signatures.
+## Package
 
-### Package
+The rich `Schema.Class`, and the single best DX pattern in the repo:
 
-The rich `Schema.Class` — the single best DX pattern in the repo:
+- **Computed getters**, pure, over privacy, scoping, module format and dependency lookup.
+- **Immutable mutation statics** with the [dual-signature idiom](#dual-signature-statics); the effectful ones fail typed.
+- **`copyWith`** takes a patch type *derived from the fields*, not a hand-maintained partial that silently omits half of them.
+- **`resolve`** — the static-with-`R` that turns `catalog:` and `workspace:` specifiers into concrete ranges from resolver services in context. It is the one place the pure model reaches into DI, and it is deliberately **not** fused into `write`.
+- **`rest`** — the catch-all preserving unknown top-level fields across a read/edit/write cycle. See [the wire transform](#the-rest-catch-all-and-extend-story).
+- **`toJsonString`** — the pure serialization path, first-class rather than only reachable through the writer.
 
-- **Computed getters** (pure): `isPrivate`, `isScoped`, `isESM`, `hasDependency(name)`, the dependency-map accessors.
-- **Immutable mutation statics** with the [dual-signature idiom](#dual-signature-statics): `setVersion`, `setName`, `setLicense`, `addDependency`, `removeDependency`, `setScript` and the rest. Effectful ones fail typed.
-- **`copyWith`** takes a patch type derived from the fields (`Partial` over all model fields), not a hand-maintained partial that silently omits half.
-- **`resolve`** — the static-with-R that turns `catalog:`/`workspace:` specifiers into concrete ranges using `CatalogResolver | WorkspaceResolver` from context. It is the one place the pure model reaches into DI (the standard "static method with R" pattern), and resolution is **not** fused into `write`.
-- **`rest`** catch-all preserving unknown top-level fields across a read/edit/write cycle (see [the wire transform](#the-rest-catch-all-and-extend-story)).
-- **`toJsonString(options?)`** — the pure serialization path, first-class rather than only reachable through the writer.
+`publishConfig` is modeled as an **open `Schema.Record`** rather than a typed open struct: a typed open struct runs in v4 but does not annotate cleanly for a zero-warning `issues.json`. Round-trip fidelity is fully preserved; the only cost is that typed field access is dropped, and consumers read off the open record. That constraint does not arise for a `Schema.Class` with its own codec, which is why `repository` is typed.
 
-Modeled fields include `name` (`PackageName`), `version` (`SemVer`), `license` (`SpdxLicense`), `packageManager` (`PackageManager`), `author`/`contributors`/`maintainers` (`Person`), `repository` (`Repository`), `bugs` (`Bugs`), `homepage`, `keywords`, the dependency/format field codecs and `rest`. `publishConfig` is modeled as an **open `Schema.Record`** rather than a typed open struct — a typed open struct runs in v4 but does not annotate cleanly for a zero-warning `issues.json`. Round-trip fidelity is fully preserved; the only cost is that typed `publishConfig.access` field access is dropped (consumers read it off the open record). `repository` was modeled the same way until 2026-07-25 and is now a typed [`Repository`](#the-location-fields-repository-bugs-and-homepage) — the annotation problem does not arise for a `Schema.Class` with its own codec.
+## Leaf concepts
 
-### Leaf concepts
+**`PackageName`** brands the npm name grammar with scoped and unscoped refinements, written with **lookahead-free regexes** so `Schema.toArbitrary` property tests derive. Its statics attach via `Object.assign`, since a `const` and a `namespace` cannot merge in TS, and the branded types export explicitly as `string & Brand.Brand<"…">` rather than `typeof X.Type`.
 
-- **`PackageName`** — `PackageName` / `ScopedPackageName` / `UnscopedPackageName` brands (a `.check(...)` + `Schema.brand` over the npm name grammar, written with **lookahead-free regexes** so `Schema.toArbitrary` property tests derive) plus statics `isValid` / `scope` / `unscoped` / `isScoped`, attached via `Object.assign` since a `const` and a `namespace` cannot merge in TS. The branded types export explicitly as `string & Brand.Brand<"…">`.
-- **`SpdxLicense`** (`License.ts`) — a brand validating the `license` field, delegating core SPDX-expression validity to [`@effected/spdx`](spdx.md)'s `isValidExpression` and keeping only the npm-specific `UNLICENSED` and `SEE LICENSE IN <file>` cases, which are npm semantics rather than SPDX grammar.
-- **`PackageManager`** — a class parsing `"pnpm@10.x+sha512.abc"` into `name` / `version` / `integrity`, where `integrity` is a genuine `Schema.Option` field (absence is computed on) typed as [`@effected/npm`'s `IntegrityHash`](npm.md#integrityhash) brand. Because the brand rejects a malformed integrity segment, `PackageManager.FromString` now **fails typed** on malformed integrity rather than round-tripping it as a raw string — real corepack values are unaffected.
-- **`Person`** — a class parsing `"Name <email> (url)"` into structured fields and encoding back, wired into `Package.author`/`contributors`. It carries a `rest` catch-all of its own, on the same wire-transform pattern as `Package`: an object-form author with a `twitter` or `github` key would otherwise lose it on a read→write cycle, which is exactly the silent deletion the [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) forbids and which a schema-derived arbitrary is structurally incapable of generating. `Package`, `Person`, `Repository` and `Bugs` are the package's object-shaped models and therefore the ones that need a catch-all; every other leaf is a scalar or a closed shape. **Any new object-shaped model inherits the obligation** — this list grew once already (2026-07-25) and the rule, not the enumeration, is what governs.
-- **`Repository`** and **`Bugs`** (`Repository.ts`) — see [the location fields](#the-location-fields-repository-bugs-and-homepage).
-- **`DevEngine`** — the `DevEngine` class and `devEngines` field schema.
-- **`Dependency`** — **one** class with a `kind` field (`@effected/npm`'s `DependencyKind`) rather than four near-identical tagged classes; the protocol getters are written once, delegating to `DependencySpecifier`. `UnresolvedDependency` is a type + guard.
+**`SpdxLicense`** validates the `license` field, delegating core SPDX-expression validity to [`@effected/spdx`](spdx.md) and keeping only the npm-specific `UNLICENSED` and `SEE LICENSE IN <file>` cases, which are npm semantics rather than SPDX grammar.
 
-### The location fields: `repository`, `bugs` and `homepage`
+**`PackageManager`** parses corepack's `<name>@<version>[+<integrity>]` triple. Both strict halves are **shared by identity** with the packages that own them rather than re-derived: the version field IS [semver](semver.md)'s `PinnableVersionString`, and integrity is [npm](npm.md)'s `CorepackIntegrityHash`, held in a genuine `Schema.Option` because absence is branched on. Sharing the version schema is a deliberate strictening — padded versions, leading zeroes and empty prerelease identifiers all fail typed now, matching corepack's own validity check minus its trim — and because the check sits on the *field*, `make` refuses a malformed version rather than producing a manifest value that re-parses differently.
 
-Added 2026-07-25, as prework for [`@effected/sbom`](sbom.md) but standalone on its own merit. The gap was found by an SBOM design survey and is older than that phase: silk-release-action hand-rolls `parseRepository` / `parseBugs` because `repository` was typed `Union([String, Record])` — untyped and unnormalized — and `bugs` and `homepage` were absent from the model entirely.
+That sharing is **runtime-asserted by identity**, not by source text, and the assertions must not be downgraded: a `Schema.check` is erased from the built `.d.ts`, so severing either schema would not be a type error and nothing else would catch it.
 
-**`Repository`** carries the reference **verbatim** in `url` and exposes normalization as derived getters, `browseUrl` and `gitUrl`. That split is the point: reading a manifest never rewrites the field, so the [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) holds, while a caller that wants a link asks for one. Both getters return `Option`, because `repository` is caller data and a value we cannot interpret is a **missing answer rather than a failure** — the same posture the kit takes on absence everywhere else.
+**The name grammar is the one place this model and npm's pin diverge, deliberately.** The field model keeps any lowercase name; the pin closes the set. Field model means *manifests as they exist in the wild*, pin means *the kit's provisioning vocabulary* — corepack itself recognizes only three names and would reject the very real `bun@…`, and npm documents no constraint on this field. The evidence lives in the class's TSDoc. Do not "align" it with the pin.
 
-The recognized forms go beyond what the hand-roll handled, which is the "improve on it" half of the gap-fill:
+**`Person`** parses the `"Name <email> (url)"` shorthand into structured fields and encodes back. **`Repository` and `Bugs`** accept npm's string-or-object encodings; `Bugs.url` is optional because an **email-only entry is legal** and a model requiring a URL would reject valid manifests. `homepage` is a plain string — there is nothing to model.
 
-| Form | Example | Hand-roll |
-| --- | --- | --- |
-| bare shorthand | `effected/kit` | **missed** — returned unchanged, so callers got a non-URL |
-| host shorthand | `github:` / `gitlab:` / `bitbucket:` / `gist:` | **missed** entirely |
-| `git+https://`, `git://`, scp-like `git@host:path` | | handled |
-| `git+ssh://git@host/path` | | **missed** — its `git@host:` rewrite only matched the scp form |
-| object form | `{ type, url, directory }` | url only |
+**`Dependency`** is **one** class with a `kind` field rather than four near-identical tagged classes, so the protocol getters are written once and delegate to npm's specifier taxonomy.
 
-**`Bugs`** accepts npm's string or object encoding; `url` is optional because an **email-only entry is legal** and a model that required a URL would reject valid manifests. `homepage` is a plain `Schema.String` — there is nothing to model.
+### `Repository` carries the reference verbatim
 
-Both are object-shaped, so both carry a `rest` catch-all and round-trip their wire form, on `Person`'s WeakMap-provenance pattern. The replay is guarded on the value still matching its provenance, and that guard is **load-bearing rather than defensive**: `Schema.Class` instances are not frozen at runtime (probed), so a mutated instance keeps a provenance entry that no longer describes it, and an unguarded replay writes the *original* repository back to the manifest. A surviving mutant is what surfaced it — the guard was written, the test for it was not.
+`Repository` holds the reference **verbatim** and exposes normalization as derived getters. That split is the point: reading a manifest never rewrites the field, so the [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) holds, while a caller that wants a link asks for one.
 
-`RepositoryField` remains exported and is now `@deprecated`: `Package.repository` decodes through `Repository.FromValue`, but the raw union stays named for any consumer that was matching on it. No in-kit consumer read `.repository`, so the retype is additive in practice as well as in principle.
+Those getters return `Option`, because `repository` is caller data and a value we cannot interpret is a **missing answer rather than a failure** — the posture the kit takes on absence everywhere else. The recognized forms cover bare and host shorthands, the `git+https` / `git` / `git+ssh` / scp-like URL spellings and the object form.
 
-### The compliance field set, and what each one serves
+`RepositoryField` stays exported and `@deprecated`: `Package.repository` decodes through the typed codec, but the raw union stays named for any consumer matching on it.
 
-The scope widened (2026-07-25, Spencer) from the three location fields to **every manifest field the CycloneDX 1.6 + NTIA-minimum-elements mapping reads**. The list below is derived from [`@effected/sbom`](sbom.md)'s `SbomMetadataSource.fromPackage` mapping, not from a general sweep of npm's documentation, so each field is here because something consumes it:
+### Wire provenance, and why the replay is guarded
 
-| Field | Status | CycloneDX 1.6 target | NTIA element |
-| --- | --- | --- | --- |
-| `name`, `version` | existed | `component.name` / `.version`, and the `purl` both derive | 2, 3, 4 |
-| `description` | existed | `component.description` | — |
-| `license` | existed | `component.licenses` | — |
-| `author` | existed | `component.author` / `metadata.authors` | 6 (author of SBOM data) |
-| `contributors` | existed | `component.authors` | 6 |
-| **`maintainers`** | **added** | `metadata.supplier.contact`, `component.authors` | 1 (supplier name), 6 |
-| **`keywords`** | **added** | `component.tags` | — |
-| `repository` | added (above) | `externalReferences[vcs]` | — |
-| `bugs` | added (above) | `externalReferences[issue-tracker]` | — |
-| `homepage` | added (above) | `externalReferences[website]` / `[documentation]` | — |
+`Person`, `Repository` and `Bugs` each remember the exact wire value the instance decoded from, in a `WeakMap`, and replay it on encode for byte-level fidelity.
 
-`maintainers` and `keywords` are plain additive fields — `Array(Person.FromValue)` and `Array(String)` — needing no new machinery, and both were already present in `internal/format.ts`'s `KEY_ORDER` (checked), so canonical sorting places them correctly with no change there. `maintainers` closes a documentation/code drift the package carried: its own CLAUDE.md warned that object-form `author`/`contributors`/**`maintainers`** must not drop unknown keys, but `maintainers` was never a modeled field, so nothing enforced it.
+**The replay must be guarded on the value still matching its provenance, and the guard is load-bearing rather than defensive.** `Schema.Class` instances are not frozen at runtime, so an instance mutated in place keeps a provenance entry that no longer describes it — and an unguarded replay writes the *original* value back, silently discarding the edit. A surviving mutant is what surfaced this: the guard was written, the test for it was not.
 
-**`funding` was evaluated and deliberately NOT added.** npm documents it, but CycloneDX 1.6 has **no `funding` external-reference type** — verified by enumerating `ExternalReferenceType` in the published library and grepping `bom-1.6.SNAPSHOT.schema.json`, not from memory. A field with no target in the mapping would be exactly the arbitrary growth this table exists to prevent; it earns its place the day a consumer names a target for it.
+Two traps come with it, both recorded in the package CLAUDE.md and worth knowing before touching either class. The guard must treat `rest` as disqualifying for the shorthand branch, because a shorthand has no syntax for extra keys — the named fields still match, so without an explicit clause the added keys vanish on write. And a test that rebuilds with `make({ ...person, x })` **cannot catch any of this**, because it produces a new instance with no provenance and never reaches the replay path; the instance must be mutated in place.
 
-**`Person` needed nothing.** Its `FromValue` already covers every case the consumer's `parseAuthor` handles — the object form, the `"Name <email> (url)"` shorthand, and the degenerate address-only string — with wire fidelity the hand-roll lacks. The one input where the two could plausibly disagree (an email-only shorthand) is now pinned by a test, which is what makes "delete the hand-roll" evidence-backed rather than assumed.
+An edited shorthand **re-emits as a shorthand**; the object form is the fallback only when the shorthand genuinely cannot carry the value. Shape fidelity is the promise — a manifest's `author` must not silently change representation because one field was edited — and data fidelity outranks it in the one case where they conflict. One predicate decides both, deliberately: split them and a person can be refused the replay yet handed back as a shorthand, dropping the very keys the refusal detected.
+
+**Any object-shaped model inherits the catch-all obligation.** `Package`, `Person`, `Repository` and `Bugs` are the current set; every other leaf is a scalar or a closed shape. The rule, not the enumeration, is what governs — check every new sub-object class against a round-trip test.
+
+## The compliance field set
+
+The modeled field set is scoped to **every manifest field the CycloneDX 1.6 plus NTIA-minimum-elements mapping reads**, derived from [`@effected/sbom`](sbom.md)'s metadata-source mapping rather than from a general sweep of npm's documentation. Each field is present because something consumes it: name and version (which the `purl` also derives from), description, license, author, contributors, maintainers, keywords, repository, bugs and homepage.
+
+**`funding` was evaluated and deliberately NOT added.** npm documents it, but CycloneDX 1.6 has no funding external-reference type — verified by enumerating the published type set, not from memory. A field with no target in the mapping would be exactly the arbitrary growth this scope rule exists to prevent; it earns its place the day a consumer names a target for it.
 
 ## The `rest` catch-all and `.extend()` story
 
-`Package` carries a `rest` field holding unknown top-level keys. The **wire transform** (`Package.schema`) partitions raw object keys against `Class.fields`: known keys decode to typed members, the remainder flow into `rest`; on encode, `rest` is flattened back out to top-level keys (there is no literal `rest` key on disk). Because the partition is against `Class.fields`, `.extend()`ed subclasses automatically pull their new fields out of `rest` into typed members — the codec is rebuilt via `Package.wireFor(Subclass)`, which re-partitions against the subclass's fields.
+`Package` carries a `rest` field holding unknown top-level keys. The **wire transform** partitions raw object keys against `Class.fields`: known keys decode to typed members, the remainder flow into `rest`; on encode, `rest` flattens back out to top-level keys, so there is never a literal `rest` key on disk.
 
-The transform is `RawJson.pipe(Schema.decodeTo(Class, SchemaTransformation.transform({ decode, encode })))`; `rest` is a plain `optionalKey(Record(String, Unknown))` — no `Schema.Data` cast, no `disableValidation`.
+Because the partition is against `Class.fields`, `.extend()`ed subclasses automatically pull their new fields out of `rest` into typed members — the codec is rebuilt against the subclass's fields. `rest` itself is a plain optional record: no `Schema.Data` cast, no disabled validation.
 
 ## Optional-field and dependency-map representation
 
-Omissible object fields decode via `Schema.optionalKey` (the [schema standard](../effect-standards.md#schema-standards) default), with implementation-level `?? default`. `Schema.Option`-typed decoded fields survive only where a field's presence/absence is actively branched on in the model's logic — `PackageManager.integrity` is the clear case.
+Omissible object fields decode via `Schema.optionalKey` (the [schema standard](../effect-standards.md#schema-standards) default) with implementation-level defaults. A `Schema.Option`-typed decoded field survives only where presence versus absence is actively branched on in the model's logic.
 
-The four dependency maps are `HashMap<string, Dependency>` and `scripts` is `HashMap<string, string>` — immutable, Effect-idiomatic, structural equality for free; consumers use `HashMap.get(pkg.dependencies, "effect"): Option<Dependency>`. The `Record ↔ HashMap` codec sits its decoding default on the `Record` side, before `decodeTo`, taking an `Effect` (`Effect.succeed({})`) — applying the default after the HashMap decode breaks the encode direction. Empty maps are stripped on encode.
+The dependency maps and `scripts` are `HashMap`s — immutable, Effect-idiomatic, structural equality for free. The record-to-HashMap codec sits its decoding default on the record side, **before** `decodeTo`, taking an `Effect`; applying the default after the HashMap decode breaks the encode direction. Empty maps are stripped on encode.
 
 ## Dual-signature statics
 
-`Package`'s mutation statics use `Function.dual` so data-first (`Package.setVersion(pkg, v)`), curried (`Package.setVersion(v)(pkg)`) and pipeable (`pkg.pipe(Package.setVersion(v))`) call styles all work — reusing the proven `Fn.dual` machinery from `@effected/semver`. v4 `Schema.Class` instances are **not** `Pipeable` out of the box, so the class retains a manual `pipe` overload block.
+The mutation statics use `Function.dual` so data-first, curried and pipeable call styles all work, reusing the machinery proven in [semver](semver.md). v4 `Schema.Class` instances are **not** `Pipeable` out of the box, so the class retains a manual `pipe` overload block — preserve it if you touch the class.
 
 ## Error set
 
-Each error is a `Schema.TaggedErrorClass` defined in the module of the concept that raises it, keeping its `get message()` getter. See the source; the load-bearing ones:
+Each error is a `Schema.TaggedError` defined in the module of the concept that raises it, keeping its `message` getter. See the source for the current set.
 
-| Error | Owner | Raised by | Payload |
-| --- | --- | --- | --- |
-| `PackageDecodeError` | `Package.ts` | `Package.schema` decode and the read path | structured `cause: Schema.Defect` (the `SchemaError`), not a flattened string |
-| `InvalidPackageNameError` | `PackageName.ts` | name decode / `setName` | `input`, computed `message` |
-| `InvalidSpdxLicenseError` | `License.ts` | license decode / `setLicense` | `input`, computed `message` |
-| `PackageValidationError` | `PackageValidator.ts` | `validate` | aggregated `RuleFailure[]` + report getter |
-| `DependencyResolutionError` | `@effected/npm` (imported) | resolver / `resolve` | `specifier`, `cause` |
-| `PackageJsonReadError` / `PackageJsonNotFoundError` / `PackageJsonParseError` / `PackageJsonWriteError` | `PackageJsonFile.ts` | `read` / `write` | `path`, structured `cause` |
-
-**Structure-preserving discipline:** decode and read/write errors carry the underlying failure as a `cause` field (`Schema.Defect`), never a stringified `message`. `SchemaError` is normalized to the domain error at the boundary via `Effect.catchTag("SchemaError", …)`, never leaked deep into logic. Not-found keeps its own tag for `catchTag` routing; `PackageJsonWriteError` is narrowed to the fs-write failure only, and the read path folds decode failures into the shared `PackageDecodeError` rather than minting a separate one.
+**Structure-preserving discipline** is the rule that matters: decode and read/write errors carry the underlying failure as a structured `cause` field, never a stringified message. `SchemaError` is normalized to the domain error at the boundary via `Effect.catchTag`, never leaked deep into logic. Not-found keeps its own tag for routing, the write error is narrowed to the fs-write failure only, and the read path folds decode failures into the shared decode error rather than minting a second one.
 
 ## Services and layers
 
-The kit's first real exercise of the [services-and-layers standards](../effect-standards.md#services-and-layers-standards). Layers are exported as consts inside each concept module, memoized by reference (never getters), provided at boundaries only (app entry, test boundary) — business logic requires services and never calls `Effect.provide` locally.
+The kit's first real exercise of the [services-and-layers standards](../effect-standards.md#services-and-layers-standards). Layers are exported as consts inside each concept module, memoized by reference (never getters) and provided at boundaries only — business logic requires services and never calls `Effect.provide` locally.
 
-- **`PackageJsonFile`** (the only IO service) — `read(path)` and `write(path, pkg, options?)` over **core `FileSystem`/`Path`**, so the layer requires no platform peer; consumers provide `@effect/platform-node`'s `NodeFileSystem.layer` at the edge. `write` derives the parent dir via `Path.dirname` and `makeDirectory(recursive: true)` before writing (both fail as the narrowed `PackageJsonWriteError`).
-- **`PackageValidator`** — the `ValidationRule` interface, `defaultRules` and a genuinely-parameterized `layer({ rules })` factory. The `has-repository` rule reads the modeled `repository` field, not `pkg.rest`.
-- **`CatalogResolver` / `WorkspaceResolver`** — **not defined here**; `Package.resolve` imports the tags from [`@effected/npm`](npm.md) and requires them from context.
+`PackageJsonFile` is the only IO service, working over **core** `FileSystem`/`Path` so its layer requires no platform peer. Write creates the parent directory before writing, and both steps fail as the narrowed write error. `PackageValidator` carries a default rule set plus a genuinely-parameterized layer factory. The resolver services are **not defined here** — `Package.resolve` imports the tags from [`@effected/npm`](npm.md) and requires them from context.
 
 Two boundary properties are load-bearing:
 
-1. **Resolution is out of `write`.** `write` writes what it is given; resolution is an explicit `Package.resolve(pkg).pipe(...)` step the caller composes. A writer that silently runs `resolve` would make *writing a file mutate its contents*.
-2. **The formatter and transformer are pure functions**, not services — `internal/format.ts`, surfaced as `write` options and `Package.toJsonString(options)`.
-
-A composite convenience layer wires the defaults for the common case.
+1. **Resolution is out of `write`.** Write writes what it is given; resolution is an explicit step the caller composes. A writer that silently resolved would make *writing a file mutate its contents*.
+2. **The formatter and transformer are pure functions, not services** — surfaced as write options and as the model's serializer.
 
 ## Formatting: byte-agreement with the ecosystem oracle
 
 The formatter's job is not "a reasonable order" — it is **the order the ecosystem already produces**, so running the kit's writer over a repo does not churn every manifest against whatever the team's `sort-package-json` pre-commit hook does next.
 
-**The canonical top-level key order is `sort-package-json@4.0.0`'s default `sortOrder`, re-baselined verbatim** — all 108 keys, with the version recorded as provenance in `src/internal/format.ts` beside the list. Verbatim is the point: a hand-curated *near*-copy is the shape that drifts silently, since every disagreement shows up as a diff in someone's repo rather than as a failure here. Unknown keys append after the known ones — public keys alphabetically, then `_`-prefixed keys alphabetically — matching the oracle's own unknown-key behavior.
+The canonical top-level key order is `sort-package-json`'s default sort order, **re-baselined verbatim**, with the version recorded as provenance beside the list. Verbatim is the point: a hand-curated *near*-copy is the shape that drifts silently, since every disagreement shows up as a diff in someone's repo rather than as a failure here. Unknown keys append after the known ones — public keys alphabetically, then underscore-prefixed keys alphabetically — matching the oracle's own behavior.
 
 ### Map-field alphabetization follows from HashMap, not taste
 
-Sorting alphabetizes the dependency maps for canonical presentation, and **`scripts`, `engines` and `bin` join them** — but for a different and stronger reason: the `Package` model carries all three as `HashMap`s, whose encode order is *hash* order. **Source order is already unrecoverable**, so the choice is not "preserve or sort" but "hash order or alphabetical," and deterministic alphabetical wins uncontested. `sort-package-json` sorts `engines` and `bin` identically; its `scripts` sort is a grouped sort agreeing with plain code-unit order except for `pre*`/`post*` pairing. `scripts` also joined `stripEmpty`.
+Sorting alphabetizes the dependency maps for canonical presentation, and `scripts`, `engines` and `bin` join them for a stronger reason: the model carries all three as `HashMap`s, whose encode order is *hash* order. **Source order is already unrecoverable**, so the choice is not "preserve or sort" but "hash order or alphabetical", and deterministic alphabetical wins uncontested. The oracle sorts these identically, except that its `scripts` sort is a grouped one agreeing with plain code-unit order apart from `pre`/`post` pairing.
 
 ### `PackageIndent` and `"preserve"`
 
-`PackageFormatOptions.indent` is now `PackageIndent` = `number | "tab" | "preserve"`. `"preserve"` reuses the indentation of the source text, backed by an explicit `sourceText` option — and `PackageJsonFile.write` supplies it by **reading the file it is about to overwrite** when the caller gives none. That read is the only way `"preserve"` can mean anything at a write site that holds a decoded `Package` and nothing else; without it the option would silently degrade to a default and quietly re-indent the file.
+The indent option is `number | "tab" | "preserve"`. `"preserve"` reuses the source text's indentation, backed by an explicit source-text option — and the file writer supplies it by **reading the file it is about to overwrite** when the caller gives none. That read is the only way `"preserve"` can mean anything at a write site holding a decoded model and nothing else; without it the option would silently degrade to a default and quietly re-indent the file.
 
 ### The decode-free formatting seam
 
-`PackageJsonFormat` exists because the strict path **hard-fails on legal input**: `Package.decode` raises `PackageDecodeError` on `{"private": true}` and on version-less roots, both perfectly valid manifests. That made the kit unusable as a lint handler and the dogfood consumer routed around it to `sort-package-json`. This package is the only one of the kit's four formatters with a *schema* between text and text, so it is the only one where that could happen at all — the three format packages satisfy the constraint by construction.
+`PackageJsonFormat` exists because the strict path **hard-fails on legal input**: decode raises on `{"private": true}` and on version-less roots, both perfectly valid manifests. That makes the strict path unusable as a lint handler. This package is the only one of the kit's four formatters with a *schema* between text and text, so it is the only one where that can happen at all — the three format packages satisfy the constraint by construction.
 
 Four properties are load-bearing, and they are [the kit formatter convention](../formatter-convention.md#the-rules) rather than local choices:
 
 - **A distinct named entry point, never a `{ strict: false }` flag.** A flag would make the strict path's return type a union of guarantees and hide the choice from both the call site and `grep`.
 - **Two shapes because two hosts exist** — value→value and bytes→bytes — routed through one internal sort so they cannot drift.
-- **The value path only reorders; it never adds or removes a key.** This is what makes `sortValue`'s `T → T` honest, and it is type-enforced: an earlier `stripEmpty` on the value path was rejected by `tsc`, because removing a key makes `T → T` a lie. The option moved to the text path, defaulted **off**. Capabilities that delete are opt-in, always.
-- **Input it cannot handle comes back unchanged**, never partially rewritten.
+- **The value path only reorders; it never adds or removes a key.** That is what makes the `T → T` return type honest, and it is type-enforced: `tsc` rejects a key-removing option there. Stripping lives on the text path, defaulted **off**. Capabilities that delete are opt-in, always.
+- **Input it cannot handle comes back unchanged**, never partially rewritten — a non-object degrades to identity instead of losing data.
 
-`formatToString` returns `Result`, not `Effect` — lint hosts are synchronous, and an `Effect` return would force every one of them to build a runtime to format a file. Effect hosts lift with `Effect.fromResult` in one call, so the `Result` serves both. Its options type is deliberately separate from `PackageFormatOptions` (`sourceText` is meaningless when the text *is* the source) and its defaults deliberately diverge from the strict path's; where a default differs, the divergence and its reason are documented on the member, because that is exactly where a silent edit hides.
+The text path returns `Result`, not `Effect`: lint hosts are synchronous, and an `Effect` return would force every one of them to build a runtime to format a file. Effect hosts lift with `Effect.fromResult` in one call, so the `Result` serves both. Its options type is deliberately separate from the strict path's — a source-text option is meaningless when the text *is* the source — and where a default diverges, the divergence and its reason are documented on the member, because that is exactly where a silent edit hides.
 
 ### Byte-parity fixtures
 
-`__test__/fixtures/` holds real manifests from this repo paired with frozen `sort-package-json@4.0.0` output for the same input, and `Format.test.ts` asserts `Package.decode(input).toJsonString()` byte-equals it. **`sort-package-json` is deliberately not a dependency** — the oracle's *output* is committed, not the tool, so the parity claim is checked without taking a runtime edge on the thing being matched.
+`__test__/fixtures/` holds real manifests from this repo paired with frozen oracle output for the same input, and the format test asserts byte equality. **`sort-package-json` is deliberately not a dependency** — the oracle's *output* is committed, not the tool, so the parity claim is checked without taking a runtime edge on the thing being matched.
 
-The **re-baseline rule** is that the fixtures, the recorded version in the fixture README and the `KEY_ORDER` provenance comment move **together**, in one deliberate act. Regenerating fixtures alone would silently ratify whatever a newer version changed — turning the oracle test from a check into a rubber stamp.
+The **re-baseline rule** is that the fixtures, the recorded version in the fixture README and the key-order provenance comment move **together**, in one deliberate act. Regenerating fixtures alone would silently ratify whatever a newer version changed, turning the oracle test from a check into a rubber stamp.
 
 ## Resolution belongs to @effected/npm
 
-`Package.resolve` turns `catalog:`/`workspace:` specifiers into concrete ranges, but resolution fundamentally requires workspace/catalog context a package.json-document library cannot have (hence the no-op defaults, which resolve nothing). The resolver contracts live in [`@effected/npm`](npm.md) rather than here for two reasons: `@effected/workspaces` carries its own, differently-shaped resolution domain (a rich `CatalogSet`, its own live `CatalogResolver` and the `@pnpm/catalogs` footprint) and would not natively implement package-json's minimal `rangeOf`/`versionOf` tags; and there are downstream uses for these contracts beyond package-json, making the second consumer real rather than speculative. `@effected/workspaces` implements the contracts as layers over its own services.
+`Package.resolve` expands `catalog:` and `workspace:` specifiers, but resolution fundamentally requires workspace and catalog context a manifest-document library cannot have — hence the no-op defaults, which resolve nothing.
+
+The contracts live in [`@effected/npm`](npm.md) rather than here for two reasons. [`@effected/workspaces`](workspaces.md) carries its own, differently-shaped resolution domain and would not natively implement package-json's minimal tags. And there are downstream uses for the contracts beyond package-json, which makes the second consumer real rather than speculative. Workspaces implements them as layers over its own services.
 
 ## Observability
 
-Per the [observability standard](../effect-standards.md#observability-standards), `Effect.fn("name")` at public *fallible* boundaries: every `PackageJsonFile` op, `PackageValidator.validate`, `Package.resolve`, the effectful mutation statics and the `Package.schema` decode entry. Pure getters, the specifier taxonomy and the format functions are not instrumented. The library stays telemetry-agnostic — applications compose `@effect/opentelemetry` at the edge.
+Per the [observability standard](../effect-standards.md#observability-standards), `Effect.fn("name")` at public *fallible* boundaries: every file operation, validation, resolution, the effectful mutation statics and the decode entry. Pure getters, the specifier taxonomy and the format functions are not instrumented. The library stays telemetry-agnostic — applications compose `@effect/opentelemetry` at the edge.
 
 ## API Extractor bases
 
-Per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), every Effect class factory is written **inline** with no exported `*_base` const; the synthesized `_base` heritage symbols are suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern), keeping `dist/prod/issues.json` zero-warning. The reusable field codecs (`DependencyMapField`, `BinField`, `ExportsField` and the rest in `Package.ts`) stay `@public` — they are genuine reusable API referenced by the `Package` field annotations, so the binary release-tag policy applies to them.
+Per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), every Effect class factory is written **inline** with no exported `*_base` const, and the synthesized `_base` heritage symbols are suppressed narrowly in `savvy.build.ts`. Never widen it — an internal type named on a `@public` method signature is a *different* symbol that still forgotten-exports; inline it structurally or mark it `@public`.
+
+The reusable field codecs in `Package.ts` stay `@public`: they are genuine reusable API referenced by the field annotations, so the binary release-tag policy applies to them.
 
 ## Testing
 
-`@effect/vitest` with `it.effect` the default mode; shared wiring via top-level `layer(PackageJsonFile.layer)(...)` groups, scoped and memoized. Tests in `__test__/` split per concept, integration under `__test__/integration/`.
+`@effect/vitest` with `it.effect` the default mode; shared wiring via top-level `layer(...)` groups, scoped and memoized. Tests in `__test__/` split per concept, integration under `__test__/integration/`.
 
-- **Property tests** (`it.effect.prop` + `Schema.toArbitrary`) for the specifier taxonomy and name-brand validation; pattern-field checks use lookahead-free regexes so derivation works.
-- **Round-trip / wire-transform tests** assert the fidelity contract structurally (unknown `rest` fields survive read/edit/write; `.extend()`ed subclasses pull custom fields out of `rest`; empty-map stripping and canonical key order on encode) rather than via brittle v4-output snapshots.
-- **Integration tests** with a real `NodeFileSystem.layer` are the only tests that provide a platform layer — the boundary discipline made explicit — covering `read`/`write` against the fixtures plus idempotent-write and not-found paths.
-- **Error-path and behavior-contract tests** cover each read error tag, `PackageValidationError` aggregation, structured `cause` preservation, the decode-failure-surfaces-as-`PackageDecodeError` guarantee, the dual-signature call styles, `copyWith` completeness, `resolve` with real vs no-op resolvers, and the `write` does not mutate contents contract.
+- **Property tests** cover the specifier taxonomy and name-brand validation; pattern-field checks use lookahead-free regexes so derivation works.
+- **Round-trip and wire-transform tests** assert the fidelity contract *structurally* — unknown fields survive read/edit/write, subclasses pull custom fields out of `rest`, empty maps strip and keys land in canonical order — rather than through brittle output snapshots.
+- **Integration tests with a real platform filesystem layer are the only tests that provide one**, which is the boundary discipline made explicit.
+- **Error-path and behavior-contract tests** cover each read error tag, validation aggregation, structured cause preservation, the dual-signature call styles, `copyWith` completeness, resolution with real versus no-op resolvers and the contract that writing does not mutate contents.

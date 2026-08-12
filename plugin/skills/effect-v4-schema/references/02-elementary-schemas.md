@@ -4,6 +4,16 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107: every Schema/SchemaGetter/SchemaParser/
+SchemaTransformation member named here exists, and every code block with imports typechecks.
+Three claims were FALSIFIED and are corrected inline with trap notes: the `effect/schema` subpath
+with its `Getter`/`Parser` modules (neither the path nor the module names exist — use `SchemaGetter`
+and `SchemaParser` from `effect`), `Schema.String.decode(...)` as a method (`decode` is a combinator
+applied through `.pipe`), and the claim that `Schema.Date` accepts invalid dates with a companion
+`Schema.DateValid` (Schema.Date already rejects NaN dates; DateValid does not exist).
+PROBED on beta.107: the coercion outputs, and the absence of the `, got X` suffix in default-mode
+error messages — those suffixes were removed from the expected output here.
 -->
 
 # Defining Elementary Schemas
@@ -29,19 +39,24 @@ Schema.Null
 
 Sometimes you receive data that is not the right type yet — for example, a number that should become a string. You can build a schema that converts (coerces) values to the target type during decoding:
 
+> **Beta trap.** There is no `effect/schema` subpath and no `Getter` / `Parser`
+> module. The `effect` package exports `SchemaGetter` and `SchemaParser` as
+> top-level modules. `import { Getter, Parser } from "effect/schema"` is not a
+> naming preference — it does not resolve.
+
 ```ts
-import { Getter, Parser, Schema } from "effect/schema"
+import { Schema, SchemaGetter, SchemaParser } from "effect"
 
 //      ┌─── Codec<string, unknown>
 //      ▼
 const schema = Schema.Unknown.pipe(
   Schema.decodeTo(Schema.String, {
-    decode: Getter.String(),
-    encode: Getter.passthrough()
+    decode: SchemaGetter.String(),
+    encode: SchemaGetter.passthrough()
   })
 )
 
-const parser = Parser.decodeUnknownSync(schema)
+const parser = SchemaParser.decodeUnknownSync(schema)
 
 console.log(parser("tuna")) // => "tuna"
 console.log(parser(42)) // => "42"
@@ -125,10 +140,14 @@ To perform some simple string transforms:
 ```ts
 import { Schema, SchemaTransformation } from "effect"
 
-Schema.String.decode(SchemaTransformation.trim())
-Schema.String.decode(SchemaTransformation.toLowerCase())
-Schema.String.decode(SchemaTransformation.toUpperCase())
+Schema.String.pipe(Schema.decode(SchemaTransformation.trim()))
+Schema.String.pipe(Schema.decode(SchemaTransformation.toLowerCase()))
+Schema.String.pipe(Schema.decode(SchemaTransformation.toUpperCase()))
 ```
+
+> **Beta trap.** `decode` is a standalone combinator applied through `.pipe(...)`,
+> not a method on the schema. `Schema.String.decode(...)` does not typecheck —
+> schemas expose `.check`, `.annotate` and `.pipe`, but no `.decode`.
 
 ## String formats
 
@@ -213,9 +232,14 @@ Schema.BigInt.check(isNonPositive)
 
 ## Dates
 
-The `Schema.Date` schema matches `Date` objects (even invalid dates).
+The `Schema.Date` schema matches valid `Date` objects and rejects invalid dates
+such as `new Date(NaN)`. Its guard is `input instanceof Date && !Number.isNaN(input.getTime())`
+and its `expected` annotation is `"a valid Date"`.
 
-If you want to validate only valid dates, use `Schema.DateValid` instead.
+> **Beta trap.** There is no separate "valid date" schema. `Schema.DateValid`
+> and `Schema.ValidDate` are both `undefined` — earlier drafts of this guide
+> described `Schema.Date` as accepting invalid dates and pointed at a companion
+> schema to exclude them. `Schema.Date` already excludes them.
 
 ## Template literals
 
@@ -251,7 +275,7 @@ Success("a@b.com")
 
 console.log(String(Schema.decodeUnknownExit(email)("@b.com")))
 /*
-Failure(Cause([Fail(SchemaError(Expected a string matching template literal parts, got "@b.com"))]))
+Failure(Cause([Fail(SchemaError(Expected a string matching template literal parts))]))
 */
 ```
 
@@ -277,10 +301,10 @@ console.log(String(Schema.decodeUnknownExit(schema)("aa:1")))
 // Success(["aa",":",1])
 
 console.log(String(Schema.decodeUnknownExit(schema)("a:1")))
-// Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 2, got "a"
+// Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 2
 //   at [0]))]))
 
 console.log(String(Schema.decodeUnknownExit(schema)("aa:1.2")))
-// Failure(Cause([Fail(SchemaError(Expected an integer, got 1.2
+// Failure(Cause([Fail(SchemaError(Expected an integer
 //   at [2]))]))
 ```

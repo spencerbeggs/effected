@@ -1,6 +1,6 @@
 # Schema — v3 → v4
 
-Verified against `effect@4.0.0-beta.94+`. Idiomatic form → see `effect-v4-schema`.
+Verified against `effect@4.0.0-beta.107`. Idiomatic form → see `effect-v4-schema`.
 
 **`Schema.Schema` takes ONE type argument in v4.** The two-sided form is
 `Schema.Codec`:
@@ -141,11 +141,15 @@ there is no pre-composed non-negative anything.
 > SchemaTransformation.transform({ decode, encode })))` (or `transformOrFail`);
 > `transform` lives on `SchemaTransformation`, not `Schema`.
 >
-> Open struct: `Schema.Struct(fields, indexSignature)` (the 2-arg form) **runs at
-> runtime but is REJECTED by tsgo** (it wants `Schema.StructWithRest` — which does
-> exist). Don't reach for the 2-arg struct; model an open remainder with
-> `Schema.Record(key, value)` or a `decodeTo` key-partition instead (first
-> boundary port).
+> Open struct: **`Schema.Struct` takes exactly ONE parameter at beta.107**
+> (`Schema.ts:3549` — the body hard-codes `SchemaAST.struct(fields, undefined)`).
+> A second argument is a `tsc` error (TS2554, "Expected 1 arguments, but got 2");
+> from untyped JS it is *silently discarded*, yielding a plain closed struct with
+> the index signature dropped and no diagnostic. The v4 form is
+> `Schema.StructWithRest(schema, records)` (`Schema.ts:4163`) — note it takes a
+> built **schema** plus an array of `Record` schemas, not `(fields,
+> indexSignature)`. Or model an open remainder with `Schema.Record(key, value)`
+> or a `decodeTo` key-partition (first boundary port).
 
 Removed (no v4 equivalent): `validate*` (use `decode*` + `toType`), `keyof`,
 `NonEmptyArrayEnsure`, `withDefaults`, `Data(schema)` (v4 `Equal.equals` is
@@ -200,9 +204,9 @@ surface, with the one construct change in the last row):
 
 | beta.101 and earlier | beta.105+ |
 | --- | --- |
-| `Schema.TaggedErrorClass<E>()("Tag", fields)` | `Schema.TaggedError<E>()("Tag", fields)` — renamed **back** to the v3 name, identical curried shape (`Schema.ts:14466`); the old name fails with "TaggedErrorClass is not a function" |
-| `Schema.ErrorClass<E>("E")(fields)` | `Schema.Error<E>("E")(fields)` (`Schema.ts:14405`); the *instance* schema formerly at `Schema.Error` is now `Schema.ErrorInstance` (`Schema.ts:10647`) |
-| `new SchemaIssue.InvalidValue(Option.some(input), { message })` | `new SchemaIssue.InvalidValue({ message }, input)` — `(annotations?, input?, options?)`, no `Option` wrapper (`SchemaIssue.ts:572`); input retained on the issue only under `reportInput: true` parse option (`SchemaIssue.ts:151`). `InvalidType` is `(ast, input?, options?)` (`SchemaIssue.ts:511`) |
+| `Schema.TaggedErrorClass<E>()("Tag", fields)` | `Schema.TaggedError<E>()("Tag", fields)` — renamed **back** to the v3 name, identical curried shape (`Schema.ts:14469`); the old name fails with "TaggedErrorClass is not a function" |
+| `Schema.ErrorClass<E>("E")(fields)` | `Schema.Error<E>("E")(fields)` (`Schema.ts:14408`); the *instance* schema formerly at `Schema.Error` is now `Schema.ErrorInstance` (`Schema.ts:10650`) |
+| `new SchemaIssue.InvalidValue(Option.some(input), { message })` | `new SchemaIssue.InvalidValue({ message }, input)` — `(annotations?, input?, options?)`, no `Option` wrapper (`SchemaIssue.ts:572`); input retained on the issue only under `reportInput: true` parse option (`SchemaIssue.ts:159`). `InvalidType` is `(ast, input?, options?)` (`SchemaIssue.ts:511`) |
 | throwing constructor/adapter errors carry the constraint text in `.message` | `X.make` / class `new` / `Schema.asserts` / `SchemaParser`'s sync/promise adapters throw a plain `Error` with the generic `.message` `"Schema validation failed"` and the `SchemaIssue.Issue` on `.cause` — format with `SchemaIssue.makeFormatterDefault()(error.cause)` (probed beta.105). `Schema.decodeUnknownSync` still throws `SchemaError`, whose `.message` IS formatted and whose issue sits on `.issue` |
 | `<schema>.makeEffect` fails with `SchemaError` | fails with `SchemaIssue.Issue` directly; `Schema.withConstructorDefault` accepts an Effect failing with `SchemaIssue.Issue` (changelog PR #7093). Note the spelling: `makeEffect` is an INSTANCE method on every schema (`BottomWithoutNew.makeEffect`, `Schema.ts:257`) — there is no module-level `Schema.makeEffect` export; the module-level form is `SchemaParser.makeEffect(schema)` (`SchemaParser.ts:43`) |
 | `Schema.toArbitrary(S)` returns a fast-check `Arbitrary` directly; `Schema.toArbitraryLazy` for deferral | beta.106: `Schema.toArbitrary(S)` returns a FACTORY taking the fast-check module — `Schema.toArbitrary(S)(FastCheck)` (`Schema.ts:14554`); `Schema.toArbitraryLazy` is removed (changelog PR #7148). Passing the factory where an `Arbitrary` is expected fails to type-check |

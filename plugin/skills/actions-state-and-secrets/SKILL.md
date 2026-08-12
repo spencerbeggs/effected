@@ -38,7 +38,7 @@ For general Effect v4 service/layer shape, typed errors, `Cause`, and `Scope`, s
 - `DetachedProcess.reap` takes a plain `number`: an absent state key, a truncated file, or a bad parse all decode to `0`, and `process.kill(0, …)` signals the caller's entire process group. See `references/detached-processes.md`.
 - `env` passed to a spawn call without `extendEnv: true` replaces the child's whole environment, including the `PATH` a caller meant to extend. See `references/detached-processes.md`.
 - `BlobEnvelope`'s wire format, five-reason error union, and why a legacy raw blob decodes as a clean miss rather than garbage live in `actions-cache-and-artifacts`, not here — don't re-derive the frame shape from this skill's description alone.
-- **A `Schema.Redacted` field persisted as JSON round-trips to the literal string `<redacted>`.** This is core Effect behavior, not a kit choice, and it is silent — the write succeeds, the read succeeds, and the value is garbage. Probed against beta.101:
+- **A `Schema.Redacted` field persisted as JSON round-trips to the literal string `<redacted>`.** This is core Effect behavior, not a kit choice, and it is silent — the write succeeds, the read succeeds, and the value is garbage. Re-probed against beta.107 (`Schema.Redacted` encode → an object whose `JSON.stringify` is `"<redacted>"`; `Schema.RedactedFromValue` encode → `"s3cret"`):
 
   ```text
   Schema.Redacted(Schema.String)      encode -> a Redacted object

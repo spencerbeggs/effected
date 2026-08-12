@@ -1,83 +1,133 @@
 # @effected/npm
 
-Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers.
+Effect contracts for resolving pnpm `catalog:` and `workspace:` specifiers, the
+kit's shared dependency vocabulary, and the registry-read and publish services
+built over them.
 
 **For full design rationale and deferred decisions:**
 → `@../../.claude/design/effected/packages/npm.md`
 
-Load when changing contract shapes, adding a resident concept, or reconciling against a real resolver.
+Load when changing contract shapes, adding a resident concept, or reconciling
+against a real resolver.
+
+## Child context files
+
+Children carry surfaces and evidence; **every rule is here**.
+
+- Vocabulary and contracts → `@./CLAUDE.vocabulary.md` — Load when: changing or extending the resolver contracts, `Manifest`, or the shared vocabulary types.
+- Services → `@./CLAUDE.services.md` — Load when: touching registry reads or the publish flow (`NpmRegistry`, `PackagePublish`, `NpmExecutor`, `RegistryKind` and their doubles).
 
 ## What this is
 
-An **internal package with no source repo** — not migrated from a `*-effect` repo. It was extracted from the `@effected/package-json` port to hold the dependency-resolution contracts that package-json *defines but cannot implement*: resolving a specifier needs workspace and catalog context a package.json-document library has no access to. Contract here, implementation elsewhere.
+An **internal package with no source repo**, extracted from the
+`@effected/package-json` port to hold the dependency-resolution contracts
+package-json *defines but cannot implement*: resolving a specifier needs
+workspace and catalog context a document library has no access to. Contract
+here, implementation elsewhere.
 
-**Boundary tier since the Phase 5 extension (2026-07-25) — this package was pure, and the change is deliberate.** `NpmRegistry` and `PackagePublish` perform IO themselves through core contracts in `R` (`HttpClient`, `ChildProcessSpawner`, `FileSystem`, `Crypto`), which is [R4](../../.claude/design/effected/effect-standards.md#dependency-policy)'s definition of boundary. It is **not** R2: the `@effected/commands` edge is boundary with zero runtime deps and does not propagate.
+**Boundary tier since the Phase 5 extension (2026-07-25) — this package was
+pure, and the change is deliberate. Do not let "pure" creep back in.**
+`NpmRegistry` and `PackagePublish` perform IO themselves through core contracts
+in `R` (`HttpClient`, `ChildProcessSpawner`, `FileSystem`, `Crypto`), which is
+[R4](../../.claude/design/effected/effect-standards.md#dependency-policy)'s
+definition of boundary. It is **not** R2: the `@effected/commands` edge is
+boundary with zero runtime deps and does not propagate.
 
-Peers on `effect` plus one pure-to-pure `@effected/semver` edge — `workspace:^` in `peerDependencies` (so a published patch floats), mirrored by the plain `workspace:*` in `devDependencies`, never `dependencies` — used only to detect ranges in `DependencySpecifier`. `@effected/commands` is a `workspace:^` **dependency**. Still zero *external* runtime deps.
+Peers on `effect` plus one pure-to-pure `@effected/semver` edge — `workspace:^`
+in `peerDependencies` (a published patch floats), mirrored by plain
+`workspace:*` in `devDependencies`, never `dependencies` — used only to detect
+ranges in `DependencySpecifier`. `@effected/commands` is a `workspace:^`
+**dependency**. Zero *external* runtime deps.
 
 ### The guardrail, and it is enforced
 
-`@effected/lockfiles` is **pure** and depends on this package for vocabulary only. It stays pure under R3 — a boundary dependency does not propagate — but only while two things hold:
+`@effected/lockfiles` is **pure** and depends on this package for vocabulary
+only. It stays pure under R3 — a boundary dependency does not propagate — but
+only while two things hold:
 
-1. **The pure vocabulary modules must not reach IO.** `IntegrityHash`, `DependencySpecifier`, `PackageManagerPin`, `PackageManagerCache`, `DependencySection`, `ReleaseAgeGate`, the resolver contracts and `Manifest` import neither service nor `@effected/commands`.
-2. **`index.ts` must export individually.** A namespace object (`export * as`) is one live binding: a bundler cannot see through it, so importing `IntegrityHash` would retain the HTTP client and the subprocess runner.
+1. **The pure vocabulary modules must not reach IO** — the vocabulary types, the
+   resolver contracts and `Manifest` import neither service nor
+   `@effected/commands`.
+2. **`index.ts` must export individually.** A namespace object (`export * as`)
+   is one live binding: a bundler cannot see through it, so importing
+   `IntegrityHash` would retain the HTTP client and the subprocess runner.
 
-`__test__/reachability.test.ts` asserts both from the source graph, and it is proven to fail when violated. **Do not weaken it**, and do not "tidy" `index.ts` into a namespace.
+`__test__/reachability.test.ts` asserts both from the source graph and is proven
+to fail when violated. **Do not weaken it**, and do not "tidy" `index.ts` into a
+namespace.
 
-**The escalation, if it ever comes:** the moment either service takes a *non-core* runtime dependency (a registry SDK, a tarball reader), this package becomes **integrated** and R2 *does* propagate — dragging `lockfiles` (pure!) and `package-json` with it. The answer then is to split the services into their own package, not to accept an integrated npm. Re-check the tier before adding any dependency.
-
-## Exported surface
-
-`src/index.ts` is the only re-exporting module. The original resolver contracts, plus the shared dependency vocabulary that relocated here as second consumers materialized:
-
-- `CatalogResolver` (`src/CatalogResolver.ts`) — `Context.Service`. `rangeOf(packageName, catalog: Option<string>)` returns the configured range; `Option.none()` for `catalog` selects the default catalog. Error channel is `CatalogAssemblyError | DependencyResolutionError`. Ships `CatalogResolver.noop`.
-- `WorkspaceResolver` (`src/WorkspaceResolver.ts`) — `Context.Service`. `versionOf(packageName)` returns the concrete version, range modifier stripped. Ships `WorkspaceResolver.noop`.
-- `DependencyResolutionError` (`src/WorkspaceResolver.ts`) — `Schema.TaggedErrorClass` with `specifier: Schema.String` and `cause: Schema.Defect()`. Both resolvers raise it.
-- `CatalogAssemblyError` (`src/CatalogAssemblyError.ts`) — the typed failure of catalog *assembly* (`source: manifest | catalog | hooks`), relocated from `@effected/workspaces` so the `CatalogResolver` contract can name it in its channel instead of a defect `cause` consumers had to `_tag`-sniff. `@effected/workspaces` deliberately does **not** re-export it — import it from here.
-- `Default` (`src/index.ts`) — `Layer.mergeAll` of both `noop` layers.
-- `Manifest` (`src/Manifest.ts`) — a **tolerant** manifest `Schema.Class`: the four dependency fields typed, everything else preserved verbatim in `rest` (flattened back on encode — no literal `rest` key on the wire). Static `schema` is the wire codec; static `decode` normalizes `SchemaError` to `ManifestDecodeError`; the pure `needsResolution` getter is the skip-catalog-assembly fast path; instance `resolve()` projects every `catalog:`/`workspace:` specifier through the two contracts into a new `Manifest` (an alias form resolves the **target**'s version; `UnresolvedDependencyError.dependency` names it); `toRecord()` encodes back. A specifier the resolvers answer with `Option.none()` fails typed as `UnresolvedDependencyError` — at the manifest level "no entry" *is* a failure. Deliberately not `@effected/package-json`'s strict `Package`: mid-build manifests are arbitrary user records.
-- `DependencySpecifier` (`src/DependencySpecifier.ts`) — the specifier concept relocated from `@effected/package-json`: a branded string with eleven-protocol taxonomy statics (`protocolOf` and friends), the resolution statics `catalogNameOf`, `resolveWorkspace` (the pnpm publish-time projection; the alias form `workspace:<alias>@<range>` — last-`@` split, scoped-aware — projects to `npm:<name>@<projected>`) and `workspaceTargetOf` (the alias target name, `None` for the plain form), plus a `FromString` codec decoding to a coarse five-case tagged union (`CatalogSpecifier` | `WorkspaceSpecifier` | `RangeSpecifier` | `DistTagSpecifier` | `RawSpecifier`, matchable as `ClassifiedSpecifier`) that encodes back **byte-for-byte**. `WorkspaceSpecifier#resolve(version)` applies the same projection to an already-classified instance — one shared implementation. Range detection decodes `@effected/semver`'s `Range.FromString` purely — the only use of the workspace edge. Also `InvalidDependencySpecifierError`, `isValidDependencySpecifier`.
-- `DependencySection` (`src/DependencySection.ts`) — the kit-wide dependency-section vocabulary: `DependencyKind` (`prod`/`dev`/`peer`/`optional`) and `DependencyField` (the four manifest key names) as literal schemas, plus the bidirectional `fieldOf`/`kindOf` mapping. Replaces the private copies package-json, lockfiles and workspaces each carried. A static class with a private constructor, not an `as const` namespace object — an `as const` object's member types are inferred in the built `.d.ts` and lose their TSDoc; `static readonly` keeps it. Call syntax is unaffected.
-- `IntegrityHash` (`src/IntegrityHash.ts`) — a brand over the three textual integrity forms: SRI (`<algo>-<base64>`), corepack (`<algo>.<hex>`) and yarn (`10c0/<hex>`). `algorithmOf` is `None` for the yarn form, which names no algorithm. Also `CorepackIntegrityHash`, `InvalidIntegrityHashError`, `isValidIntegrityHash`.
-- `CorepackIntegrityHash` (`src/IntegrityHash.ts`) — the **one** home for the corepack-only narrowing of that brand (`<algo>.<hex>`, sha224 included). Both surfaces that model a pin tail consume it: `PackageManagerPin.integrity` here and `@effected/package-json`'s `PackageManager.integrity`, which each carried a private copy until the 2026-07-28 consolidation (the sha224 widening had to be made twice). It decodes to the same `IntegrityHashBrand`, and **a `Schema.check` is erased from the built type**: the narrowed schema and the wide one are the same declared type, so severing the shared import is neither a type error nor — with a faithful copy — a behaviour change. `tsc` and the rejection matrix both miss that mutant. The proven catcher is a runtime **identity** assertion in each consumer's suite: `PackageManagerPin.fields.integrity.schema === CorepackIntegrityHash` (an `optionalKey` keeps the inner schema on `.schema`) and, in `@effected/package-json`, `PackageManager.fields.integrity.value === CorepackIntegrityHash` (a `Schema.Option` keeps it on `.value`), each with a control against the unrestricted brand. Both fire on a faithful re-fork ("compared values have no visual difference" — that IS the point); do not downgrade either to a behavioural or source-text test.
-- `PackageManagerPin` / `PackageManagerPinName` (`src/PackageManagerPin.ts`) — the corepack pin triple `<name>@<version>[+<integrity>]` as a first-class `Schema.Class`, independent of any package.json field: `name` is a four-literal union structurally mirroring `@effected/workspaces`' `PackageManagerName` (never imported — that edge would invert tiers), `version` is `@effected/semver`'s `SemVer` restricted to empty build metadata, `integrity` an `optionalKey` corepack-form `IntegrityHash`. `FromString` codec plus the `parseResult`/`parse` pair (the sync `Result` is the primitive). The load-bearing grammar rule: the FIRST `+` after the version always begins the integrity — a pin's version never carries semver build metadata, and a malformed tail after `+` fails typed (`InvalidPackageManagerPinError`, `reason: format | name | version | integrity`), never falling back to build-metadata parsing. Prerelease versions are pinnable; ranges, partials and dist-tags are not. `@effected/package-json`'s `PackageManager.FromString` parses the same grammar for the `packageManager` field and — since the 2026-07-28 consolidation — shares both strict pieces: the same string-level version ruling (`@effected/semver`'s `SemVer.isPinnable` since the 2026-08-02 migration — a padded version substring like `pnpm@ 11.17.0` fails typed with `reason: "version"`, where a bare `SemVer.parseResult` check trims and silently canonicalizes) and the same `CorepackIntegrityHash`. **The name grammar is the one deliberate divergence and is not debt**: the pin's four literals are the kit's *provisioning* vocabulary, while the field model accepts any `[a-z]+` name because it reads manifests it did not write. Evidence is recorded in both modules' TSDoc — corepack 0.34.0 (`specUtils.ts`) supports only npm/pnpm/yarn and rejects `bun@1.2.20`, which is real in the wild; corepack skips its own name check for URL specs; npm documents no constraint on the field. Do not "finish" the consolidation by closing that set.
-- `PackageManagerCache` / `CachingPackageManager` (`src/PackageManagerCache.ts`) — the per-manager default-cache-directory **facts table**: `defaultDirectory(manager, { platform, home })`, pure, no IO and no `node:path` (paths are joined with the platform family's separator). Five rows — the yarn pair is split into `yarn-classic` / `yarn-berry` because the two lines document different cache locations and a bare `yarn` says nothing about the major. Every cell is verified against the manager's own authority, cited in the member's TSDoc (npm docs `cache`, pnpm `storeDir`, yarn v1 `user-dirs.js`, Berry `folderUtils.ts` + `cacheFolder`, bun's global-cache docs — the last correcting prior art's Windows `AppData` row: bun documents `~/.bun/install/cache` on every platform). Defaults only — `$PNPM_HOME`, `$XDG_*`, `$BUN_INSTALL_CACHE_DIR` overrides are deliberately out of scope; a consumer that must respect a customized machine asks the manager itself. The tests pin all fifteen cells; a "tidied" path is a cache that silently never hits.
-- `NpmRegistry` (`src/NpmRegistry.ts`) — registry reads over core `HttpClient`, replacing every shelled `npm view`. `version` / `versions` / `distTags` / `publishTimes`, each taking a **per-call** `RegistryTarget` (`{ registry?, token? }`). Four things are load-bearing: the registry is per-call because a publish flow probes two registries for one package in one program; a **404 is `Option.none()`**, decided on the status rather than by matching npm's stderr wording; `integrity` is typed as this package's `IntegrityHash`; and **`version` reads a `github-packages` target through the packument** — that registry answers the per-version endpoint with 405 whatever the credentials, so the kind routes there up front and any other registry answering 405 falls back the same way. The selection uses `Object.hasOwn`: the version number is caller input, and a key like `constructor` must not read the prototype. `RegistryReadError` routes on `kind: transport | status | decode`. Two doubles: `layerTest(Partial<Shape>)` (unstubbed members die) and `layerSeeded(RegistrySeed)` — a working fake keyed **`registries[registry][name][version]`**, which is the shape the v3 double lacked (it keyed by package name alone and broke two consumer suites).
-- `PackagePublish` (`src/PackagePublish.ts`) — `setupAuth` / `pack` / `publishTarball` / `dryRun` over `@effected/commands`' `Run`. The auth token is written to a **caller-supplied npmrc path, never argv**; masking is the caller's job (no `ActionOutputs` edge). `pack` reports both digests and they are **not interchangeable**: `integrity` is npm's sha512 SRI (compares to the registry), `sha256Hex` is a local hex sha256 (the attestation subject). A failed `dryRun` is a **result**, not an error. `PublishOutcome.provenanceUrl` is a **plain optional field**, not an `Option`, matching its siblings on the same surface (`packedSize`, `fileCount`, `integrity`) — as an `Option` a bare `=== undefined` check compiled clean and was always true, and it bit a consumer live. Match the neighbours on a result record; the `Option` discipline is for the resolver contracts.
-- `NpmExecutor` (`src/NpmExecutor.ts`) — `ambient` or `dlx(spec)`, replacing v3's five repeated `packageManager?:` options. `dlx` runs through `LocalExec.applyDlx` (`pnpm dlx npm@11 …`) because OIDC trusted publishing needs npm ≥ 11.5.1 and runners ship 10.x. With no launcher it **fails typed** rather than degrading to ambient npm — degrading reintroduces the exact bug the pin exists to avoid.
-- `PublishError` (`src/PublishError.ts`) — its own module because both `NpmExecutor` and `PackagePublish` raise it. `kind: auth | pack | publish | output | digest | executor`. `"digest"` exists because npm succeeding while the tarball cannot be read back is not "npm pack failed".
-- `RegistryKind` / `classifyRegistry` (`src/RegistryKind.ts`) — `npm | github-packages | jsr | custom`, replacing four v3 predicates with one exhaustive classification. Subdomain matching requires a leading dot (`evil-npmjs.org` is **custom**, and that call decides whether a token is sent). v3's `getRegistryDisplayName` was **dropped**: consumers disagree on the strings (`"GitHub Packages"` vs `"github"` from the same input), so they switch on the kind and choose their own.
-- `ReleaseAgeGate` / `PartialReleaseAgeGate` (`src/ReleaseAgeGate.ts`) — the minimum-release-age gate vocabulary. `ReleaseAgeGate` is a `Schema.Class` (an `ageMinutes` value plus an `exclude` set); statics `combine` (variadic, **strictest-wins** — the single clamping authority) and `matchesExclude` (flat-`*` @pnpm/matcher parity, deliberately **not** `@effected/glob`'s dialect); instance `isExcluded` / `filterVersions` are pure and take the caller's clock, **dropping** versions with a missing or unparseable timestamp. `PartialReleaseAgeGate` is the permissive `Schema.Struct` inbound form (hook/manifest contributions); it is `combine`d into a clamped `ReleaseAgeGate` — never clamped in isolation.
-
-Consumers today are `@effected/package-json` (`Package.resolve`, and re-exporting `DependencySpecifier`), `@effected/lockfiles`, and `@effected/workspaces`. Arrows point *at* this package; the only outbound edge is the pure `@effected/semver` peer.
+**The escalation, if it ever comes:** the moment either service takes a
+*non-core* runtime dependency (a registry SDK, a tarball reader), this package
+becomes **integrated** and R2 *does* propagate — dragging `lockfiles` (pure!)
+and `package-json` with it. Split the services into their own package then,
+never accept an integrated npm. Re-check the tier before adding any dependency.
 
 ## Invariants
 
-- **An unmatched specifier is `Option.none()`, not an error** at the contract level. `DependencyResolutionError` is reserved for failure of the resolution *mechanism*; `CatalogAssemblyError` for failure to assemble the catalogs. At the **manifest** level, `Manifest.resolve()` turns that `Option.none()` into a typed `UnresolvedDependencyError` — the manifest cannot be projected. Do not blur these three.
+- **An unmatched specifier is `Option.none()`, not an error** at the contract
+  level. `DependencyResolutionError` is failure of the resolution *mechanism*;
+  `CatalogAssemblyError` failure to assemble the catalogs; at the **manifest**
+  level `Manifest.resolve()` turns the `Option.none()` into a typed
+  `UnresolvedDependencyError`. Do not blur these three.
 - **`cause` stays structured.** Never fold it into a string.
-- **`Schema.Defect` must be called** — `Schema.Defect()`. The bare value throws at construction.
-- **Layers bind to consts, never getters** — a getter mints a fresh layer per access and defeats memoization.
-- **`DependencyResolutionError` lives in `WorkspaceResolver.ts`** and **`CatalogAssemblyError` in its own module**; `CatalogResolver.ts` type-imports both. That keeps the single runtime edge `CatalogResolver → WorkspaceResolver` and satisfies `noImportCycles`, so `Default` lives in `index.ts`, the cycle-free home.
-- **Never spread an `optionalKey` field in as explicit `undefined`** — v4 constructors validate; `Manifest.resolve` uses conditional spreads.
-- Only `src/index.ts` re-exports. No barrel files.
-
-## How it grows
-
-`@effected/workspaces` landed and implements both contracts (`WorkspaceCatalogs.catalogResolver`, `WorkspaceDiscovery.workspaceResolver`); its `Workspaces.resolverLayer` / `Workspaces.resolveManifest` are the batteries-included path over `Manifest`.
-
-`@effected/lockfiles` was the second consumer that pulled `DependencySpecifier`, `DependencyField` and `IntegrityHash` here; `package-json` now re-exports `DependencySpecifier` rather than owning it. `PackageName` stays in `@effected/package-json` until a second consumer materializes. Do not pre-claim the pnpm `catalogs:` record shape — that routes to `@effected/lockfiles`.
-
-The release-age gate vocabulary (`ReleaseAgeGate` / `PartialReleaseAgeGate`) landed here as the pure home for the contract `@effected/workspaces` surfaces (`WorkspaceCatalogsShape.releaseAgeGate`, `HookInjection.releaseAge`) but cannot own.
+- **`Schema.Defect` must be called** — the bare value throws at construction.
+- **Layers bind to consts, never getters** — a getter mints a fresh layer per
+  access and defeats memoization.
+- **`DependencyResolutionError` lives in `WorkspaceResolver.ts`,
+  `CatalogAssemblyError` in its own module**, and `CatalogResolver.ts`
+  type-imports both — one runtime edge, `noImportCycles` satisfied, so `Default`
+  lives in `index.ts`.
+- **Never spread an `optionalKey` field in as explicit `undefined`** — v4
+  constructors validate; `Manifest.resolve` uses conditional spreads.
+- **Only `src/index.ts` re-exports.** No barrel files.
+- **Grouped statics are a static class with a private constructor, never an
+  `as const` object** — inferred member types lose their TSDoc in the `.d.ts`.
+- **A `Schema.check` is erased from the built type**, so severing a consumer
+  from the shared `CorepackIntegrityHash` is neither a type error nor a
+  behaviour change. The catcher is a runtime **identity** assertion in each
+  consumer's suite, with a control against the unrestricted brand — never
+  downgrade one to a behavioural or source-text test.
+- **A package-manager pin's first `+` after the version always begins the
+  integrity** — a malformed tail fails typed, never falling back to
+  build-metadata parsing. The pin's four-literal name grammar diverging from
+  `@effected/package-json`'s permissive field model is evidence-backed; do not
+  "finish" the consolidation by closing that set.
+- **`PackageManagerCache` is a cited facts table of defaults only** —
+  environment overrides are out of scope, and a "tidied" path is a cache that
+  silently never hits.
+- **`ReleaseAgeGate.combine` is the single clamping authority** (variadic,
+  strictest-wins). Never clamp a `PartialReleaseAgeGate` in isolation.
+- **Never send a token to a registry the classifier did not name** — subdomain
+  matching requires a leading dot, so `evil-npmjs.org` is `custom`.
+- **Never write an auth token into argv** — it goes to a caller-supplied npmrc
+  path, and masking is the caller's job.
+- **`NpmExecutor.dlx` with no launcher fails typed.** Never degrade to ambient
+  npm; degrading reintroduces the exact bug the pin exists to avoid.
+- **On a result record, match the neighbours.** `PublishOutcome.provenanceUrl`
+  is a plain optional field, not an `Option` — as an `Option`, a bare
+  `=== undefined` check compiled clean, was always true, and bit a consumer
+  live. `Option` discipline is for the resolver contracts.
 
 ## Testing and building
 
-Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`. Provide layers via top-level `layer(...)` grouping, not per-test `Effect.provide`. Each contract has a **stub-implementation layer** test proving it is implementable — the pattern real consumers follow. Stubs build `Option` results with `Option.fromUndefinedOr`; `Option.fromNullable` is gone in v4. Currently 217 tests across 13 files.
+Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` —
+never `expect`. Provide layers via top-level `layer(...)`, not per-test
+`Effect.provide`. Each contract keeps a **stub-implementation layer** test
+proving it is implementable; stubs build `Option` results with
+`Option.fromUndefinedOr` (`Option.fromNullable` is gone in v4).
 
 ```bash
-pnpm vitest run packages/npm          # 217 tests
-pnpm build --filter @effected/npm     # dev + prod
+pnpm vitest run packages/npm          # from the repo root
+pnpm build --filter @effected/npm     # dev, then prod
 ```
 
-Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.
+Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`
+and leaves a truncated `issues.json` shaped like a clean gate.
 
-`savvy.build.ts` **does** suppress `ae-forgotten-export` for the `_base` pattern: every factory-backed class (`Context.Service`, `Schema.Class`, `Schema.TaggedErrorClass`) is written inline per house policy. A clean `dist/prod/issues.json` has empty `warnings`/`errors` and **twenty-five** `suppressed` entries — the two resolver contracts, `DependencyResolutionError`, `CatalogAssemblyError`, the five `DependencySpecifier` union members, the two integrity/specifier validation errors, the three `Manifest` classes (`Manifest`, `ManifestDecodeError`, `UnresolvedDependencyError`), `ReleaseAgeGate`, the corepack pin pair (`PackageManagerPin`, `InvalidPackageManagerPinError`), and the Phase 5 additions (`NpmRegistry`, `PublishedVersion`, `PublishTime`, `RegistryReadError`, `PackagePublish`, `PackedTarball`, `NpmExecutor`, `PublishError`). `suppressed: 0` in the *prod* gate means the build did not run properly. `dist/dev/issues.json` legitimately has `suppressed: []`; the dev target does not run API Extractor.
+`savvy.build.ts` suppresses `ae-forgotten-export` for the `_base` pattern
+(factory-backed classes are written inline per house policy), so a clean
+`dist/prod/issues.json` has empty `warnings`/`errors` and one `suppressed` entry
+per such class — read the file for the current set. **`suppressed: 0` in the
+*prod* gate means the build did not run properly**; `dist/dev/issues.json`
+legitimately has `suppressed: []`, since the dev target does not run API
+Extractor.

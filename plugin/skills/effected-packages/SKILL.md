@@ -30,7 +30,7 @@ against its services, or test code that uses it.
 | `@effected/semver` | SemVer versions/ranges/comparators as Schema classes, range algebra, `VersionCache` service | any version parse/compare/range logic | pure | [semver.md](./references/semver.md) |
 | `@effected/jsonc` | JSONC parse/edit/format schemas, AST, comment-preserving edits, visitor stream | reading or editing JSON-with-comments (tsconfig, VS Code-style config) | pure | [jsonc.md](./references/jsonc.md) |
 | `@effected/yaml` | YAML 1.2 parse/edit/format schemas, error-tolerant AST, edits, visitor | any YAML read/write/transform | pure | [yaml.md](./references/yaml.md) |
-| `@effected/toml` | TOML 1.0.0 parse/edit/format schemas, lossless CST, date-time value classes | any TOML read/write/transform | pure | [toml.md](./references/toml.md) |
+| `@effected/toml` | TOML parse/edit/format schemas, lossless CST, date-time value classes; parses 1.1.0, emits 1.0.0 spellings | any TOML read/write/transform | pure | [toml.md](./references/toml.md) |
 | `@effected/markdown` | CommonMark 0.31.2 + GFM parse/edit/format as pure schemas: 28 constructible mdast-shaped node classes with byte offsets, offset-splice edits, node-level modify, `Mdast` projection both ways, `Stream` visitor, frontmatter codecs, section finders (`firstSection` / `sectionByHeading`) | reading, editing, querying or rewriting markdown — **and building it**: `new Table(...)` → `Markdown.stringify` — instead of `remark`/`mdast-util-*`/`gray-matter` | pure | [markdown.md](./references/markdown.md) |
 | `@effected/spdx` | SPDX license IDs, exceptions and license *expressions* as Schema classes, with a hardened depth-capped expression parser and vendored SPDX datasets | validating or parsing a license field / expression (`MIT OR Apache-2.0 WITH …`) | pure | the package's own `CLAUDE.md` |
 | `@effected/glob` | full minimatch dialect as pure string→predicate schemas (`GlobPattern`, `GlobSet`) | matching path strings against globs without touching the fs | pure | [glob.md](./references/glob.md) |
@@ -104,15 +104,19 @@ Facts about them that change how you depend on them:
 
 ## Local-build dogfood state (updated 2026-08-03)
 
-**Twenty-six of the twenty-seven are published.** `commands`, `templates`,
-`github`, `github-actions` and `sbom` — the github-split five — published for
-the first time in the 2026-07-26 wave (16 packages, PR #181) at `0.1.0`, and
-`schemastore` in the 2026-08-03 wave. The exception is **`jsonl`**, built
-2026-08-03 and still at `0.0.0`: it is unreleased and ships in a future
-coordinated wave, never solo. A downstream repo mid-dogfood-loop may still
-consume unreleased branch work from the local `effected` checkout via `file:`
-overrides until the next wave lands. Everything published is `0.x` and
-unstable; the kit releases in waves, never one package at a time.
+**All twenty-seven are published.** `commands`, `templates`, `github`,
+`github-actions` and `sbom` — the github-split five — published for the first
+time in the 2026-07-26 wave (16 packages, PR #181) at `0.1.0`, `schemastore`
+in the 2026-08-03 wave, and `jsonl` reached `0.2.0` in the 27-package
+beta.107 wave (2026-08-11, PR #325). Nothing in the kit sits at `0.0.0`.
+
+Releases are changeset-driven: CI builds the appropriate changesets and
+releases the packages they name. That may be the whole kit on a beta advance
+or a single package on a patch — a package can be released on its own, and
+solo patches like `workspaces@0.11.1` are ordinary. A downstream repo
+mid-dogfood-loop may still consume unreleased branch work from the local
+`effected` checkout via `file:` overrides. Everything published is `0.x` and
+unstable.
 
 Three standing directives for a downstream repo rebuilding against this kit:
 
