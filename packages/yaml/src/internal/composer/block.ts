@@ -9,6 +9,17 @@ import type { CollectionStyle, ScalarStyle, YamlNode } from "../../YamlNode.js";
 import { YamlMap, YamlPair, YamlScalar, YamlSeq } from "../../YamlNode.js";
 import type { CstNode } from "../cst.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
+import type { CommentFields, EscapedComment } from "./comments.js";
+import {
+	blankAboveIsKeepChompContent,
+	columnAt,
+	hasBlankLineAbove,
+	isOwnLineAt,
+	joinComments,
+	rawCommentText,
+	sameLineSpan,
+	withCommentFields,
+} from "./comments.js";
 import {
 	blockMapStartsWithValueSep,
 	classifyPlainNumeric,
@@ -94,7 +105,7 @@ function composeBlockMapInner(
 	}
 
 	// Phase 2: pair up keys and values
-	buildPairs(items, pairs, state.text);
+	const trailingComment = buildPairs(items, pairs, state.text, state.escapedComments);
 
 	if (state.options.uniqueKeys) checkDuplicateKeys(pairs, state);
 	checkMultilineImplicitKeys(pairs, state);
@@ -107,6 +118,12 @@ function composeBlockMapInner(
 	const end = blockMapCst.offset + blockMapCst.length;
 	const length = end - offset;
 
+	const mapComment =
+		meta?.comment !== undefined
+			? trailingComment !== undefined
+				? `${meta.comment}\n${trailingComment}`
+				: meta.comment
+			: trailingComment;
 	const map = new YamlMap({
 		items: pairs,
 		style: "block" as CollectionStyle,
@@ -114,7 +131,7 @@ function composeBlockMapInner(
 		length,
 		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
 		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
-		...(meta?.comment !== undefined ? { comment: meta.comment } : {}),
+		...(mapComment !== undefined ? { comment: mapComment } : {}),
 	});
 
 	if (meta?.anchor) registerAnchor(map, meta.anchor, state, offset);
@@ -210,6 +227,15 @@ export function flattenBlockMapChildren(
 		}
 		pendingExplicitKeyCol = -1;
 		items.push({ kind: "node", node });
+		// Re-inject comments that escaped a nested compose (their column was
+		// shallower than the nested collection's content) into THIS level's
+		// stream — buildPairs re-classifies them, and may escape them further.
+		if (state.escapedComments.length > 0) {
+			for (const ec of state.escapedComments) {
+				items.push({ kind: "comment", comment: ec.text, offset: ec.offset });
+			}
+			state.escapedComments.length = 0;
+		}
 		afterValueSep = false;
 	}
 
@@ -249,7 +275,7 @@ export function flattenBlockMapChildren(
 					const sliceChildren = children.slice(i + 1, lookahead.endIdx);
 					const innerItems = flattenBlockMapChildren(sliceChildren, state);
 					const innerPairs: YamlPair[] = [];
-					buildPairs(innerItems, innerPairs, state.text);
+					const innerTrailing = buildPairs(innerItems, innerPairs, state.text);
 					const firstC = findFirstContent(sliceChildren);
 					const lastC = findLastContent(sliceChildren);
 					const innerOffset = firstC ? firstC.offset : child.offset;
@@ -259,6 +285,7 @@ export function flattenBlockMapChildren(
 						style: "block" as CollectionStyle,
 						offset: innerOffset,
 						length: innerEnd - innerOffset,
+						...(innerTrailing !== undefined ? { comment: innerTrailing } : {}),
 					});
 					pushNode(innerMap, innerOffset);
 					i = lookahead.endIdx - 1; // outer loop will i++ to endIdx (skip the slice)
@@ -332,8 +359,7 @@ export function flattenBlockMapChildren(
 			continue;
 		}
 		if (child.type === "comment") {
-			const text = child.source.startsWith("#") ? child.source.slice(1).trim() : child.source;
-			items.push({ kind: "comment", comment: text });
+			items.push({ kind: "comment", comment: rawCommentText(child.source), offset: child.offset });
 			continue;
 		}
 		if (child.type === "anchor") {
@@ -780,9 +806,79 @@ export function flattenBlockMapChildren(
  * Pattern: node, value-sep, node produces a key:value pair.
  * Pattern: node, value-sep (no node) produces a key:null pair.
  * Pattern: value-sep, node produces a null:value pair.
+ *
+ * Comment attribution (#127): a comment on the same line as the end of the
+ * previous pair attaches to it as the trailing `comment`; an own-line
+ * comment attaches FORWARD to the next pair as `commentBefore` (consecutive
+ * lines join with `\n`); a blank line before a pair (or before its
+ * `commentBefore` block) sets `spaceBefore`. Own-line comments left over
+ * after the last pair are returned so the caller can attach them as the
+ * containing collection's trailing `comment`.
  */
-export function buildPairs(items: SemanticItem[], pairs: YamlPair[], text: string): void {
+export function buildPairs(
+	items: SemanticItem[],
+	pairs: YamlPair[],
+	text: string,
+	escaped?: Array<EscapedComment>,
+): string | undefined {
 	let i = 0;
+	// Forward-attribution state: own-line comment parts and blank-line flag
+	// pending for the NEXT pair. Parts keep their offsets so the terminal
+	// leftovers can be column-partitioned (kept vs escaped to the outer scope).
+	interface PendingComment {
+		text: string;
+		offset: number;
+		blankAbove: boolean;
+	}
+	let pending: PendingComment[] = [];
+	let pendingSpace = false;
+	// End offset of the last completed pair's content (-1 before the first),
+	// and the content node it belongs to — the anchor for the keep-chomp
+	// blank-line gate (a blank inside a `|+` scalar's span is VALUE, not style).
+	let lastEnd = -1;
+	let lastNode: YamlNode | undefined;
+	// Column of this mapping's first key — the yardstick for the terminal
+	// column partition. -1 until the first key is seen.
+	let contentColumn = -1;
+
+	const nodeEnd = (n: YamlNode): number => n.offset + n.length;
+
+	const noteContentColumn = (offset: number): void => {
+		if (contentColumn < 0 && offset >= 0) contentColumn = columnAt(text, offset);
+	};
+
+	/** Join pending parts: `\n` between lines, an extra `\n` per embedded blank. */
+	const joinPending = (parts: ReadonlyArray<PendingComment>): string | undefined => {
+		if (parts.length === 0) return undefined;
+		let out = (parts[0] as PendingComment).text;
+		for (let k = 1; k < parts.length; k++) {
+			const part = parts[k] as PendingComment;
+			out += part.blankAbove ? `\n\n${part.text}` : `\n${part.text}`;
+		}
+		return out;
+	};
+
+	/** The pending comment fields for the pair being constructed, then reset. */
+	const takePendingFields = (anchorOffset: number): CommentFields => {
+		let commentBefore = joinPending(pending);
+		if (anchorOffset >= 0 && hasBlankLineAbove(text, anchorOffset)) {
+			if (commentBefore !== undefined) {
+				// A blank line between the comment run and the node embeds as a
+				// trailing empty line in the comment string (reference parity).
+				commentBefore = `${commentBefore}\n`;
+			} else if (!pendingSpace && lastEnd >= 0 && !blankAboveIsKeepChompContent(text, anchorOffset, lastNode)) {
+				pendingSpace = true;
+			}
+		}
+		const fields: CommentFields = {
+			...(commentBefore !== undefined ? { commentBefore } : {}),
+			...(pendingSpace ? { spaceBefore: true } : {}),
+		};
+		pending = [];
+		pendingSpace = false;
+		return fields;
+	};
+
 	while (i < items.length) {
 		const item = items[i];
 		if (!item) {
@@ -790,16 +886,35 @@ export function buildPairs(items: SemanticItem[], pairs: YamlPair[], text: strin
 			continue;
 		}
 		if (item.kind === "comment") {
-			// Attach to previous pair if any
-			if (pairs.length > 0) {
+			const cOff = item.offset ?? -1;
+			const cText = item.comment ?? "";
+			// Own-line vs trailing is decided purely from the comment's own
+			// line (content before it or not) — span-based checks mislead when
+			// a preceding block collection's span over-extends.
+			const ownLine = cOff < 0 ? true : isOwnLineAt(text, cOff);
+			if (!ownLine && pairs.length > 0) {
+				// Trailing: content precedes the comment on its line.
 				const last = pairs[pairs.length - 1];
 				if (last) {
 					pairs[pairs.length - 1] = new YamlPair({
 						key: last.key,
 						value: last.value,
-						...(item.comment !== undefined ? { comment: item.comment } : {}),
+						...(last.commentBefore !== undefined ? { commentBefore: last.commentBefore } : {}),
+						comment: last.comment !== undefined ? `${last.comment}\n${cText}` : cText,
+						...(last.spaceBefore !== undefined ? { spaceBefore: last.spaceBefore } : {}),
 					});
 				}
+			} else {
+				// Own-line: attribute forward to the next pair. A blank line
+				// before the FIRST comment of a run becomes spaceBefore; a
+				// blank line WITHIN the run embeds as an empty line in the
+				// joined comment string (reference parity).
+				const blankAbove =
+					cOff >= 0 && hasBlankLineAbove(text, cOff) && !blankAboveIsKeepChompContent(text, cOff, lastNode);
+				if (blankAbove && pending.length === 0 && lastEnd >= 0) {
+					pendingSpace = true;
+				}
+				pending.push({ text: cText, offset: cOff, blankAbove: blankAbove && pending.length > 0 });
 			}
 			i++;
 			continue;
@@ -808,6 +923,7 @@ export function buildPairs(items: SemanticItem[], pairs: YamlPair[], text: strin
 			// value-sep without preceding key: implicit null key
 			const valueSepOffset = item.offset ?? 0;
 			i++;
+			const pendingFields = takePendingFields(valueSepOffset);
 			// Peek ahead: if the next non-comment node is followed by a
 			// value-sep AND is on a different line, it's a KEY for the next
 			// pair, not our value. This prevents greedily consuming
@@ -816,24 +932,23 @@ export function buildPairs(items: SemanticItem[], pairs: YamlPair[], text: strin
 			// Anchor the synthetic null key at its `:` indicator so diagnostics
 			// that point at the key (e.g. DuplicateKey) carry a real position
 			// instead of 0:0.
+			noteContentColumn(valueSepOffset);
 			const valueNode = consumeValueNodeForNullKey(items, i, text, valueSepOffset);
+			const nullKey = new YamlScalar({
+				value: null,
+				style: "plain" as ScalarStyle,
+				offset: valueSepOffset,
+				length: 0,
+			});
 			if (valueNode) {
-				const nullKey = new YamlScalar({
-					value: null,
-					style: "plain" as ScalarStyle,
-					offset: valueSepOffset,
-					length: 0,
-				});
-				pairs.push(new YamlPair({ key: nullKey, value: valueNode.node ?? null }));
+				pairs.push(new YamlPair({ key: nullKey, value: valueNode.node ?? null, ...pendingFields }));
 				i = valueNode.nextIdx;
+				lastEnd = valueNode.node ? nodeEnd(valueNode.node) : valueSepOffset + 1;
+				lastNode = valueNode.node ?? undefined;
 			} else {
-				const nullKey = new YamlScalar({
-					value: null,
-					style: "plain" as ScalarStyle,
-					offset: valueSepOffset,
-					length: 0,
-				});
-				pairs.push(new YamlPair({ key: nullKey, value: null }));
+				pairs.push(new YamlPair({ key: nullKey, value: null, ...pendingFields }));
+				lastEnd = valueSepOffset + 1;
+				lastNode = undefined;
 			}
 			continue;
 		}
@@ -848,60 +963,165 @@ export function buildPairs(items: SemanticItem[], pairs: YamlPair[], text: strin
 					i++;
 				}
 			}
-			// Skip comments between key and value-sep (e.g., ? key # comment\n: value)
+			if (keyNode) noteContentColumn(keyNode.offset);
+			const pendingFields = takePendingFields(keyNode ? keyNode.offset : -1);
+			// Comments between key and value-sep (e.g., ? key # comment\n: value)
+			// attach to the pair's trailing comment — they have no own construct
+			// in the pair model.
+			let pairTrailing: string | undefined;
 			while (i < items.length && items[i]?.kind === "comment") {
+				const c = items[i]?.comment;
+				if (c !== undefined) pairTrailing = joinComments(pairTrailing, c);
 				i++;
 			}
+			const keyOrNull = (): YamlNode =>
+				keyNode ?? new YamlScalar({ value: null, style: "plain" as ScalarStyle, offset: 0, length: 0 });
 			// Look for value-sep
 			if (i < items.length && items[i]?.kind === "value-sep") {
+				const sepOffset = items[i]?.offset ?? (keyNode ? nodeEnd(keyNode) : 0);
 				i++; // skip value-sep
-				const valueResult = consumeValueNode(items, i);
+				const valueResult = consumeValueNode(items, i, text, sepOffset);
 				if (valueResult) {
+					// Comments between the `:` and the value: same-line comments
+					// are the pair's trailing comment; own-line comments lead the
+					// value node.
+					for (const c of valueResult.sameLineComments) pairTrailing = joinComments(pairTrailing, c);
+					let valNode = valueResult.node;
+					if (valNode !== null && valueResult.leadingComments.length > 0) {
+						valNode = withCommentFields(valNode, { commentBefore: valueResult.leadingComments.join("\n") });
+					}
 					pairs.push(
 						new YamlPair({
-							key: keyNode ?? new YamlScalar({ value: null, style: "plain" as ScalarStyle, offset: 0, length: 0 }),
-							value: valueResult.node ?? null,
+							key: keyOrNull(),
+							value: valNode,
+							...pendingFields,
+							...(pairTrailing !== undefined ? { comment: pairTrailing } : {}),
 						}),
 					);
 					i = valueResult.nextIdx;
+					lastEnd = valNode ? nodeEnd(valNode) : sepOffset + 1;
+					lastNode = valNode ?? undefined;
 				} else {
 					pairs.push(
 						new YamlPair({
-							key: keyNode ?? new YamlScalar({ value: null, style: "plain" as ScalarStyle, offset: 0, length: 0 }),
+							key: keyOrNull(),
 							value: null,
+							...pendingFields,
+							...(pairTrailing !== undefined ? { comment: pairTrailing } : {}),
 						}),
 					);
+					lastEnd = sepOffset + 1;
+					lastNode = undefined;
 				}
 			} else {
 				// Key with no value
 				pairs.push(
 					new YamlPair({
-						key: keyNode ?? new YamlScalar({ value: null, style: "plain" as ScalarStyle, offset: 0, length: 0 }),
+						key: keyOrNull(),
 						value: null,
+						...pendingFields,
+						...(pairTrailing !== undefined ? { comment: pairTrailing } : {}),
 					}),
 				);
+				lastEnd = keyNode ? nodeEnd(keyNode) : lastEnd;
+				if (keyNode) lastNode = keyNode;
 			}
 			continue;
 		}
 		i++;
 	}
+	// Own-line comments after the last pair: terminal comments at (or beyond)
+	// the mapping's content column become the collection's trailing comment;
+	// SHALLOWER ones belong to an outer scope and escape (reference parity —
+	// a column-0 `# tail` after a nested block documents the next outer key).
+	// A blank line between the last pair and the terminal run embeds as a
+	// LEADING empty line in the joined string — the mirror of the
+	// trailing-blank embed on a `commentBefore` run.
+	if (pending.length === 0) return undefined;
+	const withLeadingBlank = (parts: ReadonlyArray<PendingComment>): string | undefined => {
+		const joined = joinPending(parts);
+		const first = parts[0];
+		return joined !== undefined &&
+			first !== undefined &&
+			lastEnd >= 0 &&
+			first.offset >= 0 &&
+			hasBlankLineAbove(text, first.offset) &&
+			!blankAboveIsKeepChompContent(text, first.offset, lastNode)
+			? `\n${joined}`
+			: joined;
+	};
+	if (escaped !== undefined && contentColumn > 0) {
+		const kept: PendingComment[] = [];
+		for (const part of pending) {
+			if (part.offset >= 0 && columnAt(text, part.offset) < contentColumn) {
+				escaped.push({ text: part.text, offset: part.offset });
+			} else {
+				kept.push(part);
+			}
+		}
+		return withLeadingBlank(kept);
+	}
+	return withLeadingBlank(pending);
 }
 
-function consumeValueNode(items: SemanticItem[], startIdx: number): { node: YamlNode | null; nextIdx: number } | null {
+interface ConsumedValue {
+	node: YamlNode | null;
+	nextIdx: number;
+	/** Comments on the value-sep's line, before the value. */
+	sameLineComments: string[];
+	/** Own-line comments between the value-sep and the value. */
+	leadingComments: string[];
+}
+
+function consumeValueNode(
+	items: SemanticItem[],
+	startIdx: number,
+	text: string,
+	sepOffset: number,
+): ConsumedValue | null {
+	// Peek past comments to the first node WITHOUT consuming anything: a node
+	// on a LATER line than our `:` that is immediately followed by its own
+	// value-sep is the next pair's KEY, not this pair's value — the pending
+	// pair's value is empty/null (#339: `key:\nother: 1` composed `other` as
+	// the value of `key` and then paired the orphaned `:` with an empty key).
+	// Same-line nodes stay consumed so `a: b: c: d` keeps its original,
+	// error-flagged pairing (ZCZ6). Mirrors consumeValueNodeForNullKey (S3PD).
+	// Returning null consumes nothing, so any comments re-enter the main loop
+	// and attribute to the surrounding pairs as usual.
+	let peek = startIdx;
+	while (peek < items.length && items[peek]?.kind === "comment") peek++;
+	const candidate = peek < items.length ? items[peek] : undefined;
+	if (
+		candidate?.kind === "node" &&
+		peek + 1 < items.length &&
+		items[peek + 1]?.kind === "value-sep" &&
+		candidate.node !== undefined &&
+		text.slice(sepOffset, candidate.node.offset).includes("\n")
+	) {
+		return null;
+	}
 	let i = startIdx;
+	const sameLineComments: string[] = [];
+	const leadingComments: string[] = [];
 	while (i < items.length) {
 		const item = items[i];
 		if (!item) break;
 		if (item.kind === "comment") {
+			const cText = item.comment ?? "";
+			if (item.offset !== undefined && sameLineSpan(text, sepOffset, item.offset)) {
+				sameLineComments.push(cText);
+			} else {
+				leadingComments.push(cText);
+			}
 			i++;
 			continue;
 		}
 		if (item.kind === "node") {
-			return { node: item.node ?? null, nextIdx: i + 1 };
+			return { node: item.node ?? null, nextIdx: i + 1, sameLineComments, leadingComments };
 		}
 		break;
 	}
-	return i > startIdx ? { node: null, nextIdx: i } : null;
+	return i > startIdx ? { node: null, nextIdx: i, sameLineComments, leadingComments } : null;
 }
 
 /**
@@ -954,7 +1174,7 @@ function consumeValueNodeForNullKey(
  * are distinguished by their type prefix, so `1` (int) never collides with
  * `"1"` (string) or `true`.
  */
-function keyIdentity(key: YamlScalar, text: string): string {
+export function keyIdentity(key: YamlScalar, text: string): string {
 	const v = key.value;
 	if (v === null) return "null";
 	switch (typeof v) {
@@ -1365,7 +1585,7 @@ export function composeBlockSeq(cst: CstNode, state: ComposerState, meta?: NodeM
 
 function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta): YamlSeq {
 	const children = cst.children ?? [];
-	const items: YamlNode[] = [];
+	const rawItems: YamlNode[] = [];
 	let pendingMeta: NodeMeta = {};
 	let sawEntry = false;
 	const seqIndent = lineIndentColumn(state.text, cst.offset);
@@ -1375,6 +1595,77 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 	// mirrors the outer/inner meta split in flattenBlockMapChildren.
 	let sawNewlineSincePending = false;
 
+	// Comment attribution (#127), mirroring buildPairs: own-line comments
+	// attach forward to the next item as `commentBefore`; a comment on the
+	// same line as the end of the previous item attaches as its trailing
+	// `comment`; a blank line before an item sets `spaceBefore`; terminal
+	// leftovers at (or beyond) the sequence's indent become its trailing
+	// comment, SHALLOWER ones escape to the outer scope.
+	interface PendingSeqComment {
+		text: string;
+		offset: number;
+		blankAbove: boolean;
+	}
+	let pending: PendingSeqComment[] = [];
+	let pendingSpace = false;
+	let lastItemEnd = -1;
+	// The last pushed item node — the anchor for the keep-chomp blank-line
+	// gate (a blank inside a `|+` item's span is VALUE, not style).
+	let lastItemNode: YamlNode | undefined;
+	const joinPending = (parts: ReadonlyArray<PendingSeqComment>): string | undefined => {
+		if (parts.length === 0) return undefined;
+		let out = (parts[0] as PendingSeqComment).text;
+		for (let k = 1; k < parts.length; k++) {
+			const part = parts[k] as PendingSeqComment;
+			out += part.blankAbove ? `\n\n${part.text}` : `\n${part.text}`;
+		}
+		return out;
+	};
+	const acceptOwnLineComment = (cText: string, cOff: number): void => {
+		const blankAbove =
+			cOff >= 0 && hasBlankLineAbove(state.text, cOff) && !blankAboveIsKeepChompContent(state.text, cOff, lastItemNode);
+		if (blankAbove && pending.length === 0 && lastItemEnd >= 0) {
+			pendingSpace = true;
+		}
+		pending.push({ text: cText, offset: cOff, blankAbove: blankAbove && pending.length > 0 });
+	};
+	const items = {
+		get length(): number {
+			return rawItems.length;
+		},
+		push(node: YamlNode): void {
+			let commentBefore = joinPending(pending);
+			if (node.length > 0 && hasBlankLineAbove(state.text, node.offset)) {
+				if (commentBefore !== undefined) {
+					commentBefore = `${commentBefore}\n`;
+				} else if (
+					!pendingSpace &&
+					lastItemEnd >= 0 &&
+					!blankAboveIsKeepChompContent(state.text, node.offset, lastItemNode)
+				) {
+					pendingSpace = true;
+				}
+			}
+			let decorated = node;
+			if (commentBefore !== undefined || pendingSpace) {
+				decorated = withCommentFields(node, {
+					...(commentBefore !== undefined ? { commentBefore } : {}),
+					...(pendingSpace ? { spaceBefore: true } : {}),
+				});
+			}
+			pending = [];
+			pendingSpace = false;
+			rawItems.push(decorated);
+			lastItemEnd = node.offset + node.length;
+			lastItemNode = node;
+			// Re-inject comments escaped by a nested compose — see pushNode.
+			if (state.escapedComments.length > 0) {
+				for (const ec of state.escapedComments) acceptOwnLineComment(ec.text, ec.offset);
+				state.escapedComments.length = 0;
+			}
+		},
+	};
+
 	for (let ci = 0; ci < children.length; ci++) {
 		const child = children[ci];
 		if (!child) continue;
@@ -1382,7 +1673,16 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 			if (hasMeta(pendingMeta)) sawNewlineSincePending = true;
 			continue;
 		}
-		if (child.type === "comment") continue;
+		if (child.type === "comment") {
+			const cText = rawCommentText(child.source);
+			if (rawItems.length > 0 && !isOwnLineAt(state.text, child.offset)) {
+				const prev = rawItems[rawItems.length - 1];
+				if (prev) rawItems[rawItems.length - 1] = withCommentFields(prev, { comment: cText });
+			} else {
+				acceptOwnLineComment(cText, child.offset);
+			}
+			continue;
+		}
 		if (child.type === "whitespace") {
 			// "-" is the sequence entry indicator
 			if (child.source.trim() === "-") {
@@ -1574,14 +1874,53 @@ function composeBlockSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMet
 		items.push(scalar);
 	}
 
+	// Own-line comments after the last item: terminal comments at (or beyond)
+	// the sequence's indent become its trailing comment; shallower ones
+	// escape to the outer scope (reference parity). A blank line between the
+	// last item and the terminal run embeds as a LEADING empty line —
+	// mirroring buildPairs.
+	const withLeadingBlank = (parts: ReadonlyArray<PendingSeqComment>): string | undefined => {
+		const joined = joinPending(parts);
+		const first = parts[0];
+		return joined !== undefined &&
+			first !== undefined &&
+			lastItemEnd >= 0 &&
+			first.offset >= 0 &&
+			hasBlankLineAbove(state.text, first.offset) &&
+			!blankAboveIsKeepChompContent(state.text, first.offset, lastItemNode)
+			? `\n${joined}`
+			: joined;
+	};
+	let seqTrailing: string | undefined;
+	if (pending.length > 0) {
+		if (seqIndent > 0) {
+			const kept: PendingSeqComment[] = [];
+			for (const part of pending) {
+				if (part.offset >= 0 && columnAt(state.text, part.offset) < seqIndent) {
+					state.escapedComments.push({ text: part.text, offset: part.offset });
+				} else {
+					kept.push(part);
+				}
+			}
+			seqTrailing = withLeadingBlank(kept);
+		} else {
+			seqTrailing = withLeadingBlank(pending);
+		}
+	}
+	const seqComment =
+		meta?.comment !== undefined
+			? seqTrailing !== undefined
+				? `${meta.comment}\n${seqTrailing}`
+				: meta.comment
+			: seqTrailing;
 	const seq = new YamlSeq({
-		items,
+		items: rawItems,
 		style: "block" as CollectionStyle,
 		offset: cst.offset,
 		length: cst.length,
 		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
 		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
-		...(meta?.comment !== undefined ? { comment: meta.comment } : {}),
+		...(seqComment !== undefined ? { comment: seqComment } : {}),
 	});
 
 	if (meta?.anchor) registerAnchor(seq, meta.anchor, state, cst.offset);
@@ -1610,7 +1949,7 @@ export function composeFlatBlockMap(
 	items.unshift({ kind: "key", node: externalFirstKey });
 
 	const pairs: YamlPair[] = [];
-	buildPairs(items, pairs, state.text);
+	const trailingComment = buildPairs(items, pairs, state.text, state.escapedComments);
 
 	if (state.options.uniqueKeys) checkDuplicateKeys(pairs, state);
 	checkMultilineImplicitKeys(pairs, state);
@@ -1618,6 +1957,12 @@ export function composeFlatBlockMap(
 	const offset = "offset" in externalFirstKey ? (externalFirstKey as YamlScalar).offset : parentCst.offset;
 	const end = parentCst.offset + parentCst.length;
 
+	const mapComment =
+		meta?.comment !== undefined
+			? trailingComment !== undefined
+				? `${meta.comment}\n${trailingComment}`
+				: meta.comment
+			: trailingComment;
 	const map = new YamlMap({
 		items: pairs,
 		style: "block" as CollectionStyle,
@@ -1625,7 +1970,7 @@ export function composeFlatBlockMap(
 		length: end - offset,
 		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
 		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
-		...(meta?.comment !== undefined ? { comment: meta.comment } : {}),
+		...(mapComment !== undefined ? { comment: mapComment } : {}),
 	});
 
 	if (meta?.anchor) registerAnchor(map, meta.anchor, state, offset);

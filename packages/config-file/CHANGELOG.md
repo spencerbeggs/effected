@@ -1,5 +1,13 @@
 # @effected/config-file
 
+## 0.3.1
+
+### Dependencies
+
+| Dependency     | Type       | Action  | From  | To    |
+| -------------- | ---------- | ------- | ----- | ----- |
+| @effected/yaml | dependency | updated | 0.7.0 | 0.8.0 |
+
 ## 0.3.0
 
 ### Refactoring

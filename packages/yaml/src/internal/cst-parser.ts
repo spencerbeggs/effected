@@ -535,9 +535,17 @@ function parseBlockValue(state: ParserState, parentIndent: number, explicitKey =
 		const token = peek(state);
 		if (!token) break;
 
-		// Consume inline whitespace
+		// Consume inline whitespace ONLY — never via consumeTrivia, which
+		// would greedily swallow a trailing comment AND the newline after it,
+		// blowing past the line boundary. The loop would then keep consuming
+		// the next line's tokens as value content with no column check, so a
+		// dedented sibling key after `value # comment` was absorbed into the
+		// nested mapping (shipped P0: trailing comment on the last key of a
+		// nested block mapping swallowed the following dedent). Comments and
+		// newlines end the value line via the branches below.
 		if (token.kind === "whitespace") {
-			nodes.push(...consumeTrivia(state));
+			advance(state);
+			nodes.push(makeLeafNode("whitespace", token, state.text));
 			continue;
 		}
 

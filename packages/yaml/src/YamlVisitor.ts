@@ -63,7 +63,13 @@ export type YamlVisitorEvent = Data.TaggedEnum<{
 		readonly anchor?: string;
 	};
 	Alias: { readonly path: YamlPath; readonly depth: number; readonly name: string };
-	Comment: { readonly path: YamlPath; readonly depth: number; readonly text: string };
+	Comment: {
+		readonly path: YamlPath;
+		readonly depth: number;
+		readonly text: string;
+		/** Where the comment sits relative to its construct: own-line above (`"leading"`) or same-line after (`"trailing"`). */
+		readonly placement: "leading" | "trailing";
+	};
 	Directive: { readonly path: YamlPath; readonly depth: number; readonly name: string; readonly parameters: string };
 	Error: { readonly path: YamlPath; readonly depth: number; readonly diagnostic: YamlDiagnostic };
 }>;
@@ -141,11 +147,15 @@ function* walkDocument(doc: RawYamlDocument, text: string): Generator<YamlVisito
 	}
 
 	if (doc.comment !== undefined) {
-		yield YamlVisitorEvent.Comment({ path, depth, text: doc.comment });
+		yield YamlVisitorEvent.Comment({ path, depth, text: doc.comment, placement: "leading" });
 	}
 
 	if (doc.contents !== null) {
 		yield* walkNode(doc.contents, path, depth);
+	}
+
+	if (doc.commentAfter !== undefined) {
+		yield YamlVisitorEvent.Comment({ path, depth, text: doc.commentAfter, placement: "trailing" });
 	}
 
 	yield YamlVisitorEvent.DocumentEnd({ path, depth });
@@ -153,8 +163,11 @@ function* walkDocument(doc: RawYamlDocument, text: string): Generator<YamlVisito
 
 function* walkNode(node: YamlNode, path: YamlPath, depth: number): Generator<YamlVisitorEvent> {
 	if (node instanceof YamlScalar) {
+		if (node.commentBefore !== undefined) {
+			yield YamlVisitorEvent.Comment({ path, depth, text: node.commentBefore, placement: "leading" });
+		}
 		if (node.comment !== undefined) {
-			yield YamlVisitorEvent.Comment({ path, depth, text: node.comment });
+			yield YamlVisitorEvent.Comment({ path, depth, text: node.comment, placement: "trailing" });
 		}
 		yield YamlVisitorEvent.Scalar({
 			path,
@@ -167,8 +180,11 @@ function* walkNode(node: YamlNode, path: YamlPath, depth: number): Generator<Yam
 	} else if (node instanceof YamlAlias) {
 		yield YamlVisitorEvent.Alias({ path, depth, name: node.name });
 	} else if (node instanceof YamlMap) {
+		if (node.commentBefore !== undefined) {
+			yield YamlVisitorEvent.Comment({ path, depth, text: node.commentBefore, placement: "leading" });
+		}
 		if (node.comment !== undefined) {
-			yield YamlVisitorEvent.Comment({ path, depth, text: node.comment });
+			yield YamlVisitorEvent.Comment({ path, depth, text: node.comment, placement: "trailing" });
 		}
 		yield YamlVisitorEvent.MapStart({
 			path,
@@ -182,8 +198,11 @@ function* walkNode(node: YamlNode, path: YamlPath, depth: number): Generator<Yam
 		}
 		yield YamlVisitorEvent.MapEnd({ path, depth });
 	} else if (node instanceof YamlSeq) {
+		if (node.commentBefore !== undefined) {
+			yield YamlVisitorEvent.Comment({ path, depth, text: node.commentBefore, placement: "leading" });
+		}
 		if (node.comment !== undefined) {
-			yield YamlVisitorEvent.Comment({ path, depth, text: node.comment });
+			yield YamlVisitorEvent.Comment({ path, depth, text: node.comment, placement: "trailing" });
 		}
 		yield YamlVisitorEvent.SeqStart({
 			path,
@@ -209,8 +228,11 @@ function* walkPair(pair: YamlPair, parentPath: YamlPath, depth: number): Generat
 
 	const pairPath: YamlPath = [...parentPath, keySegment];
 
+	if (pair.commentBefore !== undefined) {
+		yield YamlVisitorEvent.Comment({ path: pairPath, depth, text: pair.commentBefore, placement: "leading" });
+	}
 	if (pair.comment !== undefined) {
-		yield YamlVisitorEvent.Comment({ path: pairPath, depth, text: pair.comment });
+		yield YamlVisitorEvent.Comment({ path: pairPath, depth, text: pair.comment, placement: "trailing" });
 	}
 
 	yield YamlVisitorEvent.Pair({ path: pairPath, depth, key: resolvedKey, value: resolvedValue });

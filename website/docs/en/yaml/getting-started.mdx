@@ -74,13 +74,13 @@ Each snippet below is a complete, runnable program built from the package's real
 
 ### Parse at a synchronous boundary
 
-Inside Effect code, `Yaml.parse` gives you an `Effect`. At a plain synchronous boundary — a build script, a config loader that is not Effect-native — reach for `Yaml.parseSync`, which returns a `Result` you can match on without a runtime:
+Inside Effect code, `Yaml.parse` gives you an `Effect`. At a plain synchronous boundary — a build script, a config loader that is not Effect-native — reach for `Yaml.parseResult`, which returns a `Result` you can match on without a runtime:
 
 ```ts with-api
 import { Yaml } from "@effected/yaml";
 import { Result } from "effect";
 
-const result = Yaml.parseSync(`name: my-app
+const result = Yaml.parseResult(`name: my-app
 version: 1.0.0
 `);
 
@@ -129,6 +129,32 @@ console.log(Yaml.stripComments(yaml));
 console.log(Yaml.stripComments(yaml, " ").length === yaml.length);
 // true — offset-preserving
 ```
+
+### Lint a file, then fix what is safely fixable
+
+`YamlLint.run` checks a string against a rule catalog and returns positioned diagnostics; `YamlLint.fix` applies the repairs that can be expressed as surgical edits. Both are synchronous, and `YamlLintConfig.default` is a ready-made preset:
+
+```ts with-api
+import { YamlLint, YamlLintConfig } from "@effected/yaml";
+import { Result } from "effect";
+
+const source = "# pinned\nname:  demo   \nport: yes\n";
+
+for (const d of YamlLint.run(source, YamlLint.builtins, YamlLintConfig.default)) {
+  console.log(`${d.line}:${d.character} ${d.severity} ${d.rule} ${d.message}`);
+}
+// 1:5 error colon-spacing Too many spaces after ":" (2 > 1)
+// 1:11 error trailing-spaces Trailing whitespace
+// 2:6 error truthy Truthy value "yes" is not in the allowed spellings
+
+const fixed = YamlLint.fix(source, YamlLint.builtins, YamlLintConfig.default);
+console.log(Result.isSuccess(fixed) ? fixed.success : "fatal parse error — not safely fixable");
+// # pinned
+// name: demo
+// port: "yes"
+```
+
+Positions are zero-based, so the first finding above sits on the second line of the source. `fix` fails with a `YamlParseError` when the document has a fatal parse error, on the grounds that text the engine cannot compose is not text it should be rewriting. See the [advanced guide](/yaml/advanced) for presets, per-rule options and custom rules.
 
 ### Compare two configs semantically
 
@@ -210,5 +236,5 @@ Because the error channel is fully typed, dropping either `catchTag` is a compil
 
 ## Next steps
 
-- Ready for the parsed AST, byte-minimal edit batches, streaming visitors and decoding straight into a domain schema? See the [advanced guide](/yaml/advanced).
+- Ready for the parsed AST, byte-minimal edit batches, streaming visitors, custom lint rules and decoding straight into a domain schema? See the [advanced guide](/yaml/advanced).
 - Every export, with full signatures, lives in the [API reference](/yaml/api) — start with [`Yaml`](/yaml/api/class/yaml), [`YamlFormat`](/yaml/api/class/yamlformat) and [`YamlVisitor`](/yaml/api/class/yamlvisitor).

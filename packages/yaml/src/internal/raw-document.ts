@@ -19,6 +19,8 @@ export interface RawYamlDocument {
 	readonly warnings: ReadonlyArray<RawDiagnostic>;
 	readonly directives: ReadonlyArray<RawDirective>;
 	readonly comment?: string;
+	/** Trailing document comment: own-line comments after the content (or after `...`). */
+	readonly commentAfter?: string;
 	readonly hasDocumentStart: boolean;
 	readonly hasDocumentEnd: boolean;
 	/**

@@ -8,6 +8,7 @@ import type { ScalarStyle } from "../../YamlNode.js";
 import { YamlScalar } from "../../YamlNode.js";
 import type { CstNode } from "../cst.js";
 import { registerAnchor } from "./anchors.js";
+import { rawCommentText } from "./comments.js";
 import type { ComposerState, NodeMeta } from "./state.js";
 import { lineCol } from "./state.js";
 import { resolveTagHandle } from "./tags.js";
@@ -133,12 +134,48 @@ export function getScalarStyle(node: CstNode): ScalarStyle {
  */
 export function getBlockChomp(node: CstNode): "strip" | "clip" | "keep" | undefined {
 	if (node.type !== "block-scalar") return undefined;
-	const src = node.source.trimStart();
-	const headerEnd = src.indexOf("\n");
-	const header = headerEnd === -1 ? src : src.slice(0, headerEnd);
-	if (header.includes("+")) return "keep";
-	if (header.includes("-")) return "strip";
+	// Inspect only the INDICATOR RUN directly after `|`/`>` — never the rest
+	// of the header line, where a `+`/`-` inside a header comment
+	// (`| # keep+this`) would misread as a chomp indicator.
+	const indicators = node.source.trimStart().match(/^[|>]([0-9+-]*)/)?.[1] ?? "";
+	if (indicators.includes("+")) return "keep";
+	if (indicators.includes("-")) return "strip";
 	return "clip";
+}
+
+/**
+ * Extracts the EXPLICIT indentation-indicator digit from a block scalar's
+ * header (`|2`, `>1+`), or undefined when the header carries none (the
+ * reader auto-detects) or the node is not a block scalar. Inspects only the
+ * indicator run — see {@link getBlockChomp} for why the rest of the header
+ * line (a comment can contain digits) must not be read.
+ */
+export function getBlockIndent(node: CstNode): number | undefined {
+	if (node.type !== "block-scalar") return undefined;
+	const indicators = node.source.trimStart().match(/^[|>]([0-9+-]*)/)?.[1] ?? "";
+	const digit = indicators.match(/[1-9]/)?.[0];
+	return digit === undefined ? undefined : Number(digit);
+}
+
+/**
+ * The trailing comment on a block scalar's HEADER line (`key: | # c`,
+ * `- >-2 # c`) as stored raw-slice text, or `undefined` when the header
+ * carries none. The header is the only line of a block scalar that can carry
+ * a `#` comment — body lines absorb `#` as content — and the lexer packs the
+ * whole scalar (header comment included) into one CST token, so the comment
+ * never surfaces as a sibling comment token for the ordinary attribution
+ * pass (#341).
+ */
+function blockScalarHeaderComment(cst: CstNode): string | undefined {
+	const src = cst.source.trimStart();
+	const nl = src.search(/[\r\n]/);
+	const header = nl < 0 ? src : src.slice(0, nl);
+	const hash = header.indexOf("#");
+	if (hash < 1) return undefined;
+	// A header comment requires separation whitespace after the indicators.
+	const before = header[hash - 1];
+	if (before !== " " && before !== "\t") return undefined;
+	return rawCommentText(header.slice(hash));
 }
 
 export function getScalarValue(node: CstNode, fullText?: string): string {
@@ -1065,23 +1102,32 @@ function decodeBlockScalar(raw: string, fullText?: string, nodeOffset?: number):
 				prevMoreIndented = isMoreIndented;
 			}
 		}
+		// The break terminating the last CONTENT line exists only when there
+		// was content; a body of nothing but empty lines contributes exactly
+		// one break per empty line under keep (and nothing under clip — the
+		// spec excludes the final break when there are no non-empty lines).
+		// Without the hadContent gate, `>2+` over an empty body counted one
+		// break too many — a value that then GREW on every format round-trip.
 		if (hadContent || trailingNewlines.length > 0) {
 			if (chomp === "keep") {
-				result += "\n";
+				if (hadContent) result += "\n";
 				for (const _nl of trailingNewlines) result += "\n";
 			} else if (chomp !== "strip") {
-				result += "\n";
+				if (hadContent) result += "\n";
 			}
 		}
 		value = result;
 	} else {
 		value = lines.join("\n");
+		// Mirror of the folded gate above: the terminating break belongs to
+		// the last content line, not to an all-empty body (`|2+\n\n` is one
+		// kept break, not two; `|2\n\n` under clip is the empty string).
 		if (lines.length > 0 || trailingNewlines.length > 0) {
 			if (chomp === "keep") {
-				value += "\n";
+				if (lines.length > 0) value += "\n";
 				for (const _nl of trailingNewlines) value += "\n";
 			} else if (chomp !== "strip") {
-				value += "\n";
+				if (lines.length > 0) value += "\n";
 			}
 		}
 	}
@@ -1155,6 +1201,13 @@ export function makeScalar(cst: CstNode, state: ComposerState, meta?: NodeMeta):
 	const rawValue = getScalarValue(cst, state.text);
 	const value = resolveScalar(rawValue, style, meta?.tag, state);
 	const chomp = getBlockChomp(cst);
+	const blockIndent = getBlockIndent(cst);
+	// #341: a block scalar's header-line comment (`| # c`) lives inside the
+	// CST token, so it is captured here as the SCALAR's trailing `comment`
+	// (reference `yaml` parity) rather than by the sibling attribution pass.
+	const headerComment =
+		style === "block-literal" || style === "block-folded" ? blockScalarHeaderComment(cst) : undefined;
+	const comment = headerComment ?? meta?.comment;
 	// Preserve the source representation when the resolved value is non-string
 	// (number/bool/null) and the source form is not the canonical JS output —
 	// e.g. `0xFFEEBB` resolves to 16772795 but should round-trip as hex,
@@ -1168,8 +1221,9 @@ export function makeScalar(cst: CstNode, state: ComposerState, meta?: NodeMeta):
 		length: cst.length,
 		...(meta?.tag !== undefined ? { tag: meta.tag } : {}),
 		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
-		...(meta?.comment !== undefined ? { comment: meta.comment } : {}),
+		...(comment !== undefined ? { comment } : {}),
 		...(chomp !== undefined ? { chomp } : {}),
+		...(blockIndent !== undefined ? { blockIndent } : {}),
 		...(needsRaw ? { raw: rawValue } : {}),
 	});
 	if (meta?.anchor) registerAnchor(scalar, meta.anchor, state, cst.offset);

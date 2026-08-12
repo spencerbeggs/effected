@@ -53,7 +53,7 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 | ------- | --------- | ----------- |
 | [@effected/semver](packages/semver) | unstable | Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas |
 | [@effected/jsonc](packages/jsonc) | unstable | Zero-dependency JSONC parsing, editing and formatting as Effect schemas |
-| [@effected/yaml](packages/yaml) | unstable | Zero-dependency YAML parsing, editing and formatting as Effect schemas |
+| [@effected/yaml](packages/yaml) | unstable | Zero-dependency YAML parsing, editing, formatting and linting as Effect schemas, with per-node comment fidelity and a public token stream |
 | [@effected/toml](packages/toml) | unstable | TOML 1.1.0 parsing, editing and formatting as Effect schemas: typed diagnostics, a lossless CST and first-class date-time values |
 | [@effected/glob](packages/glob) | unstable | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
 | [@effected/lockfiles](packages/lockfiles) | unstable | Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |

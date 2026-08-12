@@ -11,6 +11,7 @@ related:
   - ../effect-standards.md
   - ../formatter-convention.md
   - ../package-inventory.md
+  - ../yaml-lint.md
   - jsonc.md
   - toml.md
   - markdown.md
@@ -21,7 +22,7 @@ related:
 
 ## Overview
 
-`@effected/yaml` is YAML 1.2 as pure Effect schemas, and the largest package in the repo. It carries a full layered pipeline (lex → CST → compose → value), a "the class is the schema" AST, an edits-not-mutations model, a warnings-as-data recoverable-parse design, a vendored compliance harness and string→domain schema factories. Class-based DX throughout: statics and instance methods on the schema classes, no floating functions.
+`@effected/yaml` is YAML 1.2 as pure Effect schemas, and the largest package in the repo. It carries a full layered pipeline (lex → CST → compose → value), a "the class is the schema" AST, an edits-not-mutations model, a warnings-as-data recoverable-parse design, a vendored compliance harness, string→domain schema factories, full per-node comment fidelity and a yamllint-class lint system over a public token stream. Class-based DX throughout: statics and instance methods on the schema classes, no floating functions.
 
 [@effected/jsonc](jsonc.md) is the structural template, and the [jsonc/yaml parity convention](jsonc.md#jsoncyaml-parity-convention) is **binding** — see [parity reconciliation](#jsoncyaml-parity-reconciliation) for what holds and the one recorded exception.
 
@@ -41,8 +42,11 @@ Module-per-concept, with the engine behind `internal/`. `src/index.ts` re-export
 - `YamlDocument.ts` — `YamlDocument` and `YamlDirective`: the parsed AST plus recovered `errors`/`warnings` arrays.
 - `YamlEdit.ts` — the edit class and the shared `YamlRange` / `YamlPath` / `YamlSegment` vocabulary bound by the parity convention.
 - `YamlFormat.ts` — non-mutating `format` and `modify` edits, and `YamlFormattingOptions`.
-- `YamlVisitor.ts` — SAX-style AST events as a `Stream`.
-- `internal/` — the engine: lexer, CST parser and visitor, the `composer/` directory split along its seams, stringifier, folder, differ and equality.
+- `YamlVisitor.ts` — SAX-style AST events as a `Stream`, including comment events discriminated by `placement`.
+- `YamlToken.ts` — the public positioned token stream: `YamlTokenKind`, `YamlToken`, and the `YamlTokens.tokenize` / `.stream` pair.
+- `YamlLintRule.ts` — the lint **model**: `LintContext`, `LintLine`, `YamlRule`, `YamlLintSeverity`, `YamlLintDiagnostic`.
+- `YamlLint.ts` — the lint **config and facade**: `YamlLintRuleSetting`, `YamlLintConfig` and `YamlLint.run` / `.fix` / `.builtins`.
+- `internal/` — the engine: lexer, CST parser and visitor, the `composer/` directory split along its seams (including `composer/comments.ts`), stringifier, folder, differ, equality, the raw-document materializer and `rules/` — one file per built-in lint rule.
 
 The engine is **vendored** — ported with attribution from the `yaml` package rather than taken as a runtime dependency. House policy for pure-tier format packages: a pure package owns its parser. Do not add `yaml` as a dependency.
 
@@ -54,11 +58,13 @@ The engine returns **raw records** (`{ code, message, offset, length }`) and nev
 
 Mutual recursion threads through a **dispatch record on state**, never a direct import. The block composer needs the flow composer, so `composer/state.ts` declares a `FlowComposers` record and `composer/document.ts` injects the implementations. No generic node dispatcher is needed.
 
-### CST and lexer layers are internal
+The lint layer obeys the same firewall, and it is what split the lint model out of the facade: built-in rules construct `YamlLintDiagnostic` while the facade imports the rule catalog, so one module would close `YamlLint → rules → YamlLint`. The model lives in `YamlLintRule.ts`, which imports nothing back.
 
-The public surface is the value and document layers, the AST, the edit/format/modify concepts, the AST-level visitor and the schema factories. The lexer, CST parser, pull-based scanner and CST visitor are all internal — there is no public token or CST type.
+### The token layer is public; CST stays internal
 
-Exposing them Effect-natively would mean a `Stream<YamlToken>` / `Stream<CstNode>` interface for LSP tooling. That is **deferred until a consumer materializes**; the layers get promoted only when something needs them.
+The public surface is the value and document layers, the AST, the edit/format/modify concepts, the AST-level visitor, the schema factories, **the lexical token stream** and the lint system. The CST parser, pull-based scanner and CST visitor remain internal — there is still no public CST type.
+
+The token layer was held private "until an LSP-tooling consumer materializes"; **the lint system was that consumer**, so `YamlToken.ts` promotes the internal lexer token behind a `Result` primitive and a derived `Stream` (design: [yaml-lint.md](../yaml-lint.md#the-public-positioned-token-stream)). The promotion is deliberately **additive**: public `line`/`character` are derived from `offset` against a line index and `text` is the raw source slice, because the internal `column` carries a construct's indent on synthetic markers and the internal `value` is the processed form of a quoted scalar. Deriving left the lexer and CST parser untouched, so nothing behind the new surface could regress. A `Stream<CstNode>` is still deferred on the same terms — the CST layer gets promoted only when something needs it.
 
 ## Effect-wrapping policy
 
@@ -96,6 +102,8 @@ Errors are `Schema.TaggedError` with structured payloads and a `message` getter 
 
 `YamlDiagnostic` is the single source of truth for **fatality**: it owns the staged code unions and one fatal-code predicate, so fatality is a property of the code declared once rather than inlined at each parse entry point.
 
+The lint layer's `YamlLintDiagnostic` is deliberately a **separate** class rather than a reuse: it carries a rule id, a severity and an optional fix, none of which belong on an engine error-code type. The `parse-validity` rule bridges the two, mapping engine diagnostics into lint ones and keeping the engine's own grading.
+
 There is deliberately **no format error**: `format` is pure and returns no edits on input whose parse has fatal errors, so it never corrupts a malformed document and never needs a fallible path.
 
 ## Input hardening
@@ -131,7 +139,17 @@ Controls how a block sequence nested under a mapping key is presented: at the ke
 
 **The default is `false`, and the default is the whole decision.** Both forms are valid YAML parsing to identical data, so this is presentation, not semantics — but the kit's stringifier is byte-compatible with its source dialect, and flipping a default that changes *bytes* would rewrite sequence indentation in every file every existing consumer round-trips. A cosmetic default is not worth a diff in every downstream repo; consumers who want the popular shape ask for it.
 
-The **explicit-key compact-sequence branch is deliberately untouched** by the option. `? key` / `: value` syntax is a different construct with its own emitter path, and folding it under the same flag would change a form nobody asked about while chasing the common one.
+The **explicit-key compact-sequence branch is deliberately untouched** by the option. `? key` / `: value` syntax is a different construct with its own emitter path, and folding it under the same flag would change a form nobody asked about while chasing the common one. That branch is a *destination* of the spill below, not a thing the option steers — do not conflate the two.
+
+### Explicit-key spill — the implicit-key limit
+
+YAML 1.2 §8.1.3 caps an implicit block-mapping key: the `:` indicator must appear at most 1024 characters after the key's start. Both stringify paths — value and node — therefore **spill** a block-mapping key whose **rendered** form exceeds that limit into explicit-key form, `? key` on its own line and `: value` on the next ([issue #323](https://github.com/spencerbeggs/effected/issues/323)).
+
+Three parts of that are precise on purpose. The measure is the **rendered** key, not the source scalar — quotes and escapes are what a parser counts. The threshold is **strictly greater than** 1024, matching the reference `yaml` package (a rendered key of exactly 1024 stays implicit), because an off-by-one here is the difference between agreeing with every other implementation and producing output they read differently. And the spill is **block-context only**: flow contexts never spill, since flow mappings have no implicit-key line to overrun. Without the spill the emitter produced output that strict parsers reject — a correctness bug against the reference, not a style difference. The real-world input class is the pnpm 11 lockfile `snapshots:` shape, whose parse side was fixed in PR #322.
+
+**`EXPLICIT_COMPACT_PAD` is a recorded divergence from the reference.** Compact continuation lines — the lines after `: first-item` / `? first-line` — are padded with a **structural two columns** — an indicator character plus its space, `?` or `:` — never the configured `indent`. The reference pads them with the configured indent, and at `indent ≠ 2` its own strict parser then misreads the sequence output (items merge into one scalar) or rejects the mapping output outright. Compact continuation lines must align with the first item, which always begins two columns in; any other pad silently re-nests or corrupts the value on reparse. The house [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) says our emit must reparse to the same document, so where the oracle contradicts its own parser we follow the spec and record the divergence rather than reproducing the bug.
+
+Nine byte-pinned fixtures under `__test__/fixtures/explicit-key/` pin the emit, including both sides of the 1024/1025 boundary. They were authored **once** against `yaml@2.9.0` as a strict oracle in a scratch directory outside the repo, with provenance recorded in that directory's `ORACLE.md`; the committed bytes are the contract thereafter and the reference package is not a dependency of the test run.
 
 ### `lineWidth` — value-path-only by contract
 
@@ -167,19 +185,45 @@ A pure-tier library needs none — class statics suffice, and a codec adapter is
 
 ## Fixture corpus and compliance harness
 
-The vendored yaml-test-suite is committed as plain files (nested `.git` stripped) under `__test__/fixtures/yaml-test-suite/`, pinned to a recorded upstream ref — deterministic, offline and Turbo-cacheable, with no fetch-on-test dependency. The harness is the regression safety net: an e2e suite covering parse success/failure, JSON equivalence, canonical-output byte equality and round-trip. It must stay at 100% with empty skip maps.
+The vendored yaml-test-suite is committed as plain files (nested `.git` stripped) under `__test__/fixtures/yaml-test-suite/`, pinned to a recorded upstream ref — deterministic, offline and Turbo-cacheable, with no fetch-on-test dependency. The harness is the regression safety net: an e2e suite covering parse success/failure, JSON equivalence, canonical-output byte equality and round-trip. It must stay at 100% (1226/1226) with empty skip maps, and it is a **ratchet in both directions** — a number that rises means a fixture's assertion changed, which is as much a failure as one that falls.
+
+The same corpus carries a second e2e suite: **token position fidelity**. Every token of every fixture must tile the source — ordered, non-overlapping, `text.slice(offset, offset + length)` equal to the token's `text`, and every gap between consecutive tokens horizontal-whitespace-only. It is the invariant the whole lint layer rests on, since every diagnostic position and every autofix span is a token position, and tiling (rather than slice-equality alone) is what proves the stream *covers* the source instead of merely quoting correctly where it speaks. ~6.4k tokens today, with a floor assertion so a silently-empty walk cannot pass as green.
 
 ## Testing
 
-`@effect/vitest` with `it.effect` as the default mode, split per concept under `__test__/` with the compliance harness in `__test__/e2e/`. Construct via `X.make(...)`.
+`@effect/vitest` with `it.effect` as the default mode, split per concept under `__test__/` with the two compliance suites in `__test__/e2e/` and the lint rule suites under `__test__/rules/`. Construct via `X.make(...)`. 19 test files, ~1600 tests.
 
 Beyond the behavior-contract suites, three families are structural: property tests via `it.effect.prop` with `Schema.toArbitrary` on the AST classes (round-trip and format idempotence — pattern-field checks use lookahead-free regexes so derivation works), diagnostic-position tests pinning `line`/`character` computation and the fatal-code predicate, plus structure-preserving-error tests asserting that failures carry diagnostic arrays rather than reason strings.
 
-## Known limitation — per-node comments
+The lint rules add a fourth: a **shared fixture harness** (`__test__/rules/harness.ts`) taking each fixture as input → expected diagnostics → expected fixed output, so thirteen rules cannot drift into thirteen dialects of "tested". Two guards ride on it. Every fixture input must **parse cleanly** unless it declares `expectsParseErrors`, checked **bidirectionally** — a fixture with an accidental syntax error would otherwise test a rule against a document the composer never built, and an unchecked opt-out would decay into a suppression pasted everywhere. And every rule is proven falsifiable by **two automated mutants**: a dead-rule mutant that reports nothing, and an unfixing mutant that reports but declines to fix. The second catches what the first cannot — correct diagnostics with an inert `fix`.
 
-Per-node comments are captured by the composer but never re-emitted by the stringifier; only a document-level leading comment round-trips. `preserveComments` reaches only that document-level comment, so the name overpromises.
+## Comment model
 
-**This is not a one-line stringifier fix, and the analysis should not be re-derived** — the package CLAUDE.md holds it. In short: the node `comment` field carries no leading/trailing discriminator, and the composer attributes an own-line comment *backward* to the preceding node, so naive emission silently relocates comments to the wrong line and construct — a worse fidelity bug than dropping them. A real fix needs a public schema change on four node classes, composer re-attribution, blank-line preservation and emission for every node kind in both styles, with the re-attribution sitting in the path every conformance fixture exercises.
+Per-node comments round-trip ([issue #127](https://github.com/spencerbeggs/effected/issues/127), shipped 2026-08-12). This replaced a standing limitation — the composer captured comments the stringifier never re-emitted — and it cost a **public breaking schema change**, because the old single `comment` field carried no leading/trailing discriminator and the composer attributed own-line comments *backward*. Emitting that faithfully was impossible: `# section` above `b:` would have re-emitted as `a: 1 # section`, relocating the comment to the wrong line and construct, which is a worse fidelity bug than dropping it.
+
+**The fields.** `YamlScalar`, `YamlMap`, `YamlSeq` and `YamlPair` each carry `commentBefore` (own-line comment text directly above), `comment` (now strictly **trailing**) and `spaceBefore` (a blank line preceded the node and its `commentBefore` block). `YamlDocument` keeps `comment` as the **leading header** block and gains `commentAfter` for the trailing block — the pre-existing header spelling stays stable rather than being renamed to match the node classes. `YamlAlias` is **deliberately excluded**: the split covers four classes, and a comment attributed to an alias node is dropped.
+
+**Attribution runs forward.** An own-line comment attaches to the *following* pair or item as `commentBefore`; a comment on the same line as the end of a pair or item is that node's trailing `comment`; consecutive own-line comments join with newlines into one run, and blank lines inside a run embed as extra `\n`s. Own-line comments after a collection's last entry become the collection's `comment` when at or beyond its content column and **escape to the enclosing scope** — through multiple levels — when shallower, which is what makes a terminal comment land on the construct a reader would say it belongs to.
+
+**Storage is the raw post-`#` slice.** Alignment spaces, no-space-after-`#` and bare `#` are all preserved byte-faithfully, because normalizing them at capture would make the field lossy for the one job it exists to do.
+
+**One string, one reserved value — so spaces-only comments carry an escape.** A comment field holds a whole run of comment lines joined into a single string, and the empty segment `""` is *reserved* as the blank-line-within-a-run encoding. That is a pigeonhole (found in #338's review-fix pass): with `""` spent, no in-string sentinel can distinguish a bare `#` (raw slice `""`) from a `#` followed by one space (raw slice `" "`) from an embedded blank line. The shipped resolution is a reversible escape rather than a second field or a structured type — a spaces-only raw slice is stored with one extra trailing space at capture (`rawCommentText` in `src/internal/composer/comments.ts`) and the renderers strip it back off at emission (`commentBlockLines` / `renderTrailingComment` in the stringifier). The escape is injective, so a bare `#`, a `#` with a trailing space and an embedded blank line all round-trip byte-intact. Its **public** consequence is real and deliberate: the comment-string value a consumer reads off a node for a spaces-only comment carries that extra trailing space, so the escaped form is what the field exposes — documented on `rawCommentText`'s TSDoc and in `packages/yaml/CLAUDE.md`.
+
+**Six divergences from the reference `yaml` package are recorded in one place** — the head of `src/internal/composer/comments.ts`. They cover pair-level rather than key/value-node placement, the alias drop, trailing-comment drops on block scalars and multi-line complex keys, flow-layout normalization, pre-`#` spacing normalization and the document field naming. Every one keeps the emitted bytes reparse-stable. Read that header before changing attribution; do not re-derive them.
+
+**Emission and the visitor.** The stringifier emits comments for every node kind in both block and flow styles, including the explicit-key and compact branches. `preserveComments` now delivers what its name promises instead of reaching only the document comment. Canonical mode (`forceDefaultStyles`) is **comment-free** — that is what keeps the e2e harness's byte-equality assertions comparing structure rather than trivia. The visitor's `Comment` event gained `placement: "leading" | "trailing"`, so a SAX consumer can tell the two apart without re-reading the source.
+
+The proof is a fixed point, not a diff: the systems-repo workflow fixture is byte-identical under `YamlFormat.formatToString`. Conformance stayed 1226/1226 across the whole change, including through the composer re-attribution that sits in the path every fixture exercises.
+
+## Lint system
+
+`@effected/yaml` ships a yamllint-class lint system ([issue #129](https://github.com/spencerbeggs/effected/issues/129)): a rule engine whose rule #1 is parse-validity, 14 built-in rules, a rule-aware `YamlLintConfig` with `default` / `relaxed` presets, and surgical autofix that routes only through `YamlEdit.applyAll`.
+
+**Its design doc is [yaml-lint.md](../yaml-lint.md)** and is not duplicated here. Three things matter at this doc's level:
+
+- It stays inside the **pure tier**. No file discovery, no config-file loading, no CLI, no autofix-to-disk — strings in, diagnostics or a fixed string out. The runner is a consumer's tier.
+- It **adds no parser**. Rules read the one materialized token array, the composed document and the source lines; the engine tokenizes and composes once per run.
+- Autofix is **not** `format`. Fixes are surgical `YamlEdit`s, never a reflow — a structural test asserts `YamlLint.ts` does not import `YamlFormat`.
 
 ## Build
 
