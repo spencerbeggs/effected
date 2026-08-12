@@ -1,6 +1,6 @@
 # @effected/package-json
 
-package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged. 12 `src/` modules (down from 34 v3 files), 14 test files, 197 tests.
+package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged — the consolidation is the point: 12 `src/` modules, down from 34 v3 files. (Test counts move every commit and are not tracked here; run `pnpm test --filter @effected/package-json`.)
 
 **Design doc:** `@../../.claude/design/effected/packages/package-json.md` — load when
 changing the public surface, the `rest` wire transform, or the error taxonomy.

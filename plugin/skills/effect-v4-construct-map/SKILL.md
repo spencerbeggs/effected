@@ -12,7 +12,7 @@ cross-referenced below; this skill is the lookup, not the tutorial. For what a
 v4 module *is* regardless of its v3 history, see `effect-v4-module-index`.
 
 **Ethos — verify against the installed package, not memory.** Everything here is
-verified against `effect@4.0.0-beta.94+`. v4 betas move fast: when an API is not
+verified against `effect@4.0.0-beta.107`. v4 betas move fast: when an API is not
 listed, check `node_modules/effect/dist/` for the module and its `.d.ts`
 signature before writing code. Never trust v3 muscle memory. One runtime probe
 beats an hour of type-error archaeology — see
@@ -35,10 +35,18 @@ The consolidation splits **stable vs unstable**:
   `Config`/`ConfigProvider`, `Cache`, `Crypto`, `Cron`, `Encoding`, and the rest
   of core.
 - **`effect/unstable/*`** (breaking changes allowed in minors; modules graduate
-  to top level as they stabilize): `ai`, `cli`, `cluster`, `devtools`,
-  `encoding`, `eventlog`, `http`, `httpapi`, `jsonschema`, `observability`,
-  `persistence`, `process`, `reactivity`, `rpc`, `schema`, `socket`, `sql`,
-  `workflow`, `workers`.
+  to top level as they stabilize) — the complete list of eighteen at beta.107:
+  `ai`, `cli`, `cluster`, `devtools`, `encoding`, `eventlog`, `http`, `httpapi`,
+  `observability`, `persistence`, `process`, `reactivity`, `rpc`, `schema`,
+  `socket`, `sql`, `workers`, `workflow`.
+
+There is **no `effect/unstable/jsonschema`** — JSON Schema is a *stable
+top-level* module, `effect/JsonSchema` (a case-only rename of v3's
+`effect/JSONSchema`, which only `tsc` catches on a case-insensitive
+filesystem). And `effect/unstable/observability` ships OTLP export in core
+(`Otlp`, `OtlpTracer`, `OtlpMetrics`, `OtlpLogger`, `PrometheusMetrics`) — see
+[observability.md](./references/observability.md) before reaching for a
+satellite.
 
 The mappings this split makes non-guessable:
 
@@ -81,13 +89,13 @@ mis-guess silently survives. Full context in the reference files.
 | `Effect.catchAll` | `Effect.catch` | the whole `catchAll*` → `catch*` family |
 | `Effect.either` | `Effect.result` (→ `Result`, not `Either`) | the `Either` module is gone |
 | `Effect.fork` / `forkDaemon` | `Effect.forkChild` / `forkDetach` | |
-| `Effect.makeSemaphore` | **Gone.** `Semaphore` is a top-level module: `Semaphore.make(n)` (Effect) / `makeUnsafe(n)`, then `sem.withPermits(1)(effect)` | `migration/forking.md` never mentions the removal (`Semaphore.ts:329,190,80`) |
-| `RequestError` / `ResponseError` (`@effect/platform` http) | one **`HttpClientError`** wrapper class carrying a `reason` union (`TransportError \| EncodeError \| InvalidUrlError \| ResponseError`) | branch on `error.reason._tag === "TransportError"`, never the top-level `_tag` — it is always `"HttpClientError"`; timeouts are separate (`Cause.isTimeoutError`). Proven in the ts-vfs fetcher's retry-only-transient policy (`HttpClientError.ts:34,293`) |
+| `Effect.makeSemaphore` | **Gone.** `Semaphore` is a top-level module: `Semaphore.make(n)` (Effect) / `makeUnsafe(n)`, then `sem.withPermits(1)(effect)` | `migration/forking.md` never mentions the removal (`Semaphore.ts:358,205,82`) |
+| `RequestError` / `ResponseError` (`@effect/platform` http) | one **`HttpClientError`** wrapper class carrying a `reason` union | branch on `error.reason._tag`, never the top-level `_tag` — it is always `"HttpClientError"`; timeouts are separate (`Cause.isTimeoutError`). Proven in the ts-vfs fetcher's retry-only-transient policy (`HttpClientError.ts:34,277,285,293`). **The reason `_tag`s are not what the type names suggest** — see below |
 | `Exit.causeOption` | `Exit.getCause` → `Option<Cause<E>>` | |
 | `Schedule.compose` | **Gone.** `Effect.retry(fx, { schedule, times, while })` | the limit is a key, not a composed schedule |
 | `Context.Tag` / `Effect.Service` | `Context.Service<Self, Shape>()("id")` | type params FIRST, then the id |
-| `FiberRef` | **`Context.Reference`** (`Context.ts:1335`); the built-in runtime keys live in `References.ts` | there is no `FiberRef.ts` on the v4 line. Concurrency, log level, tracer settings are all `Context.Reference`s now, set with `Effect.provideService` |
-| `DateTime.unsafeMake` | **`DateTime.makeUnsafe`** (`DateTime.ts:656`) | the whole `unsafe*` → `*Unsafe` suffix flip. And the safe form changed shape: `DateTime.make` returns **`Option`** (`:787`), not a throwing constructor |
+| `FiberRef` | **`Context.Reference`** (`Context.ts:1312`); the built-in runtime keys live in `References.ts` | there is no `FiberRef.ts` on the v4 line. Log level, scheduler and tracer settings are `Context.Reference`s now, set with `Effect.provideService` — but **concurrency is not one of them**, see below |
+| `DateTime.unsafeMake` | **`DateTime.makeUnsafe`** (`DateTime.ts:653`) | the whole `unsafe*` → `*Unsafe` suffix flip. And the safe form changed shape: `DateTime.make` returns **`Option`** (`:793`), not a throwing constructor |
 | `Schema.DateTimeUtc` encodes to an ISO string | encoded side is **`DateTime.Utc` itself** — string serialization moved out of the declare schemas; `Schema.DateTimeUtcFromString` is the string codec | v3 muscle memory says ISO string; probed at beta.101 (2026-07-26). Matters anywhere the ENCODED side is consumed as text — pick `DateTimeUtcFromString` for wire/string projections |
 | `Layer.scoped` | `Layer.effect` | it already handles resource-owning layers |
 | `Schema.Schema<A, I>` | `Schema.Codec<A, I>` | `Schema.Schema` takes ONE arg now |
@@ -107,18 +115,53 @@ far from the mistake.
 - **`Schema.toJsonSchema`** — it is `Schema.toJsonSchemaDocument`, and it returns
   `{ dialect, schema, definitions }`, **not** `$defs` / `properties`.
 - **`ConfigError` on the `effect` root** — it is `Config.ConfigError`.
-- **`Config.string(...).asEffect()`** — `Config<T>` already **is** an
-  `Effect<T, ConfigError>`; it pipes straight into `Effect.catchTag`.
+- **`.asEffect()` on anything** — `asEffect` has **zero occurrences core-wide**
+  at beta.107; there is no `Yieldable` trait for it to belong to. `Config<T>`
+  and `Context.Key` already **are** Effects (they pipe straight into
+  `Effect.catchTag`); `Option`/`Result` convert with `Effect.fromOption` /
+  `Effect.fromResult`. See [core-idioms.md](./references/core-idioms.md) — and
+  note `yield* someOption` **compiles and dies as a defect**.
 - **`NodeContext`** in `@effect/platform-node` — the aggregate is `NodeServices`.
 - **`@effect/cli`** — dead on the v4 line. The CLI framework is
   `effect/unstable/cli` in core. See `effect-v4-cli`.
 - **`Effect.withConfigProvider`** — gone, with no replacement of that name.
   `ConfigProvider.ConfigProvider` is a **`Context.Reference`**
-  (`ConfigProvider.ts:296`), so overriding the provider is ordinary service
+  (`ConfigProvider.ts:341`), so overriding the provider is ordinary service
   provision:
   `Effect.provideService(effect, ConfigProvider.ConfigProvider, provider)`.
   Reach for the v3 name and you get `undefined is not a function` at the call
   site — which reads like a bad import, not a rename.
+- **`References.CurrentConcurrency`** — does not exist, and neither does any
+  other concurrency `Context.Reference`: grep every `Context.Reference` id in
+  core and none of them mentions concurrency. **Inherited concurrency was
+  removed outright** (`migration/v3-to-v4.md:10517`: "`FiberRef.currentConcurrency`
+  -> `none`"). Pass `{ concurrency }` explicitly to each combinator that fans
+  out — `Effect.all`, `Effect.forEach`. This is the one built-in `FiberRef` that
+  did *not* become a `References.*` key, so the pattern the other rows teach
+  (`currentLogLevel` → `References.CurrentLogLevel`) mints a name that is
+  `undefined` at runtime.
+
+## `HttpClientError`: the `reason` `_tag`s are not the type names
+
+Branching on `error.reason._tag` is right; the values are the trap. The reason
+type is declared in two layers, and **both layer names are themselves unions,
+so neither ever appears as a `_tag`**:
+
+~~~ts
+// unstable/http/HttpClientError.ts:277,285,293
+export type RequestError  = TransportError | EncodeError | InvalidUrlError
+export type ResponseError = StatusCodeError | DecodeError | EmptyBodyError
+export type HttpClientErrorReason = RequestError | ResponseError
+~~~
+
+So `error.reason._tag` is exactly one of **six** values — `"TransportError"`,
+`"EncodeError"`, `"InvalidUrlError"`, `"StatusCodeError"`, `"DecodeError"`,
+`"EmptyBodyError"`. A retry policy written as
+`error.reason._tag === "ResponseError"` (or `=== "RequestError"`) **never
+matches** and silently retries nothing — a live-looking branch that is dead
+code. Note `ResponseError` *is* a real tagged class elsewhere, in
+`HttpServerError.ts:197`; the name collision is what makes the wrong guess
+feel confirmed.
 
 ## The `Config.withDefault` trap: retired in beta.102–105
 
@@ -153,22 +196,22 @@ perfectly good expression — the mistake surfaces far away, as a construction
 throw or a service that was never provided.
 
 Every row verified at rung 2 against the vendored source at
-`effect@4.0.0-beta.101`:
+`effect@4.0.0-beta.107`:
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:10747` — `export function Defect(options?: ErrorOptions): Defect`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:10647` — `export function ErrorInstance(options?: ErrorOptions): ErrorInstance`. Same shape, same optional-`options` trap, one page away in the same module. (beta.102–105 renamed it from `Schema.Error`; `Schema.Error` is now the error-**class factory** at `Schema.ts:14405` — see schema.md.) |
-| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:379` — `export const layer: (options?: TestClock.Options) => Layer.Layer<TestClock>`. **A function returning a Layer**, unlike almost every other `layer` in core. |
-| `Schema.Literals(["a","b"])` | `Schema.Literals` / `Schema.Literal("a","b")` | `Schema.ts:4851` — takes ONE array argument. (The variadic `Schema.Literal` trap is separate and worse: it keeps only the first literal at runtime. See the rename table above.) |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:10750` — `export function Defect(options?: ErrorOptions): Defect`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:10650` — `export function ErrorInstance(options?: ErrorOptions): ErrorInstance`. Same shape, same optional-`options` trap, one page away in the same module. (beta.102–105 renamed it from `Schema.Error`; `Schema.Error` is now the error-**class factory** at `Schema.ts:14408` — see schema.md.) |
+| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:423` — `export const layer: (options?: TestClock.Options) => Layer.Layer<TestClock>`. **A function returning a Layer**, unlike almost every other `layer` in core. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` / `Schema.Literal("a","b")` | `Schema.ts:4937` — takes ONE array argument. (The variadic `Schema.Literal` trap is separate and worse: it keeps only the first literal at runtime. See the rename table above.) |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:9339`) and `Schema.Exit(...)` (`:9610`) are factories too, but their
+(`Schema.ts:10474`) and `Schema.Exit(...)` (`:10812`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 
 **And do not over-correct: `layer` is usually a value.** `TestConsole.layer` is a
-plain `Layer.Layer<TestConsole>` (`testing/TestConsole.ts:289`), so
+plain `Layer.Layer<TestConsole>` (`testing/TestConsole.ts:294`), so
 `TestConsole.layer()` is an error. The pair sits in the same directory and reads
 identically. Check the declaration; do not pattern-match on the name.
 

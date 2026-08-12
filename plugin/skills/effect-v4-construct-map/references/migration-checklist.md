@@ -83,8 +83,13 @@ call sites; only reading finds the broken intent.
   a checked part can reject strings v3 accepted. **`Schema.Record` refined/
   transformed key schemas** now select matching keys before validating values.
   Flag both for behavior review, not just array-wrapping.
-- **`Effect.ignoreLogged` → `Effect.ignore`** — the logging variant now owns
-  the plain name; verify silent-`ignore` call sites still mean what they say.
+- **`Effect.ignoreLogged` → `Effect.ignore`** — the two collapse into one
+  combinator, with logging **opt-in through an options object**:
+  `Effect.ignore(fx, { log: true })` (`migration/v3-to-v4.md:9705`; the options
+  also take `log: Severity` and `message`). A bare `Effect.ignore(fx)` is still
+  silent, so existing silent call sites are safe as-is — it is the
+  `ignoreLogged` sites that change meaning if you rename them without adding
+  `{ log: true }`.
 
 ## 3. Removals that block — design decisions, not renames
 
@@ -97,11 +102,15 @@ call sites; only reading finds the broken intent.
 - `Effect.Service`'s `dependencies` option and the auto-generated `.Default`
   layer — hand-write `static readonly layer = Layer.effect(this, make).pipe(Layer.provide(...))`.
   House naming: `layer`, `layerTest`, `layerConfig` — not `Default`/`Live`.
-- `FiberRef` / `FiberRefs` / `FiberRefsPatch` / `Differ` — built-ins map to
+- `FiberRef` / `FiberRefs` / `FiberRefsPatch` — built-ins map to
   `References.*` keys; custom refs become `Context.Reference`. `FiberRef.set`
   has NO equivalent: its fire-and-forget mutation becomes a scoped
   `Effect.provideService` wrapped around the downstream code — a control-flow
-  rewrite, not a rename.
+  rewrite, not a rename. **Two exceptions to the mapping:** `Differ` is NOT
+  removed (`effect/Differ` is live; `migration/fiberref.md:3` says otherwise and
+  is contradicted by `migration/v3-to-v4.md:223`), and `currentConcurrency` has
+  no `References.*` key at all — inherited concurrency was removed, so pass
+  `{ concurrency }` per combinator (`v3-to-v4.md:10517`).
 - `Runtime<R>` — use `Context<R>`; `Effect.runtime<R>()` →
   `Effect.context<R>()`; `Runtime.runFork(rt)` → `Effect.runForkWith(services)`.
   If `R` is `never`, just `Effect.runFork(effect)` — don't port the
@@ -181,14 +190,23 @@ call sites; only reading finds the broken intent.
 - `Ref`/`Deferred`/`Fiber` are no longer Effects OR Yieldables: `yield* ref`
   → `yield* Ref.get(ref)`; `yield* deferred` → `yield* Deferred.await(d)`;
   `yield* fiber` → `yield* Fiber.join(f)`.
-- `Option`/`Result`/`Config`/service tags stay **Yieldable** (bare `yield*`
-  works) but are NOT Effect subtypes — passing one bare to `Effect.map`/
-  `Effect.all`/any combinator needs `.asEffect()` or a generator rewrite.
-  Grep for bare `Ref`/`Deferred`/`Fiber`/`Option`/`Config` values as
-  combinator arguments — v3's silent-read bug class is now a compile error.
-- `Config.string("x")` IS an `Effect` — `.asEffect()` on a Config for
-  `catchTag` chains, but no `Config.String` confusion: capitalized `Config.*`
-  names are Schemas.
+- **There is no `Yieldable` trait and no `.asEffect()`** — `asEffect` has zero
+  occurrences core-wide at beta.107. Only what extends `Effect` may be
+  `yield*`-ed: `Config` (`Config.ts:108`) and `Context.Key`/service tags
+  (`Context.ts:64`) do; **`Option` and `Result` do NOT** (`Option.ts:75,128`,
+  `Result.ts:96,158` — they extend only `Pipeable, Inspectable`).
+- **`yield* Option.some(x)` / `yield* someResult` is the worst row in this
+  checklist: it COMPILES and dies as a DEFECT.** Both declare
+  `[Symbol.iterator]()` (`Option.ts:82,136`; `Result.ts:104,166`), satisfying
+  the generator protocol, so no type error fires; the fiber loop then rejects
+  the value via `exitDie` (`internal/effect.ts:671`, "Not a valid effect"),
+  which bypasses every `Effect.catch`/`catchTag`. Convert explicitly:
+  `Effect.fromOption(o)` (`Effect.ts:1816`) / `Effect.fromResult(r)`
+  (`Effect.ts:1777`). Grep every bare `yield*` of an `Option`- or
+  `Result`-valued expression; the compiler will not find them for you.
+- `Config.string("x")` IS an `Effect`, so it pipes straight into `catchTag`
+  chains with no conversion — but no `Config.String` confusion: capitalized
+  `Config.*` names are Schemas.
 
 ## 8. Schema — the biggest delta
 
@@ -213,7 +231,12 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
 - **Filter combinators** → `is*` used via `.check(...)`: `between`→`isBetween`,
   `int`→`isInt`, `minLength`→`isMinLength`, … Traps: `length`→`isLengthBetween`
   (not `isLength`), and **`isBetween` takes `{ minimum, maximum }` named
-  options, not positional `(min, max)`**.
+  options, not positional `(min, max)`** (`Schema.ts:7775` — the shared
+  `makeIsBetween` factory, so `isBetweenDate`/`isBetweenBigInt`/
+  `isBetweenBigDecimal` are named-options too). **Do not generalize that to the
+  whole family: `isLengthBetween(minimum, maximum, annotations?)` IS positional**
+  (`Schema.ts:8935`). The two adjacent-sounding checks disagree on argument
+  shape, and each one type-errors in the other's style.
 - **Struct surgery** → `.mapFields(...)`: `pick`/`omit` →
   `Struct.pick`/`Struct.omit`, `partial` → `Struct.map(Schema.optional)`,
   `extend` → `Struct.assign` (struct) or `mapMembers(Tuple.map(...))` (union).
@@ -290,7 +313,11 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
   loader probes mis-resolve otherwise.
 - HTTP errors: one `HttpClientError` wrapper class with a `reason` union —
   branch on `error.reason._tag`, never the top-level `_tag`; timeouts are
-  `Cause.isTimeoutError`, separate.
+  `Cause.isTimeoutError`, separate. The `_tag` values are **not** the two type
+  names in the declaration: `RequestError` and `ResponseError` are themselves
+  unions (`HttpClientError.ts:277,285`), so `reason._tag` is one of
+  `TransportError` / `EncodeError` / `InvalidUrlError` / `StatusCodeError` /
+  `DecodeError` / `EmptyBodyError` — a branch on `"ResponseError"` never fires.
 - `PubSub.publish` returns `Effect<boolean>` with `E = never` — wrapping it in
   `Effect.catch` is vacuous; the real exposure is a defect from a hostile hub
   (`Effect.catchDefect`, NOT `catchCause`, which also swallows interruption).

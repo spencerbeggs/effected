@@ -4,6 +4,17 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107: `toJsonSchemaDocument`, `JsonSchema.toDocumentDraft07`,
+`toArbitrary`, `toEquivalence`, `toIso`/`Optic` and `toDifferJsonPatch` all exist as described, and every
+code block typechecks except the faker example (external module). FALSIFIED and corrected inline:
+`Schema.toArbitrary(schema)` used directly as an Arbitrary (it returns a FACTORY — apply it to
+`FastCheck`), `Schema.toArbitraryLazy` (does not exist; `toArbitrary` is already the lazy form), the
+`{ report: true }` generation-report mode with its `OpaqueFilter` warnings (`toArbitrary` takes exactly
+one argument, and neither `report` nor `OpaqueFilter` appears in source), `Schema.toJsonSchema` in prose
+(the entry point is `toJsonSchemaDocument`), and `new SchemaIssue.InvalidType(ast, Option.some(input))`.
+PROBED and restored: the Iso and Differ conversion failures do throw a bare `Error("Schema validation
+failed")` carrying a `SchemaIssue.Issue` in `cause`. NOT PROBED: the JSON Schema output blobs.
 -->
 
 # Schema Generation and Tooling
@@ -269,7 +280,7 @@ console.log(JSON.stringify(document, null, 2))
 
 #### Defining a JSON-safe representation for custom types
 
-This example shows how `Schema.toCodecJson` and `Schema.toJsonSchema` can describe the same JSON shape for a custom type.
+This example shows how `Schema.toCodecJson` and `Schema.toJsonSchemaDocument` can describe the same JSON shape for a custom type. (There is no `Schema.toJsonSchema`; the JSON Schema entry point is `toJsonSchemaDocument`, as every example in this file uses.)
 
 `Headers` is not JSON-friendly by default. `JSON.stringify(new Headers({ a: "b" }))` produces `{}` because the header data is not stored in enumerable properties. By adding a `toCodecJson` annotation, you define a JSON-safe representation and use it for both serialization and JSON Schema generation.
 
@@ -458,9 +469,11 @@ console.log(JSON.stringify(document, null, 2))
 
 ### Generating an Arbitrary from a Schema
 
-Property-based tests need generators. `Schema.toArbitrary` derives a
-`fast-check` `Arbitrary` that generates decoded `Type` values accepted by the
-schema.
+Property-based tests need generators. `Schema.toArbitrary` derives a **factory**
+that accepts the `fast-check` module and returns an `Arbitrary` generating
+decoded `Type` values accepted by the schema. The declared type is
+`Arbitrary<T> = (fc: typeof FastCheck) => FastCheck.Arbitrary<T>`, so you always
+apply the result to `FastCheck` before using it.
 
 Most schemas do not need any extra work:
 
@@ -473,22 +486,19 @@ const Person = Schema.Struct({
   age: Schema.Int.check(Schema.isBetween({ minimum: 18, maximum: 80 }))
 })
 
-const PersonArbitrary = Schema.toArbitrary(Person)
+const PersonArbitrary = Schema.toArbitrary(Person)(FastCheck)
 
 console.log(FastCheck.sample(PersonArbitrary, 3))
 ```
 
-Use `Schema.toArbitraryLazy` only when you want the caller to provide
-`fast-check`:
-
-```ts
-import { Schema } from "effect"
-import { FastCheck } from "effect/testing"
-
-const makeStringArbitrary = Schema.toArbitraryLazy(Schema.String)
-
-const StringArbitrary = makeStringArbitrary(FastCheck)
-```
+> **Beta trap.** `Schema.toArbitrary(schema)` is not itself an `Arbitrary`.
+> Omitting the `(FastCheck)` application fails with
+> `TS2345: Argument of type 'Arbitrary<...>' is not assignable to parameter of
+> type 'Arbitrary<unknown> | IRawProperty<unknown, boolean>'` — the two
+> `Arbitrary` names in that message are different types, which makes the error
+> read like a version mismatch when it is a missing call. There is also no
+> separate lazy variant: `Schema.toArbitraryLazy` is `undefined`, because
+> `toArbitrary` is already the lazy form.
 
 `Schema.Never` and declaration schemas without a `toArbitrary` annotation cannot
 be derived automatically.
@@ -542,34 +552,15 @@ This works because the final predicate check rejects strings that are not
 palindromes. It may need many attempts, because the base string generator has no
 reason to produce mirrored strings.
 
-#### Reports
-
-Use `{ report: true }` when you want to know which filters did not guide
-generation:
-
-```ts
-import { Schema } from "effect"
-
-const isPalindrome = (s: string) => s === Array.from(s).reverse().join("")
-
-const Palindrome = Schema.String.check(
-  Schema.makeFilter(isPalindrome, {
-    expected: "a palindrome"
-  })
-)
-
-const result = Schema.toArbitrary(Palindrome, { report: true })
-
-result.value
-result.report.warnings
-```
-
-An `OpaqueFilter` warning means: "this filter is still checked, but it did not
-help build the generator."
-
-Reports contain warnings only. Unsupported schemas, impossible constraints,
-invalid candidates, and recursive schemas without a finite terminal path still
-fail immediately.
+> **Beta trap.** There is no generation report. `Schema.toArbitrary` takes
+> exactly one argument; `Schema.toArbitrary(schema, { report: true })` fails
+> with `TS2554: Expected 1 arguments, but got 2`, and the returned value is a
+> plain factory with no `.value` or `.report` properties. An earlier draft of
+> this guide documented a `{ report: true }` mode returning
+> `{ value, report: { warnings } }` with an `OpaqueFilter` warning class —
+> neither `report` nor `OpaqueFilter` appears anywhere in the source. There is
+> no built-in way to learn which filters failed to guide generation; you find
+> out by watching a property test churn.
 
 #### Custom Filters With Constraints
 
@@ -739,7 +730,7 @@ Generic declarations receive one derivation per type parameter:
 For an opaque wrapper type, you usually map both sources in the same way:
 
 ```ts
-import { Effect, Option, Schema, SchemaIssue, SchemaParser } from "effect"
+import { Effect, Schema, SchemaIssue, SchemaParser } from "effect"
 
 class Box<A> {
   private constructor(private readonly value: A) {}
@@ -760,7 +751,7 @@ const BoxSchema = <A extends Schema.Top>(value: A) =>
     [value],
     ([valueCodec]) => (input, ast, options) => {
       if (!isBox(input)) {
-        return Effect.fail(new SchemaIssue.InvalidType(ast, Option.some(input)))
+        return Effect.fail(new SchemaIssue.InvalidType(ast, input, options))
       }
       return Effect.map(
         SchemaParser.decodeUnknownEffect(valueCodec)(Box.unbox(input), options),
@@ -847,7 +838,7 @@ const Person = Schema.Struct({
   company: Company
 })
 
-console.log(FastCheck.sample(Schema.toArbitrary(Person), 3))
+console.log(FastCheck.sample(Schema.toArbitrary(Person)(FastCheck), 3))
 ```
 
 These overrides are useful because the values have domain shape: names look like
@@ -972,6 +963,8 @@ console.log(_s.replace("b", new B({ a: new A({ s: "a" }) })))
 // B { a: A { s: 'b' } }
 ```
 
+Reading through the generated `Iso` encodes the schema value, while replacing through it decodes the new focus. Either direction can throw an `Error` with the generic message `"Schema validation failed"` and a `SchemaIssue.Issue` in its `cause`. Use `SchemaIssue.makeFormatterDefault()` to format that cause when human-readable details are needed — the `Error` message itself carries no detail at all.
+
 ### Using the Differ Module for Type-Safe JSON Patches
 
 The `Differ` module lets you compute and apply JSON Patch (RFC 6902) changes for any value described by a `Schema`. You give it a schema once, then use the returned differ to produce a patch from an old value to a new value, and to apply that patch.
@@ -1050,3 +1043,5 @@ The idea is simple: if you have a `Schema` for a type `T`, you can serialize any
   3. Decode the patched JSON back to `T` using the schema.
 
 This approach keeps patches independent from TypeScript types and uses the schema as the guardrail when turning JSON back into `T`.
+
+Schema conversion failures from `diff` or `patch` throw an `Error` with the generic message `"Schema validation failed"` and a `SchemaIssue.Issue` in its `cause`. Format that cause explicitly with `SchemaIssue.makeFormatterDefault()`. Errors raised while applying an invalid JSON Patch operation are separate `JsonPatch` errors rather than schema validation failures.

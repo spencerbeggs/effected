@@ -12,8 +12,13 @@ reasoning.
 The class IS the schema: one `Schema.Class` carries fields, validation, methods,
 statics, and derived tooling (`toArbitrary`, `toEquivalence`,
 `toJsonSchemaDocument`) in a single artifact. These patterns keep that artifact
-idiomatic and sound. Everything below is verified against `effect@4.0.0-beta.94+`;
-v4 betas move fast, so probe anything not shown here before writing it
+idiomatic and sound. The API surface below — every `Schema.*`,
+`SchemaTransformation.*`, `SchemaGetter.*` and `SchemaIssue.*` name it asserts,
+and every `file:line` citation — is verified against `effect@4.0.0-beta.107`.
+Individual runtime-behaviour claims carry their own probe stamps inline; where a
+stamp names an older beta, that claim was **not** re-run for beta.107 and the
+stamp is the honest one. v4 betas move fast, so probe anything not shown here
+before writing it
 (`node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)"`).
 For a v3→v4 name lookup, see `effect-v4-construct-map`; for the canonical
 upstream detail on any construct, see the vendored `references/` in this skill.
@@ -72,7 +77,10 @@ never pass an explicit `undefined` for a `Schema.optionalKey` field (a *present*
 **Instances are NOT `Pipeable` in v4** (first boundary port). The factory's
 instance type is `S["Type"] & Inherited` — the decoded record plus any brand,
 neither of which declares `Pipeable`. A runtime `.pipe` method exists on the
-prototype, so it *runs*, but tsgo rejects instance `.pipe(...)`. If you want
+prototype, so it *runs* — re-confirmed at beta.107, `typeof instance.pipe ===
+"function"` — but tsgo rejects instance `.pipe(...)`. (The runtime half is
+re-verified; the type-level rejection is a compile-time claim that was **not**
+re-probed for beta.107.) If you want
 pipeable instances — e.g. to call a dual-signature `Function.dual` static
 pipeably (`node.pipe(Node.move(2))`) — retain the manual `Pipeable` overload
 block on the class (the `pipe(...args) { return pipeArguments(this, args) }`
@@ -81,11 +89,13 @@ member) so the instance type advertises it.
 ### `disableChecks` skips checks, not validation — and buys no speed
 
 `MakeOptions.disableChecks` reads like an escape hatch from validation. Its own
-docstring says "skip validation when you trust the data" (`Schema.ts:107`) and
-"skips constructor validation" (`Schema.ts:12754`). Both are misleading, and the
+docstring says "skip validation when you trust the data" (`Schema.ts:109`) and
+"skips constructor validation" (`Schema.ts:14246`). Both are misleading, and the
 vendored cluster code leans on it as the trusted-construction idiom
-(`unstable/cluster/EntityAddress.ts:93`, `RunnerAddress.ts:112`, `Runner.ts:129`),
-so it looks blessed. What it actually does — probed against `effect@4.0.0-beta.97`:
+(`unstable/cluster/EntityAddress.ts:93`, `RunnerAddress.ts:112`, `Runner.ts:129` —
+all three still exact at beta.107), so it looks blessed. What it actually does —
+originally probed against `effect@4.0.0-beta.97`, every row re-probed unchanged
+at `effect@4.0.0-beta.107`:
 
 | Passing `{ disableChecks: true }` | Effect |
 | --- | --- |
@@ -93,69 +103,61 @@ so it looks blessed. What it actually does — probed against `effect@4.0.0-beta
 | a *type* error (`n: "nope"` where `n` is `Schema.Number`) | **still throws** `Expected number, got "nope"` |
 | the structural re-parse | **still runs** — it is not a fast path |
 
-It gates exactly the check phase (`SchemaParser.ts:1056,1071`; `SchemaAST.ts:3527`)
-and nothing else. So it is a *semantic* switch for trusted data, never a
-*performance* one: a depth-20 recursive build measured 2671 ms with
-`disableChecks: true` against 2711 ms without it — inside the noise.
+It gates exactly the check phase (`SchemaParser.ts:1110,1136`; `SchemaAST.ts:1424`,
+`:1550`, `:1606`) and nothing else. Citation trap: the old `SchemaAST.ts:3527`
+pointer is stale — that line is now `decodeTo`, not a check gate.
 
-### Recursive `Schema.Class` construction is exponential in **depth**
+So it is a *semantic* switch for trusted data, never a *performance* one: at
+beta.107 a depth-20 recursive build measures 0.58 ms with `disableChecks: true`
+against 0.04 ms without it — both JIT noise, and neither anywhere near the
+seconds-scale figures this file used to quote.
 
-Constructing a recursive `Schema.Class` tree node-by-node — the shape every parser
-AST takes — re-validates the whole subtree at each level, so the cost **doubles per
-level**. Still true on `effect@4.0.0-beta.101`; a left-spine tree, all four
-construction paths:
+### Recursive `Schema.Class` construction is LINEAR — the exponential claim is retracted
 
-| Depth | `new Node` | `Node.make` | `new TNode` | `TNode.make` |
-| --- | --- | --- | --- | --- |
-| 10 | 33.5 ms | 5.3 ms | 11.9 ms | 5.4 ms |
-| 14 | 162.7 ms | 57.2 ms | 110.2 ms | 86.8 ms |
-| 16 | 640.4 ms | 206.7 ms | 363.1 ms | 340.8 ms |
-| 18 | 1741.6 ms | 846.1 ms | 1489.0 ms | 1877.2 ms |
-| 20 | **5906.0 ms** | **3583.2 ms** | **8803.8 ms** | **5663.4 ms** |
+**Cost trap: this section asserted the opposite through beta.101, with a table of
+seconds-scale timings.** It does not reproduce. Re-probed at
+`effect@4.0.0-beta.107`, a left-spine recursive `Schema.Class` tree built
+node-by-node is **flat and sub-millisecond at every depth**:
 
-`X.make(...)` is no better than `new`, `TaggedClass` is no better than `Class`, and
-`disableChecks` does not help (above). A parser that materializes a recursive
-`Schema.Class` AST is therefore exponential in nesting depth on a document a user
-can hand you — this is what the `@effected/jsonc` parse-tree fix hit.
+| Depth | `new Node` | `Node.make` | `TNode.make` |
+| --- | --- | --- | --- |
+| 10 | 0.46 ms | 0.08 ms | 0.31 ms |
+| 20 | 0.04 ms | 0.05 ms | 0.05 ms |
+| 40 | 0.09 ms | 0.07 ms | 0.11 ms |
+| 60 | 0.13 ms | 0.15 ms | 0.15 ms |
 
-**Scope it correctly: the cost is nesting depth, nothing else.** Neither call count
-nor breadth is affected, so a report that `X.make` "is linear" is measuring one of
-those and does not contradict the above:
+The depth-20 row is four orders of magnitude off the retracted `5906.0 ms`. The
+probe carried a control that genuinely does 2^d work (3.91 ms at d=20, 51.10 ms
+at d=24), so the harness could see exponential cost and did not; and a control
+proving `make` still rejects a bad field, so construction was doing real work.
+Flat and broad shapes were never in doubt and remain linear.
 
-| Shape | Cost |
-| --- | --- |
-| N independent flat `.make(...)` calls | **linear** — 100 000 calls in 19.5 ms |
-| one node with N children, depth 1 | **linear** — 10 000 children in 27.4 ms |
-| left spine of depth N | **exponential** — see the table |
+**So do not add a validation bypass for cost reasons.** The
+`Object.assign(Object.create(Proto), props)` recipe this section used to
+prescribe is no longer justified by performance. Where such a bypass already
+exists (`@effected/jsonc`'s `makeNodeUnsafe`) it buys trusted-path construction,
+nothing more — and note that at beta.107 a nested class field accepts a plain
+literal in both the foreign and self-recursive cases, so even that motivation is
+weaker than it was (see the nested-field table in `SKILL.md`).
 
-**The fix: bypass the constructor on the internal build path only.** Validate once at
-the boundary, then materialize nodes against the prototype:
+If you do keep such a bypass, two corrections to the old recipe:
 
-```ts
-const Proto = Object.getPrototypeOf(Node.make({ tag: "x", children: [] }));
-const node = (props: NodeProps): Node => Object.assign(Object.create(Proto), props);
-```
+- **`Data.Class`'s constructor is no longer `Object.assign`.** At
+  `Data.ts:48-56` it is `super(); InternalRecord.assignProperties(this, props)`,
+  and `assignProperties` (`internal/record.ts:16`) copies own enumerable keys
+  *but defines `__proto__` as a plain data property* instead of invoking the
+  prototype setter. A raw `Object.assign` bypass is therefore **not** an exact
+  reproduction any more: it is a prototype-pollution hole on attacker-shaped
+  props. Citation trap: the old `Data.ts:57` / "reproduces it exactly" pairing
+  was true of an earlier v4 beta and is not true at beta.107.
+- **`TaggedClass` still needs `_tag` written by hand.** The constructor
+  synthesizes it; a property copy does not. Omit it and `_tag === undefined`, so
+  `Equal.equals` is `false` and every `_tag` match falls through. Pass
+  `{ _tag: "TNode", ...props }`.
 
-This is faithful, not a hack: `Data.Class`'s constructor *is*
-`super(); Object.assign(this, props)` (`Data.ts:57`), so the bypass reproduces it
-exactly. The prototype carries the methods and the `Equal`/`Hash` implementations —
-re-probed at beta.101, `Equal.equals(bypassBuilt, constructorBuilt) === true` and
-`bypassBuilt instanceof Node === true`. Depth 1000 builds in 0.11 ms.
-
-**Gotcha for `TaggedClass`: you must write `_tag` yourself.** The constructor
-synthesizes it; `Object.assign` does not. Omit it and you get a silently broken node —
-`_tag === undefined`, so `Equal.equals` is `false` and every `_tag` match falls
-through. Passing `{ _tag: "TNode", ...props }` restores `Equal.equals === true`.
-
-Constraints on using it: the props must already be valid (you validated at the
-boundary, or you built them yourself), and it stays **internal** — public
-constructors keep validating. `yaml` and `toml` will meet this the moment either
-materializes a recursive `Schema.Class` AST.
-
-*Evidence: runtime probe against the installed beta, `resolved effect:
-4.0.0-beta.101`, Node 26, left-spine build per depth. Supersedes the beta.97 table
-(depth 20 was 2711.4 ms); the behavior did not change, the machine and the sample
-did.*
+*Evidence: runtime probe from `packages/semver` against the installed beta,
+`resolved effect: 4.0.0-beta.107`, Node 26, left-spine build per depth, with the
+two controls described above. Supersedes both the beta.97 and beta.101 tables.*
 
 ## Fields & optionality
 
@@ -196,8 +198,10 @@ Three distinct tools — pick by intent:
   Verified `is*` members: `isInt`, `isBetween`, `isGreaterThan`,
   `isGreaterThanOrEqualTo`, `isLessThan`, `isLessThanOrEqualTo`, `isMultipleOf`,
   `isFinite`, `isMinLength`, `isMaxLength`, `isLengthBetween`, `isPattern`,
-  `isNonEmpty`, `isUUID`, `isULID`, `isCapitalized`. (`positive`/`negative`/
-  `nonNegative`/`nonPositive` were **removed** — compose `isGreaterThan(0)` etc.)
+  `isNonEmpty`, `isUUID`, `isULID`, `isCapitalized` — all sixteen re-verified
+  present at beta.107. (`positive`/`negative`/`nonNegative`/`nonPositive` were
+  **removed** and are still `undefined` — compose `isGreaterThan(0)` etc. The v3
+  `Schema.filter` is likewise `undefined`.)
   Match the bounds to what your parser enforces (safe integers), or a
   `make`-constructed value can print a string the parser then rejects.
 
@@ -208,8 +212,8 @@ Three distinct tools — pick by intent:
   ```
 
 - **Inline predicates** → `Schema.check(Schema.makeFilter(pred))` (v3
-  `filter(predicate)`). `makeFilter`'s return shape is rich — this is the tool
-  for cross-field validation:
+  `filter(predicate)`; `Schema.ts:6565`). `makeFilter`'s return shape is rich —
+  this is the tool for cross-field validation:
 
   | return | meaning |
   | --- | --- |
@@ -232,6 +236,23 @@ Three distinct tools — pick by intent:
    ),
   );
   ```
+
+  **Annotation trap: the message annotation the default formatter reads is
+  `expected`, not `title`.** `makeFilter`'s second argument is an
+  `Annotations.Filter`, and the formatter's `formatCheck` reads
+  `check.annotations?.expected`, falling back to the literal string `<filter>`
+  (`SchemaIssue.ts:1099-1104`). Probed at beta.107:
+
+  ```text
+  makeFilter(pred, { title: "a === b" })     -> "Expected <filter>"   <-- the trap
+  makeFilter(pred, { expected: "a === b" })  -> "Expected a === b"
+  makeFilter(pred)                           -> "Expected <filter>"
+  ```
+
+  So `title` is not wrong, it is merely invisible to error output — a
+  cross-field check annotated only with `title` reports an anonymous failure.
+  Returning a `string` from the predicate is the other way to get a real
+  message, and it needs no annotation at all.
 
 ## Unions & literals — prefer tagged
 
@@ -274,7 +295,10 @@ const BooleanFromString = Schema.Literals(["on", "off"]).pipe(
 );
 ```
 
-Fallible transform — **both spellings are valid in beta.94**; know both so
+Fallible transform — **both spellings are still valid at beta.107**
+(`SchemaTransformation.transformOrFail` at `SchemaTransformation.ts:286`,
+`SchemaGetter.transformOrFail` at `SchemaGetter.ts:561`, and `SchemaGetter.String`);
+know both so
 migration-doc code and our-port code both read cleanly:
 
 ```ts
@@ -314,7 +338,11 @@ input is retained only under `reportInput: true`). A failed
 throwing **constructor/adapter** paths (`X.make`, class `new`, `Schema.asserts`,
 `SchemaParser`'s sync/promise adapters) instead throw a plain `Error` with the
 generic message `"Schema validation failed"` and the issue on `.cause` — format
-it with `SchemaIssue.makeFormatterDefault()(error.cause)` (probed beta.105).
+it with `SchemaIssue.makeFormatterDefault()(error.cause)` (probed beta.105,
+re-probed unchanged at beta.107: `X.make` throws a plain `Error` whose
+`.message` is exactly `"Schema validation failed"`, while `decodeUnknownSync`
+throws a `SchemaError` whose `.message` is formatted and whose `.issue` is
+structured).
 
 ### String codecs as class statics (`FromString`)
 

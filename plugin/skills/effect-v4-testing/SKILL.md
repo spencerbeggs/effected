@@ -21,14 +21,17 @@ conversion has its own traps →
 
 **Install it by exact version, matching your `effect` pin** — never bare, never
 `@beta`. The v4 line is published only under prerelease versions mirroring
-`effect`'s own beta numbering; neither default resolves to it (checked
-2026-07-24):
+`effect`'s own beta numbering; neither default resolves to it (dist-tags checked
+2026-08-12):
 
 | Specifier | Resolves to | Peers on |
 | --- | --- | --- |
-| bare / `@latest` | `0.30.0` | `effect@^3.22.0` — **the v3 line** |
-| `@beta` | `4.0.0-beta.101` | `effect@^4.0.0-beta.101` — ahead of a beta.99 pin |
-| `@4.0.0-beta.101` | `4.0.0-beta.101` | `effect@^4.0.0-beta.101` ✅ |
+| bare / `@latest` | `0.30.0` | `effect@^3.22.0`, `vitest@^3.2.0` — **the v3 line** |
+| `@beta` | the newest beta, whatever that is (`4.0.0-beta.107` today) | that same beta — it **floats off your pin** the moment upstream publishes |
+| `@4.0.0-beta.107` | `4.0.0-beta.107` | `effect@^4.0.0-beta.107`, `vitest@>=4.1.0 <5` ✅ |
+
+The exact-pin row is not a recommendation of *this* beta — it is the shape:
+pin the same beta number your `effect` catalog pins.
 
 The bare form is the dangerous one: it installs the **v3-line** package with no
 peer warning at all, failing only at runtime on the first `it.effect` call with
@@ -71,10 +74,13 @@ describe("Jsonc", () => {
 
 - **`it.effect` runs the returned Effect** and provides the default test
   environment — `TestEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())`
-  (`packages/vitest/src/internal/internal.ts:42`). Its type is
+  (`packages/vitest/src/internal/internal.ts:44`), piped through
+  `flow(Effect.scoped, Effect.provide(TestEnv))` (`internal.ts:356`). Its type is
   `Tester<R | Scope.Scope>`, so scoped effects (`Effect.acquireRelease`, scoped
   layers) run **directly** under `it.effect`.
-- **There is no `it.scoped`** (still true at beta.101). The Tester surface is
+- **There is no `it.scoped`** (still true at beta.107; the v3→v4 migration guide
+  spells the replacement out — `it.scoped(...)` becomes `it.effect(...)`,
+  `it.scopedLive(...)` becomes `it.live(...)`). The Tester surface is
   `skip`/`skipIf`/`runIf`/`only`/`each`/`fails`/`prop` — **`it.effect.skipIf`
   and `it.effect.runIf` exist and are well-typed** (`packages/vitest/src/index.ts:56-59`);
   reach for them instead of hand-rolling a conditional `describe`.
@@ -205,10 +211,10 @@ describe("foo", () => {
 
 ### `layer()` memoizes; plain `Effect.provide` does NOT. That asymmetry is the whole decision
 
-The top-level `layer` builds its layer once per group through a `MemoMap`
-(`packages/vitest/src/internal/internal.ts:239,241`), keeps the scope open for
-the group, and closes it in `afterAll`. A per-test `.pipe(Effect.provide(L))`
-carries no memo map and rebuilds per test.
+The top-level `layer` builds its layer once per group through a `MemoMap` and an
+`Effect.cached` build (`packages/vitest/src/internal/internal.ts:241,243,245`),
+keeps the scope open for the group, and closes it in `afterAll`. A per-test
+`.pipe(Effect.provide(L))` carries no memo map and rebuilds per test.
 
 **But that is per-TEST, not per-provide: NESTED provides memoize constituent
 consts.** Within one running effect, `Effect.provide` memoizes layers by
@@ -251,7 +257,8 @@ Worked failures → [references/migrating-a-repo.md](./references/migrating-a-re
 Where state must vary per test, keep the per-test provide, or use **distinct
 keys per test** and flush explicitly before asserting counts.
 
-Other `layer(...)` mechanics (unchanged at beta.101):
+Other `layer(...)` mechanics (surface re-checked at beta.107 against
+`packages/vitest/src/index.ts:100-158`):
 
 - The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
   **`MethodsNonLive` has no `.live`** — a wall-clock test that also needs the
@@ -266,7 +273,7 @@ Other `layer(...)` mechanics (unchanged at beta.101):
 
 **Testing a boundary-tier package that does real IO needs no platform package.**
 `Path.layer` and `FileSystem.layerNoop(partial)` both come from `effect` core
-(Path.ts:870; FileSystem.ts:1040 — there is **no** `FileSystem.layer` in core,
+(Path.ts:867; FileSystem.ts:954 — there is **no** `FileSystem.layer` in core,
 only `layerNoop`), so `@effected/walker` tests filesystem behavior with zero
 `@effect/platform-node` devDependency:
 
@@ -284,12 +291,13 @@ layer(FileSystem.layerNoop({ exists: (p) => Effect.succeed(p === "/a/.rc") }))(
 ```
 
 **`layerNoop` fails every member you did not override with a typed `NotFound`**
-(`FileSystem.ts:912`, `:961`), which a package reading `NotFound` as
-domain-level "absent" treats as a legitimate answer — so the stub silently
-supplies **empty fixtures** the moment the code switches which read method it
-calls. Override every read the code could reach, and assert fixture *contents*
-somewhere. Same tier: **`readFileString` strips a leading BOM**
-(`FileSystem.ts:789` decodes through `TextDecoder`, default `ignoreBOM: false`)
+(`makeNoop` at `FileSystem.ts:825`; the `readFile` / `readFileString` members at
+`:873` / `:876`), which a package reading `NotFound` as domain-level "absent"
+treats as a legitimate answer — so the stub silently supplies **empty fixtures**
+the moment the code switches which read method it calls. Override every read the
+code could reach, and assert fixture *contents* somewhere. Same tier:
+**`readFileString` strips a leading BOM** (`FileSystem.ts:701` decodes
+`impl.readFile` through `TextDecoder` at `:704`, default `ignoreBOM: false`)
 → [references/false-greens.md](./references/false-greens.md).
 
 A suite-boundary layer cannot vary per test, so several filesystem fixtures need
@@ -304,18 +312,19 @@ calls.push(p); … } })` records a read that was only *described*. Worked probe 
 ### Faulting ONE method of a real layer
 
 For "behaves like the real service except this one method fails on demand",
-`layerNoop` is the wrong tool (it stubs everything) and there is no
-`FileSystem.layerWith` / `Layer.mapService` at beta.101. The house recipe is
+`layerNoop` is the wrong tool (it stubs everything) and there is still no
+`FileSystem.layerWith` / `Layer.mapService` at beta.107. The house recipe is
 `Layer.effect` + spread the base + `Layer.provide(base)` — with
-`Layer.updateService` (`Layer.ts:1999`) as the shorter form when the subject is
-itself a layer, and `Layer.mock` (`Layer.ts:2262`) for partial stubs that die
+`Layer.updateService` (`Layer.ts:2063`) as the shorter form when the subject is
+itself a layer, and `Layer.mock` (`Layer.ts:2304`) for partial stubs that die
 loudly. Full scaffold and the three ways to get the spread wrong →
 **[references/fault-injection.md](./references/fault-injection.md)**.
 
 ## Property testing with `it.effect.prop`
 
 Feed a Schema (or class — the class *is* the schema) directly as an arbitrary;
-`it.effect.prop` converts it via `Schema.toArbitrary`:
+`it.effect.prop` converts it via `Schema.toArbitrary` (`Schema.ts:14554`;
+called at `packages/vitest/src/internal/internal.ts:132`):
 
 ```ts
 it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
@@ -329,22 +338,26 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
 - **Schema conversion is `it.effect.prop`-only.** The top-level `it.prop`
   (non-Effect body) accepts a `Schema` in its *type* but **throws
   `Schemas are not supported yet`** at runtime, in both the array and record
-  forms (`packages/vitest/src/internal/internal.ts:179,195`). Hand-built
-  arbitraries go to `it.prop`: `it.prop("addition commutes",
-  [FastCheck.integer(), FastCheck.integer()], ([a, b]) => a + b === b + a)`,
-  importing `FastCheck` from `effect/testing`.
-- **The named-record form of `it.effect.prop` is FIXED at beta.101** —
-  `internal.ts:151` now converts a Schema value, so both `[Schema]` and
-  `{ n: Schema }` work. The array-form-only workaround for beta.94 is retired.
+  forms (`packages/vitest/src/internal/internal.ts:181,197` — still thrown at
+  beta.107). Hand-built arbitraries go to `it.prop` instead, importing
+  `FastCheck` from `effect/testing`:
+  `it.prop("addition commutes", [FastCheck.integer(), FastCheck.integer()], ([a, b]) => a + b === b + a)`.
+- **The named-record form of `it.effect.prop` is FIXED** (since beta.101, still
+  so at beta.107) — `internal.ts:153` converts a Schema value inside the record
+  reducer, so both `[Schema]` and `{ n: Schema }` work. The array-form-only
+  workaround for beta.94 is retired.
 - **`isPattern` regexes must be lookahead-free.** `Schema.toArbitrary` derives
   generators from `.check(...)` constraints, and fast-check's `stringMatching`
   throws `Assertions of kind Lookahead not implemented yet`. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`.
 - **`fc.fullUnicodeString` / `fc.fullUnicode` do not exist** in the FastCheck
-  bundled with `effect/testing` (probed 2026-07-18). The v4 spelling for
-  hostile-unicode strings is `FastCheck.string({ unit: "binary" })`; plain
-  `FastCheck.string()` stays BMP-safe and misses exactly the inputs a
-  never-throws property exists to find.
+  `effect/testing` re-exports (probed 2026-07-18; re-confirmed at beta.107,
+  where `effect/testing/FastCheck` is a bare re-export of `fast-check@4.9.0`
+  and both names are `undefined` on the module). The v4 spelling for
+  hostile-unicode strings is `FastCheck.string({ unit: "binary" })` — `unit` is
+  `"grapheme" | "grapheme-composite" | "grapheme-ascii" | "binary" |
+  "binary-ascii" | Arbitrary<string>`; plain `FastCheck.string()` stays BMP-safe
+  and misses exactly the inputs a never-throws property exists to find.
 
 ## Time-dependent logic: `TestClock`
 
@@ -393,8 +406,12 @@ not per-file.
 ### …and it starts at the EPOCH, so clock *reads* return 1970
 
 The quiet half: `it.effect` starts the `TestClock` at time zero, so anything
-that *reads* the clock computes against **1970-01-01T00:00:00.000Z** (probed on
-beta.94 — `DateTime.now` inside a bare `it.effect` is exactly the epoch). A CLI
+that *reads* the clock computes against **1970-01-01T00:00:00.000Z**. The start
+time is source-visible — `TestClock`'s constructor opens with
+`let currentTimestamp: number = new Date(0).getTime()` (`TestClock.ts:257`), and
+the migration guide describes `TestClock.layer()` as creating an "epoch-based
+test clock" — while the downstream consequence was probed on beta.94
+(`DateTime.now` inside a bare `it.effect` is exactly the epoch). A CLI
 resolved **zero** Node versions because against a 1970 "now" every release was
 still unreleased; any TTL or "newer than N days" check inverts. Set the clock
 with `TestClock.setTime(...)` whenever the code under test reads time.
@@ -417,13 +434,14 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
   **`effect/testing`** subpath — `TestClock`, `TestConsole`, `FastCheck`,
   `TestSchema`, not `@effect/vitest`.
 - **Do not manually provide `TestClock.layer()` under `it.effect`.** They
-  compose — `Clock` is a `Context.Reference` (`Clock.ts:111`), `TestClock.layer()`
-  merely sets it (`TestClock.ts:379`), and `adjust` drives whatever clock is
-  ambient through `fiber.getRef(Clock.Clock)` (`TestClock.ts:412`). Nothing
-  breaks, but drop the provide: a nested TestClock captures its `liveClock` at
-  build time (`TestClock.ts:235`), so its "live" clock **is** the outer
-  TestClock — `withLive` returns virtual time and the
-  too-long-without-advancing warning fiber can never fire.
+  compose — `Clock` is a `Context.Reference` (`Clock.ts:189`), `TestClock.layer()`
+  merely sets it via `Layer.effect(Clock.Clock)` (`TestClock.ts:423`), and
+  `adjust` (`:494`) resolves its clock through `testClockWith`, which reads
+  whatever is ambient: `fiber.getRef(Clock.Clock) as TestClock`
+  (`TestClock.ts:458`). Nothing breaks, but drop the provide: a nested TestClock
+  captures its `liveClock` at build time (`TestClock.ts:254`), so its "live"
+  clock **is** the outer TestClock — `withLive` (`:278`) returns virtual time
+  and the too-long-without-advancing warning fiber can never fire.
 - **Never call `TestClock.adjust` under `it.live`** — that `as TestClock` cast is
   unchecked, so it is undefined behavior, not a type error. And **a
   clock-driving test must not share a `layer()` group**: `adjust` is cumulative
@@ -450,8 +468,11 @@ applied and unrestored → [references/false-greens.md](./references/false-green
 `TestEnv` installs `TestConsole` alongside the clock, so a test spying on the
 real `console.log` to capture Effect's output silently captures **nothing** —
 and **auditing for `Console.*` call sites is insufficient**, because Effect's
-default logger writes through the same ref (`Logger.ts:273`, `:310`, `:354` all
-read `options.fiber.getRef(effect.ConsoleRef)`). One repo's audit cleared a
+default logger writes through the same ref. The identity is source-visible, not
+folklore: `Console.Console` **is** `effect.ConsoleRef` (`Console.ts:83`),
+`TestConsole.layer` is `Layer.effect(Console.Console)(make)`
+(`testing/TestConsole.ts:294`), and `Logger.ts:269`, `:309`, `:363` all read
+`options.fiber.getRef(effect.ConsoleRef)`. One repo's audit cleared a
 package by grepping `Console.*` and missed three live `Effect.logWarning`
 sites. Only direct `console.*`, direct `process.stdout.write` / `stderr.write`,
 and a **replaced** logger set (`Logger.layer([...])` without
@@ -559,7 +580,21 @@ stale-dist signature.
   eight: a prototype-pollution guard whose payload could never mutate the
   asserted object, and a `@ts-expect-error` in a tsconfig-excluded file.
 
-> **Version note.** Verified against `@effect/vitest@4.0.0-beta.101` on
-> `effect@4.0.0-beta.101` (2026-07-25), with older probes dated inline. If the
-> `effect` catalog bumps, re-verify the `layer` options bag and the
-> `it.prop`-throws-on-Schema behavior first.
+> **Version note — read the two halves separately.**
+>
+> **Surface** (existence, signatures, source line citations) re-verified against
+> `@effect/vitest@4.0.0-beta.107` on `effect@4.0.0-beta.107` on **2026-08-12**,
+> by reading `packages/vitest/src` and `packages/effect/src`. That covers the
+> Tester surface, the `layer` options bags, `TestEnv`, the
+> `it.prop`-throws-on-Schema sites, `Path.layer` / `FileSystem.layerNoop`,
+> `Layer.updateService` / `mock` / `fresh`, the `Clock` / `TestClock` /
+> `Console` / `Logger` refs, and the `@effect/vitest` npm dist-tags.
+>
+> **Behaviour** was NOT re-probed at beta.107. Every semantic claim here still
+> rests on its original probe, dated inline: the nested-`Effect.provide`
+> memoization asymmetry (beta.101), `TestConsole.logLines` accumulation
+> (beta.94), the eager `layerNoop` recorder (beta.94), the epoch consequence for
+> `DateTime.now` (beta.94), the ~18× coverage timing factor, and the
+> single-vs-two-latch concurrency result. Treat those as **unverified at
+> beta.107** — plausible and previously measured, not re-stamped. Re-probe
+> before relying on one in a way a wrong answer would make expensive.

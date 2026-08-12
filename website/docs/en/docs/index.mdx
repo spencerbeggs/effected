@@ -12,20 +12,21 @@ libraries only — the applications that consume them stay in their own repos.
 Scope is closed by five consuming applications, not by how many source repos remain. A library earns its
 place by being something one of those five actually needs.
 
-## Nothing is published yet
+## How this ships
 
-Nothing here is on npm. The whole kit ships together at `0.1.0`, once it can replace the business logic of
-the five applications that define its scope, and `1.0.0` waits for Effect v4 GA. That includes
-[@effected/pnpm-plugin-effect](/pnpm-plugin-effect): it is not a library, so the tier taxonomy does not
-describe it, but it is a public package and it ships in the same release.
+Every package below is on npm, including [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) — it is not a
+library, so the tier taxonomy does not describe it, but it is a public package and it publishes like the
+rest. Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA.
 
-No package is released on its own. That is what buys one internally consistent graph on day one: every
-package's peer range names the same Effect v4 beta, and no consumer ever installs a half-built kit. Until
-then the packages are developed against the beta pinned in the `effect` catalog, and a beta bump is a
-coordinated change across the whole kit rather than a per-package decision.
+Releases are changeset-driven. CI releases whatever the pending changesets name, which is sometimes the
+whole kit and sometimes one package on its own — both are ordinary, and versions move per package rather
+than in lockstep. Each package's npm page is the source of truth for the version to install.
 
-The API reference in these pages therefore describes packages you cannot yet install. It is generated from
-the source that will ship.
+What is coordinated is the Effect pin: every package is built against the single beta named in the `effect`
+catalog, so peer ranges agree with each other, and advancing that beta is a change across the whole kit
+rather than a per-package decision.
+
+The API reference in these pages is generated from the source of the published packages.
 
 ## Tiers
 
@@ -48,8 +49,8 @@ on one axis, dependency surface, and that axis is meaningless for a package noth
 companion has no tier rather than a fourth one.
 
 [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) is the only companion today. It ships two pnpm catalogs
-and a pnpmfile — configuration, not code. Installing it is optional for you; shipping it is not optional for
-the release, and it goes out at `0.1.0` with the libraries.
+and a pnpmfile — configuration, not code. Installing it is optional for you; publishing it is not optional
+for the kit, since it is what holds a consumer's Effect versions where the libraries expect them.
 
 ## Packages
 
@@ -59,27 +60,39 @@ the release, and it goes out at `0.1.0` with the libraries.
 | [@effected/jsonc](/jsonc) | pure | Zero-dependency JSONC parsing, editing and formatting as Effect schemas |
 | [@effected/yaml](/yaml) | pure | Zero-dependency YAML parsing, editing and formatting as Effect schemas |
 | [@effected/toml](/toml) | pure | TOML 1.1.0 parsing, editing and formatting as Effect schemas, with typed diagnostics, a lossless CST and first-class date-time values |
-| [@effected/package-json](/package-json) | integrated | package.json parsing, editing, validation and file IO as Effect schemas |
-| [@effected/npm](/npm) | pure | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers |
-| [@effected/config-file](/config-file) | boundary | Composable config file loading: JSON, JSONC, YAML and TOML codecs, resolution strategies and merge behaviors |
-| [@effected/walker](/walker) | boundary | Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate |
+| [@effected/markdown](/markdown) | pure | CommonMark 0.31.2 and GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, edit, format and project to and from mdast |
 | [@effected/glob](/glob) | pure | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
+| [@effected/spdx](/spdx) | pure | SPDX license identifiers, exceptions and license expressions as Effect Schema classes |
 | [@effected/lockfiles](/lockfiles) | pure | Lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
-| [@effected/store](/store) | integrated | Durable local state: a schema-versioned, migrated store, and a cache built on it |
+| [@effected/package-json](/package-json) | boundary | package.json parsing, editing, validation and file IO as Effect schemas |
+| [@effected/tsconfig-json](/tsconfig-json) | boundary | tsconfig.json as Effect schemas: JSONC document and compiler-option schemas, tsc-parity `extends`-chain resolution and nearest-config discovery |
+| [@effected/config-file](/config-file) | boundary | Composable config file loading: JSON, JSONC, YAML and TOML codecs, resolution strategies and merge behaviors |
+| [@effected/npm](/npm) | boundary | Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers, plus the registry and publish services |
+| [@effected/walker](/walker) | boundary | Upward path traversal as Effect primitives: ascend a directory chain and return the first candidate satisfying a predicate |
 | [@effected/xdg](/xdg) | boundary | XDG Base Directory resolution: app directories, native directories and config-file resolvers |
-| [@effected/runtime-resolver](/runtime-resolver) | boundary | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
+| [@effected/commands](/commands) | boundary | Structured command running and CLI tool discovery over Effect core's `ChildProcessSpawner` contract |
+| [@effected/git](/git) | boundary | Typed git introspection over Effect core's `ChildProcessSpawner`, with a clearly-marked mutating tier |
+| [@effected/templates](/templates) | boundary | Managed-section blocks in user-editable files: parse, reconcile, sync and check delimited regions |
+| [@effected/jsonl](/jsonl) | boundary | Append-only, schema-validated JSONL journals as a definable Effect service |
+| [@effected/runtimes](/runtimes) | boundary | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
+| [@effected/store](/store) | integrated | Durable local state on SQLite: a schema-versioned migrated store and a TTL cache with eviction, over one shared migration ledger |
 | [@effected/workspaces](/workspaces) | integrated | Monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
+| [@effected/github](/github) | integrated | Typed GitHub REST and GraphQL services over the octokit core request surface, with app auth and resource helpers |
+| [@effected/github-actions](/github-actions) | integrated | The GitHub Actions runtime: env, inputs, outputs, state, logging, cache, artifacts, blob storage, OIDC and the token bridge |
+| [@effected/sbom](/sbom) | integrated | CycloneDX 1.6 SBOM construction, SLSA provenance, NTIA validation and Sigstore signing as typed services |
+| [@effected/schemastore](/schemastore) | integrated | Build, validate, version and publish SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources |
+| [@effected/app](/app) | integrated | The application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite store, a TTL cache and a config file to the same place |
 | [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) | companion — no tier | The pnpm config dependency publishing the two Effect catalogs every package here pins against |
 
 Installing [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) holds your `effect` versions and peer floors
 at exactly the values this kit was built and tested against, rather than leaving you to resolve your own.
 
-## What is left
+## What comes next
 
-One package remains before the kit is complete: `app-kit`. [@effected/ts-vfs](/ts-vfs) has landed, and it was
-the last package with real domain logic to port. `app-kit` goes last because it is a thin composition over
-`xdg`, `config-file` and `store`, and what belongs in it is decided by how consumers actually wire the kit —
-which the ts-vfs port is the first real answer to.
+The set above is the kit. Everything the five consuming applications need has landed, with
+[@effected/app](/app) as the composition over `xdg`, `config-file` and `store` that the earlier ports were
+building toward. Work now goes into hardening what exists against real consumers, and a new package earns
+its place the same way the rest did — one of those five applications needs it.
 
 ## Source
 

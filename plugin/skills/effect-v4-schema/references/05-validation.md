@@ -4,6 +4,17 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107: the filter factories, `makeFilter`,
+`makeFilterGroup`, `brand`, `SchemaGetter.checkEffect` and `Schema.FilterOutput`/`FilterIssue` all
+exist as described, and every code block typechecks. FALSIFIED and corrected inline: the claim that
+structural filters are evaluated separately so both a nested and a structural issue surface under
+`{ errors: "all" }` (PROBED on beta.107 — a nested failure suppresses the containing structural
+filter entirely, and only one issue is reported), the `{ title }` annotation on `InvalidValue` (the
+default formatter reads `message`, then `expected`, never `title`; the annotation bag has an index
+signature so the typo compiles), the dropped `options` argument on `InvalidValue`, `Getter.checkEffect`
+in prose (the module is `SchemaGetter`), and `Schema.Array$` (now `Schema.$Array`).
+PROBED: default messages carry no `, got X` suffix and render as `SchemaError(...)`.
 -->
 
 # Validation
@@ -23,7 +34,7 @@ import { Schema } from "effect"
 const schema = Schema.String.check(Schema.makeFilter((s) => s.length >= 3))
 
 console.log(String(Schema.decodeUnknownExit(schema)("")))
-// Failure(Cause([Fail(SchemaError: Expected <filter>, got "")]))
+// Failure(Cause([Fail(SchemaError(Expected <filter>))]))
 ```
 
 You can attach annotations and provide a custom error message when defining a filter.
@@ -42,7 +53,7 @@ const schema = Schema.String.check(
 )
 
 console.log(String(Schema.decodeUnknownExit(schema)("")))
-// Failure(Cause([Fail(SchemaError: length must be >= 3, got 0)]))
+// Failure(Cause([Fail(SchemaError(length must be >= 3, got 0))]))
 ```
 
 ### Filter error messages and schema identifiers
@@ -68,10 +79,10 @@ import { Schema } from "effect"
 const Username = Schema.NonEmptyString.annotate({ identifier: "Username" })
 
 console.log(String(Schema.decodeUnknownExit(Username)(null)))
-// Failure(Cause([Fail(SchemaError: Expected Username, got null)]))
+// Failure(Cause([Fail(SchemaError(Expected Username))]))
 
 console.log(String(Schema.decodeUnknownExit(Username)("")))
-// Failure(Cause([Fail(SchemaError: Expected a value with a length of at least 1, got "")]))
+// Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 1))]))
 ```
 
 ### Filter return shapes
@@ -99,8 +110,8 @@ const schema = Schema.Struct({ password: Schema.String, confirmPassword: Schema.
 )
 
 console.log(String(Schema.decodeUnknownExit(schema)({ password: "123456", confirmPassword: "1234567" })))
-// Failure(Cause([Fail(SchemaError: password and confirmPassword must match
-//   at ["password"])]))
+// Failure(Cause([Fail(SchemaError(password and confirmPassword must match
+//   at ["password"]))]))
 ```
 
 **Example** (Reporting multiple failures at once)
@@ -120,10 +131,10 @@ const schema = Schema.Struct({ a: Schema.Finite, b: Schema.Finite, c: Schema.Fin
 )
 
 console.log(String(Schema.decodeUnknownExit(schema)({ a: 1, b: 0, c: 0 })))
-// Failure(Cause([Fail(SchemaError: b must be greater than 0
+// Failure(Cause([Fail(SchemaError(b must be greater than 0
 //   at ["b"]
 // c must be greater than 0
-//   at ["c"])]))
+//   at ["c"]))]))
 ```
 
 ## Preserving Schema Type After Filtering
@@ -182,7 +193,7 @@ const schema = Schema.String.check(
 )
 
 console.log(String(Schema.decodeUnknownExit(schema)(" a")))
-// Failure(Cause([Fail(SchemaError: Expected a value with a length of at least 3, got " a")]))
+// Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 3))]))
 ```
 
 **Example** (Using `isMinLength` with an object that has `length`)
@@ -194,7 +205,7 @@ import { Schema } from "effect"
 const schema = Schema.Struct({ length: Schema.Number }).check(Schema.isMinLength(3))
 
 console.log(String(Schema.decodeUnknownExit(schema)({ length: 2 })))
-// Failure(Cause([Fail(SchemaError: Expected a value with a length of at least 3, got {"length":2}]))
+// Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 3))]))
 ```
 
 **Example** (Validating array length)
@@ -206,7 +217,7 @@ import { Schema } from "effect"
 const schema = Schema.Array(Schema.String).check(Schema.isMinLength(3))
 
 console.log(String(Schema.decodeUnknownExit(schema)(["a", "b"])))
-// Failure(Cause([Fail(SchemaError: Expected a value with a length of at least 3, got ["a","b"]]))
+// Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 3))]))
 ```
 
 ## Multiple Issues Reporting
@@ -228,8 +239,8 @@ console.log(
   )
 )
 /*
-Failure(Cause([Fail(SchemaError: Expected a value with a length of at least 3, got " a"
-Expected a string with no leading or trailing whitespace, got " a")]))
+Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 3
+Expected a string with no leading or trailing whitespace))]))
 */
 ```
 
@@ -254,7 +265,7 @@ console.log(
     })
   )
 )
-// Failure(Cause([Fail(SchemaError: Expected a value with a length of at least 3, got " a")]))
+// Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 3))]))
 ```
 
 ## Filter Groups
@@ -286,7 +297,7 @@ Use `Schema.refine` to refine a schema to a more specific type.
 ```ts
 import { Schema } from "effect"
 
-//      ┌─── refine<readonly [string, string, ...string[]], Schema.Array$<Schema.String>>
+//      ┌─── refine<readonly [string, string, ...string[]], Schema.$Array<Schema.String>>
 //      ▼
 const refined = Schema.Array(Schema.String).pipe(
   Schema.refine((arr): arr is readonly [string, string, ...Array<string>] => arr.length >= 2)
@@ -311,16 +322,26 @@ const branded = Schema.String.pipe(Schema.brand("UserId"))
 
 Some filters check the structure of a value rather than its contents — for example, the number of items in an array or the number of keys in an object. These are called **structural filters**.
 
-Structural filters are evaluated separately from item-level filters, which allows multiple issues to be reported when `{ errors: "all" }` is used. Examples include:
+Examples include:
 
 - `isMinLength` or `isMaxLength` on arrays
 - `isMinSize` or `isMaxSize` on objects with a `size` property
 - `isMinProperties` or `isMaxProperties` on objects
 - any constraint that applies to the "shape" of a value rather than to its nested values
 
-These filters are evaluated separately from item-level filters and allow multiple issues to be reported when `{ errors: "all" }` is used.
+Structural filters run only after the base array, object, or declaration and its
+nested values parse successfully. If a nested value fails, its issue is reported
+but structural filters on the containing value are **not** evaluated, even with
+`{ errors: "all" }`.
 
-**Example** (Validating an array with item and structural constraints)
+> **Beta trap.** Earlier drafts of this guide claimed the opposite — that
+> structural filters are evaluated separately from item-level ones so both
+> issues surface together under `{ errors: "all" }` — and showed a two-issue
+> expected output. Probed on `4.0.0-beta.107`: the nested `isNonEmpty` failure
+> below suppresses the containing `isMinLength(3)` entirely, and only one issue
+> is reported. Do not write a test that asserts on the second issue.
+
+**Example** (A nested failure prevents the structural filter from running)
 
 ```ts
 import { Schema } from "effect"
@@ -333,10 +354,8 @@ const schema = Schema.Struct({
 
 console.log(String(Schema.decodeUnknownExit(schema)({ tags: ["a", ""] }, { errors: "all" })))
 /*
-Failure(Cause([Fail(SchemaError: Expected a value with a length of at least 1, got ""
-  at ["tags"][1]
-Expected a value with a length of at least 3, got ["a",""]
-  at ["tags"])]))
+Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 1
+  at ["tags"][1]))]))
 */
 ```
 
@@ -344,12 +363,12 @@ Expected a value with a length of at least 3, got ["a",""]
 
 Filters passed to `.check(...)` must be synchronous. When you need to call an API or use a service during validation, use an effectful filter instead. Effectful filters run inside an `Effect`, which means they can be asynchronous and access services.
 
-Define an effectful filter with `Getter.checkEffect` as part of a transformation.
+Define an effectful filter with `SchemaGetter.checkEffect` as part of a transformation. (There is no `Getter` module; the top-level module is `SchemaGetter`.)
 
 **Example** (Asynchronous validation of a numeric value)
 
 ```ts
-import { Effect, Option, Result, Schema, SchemaGetter, SchemaIssue } from "effect"
+import { Effect, Result, Schema, SchemaGetter, SchemaIssue } from "effect"
 
 // Simulated API call that fails when userId is 0
 const myapi = (userId: number) =>
@@ -362,19 +381,33 @@ const myapi = (userId: number) =>
 
 const schema = Schema.Finite.pipe(
   Schema.decode({
-    decode: SchemaGetter.checkEffect((n) =>
+    decode: SchemaGetter.checkEffect((n, options) =>
       Effect.gen(function*() {
         // Call the async API and wrap the result in a Result
         const user = yield* Effect.result(myapi(n))
 
         // If the result is an error, return a SchemaIssue
-        return Result.isFailure(user) ? new SchemaIssue.InvalidValue({ title: "not found" }, n) : undefined // No issue, value is valid
+        return Result.isFailure(user)
+          ? new SchemaIssue.InvalidValue({ message: "not found" }, n, options)
+          : undefined // No issue, value is valid
       })
     ),
     encode: SchemaGetter.passthrough()
   })
 )
 ```
+
+> **Beta trap (two of them).** `SchemaIssue.InvalidValue`'s annotation bag is
+> `{ expected?, message? }`, but it also carries an index signature, so a
+> misspelled key type-checks and then silently does nothing. `{ title: "not
+> found" }` compiles and formats as `"Expected a valid value"` — the default
+> formatter consults `message`, then `expected`, then falls back to `<filter>`;
+> it never reads `title`.
+>
+> The constructor is `(annotations?, input?, options?)`. Dropping the third
+> argument also compiles, but the issue then never retains its input, so
+> `{ reportInput: true }` has no effect on it. `checkEffect`'s callback receives
+> `(input, options)` precisely so you can thread `options` through.
 
 ## Filter Factories
 

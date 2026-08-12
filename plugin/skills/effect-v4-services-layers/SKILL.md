@@ -5,9 +5,17 @@ description: Use when defining Effect v4 services or wiring Layers — the `Cont
 
 # Services & Layers (Effect v4)
 
-Verified against `effect@4.0.0-beta.94+`. A service is a typed key into the
-runtime's context; a layer is the recipe that builds it. Get three things
-right — the one service form, provide-once composition, and memoization by
+**API surface** — existence, signatures and the source line citations below —
+verified against `effect@4.0.0-beta.107` on 2026-08-12 by reading
+`packages/effect/src`. The **behavioural** claims are older and were not
+re-probed: the memoize-by-reference resource-count result and the two
+temporal-dead-zone results are beta.94 probes, and the sync-facade /
+requirement-union notes are beta.97–98 probes, each dated where it appears.
+Treat those as unverified at beta.107.
+
+A service is a typed key into the runtime's context; a layer is the recipe that
+builds it. Get three things right — the one service form, provide-once
+composition, and memoization by
 reference — and the wiring stays honest and cheap. For the v3→v4 name
 lookup (what a construct *was* called), see `effect-v4-construct-map`; for
 what any core module *is* and when to reach for it, `effect-v4-module-index`.
@@ -32,7 +40,7 @@ Argument order differs from v3: **type params first** via
 
 **What did NOT change: tags are still Effects.** A service key remains a
 first-class Effect — `Context.Key<Identifier, Shape> extends
-Effect<Shape, never, Identifier>` (`Context.ts:65` at beta.98) — so
+Effect<Shape, never, Identifier>` (`Context.ts:63` at beta.107) — so
 `yield* Database` works, and combinator-style consumer code like
 `Effect.flatMap(Database, (db) => …)` composes directly with no `.asEffect()`
 or unwrap step. Related gotcha when hunting the source: the module is
@@ -431,16 +439,16 @@ deeper.
 ### `Layer.mock`'s optionality is earned, not given — and one plain member revokes it
 
 `Layer.mock(Service, impl)` takes `PartialEffectful<S>`, not `Partial<S>`
-(`Layer.ts:2262`). That type is not "everything optional" — it splits the shape
+(`Layer.ts:2304`). That type is not "everything optional" — it splits the shape
 on one predicate:
 
 ```ts
-// Layer.ts:2190 — a member is OPTIONAL iff it matches AnyEffectOrStream; else REQUIRED
+// Layer.ts:2230 — a member is OPTIONAL iff it matches AnyEffectOrStream; else REQUIRED
 export type PartialEffectful<A extends object> = Types.Simplify<
   & { [K in keyof A as A[K] extends AnyEffectOrStream ? K : never]?: A[K] }
   & { [K in keyof A as A[K] extends AnyEffectOrStream ? never : K]: A[K] }
 >
-// Layer.ts:2199 — AnyEffectOrStream = Effect | Stream | Channel, or a function returning one
+// Layer.ts:2239 — AnyEffectOrStream = Effect | Stream | Channel, or a function returning one
 ```
 
 So **any non-effectful member is required in every single mock**: a sync

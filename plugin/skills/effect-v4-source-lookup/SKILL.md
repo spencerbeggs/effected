@@ -121,6 +121,23 @@ The migration notes document the *recommended path*, not the surface. They are e
 
 So: **a removal is never settled by rung 1.** If the docs are silent on a symbol, that is not evidence the symbol is fine. Go to rung 2.
 
+### Rung 1 also asserts things source refutes
+
+Silence is the *gentler* failure. The migration notes also make positive claims that the tree contradicts, in both directions — and a confident wrong answer costs more than an absent one. Both of these were found in one audit at beta.107:
+
+- **A method that does not exist.** `migration/yieldable.md` documents the `Yieldable` trait as `asEffect(): Effect<A, E, R>` and states the runtime calls `.asEffect()` internally. **`asEffect` has zero occurrences in the entire source tree.** A design built on it fails at the first call.
+- **A removal that did not happen.** `migration/fiberref.md` lists `Differ` as removed alongside `FiberRef` / `FiberRefs` / `FiberRefsPatch`. Those three are genuinely gone; **`Differ` is alive** (`index.ts:142`), and `migration/v3-to-v4.md` even maps `effect/Differ` → `effect/Differ` and documents the surviving interface. The notes contradict themselves.
+
+**Rung 1 settles renames and nothing else.** Not existence, not removal, not trait mechanics — those are rung 2, and behaviour is rung 3. Treat a positive claim in the notes about *what a symbol is or does* exactly as you treat their silence: unsettled until you have read the source.
+
+### `SCHEMA.md` is a version-exact oracle that still loses to source
+
+The vendored tree ships `packages/effect/SCHEMA.md` **at the pin** — 7,400 lines of upstream Schema documentation, versioned with the source rather than floating like a website. That makes it far stronger than `migration/`: it describes the surface you actually have, so it is an excellent **diff oracle** for checking a claim quickly, and when it disagrees with a skill it is usually the skill that is wrong.
+
+It is still a document, and it does not outrank `src`. A beta.107 audit of the Schema references found roughly thirty disagreements where `SCHEMA.md` was right — and **eight where it was itself wrong**, on `Getter`/`Parser`, the `effect/data` import path, `Schema.brand<T>()`, `UnknownFromJsonString`, `cause.failures`, `Array$`, `toJsonSchema` and `ValidDate`. Those corrections went beyond the pinned upstream doc on source authority.
+
+So: reach for it early because it is cheap and version-exact, and treat a disagreement with it as a strong signal worth chasing — then settle the answer in `packages/effect/src`. Call it rung 1.5: better than the migration notes, never a substitute for reading the declaration.
+
 ### A bare existence-grep false-negatives on built-in names
 
 Rung 2 is usually one grep: `grep -n 'export const Foo\|export function Foo'`.
@@ -133,20 +150,20 @@ of the global `Array` type, so core defines the symbol under a private name and
 renames it in an `export {}` block:
 
 ```ts
-// Schema.ts:4512 — the real definition, under a name you did not grep for
+// Schema.ts:4598 — the real definition, under a name you did not grep for
 const ArraySchema = Struct_.lambda<ArrayLambda>((schema) => …)
 
-// Schema.ts:4516 — the export, in a block your grep pattern never matches
-export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4535
+// Schema.ts:4602 — the export, in a block your grep pattern never matches
+export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4619
 ```
 
 `Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns
 nothing. The confirmed occurrences of this pattern at beta.101 —
-`Schema.ts:4535`, `Equivalence.ts:622`, `Order.ts:578`, `Config.ts:828` — are all
+`Schema.ts:4619`, `Equivalence.ts:620`, `Order.ts:578`, `Config.ts:1072` — are all
 `Array`, but treat the *class* of names as suspect, not just that one:
 `Array`, `Record`, `Map`, `Set`, `Error`, `Date`, `Number`, `String`, `Object`,
 `Symbol`, `Function`, `Boolean`. (Some of them do grep normally —
-`Schema.Record` is a plain `export function Record` at `Schema.ts:3830` — which
+`Schema.Record` is a plain `export function Record` at `Schema.ts:3929` — which
 is exactly why the inconsistency catches people.)
 
 **When a built-in-colliding name greps as absent, do not conclude it was
@@ -207,7 +224,7 @@ conclusion.** Picking is how a stale read gets laundered into a verified fact.
 
 - **Rung 1** — `migration/services.md` never mentions it. Reading harder produces nothing.
 - **A runtime check** says it does not exist: `typeof Context.Key` is `undefined` and `"Key" in Context` is `false`, because it is type-only.
-- **Rung 2** — `$SRC/packages/effect/src/Context.ts:65` settles it:
+- **Rung 2** — `$SRC/packages/effect/src/Context.ts:64` settles it:
 
   ```ts
   export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>
@@ -215,7 +232,7 @@ conclusion.** Picking is how a stale read gets laundered into a verified fact.
 
   It exists, it is type-only, and `Shape` is **covariant** — so a `Context.Key` parameter accepts a wider shape than declared, and a design that expected a compile error there will not get one.
 
-  `$EFFECT_SRC/Context.ts:65` is the same declaration, at the same line. Either root answers a rung-2 question.
+  `$EFFECT_SRC/Context.ts:64` is the same declaration, at the same line. Either root answers a rung-2 question.
 
 Three answers, one truth, and the cheap rungs are the ones that lie.
 

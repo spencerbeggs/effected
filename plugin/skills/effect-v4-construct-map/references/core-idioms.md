@@ -1,6 +1,6 @@
 # Core idioms — v3 → v4
 
-Verified against `effect@4.0.0-beta.94+`. Idiomatic form → see `effect-v4-idioms`.
+Verified against `effect@4.0.0-beta.107`. Idiomatic form → see `effect-v4-idioms`.
 
 ## Constructor and validation semantics
 
@@ -32,7 +32,8 @@ This bites *pervasively* in v3→v4 ports.
 | --- | --- |
 | `Either` module / `Effect.either(fx)` | **Gone.** `Effect.result(fx)` → `Effect<Result<A, E>>`; branch with `Result.isSuccess` / `Result.isFailure` (from `effect/Result`) |
 | `Runtime<R>` type | **Removed.** Use `Context<R>`. `Runtime` module now only holds `Teardown`, `defaultTeardown`, `makeRunMain` |
-| `FiberRef` / `FiberRefs` / `FiberRefsPatch` / `Differ` | **Removed.** Fiber-local state is now `Context.Reference`; built-ins moved to the `References` module |
+| `FiberRef` / `FiberRefs` / `FiberRefsPatch` | **Removed.** Fiber-local state is now `Context.Reference`; built-ins moved to the `References` module |
+| `Differ` | **NOT removed** — `effect/Differ` is live at beta.107. `migration/fiberref.md:3` lists it among the removals and is wrong; the machine-readable import map disagrees with its own prose (`migration/v3-to-v4.md:223` maps `effect/Differ -> effect/Differ`). The interface survives, now unbranded/structural, with the patch application arity changed to `patch(oldValue, patch)` (`v3-to-v4.md:9389`). What *did* go is the `Chunk` patch namespace → RFC 6902 via `JsonPatch` |
 | `SortedSet` | **Removed entirely.** Use a sorted `ReadonlyArray` + `Order`, or `HashSet` when order is not needed |
 | `Hash.cached(this)(h)` | **Removed.** Hash without caching; a cheap canonical form is `Hash.string(canonicalString)` |
 | `effect/schema/Check` (guessed name) | Does not exist. Check combinators live on `Schema` itself as `Schema.is*` |
@@ -70,7 +71,7 @@ limit onto a backoff is the v3 habit; in v4 the limit is just another key.
 | yield `Ref` | `yield* ref` | `yield* Ref.get(ref)` |
 | yield `Deferred` | `yield* deferred` | `yield* Deferred.await(deferred)` |
 | yield `Fiber` | `yield* fiber` | `yield* Fiber.join(fiber)` |
-| Yieldable → combinator | direct | `.asEffect()` (e.g. `Option.some(42).asEffect()`) |
+| `Option`/`Result` → Effect | direct (they WERE Effect subtypes) | `Effect.fromOption(o)` (`Effect.ts:1816`) / `Effect.fromResult(r)` (`Effect.ts:1777`). **NOT `.asEffect()`** — see below |
 | fork | `Effect.fork` | `Effect.forkChild` |
 | fork daemon | `Effect.forkDaemon` | `Effect.forkDetach` |
 | fork all / err-handler | `Effect.forkAll` / `forkWithErrorHandler` | **Removed** |
@@ -120,18 +121,54 @@ if (Option.isSome(cause)) {
 }
 ~~~
 
-Built-in FiberRefs moved to the `References` module: `currentConcurrency` →
-`References.CurrentConcurrency`, `currentLogLevel` → `References.CurrentLogLevel`,
-`currentMinimumLogLevel` → `References.MinimumLogLevel`, `currentLogAnnotations` →
-`References.CurrentLogAnnotations`, `currentScheduler` → `References.Scheduler`,
+Built-in FiberRefs moved to the `References` module: `currentLogLevel` →
+`References.CurrentLogLevel`, `currentMinimumLogLevel` → `References.MinimumLogLevel`,
+`currentLogAnnotations` → `References.CurrentLogAnnotations`, `currentLogSpan` →
+`References.CurrentLogSpans`, `currentScheduler` → `References.Scheduler`,
 `currentMaxOpsBeforeYield` → `References.MaxOpsBeforeYield`,
-`currentTracerEnabled` → `References.TracerEnabled`.
+`currentTracerEnabled` → `References.TracerEnabled`, `unhandledErrorLogLevel` →
+`References.UnhandledLogLevel`. (`Scheduler` and `MaxOpsBeforeYield` are declared in
+`effect/Scheduler` — `Scheduler.ts:78,269` — and re-exported through `References`, so
+either import path works.)
 
-Yieldable trait: v3 many types WERE Effect subtypes; v4 has a narrower
-`Yieldable` trait — `yield*`-able but not assignable to `Effect`. Still directly
-yieldable: `Effect`, `Option` (fails `NoSuchElementError`), `Result`, `Config`
-(fails `ConfigError`), `Context.Service`. No longer yieldable (call the module
-fn): `Ref` / `Deferred` / `Fiber` as above.
+**`currentConcurrency` is the exception and has NO `References.*` key.**
+`References.CurrentConcurrency` does not exist, and no `Context.Reference` in core
+carries concurrency at all. Inherited concurrency was removed outright
+(`migration/v3-to-v4.md:10517` — "`FiberRef.currentConcurrency` -> `none`"); pass
+`{ concurrency }` explicitly to `Effect.all` / `Effect.forEach` / any combinator
+that fans out. Extrapolating the `current*` → `References.Current*` pattern here
+mints a name that reads as real and is `undefined` at runtime.
+
+## `yield*` — the subtype net is gone, and `Option`/`Result` fail as DEFECTS
+
+v3 made many types Effect subtypes. **There is no `Yieldable` trait in v4** — no
+such interface is exported from core, and **`asEffect` has zero occurrences
+core-wide at beta.107**. Any `.asEffect()` you remember is a v4-beta artifact
+that no longer exists; calling it is `undefined is not a function`.
+
+What may be `yield*`-ed in `Effect.gen` is exactly *what extends `Effect`*:
+
+| yield in `Effect.gen`? | why |
+| --- | --- |
+| `Effect` | itself |
+| `Config<T>` | `Config.ts:108` — `interface Config<out T> extends Effect.Effect<T, ConfigError>`; fails `ConfigError` |
+| `Context.Key` / `Context.Service` | `Context.ts:64` — `interface Key<out I, out S> extends Effect<S, never, I>` |
+| **`Option`** | **NO** — `Option.ts:75,128`: `Some`/`None` extend only `Pipeable, Inspectable` |
+| **`Result`** | **NO** — `Result.ts:96,158`: `Success`/`Failure` extend only `Pipeable, Inspectable` |
+| `Ref` / `Deferred` / `Fiber` | **NO** — call the module fn (`Ref.get`, `Deferred.await`, `Fiber.join`) |
+
+**`Option` and `Result` are the dangerous pair, because they still typecheck.**
+Both declare `[Symbol.iterator]()` (`Option.ts:82,136`; `Result.ts:104,166`), so
+the generator protocol is satisfied and `yield* Option.some(7)` compiles clean.
+At runtime the fiber loop rejects the value through `exitDie`
+(`internal/effect.ts:671`, `Fiber.runLoop: Not a valid effect: some(7)`) — a
+**defect**, not a typed failure, so it blows past every `Effect.catch` /
+`catchTag` and surfaces far from the `yield*`. Probed at beta.107.
+
+The bridges are explicit calls: `Effect.fromOption(o)` (`Effect.ts:1816`,
+defaulting `E = Cause.NoSuchElementError`) and `Effect.fromResult(r)`
+(`Effect.ts:1777`). `Ref` / `Deferred` / `Fiber` are the honest case — they
+fail to compile, so the migration finds them for you.
 
 ## Config
 
@@ -156,9 +193,10 @@ Config.string("K").pipe(Effect.catchTag("ConfigError", () => Effect.succeed("def
 ~~~
 
 `Config.string("K").asEffect()` is **not** a function (`typeof` is `undefined`)
-and does not typecheck. The `.asEffect()` habit comes from the narrower v4
-`Yieldable` trait, which *does* require it for `Option` and friends — but
-`Config` is already an Effect, so reaching for it here throws AND fails tsgo.
+and does not typecheck. **Nor is it a function on anything else** — `asEffect`
+has zero occurrences core-wide at beta.107, so the habit has no valid target
+left. `Config` is already an Effect; `Option`/`Result` need
+`Effect.fromOption` / `Effect.fromResult`.
 
 **`ConfigError` is not exported from the `effect` root.** It is
 `Config.ConfigError` (`typeof` on the root export is `undefined`). Importing

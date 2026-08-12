@@ -3,7 +3,20 @@
 Typed GitHub REST and GraphQL over octokit's core request surface, with GitHub
 App authentication and resource services.
 
-**Design doc:** `@../../.claude/design/effected/packages/github.md`
+**Design doc:** `@../../.claude/design/effected/packages/github.md` — the entry
+point; read it first. The depth lives in five children, each loaded on demand:
+
+- `@../../.claude/design/effected/packages/github-rest.md` — Load when: adding
+  or changing a REST call, the route table, the client shape or pagination.
+- `@../../.claude/design/effected/packages/github-errors.md` — Load when:
+  touching the error taxonomy, error classification or the retry policy.
+- `@../../.claude/design/effected/packages/github-auth.md` — Load when: working
+  on GitHub App auth, the token lifecycle, signoff or the Actions-runtime seam.
+- `@../../.claude/design/effected/packages/github-resources.md` — Load when:
+  changing a resource service, an upsert, a projection or the check-run bracket.
+- `@../../.claude/design/effected/packages/github-graphql.md` — Load when:
+  adding a typed GraphQL document or changing response decoding.
+
 Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 2).
 
 ## Tier and dependencies

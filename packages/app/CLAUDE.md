@@ -43,8 +43,14 @@ could be sequenced last.
 ## Four modules, and the split is load-bearing
 
 `App.ts` (`AppOptions`, `AppTestOptions`, `AppError`, `App.layer`,
-`App.layerTest`) · `AppStore.ts` · `AppCache.ts` · `AppConfig.ts`. No
-`internal/` — there is no engine, only composition.
+`App.layerTest`) · `AppStore.ts` · `AppCache.ts` · `AppConfig.ts`. There is no
+engine here, only composition — the one `internal/` module is
+`internal/filename.ts`, a 16-line guard rejecting any `filename` that is not a
+single path component (the same wiring-defect rule `xdg` applies to
+`namespace`). `AppStore`, `AppCache` and `AppConfig` all import it, so a newly
+rejected shape is added there once; its test-side mirror is
+`__test__/filenameGuard.ts`. It is load-bearing, not a helper: without it a
+`filename` containing a separator escapes the app's own directory.
 
 `App.ts` imports `AppStore.ts` and `AppCache.ts`. **`App.ts` does not import
 `AppConfig.ts`**, and that is the point: `AppConfig` reaches `xdg` +

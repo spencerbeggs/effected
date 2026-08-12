@@ -11,11 +11,13 @@ provide them per call — do not reach for a Layer:
 
 - `FileSystem.makeNoop({ exists, readFileString })` overrides only the ops the
   pipeline uses; every non-overridden member fails **typed `NotFound`** (core
-  behavior, `FileSystem.ts` at beta.98) — document that asymmetry if your
-  hand-rolled counterparts throw defects instead.
-- Core `Path` has **no `makeNoop`/`layerNoop` analog** (beta.98) — hand-roll a
-  `Path.Path` value (`Path.Path.of` with `[Path.TypeId]`), back the members you
-  use with the consumer's ops, and throw an informative defect from the rest.
+  behavior, `FileSystem.ts:825` — still so at beta.107) — document that
+  asymmetry if your hand-rolled counterparts throw defects instead.
+- Core `Path` has **no `makeNoop`/`layerNoop` analog** (re-checked at beta.107:
+  `Path.ts` exports `layer` at `:867` and nothing noop-shaped) — hand-roll a
+  `Path.Path` value (`Path.Path.of` with `[Path.TypeId]`, `Path.ts:32`), back
+  the members you use with the consumer's ops, and throw an informative defect
+  from the rest.
 - Wire with `Effect.provideService` per call. No Layer means no
   memoize-by-reference trap when consecutive calls carry different ops.
 - Run with `Effect.runSyncExit` and unwrap the Exit honestly:

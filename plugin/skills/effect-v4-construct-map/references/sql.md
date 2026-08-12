@@ -1,9 +1,10 @@
 # SQL — v3 → v4
 
 **`@effect/sql` as a standalone package is gone.** The SQL core moved into `effect`
-itself, under `effect/unstable/sql/*` — `SqlClient`, `SqlError`, `Statement`,
-`SqlSchema`, `SqlResolver`, `SqlModel`, `SqlStream`, `Migrator`. There is no
-`@effect/sql` to install; it does not resolve from a v4 package.
+itself, under `effect/unstable/sql/*` — the full module list at beta.107 is
+`SqlClient`, `SqlConnection`, `SqlError`, `Statement`, `SqlSchema`, `SqlResolver`,
+`SqlModel`, `SqlStream`, `Migrator`. There is no `@effect/sql` to install; it does
+not resolve from a v4 package.
 
 | v3 | v4 |
 | --- | --- |
@@ -11,25 +12,28 @@ itself, under `effect/unstable/sql/*` — `SqlClient`, `SqlError`, `Statement`,
 | `@effect/sql` + a driver package + `@effect/platform` peer chain | the **driver alone**, peering on `effect` and nothing else |
 | `@effect/sql-sqlite-node` over `better-sqlite3` | over Node's built-in **`node:sqlite`** (`DatabaseSync`) — no native module to compile |
 
-Only the *driver* is a dependency: `@effect/sql-sqlite-node@4.0.0-beta.97` declares
-`peerDependencies: { effect: "^4.0.0-beta.97" }` and **no `dependencies` at all**. The
-v3 habit of also installing `@effect/sql` and `@effect/platform` is now wrong. Four
-behaviours worth knowing before you design against it:
+Only the *driver* is a dependency: `@effect/sql-sqlite-node@4.0.0-beta.107` declares
+`peerDependencies: { effect: "^4.0.0-beta.107" }` and **no `dependencies` at all**
+(re-checked against the installed package). The v3 habit of also installing
+`@effect/sql` and `@effect/platform` is now wrong. Four behaviours worth knowing
+before you design against it:
 
 - **`SqliteClient.layer` has NO error channel** — it is
-  `Layer.Layer<SqliteClient | SqlClient.SqlClient>` (`SqliteClient.ts:347`). A
-  construction failure (unopenable file, bad options) surfaces as a **defect**, not a
-  typed error, so do not write a `catchTag` for it. The config-driven sibling
-  `layerConfig` *does* carry `Config.ConfigError` (`:327`) — that is the one to reach
-  for when the connection is configured from the environment.
+  `(config: SqliteClientConfig) => Layer.Layer<SqliteClient | SqlClient.SqlClient>`
+  (`dist/SqliteClient.d.ts:97`). A construction failure (unopenable file, bad
+  options) surfaces as a **defect**, not a typed error, so do not write a `catchTag`
+  for it. The config-driven sibling `layerConfig` *does* carry `Config.ConfigError`
+  (`:90`) — that is the one to reach for when the connection is configured from the
+  environment. Both are **factories taking a config**, not bare layer values.
 - **`sql(name)` interpolates an identifier.** The template form
   ``sql`SELECT …` `` builds a `Statement`; calling the same `sql` with a plain string
-  returns an `Identifier` (`Statement.ts` `Constructor`, `(value: string): Identifier`),
-  so `` sql`SELECT * FROM ${sql(table)}` `` parameterizes the *table name* safely.
-  `sql.unsafe` and `sql.literal` are the un-escaped escape hatches.
+  returns an `Identifier` (`Statement.ts:431` `Constructor`, the `(value: string):
+  Identifier` overload at `:437`), so `` sql`SELECT * FROM ${sql(table)}` ``
+  parameterizes the *table name* safely. `sql.unsafe` (`:442`) and `sql.literal`
+  (`:447`) are the un-escaped escape hatches.
 - **`sql.withTransaction` rolls back on DEFECTS and INTERRUPTS, not just typed
   failures.** It takes the `Exit` of the body and commits **only** on
-  `Exit.isSuccess` (`SqlClient.ts:222` `makeWithTransaction`) — every other exit rolls
+  `Exit.isSuccess` (`SqlClient.ts:223` `makeWithTransaction`) — every other exit rolls
   back. Probed live on `effect@4.0.0-beta.97` against a `:memory:` database, with a
   positive control proving the probe can observe a commit: typed failure, `Effect.die`
   and `Effect.interrupt` each rolled back. A defect will not leave a half-written

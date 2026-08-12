@@ -3,228 +3,184 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-07-20
-last-synced: 2026-07-20
+updated: 2026-08-12
+last-synced: 2026-08-12
 completeness: 95
 related:
   - ../architecture.md
   - ../effect-standards.md
+  - ../formatter-convention.md
   - ../package-inventory.md
-  - semver.md
   - jsonc.md
   - toml.md
   - markdown.md
-  - package-json.md
-  - npm.md
+  - config-file.md
 ---
 
 # @effected/yaml design
 
 ## Overview
 
-`@effected/yaml` is YAML 1.2 as pure Effect Schema schemas — the largest package in the repo. It carries the full layered pipeline (lex → CST → compose → value), the "Schema IS the class" AST, an edits-not-mutations model, a warnings-as-data recoverable-parse design, a vendored compliance harness and a string→domain schema DX. Class-based DX throughout: statics and instance methods on the schema classes, no floating functions, no `Fn.dual` ceremony.
+`@effected/yaml` is YAML 1.2 as pure Effect schemas, and the largest package in the repo. It carries a full layered pipeline (lex → CST → compose → value), a "the class is the schema" AST, an edits-not-mutations model, a warnings-as-data recoverable-parse design, a vendored compliance harness and string→domain schema factories. Class-based DX throughout: statics and instance methods on the schema classes, no floating functions.
 
-[@effected/jsonc](jsonc.md) is the structural template. The [jsonc/yaml parity convention](jsonc.md#jsoncyaml-parity-convention) is **binding**: every shared-vocabulary concept (`Edit`, `Range`, `Path`, `Segment`, and the parse-error-detail-with-position shape) is structurally identical to its `Jsonc*` counterpart, so codec-generic consumer code works against both — see [parity reconciliation](#jsoncyaml-parity-reconciliation).
+[@effected/jsonc](jsonc.md) is the structural template, and the [jsonc/yaml parity convention](jsonc.md#jsoncyaml-parity-convention) is **binding** — see [parity reconciliation](#jsoncyaml-parity-reconciliation) for what holds and the one recorded exception.
+
+This doc stays single despite its length: everything below is one library's parsing pipeline and the surfaces that hang off it, not a set of separable subsystems.
 
 ## Tier and dependencies
 
-Pure tier — no IO anywhere. All inputs are strings; all outputs are values, documents, edits, streams or domain errors; even the visitor streams are pure. `peerDependencies`: `effect` only. No `@effect/platform*` or `node:` imports; `@effected/config-file` depends on this package via a one-file codec adapter, not the reverse. `"sideEffects": false`.
+Pure tier — no IO anywhere. Inputs are strings; outputs are values, documents, edits, streams or domain errors, and even the visitor streams are pure. `effect` is the only peer; no `@effect/platform*` or `node:` imports. [`config-file`](config-file.md) depends on this package through a one-file codec adapter, never the reverse. `"sideEffects": false`.
 
 ## Module layout
 
-Per the module-per-concept standard, public source files plus an internal engine directory:
+Module-per-concept, with the engine behind `internal/`. `src/index.ts` re-exports; nothing else is public.
 
-- `src/index.ts` — public surface, re-exports only.
-- `src/Yaml.ts` — the facade. Statics `parse`, `parseAll` (value-level), `stringify`, `stripComments`, `equals`, `equalsValue`, and the schema factories `schema(Target, options?)` / `fromString(options?)` / `allFromString(options?)` / `bind(Target)` plus the `YamlFromString` default-options schema. Owns `YamlParseOptions`, `YamlStringifyOptions`, `YamlParseError`, `YamlStringifyError` and the `YamlBoundCodec` interface.
-- `src/YamlDiagnostic.ts` — the structured diagnostic concept, carrying both errors *and* warnings-as-data on `YamlDocument`. Owns the staged code literal unions (lex/parse/compose stages) and the **single** fatal-code predicate.
-- `src/YamlNode.ts` — the mutually-recursive AST, co-located in one file (the co-location breaks the import cycle). `YamlScalar`, `YamlMap`, `YamlSeq`, `YamlPair`, `YamlAlias`, the `YamlNode` union, and the `ScalarStyle`/`CollectionStyle` literal sets, with instance navigation methods and `X.is` static guards.
-- `src/YamlDocument.ts` — `YamlDocument` and `YamlDirective`, carrying `errors`/`warnings` `YamlDiagnostic` arrays for the recoverable-parse design.
-- `src/YamlEdit.ts` — `YamlEdit` (`Schema.Class`) plus static `applyAll(text, edits)` → `string`. Owns the shared edit vocabulary: `YamlRange` and the `YamlPath`/`YamlSegment` type aliases.
-- `src/YamlFormat.ts` — `format` / `formatToString`, `modify` / `modifyToString`, and `YamlFormattingOptions`. Owns `YamlModificationError`.
-- `src/YamlVisitor.ts` — the Schema-backed event union and `visit(text, options?)` → `Stream<YamlVisitorEvent>`, with the `maxAliasCount` DoS guard. AST-level only.
-- `src/internal/` — the private engine: `lexer.ts` (the scanner state machine, which is also the pull-based incremental scanner), `cst-parser.ts`, the `composer/` monolith split along its seams (`state.ts`, `block.ts`, `flow.ts`, `scalars.ts`, `tags.ts`, `anchors.ts`, `document.ts`), `stringifier.ts`, `fold.ts`, `diff.ts`, `equal.ts`, `cst-visitor.ts`, plus the raw-diagnostic and options helpers.
+- `Yaml.ts` — the value-level facade: a namespace object of statics over the parser, stringifier and schema layers, not a schema class. Owns the parse and stringify option and error vocabulary.
+- `YamlDiagnostic.ts` — the structured diagnostic concept carrying errors *and* warnings-as-data, the staged code unions and the **single** fatal-code predicate.
+- `YamlNode.ts` — the mutually-recursive AST, co-located in one file. The co-location is what breaks the AST import cycle.
+- `YamlDocument.ts` — `YamlDocument` and `YamlDirective`: the parsed AST plus recovered `errors`/`warnings` arrays.
+- `YamlEdit.ts` — the edit class and the shared `YamlRange` / `YamlPath` / `YamlSegment` vocabulary bound by the parity convention.
+- `YamlFormat.ts` — non-mutating `format` and `modify` edits, and `YamlFormattingOptions`.
+- `YamlVisitor.ts` — SAX-style AST events as a `Stream`.
+- `internal/` — the engine: lexer, CST parser and visitor, the `composer/` directory split along its seams, stringifier, folder, differ and equality.
 
-The only composer cycle is `block.ts` → `flow.ts`, broken by a `FlowComposers` dispatch record on `ComposerState` that `document.ts` injects; no generic `composeNode` dispatcher is needed. `parseDirective` lives in `tags.ts` because `validateTagHandlesInDocument` needs it there.
+The engine is **vendored** — ported with attribution from the `yaml` package rather than taken as a runtime dependency. House policy for pure-tier format packages: a pure package owns its parser. Do not add `yaml` as a dependency.
+
+### Cycle firewall
+
+`noImportCycles` is error-level, and two rules keep it green.
+
+The engine returns **raw records** (`{ code, message, offset, length }`) and never imports a public module; the facade materializes `YamlDiagnostic` — computing `line`/`character` from `offset` against the source — and constructs the typed errors. `YamlDiagnostic` and its code unions live in their own module because that is where diagnostics are materialized.
+
+Mutual recursion threads through a **dispatch record on state**, never a direct import. The block composer needs the flow composer, so `composer/state.ts` declares a `FlowComposers` record and `composer/document.ts` injects the implementations. No generic node dispatcher is needed.
 
 ### CST and lexer layers are internal
 
-The public surface is the value/document layers plus the AST, the edit/format/modify concepts, the AST-level visitor and the schema factories. The lexer, CST parser, pull-based scanner and CST visitor all live in `src/internal/` — there is **no public `YamlToken` / `YamlCst`**, and `YamlToken`/`YamlTokenKind`/`CstNode`/`CstNodeType` and the CST event union are internal types.
+The public surface is the value and document layers, the AST, the edit/format/modify concepts, the AST-level visitor and the schema factories. The lexer, CST parser, pull-based scanner and CST visitor are all internal — there is no public token or CST type.
 
-A `Stream<YamlToken>` / `Stream<CstNode>` public interface — the Effect-native way to expose token- and CST-level access for LSP tooling — is **deferred until a consumer materializes**. The layers stay internal modules and are promoted to public surface only when an LSP-tooling consumer exists.
+Exposing them Effect-natively would mean a `Stream<YamlToken>` / `Stream<CstNode>` interface for LSP tooling. That is **deferred until a consumer materializes**; the layers get promoted only when something needs them.
 
 ## Effect-wrapping policy
 
-**Pure synchronous methods where nothing can fail; `Effect` only where the error channel is real; `Stream` for the visitor.**
+**Pure synchronous where nothing can fail; `Effect` only where the error channel is real; `Stream` for the visitor.** The split makes fallibility legible at the call site — an `Effect` return type *means* "this can produce a domain error."
 
-- **Pure synchronous**: node navigation (`YamlNode.find`, `findAtOffset`, `pathOf`), value extraction (`YamlNode.toValue`, `YamlDocument.toValue`), edit application (`YamlEdit.applyAll`, `YamlFormat.formatToString`/`modifyToString`), the formatting-edit *computation* (`YamlFormat.format`), comment stripping (`Yaml.stripComments`), and semantic equality (`Yaml.equals`/`equalsValue`). These are total functions; an `Effect<_, never>` wrapper is ceremony.
-- **`Effect`** (real typed `E`): `Yaml.parse` / `parseAll` (fail `YamlParseError`), `Yaml.stringify` / `YamlDocument.stringify` (fail `YamlStringifyError`), `YamlFormat.modify` (fail `YamlModificationError`), and the schema decode path.
-- **`Stream`** for the visitor: `YamlVisitor.visit` returns `Stream<YamlVisitorEvent>`; malformed input surfaces as error events in the union, keeping the stream demand-driven and infallible at the type level.
-- **`Result`** (sync primitive): `Yaml.parseResult` / `Yaml.stringifyResult` return a v4 `Result` for config-time callers that cannot enter the Effect runtime; the same typed failures as their Effect counterparts, materialized synchronously rather than thrown. The `*Result` spelling is the kit-wide one — see [the sync primitive policy](../formatter-convention.md#decision-6--the-sync-primitive-policy).
+Pure and total: node navigation, value extraction, edit application, the formatting-edit computation, comment stripping and semantic equality. An `Effect<_, never>` wrapper over any of these is ceremony.
 
-The pure/Effect split makes fallible operations legible at the call site — an `Effect` return type *means* "this can produce a domain error."
+Fallible, and therefore `Effect`: parsing, stringifying, modification and the schema decode path. Every one of these also has a synchronous **`Result`** twin for config-time callers that cannot enter a runtime — a `vitest.config.ts`, say. `parseResult` is the package's *single* parse path, with `Yaml.parse` defined in terms of it behind the named span, so the two cannot diverge. The `Result` forms drive the same synchronous engine and share the same defect-materialization helpers, so hardening is identical across both: a fatal diagnostic, duplicate key, alias bomb, circular reference or depth overflow returns a failed `Result` and never throws. Kit convention — [the sync primitive policy](../sync-primitive-policy.md).
 
-## Public API
+The visitor is **infallible by design**: every composer diagnostic, including stream-level directive errors and the alias-count guard, surfaces as an error event in the union rather than failing the stream.
 
-### Yaml (facade)
+## AST and value extraction
 
-A namespace object of statics over the parser, stringifier and schema layers. Not a schema class.
+Each node is a `Schema.TaggedClass`, recursion handled with `Schema.suspend` and **no parent pointers** — those would break structural equality, serialization and Schema encode/decode. Absence stays `Option`, never a `NotFound` error. `pathOf` is reference-identity based, the inverse of `find` and composable with `findAtOffset`.
 
-- `parse(text, options?)` → `Effect<unknown, YamlParseError>`. Single-document value parse; error-recovery collects all fatal diagnostics and fails once with the aggregate.
-- `parseAll(text, options?)` → `Effect<ReadonlyArray<unknown>, YamlParseError>`. Multi-document value parse.
-- `stringify(value, options?)` → `Effect<string, YamlStringifyError>`.
-- `parseResult(text, options?)` → `Result<unknown, YamlParseError>` and `stringifyResult(value, options?)` → `Result<string, YamlStringifyError>` — the v4-`Result` forms for config-time callers that cannot `await` (a `vitest.config.ts`, say). `parseResult` is the package's **single parse path**, with `Yaml.parse` defined in terms of it (`Effect.fromResult` behind the named span) so the two cannot diverge. Pure: they drive the same synchronous engine the Effect variants do and share the `stringifyDefectToError` / `aliasCountExceededError` materialization helpers, so hardening is identical across both — the fail-typed-never-a-defect contract holds. Malformed or adversarial input (fatal diagnostics, duplicate keys, an alias-expansion bomb, a circular reference, depth overflow) returns a `Failure` Result, never throws.
-- `stripComments(text, replaceCh?)` → `string`. Scanner-based, total in both modes: without a `replaceCh`, comment characters are deleted with line breaks kept; with one, offsets are preserved by replacing in place. Pure and quote-aware in both branches.
-- `equals(a, b)` / `equalsValue(a, b)` → `boolean`. Semantic equality (comments/formatting ignored). Any recorded parse error, or a `DuplicateKey` warning, on either side yields `false` — malformed input is never equal to anything, including itself.
-- `schema(Target, options?)`, `fromString(options?)`, `allFromString(options?)`, and the `YamlFromString` default-options schema — see [schema transformation strategy](#schema-transformation-strategy). `fromString` takes **parse** options only; the encode direction uses default stringify options.
-- `bind(Target)` → `YamlBoundCodec<T, RD, RE>` (2026-07-19) — `{ schema, decode, encode }`: the composed `schema` plus both directions derived from it once via `Schema.decodeEffect`/`Schema.encodeEffect`. Thin sugar over `schema(Target)`, introducing **no new error taxonomy** — both directions fail `Schema.SchemaError` exactly as the hand-written pair would, with the target's `RD`/`RE` flowing through. **Single-document form only**: multi-document stays on `allFromString`, since a bound codec's `decode: (text) => T` shape has no natural array reading, and inventing a `bindAll` for a surface with no jsonc/toml analog would spend parity for no consumer. Schema-producing — bind the result to a `const`.
-- Owns `YamlParseOptions` and `YamlStringifyOptions` (both `Schema.Class` with bare `optionalKey` fields and implementation-level defaults — see [options](#options-derivation)).
+Two value-extraction rules are load-bearing. Single-document parse resolves aliases against the most recently seen anchor at the point of use, while multi-document parse builds an **independent anchor map per document**. And `__proto__` mapping keys become own data properties via `Object.defineProperty`, closing the prototype-pollution footgun a naive `obj["__proto__"] = value` assignment would open.
 
-### YamlNode (AST)
+`YamlDocument.schema` targets `Schema.instanceOf(YamlDocument)` as its `decodeTo` destination, because `Schema.decodeTo(Class)` expects the transformation to produce the class's *encoded* struct rather than instances.
 
-The mutually-recursive AST, co-located in one file. Each node is a `Schema.TaggedClass`, recursion handled with `Schema.suspend` and no parent pointers (parent pointers would break structural equality, serialization and Schema encode/decode).
-
-- `YamlScalar`, `YamlMap`, `YamlSeq`, `YamlPair`, `YamlAlias`; the `YamlNode` union; `ScalarStyle`/`CollectionStyle` literal sets.
-- Instance navigation: `find(path)` → `Option<YamlNode>`, `findAtOffset(offset)` → `Option<YamlNode>`, `pathOf(node)` → `Option<YamlPath>` (reference-identity based — the inverse of `find`, composable with `findAtOffset`), `toValue(anchors?)` → `unknown` (sync, alias-resolving, with the anchor map threaded as the optional argument). Absence stays `Option`, never a `NotFound` error.
-- Construct via `YamlScalar.make(...)` in public surface, tests and doc examples — never `new` (see [internal construction](#internal-construction)).
-
-Value-extraction discipline: `Yaml.parse` resolves aliases against the most recently seen anchor at the point of use (single-document parse semantics); `Yaml.parseAll` builds an independent anchor map per document. `__proto__` mapping keys become own data properties via `Object.defineProperty` in `toValue`, closing the prototype-pollution footgun a naive `obj["__proto__"] = value` assignment would open.
-
-### YamlDocument
-
-`YamlDocument` (`Schema.Class`) and `YamlDirective`, carrying `errors`/`warnings` arrays of `YamlDiagnostic` for the recoverable-parse design (non-fatal issues as data alongside typed failure for fatal ones).
-
-- Statics: `parse(text, options?)`, `parseAll(text, options?)`, `schema(options?)`.
-- Instance: `stringify(options?)` → `Effect<string, YamlStringifyError>`, `toValue()` → `unknown`.
-
-The framing flags (`hasDocumentStart`/`hasDocumentEnd`/`hasDocumentStartTab`) are bare `optionalKey` booleans with an implementation-level `?? false`. `YamlDocument.schema` targets `Schema.instanceOf(YamlDocument)` as its `decodeTo` destination — `Schema.decodeTo(Class)` expects the transformation to produce the class's *encoded* struct, not instances, so `instanceOf` is the correct decode target for a schema that yields `YamlDocument` instances.
-
-### YamlEdit
-
-`Schema.Class` holding `offset`, `length`, `content`. Static `applyAll(text, edits)` → `string` applies edits in reverse-offset order (byte-minimal, comment/whitespace-preserving — the library's real differentiator) and **rejects overlapping edits as a defect** (2026-07-19): overlapping splices are a caller wiring error, not recoverable input. That guard adopts [toml](toml.md)'s posture, harmonizing `applyAll` across all four format siblings — the divergence [markdown](markdown.md)'s P4 parity note recorded is closed. Named `applyAll` to match `JsoncEdit.applyAll` (parity). Owns `YamlRange` (`Schema.Class`: `offset`, `length`) and the `YamlPath` / `YamlSegment` type aliases, all bound by the parity convention.
-
-### YamlFormat
-
-- `format(text, range?, options?)` → `ReadonlyArray<YamlEdit>` (pure — computes edits, never fails).
-- `formatToString(text, range?, options?)` → `string` (`applyAll ∘ format`).
-- `modify(text, path, value, options?)` → `Effect<ReadonlyArray<YamlEdit>, YamlModificationError>`. `value === undefined` means delete; insertion appends after the last pair/element.
-- `modifyToString(text, path, value, options?)` → `Effect<string, YamlModificationError>` (`applyAll ∘ modify`).
-- `YamlFormattingOptions` — see [options derivation](#options-derivation).
-
-`format`/`modify` accept a positional `range` typed as `YamlRangeLike` (`YamlRange | { offset; length }`), so no separate raw-options shape is needed. Errors carry structured `diagnostics: ReadonlyArray<YamlDiagnostic>` payloads, never preformatted reason strings.
-
-### YamlVisitor
-
-- `visit(text, options?)` → `Stream<YamlVisitorEvent>`, wrapping the generator with `Stream.fromIterable` (demand-driven, `Stream.take`-friendly). The event union is a `Data.taggedEnum` (serializable, consistent with the library). Begin/pair/scalar events carry `path` context; an `Error` variant carries a materialized `YamlDiagnostic`. `visit` is **infallible by design**: every composer diagnostic — errors, warnings and stream-level directive errors — surfaces as an `Error` event rather than failing the whole stream. The `maxAliasCount` DoS guard surfaces through `Error` events for free.
+`YamlEdit.applyAll` applies in reverse-offset order — byte-minimal, comment- and whitespace-preserving, the library's real differentiator — and **rejects overlapping edits as a defect**. It is a programmer-error guard on hand-constructed arrays; `YamlFormat` never emits overlapping edits. All four format siblings share this posture.
 
 ## Schema transformation strategy
 
-Mirrors jsonc's flagship arrangement:
+Mirrors jsonc's arrangement: a pre-bound `YamlFromString` singleton on default options, a `fromString(options?)` factory, `allFromString(options?)` for the multi-document case (no jsonc analog), `schema(Target, options?)` composing with a target schema and `bind(Target)` returning `{ schema, decode, encode }`.
 
-- `Yaml.YamlFromString` — a `Schema<unknown, string>` transformation using the parser with the *default* `YamlParseOptions`. The zero-config, pre-bound entry point.
-- `Yaml.fromString(options?)` — a factory returning a `Schema<unknown, string>` bound to the supplied options; `YamlFromString` is `Yaml.fromString()` with defaults.
-- `Yaml.allFromString(options?)` — the multi-document factory, returning `Schema<ReadonlyArray<unknown>, string>`. No jsonc analog.
-- `Yaml.schema(Target, options?)` — composes `fromString(options)` with a target `Schema`, yielding the `Schema<A, string, R>` pipeline that is the single best consumer-facing feature. The `R`-polymorphic signature is preserved.
+`bind` is **single-document only**. A bound codec's `decode: (text) => T` shape has no natural array reading, and inventing a `bindAll` for a surface with no jsonc or toml analog would spend parity for no consumer. Like its neighbors it is thin sugar introducing no new error taxonomy, and like all the schema-producing functions its result should be bound to a `const` on a hot path — each call returns a fresh instance and v4 derivation caches key by reference.
 
-**Boundary discipline.** A `Schema` cannot fail with a domain error. The `Schema.decodeTo` transformation fails with a `SchemaError` carrying a `SchemaIssue.InvalidValue` whose message is the aggregate parse message (with line/column enrichment); the *domain* `YamlParseError` is constructed directly by the `Yaml.parse` / `parseAll` path (which drives the internal composer and bypasses `Schema`). Consumers wanting the domain error from a schema pipeline normalize with `Effect.catchTag("SchemaError", …)`. `SchemaError` never escapes as the documented contract of `parse`/`parseAll`.
+`fromString` takes **parse** options only; the encode direction uses default stringify options.
 
-**Memoization-by-reference caveat.** `fromString(options)`, `allFromString(options)` and `schema(Target, options)` are schema-*producing* functions — each call returns a fresh schema instance, and v4 schema derivation caches key by reference. Hot-path consumers should bind the produced schema to a `const` once. `YamlFromString` is the pre-bound singleton for the common default case.
+**Boundary discipline.** A `Schema` cannot fail with a domain error, so the `decodeTo` transformation fails with a `SchemaError` whose issue message is the aggregate parse message. The *domain* `YamlParseError` is constructed directly by the `parse`/`parseAll` path, which drives the composer and bypasses `Schema` — that is why `SchemaError` never escapes as the documented contract of those methods. Consumers wanting the domain error out of a schema pipeline normalize with `Effect.catchTag("SchemaError", ...)`.
 
-## Error set
+## Diagnostics and the error set
 
-Three `Schema.TaggedErrorClass` types, each with structured payloads and a `message` getter derived from the fields — never preformatted strings, never collapsed to a `reason: string`. `YamlDiagnostic` is a `Schema.Class`, so error payloads are serializable for free.
+Errors are `Schema.TaggedError` with structured payloads and a `message` getter derived from the fields — never preformatted strings, never collapsed to a `reason: string`. `YamlDiagnostic` is itself a `Schema.Class`, so error payloads are serializable for free. See `src/Yaml.ts` and `src/YamlFormat.ts` for the current set.
 
-| Error | Raised by | Payload |
-| --- | --- | --- |
-| `YamlParseError` | `Yaml.parse` / `parseAll` / `YamlDocument.parse` / `parseAll`; `YamlFromString` / `fromString` / `allFromString` / `schema` decode | `diagnostics: ReadonlyArray<YamlDiagnostic>`, `input: string` |
-| `YamlStringifyError` | `Yaml.stringify` / `YamlDocument.stringify` | `diagnostics: ReadonlyArray<YamlDiagnostic>`, plus the offending value context |
-| `YamlModificationError` | `YamlFormat.modify` (navigation miss / invalid edit) | `path: YamlPath`, `diagnostics: ReadonlyArray<YamlDiagnostic>` |
+`YamlDiagnostic` is the single source of truth for **fatality**: it owns the staged code unions and one fatal-code predicate, so fatality is a property of the code declared once rather than inlined at each parse entry point.
 
-There is no `YamlFormatError`: `format` is pure and returns `[]` (no edits) on input whose parse has fatal errors, so it never corrupts a malformed document and never needs a fallible path. The stringify and modify code unions carry their own staged codes: `YamlStringifyErrorCode = ["CircularReference", "NestingDepthExceeded"]` and `YamlModifyErrorCode = ["EmptyDocument", "PathNotFound", "InvalidIndex", "NotNavigable"]`.
+There is deliberately **no format error**: `format` is pure and returns no edits on input whose parse has fatal errors, so it never corrupts a malformed document and never needs a fallible path.
 
-### YamlDiagnostic — single source of truth
+## Input hardening
 
-`YamlDiagnostic` is used for both errors *and* warnings-as-data on `YamlDocument`. It owns the staged code literal unions (the lex/parse/compose-stage code sets) and — critically — a **single fatal-code predicate**, so fatality is declared once as a property of the code rather than inlined in each parse entry point.
+Malformed and adversarial input must fail typed, **never as a defect**. Four surfaces are guarded, all regression-tested:
 
-Hardening additions carried by the fatal predicate, all typed (never a defect), all covered by tests with compliance unaffected:
+1. **Composer depth cap**, a fatal nesting diagnostic. The uncapped engine overflowed the stack around 900 levels.
+2. **CST parser depth cap**, deliberately set a few levels *above* the composer's cap so the composer's guard fires first and the user gets a positioned diagnostic rather than the CST parser's flat error node. Never lower it to or below the composer cap.
+3. **Stringify recursion** on both the value path and the node path, capped at the shared depth constant; the internal throw is materialized into a typed stringify error at the facade.
+4. **Alias-expansion budget.** A "billion laughs" bomb can stay under `maxAliasCount` and still exhaust the heap during materialization, so materialized nodes are bounded by a budget derived from `maxAliasCount`, with the internal throw materialized into a typed parse error.
 
-- Raw C0 control characters (other than tab/LF/CR) anywhere in a document's span are fatal `UnexpectedCharacter`, scanned once per document per YAML 1.2 §5.1 c-printable.
-- Nesting depth is capped at `MAX_NESTING_DEPTH = 256` in the composer (fatal `NestingDepthExceeded`) and 264 in the CST parser (set above the composer's cap so the user-facing diagnostic always fires first). The uncapped engine overflowed the stack at roughly 900 nesting levels.
-- An alias-expansion "billion laughs" bomb that stays under `maxAliasCount` but exhausts the heap during value materialization is caught by an **alias-expansion budget derived from `maxAliasCount`**; the internal throw is materialized into a fatal `YamlParseError` carrying an `AliasCountExceeded` diagnostic.
-- Deep-input stringify stack overflows on both the plain-value path (`internal/stringifier.ts`) and the AST-node path are capped at the shared `MAX_NESTING_DEPTH`; the internal throw is materialized into a fatal `YamlStringifyError` carrying a `NestingDepthExceeded` diagnostic.
+Raw C0 control characters other than tab, LF and CR are fatal anywhere in a document's span, scanned once per document per YAML 1.2 §5.1 c-printable.
 
-**Cycle-avoidance ownership.** `YamlParseError` is owned by the `Yaml` facade, and the internal composer must not import it (`Yaml.ts → internal/composer/… → Yaml.ts` would be an import cycle, `noImportCycles` is error-level). Resolution: the internal engine returns plain results plus raw diagnostic records (`{ code, offset, length, message }`); the facade materializes `YamlDiagnostic` (adding `line`/`character` computed from `offset` against the source text) and constructs the aggregate error itself. `YamlDiagnostic` and its code unions live in `YamlDiagnostic.ts` because that is where diagnostics are materialized.
+The lesson from (4) generalizes: depth is not the only DoS vector. When an engine expands references during materialization, budget the **materialization**, not just the input's static depth.
 
 ## jsonc/yaml parity reconciliation
 
-The [parity convention](jsonc.md#jsoncyaml-parity-convention) requires `YamlEdit`, `YamlRange`, `YamlPath`, `YamlSegment` and the diagnostic core to be structurally identical to their `Jsonc*` counterparts. `YamlDiagnostic` adopts the `line`/`character` naming (the shared five-field core: `code`/`offset`/`length`/`line`/`character`), with any extra fields (`message`, `severity`) additive on top. The point is codec-generic consumer code — one function over "a document codec's Edit/Range/Path" that works against both `@effected/jsonc` and `@effected/yaml`. This is the pre-work for a later `@effected/text-edit` micro-kernel extraction, deferred until a consumer needs it.
+The [parity convention](jsonc.md#jsoncyaml-parity-convention) requires `YamlEdit`, `YamlRange`, `YamlPath`, `YamlSegment` and the diagnostic core to be structurally identical to their `Jsonc*` counterparts. `YamlDiagnostic` adopts the shared five-field core (code, offset, length, line, character), with `message` and `severity` additive on top. All of that holds exactly. The point is codec-generic consumer code — one function over "a document codec's Edit/Range/Path" that works against both packages — and it is the pre-work for a possible `@effected/text-edit` extraction, deferred until a consumer needs it.
 
-`Edit`/`Range`/`Path`/`Segment` and the diagnostic core hold exact parity. `YamlFormattingOptions` is the one exception — see below.
+`YamlFormattingOptions` is the **one exception**; see below.
 
 ### Options derivation
 
-All three options classes (`YamlParseOptions`, `YamlStringifyOptions`, `YamlFormattingOptions`) use **bare `optionalKey` fields with implementation-level `?? default`** rather than v4 constructor/decoding-default wrappers, which keeps the class-factory annotations tractable. `YamlFormattingOptions` derives its shared fields **at runtime by spreading `YamlStringifyOptions.fields`** (v4 classes expose `.fields`), adding `preserveComments` and `range` on top. Because the field-spread mechanics differ from jsonc's hand-derived shape, `YamlFormattingOptions` is **deliberately not structurally identical to `JsoncFormattingOptions`** even though the field names and semantics line up — this is the parity exception; `Edit`/`Range`/`Path`/`Segment`/diagnostic-core parity all still hold. The `stringify` signature is a single `YamlStringifyOptions?` parameter.
+All three options classes use **bare `optionalKey` fields with implementation-level `?? default`** rather than v4 constructor or decoding-default wrappers, which keeps the class-factory annotations tractable.
 
-The runtime field-spread earns its keep here: `indentSequences` (below) was added to `YamlStringifyOptions` alone and appeared on `YamlFormattingOptions` **derived, not hand-duplicated** — which is exactly the drift the spread exists to prevent.
+`YamlFormattingOptions` derives its shared fields **at runtime by spreading `YamlStringifyOptions.fields`** (v4 classes expose `.fields`), adding its own on top. Because those mechanics differ from jsonc's hand-derived shape, it is deliberately **not** structurally identical to `JsoncFormattingOptions` even though field names and semantics line up. That is the recorded parity exception.
+
+The spread earns its keep: `indentSequences` was added to the stringify options alone and appeared on the formatting options **derived, not hand-duplicated** — exactly the drift it exists to prevent.
 
 ### `indentSequences` — presentation, not fidelity
 
-`YamlStringifyOptions` and `YamlFormattingOptions` carry an optional `indentSequences` controlling how a block sequence nested under a mapping key is presented: `false` emits it at the key's column, `true` indents it one level (the `yaml` npm package's and prettier's default shape). Top-level sequences sit at column zero in both modes.
+Controls how a block sequence nested under a mapping key is presented: at the key's column, or indented one level (the shape the `yaml` npm package and prettier default to). Top-level sequences sit at column zero either way.
 
-**The default is `false`, and the default is the whole decision.** Both forms are valid YAML parsing to identical data, so this is presentation, not semantics — but the kit's stringifier is byte-compatible with yaml-effect 0.7, and flipping a default that changes *bytes* would rewrite sequence indentation in every file every existing consumer round-trips. A cosmetic default is not worth a diff in every downstream repo; consumers who want the popular shape ask for it.
+**The default is `false`, and the default is the whole decision.** Both forms are valid YAML parsing to identical data, so this is presentation, not semantics — but the kit's stringifier is byte-compatible with its source dialect, and flipping a default that changes *bytes* would rewrite sequence indentation in every file every existing consumer round-trips. A cosmetic default is not worth a diff in every downstream repo; consumers who want the popular shape ask for it.
 
-The **explicit-key compact-sequence branch is deliberately untouched** by the option. `? key` / `: value` explicit-key syntax is a different construct with its own emitter path, and folding it under the same flag would mean changing a form nobody asked about while chasing the common one.
+The **explicit-key compact-sequence branch is deliberately untouched** by the option. `? key` / `: value` syntax is a different construct with its own emitter path, and folding it under the same flag would change a form nobody asked about while chasing the common one.
 
-### `lineWidth` — real column folding
+### `lineWidth` — value-path-only by contract
 
-`lineWidth` now performs the column-based scalar folding it always advertised. It was previously **inert**: threaded into the stringifier's render context (`internal/stringifier.ts`) but never read, so output never wrapped for any value. A positive `lineWidth` now folds long **plain**, **double-quoted** and **block-folded (`>`)** scalars at approximately that column, inserting only semantically transparent line breaks — breaks a reader folds back to a single space, so the round-trip is preserved. **Block-literal (`|`) and single-quoted scalars are never folded**: literal blocks preserve their bytes by definition, and single-quoted folding is out of scope. The two folding functions — `foldScalarLine` (one logical line) and `foldRenderedScalar` (style-aware, dispatching on the rendered scalar's leading character) — live in `internal/fold.ts` and are wired into the **value path** (`stringifyLines` / `stringifyObjectLines` / `stringifyArrayLines`). Flow-collection items pass `allowFold=false`, because they are re-joined with spaces and a fold break would corrupt them.
+A positive `lineWidth` folds long **plain**, **double-quoted** and **block-folded** scalars at approximately that column, inserting only semantically transparent breaks — ones a reader folds back to a single space, so the round-trip is preserved. **Block-literal and single-quoted scalars are never folded**: literal blocks preserve their bytes by definition, and single-quoted folding is out of scope. The folding functions live in `internal/fold.ts`. Flow-collection items pass `allowFold=false`, because they are re-joined with spaces and a fold break would corrupt them.
 
-**The default is `0`, and — as with `indentSequences` — the default is the whole decision.** `0` (and any value `<= 0`) means never wrap. The change lowered the default from `80` to `0`, which is byte-compat-preserving precisely *because* the option was inert: the historic behavior was no-wrap, so defaulting to `0` keeps default output and any explicit `lineWidth: 0` byte-identical, while a positive value opts into folding. The compliance harness stays at 100% for exactly this reason — nothing folds unless a caller asks.
+The default is `0` — never wrap — and as with `indentSequences` the default is the decision. It is what keeps default output byte-identical and the compliance harness at 100%: nothing folds unless a caller asks.
 
-**Value-path-only scope is the documented contract, not a gap** ([issue #105](https://github.com/spencerbeggs/effected/issues/105), resolved 2026-07-17 by documentation — deliberately not by implementing node-path folding). `Yaml.stringify` / `Yaml.stringifyResult` are the only entry points that fold; the document/node path (`YamlDocument.stringify` and the `YamlFormat` helpers built on it) threads `lineWidth` into its render context but never reads it, and the schema factories (`fromString` / `schema` / `YamlFromString`) encode with default stringify options, so their output never folds either. The TSDoc on `YamlStringifyOptions.lineWidth` and `YamlDocument.stringify` states the boundary and steers node-path callers that need folding to `Yaml.stringify(doc.toValue(), options)`, and a regression test pins the node path's inertness — so folding cannot land there without forcing the docs to update.
+**Value-path-only is the documented contract, not a gap** ([issue #105](https://github.com/spencerbeggs/effected/issues/105)). Only `Yaml.stringify` and `Yaml.stringifyResult` fold. The document and node path threads `lineWidth` into its render context but never reads it, and the schema factories encode with default stringify options, so neither ever folds. The TSDoc states the boundary and steers node-path callers to `Yaml.stringify(doc.toValue(), options)`, and a regression test pins the node path's inertness — so folding cannot land there without failing that test and rewriting the docs with it.
 
 ## Multi-document support
 
-Yaml-specific surface with no jsonc analog. YAML's `---`/`...` document-stream model gets first-class support: `Yaml.parseAll` / `Yaml.allFromString`, and `YamlDocument.parseAll` alongside the single-document `YamlDocument.parse` / `schema`. This is genuinely yaml's own concern (anchors, aliases, pairs-vs-properties, multi-document); no shared tree/document abstraction is extracted across jsonc and yaml — the trees differ enough that a shared abstraction would be premature and leaky.
+A yaml-specific surface with no jsonc analog. YAML's `---`/`...` document-stream model gets first-class support at both the value and document layers. This is genuinely yaml's own concern — anchors, aliases, pairs-versus-properties, multi-document — and no shared tree abstraction is extracted across jsonc and yaml: the trees differ enough that a shared abstraction would be premature and leaky.
 
 ## Equal and Hash semantics
 
-`Schema.TaggedClass` structural equality is load-bearing for the visitor/AST tests (`Equal.equals` on nodes) and works as designed; no node customizes `[Equal.symbol]`, so the `[Hash.symbol]` override obligation never comes into play. `Yaml.equals`/`equalsValue` implement *semantic* equality (comment/format-ignoring, alias-resolving) distinct from structural `Equal.equals`, so they stay explicit statics over `internal/equal.ts`. Should any node ever customize `[Equal.symbol]`, it MUST override `[Hash.symbol]` too — `Equal.equals` fast-paths on hash mismatch — with a regression test pinning hash agreement.
+Structural `Schema.TaggedClass` equality is load-bearing for the visitor and AST tests and works as designed; no node customizes `[Equal.symbol]`, so the `[Hash.symbol]` obligation never arises. `Yaml.equals`/`equalsValue` implement the *semantic* relation — comment- and format-ignoring, alias-resolving — which is different, so they stay explicit statics. Any recorded parse error, or a duplicate-key warning, on either side yields `false`: malformed input is never equal to anything, including itself.
 
-## Observability
-
-Named `Effect.fn` spans at public *fallible* boundaries only: `Yaml.parse`/`parseAll`/`stringify`, `YamlDocument.parse`/`parseAll`/`stringify`, and `YamlFormat.modify`/`modifyToString`. Pure synchronous operations (`stripComments`, `equals`/`equalsValue`, the `YamlNode` navigation methods, `YamlEdit.applyAll`, the `format` edit computation) are not instrumented. There is **no per-node instrumentation inside the composer** (a hot recursive path), and internal lexer/composer/stringifier helpers get no spans. `YamlVisitor.visit` carries no span — stream construction is lazy and pure, with no clean `Effect.fn` boundary. The library is telemetry-agnostic.
-
-## No services
-
-A pure-tier library needs none — class statics suffice, and a config-file-style codec adapter is the consumer's layer. `src/` defines no `Context` and no `Layer`.
-
-## Consumer seam
-
-`@effected/config-file`'s `ConfigCodec` interface is exactly the `Yaml` facade shape, so a one-file `YamlCodec` adapter is trivial (pure→pure, `workspace:~`). The codec lives in `@effected/config-file`, not in `@effected/yaml` — the dependency arrow points *at* yaml, never from it.
+Should a node ever customize `[Equal.symbol]`, it MUST override `[Hash.symbol]` too, since `Equal.equals` fast-paths on hash mismatch.
 
 ## Internal construction
 
-The house rule is `X.make(...)`, never `new X(...)`. The internal engine (`src/internal/`) is the recorded exception: it retains `new` for AST construction on the hot recursive composition path, where the nodes are trusted (built by the parser from validated CST) and per-node `make` validation is exactly the hot-path cost the observability plan already refuses to pay. All public surface, tests and doc examples use `X.make`.
+The house rule is `X.make(...)`, never `new X(...)`. The engine is the **recorded exception**: it retains `new` for AST construction on the hot recursive composition path, where nodes are trusted (built from validated CST) and per-node `make` validation is exactly the hot-path cost the observability posture already refuses to pay. All public surface, tests and doc examples use `make`.
 
-`new X()` on a v4 tagged/schema class **validates structurally** — explicit `undefined` passed for an `optionalKey` field throws even with `{ disableChecks: true }` (that flag only skips refinement checks). The engine's hot-path `new` sites use conditional spreads for every optional field to avoid the throw. Measured construction overhead of the structural validation is small enough to stay within the `new`-retention decision.
+`new` on a v4 tagged class still **validates structurally** — explicit `undefined` for an `optionalKey` field throws even with `{ disableChecks: true }`, which only skips refinement checks. The engine's `new` sites therefore use conditional spreads for every optional field.
+
+## Observability
+
+Named `Effect.fn` spans at public *fallible* boundaries only — parse, stringify and modify at the facade, document and format layers. Pure synchronous operations are not instrumented, there is **no per-node instrumentation inside the composer** (a hot recursive path), and internal helpers get no spans. The visitor carries no span: stream construction is lazy and pure, with no clean `Effect.fn` boundary. The library is telemetry-agnostic.
+
+## No services
+
+A pure-tier library needs none — class statics suffice, and a codec adapter is the consumer's layer. `src/` defines no `Context` and no `Layer`. [`config-file`](config-file.md)'s `ConfigCodec` interface is exactly the `Yaml` facade shape, so its `YamlCodec` adapter is one file; the codec lives there, not here, because the dependency arrow points *at* yaml, never from it.
 
 ## Fixture corpus and compliance harness
 
-The vendored yaml-test-suite is committed as plain files (nested `.git` stripped) under `packages/yaml/__test__/fixtures/yaml-test-suite/`, pinned to a specific upstream ref recorded alongside the fixtures — deterministic, offline and Turbo-cacheable, no fetch-on-test dependency. The compliance harness is the regression safety net, an e2e suite at `packages/yaml/__test__/e2e/*.e2e.test.ts` covering four assertion families: parse success/failure, JSON-equivalence, canonical-output byte-equality and roundtrip. It runs at 100% with empty skip maps.
+The vendored yaml-test-suite is committed as plain files (nested `.git` stripped) under `__test__/fixtures/yaml-test-suite/`, pinned to a recorded upstream ref — deterministic, offline and Turbo-cacheable, with no fetch-on-test dependency. The harness is the regression safety net: an e2e suite covering parse success/failure, JSON equivalence, canonical-output byte equality and round-trip. It must stay at 100% with empty skip maps.
 
 ## Testing
 
-`@effect/vitest` with `it.effect` as the default mode; `assert.*`, never `expect`. Tests live in `packages/yaml/__test__/` split per concept, with the compliance harness under `__test__/e2e/`. Construct instances via `X.make(...)`, never `new X(...)` (the engine's internal `new` sites are the recorded exception).
+`@effect/vitest` with `it.effect` as the default mode, split per concept under `__test__/` with the compliance harness in `__test__/e2e/`. Construct via `X.make(...)`.
 
-- **Property tests** via `it.effect.prop` with `Schema.toArbitrary` on the AST classes: parse/stringify roundtrip properties and `applyAll ∘ format` idempotence. Pattern-field checks use lookahead-free regexes so `Schema.toArbitrary` derivation works.
-- **The compliance e2e suite** — the safety net.
-- **Diagnostic/position tests** pinning `YamlDiagnostic`'s `line`/`character` computation and the single fatal-code predicate.
-- **Structure-preserving-error tests**: `format`/`modify`/`stringify` failures carry `YamlDiagnostic` arrays, never `reason` strings.
-- **Behavior-contract tests**: edits-not-mutations byte-minimality, `equals`/`equalsValue` semantic equality, `modify` delete-via-`undefined` and append-after-last insertion, `stripComments` offset preservation, multi-document `parseAll` ordering, alias-resolving `YamlNode.toValue(anchors?)`, and `maxAliasCount` DoS protection.
-- **Schema-pipeline tests**: `Yaml.schema(Target)` decode/encode, `allFromString` multi-document decode, and the boundary guarantee that decode failures surface as `YamlParseError` (never `SchemaError`) through the `parse`/`parseAll` contract.
+Beyond the behavior-contract suites, three families are structural: property tests via `it.effect.prop` with `Schema.toArbitrary` on the AST classes (round-trip and format idempotence — pattern-field checks use lookahead-free regexes so derivation works), diagnostic-position tests pinning `line`/`character` computation and the fatal-code predicate, plus structure-preserving-error tests asserting that failures carry diagnostic arrays rather than reason strings.
 
-Known limitation, the same one the source dialect shipped with: per-node comments (`pair.comment` etc.) are captured by the composer but never re-emitted by the stringifier — only a document-level leading comment round-trips. Closing it is future work if a consumer needs full comment round-tripping.
+## Known limitation — per-node comments
+
+Per-node comments are captured by the composer but never re-emitted by the stringifier; only a document-level leading comment round-trips. `preserveComments` reaches only that document-level comment, so the name overpromises.
+
+**This is not a one-line stringifier fix, and the analysis should not be re-derived** — the package CLAUDE.md holds it. In short: the node `comment` field carries no leading/trailing discriminator, and the composer attributes an own-line comment *backward* to the preceding node, so naive emission silently relocates comments to the wrong line and construct — a worse fidelity bug than dropping them. A real fix needs a public schema change on four node classes, composer re-attribution, blank-line preservation and emission for every node kind in both styles, with the re-attribution sitting in the path every conformance fixture exercises.
 
 ## Build
 
-All class factories are written inline with no exported `*_base` const; the synthesized `_base` heritage symbols (including the co-recursive `YamlNode.ts` bases and the visitor-event union) are suppressed narrowly in `savvy.build.ts` (`ae-forgotten-export` / `_base` pattern) and land in the `issues.json` `suppressed` bucket, keeping it zero-warning. The `Schema.suspend` callbacks' own return-type annotations (`Schema.Schema<Self>`) survive where recursion requires them. Genuinely-reusable public schemas (the staged code unions, real-API literal sets) stay `@public` on their own merit. The api-extractor model is wired at `website/lib/models/yaml`. This tracks the ratified policy in [effect-standards.md](../effect-standards.md#api-extractor--effect-class-factories).
+All class factories are written inline with no exported `*_base` const; the synthesized `_base` heritage symbols — including the co-recursive AST bases and the visitor-event union — are suppressed narrowly in `savvy.build.ts` and land in the `issues.json` `suppressed` bucket, keeping it zero-warning. Never widen the suppression. The `Schema.suspend` callbacks' own return-type annotations survive where recursion requires them, and genuinely reusable public schemas stay `@public` on their own merit. The api-extractor model is wired at `website/lib/models/yaml`. Policy: [effect-standards.md](../effect-standards.md#api-extractor--effect-class-factories).

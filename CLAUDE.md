@@ -8,37 +8,48 @@ This is **effected**, a pnpm monorepo (npm org `@effected`) building an **Effect
 
 The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.107`. The monorepo holds libraries only — applications stay in external repos.
 
-**The kit ships in coordinated waves, never one package at a time.** The `0.1.0` gate shipped as an explicit pre-release on 2026-07-16 (18 packages, PR #3) and every wave since has gone out the same way (latest: 16 packages, 2026-07-26, PR #181). **Do not release a package on its own.** Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. The five github-split packages — `commands`, `templates`, `github`, `github-actions` and `sbom` — published for the first time in that wave; nothing in the kit still sits at `0.0.0`.
+**Releases are changeset-driven: CI builds the appropriate changesets and releases the packages they name.** A release may be the whole kit or a single package — both are ordinary, and a package can be released on its own. The most recent coordinated wave is the 27-package beta.107 wave, 2026-08-11, PR #325, with solo patch releases since (e.g. `workspaces@0.11.1`, PR #330). Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. Nothing in the kit still sits at `0.0.0`.
 
 ## Design Documentation
 
-Ten foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
+Eleven foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
 
 - Architecture → `@./.claude/design/effected/architecture.md` — Load when: changing repo structure, build pipeline, tooling, or workspace/catalog setup.
 - Effect standards → `@./.claude/design/effected/effect-standards.md` — Load when: designing or porting a library API, or making dependency/peer-closure decisions.
 - Package inventory → `@./.claude/design/effected/package-inventory.md` — Load when: picking the next migration target or updating a package's migration status.
-- Releases → `@./.claude/design/effected/releases.md` — Load when: deciding whether work is on the release gate, scoping a package against its consumers, or reasoning about versioning.
-- Roadmap → `@./.claude/design/effected/roadmap.md` — Load when: planning post-migration work, sequencing the `0.1.0` gate, or picking the next workstream.
+- Releases → `@./.claude/design/effected/releases.md` — Load when: reasoning about how a release is cut or versioned, scoping a package against its consumers, or asking why a given package had to exist for the (now closed) `0.1.0` gate.
+- Roadmap → `@./.claude/design/effected/roadmap.md` — Load when: planning post-migration work or picking the next workstream.
 - Migration playbook → `@./.claude/design/effected/migration-playbook.md` — Load when: starting or continuing a package migration.
 - Package setup → `@./.claude/design/effected/package-setup.md` — Load when: scaffolding or adding a new workspace package.
-- Formatter convention → `@./.claude/design/effected/formatter-convention.md` — Load when: designing a formatting or parsing entry point, or deciding whether a pure boundary exposes a sync `Result` primitive alongside its `Effect` form.
+- Formatter convention → `@./.claude/design/effected/formatter-convention.md` — Load when: designing a formatting or parsing entry point, or reasoning about a formatter's fidelity guarantee.
+- Sync primitive policy → `@./.claude/design/effected/sync-primitive-policy.md` — Load when: designing a pure boundary's surface shape, or deciding whether to expose a sync `Result` primitive alongside an `Effect` form.
 - Plugin → `@./.claude/design/effected/plugin.md` — Load when: working in `plugin/` on the "effected" Claude Code plugin.
 - GitHub Action canon → `@./.claude/design/effected/github-action-canon.md` — Load when: building or reviewing a GitHub Action repository on the kit, or editing the Actions skill suite that teaches it.
 
-### Migration Status
+Per-package design docs live in `.claude/design/effected/packages/`; consumer dogfood records live in `.claude/design/effected/consumers/`.
 
-**The migration program is complete (2026-07-12).** All seventeen library packages were merged, ending with `@effected/app` (PR #73). Two have since been extracted back to their own external repos and dropped from the kit: `runtime-resolver-cli` (now the `runtime-resolver` repo) and `ts-vfs` (now the `type-registry-effect` repo). With `@effected/tsconfig-json` and `@effected/spdx`, the six that landed after the `0.1.0` gate was declared — `markdown`, plus `commands`, `templates`, `github`, `github-actions` and `sbom` from the github-split program — `schemastore` (first published in the 2026-08-03 wave) and `jsonl` (built 2026-08-03, design doc first), the kit is **27 publishable packages**: 26 libraries plus the `pnpm-plugin-effect` companion, nineteen of which are the gate set. The full set is listed below and in `package-inventory.md`. `@effected/runtime-resolver` was renamed `@effected/runtimes` (b3490cf7). `@effected/json-schema` is off the roadmap entirely. New packages follow the migration playbook: design doc first, then port.
+### Child context files
+
+Detail lifted out of this file. Load on demand:
+
+- Build and test mechanics → `@./CLAUDE.build-and-test.md` — Load when: asking how the turbo/bundler pipeline, typechecking or the vitest setup actually works.
+- Dependency catalogs and peer closure → `@./CLAUDE.dependencies.md` — Load when: reading a `pnpm peers check` warning, or touching catalogs and peer declarations.
+- Vendored Effect source → `@./CLAUDE.vendored-effect.md` — Load when: consulting, syncing or re-pinning `.repos/effect`.
+
+### Kit composition
+
+**The migration program is complete (2026-07-12).** The kit is **27 publishable packages**: 26 libraries plus the `pnpm-plugin-effect` companion. `runtime-resolver-cli` and `ts-vfs` were extracted back to external repos; `@effected/json-schema` is off the roadmap entirely. New packages follow the migration playbook: design doc first, then port.
 
 **The config-file consolidation is done.** `@effected/config-file` absorbed the three codec packages; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — and `ConfigCodec` is the interface only. **Never collect them into a namespace object**: referencing one reaches every codec and drags every parsing engine into a JSON-only consumer's bundle; tree-shaking dies silently. A namespace object is a barrel with different syntax; do not reintroduce one. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
-Remaining `0.1.0` work is sequenced in `roadmap.md`; `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
+`package-inventory.md` and `releases.md` are authoritative — read them before starting work.
 
 ## Repository Layout
 
 - `packages/` — the workspace packages (see below).
-- `plugin/` — "effected", a Claude Code plugin (30 skills, 4 agents) dogfooded during package work; in development.
+- `plugin/` — "effected", a Claude Code plugin (skills and specialist agents; count them in `plugin/skills/` and `plugin/agents/`) dogfooded during package work; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
-- `.repos/effect` — read-only vendored Effect v4 source (see below).
+- `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. **Never write to anything under `.repos/`**, by any means, with any tool — silk's PreToolUse guards deny it. Fresh clones start empty: run `savvy repos sync` once. Detail → `@./CLAUDE.vendored-effect.md`.
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
 
 ### Package context files
@@ -48,56 +59,42 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `semver` — strict SemVer 2.0.0 schemas; the repo's DX north star (pure).
 - `jsonc` — zero-dependency JSONC parse/edit/format schemas (pure).
 - `yaml` — zero-dependency YAML 1.2 parse/edit/format schemas; largest package in the repo (pure).
-- `package-json` — package.json schemas, validation and file IO; delegates core SPDX validity to `@effected/spdx` (boundary).
-- `spdx` — SPDX license identifiers, exceptions and license expressions as Effect Schema classes; vendors the SPDX datasets as devDep-generated TypeScript (pure).
-- `tsconfig-json` — tsconfig.json schemas, `extends`-chain resolution and config discovery; the one new (non-migration) `0.1.0` gate package (boundary).
-- `npm` — dependency-resolution contracts for `catalog:` / `workspace:` specifiers, plus the `NpmRegistry` and `PackagePublish` services, which do their own IO through core contracts in `R` (boundary since the 2026-07-25 extension, deliberately — not integrated).
-- `config-file` — composable config file loading: codec × resolver × strategy, with the four codecs (`JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`) as free-standing named exports (boundary). Zero *external* runtime dependencies; it peers on the `jsonc`, `yaml` and `toml` format packages.
-- `walker` — upward path traversal; the one absorbing loop (boundary).
+- `toml` — TOML parse/edit/format on a from-scratch engine (pure). **The two directions differ deliberately:** `parse` accepts the full TOML 1.1.0 grammar, `stringify` emits only 1.0.0 spellings — do not "fix" either side to match the other.
+- `markdown` — CommonMark 0.31.2 + GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, edit, format, mdast projection, frontmatter codecs; second in size only to `yaml` (pure).
 - `glob` — the full minimatch dialect as pure string→predicate schemas; vendored, hardened engine (pure).
-- `toml` — TOML 1.0.0 parse/edit/format schemas on a from-scratch engine; first format package with no vendored code (pure).
+- `spdx` — SPDX identifiers, exceptions and license expressions as Schema classes; vendors the datasets as devDep-generated TypeScript (pure).
 - `lockfiles` — bun/npm/pnpm/yarn lockfile parsers normalized into one `Lockfile` model, plus pure integrity checking (pure).
-- `store` — durable local state: a migrated, schema-versioned SQLite `Store` and a TTL `Cache` with tag invalidation and eviction (integrated).
-- `xdg` — XDG Base Directory resolution: `AppDirs`, `NativeDirs`, `XdgPaths` and the config-file resolvers, over `@effected/walker` (boundary).
-- `workspaces` — monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection; implements `@effected/npm`'s resolver contracts and `@effected/commands`' `LocalExec` (integrated). `PublishabilityDetector` is a contract seam with **no ambient default** — the composites neither provide nor require one (their `R` stays `FileSystem | Path`); the requirement surfaces in the consuming operation's `R` (e.g. `VersioningStrategy.detect`), so provide `PublishabilityDetector.layerNpm` (or your own) wherever your program's `R` names it.
-- `runtimes` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot; its `runtime-resolver` binary ships from a separate external repo so consumers never install `@effect/platform-node` (boundary).
-- `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place; a thin composition over `xdg` + `store` + `config-file` with no domain logic of its own (integrated, by R2 over store alone). Nothing may depend on it.
-- `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier** (a category, not a fourth tier — see `effect-standards.md`). It **publishes with the kit at `0.1.0`** — on the release gate, not an exception. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
-- `git` — typed git introspection (a read tier of show/ls-tree/ref probes/merge-base/diffs/status/ls-remote/ls-files) plus a marked mutating tier (checkout, fetch, commit/push/pull, branches, tags, remotes, stash, worktrees, submodules, sparse checkout, config, add), a pure `GitConfig`/`Gitmodules` document core, and a redaction policy for argv in `GitCommandError`, over core's ChildProcessSpawner required in R (boundary).
-- `markdown` — CommonMark 0.31.2 + GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, edit, format, project to and from mdast, and frontmatter through free-standing codecs; second in size only to `yaml` (pure). Landed after the `0.1.0` gate; P6 (docs and the `rspress-plugin-api-extractor` swap) is outstanding.
-- `commands` — structured command running (`Run`) and CLI tool discovery (`ToolDiscovery`) over core's `ChildProcessSpawner`; declares the narrow `LocalExec` contract `@effected/workspaces` implements, so it keeps zero `@effected/*` edges (boundary).
+- `package-json` — package.json schemas, validation and file IO; delegates core SPDX validity to `@effected/spdx` (boundary).
+- `tsconfig-json` — tsconfig.json schemas, `extends`-chain resolution and config discovery (boundary).
+- `config-file` — composable config file loading: codec × resolver × strategy, the four codecs as free-standing named exports (boundary). Zero *external* runtime dependencies; peers on `jsonc`, `yaml` and `toml`.
+- `npm` — resolution contracts for `catalog:` / `workspace:` specifiers plus the `NpmRegistry` and `PackagePublish` services, which do their own IO through core contracts in `R` (boundary, deliberately — not integrated).
+- `walker` — upward path traversal; the one absorbing loop (boundary).
+- `xdg` — XDG Base Directory resolution: `AppDirs`, `NativeDirs`, `XdgPaths` and the config-file resolvers, over `walker` (boundary).
+- `commands` — structured command running (`Run`) and CLI tool discovery (`ToolDiscovery`) over core's `ChildProcessSpawner`; declares the narrow `LocalExec` contract `workspaces` implements, keeping zero `@effected/*` edges (boundary).
+- `git` — typed git introspection plus a marked mutating tier, a pure `GitConfig`/`Gitmodules` core, and argv redaction in `GitCommandError`, over core's ChildProcessSpawner in `R` (boundary).
 - `templates` — managed `BEGIN`/`END` sections in files whose surrounding content belongs to the user; `FileSystem` required in `R`, `Path` deliberately not (boundary).
+- `jsonl` — append-only, schema-validated JSONL journals as a definable service: envelope contract over a per-file event registry, a pure sync core, `Slice`-filtered reads that never materialize the file, an always-on watcher (boundary).
+- `runtimes` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot; its CLI binary ships from an external repo so consumers never install `@effect/platform-node` (boundary).
+- `store` — durable local state: a migrated, schema-versioned SQLite `Store` and a TTL `Cache` with tag invalidation and eviction (integrated).
+- `workspaces` — monorepo tooling: discovery, dependency graph, package-manager detection, pnpm catalogs, lockfile IO, git change detection; implements `npm`'s resolver contracts and `commands`' `LocalExec` (integrated). `PublishabilityDetector` is a seam with **no ambient default** — provide `layerNpm` (or your own) wherever your program's `R` names it.
 - `github` — typed GitHub REST and GraphQL over octokit's request surface, with GitHub App auth and the resource services; owns the octokit runtime so nothing downstream has to (integrated).
-- `github-actions` — the GitHub Actions runtime: the services an action needs to talk to the runner it runs inside (workflow commands, inputs/outputs/state, cache and blob store, OIDC, artifacts, tool install), plus the GitHub-surfaces reporting suite (`CheckState`, `ManagedDocument`, `GitHubMarkdown` incl. `tableFor`, `CheckDocument`) and the `sbom` seam adapters (`ActionsIdentityToken`, `ActionsProvenance`). The **one** package with `@effect/platform-node` as a required peer, and the only in-kit consumer of `templates`, `markdown` and `sbom` — `markdown` confined to one module by a reachability test (integrated).
-- `sbom` — supply-chain artifacts: CycloneDX 1.6 SBOMs, the NTIA minimum-elements report, in-toto statements and SLSA provenance, and Sigstore DSSE signing (integrated).
-- `schemastore` — Effect Schemas published as SchemaStore-shaped Draft-07 JSON Schema documents: `StoreDocument` assembly (owning the `#/$defs` restore the core lowering undoes), versioned and unversioned catalog modes over full-SemVer version labels (SchemaStore's `<name>-<version>.json` convention, its partial-label grammar deliberately narrowed), fileMatch hygiene lint, `DocumentLint`, language-server annotation carriers re-grafted after the lowering, real-engine validation over ajv as a direct dependency (`SchemaValidator.layer` ships closed; the seam survives as a substitutable interface, not a requirement), `DocumentDiff` classifying a change as documentation-only versus contract-breaking, and `SchemaFile` content-comparing write-if-changed IO plus a non-writing `check`; annotate at the definition site — a usage-site annotation on a hoisted schema carries nothing (integrated since 2026-08-04, flipped from boundary — the purity was ceremony for build-time tooling whose gate IS ajv).
-- `jsonl` — append-only, schema-validated JSONL journals as a definable service: the envelope contract (`at`/`event`/`scope`/`data`) over a per-file event registry, a pure synchronous core usable from a runtime-free reader, `Slice`-filtered `query`/`changes`/`projection` so no read materializes the file, and an always-on watcher so cooperating writers cross-observe each other's appends; an eight-tag error taxonomy that carries causes structurally and lets `PlatformError` pass through untranslated. `FileSystem` required in `R`, `Path` deliberately not (boundary).
-
-### .repos/effect
-
-A git submodule of Effect-TS/effect, pinned to the tag matching the `effect` catalog (`effect@4.0.0-beta.107`) and managed by silk's repos tooling. It has tracked the main Effect-TS/effect monorepo since 2026-07-19, when the old effect-smol repo was archived and v4 development moved back there; the local path was `.repos/effect-smol` until 2026-07-24 and is now `.repos/effect`, matching what a consuming repo would vendor. Declared in `.gitmodules`; described by the manifest `.repos/config.json` (url / ref / purpose / sparse / orientation / notes). Vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
-
-Sparse checkout: only `packages/effect`, `packages/vitest`, `migration`, `ai-docs`, `LLMS.md` and `MIGRATION.md` are materialized.
-
-**Never write to `.repos/effect` by any means, with any tool** — the silk plugin's PreToolUse guards deny writes under `.repos/**`. Only the manifest `.repos/config.json` is legitimately editable (notes / orientation / sparse).
-
-Re-pin when the catalog bumps, **in the same commit**: `savvy repos pin effect effect@<new-tag>` (or the `repos_manage` MCP tool, action `pin`). Both arguments are **positional** — there is no `--ref` flag, and passing one fails with `Unrecognized flag: --ref`. It stages the gitlink and manifest and returns a ready-made commit message; review any `staleNoteIds` it flags. Full recipe: [architecture.md](.claude/design/effected/architecture.md)'s re-pin section.
-
-Fresh clones, CI runners and new worktrees start with an **empty** `.repos/` checkout — run `savvy repos sync` (or `repos_manage` action `sync`) once before relying on vendored content.
-
-Exclusions: the silk Biome preset excludes `**/.repos` centrally; markdownlint ignores it via `lib/configs/.markdownlint-cli2.jsonc`; dependabot excludes `.repos/**`; it was never a pnpm workspace, turbo or vitest target and still is not.
+- `github-actions` — the Actions runtime services, the GitHub-surfaces reporting suite and the `sbom` seam adapters; the **one** package with `@effect/platform-node` as a required peer, and the only in-kit consumer of `templates`, `markdown` and `sbom` (integrated).
+- `sbom` — supply-chain artifacts: CycloneDX 1.6 SBOMs, the NTIA minimum-elements report, in-toto statements and SLSA provenance, Sigstore DSSE signing (integrated).
+- `schemastore` — Effect Schemas published as SchemaStore-shaped Draft-07 documents: `StoreDocument` assembly, catalog modes, fileMatch lint, `DocumentDiff`, write-if-changed `SchemaFile` IO, ajv-backed validation (integrated).
+- `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place (integrated). Nothing may depend on it.
+- `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier**. It **is published to npm** like every library here (currently `0.4.0`), not an exception.
 
 ## Build Pipeline
 
-[Turbo](https://turbo.build/) orchestrates builds across workspace packages: `pnpm build` runs `turbo run build:dev build:prod`. Each package builds with `node savvy.build.ts` using [@savvy-web/bundler](https://github.com/savvy-web/bundler), producing `dist/dev/` and `dist/prod/` outputs. Task graph: `build:prod` depends on `types:check` and `build:dev`; both depend on upstream `^build:dev`.
+Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.build-and-test.md`. The rules:
 
 **Never run `node savvy.build.ts --target prod` directly.** It skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. Build through `pnpm build --filter <pkg>`.
 
-`@savvy-web/bundler` is a **`devDependency` of every package that builds** — it is what `savvy.build.ts` imports. **Never put it in `dependencies`**, or the publishable manifest ships a build tool at runtime. The workspace sets `autoInstallPeers: true`, so root `devDependencies` are just `@savvy-web/silk` and `@vitest-agent/plugin`, with the rest auto-installed as peers.
+**Never put `@savvy-web/bundler` in `dependencies`** — it is a `devDependency` of every package that builds, and in `dependencies` the publishable manifest ships a build tool at runtime.
 
-**Every package typechecks with `tsc --noEmit`** (the `types:check` script), with `typescript` (`catalog:silk`) as the devDependency behind it. `@effect/tsgo` was removed from all packages (d0599438) and survives only as a catalog entry with no consumer — do not reintroduce it as a package's typechecker.
+**Source `package.json` files are `"private": true` — this is intentional; never set `"private": false` in source.** The bundler's `publishConfig` transform produces the publishable manifest at build time. **Never infer from `"private": true` that a package will not publish** — every source manifest here is private.
 
-Source `package.json` files are `"private": true` — this is intentional. The bundler's `publishConfig`-driven transform produces the publishable manifest at build time; never set `"private": false` in source.
+**Every package typechecks with `tsc --noEmit`** (`types:check`), on `typescript` from `catalog:build`. `catalog:build` is **not** declared in `pnpm-workspace.yaml`; it is injected by the `@savvy-web/pnpm-plugin-silk` configDependency — its absence there is expected, not a bug to repair by adding it.
 
 ## Commands
 
@@ -107,16 +104,9 @@ Source `package.json` files are `"private": true` — this is intentional. The b
 
 **Agents must not invoke them.** Surface the right command to the user and let them run it. Advancing the beta is `pnpm pnpm:up` then `pnpm pnpm:export`.
 
-## Tooling
+## Code Quality and Hooks
 
-The `@savvy-web/*` packages are in active development — if behavior seems unexpected, read the installed source in `node_modules/@savvy-web/`.
-
-- **@savvy-web/bundler** — build pipeline, dual outputs, package.json transform (see Build Pipeline).
-- **@savvy-web/silk** — meta-package providing Biome config, commitlint/lint-staged presets, markdownlint custom rules, and tsconfig bases. Root `tsconfig.json` extends `@savvy-web/silk/tsconfig/node/root.json`.
-
-### Code Quality and Hooks
-
-Biome, commitlint, lint-staged and markdownlint all take their presets from `@savvy-web/silk`; configs live at the repo root and in `lib/configs/`. Markdownlint runs via `pnpm lint:md` / `pnpm lint:md:fix`.
+Biome, commitlint, lint-staged and markdownlint take their presets from `@savvy-web/silk`; configs live at the repo root and in `lib/configs/`. The `@savvy-web/*` packages are in active development — if behavior seems unexpected, read the installed source in `node_modules/@savvy-web/`.
 
 **Never invoke `markdownlint-cli2` directly — run `pnpm lint:md` or `pnpm lint:md:fix`.** The tool *merges* explicit path arguments with the config's repo-wide `globs` rather than narrowing to them, so "lint just my file" lints every markdown file in the repo. The config deliberately omits `fix` (present, it overrides the `--fix` flag in both directions) so the flag decides.
 
@@ -126,17 +116,11 @@ Biome, commitlint, lint-staged and markdownlint all take their presets from `@sa
 
 ### Dependencies
 
-Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml` (`catalog:effect`, `catalog:effectPeers`, `catalog:silk`, plus the `effect3` / `effect3Peers` v3 interop catalogs), managed via `packages/pnpm-plugin-effect`.
+Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml`, managed via `packages/pnpm-plugin-effect`. Catalog detail and the expected peer-warning class → `@./CLAUDE.dependencies.md`.
 
-**`catalog:effect` uses the `lock` strategy: exact beta pins (`4.0.0-beta.107`), never a caret.** A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports. Under `lock` every consumer resolves that one pinned version, so `catalog:effectPeers` holds the same exact beta, not a caret floor. The `effect3` / `effect3Peers` interop catalogs track the latest Effect **v3** (caret-ranged, not synced to the vendored tree) for dual-version testing, and drop at the plugin's `1.0.0`.
-
-**`pnpm peers check` reports one known issue class, currently with a single occupant** (state as of the 2026-08-11 beta.107 wave adoption). It is the *toolchain* graph, not this workspace: `rolldown-pnpm-config@0.5.7` (the `pnpm-plugin-effect` build tool, not yet republished against the wave) hard-depends on beta.101-era artifacts, and `@effect/platform-node-shared@4.0.0-beta.107` inside that sub-graph sees the beta.101 it resolves against. It clears when `rolldown-pnpm-config` republishes against the current beta — which is why beta.101 and beta.107 legitimately coexist in the tree right now, and the island only executes during the user-run `pnpm:up`/`pnpm:export` flow. This is expected, not a defect to chase. (The 2026-08-11 advance also proved what the class becomes when an API is *removed* between betas: a hard module-init crash, bridged by temporary local shims until the republish — see PR #322.)
-
-The `@effect` satellite-drift warning class is permanently retired: `pnpm-plugin-effect` generates a version-qualified `peerDependencyRules.allowedVersions` table from the lock catalog (regenerated by the package's `pnpm:export` flow), so a satellite one beta ahead or behind the pin no longer warns while genuine v3 complaints stay live. The regenerated table so far only binds this repo's own checkout — it reaches external consumers, the `@savvy-web` toolchain graph among them, only once `pnpm-plugin-effect` publishes and the toolchain adopts that release, both still pending. Do not silence these, and do not read their presence as license to tolerate an unrelated one: **a warning outside the toolchain graph is a genuine closure defect to fix upstream.**
+**`catalog:effect` uses the `lock` strategy: exact beta pins (`4.0.0-beta.107`), never a caret.** A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports.
 
 **Always check the lockfile diff after an install** — a plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from it.
-
-Why these hold (the `autoInstallPeers` mechanics, the `lock` vs `interop` catalog strategies) → `@./.claude/design/effected/architecture.md`. Load when: editing catalogs, catalog strategies, or peer declarations.
 
 ### Commits
 
@@ -146,7 +130,4 @@ Commit bodies allow dash bullets (the preferred shape) but no markdown headers, 
 
 ## Testing
 
-- **Framework**: [Vitest](https://vitest.dev/) with the `@vitest-agent/plugin` `AgentPlugin` (project discovery, agent-friendly output, v8 coverage with `basic` thresholds); pool is `forks`.
-- **Effect code**: test with `@effect/vitest` (`catalog:effect`), and assert with `assert.*` — **never `expect`**.
-- **Location**: tests live in each package's `__test__/` directory, never co-located in `src/` (unit: `*.test.ts`; e2e: `e2e/*.e2e.test.ts`; integration: `integration/*.int.test.ts`).
-- **CI**: `pnpm ci:test` sets `CI=true`.
+Vitest with the `@vitest-agent/plugin` `AgentPlugin`; tests live in each package's `__test__/` directory, never co-located in `src/`. Test Effect code with `@effect/vitest` and assert with `assert.*` — **never `expect`**. Setup detail → `@./CLAUDE.build-and-test.md`.

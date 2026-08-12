@@ -1,56 +1,127 @@
 # @effected/schemastore
 
-Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources: document assembly over core's `Schema.toJsonSchemaDocument` + `JsonSchema.toDocumentDraft07` with annotation carrying for the non-standard language-server keyword families, the catalog-entry vocabulary with both versioning modes, structural and hygiene lints, canonical JSON text, content-comparing write-if-changed file IO with change classification, and real-engine validation over ajv.
-
-**Tier: integrated (since 2026-08-04 — flipped from boundary by owner decision, dogfood round 1 item 3).** `ajv` is a **direct runtime dependency**: `SchemaValidator.layer` is a shipped real-engine implementation, not a contract-only seam. The rationale, recorded because it overturns a stated principle: this package is build-time tooling installed as a devDependency, ajv is a first-class part of SchemaStore's own contract (its gate IS ajv strict mode), and keeping the engine out of the graph bought nothing real while making every consumer write the same adapter — and write it worse (the reported adopter collapsed all of ajv's structured errors into one `path: ""` finding). Purity here was ceremony; the seam survives as an interface (`noop`, `makeTest`/`layerTest`, substitutable engine), not as a requirement.
-
-All IO lives in `src/SchemaFile.ts` — one module, one `Context.Service`, over core `FileSystem`/`Path` required in `R` (the `@effected/package-json` `PackageJsonFile` pattern; no platform package — the consumer provides `@effect/platform-node` at the edge). Every other module is pure; keep it that way. Peer-depends on `effect`; one regular `workspace:^` edge on `@effected/semver` (version ordering only — no `SemVer` type surfaces publicly); `ajv` is a regular dependency; `@effect/platform-node` is a devDependency for the integration tests only. Generalizes the silk-release-action `generate-schema.ts` extraction source; second consumer is the silk-runtime-action rebuild, third is `claude-code-marketplace-manager`.
+Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema
+documents from Effect Schema sources: assembly over core's
+`Schema.toJsonSchemaDocument` + `JsonSchema.toDocumentDraft07`, annotation
+carrying for the language-server keyword families, the catalog vocabulary in
+both versioning modes, structural and hygiene lints, canonical JSON text,
+write-if-changed IO with change classification, and validation over ajv.
 
 **For the full design:** → `@../../.claude/design/effected/packages/schemastore.md`
 
+Load when changing an emitted shape, the versioning grammar or the gating model.
+
+## Child context files
+
+Children carry surfaces and evidence; **every rule is here**.
+
+- Modules → `@./CLAUDE.modules.md` — Load when: changing or extending a module, or asking what one exposes.
+- Verification → `@./CLAUDE.verification.md` — Load when: touching the suite, or before re-litigating a "does core do X?" question — the beta-probed facts, hardening budget and test pins live there.
+
+## Tier: integrated (since 2026-08-04)
+
+**Flipped from boundary by owner decision (dogfood round 1, item 3).** `ajv` is
+a **direct runtime dependency**: `SchemaValidator.layer` is a shipped
+real-engine implementation, not a contract-only seam. The flip overturns a
+stated principle knowingly: this is build-time tooling installed as a
+devDependency, SchemaStore's own gate IS ajv strict mode, and purity here only
+made every consumer write the same adapter, worse (one collapsed ajv's
+structured errors into a single `path: ""` finding). **The seam survives as an
+interface** (`noop`, `makeTest`/`layerTest`, a substitutable engine), not as a
+requirement.
+
+All IO lives in `src/SchemaFile.ts` — one module, one `Context.Service`, over
+core `FileSystem`/`Path` required in `R` (the `PackageJsonFile` pattern: no
+platform package, the consumer provides one at the edge). **Every other module
+is pure; keep it that way.** Peers on `effect`; one regular `workspace:^` edge
+on `@effected/semver` (version ordering only — no `SemVer` type surfaces
+publicly); `@effect/platform-node` is a devDependency for the integration tests.
+
 ## Scope fence
 
-`@effected/json-schema` is off the roadmap because core's `JsonSchema` made it redundant. This package is the narrow publication/catalog/versioning/lint layer and **must not grow into a general JSON Schema package**: no schema construction, no ref resolution beyond the document's own `$defs` pool, no dialect conversion. Core owns the generation pipeline; this package owns the SchemaStore shape around it. Depending on ajv (2026-08-04) does not widen this fence — ajv is the validation gate, not a construction or conversion surface.
+`@effected/json-schema` is off the roadmap because core's `JsonSchema` made it
+redundant. Core owns the generation pipeline; this package owns the SchemaStore
+shape around it and **must not grow into a general JSON Schema package**: no
+schema construction, no ref resolution beyond the document's own `$defs` pool,
+no dialect conversion. Depending on ajv does not widen the fence — ajv is the
+validation gate, not a construction surface.
 
-## Modules
+## Rules
 
-- `StoreDocument` — the assembly (`Schema.Class`: `$schema`/`$id`/`root`/`defs`; `draft07({$id, root, defs?})` fills `$schema` for hand-built values — `$schema` stays a real field rather than a defaulted one because it declares the document's dialect). `fromSchemaResult`/`fromSchema` run core's 2020-12 generation, the Draft-07 lowering, the `#/definitions` → `#/$defs` `$ref` rewrite (only `$ref` string values are rewritten; prose survives), and the `AnnotationCarriers` re-graft — the declared families are **always admitted** into `includeAnnotationKey` (a caller predicate is consulted in addition, but its non-declared admissions still drop at the lowering). `toJson()` emits the flat publication shape, omitting `$defs` when empty (deliberate divergence from the extraction source). `serializeResult` routes through `CanonicalJson`. Fails typed with `SchemaConversionError` (`$id` + `cause: Schema.Defect()`).
-- `KeywordFamilies` — the ONE owner of the declared non-standard keyword families (the vscode five by exact name; the `x-taplo`, `x-tombi-`, `x-intellij-` prefixes). Both `DocumentLint.UnknownKeyword` and `AnnotationCarriers` consume `isDeclared` — one predicate, so the lint and the carriers cannot drift (a registry mutant broke all three suites at once).
-- `AnnotationCarriers` — the post-lowering re-graft: `carryResult` (Result primitive) / `carry` (span form) copy declared-family keys from a 2020-12 node onto its lowered Draft-07 counterpart via a parallel walk mirroring core's `toSchemaDraft07` descent exactly, including the one coordinate move (2020-12 `prefixItems[i]` → Draft-07 `items[i]`; trailing `items` → `additionalItems`). Depth cap fails typed (`CarrierDepthExceededError`). **Know the boundary** (probed at beta.101): an annotation must sit on the schema *definition* node — annotating a hoisted (identifier'd) schema at its usage site reaches nothing, even at 2020-12.
-- `SchemaValidator` — real-engine validation, **closed by default**: `SchemaValidator.layer` runs ajv (meta-schema check keeping ajv's structured `instancePath`/`keyword`, then a compile whose strict-mode throw becomes a root-pathed finding; declared `KeywordFamilies` keywords are registered first so ajv cannot reject what `DocumentLint` allows; a fresh instance per call so shared `$id`s never collide). `validate(document, {strict?})` answers `ValidationFinding` values (empty = clean pass); the error channel is reserved for the mechanism failing (`SchemaValidatorError`, `cause: Schema.Defect()`) — the `CatalogResolver` channel convention. Also ships `noop` (validation off) and `makeTest`/`layerTest` (unstubbed members die naming the member).
-- `DocumentDiff` — pure classification of two emitted documents as `SchemaChange` (`"none"` | `"annotations"` | `"contract"`), keyword-position aware like the lint and key-order insensitive. `"annotations"` (title/description/$comment + declared families) means transparently replaceable — no new version; `"contract"` is the version-bump signal. `isClean(change)` is the predicate for the clean case so consumers do not spell `"none"` (`"created"` is deliberately not clean). `default`/`examples`/`readOnly`/`writeOnly` are deliberately NOT documentation (consumers act on them); misreporting a contract change as annotations ships a silent break, the reverse only costs a bump. Its leaf comparison uses a looser stack guard than `MAX_NESTING_DEPTH` — sharing one budget made a deep-but-identical document compare as different.
-- `SchemaFile` — the one IO module (see the tier section). `read(path)` answers the file's exact text (`SchemaFileNotFoundError` carries its own tag via `reason._tag === "NotFound"` routing, no TOCTOU pre-check; other failures are `SchemaFileReadError`); `write(path, document, options?)` serializes through `CanonicalJson`, compares **by content** (`compare: "bytes"` opts back into byte-exactness), writes only on difference (creating parent directories), and answers `{outcome, change}` as a **value** — `outcome` is whether it wrote, `change` is the `DocumentDiff` classification plus `"created"`. Content comparison is what makes the write-if-changed promise survive a repo whose formatter also owns the file's text (effected#262); a byte comparison rewrote forever and `"unchanged"` was unreachable. `check(path, document, options?)` is the same comparison **without writing** — the drift-check half, since a CI job must not regenerate — answering `{wouldWrite, change}`: `change` is content (format-immune, the drift question) and `wouldWrite` honors `compare`, so the pair cannot disagree with the writer under either mode. Both routes share ONE internal `compare` helper for exactly that reason. `outcome`/`wouldWrite` are the authoritative "was/would the file be touched" answers — never infer it from `change`, which is `"none"` on a `compare: "bytes"` write. An existing file that does not parse is classified `"contract"` and repaired rather than failing typed (a hand-corrupted generated file must stay regenerable). A comparison-read failure other than not-found fails typed rather than silently overwriting; a serialization failure propagates as its own `CanonicalJsonError` (deliberate divergence from `PackageJsonFile`'s narrowed write channel — its encode is total, ours is not); the filesystem failures are `SchemaFileWriteError`.
-- `SchemaPipeline` — the emit verb `SchemaTarget` is the vocabulary for: `run(targets, options?)` generates, lints, validates, gates and writes each target; `check(targets, options?)` is the same walk with no writes and is **total over the targets** — it never stops at a failing gate, reporting `blocked` per target instead, because reporting is its job and a repo with three broken documents should learn all three in one run. `runOne`/`checkOne` take a single target so a one-target caller need not prove element zero exists. A **plain function, deliberately not a `Context.Service`** — it needs `SchemaFile | SchemaValidator` in `R`, which compose for free, and a service would re-add the ceremony the ajv reversal removed. Both gates' findings normalize into `PipelineFinding` (`source`/`severity`/`check`/`path`/`message`; engine findings are always `"warning"`) so one predicate judges both; `blocking` defaults to `severity === "warning"` and is overridable because **gating is policy, not mechanism**. **Know which gate actually blocks here** (probed, pinned by a test): a target carries a `Schema`, so pipeline documents come from `fromSchema`, and the Draft-07 lowering drops undeclared keywords before `DocumentLint` runs — `UnknownKeyword` is effectively unreachable through this entry point and the **engine** gate is what stops a bad document. The lint's warning checks earn their keep on documents the pipeline did not build (`StoreDocument.draft07`, or one read off disk) and on depth. Findings come back as values — the package never picks your log wording. `run` fails `SchemaGateError` ($id + blocking findings) and stops at the first failing target, so a gated document is never written; `check` does not fail on findings at all. `PipelineFinding.label` is the rendered name (`check ?? source`) so consumers do not each write that fallback. Built because three consumers had re-implemented this loop and would have diverged on error shape and gating.
-- `SchemaTarget` — interface + statics-only merged class (NOT a `Schema.Class`: it carries a live `Schema.Constraint`). `{schema, $id, path, name?, version?}`; empty `$id`/`path` throw (wiring defect), as does an empty `name` when given. `name` is **optional** — only catalog naming reads it, so a file-only target no longer duplicates its path's basename — but is **required when `version` is present** (versioned naming is `name-<version>.json`). That invariant is enforced by an **overload pair**, so version-without-name is a compile error; the runtime throw survives for untyped callers.
-- `SchemaVersioning` — `SchemaVersion` (branded string; **full three-component SemVer**, `major.minor.patch` plus optional prerelease, enforced by `@effected/semver`'s own parse rather than a parallel regex; build metadata rejected — URL-hostile and invisible to precedence, so two labels differing only in build would both claim latest; surrounding whitespace rejected too, because `SemVer.parseResult` TRIMS and the untrimmed label would round-trip verbatim into `agripparc- 1.2.3 .json`, so the guard is `SemVer.isValid` first) with `parseResult`/`parse` and `InvalidSchemaVersionError`; `Order`/`latest` are plain SemVer precedence (`1.10.0` > `1.9.0` numerically; the label round-trips verbatim); `fileName`/`schemaUrl`/`catalogUrls` derive both catalog modes (`versions: []` is a contradiction and throws — pass `undefined` for unversioned). **The file-name convention stays SchemaStore's `<name>-<version>.json`**; only the label grammar diverges — the store's own labels are commonly two-part (`agripparc-1.2.json`) and unparseable as SemVer, and requiring three components is what makes a label unambiguous to split back out of a name or URL. Since no SemVer label is array-index-like, the `versions` map's ascending insertion order now survives serialization — the old bare-major JS-object caveat is retired.
-- `CatalogEntry` — `Schema.Class` of the catalog.json entry (`versions` is `optionalKey`); `assemble` composes `SchemaVersioning.catalogUrls`; `lint`/`lintFileMatch` are the fileMatch hygiene checks (`CatalogLintFinding`: `GenericFileMatch`, `ComplexFileMatch`) — pure pattern-shape analysis, no `@effected/glob` edge (a recorded decision: the lint never *matches*).
-- `DocumentLint` — total structural lint returning `DocumentLintFinding` values (never an error channel): `UnresolvedRef` (every `$ref` resolves against `$defs`; `#` self-refs ok; a surviving `#/definitions/...` pointer warns), `UnknownKeyword` (keyword-position-aware walk; allowed families: Draft-07 + `x-taplo*`, `x-tombi-*`, `x-intellij-*`, the vscode five), `DescriptionWithoutUrl` (advisory, root description's last line should be a docs URL), `DepthExceeded` (hostile nesting degrades to a finding).
-- `CanonicalJson` — the owned deterministic serializer (fixes the extraction source's biome shell-out): insertion-order keys (assembly owns ordering — never sorted), tab indent by default (`indent` option), LF, single trailing newline. Fails typed (`NonJsonValueError` with a JSON-pointer path, `JsonDepthExceededError`) instead of `JSON.stringify`'s silent drops/rewrites of `undefined`/`NaN`/non-plain objects.
-
-## Verified-against-the-beta facts (do not re-litigate from memory)
-
-- `Schema.toJsonSchemaDocument(schema: Constraint, options?)` → `JsonSchema.Document<"draft-2020-12">` and `JsonSchema.toDocumentDraft07` exist as used (vendored source, `effect@4.0.0-beta.101`).
-- The Draft-07 lowering rewrites `#/$defs` refs to `#/definitions` AND **drops every keyword outside its fixed copy-list** — probed: `includeAnnotationKey`-admitted keys (`x-taplo`, `markdownDescription`, ...) survive at 2020-12 and vanish after lowering. **The annotation carriers therefore re-graft after the lowering** (built in phase 2), not ride `ToJsonSchemaOptions` alone. `additionalProperties`/descriptions do survive.
-- Annotation keys land **exactly on the corresponding 2020-12 node** for every attachment site core generates (struct fields, struct roots, `$defs` pool entries, `prefixItems[i]`, `optionalKey`-wrapped fields, `allOf[i]` for check-then-annotate) — probed at beta.101; that determinism is what makes the parallel-walk re-graft sound. The exception: an annotation on a hoisted schema's *usage* site reaches nothing (see `AnnotationCarriers` above).
-- Core's `Schema.Annotations.Annotations` carries an index signature (`readonly [x: string]: unknown`), so `Schema.String.annotate({ "x-taplo": {...} })` type-checks without module augmentation.
-- Core's generator is total over `Schema.declare` (emits `{"type":"null"}` rather than throwing) — so `SchemaConversionError`'s fireable path in tests is the package's own rewrite depth cap.
-- `DRAFT_07_META_SCHEMA` keeps the trailing `#` (SchemaStore corpus convention); core's `JsonSchema.META_SCHEMA_URI_DRAFT_07` omits it — deliberate divergence, documented on the constant.
-
-## Hardening
-
-`internal/limits.ts` holds the kit parity constant `MAX_NESTING_DEPTH = 256`. Four recursive surfaces are capped: the `$ref` rewrite (fails typed via `SchemaConversionError`), the carrier re-graft (fails typed `CarrierDepthExceededError`; folded into `SchemaConversionError.cause` inside `fromSchemaResult`), the lint walk (degrades to a `DepthExceeded` finding — lint stays total), and the canonical emitter (fails typed `JsonDepthExceededError`, which also intercepts cycles).
-
-## Testing
-
-155 tests in `__test__/` (`@effect/vitest`, `assert.*` — never `expect`; `SchemaFile`'s real-IO tests under `integration/*.int.test.ts` over `@effect/platform-node`, the unit tests over `FileSystem.layerNoop` + `Path.layer`). Discriminating pins: the `#/definitions`→`#/$defs` rewrite touches only `$ref` values (prose survives); numeric-not-lexical ordering (`1.10.0` > `1.9.0`); keyword-position awareness (a property *named* `unevaluatedProperties` is not flagged; `enum`/`const`/`default`/`examples` are data positions); firing + clean-pass per lint check; both catalog modes round-trip through the `CatalogEntry` codec; the tuple coordinate move (`prefixItems[i]` → `items[i]`); non-declared keys are not carried even when the caller admits them; `"unchanged"` means the filesystem was not touched (a write-recording stub + a pinned-mtime integration test). Mutants run and killed: phase 1 — rewrite-all-strings, lexical order, properties-map-as-schema, dropped trailing newline, url-at-oldest; phase 2 — wrong-pointer graft (`prefixItems`→`prefixItems`), graft-all-`x-` keys, always-write, layerTest-answers-instead-of-dying, registry drift (dropping `x-tombi-` broke the keyword-families, document-lint AND annotation-carriers suites at once).
+- **Annotate at the definition site.** A usage-site annotation on a *hoisted*
+  (identifier'd) schema reaches nothing, even at 2020-12 — probed at beta.101.
+- **`KeywordFamilies` is the ONE owner of the declared non-standard families**
+  (the vscode five by exact name; the `x-taplo`, `x-tombi-`, `x-intellij-`
+  prefixes). `DocumentLint.UnknownKeyword` and `AnnotationCarriers` both consume
+  `isDeclared`, so lint and carriers cannot drift. Never fork the list.
+- **Carriers re-graft *after* the Draft-07 lowering**, which drops every keyword
+  outside its fixed copy-list. The parallel walk must mirror core's descent
+  exactly, including the coordinate move `prefixItems[i]` → `items[i]`.
+- **`default` / `examples` / `readOnly` / `writeOnly` are NOT documentation** in
+  `DocumentDiff` — consumers act on them. Misreporting a contract change as
+  `"annotations"` ships a silent break; the reverse costs a version bump.
+- **`SchemaFile` compares by content, not bytes** (`compare: "bytes"` is the
+  opt-in). Content comparison is what makes write-if-changed survive a repo
+  whose formatter also owns the file's text (effected#262); byte comparison
+  rewrote forever and `"unchanged"` was unreachable.
+- **`outcome` / `wouldWrite` are the authoritative "was/would the file be
+  touched" answers — never infer it from `change`**, which is `"none"` on a
+  `compare: "bytes"` write. `write` and `check` share ONE `compare` helper so
+  they cannot disagree, and `check` never writes (a CI drift job must not
+  regenerate). An existing file that does not parse is classified `"contract"`
+  and repaired, not failed — a corrupted generated file stays regenerable.
+- **`CanonicalJson` emits keys in insertion order — never sorted** (assembly
+  owns ordering). Tab indent by default, LF, one trailing newline; non-JSON
+  values fail typed instead of `JSON.stringify`'s silent drops.
+- **`SchemaVersion` is a full three-component SemVer label**, enforced by
+  `@effected/semver`'s parse, not a parallel regex. Build metadata is rejected
+  (URL-hostile, invisible to precedence); so is surrounding whitespace —
+  `SemVer.parseResult` TRIMS, so guard with `SemVer.isValid` first or a padded
+  label round-trips into `agripparc- 1.2.3 .json`. The **file-name convention
+  stays SchemaStore's `<name>-<version>.json`**; only the label grammar
+  diverges.
+- **`SchemaTarget` requires `name` whenever `version` is present**, enforced by
+  an overload pair so version-without-name is a compile error (the runtime throw
+  survives for untyped callers). Empty `$id`/`path` throw — wiring defect.
+- **`SchemaPipeline` is a plain function, deliberately not a `Context.Service`**
+  — it needs `SchemaFile | SchemaValidator` in `R`, which compose for free.
+  `run` stops at the first failing target so a gated document is never written;
+  `check` is **total over the targets**, reporting `blocked` per target instead
+  of stopping. Findings come back as values, and `blocking` is overridable
+  because **gating is policy, not mechanism**.
+- **Know which gate actually blocks in the pipeline**: targets carry a `Schema`,
+  so the lowering drops undeclared keywords before `DocumentLint` runs —
+  `UnknownKeyword` is unreachable that way and the **engine** gate is what stops
+  a bad document.
+- **A validator's error channel is for the mechanism failing**, never for
+  findings (the `CatalogResolver` convention). `SchemaValidator.layer` registers
+  the declared families before compiling, so ajv cannot reject what
+  `DocumentLint` allows, and uses a fresh instance per call so shared `$id`s
+  never collide.
+- **`MAX_NESTING_DEPTH = 256` (`internal/limits.ts`) caps four recursive
+  surfaces**; the lint degrades to a `DepthExceeded` finding (lint stays total),
+  the others fail typed. `DocumentDiff`'s leaf comparison uses a looser stack
+  guard on purpose — one shared budget made a deep-but-identical document
+  compare as different.
+- **`DRAFT_07_META_SCHEMA` keeps its trailing `#`** where core's URI constant
+  omits it — a documented divergence, not a typo.
 
 ## Working here
 
+Tests live in `__test__/` (`@effect/vitest`, `assert.*` — never `expect`);
+`SchemaFile`'s real-IO tests are under `integration/`.
+
 ```bash
-pnpm vitest run packages/schemastore --coverage.enabled=false   # this package's tests
-pnpm build --filter @effected/schemastore                        # dev + prod, in order
+pnpm vitest run packages/schemastore --coverage.enabled=false
+pnpm build --filter @effected/schemastore
 ```
 
-Never run `node savvy.build.ts --target prod` directly — it skips `build:dev` and leaves a truncated `issues.json` shaped like a clean gate.
+Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`
+and leaves a truncated `issues.json` shaped like a clean gate.
 
-`savvy.build.ts` carries the one narrow suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }` (16 suppressed heritage symbols). `SchemaTarget`'s class/interface merge carries the house `biome-ignore lint/suspicious/noUnsafeDeclarationMerging` with the standard statics-only justification (precedent: `tsconfig-json`'s `ResolvedTsconfig`). `package.json` stays `"private": true` — the bundler emits the publishable manifest.
+`savvy.build.ts` carries one narrow suppression
+(`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the heritage
+symbols; `SchemaTarget`'s class/interface merge carries the house
+`biome-ignore lint/suspicious/noUnsafeDeclarationMerging` with the standard
+statics-only justification. `package.json` stays `"private": true` — the bundler
+emits the publishable manifest.

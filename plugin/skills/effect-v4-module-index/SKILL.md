@@ -32,8 +32,8 @@ phrasing and missed on its module name.
 | You want to… | Reach for | Note |
 | --- | --- | --- |
 | **spawn a subprocess / run a command / shell out** | `effect/unstable/process` — `ChildProcess` (command values) + `ChildProcessSpawner` (the service) | NOT `unstable/cli`'s `Command`, which is the CLI *declaration*. Core declares the contract and ships **no layer**: require `ChildProcessSpawner` in `R`, let the app provide `NodeServices.layer`. Never hand-roll `node:child_process`. |
-| **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:178`). Do not build a promise-map de-duplicator beside it — but read the two `Cache` sharp corners below before choosing a TTL. |
-| **write to stdout/stderr, or read argv/stdin, from a library** | core `Stdio` — require `Stdio` in `R` | `Stdio.layerTest(impl)` (`Stdio.ts:133`) takes a `Partial<Stdio>` and lets you echo-test the output **with no platform package installed**. The real implementation still comes from `@effect/platform-*` at the app edge. Do not `console.log` from library code to dodge the wiring. |
+| **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:116`). Do not build a promise-map de-duplicator beside it — but read the two `Cache` sharp corners below before choosing a TTL. |
+| **write to stdout/stderr, or read argv/stdin, from a library** | core `Stdio` — require `Stdio` in `R` | `Stdio.layerTest(impl)` (`Stdio.ts:152`) takes a `Partial<Stdio>` and lets you echo-test the output **with no platform package installed**. The real implementation still comes from `@effect/platform-*` at the app edge. Do not `console.log` from library code to dodge the wiring. |
 
 ## Core modules
 
@@ -56,7 +56,7 @@ phrasing and missed on its module name.
 | `Console` | Effect wrapper over console (log/group/count/table/timer) as a swappable service | logging/console side effects you want swappable in tests |
 | `Context` | typed map of service implementations keyed by Service/Reference | building or reading the service environment `R` of effects |
 | `Cron` | recurring calendar schedule from cron expressions or field constraints | matching dates or computing next/previous scheduled occurrences |
-| `Crypto` | platform-independent crypto service contract: secure random bytes/numbers/shuffle, UUIDv4+v7, and `digest` over `SHA-1/256/384/512` — **and nothing else** (no HMAC, no signing, no key derivation; `Crypto.ts:76-154`) | secure random/UUID/hashing; contract, platform layer provides implementation. For HMAC or signing, `node:crypto` or a platform package — see the sharp corner below |
+| `Crypto` | platform-independent crypto service contract: secure random bytes/numbers/shuffle, UUIDv4+v7, and `digest` over `SHA-1/256/384/512` — **and nothing else** (no HMAC, no signing, no key derivation; `Crypto.ts:75-153`) | secure random/UUID/hashing; contract, platform layer provides implementation. For HMAC or signing, `node:crypto` or a platform package — see the sharp corner below |
 | `Data` | constructors for immutable value classes, tagged classes/unions, typed errors | defining `_tag`-carrying domain values and errors with structural equality |
 | `DateTime` | absolute instants plus optional time-zone-aware date-times and arithmetic | zone-aware timestamps, date math, and formatting |
 | `Deferred` | one-time set-once async variable many fibers can await | cross-fiber coordination on a single result/signal |
@@ -78,7 +78,7 @@ phrasing and missed on its module name.
 | `Filter` | composable check returning `Result` (pass/fail) that can also narrow/transform | selective matching/recovery where a predicate must also refine or transform |
 | `Formatter` | renders arbitrary JS values to readable strings with redaction/cycle handling | formatting values for logs, diagnostics, or error messages |
 | `Function` | core composition helpers: `pipe`, `flow`, `dual`, identity/const/memoize | composing functions or writing dual direct/pipe APIs |
-| `Graph` | immutable/scoped-mutable indexed node+edge graph with traversal, paths, export | building/traversing a graph, shortest path, DAG, diagram export |
+| `Graph` | immutable indexed node+edge graph carrying user data on both, mutated only inside a scoped window (`mutate(g, draft => …)`, or `beginMutation`/`endMutation`); directed-vs-undirected is a `Kind` type parameter. 95 exports — `dfs`/`bfs`/`topo`/`externals` walkers, the named algorithms (`dijkstra`, `bellmanFord`, `floydWarshall`, `astar`, `isAcyclic`, `isBipartite`, `connectedComponents`, `stronglyConnectedComponents`), graph set algebra (`compose`, `intersection`, `difference`, `symmetricDifference`, `complement`, `sum`), and `toMermaid` / `toGraphViz` emitters returning a diagram `string` | any graph problem — **do not hand-roll shortest path, topological sort, cycle detection, or SCCs beside it.** `Kind` gates the algorithms at the type level: `topo`/`stronglyConnectedComponents` take `"directed"` only, `isBipartite`/`connectedComponents` `"undirected"` only, so pick the constructor for the analysis you need (`stronglyConnectedComponents` also throws `GraphError` on an undirected graph at runtime). Reach for `toMermaid` whenever you want a diagram of anything you can model as nodes and edges |
 | `Hash` | computes non-cryptographic structural hashes; interface for custom hash | implementing custom hashing for Equal-based collections |
 | `HashMap` | immutable key/value map (HAMT) keyed by structural equality | need immutable map with object/structural keys |
 | `HashRing` | weighted consistent-hashing ring keyed by `PrimaryKey` | routing keys/shards to nodes with minimal remapping |
@@ -97,6 +97,7 @@ phrasing and missed on its module name.
 | `LogLevel` | log-level types, ordering, threshold/enabled helpers | comparing or checking log severities |
 | `ManagedRuntime` | runs many effects against services built once from a Layer | bridging Effect to promise/callback/sync entry points |
 | `Match` | ordered pattern matcher (`Match.type`/`Match.value`) | pattern-matching on tags, shapes, predicates, literals |
+| `Metric` | counters/gauges/histograms/frequencies/summaries/timers, attached to effects via `Effect.track` | metering an operation — boundaries only; see `effect-v4-observability`. NB `Metric.tagged`/`taggedWithLabels` are v3 names and gone; attributes are `Metric.withAttributes` |
 | `MutableHashMap` | in-place map mixing native and Equal/Hash keys | fast mutable map needing structural-key lookup |
 | `MutableHashSet` | in-place unique set built on MutableHashMap | fast mutable set with structural-equality members |
 | `MutableList` | in-place ordered list; append/prepend, drain from front | buffering values and draining FIFO in place |
@@ -126,7 +127,7 @@ phrasing and missed on its module name.
 | `Redacted` | wrapper hiding a value in string/JSON/inspect output while retaining it | carry secrets/tokens through code without leaking them in diagnostics |
 | `Reducer` | `Combiner` plus an initial value and fold-an-iterable operation | fold many values into one with an identity/empty case |
 | `Ref` | fiber-safe mutable cell with effectful get/set/update/modify | hold shared mutable state that composes with Effect concurrency |
-| `References` | built-in `Context.Reference` runtime keys (concurrency, logging, tracing) | read or override runtime execution/diagnostic settings for an effect |
+| `References` | built-in `Context.Reference` runtime keys — logging, tracing, stack frames, loggers | read or override runtime diagnostic settings for an effect. **No concurrency key exists** despite the module's own header prose claiming one — concurrency is a per-call `{ concurrency }` option |
 | `RegExp` | native `RegExp` constructor, guard, and literal-escaping helper | build patterns from data-driven text or narrow `unknown` to RegExp |
 | `Request` | typed request value describing one data-load with error/requirements | define a batchable/cacheable data query for `Effect.request` |
 | `RequestResolver` | resolver that batches, groups, and completes pending `Request` entries | implement backend batching/dedup/caching behind `Effect.request` |
@@ -137,12 +138,12 @@ phrasing and missed on its module name.
 | `Scheduler` | controls how runnable fiber tasks are queued, dispatched, and yielded | internal/advanced: tune or disable fiber scheduling and yields — usually skip |
 | `Schema` | validate/decode/encode data shapes with codecs, classes, refinements | the primary entry point for any schema, codec, or data validation |
 | `SchemaAST` | runtime tree representation of schemas (nodes, checks, annotations) | advanced machinery: inspect/build/rewrite schema ASTs programmatically |
+| `SchemaError` | the error a schema decode/encode fails with: a `SchemaIssue` tree plus a formatted `message` | catching/normalizing schema failures at a boundary — `Effect.catchTag("SchemaError", …)`. v4 exposes no `Schema` for the issue tree, so it rides in a domain error as `Schema.Defect()` |
 | `SchemaGetter` | one-way optional-in/optional-out conversions used inside transformations | consumer-facing when authoring a custom decode/encode direction |
 | `SchemaIssue` | describes and formats decode/encode/check failures with location | consumer-facing: inspect or format schema validation errors |
 | `SchemaParser` | runs a schema against values (decode/encode/validate) in many result styles | consumer-facing: execute a schema returning Effect/Exit/Option/Result/sync |
 | `SchemaRepresentation` | JSON-serializable descriptions of schemas plus TS-codegen | machinery: serialize schemas, convert to/from JSON Schema, generate code |
 | `SchemaTransformation` | two-way encode/decode conversions connecting two representations | consumer-facing when building a custom bidirectional codec |
-| `SchemaUtils` | specialized schema helpers too niche for core `Schema` | internal/advanced — usually skip |
 | `Scope` | lifetime boundary collecting finalizers run with an `Exit` on close | directly create/fork/close scopes; most code uses `Effect.scoped`/`Layer` |
 | `ScopedCache` | cache whose entries own scopes, releasing resources on eviction | cache resource-backed values with per-entry cleanup and expiry |
 | `ScopedRef` | current value plus the scope owning it; swaps acquire/release atomically | hold a swappable resource handle (client/connection) with clean replacement |
@@ -196,7 +197,6 @@ section.
 | `eventlog` | typed, replicated (optionally encrypted) event journal with SQL backends | event-sourced state that syncs/replicates |
 | `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers |
 | `httpapi` | schema-first declarative HTTP APIs with OpenAPI/Swagger output | defining a typed HTTP API contract shared by server and client |
-| `jsonschema` | JSON Schema derivation/interop for the schema system | emitting JSON Schema from schemas |
 | `observability` | OTLP + Prometheus exporters for traces/metrics/logs | exporting telemetry without the `@effect/opentelemetry` SDK |
 | `persistence` | `KeyValueStore` (memory/fs/SQL), `PersistedCache`/`PersistedQueue`, `RateLimiter` | durable KV, request-level durable caching, rate limiting |
 | `process` | `ChildProcess` Command values + `ChildProcessSpawner` service | spawning subprocesses (`@effected/git` is the house example; require in `R`) |
@@ -237,11 +237,14 @@ section.
   the declared error channel) does **not** transfer here. Probed at beta.101 with
   a poisoning control that fired.
 - **…but a default-TTL `Cache` memoizes a FAILED lookup for the process
-  lifetime.** `defaultTimeToLive` is `Duration.infinity` (`Cache.ts:307`), and
+  lifetime.** `defaultTimeToLive` is `Duration.infinity` (`Cache.ts:323`), and
   the cache "stores successful **and failed** lookup results" (`Cache.ts:4`).
   One transient network blip is therefore permanent. Wherever failures are
   transient, make the TTL exit-dependent — the `timeToLive` option takes
-  `(exit, key)` for exactly this (`Cache.ts:107`):
+  `(exit, key)` for exactly this (`Cache.ts:198`; the same two-argument shape on
+  the cache's own field at `Cache.ts:116`). Note `Cache.make`'s `timeToLive` is
+  a plain `Duration.Input` with no exit access (`Cache.ts:298`) — the
+  exit-dependent form requires `makeWith`:
 
   ```ts
   Cache.makeWith(lookup, {
@@ -251,7 +254,7 @@ section.
   ```
 
 - `HttpClientRequest.bearerToken` accepts a **`Redacted` directly**
-  (`token: string | Redacted.Redacted`, `unstable/http/HttpClientRequest.ts:362`;
+  (`token: string | Redacted.Redacted`, `unstable/http/HttpClientRequest.ts:396`;
   `basicAuth` likewise). A runtime token flows into request construction with **no
   declassification step at all** — which is what lets a package keep its
   secret-handling seam to one module instead of granting every request builder an

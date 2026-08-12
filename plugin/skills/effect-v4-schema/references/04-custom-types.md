@@ -4,6 +4,14 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107: `Schema.declare`, `declareConstructor`,
+`instanceOf`, `link`, `toCodecJson` and the SchemaIssue constructors all exist as described, and every
+code block typechecks. FALSIFIED and corrected inline: `new SchemaIssue.InvalidType(ast, Option.some(u))`
+and the two-argument `InvalidValue(annotations, input)` form. Both constructors take
+`(…, input?, options?)` with the RAW input; because `input` is typed `unknown`, an `Option` wrapper
+compiles and then silently corrupts what `{ reportInput: true }` reports. PROBED: the `, got X`
+suffixes removed from expected output.
 -->
 
 # Declaring Custom Types
@@ -37,7 +45,7 @@ console.log(String(Schema.decodeUnknownExit(URLSchema)(new URL("https://example.
 // Success(https://example.com/)
 
 console.log(String(Schema.decodeUnknownExit(URLSchema)(null)))
-// Failure(Cause([Fail(SchemaError(Expected <Declaration>, got null))]))
+// Failure(Cause([Fail(SchemaError(Expected <Declaration>))]))
 ```
 
 > **Tip**: For simple `instanceof` checks, prefer `Schema.instanceOf(URL)`, it wraps `Schema.declare` with an `instanceof` guard automatically.
@@ -57,7 +65,7 @@ const URLSchema = Schema.declare(
 )
 
 console.log(String(Schema.decodeUnknownExit(URLSchema)(null)))
-// Failure(Cause([Fail(SchemaError(Expected URL, got null))]))
+// Failure(Cause([Fail(SchemaError(Expected URL))]))
 //                                          ^^^
 //                          Now the error message shows "URL" instead of "<Declaration>"
 ```
@@ -93,7 +101,7 @@ You build a `Link` using `Schema.link<T>()`, which takes two arguments:
 **Example** (Making `URL` JSON-serializable)
 
 ```ts
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect"
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect"
 
 const URLSchema = Schema.declare(
   (u): u is URL => u instanceof URL,
@@ -107,10 +115,10 @@ const URLSchema = Schema.declare(
         // How to convert between URL and string
         SchemaTransformation.transformOrFail<URL, string>({
           // JSON string -> URL (may fail if the string is not a valid URL)
-          decode: (s) =>
+          decode: (s, options) =>
             Effect.try({
               try: () => new URL(s),
-              catch: (e) => new SchemaIssue.InvalidValue({ message: globalThis.String(e) }, s)
+              catch: () => new SchemaIssue.InvalidValue({ message: "Invalid URL string" }, s, options)
             }),
           // URL -> JSON string (always succeeds)
           encode: (url) => Effect.succeed(url.href)
@@ -162,10 +170,18 @@ The parsing function you return from `run` is responsible for:
 2. Recursively decoding inner values using the provided codecs
 3. Returning an `Effect` that succeeds with the decoded value or fails with an issue
 
+> **Beta trap.** Issue constructors take the raw input, not an `Option`:
+> `new SchemaIssue.InvalidType(ast, input?, options?)` and
+> `new SchemaIssue.InvalidValue(annotations?, input?, options?)`. Because the
+> `input` parameter is typed `unknown`, `Option.some(u)` compiles — it just
+> stores an `Option` wrapper where the parser expects the value, so
+> `{ reportInput: true }` reports the wrapper. Pass `u` and thread `options`
+> through from the declaration callback.
+
 **Example** (A generic `Box<A>` container)
 
 ```ts
-import { Effect, Option, Schema, SchemaIssue, SchemaParser } from "effect"
+import { Effect, Schema, SchemaIssue, SchemaParser } from "effect"
 
 // 1. Define the type
 interface Box<A> {
@@ -186,7 +202,7 @@ const Box = <A extends Schema.Top>(item: A) =>
     (u, ast, options) => {
       // First, check the outer shape
       if (!isBox(u)) {
-        return Effect.fail(new SchemaIssue.InvalidType(ast, Option.some(u)))
+        return Effect.fail(new SchemaIssue.InvalidType(ast, u, options))
       }
       // Then, decode the inner value using the item codec
       return Effect.mapBothEager(
@@ -207,7 +223,7 @@ console.log(String(Schema.decodeUnknownExit(schema)({ value: "1" })))
 // Success({ value: 1 })
 
 console.log(String(Schema.decodeUnknownExit(schema)({ value: "a" })))
-// Failure(Cause([Fail(SchemaError(Expected a finite number, got NaN
+// Failure(Cause([Fail(SchemaError(Expected a finite number
 //   at ["value"]))]))
 ```
 

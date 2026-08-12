@@ -4,6 +4,13 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107: `decodeTo`, `decode`, `encodeTo`, the
+`SchemaTransformation` constructors and the passthrough helpers all exist as described, and every code
+block typechecks. FALSIFIED and corrected inline: `new Issue.InvalidValue(...)` with nothing named
+`Issue` in scope (the module is `SchemaIssue`) and the dropped `options` argument — `transformOrFail`
+hands the callback `(input, options)` precisely so the issue can honour `{ reportInput: true }`.
+NOT PROBED: the optional-key and omit-during-encoding runtime behaviour.
 -->
 
 # Transformations
@@ -205,22 +212,28 @@ This is useful when you need to validate input or enforce rules that may not alw
 **Example** (Converting a string URL into a `URL` object)
 
 ```ts
-import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect"
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect"
 
 const URLFromString = Schema.String.pipe(
   Schema.decodeTo(
     Schema.instanceOf(URL),
     SchemaTransformation.transformOrFail({
-      decode: (s) =>
+      decode: (s, options) =>
         Effect.try({
           try: () => new URL(s),
-          catch: () => new Issue.InvalidValue({ message: `Invalid URL string: ${s}` }, s)
+          catch: () => new SchemaIssue.InvalidValue({ message: "Invalid URL string" }, s, options)
         }),
       encode: (url) => Effect.succeed(url.href)
     })
   )
 )
 ```
+
+> **Beta trap.** The module is `SchemaIssue`; there is no bare `Issue` module to
+> import. An earlier draft of this example wrote `new Issue.InvalidValue(...)`
+> with nothing named `Issue` in scope — `TS2304: Cannot find name 'Issue'`. The
+> constructor's third parameter is the effective parse options; `transformOrFail`
+> hands them to the callback as `(input, options)` so you can pass them on.
 
 ## Schema composition
 

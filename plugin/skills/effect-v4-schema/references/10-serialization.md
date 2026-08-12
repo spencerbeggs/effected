@@ -4,6 +4,13 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107: the JSON / string / FormData / URLSearchParams
+codecs and the canonical codecs all exist as described, and every code block typechecks after one fix.
+FALSIFIED and corrected inline: `Schema.UnknownFromJsonString`. It exists at RUNTIME but is marked
+`@internal` in source and is therefore stripped from the published `.d.ts` — a runtime probe passes
+while the code still fails to compile. Use the public `Schema.fromJsonString(Schema.Unknown)`.
+NOT PROBED: the FormData, URLSearchParams, StringTree and ISO codec output blobs.
 -->
 
 # Serialization
@@ -12,9 +19,9 @@ Serialization converts typed values into a format suitable for storage or transm
 
 ## JSON Support
 
-#### UnknownFromJsonString
+#### Decoding a JSON string into an unknown value
 
-A schema that decodes a JSON-encoded string into an unknown value.
+A schema that decodes a JSON-encoded string into an unknown value: `Schema.fromJsonString(Schema.Unknown)`.
 
 This schema takes a string as input and attempts to parse it as JSON during decoding. If parsing succeeds, the result is passed along as an unknown value. If the string is not valid JSON, decoding fails.
 
@@ -25,9 +32,17 @@ When encoding, any value is converted back into a JSON string using JSON.stringi
 ```ts
 import { Schema } from "effect"
 
-Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(`{"a":1,"b":2}`)
+Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(`{"a":1,"b":2}`)
 // => { a: 1, b: 2 }
 ```
+
+> **Beta trap.** `Schema.UnknownFromJsonString` exists at runtime but is marked
+> `@internal` in source, so it is **stripped from the published `.d.ts`**. A
+> TypeScript consumer gets `TS2551: Property 'UnknownFromJsonString' does not
+> exist ... Did you mean 'fromJsonString'?` even though `typeof
+> Schema.UnknownFromJsonString === "function"` at runtime. This is the rare
+> case where a runtime probe passes and the code still does not compile — use
+> the public `Schema.fromJsonString(Schema.Unknown)` instead.
 
 #### fromJsonString
 

@@ -41,7 +41,7 @@ Available via the Skill tool (several also auto-load on trigger):
   (plus the unstable namespaces) in one what-it-is / when-to-reach-for-it
   table. Consult FIRST when deciding which module a task needs.
 - effected-packages — the routing map for the @effected kit: what each of the
-  25 packages contains, when to reach for it, and a per-package reference
+  27 packages contains, when to reach for it, and a per-package reference
   (services, usage, testing machinery). Consult before building lockfile/
   config/glob/semver/XDG/workspace/git capability the kit already ships.
 - effect-v4-source-lookup — the evidence ladder for confirming a v4 API before

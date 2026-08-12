@@ -1,6 +1,8 @@
 # @effected/toml
 
-TOML 1.0.0 parsing, editing and formatting as Effect schemas on a from-scratch engine (the one format package with no vendored code): parse to plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, visit as a `Stream`. Pure tier: peers only on `effect`, zero runtime deps.
+TOML parsing, editing and formatting as Effect schemas on a from-scratch engine (the one format package with no vendored code): parse to plain values or a byte-exact linear CST, compute comment-preserving edits, format, modify by path, visit as a `Stream`. Pure tier: peers only on `effect`, zero runtime deps.
+
+The two directions target different spec versions on purpose: `parse` accepts the full **TOML 1.1.0** grammar, while `stringify` deliberately emits only **1.0.0** spellings (`src/index.ts:2`, `src/Toml.ts:25`). Every 1.0 document is valid 1.1, so the narrower output is portable to any consumer. Do not "fix" either side to match the other — the asymmetry is the design.
 
 ## Import
 
@@ -12,7 +14,7 @@ Single entrypoint; no subpaths.
 
 ## Core API
 
-- **`Toml`** (facade) — `parse(text)` → `Effect<unknown, TomlParseError>`; `stringify(value, options?)` → `Effect<string, TomlStringifyError>`; schema factories `Toml.schema(target)`, `Toml.fromString`, and the `Toml.TomlFromString` singleton. `TomlStringifyOptions` has exactly one knob (`newline`); there is NO `TomlParseOptions` — TOML 1.0.0 parsing has no knobs.
+- **`Toml`** (facade) — `parse(text)` → `Effect<unknown, TomlParseError>`; `stringify(value, options?)` → `Effect<string, TomlStringifyError>`; schema factories `Toml.schema(target)`, `Toml.fromString`, and the `Toml.TomlFromString` singleton. `TomlStringifyOptions` has exactly one knob (`newline`); there is NO `TomlParseOptions` — TOML 1.1.0 parsing has no knobs (`src/Toml.ts:163`).
 - **`TomlDocument`** — the lossless document: `parse`, `schema()`, `toValue()`, `stringify()`; carries `source`, `expressions`, `diagnostics`.
 - **`TomlEdit`** + `applyAll`, **`TomlFormat`** (`format`/`formatToString` pure and total; `modify`/`modifyToString` → `Effect<_, TomlParseError | TomlModificationError>`) — edit vocabulary parity-identical in shape to jsonc/yaml.
 - **`TomlVisitor`** — `Stream<TomlVisitorEvent, TomlParseError>` (`TableStart`/`ArrayTableStart`/`KeyValue`/`Comment`).

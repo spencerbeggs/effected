@@ -9,7 +9,10 @@ and depends on `effect` and `@effected/*` alone: **zero external runtime
 dependencies**. `@effected/*` peers do not change that (tier does not propagate,
 R3), but an *external* format parser or crypto library would make it
 **integrated** — hence the codecs wrap `@effected/{jsonc,yaml,toml}` and
-`internal/crypto.ts` is hand-rolled over `node:crypto`.
+`internal/crypto.ts` is hand-rolled over **WebCrypto**: `globalThis.crypto.subtle`
+for PBKDF2 derivation and AES-GCM, `globalThis.crypto.getRandomValues` for salts
+and nonces. **There is no `node:crypto` import, and adding one is a regression** —
+the platform global keeps the module runtime-agnostic as well as dependency-free.
 
 **Design doc:** `@../../.claude/design/effected/packages/config-file.md` — load
 when changing the pipeline seams, the error set, or the codec boundaries.

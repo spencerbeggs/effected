@@ -81,4 +81,4 @@ Never run `node savvy.build.ts --target prod` directly. It skips `build:dev`, em
 
 Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`.
 
-`savvy.build.ts` carries one narrow API Extractor suppression: `{ messageId: "ae-forgotten-export", pattern: "_base" }`, covering the heritage symbols synthesized by inline class factories (26 of them — the largest count in the repo, tracking the package's larger class surface). Never widen it. `package.json` stays `"private": true` — the bundler emits the publishable manifest.
+`savvy.build.ts` carries one narrow API Extractor suppression: `{ messageId: "ae-forgotten-export", pattern: "_base" }`, covering the heritage symbols synthesized by inline class factories — the largest such count in the repo, tracking the package's larger class surface. Never widen it. (For the current number, count `_base` in `dist/prod/issues.json` after a build; it moves with every class added, so it is not recorded here.) `package.json` stays `"private": true` — the bundler emits the publishable manifest.

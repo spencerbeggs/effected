@@ -4,11 +4,60 @@ Reference material for the effect-v4-schema skill. Tracks upstream main, which m
 pinned effect v4 beta in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
+
+API surface audited against effect@4.0.0-beta.107: the formatters, `makeFormatterDefault`,
+`makeFormatterStandardSchemaV1`, `hasInput`, `LeafHook`/`CheckHook` and `StandardSchemaV1FailureResult`
+all exist as described; the two examples that fail to typecheck do so only on external/doc-local
+imports (i18next, ./utils.js). FALSIFIED and corrected inline: `cause.failures` (a `Cause` exposes
+`reasons`) and the `, got X` suffixes in expected output. RESTORED: the "Reporting Rejected Inputs"
+section, which is what explains those suffixes — they appear only under `{ reportInput: true }`.
+PROBED on beta.107: the corrected `cause.reasons` snippet compiles and prints exactly the expected
+output shown, and the default formatter emits no input suffix.
 -->
 
 # Error Handling and Formatting
 
 When validation fails, Schema produces structured error objects that describe what went wrong. Formatters turn those error objects into human-readable messages you can display to users or write to logs.
+
+### Reporting Rejected Inputs
+
+By default, schema issues neither retain rejected input values nor include them in formatted messages. Pass `{ reportInput: true }` to a parser when the additional diagnostic context is worth the disclosure and retention risk:
+
+```ts
+import { Result, Schema, SchemaIssue, SchemaParser } from "effect"
+
+const result = SchemaParser.decodeUnknownResult(Schema.String)(1, { reportInput: true })
+const formatIssue = SchemaIssue.makeFormatterDefault()
+
+if (Result.isFailure(result)) {
+  SchemaIssue.hasInput(result.failure) // true
+  if (SchemaIssue.hasInput(result.failure)) {
+    result.failure.input // 1
+  }
+  formatIssue(result.failure) // "Expected string, got 1"
+}
+```
+
+> **Beta trap — the `, got X` suffix.** This is the single most common wrong
+> expectation in this guide. Formatted messages carry **no** `, got <value>`
+> suffix unless you opted into `reportInput`. Probed on `4.0.0-beta.107`:
+> `Schema.decodeUnknownExit(Schema.NonEmptyString)("")` renders
+> `Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 1))]))`,
+> and only with `{ reportInput: true }` does it become
+> `... at least 1, got ""`. Earlier drafts of these reference files pasted the
+> `reportInput` spellings into every default-mode example; a test asserting on
+> them fails. Note also that the rendered prefix is `SchemaError(...)`, never
+> `SchemaError: ...`.
+>
+> `SchemaParser.decodeUnknownResult` fails with a bare `SchemaIssue.Issue`, so
+> `result.failure` **is** the issue. The `Schema.decodeUnknownResult` twin wraps
+> it in a `SchemaError`, where you want `result.failure.issue` instead.
+
+Value-bearing issues created by the parser then expose an enumerable own `input` field. The input is retained by reference, not copied. Use `SchemaIssue.hasInput(issue)` instead of checking `issue.input !== undefined`, because a present input whose value is `undefined` is distinct from an issue that does not retain input.
+
+Enabling this option can retain or disclose secrets, personally identifiable information, and large object graphs. Object enumeration, spread, serialization, `SchemaIssue.makeFormatterDefault()`, `SchemaError.message`, and Standard Schema messages may expose the retained value. A Standard Schema failure still contains only its standard `message` and `path` fields; the input can appear inside `message`, but no non-standard `input` field is added.
+
+User-created `SchemaIssue.Issue` values returned directly by declarations, checks, transformations, or middleware are not modified. To make a custom value-bearing issue honor `reportInput`, pass the callback's input and effective parse options to its constructor, for example `new SchemaIssue.InvalidValue(annotations, input, options)`.
 
 ### Formatters
 
@@ -87,7 +136,7 @@ Output:
 {
   issues: [
     { path: [ 'a' ], message: 'Missing key' },
-    { path: [ 'b' ], message: 'Expected a value with a length of at least 1, got ""' }
+    { path: [ 'b' ], message: 'Expected a value with a length of at least 1' }
   ]
 }
 */
@@ -269,12 +318,13 @@ const schema = Schema.Struct({
   c: Schema.Tuple([Schema.String])
 })
 
+// A Cause exposes `reasons`, not `failures`.
 const r = SchemaParser.decodeUnknownExit(schema)({ a: "", c: [] }, { errors: "all" })
 
 if (r._tag === "Failure") {
-  const failures = r.cause.failures
-  if (failures[0]?._tag === "Fail") {
-    const failureResult = SchemaIssue.makeFormatterStandardSchemaV1()(failures[0].error)
+  const reasons = r.cause.reasons
+  if (reasons[0]?._tag === "Fail") {
+    const failureResult = SchemaIssue.makeFormatterStandardSchemaV1()(reasons[0].error)
     const serializer = Schema.toCodecJson(Schema.StandardSchemaV1FailureResult)
     console.dir(Schema.encodeSync(serializer)(failureResult), { depth: null })
   }
@@ -283,7 +333,7 @@ if (r._tag === "Failure") {
 {
   issues: [
     {
-      message: 'Expected a value with a length of at least 1, got ""',
+      message: 'Expected a value with a length of at least 1',
       path: [ 'a' ]
     },
     { message: 'Missing key', path: [ 'c', 0 ] },
