@@ -99,6 +99,55 @@ describe("YamlDocument", () => {
 			}),
 		);
 
+		it.effect("spills a >1024-char rendered key to explicit-key form on the node path (#323)", () =>
+			Effect.gen(function* () {
+				// Our parser accepts an over-long IMPLICIT key (the 1024-char limit
+				// is a strict-parser restriction we do not enforce on read), but
+				// re-emitting it implicitly would produce output strict parsers
+				// reject — the node path must spill exactly like the value path.
+				const key = `pkg-a@1.0.0(${"a".repeat(1100)})`;
+				const doc = yield* YamlDocument.parse(`${key}: value-one\n`);
+				const text = yield* doc.stringify();
+				assert.isTrue(text.startsWith(`? ${key}\n: value-one`), "node path must spill to explicit form");
+				const again = yield* YamlDocument.parse(text);
+				assert.deepStrictEqual(again.toValue(), { [key]: "value-one" });
+			}),
+		);
+
+		it.effect("node-path compact continuation alignment is structural — indent: 4 must still roundtrip", () =>
+			Effect.gen(function* () {
+				// Same structural-pad contract as the value path: continuation
+				// lines after `: ` align at column 2 regardless of ctx.indent.
+				const key = `pkg-a@1.0.0(${"a".repeat(1100)})`;
+				const seqDoc = yield* YamlDocument.parse(`${key}:\n  - first\n  - second\n`);
+				const seqText = yield* seqDoc.stringify({ indent: 4 });
+				assert.include(seqText, ": - first\n  - second");
+				const seqAgain = yield* YamlDocument.parse(seqText);
+				assert.deepStrictEqual(seqAgain.toValue(), { [key]: ["first", "second"] });
+
+				const mapDoc = yield* YamlDocument.parse(`${key}:\n  dep-one: 1.2.3\n  dep-two: 4.5.6\n`);
+				const mapText = yield* mapDoc.stringify({ indent: 4 });
+				assert.include(mapText, ": dep-one: 1.2.3\n  dep-two: 4.5.6");
+				const mapAgain = yield* YamlDocument.parse(mapText);
+				assert.deepStrictEqual(mapAgain.toValue(), { [key]: { "dep-one": "1.2.3", "dep-two": "4.5.6" } });
+			}),
+		);
+
+		it.effect("roundtrips the pnpm snapshots explicit-key shape through the node path (#322/#323)", () =>
+			Effect.gen(function* () {
+				const key = `pkg-b@2.0.0(${"b".repeat(1100)})`;
+				const source = ["snapshots:", `  ? ${key}`, "  : dependencies:", "      dep-one: 1.2.3", ""].join("\n");
+				const doc = yield* YamlDocument.parse(source);
+				const text = yield* doc.stringify();
+				// The explicit form survives re-emission (the key is still >1024).
+				assert.include(text, `? ${key}`);
+				const again = yield* YamlDocument.parse(text);
+				assert.deepStrictEqual(again.toValue(), {
+					snapshots: { [key]: { dependencies: { "dep-one": "1.2.3" } } },
+				});
+			}),
+		);
+
 		it.effect("lineWidth is inert on the node path — pins the gap documented for #105", () =>
 			Effect.gen(function* () {
 				// Column-based folding exists only on the value path; the node path

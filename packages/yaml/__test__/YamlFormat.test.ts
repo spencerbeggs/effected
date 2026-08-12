@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { Yaml, YamlEdit } from "../src/index.js";
+import { composeAllDocuments } from "../src/internal/composer/document.js";
 import { YamlFormat, YamlFormattingOptions, YamlModificationError } from "../src/YamlFormat.js";
 
 const apply = (text: string, edits: ReadonlyArray<YamlEdit>) => YamlEdit.applyAll(text, edits);
@@ -67,6 +69,219 @@ describe("YamlFormat", () => {
 				YamlFormattingOptions.make({ range: { offset: 0, length: 0 } }),
 			);
 			assert.deepStrictEqual(viaOptions, []);
+		});
+	});
+
+	describe("finalNewline: false — governs the end of the OUTPUT, never an internal separator", () => {
+		// Before this fix, finalNewline: false stripped the newline BETWEEN the
+		// body and a following `...` end marker (or trailing comment block),
+		// gluing them onto the last content line: "a: 1\n...\n" formatted to
+		// "a: 1...\n", which re-parses as { a: "1..." } — a silent value change.
+		const options = YamlFormattingOptions.make({ finalNewline: false });
+
+		it("keeps a `...` end marker on its own line (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("a: 1\n...\n", undefined, options);
+			assert.strictEqual(out, "a: 1\n...");
+		});
+
+		it("keeps a trailing comment block on its own line (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("a: 1\n# tail\n", undefined, options);
+			assert.strictEqual(out, "a: 1\n# tail");
+		});
+
+		it("keeps a comment block after the `...` marker on its own line (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("a: 1\n...\n# tail\n", undefined, options);
+			assert.strictEqual(out, "a: 1\n...\n# tail");
+		});
+
+		it("keeps the last document's `...` marker in a stream on its own line (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("x: 1\n---\na: 1\n...\n", undefined, options);
+			assert.strictEqual(out, "x: 1\n---\na: 1\n...");
+		});
+
+		it("still drops the trailing newline when nothing follows the body (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("a: 1\n", undefined, options);
+			assert.strictEqual(out, "a: 1");
+		});
+
+		it.effect("preserves meaning on the marker and comment shapes", () =>
+			Effect.gen(function* () {
+				for (const input of ["a: 1\n...\n", "a: 1\n# tail\n", "a: 1\n...\n# tail\n", "hello\n...\n"]) {
+					const out = YamlFormat.formatToString(input, undefined, options);
+					const original = yield* Yaml.parse(input);
+					const formatted = yield* Yaml.parse(out);
+					assert.deepStrictEqual(formatted, original);
+				}
+			}),
+		);
+	});
+
+	describe("multi-document streams — formatted whole, never truncated", () => {
+		// Before this contract, formatToString("a: 1\n---\nb: 2\n") returned
+		// "a: 1\n" and silently destroyed documents 2..n (probe-verified
+		// downstream, writing format output back to disk). Streams now format
+		// every document, re-emitting each document's own framing.
+		it("formats every document of a stream, preserving the separators", () => {
+			const text = "a:   1\n---\nb:\n    c: 2\n";
+			assert.strictEqual(YamlFormat.formatToString(text), "a: 1\n---\nb:\n  c: 2\n");
+		});
+
+		it("is idempotent on a multi-document stream", () => {
+			const once = YamlFormat.formatToString("a:   1\n---\nb:   2\n---\nc:   3\n");
+			assert.strictEqual(YamlFormat.formatToString(once), once);
+		});
+
+		it("preserves per-document comments and framing", () => {
+			const text = "# doc one\na: 1\n# doc two\n---\nb: 2 # trailing\n";
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it("a comment between --- and content hoists above the marker (single-document parity), losslessly", () => {
+			// The composer reads a comment between `---` and the first content
+			// line as the document HEADER block, and the stringifier emits the
+			// header above the marker — the released single-document behavior
+			// (formatToString("---\n# c\nb: 2\n") does the same hoist). The
+			// stream path inherits it: no comment is lost, and the output is a
+			// fixed point.
+			const out = YamlFormat.formatToString("a: 1\n---\n# doc two\nb: 2\n");
+			assert.strictEqual(out, "a: 1\n# doc two\n---\nb: 2\n");
+			assert.strictEqual(YamlFormat.formatToString(out), out);
+		});
+
+		it("preserves an explicit ... document-end separation between bare documents", () => {
+			const text = "a:   1\n...\nb:   2\n";
+			assert.strictEqual(YamlFormat.formatToString(text), "a: 1\n...\nb: 2\n");
+		});
+
+		it("a trailing bare --- opens an empty second document and survives formatting", () => {
+			assert.strictEqual(YamlFormat.formatToString("a:    1\n---\n"), "a: 1\n---\n");
+		});
+
+		it("the composer guarantees every later document has its own --- or a predecessor ...", () => {
+			// The stream path REFUSES a document after the first that has
+			// neither its own `---` nor a predecessor `...` (it could not be
+			// re-emitted with faithful framing). This pins the composer
+			// guarantee that makes the refusal branch unreachable for composer
+			// output — a composer change breaking the guarantee fails here
+			// instead of silently activating the refusal.
+			const streams = [
+				"a: 1\n---\nb: 2\n",
+				"a: 1\n...\nb: 2\n",
+				"---\na: 1\n...\n---\nb: 2\n",
+				"a: 1\n...\n---\nb: 2\n",
+				"%YAML 1.2\n---\na: 1\n...\n%YAML 1.2\n---\nb: 2\n",
+				"--- |\ndoc\n--- >\ntext\n",
+				"a: 1\n---\n",
+			];
+			for (const text of streams) {
+				const { documents } = composeAllDocuments(text, {});
+				assert.isAtLeast(documents.length, 2, `expected a multi-document stream: ${JSON.stringify(text)}`);
+				for (let i = 1; i < documents.length; i++) {
+					assert.isTrue(
+						documents[i]?.hasDocumentStart === true || documents[i - 1]?.hasDocumentEnd === true,
+						`document ${i} of ${JSON.stringify(text)} has neither its own --- nor a predecessor ...`,
+					);
+				}
+			}
+		});
+
+		it("a two-document pnpm-lock-shaped stream round-trips with both documents intact", () => {
+			const fixture = readFileSync(new URL("./fixtures/multi-doc/pnpm-lock-shape.yaml", import.meta.url), "utf8");
+			const before = Yaml.parseAllResult(fixture);
+			const once = YamlFormat.formatToString(fixture);
+			const after = Yaml.parseAllResult(once);
+			if (!Result.isSuccess(before) || !Result.isSuccess(after)) {
+				assert.fail("the pnpm-lock-shaped stream must parse before and after formatting");
+			}
+			assert.strictEqual(after.success.length, 2);
+			assert.deepStrictEqual(after.success, before.success);
+			assert.include(once, "---\nlockfileVersion:");
+			// Fixed point: formatting the formatted stream changes nothing.
+			assert.strictEqual(YamlFormat.formatToString(once), once);
+		});
+
+		it("a stream carrying %YAML/%TAG directives is left byte-identical (not re-emittable faithfully)", () => {
+			const text = "%YAML 1.2\n---\na:   1\n---\nb:   2\n";
+			assert.deepStrictEqual(YamlFormat.format(text), []);
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it("a fatal error in any document leaves the whole stream untouched", () => {
+			const text = "a:   1\n---\nb: *missing\n";
+			assert.deepStrictEqual(YamlFormat.format(text), []);
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it.effect("modify stays single-document: fails typed with MultiDocumentStream, never a guess", () =>
+			Effect.gen(function* () {
+				// A YamlPath carries no document index, so which document of a
+				// stream it names is a rule the format does not define.
+				const error = yield* Effect.flip(YamlFormat.modify("a: 1\n---\nb: 2\n", ["a"], 2));
+				assert.instanceOf(error, YamlModificationError);
+				assert.strictEqual(error.diagnostics[0]?.code, "MultiDocumentStream");
+				assert.notProperty(error, "reason");
+			}),
+		);
+
+		it("a --- inside a block scalar is content, not a document boundary — formats as one document", () => {
+			const text = "a:\n    b: 1\ntext: |\n  ---\n  not a marker\n";
+			const out = YamlFormat.formatToString(text);
+			assert.strictEqual(out, "a:\n  b: 1\ntext: |\n  ---\n  not a marker\n");
+			const parsed = Yaml.parseAllResult(out);
+			assert.isTrue(Result.isSuccess(parsed) && parsed.success.length === 1);
+		});
+
+		it("a --- inside a quoted scalar is content too", () => {
+			const text = 'a:\n    b: 1\nsep: "---"\n';
+			const out = YamlFormat.formatToString(text);
+			assert.notStrictEqual(out, text);
+			assert.isTrue(Yaml.equals(out, text));
+		});
+
+		it("a single document with an explicit leading --- marker still formats", () => {
+			const text = "---\na:\n    b: 1\n";
+			const out = YamlFormat.formatToString(text);
+			assert.notStrictEqual(out, text);
+			assert.isTrue(Yaml.equals(out, text));
+		});
+	});
+
+	describe("single-document %YAML/%TAG directives — refused, never corrupted", () => {
+		// Probe-verified downstream (independent oracle): the pre-fix path
+		// dropped the %TAG line but kept the !e!foo shorthand that depends on
+		// it, so the output failed TAG_RESOLVE_FAILED — a formatter turning a
+		// valid file into one no parser can read. Directive re-emission is
+		// unimplemented; until it lands, directive-carrying input is refused.
+		it("a %TAG document is left byte-identical — never re-emitted without the directive its tags depend on", () => {
+			const text = "%TAG !e! tag:example.com,2000:\n---\na: !e!foo bar\n";
+			assert.deepStrictEqual(YamlFormat.format(text), []);
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it("a %YAML 1.2 document is left byte-identical", () => {
+			const text = "%YAML 1.2\n---\na:   1\n";
+			assert.deepStrictEqual(YamlFormat.format(text), []);
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it.effect("modify fails typed with DirectiveCarryingDocument, never re-emits without the directive", () =>
+			Effect.gen(function* () {
+				const text = "%TAG !e! tag:example.com,2000:\n---\na: !e!foo bar\nb: 1\n";
+				const error = yield* Effect.flip(YamlFormat.modify(text, ["b"], 2));
+				assert.instanceOf(error, YamlModificationError);
+				assert.strictEqual(error.diagnostics[0]?.code, "DirectiveCarryingDocument");
+				assert.notProperty(error, "reason");
+			}),
+		);
+
+		it("a literal %TAG inside scalar content is content, not a directive — formats normally", () => {
+			// The refusal must be directive-token-level, never text scanning: a
+			// "%TAG ..." line inside a block scalar and a "%TAG" mid-scalar are
+			// both content, and the badly-spaced sibling key still reformats.
+			const text = 'a:   1\nnote: "contains %TAG inside"\ntext: |\n  %TAG !e! tag:example.com,2000:\n';
+			const out = YamlFormat.formatToString(text);
+			assert.strictEqual(out, 'a: 1\nnote: "contains %TAG inside"\ntext: |\n  %TAG !e! tag:example.com,2000:\n');
+			assert.isTrue(Yaml.equals(out, text));
 		});
 	});
 
@@ -365,6 +580,60 @@ describe("YamlFormat", () => {
 			Effect.gen(function* () {
 				const out = yield* Yaml.stringify({ "<<": 1 });
 				assert.include(out, "'<<'");
+			}),
+		);
+	});
+
+	describe("keep-chomp block scalars — trailing blanks are VALUE, never doubled (P0 regression)", () => {
+		// Under `+` chomping the trailing line breaks are part of the scalar's
+		// value; the composer's blank-line-fidelity capture must not ALSO record
+		// them as spaceBefore (or a leading-blank embed on a terminal comment
+		// run), or emission renders both and the document grows one newline per
+		// format pass — non-idempotent, meaning-changing whitespace rot. The
+		// downstream scope table (savvy-web-systems, 2026-08-12) plus the shapes
+		// the diagnosis found beyond it, each pinned as a byte fixed point.
+		const fixedPoints: ReadonlyArray<readonly [string, string]> = [
+			// The scope table — previously-growing rows.
+			["|+ keep, trailing blank, sibling follows", "a: |+\n  text\n\nb: 1\n"],
+			[">+ folded keep, trailing blank, sibling follows", "a: >+\n  text\n\nb: 1\n"],
+			["|2+ explicit indent + keep, trailing blank", "a: |2+\n  text\n\nb: 1\n"],
+			// The scope table — stable controls that must stay stable.
+			["|+ keep, no trailing blank", "a: |+\n  text\nb: 1\n"],
+			["|+ keep at EOF, no sibling", "a: |+\n  text\n\n"],
+			["| clip, trailing blank", "a: |\n  text\n\nb: 1\n"],
+			["|- strip, trailing blank", "a: |-\n  text\n\nb: 1\n"],
+			// Beyond the table: every other site the same capture reaches.
+			["|+ keep, two trailing blanks, sibling", "a: |+\n  text\n\n\nb: 1\n"],
+			["|+ keep, terminal comment run", "a: |+\n  text\n\n# tail\n"],
+			["|+ keep, comment run then sibling", "a: |+\n  text\n\n# c\nb: 1\n"],
+			["|+ keep, comment run, stylistic blank, sibling", "a: |+\n  text\n\n# c\n\nb: 1\n"],
+			["seq: |+ keep item, blank, next item", "- |+\n  text\n\n- 2\n"],
+			["seq: |+ keep item, blank, terminal comment", "- |+\n  text\n\n# tail\n"],
+			["nested map |+ keep, blank, outer sibling", "m:\n  a: |+\n    text\n\nb: 1\n"],
+			["nested seq |+ keep, blank, outer sibling", "m:\n  - |+\n    text\n\nb: 1\n"],
+			["nested >+ folded keep, blank, outer sibling", "m:\n  a: >+\n    text\n\nb: 1\n"],
+			["doc root |+ keep, trailing comment", "|+\n  text\n\n# tail\n"],
+			["doc root |+ keep at EOF", "|+\n  text\n\n"],
+		];
+
+		for (const [name, text] of fixedPoints) {
+			it(`fixed point: ${name}`, () => {
+				const once = YamlFormat.formatToString(text);
+				assert.strictEqual(once, text);
+				// Idempotence is implied by the fixed point, but assert the second
+				// pass explicitly so a future non-fixed-point normalization of one
+				// of these shapes still has to prove it converges.
+				assert.strictEqual(YamlFormat.formatToString(once), once);
+			});
+		}
+
+		it.effect("keep-chomp trailing newlines stay in the VALUE across a format pass", () =>
+			Effect.gen(function* () {
+				const text = "a: |+\n  text\n\nb: 1\n";
+				const before = yield* Yaml.parse(text);
+				const after = yield* Yaml.parse(YamlFormat.formatToString(text));
+				assert.deepStrictEqual(before, { a: "text\n\n", b: 1 });
+				assert.deepStrictEqual(after, before);
 			}),
 		);
 	});

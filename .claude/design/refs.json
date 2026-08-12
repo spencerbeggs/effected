@@ -410,9 +410,21 @@
 			"recordedAt": "2026-08-12"
 		},
 		{
+			"source": "packages/yaml/CLAUDE.lint.md",
+			"target": ".claude/design/effected/yaml-lint.md",
+			"hash": "1c3e13238f99dca8407bd18019f83d4560f196edcd186eef7589684990158e46",
+			"recordedAt": "2026-08-12"
+		},
+		{
 			"source": "packages/yaml/CLAUDE.md",
 			"target": ".claude/design/effected/packages/yaml.md",
-			"hash": "90dedc9b36f66d18651d0952d1310343528696ea1ccd281d6b89fdd0c6f40645",
+			"hash": "eda8aebe0623e5da2b489bfe645e137d082a9db369f9c534506a45408dc10a70",
+			"recordedAt": "2026-08-12"
+		},
+		{
+			"source": "packages/yaml/CLAUDE.md",
+			"target": ".claude/design/effected/yaml-lint.md",
+			"hash": "1c3e13238f99dca8407bd18019f83d4560f196edcd186eef7589684990158e46",
 			"recordedAt": "2026-08-12"
 		}
 	]

@@ -6,6 +6,7 @@ import type { YamlMap, YamlNode, YamlSeq } from "../../YamlNode.js";
 import type { CstNode } from "../cst.js";
 import type { RawDiagnostic } from "../diagnostics.js";
 import type { ParseOptionsInput } from "../options.js";
+import type { EscapedComment } from "./comments.js";
 
 // ---------------------------------------------------------------------------
 // Line/column computation
@@ -102,6 +103,24 @@ export function clearMeta(m: NodeMeta): void {
 	delete m.comment;
 }
 
+/**
+ * The comment-fidelity field triple carried by the four public node classes
+ * (and `YamlPair`). Conditional-spread helper so AST rebuild sites copy all
+ * three without hand-maintaining the list — and never emit an explicit
+ * `undefined` into a v4 `optionalKey` field.
+ */
+export function commentProps(n: { commentBefore?: string; comment?: string; spaceBefore?: boolean }): {
+	commentBefore?: string;
+	comment?: string;
+	spaceBefore?: boolean;
+} {
+	return {
+		...(n.commentBefore !== undefined ? { commentBefore: n.commentBefore } : {}),
+		...(n.comment !== undefined ? { comment: n.comment } : {}),
+		...(n.spaceBefore !== undefined ? { spaceBefore: n.spaceBefore } : {}),
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Composer state
 // ---------------------------------------------------------------------------
@@ -136,6 +155,13 @@ export interface ComposerState {
 	readonly flow: FlowComposers;
 	/** Current collection-nesting depth — see {@link enterNesting}. */
 	depth: number;
+	/**
+	 * Comments that outlived a nested collection at a column shallower than
+	 * its content — the enclosing composer drains these into its own item
+	 * stream right after the nested node lands (see comments.ts
+	 * EscapedComment). Cleared at every document boundary.
+	 */
+	readonly escapedComments: Array<EscapedComment>;
 }
 
 export function createState(text: string, flow: FlowComposers, options?: ParseOptionsInput): ComposerState {
@@ -153,6 +179,7 @@ export function createState(text: string, flow: FlowComposers, options?: ParseOp
 		tagMap: new Map(),
 		flow,
 		depth: 0,
+		escapedComments: [],
 	};
 }
 

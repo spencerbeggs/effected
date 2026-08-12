@@ -220,25 +220,36 @@ export function renderSingleQuotedMultiline(s: string, indent: string): string |
  * @param explicitChomp - Original chomp indicator from the AST, when known.
  * `keep` (`+`) and `strip` (`-`) preserve trailing-newline semantics that
  * cannot be inferred from the resolved value alone.
+ * @param preserveKeep - Re-emit a REDUNDANT explicit `+` (a keep header whose
+ * value ends in exactly one newline, where clip would read identically) —
+ * fidelity-path header preservation; canonical mode passes false.
+ * @param explicitIndent - Explicit indentation-indicator digit from the AST,
+ * re-emitted only when it matches the rendered indent (fidelity path).
  */
 export function renderBlockLiteral(
 	s: string,
 	indent: string,
 	explicitChomp?: "strip" | "clip" | "keep",
 	parentPosition?: "block-map-value" | "block-seq-item",
+	preserveKeep = false,
+	explicitIndent?: number,
 ): string {
 	// Compute chomp indicator from the value's trailing-newline structure.
 	// `+` (keep) is required when the value retains more than one trailing
 	// newline OR when the value consists solely of newlines (otherwise `|`
 	// with empty content would parse as the empty string, losing the trailing
 	// newline). `-` (strip) is required when the value has no trailing
-	// newline. Default (clip `|`) preserves exactly one trailing newline.
+	// newline. Default (clip `|`) preserves exactly one trailing newline —
+	// but an EXPLICIT keep header is re-emitted on the fidelity path even
+	// when clip would read identically (byte preservation).
 	let chomp = "";
 	const onlyNewlines = s.length > 0 && /^\n+$/.test(s);
 	if (s.endsWith("\n\n") || (onlyNewlines && explicitChomp === "keep")) {
 		chomp = "+";
 	} else if (!s.endsWith("\n")) {
 		chomp = "-";
+	} else if (preserveKeep && explicitChomp === "keep") {
+		chomp = "+";
 	}
 	const lines = s.split("\n");
 	// If the string ends with \n, the last element is empty — drop it for rendering
@@ -261,6 +272,11 @@ export function renderBlockLiteral(
 		indentIndicator = String(indent.length);
 	} else if (!hasContent && chomp === "+" && parentPosition === "block-map-value" && indent.length > 0) {
 		indentIndicator = String(indent.length);
+	} else if (explicitIndent !== undefined && explicitIndent === indent.length) {
+		// Fidelity path: the source spelled a redundant explicit indicator
+		// (`|2` over content the reader could auto-detect) — re-emit it when
+		// it matches the rendered indent, byte-preserving the header.
+		indentIndicator = String(explicitIndent);
 	}
 	return `|${indentIndicator}${chomp}\n${lines.map((l) => (l === "" ? "" : `${indent}${l}`)).join("\n")}`;
 }
@@ -273,12 +289,23 @@ export function renderBlockLiteral(
  * the output must contain an empty line (double newline). Each empty line
  * in the value already produces the correct number of blank lines.
  */
-export function renderBlockFolded(s: string, indent: string): string {
+export function renderBlockFolded(
+	s: string,
+	indent: string,
+	explicitChomp?: "strip" | "clip" | "keep",
+	explicitIndent?: number,
+): string {
+	// Chomp derivation mirrors renderBlockLiteral; `explicitChomp` /
+	// `explicitIndent` are fidelity-path header preservation (a redundant
+	// explicit `+` or `>2` re-emits byte-intact) — canonical callers pass
+	// neither.
 	let chomp = "";
 	if (s.endsWith("\n\n")) {
 		chomp = "+";
 	} else if (!s.endsWith("\n")) {
 		chomp = "-";
+	} else if (explicitChomp === "keep") {
+		chomp = "+";
 	}
 
 	// Split the value into lines and build folded output.
@@ -306,6 +333,10 @@ export function renderBlockFolded(s: string, indent: string): string {
 		(valueLines.length >= 2 && valueLines[0] === "" && valueLines[1] === "" && firstContent !== undefined)
 	) {
 		indentIndicator = String(indent.length);
+	} else if (explicitIndent !== undefined && explicitIndent === indent.length) {
+		// Fidelity path: re-emit the source's redundant explicit indicator
+		// when it matches the rendered indent — see renderBlockLiteral.
+		indentIndicator = String(explicitIndent);
 	}
 
 	// Build folded output from the resolved value lines.
@@ -323,8 +354,25 @@ export function renderBlockFolded(s: string, indent: string): string {
 	//   after the content is preserved by the reader, so we need an extra
 	//   empty line in the output to account for it
 	const outputLines: string[] = [];
+	// Index of the last non-empty value line, precomputed once so the loop
+	// never rescans forward. A blank run past this index is TRAILING and has
+	// no fold to reverse: those breaks are governed by chomping and map 1:1
+	// to value newlines, so emitting a compensation line there would grow a
+	// keep-chomp scalar by one newline per round-trip.
+	let lastContentIdx = -1;
+	for (let i = valueLines.length - 1; i >= 0; i--) {
+		if (valueLines[i] !== "") {
+			lastContentIdx = i;
+			break;
+		}
+	}
 	let prevNonEmpty = false;
 	let prevMoreIndented = false;
+	// Set at the first blank after non-empty, non-more-indented content when
+	// more content follows; resolved when that content is reached. Every line
+	// in a blank run is the identical `""`, so emitting the compensation line
+	// at the end of the run instead of its start is byte-identical output.
+	let pendingCompensation = false;
 	for (let i = 0; i < valueLines.length; i++) {
 		const line = valueLines[i];
 		if (line === "") {
@@ -332,25 +380,22 @@ export function renderBlockFolded(s: string, indent: string): string {
 			// the \n after it is preserved (not folded) because it's followed
 			// by an empty line. Emit an extra empty line for that preserved \n.
 			// Exception: if the next non-empty content is more-indented, the
-			// reader already preserves the linebreak, so skip the extra line.
-			if (prevNonEmpty && !prevMoreIndented) {
-				// Look ahead to find the next non-empty line
-				let nextContentMoreIndented = false;
-				for (let j = i + 1; j < valueLines.length; j++) {
-					if (valueLines[j] !== "") {
-						nextContentMoreIndented = valueLines[j].startsWith(" ") || valueLines[j].startsWith("\t");
-						break;
-					}
-				}
-				if (!nextContentMoreIndented) {
-					outputLines.push("");
-				}
+			// reader already preserves the linebreak, so skip the extra line
+			// (decided when that content line is reached).
+			if (prevNonEmpty && !prevMoreIndented && i < lastContentIdx) {
+				pendingCompensation = true;
 			}
 			outputLines.push("");
 			prevNonEmpty = false;
 			prevMoreIndented = false;
 		} else {
 			const isMoreIndented = line.startsWith(" ") || line.startsWith("\t");
+			if (pendingCompensation) {
+				if (!isMoreIndented) {
+					outputLines.push("");
+				}
+				pendingCompensation = false;
+			}
 			if (prevNonEmpty && !isMoreIndented) {
 				// Fold break: insert empty line between consecutive content lines
 				outputLines.push("");

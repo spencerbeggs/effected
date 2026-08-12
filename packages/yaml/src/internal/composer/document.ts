@@ -16,6 +16,7 @@ import type { ParseOptionsInput } from "../options.js";
 import type { RawDirective, RawYamlDocument } from "../raw-document.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import { composeBlockMap, composeBlockSeq, composeFlatBlockMap } from "./block.js";
+import { hasBlankLineAbove, hasBlankLineBelow, rawCommentText } from "./comments.js";
 import { composeFlowMap, composeFlowSeq } from "./flow.js";
 import {
 	collectMultilinePlainScalar,
@@ -28,7 +29,7 @@ import {
 	resolveScalar,
 } from "./scalars.js";
 import type { ComposerState, FlowComposers, NodeMeta } from "./state.js";
-import { clearMeta, createState, hasMeta, sameLine } from "./state.js";
+import { clearMeta, commentProps, createState, hasMeta, sameLine } from "./state.js";
 import { parseDirective, validateTagHandlesInDocument } from "./tags.js";
 
 /** The flow-composer dispatch wired into every state this module creates. */
@@ -231,6 +232,14 @@ export function composeDocument(
 	const directives: RawDirective[] = [];
 	let contents: YamlNode | null = null;
 	let documentComment: string | undefined;
+	let documentCommentAfter: string | undefined;
+	// Offset of the LAST leading-comment line — used after the loop to embed a
+	// blank line separating the header block from the first content node.
+	let lastLeadingCommentOffset = -1;
+	// A comment after the `...` marker is the TRAILING block even when the
+	// document is empty (`---\n...\n# tail\n` has no contents to flip the
+	// header/trailer split below).
+	let sawDocEndMarker = false;
 
 	// Whether this document has a `---` marker — used to determine if
 	// metadata (tag/anchor) applies to the root mapping or the first key.
@@ -284,6 +293,7 @@ export function composeDocument(
 			sawNewlineSinceMeta = true;
 		}
 		if (child.type === "whitespace" || child.type === "newline") {
+			if (child.type === "whitespace" && child.source === "...") sawDocEndMarker = true;
 			// Detect stray flow-closing brackets at document level
 			if (child.type === "whitespace" && (child.source === "]" || child.source === "}")) {
 				state.errors.push({
@@ -297,9 +307,28 @@ export function composeDocument(
 			continue;
 		}
 
-		// Comments (before content)
-		if (child.type === "comment" && contents === null) {
-			documentComment = child.source.startsWith("#") ? child.source.slice(1).trim() : child.source;
+		// Comments (before content) — consecutive leading comment lines join
+		// with `\n` so a multi-line document header survives intact; a blank
+		// line within the run embeds as an empty line (reference parity).
+		if (child.type === "comment" && contents === null && !sawDocEndMarker) {
+			const text = rawCommentText(child.source);
+			if (documentComment !== undefined && hasBlankLineAbove(state.text, child.offset)) {
+				documentComment = `${documentComment}\n`;
+			}
+			documentComment = documentComment === undefined ? text : `${documentComment}\n${text}`;
+			lastLeadingCommentOffset = child.offset;
+			i++;
+			continue;
+		}
+		// Comments after content (including after a `...` marker) — the
+		// document's TRAILING comment block (`commentAfter`), reference parity
+		// with the yaml npm package's doc.comment.
+		if (child.type === "comment") {
+			const text = rawCommentText(child.source);
+			if (documentCommentAfter !== undefined && hasBlankLineAbove(state.text, child.offset)) {
+				documentCommentAfter = `${documentCommentAfter}\n`;
+			}
+			documentCommentAfter = documentCommentAfter === undefined ? text : `${documentCommentAfter}\n${text}`;
 			i++;
 			continue;
 		}
@@ -606,6 +635,19 @@ export function composeDocument(
 		}
 	}
 
+	// A blank line separating the leading header comment block from the first
+	// content node embeds as a trailing empty line in the stored comment —
+	// the same model the block composer applies to a pair's `commentBefore`
+	// run (a `.github/dependabot.yml`-style header roundtrips its blank).
+	if (documentComment !== undefined && contents !== null && hasBlankLineBelow(state.text, lastLeadingCommentOffset)) {
+		documentComment = `${documentComment}\n`;
+	}
+
+	// Escaped comments that reached document scope have no carrier on the
+	// document model (its one `comment` field is the LEADING header) — drop
+	// them and clear the queue so nothing leaks into a following document.
+	state.escapedComments.length = 0;
+
 	return {
 		contents,
 		errors: [...state.errors],
@@ -615,6 +657,7 @@ export function composeDocument(
 		hasDocumentEnd: hasDocEnd,
 		hasDocumentStartTab: hasDocStartTab,
 		...(documentComment !== undefined ? { comment: documentComment } : {}),
+		...(documentCommentAfter !== undefined ? { commentAfter: documentCommentAfter } : {}),
 	};
 }
 
@@ -868,8 +911,9 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 			style: node.style,
 			...(node.tag !== undefined ? { tag: node.tag } : {}),
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
-			...(node.comment !== undefined ? { comment: node.comment } : {}),
+			...commentProps(node),
 			...(node.chomp !== undefined ? { chomp: node.chomp } : {}),
+			...(node.blockIndent !== undefined ? { blockIndent: node.blockIndent } : {}),
 			...(node.raw !== undefined ? { raw: node.raw } : {}),
 			sourceMultiline: true,
 			offset: node.offset,
@@ -882,7 +926,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 				new YamlPair({
 					key: decorateSourceMultiline(pair.key, text) ?? pair.key,
 					value: pair.value === null ? null : decorateSourceMultiline(pair.value, text),
-					...(pair.comment !== undefined ? { comment: pair.comment } : {}),
+					...commentProps(pair),
 				}),
 		);
 		const multiline = isSourceMultiline(text, node.offset, node.length);
@@ -891,7 +935,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 			style: node.style,
 			...(node.tag !== undefined ? { tag: node.tag } : {}),
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
-			...(node.comment !== undefined ? { comment: node.comment } : {}),
+			...commentProps(node),
 			...(multiline ? { sourceMultiline: true } : {}),
 			offset: node.offset,
 			length: node.length,
@@ -905,7 +949,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 			style: node.style,
 			...(node.tag !== undefined ? { tag: node.tag } : {}),
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
-			...(node.comment !== undefined ? { comment: node.comment } : {}),
+			...commentProps(node),
 			...(multiline ? { sourceMultiline: true } : {}),
 			offset: node.offset,
 			length: node.length,
@@ -923,6 +967,7 @@ function decorateDocumentSourceMultiline(doc: RawYamlDocument, text: string): Ra
 		warnings: doc.warnings,
 		directives: doc.directives,
 		...(doc.comment !== undefined ? { comment: doc.comment } : {}),
+		...(doc.commentAfter !== undefined ? { commentAfter: doc.commentAfter } : {}),
 		hasDocumentStart: doc.hasDocumentStart,
 		hasDocumentEnd: doc.hasDocumentEnd,
 		hasDocumentStartTab: doc.hasDocumentStartTab,
@@ -933,7 +978,7 @@ function decorateDocumentSourceMultiline(doc: RawYamlDocument, text: string): Ra
 // Engine entry points
 // ---------------------------------------------------------------------------
 
-const EMPTY_DOCUMENT: RawYamlDocument = {
+export const EMPTY_DOCUMENT: RawYamlDocument = {
 	contents: null,
 	errors: [],
 	warnings: [],
@@ -951,6 +996,21 @@ const EMPTY_DOCUMENT: RawYamlDocument = {
  * state and therefore appear in the returned document's `errors`.
  */
 export function composeFirstDocument(text: string, options?: ParseOptionsInput): RawYamlDocument {
+	return composeFirstDocumentCounted(text, options).document;
+}
+
+/**
+ * {@link composeFirstDocument} plus the CST-level document count of the whole
+ * stream, from the single CST parse the compose already performs — no second
+ * walk, and correct where a regex on `---` is not (a `---` inside a block
+ * scalar or quoted string is content, not a document marker). Callers that
+ * must refuse multi-document input (the `YamlFormat` single-document
+ * contract) read `documentCount` instead of re-parsing.
+ */
+export function composeFirstDocumentCounted(
+	text: string,
+	options?: ParseOptionsInput,
+): { readonly document: RawYamlDocument; readonly documentCount: number } {
 	const cstNodes = parseCSTAll(text);
 	const state = createState(text, FLOW, options);
 
@@ -959,11 +1019,11 @@ export function composeFirstDocument(text: string, options?: ParseOptionsInput):
 
 	const doc = cstNodes[0];
 	if (!doc) {
-		return EMPTY_DOCUMENT;
+		return { document: EMPTY_DOCUMENT, documentCount: 0 };
 	}
 
 	const result = composeDocument(doc, state, cstNodes.length > 1, cstNodes[1]);
-	return decorateDocumentSourceMultiline(result, text);
+	return { document: decorateDocumentSourceMultiline(result, text), documentCount: cstNodes.length };
 }
 
 /**
