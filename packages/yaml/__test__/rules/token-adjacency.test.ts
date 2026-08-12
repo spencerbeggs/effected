@@ -2,18 +2,9 @@
 // hyphen-spacing — each through the shared fixture harness (which carries
 // the mutation proofs).
 
-import { assert } from "@effect/vitest";
-import { YamlLint } from "../../src/index.js";
-import { testRule } from "./harness.js";
+import { builtin, testRule } from "./harness.js";
 
-const rule = (id: string) => {
-	const found = YamlLint.builtins.find((r) => r.id === id);
-	assert.isDefined(found, id);
-	if (found === undefined) throw new Error(`${id} missing from builtins`);
-	return found;
-};
-
-testRule(rule("comments-spacing"), [
+testRule(builtin("comments-spacing"), [
 	{
 		name: "well-spaced comments pass",
 		input: "# leading\na: 1 # trailing\n",
@@ -53,7 +44,7 @@ testRule(rule("comments-spacing"), [
 	},
 ]);
 
-testRule(rule("colon-spacing"), [
+testRule(builtin("colon-spacing"), [
 	{
 		name: "key: value passes",
 		input: "a: 1\nb:\n  c: 2\n",
@@ -88,7 +79,7 @@ testRule(rule("colon-spacing"), [
 	},
 ]);
 
-testRule(rule("hyphen-spacing"), [
+testRule(builtin("hyphen-spacing"), [
 	{
 		name: "- item passes",
 		input: "- a\n- b\n",

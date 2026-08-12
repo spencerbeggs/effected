@@ -110,14 +110,19 @@ export function hasBlankLineAbove(text: string, offset: number): boolean {
 /**
  * The stored text of a comment token: the RAW post-`#` slice, reference
  * parity with the `yaml` npm package — `# section` stores `" section"`,
- * `#no-space` stores `"no-space"`, `#   aligned` keeps its alignment, and a
- * bare `#` stores `" "` (so it cannot be confused with an embedded blank
- * line, which is the empty string). Raw storage is what makes byte-intact
- * roundtrip possible; trimming would canonicalize every comment to `# text`.
+ * `#no-space` stores `"no-space"`, `#   aligned` keeps its alignment.
+ *
+ * The one reserved string is `""`, which encodes an embedded blank line
+ * inside a joined comment run — so a spaces-only raw slice stores with ONE
+ * extra trailing space and the renderers strip it back off. A bare `#`
+ * (raw `""`) stores `" "`, `# ` (raw `" "`) stores `"  "`, and so on; the
+ * escape is injective, so every comment spelling roundtrips byte-intact.
+ * Raw storage is what makes byte-intact roundtrip possible; trimming would
+ * canonicalize every comment to `# text`.
  */
 export function rawCommentText(source: string): string {
 	const raw = source.startsWith("#") ? source.slice(1) : source;
-	return raw === "" ? " " : raw;
+	return /^ *$/.test(raw) ? `${raw} ` : raw;
 }
 
 /** Join two optional comment blocks with a newline. */

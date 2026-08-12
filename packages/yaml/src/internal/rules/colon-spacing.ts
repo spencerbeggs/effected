@@ -7,16 +7,19 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { nonNegativeIntegerOption } from "./util.js";
+import { nonNegativeIntegerOption, positiveIntegerOption } from "./util.js";
 
 /**
  * Options for `colon-spacing`: `maxSpacesBefore` (default 0) and
- * `maxSpacesAfter` (default 1) around the `:` indicator.
+ * `maxSpacesAfter` (default 1) around the `:` indicator. `maxSpacesBefore: 0`
+ * is legal (`key:` needs no space before the colon), but at least one
+ * separation space must FOLLOW it — `0` would make the fix emit `a:val`, a
+ * plain scalar, not a mapping entry.
  */
 export const colonSpacingOptions = Schema.Struct({
 	severity: Schema.optionalKey(YamlLintSeverity),
 	maxSpacesBefore: Schema.optionalKey(nonNegativeIntegerOption),
-	maxSpacesAfter: Schema.optionalKey(nonNegativeIntegerOption),
+	maxSpacesAfter: Schema.optionalKey(positiveIntegerOption),
 });
 
 interface ColonSpacingOptions {
@@ -30,7 +33,9 @@ export const colonSpacing: YamlRule = {
 	check: (ctx, options) => {
 		const opts = (options ?? {}) as ColonSpacingOptions;
 		const maxBefore = opts.maxSpacesBefore ?? 0;
-		const maxAfter = opts.maxSpacesAfter ?? 1;
+		// Clamped so a hand-built options object cannot bypass the schema and
+		// delete the separation space.
+		const maxAfter = Math.max(1, opts.maxSpacesAfter ?? 1);
 		const out: Array<YamlLintDiagnostic> = [];
 		for (const token of ctx.tokens) {
 			if (token.kind !== "block-map-value") continue;

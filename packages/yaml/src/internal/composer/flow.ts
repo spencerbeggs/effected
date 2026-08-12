@@ -9,7 +9,7 @@ import type { CstNode } from "../cst.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import type { SemanticItem } from "./block.js";
 import { buildPairs, checkDuplicateKeys, checkMultilineImplicitKeys } from "./block.js";
-import { joinComments, rawCommentText, withCommentFields } from "./comments.js";
+import { isOwnLineAt, joinComments, rawCommentText, withCommentFields } from "./comments.js";
 import {
 	collectMultilineKey,
 	collectMultilinePlainScalar,
@@ -500,6 +500,12 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 	// Own-line comments left over after the last item become the sequence's
 	// trailing comment (mirroring buildPairs' leftover contract).
 	let seqTrailing: string | undefined;
+	// Forward-attribution state, hoisted ACROSS comma segments (#127): an
+	// own-line comment belongs to the FOLLOWING item even when a comma splits
+	// the segment before that item arrives; a same-line comment trails the
+	// last pushed item even when the comma sits between them (`a, # c`).
+	let pendingBefore: string | undefined;
+	let pushedIdx = -1;
 
 	for (const segment of segments) {
 		// Check if this segment contains a value separator (implicit mapping)
@@ -525,9 +531,12 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 					style: "flow" as CollectionStyle,
 					offset: firstPair.key.offset,
 					length: 0,
+					...(pendingBefore !== undefined ? { commentBefore: pendingBefore } : {}),
 					...(segTrailing !== undefined ? { comment: segTrailing } : {}),
 				});
+				pendingBefore = undefined;
 				items.push(map);
+				pushedIdx = items.length - 1;
 			} else if (segTrailing !== undefined) {
 				seqTrailing = joinComments(seqTrailing, segTrailing);
 			}
@@ -538,12 +547,15 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 			// Keep newlines so flattenFlowChildren can merge multi-line plain scalars
 			const content = segment.filter((c) => !(c.type === "whitespace" && c.source.trim() === ""));
 			const semItems = flattenFlowChildren(content, state);
-			let pendingBefore: string | undefined;
-			let pushedIdx = -1;
 			for (const si of semItems) {
 				if (si.kind === "comment") {
 					const cText = si.comment ?? "";
-					if (pushedIdx >= 0) {
+					// Own-line vs trailing is decided from the comment's own line
+					// (#127): only a comment SHARING a line with content attaches
+					// backward as the previous item's trailing comment; an
+					// own-line comment attributes FORWARD to the next item.
+					const ownLine = si.offset === undefined ? true : isOwnLineAt(state.text, si.offset);
+					if (!ownLine && pushedIdx >= 0) {
 						const prev = items[pushedIdx];
 						if (prev) items[pushedIdx] = withCommentFields(prev, { comment: cText });
 					} else {
@@ -559,10 +571,12 @@ function composeFlowSeqInner(cst: CstNode, state: ComposerState, meta?: NodeMeta
 					pushedIdx = items.length - 1;
 				}
 			}
-			if (pendingBefore !== undefined) {
-				seqTrailing = joinComments(seqTrailing, pendingBefore);
-			}
 		}
+	}
+	// Own-line comments with no following item are the sequence's trailing
+	// comment (hoisted leftover — mirrors buildPairs' contract).
+	if (pendingBefore !== undefined) {
+		seqTrailing = joinComments(seqTrailing, pendingBefore);
 	}
 
 	const seqComment =

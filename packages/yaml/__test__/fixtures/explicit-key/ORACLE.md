@@ -33,8 +33,8 @@ Cases (keys are `pkg-a@1.0.0(` + `a`×1100 + `)` and the `b` twin, or
 ## Deliberate divergence from the oracle
 
 Compact continuation lines (the lines after `: first-item` / `? first-line`)
-are padded with a **structural two columns** — the width of the `? ` / `: `
-indicators — never the configured `indent`. `yaml@2.9.0` pads them with the
+are padded with a **structural two columns** — the width of the `?` or `:`
+indicator plus its following space — never the configured `indent`. `yaml@2.9.0` pads them with the
 configured indent instead, and at `indent ≠ 2` its own strict parser
 misreads the sequence output (items merge into one scalar) or rejects the
 mapping output outright. The house fidelity contract (our emit must reparse

@@ -96,6 +96,21 @@ describe("YamlLintConfig", () => {
 			const r = Schema.decodeUnknownResult(YamlLintConfig)({ rules: { [rule]: { [field]: -2 } } });
 			assert.isTrue(Result.isFailure(r), `${rule}.${field}: -2 must be rejected`);
 		}
+		// `maxSpacesAfter: 0` would make the fix delete the separation space
+		// and fuse the indicator with its content (`- item` → `-item`,
+		// `a: val` → `a:val`) — the floor is 1, not 0.
+		for (const rule of ["colon-spacing", "hyphen-spacing"] as const) {
+			const r = Schema.decodeUnknownResult(YamlLintConfig)({ rules: { [rule]: { maxSpacesAfter: 0 } } });
+			assert.isTrue(Result.isFailure(r), `${rule}.maxSpacesAfter: 0 must be rejected`);
+			if (Result.isFailure(r)) {
+				assert.include(r.failure.message, "greater than or equal to 1");
+			}
+		}
+		// `maxSpacesBefore: 0` stays legal — `key:` needs no space before the colon.
+		const before0 = Schema.decodeUnknownResult(YamlLintConfig)({
+			rules: { "colon-spacing": { maxSpacesBefore: 0 } },
+		});
+		assert.isTrue(Result.isSuccess(before0), "colon-spacing.maxSpacesBefore: 0 must be accepted");
 	});
 
 	it("ships presets as statics", () => {
@@ -258,7 +273,9 @@ describe("fix routes only through YamlEdit.applyAll — structural pin", () => {
 		const files = [
 			"YamlLint.ts",
 			"YamlLintRule.ts",
-			...readdirSync(new URL("internal/rules/", srcDir)).map((f) => `internal/rules/${f}`),
+			...readdirSync(new URL("internal/rules/", srcDir))
+				.filter((f) => f.endsWith(".ts"))
+				.map((f) => `internal/rules/${f}`),
 		];
 		for (const file of files) {
 			const source = readFileSync(new URL(file, srcDir), "utf8");
@@ -269,9 +286,11 @@ describe("fix routes only through YamlEdit.applyAll — structural pin", () => {
 
 describe("LintContext", () => {
 	it("exists for malformed input: document carries the recovered diagnostics", () => {
+		let ran = false;
 		const probe: YamlRule = {
 			id: "probe",
 			check: (ctx) => {
+				ran = true;
 				assert.isAbove(ctx.document.errors.length, 0);
 				assert.isAbove(ctx.tokens.length, 0);
 				assert.isAbove(ctx.lines.length, 0);
@@ -279,12 +298,15 @@ describe("LintContext", () => {
 			},
 		};
 		YamlLint.run("a: *missing\n", [probe], YamlLintConfig.make({ rules: { probe: "error" } }));
+		assert.isTrue(ran, "probe rule must have been invoked");
 	});
 
 	it("lines carry text, offset and zero-based numbers", () => {
+		let ran = false;
 		const probe: YamlRule = {
 			id: "probe",
 			check: (ctx) => {
+				ran = true;
 				assert.deepStrictEqual(ctx.lines, [
 					{ text: "a: 1", offset: 0, number: 0 },
 					{ text: "b: 2", offset: 5, number: 1 },
@@ -293,5 +315,6 @@ describe("LintContext", () => {
 			},
 		};
 		YamlLint.run("a: 1\nb: 2\n", [probe], YamlLintConfig.make({ rules: { probe: "error" } }));
+		assert.isTrue(ran, "probe rule must have been invoked");
 	});
 });

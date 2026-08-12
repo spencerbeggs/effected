@@ -3,13 +3,9 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { YamlLint, YamlLintConfig } from "../../src/index.js";
-import { testRule } from "./harness.js";
+import { builtin, testRule } from "./harness.js";
 
-const parseValidity = YamlLint.builtins.find((r) => r.id === "parse-validity");
-assert.isDefined(parseValidity);
-if (parseValidity === undefined) throw new Error("parse-validity missing from builtins");
-
-testRule(parseValidity, [
+testRule(builtin("parse-validity"), [
 	{
 		name: "a valid document reports nothing",
 		input: "a: 1\nb:\n  - x\n",

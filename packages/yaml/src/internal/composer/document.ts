@@ -233,6 +233,10 @@ export function composeDocument(
 	let contents: YamlNode | null = null;
 	let documentComment: string | undefined;
 	let documentCommentAfter: string | undefined;
+	// A comment after the `...` marker is the TRAILING block even when the
+	// document is empty (`---\n...\n# tail\n` has no contents to flip the
+	// header/trailer split below).
+	let sawDocEndMarker = false;
 
 	// Whether this document has a `---` marker — used to determine if
 	// metadata (tag/anchor) applies to the root mapping or the first key.
@@ -286,6 +290,7 @@ export function composeDocument(
 			sawNewlineSinceMeta = true;
 		}
 		if (child.type === "whitespace" || child.type === "newline") {
+			if (child.type === "whitespace" && child.source === "...") sawDocEndMarker = true;
 			// Detect stray flow-closing brackets at document level
 			if (child.type === "whitespace" && (child.source === "]" || child.source === "}")) {
 				state.errors.push({
@@ -302,7 +307,7 @@ export function composeDocument(
 		// Comments (before content) — consecutive leading comment lines join
 		// with `\n` so a multi-line document header survives intact; a blank
 		// line within the run embeds as an empty line (reference parity).
-		if (child.type === "comment" && contents === null) {
+		if (child.type === "comment" && contents === null && !sawDocEndMarker) {
 			const text = rawCommentText(child.source);
 			if (documentComment !== undefined && hasBlankLineAbove(state.text, child.offset)) {
 				documentComment = `${documentComment}\n`;

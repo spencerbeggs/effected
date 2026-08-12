@@ -93,6 +93,9 @@ const promoteAll = (text: string, tokens: ReadonlyArray<InternalToken>): Readonl
 	// in one pass.
 	let line = 0;
 	return tokens.map((token) => {
+		// Defensive: a non-monotone offset would otherwise yield a negative
+		// `character`. Restart the scan instead.
+		if (token.offset < (lineStarts[line] as number)) line = 0;
 		while (line + 1 < lineStarts.length && (lineStarts[line + 1] as number) <= token.offset) line++;
 		// Hot path: tokenizing a large document materializes thousands of
 		// instances, so construction uses `new` (the engine's recorded

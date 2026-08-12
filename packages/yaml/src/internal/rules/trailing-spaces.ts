@@ -20,7 +20,10 @@ export const trailingSpaces: YamlRule = {
 	check: (ctx) => {
 		const out: Array<YamlLintDiagnostic> = [];
 		for (const line of ctx.lines) {
-			const match = /[ \t]+$/.exec(line.text);
+			// Line text keeps a CRLF file's `\r`; the lookahead sees trailing
+			// spaces before it without ever matching (or deleting) the `\r`
+			// itself — that is the terminator, not trailing whitespace.
+			const match = /[ \t]+(?=\r?$)/.exec(line.text);
 			if (match === null) continue;
 			const runOffset = line.offset + match.index;
 			// Trailing whitespace inside scalar content is the value's business.

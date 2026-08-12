@@ -23,38 +23,31 @@ import { quotedStrings, quotedStringsOptions } from "./quoted-strings.js";
 import { trailingSpaces, trailingSpacesOptions } from "./trailing-spaces.js";
 import { truthy, truthyOptions } from "./truthy.js";
 
-/** The built-in rules, in catalog order (parse-validity is rule #1). */
-export const builtinRules: ReadonlyArray<YamlRule> = [
-	parseValidity,
-	lineLength,
-	trailingSpaces,
-	emptyLines,
-	eofNewline,
-	documentStart,
-	documentEnd,
-	keyDuplicates,
-	quotedStrings,
-	truthy,
-	commentsSpacing,
-	colonSpacing,
-	hyphenSpacing,
-	indentation,
+// ONE ordered source of rule/options-schema pairs: deriving both exports
+// from it makes a schema-less built-in unrepresentable — a rule registered
+// in one list only would otherwise validate as a CUSTOM rule with opaque
+// options, and a typo'd option would decode silently.
+const catalog: ReadonlyArray<readonly [YamlRule, Schema.Top]> = [
+	[parseValidity, parseValidityOptions],
+	[lineLength, lineLengthOptions],
+	[trailingSpaces, trailingSpacesOptions],
+	[emptyLines, emptyLinesOptions],
+	[eofNewline, eofNewlineOptions],
+	[documentStart, documentStartOptions],
+	[documentEnd, documentEndOptions],
+	[keyDuplicates, keyDuplicatesOptions],
+	[quotedStrings, quotedStringsOptions],
+	[truthy, truthyOptions],
+	[commentsSpacing, commentsSpacingOptions],
+	[colonSpacing, colonSpacingOptions],
+	[hyphenSpacing, hyphenSpacingOptions],
+	[indentation, indentationOptions],
 ];
 
+/** The built-in rules, in catalog order (parse-validity is rule `#1`). */
+export const builtinRules: ReadonlyArray<YamlRule> = catalog.map(([rule]) => rule);
+
 /** Per-rule options schemas — the rule-aware half of config validation. */
-export const builtinOptionsSchemas: ReadonlyMap<string, Schema.Top> = new Map<string, Schema.Top>([
-	["parse-validity", parseValidityOptions],
-	["line-length", lineLengthOptions],
-	["trailing-spaces", trailingSpacesOptions],
-	["empty-lines", emptyLinesOptions],
-	["eof-newline", eofNewlineOptions],
-	["document-start", documentStartOptions],
-	["document-end", documentEndOptions],
-	["key-duplicates", keyDuplicatesOptions],
-	["quoted-strings", quotedStringsOptions],
-	["truthy", truthyOptions],
-	["comments-spacing", commentsSpacingOptions],
-	["colon-spacing", colonSpacingOptions],
-	["hyphen-spacing", hyphenSpacingOptions],
-	["indentation", indentationOptions],
-]);
+export const builtinOptionsSchemas: ReadonlyMap<string, Schema.Top> = new Map(
+	catalog.map(([rule, options]) => [rule.id, options] as const),
+);

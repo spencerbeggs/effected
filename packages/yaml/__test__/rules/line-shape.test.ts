@@ -2,18 +2,9 @@
 // empty-lines, eof-newline — each through the shared fixture harness (which
 // carries the mutation proofs).
 
-import { assert } from "@effect/vitest";
-import { YamlLint } from "../../src/index.js";
-import { testRule } from "./harness.js";
+import { builtin, testRule } from "./harness.js";
 
-const rule = (id: string) => {
-	const found = YamlLint.builtins.find((r) => r.id === id);
-	assert.isDefined(found, id);
-	if (found === undefined) throw new Error(`${id} missing from builtins`);
-	return found;
-};
-
-testRule(rule("line-length"), [
+testRule(builtin("line-length"), [
 	{
 		name: "lines within the default 120 report nothing",
 		input: `short: 1\nlonger: ${"x".repeat(100)}\n`,
@@ -41,7 +32,7 @@ testRule(rule("line-length"), [
 	},
 ]);
 
-testRule(rule("trailing-spaces"), [
+testRule(builtin("trailing-spaces"), [
 	{
 		name: "clean lines report nothing",
 		input: "a: 1\nb: 2\n",
@@ -67,9 +58,15 @@ testRule(rule("trailing-spaces"), [
 		expected: [{ line: 0, character: 14, length: 3 }],
 		fixed: "a: 1 # keep me\n",
 	},
+	{
+		name: "CRLF: trailing spaces before the \\r report and fix away, keeping the terminator",
+		input: "a: 1   \r\nb: 2\r\n",
+		expected: [{ line: 0, character: 4, length: 3 }],
+		fixed: "a: 1\r\nb: 2\r\n",
+	},
 ]);
 
-testRule(rule("empty-lines"), [
+testRule(builtin("empty-lines"), [
 	{
 		name: "up to two consecutive blank lines pass by default",
 		input: "a: 1\n\n\nb: 2\n",
@@ -105,9 +102,15 @@ testRule(rule("empty-lines"), [
 		input: "a: |+\n  one\n\n\n\n  two\n",
 		expected: [],
 	},
+	{
+		name: "CRLF: blank lines count as empty and the fix removes both terminator characters",
+		input: "a: 1\r\n\r\n\r\n\r\nb: 2\r\n",
+		expected: [{ line: 3, character: 0, length: 2 }],
+		fixed: "a: 1\r\n\r\n\r\nb: 2\r\n",
+	},
 ]);
 
-testRule(rule("eof-newline"), [
+testRule(builtin("eof-newline"), [
 	{
 		name: "a trailing newline reports nothing",
 		input: "a: 1\n",

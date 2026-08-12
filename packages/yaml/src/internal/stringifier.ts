@@ -1047,18 +1047,28 @@ function stringifyMappingKeyLines(node: YamlNode, ctx: StringifyContext, depth: 
 }
 
 /**
+ * Undo the capture-side escape on one stored comment line: a spaces-only
+ * slice was stored with one extra trailing space so it cannot collide with
+ * `""`, the embedded-blank-line encoding (see `rawCommentText`).
+ */
+function unescapeCommentLine(line: string): string {
+	return /^ +$/.test(line) ? line.slice(0, -1) : line;
+}
+
+/**
  * Render a stored comment block, one output line per stored line. Stored
- * text is the RAW post-`#` slice (reference parity): `""` is an embedded
- * blank line, `" "` is a bare `#`, anything else renders as `#` + line.
+ * text is the RAW post-`#` slice (reference parity) with spaces-only lines
+ * carrying one escape space: `""` is an embedded blank line; any other line
+ * renders as `#` + the unescaped slice (`" "` → `#`, `"  "` → `# `).
  */
 function commentBlockLines(comment: string): string[] {
-	return comment.split("\n").map((l) => (l === "" ? "" : l === " " ? "#" : `#${l}`));
+	return comment.split("\n").map((l) => (l === "" ? "" : `#${unescapeCommentLine(l)}`));
 }
 
 /** Render a trailing comment for appending after content on the same line. */
 function renderTrailingComment(comment: string): string {
-	const flat = comment.replace(/\n/g, " ");
-	return flat === " " ? " #" : ` #${flat}`;
+	const flat = comment.split("\n").map(unescapeCommentLine).join(" ");
+	return ` #${flat}`;
 }
 
 /**
@@ -1645,6 +1655,23 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 				return `---\n${docEnd}`;
 			}
 			return "";
+		}
+		// An empty document still renders its framing and document comments —
+		// `---\n...\n# tail\n` must keep its markers and trailing block. Only
+		// a fully bare empty document falls back to the `null` body.
+		if (
+			docComment !== undefined ||
+			doc.commentAfter !== undefined ||
+			doc.hasDocumentStart === true ||
+			doc.hasDocumentEnd === true
+		) {
+			const parts: string[] = [];
+			if (docComment !== undefined) parts.push(`${docComment}\n`);
+			if (doc.hasDocumentStart) parts.push("---\n");
+			if (doc.hasDocumentEnd) parts.push("...\n");
+			if (doc.commentAfter !== undefined) parts.push(`${commentBlockLines(doc.commentAfter).join("\n")}\n`);
+			const out = parts.join("");
+			return finalNewline ? out : out.replace(/\n$/, "");
 		}
 		return finalNewline ? "null\n" : "null";
 	}

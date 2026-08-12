@@ -13,7 +13,7 @@ import { YamlEdit } from "../../YamlEdit.js";
 import type { LintContext, YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 import type { YamlScalar } from "../../YamlNode.js";
-import { walkScalars } from "./util.js";
+import { positionAt, walkScalars } from "./util.js";
 
 /**
  * Options for `quoted-strings`: the preferred `quoteType` (default
@@ -30,11 +30,6 @@ interface QuotedStringsOptions {
 	readonly quoteType?: "single" | "double";
 	readonly required?: boolean;
 }
-
-const positionOf = (ctx: LintContext, offset: number): { line: number; character: number } => {
-	const line = ctx.lines.filter((l) => l.offset <= offset).at(-1);
-	return line === undefined ? { line: 0, character: 0 } : { line: line.number, character: offset - line.offset };
-};
 
 /** A value-preserving requote/wrap edit, or undefined when none is safe. */
 const safeQuoteFix = (ctx: LintContext, scalar: YamlScalar, quote: '"' | "'"): YamlEdit | undefined => {
@@ -67,7 +62,7 @@ export const quotedStrings: YamlRule = {
 			if (typeof scalar.value !== "string") return;
 			if (scalar.style === wrongStyle) {
 				const fix = safeQuoteFix(ctx, scalar, quote);
-				const pos = positionOf(ctx, scalar.offset);
+				const pos = positionAt(ctx.lines, scalar.offset);
 				out.push(
 					new YamlLintDiagnostic({
 						rule: "quoted-strings",
@@ -84,7 +79,7 @@ export const quotedStrings: YamlRule = {
 			}
 			if (required && scalar.style === "plain" && scalar.length > 0) {
 				const fix = safeQuoteFix(ctx, scalar, quote);
-				const pos = positionOf(ctx, scalar.offset);
+				const pos = positionAt(ctx.lines, scalar.offset);
 				out.push(
 					new YamlLintDiagnostic({
 						rule: "quoted-strings",

@@ -43,6 +43,19 @@ export interface RuleFixture {
 	readonly expectsParseErrors?: boolean;
 }
 
+/**
+ * Resolve a built-in rule by id, throwing a named error when absent — the
+ * ONE lookup every rule test file shares, so a missing builtin fails the
+ * test that uses it instead of surfacing as a module-collection error.
+ */
+export function builtin(id: string): YamlRule {
+	const rule = YamlLint.builtins.find((r) => r.id === id);
+	if (rule === undefined) {
+		throw new Error(`builtin rule "${id}" is not in YamlLint.builtins`);
+	}
+	return rule;
+}
+
 const configFor = (rule: YamlRule, setting?: YamlLintRuleSetting): YamlLintConfig =>
 	rule.id === "parse-validity"
 		? YamlLintConfig.make({ rules: {} })

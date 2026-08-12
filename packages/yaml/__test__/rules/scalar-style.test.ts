@@ -1,18 +1,9 @@
 // Batch-5 scalar-style rules (#129): quoted-strings and truthy — each
 // through the shared fixture harness (which carries the mutation proofs).
 
-import { assert } from "@effect/vitest";
-import { YamlLint } from "../../src/index.js";
-import { testRule } from "./harness.js";
+import { builtin, testRule } from "./harness.js";
 
-const rule = (id: string) => {
-	const found = YamlLint.builtins.find((r) => r.id === id);
-	assert.isDefined(found, id);
-	if (found === undefined) throw new Error(`${id} missing from builtins`);
-	return found;
-};
-
-testRule(rule("quoted-strings"), [
+testRule(builtin("quoted-strings"), [
 	{
 		name: "double-quoted values pass the default (double) policy",
 		input: 'a: "one"\nb: plain\n',
@@ -57,7 +48,7 @@ testRule(rule("quoted-strings"), [
 	},
 ]);
 
-testRule(rule("truthy"), [
+testRule(builtin("truthy"), [
 	{
 		name: "canonical true/false pass the default allowed list",
 		input: "a: true\nb: false\n",

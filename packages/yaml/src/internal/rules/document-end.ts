@@ -28,7 +28,11 @@ export const documentEnd: YamlRule = {
 		const tail = [...ctx.tokens].reverse().find((t) => !TRIVIA.has(t.kind));
 		const ended = tail?.kind === "document-end";
 		if (present && !ended && ctx.text.trim() !== "") {
+			// `line`/`character` must agree with `offset` (= text length): when
+			// the text ends with a newline, that offset sits at the head of the
+			// line AFTER the last content line `buildLines` kept.
 			const lastLine = ctx.lines[ctx.lines.length - 1];
+			const trailingNewline = ctx.text.endsWith("\n");
 			return [
 				new YamlLintDiagnostic({
 					rule: "document-end",
@@ -36,8 +40,8 @@ export const documentEnd: YamlRule = {
 					message: 'Missing "..." document end marker',
 					offset: ctx.text.length,
 					length: 0,
-					line: lastLine?.number ?? 0,
-					character: lastLine?.text.length ?? 0,
+					line: (lastLine?.number ?? 0) + (trailingNewline ? 1 : 0),
+					character: trailingNewline ? 0 : (lastLine?.text.length ?? 0),
 					// The fix appends the marker line; a missing final newline is
 					// eof-newline's business, so insert one first when needed.
 					fix: YamlEdit.make({
@@ -51,6 +55,9 @@ export const documentEnd: YamlRule = {
 		if (!present && tail !== undefined && tail.kind === "document-end") {
 			const lineText = ctx.lines[tail.line]?.text ?? "";
 			const alone = lineText.trim() === "...";
+			// The fix removes the marker line whole: marker plus its terminator
+			// (two characters under CRLF, one under LF).
+			const terminator = ctx.text.startsWith("\r\n", tail.offset + tail.length) ? 2 : 1;
 			return [
 				new YamlLintDiagnostic({
 					rule: "document-end",
@@ -60,7 +67,9 @@ export const documentEnd: YamlRule = {
 					length: tail.length,
 					line: tail.line,
 					character: tail.character,
-					...(alone ? { fix: YamlEdit.make({ offset: tail.offset, length: tail.length + 1, content: "" }) } : {}),
+					...(alone
+						? { fix: YamlEdit.make({ offset: tail.offset, length: tail.length + terminator, content: "" }) }
+						: {}),
 				}),
 			];
 		}

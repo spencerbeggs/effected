@@ -45,11 +45,15 @@ export const documentStart: YamlRule = {
 				}),
 			];
 		}
-		if (!present && first?.kind === "document-start") {
+		if (!present && headed && first !== undefined) {
 			// Only a marker ALONE on its line takes a fix — `--- content` would
-			// splice the content line.
+			// splice the content line. A stream with %directives REQUIRES the
+			// marker, so removing it would invalidate the directives: no fix.
 			const lineText = ctx.lines[first.line]?.text ?? "";
-			const alone = lineText.trim() === "---";
+			const alone = !hasDirectives && lineText.trim() === "---";
+			// The fix removes the marker line whole: marker plus its terminator
+			// (two characters under CRLF, one under LF).
+			const terminator = ctx.text.startsWith("\r\n", first.offset + first.length) ? 2 : 1;
 			return [
 				new YamlLintDiagnostic({
 					rule: "document-start",
@@ -59,7 +63,9 @@ export const documentStart: YamlRule = {
 					length: first.length,
 					line: first.line,
 					character: first.character,
-					...(alone ? { fix: YamlEdit.make({ offset: first.offset, length: first.length + 1, content: "" }) } : {}),
+					...(alone
+						? { fix: YamlEdit.make({ offset: first.offset, length: first.length + terminator, content: "" }) }
+						: {}),
 				}),
 			];
 		}

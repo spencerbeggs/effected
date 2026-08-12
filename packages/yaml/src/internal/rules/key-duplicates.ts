@@ -11,6 +11,7 @@ import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 import type { YamlNode } from "../../YamlNode.js";
 import { YamlMap, YamlScalar, YamlSeq } from "../../YamlNode.js";
 import { keyIdentity } from "../composer/block.js";
+import { positionAt } from "./util.js";
 
 /** Options for `key-duplicates` (severity only — duplicates are duplicates). */
 export const keyDuplicatesOptions = Schema.Struct({
@@ -25,7 +26,7 @@ const walk = (node: YamlNode | null, text: string, out: Array<YamlLintDiagnostic
 			if (pair.key instanceof YamlScalar) {
 				const id = keyIdentity(pair.key, text);
 				if (seen.has(id)) {
-					const line = ctx.lines.filter((l) => l.offset <= pair.key.offset).at(-1);
+					const pos = positionAt(ctx.lines, pair.key.offset);
 					out.push(
 						new YamlLintDiagnostic({
 							rule: "key-duplicates",
@@ -33,8 +34,8 @@ const walk = (node: YamlNode | null, text: string, out: Array<YamlLintDiagnostic
 							message: `Duplicate key: ${String(pair.key.value)}`,
 							offset: pair.key.offset,
 							length: pair.key.length,
-							line: line?.number ?? 0,
-							character: line === undefined ? 0 : pair.key.offset - line.offset,
+							line: pos.line,
+							character: pos.character,
 						}),
 					);
 				}

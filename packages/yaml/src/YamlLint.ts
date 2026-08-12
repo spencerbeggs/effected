@@ -12,7 +12,6 @@ import { composeFirstDocument } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import { builtinOptionsSchemas, builtinRules } from "./internal/rules/catalog.js";
 import { YamlParseError } from "./Yaml.js";
-import { YamlDiagnostic } from "./YamlDiagnostic.js";
 import { documentFromRaw } from "./YamlDocument.js";
 import { YamlEdit } from "./YamlEdit.js";
 import type { LintContext, LintLine, YamlLintSeverity, YamlRule } from "./YamlLintRule.js";
@@ -195,6 +194,31 @@ const byPosition = (a: YamlLintDiagnostic, b: YamlLintDiagnostic): number =>
 	a.offset - b.offset || a.length - b.length || (a.rule < b.rule ? -1 : a.rule > b.rule ? 1 : 0);
 
 /**
+ * The rule loop shared by `run` and `fix` over one already-built context —
+ * `fix` must not tokenize and compose the same input twice.
+ */
+const runRules = (
+	ctx: LintContext,
+	rules: ReadonlyArray<YamlRule>,
+	config: YamlLintConfig,
+): ReadonlyArray<YamlLintDiagnostic> => {
+	const out: Array<YamlLintDiagnostic> = [];
+	for (const rule of rules) {
+		const alwaysOn = rule.id === "parse-validity";
+		const entry = alwaysOn ? "error" : config.rules[rule.id];
+		if (entry === undefined || entry === "off") continue;
+		const severity = resolveSeverity(entry);
+		const options = typeof entry === "object" ? entry : undefined;
+		for (const diagnostic of rule.check(ctx, options)) {
+			out.push(
+				alwaysOn || diagnostic.severity === severity ? diagnostic : new YamlLintDiagnostic({ ...diagnostic, severity }),
+			);
+		}
+	}
+	return out.sort(byPosition);
+};
+
+/**
  * Linting statics. Not instantiable.
  *
  * @remarks
@@ -225,23 +249,7 @@ export class YamlLint {
 	 * engine's own grading.
 	 */
 	static run(text: string, rules: ReadonlyArray<YamlRule>, config: YamlLintConfig): ReadonlyArray<YamlLintDiagnostic> {
-		const ctx = buildContext(text);
-		const out: Array<YamlLintDiagnostic> = [];
-		for (const rule of rules) {
-			const alwaysOn = rule.id === "parse-validity";
-			const entry = alwaysOn ? "error" : config.rules[rule.id];
-			if (entry === undefined || entry === "off") continue;
-			const severity = resolveSeverity(entry);
-			const options = typeof entry === "object" ? entry : undefined;
-			for (const diagnostic of rule.check(ctx, options)) {
-				out.push(
-					alwaysOn || diagnostic.severity === severity
-						? diagnostic
-						: new YamlLintDiagnostic({ ...diagnostic, severity }),
-				);
-			}
-		}
-		return out.sort(byPosition);
+		return runRules(buildContext(text), rules, config);
 	}
 
 	/**
@@ -259,17 +267,19 @@ export class YamlLint {
 		rules: ReadonlyArray<YamlRule>,
 		config: YamlLintConfig,
 	): Result.Result<string, YamlParseError> {
-		const raw = composeFirstDocument(text, {});
-		const fatal = raw.errors.filter((e) => isFatalCode(e.code));
+		// One context serves both the fatal-parse gate and the rule loop —
+		// tokenize once, compose once. DuplicateKey is not a fatal code, so the
+		// context's uniqueKeys-disabled compose sees the same fatal set the
+		// default compose would.
+		const ctx = buildContext(text);
+		const fatal = ctx.document.errors.filter((e) => isFatalCode(e.code));
 		if (fatal.length > 0) {
-			return Result.fail(
-				new YamlParseError({ diagnostics: fatal.map((e) => YamlDiagnostic.fromRaw(e, text)), input: text }),
-			);
+			return Result.fail(new YamlParseError({ diagnostics: fatal, input: text }));
 		}
 		const fixes: Array<YamlEdit> = [];
 		let lastEnd = -1;
 		let lastOffset = -1;
-		for (const diagnostic of YamlLint.run(text, rules, config)) {
+		for (const diagnostic of runRules(ctx, rules, config)) {
 			const fix = diagnostic.fix;
 			if (fix === undefined) continue;
 			// Overlapping — and same-offset (two zero-length insertions at one

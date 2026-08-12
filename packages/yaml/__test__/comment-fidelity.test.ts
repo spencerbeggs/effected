@@ -192,6 +192,30 @@ describe("comment fidelity (#127)", () => {
 			roundtrips("a: 1 #tight\n#no-space\n#   aligned\n#\nb: 2\n"),
 		);
 
+		it.effect("emits spaces-only comment text byte-intact: bare # and trailing-space spellings (PR #338)", () =>
+			Effect.gen(function* () {
+				// `#` (raw "") and `# ` (raw " ") are DIFFERENT comment spellings;
+				// the all-space capture escape keeps them apart from the embedded
+				// blank line encoding so every one re-emits byte-intact.
+				yield* roundtrips("a: 1\n#\nb: 2\n");
+				yield* roundtrips("a: 1\n# \nb: 2\n");
+				yield* roundtrips("a: 1 #\n");
+				yield* roundtrips("a: 1 # \n");
+				yield* roundtrips("# one\n\n# two\na: 1\n");
+			}),
+		);
+
+		it.effect("an empty document keeps its markers and trailing comment (PR #338)", () =>
+			Effect.gen(function* () {
+				yield* roundtrips("---\n...\n# tail\n");
+				yield* roundtrips("---\n");
+				const doc = yield* YamlDocument.parse("---\n...\n# tail\n");
+				assert.isNull(doc.contents);
+				assert.strictEqual(doc.commentAfter, " tail");
+				assert.strictEqual(YamlFormat.formatToString("---\n...\n# tail\n"), "---\n...\n# tail\n");
+			}),
+		);
+
 		it.effect("emits blank lines within and after a comment run byte-intact", () =>
 			roundtrips("a: 1\n# one\n\n# two\nb: 2\nc:\n  d: 1\n# tail\n\ne: 3\n"),
 		);
@@ -231,6 +255,48 @@ describe("comment fidelity (#127)", () => {
 				assert.include(out, "# c");
 				assert.include(out, "[");
 				assert.deepStrictEqual(yield* Yaml.parse(out), { s: ["one", "two"] });
+				const again = yield* YamlDocument.parse(out);
+				assert.strictEqual(yield* again.stringify(), out);
+			}),
+		);
+
+		it.effect("flow: an own-line comment attributes FORWARD to the next item, first emit a fixed point (PR #338)", () =>
+			Effect.gen(function* () {
+				// The comment sits on its own line between `a` and `b`; backward
+				// attachment would render `a, # own` — which a REPARSE attributes
+				// forward again, so the first emission would not be a fixed point.
+				const doc = yield* YamlDocument.parse("[ a\n# own\n, b ]\n");
+				const seq = doc.contents;
+				assert.instanceOf(seq, YamlSeq);
+				assert.strictEqual(((seq as YamlSeq).items[1] as YamlScalar).commentBefore, " own");
+				const out = yield* doc.stringify();
+				assert.strictEqual(out, "[\n  a,\n  # own\n  b\n]\n");
+				const again = yield* YamlDocument.parse(out);
+				assert.strictEqual(yield* again.stringify(), out);
+			}),
+		);
+
+		it.effect(
+			"flow: a same-line comment still trails its item; the following own-line comment goes forward (PR #338)",
+			() =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("[ a # t\n# own\n, b ]\n");
+					const seq = doc.contents as YamlSeq;
+					assert.strictEqual((seq.items[0] as YamlScalar).comment, " t");
+					assert.strictEqual((seq.items[1] as YamlScalar).commentBefore, " own");
+					const out = yield* doc.stringify();
+					assert.strictEqual(out, "[\n  a, # t\n  # own\n  b\n]\n");
+					const again = yield* YamlDocument.parse(out);
+					assert.strictEqual(yield* again.stringify(), out);
+				}),
+		);
+
+		it.effect("flow: an own-line comment after the last item becomes the sequence's trailing comment (PR #338)", () =>
+			Effect.gen(function* () {
+				const doc = yield* YamlDocument.parse("[ a,\nb\n# own\n]\n");
+				const seq = doc.contents as YamlSeq;
+				assert.strictEqual(seq.comment, " own");
+				const out = yield* doc.stringify();
 				const again = yield* YamlDocument.parse(out);
 				assert.strictEqual(yield* again.stringify(), out);
 			}),

@@ -7,12 +7,16 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { nonNegativeIntegerOption } from "./util.js";
+import { positiveIntegerOption } from "./util.js";
 
-/** Options for `hyphen-spacing`: `maxSpacesAfter` (default 1) after the `-`. */
+/**
+ * Options for `hyphen-spacing`: `maxSpacesAfter` (default 1) after the `-`.
+ * At least one separation space must follow the indicator — `0` would make
+ * the fix emit `-item`, a plain scalar, not a sequence entry.
+ */
 export const hyphenSpacingOptions = Schema.Struct({
 	severity: Schema.optionalKey(YamlLintSeverity),
-	maxSpacesAfter: Schema.optionalKey(nonNegativeIntegerOption),
+	maxSpacesAfter: Schema.optionalKey(positiveIntegerOption),
 });
 
 interface HyphenSpacingOptions {
@@ -24,7 +28,9 @@ export const hyphenSpacing: YamlRule = {
 	id: "hyphen-spacing",
 	check: (ctx, options) => {
 		const opts = (options ?? {}) as HyphenSpacingOptions;
-		const maxAfter = opts.maxSpacesAfter ?? 1;
+		// Clamped so a hand-built options object cannot bypass the schema and
+		// delete the separation space.
+		const maxAfter = Math.max(1, opts.maxSpacesAfter ?? 1);
 		const out: Array<YamlLintDiagnostic> = [];
 		for (const token of ctx.tokens) {
 			if (token.kind !== "block-seq-entry") continue;

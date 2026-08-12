@@ -75,7 +75,7 @@ describe("YamlTokens", () => {
 			}),
 		);
 
-		it.effect("supports partial consumption without tokenizing twice per element", () =>
+		it.effect("supports partial consumption via Stream.take", () =>
 			Effect.gen(function* () {
 				const first = yield* Stream.runCollect(Stream.take(YamlTokens.stream("a: 1\nb: 2\n"), 2));
 				assert.strictEqual([...first].length, 2);

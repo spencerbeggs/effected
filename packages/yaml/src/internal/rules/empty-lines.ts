@@ -37,16 +37,19 @@ export const emptyLines: YamlRule = {
 		const maxEnd = opts.maxEnd ?? 0;
 		const out: Array<YamlLintDiagnostic> = [];
 		const lines = ctx.lines;
+		// Line text keeps a CRLF file's `\r` (only `\n` terminates a LintLine),
+		// so a CRLF blank line is `"\r"`, not `""`.
+		const isBlank = (text: string): boolean => text === "" || text === "\r";
 		let i = 0;
 		while (i < lines.length) {
 			const line = lines[i];
-			if (line === undefined || line.text !== "" || insideScalarSpan(ctx.tokens, line.offset)) {
+			if (line === undefined || !isBlank(line.text) || insideScalarSpan(ctx.tokens, line.offset)) {
 				i++;
 				continue;
 			}
 			// A run of blank lines [i, end).
 			let end = i;
-			while (end < lines.length && lines[end]?.text === "") end++;
+			while (end < lines.length && isBlank(lines[end]?.text ?? "x")) end++;
 			const runLength = end - i;
 			const atStart = i === 0;
 			const atEnd = end === lines.length;
@@ -56,8 +59,10 @@ export const emptyLines: YamlRule = {
 				const lastBlank = lines[end - 1];
 				if (firstExcess !== undefined && lastBlank !== undefined) {
 					// Delete from the first excess blank line's start through the
-					// last blank line's terminator.
-					const deleteEnd = Math.min(lastBlank.offset + 1, ctx.text.length);
+					// last blank line's terminator — derived from the NEXT line's
+					// offset (or the text end) so a CRLF terminator goes whole.
+					const nextLine = lines[end];
+					const deleteEnd = nextLine !== undefined ? nextLine.offset : ctx.text.length;
 					out.push(
 						new YamlLintDiagnostic({
 							rule: "empty-lines",

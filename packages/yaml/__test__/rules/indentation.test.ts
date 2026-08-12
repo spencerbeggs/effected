@@ -2,15 +2,9 @@
 // on the twelve mechanical rules. Style only: structural legality is
 // parse-validity's business.
 
-import { assert } from "@effect/vitest";
-import { YamlLint } from "../../src/index.js";
-import { testRule } from "./harness.js";
+import { builtin, testRule } from "./harness.js";
 
-const found = YamlLint.builtins.find((r) => r.id === "indentation");
-assert.isDefined(found);
-if (found === undefined) throw new Error("indentation missing from builtins");
-
-testRule(found, [
+testRule(builtin("indentation"), [
 	{
 		name: "a consistently 2-space document passes",
 		input: "a:\n  b:\n    c: 1\nd:\n  e: 2\n",

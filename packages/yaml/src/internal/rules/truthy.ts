@@ -13,7 +13,7 @@ import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { LintContext, YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { walkScalars } from "./util.js";
+import { positionAt, walkScalars } from "./util.js";
 
 /**
  * Options for `truthy`: the `allowed` boolean spellings (default
@@ -68,7 +68,7 @@ export const truthy: YamlRule = {
 			if (scalar.style !== "plain" || scalar.tag !== undefined) return;
 			const raw = ctx.text.slice(scalar.offset, scalar.offset + scalar.length);
 			if (!TRUTHY.has(raw) || allowed.has(raw)) return;
-			const line = ctx.lines.filter((l) => l.offset <= scalar.offset).at(-1);
+			const pos = positionAt(ctx.lines, scalar.offset);
 			const isBool = typeof scalar.value === "boolean";
 			const truth = TRUE_SET.has(raw.toLowerCase());
 			const respell = truth ? "true" : "false";
@@ -86,8 +86,8 @@ export const truthy: YamlRule = {
 					message: `Truthy value "${raw}" is not in the allowed spellings`,
 					offset: scalar.offset,
 					length: scalar.length,
-					line: line?.number ?? 0,
-					character: line === undefined ? 0 : scalar.offset - line.offset,
+					line: pos.line,
+					character: pos.character,
 					...(fix !== undefined ? { fix } : {}),
 				}),
 			);
