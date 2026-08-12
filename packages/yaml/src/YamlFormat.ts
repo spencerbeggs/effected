@@ -14,7 +14,7 @@
 // user-facing error, and is left to surface as an uncaught defect.
 
 import { Effect, Schema } from "effect";
-import { composeFirstDocumentCounted } from "./internal/composer/document.js";
+import { composeAllDocuments, composeFirstDocumentCounted } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import { computeEdits } from "./internal/diff.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
@@ -69,8 +69,8 @@ export class YamlFormattingOptions extends Schema.Class<YamlFormattingOptions>("
 /**
  * Raised when `YamlFormat.modify` cannot navigate the requested path against
  * the composed AST (a structural mismatch), the source fails to parse, or the
- * source is a multi-document stream (`MultiDocumentStream` — modify re-emits
- * exactly one document, so it refuses input it cannot fully represent).
+ * source is a multi-document stream (`MultiDocumentStream` — a path names no
+ * particular document of a stream, so modify refuses rather than guessing).
  * Carries structured {@link YamlDiagnostic} entries — never a collapsed
  * `reason` string (the structure-preserving-errors house rule).
  *
@@ -142,23 +142,10 @@ function definedFields<T extends Record<string, unknown>>(fields: T): Partial<T>
 
 // ── format ───────────────────────────────────────────────────────────────────
 
-/**
- * Format a document via the parse → stringify round-trip and diff the
- * output against the source, returning `undefined` when the input has a
- * fatal parse error (never corrupt malformed input) or contains more than
- * one document (the pipeline re-emits exactly one document, so formatting a
- * multi-document stream would silently destroy documents 2..n — the
- * single-document contract; see {@link YamlFormat.format}).
- */
-function formatDocument(text: string, options: YamlFormattingOptions | undefined): string | undefined {
-	const { document: doc, documentCount } = composeFirstDocumentCounted(text, {});
-	if (documentCount > 1) return undefined;
-	if (doc.errors.some((e) => isFatalCode(e.code))) return undefined;
-
-	const preserveComments = options?.preserveComments ?? true;
+/** Rebuild a composed document for re-emission, stripping comments when asked. */
+function toOutputDocument(doc: RawYamlDocument, preserveComments: boolean): RawYamlDocument {
 	const contents = !preserveComments && doc.contents !== null ? stripNodeComments(doc.contents) : doc.contents;
-
-	const outputDoc: RawYamlDocument = {
+	return {
 		contents,
 		errors: doc.errors,
 		warnings: doc.warnings,
@@ -168,8 +155,62 @@ function formatDocument(text: string, options: YamlFormattingOptions | undefined
 		hasDocumentEnd: doc.hasDocumentEnd,
 		hasDocumentStartTab: doc.hasDocumentStartTab,
 	};
+}
 
-	return stringifyDocument(outputDoc, toStringifyInput(options));
+/**
+ * Format a document via the parse → stringify round-trip and diff the
+ * output against the source, returning `undefined` when the input has a
+ * fatal parse error (never corrupt malformed input). A multi-document
+ * stream routes to {@link formatStream}, which formats every document.
+ */
+function formatDocument(text: string, options: YamlFormattingOptions | undefined): string | undefined {
+	const { document: doc, documentCount } = composeFirstDocumentCounted(text, {});
+	if (documentCount > 1) return formatStream(text, options);
+	if (doc.errors.some((e) => isFatalCode(e.code))) return undefined;
+
+	return stringifyDocument(toOutputDocument(doc, options?.preserveComments ?? true), toStringifyInput(options));
+}
+
+/**
+ * Format a multi-document stream: every document is re-emitted in order with
+ * its own framing (`---`, `...`, leading/trailing comment blocks — all of
+ * which `stringifyDocument` renders per document), so no document is ever
+ * dropped. Returns `undefined` — no edits — when the stream cannot be
+ * re-emitted faithfully:
+ *
+ * - any document (or the stream itself) carries a fatal diagnostic, the same
+ *   posture as the single-document path;
+ * - any document carries `%YAML`/`%TAG` directives — `stringifyDocument`
+ *   does not re-emit directive lines, and dropping a `%TAG` would change
+ *   what the re-emitted document means.
+ *
+ * The single-document path deliberately does not share the directive
+ * refusal: its (pre-existing) contract already re-emits directive-carrying
+ * documents without the directive line, and tightening that here would be a
+ * silent behavior change to the released path.
+ */
+function formatStream(text: string, options: YamlFormattingOptions | undefined): string | undefined {
+	const { documents, streamErrors } = composeAllDocuments(text, {});
+	if (streamErrors.some((e) => isFatalCode(e.code))) return undefined;
+	if (documents.some((d) => d.errors.some((e) => isFatalCode(e.code)))) return undefined;
+	if (documents.some((d) => d.directives.length > 0)) return undefined;
+
+	const preserveComments = options?.preserveComments ?? true;
+	const base = toStringifyInput(options);
+	const parts: Array<string> = [];
+	for (let i = 0; i < documents.length; i++) {
+		const doc = documents[i] as RawYamlDocument;
+		// A document after the first is separated from its predecessor by its
+		// own `---` or the predecessor's `...`; the composer guarantees one of
+		// the two, so a stream violating it cannot be re-emitted — refuse.
+		if (i > 0 && !doc.hasDocumentStart && !(documents[i - 1] as RawYamlDocument).hasDocumentEnd) return undefined;
+		// Every document but the last must end in a newline for the next
+		// document's framing to start on its own line; the caller's
+		// `finalNewline` applies only to the last document.
+		const docOptions = i < documents.length - 1 ? { ...base, finalNewline: true } : base;
+		parts.push(stringifyDocument(toOutputDocument(doc, preserveComments), docOptions));
+	}
+	return parts.join("");
 }
 
 // ── modify: pure AST navigation ─────────────────────────────────────────────
@@ -337,11 +378,14 @@ function rebuildSeq(node: YamlSeq, items: ReadonlyArray<YamlNode>): YamlSeq {
  * `diagnostics: ReadonlyArray<YamlDiagnostic>`, never a collapsed `reason`
  * string.
  *
- * Every entry point here is **single-document**: the pipeline re-emits
- * exactly one document, so a multi-document stream yields no edits from
- * `format`/`formatToString` and a typed `MultiDocumentStream` failure from
- * `modify`/`modifyToString` — never a silently truncated stream. Parse a
- * stream with {@link Yaml.parseAll} / `Yaml.parseAllResult` instead.
+ * `format`/`formatToString` handle multi-document streams whole — every
+ * document is re-emitted in order with its own framing, never a silently
+ * truncated stream. `modify`/`modifyToString` are **single-document**: a
+ * {@link YamlPath} carries no document index, so which document of a stream
+ * a path names is a rule the format does not define, and a multi-document
+ * stream fails typed with a `MultiDocumentStream` diagnostic rather than
+ * guessing. Parse a stream with {@link Yaml.parseAll} /
+ * `Yaml.parseAllResult`.
  *
  * @public
  */
@@ -354,14 +398,16 @@ export class YamlFormat {
 	 * Pure and total: malformed input (a fatal parse error) yields `[]` rather
 	 * than corrupting the document.
 	 *
-	 * **Single-document contract.** The format pipeline re-emits exactly one
-	 * document, so input containing more than one document (a `---`-separated
-	 * stream — a Kubernetes manifest, a pnpm 11 `pnpm-lock.yaml` with a
-	 * config-dependency preamble) also yields `[]`: the formatter refuses to
-	 * touch what it cannot fully represent rather than silently destroying
-	 * documents 2..n. Detection is CST-level, so a `---` inside a block scalar
-	 * or quoted string is content, not a document boundary, and such input
-	 * still formats normally.
+	 * **Multi-document streams format whole.** Input containing more than one
+	 * document (a `---`-separated stream — a Kubernetes manifest, a pnpm 11
+	 * `pnpm-lock.yaml` with a config-dependency preamble) formats every
+	 * document in order, re-emitting each document's own framing (`---`,
+	 * `...`, comment blocks); no document is ever dropped. Document detection
+	 * is CST-level, so a `---` inside a block scalar or quoted string is
+	 * content, not a document boundary. Two multi-document shapes yield `[]`
+	 * (untouched) because they cannot be re-emitted faithfully: a stream with
+	 * a fatal diagnostic in any document (the same posture as single-document
+	 * input) and a stream carrying `%YAML`/`%TAG` directives.
 	 *
 	 * @remarks
 	 * The positional `range` argument takes precedence over
@@ -397,10 +443,11 @@ export class YamlFormat {
 	 * Format `text` and apply the resulting edits in one step
 	 * (`YamlEdit.applyAll ∘ format`). Pure and total.
 	 *
-	 * Inherits the {@link YamlFormat.format} single-document contract: when
-	 * `text` is a multi-document stream (or has a fatal parse error) there are
-	 * no edits, so the input string is returned byte-identical — never a
-	 * truncated first document.
+	 * Inherits the {@link YamlFormat.format} contract: a multi-document stream
+	 * is formatted whole — every document re-emitted in order — and input
+	 * that cannot be formatted faithfully (a fatal parse error, or a stream
+	 * carrying `%YAML`/`%TAG` directives) is returned byte-identical — never
+	 * a truncated first document.
 	 */
 	static formatToString(text: string, range?: YamlRangeLike, options?: YamlFormattingOptions): string {
 		return YamlEdit.applyAll(text, YamlFormat.format(text, range, options));
@@ -415,12 +462,13 @@ export class YamlFormat {
 	 * {@link YamlModificationError} on a fatal parse error or a structural
 	 * navigation mismatch.
 	 *
-	 * **Single-document contract.** Like {@link YamlFormat.format}, the modify
-	 * pipeline re-emits exactly one document, so a multi-document stream fails
-	 * with {@link YamlModificationError} carrying a `MultiDocumentStream`
-	 * diagnostic — modifying document 1 and re-emitting it alone would
-	 * silently destroy documents 2..n. Detection is CST-level: a `---` inside
-	 * a block scalar or quoted string is content, not a document boundary.
+	 * **Single-document contract.** A `path` carries no document index, so on
+	 * a multi-document stream there is no rule for which document it names —
+	 * `modify` fails with {@link YamlModificationError} carrying a
+	 * `MultiDocumentStream` diagnostic rather than guessing document 1 (and
+	 * unlike {@link YamlFormat.format}, which formats a stream whole because
+	 * formatting needs no target). Detection is CST-level: a `---` inside a
+	 * block scalar or quoted string is content, not a document boundary.
 	 *
 	 * @remarks
 	 * `options` is a bare {@link YamlStringifyOptions} — it controls only the

@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { Yaml, YamlEdit } from "../src/index.js";
 import { YamlFormat, YamlFormattingOptions, YamlModificationError } from "../src/YamlFormat.js";
 
@@ -70,28 +71,78 @@ describe("YamlFormat", () => {
 		});
 	});
 
-	describe("single-document contract — multi-document streams are never truncated", () => {
-		// The format/modify pipeline re-emits exactly one document; before the
-		// guard, formatToString("a: 1\n---\nb: 2\n") returned "a: 1\n" and
-		// silently destroyed documents 2..n (probe-verified downstream, writing
-		// format output back to disk). The posture mirrors malformed input:
-		// refuse to touch what the pipeline cannot fully represent.
-		it("format returns no edits for a multi-document stream", () => {
-			assert.deepStrictEqual(YamlFormat.format("a: 1\n---\nb: 2\n"), []);
+	describe("multi-document streams — formatted whole, never truncated", () => {
+		// Before this contract, formatToString("a: 1\n---\nb: 2\n") returned
+		// "a: 1\n" and silently destroyed documents 2..n (probe-verified
+		// downstream, writing format output back to disk). Streams now format
+		// every document, re-emitting each document's own framing.
+		it("formats every document of a stream, preserving the separators", () => {
+			const text = "a:   1\n---\nb:\n    c: 2\n";
+			assert.strictEqual(YamlFormat.formatToString(text), "a: 1\n---\nb:\n  c: 2\n");
 		});
 
-		it("formatToString returns a multi-document stream byte-identical", () => {
-			const text = "a:   1\n---\nb:   2\n";
+		it("is idempotent on a multi-document stream", () => {
+			const once = YamlFormat.formatToString("a:   1\n---\nb:   2\n---\nc:   3\n");
+			assert.strictEqual(YamlFormat.formatToString(once), once);
+		});
+
+		it("preserves per-document comments and framing", () => {
+			const text = "# doc one\na: 1\n# doc two\n---\nb: 2 # trailing\n";
 			assert.strictEqual(YamlFormat.formatToString(text), text);
 		});
 
-		it("a trailing bare --- opens an empty second document and is refused too", () => {
-			const text = "a:    1\n---\n";
+		it("a comment between --- and content hoists above the marker (single-document parity), losslessly", () => {
+			// The composer reads a comment between `---` and the first content
+			// line as the document HEADER block, and the stringifier emits the
+			// header above the marker — the released single-document behavior
+			// (formatToString("---\n# c\nb: 2\n") does the same hoist). The
+			// stream path inherits it: no comment is lost, and the output is a
+			// fixed point.
+			const out = YamlFormat.formatToString("a: 1\n---\n# doc two\nb: 2\n");
+			assert.strictEqual(out, "a: 1\n# doc two\n---\nb: 2\n");
+			assert.strictEqual(YamlFormat.formatToString(out), out);
+		});
+
+		it("preserves an explicit ... document-end separation between bare documents", () => {
+			const text = "a:   1\n...\nb:   2\n";
+			assert.strictEqual(YamlFormat.formatToString(text), "a: 1\n...\nb: 2\n");
+		});
+
+		it("a trailing bare --- opens an empty second document and survives formatting", () => {
+			assert.strictEqual(YamlFormat.formatToString("a:    1\n---\n"), "a: 1\n---\n");
+		});
+
+		it("a two-document pnpm-lock-shaped stream round-trips with both documents intact", () => {
+			const fixture = readFileSync(new URL("./fixtures/multi-doc/pnpm-lock-shape.yaml", import.meta.url), "utf8");
+			const before = Yaml.parseAllResult(fixture);
+			const once = YamlFormat.formatToString(fixture);
+			const after = Yaml.parseAllResult(once);
+			if (!Result.isSuccess(before) || !Result.isSuccess(after)) {
+				assert.fail("the pnpm-lock-shaped stream must parse before and after formatting");
+			}
+			assert.strictEqual(after.success.length, 2);
+			assert.deepStrictEqual(after.success, before.success);
+			assert.include(once, "---\nlockfileVersion:");
+			// Fixed point: formatting the formatted stream changes nothing.
+			assert.strictEqual(YamlFormat.formatToString(once), once);
+		});
+
+		it("a stream carrying %YAML/%TAG directives is left byte-identical (not re-emittable faithfully)", () => {
+			const text = "%YAML 1.2\n---\na:   1\n---\nb:   2\n";
+			assert.deepStrictEqual(YamlFormat.format(text), []);
 			assert.strictEqual(YamlFormat.formatToString(text), text);
 		});
 
-		it.effect("modify fails typed with MultiDocumentStream, never a one-document re-emit", () =>
+		it("a fatal error in any document leaves the whole stream untouched", () => {
+			const text = "a:   1\n---\nb: *missing\n";
+			assert.deepStrictEqual(YamlFormat.format(text), []);
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it.effect("modify stays single-document: fails typed with MultiDocumentStream, never a guess", () =>
 			Effect.gen(function* () {
+				// A YamlPath carries no document index, so which document of a
+				// stream it names is a rule the format does not define.
 				const error = yield* Effect.flip(YamlFormat.modify("a: 1\n---\nb: 2\n", ["a"], 2));
 				assert.instanceOf(error, YamlModificationError);
 				assert.strictEqual(error.diagnostics[0]?.code, "MultiDocumentStream");
@@ -99,12 +150,12 @@ describe("YamlFormat", () => {
 			}),
 		);
 
-		it("a --- inside a block scalar is content, not a document boundary — still formats", () => {
+		it("a --- inside a block scalar is content, not a document boundary — formats as one document", () => {
 			const text = "a:\n    b: 1\ntext: |\n  ---\n  not a marker\n";
 			const out = YamlFormat.formatToString(text);
-			assert.notStrictEqual(out, text); // the over-indented mapping was reformatted
-			assert.include(out, "  ---\n");
-			assert.isTrue(Yaml.equals(out, text));
+			assert.strictEqual(out, "a:\n  b: 1\ntext: |\n  ---\n  not a marker\n");
+			const parsed = Yaml.parseAllResult(out);
+			assert.isTrue(Result.isSuccess(parsed) && parsed.success.length === 1);
 		});
 
 		it("a --- inside a quoted scalar is content too", () => {
