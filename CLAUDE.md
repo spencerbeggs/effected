@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 This is **effected**, a pnpm monorepo (npm org `@effected`) building an **Effect v4 app kit**: a coherent set of libraries designed v4-first, not a lift-and-shift of Spencer's older `*-effect` repos. Scope is closed by five consuming applications, not by how many source repos remain.
 
-The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.101`. The monorepo holds libraries only — applications stay in external repos.
+The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.107`. The monorepo holds libraries only — applications stay in external repos.
 
 **The kit ships in coordinated waves, never one package at a time.** The `0.1.0` gate shipped as an explicit pre-release on 2026-07-16 (18 packages, PR #3) and every wave since has gone out the same way (latest: 16 packages, 2026-07-26, PR #181). **Do not release a package on its own.** Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. The five github-split packages — `commands`, `templates`, `github`, `github-actions` and `sbom` — published for the first time in that wave; nothing in the kit still sits at `0.0.0`.
 
@@ -75,7 +75,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 
 ### .repos/effect
 
-A git submodule of Effect-TS/effect, pinned to the tag matching the `effect` catalog (`effect@4.0.0-beta.101`) and managed by silk's repos tooling. It has tracked the main Effect-TS/effect monorepo since 2026-07-19, when the old effect-smol repo was archived and v4 development moved back there; the local path was `.repos/effect-smol` until 2026-07-24 and is now `.repos/effect`, matching what a consuming repo would vendor. Declared in `.gitmodules`; described by the manifest `.repos/config.json` (url / ref / purpose / sparse / orientation / notes). Vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
+A git submodule of Effect-TS/effect, pinned to the tag matching the `effect` catalog (`effect@4.0.0-beta.107`) and managed by silk's repos tooling. It has tracked the main Effect-TS/effect monorepo since 2026-07-19, when the old effect-smol repo was archived and v4 development moved back there; the local path was `.repos/effect-smol` until 2026-07-24 and is now `.repos/effect`, matching what a consuming repo would vendor. Declared in `.gitmodules`; described by the manifest `.repos/config.json` (url / ref / purpose / sparse / orientation / notes). Vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
 
 Sparse checkout: only `packages/effect`, `packages/vitest`, `migration`, `ai-docs`, `LLMS.md` and `MIGRATION.md` are materialized.
 
@@ -128,7 +128,7 @@ Biome, commitlint, lint-staged and markdownlint all take their presets from `@sa
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml` (`catalog:effect`, `catalog:effectPeers`, `catalog:silk`, plus the `effect3` / `effect3Peers` v3 interop catalogs), managed via `packages/pnpm-plugin-effect`.
 
-**`catalog:effect` uses the `lock` strategy: exact beta pins (`4.0.0-beta.101`), never a caret.** A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports. Under `lock` every consumer resolves that one pinned version, so `catalog:effectPeers` holds the same exact beta, not a caret floor. The `effect3` / `effect3Peers` interop catalogs track the latest Effect **v3** (caret-ranged, not synced to the vendored tree) for dual-version testing, and drop at the plugin's `1.0.0`.
+**`catalog:effect` uses the `lock` strategy: exact beta pins (`4.0.0-beta.107`), never a caret.** A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports. Under `lock` every consumer resolves that one pinned version, so `catalog:effectPeers` holds the same exact beta, not a caret floor. The `effect3` / `effect3Peers` interop catalogs track the latest Effect **v3** (caret-ranged, not synced to the vendored tree) for dual-version testing, and drop at the plugin's `1.0.0`.
 
 **`pnpm peers check` reports one known issue class, currently with a single occupant** (state as of the 2026-08-11 beta.107 wave adoption). It is the *toolchain* graph, not this workspace: `rolldown-pnpm-config@0.5.7` (the `pnpm-plugin-effect` build tool, not yet republished against the wave) hard-depends on beta.101-era artifacts, and `@effect/platform-node-shared@4.0.0-beta.107` inside that sub-graph sees the beta.101 it resolves against. It clears when `rolldown-pnpm-config` republishes against the current beta — which is why beta.101 and beta.107 legitimately coexist in the tree right now, and the island only executes during the user-run `pnpm:up`/`pnpm:export` flow. This is expected, not a defect to chase. (The 2026-08-11 advance also proved what the class becomes when an API is *removed* between betas: a hard module-init crash, bridged by temporary local shims until the republish — see PR #322.)
 
