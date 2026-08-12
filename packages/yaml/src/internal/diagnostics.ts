@@ -55,10 +55,19 @@ export const YAML_COMPOSE_ERROR_CODES = [
 export const YAML_STRINGIFY_ERROR_CODES = ["CircularReference"] as const;
 
 /**
- * Error codes for the modify stage (`YamlFormat.modify`'s path navigation
- * against an already-composed AST). Not raised by the parser/composer.
+ * Error codes for the modify stage (`YamlFormat.modify`'s guards and path
+ * navigation against an already-composed AST). Not raised by the
+ * parser/composer. `MultiDocumentStream` is the single-document-contract
+ * refusal: `modify` re-emits exactly one document, so a multi-document
+ * stream fails typed rather than silently truncating documents 2..n.
  */
-export const YAML_MODIFY_ERROR_CODES = ["EmptyDocument", "PathNotFound", "InvalidIndex", "NotNavigable"] as const;
+export const YAML_MODIFY_ERROR_CODES = [
+	"EmptyDocument",
+	"PathNotFound",
+	"InvalidIndex",
+	"NotNavigable",
+	"MultiDocumentStream",
+] as const;
 
 /** The lexer-stage error-code union. */
 export type YamlLexErrorCode = (typeof YAML_LEX_ERROR_CODES)[number];

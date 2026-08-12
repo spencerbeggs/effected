@@ -287,6 +287,44 @@ const parseResultImpl = (text: string, options?: YamlParseOptions): Result.Resul
 };
 
 /**
+ * Synchronous multi-document parse returning a `Result`. Mirrors
+ * {@link parseResultImpl} over the whole stream: stream-level
+ * directive-placement errors and every document's failure records aggregate
+ * into one {@link YamlParseError}; each document's value is extracted against
+ * its own independent anchor map (anchors are document-scoped in a stream),
+ * with the alias-expansion budget materialized as a typed failure.
+ */
+const parseAllResultImpl = (
+	text: string,
+	options?: YamlParseOptions,
+): Result.Result<ReadonlyArray<unknown>, YamlParseError> => {
+	const { documents, streamErrors } = composeAllDocuments(text, toParseInput(options));
+	const uniqueKeys = options?.uniqueKeys ?? true;
+	const failures = [
+		...streamErrors.filter((e) => e.code === "InvalidDirective"),
+		...documents.flatMap((d) => failureRecords(d, uniqueKeys)),
+	];
+	if (failures.length > 0) {
+		return Result.fail(new YamlParseError({ diagnostics: toDiagnostics(text, failures), input: text }));
+	}
+	const maxAliasCount = options?.maxAliasCount ?? 100;
+	const values: Array<unknown> = [];
+	for (const d of documents) {
+		// Per-document anchor map (anchors are document-scoped in a stream).
+		const anchors = buildAnchorMap(d.contents);
+		try {
+			values.push(nodeToJsValue(d.contents, anchors, maxAliasCount));
+		} catch (defect) {
+			if (defect instanceof AliasExpansionBudgetExceeded) {
+				return Result.fail(aliasCountExceededError(defect.message, text));
+			}
+			throw defect;
+		}
+	}
+	return Result.succeed(values as ReadonlyArray<unknown>);
+};
+
+/**
  * Synchronous stringify returning a `Result`. Mirrors {@link Yaml.stringify}
  * without the Effect wrapper: a circular reference or a value nested past the
  * recursion budget yields a `Failure` carrying a typed {@link YamlStringifyError},
@@ -316,28 +354,6 @@ const failureRecords = (doc: RawYamlDocument, uniqueKeys: boolean): ReadonlyArra
 	if (fatal.length > 0) return fatal;
 	return uniqueKeys ? doc.warnings.filter((w) => w.code === "DuplicateKey") : [];
 };
-
-/**
- * Extract a document's plain-JS value with an alias-expansion budget derived
- * from `maxAliasCount`, materializing a "billion laughs" blow-up as a typed
- * fatal {@link YamlParseError} (`AliasCountExceeded`) instead of letting the
- * heap-exhausting expansion escape as an unhandled defect.
- */
-const extractDocumentValue = (
-	contents: YamlNode | null,
-	anchors: Map<string, YamlNode>,
-	maxAliasCount: number,
-	text: string,
-): Effect.Effect<unknown, YamlParseError> =>
-	Effect.try({
-		try: () => nodeToJsValue(contents, anchors, maxAliasCount),
-		catch: (defect) => {
-			if (defect instanceof AliasExpansionBudgetExceeded) {
-				return aliasCountExceededError(defect.message, text);
-			}
-			throw defect;
-		},
-	});
 
 const stringifyOrFail = (value: unknown, options?: YamlStringifyOptions): Effect.Effect<string, YamlStringifyError> =>
 	Effect.try({
@@ -424,26 +440,13 @@ export class Yaml {
 	 * A "billion laughs" alias-expansion blow-up in any document also fails
 	 * through {@link YamlParseError} with an `AliasCountExceeded` diagnostic,
 	 * never as an unhandled defect.
+	 *
+	 * Defined in terms of {@link Yaml.parseAllResult} — synchronous callers
+	 * can use that variant directly.
 	 */
-	static readonly parseAll = Effect.fn("Yaml.parseAll")(function* (text: string, options?: YamlParseOptions) {
-		const { documents, streamErrors } = composeAllDocuments(text, toParseInput(options));
-		const uniqueKeys = options?.uniqueKeys ?? true;
-		const failures = [
-			...streamErrors.filter((e) => e.code === "InvalidDirective"),
-			...documents.flatMap((d) => failureRecords(d, uniqueKeys)),
-		];
-		if (failures.length > 0) {
-			return yield* new YamlParseError({ diagnostics: toDiagnostics(text, failures), input: text });
-		}
-		const maxAliasCount = options?.maxAliasCount ?? 100;
-		const values: Array<unknown> = [];
-		for (const d of documents) {
-			// Per-document anchor map (anchors are document-scoped in a stream).
-			const anchors = buildAnchorMap(d.contents);
-			values.push(yield* extractDocumentValue(d.contents, anchors, maxAliasCount, text));
-		}
-		return values as ReadonlyArray<unknown>;
-	});
+	static readonly parseAll = Effect.fn("Yaml.parseAll")((text: string, options?: YamlParseOptions) =>
+		Effect.fromResult(Yaml.parseAllResult(text, options)),
+	);
 
 	/**
 	 * Stringify a plain JavaScript value as YAML. Fails with
@@ -499,6 +502,52 @@ export class Yaml {
 	 */
 	static parseResult(text: string, options?: YamlParseOptions): Result.Result<unknown, YamlParseError> {
 		return parseResultImpl(text, options);
+	}
+
+	/**
+	 * Synchronous multi-document parse, returning a `Result` instead of an
+	 * `Effect` — the {@link Yaml.parseResult} counterpart to
+	 * {@link Yaml.parseAll}. Empty input succeeds with `[null]` (the engine
+	 * reads `""` as one empty document, exactly as {@link Yaml.parse} yields
+	 * `null` for it); a single-document stream succeeds with a one-element
+	 * array whose value is exactly what {@link Yaml.parseResult} yields.
+	 *
+	 * @remarks
+	 * This is the package's single multi-document parse path.
+	 * {@link Yaml.parseAll} is defined in terms of it (`Effect.fromResult`
+	 * behind the named span), so the two variants cannot diverge. Anchors are
+	 * document-scoped: each document's aliases resolve against its own anchor
+	 * map, never a neighbor's.
+	 *
+	 * Fails with the aggregate {@link YamlParseError} when **any** document in
+	 * the stream carries a fatal diagnostic (or a stream-level
+	 * directive-placement error), which makes it a whole-stream validity
+	 * check: a `Success` means every document parsed clean. Preserves the
+	 * package contract — malformed and adversarial input (including a
+	 * "billion laughs" alias bomb in any document) fails typed, never as a
+	 * defect; the method never throws.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Yaml } from "@effected/yaml";
+	 * import { Result } from "effect";
+	 *
+	 * // Whole-stream validity check: fails if ANY document is invalid.
+	 * const result = Yaml.parseAllResult("a: 1\n---\nb: 2\n");
+	 * if (Result.isSuccess(result)) {
+	 *   result.success; // [{ a: 1 }, { b: 2 }]
+	 * } else {
+	 *   result.failure; // YamlParseError aggregating every fatal diagnostic
+	 * }
+	 * ```
+	 *
+	 * @public
+	 */
+	static parseAllResult(
+		text: string,
+		options?: YamlParseOptions,
+	): Result.Result<ReadonlyArray<unknown>, YamlParseError> {
+		return parseAllResultImpl(text, options);
 	}
 
 	/**

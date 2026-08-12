@@ -3,8 +3,8 @@
 // parse → transform AST → stringify → diff pipeline.
 //
 // Cycle firewall: this module drives the internal engine directly
-// (`composeFirstDocument`, `stringifyDocument`) exactly as `Yaml.ts` does;
-// nothing imports `YamlFormat.ts` back.
+// (`composeFirstDocumentCounted`, `stringifyDocument`) exactly as `Yaml.ts`
+// does; nothing imports `YamlFormat.ts` back.
 //
 // Neither `format` nor `modify` catch the internal stringifier's
 // `StringifyFailure` (the circular-reference guard): both build their output
@@ -14,7 +14,7 @@
 // user-facing error, and is left to surface as an uncaught defect.
 
 import { Effect, Schema } from "effect";
-import { composeFirstDocument } from "./internal/composer/document.js";
+import { composeFirstDocumentCounted } from "./internal/composer/document.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import { computeEdits } from "./internal/diff.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
@@ -68,7 +68,9 @@ export class YamlFormattingOptions extends Schema.Class<YamlFormattingOptions>("
 
 /**
  * Raised when `YamlFormat.modify` cannot navigate the requested path against
- * the composed AST (a structural mismatch) or the source fails to parse.
+ * the composed AST (a structural mismatch), the source fails to parse, or the
+ * source is a multi-document stream (`MultiDocumentStream` — modify re-emits
+ * exactly one document, so it refuses input it cannot fully represent).
  * Carries structured {@link YamlDiagnostic} entries — never a collapsed
  * `reason` string (the structure-preserving-errors house rule).
  *
@@ -143,10 +145,14 @@ function definedFields<T extends Record<string, unknown>>(fields: T): Partial<T>
 /**
  * Format a document via the parse → stringify round-trip and diff the
  * output against the source, returning `undefined` when the input has a
- * fatal parse error (never corrupt malformed input).
+ * fatal parse error (never corrupt malformed input) or contains more than
+ * one document (the pipeline re-emits exactly one document, so formatting a
+ * multi-document stream would silently destroy documents 2..n — the
+ * single-document contract; see {@link YamlFormat.format}).
  */
 function formatDocument(text: string, options: YamlFormattingOptions | undefined): string | undefined {
-	const doc = composeFirstDocument(text, {});
+	const { document: doc, documentCount } = composeFirstDocumentCounted(text, {});
+	if (documentCount > 1) return undefined;
 	if (doc.errors.some((e) => isFatalCode(e.code))) return undefined;
 
 	const preserveComments = options?.preserveComments ?? true;
@@ -331,6 +337,12 @@ function rebuildSeq(node: YamlSeq, items: ReadonlyArray<YamlNode>): YamlSeq {
  * `diagnostics: ReadonlyArray<YamlDiagnostic>`, never a collapsed `reason`
  * string.
  *
+ * Every entry point here is **single-document**: the pipeline re-emits
+ * exactly one document, so a multi-document stream yields no edits from
+ * `format`/`formatToString` and a typed `MultiDocumentStream` failure from
+ * `modify`/`modifyToString` — never a silently truncated stream. Parse a
+ * stream with {@link Yaml.parseAll} / `Yaml.parseAllResult` instead.
+ *
  * @public
  */
 export class YamlFormat {
@@ -341,6 +353,15 @@ export class YamlFormat {
 	 * result with `YamlEdit.applyAll` (or use {@link YamlFormat.formatToString}).
 	 * Pure and total: malformed input (a fatal parse error) yields `[]` rather
 	 * than corrupting the document.
+	 *
+	 * **Single-document contract.** The format pipeline re-emits exactly one
+	 * document, so input containing more than one document (a `---`-separated
+	 * stream — a Kubernetes manifest, a pnpm 11 `pnpm-lock.yaml` with a
+	 * config-dependency preamble) also yields `[]`: the formatter refuses to
+	 * touch what it cannot fully represent rather than silently destroying
+	 * documents 2..n. Detection is CST-level, so a `---` inside a block scalar
+	 * or quoted string is content, not a document boundary, and such input
+	 * still formats normally.
 	 *
 	 * @remarks
 	 * The positional `range` argument takes precedence over
@@ -375,6 +396,11 @@ export class YamlFormat {
 	/**
 	 * Format `text` and apply the resulting edits in one step
 	 * (`YamlEdit.applyAll ∘ format`). Pure and total.
+	 *
+	 * Inherits the {@link YamlFormat.format} single-document contract: when
+	 * `text` is a multi-document stream (or has a fatal parse error) there are
+	 * no edits, so the input string is returned byte-identical — never a
+	 * truncated first document.
 	 */
 	static formatToString(text: string, range?: YamlRangeLike, options?: YamlFormattingOptions): string {
 		return YamlEdit.applyAll(text, YamlFormat.format(text, range, options));
@@ -389,6 +415,13 @@ export class YamlFormat {
 	 * {@link YamlModificationError} on a fatal parse error or a structural
 	 * navigation mismatch.
 	 *
+	 * **Single-document contract.** Like {@link YamlFormat.format}, the modify
+	 * pipeline re-emits exactly one document, so a multi-document stream fails
+	 * with {@link YamlModificationError} carrying a `MultiDocumentStream`
+	 * diagnostic — modifying document 1 and re-emitting it alone would
+	 * silently destroy documents 2..n. Detection is CST-level: a `---` inside
+	 * a block scalar or quoted string is content, not a document boundary.
+	 *
 	 * @remarks
 	 * `options` is a bare {@link YamlStringifyOptions} — it controls only the
 	 * internal re-stringify step, not a range (there is no range to restrict
@@ -400,7 +433,23 @@ export class YamlFormat {
 		value: unknown,
 		options?: YamlStringifyOptions,
 	) {
-		const doc = composeFirstDocument(text, {});
+		const { document: doc, documentCount } = composeFirstDocumentCounted(text, {});
+		if (documentCount > 1) {
+			return yield* new YamlModificationError({
+				path,
+				diagnostics: [
+					YamlDiagnostic.fromRaw(
+						{
+							code: "MultiDocumentStream",
+							message: `Cannot modify a multi-document stream (${documentCount} documents): modify re-emits exactly one document`,
+							offset: 0,
+							length: 0,
+						},
+						text,
+					),
+				],
+			});
+		}
 		const fatal = doc.errors.filter((e) => isFatalCode(e.code));
 		if (fatal.length > 0) {
 			return yield* new YamlModificationError({
@@ -432,7 +481,9 @@ export class YamlFormat {
 
 	/**
 	 * Modify `text` and apply the resulting edits in one step
-	 * (`YamlEdit.applyAll ∘ modify`).
+	 * (`YamlEdit.applyAll ∘ modify`). Inherits the {@link YamlFormat.modify}
+	 * error channel, including the single-document contract's
+	 * `MultiDocumentStream` refusal.
 	 */
 	static readonly modifyToString = Effect.fn("YamlFormat.modifyToString")(function* (
 		text: string,

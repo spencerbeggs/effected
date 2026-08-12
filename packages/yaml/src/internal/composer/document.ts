@@ -983,6 +983,21 @@ const EMPTY_DOCUMENT: RawYamlDocument = {
  * state and therefore appear in the returned document's `errors`.
  */
 export function composeFirstDocument(text: string, options?: ParseOptionsInput): RawYamlDocument {
+	return composeFirstDocumentCounted(text, options).document;
+}
+
+/**
+ * {@link composeFirstDocument} plus the CST-level document count of the whole
+ * stream, from the single CST parse the compose already performs — no second
+ * walk, and correct where a regex on `---` is not (a `---` inside a block
+ * scalar or quoted string is content, not a document marker). Callers that
+ * must refuse multi-document input (the `YamlFormat` single-document
+ * contract) read `documentCount` instead of re-parsing.
+ */
+export function composeFirstDocumentCounted(
+	text: string,
+	options?: ParseOptionsInput,
+): { readonly document: RawYamlDocument; readonly documentCount: number } {
 	const cstNodes = parseCSTAll(text);
 	const state = createState(text, FLOW, options);
 
@@ -991,11 +1006,11 @@ export function composeFirstDocument(text: string, options?: ParseOptionsInput):
 
 	const doc = cstNodes[0];
 	if (!doc) {
-		return EMPTY_DOCUMENT;
+		return { document: EMPTY_DOCUMENT, documentCount: 0 };
 	}
 
 	const result = composeDocument(doc, state, cstNodes.length > 1, cstNodes[1]);
-	return decorateDocumentSourceMultiline(result, text);
+	return { document: decorateDocumentSourceMultiline(result, text), documentCount: cstNodes.length };
 }
 
 /**

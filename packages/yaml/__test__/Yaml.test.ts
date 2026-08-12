@@ -215,6 +215,77 @@ describe("Yaml", () => {
 		);
 	});
 
+	describe("parseAllResult (synchronous Result twin of parseAll)", () => {
+		it("succeeds with every document's value, in order", () => {
+			const result = Yaml.parseAllResult("name: first\n---\nname: second\n---\nname: third\n");
+			if (!Result.isSuccess(result)) {
+				assert.fail("parseAllResult must succeed on a valid multi-document stream");
+			}
+			assert.deepStrictEqual(result.success, [{ name: "first" }, { name: "second" }, { name: "third" }]);
+		});
+
+		it("fails typed when the SECOND document carries a fatal diagnostic (whole-stream validity)", () => {
+			let result!: Result.Result<ReadonlyArray<unknown>, YamlParseError>;
+			assert.doesNotThrow(() => {
+				result = Yaml.parseAllResult("a: 1\n---\nb: *missing\n");
+			});
+			assert.isTrue(Result.isFailure(result));
+			if (!Result.isFailure(result)) return;
+			assert.instanceOf(result.failure, YamlParseError);
+			assert.isTrue(result.failure.diagnostics.some((d) => d.code === "UndefinedAlias"));
+		});
+
+		it("an empty stream succeeds with one empty document, matching parse('')", () => {
+			// The engine composes "" as a single empty document (reference-`yaml`
+			// parity, and the same reading Yaml.parse gives: "" → null), so the
+			// stream form is [null] — success, never a failure.
+			const result = Yaml.parseAllResult("");
+			if (!Result.isSuccess(result)) {
+				assert.fail("parseAllResult must succeed on an empty stream");
+			}
+			assert.deepStrictEqual(result.success, [null]);
+		});
+
+		it("a single document yields a one-element array matching parseResult", () => {
+			const text = "name: Alice\nage: 30\n";
+			const all = Yaml.parseAllResult(text);
+			const one = Yaml.parseResult(text);
+			if (!Result.isSuccess(all) || !Result.isSuccess(one)) {
+				assert.fail("both parse paths must succeed on a valid single document");
+			}
+			assert.deepStrictEqual(all.success, [one.success]);
+		});
+
+		it.effect("cannot diverge from parseAll — same values, same failure", () =>
+			Effect.gen(function* () {
+				const valid = "a: &x 1\nb: *x\n---\nc: 2\n";
+				const syncResult = Yaml.parseAllResult(valid);
+				if (!Result.isSuccess(syncResult)) {
+					assert.fail("parseAllResult must succeed on valid input");
+				}
+				assert.deepStrictEqual(syncResult.success, yield* Yaml.parseAll(valid));
+
+				const invalid = "a: 1\n---\nb: *missing\n";
+				const error = yield* Effect.flip(Yaml.parseAll(invalid));
+				const sync = Yaml.parseAllResult(invalid);
+				if (!Result.isFailure(sync)) {
+					assert.fail("parseAllResult must fail when any document is fatal");
+				}
+				assert.deepStrictEqual(
+					sync.failure.diagnostics.map((d) => d.code),
+					error.diagnostics.map((d) => d.code),
+				);
+			}),
+		);
+
+		it("anchors are document-scoped — an alias cannot reach a previous document's anchor", () => {
+			const result = Yaml.parseAllResult("a: &shared 1\n---\nb: *shared\n");
+			assert.isTrue(Result.isFailure(result));
+			if (!Result.isFailure(result)) return;
+			assert.isTrue(result.failure.diagnostics.some((d) => d.code === "UndefinedAlias"));
+		});
+	});
+
 	describe("stringify", () => {
 		it.effect("round-trips plain values", () =>
 			Effect.gen(function* () {

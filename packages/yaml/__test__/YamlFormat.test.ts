@@ -70,6 +70,58 @@ describe("YamlFormat", () => {
 		});
 	});
 
+	describe("single-document contract — multi-document streams are never truncated", () => {
+		// The format/modify pipeline re-emits exactly one document; before the
+		// guard, formatToString("a: 1\n---\nb: 2\n") returned "a: 1\n" and
+		// silently destroyed documents 2..n (probe-verified downstream, writing
+		// format output back to disk). The posture mirrors malformed input:
+		// refuse to touch what the pipeline cannot fully represent.
+		it("format returns no edits for a multi-document stream", () => {
+			assert.deepStrictEqual(YamlFormat.format("a: 1\n---\nb: 2\n"), []);
+		});
+
+		it("formatToString returns a multi-document stream byte-identical", () => {
+			const text = "a:   1\n---\nb:   2\n";
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it("a trailing bare --- opens an empty second document and is refused too", () => {
+			const text = "a:    1\n---\n";
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+		});
+
+		it.effect("modify fails typed with MultiDocumentStream, never a one-document re-emit", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(YamlFormat.modify("a: 1\n---\nb: 2\n", ["a"], 2));
+				assert.instanceOf(error, YamlModificationError);
+				assert.strictEqual(error.diagnostics[0]?.code, "MultiDocumentStream");
+				assert.notProperty(error, "reason");
+			}),
+		);
+
+		it("a --- inside a block scalar is content, not a document boundary — still formats", () => {
+			const text = "a:\n    b: 1\ntext: |\n  ---\n  not a marker\n";
+			const out = YamlFormat.formatToString(text);
+			assert.notStrictEqual(out, text); // the over-indented mapping was reformatted
+			assert.include(out, "  ---\n");
+			assert.isTrue(Yaml.equals(out, text));
+		});
+
+		it("a --- inside a quoted scalar is content too", () => {
+			const text = 'a:\n    b: 1\nsep: "---"\n';
+			const out = YamlFormat.formatToString(text);
+			assert.notStrictEqual(out, text);
+			assert.isTrue(Yaml.equals(out, text));
+		});
+
+		it("a single document with an explicit leading --- marker still formats", () => {
+			const text = "---\na:\n    b: 1\n";
+			const out = YamlFormat.formatToString(text);
+			assert.notStrictEqual(out, text);
+			assert.isTrue(Yaml.equals(out, text));
+		});
+	});
+
 	describe("format — indentSequences", () => {
 		// Exercises the AST (node-path) stringifier: YamlFormattingOptions
 		// derives every YamlStringifyOptions field, including indentSequences.
