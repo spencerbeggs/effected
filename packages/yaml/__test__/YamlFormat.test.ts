@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result } from "effect";
 import { Yaml, YamlEdit } from "../src/index.js";
+import { composeAllDocuments } from "../src/internal/composer/document.js";
 import { YamlFormat, YamlFormattingOptions, YamlModificationError } from "../src/YamlFormat.js";
 
 const apply = (text: string, edits: ReadonlyArray<YamlEdit>) => YamlEdit.applyAll(text, edits);
@@ -110,6 +111,34 @@ describe("YamlFormat", () => {
 
 		it("a trailing bare --- opens an empty second document and survives formatting", () => {
 			assert.strictEqual(YamlFormat.formatToString("a:    1\n---\n"), "a: 1\n---\n");
+		});
+
+		it("the composer guarantees every later document has its own --- or a predecessor ...", () => {
+			// The stream path REFUSES a document after the first that has
+			// neither its own `---` nor a predecessor `...` (it could not be
+			// re-emitted with faithful framing). This pins the composer
+			// guarantee that makes the refusal branch unreachable for composer
+			// output — a composer change breaking the guarantee fails here
+			// instead of silently activating the refusal.
+			const streams = [
+				"a: 1\n---\nb: 2\n",
+				"a: 1\n...\nb: 2\n",
+				"---\na: 1\n...\n---\nb: 2\n",
+				"a: 1\n...\n---\nb: 2\n",
+				"%YAML 1.2\n---\na: 1\n...\n%YAML 1.2\n---\nb: 2\n",
+				"--- |\ndoc\n--- >\ntext\n",
+				"a: 1\n---\n",
+			];
+			for (const text of streams) {
+				const { documents } = composeAllDocuments(text, {});
+				assert.isAtLeast(documents.length, 2, `expected a multi-document stream: ${JSON.stringify(text)}`);
+				for (let i = 1; i < documents.length; i++) {
+					assert.isTrue(
+						documents[i]?.hasDocumentStart === true || documents[i - 1]?.hasDocumentEnd === true,
+						`document ${i} of ${JSON.stringify(text)} has neither its own --- nor a predecessor ...`,
+					);
+				}
+			}
 		});
 
 		it("a two-document pnpm-lock-shaped stream round-trips with both documents intact", () => {

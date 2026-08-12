@@ -14,7 +14,8 @@
 // user-facing error, and is left to surface as an uncaught defect.
 
 import { Effect, Schema } from "effect";
-import { composeAllDocuments, composeFirstDocumentCounted } from "./internal/composer/document.js";
+import { EMPTY_DOCUMENT, composeAllDocuments, composeFirstDocumentCounted } from "./internal/composer/document.js";
+import type { RawDiagnostic } from "./internal/diagnostics.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import { computeEdits } from "./internal/diff.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
@@ -173,8 +174,14 @@ function toOutputDocument(doc: RawYamlDocument, preserveComments: boolean): RawY
  * every document and shares the same directive refusal.
  */
 function formatDocument(text: string, options: YamlFormattingOptions | undefined): string | undefined {
-	const { document: doc, documentCount } = composeFirstDocumentCounted(text, {});
-	if (documentCount > 1) return formatStream(text, options);
+	// ONE composition serves both paths: the stream path receives the same
+	// documents and stream errors rather than composing the text a second
+	// time (behavior-neutral — each document keeps its single-document
+	// fields, `hasDocumentStart`/`hasDocumentEnd`/`hasDocumentStartTab`).
+	const { documents, streamErrors } = composeAllDocuments(text, {});
+	if (documents.length > 1) return formatStream(documents, streamErrors, options);
+	if (streamErrors.some((e) => isFatalCode(e.code))) return undefined;
+	const doc = documents[0] ?? EMPTY_DOCUMENT;
 	if (doc.errors.some((e) => isFatalCode(e.code))) return undefined;
 	if (doc.directives.length > 0) return undefined;
 
@@ -185,8 +192,9 @@ function formatDocument(text: string, options: YamlFormattingOptions | undefined
  * Format a multi-document stream: every document is re-emitted in order with
  * its own framing (`---`, `...`, leading/trailing comment blocks — all of
  * which `stringifyDocument` renders per document), so no document is ever
- * dropped. Returns `undefined` — no edits — when the stream cannot be
- * re-emitted faithfully:
+ * dropped. Receives the documents and stream errors from the ONE
+ * composition {@link formatDocument} already performed. Returns `undefined`
+ * — no edits — when the stream cannot be re-emitted faithfully:
  *
  * - any document (or the stream itself) carries a fatal diagnostic, the same
  *   posture as the single-document path;
@@ -199,8 +207,11 @@ function formatDocument(text: string, options: YamlFormattingOptions | undefined
  * line while keeping the dependent shorthand tags produced unparseable
  * output (probe-verified downstream against an independent oracle).
  */
-function formatStream(text: string, options: YamlFormattingOptions | undefined): string | undefined {
-	const { documents, streamErrors } = composeAllDocuments(text, {});
+function formatStream(
+	documents: ReadonlyArray<RawYamlDocument>,
+	streamErrors: ReadonlyArray<RawDiagnostic>,
+	options: YamlFormattingOptions | undefined,
+): string | undefined {
 	if (streamErrors.some((e) => isFatalCode(e.code))) return undefined;
 	if (documents.some((d) => d.errors.some((e) => isFatalCode(e.code)))) return undefined;
 	if (documents.some((d) => d.directives.length > 0)) return undefined;
