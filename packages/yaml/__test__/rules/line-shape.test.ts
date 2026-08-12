@@ -22,6 +22,18 @@ testRule(builtin("line-length"), [
 		expected: [{ line: 0, character: 8, length: 3, messageIncludes: "longer than 8" }],
 	},
 	{
+		// Line text excludes the terminator whole — CRLF's `\r` is not a
+		// 121st character.
+		name: "CRLF: an exactly-max-width line passes at the default 120",
+		input: `key: ${"x".repeat(115)}\r\n`,
+		expected: [],
+	},
+	{
+		name: "CRLF: one character past the max reports 121, not 122",
+		input: `key: ${"x".repeat(116)}\r\n`,
+		expected: [{ line: 0, character: 120, length: 1, messageIncludes: "(121)" }],
+	},
+	{
 		name: "multiple long lines each report",
 		input: `a: ${"x".repeat(10)}\nb: ${"y".repeat(10)}\n`,
 		setting: { max: 5 },

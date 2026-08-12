@@ -137,14 +137,21 @@ export class YamlLintConfig extends Schema.Class<YamlLintConfig>("YamlLintConfig
 
 // ── Context construction ────────────────────────────────────────────────────
 
-/** Split `text` into positioned lines (line text excludes the terminator). */
+/**
+ * Split `text` into positioned lines. Line text excludes the terminator
+ * whole — for CRLF input the `\r` is part of the terminator and is stripped
+ * too, so every rule sees the same line content regardless of line-ending
+ * style. Empty input has no lines: rules that count blank lines must not see
+ * a phantom first line.
+ */
 const buildLines = (text: string): ReadonlyArray<LintLine> => {
+	if (text === "") return [];
 	const lines: Array<LintLine> = [];
 	let offset = 0;
 	let number = 0;
 	while (offset <= text.length) {
 		const nl = text.indexOf("\n", offset);
-		const end = nl === -1 ? text.length : nl;
+		const end = nl === -1 ? text.length : nl > offset && text[nl - 1] === "\r" ? nl - 1 : nl;
 		// The final empty segment after a trailing newline is not a line.
 		if (offset === text.length && number > 0) break;
 		lines.push({ text: text.slice(offset, end), offset, number });
@@ -241,6 +248,11 @@ export class YamlLint {
 	 * Run `rules` over `text` under `config`, returning every finding sorted
 	 * by position.
 	 *
+	 * Document-driven rules see the FIRST document of the stream (matching
+	 * `Yaml.parse`; split the stream `Yaml.parseAll`-style to lint every
+	 * document), while token- and line-driven rules cover the full source —
+	 * see {@link LintContext}.
+	 *
 	 * A rule runs when its config entry is a severity or an options object;
 	 * `"off"` and absent entries skip it — except `parse-validity`, which is
 	 * always-on. The resolved severity (explicit-in-options, else the bare
@@ -254,9 +266,12 @@ export class YamlLint {
 
 	/**
 	 * Run `rules` and apply every non-overlapping surgical fix, returning the
-	 * fixed text. Fails with {@link YamlParseError} when the input has a
-	 * fatal parse error — a document the engine cannot compose is not safely
-	 * fixable. Fixes route exclusively through `YamlEdit.applyAll` (never a
+	 * fixed text. Fails with {@link YamlParseError} when the FIRST document
+	 * of the stream has a fatal parse error — a document the engine cannot
+	 * compose is not safely fixable. The gate matches `Yaml.parse`'s scope:
+	 * later documents of a multi-document stream are not composed (split the
+	 * stream `Yaml.parseAll`-style to lint every document), though token- and
+	 * line-driven fixes still cover the full source. Fixes route exclusively through `YamlEdit.applyAll` (never a
 	 * reformat), so applying them is comment-safe by construction; when two
 	 * fixes overlap — or start at the same offset — the earlier one in
 	 * {@link YamlLint.run} order (position, then rule id) wins and the later

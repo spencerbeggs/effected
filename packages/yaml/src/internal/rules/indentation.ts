@@ -16,7 +16,7 @@
 import { Schema } from "effect";
 import type { LintContext, LintLine, YamlRule } from "../../YamlLintRule.js";
 import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
-import { isScalarContinuationLine, nonNegativeIntegerOption } from "./util.js";
+import { coveringToken, isScalarContinuationLine, nonNegativeIntegerOption } from "./util.js";
 
 /**
  * Options for `indentation`: `spaces` per level (number or "consistent",
@@ -121,6 +121,10 @@ export const indentation: YamlRule = {
 			const prev = content[i - 1] as ContentLine;
 			const curr = content[i] as ContentLine;
 			if (curr.firstChar !== "-") continue;
+			// A leading `-` is not necessarily a sequence entry: `-5` and `--flag`
+			// are plain scalars (YAML 1.2 §7.1). The lexer already knows — only a
+			// line whose first content token is `block-seq-entry` is one.
+			if (coveringToken(ctx.tokens, curr.line.offset + curr.indent)?.kind !== "block-seq-entry") continue;
 			// The previous content line must open a mapping key (ends with `:`
 			// after stripping a trailing comment).
 			const prevText = prev.line.text.replace(/ #.*$/, "").trimEnd();

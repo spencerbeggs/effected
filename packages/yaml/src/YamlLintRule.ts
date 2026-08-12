@@ -53,8 +53,8 @@ export class YamlLintDiagnostic extends Schema.Class<YamlLintDiagnostic>("YamlLi
 
 /**
  * One source line of the linted document: its text (without the line
- * terminator), the offset of its first character, and its zero-based line
- * number.
+ * terminator — the `\n`, and for CRLF input the `\r\n` pair), the offset of
+ * its first character, and its zero-based line number.
  *
  * @public
  */
@@ -71,9 +71,12 @@ export interface LintLine {
  * so the context is eager by nature; the streaming token form exists for
  * other consumers.
  *
- * `document` is always present, including for input that does not parse: it
- * is built from the engine's recovered compose, and its `errors`/`warnings`
- * carry what went wrong (the `parse-validity` rule reports them).
+ * `text`, `lines` and `tokens` cover the FULL source; `document` is the
+ * FIRST document of the stream (matching `Yaml.parse` — split the stream
+ * `Yaml.parseAll`-style to lint every document). It is always present,
+ * including for input that does not parse: it is built from the engine's
+ * recovered compose, and its `errors`/`warnings` carry what went wrong (the
+ * `parse-validity` rule reports them).
  *
  * @public
  */

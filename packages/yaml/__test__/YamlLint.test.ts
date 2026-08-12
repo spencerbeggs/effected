@@ -160,6 +160,13 @@ describe("YamlLint.run", () => {
 		assert.deepStrictEqual(seen, { max: 3 });
 	});
 
+	it("reports nothing on empty input under the default preset", () => {
+		// Empty input has no lines — a phantom first line would make
+		// empty-lines report "too many blank lines" on "".
+		const found = YamlLint.run("", YamlLint.builtins, YamlLintConfig.default);
+		assert.deepStrictEqual(found, []);
+	});
+
 	it("sorts findings by position across rules", () => {
 		const text = "a: TODO\nb: *missing\n";
 		const found = YamlLint.run(

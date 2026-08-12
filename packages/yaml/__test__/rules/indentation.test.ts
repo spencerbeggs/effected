@@ -64,4 +64,19 @@ testRule(builtin("indentation"), [
 		input: "a:\n  b: 1\n      # deep comment\nc: 2\n",
 		expected: [],
 	},
+	{
+		// `-5` is a plain scalar (YAML 1.2 §7.1), not a sequence entry — it
+		// must not train seqIndented=true and flag the valid unindented
+		// sequence below.
+		name: "a -leading plain scalar value does not train the sequence policy (indented first)",
+		input: "threshold:\n  -5\nallowed:\n- alice\n- bob\n",
+		expected: [],
+	},
+	{
+		// Reverse polarity: unindented sequences first, then a `-5` scalar —
+		// which must not be flagged as an indented sequence entry.
+		name: "a -leading plain scalar value does not train the sequence policy (unindented first)",
+		input: "key1:\n- a\n- b\nkey2:\n  -5\n",
+		expected: [],
+	},
 ]);

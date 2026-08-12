@@ -37,19 +37,19 @@ export const emptyLines: YamlRule = {
 		const maxEnd = opts.maxEnd ?? 0;
 		const out: Array<YamlLintDiagnostic> = [];
 		const lines = ctx.lines;
-		// Line text keeps a CRLF file's `\r` (only `\n` terminates a LintLine),
-		// so a CRLF blank line is `"\r"`, not `""`.
-		const isBlank = (text: string): boolean => text === "" || text === "\r";
+		// Line text excludes the terminator whole (a CRLF blank line is `""`),
+		// but fix spans are SOURCE coordinates: the deletion below derives its
+		// end from the next line's offset so a CRLF terminator goes whole.
 		let i = 0;
 		while (i < lines.length) {
 			const line = lines[i];
-			if (line === undefined || !isBlank(line.text) || insideScalarSpan(ctx.tokens, line.offset)) {
+			if (line === undefined || line.text !== "" || insideScalarSpan(ctx.tokens, line.offset)) {
 				i++;
 				continue;
 			}
 			// A run of blank lines [i, end).
 			let end = i;
-			while (end < lines.length && isBlank(lines[end]?.text ?? "x")) end++;
+			while (end < lines.length && (lines[end]?.text ?? "x") === "") end++;
 			const runLength = end - i;
 			const atStart = i === 0;
 			const atEnd = end === lines.length;
