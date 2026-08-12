@@ -15,7 +15,6 @@
 // satisfied.
 
 import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
-import { buildAnchorMap } from "./internal/composer/anchors.js";
 import { composeAllDocuments, composeFirstDocument } from "./internal/composer/document.js";
 import type { RawDiagnostic } from "./internal/diagnostics.js";
 import { isFatalCode } from "./internal/diagnostics.js";
@@ -303,8 +302,11 @@ const parseAllResultImpl = (
 ): Result.Result<ReadonlyArray<unknown>, YamlParseError> => {
 	const { documents, streamErrors } = composeAllDocuments(text, toParseInput(options));
 	const uniqueKeys = options?.uniqueKeys ?? true;
+	// Fatal stream-level errors use the SAME predicate as the format path's
+	// refusal (`isFatalCode`), so `parseAllResult` can never succeed on input
+	// `YamlFormat.format` refuses as stream-fatal.
 	const failures = [
-		...streamErrors.filter((e) => e.code === "InvalidDirective"),
+		...streamErrors.filter((e) => isFatalCode(e.code)),
 		...documents.flatMap((d) => failureRecords(d, uniqueKeys)),
 	];
 	if (failures.length > 0) {
@@ -313,8 +315,12 @@ const parseAllResultImpl = (
 	const maxAliasCount = options?.maxAliasCount ?? 100;
 	const values: Array<unknown> = [];
 	for (const d of documents) {
-		// Per-document anchor map (anchors are document-scoped in a stream).
-		const anchors = buildAnchorMap(d.contents);
+		// Per-document anchor map (anchors are document-scoped in a stream). An
+		// empty map lets nodeToJsValue register anchors incrementally, exactly
+		// like parseResultImpl — a pre-built map would resolve aliases that
+		// extraction never re-registers (e.g. an anchor on a complex mapping
+		// key), diverging from the single-document result.
+		const anchors = new Map<string, YamlNode>();
 		try {
 			values.push(nodeToJsValue(d.contents, anchors, maxAliasCount));
 		} catch (defect) {

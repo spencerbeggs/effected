@@ -1,7 +1,14 @@
 import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
-import { Yaml, YamlParseError, YamlParseOptions, YamlStringifyError, YamlStringifyOptions } from "../src/index.js";
+import {
+	Yaml,
+	YamlFormat,
+	YamlParseError,
+	YamlParseOptions,
+	YamlStringifyError,
+	YamlStringifyOptions,
+} from "../src/index.js";
 
 describe("Yaml", () => {
 	describe("parse", () => {
@@ -283,6 +290,31 @@ describe("Yaml", () => {
 			assert.isTrue(Result.isFailure(result));
 			if (!Result.isFailure(result)) return;
 			assert.isTrue(result.failure.diagnostics.some((d) => d.code === "UndefinedAlias"));
+		});
+
+		it("an anchor on a complex mapping key resolves identically to parseResult (incremental registration)", () => {
+			// A pre-built anchor map would resolve `*x` to `["k"]` even though
+			// extraction never re-registers non-scalar mapping keys; parseResult's
+			// incremental registration yields null. The two paths must agree.
+			const text = "{ &x [k]: *x }";
+			const all = Yaml.parseAllResult(text);
+			const one = Yaml.parseResult(text);
+			if (!Result.isSuccess(all) || !Result.isSuccess(one)) {
+				assert.fail("both parse paths must succeed on a complex-key anchor");
+			}
+			assert.deepStrictEqual(all.success, [one.success]);
+		});
+
+		it("fails on the fatal stream errors the format path refuses — one predicate, one contract", () => {
+			// The stream-error filter is isFatalCode, the SAME predicate
+			// YamlFormat's refusal uses: parseAllResult can never succeed on
+			// input the formatter refuses as stream-fatal.
+			const misplaced = "a: 1\n%YAML 1.2\n---\nb: 2\n";
+			const result = Yaml.parseAllResult(misplaced);
+			assert.isTrue(Result.isFailure(result));
+			if (!Result.isFailure(result)) return;
+			assert.isTrue(result.failure.diagnostics.some((d) => d.code === "InvalidDirective"));
+			assert.deepStrictEqual(YamlFormat.format(misplaced), []);
 		});
 	});
 
