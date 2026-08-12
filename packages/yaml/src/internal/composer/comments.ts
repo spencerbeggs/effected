@@ -36,9 +36,10 @@
 //    carries a comment legally (`key: | # c`), `makeScalar` captures it as
 //    the SCALAR's `comment` (reference parity — the comment sits inside the
 //    scalar's own CST token) and the stringifier re-emits it on the header
-//    line in the pair, seq-item and explicit-key paths. Residual drops: a
-//    pair-level comment on a block-scalar-valued pair whose scalar already
-//    carries a header comment (one comment slot per line), and a DOCUMENT-
+//    line in the pair, seq-item and explicit-key paths. A pair-level comment
+//    COEXISTING with a scalar header comment no longer drops: the pair
+//    comment keeps the key line and the header spills to its own indented
+//    line (`a: # pair` / `  | # hdr` / `  body`). Residual drop: a DOCUMENT-
 //    ROOT block scalar's header comment, which is captured on the node but
 //    has no emission path.
 // 4. FLOW comment layout normalizes. A comment-carrying flow collection
@@ -186,6 +187,7 @@ export function withCommentFields(node: YamlNode, fields: CommentFields): YamlNo
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
 			...mergedCommentFields(node, fields),
 			...(node.chomp !== undefined ? { chomp: node.chomp } : {}),
+			...(node.blockIndent !== undefined ? { blockIndent: node.blockIndent } : {}),
 			...(node.raw !== undefined ? { raw: node.raw } : {}),
 			...(node.sourceMultiline !== undefined ? { sourceMultiline: node.sourceMultiline } : {}),
 			offset: node.offset,

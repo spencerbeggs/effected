@@ -94,6 +94,9 @@ export type ScalarChomp = typeof ScalarChomp.Type;
  *   `commentBefore` block, when present) in the source.
  * - `chomp` — block-scalar chomping indicator, when the scalar is a block
  *   scalar.
+ * - `blockIndent` — the EXPLICIT indentation-indicator digit from a block
+ *   scalar's header (`|2`, `>1+`), when the source spelled one; absent when
+ *   the header let the reader auto-detect the indent.
  * - `raw` — the raw source text, preserved when it differs from the resolved
  *   value in a way stringification needs to know about.
  * - `sourceMultiline` — `true` when the source span covers two or more lines;
@@ -111,6 +114,7 @@ export class YamlScalar extends Schema.TaggedClass<YamlScalar>()("YamlScalar", {
 	comment: Schema.optionalKey(Schema.String),
 	spaceBefore: Schema.optionalKey(Schema.Boolean),
 	chomp: Schema.optionalKey(ScalarChomp),
+	blockIndent: Schema.optionalKey(Schema.Number),
 	raw: Schema.optionalKey(Schema.String),
 	sourceMultiline: Schema.optionalKey(Schema.Boolean),
 	offset: Schema.Number,

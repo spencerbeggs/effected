@@ -287,7 +287,13 @@ function renderString(
 	explicitChomp?: "strip" | "clip" | "keep",
 	parentPosition?: "block-map-value" | "block-seq-item",
 	quoteStyle: QuoteStyle = "single",
+	explicitIndent?: number,
 ): string {
+	// Fidelity mode (everything but canonical) re-emits the EXPLICIT header
+	// indicators the source spelled — a redundant `+` keep-chomp or `|2`
+	// indentation indicator is normalized away only under forceDefaultStyles.
+	const fidelity = !canonical;
+	const fidelityIndent = fidelity ? explicitIndent : undefined;
 	if (s.includes("\n")) {
 		// If the value contains C0 control chars (except tab) or carriage
 		// returns, block styles can't represent them — use double-quoted
@@ -324,8 +330,10 @@ function renderString(
 			}
 		}
 		// Multi-line: prefer block styles
-		if (style === "block-literal") return renderBlockLiteral(s, indent, explicitChomp, parentPosition);
-		if (style === "block-folded") return renderBlockFolded(s, indent);
+		if (style === "block-literal")
+			return renderBlockLiteral(s, indent, explicitChomp, parentPosition, fidelity, fidelityIndent);
+		if (style === "block-folded")
+			return renderBlockFolded(s, indent, fidelity ? explicitChomp : undefined, fidelityIndent);
 		// In canonical mode, prefer single-quoted with fold encoding for plain
 		// and single-quoted multi-line scalars — matches libyaml canonical form.
 		if (style === "plain" || style === "single-quoted") {
@@ -333,7 +341,7 @@ function renderString(
 				const sq = renderSingleQuotedMultiline(s, indent);
 				if (sq !== null) return sq;
 			}
-			return renderBlockLiteral(s, indent, explicitChomp, parentPosition);
+			return renderBlockLiteral(s, indent, explicitChomp, parentPosition, fidelity, fidelityIndent);
 		}
 		return renderDoubleQuoted(s, canonical);
 	}
@@ -370,9 +378,9 @@ function renderString(
 		case "double-quoted":
 			return renderDoubleQuoted(s, canonical);
 		case "block-literal":
-			return renderBlockLiteral(s, indent, explicitChomp, parentPosition);
+			return renderBlockLiteral(s, indent, explicitChomp, parentPosition, fidelity, fidelityIndent);
 		case "block-folded":
-			return renderBlockFolded(s, indent);
+			return renderBlockFolded(s, indent, fidelity ? explicitChomp : undefined, fidelityIndent);
 	}
 }
 
@@ -811,6 +819,7 @@ function normalizeNodeTags(node: YamlNode, tagMap: Map<string, string>): YamlNod
 			...(node.comment !== undefined ? { comment: node.comment } : {}),
 			...(node.spaceBefore !== undefined ? { spaceBefore: node.spaceBefore } : {}),
 			...(node.chomp !== undefined ? { chomp: node.chomp } : {}),
+			...(node.blockIndent !== undefined ? { blockIndent: node.blockIndent } : {}),
 			...(node.raw !== undefined ? { raw: node.raw } : {}),
 			...(node.sourceMultiline !== undefined ? { sourceMultiline: node.sourceMultiline } : {}),
 			offset: node.offset,
@@ -873,6 +882,7 @@ export function stripNodeComments(node: YamlNode): YamlNode {
 			...(node.tag !== undefined ? { tag: node.tag } : {}),
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
 			...(node.chomp !== undefined ? { chomp: node.chomp } : {}),
+			...(node.blockIndent !== undefined ? { blockIndent: node.blockIndent } : {}),
 			...(node.raw !== undefined ? { raw: node.raw } : {}),
 			...(node.sourceMultiline !== undefined ? { sourceMultiline: node.sourceMultiline } : {}),
 			offset: node.offset,
@@ -989,6 +999,7 @@ function stringifyScalarNodeLines(node: YamlScalar, ctx: StringifyContext): stri
 			node.chomp,
 			ctx.parentPosition,
 			ctx.quoteStyle,
+			node.blockIndent,
 		);
 		lines = rendered.split("\n");
 	} else {
@@ -1419,22 +1430,37 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			const valIsScalar = valNode instanceof YamlScalar;
 			const isInlineQuoted = valIsScalar && (firstStripped.startsWith("'") || firstStripped.startsWith('"'));
 			if (isBlockScalarHeader || isInlineQuoted) {
-				const headerIdx = lines.length;
-				lines.push(`${keyStr}${sep} ${first}`);
-				for (let i = 1; i < valLines.length; i++) {
-					lines.push(valLines[i]);
-				}
-				if (isBlockScalarHeader) {
-					// #341: the block-scalar HEADER line legally carries a trailing
-					// comment (`key: | # c`). The scalar's own captured header
-					// comment wins; a pair-level comment relocates there only when
-					// the scalar carries none (one comment slot per line).
-					const scalarComment = valNode instanceof YamlScalar ? valNode.comment : undefined;
-					appendTrailing(headerIdx, scalarComment ?? pair.comment);
-				} else {
-					// A multi-line quoted scalar closes on its last line, which can
-					// carry the trailing comment.
+				const scalarComment = isBlockScalarHeader && valNode instanceof YamlScalar ? valNode.comment : undefined;
+				if (scalarComment !== undefined && pair.comment !== undefined) {
+					// #341: BOTH comments exist — the pair comment keeps the KEY
+					// line and the header spills to its own indented line, giving
+					// each comment its own legal line:
+					// `a: # pair` / `  | # hdr` / `  body`.
+					lines.push(`${keyStr}${sep}`);
 					appendTrailing(lines.length - 1, pair.comment);
+					const headerIdx = lines.length;
+					lines.push(`${pad}${first}`);
+					for (let i = 1; i < valLines.length; i++) {
+						lines.push(valLines[i]);
+					}
+					appendTrailing(headerIdx, scalarComment);
+				} else {
+					const headerIdx = lines.length;
+					lines.push(`${keyStr}${sep} ${first}`);
+					for (let i = 1; i < valLines.length; i++) {
+						lines.push(valLines[i]);
+					}
+					if (isBlockScalarHeader) {
+						// #341: the block-scalar HEADER line legally carries a trailing
+						// comment (`key: | # c`). The scalar's own captured header
+						// comment wins; a pair-level comment relocates there when
+						// the scalar carries none (one comment slot per line).
+						appendTrailing(headerIdx, scalarComment ?? pair.comment);
+					} else {
+						// A multi-line quoted scalar closes on its last line, which can
+						// carry the trailing comment.
+						appendTrailing(lines.length - 1, pair.comment);
+					}
 				}
 			} else {
 				// Check if this is a block map value with metadata prefix

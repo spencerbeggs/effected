@@ -411,6 +411,17 @@ describe("comment fidelity (#127)", () => {
 				["seq folded", "- > # hdr\n  body\n"],
 				["map strip-chomp", "a: |- # hdr\n  body\n"],
 				["seq strip-chomp", "- |- # hdr\n  body\n"],
+				// Explicit header indicators the value alone cannot derive
+				// (CodeRabbit PR #338): a redundant keep-chomp and a redundant
+				// indentation indicator both re-emit byte-intact.
+				["map keep-chomp", "a: |+ # hdr\n  body\n"],
+				["seq keep-chomp", "- |+ # hdr\n  body\n"],
+				["map folded keep-chomp", "a: >+ # hdr\n  body\n"],
+				["map indent indicator", "a: |2 # hdr\n  body\n"],
+				["map folded indent indicator", "a: >2 # hdr\n  body\n"],
+				["map indent indicator with keep", "a: |2+ # hdr\n  body\n"],
+				["map keep-chomp bare header", "a: |+\n  body\n"],
+				["map indent indicator bare header", "a: |2\n  body\n"],
 			];
 			for (const [name, source] of roundtrips) {
 				it.effect(`roundtrips byte-intact: ${name}`, () =>
@@ -454,6 +465,58 @@ describe("comment fidelity (#127)", () => {
 					assert.strictEqual(out, source);
 					const again = yield* YamlDocument.parse(out);
 					assert.strictEqual(yield* again.stringify(), out);
+				}),
+			);
+
+			it.effect("emits BOTH a pair comment and a header comment, each on its own legal line", () =>
+				Effect.gen(function* () {
+					// The spilled form is itself legal YAML that reparses with the
+					// same two comments, so it is a byte fixed point.
+					const source = "a: # pair\n  | # hdr\n  body\n";
+					const doc = yield* YamlDocument.parse(source);
+					const pair = firstMap(doc).items[0];
+					assert.strictEqual(pair?.comment, " pair");
+					assert.instanceOf(pair?.value, YamlScalar);
+					assert.strictEqual((pair?.value as YamlScalar).comment, " hdr");
+					const out = yield* doc.stringify();
+					assert.strictEqual(out, source);
+					const again = yield* YamlDocument.parse(out);
+					assert.strictEqual(yield* again.stringify(), out);
+				}),
+			);
+
+			it.effect("a pair comment ALONE still relocates to the header line (ratified relocation)", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("a: # pair\n  |\n  body\n");
+					const out = yield* doc.stringify();
+					assert.strictEqual(out, "a: | # pair\n  body\n");
+					const again = yield* YamlDocument.parse(out);
+					assert.strictEqual(yield* again.stringify(), out);
+				}),
+			);
+
+			it.effect("captures the explicit indicators on the scalar: chomp keep and blockIndent", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("a: |2+ # hdr\n  body\n");
+					const scalar = firstMap(doc).items[0]?.value as YamlScalar;
+					assert.strictEqual(scalar.chomp, "keep");
+					assert.strictEqual(scalar.blockIndent, 2);
+					assert.strictEqual(scalar.value, "body\n");
+					// No explicit indicator → no captured field.
+					const doc2 = yield* YamlDocument.parse("a: |\n  body\n");
+					assert.isUndefined((firstMap(doc2).items[0]?.value as YamlScalar).blockIndent);
+				}),
+			);
+
+			it.effect("an explicit indicator that no longer matches the rendered indent normalizes away", () =>
+				Effect.gen(function* () {
+					// blockIndent 4 with a rendered indent of 2 would lie about the
+					// content columns — the header falls back to auto-detection.
+					const doc = yield* YamlDocument.parse("a: |4\n    body\n");
+					const scalar = firstMap(doc).items[0]?.value as YamlScalar;
+					assert.strictEqual(scalar.blockIndent, 4);
+					assert.strictEqual(scalar.value, "body\n");
+					assert.strictEqual(yield* doc.stringify(), "a: |\n  body\n");
 				}),
 			);
 

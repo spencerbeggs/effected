@@ -913,6 +913,7 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
 			...commentProps(node),
 			...(node.chomp !== undefined ? { chomp: node.chomp } : {}),
+			...(node.blockIndent !== undefined ? { blockIndent: node.blockIndent } : {}),
 			...(node.raw !== undefined ? { raw: node.raw } : {}),
 			sourceMultiline: true,
 			offset: node.offset,
@@ -977,7 +978,7 @@ function decorateDocumentSourceMultiline(doc: RawYamlDocument, text: string): Ra
 // Engine entry points
 // ---------------------------------------------------------------------------
 
-const EMPTY_DOCUMENT: RawYamlDocument = {
+export const EMPTY_DOCUMENT: RawYamlDocument = {
 	contents: null,
 	errors: [],
 	warnings: [],

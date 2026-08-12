@@ -144,6 +144,20 @@ export function getBlockChomp(node: CstNode): "strip" | "clip" | "keep" | undefi
 }
 
 /**
+ * Extracts the EXPLICIT indentation-indicator digit from a block scalar's
+ * header (`|2`, `>1+`), or undefined when the header carries none (the
+ * reader auto-detects) or the node is not a block scalar. Inspects only the
+ * indicator run — see {@link getBlockChomp} for why the rest of the header
+ * line (a comment can contain digits) must not be read.
+ */
+export function getBlockIndent(node: CstNode): number | undefined {
+	if (node.type !== "block-scalar") return undefined;
+	const indicators = node.source.trimStart().match(/^[|>]([0-9+-]*)/)?.[1] ?? "";
+	const digit = indicators.match(/[1-9]/)?.[0];
+	return digit === undefined ? undefined : Number(digit);
+}
+
+/**
  * The trailing comment on a block scalar's HEADER line (`key: | # c`,
  * `- >-2 # c`) as stored raw-slice text, or `undefined` when the header
  * carries none. The header is the only line of a block scalar that can carry
@@ -1178,6 +1192,7 @@ export function makeScalar(cst: CstNode, state: ComposerState, meta?: NodeMeta):
 	const rawValue = getScalarValue(cst, state.text);
 	const value = resolveScalar(rawValue, style, meta?.tag, state);
 	const chomp = getBlockChomp(cst);
+	const blockIndent = getBlockIndent(cst);
 	// #341: a block scalar's header-line comment (`| # c`) lives inside the
 	// CST token, so it is captured here as the SCALAR's trailing `comment`
 	// (reference `yaml` parity) rather than by the sibling attribution pass.
@@ -1199,6 +1214,7 @@ export function makeScalar(cst: CstNode, state: ComposerState, meta?: NodeMeta):
 		...(meta?.anchor !== undefined ? { anchor: meta.anchor } : {}),
 		...(comment !== undefined ? { comment } : {}),
 		...(chomp !== undefined ? { chomp } : {}),
+		...(blockIndent !== undefined ? { blockIndent } : {}),
 		...(needsRaw ? { raw: rawValue } : {}),
 	});
 	if (meta?.anchor) registerAnchor(scalar, meta.anchor, state, cst.offset);
