@@ -354,8 +354,25 @@ export function renderBlockFolded(
 	//   after the content is preserved by the reader, so we need an extra
 	//   empty line in the output to account for it
 	const outputLines: string[] = [];
+	// Index of the last non-empty value line, precomputed once so the loop
+	// never rescans forward. A blank run past this index is TRAILING and has
+	// no fold to reverse: those breaks are governed by chomping and map 1:1
+	// to value newlines, so emitting a compensation line there would grow a
+	// keep-chomp scalar by one newline per round-trip.
+	let lastContentIdx = -1;
+	for (let i = valueLines.length - 1; i >= 0; i--) {
+		if (valueLines[i] !== "") {
+			lastContentIdx = i;
+			break;
+		}
+	}
 	let prevNonEmpty = false;
 	let prevMoreIndented = false;
+	// Set at the first blank after non-empty, non-more-indented content when
+	// more content follows; resolved when that content is reached. Every line
+	// in a blank run is the identical `""`, so emitting the compensation line
+	// at the end of the run instead of its start is byte-identical output.
+	let pendingCompensation = false;
 	for (let i = 0; i < valueLines.length; i++) {
 		const line = valueLines[i];
 		if (line === "") {
@@ -363,33 +380,22 @@ export function renderBlockFolded(
 			// the \n after it is preserved (not folded) because it's followed
 			// by an empty line. Emit an extra empty line for that preserved \n.
 			// Exception: if the next non-empty content is more-indented, the
-			// reader already preserves the linebreak, so skip the extra line.
-			if (prevNonEmpty && !prevMoreIndented) {
-				// Look ahead to find the next non-empty line. The extra empty
-				// line compensates for the reader preserving (not folding) the
-				// break BEFORE an interior blank run — but only when content
-				// follows. A TRAILING blank run has no fold to reverse: those
-				// breaks are governed by chomping and map 1:1 to value
-				// newlines, so emitting the compensation line there would grow
-				// a keep-chomp scalar by one newline per round-trip.
-				let hasNextContent = false;
-				let nextContentMoreIndented = false;
-				for (let j = i + 1; j < valueLines.length; j++) {
-					if (valueLines[j] !== "") {
-						hasNextContent = true;
-						nextContentMoreIndented = valueLines[j].startsWith(" ") || valueLines[j].startsWith("\t");
-						break;
-					}
-				}
-				if (hasNextContent && !nextContentMoreIndented) {
-					outputLines.push("");
-				}
+			// reader already preserves the linebreak, so skip the extra line
+			// (decided when that content line is reached).
+			if (prevNonEmpty && !prevMoreIndented && i < lastContentIdx) {
+				pendingCompensation = true;
 			}
 			outputLines.push("");
 			prevNonEmpty = false;
 			prevMoreIndented = false;
 		} else {
 			const isMoreIndented = line.startsWith(" ") || line.startsWith("\t");
+			if (pendingCompensation) {
+				if (!isMoreIndented) {
+					outputLines.push("");
+				}
+				pendingCompensation = false;
+			}
 			if (prevNonEmpty && !isMoreIndented) {
 				// Fold break: insert empty line between consecutive content lines
 				outputLines.push("");

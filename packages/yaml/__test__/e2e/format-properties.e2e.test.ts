@@ -61,16 +61,16 @@ function deepEqual(a: unknown, b: unknown): boolean {
 // - COMMENT-CONVERGENCE gaps (comment preservation is new on this branch —
 //   main was trivially idempotent because it DROPPED these comments; the
 //   formatted output converges on the second pass and meaning is preserved):
-//   NKF9, RZP5, XW4D.
+//   NKF9, RZP5, XW4D — open regressions, tracked: effected#348.
 const KNOWN_NON_IDEMPOTENT: ReadonlyArray<string> = [
 	"M2N8/00",
 	"M2N8/01",
-	"NKF9",
-	"RZP5",
+	"NKF9", // tracked: effected#348
+	"RZP5", // tracked: effected#348
 	"T26H",
 	"T4YY",
 	"WZ62",
-	"XW4D",
+	"XW4D", // tracked: effected#348
 ];
 
 const KNOWN_MEANING_CHANGES: ReadonlyArray<string> = ["F6MC", "R4YG", "T26H", "T4YY", "WZ62", "X38W", "ZWK4"];

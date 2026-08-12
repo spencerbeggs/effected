@@ -1731,7 +1731,6 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 	}
 
 	const result = stringifyNodeLines(contents, ctx, 0).join("\n");
-	const body = finalNewline ? `${result}\n` : result;
 
 	// In canonical mode, an explicit `...` end marker is required when:
 	// - The final emitted scalar uses keep-chomp (`|+` or `>+`) — without it
@@ -1782,7 +1781,14 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 		ctx.forceDefaultStyles || doc.commentAfter === undefined
 			? undefined
 			: commentBlockLines(doc.commentAfter).join("\n");
-	const docEnd = docCommentAfter !== undefined ? `${docEndMarker}${docCommentAfter}\n` : docEndMarker;
+	const docEndFull = docCommentAfter !== undefined ? `${docEndMarker}${docCommentAfter}\n` : docEndMarker;
+	// `finalNewline` governs the very end of the OUTPUT, not internal
+	// separators: when a `...` marker or trailing comment block follows the
+	// body, the body keeps its newline (gluing the marker onto the last
+	// content line would change the document's meaning — `a: 1...`) and the
+	// option trims the trailing newline of the marker/comment block instead.
+	const body = finalNewline || docEndFull !== "" ? `${result}\n` : result;
+	const docEnd = finalNewline || docEndFull === "" ? docEndFull : docEndFull.replace(/\n$/, "");
 
 	if (doc.hasDocumentStart) {
 		const rootTag = contents && "tag" in contents ? contents.tag : undefined;

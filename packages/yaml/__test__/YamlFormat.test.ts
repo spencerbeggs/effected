@@ -72,6 +72,50 @@ describe("YamlFormat", () => {
 		});
 	});
 
+	describe("finalNewline: false — governs the end of the OUTPUT, never an internal separator", () => {
+		// Before this fix, finalNewline: false stripped the newline BETWEEN the
+		// body and a following `...` end marker (or trailing comment block),
+		// gluing them onto the last content line: "a: 1\n...\n" formatted to
+		// "a: 1...\n", which re-parses as { a: "1..." } — a silent value change.
+		const options = YamlFormattingOptions.make({ finalNewline: false });
+
+		it("keeps a `...` end marker on its own line (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("a: 1\n...\n", undefined, options);
+			assert.strictEqual(out, "a: 1\n...");
+		});
+
+		it("keeps a trailing comment block on its own line (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("a: 1\n# tail\n", undefined, options);
+			assert.strictEqual(out, "a: 1\n# tail");
+		});
+
+		it("keeps a comment block after the `...` marker on its own line (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("a: 1\n...\n# tail\n", undefined, options);
+			assert.strictEqual(out, "a: 1\n...\n# tail");
+		});
+
+		it("keeps the last document's `...` marker in a stream on its own line (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("x: 1\n---\na: 1\n...\n", undefined, options);
+			assert.strictEqual(out, "x: 1\n---\na: 1\n...");
+		});
+
+		it("still drops the trailing newline when nothing follows the body (byte-pinned)", () => {
+			const out = YamlFormat.formatToString("a: 1\n", undefined, options);
+			assert.strictEqual(out, "a: 1");
+		});
+
+		it.effect("preserves meaning on the marker and comment shapes", () =>
+			Effect.gen(function* () {
+				for (const input of ["a: 1\n...\n", "a: 1\n# tail\n", "a: 1\n...\n# tail\n", "hello\n...\n"]) {
+					const out = YamlFormat.formatToString(input, undefined, options);
+					const original = yield* Yaml.parse(input);
+					const formatted = yield* Yaml.parse(out);
+					assert.deepStrictEqual(formatted, original);
+				}
+			}),
+		);
+	});
+
 	describe("multi-document streams — formatted whole, never truncated", () => {
 		// Before this contract, formatToString("a: 1\n---\nb: 2\n") returned
 		// "a: 1\n" and silently destroyed documents 2..n (probe-verified
