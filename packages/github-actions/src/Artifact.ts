@@ -601,6 +601,12 @@ const unimplemented = (member: string): never => {
  * the source is a typed "not implemented" failure. Adding it later is additive;
  * shipping a parameter that has never had behavior is not.
  *
+ * `@azure/storage-blob` is an **optional peer** of this package: declare it
+ * beside `@effected/github-actions` to use this service. No module outside the
+ * cache, artifact and blob-store trio resolves it, so an action that skips
+ * them never installs it — and importing this module without the declaration
+ * fails at the import with module-not-found naming the package.
+ *
  * @example
  * ```ts
  * import { Artifact } from "@effected/github-actions";

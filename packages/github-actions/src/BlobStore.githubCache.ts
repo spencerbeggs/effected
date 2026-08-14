@@ -181,6 +181,12 @@ const make = (
  * `BlobStore.layerGitHubCache` on the service class would make `@azure/storage-blob`
  * reachable from every module that reads a blob.
  *
+ * `@azure/storage-blob` is an **optional peer** of this package: declare it
+ * beside `@effected/github-actions` to use this backend. No module outside the
+ * cache, artifact and blob-store trio resolves it, so an action that skips
+ * them never installs it — and importing this module without the declaration
+ * fails at the import with module-not-found naming the package.
+ *
  * @example
  * ```ts
  * import { GitHubCacheBlobStore } from "@effected/github-actions";

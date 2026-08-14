@@ -35,6 +35,13 @@ const DEFAULT_SERVER_URL = "https://github.com";
  * is deliberately consumer glue (see `@effected/sbom`'s `SigstoreSigner` and
  * `@effected/github`'s `Attestation.upload`).
  *
+ * `@effected/sbom` is an **optional peer** of this package: declare it beside
+ * `@effected/github-actions` to use this module or
+ * {@link ActionsIdentityToken}, the only two that resolve it. An action that
+ * never attests never installs the supply-chain stack — and importing either
+ * module without the declaration fails at the import with module-not-found
+ * naming the package.
+ *
  * @example
  * ```ts
  * import { ActionsProvenance } from "@effected/github-actions";

@@ -192,7 +192,11 @@ const block = (node: Root["children"][number]): string => render(Root.make({ chi
  *
  * This module is the package's **only** importer of `@effected/markdown` — a
  * structural test pins that, on the same terms as the Azure confinement — so
- * an action that never renders markdown never links the engine.
+ * an action that never renders markdown never links the engine. It is also an
+ * **optional peer** of this package: declare `@effected/markdown` beside
+ * `@effected/github-actions` to use this writer; an action that never imports
+ * this module never installs the engine, and importing it without the
+ * declaration fails at the import with module-not-found naming the package.
  *
  * **Renders cannot fail, so do not `Effect.try`-wrap them.** The serializer's
  * single failure mode is a nesting-depth guard, and no input can reach it: a
