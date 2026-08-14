@@ -61,6 +61,55 @@ are still `undefined` at beta.107; the rename did not get reverted.
 | a single-return **ternary chain** in an error's `message` getter | an exhaustive `switch` with no terminal return — tsgo accepts it, but Biome's `useGetterReturn` rejects it (see below) |
 | `Schema.Class` + `Schema.tag("literal")` on an explicitly-named field when the discriminator belongs to a FOREIGN contract | `Schema.TaggedClass` for a foreign discriminator — it hardwires the key `_tag` (see below) |
 
+## Decoding tolerates excess keys silently — and a typo is the common case
+
+`Schema.Struct` **drops unknown keys without complaint** on decode under
+`onExcessProperty`'s default of `"ignore"` — `"error"` rejects them and
+`"preserve"` keeps them, but you get `"ignore"` unless you ask. A struct of
+all-`optionalKey` fields decodes `{ mxa: 100 }` to `{}` and reports success, so a
+typo'd key and a correct-but-absent one are indistinguishable.
+
+| Do this | Not this |
+| --- | --- |
+| `Schema.decodeUnknownEffect(S)(input, { onExcessProperty: "error", errors: "all" })` for anything a **human typed** | a bare decode of user-authored config, where a typo is silently discarded |
+| let it default to `"ignore"` for a **machine-produced** payload you do not own | `"error"` on a third-party API response, which breaks the moment they add a field |
+
+Two failures this has already caused in the kit, from independent directions:
+
+- A typo'd rule-option key passed config validation, so the rule ran on defaults
+  while the design promised "a typo'd option fails loudly naming the field"
+  (`@effected/yaml` lint system, #129).
+- A config loader could report neither a typo'd section **nor a field the schema
+  deliberately removed** — a user migrating an older file kept a dead credential
+  and was told nothing (`@spencerbeggs/reposets`, 2026-08-13). Their first
+  conclusion was that v4 had dropped the feature entirely, and they began writing
+  one hand-rolled filter per removed field before a probe found `onExcessProperty`
+  alive and well.
+
+Pair it with **`errors: "all"`**. The default reports the first issue only, so a
+file with three typos surfaces one per run — fix, re-run, discover the next. The
+extra work only happens on a document that is already failing.
+
+**A rest does not make a struct stricter — it switches excess checking off.**
+This is the opposite of what the shape suggests, and it is worth probing rather
+than reasoning about. Measured against beta.107:
+
+| Spelling | `{ a: "x", b: 1 }` under `onExcessProperty: "error"` |
+| --- | --- |
+| `Schema.Struct({ a })` | **rejected** — the strict path |
+| `Schema.StructWithRest(Struct({ a }), [Record(String, Unknown)])` | **accepted**, and `b` is *preserved* |
+| `Schema.Struct({ a }, { rest: Never })` | accepted, `b` dropped — v4's `Struct` takes only `fields`, so the v3 `rest` option is an ignored extra argument |
+| `Schema.StructWithRest(Struct({ a }), [Record(String, Never)])` | rejected — but so is the valid `{ a: "x" }`, because the index signature covers `a` too |
+
+`SchemaAST.ts` runs the excess pass only when the struct has no index signature,
+so **owning a rest disables it for that struct entirely**, not merely for the
+keys the rest covers. A schema that deliberately admits a pass-through section
+therefore keeps working under `"error"` — but it is permissive about *every*
+key at that level, and siblings without a rest stay strict independently.
+
+So a rest cannot express "these keys and no others" in either direction, and
+`onExcessProperty: "error"` is the only strict path.
+
 ## `Schema.optional` is not exact-optional
 
 These repos compile with `exactOptionalPropertyTypes: true`, and the two

@@ -138,7 +138,7 @@ describe("ConfigFile.read", () => {
 			}).pipe(Effect.provide(platform({ "/app/.apprc": `{"port":8080}` }))),
 		);
 
-		it.effect("keys covered by a StructWithRest rest are not excess", () =>
+		it.effect("a rest switches excess checking off for its struct, not just for the keys it covers", () =>
 			Effect.gen(function* () {
 				// The half that decides whether this is usable: a schema that
 				// deliberately admits a pass-through section must keep working under
@@ -152,6 +152,10 @@ describe("ConfigFile.read", () => {
 					parseOptions: { onExcessProperty: "error" },
 				});
 				assert.strictEqual(value.port, 8080);
+				// The rest is `Record(String, Unknown)`, so every key at this level is
+				// admitted — the excess pass does not run at all for a struct that
+				// owns an index signature. Measured rather than assumed: the shape
+				// suggests a rest exempts only what it covers, and it does not.
 				assert.strictEqual((value as Record<string, unknown>)["anything"], "goes");
 			}).pipe(Effect.provide(platform({ "/app/.apprc": `{"port":8080,"anything":"goes"}` }))),
 		);

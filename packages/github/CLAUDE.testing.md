@@ -53,6 +53,29 @@ the old one cost:
   harness, and it is the probe that caught the silent settings drop in
   `@./CLAUDE.resources.md`.
 
+## Repairing a fixture is where a false green gets manufactured
+
+When a source change moves a call to a different route, its fixtures fail with
+`no fixture for` — by design, and the reason the die-default exists. The repair
+is the dangerous part: **the cheapest fix is to stub the new route with whatever
+makes the test pass, and that is not the same as modelling a real state.**
+
+The worked example, from the first consumer adopting `RepositoryVariable.set`'s
+by-name read (2026-08-14). Seven of their fixtures stubbed the listing route; the
+new code reads by name. Defaulting the new route to `notFound` turned everything
+green in one edit — and one of those greens was a lie. That test had the variable
+**present in the listing** while **404ing individually**, a state GitHub cannot
+produce, so the code took the create branch and issued a `POST` for a variable
+that exists, which the real API rejects. The suite asserted a request sequence
+that could never happen.
+
+The rule: after repairing fixtures, ask whether the stubs describe a state the
+API could actually be in — not merely whether the assertions pass. A fixture set
+is a claim about the world, and a mechanical repair edits the claim without
+anyone reading it. The tell here was two fixtures disagreeing about the same
+variable; that disagreement is invisible unless you look for it, because each
+one on its own is plausible.
+
 ## Properties worth keeping checked
 
 - **A pagination-forwarding test per paginating method** — that is what makes
