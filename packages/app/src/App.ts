@@ -119,6 +119,12 @@ export class App {
 	 * reuse that binding. Calling it inline at two provide sites opens two
 	 * databases — two connections onto one file, two migration ledgers, and two
 	 * independent `CacheEvent` PubSubs whose subscribers each see half the events.
+	 *
+	 * Testing cache expiry against this layer has one ordering rule: provide
+	 * `TestClock.layer()` **outside** the `Effect.provide` that supplies this
+	 * layer, never beneath it. Underneath, the test body has no `TestClock` in
+	 * its own context and `TestClock.adjust` dies as a defect — so the entries
+	 * under test carry real timestamps and nothing ever expires.
 	 */
 	static readonly layer = layer;
 

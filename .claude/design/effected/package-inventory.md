@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-14
+last-synced: 2026-08-14
 completeness: 90
 related:
   - architecture.md
@@ -17,6 +17,7 @@ related:
   - packages/yaml.md
   - packages/package-json.md
   - packages/npm.md
+  - packages/cli.md
   - packages/config-file.md
   - packages/walker.md
   - packages/glob.md
@@ -40,13 +41,14 @@ related:
   - packages/schemastore.md
   - packages/jsonl.md
   - consumers/README.md
+  - consumers/reposets.md
 ---
 
 # Package inventory
 
 ## Overview
 
-The current `@effected/*` package set and where each package came from. The kit is **twenty-seven publishable packages** — twenty-six libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library) — and **all twenty-seven have published**. The directory listing of `packages/` is the authority on membership; this document is the authority on where each package came from and why it is shaped the way it is. Tier definitions are in [effect-standards.md](effect-standards.md); the release mechanics and consumer mapping are in [releases.md](releases.md); open work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
+The current `@effected/*` package set and where each package came from. The kit is **twenty-eight publishable packages** — twenty-seven libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). Twenty-seven have published; `@effected/cli` was built 2026-08-13 and is pending its first release. The directory listing of `packages/` is the authority on membership; this document is the authority on where each package came from and why it is shaped the way it is. Tier definitions are in [effect-standards.md](effect-standards.md); the release mechanics and consumer mapping are in [releases.md](releases.md); open work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
 
 The kit's scope is closed by the consuming applications in [releases.md](releases.md), not by how many predecessor libraries exist. A predecessor is not by itself a commitment to carry it forward: the JSON Schema package fell off under that test (see [Off the roadmap](#off-the-roadmap)).
 
@@ -76,10 +78,11 @@ Nineteen of these were the `0.1.0` gate set ([releases.md](releases.md#the-gate)
 | `@effected/git` | boundary | invention; typed git introspection plus a marked mutating tier over core's `ChildProcessSpawner` | [packages/git.md](packages/git.md) |
 | `@effected/spdx` | pure | invention; vendored SPDX license expressions as pure schemas; consumed by `package-json` | [packages/spdx.md](packages/spdx.md) |
 | `@effected/app` | integrated | invention; thin composition over `xdg` + `config-file` + `store` | [packages/app.md](packages/app.md) |
+| `@effected/cli` | boundary | invention; the CLI **boundary** — logger, failure reporting, issue rendering — over `effect/unstable/cli`, which owns parsing | [packages/cli.md](packages/cli.md) |
 | `@effected/markdown` | pure | invention; CommonMark + GFM as pure schemas, the kit's typed communication layer with AI agents | [packages/markdown.md](packages/markdown.md) |
 | `@effected/commands` | boundary | part-port of `@savvy-web/silk-effects`' `ToolDiscovery` plus invention; tool discovery and structured running over core's `ChildProcessSpawner` | [packages/commands.md](packages/commands.md) |
 | `@effected/templates` | boundary | port of `@savvy-web/silk-effects`' `ManagedSection`; managed `BEGIN`/`END` blocks in user-owned files | [packages/templates.md](packages/templates.md) |
-| `@effected/github` | integrated | port-with-redesign of `@savvy-web/github-action-effects`' GitHub half; owns the octokit runtime | [packages/github.md](packages/github.md) |
+| `@effected/github` | integrated | port-with-redesign of `@savvy-web/github-action-effects`' GitHub half; owns the octokit runtime, and since the configuration-write services the sealed-box crypto pair | [packages/github.md](packages/github.md) |
 | `@effected/github-actions` | integrated | port-with-redesign of the same package's Actions half; the runner-side runtime | [packages/github-actions.md](packages/github-actions.md) |
 | `@effected/sbom` | integrated | port-with-redesign of the same package's `Attest` knot; owned CycloneDX 1.6 emitter plus Sigstore signing | [packages/sbom.md](packages/sbom.md) |
 | `@effected/schemastore` | integrated (was boundary) | invention; SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning, lints and the emit pipeline from Effect Schema sources — generalizes silk-release-action's schema-generation script | [packages/schemastore.md](packages/schemastore.md) |
@@ -149,5 +152,6 @@ Downstream projects that consume published `@effected` packages but stay in thei
 - savvy-web/systems (via `@savvy-web/silk-effects`' DepsRegen)
 - the `@savvy-web/*` silk system
 - the github-split orbit: silk-release-action, silk-sync-action, silk-router-action, silk-runtime-action and spencerbeggs/claude-code-marketplace-manager
+- spencerbeggs/reposets — the first consumer of the `app` + `store` control plane, and the first that is a CLI rather than an action
 
 One migration map per repo, with what each replaces and where that code lives today, is in [consumers/](consumers/README.md).

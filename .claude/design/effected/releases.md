@@ -3,11 +3,13 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-14
+last-synced: 2026-08-14
 completeness: 88
 related:
   - architecture.md
+  - packages/cli.md
+  - consumers/reposets.md
   - package-inventory.md
   - effect-standards.md
   - roadmap.md
@@ -48,6 +50,10 @@ Version and stability are separate axes.
 - **Version.** Every package stays below `1.0.0` until Effect `4.0.0` GA, pinning a single Effect v4 beta throughout development. Graduation to `1.0.0` follows Effect `4.0.0`. Until then the `effect` peer range names the beta pinned in the `effect` catalog in `pnpm-workspace.yaml`, and a beta bump is a coordinated change across the whole kit — one changeset per package, one wave.
 - **Stability.** A per-package `stable | unstable` axis independent of the version number. **Every package is `unstable`.** Consumers pin exact versions, so an accidental break surfaces in their type-checking rather than silently through a range — the pre-release contract made mechanical.
 
+**A branch build reports the *previous* release's version, and that collides with the registry.** Changesets bump at release, so `dist/**` on an unreleased branch carries the version of the last release while the code contains the unreleased work — and the registry is serving that same number. A consumer linked against a local build therefore sees a version identical to the published one, for different code. A dogfood consumer nearly pinned `^0.9.1` on that basis and would have resolved to code they had never run (`@spencerbeggs/reposets`, 2026-08-14; they caught it and asked for the published numbers rather than inferring them).
+
+The rule that follows: **a linked consumer must not derive its pin from the linked build's version.** Take the version from the release — the `release` mail, or `npm view <pkg> version` — never from the artifact you are linked against. The upstream owes those numbers explicitly at exit for the same reason.
+
 **Below `1.0.0`, breaking changes ride minors, and the exact-pin discipline is what makes them survivable.** Read a minor here as "may break" and consult the package's changeset before advancing a pin. [`@effected/schemastore`](packages/schemastore.md) is the worked example: one minor carried a changed `SchemaFile.write` return type, a narrowed `SchemaVersion` grammar and a tier flip to integrated. That is the contract working as designed, not an exception to it.
 
 `@effected/pnpm-plugin-effect` publishes with the kit, not apart from it. It is the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) — published and installable but not a library, exposing no API and carrying no tier. Its reason to exist is consumer-facing: it carries the two Effect catalogs this repo pins against, so a consumer can hold their own `effect` versions and peer floors at the values the kit was built and tested against. **Installing it is optional for the consumer; shipping it is not optional for the release.** Do not read `"private": true` in a source manifest as evidence about release intent — every source manifest here is private, and the bundler's `publishConfig` transform emits the publishable manifest at build time ([architecture.md](architecture.md)).
@@ -71,7 +77,7 @@ The release criterion is "the kit can replace the business logic of these five."
 
 ## The gate
 
-The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion. It is a closed historical set — the table below is the record of why each one had to exist before the kit could publish at all, not a filter on anything now. The kit is twenty-seven publishable packages today ([package-inventory.md](package-inventory.md)); how the other eight arrived is [below](#joining-the-release-stream-after-the-gate).
+The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion. It is a closed historical set — the table below is the record of why each one had to exist before the kit could publish at all, not a filter on anything now. The kit is twenty-eight publishable packages today ([package-inventory.md](package-inventory.md)); how the other nine arrived is [below](#joining-the-release-stream-after-the-gate).
 
 | Package | Tier | Why it is on the gate |
 | --- | --- | --- |
@@ -101,12 +107,13 @@ The gate is the union of what those consumers need, and it is met. The gate set 
 
 ### Joining the release stream after the gate
 
-Eight packages arrived after the gate: `markdown`, `schemastore`, `jsonl`, and the [github-split five](package-inventory.md#the-github-split-packages) — `commands`, `templates`, `github`, `github-actions` and `sbom`. None entered through this document's criterion, because that criterion is the union of what the five applications need and it was met without them.
+Nine packages arrived after the gate: `markdown`, `schemastore`, `jsonl`, `cli`, and the [github-split five](package-inventory.md#the-github-split-packages) — `commands`, `templates`, `github`, `github-actions` and `sbom`. None entered through this document's criterion, because that criterion is the union of what the five applications need and it was met without them.
 
 What scoped them instead:
 
 - The github-split five are scoped by the program's six consumer repos — the five savvy-web action repos plus claude-code-marketplace-manager — all mapped in [consumers/](consumers/README.md), and **all six have since completed the migration onto them**. Only silk-update-action of those is also one of the five applications.
 - `markdown`, `schemastore` and `jsonl` were each scoped by a named consumer and built design-doc-first, then published in the next wave whose changesets named them.
+- [`cli`](packages/cli.md) is the newest and the only one not yet released. It was scoped by [reposets](consumers/reposets.md) — the kit's first consumer that runs at a terminal rather than on a runner — and follows the same design-doc-first shape, with the doc written and reviewed by that consumer before the port.
 
 That is the whole mechanism, and it is deliberately the same one a version bump uses: **gate membership is history, not a filter.** The gate answered "what must exist before the kit publishes at all", and that question is closed.
 

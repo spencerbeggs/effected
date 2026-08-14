@@ -133,24 +133,92 @@ export interface GitHubClientOptions {
 }
 
 /**
+ * One call served by {@link GitHubClient.layerFixture}, as recorded in
+ * {@link GitHubFixtures.requested}.
+ *
+ * @public
+ */
+export interface RecordedCall {
+	/** Which client surface was called. */
+	readonly kind: "request" | "requestDecoded" | "paginate" | "graphql";
+	/** The route literal, or the document name for `graphql`. */
+	readonly route: string;
+	/** The params (or GraphQL variables) the call was made with. */
+	readonly params: Record<string, unknown>;
+	/** The page size asked for; paginated reads only. */
+	readonly perPage?: number;
+}
+
+/**
  * A recorded response table for {@link GitHubClient.layerFixture}.
  *
  * @public
  */
 export interface GitHubFixtures {
-	/** Keyed by route; the value is the `data` payload a request answers with. */
+	/**
+	 * Keyed by route; the value is the `data` payload a request answers with.
+	 *
+	 * @remarks
+	 * A recorded **`GitHubError` is the response**: the call fails with it. That
+	 * is how a suite stubs a 404 (or a rate-limit, or a 422) deliberately,
+	 * rather than relying on a route's absence to produce one — absence is a
+	 * wiring mistake and {@link GitHubFixtures.unstubbed} treats it as such.
+	 */
 	readonly request?: Readonly<Record<string, unknown>> | undefined;
-	/** Keyed by route; the value is the whole collection, paged on demand. */
-	readonly paginate?: Readonly<Record<string, ReadonlyArray<unknown>>> | undefined;
+	/**
+	 * Keyed by route; the value is the whole collection, paged on demand — or a
+	 * `GitHubError` the paginated read fails with.
+	 */
+	readonly paginate?: Readonly<Record<string, ReadonlyArray<unknown> | GitHubError>> | undefined;
 	/** Keyed by document name; the value is the raw payload to decode. */
 	readonly graphql?: Readonly<Record<string, unknown>> | undefined;
+	/**
+	 * What a route with **no fixture entry** does. Defaults to `"die"`.
+	 *
+	 * @remarks
+	 * A missing fixture is a **test wiring** mistake, not a condition the code
+	 * under test should handle, so the default kills the fiber rather than
+	 * entering the error channel — the same treatment an absent `graphql`
+	 * fixture has always had.
+	 *
+	 * The default used to be `"fail"`, and the reason it changed is worth
+	 * knowing before you set it back: **a typed failure is only loud in code
+	 * that does not catch.** A consumer whose methods each catch `GitHubError`
+	 * and report it — a per-resource sync, say — turns a missing stub into a
+	 * *different execution path* rather than a failure, and the assertions then
+	 * fail for a new reason with nothing in any message naming a fixture. That
+	 * cost `@spencerbeggs/reposets` 28 tests reading as ordinary logic bugs.
+	 *
+	 * - `"die"` — defect naming the route. Loud in every consumer.
+	 * - `"fail"` — the old behaviour: `GitHubError.notFound`. Rarely what you
+	 *   want now that a recorded `GitHubError` value stubs a failure explicitly:
+	 *   `{ "GET /repos/{owner}/{repo}": GitHubError.notFound("read", "repo") }`
+	 *   says which route fails and why, where absence says only "unwired".
+	 * - `"empty"` — serve `{}` for a request and no items for a paginated read.
+	 *   For a suite whose subject is decisions rather than endpoints.
+	 *
+	 * `graphql` ignores this and always dies: its payload is decoded against the
+	 * document's schema, so there is no empty value that would satisfy it.
+	 */
+	readonly unstubbed?: "die" | "fail" | "empty" | undefined;
 	/** What `rateLimit` answers. */
 	readonly rateLimit?: RateLimitSnapshot | undefined;
 	/**
-	 * Every route a paginated read requested, in order, with the page size asked
-	 * for. Populated by the fixture as the test runs.
+	 * Every call the fixture served, in order. Populated as the test runs.
+	 *
+	 * @remarks
+	 * `kind` says which surface was used. A paginated read carries the
+	 * `perPage` it asked for; `request` and `requestDecoded` carry the
+	 * **params** they were called with, which is what lets a suite assert that a
+	 * method sent the right `owner`/`repo`/body rather than only the right
+	 * route. `graphql` records the document name as `route`.
+	 *
+	 * Recording params was added for the resource modules ported in from
+	 * `@spencerbeggs/reposets`, whose ~80-line hand-rolled harness existed
+	 * because every one of their methods goes through `request` and a fixture
+	 * could assert nothing about them.
 	 */
-	readonly requested?: Array<{ readonly route: string; readonly perPage: number }> | undefined;
+	readonly requested?: Array<RecordedCall> | undefined;
 }
 
 const resolvePolicy = (retry: RetryPolicy | "off" | undefined): RetryPolicy =>
@@ -368,35 +436,66 @@ const makeFixture = (fixtures: GitHubFixtures): GitHubClientShape => {
 		_params: Rest.Params<R>,
 		options?: PageOptions,
 	): Stream.Stream<Rest.Item<R>, GitHubError> => {
-		const items = fixtures.paginate?.[route];
-		if (items === undefined) {
-			return Stream.fail(GitHubError.notFound("GitHubClient.paginate", `fixture for ${route}`));
-		}
+		// Record BEFORE the existence and error branches, matching every other
+		// surface. Recording afterwards meant a stubbed-error or unstubbed
+		// paginated read never appeared in `requested`, so a suite could not tell
+		// "paginate was never called" from "paginate was called and failed" —
+		// which is the one case the error-as-response fixture exists to confirm.
 		const perPage = perPageOf(options);
-		requested?.push({ route, perPage });
+		requested?.push({ kind: "paginate", route, params: _params as Record<string, unknown>, perPage });
+
+		const recorded = fixtures.paginate?.[route];
+		if (recorded instanceof GitHubError) return Stream.fail(recorded);
+		const items = recorded;
+		if (items === undefined) {
+			switch (fixtures.unstubbed ?? "die") {
+				case "fail":
+					return Stream.fail(GitHubError.notFound("GitHubClient.paginate", `fixture for ${route}`));
+				case "empty":
+					return Stream.empty as Stream.Stream<Rest.Item<R>, GitHubError>;
+				default:
+					return Stream.die(new Error(`GitHubClient.paginate: no fixture for ${route}`));
+			}
+		}
 		return paginate<Rest.Item<R>>(() => fromArray(items as ReadonlyArray<Rest.Item<R>>, perPage), options?.maxPages);
 	};
 
+	// A missing fixture is wiring, not a domain condition — see `unstubbed`.
+	const missing = <A>(method: string, route: string): Effect.Effect<A, GitHubError> => {
+		switch (fixtures.unstubbed ?? "die") {
+			case "fail":
+				return Effect.fail(GitHubError.notFound(method, `fixture for ${route}`));
+			case "empty":
+				return Effect.succeed({} as A);
+			default:
+				return Effect.die(new Error(`${method}: no fixture for ${route}`));
+		}
+	};
+
 	return {
-		request: <R extends Rest.Route>(route: R, _params: Rest.Params<R>) => {
+		request: <R extends Rest.Route>(route: R, params: Rest.Params<R>) => {
+			requested?.push({ kind: "request", route, params: params as Record<string, unknown> });
 			const data = fixtures.request?.[route];
-			return data === undefined
-				? Effect.fail(GitHubError.notFound("GitHubClient.request", `fixture for ${route}`))
-				: Effect.succeed(data as Rest.Data<R>);
+			if (data === undefined) return missing<Rest.Data<R>>("GitHubClient.request", route);
+			// A recorded GitHubError IS the response: this is how a suite stubs a
+			// 404 deliberately, rather than relying on a route's absence.
+			return data instanceof GitHubError ? Effect.fail(data) : Effect.succeed(data as Rest.Data<R>);
 		},
-		requestDecoded: <A, I>(route: string, _params: Record<string, unknown>, schema: Schema.Codec<A, I>) => {
+		requestDecoded: <A, I>(route: string, params: Record<string, unknown>, schema: Schema.Codec<A, I>) => {
+			requested?.push({ kind: "requestDecoded", route, params });
 			const data = fixtures.request?.[route];
-			return data === undefined
-				? Effect.fail(GitHubError.notFound("GitHubClient.requestDecoded", `fixture for ${route}`))
-				: Schema.decodeUnknownEffect(schema)(data).pipe(
-						Effect.catchTag("SchemaError", (error) =>
-							Effect.fail(GitHubError.decode(route, "fixture did not match its schema", error)),
-						),
-					);
+			if (data === undefined) return missing<A>("GitHubClient.requestDecoded", route);
+			if (data instanceof GitHubError) return Effect.fail(data);
+			return Schema.decodeUnknownEffect(schema)(data).pipe(
+				Effect.catchTag("SchemaError", (error) =>
+					Effect.fail(GitHubError.decode(route, "fixture did not match its schema", error)),
+				),
+			);
 		},
 		paginate: (route, params, options) => Stream.runCollect(paginateStream(route, params, options)),
 		paginateStream,
-		graphql: <A, V extends Record<string, unknown>>(document: GraphQLDocument<A, V>, _variables: V) => {
+		graphql: <A, V extends Record<string, unknown>>(document: GraphQLDocument<A, V>, variables: V) => {
+			requested?.push({ kind: "graphql", route: document.name, params: variables });
 			const raw = fixtures.graphql?.[document.name];
 			return raw === undefined
 				? Effect.die(new Error(`GitHubClient.layerFixture: no graphql fixture for ${document.name}`))

@@ -36,6 +36,8 @@
 		"@octokit/core": "^7.0.6",
 		"@octokit/plugin-paginate-rest": "^14.0.0",
 		"@octokit/types": "^16.0.0",
+		"blakejs": "1.2.1",
+		"tweetnacl": "1.0.3",
 		"universal-github-app-jwt": "^2.2.2"
 	},
 	"devDependencies": {

@@ -3,14 +3,15 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-14
+last-synced: 2026-08-14
 completeness: 95
 related:
   - ../effect-standards.md
   - ../package-inventory.md
   - ../releases.md
   - ../package-setup.md
+  - ../consumers/reposets.md
   - config-file.md
   - app.md
   - xdg.md
@@ -68,6 +69,10 @@ Only the two `*Sqlite` layers name the driver. The sqlite dependency funds the b
 
 Layer construction ensures the ledger table and **runs all pending migrations**, surfacing construction failures on the layer's typed error channel. `migrate` re-applies after a `rollback`; `status` projects the full list with per-migration application time; `rollback(toId)` rolls back applied migrations with a higher id in descending order, invoking `down` where defined — a migration without `down` is skipped over, its ledger row still removed.
 
+**Rollback is confirmed against a first consumer's real database** (`@spencerbeggs/reposets`, 2026-08-13, the first exercise of this package outside its own suite, and the first of the preindexed rollback lookups added in #344): `rollback(1)` → `migrate` → `rollback(0)` → `migrate` over two real migrations, with `down` functions genuinely dropping tables rather than only clearing ledger rows, newest-first ordering as documented, and a clean re-`migrate` from both the partially and the fully unwound state. No defect. Recorded because a negative result from a first consumer is evidence the suite's hermetic `:memory:` coverage cannot supply on its own — and because the next reader will otherwise ask exactly this question.
+
+The trap that consumer avoided is the one to warn the next one about: **a migration without `down` leaves its schema change in place while its ledger row is removed**, so a later `migrate` re-runs its `up` against a database that still has the table. Either give every migration a `down`, or treat one without as a floor `rollback(toId)` may never go below.
+
 A migration's `up`/`down` return `Effect<unknown, SqlError>`, **not `Effect<void, …>`**. A `SqlClient` tagged template resolves to the statement's *rows*, so a `void` return type would force every consumer to pipe an `Effect.asVoid` onto an otherwise self-describing ``sql`CREATE TABLE …` ``. The engine discards the value either way, so the wider return type lets a migration be the statement itself. Do not re-narrow it.
 
 ### Cache
@@ -78,6 +83,13 @@ The behavioural contract, which is where the design decisions live:
 - **Lazy expiry**: `get`/`has` delete an expired row on read; `prune` sweeps in bulk. Expiry reads the clock via `DateTime.now`, so `TestClock` drives it deterministically.
 - **Eviction is least-recently-*written*, not LRU-read.** With `maxEntries` set, `set` evicts the oldest-written entries until the count is back at the bound, emitting one event. `INSERT OR REPLACE` re-mints the rowid, so ascending rowid is exactly write order — deterministic and index-free. Do not "improve" it into a read-touching LRU without a design change. A byte-budget policy is deferred until a consumer asks.
 - **Entry metadata carries `DateTime.Utc` fields**, not raw ISO strings, and listing entries never loads the BLOB values.
+
+**Read-through (`Cache.through` / `throughVerbose`), added 2026-08-13.** A static on the class rather than a member of `CacheShape`: it reaches `Cache` from context, so it needs no implementation in any test double and adding it broke nothing that implements the shape. It exists because `get → decode → miss → fetch → encode → set` is *the* reason to hold a cache and was roughly twenty-five lines in the first consumer, instantiated three times ([reposets dogfood round 3](../consumers/reposets.md)). Two policies moved from each consumer's judgement into the package, and both are load-bearing:
+
+- **A value that fails to decode — or is not valid UTF-8 — is a miss, not a failure.** Those bytes were written by an older build of the caller's own program. The user did not cause it, cannot fix it without knowing the cache exists, and every cached value is re-derivable by definition, so failing would strand them behind a cache they cannot see. The stale entry is overwritten by the fresh one on the way out. The first consumer reached this policy independently and asked us to own it; owning it is what stops the next consumer reaching a *different* one.
+- **`CacheError` is surfaced, never swallowed.** A cache is additive, so swallowing is defensible — but it is the *caller's* call, made with `catchTag`, because an unreadable database is a real and reportable condition. The package having no opinion here was itself the defect: the first consumer had to invent one.
+
+**`Uint8ArrayFromUtf8` (`src/Bytes.ts`).** Core's Schema has `Uint8ArrayFromBase64`, `Uint8ArrayFromBase64Url` and `Uint8ArrayFromHex` and **nothing for UTF-8**, which made this package's own documented advice — values are bytes, so encode through a schema — impossible to follow to the end: `fromJsonString` reaches `string` and stops. Consumers hand-wired a `TextEncoder` at precisely the seam the advice exists to close, or paid base64's 33% premium to stay inside Schema. Encoding fails on malformed UTF-8 rather than substituting `U+FFFD`, which is what keeps a corrupt value distinguishable from a valid one containing that character. It sits next to the byte-valued API that needs it rather than in a schema package; if core ships an equivalent, prefer core's.
 
 **The `invalidateByTag` encoding rule.** Tags are stored as one JSON-encoded array in a TEXT column. Matching a tag builds the `LIKE` pattern from the **JSON-encoded** tag, not the raw tag, escapes the `LIKE` metacharacters and passes an explicit `ESCAPE` clause. A pattern built from the raw tag can never match its own entry when the tag contains a backslash or a double quote. The escaped pattern still reaches SQLite as a *parameter*, so nothing is hand-concatenated into SQL. The general lesson for any package storing structured data in a text column: **compare in the encoded domain, or decode before comparing — never mix the two.**
 

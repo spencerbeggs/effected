@@ -24,6 +24,30 @@ export class WorkflowRunStatus extends Schema.Class<WorkflowRunStatus>("Workflow
 }
 
 /**
+ * One workflow defined in the repository.
+ *
+ * @remarks
+ * `state` is GitHub's own value — `active`, `disabled_manually`,
+ * `disabled_inactivity`, and so on. It is reported rather than interpreted:
+ * whether a *disabled* workflow counts for a given GitHub feature is that
+ * feature's rule, not this package's, and encoding a guess here would put an
+ * unverified server-side behaviour in a library that cannot test it. Callers
+ * that care filter on it themselves.
+ *
+ * @public
+ */
+export interface WorkflowInfo {
+	/** The workflow's numeric id, usable as `workflow_id` on other routes. */
+	readonly id: number;
+	/** The workflow's display name. */
+	readonly name: string;
+	/** Repository-relative path, e.g. `.github/workflows/ci.yml`. */
+	readonly path: string;
+	/** GitHub's state string; see the remarks above before branching on it. */
+	readonly state: string;
+}
+
+/**
  * How long to wait for a dispatched run.
  *
  * @public
@@ -51,6 +75,21 @@ export interface WorkflowDispatchShape {
 		inputs?: Record<string, string>,
 	) => Effect.Effect<void, GitHubError, Repo>;
 	readonly runStatus: (runId: number) => Effect.Effect<WorkflowRunStatus, GitHubError, Repo>;
+	/**
+	 * Every workflow defined in the repository.
+	 *
+	 * @remarks
+	 * The question this answers is "does this repository have workflows at all",
+	 * which nothing else in the package could ask: repository *languages* come
+	 * from linguist and can never report `actions`, while GitHub validates that
+	 * language against workflow **files**. A consumer offering CodeQL setup
+	 * otherwise has to either request `actions` blindly and absorb a 422, or
+	 * drop it for every repository including the ones where it is valid.
+	 *
+	 * An empty array is the honest answer for a repository with no workflows,
+	 * not an error.
+	 */
+	readonly list: Effect.Effect<ReadonlyArray<WorkflowInfo>, GitHubError, Repo>;
 	/**
 	 * Dispatch, find the run it created, and wait for it to finish.
 	 *
@@ -84,6 +123,10 @@ export class WorkflowDispatch extends Context.Service<WorkflowDispatch, Workflow
 	static readonly makeTest = (overrides: Partial<WorkflowDispatchShape> = {}): WorkflowDispatchShape => ({
 		dispatch: overrides.dispatch ?? (() => unstubbed("dispatch")),
 		runStatus: overrides.runStatus ?? (() => unstubbed("runStatus")),
+		// A value member, so the stub has to defer: `unstubbed()` throws, and
+		// throwing while BUILDING the double would fail every test that provides
+		// it rather than the ones that actually read `list`.
+		list: overrides.list ?? Effect.sync(() => unstubbed("list")),
 		dispatchAndWait: overrides.dispatchAndWait ?? (() => unstubbed("dispatchAndWait")),
 	});
 
@@ -137,9 +180,27 @@ const make = (client: GitHubClient["Service"]): WorkflowDispatchShape => {
 		return statusOf(raw);
 	});
 
+	const list = Effect.fn("WorkflowDispatch.list")(function* () {
+		const { owner, repo } = yield* Repo;
+		yield* Effect.annotateCurrentSpan({ owner, repo });
+		// Paginated. A single `request` returns one page, so a repository with more
+		// workflows than a page holds would silently report a subset — and the
+		// symptom is a length that disagrees with GitHub's own total_count.
+		const workflows = yield* client.paginate("GET /repos/{owner}/{repo}/actions/workflows", { owner, repo });
+		return workflows.map(
+			(workflow): WorkflowInfo => ({
+				id: workflow.id,
+				name: workflow.name,
+				path: workflow.path,
+				state: workflow.state,
+			}),
+		);
+	});
+
 	return {
 		dispatch,
 		runStatus,
+		list: list(),
 
 		dispatchAndWait: Effect.fn("WorkflowDispatch.dispatchAndWait")(function* (
 			workflow: string,

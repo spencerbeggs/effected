@@ -70,6 +70,16 @@ Three orthogonal seams, composed by `ConfigFile.layer`:
 - **Strategy** — many sources → one value. Cannot fail; the empty case raises
   `ConfigFileNotFoundError` before a strategy is consulted.
 
+**`parseOptions` threads `SchemaAST.ParseOptions` into every decode**, on
+`ConfigFileOptions` and `ConfigReadOptions` alike. It exists for
+`onExcessProperty`: core defaults to `"ignore"`, so a config loader silently
+drops a user's unknown keys and can report neither a typo'd section nor a field
+the schema deliberately removed — the migrating user keeps a dead credential and
+is told nothing. `validate` cannot cover it (it runs post-decode, after the
+excess keys are gone). Keys covered by a `StructWithRest` rest are not excess, so
+a deliberate pass-through section survives `"error"`. Default absent = core's
+behavior, so it is additive.
+
 `ConfigFile.read(path, { schema, codec })` is the **one-shot** escape from all
 three seams: read + decode + validate one explicit path, no service, no layer,
 no tag, only `FileSystem` in `R`, schema per CALL rather than per layer. Keep it

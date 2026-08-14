@@ -169,6 +169,8 @@ describe("bundle reachability", () => {
 			...Object.keys(manifest.peerDependencies ?? {}),
 		]);
 		for (const specifier of reachableBareImports("index.ts")) {
+			// A `node:` builtin is not a package and can never appear in a manifest.
+			if (specifier.startsWith("node:")) continue;
 			const packageName = specifier.startsWith("@")
 				? specifier.split("/").slice(0, 2).join("/")
 				: specifier.split("/")[0];

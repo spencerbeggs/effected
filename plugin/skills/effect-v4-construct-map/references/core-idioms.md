@@ -37,7 +37,30 @@ This bites *pervasively* in v3→v4 ports.
 | `SortedSet` | **Removed entirely.** Use a sorted `ReadonlyArray` + `Order`, or `HashSet` when order is not needed |
 | `Hash.cached(this)(h)` | **Removed.** Hash without caching; a cheap canonical form is `Hash.string(canonicalString)` |
 | `effect/schema/Check` (guessed name) | Does not exist. Check combinators live on `Schema` itself as `Schema.is*` |
-| `Option.fromNullable(x)` | **Gone.** `Option.fromUndefinedOr(x)` for `T \| undefined` |
+| `Option.fromNullable(x)` | **Gone**, and split three ways — pick by what the value can actually be. `Option.fromNullishOr(x)` is the 1:1 replacement (`x == null`, so both `null` and `undefined` → `none`), and is what `migration/v3-to-v4.md:12122` maps it to. `Option.fromUndefinedOr(x)` (`x === undefined` only) and `Option.fromNullOr(x)` (`x === null` only) are narrower and return the tighter `Exclude<A, undefined>` / `Exclude<A, null>` rather than `NonNullable<A>` — prefer one of these when the type admits only one of the two, which is the common case (`Map.get`, an absent SQL row → `undefined`). The compiler names the module but not the replacement, so this is a guess without the table. Verified absent/present in `Option.ts` at beta.107 (`fromNullishOr:773`, `fromUndefinedOr:807`, `fromNullOr:841`) |
+| `Array.fromNullable(x)` | **Gone.** `Array.fromNullishOr(x)` (`Array.ts:4073`) — nullish → `[]`, anything else → a singleton |
+| `Either.fromNullable(x)` | **Gone** with the whole `Either` module. `Result.fromNullishOr(x, (a) => myError)` (`Result.ts:398`) — `onNullish` is a **function**, not a value, and the pair is `dual`, so the data-last form takes it alone |
+| `Effect.fromNullable(x)` | **Gone**, and the migration notes misroute it: `v3-to-v4.md:9691` maps it to `Effect.fromOption + Option.fromNullable`, but `Option.fromNullable` does not exist in v4 either. Compose `Effect.fromOption(Option.fromNullishOr(x))` — or the narrower `fromUndefinedOr` / `fromNullOr` per the row above. `Effect.fromOption` is live (`Effect.ts:1816`) and defaults its failure to `Cause.NoSuchElementError`, so the error type is not the one the v3 call site chose |
+
+## `Redacted` — the label is rendered, so a secret passed as its own label leaks completely
+
+`Redacted.make(value, { label })` renders as `<redacted:LABEL>` and never renders the value
+(`Redacted.ts:207-208`). The label is therefore the *only* text that escapes — through
+`toString`, template interpolation and `JSON.stringify` alike — so this type-checks, reads
+plausibly, and leaks the whole secret through every one of those paths:
+
+~~~ts
+Redacted.make(token, { label: token })   // renders <redacted:ghp_realTokenHere>
+~~~
+
+The label is for telling two redacted values apart in a log (`{ label: "github-token" }`),
+never for carrying the value. Found by a consumer only from reading `Proto.toString`
+(reposets, 2026-08-13); nothing in the type or the docstring warns of it.
+
+A second trap in the same area, specific to writing leak tests: **`JSON.stringify(exit)`
+serialises an error's fields, not its rendered message**, so an error that leaks only
+through an overridden `message` getter passes a JSON-based assertion untouched. A leak test
+needs `String(value)` and template interpolation as separate assertions.
 
 ## Async, callbacks and retry
 
@@ -54,7 +77,7 @@ limit onto a backoff is the v3 habit; in v4 the limit is just another key.
 
 | v3 | v4 |
 | --- | --- |
-| `Effect.catchAll` | `Effect.catch` |
+| `Effect.catchAll` | `Effect.catch` — **and you cannot find this by grepping the source.** It is declared `const catch_` and re-exported as `export { catch_ as catch }` (`Effect.ts:2598, 2634`), because `catch` is a reserved word, so `grep "export const catch"` returns every *other* member of this family and misses the one you want. A consumer concluded from that grep that v4 has nothing for "handle any typed error" and fell back to `Effect.result` + `Result.isSuccess` (reposets, 2026-08-13). Confirm with a runtime probe instead: `typeof Effect.catch === "function"`, `typeof Effect.catchAll === "undefined"` |
 | `Effect.catchAllCause` | `Effect.catchCause` |
 | `Effect.catchAllDefect` | `Effect.catchDefect` (same shape, renamed) |
 | `Effect.catchSome` (Option-returning fn) | `Effect.catchFilter` (takes a `Filter`, e.g. `Filter.fromPredicate`) |

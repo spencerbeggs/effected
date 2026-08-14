@@ -46,6 +46,7 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 | [@effected/commands](packages/commands) | unstable | Structured command running and CLI tool discovery over Effect's core ChildProcessSpawner contract |
 | [@effected/templates](packages/templates) | unstable | Managed-section blocks in user-editable files: parse, reconcile, sync and check delimited regions |
 | [@effected/jsonl](packages/jsonl) | unstable | Append-only, schema-validated JSONL journals as a definable Effect service |
+| [@effected/cli](packages/cli) | unstable | The boundary layer of an `effect/unstable/cli` program: plain CLI output, failure reporting and schema-issue rendering |
 
 ### Pure
 

@@ -117,6 +117,32 @@ Effect.runPromise(program.pipe(Effect.provide(NodeFileSystem.layer))).then(conso
 
 It is deliberately read-only and discovery-free — no resolver chain, no `save`/`update`. Reach for `ConfigFile.layer` the moment either is wanted.
 
+## Rejecting keys the schema does not know
+
+Effect's decoder ignores unknown keys by default, which for a config loader means a typo'd section is dropped in silence. The user gets no error, the setting they wrote has no effect, and nothing in the run says why. `parseOptions` threads decode options into every decode the loader performs, on `ConfigFile.layer` and `ConfigFile.read` alike:
+
+```ts
+import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
+import { Schema } from "effect";
+
+class Settings extends Schema.Class<Settings>("Settings")({ port: Schema.Number }) {}
+class SettingsConfig extends ConfigFile.Service<SettingsConfig, Settings>()("app/Settings") {}
+
+export const SettingsLive = ConfigFile.layer(SettingsConfig, {
+  schema: Settings,
+  codec: JsonCodec,
+  resolvers: [ConfigResolver.upwardWalk({ filename: ".apprc" })],
+  strategy: MergeStrategy.firstMatch<Settings>(),
+  parseOptions: { onExcessProperty: "error", errors: "all" },
+});
+// A file carrying `{ "port": 3000, "prot": 3001 }` now fails with a
+// ConfigValidationError whose issue tree names the offending path.
+```
+
+The `validate` option cannot stand in for this: it runs on the decoded value, by which point the excess keys are already gone. Pair `onExcessProperty: "error"` with `errors: "all"` — the decoder reports only the first problem otherwise, so a file with three typos costs the user three fix-and-rerun cycles. The extra work happens only on a document that is already failing.
+
+Keys covered by a `Schema.StructWithRest` rest are not excess, so a schema that deliberately admits a pass-through section keeps working under `"error"`. Omitting `parseOptions` changes nothing, which makes turning this on a per-loader decision rather than a migration.
+
 ## Errors
 
 Every failure is a tagged error you route on with `Effect.catchTag`. The tags exist so that recovery can differ:
@@ -185,6 +211,7 @@ export const secret = EncryptedCodec(migrating, EncryptedCodecKey.fromPassphrase
 ## Features
 
 - `ConfigFile.Service` / `ConfigFile.layer` / `ConfigFile.testLayer` — a per-schema service class and its layers. `testLayer` seeds files into a temp directory and wires the *real* implementation over them, so tests exercise the actual pipeline rather than a stub that can drift from it.
+- `parseOptions` — decode options threaded into every decode, on the layer and on `read`. `onExcessProperty: "error"` is the only way to report a typo'd section or a field the schema deliberately removed.
 - `ConfigFile.read` — the one-shot escape from the service: read, decode and validate one explicit path, schema and codec named per call, with no resolver chain and no write path.
 - `ConfigResolver` — `explicitPath`, `staticDir`, `upwardWalk`, `workspaceRoot`, `gitRoot` and `systemEtc`. A resolver's error channel is `never` by contract: every filesystem failure becomes `Option.none()`, so one unreadable tier never aborts the chain.
 - `MergeStrategy` — `firstMatch` and `layeredMerge`, combining discovered sources in priority order.

@@ -10,16 +10,21 @@ import type {
 import { ConfigFile, MergeStrategy } from "@effected/config-file";
 import type { Xdg } from "@effected/xdg";
 import { AppDirs, XdgConfig } from "@effected/xdg";
-import type { Context, FileSystem, Path, Schema } from "effect";
+import type { Context, FileSystem, Path, Schema, SchemaAST } from "effect";
 import { Effect, Layer } from "effect";
 import { badFilename } from "./internal/filename.js";
 
 /**
  * Options for {@link AppConfig.layer}.
  *
+ * @remarks
+ * `RR` is the requirements of any caller-supplied `resolvers`; it defaults to
+ * `never`, so a chain of built-in resolvers — whose requirements are already in
+ * this layer's `R` — never has to be named.
+ *
  * @public
  */
-export interface AppConfigOptions<A, I> {
+export interface AppConfigOptions<A, I, RR = never> {
 	/**
 	 * The config file's name within the app's config directory.
 	 *
@@ -46,8 +51,64 @@ export interface AppConfigOptions<A, I> {
 	readonly strategy?: MergeStrategyShape<A>;
 	/** An optional caller-supplied check run after schema decoding. */
 	readonly validate?: (value: A) => Effect.Effect<A, ConfigValidationError>;
+	/**
+	 * Parse options threaded into every schema decode, chiefly
+	 * `onExcessProperty`.
+	 *
+	 * @remarks
+	 * Defaults to core's `"ignore"`, so a config file's unknown keys are dropped
+	 * silently — which means a typo'd section cannot be reported, and a field
+	 * this schema deliberately removed cannot be flagged in a user's older file.
+	 * `{ onExcessProperty: "error" }` turns both into a `ConfigValidationError`
+	 * naming the offending path.
+	 *
+	 * `validate` cannot do this: it runs on the decoded value, after the excess
+	 * keys are gone. Keys covered by a `Schema.StructWithRest` rest are not
+	 * excess, so a deliberate pass-through section still works under `"error"`.
+	 *
+	 * Pair it with `errors: "all"`. Core defaults to `"first"`, which for a
+	 * *loader* means a file with three typos surfaces one per run — fix,
+	 * re-run, discover the next. The extra work only happens on a document
+	 * that is already failing.
+	 */
+	readonly parseOptions?: SchemaAST.ParseOptions;
 	/** The opt-in event hook. Pass the `ConfigEvents` class itself. */
 	readonly events?: Context.Key<ConfigEvents, ConfigEventsShape>;
+	/**
+	 * Resolvers composed **ahead** of the XDG chain, in priority order.
+	 *
+	 * @remarks
+	 * The case this exists for is a CLI's `--config` flag: pass
+	 * `ConfigResolver.explicitPath` for a file, or `ConfigResolver.staticDir` for
+	 * a directory, and the flag wins — with the app's XDG search path, and the
+	 * native probe, still behind it as the fallback. `ConfigResolver.upwardWalk`
+	 * for a project-local file goes here too.
+	 *
+	 * Absent, the chain is exactly what it always was, so the default is
+	 * unchanged: `XdgConfig.resolver`, then `XdgConfig.nativeResolver`.
+	 *
+	 * A layer is built before a CLI parses anything, so getting the parsed flag
+	 * here is the one wiring question this option raises. `effect/unstable/cli`
+	 * answers it twice, and neither answer needs an `Effect.provide` inside the
+	 * handler: `Command.provide` accepts a **function of the parsed input**, and
+	 * for several subcommands sharing one flag, `GlobalFlag.setting` makes the
+	 * parsed value a `Context.Service` so the layer can take it in `R` and attach
+	 * once at the root. The README shows both.
+	 *
+	 * Two properties to be deliberate about:
+	 *
+	 * - **A resolver that finds nothing falls through.** `explicitPath` resolves
+	 *   `Option.none()` for a path that does not exist — every `ConfigResolver`'s
+	 *   error channel is `never` by contract — so a `--config` pointing at a
+	 *   missing file silently loads the XDG config instead. If the flag must be
+	 *   an error when it names nothing, check the path before building the layer;
+	 *   discovery cannot make that distinction for you.
+	 * - **The save path is unaffected.** `save` still writes to
+	 *   `XdgConfig.savePath(filename)`, not to whatever a prepended resolver
+	 *   discovered. Loading from `--config` and writing back to that same file is
+	 *   `write(value, path)`, which takes the path explicitly.
+	 */
+	readonly resolvers?: ReadonlyArray<ConfigResolver<RR>>;
 	/**
 	 * Probe the OS-native config directory as a fallback. Defaults to `true`.
 	 *
@@ -60,10 +121,10 @@ export interface AppConfigOptions<A, I> {
 }
 
 // Implementation of AppConfig.layer; the public contract lives on the static.
-const layer = <Self, A, I>(
+const layer = <Self, A, I, RR = never>(
 	tag: Context.Key<Self, ConfigFileShape<A>>,
-	options: AppConfigOptions<A, I>,
-): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | AppDirs | Xdg> =>
+	options: AppConfigOptions<A, I, RR>,
+): Layer.Layer<Self, never, FileSystem.FileSystem | Path.Path | AppDirs | Xdg | RR> =>
 	Layer.unwrap(
 		Effect.gen(function* () {
 			const invalid = badFilename("AppConfig.layer", options.filename);
@@ -71,14 +132,16 @@ const layer = <Self, A, I>(
 
 			const appDirs = yield* AppDirs;
 			// TS infers the resolvers' `RR` from the FIRST array element and will
-			// not union in the second, so the chain is annotated up front.
-			const resolvers: ReadonlyArray<ConfigResolver<AppDirs | Xdg | FileSystem.FileSystem | Path.Path>> =
-				options.native === false
-					? [XdgConfig.resolver({ filename: options.filename })]
-					: [
-							XdgConfig.resolver({ filename: options.filename }),
-							XdgConfig.nativeResolver({ namespace: appDirs.namespace, filename: options.filename }),
-						];
+			// not union in the rest, so the chain is annotated up front.
+			const resolvers: ReadonlyArray<ConfigResolver<AppDirs | Xdg | FileSystem.FileSystem | Path.Path | RR>> = [
+				// Caller resolvers lead: a `--config` flag outranks the app's own
+				// search path, which is the whole point of passing one.
+				...(options.resolvers ?? []),
+				XdgConfig.resolver({ filename: options.filename }),
+				...(options.native === false
+					? []
+					: [XdgConfig.nativeResolver({ namespace: appDirs.namespace, filename: options.filename })]),
+			];
 
 			return ConfigFile.layer(tag, {
 				schema: options.schema,
@@ -89,6 +152,7 @@ const layer = <Self, A, I>(
 				// Conditional spreads: a present key holding `undefined` is not an
 				// absent key.
 				...(options.validate !== undefined && { validate: options.validate }),
+				...(options.parseOptions !== undefined && { parseOptions: options.parseOptions }),
 				...(options.events !== undefined && { events: options.events }),
 			});
 		}),
@@ -119,6 +183,15 @@ export class AppConfig {
 	 * — and with `defaultPath: XdgConfig.savePath(filename)`, which fits
 	 * config-file's infallible `defaultPath` slot without an `orDie` because xdg
 	 * resolves at layer-construction time.
+	 *
+	 * `options.resolvers` prepends to that chain, which covers the case this
+	 * preset otherwise could not: a CLI whose `--config` flag must outrank the
+	 * app's XDG search path. What it deliberately does not cover is a chain that
+	 * needs the XDG resolvers somewhere other than last, or no XDG resolvers at
+	 * all — an app wanting that composes `ConfigFile.layer` from
+	 * `@effected/config-file` directly and orders the whole chain itself, which
+	 * costs it only the `defaultPath` and ambient-namespace wiring this preset
+	 * does for free.
 	 *
 	 * **The namespace is never a parameter.** It is read from the ambient
 	 * `AppDirs` service at layer build time, so it is typed exactly once, in

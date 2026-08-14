@@ -94,6 +94,19 @@ composition defect; do not reorder the two.
   `"myapp"` to `App.layer` and `"my-app"` to its config preset and then reads
   config from a directory nothing else ever writes to. If someone adds a
   `namespace` option "for flexibility", the namespace-once test should fail.
+- **`AppConfigOptions.resolvers` prepends, never replaces.** Caller resolvers lead;
+  `XdgConfig.resolver` and the native probe stay behind them, so absent the option
+  the chain is byte-for-byte what it always was. It exists for the `--config` flag
+  case (reposets dogfood round 1, 2026-08-13). Two properties the tests pin: a
+  caller resolver that finds nothing **falls through** to XDG — resolver error
+  channels are `never` by contract, so a missing `--config` file is a miss and not
+  an error — and the **save path is unaffected**, still `XdgConfig.savePath`. An app
+  needing the XDG resolvers anywhere but last composes `ConfigFile.layer` directly.
+- **`AppConfigOptions.parseOptions` is a pass-through to `ConfigFileOptions`**, not
+  a new concept. It exists for `onExcessProperty: "error"`, which is what lets a
+  config loader report a typo'd section or a field the schema deliberately
+  removed; `validate` cannot, because it runs after decoding has already dropped
+  the excess keys. Absent = core's `"ignore"`, so it is additive.
 - **The codec stays required** on `AppConfigOptions` — never defaulted, never
   inferred from the filename's extension. Hard-coding a *format* choice into a
   composition layer is exactly what `XdgFullLive` was killed for, and the named

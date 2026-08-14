@@ -1,3 +1,4 @@
+import type { SchemaAST } from "effect";
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, PubSub, Schema, Semaphore } from "effect";
 import type { ConfigCodec, ConfigCodecError } from "./ConfigCodec.js";
 import type { ConfigEventPayload, ConfigEvents, ConfigEventsShape } from "./ConfigEvent.js";
@@ -241,6 +242,31 @@ export interface ConfigFileOptions<A, I, RR> {
 	/** An optional caller-supplied check run after schema decoding. */
 	readonly validate?: (value: A) => Effect.Effect<A, ConfigValidationError>;
 	/**
+	 * Parse options threaded into every schema decode this performs.
+	 *
+	 * @remarks
+	 * The field that matters here is `onExcessProperty`. It defaults to
+	 * `"ignore"` in core, so a document's unknown keys are dropped silently and
+	 * a loader cannot report a typo'd section — or enforce a field this schema
+	 * deliberately removed. `{ onExcessProperty: "error" }` turns both into a
+	 * {@link ConfigValidationError} whose issue names the offending path.
+	 *
+	 * It cannot be expressed with {@link ConfigFileOptions.validate}: that runs
+	 * on the *decoded* value, by which point the excess keys are already gone.
+	 *
+	 * Keys covered by a `Schema.StructWithRest` rest are not excess, so a schema
+	 * that deliberately admits a pass-through section keeps working under
+	 * `"error"`.
+	 *
+	 * Absent, nothing changes: core's defaults apply.
+	 *
+	 * Pair it with `errors: "all"`. Core defaults to `"first"`, which for a
+	 * *loader* means a file with three typos surfaces one per run — fix,
+	 * re-run, discover the next. The extra work only happens on a document
+	 * that is already failing.
+	 */
+	readonly parseOptions?: SchemaAST.ParseOptions;
+	/**
 	 * Where {@link ConfigFileShape.save} writes when given no explicit path.
 	 *
 	 * @remarks
@@ -316,7 +342,7 @@ const makeImpl = <A, I, RR>(
 		sources.map((s) => ({ path: s.path, resolver: s.resolver }));
 
 	const decode = (parsed: unknown, at: Option.Option<string>): Effect.Effect<A, ConfigValidationError> =>
-		Schema.decodeUnknownEffect(options.schema)(parsed).pipe(
+		Schema.decodeUnknownEffect(options.schema)(parsed, options.parseOptions).pipe(
 			// Normalize the schema failure at the boundary. Never leak SchemaError
 			// deeper, never stringify it — carry its structured issue tree instead.
 			Effect.catchTag("SchemaError", (error) =>
@@ -613,6 +639,14 @@ export interface ConfigReadOptions<A, I> {
 	 * their engines stay out of the bundle.
 	 */
 	readonly codec: ConfigCodec;
+	/**
+	 * Parse options for the decode, chiefly `onExcessProperty`.
+	 *
+	 * @remarks
+	 * See {@link ConfigFileOptions.parseOptions}; it means the same thing here.
+	 * Absent, core's defaults apply and unknown keys are dropped silently.
+	 */
+	readonly parseOptions?: SchemaAST.ParseOptions;
 }
 
 // Implementation of ConfigFile.read; the public contract lives on the static.
@@ -629,7 +663,7 @@ const read = <A, I>(
 
 		const parsed = yield* options.codec.parse(raw);
 
-		return yield* Schema.decodeUnknownEffect(options.schema)(parsed).pipe(
+		return yield* Schema.decodeUnknownEffect(options.schema)(parsed, options.parseOptions).pipe(
 			// The same boundary normalization the service performs: never leak a
 			// SchemaError outward, and carry its issue tree rather than a string.
 			Effect.catchTag("SchemaError", (error) =>

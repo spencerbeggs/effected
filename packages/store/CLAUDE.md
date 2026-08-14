@@ -39,6 +39,28 @@ Three `Schema.TaggedErrorClass` types (`StoreError`, `StoreMigrationError`, `Cac
 
 The line between failure and defect is the package's sharpest rule, and v3 got it wrong:
 
+- **A migration without `down` is skipped on rollback, but its ledger row is still
+  removed** — so the schema change stays and a later `migrate` re-runs its `up` against a
+  database that already has the table. Tell a consumer to give every migration a `down`,
+  or to treat one without as a floor `rollback(toId)` never goes below. The rollback path
+  itself is sound: verified end to end against a first consumer's real database
+  (`rollback(1)`/`migrate`/`rollback(0)`/`migrate`, newest-first, real table drops) on
+  2026-08-13, the first exercise outside this package's own suite and of #344's
+  preindexed lookups.
+- **`Cache.through`'s two policies are the package's, deliberately, and must not
+  drift.** A stored value that fails to decode (or is not valid UTF-8) is a
+  **miss**, never a failure — those bytes came from an older build of the
+  caller's own program, the user cannot fix what they cannot see, and every
+  cached value is re-derivable by definition; the stale entry is overwritten on
+  the way out. `CacheError`, by contrast, is **surfaced**, never swallowed: a
+  caller may want to push through a broken cache, but that is theirs to choose
+  with `catchTag`. Both are pinned by tests, and the hit-flag mutant (returning
+  `hit: false` on the decode-success path) fails two of them.
+- **`Uint8ArrayFromUtf8` exists because core's Schema has no UTF-8 codec** — only
+  base64/base64url/hex. It lives in `src/Bytes.ts` next to the byte-valued API
+  that needs it. Encoding fails on malformed UTF-8 rather than substituting
+  `U+FFFD`, which is what lets a corrupt value be told apart from a valid one.
+  If core ever ships an equivalent, prefer it and deprecate this.
 - **No defect laundering.** v3's `catchAllDefect → CacheError/StoreError` masked programmer errors as domain errors; it is not ported. A throwing `up`/`down` migration or a throwing `onRemoved` callback stays a **defect** (`withTransaction` still rolls back on it). Only typed `SqlError` becomes a domain error.
 - **Wiring errors die at construction**: duplicate or non-positive-integer migration `id`s, a `maxEntries` that is not a positive integer, a non-integer or negative `rollback(toId)`. The guards are `Number.isInteger(n) && n >= 1` shaped, never a bare `< 1` — `NaN < 1` is `false`.
 

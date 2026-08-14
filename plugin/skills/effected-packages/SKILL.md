@@ -1,11 +1,11 @@
 ---
 name: effected-packages
-description: The @effected package index — what each of the kit's 27 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML/Markdown, semver math, SPDX license expressions, glob matching, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, git introspection, runtime-version resolution, running commands or discovering CLI tools, managed sections in generated files, append-only JSONL journals and watching them, the GitHub REST/GraphQL API, the GitHub Actions runtime, SBOM generation and signing, or publishing Effect Schemas as SchemaStore-shaped JSON Schema documents. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/.
+description: The @effected package index — what each of the kit's 28 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML/Markdown, semver math, SPDX license expressions, glob matching, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, git introspection, runtime-version resolution, running commands or discovering CLI tools, managed sections in generated files, append-only JSONL journals and watching them, the GitHub REST/GraphQL API, the GitHub Actions runtime, CLI output and failure reporting, SBOM generation and signing, or publishing Effect Schemas as SchemaStore-shaped JSON Schema documents. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/.
 ---
 
 # The @effected package index
 
-`@effected/*` is an Effect v4-first app kit: 27 packages (26 libraries plus
+`@effected/*` is an Effect v4-first app kit: 28 packages (27 libraries plus
 the `pnpm-plugin-effect` companion) designed against the
 v4 line (never lift-and-shifted from v3), released together, with every
 `effect` dependency pinned to one exact beta via pnpm catalogs. Before
@@ -53,6 +53,7 @@ against its services, or test code that uses it.
 | `@effected/github-actions` | the Actions RUNTIME: inputs/outputs/state/env, workflow commands, logger, cache, artifacts, tool installer, OIDC, the `GitHubToken` bridge; plus the reporting/document suite (`GitHubMarkdown`, `ManagedDocument`, `CheckDocument`/`CheckState`) and the sbom-seam adapters (`ActionsProvenance`, `ActionsIdentityToken`) | writing a GitHub Action — talking to the runner, not the API | integrated | the package's own `CLAUDE.md` |
 | `@effected/sbom` | owned CycloneDX 1.6 emitter, Sigstore signing, in-toto/SLSA provenance, NTIA minimum-elements validation | generating, signing or attesting an SBOM | integrated | the package's own `CLAUDE.md` |
 | `@effected/app` | the application control plane: one layer wiring XDG dirs + Store + Cache + config | wiring an APPLICATION's local state in one move | integrated | [app.md](./references/app.md) |
+| `@effected/cli` | the CLI **boundary**: `CliLogger` (plain rendering, `Error`+ to stderr), `CliRuntime` (report failures through the program's own logger, set the exit code), schema/config issue renderers | a command-line program on `effect/unstable/cli` — Effect's default logger prints `[00:33:56.619] INFO (#2)` at a user, and `runMain` reports failures on **stdout** through a logger outside your layers | boundary | the package's own `CLAUDE.md` |
 | `@effected/pnpm-plugin-effect` | pnpm catalogs pinning the Effect ecosystem (companion — config, not code) | setting up Effect version pinning in a pnpm workspace | — | [pnpm-plugin-effect.md](./references/pnpm-plugin-effect.md) |
 
 **Six rows have no `references/` file yet** — `spdx` and the five
@@ -102,9 +103,10 @@ Facts about them that change how you depend on them:
   (`PublishabilityDetector.npm`), so a policy that wraps npm semantics does not
   have to re-enter the tag it is replacing.
 
-## Local-build dogfood state (updated 2026-08-03)
+## Local-build dogfood state (updated 2026-08-14)
 
-**All twenty-seven are published.** `commands`, `templates`, `github`,
+**Twenty-seven of twenty-eight are published**; `@effected/cli` was built
+2026-08-13 and is pending its first release. `commands`, `templates`, `github`,
 `github-actions` and `sbom` — the github-split five — published for the first
 time in the 2026-07-26 wave (16 packages, PR #181) at `0.1.0`, `schemastore`
 in the 2026-08-03 wave, and `jsonl` reached `0.2.0` in the 27-package

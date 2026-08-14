@@ -121,6 +121,59 @@ What it does take is a **codec, required**, never inferred from the filename's e
 
 `AppConfig` lives in its own module and reaches `@effected/xdg` and `@effected/config-file` **only** — never `@effected/store`. An application that wants XDG-placed config files and no database imports `AppConfig` alone, and no SQLite driver enters its graph. `App`, `AppStore` and `AppCache` are the exports that reach a database, and keeping the two graphs apart is why there is no `App = { … }` namespace object here.
 
+## A `--config` flag, without leaving the preset
+
+Most CLIs have one, and it has to outrank the app's own search path. Pass `resolvers` and it does:
+
+```ts
+import { AppConfig } from "@effected/app";
+import { ConfigResolver, TomlCodec } from "@effected/config-file";
+
+const ConfigLive = AppConfig.layer(SettingsFile, {
+ filename: "settings.toml",
+ schema: Settings,
+ codec: TomlCodec,
+ // Composed AHEAD of the XDG chain, in the order given.
+ resolvers: flag === undefined ? [] : [ConfigResolver.explicitPath(flag)],
+});
+```
+
+The XDG search path and the native probe stay behind whatever you prepend, so absent the flag nothing changes. `ConfigResolver.staticDir` covers a `--config` naming a directory, and `ConfigResolver.upwardWalk` a project-local file found by walking up from the cwd.
+
+Two properties to be deliberate about. **A resolver that finds nothing falls through**: every `ConfigResolver`'s error channel is `never` by contract, so a `--config` pointing at a file that does not exist quietly loads the XDG config instead. If that must be an error, check the path before you build the layer — discovery cannot make that distinction for you. And **the save path is unaffected**: `save` still writes to the app's own config directory, so writing back to the file a flag named is `write(value, path)`, which takes the path explicitly.
+
+### Wiring the flag to the layer
+
+A layer is built before a CLI parses anything, so the parsed `--config` has to reach `AppConfig.layer` somehow. `effect/unstable/cli` has two ways, and neither needs an `Effect.provide` inside the handler.
+
+For a single command, `Command.provide` takes **a function of the parsed input**, not just a finished layer:
+
+```ts
+Command.make("validate", { config: Flag.string("config").pipe(Flag.optional) }, () =>
+ Effect.gen(function* () {
+  const settings = yield* (yield* SettingsFile).load; // just requires the service
+ }),
+).pipe(Command.provide(({ config }) => makeConfigLive(Option.getOrUndefined(config))));
+```
+
+For several subcommands sharing one `--config`, make the flag a **global setting** — `GlobalFlag.setting` returns a `Context.Service`, so the parsed value can sit in the layer's `R` and the layer attaches once at the root:
+
+```ts
+const ConfigFlag = GlobalFlag.setting("config")({ flag: Flag.string("config").pipe(Flag.optional) });
+
+const ConfigLive = Layer.unwrap(Effect.map(ConfigFlag, (f) => makeConfigLive(Option.getOrUndefined(f))));
+
+const root = Command.make("myapp", {}, () => Effect.void).pipe(
+ Command.withSubcommands([validate, sync]),
+ Command.provide(ConfigLive), // one call site, every subcommand
+ Command.withGlobalFlags([ConfigFlag]),
+);
+```
+
+The flag is then accepted on either side of the subcommand name.
+
+A chain that needs the XDG resolvers somewhere other than last — or not at all — has outgrown the preset. Compose `ConfigFile.layer` from [`@effected/config-file`](../config-file) directly and order the whole chain yourself; it costs you only the `defaultPath` and ambient-namespace wiring this preset does for free.
+
 Its `native` option defaults to **`true`** — the opposite of `AppDirsOptions.native`, and the asymmetry is deliberate. *Creating* a native directory commits an application to a location, so it is opt-in; *probing* one for a config file the user already put there costs a `stat` that finds nothing, so it is opt-out. Reading `~/Library/Application Support` is a courtesy; writing there uninvited is not.
 
 ## Ensure before open
