@@ -1494,6 +1494,58 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("submoduleUpdate checkout: true emits --checkout — the update=none silent-no-op override", () =>
+			Effect.gen(function* () {
+				// Against a `submodule.<name>.update = none` configuration, an
+				// --init update without --checkout skips the submodule while
+				// reporting success (probed against git 2.54). The flag on the
+				// argv IS the fix; this pins it.
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleUpdate(cwd, { init: true, checkout: true, paths: ["V/vend"] });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["submodule", "update", "--init", "--checkout", "--", "V/vend"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("submoduleUpdate emits the widened flag family in a pinned order, --no-fetch only on fetch: false", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.submoduleUpdate(cwd, {
+						init: true,
+						checkout: true,
+						remote: true,
+						fetch: false,
+						recursive: true,
+						force: true,
+						depth: 1,
+						paths: [".repos/effect"],
+					});
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, [
+						"submodule",
+						"update",
+						"--init",
+						"--checkout",
+						"--remote",
+						"--no-fetch",
+						"--recursive",
+						"--force",
+						"--depth",
+						"1",
+						"--",
+						".repos/effect",
+					]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
 		it.effect("submoduleAdd places url and path behind --", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {
@@ -2492,6 +2544,101 @@ describe("Git — remaining tiers (round 2)", () => {
 				if (failure instanceof GitCommandError) {
 					assert.strictEqual(failure.exitCode, 5);
 				}
+			}),
+		);
+
+		it.effect("configRemoveSection targets the live config, or an explicit file via -f", () =>
+			Effect.gen(function* () {
+				const live = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configRemoveSection(cwd, "submodule.vendored");
+				});
+				yield* run(live, (args) => {
+					assert.deepStrictEqual(args, ["config", "--remove-section", "submodule.vendored"]);
+					return { exit: 0 };
+				});
+				const filed = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configRemoveSection(cwd, "submodule.vendored", { file: ".gitmodules" });
+				});
+				yield* run(filed, (args) => {
+					assert.deepStrictEqual(args, ["config", "-f", ".gitmodules", "--remove-section", "submodule.vendored"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("configRemoveSection of a missing section fails loudly (git exits 128)", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configRemoveSection(cwd, "submodule.phantom");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stderr: "fatal: no such section: submodule.phantom\n", exit: 128 })),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.exitCode, 128);
+				}
+			}),
+		);
+
+		it.effect("configRenameSection emits --rename-section old-then-new, optionally into a file", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configRenameSection(cwd, "submodule.old", "submodule.new", { file: ".gitmodules" });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, [
+						"config",
+						"-f",
+						".gitmodules",
+						"--rename-section",
+						"submodule.old",
+						"submodule.new",
+					]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("configRemoveSection and configRenameSection refuse option-like positionals before any spawn", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const record = () => {
+					spawned = true;
+					return { exit: 0 };
+				};
+				const removeProgram = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configRemoveSection(cwd, "--global");
+				});
+				const removeFailure = yield* Effect.flip(run(removeProgram, record));
+				assert.instanceOf(removeFailure, GitCommandError);
+				if (removeFailure instanceof GitCommandError) {
+					assert.strictEqual(removeFailure.kind, "refused");
+				}
+				const renameProgram = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configRenameSection(cwd, "submodule.old", "--global");
+				});
+				const renameFailure = yield* Effect.flip(run(renameProgram, record));
+				assert.instanceOf(renameFailure, GitCommandError);
+				if (renameFailure instanceof GitCommandError) {
+					assert.strictEqual(renameFailure.kind, "refused");
+				}
+				const fileProgram = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.configRemoveSection(cwd, "submodule.old", { file: "--system" });
+				});
+				const fileFailure = yield* Effect.flip(run(fileProgram, record));
+				assert.instanceOf(fileFailure, GitCommandError);
+				if (fileFailure instanceof GitCommandError) {
+					assert.strictEqual(fileFailure.kind, "refused");
+				}
+				assert.isFalse(spawned);
 			}),
 		);
 	});

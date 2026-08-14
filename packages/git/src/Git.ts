@@ -1474,13 +1474,31 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 
 	const submoduleUpdate = Effect.fn("Git.submoduleUpdate")(function* (
 		cwd: string,
-		options?: { readonly init?: boolean; readonly depth?: number; readonly paths?: ReadonlyArray<string> },
+		options?: {
+			readonly init?: boolean;
+			readonly depth?: number;
+			readonly paths?: ReadonlyArray<string>;
+			readonly checkout?: boolean;
+			readonly remote?: boolean;
+			readonly fetch?: false;
+			readonly recursive?: boolean;
+			readonly force?: boolean;
+		},
 	) {
 		const init = options?.init ?? false;
-		yield* Effect.annotateCurrentSpan({ cwd, init });
+		const checkout = options?.checkout ?? false;
+		yield* Effect.annotateCurrentSpan({ cwd, init, checkout });
 		yield* rejectNonNaturalNumber(cwd, "a submodule update depth", options?.depth);
 		const classified = yield* runFor(
-			GitCommand.submoduleUpdate(init, options?.depth, options?.paths ?? []),
+			GitCommand.submoduleUpdate(init, options?.depth, options?.paths ?? [], {
+				checkout,
+				remote: options?.remote ?? false,
+				recursive: options?.recursive ?? false,
+				force: options?.force ?? false,
+				// exactOptionalPropertyTypes: `fetch` only exists when the caller
+				// asked for --no-fetch; an explicit undefined is not assignable.
+				...(options?.fetch === false ? { fetch: false as const } : {}),
+			}),
 			cwd,
 			"generic",
 		);
@@ -2318,6 +2336,39 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		);
 	});
 
+	const configRemoveSection = Effect.fn("Git.configRemoveSection")(function* (
+		cwd: string,
+		section: string,
+		options?: { readonly file?: string },
+	) {
+		yield* Effect.annotateCurrentSpan({ cwd, section, file: options?.file ?? "(repository config)" });
+		// git config has no documented -- separator, so section AND file are both
+		// guarded — the configSet/configUnset posture.
+		yield* rejectOptionLikeRefs(cwd, [section, ...(options?.file !== undefined ? [options.file] : [])]);
+		return yield* runVoid(
+			"Git.configRemoveSection",
+			GitCommand.configRemoveSection(section, options?.file),
+			cwd,
+			section,
+		);
+	});
+
+	const configRenameSection = Effect.fn("Git.configRenameSection")(function* (
+		cwd: string,
+		oldName: string,
+		newName: string,
+		options?: { readonly file?: string },
+	) {
+		yield* Effect.annotateCurrentSpan({ cwd, oldName, newName, file: options?.file ?? "(repository config)" });
+		yield* rejectOptionLikeRefs(cwd, [oldName, newName, ...(options?.file !== undefined ? [options.file] : [])]);
+		return yield* runVoid(
+			"Git.configRenameSection",
+			GitCommand.configRenameSection(oldName, newName, options?.file),
+			cwd,
+			oldName,
+		);
+	});
+
 	const rm = Effect.fn("Git.rm")(function* (
 		cwd: string,
 		paths: ReadonlyArray<string>,
@@ -2470,6 +2521,8 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		configList,
 		configGetAll,
 		configUnset,
+		configRemoveSection,
+		configRenameSection,
 		rm,
 		mv,
 		checkIgnore,
@@ -2694,14 +2747,33 @@ export interface GitShape {
 		options?: { readonly force?: boolean },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
-	 * Mutating: `git submodule update [--init] [--depth <n>] [-- <paths>...]`
+	 * Mutating:
+	 * `git submodule update [--init] [--checkout] [--remote] [--no-fetch] [--recursive] [--force] [--depth <n>] [-- <paths>...]`
 	 * — updates registered submodules in the working tree, optionally
 	 * initializing them (`options.init`), with an optional depth limit and
 	 * scoped to `options.paths`.
+	 *
+	 * `options.checkout` is the documented override for a
+	 * `submodule.<name>.update = none` configuration — without it, updating
+	 * such a submodule silently no-ops (git reports success and checks out
+	 * nothing). `options.fetch` accepts only the literal `false` (emitting
+	 * `--no-fetch`): the default already fetches and git has no positive
+	 * spelling. `options.remote` tracks the remote branch's tip instead of
+	 * the recorded sha; `options.recursive` descends into nested submodules;
+	 * `options.force` discards local changes in the submodule working tree.
 	 */
 	readonly submoduleUpdate: (
 		cwd: string,
-		options?: { readonly init?: boolean; readonly depth?: number; readonly paths?: ReadonlyArray<string> },
+		options?: {
+			readonly init?: boolean;
+			readonly depth?: number;
+			readonly paths?: ReadonlyArray<string>;
+			readonly checkout?: boolean;
+			readonly remote?: boolean;
+			readonly fetch?: false;
+			readonly recursive?: boolean;
+			readonly force?: boolean;
+		},
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git submodule add [--depth <n>] -- <url> <path>` —
@@ -3157,6 +3229,33 @@ export interface GitShape {
 		options?: { readonly file?: string; readonly all?: boolean },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
+	 * Mutating: `git config [-f <file>] --remove-section <section>` — removes
+	 * a whole configuration section (every key under it, and the header) from
+	 * the live config, or from `options.file`. The section-level sibling of
+	 * `configUnset` — clearing a stale `submodule.<name>` registration is one
+	 * invocation instead of a key-by-key probe-and-unset. Removing a section
+	 * that does not exist fails LOUDLY (git exits 128,
+	 * `fatal: no such section`) — the `configUnset` posture; probe with
+	 * `configList` first when idempotency is wanted.
+	 */
+	readonly configRemoveSection: (
+		cwd: string,
+		section: string,
+		options?: { readonly file?: string },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git config [-f <file>] --rename-section <old> <new>` —
+	 * renames a configuration section, carrying every key under it across.
+	 * Renaming a section that does not exist fails LOUDLY (git exits 128,
+	 * `fatal: no such section`) — the same posture as `configRemoveSection`.
+	 */
+	readonly configRenameSection: (
+		cwd: string,
+		oldName: string,
+		newName: string,
+		options?: { readonly file?: string },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
 	 * Mutating: `git rm [--cached] [-r] [--force] -- <paths...>` — removes
 	 * `paths` from the index and (without `options.cached`) the working tree.
 	 * `cached: true` is the unstage-but-keep-file form a submodule removal
@@ -3386,6 +3485,8 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		configList: notStubbed("configList"),
 		configGetAll: notStubbed("configGetAll"),
 		configUnset: notStubbed("configUnset"),
+		configRemoveSection: notStubbed("configRemoveSection"),
+		configRenameSection: notStubbed("configRenameSection"),
 		rm: notStubbed("rm"),
 		mv: notStubbed("mv"),
 		checkIgnore: notStubbed("checkIgnore"),

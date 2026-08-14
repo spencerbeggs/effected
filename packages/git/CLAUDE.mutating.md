@@ -1,6 +1,6 @@
 # Mutating tier — @effected/git
 
-Per-member postures for the thirty-eight mutating methods. The tier rule itself — the `"Mutating:"` TSDoc marker, and that nothing here serializes concurrent access — is in the parent.
+Per-member postures for the forty mutating methods. The tier rule itself — the `"Mutating:"` TSDoc marker, and that nothing here serializes concurrent access — is in the parent.
 
 **Parent:** [@effected/git context](./CLAUDE.md)
 
