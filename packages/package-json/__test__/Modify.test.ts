@@ -90,6 +90,17 @@ describe("PackageJsonFormat.modifyToString", () => {
 		}),
 	);
 
+	it.effect("passes a nonsemver version through untouched — the modify path never decodes", () =>
+		Effect.gen(function* () {
+			// "1.0" is legal for an unpublished root and rejected by every decode
+			// in this package; the mutator must carry it anyway, or the tool
+			// refuses the repos it exists to edit.
+			const source = '{\n  "version": "1.0",\n  "packageManager": "pnpm@11.2.0"\n}\n';
+			const output = yield* PackageJsonFormat.modifyToString(source, ["packageManager"], "pnpm@11.3.0");
+			assert.strictEqual(output, '{\n  "version": "1.0",\n  "packageManager": "pnpm@11.3.0"\n}\n');
+		}),
+	);
+
 	it.effect("fails with PackageJsonSyntaxError on invalid JSON", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(PackageJsonFormat.modifyToString("{ nope", ["a"], 1));
