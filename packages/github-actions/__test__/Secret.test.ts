@@ -90,6 +90,45 @@ describe("Secret", () => {
 		});
 	});
 
+	describe("forProcessEnv", () => {
+		it.effect("masks then returns the plaintext", () => {
+			const outputs = recordingOutputs();
+			return Effect.gen(function* () {
+				assert.strictEqual(yield* Secret.forProcessEnv(Redacted.make("ghs_env")), "ghs_env");
+				assert.deepStrictEqual(outputs.masked, ["ghs_env"]);
+			}).pipe(Effect.provide(outputs.layer));
+		});
+
+		it.effect("masks before the caller holds the plaintext", () => {
+			// Same ordering invariant as the other members: a mask that ran after
+			// the caller already held plaintext would be a mask the caller could
+			// skip on the way into `process.env`.
+			const seen: Array<string> = [];
+			const layer = ActionOutputs.layerTest({
+				setSecret: (value) =>
+					Effect.suspend(() => {
+						seen.push(`mask:${value}`);
+						return Effect.void;
+					}),
+			});
+			return Effect.gen(function* () {
+				const plaintext = yield* Secret.forProcessEnv(Redacted.make("bridged"));
+				seen.push(`returned:${plaintext}`);
+				assert.deepStrictEqual(seen, ["mask:bridged", "returned:bridged"]);
+			}).pipe(Effect.provide(layer));
+		});
+
+		it.effect("behaves identically to forRunnerFile — same mechanism, distinct audit name", () => {
+			const outputs = recordingOutputs();
+			return Effect.gen(function* () {
+				const viaRunnerFile = yield* Secret.forRunnerFile(Redacted.make("same-secret"));
+				const viaProcessEnv = yield* Secret.forProcessEnv(Redacted.make("same-secret"));
+				assert.strictEqual(viaProcessEnv, viaRunnerFile);
+				assert.deepStrictEqual(outputs.masked, ["same-secret", "same-secret"]);
+			}).pipe(Effect.provide(outputs.layer));
+		});
+	});
+
 	describe("adopt", () => {
 		it.effect("re-wraps a plaintext handoff as Redacted", () =>
 			withConfig(
