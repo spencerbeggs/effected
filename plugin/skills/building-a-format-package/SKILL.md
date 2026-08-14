@@ -211,7 +211,7 @@ same way:
   scoped `.gitattributes` (`* -text`) in the fixture root keeps Git from
   normalizing them (toml's harness protects ~7 such cases this way).
 - **Control characters in hand-written tests and TS fixtures are ALWAYS
-  escapes (` `, `�`), never literal bytes.** File-editing tooling
+  escapes (`\x00`, `\x7f`), never literal bytes.** File-editing tooling
   silently mangles literal control characters — an edit round-trip once
   replaced a NUL with a space, which would have made a preprocessing
   hardening test pass vacuously. Literal bytes belong only in committed raw
@@ -256,6 +256,35 @@ same way:
 Plus the hand-written families no corpus covers: CST/AST fidelity,
 edit/format/visitor behavior, and a hostile-input suite exercising every
 hardening guard.
+
+## A green corpus proves conformance, not reachability — keep a standing real-world fixture
+
+A conformance corpus can be entirely green while a whole production is broken.
+`@effected/yaml` ran 1226 assertions green while explicit-key entries with a
+compact mapping value parsed to phantom null-keyed entries: the corpus has
+explicit-key cases, but none in the *shape* real documents use (#324).
+
+**So every format package carries at least one standing fixture drawn from a
+real document** — a `pnpm-workspace.yaml`, a `tsconfig.json`, an actual
+`Cargo.toml` — parsed and round-tripped on every run, in addition to the corpus.
+The corpus proves you match the spec's examples; the standing fixture proves the
+production the spec's examples happen not to combine.
+
+**The law generalises past formats, and the kit now has it from two directions.**
+The `@spencerbeggs/reposets` loop (2026-08-14) produced a duplicate module, a
+silent name collision, an unreachable export, a truncation in every list read and
+a normaliser that silently dropped its own typed input — **every one of them green
+in the suite of whoever wrote that code**, and every one found by a second party
+running it for real. Its closing observation is the rule worth carrying into any
+package, not just a format one:
+
+> Every defect worth finding was green somewhere — specifically, green in the
+> suite of whoever was most confident about that code.
+
+The practical form: a suite you wrote cannot tell you what you did not think to
+model. Budget for one consumer path exercised end to end — a real document, a
+real API call, a real binary run — and treat its absence as a known gap rather
+than as coverage.
 
 ## Scaffold gotchas (the ones that bite)
 

@@ -61,6 +61,38 @@ are still `undefined` at beta.107; the rename did not get reverted.
 | a single-return **ternary chain** in an error's `message` getter | an exhaustive `switch` with no terminal return — tsgo accepts it, but Biome's `useGetterReturn` rejects it (see below) |
 | `Schema.Class` + `Schema.tag("literal")` on an explicitly-named field when the discriminator belongs to a FOREIGN contract | `Schema.TaggedClass` for a foreign discriminator — it hardwires the key `_tag` (see below) |
 
+## Decoding tolerates excess keys silently — and a typo is the common case
+
+`Schema.Struct` **drops unknown keys without complaint** on decode. A struct of
+all-`optionalKey` fields decodes `{ mxa: 100 }` to `{}` and reports success, so a
+typo'd key and a correct-but-absent one are indistinguishable.
+
+| Do this | Not this |
+| --- | --- |
+| `Schema.decodeUnknownEffect(S)(input, { onExcessProperty: "error", errors: "all" })` for anything a **human typed** | a bare decode of user-authored config, where a typo is silently discarded |
+| let it default to `"ignore"` for a **machine-produced** payload you do not own | `"error"` on a third-party API response, which breaks the moment they add a field |
+
+Two failures this has already caused in the kit, from independent directions:
+
+- A typo'd rule-option key passed config validation, so the rule ran on defaults
+  while the design promised "a typo'd option fails loudly naming the field"
+  (`@effected/yaml` lint system, #129).
+- A config loader could report neither a typo'd section **nor a field the schema
+  deliberately removed** — a user migrating an older file kept a dead credential
+  and was told nothing (`@spencerbeggs/reposets`, 2026-08-13). Their first
+  conclusion was that v4 had dropped the feature entirely, and they began writing
+  one hand-rolled filter per removed field before a probe found `onExcessProperty`
+  alive and well.
+
+Pair it with **`errors: "all"`**. The default reports the first issue only, so a
+file with three typos surfaces one per run — fix, re-run, discover the next. The
+extra work only happens on a document that is already failing.
+
+**Keys covered by a `Schema.StructWithRest` rest are not excess**, so a schema
+that deliberately admits a pass-through section keeps working under `"error"`.
+And the substitute people reach for first does not work: a `Never` rest rejects
+**valid** input too, so it cannot express "these keys and no others".
+
 ## `Schema.optional` is not exact-optional
 
 These repos compile with `exactOptionalPropertyTypes: true`, and the two
