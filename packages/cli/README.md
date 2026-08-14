@@ -70,7 +70,7 @@ NodeRuntime.runMain(program.pipe(CliRuntime.reportFailures(), Effect.provide(Mai
 Rendering a bad config into something actionable:
 
 ```ts
-import { ConfigIssueRenderer } from "@effected/cli";
+import { CliRuntime, ConfigIssueRenderer } from "@effected/cli";
 import { Effect } from "effect";
 
 configFile.load.pipe(
@@ -78,6 +78,11 @@ configFile.load.pipe(
     Effect.gen(function* () {
       yield* Effect.logError(String(error));
       for (const line of ConfigIssueRenderer.render(error)) yield* Effect.logError(`  ${line}`);
+
+      // Re-fail, or the handler SUCCEEDS and a CLI exits 0 on invalid config.
+      // `reported` carries the exit code and the mark that stops the runtime
+      // printing the same failure a second time.
+      return yield* Effect.fail(CliRuntime.reported(error));
     }),
   ),
 );

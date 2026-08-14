@@ -521,7 +521,7 @@ describe("GitHubClient.layerFixture", () => {
 		}),
 	);
 
-	it.effect("records request and graphql calls WITH their params, not only paginated reads", () =>
+	it.effect("records a request call WITH its params, not only paginated reads", () =>
 		Effect.gen(function* () {
 			// Before this, `request` named its params `_params` and never appended,
 			// so a suite whose methods all go through `request` could assert nothing
@@ -589,6 +589,53 @@ describe("GitHubClient.layerFixture", () => {
 				).pipe(Effect.catchTag("GitHubError", () => Effect.succeed("absorbed"))),
 			);
 			assert.isTrue(Exit.isFailure(stillDies));
+		}),
+	);
+
+	it.effect("records a graphql call under the document name, with its variables", () =>
+		Effect.gen(function* () {
+			// The graphql surface records too, keyed by document name rather than a
+			// route. Nothing asserted it, so the recorder's claim to cover "every
+			// call" rested on three of four surfaces.
+			const requested: Array<RecordedCall> = [];
+			const doc = GraphQLDocument.make({
+				name: "ProbeDocument",
+				document: "query ProbeDocument($login:String!){ user(login:$login){ id } }",
+				response: Schema.Struct({ user: Schema.Struct({ id: Schema.String }) }),
+			})<{ readonly login: string }>();
+
+			yield* Effect.provide(
+				Effect.flatMap(GitHubClient, (client) => client.graphql(doc, { login: "acme" })),
+				GitHubClient.layerFixture({
+					graphql: { ProbeDocument: { user: { id: "U_1" } } },
+					requested,
+				}),
+			);
+			assert.deepStrictEqual(requested, [{ kind: "graphql", route: "ProbeDocument", params: { login: "acme" } }]);
+		}),
+	);
+
+	it.effect("records a paginated read that FAILS, so a suite can tell it apart from one never made", () =>
+		Effect.gen(function* () {
+			// Every other surface records before its checks; paginate used to record
+			// after, so a stubbed-error read left `requested` empty and a suite could
+			// not distinguish "not called" from "called and failed" — the one case
+			// the error-as-response fixture is for.
+			const requested: Array<RecordedCall> = [];
+			yield* Effect.flip(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.paginate("GET /repos/{owner}/{repo}/pulls", { owner: "o", repo: "r" }),
+					),
+					GitHubClient.layerFixture({
+						paginate: { "GET /repos/{owner}/{repo}/pulls": GitHubError.notFound("read", "pulls") },
+						requested,
+					}),
+				),
+			);
+			assert.lengthOf(requested, 1);
+			assert.strictEqual(requested[0]?.kind, "paginate");
+			assert.deepStrictEqual(requested[0]?.params, { owner: "o", repo: "r" });
 		}),
 	);
 

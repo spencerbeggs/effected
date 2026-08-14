@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { Console, Effect, References } from "effect";
 import { CliLogger } from "../src/CliLogger.js";
 
@@ -44,8 +44,8 @@ describe("CliLogger", () => {
 				}),
 			);
 
-			expect(out).toEqual(["progress"]);
-			expect(err).toEqual(["broke"]);
+			assert.deepStrictEqual(out, ["progress"]);
+			assert.deepStrictEqual(err, ["broke"]);
 		}),
 	);
 
@@ -63,8 +63,8 @@ describe("CliLogger", () => {
 
 			// The discriminating mutant for this logger is "route everything to
 			// stdout". Warn is the boundary that catches it: it must NOT be stderr.
-			expect(err).toEqual(["error", "fatal"]);
-			expect(out).toEqual(["debug", "info", "warn"]);
+			assert.deepStrictEqual(err, ["error", "fatal"]);
+			assert.deepStrictEqual(out, ["debug", "info", "warn"]);
 		}),
 	);
 
@@ -72,8 +72,8 @@ describe("CliLogger", () => {
 		Effect.gen(function* () {
 			const { out } = yield* capture(Effect.log("a plain line"));
 
-			expect(out).toEqual(["a plain line"]);
-			expect(out[0]).not.toMatch(/^\[|INFO|\(#\d+\)/);
+			assert.deepStrictEqual(out, ["a plain line"]);
+			assert.notMatch(out[0] ?? "", /^\[|INFO|\(#\d+\)/);
 		}),
 	);
 
@@ -81,7 +81,7 @@ describe("CliLogger", () => {
 		Effect.gen(function* () {
 			const { out } = yield* capture(Effect.log("synced", 3, "repos"));
 
-			expect(out).toEqual(["synced 3 repos"]);
+			assert.deepStrictEqual(out, ["synced 3 repos"]);
 		}),
 	);
 
@@ -94,9 +94,9 @@ describe("CliLogger", () => {
 				}).pipe(Effect.provideService(References.LogToStderr, true)),
 			);
 
-			expect(err).toEqual(["progress", "broke"]);
+			assert.deepStrictEqual(err, ["progress", "broke"]);
 			// It forces one direction only: it must never move an error onto stdout.
-			expect(out).toEqual([]);
+			assert.deepStrictEqual(out, []);
 		}),
 	);
 
@@ -110,8 +110,8 @@ describe("CliLogger", () => {
 				{ render: (message) => `> ${String(message)}`, stderrFrom: "Warn" },
 			);
 
-			expect(out).toEqual(["> info"]);
-			expect(err).toEqual(["> warn"]);
+			assert.deepStrictEqual(out, ["> info"]);
+			assert.deepStrictEqual(err, ["> warn"]);
 		}),
 	);
 });

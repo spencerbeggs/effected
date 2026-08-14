@@ -93,12 +93,17 @@ const make = (client: GitHubClient["Service"]): DeploymentEnvironmentShape => {
 		yield* Effect.annotateCurrentSpan({ owner, repo, environment: name });
 
 		yield* client.request("PUT /repos/{owner}/{repo}/environments/{environment_name}", {
+			// An open record by design, so it cannot be narrowed to the route's
+			// parameter union. The cast is on the BODY, never the route literal.
+			//
+			// It spreads FIRST so the coordinates below stay authoritative: a caller
+			// key named `owner`, `repo` or `environment_name` would otherwise
+			// silently retarget the request at a different repository, with no
+			// error and with the span still annotating the intended one.
+			...config,
 			owner,
 			repo,
 			environment_name: name,
-			// An open record by design, so it cannot be narrowed to the route's
-			// parameter union. The cast is on the BODY, never the route literal.
-			...config,
 		} as Rest.Params<"PUT /repos/{owner}/{repo}/environments/{environment_name}">);
 	});
 
@@ -107,8 +112,9 @@ const make = (client: GitHubClient["Service"]): DeploymentEnvironmentShape => {
 		yield* Effect.annotateCurrentSpan({ owner, repo });
 
 		const environments = yield* client.paginate("GET /repos/{owner}/{repo}/environments", { owner, repo });
-		// `environments` is optional on the response: a repository with none can
-		// answer without the key at all rather than with an empty array.
+		// Paginated, so this is already an array — octokit's paginator normalises
+		// the envelope, including the case where a repository with none answers
+		// without the key at all.
 		return environments.map((environment): DeploymentEnvironmentInfo => ({ name: environment.name }));
 	});
 

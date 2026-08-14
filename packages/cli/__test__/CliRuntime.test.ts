@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { Cause, Console, Effect, Exit, Runtime } from "effect";
 import { CliLogger } from "../src/CliLogger.js";
 import { CliRuntime } from "../src/CliRuntime.js";
@@ -38,17 +38,17 @@ describe("CliRuntime.reportFailures", () => {
 		Effect.gen(function* () {
 			const { out, err, exit } = yield* run(Effect.fail(new Error("boom")));
 
-			expect(err).toEqual(["Error: boom"]);
+			assert.deepStrictEqual(err, ["Error: boom"]);
 			// The bug this exists to prevent is the report landing on stdout.
-			expect(out).toEqual([]);
-			expect(Exit.isFailure(exit)).toBe(true);
+			assert.deepStrictEqual(out, []);
+			assert.strictEqual(Exit.isFailure(exit), true);
 		}),
 	);
 
 	it.effect("re-fails rather than swallowing, so a broken run cannot exit zero", () =>
 		Effect.gen(function* () {
 			const { exit } = yield* run(Effect.fail(new Error("boom")));
-			expect(Exit.isSuccess(exit)).toBe(false);
+			assert.strictEqual(Exit.isSuccess(exit), false);
 		}),
 	);
 
@@ -61,8 +61,8 @@ describe("CliRuntime.reportFailures", () => {
 			// inverted relative to the name — `false` is what suppresses — so this
 			// assertion FAILS if anyone "corrects" the marker to `true` to match the
 			// name, which is the whole reason it is written this way.
-			expect(Runtime.getErrorReported(CliRuntime.reported(new Error("x")))).toBe(false);
-			expect(error === undefined ? true : Runtime.getErrorReported(error)).toBe(false);
+			assert.strictEqual(Runtime.getErrorReported(CliRuntime.reported(new Error("x"))), false);
+			assert.strictEqual(error === undefined ? true : Runtime.getErrorReported(error), false);
 		}),
 	);
 
@@ -74,7 +74,7 @@ describe("CliRuntime.reportFailures", () => {
 
 			// The option is a FALLBACK, never an override: 3 was a deliberate choice
 			// by whatever raised the error.
-			expect(Runtime.getErrorExitCode(error)).toBe(3);
+			assert.strictEqual(Runtime.getErrorExitCode(error), 3);
 		}),
 	);
 
@@ -90,8 +90,8 @@ describe("CliRuntime.reportFailures", () => {
 
 			// `getErrorExitCode` answers 1 for both an error marked 1 and an unmarked
 			// one, so reading it alone would let the option override a deliberate 1.
-			expect(codeOf(kept.exit as Exit.Exit<never, Error>)).toBe(1);
-			expect(codeOf(defaulted.exit as Exit.Exit<never, Error>)).toBe(7);
+			assert.strictEqual(codeOf(kept.exit as Exit.Exit<never, Error>), 1);
+			assert.strictEqual(codeOf(defaulted.exit as Exit.Exit<never, Error>), 7);
 		}),
 	);
 
@@ -101,7 +101,7 @@ describe("CliRuntime.reportFailures", () => {
 				render: (error) => [String(error), "  unknown key at groups.g.rulesetz"],
 			});
 
-			expect(err).toEqual(["Error: bad config", "  unknown key at groups.g.rulesetz"]);
+			assert.deepStrictEqual(err, ["Error: bad config", "  unknown key at groups.g.rulesetz"]);
 		}),
 	);
 
@@ -111,9 +111,9 @@ describe("CliRuntime.reportFailures", () => {
 
 			// An interrupt is not a failure to report, and the default teardown
 			// already maps an interrupt-only cause to 130.
-			expect(err).toEqual([]);
-			expect(out).toEqual([]);
-			expect(Exit.isFailure(exit)).toBe(true);
+			assert.deepStrictEqual(err, []);
+			assert.deepStrictEqual(out, []);
+			assert.strictEqual(Exit.isFailure(exit), true);
 		}),
 	);
 
@@ -121,8 +121,8 @@ describe("CliRuntime.reportFailures", () => {
 		Effect.gen(function* () {
 			const { out, err, exit } = yield* run(Effect.succeed(42));
 
-			expect(Exit.isSuccess(exit)).toBe(true);
-			expect([...out, ...err]).toEqual([]);
+			assert.strictEqual(Exit.isSuccess(exit), true);
+			assert.deepStrictEqual([...out, ...err], []);
 		}),
 	);
 });

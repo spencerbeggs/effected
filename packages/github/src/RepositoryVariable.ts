@@ -31,8 +31,15 @@ export interface RepositoryVariableShape {
 	 * @remarks
 	 * GitHub has **no upsert** for variables: creating uses `POST` on the
 	 * collection and updating uses `PATCH` on the item, and each fails if used
-	 * for the other case. So this reads the collection first and branches — one
-	 * extra request per write, and the reason it is not optional.
+	 * for the other case. So this reads first and branches — one extra request
+	 * per write, and the reason it is not optional.
+	 *
+	 * The read is **by name**, not a listing: GitHub answers 404 for an absent
+	 * variable, so the check is constant cost rather than growing with a
+	 * repository that has nothing to do with the variable being written. Only
+	 * `notFound` is absorbed — a 403 from a mis-scoped token still fails, where
+	 * treating any error as absence would turn a permissions problem into a
+	 * spurious create.
 	 */
 	readonly set: (name: string, value: string) => Effect.Effect<void, GitHubError, Repo>;
 	/** The repository's variables, with their values. */
@@ -97,13 +104,31 @@ const unstubbed = (member: string): never => {
 };
 
 const make = (client: GitHubClient["Service"]): RepositoryVariableShape => {
+	/**
+	 * Does this variable already exist? One by-name read, not a listing.
+	 *
+	 * @remarks
+	 * GitHub answers 404 for an absent variable, which makes the pre-write check
+	 * constant cost — paginating the whole collection to answer one yes/no grows
+	 * with a repository that has nothing to do with the variable being written.
+	 * Only `notFound` is absorbed: a 403 from a mis-scoped token still fails,
+	 * which a blanket "treat any error as absent" would destroy, turning a
+	 * permissions problem into a spurious create.
+	 */
+	const exists = (route: "GET /repos/{owner}/{repo}/actions/variables/{name}", params: Record<string, unknown>) =>
+		client.request(route, params as never).pipe(
+			Effect.as(true),
+			Effect.catchIf(
+				(error) => error.kind === "notFound",
+				() => Effect.succeed(false),
+			),
+		);
+
 	const set = Effect.fn("RepositoryVariable.set")(function* (name: string, value: string) {
 		const { owner, repo } = yield* Repo;
 		yield* Effect.annotateCurrentSpan({ owner, repo, variable: name });
 
-		const variables = yield* client.paginate("GET /repos/{owner}/{repo}/actions/variables", { owner, repo });
-
-		if (variables.some((variable) => variable.name === name)) {
+		if (yield* exists("GET /repos/{owner}/{repo}/actions/variables/{name}", { owner, repo, name })) {
 			yield* client.request("PATCH /repos/{owner}/{repo}/actions/variables/{name}", { owner, repo, name, value });
 			return;
 		}
@@ -134,13 +159,24 @@ const make = (client: GitHubClient["Service"]): RepositoryVariableShape => {
 		const { owner, repo } = yield* Repo;
 		yield* Effect.annotateCurrentSpan({ owner, repo, environment, variable: name });
 
-		const variables = yield* client.paginate("GET /repos/{owner}/{repo}/environments/{environment_name}/variables", {
-			owner,
-			repo,
-			environment_name: environment,
-		});
+		const present = yield* client
+			.request("GET /repos/{owner}/{repo}/environments/{environment_name}/variables/{name}", {
+				owner,
+				repo,
+				environment_name: environment,
+				name,
+			})
+			.pipe(
+				Effect.as(true),
+				// Same by-name check as `set`: constant cost, and only `notFound` is
+				// absorbed so a permissions failure cannot masquerade as absence.
+				Effect.catchIf(
+					(error) => error.kind === "notFound",
+					() => Effect.succeed(false),
+				),
+			);
 
-		if (variables.some((variable) => variable.name === name)) {
+		if (present) {
 			yield* client.request("PATCH /repos/{owner}/{repo}/environments/{environment_name}/variables/{name}", {
 				owner,
 				repo,

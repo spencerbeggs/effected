@@ -107,9 +107,11 @@ rather than as `GitHubClient.layerFromApp`: statics on one class share a module.
 so, but the invariant is the point. The same suite asserts every module in
 `src/` is re-exported from `src/index.ts`.
 
-The crypto pair rides the same mechanism — `internal/crypto.ts` is reached from
-`RepositorySecret` and nowhere else — but that confinement is **not yet
-asserted**. Close it on the signer's pattern rather than leaving it as prose.
+The crypto pair rides the same mechanism, and on the signer's pattern: a
+positive control asserts `RepositorySecret` **does** reach `tweetnacl` and
+`blakejs`, and the negative asserts no other resource service does — so a
+consumer who never writes a secret cannot start paying for the crypto without
+the suite saying which module leaked it.
 
 ## Testing
 

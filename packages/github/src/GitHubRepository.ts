@@ -346,7 +346,11 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 			const graphqlKeys: Array<string> = [];
 
 			for (const [key, value] of Object.entries(input)) {
-				const graphqlField = GRAPHQL_ONLY_SETTINGS[key];
+				// `Object.hasOwn`, not a bare index: the map is open by design, so a
+				// caller key of `toString` or `constructor` would otherwise resolve
+				// through the prototype chain to a FUNCTION, and that function would
+				// be sent as a GraphQL input field name and reported as applied.
+				const graphqlField = Object.hasOwn(GRAPHQL_ONLY_SETTINGS, key) ? GRAPHQL_ONLY_SETTINGS[key] : undefined;
 				if (graphqlField !== undefined) {
 					graphql[graphqlField] = value;
 					graphqlKeys.push(key);
@@ -359,8 +363,15 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 			// `rest` here would name fields that preparation then drops, which is a
 			// dry run that lies in the direction of looking successful.
 			const prepared = preparePatch(rest as RepositoryPatch);
+			// Gate on the PREPARED body, never the raw keys. Preparation can drop
+			// every key it was given — a `security_and_analysis` block whose fields
+			// are all unrecognised normalises to nothing — and gating on `rest`
+			// then fires a PATCH carrying only `owner` and `repo`, while the report
+			// below truthfully says nothing was sent. The report contradicting the
+			// wire is the one failure `AppliedSettings` exists to prevent.
+			const restKeys = Object.keys(prepared);
 
-			if (Object.keys(rest).length > 0) {
+			if (restKeys.length > 0) {
 				// The map is open by design, so it cannot be narrowed to the route's
 				// generated parameter type. The cast is on the BODY, never the route.
 				yield* client.request("PATCH /repos/{owner}/{repo}", {
@@ -379,7 +390,7 @@ const make = (client: GitHubClient["Service"]): GitHubRepositoryShape => {
 			}
 
 			return {
-				rest: Object.keys(rest).length > 0 ? Object.keys(prepared) : [],
+				rest: restKeys,
 				graphql: graphqlKeys,
 			} satisfies AppliedSettings;
 		}),

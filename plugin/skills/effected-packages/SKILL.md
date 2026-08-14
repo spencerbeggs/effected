@@ -103,7 +103,7 @@ Facts about them that change how you depend on them:
   (`PublishabilityDetector.npm`), so a policy that wraps npm semantics does not
   have to re-enter the tag it is replacing.
 
-## Local-build dogfood state (updated 2026-08-03)
+## Local-build dogfood state (updated 2026-08-14)
 
 **Twenty-seven of twenty-eight are published**; `@effected/cli` was built
 2026-08-13 and is pending its first release. `commands`, `templates`, `github`,

@@ -219,11 +219,9 @@ const make = (client: GitHubClient["Service"]): RulesetShape => {
 			// Listing what WAS available is the difference between a user fixing a
 			// typo and a user guessing. Role ids are per-organization even for
 			// predefined roles, so the list cannot be hardcoded.
-			return yield* Effect.fail(
-				GitHubError.notFound(
-					"Ruleset.roleId",
-					`organization role '${name}' in '${owner}' (available: ${available || "none"})`,
-				),
+			return yield* GitHubError.notFound(
+				"Ruleset.roleId",
+				`organization role '${name}' in '${owner}' (available: ${available || "none"})`,
 			);
 		}
 

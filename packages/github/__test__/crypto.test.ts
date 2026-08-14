@@ -1,4 +1,4 @@
-import { assert, describe, expect, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import blakejs from "blakejs";
 import { Encoding, Result } from "effect";
 import nacl from "tweetnacl";
@@ -13,6 +13,9 @@ const sealBytes = (publicKey: string, value: string): Uint8Array => {
 };
 
 const b64 = (bytes: Uint8Array): string => Encoding.encodeBase64(bytes);
+
+const named = (namespace: Record<string, unknown>): ReadonlyArray<string> =>
+	Object.keys(namespace).filter((key) => key !== "default" && key !== "module.exports");
 
 describe("encryptSecret", () => {
 	it("produces a sealed box the recipient can open", () => {
@@ -103,9 +106,7 @@ describe("the blakejs interop surface", () => {
 	 */
 	it("detects blake2b as a named export and nothing else", async () => {
 		const namespace = await import("blakejs");
-		const named = Object.keys(namespace).filter((key) => key !== "default" && key !== "module.exports");
-
-		assert.deepStrictEqual(named, ["blake2b"]);
+		assert.deepStrictEqual(named(namespace), ["blake2b"]);
 	});
 
 	it("reaches every other function only through the default import", async () => {
@@ -123,6 +124,3 @@ describe("the blakejs interop surface", () => {
 		assert.isAbove(onDefault.length, named(namespace).length);
 	});
 });
-
-const named = (namespace: Record<string, unknown>): ReadonlyArray<string> =>
-	Object.keys(namespace).filter((key) => key !== "default" && key !== "module.exports");

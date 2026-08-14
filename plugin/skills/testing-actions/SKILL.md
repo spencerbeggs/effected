@@ -29,9 +29,9 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
 
 ## Standards
 
-### The `layerFixture` contract, as of `@effected/github@0.4.0`
+### The `layerFixture` contract, changed 2026-08-13
 
-Three things changed together, and code written against the older shape is wrong rather than merely dated.
+Three things changed together, and code written against the older shape is wrong rather than merely dated. They ship in the release that follows that date — the manifest carries the *previous* version until then, so check the behaviour rather than the version number.
 
 **`requested` records every call, with params.** It is `Array<RecordedCall>` — `{ kind: "request" | "requestDecoded" | "paginate" | "graphql", route, params, perPage? }` — not the old `{ route, perPage }`. It used to log paginated reads only, so a suite whose methods all go through `request` could assert the route and nothing about what it sent. Assert the whole entry:
 

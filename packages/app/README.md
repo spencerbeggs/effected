@@ -126,6 +126,9 @@ What it does take is a **codec, required**, never inferred from the filename's e
 Most CLIs have one, and it has to outrank the app's own search path. Pass `resolvers` and it does:
 
 ```ts
+import { AppConfig } from "@effected/app";
+import { ConfigResolver, TomlCodec } from "@effected/config-file";
+
 const ConfigLive = AppConfig.layer(SettingsFile, {
  filename: "settings.toml",
  schema: Settings,

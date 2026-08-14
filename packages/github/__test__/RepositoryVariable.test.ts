@@ -1,7 +1,8 @@
-import { assert, describe, expect, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient } from "../src/GitHubClient.js";
+import { GitHubError } from "../src/GitHubError.js";
 import { Repo, RepoRef } from "../src/Repo.js";
 import { RepositoryVariable } from "../src/RepositoryVariable.js";
 
@@ -26,14 +27,15 @@ describe("RepositoryVariable.set", () => {
 			const { requested, routes } = yield* run(
 				Effect.flatMap(RepositoryVariable, (v) => v.set("NODE_ENV", "production")),
 				{
+					"GET /repos/{owner}/{repo}/actions/variables/{name}": { name: "NODE_ENV", value: "old" },
 					"PATCH /repos/{owner}/{repo}/actions/variables/{name}": {},
 				},
-				{ "GET /repos/{owner}/{repo}/actions/variables": [{ name: "NODE_ENV", value: "old" }] },
 			);
 
-			// GitHub has no upsert: the read is what decides the verb.
+			// GitHub has no upsert: the read is what decides the verb. It is a
+			// by-NAME read, so the cost does not grow with the repository.
 			assert.deepStrictEqual(routes, [
-				"GET /repos/{owner}/{repo}/actions/variables",
+				"GET /repos/{owner}/{repo}/actions/variables/{name}",
 				"PATCH /repos/{owner}/{repo}/actions/variables/{name}",
 			]);
 			assert.deepStrictEqual(requested[1]?.params, {
@@ -50,13 +52,15 @@ describe("RepositoryVariable.set", () => {
 			const { requested, routes } = yield* run(
 				Effect.flatMap(RepositoryVariable, (v) => v.set("NODE_ENV", "production")),
 				{
+					// Absent is a 404 from GitHub, stubbed as the response rather than
+					// by leaving the route unwired — absence would mean "unstubbed".
+					"GET /repos/{owner}/{repo}/actions/variables/{name}": GitHubError.notFound("read", "NODE_ENV"),
 					"POST /repos/{owner}/{repo}/actions/variables": {},
 				},
-				{ "GET /repos/{owner}/{repo}/actions/variables": [] },
 			);
 
 			assert.deepStrictEqual(routes, [
-				"GET /repos/{owner}/{repo}/actions/variables",
+				"GET /repos/{owner}/{repo}/actions/variables/{name}",
 				"POST /repos/{owner}/{repo}/actions/variables",
 			]);
 			assert.deepStrictEqual(requested[1]?.params, {
@@ -68,17 +72,21 @@ describe("RepositoryVariable.set", () => {
 		}),
 	);
 
-	it.effect("matches on name exactly, not by prefix", () =>
+	it.effect("asks GitHub about the exact name, so a longer one cannot look like a match", () =>
 		Effect.gen(function* () {
-			const { routes } = yield* run(
+			// This used to be a substring hazard: the check scanned a listing, so
+			// `NODE_ENV` present could have made `NODE` look like an update. The
+			// by-name read removes the class — GitHub is asked about `NODE` and
+			// answers 404 — so what is pinned now is the name that was ASKED FOR.
+			const { requested, routes } = yield* run(
 				Effect.flatMap(RepositoryVariable, (v) => v.set("NODE", "x")),
 				{
+					"GET /repos/{owner}/{repo}/actions/variables/{name}": GitHubError.notFound("read", "NODE"),
 					"POST /repos/{owner}/{repo}/actions/variables": {},
 				},
-				{ "GET /repos/{owner}/{repo}/actions/variables": [{ name: "NODE_ENV", value: "y" }] },
 			);
 
-			// `NODE_ENV` existing must not make `NODE` look like an update.
+			assert.strictEqual(requested[0]?.params.name, "NODE");
 			assert.strictEqual(routes[1], "POST /repos/{owner}/{repo}/actions/variables");
 		}),
 	);
@@ -146,8 +154,13 @@ describe("RepositoryVariable, per environment", () => {
 		Effect.gen(function* () {
 			const updated = yield* run(
 				Effect.flatMap(RepositoryVariable, (v) => v.setForEnvironment("prod", "LEVEL", "high")),
-				{ "PATCH /repos/{owner}/{repo}/environments/{environment_name}/variables/{name}": {} },
-				{ "GET /repos/{owner}/{repo}/environments/{environment_name}/variables": [{ name: "LEVEL", value: "low" }] },
+				{
+					"GET /repos/{owner}/{repo}/environments/{environment_name}/variables/{name}": {
+						name: "LEVEL",
+						value: "low",
+					},
+					"PATCH /repos/{owner}/{repo}/environments/{environment_name}/variables/{name}": {},
+				},
 			);
 			assert.deepStrictEqual(updated.requested[1]?.params, {
 				owner: "acme",
@@ -160,9 +173,12 @@ describe("RepositoryVariable, per environment", () => {
 			const created = yield* run(
 				Effect.flatMap(RepositoryVariable, (v) => v.setForEnvironment("prod", "LEVEL", "high")),
 				{
+					"GET /repos/{owner}/{repo}/environments/{environment_name}/variables/{name}": GitHubError.notFound(
+						"read",
+						"LEVEL",
+					),
 					"POST /repos/{owner}/{repo}/environments/{environment_name}/variables": {},
 				},
-				{ "GET /repos/{owner}/{repo}/environments/{environment_name}/variables": [] },
 			);
 			assert.strictEqual(
 				created.requested[1]?.route,

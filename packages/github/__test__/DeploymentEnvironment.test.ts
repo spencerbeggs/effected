@@ -1,4 +1,4 @@
-import { assert, describe, expect, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { DeploymentEnvironment } from "../src/DeploymentEnvironment.js";
 import type { RecordedCall } from "../src/GitHubClient.js";
@@ -51,6 +51,23 @@ describe("DeploymentEnvironment.upsert", () => {
 				["PUT /repos/{owner}/{repo}/environments/{environment_name}"],
 			);
 			assert.deepStrictEqual(requested[0]?.params, { owner: "acme", repo: "widget", environment_name: "prod" });
+		}),
+	);
+
+	it.effect("a config key cannot retarget the request at another repository", () =>
+		Effect.gen(function* () {
+			// `config` is an open record. Spread AFTER the coordinates it would
+			// overwrite them, silently sending the request somewhere else while the
+			// span still annotated the intended repository.
+			const { requested } = yield* run(
+				Effect.flatMap(DeploymentEnvironment, (e) =>
+					e.upsert("prod", { owner: "attacker", repo: "elsewhere", wait_timer: 5 } as never),
+				),
+				{ "PUT /repos/{owner}/{repo}/environments/{environment_name}": {} },
+			);
+			assert.strictEqual(requested[0]?.params.owner, "acme");
+			assert.strictEqual(requested[0]?.params.repo, "widget");
+			assert.strictEqual(requested[0]?.params.wait_timer, 5, "the real body still passes through");
 		}),
 	);
 });

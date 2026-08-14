@@ -1,4 +1,4 @@
-import { assert, describe, expect, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { RecordedCall } from "../src/index.js";
 import { GitHubClient, GitHubError } from "../src/index.js";
@@ -77,7 +77,7 @@ describe("RepositorySecurity.vulnerabilityAlerts", () => {
 
 	it.effect("does NOT absorb any other failure", () =>
 		Effect.gen(function* () {
-			const exit = yield* run(
+			const error = yield* run(
 				Effect.flatMap(RepositorySecurity, (s) => s.vulnerabilityAlerts()),
 				{
 					// A mis-scoped token is not "disabled". A blanket catch here would
@@ -90,9 +90,15 @@ describe("RepositorySecurity.vulnerabilityAlerts", () => {
 						status: 403,
 					}),
 				},
-			).pipe(Effect.exit);
+			).pipe(Effect.flip);
 
-			assert.include(JSON.stringify(exit), "unauthorized");
+			// Assert the failure VALUE, not a serialisation of the Exit. A
+			// JSON.stringify check depends on the shape of Exit and GitHubError, and
+			// "unauthorized" appears in the fixture too — so it would pass even if
+			// the error surfaced with a different kind, which is the whole subject
+			// of this test.
+			assert.instanceOf(error, GitHubError);
+			assert.strictEqual(error.kind, "unauthorized");
 		}),
 	);
 });

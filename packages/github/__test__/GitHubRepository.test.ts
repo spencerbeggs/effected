@@ -1,4 +1,4 @@
-import { assert, describe, expect, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient } from "../src/GitHubClient.js";
@@ -309,6 +309,22 @@ describe("GitHubRepository.applySettings reporting", () => {
 			// And the report agrees with the wire, which is the property that makes
 			// it trustworthy rather than merely plausible.
 			assert.notProperty(requested[0]?.params ?? {}, "merge_commit_title");
+		}),
+	);
+
+	it.effect("sends nothing when preparation drops every field it was given", () =>
+		Effect.gen(function* () {
+			// The reviewer's reproduction. `security_and_analysis: 42` normalises to
+			// nothing, so `prepared` is empty — but the gate used to test the RAW
+			// keys, firing a PATCH carrying only owner and repo while the report
+			// said `rest: []`. The report contradicting the wire is exactly what
+			// AppliedSettings exists to prevent, so it must not happen here.
+			const { value, requested } = yield* run(
+				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ security_and_analysis: 42 })),
+				{ "PATCH /repos/{owner}/{repo}": REPO },
+			);
+			assert.deepStrictEqual([...value.rest], []);
+			assert.lengthOf(requested, 0, "no request should have been made at all");
 		}),
 	);
 

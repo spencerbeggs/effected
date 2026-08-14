@@ -436,6 +436,14 @@ const makeFixture = (fixtures: GitHubFixtures): GitHubClientShape => {
 		_params: Rest.Params<R>,
 		options?: PageOptions,
 	): Stream.Stream<Rest.Item<R>, GitHubError> => {
+		// Record BEFORE the existence and error branches, matching every other
+		// surface. Recording afterwards meant a stubbed-error or unstubbed
+		// paginated read never appeared in `requested`, so a suite could not tell
+		// "paginate was never called" from "paginate was called and failed" —
+		// which is the one case the error-as-response fixture exists to confirm.
+		const perPage = perPageOf(options);
+		requested?.push({ kind: "paginate", route, params: _params as Record<string, unknown>, perPage });
+
 		const recorded = fixtures.paginate?.[route];
 		if (recorded instanceof GitHubError) return Stream.fail(recorded);
 		const items = recorded;
@@ -449,8 +457,6 @@ const makeFixture = (fixtures: GitHubFixtures): GitHubClientShape => {
 					return Stream.die(new Error(`GitHubClient.paginate: no fixture for ${route}`));
 			}
 		}
-		const perPage = perPageOf(options);
-		requested?.push({ kind: "paginate", route, params: _params as Record<string, unknown>, perPage });
 		return paginate<Rest.Item<R>>(() => fromArray(items as ReadonlyArray<Rest.Item<R>>, perPage), options?.maxPages);
 	};
 

@@ -100,6 +100,13 @@ const SETUP_KEYS = [
 	"runner_label",
 ] as const satisfies ReadonlyArray<keyof CodeScanningSetup>;
 
+// `satisfies` proves every listed key belongs to the type; it does NOT prove
+// the reverse, so a new optional field on `CodeScanningSetup` would be dropped
+// from the body silently. This fails to compile until the key is listed.
+type UnlistedSetupKey = Exclude<keyof CodeScanningSetup, (typeof SETUP_KEYS)[number]>;
+const _everySetupKeyIsListed: UnlistedSetupKey extends never ? true : never = true;
+void _everySetupKeyIsListed;
+
 /**
  * Every method resolves {@link Repo} per call rather than once at layer
  * construction, for the reason `GitBranch` states: capturing the coordinate

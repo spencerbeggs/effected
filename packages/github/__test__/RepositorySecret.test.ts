@@ -1,5 +1,5 @@
-import { assert, describe, expect, it } from "@effect/vitest";
-import { Effect, Encoding, Redacted, Result } from "effect";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Encoding, Redacted } from "effect";
 import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { Repo, RepoRef } from "../src/Repo.js";

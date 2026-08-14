@@ -121,15 +121,14 @@ describe("bundle reachability", () => {
 		//
 		// This was documented as a property and asserted nowhere until now, which
 		// is the shape of claim this suite exists to stop.
-		for (const entry of [
-			"Ruleset.ts",
-			"RepositoryVariable.ts",
-			"DeploymentEnvironment.ts",
-			"CodeScanning.ts",
-			"RepositorySecurity.ts",
-			"GitHubRepository.ts",
-			"GitHubClient.ts",
-		]) {
+		// Derived from the directory rather than hardcoded: a NEW module that
+		// imports the crypto would otherwise pass this test until someone
+		// remembered to add it to a list, which is the failure mode a
+		// confinement assertion exists to remove.
+		const others = readdirSync(SRC)
+			.filter((name) => name.endsWith(".ts") && name !== "index.ts" && name !== "RepositorySecret.ts")
+			.sort();
+		for (const entry of others) {
 			const reachable = reachableBareImports(entry);
 			for (const dep of SEALED_BOX) {
 				assert.isFalse(
