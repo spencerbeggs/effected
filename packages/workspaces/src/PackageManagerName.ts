@@ -26,6 +26,47 @@ export const PackageManagerName = Schema.Literals(["npm", "pnpm", "yarn", "bun"]
 export type PackageManagerName = typeof PackageManagerName.Type;
 
 /**
+ * The markers {@link PackageManagerDetector} probes, in the priority order it
+ * probes them.
+ *
+ * @remarks
+ * One vocabulary serves both halves of the detection contract: the failure path
+ * reports every member as `PackageManagerDetectionError.checked`, and the
+ * success path reports the one that fired as
+ * `DetectedPackageManager.evidence`. A closed literal union rather than
+ * free text, so a consumer logging *why* a workspace was classified asserts
+ * against the kit's vocabulary instead of re-deriving the probe with its own
+ * filesystem reads.
+ *
+ * The `package.json#…` spellings name manifest *fields*; the rest are marker
+ * files at the workspace root.
+ *
+ * @public
+ */
+export const PackageManagerEvidence = Schema.Literals([
+	// The workspace tier: which manager runs this WORKSPACE.
+	"pnpm-workspace.yaml",
+	"bun.lock",
+	"bun.lockb",
+	"yarn.lock",
+	"package.json#workspaces",
+	// The standalone tier: which manager runs this single-package repo.
+	"pnpm-lock.yaml",
+	"package-lock.json",
+	// The declaration tier: which manager is MEANT to run, before any install.
+	"package.json#packageManager",
+	"package.json#devEngines.packageManager",
+]);
+
+/**
+ * The decoded type of {@link (PackageManagerEvidence:variable)}: the marker
+ * that decided a detection.
+ *
+ * @public
+ */
+export type PackageManagerEvidence = typeof PackageManagerEvidence.Type;
+
+/**
  * The outcome of package-manager detection at a workspace root.
  *
  * @remarks
@@ -36,6 +77,15 @@ export type PackageManagerName = typeof PackageManagerName.Type;
  * `devEngines.packageManager`; see {@link PackageManagerDetector} for the
  * precedence between them.
  *
+ * `evidence` is the rung of the priority order that decided the **name** — the
+ * verdict's provenance, in the same vocabulary the failure path reports as
+ * `PackageManagerDetectionError.checked`. For the bun and yarn rungs the
+ * lockfile is the recorded signal even though the rung is a conjunction (the
+ * lockfile *plus* a manifest field naming the manager): the manifest field alone
+ * would have resolved in the declaration tier, so the lockfile is what this rung
+ * added. The version's provenance is deliberately not carried — it follows the
+ * two-field precedence above, which is a rule, not a probe.
+ *
  * @public
  */
 export class DetectedPackageManager extends Schema.Class<DetectedPackageManager>("DetectedPackageManager")({
@@ -45,6 +95,8 @@ export class DetectedPackageManager extends Schema.Class<DetectedPackageManager>
 	version: Schema.Option(Schema.String),
 	/** The JavaScript runtime the manager implies. */
 	runtime: Schema.Literals(["node", "bun"]),
+	/** The rung of the priority order that decided the name. */
+	evidence: PackageManagerEvidence,
 }) {}
 
 /**
@@ -130,21 +182,11 @@ export class PackageManagerDetectionError extends Schema.TaggedError<PackageMana
 	}
 }
 
-/** The markers probed, in priority order. Exposed on the error so the contract is not prose-only. */
-const CHECKED = [
-	// The workspace tier: which manager runs this WORKSPACE.
-	"pnpm-workspace.yaml",
-	"bun.lock",
-	"bun.lockb",
-	"yarn.lock",
-	"package.json#workspaces",
-	// The standalone tier: which manager runs this single-package repo.
-	"pnpm-lock.yaml",
-	"package-lock.json",
-	// The declaration tier: which manager is MEANT to run, before any install.
-	"package.json#packageManager",
-	"package.json#devEngines.packageManager",
-] as const;
+/**
+ * The markers probed, in priority order. Derived from the evidence vocabulary so
+ * the failure path's `checked` and the success path's `evidence` cannot drift.
+ */
+const CHECKED = PackageManagerEvidence.literals;
 
 /**
  * Every failure {@link PackageManagerDetector} can surface: no manager could be
@@ -316,15 +358,24 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 					name: "pnpm",
 					version: versionFor(hints, "pnpm"),
 					runtime: "node",
+					evidence: "pnpm-workspace.yaml",
 				});
 			}
 
-			const bunLock = (yield* has(root, "bun.lock")) || (yield* has(root, "bun.lockb"));
-			if (bunLock && namesManager(hints, "bun")) {
+			// Which bun lockfile is present, probed in priority order — the marker
+			// itself is the evidence a success reports, so the OR is not collapsed
+			// into a bare boolean.
+			const bunLock: Option.Option<"bun.lock" | "bun.lockb"> = (yield* has(root, "bun.lock"))
+				? Option.some("bun.lock")
+				: (yield* has(root, "bun.lockb"))
+					? Option.some("bun.lockb")
+					: Option.none();
+			if (Option.isSome(bunLock) && namesManager(hints, "bun")) {
 				return DetectedPackageManager.make({
 					name: "bun",
 					version: versionFor(hints, "bun"),
 					runtime: "bun",
+					evidence: bunLock.value,
 				});
 			}
 
@@ -333,6 +384,7 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 					name: "yarn",
 					version: versionFor(hints, "yarn"),
 					runtime: "node",
+					evidence: "yarn.lock",
 				});
 			}
 
@@ -342,6 +394,7 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 					name: "npm",
 					version: versionFor(hints, "npm"),
 					runtime: "node",
+					evidence: "package.json#workspaces",
 				});
 			}
 
@@ -363,19 +416,39 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 			// yarn or bun lockfile still needs the manifest to name its manager,
 			// because a stray yarn.lock is as common here as in a workspace.
 			if (yield* has(root, "pnpm-lock.yaml")) {
-				return DetectedPackageManager.make({ name: "pnpm", version: versionFor(hints, "pnpm"), runtime: "node" });
+				return DetectedPackageManager.make({
+					name: "pnpm",
+					version: versionFor(hints, "pnpm"),
+					runtime: "node",
+					evidence: "pnpm-lock.yaml",
+				});
 			}
 
-			if (bunLock && namesManager(hints, "bun")) {
-				return DetectedPackageManager.make({ name: "bun", version: versionFor(hints, "bun"), runtime: "bun" });
+			if (Option.isSome(bunLock) && namesManager(hints, "bun")) {
+				return DetectedPackageManager.make({
+					name: "bun",
+					version: versionFor(hints, "bun"),
+					runtime: "bun",
+					evidence: bunLock.value,
+				});
 			}
 
 			if ((yield* has(root, "yarn.lock")) && namesManager(hints, "yarn")) {
-				return DetectedPackageManager.make({ name: "yarn", version: versionFor(hints, "yarn"), runtime: "node" });
+				return DetectedPackageManager.make({
+					name: "yarn",
+					version: versionFor(hints, "yarn"),
+					runtime: "node",
+					evidence: "yarn.lock",
+				});
 			}
 
 			if (yield* has(root, "package-lock.json")) {
-				return DetectedPackageManager.make({ name: "npm", version: versionFor(hints, "npm"), runtime: "node" });
+				return DetectedPackageManager.make({
+					name: "npm",
+					version: versionFor(hints, "npm"),
+					runtime: "node",
+					evidence: "package-lock.json",
+				});
 			}
 
 			// ── the declaration tier ───────────────────────────────────────────
@@ -392,6 +465,11 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 						name,
 						version: versionFor(hints, name),
 						runtime: name === "bun" ? "bun" : "node",
+						// The field that supplied the name — `declaredName` believes
+						// devEngines first, so the evidence mirrors that precedence.
+						evidence: Option.isSome(hints.devEngines)
+							? "package.json#devEngines.packageManager"
+							: "package.json#packageManager",
 					});
 				}
 			}
@@ -447,7 +525,12 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 	 * const TestDetector = PackageManagerDetector.layerTest({
 	 *   detect: () =>
 	 *     Effect.succeed(
-	 *       DetectedPackageManager.make({ name: "pnpm", version: Option.none(), runtime: "node" }),
+	 *       DetectedPackageManager.make({
+	 *         name: "pnpm",
+	 *         version: Option.none(),
+	 *         runtime: "node",
+	 *         evidence: "pnpm-workspace.yaml",
+	 *       }),
 	 *     ),
 	 * });
 	 * ```

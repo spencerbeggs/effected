@@ -16,8 +16,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ExecContext, LocalExec, LocalExecError } from "@effected/commands";
 import { Effect, Layer, Option } from "effect";
-import type { DetectedPackageManager, PackageManagerName } from "../src/index.js";
+import type { PackageManagerName } from "../src/index.js";
 import {
+	DetectedPackageManager,
 	PackageManagerDetectionError,
 	PackageManagerDetector,
 	WorkspaceManifestError,
@@ -29,7 +30,11 @@ import {
 /** A detector that reports `name` at any root. */
 const detects = (name: PackageManagerName, runtime: "node" | "bun" = "node") =>
 	Layer.succeed(PackageManagerDetector, {
-		detect: () => Effect.succeed({ name, version: Option.none(), runtime } as unknown as DetectedPackageManager),
+		detect: () =>
+			Effect.succeed(
+				// The declaration-tier evidence is the one rung valid for every manager.
+				DetectedPackageManager.make({ name, version: Option.none(), runtime, evidence: "package.json#packageManager" }),
+			),
 	});
 
 /** A detector that fails the way `failure` says. */

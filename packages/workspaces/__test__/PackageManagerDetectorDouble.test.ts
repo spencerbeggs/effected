@@ -20,6 +20,7 @@ const pnpm = DetectedPackageManager.make({
 	name: "pnpm",
 	version: Option.some("10.33.0"),
 	runtime: "node",
+	evidence: "pnpm-workspace.yaml",
 });
 
 describe("PackageManagerDetector.makeTest", () => {
@@ -91,7 +92,14 @@ describe("PackageManagerDetector.layerTest", () => {
 			Effect.provide(
 				PackageManagerDetector.layerTest({
 					detect: () =>
-						Effect.succeed(DetectedPackageManager.make({ name: "bun", version: Option.none(), runtime: "bun" })),
+						Effect.succeed(
+							DetectedPackageManager.make({
+								name: "bun",
+								version: Option.none(),
+								runtime: "bun",
+								evidence: "bun.lock",
+							}),
+						),
 				}),
 			),
 		),
