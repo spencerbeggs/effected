@@ -75,6 +75,12 @@
 		},
 		{
 			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/scratchpad.md",
+			"hash": "20d744b7478240593021e87e8fa0e6d0bcd88ca06c7f3f42996a60045c86bfb7",
+			"recordedAt": "2026-08-14"
+		},
+		{
+			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/sync-primitive-policy.md",
 			"hash": "164bc97698770357d1b64d91e9f5374f3b35628a55c4db8bf57877b9e8204a14",
 			"recordedAt": "2026-08-12"

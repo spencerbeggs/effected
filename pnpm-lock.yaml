@@ -875,6 +875,109 @@ importers:
         version: 7.0.2
     publishDirectory: dist/dev/pkg
 
+  scratchpad:
+    dependencies:
+      '@effected/app':
+        specifier: workspace:*
+        version: link:../packages/app/dist/dev/pkg
+      '@effected/cli':
+        specifier: workspace:*
+        version: link:../packages/cli/dist/dev/pkg
+      '@effected/commands':
+        specifier: workspace:*
+        version: link:../packages/commands/dist/dev/pkg
+      '@effected/config-file':
+        specifier: workspace:*
+        version: link:../packages/config-file/dist/dev/pkg
+      '@effected/git':
+        specifier: workspace:*
+        version: link:../packages/git/dist/dev/pkg
+      '@effected/github':
+        specifier: workspace:*
+        version: link:../packages/github/dist/dev/pkg
+      '@effected/github-actions':
+        specifier: workspace:*
+        version: link:../packages/github-actions/dist/dev/pkg
+      '@effected/glob':
+        specifier: workspace:*
+        version: link:../packages/glob/dist/dev/pkg
+      '@effected/jsonc':
+        specifier: workspace:*
+        version: link:../packages/jsonc/dist/dev/pkg
+      '@effected/jsonl':
+        specifier: workspace:*
+        version: link:../packages/jsonl/dist/dev/pkg
+      '@effected/lockfiles':
+        specifier: workspace:*
+        version: link:../packages/lockfiles/dist/dev/pkg
+      '@effected/markdown':
+        specifier: workspace:*
+        version: link:../packages/markdown/dist/dev/pkg
+      '@effected/npm':
+        specifier: workspace:*
+        version: link:../packages/npm/dist/dev/pkg
+      '@effected/package-json':
+        specifier: workspace:*
+        version: link:../packages/package-json/dist/dev/pkg
+      '@effected/pnpm-plugin-effect':
+        specifier: workspace:*
+        version: link:../packages/pnpm-plugin-effect/dist/dev/pkg
+      '@effected/runtimes':
+        specifier: workspace:*
+        version: link:../packages/runtimes/dist/dev/pkg
+      '@effected/sbom':
+        specifier: workspace:*
+        version: link:../packages/sbom/dist/dev/pkg
+      '@effected/schemastore':
+        specifier: workspace:*
+        version: link:../packages/schemastore/dist/dev/pkg
+      '@effected/semver':
+        specifier: workspace:*
+        version: link:../packages/semver/dist/dev/pkg
+      '@effected/spdx':
+        specifier: workspace:*
+        version: link:../packages/spdx/dist/dev/pkg
+      '@effected/store':
+        specifier: workspace:*
+        version: link:../packages/store/dist/dev/pkg
+      '@effected/templates':
+        specifier: workspace:*
+        version: link:../packages/templates/dist/dev/pkg
+      '@effected/toml':
+        specifier: workspace:*
+        version: link:../packages/toml/dist/dev/pkg
+      '@effected/tsconfig-json':
+        specifier: workspace:*
+        version: link:../packages/tsconfig-json/dist/dev/pkg
+      '@effected/walker':
+        specifier: workspace:*
+        version: link:../packages/walker/dist/dev/pkg
+      '@effected/workspaces':
+        specifier: workspace:*
+        version: link:../packages/workspaces/dist/dev/pkg
+      '@effected/xdg':
+        specifier: workspace:*
+        version: link:../packages/xdg/dist/dev/pkg
+      '@effected/yaml':
+        specifier: workspace:*
+        version: link:../packages/yaml/dist/dev/pkg
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.107
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-beta.107(effect@4.0.0-beta.107)(vitest@4.1.10)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.2.0
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
+      typescript:
+        specifier: catalog:build
+        version: 7.0.2
+
   website:
     devDependencies:
       '@rspress/core':

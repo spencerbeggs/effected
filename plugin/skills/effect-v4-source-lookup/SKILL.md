@@ -248,9 +248,33 @@ Existence and signature do not tell you what a function *does*. Real examples wh
 
 A probe that cannot fail is worse than no probe. Every precondition below exists because it was violated.
 
+**Venue: a repo with a `scratchpad/` workspace sends probes there first.**
+Some kit repos (the effected monorepo among them) ship a private `scratchpad/`
+workspace member with every kit package at `workspace:*` and `effect` at the
+catalog pin. There, a probe is TYPED: write free-form probes as
+`scratchpad/probes/<name>.ts` and run `pnpm scratchpad:probe probes/<name>.ts`
+from the repo root (`pnpm --filter scratchpad probe` under the hood — pnpm's
+`--filter` executes the underlying script with its cwd inside `scratchpad/`,
+so precondition 1's never-from-the-repo-root resolution hazard does not
+arise), or write test-shaped probes as
+`scratchpad/__test__/<name>.test.ts` and run
+`pnpm exec vitest run --project scratchpad --coverage.enabled=false`. Type-level
+probes run `pnpm scratchpad:check` (`tsc --noEmit` over the scratchpad
+program) — tsx and vitest strip types without checking, so only
+`scratchpad:check` proves a does-this-compile question. Both areas are
+gitignored and disposable (`pnpm scratchpad:reset` reseeds them), so the
+placement and delete-by-absolute-path rules below — which exist to keep
+probes safe in repos WITHOUT a scratchpad — do not apply there. Every OTHER
+precondition (print the resolved version, run the control first, exercise a
+non-first member) applies unchanged in either venue. No `scratchpad/`
+workspace in the repo? The protocol below is the venue. Bare `@effected/<pkg>`
+imports resolve to each package's `dist/dev` build — after editing a
+package's `src/`, run `pnpm build --filter @effected/<pkg>` before trusting a
+tsx probe.
+
 1. **Run from inside the package, never the repo root.** The workspace root resolves `effect@3` and will describe the v3 surface with total confidence.
 2. **Print the resolved version inside every probe.** If it does not say `4.0.0-beta.<n>`, the probe measured v3 and every conclusion from it is void.
-3. **Probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
+3. **In a repo without a scratchpad workspace: probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
    - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
    - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
 
@@ -260,6 +284,8 @@ A probe that cannot fail is worse than no probe. Every precondition below exists
 4. **Run the control first.** Write a line you *know* must fail. Watch it fail. Only then write the real assertion. For a **behavioural** probe, "must fail" is the wrong control — invert it and prove the probe can *observe the effect at all*. A probe asking "does a defect roll the transaction back?" reads success as *zero rows*, and zero rows is also what a broken harness prints; the control that rescues it is a **committing** transaction that must leave its row behind. Ask what a silently-dead probe would print, and make the control the thing that distinguishes it.
 5. **A probe of any multi-value API must exercise a NON-first member.** A probe that constructs with the first literal of a union, the first element of a list, or the first overload succeeds under both the correct reading and a silently-degraded one — it cannot fail, so it settles nothing. The `@effected/glob` planning probe for `Schema.Literal("a", "b", "c")` passed precisely because it constructed with `"a"`; only a `"b"` construction exposed that v4's runtime keeps the first literal and drops the rest.
 6. **Delete the probe by absolute path** when done.
+
+Example (no-scratchpad venue — see precondition 3):
 
 ```bash
 cd packages/<pkg>

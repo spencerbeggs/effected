@@ -6,13 +6,13 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 This is **effected**, a pnpm monorepo (npm org `@effected`) building an **Effect v4 app kit**: a coherent set of libraries designed v4-first, not a lift-and-shift of Spencer's older `*-effect` repos. Scope is closed by five consuming applications, not by how many source repos remain.
 
-The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.107`. The monorepo holds libraries only — applications stay in external repos.
+The monorepo holds libraries only — applications stay in external repos.
 
-**Releases are changeset-driven: CI builds the appropriate changesets and releases the packages they name.** A release may be the whole kit or a single package — both are ordinary. The most recent coordinated wave is the 27-package beta.107 wave (2026-08-11, PR #325), with solo releases since. Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. Only the unreleased `@effected/cli` still sits at `0.0.0`.
+**Releases are changeset-driven: CI builds the appropriate changesets and releases the packages they name.** A release may be the whole kit or a single package — both are ordinary. Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA.
 
 ## Design Documentation
 
-Eleven foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
+Twelve foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load them on demand:
 
 - Architecture → `@./.claude/design/effected/architecture.md` — Load when: changing repo structure, build pipeline, tooling, or workspace/catalog setup.
 - Effect standards → `@./.claude/design/effected/effect-standards.md` — Load when: designing or porting a library API, or making dependency/peer-closure decisions.
@@ -25,6 +25,7 @@ Eleven foundational design docs live in `.claude/design/effected/` (config: `.cl
 - Sync primitive policy → `@./.claude/design/effected/sync-primitive-policy.md` — Load when: designing a pure boundary's surface shape, or deciding whether to expose a sync `Result` primitive alongside an `Effect` form.
 - Plugin → `@./.claude/design/effected/plugin.md` — Load when: working in `plugin/` on the "effected" Claude Code plugin.
 - GitHub Action canon → `@./.claude/design/effected/github-action-canon.md` — Load when: building or reviewing a GitHub Action repository on the kit, or editing the Actions skill suite that teaches it.
+- Scratchpad → `@./.claude/design/effected/scratchpad.md` — Load when: changing the scratchpad workspace's committed shell or its ghost-workspace exclusions.
 
 Per-package design docs live in `.claude/design/effected/packages/`; consumer dogfood records live in `.claude/design/effected/consumers/`.
 
@@ -38,7 +39,7 @@ Detail lifted out of this file. Load on demand:
 
 ### Kit composition
 
-**The migration program is complete (2026-07-12).** The kit is **28 publishable packages**: 27 libraries plus the `pnpm-plugin-effect` companion. `@effected/cli` is the newest, built 2026-08-13 from the `@spencerbeggs/reposets` dogfood loop and unreleased. `runtime-resolver-cli` and `ts-vfs` were extracted back to external repos; `@effected/json-schema` is off the roadmap entirely. New packages follow the migration playbook: design doc first, then port.
+**The migration program is complete (2026-07-12).** The kit is **28 publishable packages**: 27 libraries plus the `pnpm-plugin-effect` companion. `@effected/cli` is the newest, built from the `@spencerbeggs/reposets` dogfood loop and unreleased. New packages follow the migration playbook: design doc first, then port.
 
 **The config-file consolidation is done.** `@effected/config-file` absorbed the three codec packages; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. **Never collect them into a namespace object** (a barrel with different syntax): referencing one reaches every codec and drags every parsing engine into a JSON-only consumer's bundle, so tree-shaking dies silently. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
@@ -49,6 +50,7 @@ Detail lifted out of this file. Load on demand:
 - `packages/` — the workspace packages (see below).
 - `plugin/` — "effected", a Claude Code plugin (skills and specialist agents, counted in `plugin/skills/` and `plugin/agents/`) dogfooded during package work; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
+- `scratchpad/` — private agent-probe workspace: every kit package at `workspace:*`, three runners (`pnpm scratchpad:probe <file>`, vitest project `scratchpad`, `pnpm scratchpad:check`), reset via `pnpm scratchpad:reset`. Never published, changeset-ignored, invisible to CI. Read `scratchpad/CLAUDE.md` before working there.
 - `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. **Never write to anything under `.repos/`**, by any means, with any tool — silk's PreToolUse guards deny it. Fresh clones start empty. Detail → `@./CLAUDE.vendored-effect.md`.
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
 
