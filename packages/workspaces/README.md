@@ -70,7 +70,17 @@ Effect.runPromise(program.pipe(Effect.provide(WorkspacesLayer))).then(console.lo
 // [ [ ...names with no workspace dependencies ], [ ...names that depend only on level 0 ], ... ]
 ```
 
-`DependencyGraph` is a value class, not a service: build it from packages you already have. A cycle fails with `CyclicDependencyError` naming the packages that could not be ordered.
+`DependencyGraph` is a value class, not a service: build it from packages you already have. A cycle fails with `CyclicDependencyError`, whose `cycle` field names the packages actually in the cycle — the members of the strongly-connected components — and not the ones merely stalled behind it, which is the difference between a fix list and a suspect list.
+
+`toMermaid()` renders the same graph for a job summary, an issue or a design doc. It is total, deterministic (nodes and edges both in sorted order) and safe for scoped names, which appear only inside quoted labels:
+
+```ts
+console.log(graph.toMermaid());
+// flowchart TD
+//   0["@acme/app"]
+//   1["@acme/utils"]
+//   0 --> 1
+```
 
 ## Change detection
 
@@ -228,7 +238,7 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 - `WorkspaceRoot` — root discovery from a `cwd`, over `WORKSPACE_MARKERS`.
 - `WorkspaceDiscovery` — package enumeration with a bounded descent for segment-crossing `packages/**` patterns, per-package lookup and the `makeTest` / `layerTest` in-memory test doubles.
 - `WorkspacePackage` — a deliberately tolerant manifest model, so one member with an odd version cannot fail discovery for the whole repo. `manifestRecord` keeps the as-read `package.json` for tolerant access to fields outside the typed slice without a second read; `WorkspacePackage.manifest(pkg)` re-reads and is the opt-in bridge to `@effected/package-json`'s strict `Package`.
-- `DependencyGraph` — a value class over discovered packages: `levels()` for parallel build tiers, the flattened topological order, and `CyclicDependencyError` when there isn't one.
+- `DependencyGraph` — a value class over discovered packages: `levels()` for parallel build tiers, the flattened topological order, `toMermaid()` for a deterministic Mermaid `flowchart TD` of the whole graph, and `CyclicDependencyError` — naming the cycle's actual members — when there is no order.
 - `PackageManagerDetector` — npm, pnpm, yarn or bun from lockfiles and the `packageManager` field.
 - `WorkspaceCatalogs` — pnpm catalog assembly and `catalog:` resolution, on pnpm's own catalog packages; `releaseAgeGate()` assembles the effective `@effected/npm` `ReleaseAgeGate` from inline `pnpm-workspace.yaml` release-age keys and replayed hook contributions, strictest-wins, in the same pass as the catalogs.
 - `LockfileReader` — locate and parse the workspace's lockfile through `@effected/lockfiles`.

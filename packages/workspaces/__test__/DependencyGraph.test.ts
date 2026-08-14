@@ -107,7 +107,7 @@ describe("DependencyGraph", () => {
 		}),
 	);
 
-	it.effect("sort fails typed on a cycle, naming the stalled set", () =>
+	it.effect("sort fails typed on a cycle, naming the cycle members", () =>
 		Effect.gen(function* () {
 			const graph = DependencyGraph.make({
 				packages: [pkg("a", { b: "1.0.0" }), pkg("b", { a: "1.0.0" }), pkg("free")],
@@ -115,6 +115,36 @@ describe("DependencyGraph", () => {
 			const error = yield* Effect.flip(graph.sort());
 			assert.instanceOf(error, CyclicDependencyError);
 			assert.deepStrictEqual(error.cycle, ["a", "b"]);
+		}),
+	);
+
+	it.effect("the cycle payload excludes packages merely DOWNSTREAM of the cycle", () =>
+		Effect.gen(function* () {
+			// a↔b cycle, c depends on a. Kahn's stalled set is ["a", "b", "c"] — c
+			// never clears because its dependency chain is blocked — but c is not a
+			// cycle member. The old payload was the stalled set; this discriminates.
+			const graph = DependencyGraph.make({
+				packages: [pkg("a", { b: "1.0.0" }), pkg("b", { a: "1.0.0" }), pkg("c", { a: "1.0.0" })],
+			});
+			const error = yield* Effect.flip(graph.levels());
+			assert.instanceOf(error, CyclicDependencyError);
+			assert.deepStrictEqual(error.cycle, ["a", "b"]);
+		}),
+	);
+
+	it.effect("two independent cycles yield the sorted union of both", () =>
+		Effect.gen(function* () {
+			const graph = DependencyGraph.make({
+				packages: [
+					pkg("a", { b: "1.0.0" }),
+					pkg("b", { a: "1.0.0" }),
+					pkg("c", { d: "1.0.0" }),
+					pkg("d", { c: "1.0.0" }),
+				],
+			});
+			const error = yield* Effect.flip(graph.sort());
+			assert.instanceOf(error, CyclicDependencyError);
+			assert.deepStrictEqual(error.cycle, ["a", "b", "c", "d"]);
 		}),
 	);
 
@@ -181,6 +211,31 @@ describe("DependencyGraph", () => {
 			assert.instanceOf(error, PackageNotFoundError);
 		}),
 	);
+
+	it.effect("sortSubset's cycle payload also excludes downstream packages", () =>
+		Effect.gen(function* () {
+			// The subset closure of c is {a, b, c} — the cycle is only a↔b.
+			const graph = DependencyGraph.make({
+				packages: [pkg("a", { b: "1.0.0" }), pkg("b", { a: "1.0.0" }), pkg("c", { a: "1.0.0" })],
+			});
+			const error = yield* Effect.flip(graph.sortSubset(["c"]));
+			assert.instanceOf(error, CyclicDependencyError);
+			assert.deepStrictEqual(error.cycle, ["a", "b"]);
+		}),
+	);
+
+	it("toMermaid renders scoped package names inside quoted labels, deterministically", () => {
+		// Dependencies are declared out of sorted order on purpose: the edge list
+		// must come out sorted regardless of manifest key order, and `@`/`/` must
+		// survive as label text (node IDs are the numeric indexes).
+		const graph = DependencyGraph.make({
+			packages: [pkg("@scope/a", { "@scope/c": "1.0.0", "@scope/b": "1.0.0" }), pkg("@scope/b"), pkg("@scope/c")],
+		});
+		assert.strictEqual(
+			graph.toMermaid(),
+			["flowchart TD", '  0["@scope/a"]', '  1["@scope/b"]', '  2["@scope/c"]', "  0 --> 1", "  0 --> 2"].join("\n"),
+		);
+	});
 
 	it("make accepts a ReadonlyArray of packages without a spread copy", () => {
 		// The type-level half IS the test: `packages` is declared readonly and

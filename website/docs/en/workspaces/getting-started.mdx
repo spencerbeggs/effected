@@ -156,8 +156,22 @@ Effect.runPromise(program.pipe(Effect.provide(WorkspacesLive))).then(console.log
 ```
 
 `levels()` fails with a typed `CyclicDependencyError` if the workspace has a
-dependency cycle — its `cycle` field lists the packages still tangled. For the
+dependency cycle — its `cycle` field names the packages actually in the cycle,
+not the ones merely blocked behind it, so it is the set to break. For the
 flattened single-file order instead of tiers, use `graph.sort()`.
+
+To look at the graph rather than order it, `graph.toMermaid()` renders it as a
+Mermaid `flowchart TD` you can paste into a job summary or an issue. It never
+fails, the node and edge order is deterministic, and scoped names are safe
+because they only ever appear inside quoted labels:
+
+```ts
+console.log(graph.toMermaid());
+// flowchart TD
+//   0["@acme/app"]
+//   1["@acme/utils"]
+//   0 --> 1
+```
 
 ### Find the blast radius of a change
 

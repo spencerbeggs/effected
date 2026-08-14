@@ -70,7 +70,7 @@ const releasePlan = Effect.gen(function* () {
 Effect.runPromise(releasePlan.pipe(Effect.provide(WorkspacesLive)));
 ```
 
-`DependencyGraph` is a pure value, not a service — `sortSubset` and `levels` are `Effect.fn` boundaries only because a cycle is a typed failure. Where `sort()` flattens the whole workspace into one topological order and `sortSubset(names)` restricts to a subset, `levels()` groups packages into parallel waves: level 0 depends on nothing in the workspace, level _n_ only on levels below it, so a publisher can fan out each wave concurrently and wait for it before starting the next. A dependency cycle fails all three as `CyclicDependencyError`, whose `cycle` field lists the strongly-connected residue — the set to break, not a single loop to trace.
+`DependencyGraph` is a pure value, not a service — `sortSubset` and `levels` are `Effect.fn` boundaries only because a cycle is a typed failure. Where `sort()` flattens the whole workspace into one topological order and `sortSubset(names)` restricts to a subset, `levels()` groups packages into parallel waves: level 0 depends on nothing in the workspace, level _n_ only on levels below it, so a publisher can fan out each wave concurrently and wait for it before starting the next. A dependency cycle fails all three as `CyclicDependencyError`, whose `cycle` field names the members of the strongly-connected components — exactly the packages to break apart, not a single loop to trace and not the packages merely stalled behind the cycle. `toMermaid()` renders the whole graph as a Mermaid `flowchart TD` — total, deterministic, and safe for scoped names — which is what you attach to the job summary when a release plan comes out looking wrong.
 
 ## Diffing the workspace at a git ref
 
@@ -271,7 +271,7 @@ One deliberate gap: `layerTest`'s `info()` **dies** with an explanatory defect u
 
 - [API reference](/workspaces/api) — every export, error and model with full signatures.
 - [`WorkspaceSnapshots`](/workspaces/api/class/workspacesnapshots) and [`WorkspaceStateSnapshot`](/workspaces/api/class/workspacestatesnapshot) — reading and resolving state at a ref.
-- [`DependencyGraph`](/workspaces/api/class/dependencygraph) — `levels`, `sort`, `sortSubset` and `affectedBy`.
+- [`DependencyGraph`](/workspaces/api/class/dependencygraph) — `levels`, `sort`, `sortSubset`, `affectedBy` and `toMermaid`.
 - [`ChangeDetector`](/workspaces/api/class/changedetector) — the three depths of change analysis.
 - [`PublishabilityDetector`](/workspaces/api/class/publishabilitydetector) — the swappable publish-policy service.
 - [`@effected/git`](/git/getting-started) and [`@effected/npm`](/npm) — the change-detection primitives and the resolver contracts this package implements.

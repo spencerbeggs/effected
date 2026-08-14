@@ -10,7 +10,7 @@
 // Cycle detection is ITERATIVE. v3's was a recursive DFS closure — the one
 // stack-overflow surface the lockfiles/glob extractions left behind.
 
-import { Effect, Schema } from "effect";
+import { Effect, Graph, Schema } from "effect";
 import { PackageNotFoundError } from "./WorkspaceDiscovery.js";
 import { WorkspacePackage } from "./WorkspacePackage.js";
 
@@ -19,9 +19,10 @@ import { WorkspacePackage } from "./WorkspacePackage.js";
  * because it contains a cycle.
  *
  * @remarks
- * `cycle` lists every package still carrying unsatisfied dependencies when
- * Kahn's algorithm stalls — the strongly-connected residue, sorted. It is the
- * set to break, not necessarily a single ordered loop.
+ * `cycle` names the actual cycle members — the sorted union of every strongly
+ * connected component with more than one package. Packages merely downstream
+ * of a cycle are excluded, so it is exactly the set to break, not necessarily
+ * a single ordered loop.
  *
  * @public
  */
@@ -198,13 +199,13 @@ export class DependencyGraph extends Schema.Class<DependencyGraph>("DependencyGr
 	 */
 	readonly levels = Effect.fn("DependencyGraph.levels")(
 		(): Effect.Effect<ReadonlyArray<ReadonlyArray<string>>, CyclicDependencyError> =>
-			Effect.suspend(() => Effect.succeed(kahn(this.#index()))).pipe(
-				Effect.flatMap((result) =>
-					result.stalled.length > 0
-						? Effect.fail(new CyclicDependencyError({ cycle: result.stalled }))
-						: Effect.succeed(result.levels),
-				),
-			),
+			Effect.suspend(() => {
+				const edges = this.#index();
+				const result = kahn(edges);
+				return result.stalled.length > 0
+					? Effect.fail(new CyclicDependencyError({ cycle: cycleMembers(edges) }))
+					: Effect.succeed(result.levels);
+			}),
 	);
 
 	/** The flattened topological order — `levels()` concatenated. */
@@ -250,18 +251,82 @@ export class DependencyGraph extends Schema.Class<DependencyGraph>("DependencyGr
 					for (const dep of deps) subReverse.get(dep)?.add(node);
 				}
 
-				const result = kahn({ forward: subForward, reverse: subReverse });
+				const subEdges: Edges = { forward: subForward, reverse: subReverse };
+				const result = kahn(subEdges);
 				return result.stalled.length > 0
-					? Effect.fail(new CyclicDependencyError({ cycle: result.stalled }))
+					? Effect.fail(new CyclicDependencyError({ cycle: cycleMembers(subEdges) }))
 					: Effect.succeed(result.levels.flat());
 			}),
 	);
+
+	/**
+	 * The graph rendered as a Mermaid `flowchart TD`. Total.
+	 *
+	 * @remarks
+	 * Renders through core's `Graph.toMermaid` over a transient graph built from
+	 * the edge index. Node IDs are numeric indexes assigned in sorted-name order
+	 * and package names appear only inside quoted labels, so scoped names
+	 * (`@scope/a`) never break Mermaid syntax. Nodes and each node's edges are
+	 * emitted in sorted order — the output is deterministic regardless of
+	 * manifest key order.
+	 */
+	toMermaid(): string {
+		return Graph.toMermaid(materialize(this.#index()).graph, { edgeLabel: () => "" });
+	}
 }
+
+/**
+ * Materializes the forward map into a transient core `Graph`: nodes in
+ * sorted-name order (so `NodeIndex` *i* is `names[i]`) and each node's edges
+ * in sorted-target order, making the graph — and everything derived from it —
+ * deterministic for a given edge index.
+ */
+const materialize = (
+	edges: Edges,
+): { readonly graph: Graph.DirectedGraph<string, string>; readonly names: ReadonlyArray<string> } => {
+	const names = [...edges.forward.keys()].sort();
+	const graph = Graph.directed<string, string>((mutable) => {
+		const indexOf = new Map<string, Graph.NodeIndex>();
+		for (const name of names) indexOf.set(name, Graph.addNode(mutable, name));
+		for (const name of names) {
+			const source = indexOf.get(name);
+			if (source === undefined) continue;
+			for (const dependency of [...(edges.forward.get(name) ?? [])].sort()) {
+				const target = indexOf.get(dependency);
+				if (target !== undefined) Graph.addEdge(mutable, source, target, "");
+			}
+		}
+	});
+	return { graph, names };
+};
+
+/**
+ * The packages participating in a dependency cycle — the sorted union of every
+ * strongly connected component with more than one member, via core's
+ * `Graph.stronglyConnectedComponents`. Self-edges are dropped at index time,
+ * so a single-member component is never cyclic here.
+ */
+const cycleMembers = (edges: Edges): ReadonlyArray<string> => {
+	const { graph, names } = materialize(edges);
+	const members = new Set<string>();
+	for (const component of Graph.stronglyConnectedComponents(graph)) {
+		if (component.length < 2) continue;
+		for (const index of component) {
+			const name = names[index];
+			if (name !== undefined) members.add(name);
+		}
+	}
+	return [...members].sort();
+};
 
 /**
  * Kahn's algorithm. `forward[A] = {B}` reads "A depends on B", so level 0 is
  * the set with an out-degree of zero and each completed level decrements its
  * dependents through the reverse index.
+ *
+ * A non-empty `stalled` only signals *that* a cycle exists — it holds every
+ * unprocessed node, including ones merely downstream of a cycle. The error
+ * payload names the actual members via `cycleMembers`.
  */
 const kahn = (
 	edges: Edges,

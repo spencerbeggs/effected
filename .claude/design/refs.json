@@ -424,8 +424,8 @@
 		{
 			"source": "packages/workspaces/CLAUDE.md",
 			"target": ".claude/design/effected/packages/workspaces.md",
-			"hash": "53b215099087872e516003e4bbe8bc86fdf4c4981e8b2358db5bc7aed952b948",
-			"recordedAt": "2026-08-12"
+			"hash": "6bdb8ebe92aa574533ed5798ea1ed4b86e07279a11785b9693297d1f8225b7ed",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "packages/xdg/CLAUDE.md",
