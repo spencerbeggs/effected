@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
@@ -77,6 +77,7 @@ const reachableBareImports = (entry: string): ReadonlySet<string> => {
 };
 
 const SIGNER = "universal-github-app-jwt";
+const SEALED_BOX = ["tweetnacl", "blakejs"] as const;
 
 describe("bundle reachability", () => {
 	it("the walker does not lose imports after a /*-bearing token in prose", () => {
@@ -103,6 +104,40 @@ describe("bundle reachability", () => {
 		// The control. Without it, the assertion below could pass because the
 		// walker is broken rather than because the edge is absent.
 		assert.isTrue(reachableBareImports("GitHubApp.ts").has(SIGNER));
+	});
+
+	it("the secret writer DOES reach the sealed-box pair", () => {
+		// The control for the confinement below: without it that assertion could
+		// pass because the walker is broken rather than because the edge is absent.
+		const reachable = reachableBareImports("RepositorySecret.ts");
+		for (const dep of SEALED_BOX) assert.isTrue(reachable.has(dep), `RepositorySecret should reach ${dep}`);
+	});
+
+	it("nothing but the secret writer reaches the sealed-box pair", () => {
+		// `tweetnacl` and `blakejs` are this package's only non-octokit runtime
+		// dependencies and they exist for one member: encrypting a secret before
+		// PUT. Every other resource service must stay clear of them, or a consumer
+		// who never writes a secret still pays for the crypto in their graph.
+		//
+		// This was documented as a property and asserted nowhere until now, which
+		// is the shape of claim this suite exists to stop.
+		for (const entry of [
+			"Ruleset.ts",
+			"RepositoryVariable.ts",
+			"DeploymentEnvironment.ts",
+			"CodeScanning.ts",
+			"RepositorySecurity.ts",
+			"GitHubRepository.ts",
+			"GitHubClient.ts",
+		]) {
+			const reachable = reachableBareImports(entry);
+			for (const dep of SEALED_BOX) {
+				assert.isFalse(
+					reachable.has(dep),
+					`${entry} reaches ${dep} — the sealed box has leaked out of RepositorySecret`,
+				);
+			}
+		}
 	});
 
 	it("a token-only client does NOT reach the JWT signer", () => {
@@ -137,6 +172,47 @@ describe("bundle reachability", () => {
 		assert.strictEqual(manifest.sideEffects, false);
 	});
 
+	it("reaches no node: builtin, and a future one fails HERE rather than as a fake missing dependency", () => {
+		// Two properties in one assertion. First, this package's source reaches no
+		// builtin, which is worth pinning rather than assuming: a `node:` import is
+		// the smell the consolidated-core rule warns about, so a new one should be
+		// a deliberate edit to this line.
+		//
+		// Second, the declared-dependency check below now SKIPS builtins. It used
+		// to classify any non-relative specifier as a package, so the first builtin
+		// to appear anywhere in the reachable graph would have failed that check
+		// with "node:x is imported but not declared" — blaming the manifest for a
+		// package that did nothing wrong. It had simply never happened, because
+		// nothing reachable had imported one. Reported by @spencerbeggs/reposets
+		// (2026-08-13) while porting modules that would have.
+		const builtins = [...reachableBareImports("index.ts"), ...reachableBareImports("GitHubApp.ts")]
+			.filter((specifier) => specifier.startsWith("node:"))
+			.sort();
+		assert.deepStrictEqual(builtins, []);
+	});
+
+	it("every module in src/ is reachable from the entrypoint", () => {
+		// The gap this closes: a module can exist, compile, build warning-free and
+		// pass its own tests while being importable by nobody, because 18 of this
+		// package's 19 test files import `../src/<Module>.js` directly and only one
+		// goes through `../src/index.js`. A suite is therefore no evidence at all
+		// that an export is reachable.
+		//
+		// It bit for real: a ported `RepositorySettings` module was never added to
+		// the entrypoint, because a `type RepositorySettings` was already exported
+		// there and the collision was silent — tsc, the bundler and API Extractor
+		// all said nothing, since a valid export with that name existed. Ten green
+		// tests, zero warnings, unreachable. Found by @spencerbeggs/reposets,
+		// 2026-08-13, only by trying to consume it.
+		const modules = readdirSync(SRC)
+			.filter((name) => name.endsWith(".ts") && name !== "index.ts")
+			.map((name) => name.replace(/\.ts$/, ""))
+			.sort();
+		const entry = readFileSync(resolve(SRC, "index.ts"), "utf8");
+		const unreachable = modules.filter((name) => !entry.includes(`"./${name}.js"`));
+		assert.deepStrictEqual(unreachable, [], "module(s) in src/ that the entrypoint never re-exports");
+	});
+
 	it("every runtime dependency is declared", () => {
 		// A package you import but do not declare is how a peer closure rots; the
 		// classifier in GitHubError reads octokit's throwables structurally rather
@@ -151,6 +227,12 @@ describe("bundle reachability", () => {
 		]);
 		const used = new Set([...reachableBareImports("index.ts"), ...reachableBareImports("GitHubApp.ts")]);
 		for (const specifier of used) {
+			// A `node:` builtin is not a package and can never appear in a manifest.
+			// Treating one as a package failed this check for a package that did
+			// nothing wrong; it had simply never happened, because nothing in the
+			// reachable graph had imported a builtin yet. Reported by
+			// @spencerbeggs/reposets (2026-08-13) while porting modules that would.
+			if (specifier.startsWith("node:")) continue;
 			const packageName = specifier.startsWith("@")
 				? specifier.split("/").slice(0, 2).join("/")
 				: specifier.split("/")[0];

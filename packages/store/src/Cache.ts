@@ -3,6 +3,7 @@ import type { Duration } from "effect";
 import { Context, DateTime, Effect, Layer, Option, PubSub, Schema } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlError from "effect/unstable/sql/SqlError";
+import { bytesToUtf8, utf8ToBytes } from "./Bytes.js";
 import type { MigratorMigration } from "./internal/migrator.js";
 import { ensureLedger, runPending } from "./internal/migrator.js";
 
@@ -162,6 +163,32 @@ export class CacheError extends Schema.TaggedError<CacheError>()("CacheError", {
 		const keyPart = this.key !== undefined ? ` for key "${this.key}"` : "";
 		return `Cache ${this.operation} failed${keyPart}`;
 	}
+}
+
+/**
+ * Options for {@link Cache.through} and {@link Cache.throughVerbose}.
+ *
+ * @public
+ */
+export interface CacheThroughOptions {
+	/** Overrides the layer's `defaultTtl`; with neither, the entry never expires. */
+	readonly ttl?: Duration.Duration;
+	/** Tags for bulk invalidation through `invalidateByTag`. */
+	readonly tags?: ReadonlyArray<string>;
+	/** The value's MIME type. Defaults to `application/octet-stream` on write. */
+	readonly contentType?: string;
+}
+
+/**
+ * What {@link Cache.throughVerbose} returns: the value, and where it came from.
+ *
+ * @public
+ */
+export interface CacheHit<A> {
+	/** The cached or freshly computed value. */
+	readonly value: A;
+	/** `true` when the value came off the cache without running `onMiss`. */
+	readonly hit: boolean;
 }
 
 /**
@@ -674,7 +701,10 @@ const make = (options: CacheOptions): Effect.Effect<CacheShape, CacheError, SqlC
  *
  * @remarks
  * Expiry reads the clock through `DateTime.now`, so tests drive it with
- * `TestClock.adjust`. The layer statics are parameterized factories: call each
+ * `TestClock.adjust`. **Provide `TestClock.layer()` outside the `Effect.provide`
+ * that supplies this cache, not beneath it** — underneath, the test body has no
+ * `TestClock` in its own context and `TestClock.adjust` dies as a defect, so
+ * nothing you try to expire ever expires. The layer statics are parameterized factories: call each
  * once and bind the result to a `const`, or memoization by reference is lost
  * and the database is opened twice.
  *
@@ -702,5 +732,96 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 	/** An in-memory (`:memory:`) layer for tests. */
 	static layerTest(options?: CacheOptions): Layer.Layer<Cache, CacheError> {
 		return Cache.layerSqlite({ ...(options ?? {}), filename: ":memory:" });
+	}
+
+	/**
+	 * Read through the cache: return the stored value, or run `onMiss`, store
+	 * its result and return that.
+	 *
+	 * @remarks
+	 * `get` → decode → on miss run `onMiss` → encode → `set` is the entire
+	 * reason to have a cache, and it was roughly twenty-five lines every
+	 * consumer wrote for themselves. `schema` encodes to `string`; the last
+	 * step to bytes is {@link Uint8ArrayFromUtf8}, so the encoding decision
+	 * lives in one audited place here rather than one per consumer.
+	 *
+	 * **A stored value that fails to decode is a miss, not a failure.** Those
+	 * bytes were written by an older build of the caller's own program: the
+	 * user did not cause it, cannot fix it without knowing the cache exists,
+	 * and everything in here is re-derivable by definition. Failing would
+	 * strand them behind a cache they cannot see. The stale entry is
+	 * overwritten by the fresh one on the way out.
+	 *
+	 * **`CacheError` is surfaced, not swallowed.** A cache is additive and a
+	 * caller may reasonably want to push through a broken one — but that is
+	 * the caller's call to make, with `Effect.catchTag("CacheError", …)`,
+	 * because a database that cannot be read is a real and reportable
+	 * condition. This package does not decide it for them by hiding it.
+	 *
+	 * Use {@link Cache.throughVerbose} when the caller needs to know whether
+	 * the value was a hit.
+	 *
+	 * @example
+	 * ```ts
+	 * const program = Effect.gen(function* () {
+	 *   const members = yield* Cache.through("team:platform", Schema.fromJsonString(Members), {
+	 *     ttl: "1 hour",
+	 *     tags: ["team"],
+	 *   })(fetchMembersFromApi);
+	 *   return members;
+	 * });
+	 * ```
+	 */
+	static through<A, I extends string>(
+		key: string,
+		schema: Schema.Codec<A, I>,
+		options?: CacheThroughOptions,
+	): <E, R>(onMiss: Effect.Effect<A, E, R>) => Effect.Effect<A, E | CacheError, R | Cache> {
+		return (onMiss) => Effect.map(Cache.throughVerbose(key, schema, options)(onMiss), (result) => result.value);
+	}
+
+	/**
+	 * {@link Cache.through}, reporting whether the value came from the cache.
+	 *
+	 * @remarks
+	 * The `CacheEvent` PubSub is the right channel for telemetry and the wrong
+	 * one for "annotate this line of output as cached" — a caller should not
+	 * have to subscribe to a hub and correlate by key for a fact the
+	 * read-through already knew and threw away. A decode miss reports
+	 * `hit: false`, because the caller refetched.
+	 */
+	static throughVerbose<A, I extends string>(
+		key: string,
+		schema: Schema.Codec<A, I>,
+		options?: CacheThroughOptions,
+	): <E, R>(onMiss: Effect.Effect<A, E, R>) => Effect.Effect<CacheHit<A>, E | CacheError, R | Cache> {
+		return <E, R>(onMiss: Effect.Effect<A, E, R>) =>
+			Effect.gen(function* () {
+				const cache = yield* Cache;
+				const stored = yield* cache.get(key);
+
+				if (Option.isSome(stored)) {
+					const text = bytesToUtf8(stored.value.value);
+					if (Option.isSome(text)) {
+						// A decode failure here is an older build's value, not a fault:
+						// fall through to `onMiss` and overwrite it below.
+						const decoded = yield* Effect.result(Schema.decodeUnknownEffect(schema)(text.value));
+						if (decoded._tag === "Success") return { value: decoded.success, hit: true } satisfies CacheHit<A>;
+					}
+				}
+
+				const value = yield* onMiss;
+				const encoded = yield* Schema.encodeEffect(schema)(value).pipe(
+					Effect.catchTag("SchemaError", (cause) => Effect.fail(new CacheError({ operation: "set", key, cause }))),
+				);
+				yield* cache.set({
+					key,
+					value: utf8ToBytes(encoded),
+					...(options?.ttl !== undefined && { ttl: options.ttl }),
+					...(options?.tags !== undefined && { tags: options.tags }),
+					...(options?.contentType !== undefined && { contentType: options.contentType }),
+				});
+				return { value, hit: false } satisfies CacheHit<A>;
+			});
 	}
 }

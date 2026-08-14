@@ -1,11 +1,11 @@
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Cause, Duration, Effect, Exit, Layer, Option, PubSub, Ref } from "effect";
+import { Cause, Duration, Effect, Exit, Layer, Option, PubSub, Ref, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlError from "effect/unstable/sql/SqlError";
 import type { CacheEvent } from "../src/index.js";
-import { Cache, CacheError } from "../src/index.js";
+import { Cache, CacheError, Uint8ArrayFromUtf8 } from "../src/index.js";
 
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
@@ -330,5 +330,117 @@ describe("Cache", () => {
 				}),
 			);
 		});
+	});
+	describe("read-through", () => {
+		const Payload = Schema.fromJsonString(Schema.Struct({ owner: Schema.String }));
+
+		layer(Cache.layerTest())((it) => {
+			it.effect("a miss runs onMiss, stores the value, and the next call hits without running it again", () =>
+				Effect.gen(function* () {
+					const runs = yield* Ref.make(0);
+					const onMiss = Effect.as(
+						Ref.update(runs, (n) => n + 1),
+						{ owner: "fetched" },
+					);
+
+					const first = yield* Cache.throughVerbose("k", Payload, { tags: ["t"] })(onMiss);
+					assert.isFalse(first.hit);
+					assert.strictEqual(first.value.owner, "fetched");
+
+					const second = yield* Cache.throughVerbose("k", Payload)(onMiss);
+					assert.isTrue(second.hit);
+					assert.strictEqual(second.value.owner, "fetched");
+					// The decisive assertion: onMiss ran once, not twice.
+					assert.strictEqual(yield* Ref.get(runs), 1);
+				}),
+			);
+
+			it.effect("a hit does not run onMiss at all, proven by a dying miss path", () =>
+				Effect.gen(function* () {
+					yield* Cache.through("dying", Payload)(Effect.succeed({ owner: "seeded" }));
+					const value = yield* Cache.through("dying", Payload)(Effect.die("onMiss must not run"));
+					assert.strictEqual(value.owner, "seeded");
+				}),
+			);
+
+			it.effect("an entry that cannot be decoded is a miss, not a failure, and is overwritten", () =>
+				Effect.gen(function* () {
+					const cache = yield* Cache;
+					// The shape an older build might have written.
+					yield* cache.set({ key: "stale", value: bytes('{"totallyDifferent":1}') });
+
+					const result = yield* Cache.throughVerbose("stale", Payload)(Effect.succeed({ owner: "fresh" }));
+					assert.isFalse(result.hit, "a decode failure reports as a miss");
+					assert.strictEqual(result.value.owner, "fresh");
+
+					// The stale bytes were replaced, so the next read is a clean hit.
+					const after = yield* Cache.throughVerbose("stale", Payload)(Effect.die("must not refetch"));
+					assert.isTrue(after.hit);
+				}),
+			);
+
+			it.effect("bytes that are not valid UTF-8 are a miss, not a defect", () =>
+				Effect.gen(function* () {
+					const cache = yield* Cache;
+					yield* cache.set({ key: "binary", value: new Uint8Array([0xff, 0xfe, 0xfd]) });
+					const result = yield* Cache.throughVerbose("binary", Payload)(Effect.succeed({ owner: "fresh" }));
+					assert.isFalse(result.hit);
+					assert.strictEqual(result.value.owner, "fresh");
+				}),
+			);
+
+			it.effect("onMiss's own error passes through unwrapped", () =>
+				Effect.gen(function* () {
+					class Boom extends Schema.TaggedError<Boom>()("Boom", {}) {}
+					const error = yield* Effect.flip(Cache.through("err", Payload)(Effect.fail(new Boom())));
+					assert.strictEqual(error._tag, "Boom");
+				}),
+			);
+
+			it.effect("a stored entry expires, and the next read-through refetches", () =>
+				Effect.gen(function* () {
+					const runs = yield* Ref.make(0);
+					const onMiss = Effect.as(
+						Ref.update(runs, (n) => n + 1),
+						{ owner: "v" },
+					);
+					yield* Cache.through("ttl", Payload, { ttl: Duration.seconds(10) })(onMiss);
+					yield* TestClock.adjust(Duration.seconds(11));
+					const again = yield* Cache.throughVerbose("ttl", Payload)(onMiss);
+					assert.isFalse(again.hit);
+					assert.strictEqual(yield* Ref.get(runs), 2);
+				}),
+			);
+		});
+
+		// SqlClient has to be in scope to break the table underneath the cache.
+		layer(Layer.provideMerge(Cache.layer(), SqliteClient.layer({ filename: ":memory:" })))((it) => {
+			it.effect("a broken cache surfaces CacheError rather than silently falling through", () =>
+				Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient;
+					yield* sql`DROP TABLE cache_entries`;
+					const error = yield* Effect.flip(Cache.through("k", Payload)(Effect.succeed({ owner: "x" })));
+					assert.instanceOf(error, CacheError);
+				}),
+			);
+		});
+	});
+
+	describe("Uint8ArrayFromUtf8", () => {
+		it.effect("round-trips text through bytes", () =>
+			Effect.gen(function* () {
+				const encoded = yield* Schema.encodeEffect(Uint8ArrayFromUtf8)(bytes("héllo ✓"));
+				assert.strictEqual(encoded, "héllo ✓");
+				const decoded = yield* Schema.decodeUnknownEffect(Uint8ArrayFromUtf8)("héllo ✓");
+				assert.deepStrictEqual(Array.from(decoded), Array.from(bytes("héllo ✓")));
+			}),
+		);
+
+		it.effect("fails on malformed UTF-8 rather than substituting replacement characters", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(Schema.encodeEffect(Uint8ArrayFromUtf8)(new Uint8Array([0xff, 0xfe])));
+				assert.include(String(error), "UTF-8");
+			}),
+		);
 	});
 });

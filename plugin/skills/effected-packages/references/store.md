@@ -16,6 +16,8 @@ Single entrypoint; no subpaths.
 
 - **`Store`** (`Context.Service`) — `client: SqlClient` (tagged-template SQL), `migrate`, `rollback(toId)`, `status`. Layers: `Store.layer(options)` (abstract — needs a `SqlClient` in `R`), `Store.layerSqlite(options & { filename })` (batteries included), `Store.layerTest(options)` (`:memory:`). A `StoreMigration`'s `up`/`down` return `Effect<unknown, SqlError>`.
 - **`Cache`** (`Context.Service`) — `get`, `set`, `has`, `entries` (metadata only; never loads BLOBs), `invalidate`/`invalidateByTag`/`invalidateAll`/`prune` (each with an optional transactional `onRemoved` callback), `events: PubSub<CacheEvent>`. Same layer trio: `Cache.layer` / `Cache.layerSqlite` / `Cache.layerTest`.
+- **`Cache.through(key, schema, options?)(onMiss)`** and **`Cache.throughVerbose`** — read-through caching in one call. `get` → decode → run `onMiss` → encode → `set` was ~25 lines every consumer wrote for itself. **Statics, not shape members**: they take `Cache` from context, so `R` includes `Cache` and no test double needs an implementation. `throughVerbose` returns `{ value, hit }` for a caller that wants to print *(cached)* — the `CacheEvent` PubSub is telemetry and the wrong channel for that. Two policies the package owns: **a stored value that fails to decode (or is not valid UTF-8) is a MISS, not a failure**, and is overwritten; **`CacheError` is surfaced, not swallowed** — catch it yourself with `catchTag` if a broken cache should not stop you.
+- **`Uint8ArrayFromUtf8`** — a `Schema.Codec<Uint8Array, string>`. Cache values are bytes, and core's Schema ships only `Uint8ArrayFromBase64` / `…Base64Url` / `…FromHex` — **nothing for UTF-8** — so "encode through a schema" could not be completed and every consumer hand-wired a `TextEncoder`. Encoding fails on malformed UTF-8 rather than substituting `U+FFFD`. Prefer a core equivalent if one ever ships.
 - Errors: `StoreError`, `StoreMigrationError`, `CacheError`; events: `CacheEvent`/`CacheEventPayload`.
 
 ## Usage
@@ -54,6 +56,8 @@ const program = Effect.gen(function* () {
 ## Testing machinery
 
 **`Store.layerTest(options)`** and **`Cache.layerTest(options)`** are exported hermetic `:memory:` layers — use them directly in consumer test suites.
+
+**Testing expiry has an ordering rule**: provide `TestClock.layer()` **outside** the `Effect.provide` that supplies the cache, never beneath it. Underneath, the test body has no `TestClock` in its own context and `TestClock.adjust` **dies as a defect** — so nothing you try to expire ever expires.
 
 ## Gotchas
 

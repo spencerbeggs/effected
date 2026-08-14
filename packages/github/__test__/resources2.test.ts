@@ -787,6 +787,54 @@ describe("WorkflowDispatch", () => {
 	);
 });
 
+describe("WorkflowDispatch.list", () => {
+	const workflowsBody = (workflows: ReadonlyArray<Record<string, unknown>>) => ({
+		status: 200,
+		body: { total_count: workflows.length, workflows },
+	});
+
+	it.effect("reports every workflow, including disabled ones, without interpreting state", () =>
+		Effect.gen(function* () {
+			// State is reported, never filtered here. Whether a *disabled* workflow
+			// counts for a given GitHub feature is that feature's server-side rule,
+			// which this package cannot test — so it does not encode a guess about
+			// it. A caller that cares filters on `state` itself.
+			const { script, base } = harness([
+				workflowsBody([
+					{ id: 1, name: "CI", path: ".github/workflows/ci.yml", state: "active" },
+					{ id: 2, name: "Old", path: ".github/workflows/old.yml", state: "disabled_manually" },
+				]),
+			]);
+			const workflows = yield* Effect.provide(
+				Effect.flatMap(WorkflowDispatch, (w) => w.list),
+				WorkflowDispatch.layer.pipe(Layer.provideMerge(base)),
+			);
+			assert.deepStrictEqual(
+				[...workflows],
+				[
+					{ id: 1, name: "CI", path: ".github/workflows/ci.yml", state: "active" },
+					{ id: 2, name: "Old", path: ".github/workflows/old.yml", state: "disabled_manually" },
+				],
+			);
+			assert.include(script.calls[0]?.url ?? "", "/actions/workflows");
+		}),
+	);
+
+	it.effect("a repository with no workflows is an empty array, not a failure", () =>
+		Effect.gen(function* () {
+			// The case the reporting consumer actually hit: every repository they
+			// ran against had zero workflows. Failing here would make "no
+			// workflows" indistinguishable from "could not ask".
+			const { base } = harness([workflowsBody([])]);
+			const workflows = yield* Effect.provide(
+				Effect.flatMap(WorkflowDispatch, (w) => w.list),
+				WorkflowDispatch.layer.pipe(Layer.provideMerge(base)),
+			);
+			assert.lengthOf(workflows, 0);
+		}),
+	);
+});
+
 describe("Attestation", () => {
 	it.effect("pins the api version on every call", () =>
 		Effect.gen(function* () {

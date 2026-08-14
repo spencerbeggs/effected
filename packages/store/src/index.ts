@@ -1,3 +1,4 @@
+export { Uint8ArrayFromUtf8 } from "./Bytes.js";
 export {
 	Cache,
 	CacheEntry,
@@ -5,10 +6,12 @@ export {
 	CacheError,
 	CacheEvent,
 	CacheEventPayload,
+	type CacheHit,
 	type CacheOptions,
 	type CacheRemovalResult,
 	type CacheShape,
 	type CacheSqliteOptions,
+	type CacheThroughOptions,
 } from "./Cache.js";
 export {
 	Store,

@@ -3,11 +3,12 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-14
+last-synced: 2026-08-14
 completeness: 93
 related:
   - github.md
+  - ../consumers/reposets.md
   - github-rest.md
   - github-errors.md
   - github-graphql.md
@@ -19,7 +20,7 @@ related:
 
 ## Overview
 
-The resource services are the package's domain half: one context service per GitHub noun a consumer needs typed — repositories, branches, tags, commits, contents, issues, pull requests and their comments, releases, check runs, workflow dispatches, attestations, artifact metadata and token permissions — each turning a set of endpoints into an operation stated once.
+The resource services are the package's domain half: one context service per GitHub noun a consumer needs typed — repositories and their settings, branches, tags, commits, contents, issues, pull requests and their comments, releases, check runs, workflows, secrets, variables, rulesets, deployment environments, security features, code scanning, attestations, artifact metadata and token permissions — each turning a set of endpoints into an operation stated once. `src/` is the authority on the set; this list is here to say what kind of thing lives there.
 
 Every resource is a context service whose **layer requires only the client** and whose **methods each require [the repo coordinate](github.md#the-repo-coordinate)**, so a scoped repository override is real rather than decorative. Every member is an effect or a stream, every service ships a die-loudly test double, and no resource retries — [the client owns that](github-errors.md#one-retry-policy-driven-by-githubs-own-headers). The mechanics they all stand on — the route-keyed request, the escape hatch and the pagination engine — belong to [the REST surface](github-rest.md), and the package-wide framing to [github.md](github.md); what stays here is the domain layer above them. See `src/` for the surfaces; what follows is what a reader needs *before* opening them.
 
@@ -42,7 +43,7 @@ The correct spelling is one operation with **no observable intermediate state**:
 ## Projections that deleted consumer code
 
 - **A commit read returning its tree sha.** Two consumers reached for a commit purely to get a tree for the Git Data API, in byte-duplicate blocks with a comment explaining why. With it, a whole client requirement drops out of one consumer's function signature.
-- **Repository settings as a faithful projection plus narrow accessors.** Three consumers hit the same endpoint for three different subsets — one wanted sixteen settings fields, one wanted the default branch, one wanted the node id — which is why both the full projection and the narrow accessors exist. A default-branch-only accessor would not have been enough.
+- **Repository settings as a faithful projection plus narrow accessors.** Three consumers hit the same endpoint for three different subsets — one wanted sixteen settings fields, one wanted the default branch, one wanted the node id — which is why both the full projection and the narrow accessors exist. A default-branch-only accessor would not have been enough. All of it lives on `GitHubRepository`, which already owned the route; [why there is no settings service](github.md#module-topology) is recorded with the collision that made the point.
 - **Semver-aware tag selection.** A consumer ran an effect *per parse and per comparison* across thirty-five lines to find its latest release tag. Here parsing and comparison are the sync primitives [`@effected/semver`](semver.md) already exports, so the whole selection is one pass over the page stream with no effect round trips. The **tag-name-to-version convention is documented and pluggable** — the default strips a leading `v` and takes the substring after the last `@`, covering the three tag forms the kit's own release tooling produces — with an override for anything else, and prereleases excluded unless asked for.
 - **Associated pull requests, named for what they answer.** The method already existed and a consumer did not find it, writing the survey's one explicit-`any` cast instead. **That was a discoverability failure as much as a typing one**, which is why naming is treated as part of the surface here.
 
@@ -55,6 +56,20 @@ The correct spelling is one operation with **no observable intermediate state**:
 - **A sticky-comment marker is a pure class**, not a hardcoded vendor string and not a layer parameter — so it carries no branding, and it is testable without a client.
 - **Auto-merge is an explicit method**, not an option that fired a mutation from a tap after create or update — which is how a failure could surface from a call that had already succeeded.
 - **A poll-to-completion loop has no sentinel error.** A predecessor encoded "not done yet" as an error value baked into a user-visible error union; here the loop repeats with a predicate over the *success* value and a genuine timeout fails as an ordinary rejected error. The generic poll-until-a-domain-predicate combinator this is an instance of belongs to [`@effected/github-actions`](github-actions.md); this domain-specific loop stays.
+
+## The configuration-write half
+
+Six services landed together on 2026-08-13 — secrets, variables, rulesets, deployment environments, security features and CodeQL default setup — and they are a different *kind* of surface from everything above. The rest of this document is about reading GitHub and reporting on it; these write a repository's configuration, repeatedly, across a fleet. They exist because [reposets](../consumers/reposets.md) is the first consumer to do that, they were **ported downstream against this package's conventions and folded in here**, and the corrections that fold produced are what earn them a section.
+
+**A repository-scoped write must never be able to reach an organization's object.** `GET /repos/{owner}/{repo}/rulesets` returns rulesets **inherited from the organization** alongside the repository's own, and they are indistinguishable without `source_type`. Matching by name alone therefore let a repository-scoped upsert `PUT` the organization's ruleset id — rewriting policy for *every repository the organization owns*, from a caller that never mentioned the organization. `upsert` filters on `source_type` before matching, and the projection keeps that field for the same reason it is the one easiest to drop. **The general rule: when a listing mixes scopes, the scope discriminant is not an optional field of the projection, it is the projection's reason for existing.**
+
+**A truncated list read is worse than a failed one, because it looks complete.** Every list read on this half shipped fetching a single page — secrets, variables, rulesets, environments and the workflow listing alike — so a consumer silently saw the first page as the whole set. Two distinct harms, and the second is the one to fear: a cleanup policy deleting undeclared resources would have seen a subset, and the ruleset upsert's existence check would have missed an existing ruleset past page one and **created a duplicate instead of updating**. A truncation defect does not surface as missing data, it surfaces as a wrong decision. Every list read paginates now, and the [per-method pagination-forwarding test](github.md#testing) is what keeps that from regressing one method at a time.
+
+**A write reports what it sent, not what it was asked for.** `GitHubRepository.applySettings` returns `AppliedSettings` — the REST keys and the GraphQL keys that actually went out, in the caller's own names. The two agree with the caller's input right up until preparation drops a field GitHub would reject, which is *precisely* the case a person reading a dry run is checking. A caller reporting `Object.keys(input)` is describing its own intent while this package decides the content; the divergence is the whole value of the return.
+
+**Secret writes carry the sealed box, and it is not optional.** GitHub's secrets API accepts only libsodium sealed-box ciphertext, so a secrets service without the crypto is unusable rather than merely inconvenient — which is why the encryption came up with the resources instead of being left to consumers. The dependency reasoning is in [github.md](github.md#tier-and-dependencies); `src/internal/crypto.ts` carries the algorithm's own trap, that both the concatenation order and the 24-byte nonce length are fixed by libsodium and getting either wrong produces a box GitHub **accepts** and cannot decrypt.
+
+**A workflow listing belongs on the service that already owns the route family.** `WorkflowDispatch.list` answers "does this repository have workflows at all", and the case for it is a live 422: `actions` is a real CodeQL language, GitHub validates it against workflow *files*, and a repository-languages read can never report it. It went onto the existing service rather than into a new module, it reports GitHub's state string **without interpreting it** — whether a disabled workflow counts is a server-side rule this package cannot test — and a repository with no workflows answers with an empty array, so absence stays distinguishable from being unable to ask.
 
 ## The check-run bracket concludes on every exit
 

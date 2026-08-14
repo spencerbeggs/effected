@@ -140,10 +140,47 @@ Effect.runPromise(program.pipe(Effect.provide(CacheLive))).then(console.log);
 
 The invariants worth knowing:
 
-- **Expiry is lazy.** `get` and `has` delete an expired row on read; `prune` sweeps in bulk. The clock is read through `DateTime.now`, so `TestClock` drives expiry deterministically in tests.
+- **Expiry is lazy.** `get` and `has` delete an expired row on read; `prune` sweeps in bulk. The clock is read through `DateTime.now`, so `TestClock` drives expiry deterministically in tests — provide `TestClock.layer()` **outside** the `Effect.provide` that supplies the cache, never beneath it, or the test body has no `TestClock` in its context, `TestClock.adjust` dies as a defect, and nothing you try to expire ever expires.
 - **Eviction is least-recently-*written***, not LRU-read. With `maxEntries` set, a `set` evicts the oldest-written entries in the same transaction until the bound holds, and publishes an `Evicted` event.
 - **`onRemoved` runs inside the delete transaction.** `invalidate`, `invalidateByTag`, `invalidateAll` and `prune` each take an optional callback that runs before the delete commits: a typed failure rolls the delete back and suppresses the event, and your error type survives in the signature as `CacheError | E`. This is how you keep a cache entry and the file it points at from drifting apart.
 - **Keys and tags are data, never SQL.** Everything reaches SQLite through the tagged-template `SqlClient`, and tag matching escapes `%`, `_` and `\` before it interpolates, so a tag containing a backslash matches its own entries.
+
+### Read-through, in one call
+
+The loop above — get, decode, fetch on a miss, encode, set — is the entire reason to have a cache, so it is a single call rather than twenty-five lines in every consumer:
+
+```ts
+import { Cache } from "@effected/store";
+import { Effect, Schema } from "effect";
+
+const Members = Schema.Struct({ login: Schema.String });
+
+const program = Effect.gen(function* () {
+  const members = yield* Cache.through("team:platform", Schema.fromJsonString(Members), {
+    ttl: "1 hour",
+    tags: ["team"],
+  })(fetchMembersFromApi); // ← only runs on a miss
+
+  return members;
+});
+```
+
+`schema` encodes to `string`; the last step to bytes is [`Uint8ArrayFromUtf8`](#uint8arrayfromutf8), so the encoding decision lives in one audited place instead of one per consumer. Use `Cache.throughVerbose` when the caller needs to know where the value came from — it returns `{ value, hit }`, which is what you want for printing *(cached)* next to a line of output. The `CacheEvent` PubSub is the right channel for telemetry and the wrong one for a fact the read-through already knew.
+
+Two policies this makes the package's rather than yours:
+
+- **A value that fails to decode is a miss, not a failure.** Those bytes were written by an older build of your own program: the user did not cause it, cannot fix it without knowing the cache exists, and everything in here is re-derivable by definition. Failing would strand them behind a cache they cannot see. The stale entry is overwritten on the way out.
+- **`CacheError` is surfaced, not swallowed.** A cache is additive, and you may well want to push through a broken one — but that is your call to make with `Effect.catchTag("CacheError", …)`, because a database that cannot be read is a real and reportable condition. This package will not hide it from you by default.
+
+### Uint8ArrayFromUtf8
+
+Cache values are bytes, and the honest way to produce them is a schema. Core ships `Uint8ArrayFromBase64`, `Uint8ArrayFromBase64Url` and `Uint8ArrayFromHex` — and nothing for UTF-8, so `Schema.fromJsonString(schema)` gets you to `string` and stops one inch short. `Uint8ArrayFromUtf8` is that inch:
+
+```ts
+const Payload = Schema.fromJsonString(Settings).pipe(Schema.encodeTo(Uint8ArrayFromUtf8));
+```
+
+Encoding **fails** on malformed UTF-8 rather than substituting replacement characters, so a corrupt value stays distinguishable from a valid one that happens to contain `U+FFFD`. If core ever ships an equivalent, prefer that one.
 
 Every operation publishes to `cache.events`, an unbounded `PubSub<CacheEvent>` — `Hit`, `Miss`, `Set`, `Expired`, `Evicted`, `Invalidated`, `InvalidatedByTag`, `InvalidatedAll` and `Pruned`. It is unbounded on purpose: a slow subscriber must never backpressure a cache write.
 

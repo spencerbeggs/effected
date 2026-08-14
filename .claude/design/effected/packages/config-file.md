@@ -3,10 +3,12 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-14
+last-synced: 2026-08-14
 completeness: 93
 related:
+  - cli.md
+  - ../consumers/reposets.md
   - ../architecture.md
   - ../effect-standards.md
   - ../package-inventory.md
@@ -89,6 +91,16 @@ Options are supplied to the layer, **not baked into the factory**, for two reaso
 `ConfigFile.layer` is a layer-*returning function* — bind its result to a const and provide that const, or you mint two independent service instances. The test layer seeds files into a temp directory and runs the **real** implementation over them rather than a mock; it has no default path, so save and update honestly fail under it.
 
 The service keeps a deliberate **save versus write** distinction — default path with directory creation, versus explicit path with none — and update is load-transform-save. The default-taking loader returns its default **as-is**, applying neither the schema nor a configured validation hook to it. Discovery **aborts** on a found-but-corrupt low-priority source rather than skipping it: silently continuing would run the pipeline on a different, wrong configuration than the one closest to the caller's intent.
+
+### Decode options, and why `validate` cannot substitute
+
+`ConfigFileOptions` and `ConfigReadOptions` both take `parseOptions`, threaded into **every** schema decode either performs. Absent, core's defaults apply and nothing changes.
+
+The field that motivates it is `onExcessProperty`, which core defaults to `"ignore"`. For a *loader* that default means a user's unknown keys are dropped in silence, so the package can report neither a typo'd section nor a field the schema deliberately removed — the two config-file diagnostics a user most needs. **It cannot be expressed with the `validate` hook**, and that is the load-bearing part: `validate` runs on the *decoded* value, by which point the excess keys are already gone. A consumer discovering this writes a bespoke filter per removed field, which is what happened before the option existed.
+
+Two properties keep `"error"` safe to adopt. Keys covered by a `Schema.StructWithRest` rest are **not** excess, so a schema admitting a deliberate pass-through section keeps working under it. And it pairs with `errors: "all"`: core defaults to `"first"`, which for a loader means a file with three typos surfaces one per run — fix, re-run, discover the next — while the extra work only ever happens on a document that is already failing.
+
+Rendering the resulting issue tree into a sentence a user can act on is [`@effected/cli`](cli.md)'s job, not this package's, which is why the dependency points that way.
 
 ### ConfigFile.read — the one-shot form
 

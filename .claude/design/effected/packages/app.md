@@ -3,17 +3,19 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-14
+last-synced: 2026-08-14
 completeness: 92
 related:
   - ../effect-standards.md
   - ../package-inventory.md
   - ../releases.md
   - ../package-setup.md
+  - ../consumers/reposets.md
   - store.md
   - xdg.md
   - config-file.md
+  - cli.md
 ---
 
 # @effected/app design
@@ -66,9 +68,11 @@ The documented limit: code paths that actually exercise `ensure*` **die** agains
 
 ### AppConfig — the xdg-flavored ConfigFile preset
 
-`AppConfig.layer(tag, options)` wraps `ConfigFile.layer` with the resolver chain xdg documents, in xdg's order, so an existing `~/.config/<app>` still beats the native directory, and with an `XdgConfig` save path that fits config-file's `defaultPath` slot **without an `orDie`** because xdg moved resolution to layer-construction time. Three decisions are load-bearing:
+`AppConfig.layer(tag, options)` wraps `ConfigFile.layer` with the resolver chain xdg documents, in xdg's order, so an existing `~/.config/<app>` still beats the native directory, and with an `XdgConfig` save path that fits config-file's `defaultPath` slot **without an `orDie`** because xdg moved resolution to layer-construction time. The load-bearing decisions:
 
 - **The namespace is never a parameter.** It is read from the ambient `AppDirs` service at layer build time, so it is typed **exactly once, in `App.layer`**. This kills the two-strings drift where an app passes `"myapp"` to `App.layer` and `"my-app"` to its config preset and then reads config from a directory nothing else writes to. Anything derivable is not asked for.
+- **Caller resolvers prepend; they never replace.** `options.resolvers` is composed *ahead* of the XDG chain, in the order given, with `XdgConfig.resolver` and the native probe still behind it — so absent the option the chain is exactly what it was, and the default is unchanged. Added in the `@spencerbeggs/reposets` dogfood loop (round 1, 2026-08-13), whose blocker was the case the preset could not express: a CLI's `--config` flag has to outrank the app's own search path, and reaching for `ConfigFile.layer` to get it meant rebuilding by hand the XDG wiring `AppConfig` exists to own. Two consequences are documented rather than designed away — a caller resolver that finds nothing **falls through** to XDG, because every `ConfigResolver`'s error channel is `never` by contract and a missing `--config` file is therefore a miss and not an error; and the **save path is untouched**, still `XdgConfig.savePath(filename)`, so writing back to a flag-named file is `write(value, path)`. The deliberate limit: a chain needing the XDG resolvers anywhere but last, or not at all, has outgrown the preset and should compose `ConfigFile.layer` directly — the option buys the common case, not arbitrary chain surgery.
+- **`parseOptions` passes straight through to config-file**, unchanged and undefaulted, so an application turns on excess-property rejection here without dropping to `ConfigFile.layer`. The preset adds no policy of its own: the decision, and why the `validate` hook cannot stand in for it, is [config-file's](config-file.md#decode-options-and-why-validate-cannot-substitute).
 - **The codec stays a required parameter.** Defaulting it, or inferring one from the filename's extension, would hard-code a *format* choice into a composition layer — not this package's decision. The caller names the codec, and that named import is also what keeps the other engines out of their bundle.
 - **`native` defaults to `true`** — the opposite of `AppDirsOptions.native`, which defaults to `false`. The asymmetry is deliberate: *creating* a native directory commits an application to a location, so it is opt-in; *probing* one for an existing config file costs a `stat` that finds nothing, so it is opt-out. Reading a config a user already put in `~/Library/Application Support` is a courtesy; writing there uninvited is not.
 
@@ -104,6 +108,7 @@ Suites in `__test__/`, integration under `__test__/integration/`. `@effect/platf
 - **An unwritable ancestor surfaces a typed `AppDirsError`, never a die** — the anti-`orDie` regression.
 - **The namespace-once property** — a config file lands under the namespace passed to `App.layer`, with none passed to `AppConfig` at all. If someone adds a `namespace` option "for flexibility", this fails.
 - **`App.layerTest` works with zero platform layers** — if this ever needs a platform import, the layer has stopped doing its job.
+- **A caller resolver outranks the XDG search path** — proven with both files present and different bodies, so appending instead of prepending fails the assertion rather than passing quietly. Verified as a mutant: flipping the two spread positions in the chain fails exactly two tests.
 
 The filename guard is exercised through a shared matrix (`__test__/filenameGuard.ts`) registered once per suite against each of the three filename options.
 

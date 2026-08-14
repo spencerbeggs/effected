@@ -10,6 +10,12 @@ export {
 	type CheckRunShape,
 	type ConcludeCheckRun,
 } from "./CheckRun.js";
+export { CodeScanning, type CodeScanningSetup, type CodeScanningShape } from "./CodeScanning.js";
+export {
+	DeploymentEnvironment,
+	type DeploymentEnvironmentInfo,
+	type DeploymentEnvironmentShape,
+} from "./DeploymentEnvironment.js";
 export { type BranchOutcome, GitBranch, type GitBranchShape } from "./GitBranch.js";
 export {
 	CommitRef,
@@ -32,7 +38,13 @@ export {
 	InstallationToken,
 	type TokenRequest,
 } from "./GitHubApp.js";
-export { GitHubClient, type GitHubClientOptions, type GitHubClientShape, type GitHubFixtures } from "./GitHubClient.js";
+export {
+	GitHubClient,
+	type GitHubClientOptions,
+	type GitHubClientShape,
+	type GitHubFixtures,
+	type RecordedCall,
+} from "./GitHubClient.js";
 export {
 	CommitComparison,
 	CommitFile,
@@ -46,10 +58,15 @@ export { GitHubError, GitHubErrorKind } from "./GitHubError.js";
 export { GitHubIssue, type GitHubIssueShape, IssueInfo, LinkedIssue } from "./GitHubIssue.js";
 export { GitHubRelease, type GitHubReleaseShape, ReleaseAsset, ReleaseInfo } from "./GitHubRelease.js";
 export {
+	type AppliedSettings,
+	GRAPHQL_ONLY_SETTINGS,
 	GitHubRepository,
 	type GitHubRepositoryShape,
+	type OwnerType,
 	type RepositoryPatch,
 	type RepositorySettings,
+	SECURITY_ANALYSIS_STATUS_FIELDS,
+	transformSecurityAndAnalysis,
 } from "./GitHubRepository.js";
 export {
 	GitTag,
@@ -75,6 +92,9 @@ export {
 	type PullRequestCommentShape,
 } from "./PullRequestComment.js";
 export { InvalidRepoRefError, Repo, RepoRef } from "./Repo.js";
+export { RepositorySecret, type RepositorySecretShape, type SecretInfo, type SecretScope } from "./RepositorySecret.js";
+export { RepositorySecurity, type RepositorySecurityShape } from "./RepositorySecurity.js";
+export { RepositoryVariable, type RepositoryVariableShape, type VariableInfo } from "./RepositoryVariable.js";
 export { RateLimitSnapshot, RetryPolicy, type RetryableFailure } from "./Resilience.js";
 export type {
 	Data as RestData,
@@ -86,6 +106,7 @@ export type {
 	Route as RestRoute,
 } from "./Rest.js";
 export { PageOptions } from "./Rest.js";
+export { Ruleset, type RulesetInfo, type RulesetPayload, type RulesetShape } from "./Ruleset.js";
 export {
 	ExtraPermission,
 	PermissionGap,
@@ -98,5 +119,6 @@ export {
 	type PollOptions,
 	WorkflowDispatch,
 	type WorkflowDispatchShape,
+	type WorkflowInfo,
 	WorkflowRunStatus,
 } from "./WorkflowDispatch.js";

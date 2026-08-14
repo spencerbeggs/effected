@@ -40,6 +40,15 @@ This table routes a capability to the package and skill that own it; it does not
 | safely prepend a directory to a spawned child's PATH | `ChildEnv.prependPath` | `actions-state-and-secrets` |
 | call any GitHub REST or GraphQL endpoint | `GitHubClient.request` / `.graphql` / `.paginate` | `github-api` |
 | create a branch, tag, release, commit, PR | the resource services (`GitBranch`, `GitTag`, …) | `github-api` |
+| write an Actions / Dependabot / Codespaces / environment **secret** | `RepositorySecret` — encrypts client-side with a sealed box; the value is `Redacted` and GitHub never returns it | `github-api` |
+| read or write an Actions or environment **variable** | `RepositoryVariable` | `github-api` |
+| create or update a repository **ruleset** | `Ruleset.upsert` — matches on name **and** `source_type`, so a repository-scoped write cannot overwrite an inherited organization ruleset | `github-api` |
+| manage deployment **environments** | `DeploymentEnvironment` | `github-api` |
+| toggle vulnerability alerts, automated fixes, private reporting | `RepositorySecurity` — each has its own endpoint | `github-api` |
+| configure CodeQL default setup, or read repository languages | `CodeScanning` | `github-api` |
+| change repository settings | `GitHubRepository.updateSettings` (the typed PATCH) or `applySettings` (an open map routed across REST **and** the GraphQL mutation, returning the fields it actually sent) | `github-api` |
+| ask whether a repository owner is a user or an org | `GitHubRepository.ownerType` | `github-api` |
+| ask whether a repository has **workflows** | `WorkflowDispatch.list` — repository *languages* come from linguist and can never report `actions`, which GitHub validates against workflow files | `github-api` |
 | render a DCO sign-off trailer on a bot commit | `BotIdentity.signoff` | `github-api` |
 | authenticate as a GitHub App | `GitHubApp`, `GitHubApp.clientLayer` | `github-app-tokens` |
 | mint a token in `pre` and revoke it in `post` | `GitHubToken` provision → read → dispose | `github-app-tokens` |

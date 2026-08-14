@@ -3,12 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-14
+last-synced: 2026-08-14
 completeness: 95
 related:
   - ../effect-standards.md
   - ../package-inventory.md
+  - ../consumers/reposets.md
+  - schemastore.md
   - github-rest.md
   - github-errors.md
   - github-auth.md
@@ -53,7 +55,10 @@ The dependency set is **deliberately smaller than the package it replaces**, and
 | `@octokit/plugin-paginate-rest` | the composable paginator that works against a **bare core instance**, plus the type that lets us statically reject paginating a non-paginating route |
 | `@octokit/types` | the generated endpoint map. **Ships no JavaScript** — types only |
 | `universal-github-app-jwt` | signs the App JWT; zero dependencies, and the exact leaf the official auth package uses |
+| `tweetnacl` + `blakejs` | the libsodium **sealed box** GitHub's secrets API requires. Added 2026-08-13 with `RepositorySecret` |
 | [`@effected/semver`](semver.md) | semver-aware tag selection. Pure tier, so the edge is free under [R3](../effect-standards.md#dependency-policy) |
+
+**The crypto pair is not a free-hand choice, and `node:crypto` is not an alternative.** A sealed box is `crypto_box` under an ephemeral keypair with a nonce **derived** as `blake2b(ephemeral_pk ‖ recipient_pk, 24)`; Node ships neither X25519 `crypto_box` nor blake2b, so the options were these two leaves or a full libsodium build. They are the first non-octokit runtime dependencies here and the tier does not move — the package is already integrated and nothing depends on it but `github-actions`, itself integrated — but **treat a third addition as a fresh decision** rather than a free ride on this one, the same guardrail [`schemastore`](schemastore.md#the-validation-gate-ajv-ships-closed) carries. See `src/internal/crypto.ts`, whose header records the CommonJS trap that bit here: Node's `cjs-module-lexer` detects `blakejs`' `blake2b` as a named export and not its nine siblings, so a named import works for one function and throws for its neighbour.
 
 **Two dependencies a predecessor had are deliberately dropped, and must not be reintroduced.**
 
@@ -67,8 +72,9 @@ The tree-shakability invariant is measured and paying:
 
 | A consumer that imports… | links | does **not** link |
 | --- | --- | --- |
-| the client, the repo coordinate, the route vocabulary, any resource service | octokit core and the paginator | the JWT signer |
-| the App service or its client layer | the above plus the JWT signer | — |
+| the client, the repo coordinate, the route vocabulary, any resource service but `RepositorySecret` | octokit core and the paginator | the JWT signer, the crypto pair |
+| the App service or its client layer | the above plus the JWT signer | the crypto pair |
+| `RepositorySecret` | the above plus `tweetnacl` and `blakejs` | the JWT signer |
 | the pure classes | nothing but `effect` | all octokit |
 
 Three mechanisms carry it, in order of weight:
@@ -76,6 +82,8 @@ Three mechanisms carry it, in order of weight:
 1. **Module-per-layer-variant.** The token and config client layers live in the client module, which imports only octokit core and the paginator; the App-authenticated client layer lives in the App module, the only module importing the JWT signer. A consumer that is a pure token-only REST reader reaches none of it.
 2. **No namespace object, anywhere.** A predecessor's `{ fromEnv, fromToken, fromApp }` object is precisely what defeats mechanism 1: a namespace object is a single live binding, so referencing it retains every member's whole module graph ([effect-standards](../effect-standards.md#no-barrel-re-exports)). The entry point re-exports by name only.
 3. **The pure surface is genuinely pure.** The permission comparator, bot identity, the repo reference, the comment marker, the check-run output budgeter and the retry policy are schema classes in modules importing nothing but `effect`. A consumer that only compares token permissions bundles a few hundred bytes.
+
+The crypto pair rides mechanism 1 as well: `internal/crypto.ts` is imported by `RepositorySecret` and by nothing else, so the row above is a property of the module graph rather than a hope. **It is the one confinement in this table the suite does not yet assert** — the signer has both a positive and a negative test and the crypto pair has neither, which is worth closing on the same pattern rather than leaving as prose.
 
 **This invariant gets a test, not a promise**, and the test is precise about which graph it constrains: it walks the **runtime import graph of `src`** statically (type-only imports skipped, since they are erased), asserting the token-only client does not reach the JWT signer **and** that the App module does. Without the control, the first assertion can pass for the wrong reason — an earlier walker in a sibling package stripped comments in the wrong order and reported a module as importing nothing at all, failing silently in the safe direction. The suite also asserts that every imported package is declared and that the manifest is `"sideEffects": false`.
 
@@ -85,7 +93,22 @@ Three mechanisms carry it, in order of weight:
 
 Module-per-concept, no barrels, `src/index.ts` re-exports only. See `src/`: the route vocabulary and the client, the App module, the repo coordinate, resilience, GraphQL, one module per resource service, the pure permission comparator, and `internal/` holding the octokit factory, the one pagination engine, error mapping and header parsing.
 
-Three predecessor services are simply **gone** — a rate-limit state cell, a rate limiter and the auth wrapper — one became a pure class, one folded into the client, and three are new: the route vocabulary, the repo coordinate and the repository-settings resource.
+Three predecessor services are simply **gone** — a rate-limit state cell, a rate limiter and the auth wrapper — one became a pure class, one folded into the client, and two are new: the route vocabulary and the repo coordinate.
+
+**Repository settings live on `GitHubRepository`, not in a service of their own.** A settings module was ported in as a resource of its own on 2026-08-13 and folded away the same day, because the endpoint it wanted is one `GitHubRepository` already owned — so the fold is the module-per-*concept* rule biting, not a size judgement. It cost a real failure worth remembering: the ported module's name collided with the `RepositorySettings` **type alias** the entry point already exported, and nothing said so. A collision with an existing export of the same name is silent through `tsc`, the bundler and API Extractor alike, since a valid export by that name exists — ten green tests, zero warnings, and a module no consumer could import. The reachability suite now asserts every module in `src/` is re-exported from the entry point, which is the only check that could have caught it: the suite could not, because nearly every test file imports its module path directly rather than through the entry point.
+
+### A normalising write accepts the typed shape too
+
+`GitHubRepository.updateSettings` normalises the patch it sends: a bare `"enabled"` in `security_and_analysis` is wrapped into the `{ status }` form GitHub requires, and merge keys whose owning strategy is being disabled are dropped rather than sent into a 422. Both are conveniences for the shape a *human writing config* produces.
+
+**The rule that goes with them: a normaliser must also accept the form its own parameter type declares.** `RepositoryPatch` is `Omit<Rest.Params<"PATCH /repos/{owner}/{repo}">, …>` — GitHub's parameter type — so `{ status: "enabled" }` is what the types instruct a caller to send. The first version of this normaliser wrapped bare strings only and **silently discarded that block**, while the request still succeeded and the setting was never applied.
+
+Two things make it worth a design note rather than a changelog line:
+
+- **The failure is invisible in the direction that looks like success.** No error, no warning, a 200 back. Only a probe of what was actually *sent* shows it, which is how it was found — against the built artifact, using `GitHubFixtures.requested`, not by reading the code.
+- **A consumer's own schema can mask it entirely.** The reporting consumer types those fields as `Schema.Literals(["enabled", "disabled"])`, so the bare string is the only shape that survives their decode and the defect could never reach them. That is precisely why it survived review on their side: *the consumer who wrote the normaliser cannot hit the bug, because their input is already normalised.* The next consumer, reading the types instead of the config, hits it first.
+
+So: when a boundary normalises, the typed form passes through untouched, and a test pins both forms producing identical output. Do not "simplify" that branch away — it looks redundant from inside the consumer that motivated the normaliser, and is not.
 
 ## The repo coordinate
 
@@ -98,6 +121,12 @@ yield* Effect.forEach(targets, (target) => syncOneRepo.pipe(Repo.provide(target)
 ```
 
 **Resolving it per call rather than once at layer construction is a correction the build produced.** Built the designed way — resources resolving both the client and the repo at construction — **the scoped override silently does nothing**, because the resource already holds the repository it was built with, so the multi-repository story would have been decorative. A test caught it. The client stays resolved at construction; the coordinate is read per call. The general rule this refines: **resolve a dependency once when it is stable, per call when varying it is the point.**
+
+**The scope of a method follows the API, never the consumer's call pattern.** The rule above has an obvious-looking exception — a route that is not `/repos/{owner}/{repo}` — and the exception is narrower than it appears. An org-scoped route still sources its org from `Repo.owner` when the org *is* the repository's owner (`ArtifactMetadata.createStorageRecord` is the worked example, annotating the span as `org` to say which meaning is in play). Only a method needing an org that is **not** the repository's owner takes an explicit argument, because there `Repo` would be lying about its scope.
+
+The case worth recording is one that *looked* like the exception and was not. `GitHubRepository.ownerType` calls an account route, and its first consumer calls it once per run outside their repository loop — which argues for an owner argument, or an eighth owner-scoped module, until you notice that **"my call site is outside the loop" is a property of that consumer's engine, not of the API**. Encoding it in the signature would freeze one program's control flow into a shared service, and the next consumer calling it per repository would find an argument they have to thread for no reason. It is `Repo`-scoped like everything else. (Reported by `@spencerbeggs/reposets`, 2026-08-13, who raised the exception, tested it against this rule and withdrew it — then found that moving the call *inside* the loop makes twenty repositories share one request, because their cache keys on owner alone.)
+
+The generalisation, which is not GitHub-specific: **a service's shape is determined by the contract it wraps and the axis its consumers vary, never by where any one consumer happens to call it.** A speculative owner-scoped module for a single caller is surface the kit does not need; the same reasoning rejected it.
 
 `Repo` is also **a deliberate, recorded exception to "no non-effectful members on a service shape"**: its entire shape is one immutable value class. It is data, not an IO contract — `Layer.mock` is meaningless for it, `Layer.succeed` is the correct double, and no pure helper hides inside an IO API. The rule exists to stop a sync member from silently degrading a *mixed* shape's mock, and a value-only service has no mock to degrade. The boundary to hold: this is legitimate only while the shape is **entirely** one value with no methods. The moment a method appears, it is a service and the rule applies.
 
@@ -129,6 +158,8 @@ Recorded per concept rather than defaulted:
 - **Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`**, with unstubbed members dying loudly and naming themselves. This deletes, in one move, a consumer's seven dying-stream stubs and six whole-service reimplementations in test files.
 - **Tests drive the *real* client through octokit's documented `fetch` option**, not a double of our own service, so classification, header capture, retry and link-following pagination are all genuinely exercised. Two harness facts to know first: a hand-built response has an empty URL, and octokit's paginator constructs a URL from it for any payload carrying a total count — so the harness must define that property or you get an invalid-URL failure classified as a transport fault. And octokit percent-encodes path parameters, so assert against the recorded decoded path rather than the URL.
 - **One recorded-fixture client double exists, and it reimplements nothing.** It pages recorded arrays through **the same pagination engine the live layer uses** and records the page requests it issued, which is what makes truncation testable at all — a predecessor's double ignored both page options and never invoked the callback, so "did the caller ask for page N?" was unanswerable. That shared engine is why this is the narrow exception to the no-behaviour-reimplementing-doubles ban.
+- **`GitHubFixtures.requested` records every call, not only the paginated ones**, as a `RecordedCall` carrying kind and params. Recording only pages answered which route a method hit and nothing about what it *sent*, which is the question a normalising write turns on — and it is why a consumer hand-rolled a parallel harness. It is also the probe that found the [silent settings drop](#a-normalising-write-accepts-the-typed-shape-too), against the built artifact rather than the source.
+- **An unstubbed fixture route dies; a recorded `GitHubError` is a stubbed failure.** Both defaults were changed once a consumer showed what the old ones cost. A missing fixture is test wiring, not a domain outcome, so the fiber dies naming the route — matching what an absent GraphQL fixture always did. Failing typed instead was only loud in code that does not catch: a consumer catching `GitHubError` per resource turned a missing stub into a *different execution path*, and the assertions then failed for a new reason with nothing naming a fixture. The advice this replaces — "stub the 404 explicitly" — was unactionable until a recorded error value could *be* the failure, which it now can. `unstubbed` opts back into the typed not-found, or serves an empty value for a suite whose subject is decisions rather than endpoints.
 - **Pure classes get pure tests, with no layer at all**, and the byte budget gets a **property test** over multi-byte and four-byte code points, because a counterexample there is a production rejection.
 - **A pagination-forwarding test per paginating method**, which is what makes "no method hard-codes its page options" a checked property rather than a review item.
 - **The App suite generates a real RSA key and signs for real.**

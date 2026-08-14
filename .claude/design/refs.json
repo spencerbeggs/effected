@@ -40,8 +40,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "15c7db21359f567964a8988dde4740c021359dbf31a838e3c6d3bc794510e8cc",
-			"recordedAt": "2026-08-12"
+			"hash": "f9d6edd1beaf39c58945022d74d8f10070bee2dbe4c2e322e4c4432e78a5c2ac",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -52,8 +52,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/packages/config-file.md",
-			"hash": "49c351ec9cf825d61dd58d2853b2691d074479514143cf7b1b1821a4d1c658c7",
-			"recordedAt": "2026-08-12"
+			"hash": "9cd0c81ce10fabde695303535d9cd49530e6d3c6b4d6de706f4cadd505311e8c",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -64,14 +64,14 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/releases.md",
-			"hash": "0ef48a8deba3be3e52fd76691fb77f34288c97d08001330f3f972678eda79008",
-			"recordedAt": "2026-08-12"
+			"hash": "16285904f3a530704f5ffcafacd70d838c2e80c12c7e8381a51fb7005e795994",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/roadmap.md",
-			"hash": "588a8ae0a51e1e5abaa4b973791dfe39dcb9f5c2bfdaf24ee9766dd5a6642137",
-			"recordedAt": "2026-08-12"
+			"hash": "7a5809a0f9cb9ce867295408623c713ac389c648756c56fcc7ba3297552336e5",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -88,8 +88,20 @@
 		{
 			"source": "packages/app/CLAUDE.md",
 			"target": ".claude/design/effected/packages/app.md",
-			"hash": "141950f4bf146757400b0b23889e32fd1f0ce1a6022adbf49e81c3960da3b851",
-			"recordedAt": "2026-08-12"
+			"hash": "3dca73b2176d445d88ee5c66119e9edfd47b9a0404f2bc57f625a5c22061e4fb",
+			"recordedAt": "2026-08-14"
+		},
+		{
+			"source": "packages/cli/CLAUDE.md",
+			"target": ".claude/design/effected/consumers/reposets.md",
+			"hash": "8d0373dbc018aaad9faaf20e9b5936f54325c8d616aaede3e4990c38bdda6481",
+			"recordedAt": "2026-08-14"
+		},
+		{
+			"source": "packages/cli/CLAUDE.md",
+			"target": ".claude/design/effected/packages/cli.md",
+			"hash": "151eaa05df0d375e261bab7037100ea270ebff64242061957cd166002005ba63",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "packages/commands/CLAUDE.md",
@@ -112,8 +124,8 @@
 		{
 			"source": "packages/config-file/CLAUDE.md",
 			"target": ".claude/design/effected/packages/config-file.md",
-			"hash": "49c351ec9cf825d61dd58d2853b2691d074479514143cf7b1b1821a4d1c658c7",
-			"recordedAt": "2026-08-12"
+			"hash": "9cd0c81ce10fabde695303535d9cd49530e6d3c6b4d6de706f4cadd505311e8c",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "packages/git/CLAUDE.md",
@@ -202,8 +214,8 @@
 		{
 			"source": "packages/github/CLAUDE.md",
 			"target": ".claude/design/effected/packages/github-resources.md",
-			"hash": "20738f6047bfb6ca225b101fa98f416be3fc708d8a8306c7edf9f0450063f44e",
-			"recordedAt": "2026-08-12"
+			"hash": "ced2b92a395991a9beca55dd7ec6e941b6d3c8f6987f9eee2605c5b065190560",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "packages/github/CLAUDE.md",
@@ -214,8 +226,14 @@
 		{
 			"source": "packages/github/CLAUDE.md",
 			"target": ".claude/design/effected/packages/github.md",
-			"hash": "b4b964633aaed3d9248e9ab55520ac8ee69d004162907c78e728f823d99ee98b",
-			"recordedAt": "2026-08-12"
+			"hash": "9abb64343e41c2df6b1315c6dab7c52831d24b17c272ebcb42c5b484c9036794",
+			"recordedAt": "2026-08-14"
+		},
+		{
+			"source": "packages/github/CLAUDE.resources.md",
+			"target": ".claude/design/effected/packages/github-resources.md",
+			"hash": "ced2b92a395991a9beca55dd7ec6e941b6d3c8f6987f9eee2605c5b065190560",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "packages/glob/CLAUDE.md",
@@ -358,8 +376,8 @@
 		{
 			"source": "packages/store/CLAUDE.md",
 			"target": ".claude/design/effected/packages/store.md",
-			"hash": "d58a7c3175457f11731cf0a9dbb5beb02e05c1f50f5295f97ccbbb9c90af23d9",
-			"recordedAt": "2026-08-12"
+			"hash": "7f460b2af39d967dd89a255e1de2b15e5d1ebbe5f7c113f6f08954052105f273",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "packages/templates/CLAUDE.md",
@@ -418,8 +436,8 @@
 		{
 			"source": "packages/yaml/CLAUDE.md",
 			"target": ".claude/design/effected/packages/yaml.md",
-			"hash": "eda8aebe0623e5da2b489bfe645e137d082a9db369f9c534506a45408dc10a70",
-			"recordedAt": "2026-08-12"
+			"hash": "c1ff3ff9b49afea4a20347fbdfa616b42d6e9cd9d17a4cea3f637edd5ad29ba8",
+			"recordedAt": "2026-08-14"
 		},
 		{
 			"source": "packages/yaml/CLAUDE.md",

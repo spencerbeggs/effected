@@ -100,4 +100,60 @@ describe("ConfigFile.read", () => {
 			assert.strictEqual(asName.name, "app");
 		}).pipe(Effect.provide(platform({ "/app/.apprc": `{"port":8080,"name":"app"}` }))),
 	);
+	describe("parseOptions", () => {
+		const withExtra = { "/app/.apprc": `{"port":8080,"removedCredential":"stale"}` };
+
+		it.effect("drops unknown keys silently by default", () =>
+			Effect.gen(function* () {
+				const value = yield* ConfigFile.read("/app/.apprc", { schema: AppShape, codec: JsonCodec });
+				assert.strictEqual(value.port, 8080);
+			}).pipe(Effect.provide(platform(withExtra))),
+		);
+
+		it.effect("onExcessProperty error rejects a leftover field and names its path", () =>
+			Effect.gen(function* () {
+				// A config loader that silently discards part of a user's file cannot
+				// report a typo'd section, and cannot enforce a field the schema
+				// deliberately removed.
+				const error = yield* Effect.flip(
+					ConfigFile.read("/app/.apprc", {
+						schema: AppShape,
+						codec: JsonCodec,
+						parseOptions: { onExcessProperty: "error" },
+					}),
+				);
+				assert.instanceOf(error, ConfigValidationError);
+				assert.include(JSON.stringify(error.issue), "removedCredential");
+			}).pipe(Effect.provide(platform(withExtra))),
+		);
+
+		it.effect("onExcessProperty error leaves a clean document alone", () =>
+			Effect.gen(function* () {
+				const value = yield* ConfigFile.read("/app/.apprc", {
+					schema: AppShape,
+					codec: JsonCodec,
+					parseOptions: { onExcessProperty: "error" },
+				});
+				assert.strictEqual(value.port, 8080);
+			}).pipe(Effect.provide(platform({ "/app/.apprc": `{"port":8080}` }))),
+		);
+
+		it.effect("keys covered by a StructWithRest rest are not excess", () =>
+			Effect.gen(function* () {
+				// The half that decides whether this is usable: a schema that
+				// deliberately admits a pass-through section must keep working under
+				// "error", or strictness would break a documented feature.
+				const Passthrough = Schema.StructWithRest(Schema.Struct({ port: Schema.Number }), [
+					Schema.Record(Schema.String, Schema.Unknown),
+				]);
+				const value = yield* ConfigFile.read("/app/.apprc", {
+					schema: Passthrough,
+					codec: JsonCodec,
+					parseOptions: { onExcessProperty: "error" },
+				});
+				assert.strictEqual(value.port, 8080);
+				assert.strictEqual((value as Record<string, unknown>)["anything"], "goes");
+			}).pipe(Effect.provide(platform({ "/app/.apprc": `{"port":8080,"anything":"goes"}` }))),
+		);
+	});
 });

@@ -19,7 +19,7 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
 | Construct | Where | Reach for it when |
 | --- | --- | --- |
 | `makeTest(overrides?)` / `layerTest(overrides?)` | every service in the four packages | Building a partial double where every unstubbed member dies naming itself |
-| `GitHubClient.layerFixture(fixtures)` | `@effected/github` | Recording canned paginated responses through the same engine the live client uses |
+| `GitHubClient.layerFixture(fixtures)` | `@effected/github` | Recording canned responses — paginated ones through the same engine the live client uses — and **asserting the params a method sent**, not only the route it hit |
 | The scripted-`fetch` harness | `@effected/github`'s test suite | Driving the *real* client end to end against canned HTTP |
 | `BlobStore.layerMemory` | `@effected/github-actions` | A real-framing in-memory blob store, not a stub |
 | `OidcTokenIssuer.layerFor(claims)` | `@effected/github-actions` | A real, decodable unsigned JWT double |
@@ -28,6 +28,34 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
 | `it.live` vs `it.effect` | `@effect/vitest` | Real filesystem/subprocess IO vs a virtual clock |
 
 ## Standards
+
+### The `layerFixture` contract, as of `@effected/github@0.4.0`
+
+Three things changed together, and code written against the older shape is wrong rather than merely dated.
+
+**`requested` records every call, with params.** It is `Array<RecordedCall>` — `{ kind: "request" | "requestDecoded" | "paginate" | "graphql", route, params, perPage? }` — not the old `{ route, perPage }`. It used to log paginated reads only, so a suite whose methods all go through `request` could assert the route and nothing about what it sent. Assert the whole entry:
+
+~~~ts
+assert.deepStrictEqual(requested[0], {
+  kind: "request",
+  route: "GET /repos/{owner}/{repo}",
+  params: { owner: "acme", repo: "widgets" },
+})
+~~~
+
+**An unstubbed route DIES; it no longer fails typed.** A missing fixture is test wiring, not a domain condition, and it is now a defect naming the route — matching what an absent `graphql` fixture always did. The reason the old default was wrong is worth carrying: **a typed failure is only loud in code that does not catch.** A consumer whose methods each catch `GitHubError` and report it turns a missing stub into a *different execution path*, and the assertions then fail for a new reason with nothing naming a fixture. Two opt-outs when you need them: `unstubbed: "fail"` (the old `notFound`) and `unstubbed: "empty"` (`{}` for a request, no items for a page) for a suite whose subject is decisions rather than endpoints.
+
+**A recorded `GitHubError` value IS the response.** That is how you stub a 404 or a 422 deliberately, rather than by leaving a route absent:
+
+~~~ts
+GitHubClient.layerFixture({
+  request: { "GET /repos/{owner}/{repo}": GitHubError.notFound("read", "repo o/r") },
+})
+~~~
+
+Absence means unwired; a recorded error means *this route fails, and here is why*. Prefer the second — it names the reason and survives the die-default.
+
+**Paginated routes need the `paginate` key, not `request`.** Every list read in the resource services pages, so a fixture under `request` will die with "no fixture for …". The recorded value is the **whole collection as a bare array**; the fixture pages it through the real engine, which is what makes a two-page test a genuine two-page test.
 
 - **Every service ships `makeTest`/`layerTest`; every unstubbed member dies
   naming itself, lazily.** Build the death as a thunk invoked when the

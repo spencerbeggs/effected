@@ -8,7 +8,7 @@ This is **effected**, a pnpm monorepo (npm org `@effected`) building an **Effect
 
 The `effect` catalog in `pnpm-workspace.yaml` pins `effect@4.0.0-beta.107`. The monorepo holds libraries only — applications stay in external repos.
 
-**Releases are changeset-driven: CI builds the appropriate changesets and releases the packages they name.** A release may be the whole kit or a single package — both are ordinary, and a package can be released on its own. The most recent coordinated wave is the 27-package beta.107 wave, 2026-08-11, PR #325, with solo patch releases since (e.g. `workspaces@0.11.1`, PR #330). Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. Nothing in the kit still sits at `0.0.0`.
+**Releases are changeset-driven: CI builds the appropriate changesets and releases the packages they name.** A release may be the whole kit or a single package — both are ordinary. The most recent coordinated wave is the 27-package beta.107 wave (2026-08-11, PR #325), with solo releases since. Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. Only the unreleased `@effected/cli` still sits at `0.0.0`.
 
 ## Design Documentation
 
@@ -38,23 +38,23 @@ Detail lifted out of this file. Load on demand:
 
 ### Kit composition
 
-**The migration program is complete (2026-07-12).** The kit is **27 publishable packages**: 26 libraries plus the `pnpm-plugin-effect` companion. `runtime-resolver-cli` and `ts-vfs` were extracted back to external repos; `@effected/json-schema` is off the roadmap entirely. New packages follow the migration playbook: design doc first, then port.
+**The migration program is complete (2026-07-12).** The kit is **28 publishable packages**: 27 libraries plus the `pnpm-plugin-effect` companion. `@effected/cli` is the newest, built 2026-08-13 from the `@spencerbeggs/reposets` dogfood loop and unreleased. `runtime-resolver-cli` and `ts-vfs` were extracted back to external repos; `@effected/json-schema` is off the roadmap entirely. New packages follow the migration playbook: design doc first, then port.
 
-**The config-file consolidation is done.** `@effected/config-file` absorbed the three codec packages; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — and `ConfigCodec` is the interface only. **Never collect them into a namespace object**: referencing one reaches every codec and drags every parsing engine into a JSON-only consumer's bundle; tree-shaking dies silently. A namespace object is a barrel with different syntax; do not reintroduce one. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
+**The config-file consolidation is done.** `@effected/config-file` absorbed the three codec packages; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. **Never collect them into a namespace object** (a barrel with different syntax): referencing one reaches every codec and drags every parsing engine into a JSON-only consumer's bundle, so tree-shaking dies silently. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
 `package-inventory.md` and `releases.md` are authoritative — read them before starting work.
 
 ## Repository Layout
 
 - `packages/` — the workspace packages (see below).
-- `plugin/` — "effected", a Claude Code plugin (skills and specialist agents; count them in `plugin/skills/` and `plugin/agents/`) dogfooded during package work; in development.
+- `plugin/` — "effected", a Claude Code plugin (skills and specialist agents, counted in `plugin/skills/` and `plugin/agents/`) dogfooded during package work; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
-- `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. **Never write to anything under `.repos/`**, by any means, with any tool — silk's PreToolUse guards deny it. Fresh clones start empty: run `savvy repos sync` once. Detail → `@./CLAUDE.vendored-effect.md`.
+- `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. **Never write to anything under `.repos/`**, by any means, with any tool — silk's PreToolUse guards deny it. Fresh clones start empty. Detail → `@./CLAUDE.vendored-effect.md`.
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. Parenthetical tags mark each **library's** tier (pure / boundary / integrated) per `effect-standards.md`; the lone companion package has none.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. Parenthetical tags mark each **library's** tier (pure / boundary / integrated) per `effect-standards.md`; the companion has none.
 
 - `semver` — strict SemVer 2.0.0 schemas; the repo's DX north star (pure).
 - `jsonc` — zero-dependency JSONC parse/edit/format schemas (pure).
@@ -77,12 +77,13 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `runtimes` — resolve semver-compatible Node, Bun and Deno versions from live feeds with an offline snapshot; its CLI binary ships from an external repo so consumers never install `@effect/platform-node` (boundary).
 - `store` — durable local state: a migrated, schema-versioned SQLite `Store` and a TTL `Cache` with tag invalidation and eviction (integrated).
 - `workspaces` — monorepo tooling: discovery, dependency graph, package-manager detection, pnpm catalogs, lockfile IO, git change detection; implements `npm`'s resolver contracts and `commands`' `LocalExec` (integrated). `PublishabilityDetector` is a seam with **no ambient default** — provide `layerNpm` (or your own) wherever your program's `R` names it.
-- `github` — typed GitHub REST and GraphQL over octokit's request surface, with GitHub App auth and the resource services; owns the octokit runtime so nothing downstream has to (integrated).
+- `github` — typed GitHub REST/GraphQL over octokit, with App auth, the resource services and the configuration-write half (secrets, variables, rulesets, environments); owns the octokit runtime, and the sealed-box crypto pair, so nothing downstream has to (integrated).
 - `github-actions` — the Actions runtime services, the GitHub-surfaces reporting suite and the `sbom` seam adapters; the **one** package with `@effect/platform-node` as a required peer, and the only in-kit consumer of `templates`, `markdown` and `sbom` (integrated).
 - `sbom` — supply-chain artifacts: CycloneDX 1.6 SBOMs, the NTIA minimum-elements report, in-toto statements and SLSA provenance, Sigstore DSSE signing (integrated).
 - `schemastore` — Effect Schemas published as SchemaStore-shaped Draft-07 documents: `StoreDocument` assembly, catalog modes, fileMatch lint, `DocumentDiff`, write-if-changed `SchemaFile` IO, ajv-backed validation (integrated).
+- `cli` — the CLI **boundary**: `CliLogger` (plain lines, `Error`+ to stderr), `CliRuntime` (report failures through the program's own logger, set the exit code) and the two issue renderers. Not a CLI framework — `effect/unstable/cli` owns parsing and this must never grow a second one. `@effected/config-file` is an **optional** peer, which holds only because `ConfigIssueRenderer` is a module nothing else imports (boundary).
 - `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place (integrated). Nothing may depend on it.
-- `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier**. It **is published to npm** like every library here (currently `0.4.0`), not an exception.
+- `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier**. It **is published to npm** like every library here, not an exception.
 
 ## Build Pipeline
 
@@ -102,13 +103,13 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.buil
 
 `pnpm pnpm:up`, `pnpm pnpm:preview` and `pnpm pnpm:export` advance and export the Effect catalogs. They mutate the lockfile and the root `pnpm-workspace.yaml`.
 
-**Agents must not invoke them.** Surface the right command to the user and let them run it. Advancing the beta is `pnpm pnpm:up` then `pnpm pnpm:export`.
+**Agents must not invoke them.** Surface the command and let the user run it; advancing the beta is `pnpm pnpm:up` then `pnpm pnpm:export`.
 
 ## Code Quality and Hooks
 
 Biome, commitlint, lint-staged and markdownlint take their presets from `@savvy-web/silk`; configs live at the repo root and in `lib/configs/`. The `@savvy-web/*` packages are in active development — if behavior seems unexpected, read the installed source in `node_modules/@savvy-web/`.
 
-**Never invoke `markdownlint-cli2` directly — run `pnpm lint:md` or `pnpm lint:md:fix`.** The tool *merges* explicit path arguments with the config's repo-wide `globs` rather than narrowing to them, so "lint just my file" lints every markdown file in the repo. The config deliberately omits `fix` (present, it overrides the `--fix` flag in both directions) so the flag decides.
+**Never invoke `markdownlint-cli2` directly — run `pnpm lint:md` or `pnpm lint:md:fix`.** The tool *merges* explicit path arguments with the config's repo-wide `globs` rather than narrowing to them, so "lint just my file" lints the whole repo. The config deliberately omits `fix` (present, it overrides `--fix` in both directions) so the flag decides.
 
 **Never run `git checkout` / `git restore` / `git stash` to undo unexpected working-tree changes.** Other agents and earlier steps hold uncommitted work there. Inspect the diff and repair what is actually wrong.
 

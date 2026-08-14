@@ -3,10 +3,11 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-14
+last-synced: 2026-08-14
 completeness: 85
 related:
+  - consumers/reposets.md
   - releases.md
   - package-inventory.md
   - architecture.md
@@ -96,7 +97,9 @@ Still open:
 - **vitest-agent**, **@soda3js/config** and the **runtime-resolver CLI re-ship**.
 - **savvy-web/systems'** DepsRegen, plus the `savvy` CLI and MCP adapters over it — the consumer that scoped `workspaces`' point-in-time functionality alongside silk-update-action.
 
-**The dogfood pattern to expect from a port:** not one round of the ports run so far reported a missing capability. Every item was a *projection* the consumer had to write between two things the kit already owned — OIDC claims to a provenance predicate, check state to a document, a row type to a table — and got wrong in a way that typechecked. Prefer absorbing the projection over documenting the hazard.
+**The dogfood pattern to expect from a port depends on whether the consumer is first.** The github-split ports reported no missing capability between them: every item was a *projection* the consumer had to write between two things the kit already owned — OIDC claims to a provenance predicate, check state to a document, a row type to a table — and got wrong in a way that typechecked. Prefer absorbing the projection over documenting the hazard.
+
+A **first** consumer of a surface reports differently, and [reposets](consumers/reposets.md) is the worked case: first to drive `app` and `store` from outside, first to run at a terminal, and it found absence rather than mis-projection — a resolver chain, a read-through cache, a UTF-8 codec, decode options, six unrepresented GitHub route families, and the whole `@effected/cli` boundary. Two of those it wrote downstream against a design doc for this repo to fold in. **Plan the first port onto any new surface as a design round, not an absorption round**, and expect the surface to change shape rather than merely gain a method.
 
 ## The TypeScript 5→6→7 posture
 

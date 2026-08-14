@@ -119,6 +119,28 @@ importers:
         version: 7.0.2
     publishDirectory: dist/dev/pkg
 
+  packages/cli:
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-beta.107(effect@4.0.0-beta.107)(vitest@4.1.10)
+      '@effected/config-file':
+        specifier: workspace:*
+        version: link:../config-file/dist/dev/pkg
+      '@savvy-web/bundler':
+        specifier: ^2.1.9
+        version: 2.1.9(@effected/jsonc@0.6.0(effect@4.0.0-beta.107))(@effected/semver@0.4.0(effect@4.0.0-beta.107))(@effected/walker@0.4.0(@effected/glob@0.3.0(effect@4.0.0-beta.107))(effect@4.0.0-beta.107))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tsx@4.23.12)(typescript@7.0.2)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.2.0
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.107
+      typescript:
+        specifier: catalog:build
+        version: 7.0.2
+    publishDirectory: dist/dev/pkg
+
   packages/commands:
     devDependencies:
       '@effect/platform-node':
@@ -211,6 +233,12 @@ importers:
       '@octokit/types':
         specifier: ^16.0.0
         version: 16.0.0
+      blakejs:
+        specifier: 1.2.1
+        version: 1.2.1
+      tweetnacl:
+        specifier: 1.0.3
+        version: 1.0.3
       universal-github-app-jwt:
         specifier: ^2.2.2
         version: 2.2.2
@@ -3039,6 +3067,9 @@ packages:
   before-after-hook@4.0.0:
     resolution: {integrity: sha512-q6tR3RPqIB1pMiTRMFcZwuG5T8vwp+vUvEG0vuI6B+Rikh5BfPp2fQ82c925FOs+b0lcFQ8CFrL+KbilfZFhOQ==}
 
+  blakejs@1.2.1:
+    resolution: {integrity: sha512-QXUSXI3QVc/gJME0dBpXrag1kbzOqCjCX8/b54ntNyW6sjtoqxqRk3LTmXzaJoh71zMsDCjM+47jS7XiwN/+fQ==}
+
   body-parser@2.3.0:
     resolution: {integrity: sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==}
     engines: {node: '>=18'}
@@ -5393,6 +5424,9 @@ packages:
   turbo@2.10.9:
     resolution: {integrity: sha512-Yl9+ukxH+UmPtKidpDkjn82tvPoEvFNb9UACd9vUomN1Ft0cwl3rx0P8yC1D93W9EOsWRMjllvIDG8y25sFOog==}
     hasBin: true
+
+  tweetnacl@1.0.3:
+    resolution: {integrity: sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==}
 
   twoslash-protocol@0.3.9:
     resolution: {integrity: sha512-9/iwp+CXOnjFMPQuPL5PkuRbZnDoNpBvtJCLs9t8kDYkL3YHujbvnHfZA1i5fApDftVEdBw+T/4F+dH5kIzpYQ==}
@@ -8508,6 +8542,8 @@ snapshots:
 
   before-after-hook@4.0.0: {}
 
+  blakejs@1.2.1: {}
+
   body-parser@2.3.0(supports-color@9.4.0):
     dependencies:
       bytes: 3.1.2
@@ -11556,6 +11592,8 @@ snapshots:
       '@turbo/linux-arm64': 2.10.9
       '@turbo/windows-64': 2.10.9
       '@turbo/windows-arm64': 2.10.9
+
+  tweetnacl@1.0.3: {}
 
   twoslash-protocol@0.3.9: {}
 

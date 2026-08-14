@@ -155,6 +155,38 @@ Removed (no v4 equivalent): `validate*` (use `decode*` + `toType`), `keyof`,
 `NonEmptyArrayEnsure`, `withDefaults`, `Data(schema)` (v4 `Equal.equals` is
 deep-structural by default, so `Schema.Data` is unnecessary).
 
+## Excess properties — `onExcessProperty` survived, and it is easy to conclude it did not
+
+**v3's `ParseOptions.onExcessProperty` is alive and unchanged in v4** (`SchemaAST.ts:484`,
+`"ignore" | "error" | "preserve"`, default `"ignore"`). It is passed per call, as the second
+argument to the decode function — not baked into the schema:
+
+~~~ts
+Schema.decodeUnknownEffect(Creds)(input, { onExcessProperty: "error" })
+~~~
+
+Probed at beta.107: with the default, `{ token, staleField }` is accepted and the extra key
+silently dropped; with `"error"`, `{ token }` is still accepted and only the excess case is
+rejected, with the issue naming the offending key —
+`SchemaError(Expected no excess property at ["op_service_account_token"])`.
+
+**Why this needs a row.** A consumer concluded v4 had dropped the feature entirely and
+started writing one hand-rolled filter per removed field (reposets, 2026-08-13). The
+substitute they reached for first is a real trap worth knowing:
+
+~~~ts
+Schema.StructWithRest(Schema.Struct({ a: Schema.String }), [Schema.Record(Schema.String, Schema.Never)])
+// rejects { a: "x", b: 1 } — and ALSO rejects the valid { a: "x" }
+~~~
+
+A `Never` rest cannot express "these keys and no others"; it rejects everything.
+
+The stakes are higher than tidiness, which is why it belongs here rather than in a style
+note: **without it, a deliberately breaking schema change is unenforceable.** Remove a
+credential field from a config schema and a user migrating from the old format keeps it in
+their file, the schema drops it silently, and they believe a dead token is live. `"error"`
+is what turns that into a message naming the field.
+
 ## Manual / case-by-case
 
 - `optionalWith(schema, opts)` — decision tree by option combo: `{ exact: true }`

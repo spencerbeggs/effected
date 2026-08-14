@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ConfigProvider, Duration, Effect, Option, Redacted, Schema, Stream } from "effect";
+import { ConfigProvider, Duration, Effect, Exit, Option, Redacted, Schema, Stream } from "effect";
+import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { GitHubError } from "../src/GitHubError.js";
 import { GraphQLDocument } from "../src/GraphQL.js";
@@ -490,7 +491,7 @@ describe("GitHubClient.makeTest", () => {
 describe("GitHubClient.layerFixture", () => {
 	it.effect("pages a recorded collection through the LIVE pagination engine", () =>
 		Effect.gen(function* () {
-			const requested: Array<{ route: string; perPage: number }> = [];
+			const requested: Array<RecordedCall> = [];
 			const items = Array.from({ length: 250 }, (_, index) => ({ number: index }));
 			const layer = GitHubClient.layerFixture({
 				paginate: { "GET /repos/{owner}/{repo}/pulls": items },
@@ -509,7 +510,40 @@ describe("GitHubClient.layerFixture", () => {
 			// The double it replaces returned every recorded page regardless of what
 			// the caller asked for, which made this assertion impossible to write.
 			assert.lengthOf(pulls, 200);
-			assert.deepStrictEqual(requested, [{ route: "GET /repos/{owner}/{repo}/pulls", perPage: 100 }]);
+			assert.deepStrictEqual(requested, [
+				{
+					kind: "paginate",
+					route: "GET /repos/{owner}/{repo}/pulls",
+					params: { owner: "o", repo: "r" },
+					perPage: 100,
+				},
+			]);
+		}),
+	);
+
+	it.effect("records request and graphql calls WITH their params, not only paginated reads", () =>
+		Effect.gen(function* () {
+			// Before this, `request` named its params `_params` and never appended,
+			// so a suite whose methods all go through `request` could assert nothing
+			// about them — the gap that made a consumer hand-roll its own harness.
+			const requested: Array<RecordedCall> = [];
+			const layer = GitHubClient.layerFixture({
+				request: { "GET /repos/{owner}/{repo}": { default_branch: "main" } },
+				requested,
+			});
+			yield* Effect.provide(
+				Effect.flatMap(GitHubClient, (client) =>
+					client.request("GET /repos/{owner}/{repo}", { owner: "acme", repo: "widgets" }),
+				),
+				layer,
+			);
+			assert.deepStrictEqual(requested, [
+				{
+					kind: "request",
+					route: "GET /repos/{owner}/{repo}",
+					params: { owner: "acme", repo: "widgets" },
+				},
+			]);
 		}),
 	);
 
@@ -528,9 +562,13 @@ describe("GitHubClient.layerFixture", () => {
 		}),
 	);
 
-	it.effect("fails typed when a route has no recorded fixture", () =>
+	it.effect("DIES by default when a route has no recorded fixture", () =>
 		Effect.gen(function* () {
-			const error = yield* Effect.flip(
+			// A missing fixture is test wiring, not a domain condition. It must not
+			// enter the error channel, because a consumer that catches GitHubError
+			// per resource would absorb it into a different execution path and the
+			// assertion would fail for a new reason with nothing naming a fixture.
+			const exit = yield* Effect.exit(
 				Effect.provide(
 					Effect.flatMap(GitHubClient, (client) =>
 						client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" }),
@@ -538,8 +576,67 @@ describe("GitHubClient.layerFixture", () => {
 					GitHubClient.layerFixture({}),
 				),
 			);
+			assert.isTrue(Exit.isFailure(exit));
+			assert.include(String(exit), "no fixture for GET /repos/{owner}/{repo}");
+			// Proves it is a defect, not a typed failure: catching the error channel
+			// must NOT absorb it.
+			const stillDies = yield* Effect.exit(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" }),
+					),
+					GitHubClient.layerFixture({}),
+				).pipe(Effect.catchTag("GitHubError", () => Effect.succeed("absorbed"))),
+			);
+			assert.isTrue(Exit.isFailure(stillDies));
+		}),
+	);
+
+	it.effect("a recorded GitHubError IS the response, which is how a 404 is stubbed deliberately", () =>
+		Effect.gen(function* () {
+			// The mechanism the `unstubbed` docstring's advice depends on: absence
+			// means unwired, a recorded error means "this route fails, and here is
+			// why". Without this, "prefer stubbing the 404 explicitly" was advice
+			// with nothing behind it.
+			const error = yield* Effect.flip(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" }),
+					),
+					GitHubClient.layerFixture({
+						request: { "GET /repos/{owner}/{repo}": GitHubError.notFound("read", "repo o/r") },
+					}),
+				),
+			);
 			assert.instanceOf(error, GitHubError);
 			assert.strictEqual(error.kind, "notFound");
+		}),
+	);
+
+	it.effect('unstubbed: "fail" restores the typed notFound, for a suite whose subject is 404 handling', () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.request("GET /repos/{owner}/{repo}", { owner: "o", repo: "r" }),
+					),
+					GitHubClient.layerFixture({ unstubbed: "fail" }),
+				),
+			);
+			assert.instanceOf(error, GitHubError);
+			assert.strictEqual(error.kind, "notFound");
+		}),
+	);
+
+	it.effect('unstubbed: "empty" serves an empty value, for a suite whose subject is decisions', () =>
+		Effect.gen(function* () {
+			const items = yield* Effect.provide(
+				Effect.flatMap(GitHubClient, (client) =>
+					client.paginate("GET /repos/{owner}/{repo}/pulls", { owner: "o", repo: "r" }),
+				),
+				GitHubClient.layerFixture({ unstubbed: "empty" }),
+			);
+			assert.lengthOf(items, 0);
 		}),
 	);
 
