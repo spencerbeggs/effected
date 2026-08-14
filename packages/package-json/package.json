@@ -32,6 +32,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/jsonc": "workspace:^",
 		"@effected/npm": "workspace:^",
 		"@effected/semver": "workspace:^",
 		"@effected/spdx": "workspace:^"

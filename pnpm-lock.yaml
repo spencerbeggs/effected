@@ -463,6 +463,9 @@ importers:
 
   packages/package-json:
     dependencies:
+      '@effected/jsonc':
+        specifier: workspace:^
+        version: link:../jsonc/dist/dev/pkg
       '@effected/npm':
         specifier: workspace:^
         version: link:../npm/dist/dev/pkg
@@ -481,7 +484,7 @@ importers:
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)(vitest@4.1.10)
       '@savvy-web/bundler':
         specifier: ^2.1.9
-        version: 2.1.9(@effected/jsonc@0.6.0(effect@4.0.0-beta.107))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.4.0(@effected/glob@0.3.0(effect@4.0.0-beta.107))(effect@4.0.0-beta.107))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tsx@4.23.12)(typescript@7.0.2)
+        version: 2.1.9(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.4.0(@effected/glob@0.3.0(effect@4.0.0-beta.107))(effect@4.0.0-beta.107))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0

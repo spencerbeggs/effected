@@ -222,3 +222,100 @@ describe("PackageJsonFile round-trip", () => {
 		);
 	});
 });
+
+// The #286 surface: the lenient read for the private workspace-root shape and
+// the surgical, byte-preserving modify.
+describe("PackageJsonFile manifest and modify", () => {
+	layer(TestLayer)((it) => {
+		const PRIVATE_ROOT_TEXT =
+			'{\n\t"private": true,\n\t"packageManager": "pnpm@11.2.0",\n\t"devEngines": {\n\t\t"runtime": {\n\t\t\t"name": "node",\n\t\t\t"version": "24.9.1"\n\t\t}\n\t}\n}\n';
+
+		it.effect("readManifest reads the private workspace root that read rejects", () =>
+			Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				const dir = mkdtempSync(join(tmpdir(), "pkg-json-manifest-"));
+				const path = join(dir, "package.json");
+				writeFileSync(path, PRIVATE_ROOT_TEXT);
+				const strictError = yield* Effect.flip(file.read(path));
+				const manifest = yield* file.readManifest(path);
+				rmSync(dir, { recursive: true, force: true });
+				assert.strictEqual(strictError._tag, "PackageDecodeError");
+				assert.isTrue(manifest.isPrivate);
+				assert.strictEqual(manifest.name, undefined);
+				assert.strictEqual(manifest.packageManager?.range, "11.2.0");
+			}),
+		);
+
+		it.effect("writeManifest round-trips the private root without inventing fields", () =>
+			Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				const dir = mkdtempSync(join(tmpdir(), "pkg-json-manifest-rt-"));
+				const path = join(dir, "package.json");
+				writeFileSync(path, PRIVATE_ROOT_TEXT);
+				const manifest = yield* file.readManifest(path);
+				yield* file.writeManifest(path, manifest, { indent: "preserve" });
+				const written = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+				const raw = readFileSync(path, "utf-8");
+				rmSync(dir, { recursive: true, force: true });
+				assert.isFalse("name" in written);
+				assert.isFalse("version" in written);
+				assert.strictEqual(written.packageManager, "pnpm@11.2.0");
+				assert.isTrue(raw.includes('\n\t"private"'));
+			}),
+		);
+
+		it.effect("modify edits one field and preserves every other byte", () =>
+			Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				const dir = mkdtempSync(join(tmpdir(), "pkg-json-modify-"));
+				const path = join(dir, "package.json");
+				writeFileSync(path, PRIVATE_ROOT_TEXT);
+				const returned = yield* file.modify(path, [{ path: ["packageManager"], value: "pnpm@11.3.0" }]);
+				const written = readFileSync(path, "utf-8");
+				rmSync(dir, { recursive: true, force: true });
+				const expected = PRIVATE_ROOT_TEXT.replace('"pnpm@11.2.0"', '"pnpm@11.3.0"');
+				assert.strictEqual(written, expected);
+				assert.strictEqual(returned, expected);
+			}),
+		);
+
+		it.effect("modify applies multiple edits in one read/write", () =>
+			Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				const dir = mkdtempSync(join(tmpdir(), "pkg-json-modify-multi-"));
+				const path = join(dir, "package.json");
+				writeFileSync(path, PRIVATE_ROOT_TEXT);
+				yield* file.modify(path, [
+					{ path: ["packageManager"], value: "pnpm@11.3.0" },
+					{ path: ["devEngines", "runtime", "version"], value: "24.10.0" },
+				]);
+				const written = readFileSync(path, "utf-8");
+				rmSync(dir, { recursive: true, force: true });
+				assert.strictEqual(
+					written,
+					PRIVATE_ROOT_TEXT.replace('"pnpm@11.2.0"', '"pnpm@11.3.0"').replace('"24.9.1"', '"24.10.0"'),
+				);
+			}),
+		);
+
+		it.effect("modify normalizes invalid JSON to PackageJsonParseError — the same tag read uses", () =>
+			Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				const dir = mkdtempSync(join(tmpdir(), "pkg-json-modify-bad-"));
+				const path = join(dir, "package.json");
+				writeFileSync(path, "{ not valid json");
+				const error = yield* Effect.flip(file.modify(path, [{ path: ["a"], value: 1 }]));
+				rmSync(dir, { recursive: true, force: true });
+				assert.strictEqual(error._tag, "PackageJsonParseError");
+			}),
+		);
+
+		it.effect("modify fails with PackageJsonNotFoundError for a missing file", () =>
+			Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				const error = yield* Effect.flip(file.modify("/nonexistent/package.json", [{ path: ["a"], value: 1 }]));
+				assert.strictEqual(error._tag, "PackageJsonNotFoundError");
+			}),
+		);
+	});
+});
