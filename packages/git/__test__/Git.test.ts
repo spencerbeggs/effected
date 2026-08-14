@@ -127,14 +127,40 @@ describe("Git", () => {
 	});
 
 	describe("mergeBase", () => {
-		it.effect("returns the trimmed SHA", () =>
+		it.effect("returns Option.some of the trimmed SHA", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {
 					const git = yield* Git;
 					return yield* git.mergeBase(cwd, "main", "feat/git");
 				});
 				const result = yield* run(program, () => ({ stdout: "abc123\n", exit: 0 }));
-				assert.strictEqual(result, "abc123");
+				assert.deepStrictEqual(result, Option.some("abc123"));
+			}),
+		);
+
+		it.effect("no common ancestor (silent exit 1) is the probe's Option.none, never an error", () =>
+			Effect.gen(function* () {
+				// Disjoint histories — an orphan branch, a grafted CI clone — exit 1
+				// with silent stderr (probed against git 2.54): a legitimate answer.
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.mergeBase(cwd, "main", "orphan");
+				});
+				const result = yield* run(program, () => ({ exit: 1 }));
+				assert.deepStrictEqual(result, Option.none());
+			}),
+		);
+
+		it.effect("a NOISY exit 1 stays a loud GitCommandError — only the silent shape means disjoint", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.mergeBase(cwd, "main", "feat/git");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stderr: "error: something else went wrong\n", exit: 1 })),
+				);
+				assert.instanceOf(failure, GitCommandError);
 			}),
 		);
 	});
@@ -1315,6 +1341,69 @@ describe("Git", () => {
 					assert.deepStrictEqual(args, ["fetch", "--depth", "1", "origin", "tag", "v1.0.0"]);
 					return { exit: 0 };
 				});
+			}),
+		);
+
+		it.effect("fetch with a bare branch ref emits the plain form — the post-commit-sync spelling", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "main" });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["fetch", "origin", "main"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("fetch passes a full +src:dst refspec through verbatim — the single-branch-clone spelling", () =>
+			Effect.gen(function* () {
+				// Under actions/checkout's single-branch clone a bare-ref fetch never
+				// creates the remote-tracking ref; the refspec is the fix, and the
+				// guard admits its legitimate leading + (only leading - is refused).
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "+refs/heads/b:refs/remotes/origin/b" });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["fetch", "origin", "+refs/heads/b:refs/remotes/origin/b"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("fetch unshallow: true emits --unshallow before the remote", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "main", unshallow: true });
+				});
+				yield* run(program, (args) => {
+					assert.deepStrictEqual(args, ["fetch", "--unshallow", "origin", "main"]);
+					return { exit: 0 };
+				});
+			}),
+		);
+
+		it.effect("fetch refuses unshallow combined with depth before any spawn — git rejects the pair", () =>
+			Effect.gen(function* () {
+				let spawned = false;
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetch(cwd, { ref: "main", depth: 1, unshallow: true });
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => {
+						spawned = true;
+						return { exit: 0 };
+					}),
+				);
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.kind, "refused");
+				}
+				assert.isFalse(spawned);
 			}),
 		);
 

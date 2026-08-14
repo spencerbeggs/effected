@@ -103,6 +103,8 @@ const lsTree = (ref: string, pathspec: ReadonlyArray<string> = []): GitInvocatio
 const refExists = (ref: string): GitInvocation => git(["cat-file", "-e", ref]);
 
 // Implementation of GitCommand.mergeBase; the public contract lives on the static.
+// No common ancestor is a SILENT exit 1 (probed against git 2.54) — the quiet
+// probe shape Git.mergeBase degrades to Option.none, never an error.
 const mergeBase = (a: string, b: string): GitInvocation => git(["merge-base", a, b]);
 
 // Implementation of GitCommand.changedFiles; the public contract lives on the static.
@@ -129,10 +131,11 @@ const checkout = (ref: string, detach = false): GitInvocation =>
 	git(["checkout", ...(detach ? ["--detach"] : []), ref]);
 
 // Implementation of GitCommand.fetch; the public contract lives on the static.
-const fetch = (remote: string, ref: string, depth?: number, tag = false): GitInvocation =>
+const fetch = (remote: string, ref: string, depth?: number, tag = false, unshallow = false): GitInvocation =>
 	git([
 		"fetch",
 		...(depth !== undefined ? ["--depth", String(depth)] : []),
+		...(unshallow ? ["--unshallow"] : []),
 		secretUrl(remote),
 		...(tag ? ["tag"] : []),
 		ref,
@@ -520,6 +523,11 @@ export class GitCommand {
 
 	/**
 	 * `git merge-base <a> <b>` — the best common ancestor commit of `a` and `b`.
+	 *
+	 * @remarks
+	 * Two refs with NO common ancestor (disjoint histories) exit 1 with
+	 * silent stderr — a legitimate probe answer, not a failure;
+	 * `Git.mergeBase` degrades it to `Option.none`.
 	 */
 	static readonly mergeBase = mergeBase;
 
@@ -594,11 +602,21 @@ export class GitCommand {
 	static readonly checkout = checkout;
 
 	/**
-	 * Mutating: `git fetch [--depth <n>] <remote> [tag] <ref>` — fetches the given
-	 * ref from a remote, optionally with a depth limit and the `tag` keyword.
+	 * Mutating: `git fetch [--depth <n>] [--unshallow] <remote> [tag] <ref>` —
+	 * fetches the given ref from a remote, optionally with a depth limit, the
+	 * `--unshallow` mode, and the `tag` keyword.
 	 *
 	 * @remarks
-	 * `remote` may be a URL as well as a remote name; an embedded
+	 * `ref` may also be a full refspec (`src:dst`, optionally `+`-prefixed) —
+	 * it is passed through VERBATIM, never transformed. That matters under a
+	 * single-branch clone (`actions/checkout`'s default): a bare-ref fetch
+	 * there updates `FETCH_HEAD` only and never creates the remote-tracking
+	 * ref, so `+refs/heads/<b>:refs/remotes/origin/<b>` is the only spelling
+	 * that materializes `origin/<b>`.
+	 *
+	 * `unshallow` is a distinct MODE like {@link GitCommand.fetchUnshallow}'s:
+	 * git rejects it in a non-shallow repository and rejects it alongside
+	 * `--depth`. `remote` may be a URL as well as a remote name; an embedded
 	 * `userinfo@` credential is masked in {@link GitInvocation.redactedArgs}.
 	 */
 	static readonly fetch = fetch;

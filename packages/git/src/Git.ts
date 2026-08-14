@@ -1093,10 +1093,16 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 	const mergeBase = Effect.fn("Git.mergeBase")(function* (cwd: string, a: string, b: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, a, b });
 		yield* rejectOptionLikeRefs(cwd, [a, b]);
-		const classified = yield* runFor(GitCommand.mergeBase(a, b), cwd, "generic");
+		// "quiet" kind: no common ancestor is a SILENT exit 1 (probed against
+		// git 2.54) — the legitimate "these histories are disjoint" answer,
+		// degraded to Option.none. An unknown ref still exits 128 with a
+		// `Not a valid object name` stderr and stays UnknownRefError.
+		const classified = yield* runFor(GitCommand.mergeBase(a, b), cwd, "quiet");
 		switch (classified._tag) {
 			case "success":
-				return classified.output.trim();
+				return Option.some(classified.output.trim());
+			case "absent":
+				return Option.none();
 			case "notARepository":
 				return yield* Effect.fail(new NotARepositoryError({ cwd }));
 			case "unknownRef":
@@ -1429,14 +1435,39 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 
 	const fetch = Effect.fn("Git.fetch")(function* (
 		cwd: string,
-		options: { readonly ref: string; readonly remote?: string; readonly depth?: number; readonly tag?: boolean },
+		options: {
+			readonly ref: string;
+			readonly remote?: string;
+			readonly depth?: number;
+			readonly tag?: boolean;
+			readonly unshallow?: boolean;
+		},
 	) {
 		const remote = options.remote ?? "origin";
 		const tag = options.tag ?? false;
-		yield* Effect.annotateCurrentSpan({ cwd, ref: options.ref, tag });
+		const unshallow = options.unshallow ?? false;
+		yield* Effect.annotateCurrentSpan({ cwd, ref: options.ref, tag, unshallow });
 		yield* rejectOptionLikeRefs(cwd, [remote, options.ref]);
 		yield* rejectNonNaturalNumber(cwd, "a fetch depth", options.depth);
-		const classified = yield* runFor(GitCommand.fetch(remote, options.ref, options.depth, tag), cwd, "generic");
+		if (unshallow && options.depth !== undefined) {
+			// git itself rejects the pair (`--depth and --unshallow cannot be used
+			// together`, exit 128) — refused typed pre-spawn, the submoduleDeinit
+			// constraint-refusal precedent.
+			return yield* Effect.fail(
+				new GitCommandError({
+					kind: "refused",
+					args: ["--unshallow", "--depth", String(options.depth)],
+					cwd,
+					stderr: "",
+					detail: "refused: fetch cannot combine unshallow with depth (git rejects the pair)",
+				}),
+			);
+		}
+		const classified = yield* runFor(
+			GitCommand.fetch(remote, options.ref, options.depth, tag, unshallow),
+			cwd,
+			"generic",
+		);
 		switch (classified._tag) {
 			case "success":
 				return undefined;
@@ -2561,12 +2592,22 @@ export interface GitShape {
 	) => Effect.Effect<ReadonlyArray<LsTreeEntry>, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/** `git cat-file -e <ref>` — whether `ref` resolves to an existing object. */
 	readonly refExists: (cwd: string, ref: string) => Effect.Effect<boolean, GitCommandError | NotARepositoryError>;
-	/** `git merge-base <a> <b>` — the best common ancestor commit, trimmed. */
+	/**
+	 * `git merge-base <a> <b>` — the best common ancestor commit, trimmed, as
+	 * a PROBE: two refs with no common ancestor (disjoint histories — a
+	 * grafted CI clone, an orphan branch) answer `Option.none`, never an
+	 * error, because git signals that case as a silent exit 1. An unknown ref
+	 * is still a real failure (`UnknownRefError`).
+	 *
+	 * The value is a plain sha string — no decode or brand step. A caller
+	 * that only wants reachability ("do these histories connect?") reads the
+	 * boolean directly: `Option.isSome(yield* git.mergeBase(cwd, a, b))`.
+	 */
 	readonly mergeBase: (
 		cwd: string,
 		a: string,
 		b: string,
-	) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
+	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * `git diff --name-only -z [--relative] <base>...<head>` — the paths that
 	 * differ. Pass `relative: true` to report paths relative to `cwd` and
@@ -2608,16 +2649,36 @@ export interface GitShape {
 		options?: { readonly detach?: boolean },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
-	 * Mutating: `git fetch [--depth <n>] <remote> [tag] <ref>` — fetches
-	 * `options.ref` from `options.remote` (default `origin`) into the local
-	 * object database, optionally shallow (`options.depth`) and/or as a tag
-	 * (`options.tag`). A ref the remote does not have surfaces as
-	 * `UnknownRefError` — the typed signal a tag-then-branch fetch fallback
-	 * can branch on.
+	 * Mutating: `git fetch [--depth <n>] [--unshallow] <remote> [tag] <ref>` —
+	 * fetches `options.ref` from `options.remote` (default `origin`) into the
+	 * local object database, optionally shallow (`options.depth`), unshallowing
+	 * (`options.unshallow`), and/or as a tag (`options.tag`). A ref the remote
+	 * does not have surfaces as `UnknownRefError` — the typed signal a
+	 * tag-then-branch fetch fallback can branch on.
+	 *
+	 * `options.ref` also accepts a full refspec (`src:dst`, optionally
+	 * `+`-prefixed), passed through verbatim — never guessed at or
+	 * transformed. Under a single-branch clone (`actions/checkout`'s default
+	 * `fetch-depth: 1` shape) a bare-ref fetch updates only `FETCH_HEAD` and
+	 * never creates the remote-tracking ref, so
+	 * `+refs/heads/<b>:refs/remotes/origin/<b>` is the spelling that
+	 * materializes `origin/<b>`.
+	 *
+	 * `options.unshallow` follows `fetchUnshallow`'s caller-guards rule: git
+	 * rejects `--unshallow` in a non-shallow repository (a loud
+	 * `GitCommandError`, deliberately untolerated) — probe with `isShallow`
+	 * first. Combining it with `options.depth` is refused typed, pre-spawn,
+	 * exactly as git itself would reject the pair.
 	 */
 	readonly fetch: (
 		cwd: string,
-		options: { readonly ref: string; readonly remote?: string; readonly depth?: number; readonly tag?: boolean },
+		options: {
+			readonly ref: string;
+			readonly remote?: string;
+			readonly depth?: number;
+			readonly tag?: boolean;
+			readonly unshallow?: boolean;
+		},
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: fetches `options.ref` from `options.remote` (default
@@ -2673,6 +2734,11 @@ export interface GitShape {
 	 * a reset that silently did nothing would hand a retry of a
 	 * non-idempotent operation the same dirty tree. `mode` defaults to
 	 * `"mixed"` (git's own default), emitted explicitly in the argv.
+	 *
+	 * `mode: "hard"` is destructive and legitimately reached for: after
+	 * committing through an out-of-band channel (e.g. the GitHub Data API,
+	 * which writes the commit server-side), `reset --hard origin/<branch>`
+	 * is how the local tree is synchronized to the commit it never made.
 	 */
 	readonly reset: (
 		cwd: string,

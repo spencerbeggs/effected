@@ -109,6 +109,22 @@ describe("GitCommand", () => {
 		]);
 	});
 
+	it("fetch passes a full refspec through verbatim and places --unshallow before the remote", () => {
+		// The refspec is never transformed: under a single-branch clone it is the
+		// only spelling that creates the remote-tracking ref.
+		assertGitCommand(GitCommand.fetch("origin", "+refs/heads/b:refs/remotes/origin/b"), [
+			"fetch",
+			"origin",
+			"+refs/heads/b:refs/remotes/origin/b",
+		]);
+		assertGitCommand(GitCommand.fetch("origin", "main", undefined, false, true), [
+			"fetch",
+			"--unshallow",
+			"origin",
+			"main",
+		]);
+	});
+
 	it("submoduleUpdate composes --init, --depth and a -- pathspec", () => {
 		assertGitCommand(GitCommand.submoduleUpdate(), ["submodule", "update"]);
 		assertGitCommand(GitCommand.submoduleUpdate(true, 1, [".repos/effect"]), [

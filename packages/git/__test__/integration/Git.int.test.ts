@@ -208,8 +208,8 @@ describe("Git — real repository integration", () => {
 			Effect.gen(function* () {
 				const git = yield* Git;
 				const base = yield* git.mergeBase(fixture.dir, "main", "feature/git");
-				assert.strictEqual(base, fixture.forkPoint);
-				assert.strictEqual(base, fixture.commit1);
+				assert.deepStrictEqual(base, Option.some(fixture.forkPoint));
+				assert.deepStrictEqual(base, Option.some(fixture.commit1));
 			}),
 		),
 	);
