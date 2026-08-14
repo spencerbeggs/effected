@@ -2,6 +2,7 @@ import { spawn as spawnChild } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
 import type { Duration } from "effect";
 import { Effect, Schema } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 /**
@@ -133,9 +134,50 @@ export interface ReadinessOptions {
 	readonly attempts?: number | undefined;
 }
 
+/**
+ * The module's operations as a value: the seam a consumer's tests inject.
+ *
+ * @remarks
+ * `DetachedProcess` is statics on a class, deliberately — there is no scope to
+ * hang a service off, because the whole point is a child that outlives the
+ * process holding any handle to it. The cost of that choice is that the
+ * package's `makeTest`/`layerTest` convention has nothing to attach to:
+ * statics cannot be swapped by a layer, and a test must never spawn a real
+ * child, poll a real port, or — above all — signal a real pid. This interface
+ * restores the seam as **parameter injection**: production code takes a
+ * `DetachedProcessOps`, defaulting to {@link DetachedProcess.ops}, and a test
+ * passes {@link DetachedProcess.makeTestOps} with only the members it means to
+ * observe.
+ *
+ * {@link DetachedProcess.httpProbe} is deliberately not a member. It is a
+ * probe *constructor* with no process side effect of its own; a test stubs
+ * `awaitReady` — the operation that runs the probe — or provides a stub
+ * `HttpClient`.
+ *
+ * @public
+ */
+export interface DetachedProcessOps {
+	/** {@link DetachedProcess.spawn}. */
+	readonly spawn: (options: DetachedSpawnOptions) => Effect.Effect<ChildProcessSpawner.ProcessId, DetachedProcessError>;
+	/** {@link DetachedProcess.awaitReady}. */
+	readonly awaitReady: <E, R>(
+		probe: Effect.Effect<boolean, E, R>,
+		options?: ReadinessOptions,
+	) => Effect.Effect<void, E | DetachedProcessError, R>;
+	/** {@link DetachedProcess.reap}. */
+	readonly reap: (pid: number, signal?: NodeJS.Signals) => Effect.Effect<boolean, DetachedProcessError>;
+}
+
 /** Whether a thrown value is a Node errno error with the given code. */
 const isErrno = (cause: unknown, code: string): boolean =>
 	typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === code;
+
+/** See {@link DetachedProcess.makeTestOps}: an unstubbed member dies naming itself. */
+const unimplemented = (member: string): never => {
+	throw new Error(
+		`DetachedProcess.makeTestOps: ${member}() was called but not stubbed — pass a \`${member}\` override.`,
+	);
+};
 
 /**
  * A long-lived child that outlives the phase that started it.
@@ -254,6 +296,39 @@ export class DetachedProcess {
 	});
 
 	/**
+	 * A readiness probe over HTTP: `true` when a `GET` answers 2xx.
+	 *
+	 * @remarks
+	 * The probe {@link DetachedProcess.awaitReady} almost always wants: an HTTP
+	 * `GET` at a port the child is still binding, where connection-refused *is*
+	 * "not up yet". The consumers that hand-rolled the polling wrote exactly
+	 * this probe around it, and each had to discover the same subtlety — the
+	 * probe's error channel must stay empty, because `awaitReady` deliberately
+	 * propagates probe failures, and a refused connection is not a failure of
+	 * the probe.
+	 *
+	 * So this probe never fails: a refused connection, any other transport
+	 * error and a non-2xx answer all collapse to `false`, leaving
+	 * `awaitReady`'s own exhaustion as the only failure left. That is a
+	 * deliberate opt-out of the propagate-probe-failures posture, and it is
+	 * only sound because every failure an HTTP readiness check can see means
+	 * the same thing here. The cost is the documented one: a *misconfigured*
+	 * probe — a typo'd port, a wrong path — is indistinguishable from a child
+	 * that never came up, and reports as `notReady` only after the full budget.
+	 * A probe whose failures are meaningfully distinct should stay a
+	 * hand-written effect with those failures in `E`.
+	 *
+	 * The request goes through core's `HttpClient` — `Action.run` provides it
+	 * ambiently — rather than a bare `fetch`, per the package rule that
+	 * everything that *can* go through a core contract does.
+	 */
+	static readonly httpProbe = (url: string | URL): Effect.Effect<boolean, never, HttpClient.HttpClient> =>
+		HttpClient.get(url).pipe(
+			Effect.map((response) => response.status >= 200 && response.status < 300),
+			Effect.catch(() => Effect.succeed(false)),
+		);
+
+	/**
 	 * Signal a pid that came back across the phase boundary.
 	 *
 	 * @remarks
@@ -290,5 +365,37 @@ export class DetachedProcess {
 					: Effect.fail(new DetachedProcessError({ reason: "signalFailed", pid, cause }));
 			}
 		});
+	});
+
+	/**
+	 * The real operations: the production default for a
+	 * {@link DetachedProcessOps} parameter.
+	 *
+	 * @remarks
+	 * The members ARE the statics — same references, not wrappers — so taking
+	 * the seam costs a consumer nothing over calling the statics directly.
+	 */
+	static readonly ops: DetachedProcessOps = {
+		spawn: DetachedProcess.spawn,
+		awaitReady: DetachedProcess.awaitReady,
+		reap: DetachedProcess.reap,
+	};
+
+	/**
+	 * A test double. Unstubbed members die rather than silently succeeding.
+	 *
+	 * @remarks
+	 * The package's `makeTest` convention, on the module's one non-service.
+	 * Every member a test does not stub dies loudly **naming the member**,
+	 * because silence is worse here than anywhere else in the package: a spawn
+	 * that silently "succeeds" fakes a child that does not exist, and a reap
+	 * that silently succeeds asserts nothing about the one call whose
+	 * production form signals a real pid.
+	 */
+	static readonly makeTestOps = (overrides: Partial<DetachedProcessOps> = {}): DetachedProcessOps => ({
+		spawn: () => Effect.sync(() => unimplemented("spawn")),
+		awaitReady: () => Effect.sync(() => unimplemented("awaitReady")),
+		reap: () => Effect.sync(() => unimplemented("reap")),
+		...overrides,
 	});
 }
