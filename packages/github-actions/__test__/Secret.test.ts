@@ -129,6 +129,34 @@ describe("Secret", () => {
 		});
 	});
 
+	describe("mask", () => {
+		it.effect("registers the value with the log filter and resolves void", () => {
+			const outputs = recordingOutputs();
+			return Effect.gen(function* () {
+				const result = yield* Secret.mask(Redacted.make("register-only"));
+				assert.isUndefined(result);
+				assert.deepStrictEqual(outputs.masked, ["register-only"]);
+			}).pipe(Effect.provide(outputs.layer));
+		});
+
+		it.effect("registers through the same route as forRunnerFile — one mechanism, observed identically", () => {
+			const outputs = recordingOutputs();
+			return Effect.gen(function* () {
+				yield* Secret.forRunnerFile(Redacted.make("same-route"));
+				yield* Secret.mask(Redacted.make("same-route"));
+				assert.deepStrictEqual(outputs.masked, ["same-route", "same-route"]);
+			}).pipe(Effect.provide(outputs.layer));
+		});
+
+		it("never hands back plaintext — the success channel is void, by type", () => {
+			// Compile-time proof, not a runtime one: were mask to return the
+			// plaintext (A = string), this assignment would not typecheck, because
+			// string is not assignable to void.
+			const witness: (secret: Redacted.Redacted<string>) => Effect.Effect<void, never, ActionOutputs> = Secret.mask;
+			assert.strictEqual(witness, Secret.mask);
+		});
+	});
+
 	describe("adopt", () => {
 		it.effect("re-wraps a plaintext handoff as Redacted", () =>
 			withConfig(

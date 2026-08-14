@@ -13,10 +13,12 @@ import { ActionOutputs } from "./ActionOutputs.js";
  * it makes declassification **explicit, auditable, and impossible to do
  * quietly**.
  *
- * The invariant: **masking and declassification are the same call.** Every
- * member registers the value with the runner's log filter (`::add-mask::`)
- * *before* returning plaintext, so a secret cannot reach a child's environment
- * or a state file without the runner already knowing to redact it from logs.
+ * The invariant: **masking is the floor, and declassification implies it.**
+ * Every member registers the value with the runner's log filter
+ * (`::add-mask::`) *before* any plaintext is returned — and the one member
+ * that returns nothing, {@link Secret.mask}, registers and stops there — so a
+ * secret cannot reach a child's environment or a state file without the
+ * runner already knowing to redact it from logs.
  *
  * `Redacted.value` appears nowhere else in this package, and a test asserts
  * that structurally — a reintroduction elsewhere fails the suite rather than
@@ -160,6 +162,43 @@ export class Secret {
 	 */
 	static readonly forProcessEnv = (secret: Redacted.Redacted<string>): Effect.Effect<string, never, ActionOutputs> =>
 		Secret.forRunnerFile(secret);
+
+	/**
+	 * Register a secret with the runner's log filter — and return nothing.
+	 *
+	 * @remarks
+	 * Masking without declassification: the value is registered with
+	 * `::add-mask::` through the same route as every other member, and the
+	 * success channel is `void`, so a caller cannot come away holding the raw
+	 * value at all. This is the register-only shape consumers previously spelled
+	 * as a {@link Secret.forSigning} whose result was discarded — a spelling
+	 * that lied to the audit vocabulary (a grep for signing found masking),
+	 * contradicted forSigning's own once-at-construction guidance, and needed a
+	 * comment to apologize for itself. The names are the vocabulary: a grep for
+	 * this member finds every register-only site, and a grep for `forSigning`
+	 * again finds only signing.
+	 *
+	 * The canonical caller masks every supplied credential input
+	 * unconditionally, before the logic that decides which of them will
+	 * actually be used — a secret the workflow supplied deserves redaction from
+	 * the log whether or not resolution reaches for it.
+	 *
+	 * One value per call is the blessed shape; there is deliberately no
+	 * set-taking form. {@link Secret.forChildEnv} takes a set because its
+	 * mask-everything-before-returning-anything ordering is load-bearing; a
+	 * plain mask returns nothing to order against, and a loop is fine.
+	 *
+	 * **In a detached worker, the mask this member emits is a leak.** The
+	 * `::add-mask::` command only masks when the runner parses this process's
+	 * stdout; a detached worker's stdout is a log file no runner parses, so
+	 * there the command masks nothing *and* spells the plaintext into the log
+	 * — a signing key shipped exactly that way for one round. A worker must
+	 * compose `ActionOutputs.layerDetached`, under which the mask is a
+	 * documented no-op; the masking itself is the **parent's** job, done
+	 * before the spawn via {@link Secret.forChildEnv} under the real layer.
+	 */
+	static readonly mask = (secret: Redacted.Redacted<string>): Effect.Effect<void, never, ActionOutputs> =>
+		Effect.asVoid(Secret.forRunnerFile(secret));
 
 	/**
 	 * The far side of a handoff: re-wrap a plaintext environment variable.
