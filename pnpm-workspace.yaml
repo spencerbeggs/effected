@@ -1,5 +1,6 @@
 packages:
   - packages/*
+  - scratchpad
   - website
 autoInstallPeers: true
 catalogs:

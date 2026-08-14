@@ -135,7 +135,10 @@ the `@effected/commands` package survived four review gates before a source
 check found `effect/unstable/process` already declared its entire surface —
 it was deleted the same day it was built. State the inventory result in the
 design summary ("core declares X → required in R" or "no core contract found
-for X").
+for X"). When a question survives the source read — semantics, not existence —
+settle it with a probe per `effect-v4-source-lookup`; in a repo with a
+`scratchpad/` workspace, write the probe there
+(`pnpm scratchpad:probe probes/<name>.ts`).
 
 **Inventory core *and* the sibling `@effected` packages, not core alone.** In
 this monorepo the likelier duplication is not a core primitive but a *sibling

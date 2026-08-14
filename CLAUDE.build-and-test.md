@@ -32,6 +32,8 @@ Biome, commitlint, lint-staged and markdownlint all take their presets from `@sa
 - **Framework**: [Vitest](https://vitest.dev/) with the `@vitest-agent/plugin` `AgentPlugin` (project discovery, agent-friendly output, v8 coverage with `basic` thresholds); pool is `forks`.
 - **Effect code**: test with `@effect/vitest` (`catalog:effect`).
 - **Location**: tests live in each package's `__test__/` directory, never co-located in `src/` (unit: `*.test.ts`; e2e: `e2e/*.e2e.test.ts`; integration: `integration/*.int.test.ts`).
+- **Pre-build**: the root `globalSetup` (`vitest.setup.ts`) runs `turbo run build:dev --output-logs=errors-only` via `AgentPlugin.runScript` before **every** vitest run — CLI and the MCP `run_tests` tool alike — so tests always see fresh `dist/dev` artifacts. Turbo's cache makes it a fast no-op when nothing changed.
+- **Scratchpad**: the `scratchpad` vitest project (agent probe venue, contract in `scratchpad/CLAUDE.md`) exists locally only — the discover strategy in `vitest.config.ts` drops it when `CI` is set, and `scratchpad/**` is excluded from coverage. Run it with `pnpm exec vitest run --project scratchpad --coverage.enabled=false`.
 - **CI**: `pnpm ci:test` sets `CI=true`.
 
 ---
