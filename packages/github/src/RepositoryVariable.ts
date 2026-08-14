@@ -43,10 +43,15 @@ export interface RepositoryVariableShape {
 	 *
 	 * **The 404-for-absent behaviour is documented, not probed.** Neither this
 	 * suite nor the first consumer's has issued this read against real GitHub —
-	 * both run against doubles. If GitHub answers something else for an absent
-	 * variable, every write takes the create branch and the update path goes
-	 * unused, so read a surprising `alreadyExists` from the POST as evidence
-	 * about this assumption rather than about the caller.
+	 * both run against doubles.
+	 *
+	 * Only `notFound` selects the create branch: a successful read selects the
+	 * update branch, and any other failure propagates rather than being guessed
+	 * at. So if GitHub answers something *other* than 404 for an absent
+	 * variable, the write does not silently take the wrong branch — it either
+	 * `PATCH`es a variable that is not there, or fails with the error GitHub
+	 * actually sent. Read either as evidence about this assumption rather than
+	 * about the caller.
 	 */
 	readonly set: (name: string, value: string) => Effect.Effect<void, GitHubError, Repo>;
 	/** The repository's variables, with their values. */

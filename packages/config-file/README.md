@@ -141,7 +141,7 @@ export const SettingsLive = ConfigFile.layer(SettingsConfig, {
 
 The `validate` option cannot stand in for this: it runs on the decoded value, by which point the excess keys are already gone. Pair `onExcessProperty: "error"` with `errors: "all"` — the decoder reports only the first problem otherwise, so a file with three typos costs the user three fix-and-rerun cycles. The extra work happens only on a document that is already failing.
 
-Keys covered by a `Schema.StructWithRest` rest are not excess, so a schema that deliberately admits a pass-through section keeps working under `"error"`. Omitting `parseOptions` changes nothing, which makes turning this on a per-loader decision rather than a migration.
+A schema that deliberately admits a pass-through section keeps working under `"error"` — but know why, because the shape suggests the opposite: a `Schema.StructWithRest` rest **switches excess checking off for that struct entirely**, not merely for the keys the rest covers. Structs without a rest stay strict independently, so strictness is decided per level rather than per key. Omitting `parseOptions` changes nothing, which makes turning this on a per-loader decision rather than a migration.
 
 ## Errors
 

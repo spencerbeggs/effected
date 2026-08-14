@@ -76,8 +76,10 @@ Three orthogonal seams, composed by `ConfigFile.layer`:
 drops a user's unknown keys and can report neither a typo'd section nor a field
 the schema deliberately removed — the migrating user keeps a dead credential and
 is told nothing. `validate` cannot cover it (it runs post-decode, after the
-excess keys are gone). Keys covered by a `StructWithRest` rest are not excess, so
-a deliberate pass-through section survives `"error"`. Default absent = core's
+excess keys are gone). A `StructWithRest` rest switches excess checking **off for that struct**, not
+merely for the keys it covers — measured, since the shape suggests the reverse.
+A deliberate pass-through section therefore survives `"error"`, and structs
+without a rest stay strict independently. Default absent = core's
 behavior, so it is additive.
 
 `ConfigFile.read(path, { schema, codec })` is the **one-shot** escape from all

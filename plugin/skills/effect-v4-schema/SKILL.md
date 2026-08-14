@@ -63,7 +63,9 @@ are still `undefined` at beta.107; the rename did not get reverted.
 
 ## Decoding tolerates excess keys silently — and a typo is the common case
 
-`Schema.Struct` **drops unknown keys without complaint** on decode. A struct of
+`Schema.Struct` **drops unknown keys without complaint** on decode under
+`onExcessProperty`'s default of `"ignore"` — `"error"` rejects them and
+`"preserve"` keeps them, but you get `"ignore"` unless you ask. A struct of
 all-`optionalKey` fields decodes `{ mxa: 100 }` to `{}` and reports success, so a
 typo'd key and a correct-but-absent one are indistinguishable.
 
@@ -88,10 +90,25 @@ Pair it with **`errors: "all"`**. The default reports the first issue only, so a
 file with three typos surfaces one per run — fix, re-run, discover the next. The
 extra work only happens on a document that is already failing.
 
-**Keys covered by a `Schema.StructWithRest` rest are not excess**, so a schema
-that deliberately admits a pass-through section keeps working under `"error"`.
-And the substitute people reach for first does not work: a `Never` rest rejects
-**valid** input too, so it cannot express "these keys and no others".
+**A rest does not make a struct stricter — it switches excess checking off.**
+This is the opposite of what the shape suggests, and it is worth probing rather
+than reasoning about. Measured against beta.107:
+
+| Spelling | `{ a: "x", b: 1 }` under `onExcessProperty: "error"` |
+| --- | --- |
+| `Schema.Struct({ a })` | **rejected** — the strict path |
+| `Schema.StructWithRest(Struct({ a }), [Record(String, Unknown)])` | **accepted**, and `b` is *preserved* |
+| `Schema.Struct({ a }, { rest: Never })` | accepted, `b` dropped — v4's `Struct` takes only `fields`, so the v3 `rest` option is an ignored extra argument |
+| `Schema.StructWithRest(Struct({ a }), [Record(String, Never)])` | rejected — but so is the valid `{ a: "x" }`, because the index signature covers `a` too |
+
+`SchemaAST.ts` runs the excess pass only when the struct has no index signature,
+so **owning a rest disables it for that struct entirely**, not merely for the
+keys the rest covers. A schema that deliberately admits a pass-through section
+therefore keeps working under `"error"` — but it is permissive about *every*
+key at that level, and siblings without a rest stay strict independently.
+
+So a rest cannot express "these keys and no others" in either direction, and
+`onExcessProperty: "error"` is the only strict path.
 
 ## `Schema.optional` is not exact-optional
 
