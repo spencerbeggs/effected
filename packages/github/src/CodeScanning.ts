@@ -43,6 +43,15 @@ export interface CodeScanningShape {
 	 * The endpoint answers **202 Accepted** and configures asynchronously.
 	 * Nothing here polls: a successful call means GitHub accepted the request,
 	 * not that scanning is running.
+	 *
+	 * **Turning it back off does not undo everything it did.** Setting `state`
+	 * to `not-configured` stops default setup, but the synthetic CodeQL workflow
+	 * GitHub created when it was enabled **survives** — it remains listed among
+	 * the repository's workflows afterwards. A caller that treats "default setup
+	 * is off" as "no CodeQL workflow exists" will be wrong, and one that counts
+	 * workflows to decide whether a repository has any CI will count that one.
+	 * Reported by `@spencerbeggs/reposets` (dogfood round 8, 2026-08-14) from a
+	 * real organization, not inferred from the API description.
 	 */
 	readonly configure: (setup: CodeScanningSetup) => Effect.Effect<void, GitHubError, Repo>;
 	/**

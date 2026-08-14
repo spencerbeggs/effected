@@ -40,6 +40,13 @@ export interface RepositoryVariableShape {
 	 * `notFound` is absorbed — a 403 from a mis-scoped token still fails, where
 	 * treating any error as absence would turn a permissions problem into a
 	 * spurious create.
+	 *
+	 * **The 404-for-absent behaviour is documented, not probed.** Neither this
+	 * suite nor the first consumer's has issued this read against real GitHub —
+	 * both run against doubles. If GitHub answers something else for an absent
+	 * variable, every write takes the create branch and the update path goes
+	 * unused, so read a surprising `alreadyExists` from the POST as evidence
+	 * about this assumption rather than about the caller.
 	 */
 	readonly set: (name: string, value: string) => Effect.Effect<void, GitHubError, Repo>;
 	/** The repository's variables, with their values. */
