@@ -1,5 +1,98 @@
 # @effected/app
 
+## 0.10.0
+
+### Features
+
+* ### `AppConfig.layer` accepts a caller resolver chain
+
+  `AppConfigOptions` gains an optional `resolvers`, composed **ahead** of the XDG chain in the order given. The case it exists for is a CLI's `--config` flag, which has to outrank the app's own search path:
+
+  ```ts
+  const ConfigLive = AppConfig.layer(SettingsFile, {
+  	filename: "settings.toml",
+  	schema: Settings,
+  	codec: TomlCodec,
+  	resolvers: flag === undefined ? [] : [ConfigResolver.explicitPath(flag)],
+  });
+  ```
+
+  `ConfigResolver.staticDir` covers a flag naming a directory, and `ConfigResolver.upwardWalk` a project-local file. Previously this meant dropping to `ConfigFile.layer` and rebuilding the XDG wiring — the save path, the ambient namespace — by hand.
+
+  Prepending is the whole contract: `XdgConfig.resolver` and the native probe stay behind whatever you pass, so **the default chain is unchanged** when the option is absent.
+
+  Two properties worth knowing before you rely on it:
+
+  * A caller resolver that finds nothing **falls through** to the XDG chain. Every `ConfigResolver`'s error channel is `never` by contract, so a `--config` naming a file that does not exist quietly loads the XDG config instead. If that must be an error, check the path before building the layer.
+  * The **save path is unaffected**. `save` still writes to the app's own config directory; writing back to a flag-named file is `write(value, path)`.
+
+  A chain that needs the XDG resolvers anywhere but last — or not at all — has outgrown the preset: compose `ConfigFile.layer` from `@effected/config-file` directly and order the chain yourself.
+
+  `AppConfigOptions` takes a third type parameter, `RR`, for those resolvers' requirements; it defaults to `never` and joins the layer's `R`. Existing code naming `AppConfigOptions<A, I>` is unaffected. [#352][#352]
+
+- ### `parseOptions` on config loading, for strict config files
+
+  `ConfigFileOptions`, `ConfigReadOptions` and `AppConfigOptions` each take an optional `parseOptions`, threaded into every schema decode. The field that matters is `onExcessProperty`:
+
+  ```ts
+  const ConfigLive = AppConfig.layer(SettingsFile, {
+  	filename: "settings.toml",
+  	schema: Settings,
+  	codec: TomlCodec,
+  	parseOptions: { onExcessProperty: "error" },
+  });
+  ```
+
+  It defaults to core's `"ignore"`, so **nothing changes for existing consumers** — unknown keys are still dropped silently unless you ask otherwise.
+
+  Why it is worth asking for: a loader that silently discards part of a user's file cannot report a typo'd section name, and cannot enforce a field the schema deliberately removed. A user migrating from an older format keeps a removed credential field, is told nothing, and believes a dead token is live. With `"error"` that becomes a `ConfigValidationError` whose issue names the offending path.
+
+  `validate` cannot substitute for it: `validate` runs on the *decoded* value, by which point the excess keys are already gone and there is nothing left to detect.
+
+  Keys covered by a `Schema.StructWithRest` rest are **not** excess, so a schema that deliberately admits a pass-through section — `[settings.*]` and the like — keeps working under `"error"`. [#352][#352]
+
+* ### `Cache.through` — read-through caching in one call
+
+  `get` → decode → on miss fetch → encode → `set` was roughly twenty-five lines every consumer wrote for itself. It is now one:
+
+  ```ts
+  const members = yield* Cache.through("team:platform", Schema.fromJsonString(Members), {
+  	ttl: "1 hour",
+  	tags: ["team"],
+  })(fetchMembersFromApi);
+  ```
+
+  `Cache.throughVerbose` returns `{ value, hit }` for callers that need to say *(cached)* in their output — previously only reachable by subscribing to the `CacheEvent` PubSub and correlating by key, which is a telemetry channel being used as a return value.
+
+  Two policies the package now owns rather than leaving to each consumer:
+
+  * **A stored value that fails to decode is a miss, not a failure.** Those bytes were written by an older build of the caller's own program; the user did not cause it, cannot fix it without knowing the cache exists, and everything cached is re-derivable by definition. The stale entry is overwritten on the way out.
+  * **`CacheError` is surfaced, not swallowed.** A cache is additive and a caller may reasonably want to push through a broken one, but that is the caller's decision to make with `Effect.catchTag("CacheError", …)`. A database that cannot be read is real and reportable, so it is not hidden here.
+
+  ### `Uint8ArrayFromUtf8` — the missing UTF-8 codec
+
+  Core's Schema ships `Uint8ArrayFromBase64`, `Uint8ArrayFromBase64Url` and `Uint8ArrayFromHex`, and nothing for UTF-8. So this package's own advice — cache values are bytes, encode them deliberately through a schema — could not be followed to the end: `Schema.fromJsonString(schema)` reaches `string` and stops. Consumers hand-wired a `TextEncoder` at exactly the seam the advice exists to close, or paid base64's 33% size premium to stay inside Schema.
+
+  `Uint8ArrayFromUtf8` closes it. Encoding fails on malformed UTF-8 rather than substituting replacement characters, so a corrupt value stays distinguishable from a valid one containing `U+FFFD`.
+
+### Documentation
+
+* `Cache` and `App.layer` now document the `TestClock` ordering that decides whether cache expiry is testable at all: provide `TestClock.layer()` **outside** the `Effect.provide` supplying the cache, never beneath it. Underneath, the test body has no `TestClock` in its context and `TestClock.adjust` dies as a defect, so nothing you try to expire ever expires. [#352][#352]
+
+### Dependencies
+
+| Dependency            | Type       | Action  | From  | To    |
+| --------------------- | ---------- | ------- | ----- | ----- |
+| @effected/config-file | dependency | updated | 0.3.1 | 0.4.0 |
+| @effected/store       | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/xdg         | dependency | updated | 0.2.0 | 0.2.1 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#352]: https://github.com/spencerbeggs/effected/pull/352
+
 ## 0.9.1
 
 ### Documentation
