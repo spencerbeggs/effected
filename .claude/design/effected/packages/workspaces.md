@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-14
+last-synced: 2026-08-14
 completeness: 95
 related:
   - ../effect-standards.md
@@ -141,7 +141,23 @@ Dependency-pattern matching takes a compiled pattern or a string. Passing a comp
 
 A pure value class with lazily-built private edge indexes: total sync accessors, and fallible boundaries for the queries that can fail. **Cycle detection is iterative**, using an explicit stack rather than a recursive DFS, so there is no stack-overflow surface on a deep chain. Kahn's algorithm gives deterministic, lexicographically-sorted level output, made linear by the reverse-edge index the class already builds.
 
-> Core's `effect/Graph` is **not** adopted: its topological sort *throws* rather than failing typed, and the node-index indirection would have to be maintained alongside the name-keyed API consumers already use. Revisit if it grows a typed cycle result.
+#### Core's Graph is adopted at two call sites, not as the substrate
+
+Core ships a root-level `Graph` module and this package uses it — **for two derived answers only, over transient graphs built on demand.** The edge index, `hasCycle`, Kahn's algorithm, the `levels` / `sort` / `sortSubset` machinery, the public name-keyed API and the Schema contract (whose only field is `packages`) are all unchanged. There is no new dependency; `Graph` comes from `effect` itself.
+
+**The substrate swap was evaluated and rejected.** It would replace the trivially-correct part — building two maps out of manifests — while keeping every part that is actually hard, and it would add a permanent name↔`NodeIndex` translation layer beneath an API that consumers address by package name. It would also widen this package's dependence on an exact-pinned beta surface for no stability gain. **Transient construction at the two call sites confines that exposure to code that is already failing or already rendering**, which is the whole shape of the adoption.
+
+**`levels` stays hand-rolled, and that is a finding rather than a preference.** Core's `topo` cannot produce the parallel-wave boundaries `levels` exists to give: its walker exposes no level data, and `TopoConfig.initials` only *prioritizes* zero-in-degree nodes rather than fencing a wave. Settled against the vendored beta.107 source, so it does not need re-deriving.
+
+Both transient graphs materialize through one helper that adds nodes in sorted-name order and each node's edges in sorted-target order, so `NodeIndex` *i* is always the *i*th sorted name and **everything derived is deterministic regardless of manifest key order.**
+
+#### The cycle payload names the cycle, not the stall
+
+`CyclicDependencyError.cycle` is **the sorted union of every strongly connected component with more than one member**, from core's `Graph.stronglyConnectedComponents`. It was Kahn's stalled set, which is a different thing: the stall holds every node that never cleared, *including packages merely downstream of a cycle*, so the payload named blameless packages and a consumer reading it as "break one of these edges" was pointed at edges that break nothing. A non-empty stall still signals *that* a cycle exists — it is just not the answer to *which*. Both failure paths, `levels` and `sortSubset`, carry the same payload, and the error's schema field is unchanged. Self-edges are dropped at index time, so a one-member component is never cyclic here. Two tests pin the discrimination: a downstream dependent excluded, and two independent cycles yielding the union of both.
+
+#### toMermaid
+
+A **total** method rendering the graph as a Mermaid `flowchart TD` through core's `Graph.toMermaid`. Node IDs are the numeric indexes and package names appear only inside quoted labels, so a scoped name never breaks Mermaid syntax — the property to keep if this is ever re-implemented.
 
 ### WorkspaceRoot, WorkspaceDiscovery, PackageManagerDetector
 
@@ -306,7 +322,7 @@ Named `Effect.fn` spans on public fallible boundaries only, uniformly. A dedicat
 Workspaces reads a filesystem, not a hostile string — but **a filesystem is still an untrusted, potentially cyclic input**, and the package parses text.
 
 - **The enumerator is a worklist, not a recursion**, bounded by an integer-guarded depth cap, a visited-directory budget and the prune list. A symlink cycle terminates at the depth cap.
-- **Cycle detection is iterative** — an explicit stack, no stack-overflow surface.
+- **Cycle detection is iterative** — an explicit stack, no stack-overflow surface. Core's `stronglyConnectedComponents`, on the cycle-error path, is stack-safe by its own construction (Kosaraju over explicit stacks, checked in the vendored source), so borrowing it added no recursion here.
 - **YAML and JSON parsing fail typed.** Every `JSON.parse` is wrapped at the point it can throw.
 - **Malformed input fails typed, never a defect** — asserted by flipping the channel rather than by inspection.
 - **Developer wiring errors stay defects** — an uncompilable pattern literal, a fractional depth cap.
@@ -325,6 +341,7 @@ Mutation-proven edges worth preserving if the suites are rewritten:
 - **The two-entry-point traversal drift**, driving both entry points against one real tree at the depth boundary.
 - **A bun or npm workspace read at a ref must not collapse to the root package alone**, and the two read paths must agree on a clean tree — which also pins the unconditional inline-catalog read.
 - **The double-default catalog rejection**, checked structurally.
+- **The cycle payload excludes downstream dependents**, on both `levels` and `sortSubset` — the one edge that discriminates the SCC answer from Kahn's stalled set, which agree on every graph where nothing hangs off the cycle.
 - **Hook replay through the opt-in layer against a fixture pnpmfile**, with the default layer provably never loading it.
 - **Subprocess and in-process replay parity** — unit coverage over commands' scripted spawner for the argv shape, the pre-spawn guard, the no-deps no-spawn case and the envelope's failure arms, plus an **integration** suite running the real child against on-disk fixtures to pin the parity properties by construction.
 - **Release-age assembly**, including a malformed inline value hard-failing and a malformed hook value being tolerantly dropped.
