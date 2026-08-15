@@ -1,5 +1,40 @@
 # @effected/workspaces
 
+## 0.13.0
+
+### Breaking Changes
+
+* `DetectedPackageManager` gains a required `evidence` field — the `PackageManagerEvidence` literal naming which detection rung decided the manager (`"pnpm-workspace.yaml"`, `"package.json#packageManager"`, etc.), mirroring the vocabulary `PackageManagerDetectionError.checked` already reported on the failure path. A hand-constructed `DetectedPackageManager` (a test double, a fixture) must now supply it:
+
+  ```ts
+  import { DetectedPackageManager } from "@effected/workspaces";
+  import { Option } from "effect";
+
+  DetectedPackageManager.make({
+  	name: "pnpm",
+  	version: Option.none(),
+  	runtime: "node",
+  	evidence: "pnpm-workspace.yaml",
+  });
+  ```
+
+### Bug Fixes
+
+* `ConfigDependencyHooks`' dynamic import of the pnpm plugin now carries an inline `webpackIgnore` comment, so a webpack-family bundler no longer emits an unsilenceable Critical-dependency warning for a consumer that composes `layerSubprocess` — the target module stays droppable by tree-shaking regardless. [#366][#366]
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From  | To    |
+| ---------------------- | ---------- | ------- | ----- | ----- |
+| @effected/git          | dependency | updated | 0.7.0 | 0.8.0 |
+| @effected/package-json | dependency | updated | 0.8.0 | 0.9.0 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#366]: https://github.com/spencerbeggs/effected/pull/366
+
 ## 0.12.0
 
 ### Features

@@ -1,5 +1,17 @@
 # @effected/github
 
+## 0.4.2
+
+### Bug Fixes
+
+* `GitHubIssue`'s REST calls now pin `x-github-api-version: 2026-03-10`, eliminating the `Deprecation` header warning `@octokit/request` was printing straight to consumer workflow logs under the previous default calendar version. [#366][#366]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#366]: https://github.com/spencerbeggs/effected/pull/366
+
 ## 0.4.1
 
 ### Documentation
