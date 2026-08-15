@@ -895,6 +895,12 @@ export const suite = (name: string, fsLayer: Layer.Layer<FileSystem.FileSystem, 
 			);
 
 			// TODO: Define whether overwrite: false succeeds without changing an existing destination or fails with AlreadyExists.
+			// PORT NOTE: upstream asserted `pathOrDescriptor: source` here, matching an
+			// upstream 6573 engine bug (the one conflict arm blaming the source). The
+			// port fixes the engine to report the DESTINATION — the entry that
+			// actually conflicts — so the conditional assertion names it. The node
+			// adapter never enters this branch: node's `fs.cp` with `force: false`
+			// silently preserves the destination instead of failing.
 			it.effect("should preserve an existing copy destination when overwrite is false", () =>
 				Effect.gen(function* () {
 					const { fs, path } = yield* makeTestContext;
@@ -908,7 +914,7 @@ export const suite = (name: string, fsLayer: Layer.Layer<FileSystem.FileSystem, 
 						assertSystemError(result.failure, {
 							tag: "AlreadyExists",
 							method: "copy",
-							pathOrDescriptor: source,
+							pathOrDescriptor: destination,
 						});
 					}
 

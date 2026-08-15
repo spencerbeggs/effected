@@ -165,6 +165,33 @@ describe("Package wire transform + rest", () => {
 		}),
 	);
 
+	it.effect("carries an own __proto__ manifest key through round-trip without prototype pollution", () =>
+		Effect.gen(function* () {
+			// JSON.parse defines `__proto__` as an OWN data property — exactly what
+			// a hostile or merely odd manifest on disk produces. The wire transform
+			// must store it as data (null-prototype rest record), never assign it
+			// (which on a plain object MUTATES the prototype and loses the key).
+			const raw = JSON.parse(
+				'{"name":"proto-carrier","version":"1.0.0","__proto__":{"polluted":true},"custom":"kept"}',
+			) as Record<string, unknown>;
+
+			const decoded = yield* Package.decode(raw);
+			const restProto = Object.getOwnPropertyDescriptor(decoded.rest, "__proto__");
+			assert.deepStrictEqual(restProto?.value, { polluted: true });
+			// No pollution anywhere: fresh objects must not have inherited the key.
+			assert.isFalse("polluted" in {});
+			assert.isUndefined(({} as Record<string, unknown>).polluted);
+
+			const encoded = Schema.encodeUnknownSync(Package.schema)(decoded) as Record<string, unknown>;
+			const encodedProto = Object.getOwnPropertyDescriptor(encoded, "__proto__");
+			assert.deepStrictEqual(encodedProto?.value, { polluted: true });
+			assert.strictEqual(encoded.custom, "kept");
+			assert.isFalse("rest" in encoded);
+			// Byte-level: the serialized manifest still carries the key as data.
+			assert.include(JSON.stringify(encoded), '"__proto__":{"polluted":true}');
+		}),
+	);
+
 	it.effect("a typed field wins over a rest entry smuggling the same key", () =>
 		Effect.gen(function* () {
 			const decoded = yield* Package.decode({ name: "p", version: "1.0.0", description: "real" });

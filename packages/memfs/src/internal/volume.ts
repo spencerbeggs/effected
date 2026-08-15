@@ -29,6 +29,10 @@
 // - `access` deliberately ignores its options (upstream posture: no virtual
 //   process identity, permission bits are metadata only); the facade TSDoc
 //   states it.
+// - Upstream bug fixed (worth reporting upstream): `copy` with
+//   `overwrite: false` onto an existing destination reported the SOURCE path
+//   on its AlreadyExists error while every sibling conflict arm reports the
+//   destination; the port reports the destination.
 
 import type { Cause } from "effect";
 import {
@@ -1262,7 +1266,11 @@ const copyEntryUnlocked = Effect.fnUntraced(function* (
 	const existingInode = findEntry(destination.entry, destination.name);
 	let existing: InodeEntry | undefined;
 	if (existingInode !== undefined) {
-		if (!overwrite) return yield* alreadyExists(method, fromPath);
+		// PORT NOTE: upstream reported `fromPath` here — the one conflict arm in
+		// this function blaming the SOURCE while every sibling arm reports the
+		// destination. The conflict is the existing DESTINATION entry, so the
+		// error names `toPath` (upstream 6573 bug, fixed in this port).
+		if (!overwrite) return yield* alreadyExists(method, toPath);
 		existing = yield* getInode(state, existingInode, method, toPath);
 		if (existingInode === source.inode) {
 			return source.entry._tag === "Directory"

@@ -25,6 +25,10 @@ const watchEvents = Effect.fnUntraced(function* (
 		.watch(path)
 		.pipe(Stream.take(count), Stream.runCollect, Effect.forkChild({ startImmediately: true }));
 
+	// PORT NOTE: upstream mutates immediately after the fork; the port yields
+	// once so the child provably registers its subscription first (the FIFO
+	// scheduler runs it to its first real suspension, past `watchers.add`).
+	yield* Effect.yieldNow;
 	yield* mutation;
 	return Array.from(yield* Fiber.join(events));
 });

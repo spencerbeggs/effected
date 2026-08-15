@@ -70,6 +70,7 @@ Every delta is also recorded in the engine file's port-notes header; this is the
 3. **Seeding API** (`makeWith`/`layerWith`) is a kit extension; upstream has none.
 4. **`access` ignores its `readable`/`writable`/`ok` options** — inherited upstream posture (there is no virtual process identity, so permission bits are metadata only); kept, but stated in TSDoc rather than left implicit.
 5. Mechanical: relative `../X.ts` imports → `"effect"` package imports with `.js` extensions, house formatting, TSDoc release tags, `assert.*` in tests.
+6. **Upstream bug fixed** (worth reporting on PR #6573): `copy` with `overwrite: false` onto an existing destination reported the *source* path on its `AlreadyExists` error while every sibling conflict arm reports the destination; the port reports the destination, and the vendored contract suite's conditional assertion is adjusted to match (the node adapter never enters that branch — node's `fs.cp` with `force: false` silently preserves the destination).
 
 Anything else that diverges from `c0528bd5` is drift, not design.
 

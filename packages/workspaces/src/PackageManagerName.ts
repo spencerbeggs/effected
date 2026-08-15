@@ -54,8 +54,11 @@ export const PackageManagerEvidence = Schema.Literals([
 	"pnpm-lock.yaml",
 	"package-lock.json",
 	// The declaration tier: which manager is MEANT to run, before any install.
-	"package.json#packageManager",
+	// devEngines first: it is authoritative for the name (`declaredName`
+	// believes it over the top-level field), so the union order IS the decision
+	// precedence — the same rule that orders every other member.
 	"package.json#devEngines.packageManager",
+	"package.json#packageManager",
 ]);
 
 /**
