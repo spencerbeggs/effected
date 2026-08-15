@@ -43,7 +43,7 @@
 		"@effected/npm": "workspace:*",
 		"@effected/sbom": "workspace:*",
 		"@effected/templates": "workspace:*",
-		"@savvy-web/bundler": "^2.1.9",
+		"@savvy-web/bundler": "^2.1.10",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
