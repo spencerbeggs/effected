@@ -90,4 +90,5 @@ The glob house pattern: `src/internal/volume.ts` opens with a `Ported from … /
 ## Open questions
 
 - Whether `ActionEnvironment.layerTest` (`@effected/github-actions`, effected#248) should default to a fresh seeded volume instead of hard-providing `FileSystem.layerNoop` — confirmed as a post-port follow-up owned by that package, not this one.
-- Whether the contract suite's temp-directory rooting keeps every test path under `makeTempDirectoryScoped`, letting the node oracle run without touching the repo tree — to verify during the port; if not, the oracle project confines itself to `os.tmpdir()`.
+
+Resolved at port time: the contract suite roots every path it touches under `makeTempDirectoryScoped({ prefix: "effect-filesystem-test-" })` with no `directory` option, so the node oracle runs confined to the host's `os.tmpdir()` and never touches the repository tree — verified by the green `integration/node.int.test.ts` run.
