@@ -703,12 +703,6 @@ const unimplemented = (member: string): never => {
  * stage-then-swap invariant holds here for free — shims included, the tool
  * cache only ever contains complete package managers.
  *
- * `@effected/npm` is an **optional peer** of this package: declare it beside
- * `@effected/github-actions` to use this installer. This module is the only
- * one that resolves it, so an action that never installs a package manager
- * never installs the pin vocabulary — and importing this module without the
- * declaration fails at the import with module-not-found naming the package.
- *
  * @example
  * ```ts
  * import { ActionOutputs, PackageManagerInstaller } from "@effected/github-actions";

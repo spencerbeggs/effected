@@ -14,11 +14,17 @@ import { ActionOutputs } from "./ActionOutputs.js";
  * quietly**.
  *
  * The invariant: **masking is the floor, and declassification implies it.**
- * Every member registers the value with the runner's log filter
- * (`::add-mask::`) *before* any plaintext is returned — and the one member
- * that returns nothing, {@link Secret.mask}, registers and stops there — so a
- * secret cannot reach a child's environment or a state file without the
- * runner already knowing to redact it from logs.
+ * Every member that touches plaintext routes through
+ * `ActionOutputs.setSecret`, registering the value with the runner's log
+ * filter (`::add-mask::`) *before* any plaintext is returned — and the one
+ * member that returns nothing, {@link Secret.mask}, registers and stops there
+ * — so under the normal runner layer a secret cannot reach a child's
+ * environment or a state file without the runner already knowing to redact it
+ * from logs. Two scoped exceptions: {@link Secret.adopt} is a `Config` that
+ * re-wraps an inherited plaintext without involving `ActionOutputs` at all —
+ * the parent masked that value before the handoff — and under
+ * `ActionOutputs.layerDetached` the registration is a documented no-op,
+ * because a mask emitted inside a detached worker would itself be the leak.
  *
  * `Redacted.value` appears nowhere else in this package, and a test asserts
  * that structurally — a reintroduction elsewhere fails the suite rather than

@@ -39,18 +39,6 @@ pnpm add @effected/github-actions effect @effect/platform-node
 
 Requires Node.js >=24.11.0. `effect` v4 and `@effect/platform-node` are both peer dependencies.
 
-The heavy engines are **optional peers** — a minimal action that only reads inputs and writes outputs installs none of them. Declare the one(s) beside this package only when you use the modules they power:
-
-| Optional peer | Declare it when you use |
-| --- | --- |
-| `@azure/storage-blob` | `ActionCache`, `Artifact`, `BlobStore.githubCache` |
-| `@effected/markdown` | `GitHubMarkdown` |
-| `@effected/npm` | `PackageManagerInstaller` |
-| `@effected/sbom` | `ActionsProvenance`, `ActionsIdentityToken` |
-| `@effected/templates` | `ManagedDocument`, `CheckDocument` |
-
-Nothing outside the named modules resolves these packages, so leaving one undeclared is safe until the moment you import the module that needs it — at which point Node fails with a module-not-found error naming the missing package. `@effected/github` and `@effected/glob` remain ordinary dependencies and install with the package.
-
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
 ## Quick start

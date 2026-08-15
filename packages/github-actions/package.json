@@ -32,47 +32,25 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@azure/storage-blob": "^12.33.0",
 		"@effected/github": "workspace:^",
-		"@effected/glob": "workspace:^"
+		"@effected/glob": "workspace:^",
+		"@effected/markdown": "workspace:^",
+		"@effected/npm": "workspace:^",
+		"@effected/sbom": "workspace:^",
+		"@effected/templates": "workspace:^"
 	},
 	"devDependencies": {
-		"@azure/storage-blob": "^12.33.0",
 		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
-		"@effected/markdown": "workspace:*",
-		"@effected/npm": "workspace:*",
-		"@effected/sbom": "workspace:*",
-		"@effected/templates": "workspace:*",
 		"@savvy-web/bundler": "^2.1.10",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"@azure/storage-blob": "^12.33.0",
 		"@effect/platform-node": "catalog:effect:peers",
-		"@effected/markdown": "workspace:^",
-		"@effected/npm": "workspace:^",
-		"@effected/sbom": "workspace:^",
-		"@effected/templates": "workspace:^",
 		"effect": "catalog:effect:peers"
-	},
-	"peerDependenciesMeta": {
-		"@azure/storage-blob": {
-			"optional": true
-		},
-		"@effected/markdown": {
-			"optional": true
-		},
-		"@effected/npm": {
-			"optional": true
-		},
-		"@effected/sbom": {
-			"optional": true
-		},
-		"@effected/templates": {
-			"optional": true
-		}
 	},
 	"engines": {
 		"node": ">=24.11.0"

@@ -2,33 +2,6 @@
 "@effected/github-actions": minor
 ---
 
-## Breaking Changes
-
-### The five heavy engines are now optional peers, not dependencies
-
-`@azure/storage-blob`, `@effected/markdown`, `@effected/npm`, `@effected/sbom` and `@effected/templates` have moved out of `dependencies` and into `peerDependencies` with `peerDependenciesMeta.optional: true`. `@effected/github` and `@effected/glob` stay hard dependencies.
-
-**If you only import the light modules — `ActionEnvironment`, `ActionInput`, `ActionLogger`, `ActionOutputs`, `ActionState`, `Secret`, `DetachedProcess`, `GitHubToken` — nothing changes for you.** A consumer of any of the following modules must now declare the matching peer explicitly, or installs will no longer pull it in transitively:
-
-| Module | Requires |
-| :--- | :--- |
-| `ActionCache`, `Artifact`, `GitHubCacheBlobStore` | `@azure/storage-blob` |
-| `GitHubMarkdown` | `@effected/markdown` |
-| `PackageManagerInstaller` | `@effected/npm` |
-| `ManagedDocument`, `CheckDocument` | `@effected/templates` |
-| `ActionsProvenance`, `ActionsIdentityToken` | `@effected/sbom` |
-
-```json
-{
-	"dependencies": {
-		"@effected/github-actions": "^0.7.0",
-		"@effected/markdown": "^0.5.0"
-	}
-}
-```
-
-A consumer who does not install the peer and imports the module it powers gets a module-not-found error naming the missing package at that import — never earlier, and never for a module they don't use.
-
 ## Features
 
 ### `Secret.forProcessEnv`
