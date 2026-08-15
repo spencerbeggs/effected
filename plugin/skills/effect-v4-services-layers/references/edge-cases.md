@@ -1,7 +1,33 @@
 # Service and layer edge cases
 
-Two narrow situations that are dead ends until you have seen them once. Neither
-is day-to-day wiring; both cost a full session the first time.
+Three narrow situations that are dead ends until you have seen them once. None
+is day-to-day wiring; each costs a full session the first time.
+
+## Split graphs: two resolved copies of one package are two services
+
+Observed 2026-08-14 during the consumer-unblock release wave.
+
+A `Context.Service` tag's identity is the class itself — the module instance
+that declared it. When a dependency graph resolves TWO copies of one
+`@effected` package — e.g. a consumer's caret range and a sibling's newer 0.x
+minor resolving separately (on the 0.x line every minor is major-like to
+semver, so `^0.12.0` and `0.13.0` do not unify) — each copy declares its own
+tag. A layer built from one copy cannot satisfy a requirement expressed by
+the other, even though the source text is byte-identical.
+
+The failure mode is the trap: it surfaces as **"service not provided" in a
+graph that visibly provides it** — never as a version error — so the reader
+goes hunting a signature change that never happened. Check the resolution
+first: `pnpm why @effected/<pkg>` (or `npm ls @effected/<pkg>`) listing the
+package twice IS the diagnosis.
+
+Mitigation:
+
+- **Keep ranges converged across the graph** — one resolvable version of each
+  `@effected` package per consumer tree.
+- **When releasing a breaking 0.x minor, coordinate the dependents' range
+  widening in the same wave**, so no window exists in which two copies
+  resolve side by side.
 
 ## Sync facades: per-call service values, not layers
 

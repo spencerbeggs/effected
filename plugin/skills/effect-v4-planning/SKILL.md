@@ -214,6 +214,15 @@ Design *for* the test now, so it is not retrofitted:
 - Open risks: <anything unresolved, or "none">
 ```
 
+**A pure, total module may answer "none" on every service row — and that is a
+COMPLETE design, not an evaded one.** For a module that is pure and total (no
+IO, no fallible operations, no services), a planning pass concluding "no
+error channel, no services, no observability" is a legitimate complete answer
+(accepted as exactly that in review, 2026-08-14). The gate exists to force
+the QUESTION, not to force machinery — manufacturing an error type or a
+decorative span to avoid writing "none" is the same failure as leaving the
+row blank.
+
 ### Brownfield
 
 Read the existing code through each pillar, then emit a gap table. For each gap,

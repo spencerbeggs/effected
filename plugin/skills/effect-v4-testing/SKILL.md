@@ -300,6 +300,16 @@ code could reach, and assert fixture *contents* somewhere. Same tier:
 `impl.readFile` through `TextDecoder` at `:704`, default `ignoreBOM: false`)
 → [references/false-greens.md](./references/false-greens.md).
 
+**Beyond a single trivially-stubbed member, prefer `@effected/memfs` over a
+hand-rolled `layerNoop` stub.** `MemoryFileSystem.layerWith(seed)` — seed:
+absolute POSIX path → `string` | `Uint8Array`, parents auto-created — provides
+a real in-memory `FileSystem` whose unseeded reads fail typed `NotFound`,
+where a hand stub answering unarranged reads with `""` produces exactly the
+silent false green above (a phantom file parsing as empty; that stub shipped
+a real dropped-changeset bug, which is why the package exists — 2026-08-14).
+`layerWith` is a parameterized layer factory: bind the result to a `const`
+(memoization discipline), `Layer.fresh` for per-test isolation.
+
 A suite-boundary layer cannot vary per test, so several filesystem fixtures need
 **one `layer(...)` block per fixture** — the house shape in
 `packages/walker/__test__/`.
