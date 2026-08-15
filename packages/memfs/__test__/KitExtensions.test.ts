@@ -19,6 +19,11 @@ const collectWatch = Effect.fnUntraced(function* (
 	const events = yield* fs
 		.watch(path, options)
 		.pipe(Stream.take(count), Stream.runCollect, Effect.forkChild({ startImmediately: true }));
+	// Make subscription registration deterministic before mutating: under v4's
+	// cooperative FIFO scheduler this parks the parent behind the child, which
+	// runs to its first real suspension — past `volume.watchers.add` — so no
+	// event can be published before the watcher exists.
+	yield* Effect.yieldNow;
 	yield* mutation;
 	return Array.from(yield* Fiber.join(events));
 });

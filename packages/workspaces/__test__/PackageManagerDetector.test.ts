@@ -168,6 +168,11 @@ describe("PackageManagerDetector — NO EVIDENCE AT ALL", () => {
 				// reports as probed is exactly the evidence union a success reports
 				// from, member for member and in priority order.
 				assert.deepStrictEqual([...error.checked], [...PackageManagerEvidence.literals]);
+				// The declaration tier's order is DECISION precedence, positionally:
+				// devEngines is authoritative for the name, so it precedes the
+				// top-level field (set equality would not catch a swap).
+				assert.strictEqual(error.checked[7], "package.json#devEngines.packageManager");
+				assert.strictEqual(error.checked[8], "package.json#packageManager");
 			}),
 		);
 	});

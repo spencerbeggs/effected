@@ -28,11 +28,18 @@ export const makeWire = <Self>(
 			SchemaTransformation.transform({
 				decode: (raw: { readonly [k: string]: unknown }) => {
 					const known: Record<string, unknown> = {};
-					const rest: Record<string, unknown> = {};
+					// A null-prototype record: on a plain object, `rest["__proto__"] = v`
+					// MUTATES the prototype instead of storing data, so a manifest
+					// carrying an own `__proto__` key would both pollute the record and
+					// lose the key on encode. Known keys come from `Class.fields` and
+					// cannot collide with `__proto__`.
+					const rest: Record<string, unknown> = Object.create(null);
 					for (const [key, value] of Object.entries(raw)) {
 						if (knownKeys.has(key)) known[key] = value;
 						else rest[key] = value;
 					}
+					// Spread uses define-own-property semantics, so an own `__proto__`
+					// data key survives into the encode side untouched.
 					return { ...known, rest };
 				},
 				encode: (encoded: Record<string, unknown>) => {

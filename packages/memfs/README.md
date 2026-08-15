@@ -11,4 +11,4 @@ The engine is a vendored port with attribution of unmerged upstream work, MIT (E
 - [Effect-TS/effect#6573](https://github.com/Effect-TS/effect/pull/6573) — `MemoryFileSystem` by lloydrichards, on [fubhy's effect-smol#456 design](https://github.com/Effect-TS/effect-smol/pull/456) (engine, pinned at `c0528bd5`).
 - [Effect-TS/effect#6555](https://github.com/Effect-TS/effect/pull/6555) — the parameterized `FileSystem` conformance suite (pinned at `2492ba9d`).
 
-This package is deprecated in favor of core the release upstream ships a `MemoryFileSystem` module.
+This package is not deprecated. When upstream ships its own `MemoryFileSystem` module in core `effect`, the release that adopts it will deprecate this package in core's favor — the module name matches upstream so that migration is an import-path change.
