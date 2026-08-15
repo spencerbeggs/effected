@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Latch, Option } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Latch, Layer, Option } from "effect";
 import { ActionEnvironment } from "../src/index.js";
 
 const BASE = {
@@ -25,26 +26,15 @@ const BASE = {
 	RUNNER_TOOL_CACHE: "/opt/hostedtoolcache",
 };
 
-const files = (contents: Record<string, string> = {}) =>
-	FileSystem.layerNoop({
-		readFileString: (path) =>
-			Effect.suspend(() => {
-				const found = contents[String(path)];
-				return found === undefined
-					? Effect.fail(
-							new (class extends Error {
-								readonly _tag = "PlatformError";
-							})("not found") as never,
-						)
-					: Effect.succeed(found);
-			}),
-	});
-
 const live = <A, E>(
 	program: Effect.Effect<A, E, ActionEnvironment>,
 	env: Record<string, string> = BASE,
-	contents = {},
-) => program.pipe(Effect.provide(ActionEnvironment.layerFrom(env)), Effect.provide(files(contents)));
+	contents: Record<string, string> = {},
+) =>
+	// A seeded in-memory volume rather than a hand-rolled readFileString stub:
+	// the volume honors the whole FileSystem contract, and an unseeded path
+	// fails typed `NotFound` instead of whatever a hand stub happens to answer.
+	program.pipe(Effect.provide(ActionEnvironment.layerFrom(env)), Effect.provide(MemoryFileSystem.layerWith(contents)));
 
 describe("ActionEnvironment", () => {
 	describe("reading variables", () => {
@@ -386,5 +376,37 @@ describe("ActionEnvironment", () => {
 				assert.deepStrictEqual(yield* (yield* ActionEnvironment).payload, []);
 			}).pipe(Effect.provide(ActionEnvironment.layerTest({}, []))),
 		);
+	});
+
+	describe("the memfs recipe — the real read path behind the double", () => {
+		it.effect("makeTest over a seeded volume exercises the actual GITHUB_EVENT_PATH read", () => {
+			// The generalization of the served payload: makeTest leaves FileSystem
+			// in R precisely so a suite chooses the filesystem, and a seeded
+			// in-memory volume makes the REAL read-and-parse path run — the recipe
+			// for a suite that wants to exercise that path rather than replace it.
+			const layer = Layer.effect(
+				ActionEnvironment,
+				ActionEnvironment.makeTest({ GITHUB_EVENT_PATH: "/event.json" }),
+			).pipe(Layer.provide(MemoryFileSystem.layerWith({ "/event.json": JSON.stringify({ action: "opened" }) })));
+			return Effect.gen(function* () {
+				const env = yield* ActionEnvironment;
+				assert.deepStrictEqual(yield* env.payload, { action: "opened" });
+			}).pipe(Effect.provide(layer));
+		});
+
+		it.effect("the volume never fabricates a payload — an unseeded path fails typed", () => {
+			// The honest-absence half of the recipe: with the path set but nothing
+			// seeded, the read fails and maps onto this module's typed error naming
+			// the variable — never an empty object a hand stub might have answered.
+			const layer = Layer.effect(
+				ActionEnvironment,
+				ActionEnvironment.makeTest({ GITHUB_EVENT_PATH: "/event.json" }),
+			).pipe(Layer.provide(MemoryFileSystem.layer));
+			return Effect.gen(function* () {
+				const error = yield* Effect.flip((yield* ActionEnvironment).payload);
+				assert.strictEqual(error.reason, "malformed");
+				assert.strictEqual(error.name, "GITHUB_EVENT_PATH");
+			}).pipe(Effect.provide(layer));
+		});
 	});
 });
