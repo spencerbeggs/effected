@@ -362,6 +362,19 @@ the next line, or shorten the prose around it. (Found live in
 `@effected/package-json`, 2026-07-28, where an error-message quotation
 wrapped during an ordinary TSDoc edit.)
 
+The warning **cascades and misdirects**: once a span is unterminated, the
+braces inside it go raw, so a single wrapped span like
+`` `PATCH /repos/{owner}/{repo}` `` fans out into `tsdoc-escape-right-brace`
+and `tsdoc-malformed-inline-tag` warnings whose reported lines sit BELOW the
+comment (declaration-relative reporting). Do not chase those by escaping
+braces — a properly closed one-line span protects `{`/`}` fine, and
+brace-bearing spans like `` `{ status: "enabled" }` `` are legal as-is. Find
+the one wrapped span and rejoin it; the whole fan collapses. (Bitten twice on
+2026-08-14/15 — 14 warnings in `@effected/git`, 5 in `@effected/github`, each
+one wrapped argv/route literal; a reader triaging the second incident from
+the brace warnings alone diagnosed brace-escaping, which is exactly the wrong
+fix.)
+
 ## Reading the gate without fooling yourself
 
 `issues.json` is a **false-green oracle**. Four rules, each learned by being burned:
