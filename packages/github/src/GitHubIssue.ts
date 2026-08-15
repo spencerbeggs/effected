@@ -135,6 +135,19 @@ export interface GitHubIssueShape {
 	 * @remarks
 	 * The idempotence guard one consumer wrote a bespoke timeline query for,
 	 * so that re-running a workflow does not comment twice.
+	 *
+	 * Two hazards before building on it (effected#306):
+	 *
+	 * - **An issue obtained from `linkedIssues(pr)` answers `true` from the
+	 *   outset** — the closing link itself puts a cross-reference on the
+	 *   issue's timeline. As a "have I commented yet?" guard on those issues
+	 *   the answer is always yes, and the comment is never posted. Guard a
+	 *   comment by looking for the comment (a marker in its body), not for a
+	 *   cross-reference.
+	 * - **It observes `CROSS_REFERENCED_EVENT` only, not `ConnectedEvent`** —
+	 *   an issue a human attached through the sidebar's Development section is
+	 *   connected, not cross-referenced, and reads `false` here even though
+	 *   GitHub's UI shows the link.
 	 */
 	readonly isCrossReferencedBy: (
 		issueNumber: number,

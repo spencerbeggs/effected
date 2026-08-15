@@ -194,15 +194,20 @@ describe("GitHubRepository.applySettings", () => {
 		}),
 	);
 
-	it.effect("routes has_sponsorships/has_pull_requests to the mutation, via a node-id read", () =>
+	it.effect("routes the three GraphQL-only settings to the mutation, via a node-id read", () =>
 		Effect.gen(function* () {
 			const { requested, routes } = yield* run(
-				Effect.flatMap(GitHubRepository, (r) => r.applySettings({ has_sponsorships: true, has_pull_requests: false })),
+				Effect.flatMap(GitHubRepository, (r) =>
+					r.applySettings({ has_sponsorships: true, has_pull_requests: false, has_discussions: true }),
+				),
 				{ "GET /repos/{owner}/{repo}": REPO },
 				UPDATE_REPOSITORY,
 			);
 
-			// Nothing left for REST, so no PATCH at all.
+			// Nothing left for REST, so no PATCH at all. `has_discussions` above
+			// all: the REST patch silently ignores it and answers 200, which is how
+			// it read as "applied on every run" while never changing anything
+			// (effected#358).
 			assert.deepStrictEqual(routes, ["GET /repos/{owner}/{repo}"]);
 			assert.deepStrictEqual(
 				requested.filter((c) => c.kind === "graphql"),
@@ -211,7 +216,13 @@ describe("GitHubRepository.applySettings", () => {
 						kind: "graphql",
 						route: "UpdateRepository",
 						params: {
-							input: { repositoryId: "R_node123", hasSponsorshipsEnabled: true, hasPullRequestsEnabled: false },
+							input: {
+								repositoryId: "R_node123",
+								hasSponsorshipsEnabled: true,
+								hasPullRequestsEnabled: false,
+								// Verified against UpdateRepositoryInput by introspection.
+								hasDiscussionsEnabled: true,
+							},
 						},
 					},
 				],

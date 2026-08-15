@@ -408,6 +408,43 @@ describe("PullRequest", () => {
 		}),
 	);
 
+	it.effect("carries the prior description — the carry-through read (effected#373)", () =>
+		Effect.gen(function* () {
+			// Marker-based PR-body management takes the PRIOR body as input; this
+			// is the read path that makes `upsert(existing, managed)` possible.
+			const { value } = yield* drive(
+				[{ status: 200, body: pull(4, { body: "prior description" }) }],
+				PullRequest,
+				PullRequest,
+				(pulls) => pulls.get(4),
+			);
+			assert.strictEqual(value.body, "prior description");
+
+			// And through `list`, which shares the projection.
+			const { value: listed } = yield* drive(
+				[{ status: 200, body: [pull(4, { body: "prior description" })] }],
+				PullRequest,
+				PullRequest,
+				(pulls) => pulls.list(),
+			);
+			assert.strictEqual(listed[0]?.body, "prior description");
+		}),
+	);
+
+	it.effect("a null description projects as absent, not as a value", () =>
+		Effect.gen(function* () {
+			// GitHub sends `body: null` for an empty description; the projection
+			// omits the optionalKey rather than inventing "".
+			const { value } = yield* drive(
+				[{ status: 200, body: pull(5, { body: null }) }],
+				PullRequest,
+				PullRequest,
+				(pulls) => pulls.get(5),
+			);
+			assert.isUndefined(value.body);
+		}),
+	);
+
 	it.effect("mergedAt is none for an open pull request", () =>
 		Effect.gen(function* () {
 			const { value } = yield* drive([{ status: 200, body: pull(1) }], PullRequest, PullRequest, (pulls) =>

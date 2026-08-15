@@ -60,14 +60,23 @@ export const SECURITY_ANALYSIS_STATUS_FIELDS: ReadonlySet<string> = new Set([
  * mapped from snake_case keys to camelCase GraphQL input fields.
  *
  * @remarks
- * GitHub never exposed these two on the REST repository endpoint. Setting
- * either forces a second round trip to learn the repository's node id.
+ * GitHub never exposed these on the REST repository endpoint — the
+ * `PATCH /repos/{owner}/{repo}` route accepts none of them, and
+ * `has_discussions` is the treacherous one: the REST **read** returns it, so
+ * routing its write to the PATCH looks symmetric, but the PATCH silently
+ * ignores unknown body fields and answers 200 — reported as applied on every
+ * run while the repository never changed (effected#358). Setting any of these
+ * forces a second round trip to learn the repository's node id.
+ *
+ * Field names verified against `UpdateRepositoryInput` by live introspection,
+ * 2026-08-15.
  *
  * @public
  */
 export const GRAPHQL_ONLY_SETTINGS: Readonly<Record<string, string>> = {
 	has_sponsorships: "hasSponsorshipsEnabled",
 	has_pull_requests: "hasPullRequestsEnabled",
+	has_discussions: "hasDiscussionsEnabled",
 };
 
 /** `{ status: "enabled" | "disabled" }` — the form GitHub accepts and the type declares. */
