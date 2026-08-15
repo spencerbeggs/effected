@@ -127,11 +127,41 @@ describe("Git", () => {
 	});
 
 	describe("mergeBase", () => {
-		it.effect("returns Option.some of the trimmed SHA", () =>
+		it.effect("returns the trimmed SHA — the 0.7.0 string shape, pinned against regression", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {
 					const git = yield* Git;
 					return yield* git.mergeBase(cwd, "main", "feat/git");
+				});
+				const result = yield* run(program, () => ({ stdout: "abc123\n", exit: 0 }));
+				assert.strictEqual(result, "abc123");
+			}),
+		);
+
+		it.effect("no common ancestor (silent exit 1) fails LOUDLY on mergeBase — absence is exceptional here", () =>
+			Effect.gen(function* () {
+				// The 0.7.0 behavior, restored and pinned: installed consumers
+				// (@savvy-web/silk-effects) .trim() the string result directly, so
+				// this member must never grow an Option — mergeBaseOption is the probe.
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.mergeBase(cwd, "main", "orphan");
+				});
+				const failure = yield* Effect.flip(run(program, () => ({ exit: 1 })));
+				assert.instanceOf(failure, GitCommandError);
+				if (failure instanceof GitCommandError) {
+					assert.strictEqual(failure.exitCode, 1);
+				}
+			}),
+		);
+	});
+
+	describe("mergeBaseOption", () => {
+		it.effect("returns Option.some of the trimmed SHA", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.mergeBaseOption(cwd, "main", "feat/git");
 				});
 				const result = yield* run(program, () => ({ stdout: "abc123\n", exit: 0 }));
 				assert.deepStrictEqual(result, Option.some("abc123"));
@@ -144,7 +174,7 @@ describe("Git", () => {
 				// with silent stderr (probed against git 2.54): a legitimate answer.
 				const program = Effect.gen(function* () {
 					const git = yield* Git;
-					return yield* git.mergeBase(cwd, "main", "orphan");
+					return yield* git.mergeBaseOption(cwd, "main", "orphan");
 				});
 				const result = yield* run(program, () => ({ exit: 1 }));
 				assert.deepStrictEqual(result, Option.none());
@@ -155,12 +185,25 @@ describe("Git", () => {
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {
 					const git = yield* Git;
-					return yield* git.mergeBase(cwd, "main", "feat/git");
+					return yield* git.mergeBaseOption(cwd, "main", "feat/git");
 				});
 				const failure = yield* Effect.flip(
 					run(program, () => ({ stderr: "error: something else went wrong\n", exit: 1 })),
 				);
 				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
+		it.effect("an unknown ref stays UnknownRefError on the probe — only ancestor absence degrades", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.mergeBaseOption(cwd, "main", "nonexistent");
+				});
+				const failure = yield* Effect.flip(
+					run(program, () => ({ stderr: "fatal: Not a valid object name nonexistent\n", exit: 128 })),
+				);
+				assert.instanceOf(failure, UnknownRefError);
 			}),
 		);
 	});

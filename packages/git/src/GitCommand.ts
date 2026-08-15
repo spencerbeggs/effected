@@ -103,8 +103,9 @@ const lsTree = (ref: string, pathspec: ReadonlyArray<string> = []): GitInvocatio
 const refExists = (ref: string): GitInvocation => git(["cat-file", "-e", ref]);
 
 // Implementation of GitCommand.mergeBase; the public contract lives on the static.
-// No common ancestor is a SILENT exit 1 (probed against git 2.54) — the quiet
-// probe shape Git.mergeBase degrades to Option.none, never an error.
+// One builder backs BOTH Git.mergeBase (loud on no ancestor) and
+// Git.mergeBaseOption (silent exit 1 → Option.none) — the argv is identical;
+// only the service's classify kind differs.
 const mergeBase = (a: string, b: string): GitInvocation => git(["merge-base", a, b]);
 
 // Implementation of GitCommand.changedFiles; the public contract lives on the static.
@@ -526,8 +527,10 @@ export class GitCommand {
 	 *
 	 * @remarks
 	 * Two refs with NO common ancestor (disjoint histories) exit 1 with
-	 * silent stderr — a legitimate probe answer, not a failure;
-	 * `Git.mergeBase` degrades it to `Option.none`.
+	 * silent stderr. One builder backs both service members: `Git.mergeBase`
+	 * surfaces that shape as a loud `GitCommandError` (absence is
+	 * exceptional), while `Git.mergeBaseOption` degrades it to `Option.none`
+	 * (a probe answer). The argv is identical either way.
 	 */
 	static readonly mergeBase = mergeBase;
 

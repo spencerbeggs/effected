@@ -1,6 +1,6 @@
 # Testing and building — @effected/git
 
-What the 395 tests cover, the two integration suites and their sanctioned patterns, and the mock-spawner recipe.
+What the 398 tests cover, the two integration suites and their sanctioned patterns, and the mock-spawner recipe.
 
 **Parent:** [@effected/git context](./CLAUDE.md)
 

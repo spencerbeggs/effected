@@ -1093,10 +1093,29 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 	const mergeBase = Effect.fn("Git.mergeBase")(function* (cwd: string, a: string, b: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, a, b });
 		yield* rejectOptionLikeRefs(cwd, [a, b]);
+		const classified = yield* runFor(GitCommand.mergeBase(a, b), cwd, "generic");
+		switch (classified._tag) {
+			case "success":
+				return classified.output.trim();
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "unknownRef":
+				return yield* Effect.fail(new UnknownRefError({ ref: `${a}...${b}`, cwd }));
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				return yield* Effect.die(`Git.mergeBase: unexpected classification "${classified._tag}"`);
+		}
+	});
+
+	const mergeBaseOption = Effect.fn("Git.mergeBaseOption")(function* (cwd: string, a: string, b: string) {
+		yield* Effect.annotateCurrentSpan({ cwd, a, b });
+		yield* rejectOptionLikeRefs(cwd, [a, b]);
 		// "quiet" kind: no common ancestor is a SILENT exit 1 (probed against
 		// git 2.54) — the legitimate "these histories are disjoint" answer,
 		// degraded to Option.none. An unknown ref still exits 128 with a
-		// `Not a valid object name` stderr and stays UnknownRefError.
+		// `Not a valid object name` stderr and stays UnknownRefError; a NOISY
+		// exit 1 stays a loud GitCommandError.
 		const classified = yield* runFor(GitCommand.mergeBase(a, b), cwd, "quiet");
 		switch (classified._tag) {
 			case "success":
@@ -1110,7 +1129,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 			case "failure":
 				return yield* Effect.fail(classified.error);
 			default:
-				return yield* Effect.die(`Git.mergeBase: unexpected classification "${classified._tag}"`);
+				return yield* Effect.die(`Git.mergeBaseOption: unexpected classification "${classified._tag}"`);
 		}
 	});
 
@@ -2494,6 +2513,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		lsTree,
 		refExists,
 		mergeBase,
+		mergeBaseOption,
 		changedFiles,
 		workingChanges,
 		revParse,
@@ -2593,17 +2613,31 @@ export interface GitShape {
 	/** `git cat-file -e <ref>` — whether `ref` resolves to an existing object. */
 	readonly refExists: (cwd: string, ref: string) => Effect.Effect<boolean, GitCommandError | NotARepositoryError>;
 	/**
+	 * `git merge-base <a> <b>` — the best common ancestor commit, trimmed.
+	 * For when absence is EXCEPTIONAL: two refs with no common ancestor fail
+	 * loudly as `GitCommandError` (git's silent exit 1 rides the generic
+	 * failure arm). When "no common ancestor" is a legitimate answer at your
+	 * call site — a reachability probe — use `mergeBaseOption` instead.
+	 */
+	readonly mergeBase: (
+		cwd: string,
+		a: string,
+		b: string,
+	) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
 	 * `git merge-base <a> <b>` — the best common ancestor commit, trimmed, as
 	 * a PROBE: two refs with no common ancestor (disjoint histories — a
 	 * grafted CI clone, an orphan branch) answer `Option.none`, never an
 	 * error, because git signals that case as a silent exit 1. An unknown ref
-	 * is still a real failure (`UnknownRefError`).
+	 * is still a real failure (`UnknownRefError`), and a noisy exit 1 stays a
+	 * loud `GitCommandError`. The sibling of `mergeBase`, which fails loudly
+	 * when the ancestor is absent.
 	 *
 	 * The value is a plain sha string — no decode or brand step. A caller
 	 * that only wants reachability ("do these histories connect?") reads the
-	 * boolean directly: `Option.isSome(yield* git.mergeBase(cwd, a, b))`.
+	 * boolean directly: `Option.isSome(yield* git.mergeBaseOption(cwd, a, b))`.
 	 */
-	readonly mergeBase: (
+	readonly mergeBaseOption: (
 		cwd: string,
 		a: string,
 		b: string,
@@ -3493,6 +3527,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		lsTree: notStubbed("lsTree"),
 		refExists: notStubbed("refExists"),
 		mergeBase: notStubbed("mergeBase"),
+		mergeBaseOption: notStubbed("mergeBaseOption"),
 		changedFiles: notStubbed("changedFiles"),
 		workingChanges: notStubbed("workingChanges"),
 		revParse: notStubbed("revParse"),
