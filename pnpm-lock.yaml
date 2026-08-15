@@ -265,34 +265,34 @@ importers:
 
   packages/github-actions:
     dependencies:
+      '@azure/storage-blob':
+        specifier: ^12.33.0
+        version: 12.33.0(supports-color@9.4.0)
       '@effected/github':
         specifier: workspace:^
         version: link:../github/dist/dev/pkg
       '@effected/glob':
         specifier: workspace:^
         version: link:../glob/dist/dev/pkg
+      '@effected/markdown':
+        specifier: workspace:^
+        version: link:../markdown/dist/dev/pkg
+      '@effected/npm':
+        specifier: workspace:^
+        version: link:../npm/dist/dev/pkg
+      '@effected/sbom':
+        specifier: workspace:^
+        version: link:../sbom/dist/dev/pkg
+      '@effected/templates':
+        specifier: workspace:^
+        version: link:../templates/dist/dev/pkg
     devDependencies:
-      '@azure/storage-blob':
-        specifier: ^12.33.0
-        version: 12.33.0(supports-color@9.4.0)
       '@effect/platform-node':
         specifier: catalog:effect
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)(ioredis@5.11.1(supports-color@9.4.0))
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)(vitest@4.1.10)
-      '@effected/markdown':
-        specifier: workspace:*
-        version: link:../markdown/dist/dev/pkg
-      '@effected/npm':
-        specifier: workspace:*
-        version: link:../npm/dist/dev/pkg
-      '@effected/sbom':
-        specifier: workspace:*
-        version: link:../sbom/dist/dev/pkg
-      '@effected/templates':
-        specifier: workspace:*
-        version: link:../templates/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.1.10
         version: 2.1.10(@effected/jsonc@0.6.0(effect@4.0.0-beta.107))(@effected/semver@0.4.0(effect@4.0.0-beta.107))(@effected/walker@0.4.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-beta.107))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tsx@4.23.12)(typescript@7.0.2)

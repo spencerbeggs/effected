@@ -25,13 +25,6 @@ import { OidcTokenIssuer } from "./OidcTokenIssuer.js";
  * `reason: "unavailable"` almost always means the workflow is missing
  * `permissions: id-token: write`.
  *
- * `@effected/sbom` is an **optional peer** of this package: declare it beside
- * `@effected/github-actions` to use this module or
- * {@link ActionsProvenance}, the only two that resolve it. An action that
- * never attests never installs the supply-chain stack — and importing either
- * module without the declaration fails at the import with module-not-found
- * naming the package.
- *
  * @example
  * ```ts
  * import { ActionsIdentityToken, OidcTokenIssuer } from "@effected/github-actions";
