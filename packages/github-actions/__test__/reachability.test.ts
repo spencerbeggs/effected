@@ -285,6 +285,44 @@ describe("bundle reachability", () => {
 		assert.strictEqual(manifest.sideEffects, false);
 	});
 
+	it("the heavy engines are optional peers, and the load-bearing kit edges stay hard", () => {
+		// The install-time half of the confinement. The reachability walk above
+		// proves no light module LINKS a heavy engine; this proves a consumer who
+		// never imports one never INSTALLS it either — the engines are peers a
+		// consumer opts into by declaring them, not dependencies everyone pays
+		// for. pnpm's `optionalDependencies` cannot express this: those install
+		// by default, and the only opt-out (`--no-optional`) is consumer-wide.
+		const manifest = JSON.parse(readFileSync(resolve(SRC, "..", "package.json"), "utf8")) as {
+			dependencies?: Record<string, string>;
+			peerDependencies?: Record<string, string>;
+			peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+		};
+		const optionalPeers = [
+			"@azure/storage-blob",
+			"@effected/markdown",
+			"@effected/npm",
+			"@effected/sbom",
+			"@effected/templates",
+		];
+		for (const name of optionalPeers) {
+			assert.isUndefined(manifest.dependencies?.[name], `${name} must not be a hard dependency`);
+			assert.isDefined(manifest.peerDependencies?.[name], `${name} must be a peer dependency`);
+			assert.strictEqual(
+				manifest.peerDependenciesMeta?.[name]?.optional,
+				true,
+				`${name} must be marked optional in peerDependenciesMeta`,
+			);
+		}
+		// The two edges every consumer keeps: `@effected/github` is the token
+		// bridge's vocabulary and `@effected/glob` is featherweight (pure,
+		// zero-dependency) — making it optional would add consumer friction for
+		// no install saving.
+		for (const name of ["@effected/github", "@effected/glob"]) {
+			assert.isDefined(manifest.dependencies?.[name], `${name} must stay a hard dependency`);
+			assert.isUndefined(manifest.peerDependenciesMeta?.[name], `${name} must not be an optional peer`);
+		}
+	});
+
 	it("every runtime dependency is declared", () => {
 		// A package you import but do not declare is how a peer closure rots.
 		const manifest = JSON.parse(readFileSync(resolve(SRC, "..", "package.json"), "utf8")) as {

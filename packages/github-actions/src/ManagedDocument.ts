@@ -123,6 +123,12 @@ export interface ManagedDocumentSource {
  * yet. `ManagedDocument.make` is the raw schema constructor and performs no
  * structural validation.
  *
+ * `@effected/templates` is an **optional peer** of this package: declare it
+ * beside `@effected/github-actions` to use this module or `CheckDocument`,
+ * the only two that resolve the region engine. An action that uses neither
+ * never installs it — and importing either without the declaration fails at
+ * the import with module-not-found naming the package.
+ *
  * @example
  * ```ts
  * import { ManagedDocument } from "@effected/github-actions";

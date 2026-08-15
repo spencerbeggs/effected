@@ -1,12 +1,12 @@
 # Testing and building — @effected/git
 
-What the 379 tests cover, the two integration suites and their sanctioned patterns, and the mock-spawner recipe.
+What the 398 tests cover, the two integration suites and their sanctioned patterns, and the mock-spawner recipe.
 
 **Parent:** [@effected/git context](./CLAUDE.md)
 
 ## Suite composition
 
-- The `GitCommand` constructor suite: pure invocation shape + the `setCwd` non-mutation guarantee across all 67 constructors, plus the redaction-mask block asserting `redactedArgs` for the sensitive constructors (incl. the `lsRemote`/`remoteAdd`/`remoteSetUrl`/`push`/`pull` URL remotes) and element-wise identity for the rest.
+- The `GitCommand` constructor suite: pure invocation shape + the `setCwd` non-mutation guarantee across all 69 constructors, plus the redaction-mask block asserting `redactedArgs` for the sensitive constructors (incl. the `lsRemote`/`remoteAdd`/`remoteSetUrl`/`push`/`pull` URL remotes) and element-wise identity for the rest.
 - 6 `internal/run` tests, including defect passthrough through `available`.
 - The `Git` suite: the full classification matrix across all seven `ClassifyKind`s; the option-injection guard block, where every guarded positional has a **no-spawn** rejection test; `workingChanges`' union/dedup; `fetchAny`'s tag-then-plain fallback matrix (single-spawn success, both fallback triggers, plain-error surfacing, `NotARepositoryError` short-circuit, no-spawn guard rejection); the `NameStatusEntry`/`CommitInfo`/`StatusEntry`/`SubmoduleStatusEntry` parsers; the submodule tier incl. redaction-through-classify; and the round-2 block (lsRemote parse + `nearMatches`, the stash family incl. NaN/fractional index refusals, the refs/history/config/misc tiers, the push/merge classification matrix with its zero-churn gating control, and redaction-through-classify for the URL-carrying members). Mocked spawner throughout.
 - The `GitConfig` suite: a 27-case conformance corpus — count-guarded — each case asserting lookups AND byte-for-byte round-trip, the malformed-input family proving typed failure never defect, and the surgical-edit family.

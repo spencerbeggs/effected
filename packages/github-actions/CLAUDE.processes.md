@@ -21,9 +21,10 @@ raw-Node surface is the SigV4 primitives.
 ## `Secret.ts` is the only place a secret becomes a string
 
 `Redacted.value` appears nowhere else in `src/`, and **a structural test asserts
-it** (`__test__/Secret.test.ts`). Masking and declassification are the same call,
-so plaintext cannot be obtained without the runner's log filter already knowing
-about it.
+it** (`__test__/Secret.test.ts`). Masking is the floor and declassification
+implies it: every member registers the value with the log filter before any
+plaintext is returned (`Secret.mask` registers and stops there), so plaintext
+cannot be obtained without the runner's log filter already knowing about it.
 
 This has caught two real leaks — see the design doc. When you hit the third,
 **add a member to `Secret` rather than an exception**: `forSigning` exists

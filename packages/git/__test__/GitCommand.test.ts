@@ -109,6 +109,22 @@ describe("GitCommand", () => {
 		]);
 	});
 
+	it("fetch passes a full refspec through verbatim and places --unshallow before the remote", () => {
+		// The refspec is never transformed: under a single-branch clone it is the
+		// only spelling that creates the remote-tracking ref.
+		assertGitCommand(GitCommand.fetch("origin", "+refs/heads/b:refs/remotes/origin/b"), [
+			"fetch",
+			"origin",
+			"+refs/heads/b:refs/remotes/origin/b",
+		]);
+		assertGitCommand(GitCommand.fetch("origin", "main", undefined, false, true), [
+			"fetch",
+			"--unshallow",
+			"origin",
+			"main",
+		]);
+	});
+
 	it("submoduleUpdate composes --init, --depth and a -- pathspec", () => {
 		assertGitCommand(GitCommand.submoduleUpdate(), ["submodule", "update"]);
 		assertGitCommand(GitCommand.submoduleUpdate(true, 1, [".repos/effect"]), [
@@ -120,6 +136,44 @@ describe("GitCommand", () => {
 			"--",
 			".repos/effect",
 		]);
+	});
+
+	it("submoduleUpdate emits the full flag family in a pinned order, --no-fetch only on fetch: false", () => {
+		// --checkout is the documented override for submodule.<name>.update=none;
+		// each flag is independent and the emission order is stable.
+		assertGitCommand(GitCommand.submoduleUpdate(false, undefined, [], { checkout: true }), [
+			"submodule",
+			"update",
+			"--checkout",
+		]);
+		assertGitCommand(GitCommand.submoduleUpdate(false, undefined, [], { fetch: false }), [
+			"submodule",
+			"update",
+			"--no-fetch",
+		]);
+		assertGitCommand(
+			GitCommand.submoduleUpdate(true, 1, [".repos/effect"], {
+				checkout: true,
+				remote: true,
+				fetch: false,
+				recursive: true,
+				force: true,
+			}),
+			[
+				"submodule",
+				"update",
+				"--init",
+				"--checkout",
+				"--remote",
+				"--no-fetch",
+				"--recursive",
+				"--force",
+				"--depth",
+				"1",
+				"--",
+				".repos/effect",
+			],
+		);
 	});
 
 	it("submoduleAdd puts url and path behind a literal --", () => {
@@ -596,6 +650,38 @@ describe("GitCommand", () => {
 				".gitmodules",
 				"--unset-all",
 				"a.b",
+			]);
+		});
+
+		it("configRemoveSection places --remove-section ahead of the section, after an optional -f", () => {
+			assertGitCommand(GitCommand.configRemoveSection("submodule.vendored"), [
+				"config",
+				"--remove-section",
+				"submodule.vendored",
+			]);
+			assertGitCommand(GitCommand.configRemoveSection("submodule.vendored", ".gitmodules"), [
+				"config",
+				"-f",
+				".gitmodules",
+				"--remove-section",
+				"submodule.vendored",
+			]);
+		});
+
+		it("configRenameSection places --rename-section ahead of old-then-new, after an optional -f", () => {
+			assertGitCommand(GitCommand.configRenameSection("submodule.old", "submodule.new"), [
+				"config",
+				"--rename-section",
+				"submodule.old",
+				"submodule.new",
+			]);
+			assertGitCommand(GitCommand.configRenameSection("submodule.old", "submodule.new", ".gitmodules"), [
+				"config",
+				"-f",
+				".gitmodules",
+				"--rename-section",
+				"submodule.old",
+				"submodule.new",
 			]);
 		});
 	});

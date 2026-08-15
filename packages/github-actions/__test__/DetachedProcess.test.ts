@@ -1,9 +1,13 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import type { Server, ServerResponse } from "node:http";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Fiber, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import { FetchHttpClient } from "effect/unstable/http";
 import { vi } from "vitest";
 import { DetachedProcess, DetachedProcessError, ProcessId } from "../src/index.js";
 
@@ -212,6 +216,158 @@ describe("DetachedProcess", () => {
 				assert.strictEqual(calls, 1);
 			}),
 		);
+	});
+
+	describe("httpProbe", () => {
+		/** A real local server on an ephemeral port, closed on every exit path. */
+		const withServer = <A, E, R>(
+			respond: (response: ServerResponse) => void,
+			use: (url: string) => Effect.Effect<A, E, R>,
+		) =>
+			Effect.acquireUseRelease(
+				Effect.promise(
+					() =>
+						new Promise<Server>((resolve) => {
+							const server = createServer((_request, response) => respond(response));
+							server.listen(0, "127.0.0.1", () => resolve(server));
+						}),
+				),
+				(server) => use(`http://127.0.0.1:${(server.address() as AddressInfo).port}/status`),
+				(server) =>
+					Effect.promise(
+						() =>
+							new Promise<void>((resolve) => {
+								server.close(() => resolve());
+							}),
+					),
+			);
+
+		it.live("answers true for a 2xx response", () =>
+			withServer(
+				(response) => response.writeHead(200).end("ok"),
+				(url) =>
+					Effect.gen(function* () {
+						assert.isTrue(yield* DetachedProcess.httpProbe(url));
+					}),
+			).pipe(Effect.provide(FetchHttpClient.layer)),
+		);
+
+		it.live("answers false for a non-2xx response — answering is not ready", () =>
+			withServer(
+				(response) => response.writeHead(503).end("warming up"),
+				(url) =>
+					Effect.gen(function* () {
+						assert.isFalse(yield* DetachedProcess.httpProbe(url));
+					}),
+			).pipe(Effect.provide(FetchHttpClient.layer)),
+		);
+
+		it.live("collapses a refused connection to false rather than failing", () =>
+			Effect.gen(function* () {
+				// Bind an ephemeral port and close it completely first: the port is
+				// then known-refusing without racing another process for a fixed one.
+				const port = yield* Effect.promise(
+					() =>
+						new Promise<number>((resolve) => {
+							const server = createServer();
+							server.listen(0, "127.0.0.1", () => {
+								const bound = (server.address() as AddressInfo).port;
+								server.close(() => resolve(bound));
+							});
+						}),
+				);
+				// The assertion that matters is that this line is reached at all: a
+				// probe that let the transport error through would fail the effect
+				// here instead of answering false.
+				assert.isFalse(yield* DetachedProcess.httpProbe(`http://127.0.0.1:${port}/status`));
+			}).pipe(Effect.provide(FetchHttpClient.layer)),
+		);
+
+		it.live("composes with awaitReady: an answering child reports ready", () =>
+			withServer(
+				(response) => response.writeHead(200).end(),
+				(url) =>
+					DetachedProcess.awaitReady(DetachedProcess.httpProbe(url), {
+						// Small budget so a wrong `false` fails fast instead of in 6s.
+						interval: "10 millis",
+						attempts: 2,
+					}),
+			).pipe(Effect.provide(FetchHttpClient.layer)),
+		);
+	});
+
+	describe("the ops seam", () => {
+		/** The die a makeTestOps member exits through, asserted to BE a die. */
+		const defectMessage = (exit: Exit.Exit<unknown, unknown>): string => {
+			assert.isTrue(Exit.isFailure(exit));
+			if (!Exit.isFailure(exit)) {
+				return "";
+			}
+			assert.isTrue(Cause.hasDies(exit.cause), "an unstubbed member must die, never fail typed");
+			const defect = exit.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect)[0];
+			assert.instanceOf(defect, Error);
+			return (defect as Error).message;
+		};
+
+		it("ops IS the real statics — same references, not wrappers", () => {
+			assert.strictEqual(DetachedProcess.ops.spawn, DetachedProcess.spawn);
+			assert.strictEqual(DetachedProcess.ops.awaitReady, DetachedProcess.awaitReady);
+			assert.strictEqual(DetachedProcess.ops.reap, DetachedProcess.reap);
+		});
+
+		describe("makeTestOps", () => {
+			it.effect("an unstubbed member dies loudly, naming the member and the fix", () =>
+				Effect.gen(function* () {
+					const ops = DetachedProcess.makeTestOps();
+					const message = defectMessage(yield* Effect.exit(ops.reap(4242)));
+					assert.include(message, "reap");
+					assert.include(message, "not stubbed");
+				}),
+			);
+
+			it.effect("each member names ITSELF — spawn does not die blaming reap", () =>
+				Effect.gen(function* () {
+					const ops = DetachedProcess.makeTestOps();
+					assert.include(
+						defectMessage(yield* Effect.exit(ops.spawn({ command: "node", logFile: "/tmp/never.log" }))),
+						"spawn",
+					);
+					assert.include(defectMessage(yield* Effect.exit(ops.awaitReady(Effect.succeed(true)))), "awaitReady");
+				}),
+			);
+
+			it.effect("a stubbed member serves while the rest still die", () =>
+				Effect.gen(function* () {
+					const reaped: Array<number> = [];
+					const ops = DetachedProcess.makeTestOps({
+						reap: (pid) =>
+							Effect.sync(() => {
+								reaped.push(pid);
+								return true;
+							}),
+					});
+					assert.isTrue(yield* ops.reap(4242));
+					assert.deepStrictEqual(reaped, [4242]);
+					// The overrides must not soften the rest of the double.
+					assert.include(
+						defectMessage(yield* Effect.exit(ops.spawn({ command: "node", logFile: "/tmp/never.log" }))),
+						"spawn",
+					);
+				}),
+			);
+
+			it.effect("dying is lazy — building the double runs nothing", () =>
+				Effect.gen(function* () {
+					// An eagerly-throwing double would make it impossible to build the
+					// ops value in a test that only ever calls its stubbed members.
+					const ops = DetachedProcess.makeTestOps();
+					const described = ops.reap(4242);
+					assert.isDefined(described);
+					const message = defectMessage(yield* Effect.exit(described));
+					assert.include(message, "reap");
+				}),
+			);
+		});
 	});
 
 	describe("spawn", () => {

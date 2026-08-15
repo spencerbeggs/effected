@@ -137,12 +137,24 @@ named re-exports in `index.ts` (**never** a namespace object), and
 (`GitHubMarkdown.ts`) and `@effected/npm` (`PackageManagerInstaller.ts`) are
 confined on the same terms.
 
-**Confined means no import edge, not absent.** These are declared dependencies:
-every consumer installs them and a bundler's resolver still walks them.
+**Confined means no import edge, not absent.**
 `__test__/reachability.test.ts` proves no light module imports a heavy one, which
 — with `"sideEffects": false` and module-per-file output — lets a tree-shaking
 bundler drop it. Droppable by construction, not absent by construction; never
 restate it as the stronger claim. Mechanics → `@./CLAUDE.testing.md`.
+
+**The heavy engines are optional peers, not dependencies** (2026-08-14, #250):
+`@azure/storage-blob`, `@effected/markdown`, `@effected/npm`, `@effected/sbom`
+and `@effected/templates` sit in `peerDependencies` with
+`peerDependenciesMeta.optional: true` (the `@effected/cli` ⇄ `config-file`
+precedent), mirrored by devDependencies for this repo's own build and tests. A
+consumer declares one only when using the module it powers; a consumer who does
+not never installs it, and one who imports the module without declaring the peer
+gets module-not-found naming the missing package at that import, nowhere
+earlier. `@effected/github` (the token bridge's vocabulary) and `@effected/glob`
+(featherweight) stay hard dependencies. A reachability test pins all seven.
+Plain `optionalDependencies` cannot express this — pnpm installs those by
+default, and `--no-optional` is consumer-wide.
 
 ## Working here
 

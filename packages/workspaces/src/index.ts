@@ -53,6 +53,7 @@ export {
 	type PackageManagerDetectionFailure,
 	PackageManagerDetector,
 	type PackageManagerDetectorShape,
+	PackageManagerEvidence,
 	PackageManagerName,
 } from "./PackageManagerName.js";
 export { PublishTarget, PublishabilityDetector, type PublishabilityDetectorShape } from "./Publishability.js";

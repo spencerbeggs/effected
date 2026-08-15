@@ -13,10 +13,12 @@ import { ActionOutputs } from "./ActionOutputs.js";
  * it makes declassification **explicit, auditable, and impossible to do
  * quietly**.
  *
- * The invariant: **masking and declassification are the same call.** Every
- * member registers the value with the runner's log filter (`::add-mask::`)
- * *before* returning plaintext, so a secret cannot reach a child's environment
- * or a state file without the runner already knowing to redact it from logs.
+ * The invariant: **masking is the floor, and declassification implies it.**
+ * Every member registers the value with the runner's log filter
+ * (`::add-mask::`) *before* any plaintext is returned — and the one member
+ * that returns nothing, {@link Secret.mask}, registers and stops there — so a
+ * secret cannot reach a child's environment or a state file without the
+ * runner already knowing to redact it from logs.
  *
  * `Redacted.value` appears nowhere else in this package, and a test asserts
  * that structurally — a reintroduction elsewhere fails the suite rather than
@@ -103,12 +105,9 @@ export class Secret {
 	 * dividing line is where the value goes, not what it is for: a value
 	 * crossing into a **child's** environment is {@link Secret.forChildEnv},
 	 * one written to `GITHUB_STATE` or `GITHUB_OUTPUT` is
-	 * {@link Secret.forRunnerFile}, and one that stays in this process is this
-	 * member. A third-party SDK that reads only the ambient environment is the
-	 * hard case: this package never mutates `process.env` (reads are seeded
-	 * once through `ActionEnvironment`), so if a consumer chooses that bridge,
-	 * the mutation — and its restore discipline — lives in consumer code as
-	 * the consumer's own tradeoff, not as a pattern this member recommends.
+	 * {@link Secret.forRunnerFile}, one bound for the ambient environment is
+	 * {@link Secret.forProcessEnv}, and one that stays in this process — held
+	 * by this code, passed as an argument — is this member.
 	 *
 	 * It masks even though the value is never *written* anywhere, and that is
 	 * deliberate rather than superstitious: a signing key that leaks does so
@@ -132,6 +131,74 @@ export class Secret {
 	 */
 	static readonly forSigning = (secret: Redacted.Redacted<string>): Effect.Effect<string, never, ActionOutputs> =>
 		Secret.forRunnerFile(secret);
+
+	/**
+	 * Declassify one secret for the caller to bridge into `process.env`.
+	 *
+	 * @remarks
+	 * The third-party-SDK case, under its own auditable name: an SDK that reads
+	 * only the ambient environment cannot take the plaintext as an argument, so
+	 * the value has to cross into `process.env` before the SDK looks. The
+	 * mechanism is identical to {@link Secret.forRunnerFile} — mask first, then
+	 * return plaintext — and the name is what earns the member: these names are
+	 * the audit vocabulary, and a search for this one finds every place a
+	 * secret enters the ambient environment without wading through signing
+	 * keys and runner files.
+	 *
+	 * The ruling on who mutates is unchanged by the name existing: **this
+	 * package never mutates `process.env`.** Reads are seeded once, at layer
+	 * construction, through `ActionEnvironment`, and nothing here writes back
+	 * — a write from inside the kit would be invisible to that seeding and to
+	 * every consumer's assumptions about when the environment is stable. This
+	 * member declassifies and masks; the assignment to `process.env`, and the
+	 * restore discipline that unwinds it when the bridged scope ends, live in
+	 * the **caller**, as the caller's own explicit tradeoff.
+	 *
+	 * The detached-worker inversion applies exactly as it does to
+	 * {@link Secret.forSigning}: the mask only works where the runner parses
+	 * stdout, so a worker that needs a bridged environment gets it from the
+	 * parent — masked before the spawn via {@link Secret.forChildEnv} — rather
+	 * than declassifying inside itself.
+	 */
+	static readonly forProcessEnv = (secret: Redacted.Redacted<string>): Effect.Effect<string, never, ActionOutputs> =>
+		Secret.forRunnerFile(secret);
+
+	/**
+	 * Register a secret with the runner's log filter — and return nothing.
+	 *
+	 * @remarks
+	 * Masking without declassification: the value is registered with
+	 * `::add-mask::` through the same route as every other member, and the
+	 * success channel is `void`, so a caller cannot come away holding the raw
+	 * value at all. This is the register-only shape consumers previously spelled
+	 * as a {@link Secret.forSigning} whose result was discarded — a spelling
+	 * that lied to the audit vocabulary (a grep for signing found masking),
+	 * contradicted forSigning's own once-at-construction guidance, and needed a
+	 * comment to apologize for itself. The names are the vocabulary: a grep for
+	 * this member finds every register-only site, and a grep for `forSigning`
+	 * again finds only signing.
+	 *
+	 * The canonical caller masks every supplied credential input
+	 * unconditionally, before the logic that decides which of them will
+	 * actually be used — a secret the workflow supplied deserves redaction from
+	 * the log whether or not resolution reaches for it.
+	 *
+	 * One value per call is the blessed shape; there is deliberately no
+	 * set-taking form. {@link Secret.forChildEnv} takes a set because its
+	 * mask-everything-before-returning-anything ordering is load-bearing; a
+	 * plain mask returns nothing to order against, and a loop is fine.
+	 *
+	 * **In a detached worker, the mask this member emits is a leak.** The
+	 * `::add-mask::` command only masks when the runner parses this process's
+	 * stdout; a detached worker's stdout is a log file no runner parses, so
+	 * there the command masks nothing *and* spells the plaintext into the log
+	 * — a signing key shipped exactly that way for one round. A worker must
+	 * compose `ActionOutputs.layerDetached`, under which the mask is a
+	 * documented no-op; the masking itself is the **parent's** job, done
+	 * before the spawn via {@link Secret.forChildEnv} under the real layer.
+	 */
+	static readonly mask = (secret: Redacted.Redacted<string>): Effect.Effect<void, never, ActionOutputs> =>
+		Effect.asVoid(Secret.forRunnerFile(secret));
 
 	/**
 	 * The far side of a handoff: re-wrap a plaintext environment variable.

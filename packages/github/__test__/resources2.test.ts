@@ -559,6 +559,100 @@ describe("PullRequest", () => {
 	);
 });
 
+describe("GitHubIssue REST", () => {
+	const issue = {
+		number: 169,
+		title: "close me",
+		state: "open",
+		labels: ["release", { name: "bug" }],
+		html_url: "https://x/169",
+		node_id: "I_169",
+	};
+
+	/**
+	 * The default api-version (2022-11-28) is deprecated — sunset 2028-03-10 —
+	 * and GitHub flags old-version calls to changed endpoints with a
+	 * `Deprecation` header octokit prints to the consumer's console. The module
+	 * pins the current version instead (effected#189); these assertions are on
+	 * the wire, through the real octokit path, so dropping the header fails.
+	 */
+	const PINNED = "2026-03-10";
+
+	it.effect("close sends state, state_reason and the pinned api-version", () =>
+		Effect.gen(function* () {
+			const { script } = yield* drive(
+				[{ status: 200, body: { ...issue, state: "closed" } }],
+				GitHubIssue,
+				GitHubIssue,
+				(issues) => issues.close(169, "not_planned"),
+			);
+			const call = script.calls[0];
+			assert.strictEqual(call?.method, "PATCH");
+			assert.strictEqual(call.path, "/repos/acme/widget/issues/169");
+			assert.strictEqual(call.headers["x-github-api-version"], PINNED);
+			const body = JSON.parse(call.body ?? "{}") as Record<string, unknown>;
+			assert.strictEqual(body.state, "closed");
+			assert.strictEqual(body.state_reason, "not_planned");
+		}),
+	);
+
+	it.effect("close without a reason leaves state_reason out of the body", () =>
+		Effect.gen(function* () {
+			const { script } = yield* drive(
+				[{ status: 200, body: { ...issue, state: "closed" } }],
+				GitHubIssue,
+				GitHubIssue,
+				(issues) => issues.close(169),
+			);
+			const body = JSON.parse(script.calls[0]?.body ?? "{}") as Record<string, unknown>;
+			assert.strictEqual(body.state, "closed");
+			assert.notProperty(body, "state_reason");
+			// The version header does not leak into the body as a parameter.
+			assert.notProperty(body, "headers");
+		}),
+	);
+
+	it.effect("get pins the api-version and normalizes the label union", () =>
+		Effect.gen(function* () {
+			const { value, script } = yield* drive([{ status: 200, body: issue }], GitHubIssue, GitHubIssue, (issues) =>
+				issues.get(169),
+			);
+			assert.strictEqual(script.calls[0]?.headers["x-github-api-version"], PINNED);
+			assert.deepStrictEqual([...value.labels], ["release", "bug"]);
+			assert.strictEqual(value.nodeId, "I_169");
+		}),
+	);
+
+	it.effect("comment pins the api-version and returns the new comment id", () =>
+		Effect.gen(function* () {
+			const { value, script } = yield* drive([{ status: 201, body: { id: 77 } }], GitHubIssue, GitHubIssue, (issues) =>
+				issues.comment(169, "done"),
+			);
+			assert.strictEqual(value, 77);
+			const call = script.calls[0];
+			assert.strictEqual(call?.method, "POST");
+			assert.strictEqual(call.path, "/repos/acme/widget/issues/169/comments");
+			assert.strictEqual(call.headers["x-github-api-version"], PINNED);
+			assert.strictEqual((JSON.parse(call.body ?? "{}") as Record<string, unknown>).body, "done");
+		}),
+	);
+
+	it.effect("list pins the api-version and forwards its page options", () =>
+		Effect.gen(function* () {
+			const { value, script } = yield* drive([{ status: 200, body: [issue] }], GitHubIssue, GitHubIssue, (issues) =>
+				issues.list({ state: "open", labels: ["release", "bug"], page: PageOptions.make({ perPage: 5 }) }),
+			);
+			assert.strictEqual(value.length, 1);
+			assert.strictEqual(script.calls[0]?.headers["x-github-api-version"], PINNED);
+			assert.strictEqual(script.queryOf(0).get("per_page"), "5");
+			assert.strictEqual(script.queryOf(0).get("state"), "open");
+			assert.strictEqual(script.queryOf(0).get("labels"), "release,bug");
+			// The header rode as a header, not as a query parameter.
+			assert.isNull(script.queryOf(0).get("headers"));
+		}),
+	);
+});
+
 describe("GitHubIssue GraphQL documents", () => {
 	it.effect("linkedIssues distinguishes human links from inferred ones", () =>
 		Effect.gen(function* () {

@@ -428,7 +428,14 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 						const candidateUrl = pathToFileURL(candidatePath).href;
 						const result = yield* Effect.result(
 							Effect.tryPromise({
-								try: () => import(candidateUrl) as Promise<unknown>,
+								// `webpackIgnore` keeps webpack-family bundlers from compiling this
+								// computed import into a context module: the target is a runtime
+								// path under the consumer's own node_modules, unresolvable at
+								// bundle time, and every bundled consumer otherwise carries a
+								// Critical-dependency warning it cannot silence — even one
+								// composing `layerSubprocess`, because this module stays in its
+								// import graph either way.
+								try: () => import(/* webpackIgnore: true */ candidateUrl) as Promise<unknown>,
 								catch: (cause) => cause,
 							}),
 						);

@@ -5,9 +5,13 @@
 // `PackageJsonReader` + `PackageJsonWriter`; resolution is not fused into
 // `write` (compose `Package.resolve` explicitly).
 
+import type { JsoncPath } from "@effected/jsonc";
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
 import type { PackageDecodeError, PackageFormatOptions } from "./Package.js";
 import { Package } from "./Package.js";
+import type { PackageJsonModifyError } from "./PackageJsonFormat.js";
+import { PackageJsonFormat } from "./PackageJsonFormat.js";
+import { PackageManifest } from "./PackageManifest.js";
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -81,6 +85,21 @@ export class PackageJsonWriteError extends Schema.TaggedError<PackageJsonWriteEr
 }
 
 /**
+ * One surgical field edit for {@link PackageJsonFile}'s `modify`: set `value`
+ * at `path`, or delete the key there when `value` is `undefined` (the
+ * `@effected/jsonc` / `@effected/yaml` modify convention — deletion is spelled
+ * with an explicit `value: undefined`, so it is always deliberate).
+ *
+ * @public
+ */
+export interface PackageFieldEdit {
+	/** The field path, e.g. `["packageManager"]` or `["devEngines", "runtime", "version"]`. */
+	readonly path: JsoncPath;
+	/** The plain JSON value to write, or `undefined` to delete the target key. */
+	readonly value: unknown;
+}
+
+/**
  * The shape of the {@link PackageJsonFile} service — the value produced by
  * {@link PackageJsonFile.make} and carried by its layer.
  *
@@ -109,6 +128,54 @@ export interface PackageJsonFileShape {
 		pkg: Package,
 		options?: PackageFormatOptions,
 	) => Effect.Effect<void, PackageJsonWriteError>;
+	/**
+	 * Read and decode a package.json file through the presence-lenient
+	 * {@link PackageManifest} — the read that accepts the private
+	 * workspace-root shape (`{ "private": true, "packageManager": ... }`)
+	 * `read` rejects. Same error channel as `read`; a present field that does
+	 * not satisfy its codec still fails as `PackageDecodeError`.
+	 */
+	readonly readManifest: (
+		path: string,
+	) => Effect.Effect<
+		PackageManifest,
+		PackageJsonReadError | PackageJsonNotFoundError | PackageJsonParseError | PackageDecodeError
+	>;
+	/**
+	 * Serialize and write a {@link PackageManifest}. Fails with
+	 * `PackageJsonWriteError`. Shares `write`'s `indent: "preserve"` behavior:
+	 * with no explicit `sourceText`, the existing file at `path` (when
+	 * readable) supplies the source text whose indentation is preserved.
+	 */
+	readonly writeManifest: (
+		path: string,
+		manifest: PackageManifest,
+		options?: PackageFormatOptions,
+	) => Effect.Effect<void, PackageJsonWriteError>;
+	/**
+	 * Apply surgical field edits to a package.json file **without decoding
+	 * it**: one read, each {@link PackageFieldEdit} applied in order through
+	 * `PackageJsonFormat.modifyToString`, one write — skipped when the result
+	 * is byte-identical to what was read. Every byte outside the edited spans
+	 * is preserved (key order, indentation, line endings, trailing newline),
+	 * which is what keeps a one-field change reviewable in someone else's
+	 * repository. Succeeds with the file's final text.
+	 *
+	 * Invalid JSON at `path` fails as `PackageJsonParseError` — the same tag
+	 * `read` uses for it — and an unnavigable edit path as
+	 * `PackageJsonModifyError`.
+	 */
+	readonly modify: (
+		path: string,
+		edits: ReadonlyArray<PackageFieldEdit>,
+	) => Effect.Effect<
+		string,
+		| PackageJsonReadError
+		| PackageJsonNotFoundError
+		| PackageJsonParseError
+		| PackageJsonModifyError
+		| PackageJsonWriteError
+	>;
 }
 
 /**
@@ -140,12 +207,13 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
 
-			const read = Effect.fn("PackageJsonFile.read")(function* (target: string) {
-				// Read directly — no `exists` pre-check (that TOCTOU race reports a
-				// file deleted between the two calls as PackageJsonReadError). The
-				// core FileSystem fails with a PlatformError whose `reason._tag` is
-				// "NotFound" for a missing file; route only that to NotFound.
-				const content = yield* fs
+			// Read the file's text directly — no `exists` pre-check (that TOCTOU
+			// race reports a file deleted between the two calls as
+			// PackageJsonReadError). The core FileSystem fails with a
+			// PlatformError whose `reason._tag` is "NotFound" for a missing file;
+			// route only that to NotFound.
+			const readText = (target: string) =>
+				fs
 					.readFileString(target)
 					.pipe(
 						Effect.mapError((cause) =>
@@ -154,11 +222,43 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 								: new PackageJsonReadError({ path: target, cause }),
 						),
 					);
-				const json = yield* Effect.try({
-					try: () => JSON.parse(content) as unknown,
-					catch: (cause) => new PackageJsonParseError({ path: target, cause }),
+
+			const readJson = (target: string) =>
+				Effect.gen(function* () {
+					const content = yield* readText(target);
+					return yield* Effect.try({
+						try: () => JSON.parse(content) as unknown,
+						catch: (cause) => new PackageJsonParseError({ path: target, cause }),
+					});
 				});
-				return yield* Package.decode(json);
+
+			// `indent: "preserve"` with no source text in hand: detect the
+			// indentation from the file being overwritten. Any read failure (most
+			// commonly a fresh file) falls back to the default indent.
+			const withPreservedSource = (target: string, options?: PackageFormatOptions) =>
+				Effect.gen(function* () {
+					if (options?.indent !== "preserve" || options.sourceText !== undefined) {
+						return options;
+					}
+					const existing = yield* fs
+						.readFileString(target)
+						.pipe(Effect.catch(() => Effect.succeed<string | undefined>(undefined)));
+					return existing === undefined ? options : { ...options, sourceText: existing };
+				});
+
+			const writeText = (target: string, json: string) =>
+				Effect.gen(function* () {
+					const directory = path.dirname(target);
+					yield* fs
+						.makeDirectory(directory, { recursive: true })
+						.pipe(Effect.mapError((cause) => new PackageJsonWriteError({ path: target, cause })));
+					yield* fs
+						.writeFileString(target, json)
+						.pipe(Effect.mapError((cause) => new PackageJsonWriteError({ path: target, cause })));
+				});
+
+			const read = Effect.fn("PackageJsonFile.read")(function* (target: string) {
+				return yield* Package.decode(yield* readJson(target));
 			});
 
 			const write = Effect.fn("PackageJsonFile.write")(function* (
@@ -166,29 +266,48 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 				pkg: Package,
 				options?: PackageFormatOptions,
 			) {
-				let effective = options;
-				if (options?.indent === "preserve" && options.sourceText === undefined) {
-					// `indent: "preserve"` with no source text in hand: detect the
-					// indentation from the file being overwritten. Any read failure
-					// (most commonly a fresh file) falls back to the default indent.
-					const existing = yield* fs
-						.readFileString(target)
-						.pipe(Effect.catch(() => Effect.succeed<string | undefined>(undefined)));
-					if (existing !== undefined) {
-						effective = { ...options, sourceText: existing };
-					}
-				}
-				const json = pkg.toJsonString(effective);
-				const directory = path.dirname(target);
-				yield* fs
-					.makeDirectory(directory, { recursive: true })
-					.pipe(Effect.mapError((cause) => new PackageJsonWriteError({ path: target, cause })));
-				yield* fs
-					.writeFileString(target, json)
-					.pipe(Effect.mapError((cause) => new PackageJsonWriteError({ path: target, cause })));
+				const effective = yield* withPreservedSource(target, options);
+				yield* writeText(target, pkg.toJsonString(effective));
 			});
 
-			return { read, write };
+			const readManifest = Effect.fn("PackageJsonFile.readManifest")(function* (target: string) {
+				return yield* PackageManifest.decode(yield* readJson(target));
+			});
+
+			const writeManifest = Effect.fn("PackageJsonFile.writeManifest")(function* (
+				target: string,
+				manifest: PackageManifest,
+				options?: PackageFormatOptions,
+			) {
+				const effective = yield* withPreservedSource(target, options);
+				yield* writeText(target, manifest.toJsonString(effective));
+			});
+
+			const modify = Effect.fn("PackageJsonFile.modify")(function* (
+				target: string,
+				edits: ReadonlyArray<PackageFieldEdit>,
+			) {
+				const source = yield* readText(target);
+				let text = source;
+				for (const edit of edits) {
+					// Each edit re-navigates the current text, so a later edit may
+					// target a key an earlier one inserted; overlap cannot arise.
+					text = yield* PackageJsonFormat.modifyToString(text, edit.path, edit.value).pipe(
+						// The service's invalid-JSON tag is PackageJsonParseError,
+						// whichever entry point met it — normalize the text-level
+						// syntax error at this boundary.
+						Effect.catchTag("PackageJsonSyntaxError", (cause) => new PackageJsonParseError({ path: target, cause })),
+					);
+				}
+				// A no-op edit set leaves the bytes alone entirely — no write, no
+				// mtime churn.
+				if (text !== source) {
+					yield* writeText(target, text);
+				}
+				return text;
+			});
+
+			return { read, write, readManifest, writeManifest, modify };
 		},
 	);
 

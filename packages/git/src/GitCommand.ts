@@ -103,6 +103,9 @@ const lsTree = (ref: string, pathspec: ReadonlyArray<string> = []): GitInvocatio
 const refExists = (ref: string): GitInvocation => git(["cat-file", "-e", ref]);
 
 // Implementation of GitCommand.mergeBase; the public contract lives on the static.
+// One builder backs BOTH Git.mergeBase (loud on no ancestor) and
+// Git.mergeBaseOption (silent exit 1 → Option.none) — the argv is identical;
+// only the service's classify kind differs.
 const mergeBase = (a: string, b: string): GitInvocation => git(["merge-base", a, b]);
 
 // Implementation of GitCommand.changedFiles; the public contract lives on the static.
@@ -129,21 +132,38 @@ const checkout = (ref: string, detach = false): GitInvocation =>
 	git(["checkout", ...(detach ? ["--detach"] : []), ref]);
 
 // Implementation of GitCommand.fetch; the public contract lives on the static.
-const fetch = (remote: string, ref: string, depth?: number, tag = false): GitInvocation =>
+const fetch = (remote: string, ref: string, depth?: number, tag = false, unshallow = false): GitInvocation =>
 	git([
 		"fetch",
 		...(depth !== undefined ? ["--depth", String(depth)] : []),
+		...(unshallow ? ["--unshallow"] : []),
 		secretUrl(remote),
 		...(tag ? ["tag"] : []),
 		ref,
 	]);
 
 // Implementation of GitCommand.submoduleUpdate; the public contract lives on the static.
-const submoduleUpdate = (init = false, depth?: number, paths: ReadonlyArray<string> = []): GitInvocation =>
+const submoduleUpdate = (
+	init = false,
+	depth?: number,
+	paths: ReadonlyArray<string> = [],
+	options: {
+		readonly checkout?: boolean;
+		readonly remote?: boolean;
+		readonly fetch?: false;
+		readonly recursive?: boolean;
+		readonly force?: boolean;
+	} = {},
+): GitInvocation =>
 	git([
 		"submodule",
 		"update",
 		...(init ? ["--init"] : []),
+		...(options.checkout ? ["--checkout"] : []),
+		...(options.remote ? ["--remote"] : []),
+		...(options.fetch === false ? ["--no-fetch"] : []),
+		...(options.recursive ? ["--recursive"] : []),
+		...(options.force ? ["--force"] : []),
 		...(depth !== undefined ? ["--depth", String(depth)] : []),
 		...(paths.length > 0 ? ["--", ...paths] : []),
 	]);
@@ -403,6 +423,14 @@ const configGetAll = (key: string, file?: string): GitInvocation =>
 const configUnset = (key: string, file?: string, all = false): GitInvocation =>
 	git(["config", ...(file !== undefined ? ["-f", file] : []), all ? "--unset-all" : "--unset", key]);
 
+// Implementation of GitCommand.configRemoveSection; the public contract lives on the static.
+const configRemoveSection = (section: string, file?: string): GitInvocation =>
+	git(["config", ...(file !== undefined ? ["-f", file] : []), "--remove-section", section]);
+
+// Implementation of GitCommand.configRenameSection; the public contract lives on the static.
+const configRenameSection = (oldName: string, newName: string, file?: string): GitInvocation =>
+	git(["config", ...(file !== undefined ? ["-f", file] : []), "--rename-section", oldName, newName]);
+
 // Implementation of GitCommand.rm; the public contract lives on the static.
 const rm = (paths: ReadonlyArray<string>, cached = false, recursive = false, force = false): GitInvocation =>
 	git([
@@ -496,6 +524,13 @@ export class GitCommand {
 
 	/**
 	 * `git merge-base <a> <b>` — the best common ancestor commit of `a` and `b`.
+	 *
+	 * @remarks
+	 * Two refs with NO common ancestor (disjoint histories) exit 1 with
+	 * silent stderr. One builder backs both service members: `Git.mergeBase`
+	 * surfaces that shape as a loud `GitCommandError` (absence is
+	 * exceptional), while `Git.mergeBaseOption` degrades it to `Option.none`
+	 * (a probe answer). The argv is identical either way.
 	 */
 	static readonly mergeBase = mergeBase;
 
@@ -570,11 +605,21 @@ export class GitCommand {
 	static readonly checkout = checkout;
 
 	/**
-	 * Mutating: `git fetch [--depth <n>] <remote> [tag] <ref>` — fetches the given
-	 * ref from a remote, optionally with a depth limit and the `tag` keyword.
+	 * Mutating: `git fetch [--depth <n>] [--unshallow] <remote> [tag] <ref>` —
+	 * fetches the given ref from a remote, optionally with a depth limit, the
+	 * `--unshallow` mode, and the `tag` keyword.
 	 *
 	 * @remarks
-	 * `remote` may be a URL as well as a remote name; an embedded
+	 * `ref` may also be a full refspec (`src:dst`, optionally `+`-prefixed) —
+	 * it is passed through VERBATIM, never transformed. That matters under a
+	 * single-branch clone (`actions/checkout`'s default): a bare-ref fetch
+	 * there updates `FETCH_HEAD` only and never creates the remote-tracking
+	 * ref, so `+refs/heads/<b>:refs/remotes/origin/<b>` is the only spelling
+	 * that materializes `origin/<b>`.
+	 *
+	 * `unshallow` is a distinct MODE like {@link GitCommand.fetchUnshallow}'s:
+	 * git rejects it in a non-shallow repository and rejects it alongside
+	 * `--depth`. `remote` may be a URL as well as a remote name; an embedded
 	 * `userinfo@` credential is masked in {@link GitInvocation.redactedArgs}.
 	 */
 	static readonly fetch = fetch;
@@ -680,10 +725,23 @@ export class GitCommand {
 	static readonly branchDelete = branchDelete;
 
 	/**
-	 * Mutating: `git submodule update [--init] [--depth <n>] [-- <paths>...]` — updates
-	 * registered submodules, optionally initializing them, with an optional depth limit,
-	 * and scoped to specific paths. The literal `--` separator makes the pathspec
-	 * injection-safe by construction.
+	 * Mutating:
+	 * `git submodule update [--init] [--checkout] [--remote] [--no-fetch] [--recursive] [--force] [--depth <n>] [-- <paths>...]`
+	 * — updates registered submodules, optionally initializing them, with an
+	 * optional depth limit, and scoped to specific paths. The literal `--`
+	 * separator makes the pathspec injection-safe by construction.
+	 *
+	 * @remarks
+	 * `options.checkout` is the documented override for a
+	 * `submodule.<name>.update = none` configuration — without it, an update of
+	 * such a submodule silently skips it (git reports success and checks out
+	 * nothing). `options.fetch` accepts only the literal `false` (emitting
+	 * `--no-fetch`): git's default already fetches and offers no positive
+	 * `--fetch` spelling, so `true` would be an unrepresentable no-op.
+	 * `options.remote` tracks the remote branch's tip instead of the
+	 * superproject's recorded sha; `options.recursive` descends into nested
+	 * submodules; `options.force` discards local changes in the submodule
+	 * working tree (and re-checks-out even when the recorded sha is current).
 	 */
 	static readonly submoduleUpdate = submoduleUpdate;
 
@@ -1077,6 +1135,29 @@ export class GitCommand {
 	 * nothing is indistinguishable from one that worked.
 	 */
 	static readonly configUnset = configUnset;
+
+	/**
+	 * Mutating: `git config [-f <file>] --remove-section <section>` — removes
+	 * a whole configuration section (every key under it, and the section
+	 * header itself).
+	 *
+	 * @remarks
+	 * git exits 128 (`fatal: no such section`) when the section does not
+	 * exist — a loud failure by this package's classification, matching
+	 * {@link GitCommand.configUnset}'s posture: a removal that silently did
+	 * nothing is indistinguishable from one that worked.
+	 */
+	static readonly configRemoveSection = configRemoveSection;
+
+	/**
+	 * Mutating: `git config [-f <file>] --rename-section <old> <new>` —
+	 * renames a configuration section, carrying every key under it across.
+	 *
+	 * @remarks
+	 * git exits 128 (`fatal: no such section`) when the old section does not
+	 * exist — the same loud posture as {@link GitCommand.configRemoveSection}.
+	 */
+	static readonly configRenameSection = configRenameSection;
 
 	/**
 	 * Mutating: `git rm [--cached] [-r] [--force] -- <paths...>` — removes

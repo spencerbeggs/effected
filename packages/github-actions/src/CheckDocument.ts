@@ -171,6 +171,12 @@ export interface CheckDocumentShape {
  * `layer` mints fresh state per call — one layer per document. Bind it to a
  * `const` if two parts of a program must share one registry.
  *
+ * `@effected/templates` is an **optional peer** of this package — this module
+ * reaches it through {@link ManagedDocument}. Declare it beside
+ * `@effected/github-actions` to use either; an action that uses neither never
+ * installs it, and importing this module without the declaration fails at the
+ * import with module-not-found naming the package.
+ *
  * @example
  * ```ts
  * import { CheckDocument, CheckReport, GitHubMarkdown } from "@effected/github-actions";

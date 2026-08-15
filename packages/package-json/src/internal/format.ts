@@ -259,6 +259,30 @@ export const resolveIndent = (
 };
 
 /**
+ * Resolve the public `PackageFormatOptions` bag (mirrored structurally here —
+ * this module cannot import `Package.ts` without closing a cycle) to the
+ * concrete {@link renderJson} options. Shared by `Package.toJsonString` and
+ * `PackageManifest.toJsonString` so the two serializers cannot drift.
+ */
+export const resolveFormatOptions = (options?: {
+	readonly indent?: number | "tab" | "preserve";
+	readonly sourceText?: string;
+	readonly sort?: boolean;
+	readonly stripEmpty?: boolean;
+	readonly newline?: boolean;
+}): {
+	readonly indent: string | number;
+	readonly sort: boolean;
+	readonly stripEmpty: boolean;
+	readonly newline: boolean;
+} => ({
+	indent: resolveIndent(options?.indent, options?.sourceText),
+	sort: options?.sort ?? true,
+	stripEmpty: options?.stripEmpty ?? true,
+	newline: options?.newline ?? true,
+});
+
+/**
  * Render an already-encoded package.json record to a JSON string, applying the
  * empty-map strip, canonical key ordering and a trailing newline unless the
  * corresponding options opt out.

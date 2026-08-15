@@ -58,6 +58,7 @@ export { ChildEnv, type PathPrependEnv, type PathPrependOptions } from "./ChildE
 export {
 	DetachedProcess,
 	DetachedProcessError,
+	type DetachedProcessOps,
 	type DetachedSpawnOptions,
 	ProcessId,
 	type ReadinessOptions,

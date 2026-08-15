@@ -30,7 +30,7 @@ Every `GitCommand` constructor returns a **`GitInvocation`**: the spawnable `Chi
 
 ## Read tier versus mutating tier
 
-Thirty-one of `Git`'s sixty-nine methods only read repository state without touching the working tree (`lsRemote` reads over the NETWORK — still a read); thirty-eight mutate. `submoduleStatus` is the one submodule-tier READ, and `submoduleForeach` is marked mutating because the shell command it runs can mutate anything.
+Thirty-two of `Git`'s seventy-two methods only read repository state without touching the working tree (`lsRemote` reads over the NETWORK — still a read); forty mutate. `submoduleStatus` is the one submodule-tier READ, and `submoduleForeach` is marked mutating because the shell command it runs can mutate anything.
 
 **The tier rule is simple and absolute: every mutating method's TSDoc opens with the literal word `"Mutating:"`, and that is the ONLY signal a caller gets.** Nothing in this package serializes concurrent access — a caller running two mutating calls, or a mutating call alongside a read, against the same `cwd` at once owns the race. `Git` does not queue, lock, or detect it.
 

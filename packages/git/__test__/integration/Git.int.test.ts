@@ -210,6 +210,9 @@ describe("Git — real repository integration", () => {
 				const base = yield* git.mergeBase(fixture.dir, "main", "feature/git");
 				assert.strictEqual(base, fixture.forkPoint);
 				assert.strictEqual(base, fixture.commit1);
+				// The probe sibling answers the same sha, wrapped.
+				const probed = yield* git.mergeBaseOption(fixture.dir, "main", "feature/git");
+				assert.deepStrictEqual(probed, Option.some(fixture.forkPoint));
 			}),
 		),
 	);

@@ -1,6 +1,11 @@
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
-import { PackageManagerDetectionError, PackageManagerDetector, WorkspaceManifestError } from "../src/index.js";
+import {
+	PackageManagerDetectionError,
+	PackageManagerDetector,
+	PackageManagerEvidence,
+	WorkspaceManifestError,
+} from "../src/index.js";
 import type { Tree } from "./fixtures.js";
 import { platform } from "./fixtures.js";
 
@@ -25,6 +30,7 @@ describe("PackageManagerDetector — pnpm", () => {
 				assert.strictEqual(detected.name, "pnpm");
 				assert.deepStrictEqual(detected.version, Option.some("10.33.0"));
 				assert.strictEqual(detected.runtime, "node");
+				assert.strictEqual(detected.evidence, "pnpm-workspace.yaml");
 			}),
 		);
 	});
@@ -77,6 +83,10 @@ describe("PackageManagerDetector — bun", () => {
 				assert.strictEqual(detected.name, "bun");
 				assert.strictEqual(detected.runtime, "bun");
 				assert.deepStrictEqual(detected.version, Option.some("1.2.0"));
+				// The conjunction needed the manifest field too, but the lockfile is
+				// the recorded signal: the field alone would have resolved in the
+				// declaration tier, so the lockfile is what this rung added.
+				assert.strictEqual(detected.evidence, "bun.lock");
 			}),
 		);
 	});
@@ -108,6 +118,7 @@ describe("PackageManagerDetector — yarn", () => {
 				const detected = yield* detector.detect("/repo");
 				assert.strictEqual(detected.name, "yarn");
 				assert.deepStrictEqual(detected.version, Option.some("4.5.0"));
+				assert.strictEqual(detected.evidence, "yarn.lock");
 			}),
 		);
 	});
@@ -130,6 +141,7 @@ describe("PackageManagerDetector — npm", () => {
 				const detected = yield* detector.detect("/repo");
 				assert.strictEqual(detected.name, "npm");
 				assert.deepStrictEqual(detected.version, Option.some("11.0.0"));
+				assert.strictEqual(detected.evidence, "package.json#workspaces");
 			}),
 		);
 	});
@@ -152,6 +164,10 @@ describe("PackageManagerDetector — NO EVIDENCE AT ALL", () => {
 				// on the error that reports having tried them.
 				assert.include(error.checked, "pnpm-lock.yaml");
 				assert.include(error.checked, "package-lock.json");
+				// ONE vocabulary serves both halves of the contract: what the error
+				// reports as probed is exactly the evidence union a success reports
+				// from, member for member and in priority order.
+				assert.deepStrictEqual([...error.checked], [...PackageManagerEvidence.literals]);
 			}),
 		);
 	});
@@ -180,6 +196,7 @@ describe("PackageManagerDetector — standalone pnpm repo", () => {
 				const detected = yield* detector.detect("/repo");
 				assert.strictEqual(detected.name, "pnpm");
 				assert.deepStrictEqual(detected.version, Option.some("10.33.0"));
+				assert.strictEqual(detected.evidence, "pnpm-lock.yaml");
 			}),
 		);
 	});
@@ -217,6 +234,7 @@ describe("PackageManagerDetector — standalone npm repo", () => {
 				const detector = yield* PackageManagerDetector;
 				const detected = yield* detector.detect("/repo");
 				assert.strictEqual(detected.name, "npm");
+				assert.strictEqual(detected.evidence, "package-lock.json");
 			}),
 		);
 	});
@@ -230,6 +248,8 @@ describe("PackageManagerDetector — standalone yarn repo", () => {
 				const detected = yield* detector.detect("/repo");
 				assert.strictEqual(detected.name, "yarn");
 				assert.deepStrictEqual(detected.version, Option.some("4.5.0"));
+				// The lockfile, not the corepack field, is the recorded signal.
+				assert.strictEqual(detected.evidence, "yarn.lock");
 			}),
 		);
 	});
@@ -243,6 +263,9 @@ describe("PackageManagerDetector — standalone bun repo", () => {
 				const detected = yield* detector.detect("/repo");
 				assert.strictEqual(detected.name, "bun");
 				assert.strictEqual(detected.runtime, "bun");
+				// The binary lockfile is its own evidence spelling — this tree carries
+				// bun.lockb, not bun.lock, and the report says which one it saw.
+				assert.strictEqual(detected.evidence, "bun.lockb");
 			}),
 		);
 	});
@@ -281,6 +304,7 @@ describe("PackageManagerDetector — declared but never installed", () => {
 				const detected = yield* detector.detect("/repo");
 				assert.strictEqual(detected.name, "pnpm");
 				assert.deepStrictEqual(detected.version, Option.some("10.33.0"));
+				assert.strictEqual(detected.evidence, "package.json#packageManager");
 			}),
 		);
 	});
@@ -299,6 +323,32 @@ describe("PackageManagerDetector — devEngines alone, no lockfile", () => {
 				assert.strictEqual(detected.name, "bun");
 				assert.strictEqual(detected.runtime, "bun");
 				assert.deepStrictEqual(detected.version, Option.some("1.2.0"));
+				assert.strictEqual(detected.evidence, "package.json#devEngines.packageManager");
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — both declaration fields, no lockfile", () => {
+	layer(
+		detectorOver({
+			"/repo/package.json": manifestWith({
+				packageManager: "pnpm@10.33.0",
+				devEngines: { packageManager: { name: "pnpm" } },
+			}),
+		}),
+	)((it) => {
+		it.effect("the evidence names the field that supplied the NAME — devEngines", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				const detected = yield* detector.detect("/repo");
+				assert.strictEqual(detected.name, "pnpm");
+				// devEngines is authoritative for the name, so it is the evidence even
+				// though the VERSION came from the top-level field. Version provenance
+				// is deliberately not carried: it follows the documented two-field
+				// precedence, which is a rule, not a probe.
+				assert.strictEqual(detected.evidence, "package.json#devEngines.packageManager");
+				assert.deepStrictEqual(detected.version, Option.some("10.33.0"));
 			}),
 		);
 	});

@@ -11,7 +11,8 @@ import { SemVer } from "@effected/semver";
 import { Effect, Function as Fn, HashMap, Option, Pipeable, Schema, SchemaTransformation } from "effect";
 import { Dependency } from "./Dependency.js";
 import { DevEnginesSchema } from "./DevEngines.js";
-import { renderJson, resolveIndent } from "./internal/format.js";
+import { renderJson, resolveFormatOptions } from "./internal/format.js";
+import { makeWire } from "./internal/wire.js";
 import { InvalidSpdxLicenseError, SpdxLicense, isValidSpdx } from "./License.js";
 import { PackageManager } from "./PackageManager.js";
 import { InvalidPackageNameError, PackageName } from "./PackageName.js";
@@ -155,13 +156,6 @@ export interface PackageFormatOptions {
 	readonly newline?: boolean;
 }
 
-const resolveFormatOptions = (options?: PackageFormatOptions) => ({
-	indent: resolveIndent(options?.indent, options?.sourceText),
-	sort: options?.sort ?? true,
-	stripEmpty: options?.stripEmpty ?? true,
-	newline: options?.newline ?? true,
-});
-
 // ── Model ───────────────────────────────────────────────────────────────────
 
 /**
@@ -173,45 +167,6 @@ const resolveFormatOptions = (options?: PackageFormatOptions) => ({
 export type PackagePatch = Partial<{
 	readonly [K in keyof (typeof Package)["fields"]]: (typeof Package)["fields"][K]["Type"];
 }>;
-
-const RawJson = Schema.Record(Schema.String, Schema.Unknown);
-
-// Build the open-JSON ↔ class wire codec for a Package class or `.extend()`ed
-// subclass. Reads `Class.fields` so extended fields decode as typed members and
-// are excluded from `rest`; on encode the `rest` record is flattened back to
-// top-level keys so the on-disk shape never carries a literal `rest` key.
-const makeWire = <Self extends Package>(
-	// biome-ignore lint/suspicious/noExplicitAny: invariant Encoded slot — a concrete type is rejected by the class-factory generics
-	Class: Schema.Codec<Self, any, any, any> & { readonly fields: Record<string, unknown> },
-): Schema.Codec<Self, { readonly [k: string]: unknown }> => {
-	const knownKeys = new Set(Object.keys(Class.fields).filter((k) => k !== "rest"));
-	const wire = RawJson.pipe(
-		Schema.decodeTo(
-			Class,
-			SchemaTransformation.transform({
-				decode: (raw: { readonly [k: string]: unknown }) => {
-					const known: Record<string, unknown> = {};
-					const rest: Record<string, unknown> = {};
-					for (const [key, value] of Object.entries(raw)) {
-						if (knownKeys.has(key)) known[key] = value;
-						else rest[key] = value;
-					}
-					return { ...known, rest };
-				},
-				encode: (encoded: Record<string, unknown>) => {
-					const { rest, ...known } = encoded as Record<string, unknown> & { rest?: Record<string, unknown> };
-					// Typed fields win on a key collision: a hand-built instance whose
-					// `rest` smuggles a known key (including an .extend()ed subclass
-					// field — this is the one shared wire implementation behind both
-					// `Package.schema` and `Package.wireFor`) must not shadow the typed
-					// member on the wire.
-					return { ...(rest ?? {}), ...known };
-				},
-			}),
-		),
-	);
-	return wire as unknown as Schema.Codec<Self, { readonly [k: string]: unknown }>;
-};
 
 /**
  * A package.json document as a rich `Schema.Class`: typed known fields, a

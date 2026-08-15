@@ -172,6 +172,31 @@ const unstubbed = (member: string): never => {
 	throw new Error(`GitHubIssue.makeTest: ${member}() was called but not stubbed — pass an override.`);
 };
 
+/**
+ * The REST calendar version this module's requests pin.
+ *
+ * @remarks
+ * The routes are not deprecated — the **default api-version** is. When no
+ * `x-github-api-version` header is sent (octokit sends none), GitHub serves
+ * calendar version 2022-11-28, which it deprecated when 2026-03-10 shipped and
+ * sunsets on 2028-03-10. Every response from an endpoint the new version
+ * changed then carries a `Deprecation` header, which `@octokit/request` prints
+ * straight to the consumer's console — the constructor's `log` option cannot
+ * silence it, because the fetch wrapper resolves `request.log ?? console`.
+ * `PATCH /repos/{owner}/{repo}/issues/{issue_number}` is on that list (the
+ * singular `assignee` parameter was removed), so every `close` warned once per
+ * issue in consumer workflow logs (effected#189).
+ *
+ * Nothing this module sends or reads changed in 2026-03-10: `state` and
+ * `state_reason` are untouched, and the projections read only fields both
+ * versions carry. Pinning the current version is therefore the whole fix, and
+ * it deliberately does **not** hide future deprecations — when GitHub
+ * deprecates 2026-03-10 in turn, the header comes back and octokit warns
+ * again. Verified live 2026-08-14: the pinned request answers with no
+ * `Deprecation`/`Sunset` headers.
+ */
+const API_VERSION_HEADERS = { "x-github-api-version": "2026-03-10" } as const;
+
 /** GitHub sends a label as either a string or an object; callers want the name. */
 const labelNames = (labels: ReadonlyArray<string | { name?: string | undefined }>): ReadonlyArray<string> =>
 	labels.flatMap((label) => (typeof label === "string" ? [label] : label.name !== undefined ? [label.name] : []));
@@ -203,6 +228,7 @@ const make = (client: GitHubClient["Service"]): GitHubIssueShape => ({
 			owner,
 			repo,
 			issue_number: number,
+			headers: API_VERSION_HEADERS,
 		});
 		return project(raw);
 	}),
@@ -221,6 +247,7 @@ const make = (client: GitHubClient["Service"]): GitHubIssueShape => ({
 				repo,
 				...(options?.state !== undefined ? { state: options.state } : {}),
 				...(options?.labels !== undefined ? { labels: options.labels.join(",") } : {}),
+				headers: API_VERSION_HEADERS,
 			},
 			options?.page,
 		);
@@ -236,6 +263,7 @@ const make = (client: GitHubClient["Service"]): GitHubIssueShape => ({
 			issue_number: number,
 			state: "closed",
 			...(reason !== undefined ? { state_reason: reason } : {}),
+			headers: API_VERSION_HEADERS,
 		});
 	}),
 
@@ -247,6 +275,7 @@ const make = (client: GitHubClient["Service"]): GitHubIssueShape => ({
 			repo,
 			issue_number: number,
 			body,
+			headers: API_VERSION_HEADERS,
 		});
 		return created.id;
 	}),

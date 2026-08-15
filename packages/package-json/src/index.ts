@@ -15,9 +15,17 @@
  * `Package`; {@link PackageJsonFormat} sorts and formats without decoding, for
  * hosts that must accept manifests `Package.decode` rejects.
  *
+ * {@link PackageManifest} is the presence-lenient model — `name` / `version`
+ * optional, `packageManager` accepting the range spelling as
+ * {@link PackageManagerRange} — for the private workspace-root shape the
+ * strict `Package` rejects; and `PackageJsonFormat.modify` /
+ * `PackageJsonFile.modify` are the surgical, byte-preserving field edits for
+ * tools that mutate other people's manifests.
+ *
  * @packageDocumentation
  */
 
+export { JsoncEdit, type JsoncPath } from "@effected/jsonc";
 export {
 	type DependencyKind,
 	type DependencyProtocol,
@@ -44,6 +52,7 @@ export {
 	StringMapField,
 } from "./Package.js";
 export {
+	type PackageFieldEdit,
 	PackageJsonFile,
 	type PackageJsonFileShape,
 	PackageJsonNotFoundError,
@@ -54,9 +63,12 @@ export {
 export {
 	type PackageFormatTextOptions,
 	PackageJsonFormat,
+	PackageJsonModifyError,
 	PackageJsonSyntaxError,
 } from "./PackageJsonFormat.js";
 export { PackageManager } from "./PackageManager.js";
+export { PackageManagerRange } from "./PackageManagerRange.js";
+export { PackageManifest } from "./PackageManifest.js";
 export {
 	InvalidPackageNameError,
 	PackageName,
