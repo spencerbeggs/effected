@@ -84,6 +84,33 @@ routing index, not the catalogue.
   from a stack trace. The octokit `fetch`-hook harness that exercises the
   real client end to end belongs to `testing-actions`.
 
+## REST calendar versioning
+
+Verified live 2026-08-14/15 during wave dogfooding (effected#189):
+
+- **octokit sends no `x-github-api-version` header**, so every request rides
+  the DEFAULT calendar version `2022-11-28` — which GitHub deprecated when
+  `2026-03-10` shipped (sunset 2028-03-10).
+- **GitHub adds `Deprecation`/`Sunset`/`Link` headers only on endpoints the
+  new version CHANGED.** A per-route octokit warning therefore reads as
+  "this route is deprecated" but actually means "you are on the old calendar
+  version, and this route changed in the new one".
+- **The designated fix is requesting a version per call**, via the typed
+  `headers` extra (`RestExtras`, see
+  [`references/pagination-retry-errors.md`](references/pagination-retry-errors.md)).
+  `GitHubIssue` pins `{ "x-github-api-version": "2026-03-10" }` and is the
+  in-kit worked example, TSDoc rationale included.
+- **The warning is unsuppressable by design.** octokit's fetch wrapper logs
+  via `request.log ?? console`, and core never threads its constructor `log`
+  option into request defaults — do not chase a logging knob; pin the
+  version instead.
+- **Migration caution: a calendar-version change REMOVES response fields.**
+  `2026-03-10` removed `merge_commit_sha` from PR responses, and an
+  `optionalKey` field silently decodes absent — so a naive package-wide pin
+  can turn a consumer's load-bearing read into an always-absent value with
+  no error anywhere (tracked as effected#364). Pin per module, after
+  checking what the new version changed on the routes that module calls.
+
 ## Footguns
 
 - `GitTag.latestSemver` picks the **highest parsed version**, not the most

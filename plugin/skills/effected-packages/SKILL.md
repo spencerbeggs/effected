@@ -1,11 +1,11 @@
 ---
 name: effected-packages
-description: The @effected package index — what each of the kit's 28 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML/Markdown, semver math, SPDX license expressions, glob matching, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, git introspection, runtime-version resolution, running commands or discovering CLI tools, managed sections in generated files, append-only JSONL journals and watching them, the GitHub REST/GraphQL API, the GitHub Actions runtime, CLI output and failure reporting, SBOM generation and signing, or publishing Effect Schemas as SchemaStore-shaped JSON Schema documents. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/.
+description: The @effected package index — what each of the kit's 29 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML/Markdown, semver math, SPDX license expressions, glob matching, an in-memory filesystem for tests, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, git introspection, runtime-version resolution, running commands or discovering CLI tools, managed sections in generated files, append-only JSONL journals and watching them, the GitHub REST/GraphQL API, the GitHub Actions runtime, CLI output and failure reporting, SBOM generation and signing, or publishing Effect Schemas as SchemaStore-shaped JSON Schema documents. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/.
 ---
 
 # The @effected package index
 
-`@effected/*` is an Effect v4-first app kit: 28 packages (27 libraries plus
+`@effected/*` is an Effect v4-first app kit: 29 packages (28 libraries plus
 the `pnpm-plugin-effect` companion) designed against the
 v4 line (never lift-and-shifted from v3), released together, with every
 `effect` dependency pinned to one exact beta via pnpm catalogs. Before
@@ -34,6 +34,7 @@ against its services, or test code that uses it.
 | `@effected/markdown` | CommonMark 0.31.2 + GFM parse/edit/format as pure schemas: 28 constructible mdast-shaped node classes with byte offsets, offset-splice edits, node-level modify, `Mdast` projection both ways, `Stream` visitor, frontmatter codecs, section finders (`firstSection` / `sectionByHeading`) | reading, editing, querying or rewriting markdown — **and building it**: `new Table(...)` → `Markdown.stringify` — instead of `remark`/`mdast-util-*`/`gray-matter` | pure | [markdown.md](./references/markdown.md) |
 | `@effected/spdx` | SPDX license IDs, exceptions and license *expressions* as Schema classes, with a hardened depth-capped expression parser and vendored SPDX datasets | validating or parsing a license field / expression (`MIT OR Apache-2.0 WITH …`) | pure | the package's own `CLAUDE.md` |
 | `@effected/glob` | full minimatch dialect as pure string→predicate schemas (`GlobPattern`, `GlobSet`) | matching path strings against globs without touching the fs | pure | [glob.md](./references/glob.md) |
+| `@effected/memfs` | in-memory implementation of core's `FileSystem` contract: an isolated virtual POSIX volume behind the standard `FileSystem.FileSystem` key — `MemoryFileSystem.layer` (empty volume) / `layerWith(seed)` (absolute-POSIX-path → `string` \| `Uint8Array`, parents auto-created); unseeded reads fail typed `NotFound`, never fabricate | any test needing a filesystem — instead of hand-stubbing `FileSystem.layerNoop` (the stub answering `""` is the documented footgun it exists to kill) | pure | [memfs.md](./references/memfs.md) |
 | `@effected/npm` | resolver CONTRACTS for `catalog:`/`workspace:` specifiers + shared dependency vocabulary, **plus** `NpmRegistry` (reads over `HttpClient`) and `PackagePublish` (the npm CLI over `commands`) | typing dependency specifiers; reading a registry; packing/publishing | boundary | [npm.md](./references/npm.md) |
 | `@effected/lockfiles` | bun/npm/pnpm/yarn lockfile parsers → one `Lockfile` model + pure integrity checking | reading any lockfile; lockfile-vs-manifest drift checks | pure | [lockfiles.md](./references/lockfiles.md) |
 | `@effected/package-json` | package.json schemas, `Package` model, validation, file IO service; `repository`/`bugs`/`homepage`/`maintainers`/`keywords` now typed | reading/editing/validating package.json | boundary | [package-json.md](./references/package-json.md) |
@@ -93,6 +94,12 @@ Facts about them that change how you depend on them:
   `@octokit/auth-app`.** The former is a second spelling of the endpoint types;
   the latter makes ~492 KB of OAuth machinery reachable from a package that only
   mints installation tokens. Do not reintroduce either.
+- **`@effected/memfs` has zero `@effected/*` edges — by law, not accident** —
+  so ANY kit package may devDepend on it for tests without creating a cycle
+  (`glob` included: the engine keeps its embedded mini-glob; do not
+  "deduplicate" it). The engine is vendored from Effect-TS/effect PRs
+  #6573/#6555, with a planned sunset when core ships its own in-memory
+  `FileSystem`.
 - **`@effected/workspaces` publishability has NO ambient default.** Every
   composite (`Workspaces.layer`, `layerWithGit`, …) *requires*
   `PublishabilityDetector` — provide `PublishabilityDetector.layerNpm` for npm
@@ -105,12 +112,13 @@ Facts about them that change how you depend on them:
 
 ## Local-build dogfood state (updated 2026-08-14)
 
-**Twenty-seven of twenty-eight are published**; `@effected/cli` was built
+**Twenty-eight of twenty-nine are published**; `@effected/cli` was built
 2026-08-13 and is pending its first release. `commands`, `templates`, `github`,
 `github-actions` and `sbom` — the github-split five — published for the first
 time in the 2026-07-26 wave (16 packages, PR #181) at `0.1.0`, `schemastore`
-in the 2026-08-03 wave, and `jsonl` reached `0.2.0` in the 27-package
-beta.107 wave (2026-08-11, PR #325). Nothing in the kit sits at `0.0.0`.
+in the 2026-08-03 wave, `jsonl` reached `0.2.0` in the 27-package
+beta.107 wave (2026-08-11, PR #325), and `memfs` published first at `0.1.0`
+in the 2026-08-14 consumer-unblock wave. Nothing in the kit sits at `0.0.0`.
 
 Releases are changeset-driven: CI builds the appropriate changesets and
 releases the packages they name. That may be the whole kit on a beta advance
@@ -166,7 +174,8 @@ Three standing directives for a downstream repo rebuilding against this kit:
 - Test machinery worth knowing: `ConfigFile.testLayer`, `Store.layerTest`,
   `Cache.layerTest`, `App.layerTest`, `@effected/npm`'s `Default` noop
   resolvers, and `@effected/runtimes`' `.layerOffline`. Everything else tests
-  against core layers (`FileSystem.layerNoop`, `Path.layer`) or a mocked
+  against core layers (`Path.layer`, `FileSystem.layerNoop` for a single
+  trivially-stubbed member — `@effected/memfs` for anything more) or a mocked
   `ChildProcessSpawner` — no platform package needed in unit tests.
 - If a package feels like it is missing a service, a construct reads awkwardly,
   or you re-implement something twice, surface it to the user as an

@@ -392,6 +392,16 @@ mostly pass:
 Anything that looks like "state mysteriously split in two" is this bug until
 proven otherwise.
 
+**A cousin with a different fingerprint: two resolved copies of one package
+are two DISTINCT tag identities.** When a dependency graph resolves two
+copies of one `@effected` package (a caret range and a newer 0.x minor
+resolving separately), a layer built from one copy does not satisfy a
+requirement expressed by the other — and it surfaces as **"service not
+provided" in a graph that visibly provides it**, never as a version error,
+sending the reader hunting a signature change that never happened (observed
+2026-08-14). Mechanism, diagnosis and mitigation →
+[references/edge-cases.md](./references/edge-cases.md).
+
 Discipline — **bind layers to named constants**:
 
 - Prefer plain named layer `const`s over layer-returning factories.

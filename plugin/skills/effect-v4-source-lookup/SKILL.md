@@ -201,6 +201,24 @@ summary was reasonable and wrong.
 > reach for `$EFFECT_SRC`. "The docs say" is rung 1 for someone else's package
 > too — prescriptive, not exhaustive, and silent about removals.
 
+### The registry rung: published artifacts and installed consumers
+
+The ladder settles claims about a source tree. Two claim classes need a
+different authority — the registry and the installed artifacts — because no
+tree you are standing in can answer them. Both bit in one release wave
+(2026-08-14):
+
+- **Closed upstream ≠ released.** An issue's or PR's closed state proves
+  nothing about any published artifact. What actually shipped is settled by
+  `npm view <pkg>@<version>` and by reading the INSTALLED `.d.ts`/`.js` under
+  `node_modules` — never by the tracker's state.
+- **A repo-local grep structurally cannot see downstream consumers.** Before
+  calling an API change "breaking in-package only", read the installed
+  artifacts of the known consumers — the `node_modules` of a consuming repo.
+  On 2026-08-14 exactly that check caught a shape change that would have
+  landed as a runtime defect in an installed consumer, after a repo-local
+  grep had confidently reported zero consumers.
+
 ### When two reads of one file disagree, settle it against the committed blob
 
 A second-order failure, and it is a *reasoning* failure rather than a lookup one:
