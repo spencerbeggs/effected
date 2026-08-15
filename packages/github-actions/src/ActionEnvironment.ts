@@ -368,6 +368,26 @@ export class ActionEnvironment extends Context.Service<ActionEnvironment, Action
 	 * `undefined` means *not served*, so a suite cannot arrange `undefined` as
 	 * the payload itself. A webhook payload is always a JSON object; the case
 	 * does not arise, and reserving the sentinel keeps the argument optional.
+	 *
+	 * When a suite wants the **real read path** rather than a served value —
+	 * exercising the actual `GITHUB_EVENT_PATH` read-and-parse — this member is
+	 * the seam: it leaves `FileSystem` in `R` precisely so the suite chooses
+	 * the filesystem. Compose it with `@effected/memfs`'s seeded in-memory
+	 * volume rather than a hand-rolled stub: the volume honors the whole
+	 * `FileSystem` contract, and an unseeded path fails typed `NotFound`
+	 * instead of whatever a hand stub happens to answer.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ActionEnvironment } from "@effected/github-actions";
+	 * import { MemoryFileSystem } from "@effected/memfs";
+	 * import { Layer } from "effect";
+	 *
+	 * const layer = Layer.effect(
+	 *   ActionEnvironment,
+	 *   ActionEnvironment.makeTest({ GITHUB_EVENT_PATH: "/event.json" }),
+	 * ).pipe(Layer.provide(MemoryFileSystem.layerWith({ "/event.json": JSON.stringify({ action: "opened" }) })));
+	 * ```
 	 */
 	static readonly makeTest = (
 		overrides: Readonly<Record<string, string>> = {},
@@ -385,7 +405,10 @@ export class ActionEnvironment extends Context.Service<ActionEnvironment, Action
 	 * The stub is why the payload has to be served here rather than through the
 	 * filesystem: `make` captures the filesystem at construction, so seeding
 	 * `GITHUB_EVENT_PATH` through `overrides` would send the read to a noop
-	 * filesystem and fail. Pass the payload as the second argument instead.
+	 * filesystem and fail. Pass the payload as the second argument instead —
+	 * or, for a suite that wants the real read path over a full filesystem,
+	 * compose {@link ActionEnvironment.makeTest} with `@effected/memfs`'s
+	 * seeded volume; the recipe is on that member.
 	 *
 	 * @example
 	 * ```ts
