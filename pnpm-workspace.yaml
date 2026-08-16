@@ -203,7 +203,7 @@ catalogs:
     "@effect/vitest": 4.0.0-beta.107
     effect: 4.0.0-beta.107
 configDependencies:
-  "@savvy-web/pnpm-plugin-silk": 0.26.0+sha512-gZI90mPS/NS+a5URwM6PvGO7mUXxfPucE2UvMd88qgwUSRhmaVPVxrLFeblYpnDjFZH8Zjl3TybekT/O8UiJJA==
+  "@savvy-web/pnpm-plugin-silk": 0.26.1+sha512-1yWOOzo7sw4rFGYoXP7qgwzdnrQChWq1hPYr5bSLZQLICFJRPV0x3HbNgloWQg08AFZ2c54UlWpUjhrhFl6Dpw==
 loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/tsgo-*"
