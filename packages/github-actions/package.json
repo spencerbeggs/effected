@@ -44,7 +44,7 @@
 		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
 		"@effected/memfs": "workspace:*",
-		"@savvy-web/bundler": "^2.1.10",
+		"@savvy-web/bundler": "^2.1.12",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
