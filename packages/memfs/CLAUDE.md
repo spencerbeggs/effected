@@ -21,7 +21,11 @@ In-memory implementation of core Effect's `FileSystem` service: one module, `Mem
 
 ## Layer discipline
 
-`layerWith(seed)` is a parameterized factory — fresh reference per call, and layers memoize by reference: bind to a `const`. Reusing one layer value shares one volume (documented); per-test isolation is `Layer.fresh`.
+`layerWith(seed)`, `layerFaulty(faults)` and `layerFaultyWith(seed, faults)` are parameterized factories — fresh reference per call: bind to a `const`. **Layer memoization is per-build, not per-value** (downstream item 6, 2026-08-16): every `Effect.provide` of a layer value — even the same bound `const` — builds and re-seeds a fresh volume (and re-arms `failTimes` counters). Sharing one volume across effects requires ONE provide of one composed layer graph; `Layer.fresh`'s only role is opting a consumer *inside* that graph back out into its own volume. Never describe the old "one layer value = one shared volume" framing — it produced silent false greens downstream.
+
+## Fault injection (kit extension)
+
+`makeFaulty(base, faults)` / `layerFaulty(faults)` / `layerFaultyWith(seed, faults)` wrap ANY `FileSystem` delegate-by-default: handlers get the real call arguments and return a replacement (an Effect; a Stream/Sink for `stream`/`sink`/`watch`) or `undefined` (delegate); `failTimes(n, err)` is the transient form, confined to the Effect-returning methods at the type level and counted per execution (so `Effect.retry` attempts consume failures). The wrapper rebuilds through `FileSystem.make`, so faults on core methods propagate into derived members (`access` → `exists`, `readFile` → `readFileString`, `writeFile` → `writeFileString`, `open` → `stream`/`sink`) — and every function-valued member, the lazy trio included, is also directly interceptable. Modes are metadata, never enforced — fault injection is the sanctioned way to simulate permission failures.
 
 ## Testing and building
 

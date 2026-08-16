@@ -62,6 +62,114 @@ describe("MemoryFileSystem.makeWith", () => {
 	);
 });
 
+describe("tagged seed entries — directories, symlinks and modes", () => {
+	it.effect("one seed literal describes a whole tree — files, empty dirs, symlinks, modes", () =>
+		Effect.gen(function* () {
+			// The downstream lockdown fixture, expressed as a single literal.
+			const fs = yield* MemoryFileSystem.makeWith({
+				"/root/.repos/blocked/src/a.ts": "export {}\n",
+				"/root/.git/modules/.repos/blocked": MemoryFileSystem.directory(),
+				"/root/tools/lock.sh": MemoryFileSystem.file("#!/bin/sh\n", { mode: 0o755 }),
+				"/root/current": MemoryFileSystem.symlink("/root/.repos/blocked"),
+			});
+
+			assert.strictEqual(yield* fs.readFileString("/root/.repos/blocked/src/a.ts"), "export {}\n");
+			assert.strictEqual((yield* fs.stat("/root/.git/modules/.repos/blocked")).type, "Directory");
+			assert.strictEqual((yield* fs.stat("/root/tools/lock.sh")).mode & 0o7777, 0o755);
+			assert.strictEqual(yield* fs.readLink("/root/current"), "/root/.repos/blocked");
+		}),
+	);
+
+	it.effect("directory() seeds an empty directory — exists, is a directory, lists nothing", () =>
+		Effect.gen(function* () {
+			const fs = yield* MemoryFileSystem.makeWith({ "/empty": MemoryFileSystem.directory() });
+			assert.isTrue(yield* fs.exists("/empty"));
+			assert.strictEqual((yield* fs.stat("/empty")).type, "Directory");
+			assert.deepStrictEqual(yield* fs.readDirectory("/empty"), []);
+		}),
+	);
+
+	it.effect("symlink(target) answers readLink and reads through to the target", () =>
+		Effect.gen(function* () {
+			const fs = yield* MemoryFileSystem.makeWith({
+				"/target.txt": "pointed-at",
+				"/link.txt": MemoryFileSystem.symlink("/target.txt"),
+			});
+			assert.strictEqual(yield* fs.readLink("/link.txt"), "/target.txt");
+			assert.strictEqual(yield* fs.readFileString("/link.txt"), "pointed-at");
+			// stat follows the link; the entry itself is a SymbolicLink to readLink.
+			assert.strictEqual((yield* fs.stat("/link.txt")).type, "File");
+		}),
+	);
+
+	it.effect("a dangling symlink is legal — readLink answers, reading through fails NotFound", () =>
+		Effect.gen(function* () {
+			const fs = yield* MemoryFileSystem.makeWith({ "/dangling": MemoryFileSystem.symlink("/absent.txt") });
+			assert.strictEqual(yield* fs.readLink("/dangling"), "/absent.txt");
+			const error = yield* Effect.flip(fs.readFileString("/dangling"));
+			assert.strictEqual(error.reason._tag, "NotFound");
+		}),
+	);
+
+	it.effect("file and directory modes land in stat; untagged and unoptioned entries keep the defaults", () =>
+		Effect.gen(function* () {
+			const fs = yield* MemoryFileSystem.makeWith({
+				"/locked.txt": MemoryFileSystem.file("read-only", { mode: 0o444 }),
+				"/bin/run": MemoryFileSystem.file(new Uint8Array([0x7f, 0x45]), { mode: 0o755 }),
+				"/plain.txt": MemoryFileSystem.file("plain"),
+				"/legacy.txt": "legacy",
+				"/locked-dir": MemoryFileSystem.directory({ mode: 0o555 }),
+			});
+
+			assert.strictEqual((yield* fs.stat("/locked.txt")).mode & 0o7777, 0o444);
+			assert.strictEqual(yield* fs.readFileString("/locked.txt"), "read-only");
+			assert.strictEqual((yield* fs.stat("/bin/run")).mode & 0o7777, 0o755);
+			assert.deepStrictEqual(yield* fs.readFile("/bin/run"), new Uint8Array([0x7f, 0x45]));
+			assert.strictEqual((yield* fs.stat("/plain.txt")).mode & 0o7777, 0o644);
+			assert.strictEqual((yield* fs.stat("/legacy.txt")).mode & 0o7777, 0o644);
+			assert.strictEqual((yield* fs.stat("/locked-dir")).mode & 0o7777, 0o555);
+			assert.strictEqual((yield* fs.stat("/locked-dir")).type, "Directory");
+		}),
+	);
+
+	it.effect("a directory mode applies even when the directory pre-exists as an earlier entry's parent", () =>
+		Effect.gen(function* () {
+			const fs = yield* MemoryFileSystem.makeWith({
+				"/repo/src/index.ts": "export {}\n",
+				"/repo/src": MemoryFileSystem.directory({ mode: 0o555 }),
+			});
+			assert.strictEqual((yield* fs.stat("/repo/src")).mode & 0o7777, 0o555);
+			// The earlier child is untouched.
+			assert.strictEqual(yield* fs.readFileString("/repo/src/index.ts"), "export {}\n");
+		}),
+	);
+
+	it.effect("an invalid seed mode fails typed through makeWith, never a defect", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				MemoryFileSystem.makeWith({ "/bad.txt": MemoryFileSystem.file("x", { mode: -1 }) }),
+			);
+			assert.strictEqual(error._tag, "PlatformError");
+			assert.strictEqual(error.reason._tag, "BadArgument");
+		}),
+	);
+
+	it.effect("layerWith accepts tagged entries", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			assert.strictEqual((yield* fs.stat("/srv")).type, "Directory");
+			assert.strictEqual(yield* fs.readLink("/etc/alias"), "/srv");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWith({
+					"/srv": MemoryFileSystem.directory(),
+					"/etc/alias": MemoryFileSystem.symlink("/srv"),
+				}),
+			),
+		),
+	);
+});
+
 describe("honest absence — the effected#249 contract", () => {
 	// THE FOUNDING CONTRACT. This package exists because a hand-stubbed
 	// FileSystem.layerNoop that answered an unarranged read with "" caused a
