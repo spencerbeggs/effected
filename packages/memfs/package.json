@@ -1,6 +1,6 @@
 {
 	"name": "@effected/memfs",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"private": true,
 	"description": "In-memory implementation of Effect's FileSystem service: an isolated virtual POSIX volume for tests and dry-run programs.",
 	"keywords": ["filesystem", "in-memory", "memfs", "virtual", "testing", "posix", "effect", "effected"],
