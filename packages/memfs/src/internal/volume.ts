@@ -152,6 +152,11 @@ interface Volume {
 	readonly mutateInterruptibly: <A, E, R>(
 		use: (state: State) => Effect.Effect<TransitionResult<A>, E, R>,
 	) => Effect.Effect<A, E, R>;
+	// Kit extension (volume inspection): the current committed state, readable
+	// synchronously. State values are immutable — each transition replaces the
+	// reference under the volume lock — so a sync read observes one consistent
+	// snapshot and can never see a half-applied transition.
+	readonly currentState: () => State;
 }
 
 interface OpenFileDescriptor {
@@ -2546,7 +2551,7 @@ const makeVolume = Effect.gen(function* () {
 			Effect.uninterruptibleMask((restore) => Effect.flatMap(restore(Effect.suspend(() => use(state))), commitResult)),
 		);
 
-	return { mutate, mutateInterruptibly, watchers, withState } satisfies Volume;
+	return { currentState: () => state, mutate, mutateInterruptibly, watchers, withState } satisfies Volume;
 });
 
 // =============================================================================
@@ -2597,11 +2602,8 @@ const watch = (volume: Volume) => (path: string, options?: FileSystem.WatchOptio
 // exports
 // =============================================================================
 
-/** @internal */
-export const make = Effect.gen(function* () {
-	const volume = yield* makeVolume;
-	yield* Effect.orDie(makeDirectory(volume)(TEMP_DIR, { recursive: true }));
-	return FileSystem.make({
+const toFileSystem = (volume: Volume): FileSystem.FileSystem =>
+	FileSystem.make({
 		access: access(volume),
 		copy: copy(volume),
 		copyFile: copyFile(volume),
@@ -2628,7 +2630,78 @@ export const make = Effect.gen(function* () {
 		watch: watch(volume),
 		writeFile: writeFile(volume),
 	});
+
+const makeReadyVolume: Effect.Effect<Volume> = Effect.gen(function* () {
+	const volume = yield* makeVolume;
+	yield* Effect.orDie(makeDirectory(volume)(TEMP_DIR, { recursive: true }));
+	return volume;
 });
+
+/** @internal */
+export const make: Effect.Effect<FileSystem.FileSystem> = Effect.map(makeReadyVolume, toFileSystem);
+
+// Kit extension (volume inspection): a literal, synchronous walk of the tree
+// for test assertions. Symbolic links are reported as themselves (never
+// followed); hard links surface once per directory entry, each path carrying
+// the same underlying data reference.
+
+/** @internal */
+export interface VolumeEntrySnapshot {
+	readonly path: string;
+	readonly type: "File" | "Directory" | "SymbolicLink";
+	/** The live data reference for a `File` entry (callers must copy), `undefined` otherwise. */
+	readonly data: Uint8Array | undefined;
+}
+
+const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
+	const output: Array<VolumeEntrySnapshot> = [];
+	const root = findInode(state, RootInode);
+	if (root === undefined || root._tag !== "Directory") {
+		return output;
+	}
+	interface Frame {
+		readonly names: Array<string>;
+		readonly directory: DirectoryInode;
+		readonly prefix: string;
+		index: number;
+	}
+	const frames: Array<Frame> = [
+		{ names: [...HashMap.keys(root.entries)].sort(), directory: root, prefix: "", index: 0 },
+	];
+	while (frames.length > 0) {
+		const frame = frames[frames.length - 1];
+		if (frame.index >= frame.names.length) {
+			frames.pop();
+			continue;
+		}
+		const name = frame.names[frame.index];
+		frame.index += 1;
+		const inode = findEntry(frame.directory, name);
+		const entry = inode === undefined ? undefined : findInode(state, inode);
+		if (entry === undefined) {
+			continue;
+		}
+		const path = `${frame.prefix}/${name}`;
+		output.push({ path, type: entry._tag, data: entry._tag === "File" ? entry.data : undefined });
+		if (entry._tag === "Directory") {
+			frames.push({ names: [...HashMap.keys(entry.entries)].sort(), directory: entry, prefix: path, index: 0 });
+		}
+	}
+	return output;
+};
+
+/** @internal */
+export interface InspectableFileSystem {
+	readonly fileSystem: FileSystem.FileSystem;
+	/** Walks the volume's live state at call time — never a copy taken at build. */
+	readonly entries: () => Array<VolumeEntrySnapshot>;
+}
+
+/** @internal */
+export const makeInspectable: Effect.Effect<InspectableFileSystem> = Effect.map(makeReadyVolume, (volume) => ({
+	fileSystem: toFileSystem(volume),
+	entries: () => collectEntrySnapshots(volume.currentState()),
+}));
 
 /** @internal */
 export const layer = Layer.effect(FileSystem.FileSystem, make);

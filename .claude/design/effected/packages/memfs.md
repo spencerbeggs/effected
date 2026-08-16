@@ -5,7 +5,7 @@ category: architecture
 created: 2026-08-14
 updated: 2026-08-16
 last-synced: 2026-08-16
-completeness: 85
+completeness: 88
 related:
   - ../effect-standards.md
   - ../package-inventory.md
@@ -45,7 +45,7 @@ Name: `memfs` (domain noun, instantly legible; the scope prevents npm collision 
 
 ## Public surface
 
-One module, service-less (it provides core's service; it declares none of its own):
+One module. It provides core's `FileSystem` service; the one service it declares of its own — `MemoryFileSystem.Volume`, added in 0.3.0 — is opt-in and published by two constructors only:
 
 - `MemoryFileSystem.make` — `Effect<FileSystem.FileSystem>`, a fresh empty volume.
 - `MemoryFileSystem.makeWith(seed)` — a fresh volume pre-populated from a `path → MemoryFileSystemSeedEntry` record; parent directories are created recursively, then each entry applied in the record's own key order. The seeding record is the ergonomic replacement for the hand-stubbed `layerNoop` tree fixtures (`workspaces/__test__/fixtures.ts` is the template consumer).
@@ -74,7 +74,31 @@ The design decisions worth keeping:
 - **Effect-returning methods dispatch per execution** through `Effect.suspend`: a retried effect re-consults its handler, which is what lets `Effect.retry` attempts consume `failTimes` counts rather than one invocation consuming one. `watch`, `stream` and `sink` return `Stream`/`Sink` values and are handler-form only, consulted at invocation.
 - **`failTimes` counters are armed per build**, not per fault value: each `makeFaulty` call and each layer build starts a fresh countdown, and `Layer.fresh` re-arms. `failTimes` **throws `RangeError`** on a negative or non-integer `times` — misuse is a wiring bug, the same posture as `layerWith`'s `orDie` on a contradictory seed.
 
-Internal engine in `src/internal/volume.ts` (adapted `internal/memoryFileSystem.ts`); `src/MemoryFileSystem.ts` is the facade carrying both kit extensions; `src/index.ts` is the only re-exporting module.
+### Volume inspection (0.3.0)
+
+The write-path counterpart to seeding: a synchronous, read-only view of the same volume the `FileSystem` writes to, so a test asserts on what a program *wrote* without routing every assertion through an `Effect` read (effected#383).
+
+- `MemoryFileSystem.Volume` — the context key, `Context.Service("@effected/memfs/MemoryFileSystemVolume")` in **function form**, the interface serving as both identifier and shape. This deliberately copies `FileSystem.FileSystem`'s own key pattern rather than the kit's class-form convention: the module mirrors upstream so the sunset clause is an import-path change, and a service shaped unlike its upstream neighbor would be the first thing to rewrite on acceptance.
+- `MemoryFileSystemVolume` — the view: `snapshot()` (every regular file as absolute path → bytes), `text(path)`, `bytes(path)`, `has(path)`, `paths()`. Pure sync functions over the volume's **live state at call time** — never a copy taken at build — so a read after a write observes the write, and a removal disappears. Returned byte arrays are defensive copies (`.slice()`); mutating one cannot corrupt the volume.
+- `MemoryFileSystem.makeInspectable` / `makeInspectableWith(seed)` — the value-level pair `{ fileSystem, volume }` over one volume. The seeded form **fails typed** (`PlatformError`), keeping seeding failures in the error channel.
+- `MemoryFileSystem.layerInspectable` / `layerInspectableWith(seed)` — `Layer<FileSystem.FileSystem | MemoryFileSystemVolume>`, both services from one volume per build. The seeded form **dies** on a contradictory seed, the wiring-bug posture `layerWith` already sets.
+
+The design decisions worth keeping:
+
+- **Opt-in, so no existing type widened.** `layer`, `layerWith`, `layerFaulty*` still provide `FileSystem` and nothing else; consumers annotating `Layer.Layer<FileSystem.FileSystem>` keep compiling. A test pins this by *annotating* `layer` and `layerWith(...)` at exactly that type — widening either would stop the suite compiling, so `types:check` is part of the guarantee.
+- **One internal `make` per build, both services derived from it**, so the pairing invariant is structural rather than a convention two constructors have to keep: `internal.makeInspectable` returns `{ fileSystem, entries }` from a single `makeReadyVolume`, and the layer forms publish both services with `Layer.effectContext` over that **one** effect. That is the memoization-safe way to publish N services sharing an instance — two `Layer.effect`s over the same effect would build it twice and hand out two volumes wearing one name.
+- **Assertion timing is the choice between the two families.** The layer forms are for tests that resolve `Volume` and assert *inside* the provided effect. When assertions run *after* it, use the make forms: build the pair once, wrap it in `Layer.succeed(FileSystem.FileSystem, pair.fileSystem)` (optionally decorated by `makeFaulty` first), and assert on `pair.volume` — the identity is pinned, where a layer form would build and re-seed a fresh pair per provide and the post-run assertion would read a volume nobody wrote to. The `@effected/templates` fixture is the worked consumer example, composing `makeFaulty` over the pair's `fileSystem`. At the layer level the same composition is `layerFaulty(faults).pipe(Layer.provideMerge(inspectable))` — `provideMerge` so the decorated `FileSystem` wins the key while `Volume` survives.
+
+The view's semantics are documented, not incidental:
+
+- **Regular files only** in `snapshot`/`paths`; directories and symbolic links never appear. `paths()` is exactly `snapshot()`'s key set, sorted lexicographically.
+- **Symlinks are never followed anywhere in the view.** `has` sees the link itself (its target unconsulted, dangling allowed); `text`/`bytes` answer `undefined` for it, because reading *through* a link is the `FileSystem` API's job. The view is literal by design — following links here would make an inspection read silently disagree with the tree it claims to describe.
+- **Hard links fan out**: one entry per directory entry, each path carrying the same content.
+- **Query paths normalize lexically only** (`//`, `.`, `..`, and relative paths resolving from `/` as the engine does) — normalization never touches the filesystem, so it cannot follow a link either.
+- **Honest absence carries to the sync view** — the #249 contract in its second home: `text`/`bytes` answer `undefined` for a path holding no regular file, and `""` only ever means a genuinely empty file. A view that returned `""` for absent would reintroduce the exact fiction this package exists to kill.
+- **`has("/tmp")` is `true` on an unseeded volume**: the engine pre-creates the temp directory at build. `snapshot`/`paths` are unaffected (it is a directory).
+
+Internal engine in `src/internal/volume.ts` (adapted `internal/memoryFileSystem.ts`); `src/MemoryFileSystem.ts` is the facade carrying the kit extensions; `src/index.ts` is the only re-exporting module.
 
 ## Behavioral contracts (what tests must pin)
 
@@ -97,20 +121,33 @@ Every delta is also recorded in the engine file's port-notes header; this is the
 7. **Fault-injection API** (`makeFaulty`/`layerFaulty`/`layerFaultyWith`/`failTimes`) is a kit extension; upstream has none. It lives in the facade, never in the ported engine — it wraps *any* `FileSystem`, so re-vendoring the engine cannot disturb it, and it is the piece that would need re-homing (not deleting) if the sunset clause fires.
 8. **Docs correction, 0.2.0** (downstream item 6): the earlier "reusing one layer value shares one volume through memoization" claim was **wrong** and produced silent false greens downstream. Memoization is per *build*, so two provides of one bound `const` are two volumes and the second is re-seeded. The docs now carry the two-provide re-seed worked example, `Layer.provideMerge` guidance for composing one graph, `Layer.fresh`'s real role (per-consumer isolation *within* one build graph), and the `@effect/vitest` suite-boundary interaction: `layer(...)` memoizes one build for the whole suite, so a `failTimes` fault declared there is consumed by whichever test runs first and later tests silently see it exhausted.
 
+9. **Volume-inspection hooks, 0.3.0** — the one kit extension that *does* reach into the ported engine, in three clearly fenced blocks (the attribution header itself is untouched):
+   - `Volume.currentState()` — a synchronous read of the committed state. Safe because the engine's `State` is immutable and each transition swaps the reference under the volume's one-permit lock: a sync read observes one consistent state and can never see a half-applied transition.
+   - `make` re-expressed as `makeReadyVolume` (build + pre-create `/tmp`) composed with `toFileSystem(volume)`, so the inspectable constructor derives *both* halves from one volume. The exported name and type are identical — a re-vendor re-applies the split, it does not fight it.
+   - `VolumeEntrySnapshot` + `collectEntrySnapshots` (an iterative sorted DFS over the inode tree, matching the port's iterative-walker posture and its depth discipline) and the internal `InspectableFileSystem`/`makeInspectable` pair. The public view in the facade is built on top; the engine exposes no interpretation of its own.
+
 Anything else that diverges from `c0528bd5` is drift, not design.
 
 ## Dogfood provenance (0.2.0)
 
 The 0.2.0 wave is not speculative API design: every item was requested with a blocked call site by `savvy-web-systems` (round 1, 2026-08-16 — `.claude/dogfood/savvy-web-systems/`), and adopted downstream against the linked build with **zero handoff discrepancies**. Six files across two downstream packages migrated off hand-rolled filesystem stubs, and two of them gained real discriminating power rather than merely compiling: a stub answering `readFileString` with the same text for every path could not observe path correctness, and two permission tests had been injecting a denial into a filesystem where the file also did not exist, leaving "denied" and "missing" indistinguishable in fixtures whose entire purpose was separating them. The flagship case — a lockdown walk over a real recursive tree with only `chmod` intercepted — was verified by instrumented run, not by the green alone. Downstream deliberately kept two suites on real tmpdirs, where the point is the kernel *enforcing* a mode; that is the honest boundary of what fault injection substitutes for.
 
+## Provenance (0.3.0)
+
+Built the same day, on the 0.2.0 fault-injection round's heels, and driven by *internal* consumers rather than a downstream request: the `templates` and `jsonl` fixtures whose whole shape is "run the code, then read the file back" (effected#383), plus the write-path migrations that were blocked because every read-back assertion had to become an `Effect`.
+
+Consumer-verified before release. The `@effected/templates` fixture double migrated off its hand-rolled `Map` onto `makeInspectable` + `makeFaulty` — 128/128 green — and the read-back was proven load-bearing by mutation rather than by the green alone: a mutant that swallows the write while still counting it fails five tests. The migration also surfaced a real untested precondition in `templates` that the old double had been hiding — memfs correctly refuses a write whose parent directory does not exist, where the `Map` silently accepted it. That is the same class of finding as the 0.2.0 round: the value of a faithful double is the tests it *stops* passing.
+
 ## Test strategy: the differential oracle
 
-Four layers of proof, largest first:
+Five layers of proof, largest first:
 
 1. **The vendored contract suite** (PR #6555's `FileSystemTest.ts`, adapted to house style) run against `MemoryFileSystem.layer`. The suite asserts `reason._tag`/`method`/`pathOrDescriptor` per operation, so it *is* the error-normalization oracle.
 2. **The same suite against the real filesystem**: an integration test project running the identical suite over `@effect/platform-node`'s `FileSystem` layer (devDependency; `self.int.test.ts` pattern). Memory and disk passing one suite is the differential proof the port matches real semantics *on this beta* — the format-package differential-oracle pattern with the platform layer as the reference implementation.
 3. **Memory-specific and kit tests**: the PR's 13 adapter tests (isolation, concurrent appends, watch events, hard-link fan-out, metadata) plus tests for the seeding API — tagged entries, dangling symlinks, modes landing in `stat`, a directory mode applied to a pre-existing parent — the honest-NotFound #249 contract, per-build isolation, and the watch-recursive adaptation.
-4. **Fault-injection tests** (`__test__/FaultInjection.test.ts`, added 0.2.0; the project stands at 177 tests): the downstream chmod-relock scenario replayed over a real recursing tree; empty-map passthrough and unregistered-method delegation; path-keyed faults; **grouped direct-fault coverage of all five derived members** (`exists`, `readFileString`, `writeFileString`, `stream`, `sink`) proving none is silently bypassed by the re-derivation, alongside core-to-derived propagation; `watch` replacement *and* delegation; `failTimes` under `Effect.retry`, its per-build re-arm across two provides of one bound `const`, independent counters per `makeFaulty`, `failTimes(0)`, and `RangeError` on bad counts; and `@ts-expect-error` tests pinning the type enforcement (a bare `Error` fault, a transient fault on `watch`) — assertions that are only live because the package typechecks clean, so `types:check` is part of this test's proof.
+4. **Fault-injection tests** (`__test__/FaultInjection.test.ts`, added 0.2.0): the downstream chmod-relock scenario replayed over a real recursing tree; empty-map passthrough and unregistered-method delegation; path-keyed faults; **grouped direct-fault coverage of all five derived members** (`exists`, `readFileString`, `writeFileString`, `stream`, `sink`) proving none is silently bypassed by the re-derivation, alongside core-to-derived propagation; `watch` replacement *and* delegation; `failTimes` under `Effect.retry`, its per-build re-arm across two provides of one bound `const`, independent counters per `makeFaulty`, `failTimes(0)`, and `RangeError` on bad counts; and `@ts-expect-error` tests pinning the type enforcement (a bare `Error` fault, a transient fault on `watch`) — assertions that are only live because the package typechecks clean, so `types:check` is part of this test's proof.
+
+5. **Volume-inspection tests** (`__test__/VolumeInspection.test.ts`, added 0.3.0; the project stands at 190 tests): the pairing invariant (a write through `FileSystem` is immediately visible to `Volume`, a removal likewise — the live-view claim, not a build-time copy); per-build isolation across two provides, each pair internally consistent; the **no-widening type guard** (`layer` and `layerWith(...)` annotated as `Layer.Layer<FileSystem.FileSystem>`, an assertion that only survives while the un-inspectable constructors stay un-widened); seed parity across every entry kind, including a symlink present to `has`, contentless to `text`, and readable *through* by the `FileSystem`; honest absence plus the `""` round-trip that distinguishes an empty file from an absent one; lexical query normalization; the defensive-copy mutation attempt; composition under fault injection via `Layer.provideMerge` (the delegated write lands, the faulted one fails typed and leaves no trace); and the templates-fixture acceptance sketch standing in for the downstream shape.
 
 The upstream pins are the anti-drift record: re-evaluating against a newer upstream head is a deliberate re-vendor with this doc updated, never an in-place edit.
 
