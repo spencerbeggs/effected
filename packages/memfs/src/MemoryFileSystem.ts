@@ -830,6 +830,16 @@ export class MemoryFileSystem {
 	 * `fileSystem` is immediately visible to `volume`. The value-level
 	 * primitive beneath {@link MemoryFileSystem.layerInspectable}, for tests
 	 * composing a filesystem by hand.
+	 *
+	 * Reach for the make forms when assertions run AFTER the effect: the layer
+	 * forms build (and re-seed) a fresh pair per provide, so a post-run
+	 * assertion would read a different volume than the code under test wrote
+	 * to. Build the pair once, wrap the filesystem in
+	 * `Layer.succeed(FileSystem.FileSystem, pair.fileSystem)` (optionally
+	 * decorated by {@link MemoryFileSystem.makeFaulty} first), and let the
+	 * assertion read `pair.volume` — the identity is pinned. The layer forms
+	 * are for tests that resolve `Volume` and assert INSIDE the provided
+	 * effect.
 	 */
 	static readonly makeInspectable: Effect.Effect<MemoryFileSystemInspectable> = Effect.map(
 		internal.makeInspectable,
