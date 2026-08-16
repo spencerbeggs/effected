@@ -13,9 +13,15 @@
  * `MemoryFileSystem.layerFaulty`, a delegate-by-default wrapper over any
  * `FileSystem` implementation.
  *
+ * For write-path assertions, the opt-in `MemoryFileSystem.layerInspectable` /
+ * `layerInspectableWith` additionally publish `MemoryFileSystem.Volume` — a
+ * synchronous, read-only view (`snapshot`/`text`/`bytes`/`has`/`paths`) of the
+ * same volume backing the `FileSystem`, so what a program wrote can be read
+ * back without an `Effect`.
+ *
  * The engine is a vendored port with attribution of Effect-TS/effect PR #6573
  * (pinned `c0528bd5`); see the package design doc for the adaptation ledger.
- * The seeding and fault-injection APIs are kit extensions.
+ * The seeding, fault-injection and volume-inspection APIs are kit extensions.
  *
  * @packageDocumentation
  */
@@ -25,10 +31,12 @@ export {
 	type MemoryFileSystemFaultHandler,
 	type MemoryFileSystemFaultMethod,
 	type MemoryFileSystemFaults,
+	type MemoryFileSystemInspectable,
 	type MemoryFileSystemSeed,
 	type MemoryFileSystemSeedDirectory,
 	type MemoryFileSystemSeedEntry,
 	type MemoryFileSystemSeedFile,
 	type MemoryFileSystemSeedSymlink,
 	type MemoryFileSystemTransientFault,
+	type MemoryFileSystemVolume,
 } from "./MemoryFileSystem.js";

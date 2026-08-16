@@ -4,8 +4,80 @@
 // of the vendored port.
 
 import type { PlatformError } from "effect";
-import { Effect, FileSystem, Layer } from "effect";
+import { Context, Effect, FileSystem, Layer } from "effect";
 import * as internal from "./internal/volume.js";
+
+/**
+ * Synchronous, read-only inspection of one memory volume — the write-path
+ * counterpart to seeding, for asserting on what a program actually wrote
+ * without routing every assertion through an `Effect` read.
+ *
+ * @remarks
+ * Resolved from context via the {@link MemoryFileSystem.Volume} key, published
+ * only by {@link MemoryFileSystem.layerInspectable} and
+ * {@link MemoryFileSystem.layerInspectableWith} (or obtained value-level from
+ * {@link MemoryFileSystem.makeInspectable}). Every read walks the volume's
+ * live state at call time — never a copy taken at build — so a read after a
+ * write observes the write.
+ *
+ * The view is **literal**: paths are normalized lexically (`//`, `.`, `..`)
+ * but symbolic links are never followed — a symlink is present to `has`
+ * yet has no content of its own, and reading *through* one is the `FileSystem`
+ * API's job. Hard links surface once per directory entry, each path carrying
+ * the same content. Returned byte arrays are defensive copies.
+ *
+ * Honest absence (the effected#249 contract) carries over: `text`/`bytes`
+ * answer `undefined` for a path holding no regular file — `""` only ever
+ * means a genuinely empty file.
+ *
+ * The engine pre-creates `/tmp` at build, so `has` answers `true` for
+ * it even on an unseeded volume; `snapshot`/`paths` are unaffected (it is a
+ * directory).
+ *
+ * @public
+ */
+export interface MemoryFileSystemVolume {
+	/**
+	 * Every regular file as absolute path → contents. Directories and symbolic
+	 * links do not appear; a file reached by several hard links appears once
+	 * per path.
+	 */
+	readonly snapshot: () => Record<string, Uint8Array>;
+	/**
+	 * The UTF-8 decoded contents of the regular file at `path`, or `undefined`
+	 * when the path is absent or not a regular file. `""` means an empty file,
+	 * never an absent one.
+	 */
+	readonly text: (path: string) => string | undefined;
+	/**
+	 * The raw contents of the regular file at `path`, or `undefined` when the
+	 * path is absent or not a regular file.
+	 */
+	readonly bytes: (path: string) => Uint8Array | undefined;
+	/**
+	 * Whether anything lives at `path` — a regular file, a directory, or a
+	 * symbolic link (the link itself; its target is not consulted).
+	 */
+	readonly has: (path: string) => boolean;
+	/**
+	 * The absolute paths of every regular file, sorted lexicographically —
+	 * exactly the key set of {@link MemoryFileSystemVolume.snapshot}.
+	 */
+	readonly paths: () => ReadonlyArray<string>;
+}
+
+/**
+ * The `FileSystem` service and the {@link MemoryFileSystemVolume} inspecting
+ * the same underlying volume — the value-level pair returned by
+ * {@link MemoryFileSystem.makeInspectable} and
+ * {@link MemoryFileSystem.makeInspectableWith}.
+ *
+ * @public
+ */
+export interface MemoryFileSystemInspectable {
+	readonly fileSystem: FileSystem.FileSystem;
+	readonly volume: MemoryFileSystemVolume;
+}
 
 /**
  * A seed entry describing a file, optionally carrying its initial permission
@@ -190,6 +262,64 @@ const seedVolume = (
 			}
 		}
 	});
+
+const decoder = new TextDecoder();
+
+// Lexical-only normalization for inspection queries: collapses "//" and ".",
+// applies "..", resolves relative paths from the virtual root — matching the
+// engine's canonical "/a/b" spelling. Deliberately does NOT follow symlinks:
+// the inspection view is literal.
+const normalizeQueryPath = (path: string): string => {
+	const segments: Array<string> = [];
+	for (const segment of path.split("/")) {
+		if (segment === "" || segment === ".") {
+			continue;
+		}
+		if (segment === "..") {
+			segments.pop();
+			continue;
+		}
+		segments.push(segment);
+	}
+	return `/${segments.join("/")}`;
+};
+
+const findEntryAt = (
+	entries: ReadonlyArray<internal.VolumeEntrySnapshot>,
+	path: string,
+): internal.VolumeEntrySnapshot | undefined => {
+	const normalized = normalizeQueryPath(path);
+	return entries.find((entry) => entry.path === normalized);
+};
+
+const makeVolumeService = (entries: () => Array<internal.VolumeEntrySnapshot>): MemoryFileSystemVolume => ({
+	snapshot: () => {
+		const record: Record<string, Uint8Array> = {};
+		for (const entry of entries()) {
+			if (entry.data !== undefined) {
+				record[entry.path] = entry.data.slice();
+			}
+		}
+		return record;
+	},
+	text: (path) => {
+		const data = findEntryAt(entries(), path)?.data;
+		return data === undefined ? undefined : decoder.decode(data);
+	},
+	bytes: (path) => findEntryAt(entries(), path)?.data?.slice(),
+	has: (path) => findEntryAt(entries(), path) !== undefined,
+	paths: () =>
+		entries()
+			.filter((entry) => entry.data !== undefined)
+			.map((entry) => entry.path)
+			.sort(),
+});
+
+const inspectableContext = ({
+	fileSystem,
+	volume,
+}: MemoryFileSystemInspectable): Context.Context<FileSystem.FileSystem | MemoryFileSystemVolume> =>
+	Context.make(FileSystem.FileSystem, fileSystem).pipe(Context.add(MemoryFileSystem.Volume, volume));
 
 // The armed form of a fault: per-method parameter and return typing is erased
 // for storage in the method → handler map (a handler may return an Effect, a
@@ -416,12 +546,26 @@ export class MemoryFileSystem {
 	 * deny-by-default.
 	 *
 	 * @remarks
+	 * Note the naming points the opposite way from the `R` types: `layerFaulty`
+	 * wraps a base and so leaves `FileSystem` in `R`, while
+	 * {@link MemoryFileSystem.layerFaultyWith} is self-contained (`R = never`)
+	 * — for the no-seed case, reach for `layerFaultyWith({}, faults)`, not
+	 * this.
+	 *
 	 * Handlers receive the real call arguments, so a fault can key on the path
 	 * or mode of one specific call. Injected failures should be genuine
 	 * `PlatformError` values (`PlatformError.systemError` /
 	 * `PlatformError.badArgument`) — that is what every real `FileSystem`
 	 * implementation fails with, and tests asserting on the error channel
 	 * depend on it.
+	 *
+	 * Delegate-by-default also makes this the supported way to build a **spy**:
+	 * push the arguments somewhere, return `undefined`, and the recorded call
+	 * still actually happens — assertions can run against both the recording
+	 * and the volume's resulting state, and the double keeps working when the
+	 * code under test grows a new method call, where a deny-by-default stub
+	 * (`FileSystem.layerNoop`) only survives the exact calls its author
+	 * anticipated.
 	 *
 	 * Interception scope: every function-valued method
 	 * ({@link MemoryFileSystemFaultMethod}). Handlers on the Effect-returning
@@ -661,6 +805,95 @@ export class MemoryFileSystem {
 	 */
 	static readonly layerWith = (seed: MemoryFileSystemSeed): Layer.Layer<FileSystem.FileSystem> =>
 		Layer.effect(FileSystem.FileSystem, Effect.orDie(MemoryFileSystem.makeWith(seed)));
+
+	/**
+	 * The context key for {@link MemoryFileSystemVolume}, mirroring the shape
+	 * of `FileSystem.FileSystem` itself (the interface is both identifier and
+	 * shape).
+	 *
+	 * @remarks
+	 * Published only by the opt-in {@link MemoryFileSystem.layerInspectable}
+	 * and {@link MemoryFileSystem.layerInspectableWith} — no other constructor
+	 * provides it, and none of them changed shape to carry it. Resolve it in a
+	 * test with `yield* MemoryFileSystem.Volume`.
+	 */
+	static readonly Volume: Context.Service<MemoryFileSystemVolume, MemoryFileSystemVolume> = Context.Service(
+		"@effected/memfs/MemoryFileSystemVolume",
+	);
+
+	/**
+	 * Builds a fresh, empty volume exposed twice: as the `FileSystem` service
+	 * and as the {@link MemoryFileSystemVolume} inspecting it.
+	 *
+	 * @remarks
+	 * The two halves of the pair observe the SAME volume — a write through
+	 * `fileSystem` is immediately visible to `volume`. The value-level
+	 * primitive beneath {@link MemoryFileSystem.layerInspectable}, for tests
+	 * composing a filesystem by hand.
+	 */
+	static readonly makeInspectable: Effect.Effect<MemoryFileSystemInspectable> = Effect.map(
+		internal.makeInspectable,
+		({ entries, fileSystem }): MemoryFileSystemInspectable => ({
+			fileSystem,
+			volume: makeVolumeService(entries),
+		}),
+	);
+
+	/**
+	 * Builds a volume pre-populated from `seed`, exposed as the
+	 * {@link MemoryFileSystemInspectable} pair.
+	 *
+	 * @remarks
+	 * Seeding runs through the pair's own `fileSystem`, so the volume half
+	 * reads seeded entries back exactly as written. Fails typed when the seed
+	 * contradicts itself, mirroring {@link MemoryFileSystem.makeWith}.
+	 *
+	 * @param seed - Absolute POSIX paths mapped to seed entries.
+	 */
+	static readonly makeInspectableWith = (
+		seed: MemoryFileSystemSeed,
+	): Effect.Effect<MemoryFileSystemInspectable, PlatformError.PlatformError> =>
+		Effect.gen(function* () {
+			const pair = yield* MemoryFileSystem.makeInspectable;
+			yield* seedVolume(pair.fileSystem, seed);
+			return pair;
+		});
+
+	/**
+	 * Provides `FileSystem.FileSystem` AND {@link MemoryFileSystem.Volume},
+	 * both backed by one fresh, empty volume per build.
+	 *
+	 * @remarks
+	 * The opt-in inspection form of {@link MemoryFileSystem.layer} — the
+	 * existing constructors are unchanged and never carry the extra service.
+	 * Within one build the resolved `Volume` inspects the same volume instance
+	 * backing the `FileSystem`; per-build semantics hold as everywhere else
+	 * (two provides are two volumes, each pair internally consistent).
+	 */
+	static readonly layerInspectable: Layer.Layer<FileSystem.FileSystem | MemoryFileSystemVolume> = Layer.effectContext(
+		Effect.map(MemoryFileSystem.makeInspectable, inspectableContext),
+	);
+
+	/**
+	 * Provides `FileSystem.FileSystem` AND {@link MemoryFileSystem.Volume},
+	 * both backed by one volume per build, pre-populated from `seed`.
+	 *
+	 * @remarks
+	 * The opt-in inspection form of {@link MemoryFileSystem.layerWith}, with
+	 * the same discipline: a parameterized factory (bind to a `const`),
+	 * per-build memoization (each provide re-seeds), and a contradictory seed
+	 * **dies** as a wiring bug — use
+	 * {@link MemoryFileSystem.makeInspectableWith} for the error channel. To
+	 * inspect a volume UNDER fault injection, compose with `Layer.provideMerge`
+	 * so the decorated `FileSystem` wins while `Volume` survives:
+	 * `MemoryFileSystem.layerFaulty(faults).pipe(Layer.provideMerge(Inspectable))`.
+	 *
+	 * @param seed - Absolute POSIX paths mapped to seed entries.
+	 */
+	static readonly layerInspectableWith = (
+		seed: MemoryFileSystemSeed,
+	): Layer.Layer<FileSystem.FileSystem | MemoryFileSystemVolume> =>
+		Layer.effectContext(Effect.orDie(Effect.map(MemoryFileSystem.makeInspectableWith(seed), inspectableContext)));
 
 	private constructor() {}
 }
