@@ -253,8 +253,18 @@ const wrapFaulty = (base: FileSystem.FileSystem, faults: MemoryFileSystemFaults)
 	// `writeFileString`, `stream` and `sink` from the intercepted core methods,
 	// so a fault registered on e.g. `readFile` or `open` propagates coherently
 	// into the members derived from it — exactly as an OS-level failure would.
+	// The five derived members are destructured out of the spread so the
+	// contract is explicit rather than relying on `make` to overwrite them.
+	const {
+		exists: _exists,
+		readFileString: _readFileString,
+		sink: _sink,
+		stream: _stream,
+		writeFileString: _writeFileString,
+		...primitives
+	} = base;
 	const core = FileSystem.make({
-		...base,
+		...primitives,
 		access: intercept("access", base.access),
 		chmod: intercept("chmod", base.chmod),
 		chown: intercept("chown", base.chown),

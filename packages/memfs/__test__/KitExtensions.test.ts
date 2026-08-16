@@ -119,6 +119,7 @@ describe("tagged seed entries — directories, symlinks and modes", () => {
 				"/plain.txt": MemoryFileSystem.file("plain"),
 				"/legacy.txt": "legacy",
 				"/locked-dir": MemoryFileSystem.directory({ mode: 0o555 }),
+				"/default-dir": MemoryFileSystem.directory(),
 			});
 
 			assert.strictEqual((yield* fs.stat("/locked.txt")).mode & 0o7777, 0o444);
@@ -129,6 +130,8 @@ describe("tagged seed entries — directories, symlinks and modes", () => {
 			assert.strictEqual((yield* fs.stat("/legacy.txt")).mode & 0o7777, 0o644);
 			assert.strictEqual((yield* fs.stat("/locked-dir")).mode & 0o7777, 0o555);
 			assert.strictEqual((yield* fs.stat("/locked-dir")).type, "Directory");
+			assert.strictEqual((yield* fs.stat("/default-dir")).mode & 0o7777, 0o755);
+			assert.strictEqual((yield* fs.stat("/default-dir")).type, "Directory");
 		}),
 	);
 
