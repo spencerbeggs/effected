@@ -36,7 +36,7 @@
 		"@savvy-web/bundler": "^2.1.14",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"smol-toml": "1.7.0",
+		"smol-toml": "1.8.0",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {

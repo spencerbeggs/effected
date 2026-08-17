@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 95
 related:
   - github.md
@@ -31,6 +31,14 @@ The route vocabulary lives in one types-only module (`src/Rest.ts`, which emits 
 - **The element type of a paginating route is derived here**, because the plugin's own helper — which handles the array-versus-`{ total_count, items }` split — is not exported. Ten lines, one place, and it is what makes a paginated read return domain values rather than `unknown[]`.
 
 **`operation: string` is gone.** There is nothing left for it to name: the route names the endpoint and the span carries it. One consumer had filled it with an invented key unrelated to any endpoint; that has no successor and needs none.
+
+### Resource ids come off the wire as `number | bigint`
+
+`@octokit/types` v17 widened every GitHub resource id to `number | bigint`, future-proofing the generated map against ids past 2^53. **The public surface stays `id: number`**: REST payloads arrive through `JSON.parse`, which never yields a bigint, so the union is a claim about a future that has not happened rather than a shape any response actually takes.
+
+One internal leaf (`src/internal/ids.ts`, importing nothing) narrows it, and **every response-mapping site that reads an id goes through it** — the check-run ref, the comment record, the App identity's user id, the issue-comment writes. A local cast at each site would have been the same number of edits and would have scattered the assumption; one funnel makes it a single documented decision instead. **A new mapping site adds a call, never a cast.**
+
+If GitHub ever does cross 2^53, the coercion is not the fix and must not be made to look like one: the `id: number` fields on the record classes have to be redesigned, and the funnel is where that shows up. This is the shape an upstream-types widening takes generally — **narrow once at the projection boundary, keep the domain model honest** — and it is why the majors this rode in on (`@octokit/plugin-paginate-rest` 15, `@octokit/types` 17) cost no public change.
 
 ## The escape hatch is from the route table, never from typing
 

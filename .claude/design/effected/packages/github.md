@@ -53,7 +53,7 @@ The dependency set is **deliberately smaller than the package it replaces**, and
 | --- | --- |
 | `@octokit/core` | the `Octokit` class: a route-keyed, fully typed `request`, plus `graphql` |
 | `@octokit/plugin-paginate-rest` | the composable paginator that works against a **bare core instance**, plus the type that lets us statically reject paginating a non-paginating route |
-| `@octokit/types` | the generated endpoint map. **Ships no JavaScript** — types only |
+| `@octokit/types` | the generated endpoint map. **Ships no JavaScript** — types only. Its v17 ids are a `number`/`bigint` union, [narrowed once at the projection boundary](github-rest.md#resource-ids-come-off-the-wire-as-number--bigint) |
 | `universal-github-app-jwt` | signs the App JWT; zero dependencies, and the exact leaf the official auth package uses |
 | `tweetnacl` + `blakejs` | the libsodium **sealed box** GitHub's secrets API requires. Added 2026-08-13 with `RepositorySecret` |
 | [`@effected/semver`](semver.md) | semver-aware tag selection. Pure tier, so the edge is free under [R3](../effect-standards.md#dependency-policy) |

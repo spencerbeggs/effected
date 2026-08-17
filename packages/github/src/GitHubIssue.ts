@@ -3,6 +3,7 @@ import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import type { GitHubGraphQLError } from "./GraphQL.js";
 import { GraphQLDocument } from "./GraphQL.js";
+import { numericId } from "./internal/ids.js";
 import type { CommentMarker } from "./PullRequestComment.js";
 import { CommentRecord } from "./PullRequestComment.js";
 import { Repo } from "./Repo.js";
@@ -336,7 +337,7 @@ const make = (client: GitHubClient["Service"]): GitHubIssueShape => ({
 			body,
 			headers: API_VERSION_HEADERS,
 		});
-		return created.id;
+		return numericId(created.id);
 	}),
 
 	commentOnce: Effect.fn("GitHubIssue.commentOnce")(function* (
@@ -356,7 +357,7 @@ const make = (client: GitHubClient["Service"]): GitHubIssueShape => ({
 		if (existing !== undefined) {
 			return CommentOnceResult.make({
 				wrote: false,
-				comment: CommentRecord.make({ id: existing.id, body: existing.body ?? "", url: existing.html_url }),
+				comment: CommentRecord.make({ id: numericId(existing.id), body: existing.body ?? "", url: existing.html_url }),
 			});
 		}
 		const created = yield* client.request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
@@ -368,7 +369,7 @@ const make = (client: GitHubClient["Service"]): GitHubIssueShape => ({
 		});
 		return CommentOnceResult.make({
 			wrote: true,
-			comment: CommentRecord.make({ id: created.id, body: created.body ?? "", url: created.html_url }),
+			comment: CommentRecord.make({ id: numericId(created.id), body: created.body ?? "", url: created.html_url }),
 		});
 	}),
 

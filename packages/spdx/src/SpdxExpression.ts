@@ -1,5 +1,5 @@
 import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
-import type { RawExpression } from "./internal/parser.js";
+import type { RawExpression, RawSimpleLicense } from "./internal/parser.js";
 import { parse as parseRaw } from "./internal/parser.js";
 import { InvalidSpdxExpressionError } from "./License.js";
 
@@ -82,15 +82,16 @@ export class LicenseRefNode extends Schema.TaggedClass<LicenseRefNode>()("Licens
 }
 
 /**
- * A `license WITH exception` node. Per the SPDX order of precedence, `WITH`
- * binds only to a simple license (never a reference or a compound expression),
- * so `license` is always a {@link LicenseNode}.
+ * A `license WITH exception` node. Per the SPDX grammar, `WITH` binds to a
+ * simple expression — a license identifier (optionally `+`) or a
+ * `LicenseRef`/`DocumentRef` reference — never a compound expression, so
+ * `license` is a {@link LicenseNode} or a {@link LicenseRefNode}.
  *
  * @public
  */
 export class WithExceptionNode extends Schema.TaggedClass<WithExceptionNode>()("WithException", {
-	/** The license the exception applies to, which may itself carry the `+` marker. */
-	license: LicenseNode,
+	/** The license the exception applies to: a simple license (which may carry the `+` marker) or a `LicenseRef` reference. */
+	license: Schema.Union([LicenseNode, LicenseRefNode]),
 	/** The SPDX exception short identifier, e.g. `"Bison-exception-2.2"`. */
 	exception: Schema.String,
 }) {
@@ -150,6 +151,17 @@ export type SpdxExpression = LicenseNode | LicenseRefNode | WithExceptionNode | 
 // static initializer touches it before it is defined.
 const SpdxExpressionUnion = Schema.Union([LicenseNode, LicenseRefNode, WithExceptionNode, AndNode, OrNode]);
 
+// Materialize a raw simple-expression leaf — the shape a `WITH` clause binds
+// to — into its typed node. The `licenseRef` arm uses a conditional spread:
+// never pass an explicit `undefined` for the `optionalKey` documentRef field.
+function materializeSimple(raw: RawSimpleLicense): LicenseNode | LicenseRefNode {
+	return raw.kind === "license"
+		? LicenseNode.make({ id: raw.id, plus: raw.plus })
+		: LicenseRefNode.make(
+				raw.documentRef !== undefined ? { documentRef: raw.documentRef, ref: raw.ref } : { ref: raw.ref },
+			);
+}
+
 // Materialize the parser's raw record tree into the typed AST. Recursive, but
 // only over a tree the parser already bounded to MAX_NESTING_DEPTH, so it
 // cannot overflow. `.make` validates each node; construction is linear in the
@@ -157,16 +169,11 @@ const SpdxExpressionUnion = Schema.Union([LicenseNode, LicenseRefNode, WithExcep
 function materialize(raw: RawExpression): SpdxExpression {
 	switch (raw.kind) {
 		case "license":
-			return LicenseNode.make({ id: raw.id, plus: raw.plus });
 		case "licenseRef":
-			// Conditional spread — never pass an explicit `undefined` for the
-			// `optionalKey` documentRef field.
-			return LicenseRefNode.make(
-				raw.documentRef !== undefined ? { documentRef: raw.documentRef, ref: raw.ref } : { ref: raw.ref },
-			);
+			return materializeSimple(raw);
 		case "with":
 			return WithExceptionNode.make({
-				license: LicenseNode.make({ id: raw.license.id, plus: raw.license.plus }),
+				license: materializeSimple(raw.license),
 				exception: raw.exception,
 			});
 		case "and":

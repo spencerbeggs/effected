@@ -3,13 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-18
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 90
 related:
   - ../effect-standards.md
   - ../package-inventory.md
   - ../formatter-convention.md
+  - spdx.md
   - github-actions.md
   - jsonc.md
   - yaml.md
@@ -32,6 +33,17 @@ It carries the full-parity ambition of its format siblings [jsonc](jsonc.md), [y
 **Pure tier.** No IO, the engine is owned in `src/internal/`, and there are no external runtime dependencies. `peerDependencies` is `effect` plus **optional** kit peers on [yaml](yaml.md), [toml](toml.md) and [jsonc](jsonc.md), consumed only by the respective frontmatter codec modules — a recorded delta from [config-file](config-file.md), whose peers are not optional.
 
 The commonmark.js port carries upstream attribution and license headers per the vendored-port convention the yaml and jsonc engines established. `"sideEffects": false`.
+
+### The entity table is generated data, not a dependency
+
+The HTML5 named character references ship as a **committed TypeScript map** in `src/internal/`, flattened out of the packed binary trie the `entities` package publishes. `entities` is an exact-pinned **devDependency that exists only for the generator**; nothing at runtime imports it, which is what keeps the pure tier's zero-runtime-dependency claim true for a table of two thousand entries. Only the **semicolon-terminated** names are kept: CommonMark's entity grammar requires the semicolon, so the legacy unterminated forms can never match.
+
+The generator (`__test__/tools/generate-entities.ts`) is **hand-run, never in CI and never in the test suite** — the same posture as [spdx](spdx.md#vendored-data-and-regeneration)'s catalog regeneration.
+
+**The trie encoding is an upstream internal, and it changes across majors.** Bumping `entities` is therefore a *re-derivation* of the walker rather than a version bump: v7 re-encoded the format (an implicit-semicolon flag stealing a bit from the branch count, compact character runs, dictionary keys packed two per word), and every one of those is a silent mis-read for a walker written against the older layout. Two rules follow, and they are what make the bump safe:
+
+- **The acceptance test is data equality, not a clean run.** Regenerate and prove the old and new maps agree entry-for-entry; a walker that quietly drops or mangles entries produces a plausible file, and the entity table is exactly the kind of data nobody reads.
+- **The version stamp is derived from the installed package**, read out of its `package.json` by path (its exports map does not expose it), never hand-typed — so a regenerated file cannot claim a version it was not built from.
 
 ## Engine: a hardened commonmark.js port, modularized like micromark
 

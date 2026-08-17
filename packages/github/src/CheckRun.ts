@@ -1,6 +1,7 @@
 import { Cause, Context, Effect, Exit, Layer, Ref, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
+import { numericId } from "./internal/ids.js";
 import { Repo } from "./Repo.js";
 
 /** How a check run finished. @public */
@@ -310,8 +311,8 @@ const concludeFor = <A, E>(
 	return Exit.isSuccess(exit) ? write : Effect.ignore(write);
 };
 
-const refOf = (raw: { id: number; name: string; html_url?: string | null; status: string }): CheckRunRef =>
-	CheckRunRef.make({ id: raw.id, name: raw.name, url: raw.html_url ?? "", status: raw.status });
+const refOf = (raw: { id: number | bigint; name: string; html_url?: string | null; status: string }): CheckRunRef =>
+	CheckRunRef.make({ id: numericId(raw.id), name: raw.name, url: raw.html_url ?? "", status: raw.status });
 
 const make = (client: GitHubClient["Service"]): CheckRunShape => {
 	const create = Effect.fn("CheckRun.create")(function* (name: string, headSha: string) {

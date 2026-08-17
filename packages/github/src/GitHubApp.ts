@@ -5,6 +5,7 @@ import type { GitHubClientShape } from "./GitHubClient.js";
 import { GitHubClient, makeClientShape } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { GitHubGraphQLError } from "./GraphQL.js";
+import { numericId } from "./internal/ids.js";
 import type { RetryPolicy } from "./Resilience.js";
 
 /**
@@ -486,7 +487,7 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 			return AppIdentity.make({
 				slug,
 				name,
-				...(Option.isSome(user) ? { userId: user.value.id } : {}),
+				...(Option.isSome(user) ? { userId: numericId(user.value.id) } : {}),
 			});
 		});
 

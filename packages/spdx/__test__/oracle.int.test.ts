@@ -28,6 +28,13 @@ const CORPUS = [
 	"GPL-3.0",
 	"Apache-2.0 WITH Bogus-exception",
 	"DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2",
+	// LicenseRef + WITH: accepted since spdx-expression-parse v5, matching the
+	// SPDX ABNF (`with-expression = simple-expression "WITH" license-exception-id`).
+	"LicenseRef-Foo WITH Bison-exception-2.2",
+	"DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2 WITH Classpath-exception-2.0",
+	"LicenseRef-Foo WITH Bogus-exception",
+	"LicenseRef-Foo+ WITH Bison-exception-2.2",
+	"(LicenseRef-Foo WITH Classpath-exception-2.0) AND MIT",
 	"MIT and BSD-3-Clause",
 	"MIT or Apache-2.0",
 	"GPL-2.0-or-later with Bison-exception-2.2",
