@@ -1,5 +1,18 @@
 # @effected/github
 
+## 0.6.1
+
+### Dependencies
+
+* | Dependency                    | Type       | Action  | From    | To      |                                                                       |
+  | ----------------------------- | ---------- | ------- | ------- | ------- | --------------------------------------------------------------------- |
+  | @octokit/plugin-paginate-rest | dependency | updated | ^14.0.0 | ^15.0.0 |                                                                       |
+  | @octokit/types                | dependency | updated | ^16.0.0 | ^17.0.0 | [#400][#400] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#400]: https://github.com/spencerbeggs/effected/pull/400
+
 ## 0.6.0
 
 ### Features

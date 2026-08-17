@@ -1,5 +1,21 @@
 # @effected/workspaces
 
+## 0.14.1
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From   | To     |
+| ---------------------- | ---------- | ------- | ------ | ------ |
+| @effected/package-json | dependency | updated | 0.10.0 | 0.10.1 |
+
+* | Dependency            | Type       | Action  | From      | To        |                                                                       |
+  | --------------------- | ---------- | ------- | --------- | --------- | --------------------------------------------------------------------- |
+  | @pnpm/catalogs.config | dependency | updated | ^1100.0.0 | ^1100.0.5 | [#400][#400] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#400]: https://github.com/spencerbeggs/effected/pull/400
+
 ## 0.14.0
 
 ### Dependencies
