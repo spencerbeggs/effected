@@ -4,25 +4,25 @@
 		{
 			"source": "CLAUDE.build-and-test.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "132132a6b2aa74c2f7a9e66270a6d4dc924fcda3737681c74541fa76efcd0b76",
+			"hash": "257cc0201403539ab535cceb88ead37951f55300279d3c98c958e7ddcd05d2e5",
 			"recordedAt": "2026-08-16"
 		},
 		{
 			"source": "CLAUDE.dependencies.md",
 			"target": ".claude/design/effected/architecture.md",
-			"hash": "cf6c4de110171acf89c08cea29d755bd2618a774d91a27761b4f085d6cb7f528",
-			"recordedAt": "2026-08-12"
+			"hash": "098409a674dfdf19ba77755702a6bd660cd2694f59d4517acf9269138b454b9a",
+			"recordedAt": "2026-08-16"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/architecture.md",
-			"hash": "cf6c4de110171acf89c08cea29d755bd2618a774d91a27761b4f085d6cb7f528",
-			"recordedAt": "2026-08-12"
+			"hash": "098409a674dfdf19ba77755702a6bd660cd2694f59d4517acf9269138b454b9a",
+			"recordedAt": "2026-08-16"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "132132a6b2aa74c2f7a9e66270a6d4dc924fcda3737681c74541fa76efcd0b76",
+			"hash": "257cc0201403539ab535cceb88ead37951f55300279d3c98c958e7ddcd05d2e5",
 			"recordedAt": "2026-08-16"
 		},
 		{
@@ -52,8 +52,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-setup.md",
-			"hash": "92cc40fd9e35c4da474e1ba0d122e9b43f3d6aea21d926c81379d94ab39f67ba",
-			"recordedAt": "2026-08-12"
+			"hash": "908a259cfddf89ac310e12da257c46aca637ab30e48c6f6cf75f2c1dee0fe458",
+			"recordedAt": "2026-08-16"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -70,8 +70,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/releases.md",
-			"hash": "16285904f3a530704f5ffcafacd70d838c2e80c12c7e8381a51fb7005e795994",
-			"recordedAt": "2026-08-14"
+			"hash": "58aa3071443456f0bf1b82194d6cc63375f32ff8bf8dc8d1e141d85b211f606f",
+			"recordedAt": "2026-08-16"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -94,8 +94,8 @@
 		{
 			"source": "CLAUDE.vendored-effect.md",
 			"target": ".claude/design/effected/architecture.md",
-			"hash": "cf6c4de110171acf89c08cea29d755bd2618a774d91a27761b4f085d6cb7f528",
-			"recordedAt": "2026-08-12"
+			"hash": "098409a674dfdf19ba77755702a6bd660cd2694f59d4517acf9269138b454b9a",
+			"recordedAt": "2026-08-16"
 		},
 		{
 			"source": "packages/app/CLAUDE.md",
@@ -334,8 +334,8 @@
 		{
 			"source": "packages/pnpm-plugin-effect/CLAUDE.md",
 			"target": ".claude/design/effected/packages/pnpm-plugin-effect.md",
-			"hash": "e8b3b95ba07d089bdd4811211a2a59eb50574af8432b84875ac5d905568c7e1a",
-			"recordedAt": "2026-08-12"
+			"hash": "447b1005132ccf3c4dd7b326a57893e90b46c14baa8f694df3a13842a9a85cc4",
+			"recordedAt": "2026-08-16"
 		},
 		{
 			"source": "packages/runtimes/CLAUDE.md",

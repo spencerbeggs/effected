@@ -71,30 +71,28 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 
 Every package here is published to npm. Releases are changeset-driven: a change that affects a published package carries a changeset, and CI releases the packages those changesets name. That release is sometimes the whole kit and sometimes a single package — both are ordinary, and package versions move independently as a result. Each package's own npm page and `package.json` are the source of truth for where it stands.
 
-What does not move independently is the Effect pin. Every package is built and tested against the one Effect v4 beta named in the `effect` catalog, so their peer ranges agree with each other by construction rather than by luck. Publishing runs ahead of the applications that consume the kit rather than behind them, which surfaces integration problems against real published packages instead of a stand-in.
+What does not move independently is the Effect pin. Every package is built and tested against the one Effect v4 prerelease named in the `effect` catalog, so their peer ranges agree with each other by construction rather than by luck. Publishing runs ahead of the applications that consume the kit rather than behind them, which surfaces integration problems against real published packages instead of a stand-in.
 
 ### Pre-1.0.0
 
-The kit stays pre-`1.0.0` until Effect `4.0.0` reaches general availability. Through development each package pins one Effect v4 beta rather than a floating range, which keeps the whole workspace building and testing against the exact same core. Packages graduate to `1.0.0` after Effect `4.0.0` is officially released.
+The kit stays pre-`1.0.0` until Effect `4.0.0` reaches general availability. Through development each package pins one Effect v4 prerelease rather than a floating range, which keeps the whole workspace building and testing against the exact same core. Packages graduate to `1.0.0` after Effect `4.0.0` is officially released.
 
 ### Version and stability
 
 Two independent dimensions describe where a package stands:
 
-- **Version** — pre-`1.0.0`, built against a single pinned Effect v4 beta. Each package carries its own version and advances when a release names it.
+- **Version** — pre-`1.0.0`, built against a single pinned Effect v4 prerelease. Each package carries its own version and advances when a release names it.
 - **Stability** — `stable` or `unstable`, whether a package's API shape is considered complete. This is tracked per package.
 
 Every package is `unstable` today. Treat the two as separate: even a package marked `stable` before `1.0.0` can break by accident, so pin exact versions. An exact pin turns an unexpected change into a type-check error at your own boundary instead of a runtime surprise in production.
 
 ### Version alignment
 
-[`@effected/pnpm-plugin-effect`](packages/pnpm-plugin-effect) keeps a consumer's Effect versions aligned with the kit's. It is a pnpm config dependency, installed ahead of the rest of the tree, that ships the `effect` catalog: the exact pinned beta for every `effect` and `@effect/*` package. The catalog entries use a `lock` strategy, so once the plugin is installed everything in your workspace resolves to that one pinned version rather than drifting apart.
-
-The plugin also ships an `effect3` interop catalog that tracks the latest Effect v3 releases for most of the same packages, a handful excluded, and downlevels their peer ranges to the lowest safe floor. That catalog exists for one audience: teams testing against both Effect v3 and v4 in a single monorepo during the transition. It is removed at the plugin's own `1.0.0`, once Effect `4.0.0` has shipped and there is nothing left to interoperate with.
+[`@effected/pnpm-plugin-effect`](packages/pnpm-plugin-effect) keeps a consumer's Effect versions aligned with the kit's. It is a pnpm config dependency, installed ahead of the rest of the tree, that ships the `effect` catalog: the exact pinned prerelease for every `effect` and `@effect/*` package. The catalog entries use a `lock` strategy, so once the plugin is installed everything in your workspace resolves to that one pinned version rather than drifting apart.
 
 ### A note on peers
 
-Upstream Effect manifests occasionally introduce peer-dependency wrinkles (a caret range where an exact pin was expected, for instance) that need an override rule to keep resolution clean. Expect this corner to be revisited a few times over the course of the beta.
+Upstream Effect manifests occasionally introduce peer-dependency wrinkles (a caret range where an exact pin was expected, for instance) that need an override rule to keep resolution clean. Expect this corner to be revisited a few times before Effect `4.0.0` ships.
 
 ## Contributing
 

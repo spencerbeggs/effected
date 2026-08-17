@@ -4,8 +4,8 @@ This is the repo's **probe venue**: a private workspace whose only job is
 letting agents settle rung-3 questions ("only a probe settles semantics")
 with **typed** code. Every `@effected/*` package is a `workspace:*` dependency
 and `effect` is pinned by `catalog:effect`, so a probe here type-checks against
-the exact beta the kit builds with — the silent Result-accessor misread class
-of probe bug dies at compile time.
+the exact prerelease the kit builds with — the silent Result-accessor misread
+class of probe bug dies at compile time.
 
 ## Where to write, how to run
 

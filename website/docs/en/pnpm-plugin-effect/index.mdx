@@ -5,7 +5,7 @@ description: "A pnpm config dependency that centralizes Effect-ecosystem version
 
 # @effected/pnpm-plugin-effect
 
-A pnpm config dependency that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to the current [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effectPeers` catalog resolves the same packages down to a calculated shared floor — the lowest common version safe to declare as a peer range — so your libraries do not over-constrain the projects that depend on them.
+A pnpm config dependency that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to the current [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effect:peers` catalog resolves the same packages down to a calculated shared floor — the lowest common version safe to declare as a peer range — so your libraries do not over-constrain the projects that depend on them.
 
 ## Where it fits
 
@@ -68,7 +68,7 @@ That split is the whole value proposition. Developing against a pinned version w
 
 ## Advancing the pin
 
-Two commands, run in order, upgrade every package to its latest v4 release, recompute the `effectPeers` floor, and write the result into `pnpm-workspace.yaml`:
+Two commands, run in order, upgrade every package to its latest v4 release, recompute the `effect:peers` floor, and write the result into `pnpm-workspace.yaml`:
 
 ```bash
 pnpm pnpm:up

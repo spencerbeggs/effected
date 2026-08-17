@@ -201,16 +201,16 @@ When an implementation and a remembered constant disagree, **neither one is the 
 
 ## Peer-dependency discipline
 
-Every package must declare its complete peer closure. A declared `@effect/*` dependency whose own non-optional peers are left undeclared is a defect — unfulfilled transitive peers escape to the consumer's importer, where pnpm `autoInstallPeers` can bind an incompatible effect version (e.g. a v4 beta into v3 packages).
+Every package must declare its complete peer closure. A declared `@effect/*` dependency whose own non-optional peers are left undeclared is a defect — unfulfilled transitive peers escape to the consumer's importer, where pnpm `autoInstallPeers` can bind an incompatible effect version (historically a v4 beta into v3 packages; on the `rc.109` advance, two v4 prereleases glued into one decode pipeline).
 
 - Libraries keep `effect` as a peer dependency.
 - Tools and apps consuming libraries declare the full stack as regular dependencies.
 
-**`pnpm peers check` has one known-issue slot and its occupant rotates**, always in the toolchain graph rather than in this workspace, always clearing when the offending tool republishes against the current beta. The `CLAUDE.dependencies.md` context file is the live registry of who occupies it. Do not silence the occupant, and do not read its presence as license to tolerate a second: **any other warning is a genuine closure defect to fix upstream.**
+**`pnpm peers check` has one known-issue slot and its occupant rotates**, always in the toolchain graph rather than in this workspace, always clearing when the offending tool republishes against the current prerelease. The `CLAUDE.dependencies.md` context file is the live registry of who occupies it. Do not silence the occupant, and do not read its presence as license to tolerate a second: **any other warning is a genuine closure defect to fix upstream.**
 
 ### Verified workspace configuration
 
-The consumer-side configuration that lets the effect v4 beta and the v3 build toolchain share one `node_modules` tree. The live settings are in `pnpm-workspace.yaml` and the root `package.json` — read those for exact values — and [package-setup.md](package-setup.md) has the per-package file manifest.
+The consumer-side configuration that lets the workspace's pinned `effect` prerelease and the build toolchain's older one share one `node_modules` tree — including, while it stands, the temporary overrides bridge described in [architecture.md](architecture.md#the-temporary-overrides-bridge). The live settings are in `pnpm-workspace.yaml` and the root `package.json` — read those for exact values — and [package-setup.md](package-setup.md) has the per-package file manifest.
 
 - Every published tool in the dependency chain declares its complete `@effect/*` peer closure as regular dependencies, so no transitive peer escapes to a consumer's importer where `autoInstallPeers` could bind an incompatible `effect`. The one library that still does not is rspress-plugin-api-extractor, tracked upstream at [issue #69](https://github.com/spencerbeggs/rspress-plugin-api-extractor/issues/69).
 - `pnpm-workspace.yaml` sets `autoInstallPeers: true`, so the tool peers of the root devDependencies are auto-installed rather than declared explicitly. It pins neither `dedupeDirectDeps` nor `dedupePeerDependents` — pnpm's defaults apply — and there is no `.npmrc`.

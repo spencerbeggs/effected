@@ -8,7 +8,7 @@
 package.json parsing, editing, validation and file IO as Effect schemas. `Package` is a `Schema.Class` with the manifest's known fields typed — `name` is a branded npm name, `version` is a real `SemVer`, `packageManager` decodes into `{ name, version, integrity }` — and a `rest` catch-all that carries every unknown top-level key through a read, edit and write cycle without losing it. Editing is immutable and dual-signature, validation is a rule set you can replace, and `catalog:` / `workspace:` specifiers expand through the `@effected/npm` resolver contracts as an explicit step you opt into.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 beta. Packages graduate to
+> development against a single pinned Effect v4 prerelease. Packages graduate to
 > `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
 > exactly the ones the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).

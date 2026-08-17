@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-14
+updated: 2026-08-16
 last-synced: 2026-08-14
 completeness: 88
 related:
@@ -39,7 +39,7 @@ How the kit releases, and what closed the question of which packages had to exis
 
 The kit did not release package-by-package on its way in: the whole gate set published together at `0.1.0` against one `effect` beta, as an explicit **pre-release**. Nothing here claims stability, and consumer ports proceed against real published packages rather than being gated behind a synthetic proof. `1.0.0` waits for Effect v4 GA.
 
-**Releases are changeset-driven, and the release set is an output of that mechanism rather than a policy choice.** CI builds the appropriate changesets and releases the packages they name — the whole kit when a beta advance touches everything, a single package when a patch is the only thing pending. Both shapes are ordinary: the 27-package beta.107 wave and solo patches like `workspaces@0.11.1` are the same mechanism producing different sets. A package may be released on its own.
+**Releases are changeset-driven, and the release set is an output of that mechanism rather than a policy choice.** CI builds the appropriate changesets and releases the packages they name — the whole kit when a catalog advance touches everything, a single package when a patch is the only thing pending. Both shapes are ordinary: the 27-package beta.107 wave and solo patches like `workspaces@0.11.1` are the same mechanism producing different sets. A package may be released on its own.
 
 In practice new packages have debuted alongside others, because a wave that introduces one usually touches its neighbours too — but that is an observation about how the changesets have fallen, not a rule the process enforces.
 
@@ -47,7 +47,7 @@ In practice new packages have debuted alongside others, because a wave that intr
 
 Version and stability are separate axes.
 
-- **Version.** Every package stays below `1.0.0` until Effect `4.0.0` GA, pinning a single Effect v4 beta throughout development. Graduation to `1.0.0` follows Effect `4.0.0`. Until then the `effect` peer range names the beta pinned in the `effect` catalog in `pnpm-workspace.yaml`, and a beta bump is a coordinated change across the whole kit — one changeset per package, one wave.
+- **Version.** Every package stays below `1.0.0` until Effect `4.0.0` GA, pinning a single Effect v4 prerelease throughout development. Graduation to `1.0.0` follows Effect `4.0.0`. Until then the `effect` peer range names the prerelease pinned in the `effect` catalog in `pnpm-workspace.yaml`, and a catalog bump is a coordinated change across the whole kit — one changeset per package, one wave.
 - **Stability.** A per-package `stable | unstable` axis independent of the version number. **Every package is `unstable`.** Consumers pin exact versions, so an accidental break surfaces in their type-checking rather than silently through a range — the pre-release contract made mechanical.
 
 **A branch build reports the *previous* release's version, and that collides with the registry.** Changesets bump at release, so `dist/**` on an unreleased branch carries the version of the last release while the code contains the unreleased work — and the registry is serving that same number. A consumer linked against a local build therefore sees a version identical to the published one, for different code. A dogfood consumer nearly pinned `^0.9.1` on that basis and would have resolved to code they had never run (`@spencerbeggs/reposets`, 2026-08-14; they caught it and asked for the published numbers rather than inferring them).

@@ -14,8 +14,8 @@ Consumers of store are tier 3 by [R2](../../.claude/design/effected/effect-stand
 
 ## The v4 SQL facts (easy to get wrong)
 
-- **The SQL core lives in `effect` itself**, under `effect/unstable/sql/*` — `SqlClient`, `Statement`, `SqlError`, transactions. There is **no `@effect/sql` package on the v4 line**; do not add one. Import `SqlClient` from `effect/unstable/sql/SqlClient`. The namespace is `unstable` upstream, so its surface can shift between betas — the whole repo pins one catalog, so drift is caught at catalog bumps.
-- **`@effect/sql-sqlite-node` rides Node's built-in `node:sqlite`** — no native compile step, no `better-sqlite3`, no transitive peers. It ships on the same `4.0.0-beta` version train as `effect`.
+- **The SQL core lives in `effect` itself**, under `effect/unstable/sql/*` — `SqlClient`, `Statement`, `SqlError`, transactions. There is **no `@effect/sql` package on the v4 line**; do not add one. Import `SqlClient` from `effect/unstable/sql/SqlClient`. The namespace is `unstable` upstream, so its surface can shift between prereleases — the whole repo pins one catalog, so drift is caught at catalog bumps.
+- **`@effect/sql-sqlite-node` rides Node's built-in `node:sqlite`** — no native compile step, no `better-sqlite3`, no transitive peers. It ships on the same v4 prerelease version train as `effect`.
 - **`SqliteClient.layer` has no error channel.** Driver construction failures — chiefly a `filename` whose parent directory does not exist — are **defects**, not typed failures. That is why `Store.layerSqlite` and `Cache.layerSqlite` publish only the domain error in `E`. Ensuring the directory exists is the caller's job (and will be `@effected/xdg`'s).
 - **`effect/unstable/sql/Migrator` is deliberately not used.** It is forward-only: no `down`, no rollback, no status projection. Store's contract carries all three, so `src/internal/migrator.ts` owns its own ledger.
 

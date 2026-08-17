@@ -25,7 +25,7 @@ cd effected
 pnpm install     # install every workspace package and its peers
 ```
 
-`pnpm install` wires up the whole workspace, runs husky to register the git hooks, and resolves the pinned Effect v4 beta through the pnpm catalogs in `pnpm-workspace.yaml`. If the install changes `pnpm-lock.yaml` unexpectedly, review the diff before committing it — a stray install has been known to prune platform binaries from the lockfile.
+`pnpm install` wires up the whole workspace, runs husky to register the git hooks, and resolves the pinned Effect v4 prerelease through the pnpm catalogs in `pnpm-workspace.yaml`. If the install changes `pnpm-lock.yaml` unexpectedly, review the diff before committing it — a stray install has been known to prune platform binaries from the lockfile.
 
 ## Repository layout
 
@@ -34,7 +34,7 @@ pnpm install     # install every workspace package and its peers
 - `lib/configs/` — shared tool configuration (commitlint, lint-staged, markdownlint).
 - `plugin/` — an in-development Claude Code plugin dogfooded during the migration.
 
-Dependency versions are shared through pnpm catalogs in `pnpm-workspace.yaml`, so every package builds and tests against the same Effect v4 beta.
+Dependency versions are shared through pnpm catalogs in `pnpm-workspace.yaml`, so every package builds and tests against the same Effect v4 prerelease.
 
 ## Build pipeline
 
