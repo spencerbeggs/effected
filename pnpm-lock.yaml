@@ -231,8 +231,8 @@ importers:
         specifier: ^14.0.0
         version: 14.0.0(@octokit/core@7.0.7)
       '@octokit/types':
-        specifier: ^16.0.0
-        version: 16.0.0
+        specifier: ^17.0.0
+        version: 17.0.0
       blakejs:
         specifier: 1.2.1
         version: 1.2.1
