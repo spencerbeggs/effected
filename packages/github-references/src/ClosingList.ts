@@ -29,12 +29,11 @@ import { CLOSING_KEYWORDS } from "./IssueReferences.js";
  * returning the parseable subset would misrepresent the line as claiming
  * less than it does.
  *
- * ReDoS posture: parsing is an anchored head match for `<keyword>[:]?`
- * followed by an **iterative** sticky-regex walk over the list — item, then
- * separator, then item — never a single regex quantifying over the whole
- * separator/list structure. No alternation nests a quantifier, so a hostile
- * line cannot trigger catastrophic backtracking, and no input truncation is
- * needed.
+ * Complexity posture: parsing is a single left-to-right character scan —
+ * this module contains **no regular expressions at all** — so worst-case
+ * time is linear in the line length by construction. There is no
+ * backtracking engine to feed, no polynomial blow-up for a scanner to flag,
+ * and therefore no input truncation.
  */
 
 /**
@@ -82,65 +81,92 @@ export interface ReferenceList {
 }
 
 /**
- * The head pattern derives from the keyword constants so the constants and
- * the grammar cannot drift. Alternation order is safe for the same reason as
- * the sibling module's patterns: `ref` matching inside `references` fails at
- * the mandatory colon-or-whitespace and the engine retries the longer
- * keyword.
+ * Both keyword tables ARE the exported constants — membership sets built from
+ * them once — so the constants and the grammar cannot drift.
  */
-const ALL_KEYWORDS = [...CLOSING_KEYWORDS, ...REFERENCE_KEYWORDS].join("|");
-
-/**
- * Anchored head: the keyword, an optional colon, then mandatory same-line
- * whitespace. `[ \t]` rather than `\s`, per the module's newline posture.
- */
-const HEAD_PATTERN = new RegExp(`^(${ALL_KEYWORDS}):?[ \\t]+`, "i");
-
-/** One list item, matched stickily at the walker's cursor. */
-const ITEM_PATTERN = /#(\d+)/y;
-
-/**
- * One separator, matched stickily: a comma (optionally Oxford — followed by
- * `and`), or a bare `and`. Each alternative is a flat sequence — no nested
- * quantifiers, per the module's ReDoS posture.
- */
-const SEPARATOR_PATTERN = /[ \t]*,[ \t]*(?:and[ \t]+)?|[ \t]+and[ \t]+/y;
+const ALL_KEYWORDS: ReadonlySet<string> = new Set([...CLOSING_KEYWORDS, ...REFERENCE_KEYWORDS]);
 
 /** Membership test for reporting `closing`, widened once so no call casts. */
 const CLOSING_SET: ReadonlySet<string> = new Set(CLOSING_KEYWORDS);
 
-/**
- * `#<digits>` parsed to a number — or `undefined` when the digits exceed
- * `Number.MAX_SAFE_INTEGER`, because a silently rounded issue number is
- * worse than a rejected line. Here the caller rejects the whole line — see
- * the module remarks for why a list does not skip.
- */
-const safeIssueNumber = (digits: string): number | undefined => {
-	const value = Number(digits);
-	return Number.isSafeInteger(value) ? value : undefined;
+const HASH = 0x23; // #
+const COLON = 0x3a; // :
+const COMMA = 0x2c; // ,
+
+/** `[ \t]` — the only whitespace the dialect admits, per the module remarks. */
+const isSpaceTab = (code: number): boolean => code === 0x20 || code === 0x09;
+
+const isDigit = (code: number): boolean => code >= 0x30 && code <= 0x39;
+
+const isAsciiLetter = (code: number): boolean => (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+
+/** The index after the run of `[ \t]` starting at `from` (possibly `from` itself). */
+const skipSpaceTab = (line: string, from: number): number => {
+	let index = from;
+	while (index < line.length && isSpaceTab(line.charCodeAt(index))) index += 1;
+	return index;
 };
 
 /**
- * The iterative walk: item, then separator, then item, until the cursor
- * stands exactly at the end of the string. Anything else — a malformed item,
- * an unknown separator, trailing content, an unsafe issue number — is
+ * One list item at exactly `from`: `#<digits>` parsed to a safe integer and
+ * the index one past it — or `undefined` for anything else, including digits
+ * exceeding `Number.MAX_SAFE_INTEGER`, because a silently rounded issue
+ * number is worse than a rejected line. The caller rejects the whole line —
+ * see the module remarks for why a list does not skip.
+ */
+const readItem = (line: string, from: number): { readonly value: number; readonly next: number } | undefined => {
+	if (line.charCodeAt(from) !== HASH) return undefined;
+	const start = from + 1;
+	let index = start;
+	while (index < line.length && isDigit(line.charCodeAt(index))) index += 1;
+	if (index === start) return undefined;
+	const value = Number(line.slice(start, index));
+	return Number.isSafeInteger(value) ? { value, next: index } : undefined;
+};
+
+/**
+ * One separator at exactly `from`: a comma with optional surrounding `[ \t]`
+ * and an optional Oxford `and` (consumed only when its own trailing `[ \t]+`
+ * is present), or a bare `and` requiring `[ \t]+` on both sides. `and` is
+ * lowercase-only — the keyword head is case-insensitive, the separator is
+ * not. Returns the index where the next item must start, or `undefined` when
+ * no separator is present.
+ */
+const scanSeparator = (line: string, from: number): number | undefined => {
+	const afterLeading = skipSpaceTab(line, from);
+	if (line.charCodeAt(afterLeading) === COMMA) {
+		const afterComma = skipSpaceTab(line, afterLeading + 1);
+		if (line.startsWith("and", afterComma)) {
+			const afterAnd = skipSpaceTab(line, afterComma + 3);
+			if (afterAnd > afterComma + 3) return afterAnd;
+		}
+		return afterComma;
+	}
+	if (afterLeading > from && line.startsWith("and", afterLeading)) {
+		const afterAnd = skipSpaceTab(line, afterLeading + 3);
+		if (afterAnd > afterLeading + 3) return afterAnd;
+	}
+	return undefined;
+};
+
+/**
+ * The scan walk: item, then separator, then item, until the cursor stands
+ * exactly at the end of the string. Anything else — a malformed item, an
+ * unknown separator, trailing content, an unsafe issue number — is
  * `undefined`, and the caller rejects the whole line.
  */
-const parseItems = (list: string): ReadonlyArray<number> | undefined => {
+const parseItems = (line: string, from: number): ReadonlyArray<number> | undefined => {
 	const issueNumbers: Array<number> = [];
-	let cursor = 0;
+	let cursor = from;
 	for (;;) {
-		ITEM_PATTERN.lastIndex = cursor;
-		const item = ITEM_PATTERN.exec(list);
-		if (item === null) return undefined;
-		const issueNumber = safeIssueNumber(item[1] ?? "");
-		if (issueNumber === undefined) return undefined;
-		issueNumbers.push(issueNumber);
-		cursor = ITEM_PATTERN.lastIndex;
-		if (cursor === list.length) return issueNumbers;
-		SEPARATOR_PATTERN.lastIndex = cursor;
-		if (SEPARATOR_PATTERN.exec(list) === null) return undefined;
-		cursor = SEPARATOR_PATTERN.lastIndex;
+		const item = readItem(line, cursor);
+		if (item === undefined) return undefined;
+		issueNumbers.push(item.value);
+		cursor = item.next;
+		if (cursor === line.length) return issueNumbers;
+		const next = scanSeparator(line, cursor);
+		if (next === undefined) return undefined;
+		cursor = next;
 	}
 };
 
@@ -157,12 +183,22 @@ const parseItems = (list: string): ReadonlyArray<number> | undefined => {
  */
 export const parseReferenceList = (line: string): Option.Option<ReferenceList> => {
 	const trimmed = line.trim();
-	const head = HEAD_PATTERN.exec(trimmed);
-	if (head === null) return Option.none();
-	const keyword = (head[1] ?? "").toLowerCase() as ClosingKeyword | ReferenceKeyword;
-	const issueNumbers = parseItems(trimmed.slice(head[0].length));
+	let letters = 0;
+	while (letters < trimmed.length && isAsciiLetter(trimmed.charCodeAt(letters))) letters += 1;
+	if (letters === 0) return Option.none();
+	const keyword = trimmed.slice(0, letters).toLowerCase();
+	if (!ALL_KEYWORDS.has(keyword)) return Option.none();
+	let cursor = letters;
+	if (trimmed.charCodeAt(cursor) === COLON) cursor += 1;
+	const afterWhitespace = skipSpaceTab(trimmed, cursor);
+	if (afterWhitespace === cursor) return Option.none();
+	const issueNumbers = parseItems(trimmed, afterWhitespace);
 	if (issueNumbers === undefined) return Option.none();
-	return Option.some({ keyword, closing: CLOSING_SET.has(keyword), issueNumbers });
+	return Option.some({
+		keyword: keyword as ClosingKeyword | ReferenceKeyword,
+		closing: CLOSING_SET.has(keyword),
+		issueNumbers,
+	});
 };
 
 /**

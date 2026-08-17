@@ -117,7 +117,7 @@ console.log(parseClosingList("Refs #7, #8"));
 - **Duplicates are preserved, in order.** Whether `#12, #12` means one issue or two is the caller's business; collapsing them would destroy evidence a caller may be linting for.
 - **Keyword case does not matter, and the result is canonical.** `CLOSES`, `Closes` and `closes` all match, and `keyword` always comes back lowercased.
 - **Unsafe issue numbers are treated differently on purpose.** Digits past `Number.MAX_SAFE_INTEGER` make the prose harvest *skip that one match*, while the list dialects reject the *whole line*: surrounding prose makes no claim about a skipped number, but a list line is a single claim about a set of issues that a partial result would misrepresent.
-- **No input is truncated and no length cap applies.** Parsing is an anchored keyword head followed by an iterative sticky-regex walk — item, separator, item — with no quantifier nested in an alternation, so a hostile line cannot trigger catastrophic backtracking and there is nothing to defend with truncation.
+- **No input is truncated and no length cap applies.** The list dialect is parsed by a single character-by-character scan — no regular expressions at all — so a hostile line cannot trigger catastrophic backtracking and there is nothing to defend with truncation.
 
 ## Out of scope
 

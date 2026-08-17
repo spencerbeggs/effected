@@ -208,7 +208,7 @@
 		{
 			"source": "packages/github-references/CLAUDE.md",
 			"target": ".claude/design/effected/packages/github-references.md",
-			"hash": "6cf013e4ffed0ce2c4de7f84c96c068bc425607fd389243bcda6c3fa35ba0523",
+			"hash": "b5b51f4f07e1b473f17af087fd7e0f5a51aa9ab6284365061d184131d9cf4239",
 			"recordedAt": "2026-08-17"
 		},
 		{

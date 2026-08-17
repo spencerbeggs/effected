@@ -96,6 +96,26 @@ describe("ClosingList.parseClosingList", () => {
 			assert.isTrue(Option.isNone(parseClosingList(`${keyword}: #1, #2`)), keyword);
 		}
 	});
+
+	it("keeps the separator case-sensitive while the keyword is not", () => {
+		// The keyword head lowercases; the `and` separator is grammar, not prose.
+		assert.isTrue(Option.isSome(parseClosingList("CLOSES #1 and #2")));
+		assert.isTrue(Option.isNone(parseClosingList("closes #1 AND #2")));
+		assert.isTrue(Option.isNone(parseClosingList("closes #1, And #2")));
+	});
+
+	it("stays linear on hostile input — long runs of tabs and huge lists", () => {
+		// The scan is a single pass with no regex engine behind it; these would
+		// hang a backtracking list pattern and must simply answer, fast.
+		const tabs = "\t".repeat(100_000);
+		assert.isTrue(Option.isNone(parseClosingList(`closes${tabs}x`)));
+		assert.isTrue(Option.isNone(parseClosingList(`closes #1,${tabs}and#2`)));
+		assert.isTrue(Option.isNone(parseClosingList(`closes #1${tabs}x`)));
+		const wide = `closes ${Array.from({ length: 5_000 }, (_, index) => `#${index + 1}`).join(", ")}`;
+		const list = Option.getOrThrow(parseClosingList(wide));
+		assert.strictEqual(list.issueNumbers.length, 5_000);
+		assert.strictEqual(list.issueNumbers[4_999], 5_000);
+	});
 });
 
 describe("ClosingList.parseReferenceList", () => {

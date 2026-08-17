@@ -29,7 +29,7 @@ The judgement that put the grammar in `github` was not wrong — [pure-but-GitHu
 
 ## Tier and dependencies
 
-**Pure tier.** `effect` is the only peer; zero regular dependencies ([R1](../effect-standards.md#dependency-policy)), no services, no layers, no `R` anywhere, `sideEffects: false`. The whole package is regex and string work.
+**Pure tier.** `effect` is the only peer; zero regular dependencies ([R1](../effect-standards.md#dependency-policy)), no services, no layers, no `R` anywhere, `sideEffects: false`. The moved inline and bare-line dialects are regex and string work; the closing-list dialect is a regex-free character scan.
 
 The dependency arrow points **at** this package: `@effected/github` takes it as a regular `workspace:^` dependency (see [compatibility](#the-github-compat-re-export)).
 
@@ -102,7 +102,7 @@ Three downstream hand-rolled copies of this grammar disagreed with each other. T
 | Keyword set | **The canonical nine GitHub documents.** Narrower downstream variants converge upward; a consumer accepting fewer keywords than GitHub silently under-links. |
 | Bare `closes: 123` | **Rejected — `#` is mandatory.** Downstream's acceptance was drift, not grammar: GitHub requires `#` for a same-repo closing reference, so accepting the bare number reports a link GitHub will not make. |
 | The `Refs` category | **A separate, non-closing keyword set**, surfaced through `parseReferenceList` with `closing: false`. Folding it into the closing set was the other available answer and it is wrong for the same reason as the row above. |
-| ReDoS posture | **Anchored keyword head, then an iterative tokenizer** over the list. No nested-quantifier mega-regex, so **no input truncation is needed** — contrast downstream's 10,000-character truncation, which is a silent semantic change (a long line's tail simply stops existing) adopted to defend a regex this package does not have. |
+| ReDoS posture | **A single left-to-right character scan** — the module contains no regular expressions at all, so worst-case time is linear by construction and **no input truncation is needed** — contrast downstream's 10,000-character truncation, which is a silent semantic change (a long line's tail simply stops existing) adopted to defend a regex this package does not have. |
 
 **One accepted behavior delta**, agreed downstream in advance: the kit's `[ \t]+` separator is tighter than their `\s+`. It is the same choice as the newline rule above — a whole-line dialect whose separator class contains newlines is not really a whole-line dialect.
 
