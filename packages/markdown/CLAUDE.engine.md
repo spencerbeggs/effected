@@ -33,7 +33,7 @@ array form would reintroduce the quadratic behavior the delimiter stack exists t
 prevent.
 
 `internal/entityMap.ts` is **generated** by `__test__/tools/generate-entities.ts`
-from the `entities` devDependency (MIT, data attributed), stamping the version it
+from the `entities` devDependency (BSD-2-Clause, data attributed), stamping the version it
 reads out of the installed package rather than a hand-typed one. The packed trie
 is an upstream internal that re-encodes across majors (v7 stole a bit from the
 branch count for an implicit-semicolon flag), so bumping it re-derives the

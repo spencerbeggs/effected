@@ -407,7 +407,7 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 			const raw = yield* client.paginate("GET /app/installations", {}).pipe(Effect.catch(appFailure("installation")));
 			return raw.map((entry) =>
 				Installation.make({
-					id: entry.id,
+					id: numericId(entry.id),
 					...(entry.account !== null && entry.account !== undefined && "login" in entry.account
 						? { account: entry.account.login }
 						: {}),
