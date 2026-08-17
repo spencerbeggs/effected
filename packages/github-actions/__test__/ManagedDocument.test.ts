@@ -7,8 +7,10 @@ const KEY = "release-validation";
 
 const fresh = (): ManagedDocument => Result.getOrThrow(ManagedDocument.parseResult({ namespace: NS, key: KEY }));
 
-const apply = (doc: ManagedDocument, entries: ReadonlyArray<readonly [string, string]>): ManagedDocument =>
-	Result.getOrThrow(doc.withRegionsResult(entries));
+const apply = (
+	doc: ManagedDocument,
+	entries: ReadonlyArray<readonly [key: string, content: string, meta?: Readonly<Record<string, string>>]>,
+): ManagedDocument => Result.getOrThrow(doc.withRegionsResult(entries));
 
 const failureOf = (result: Result.Result<ManagedDocument, ManagedDocumentError>): ManagedDocumentError => {
 	if (Result.isFailure(result)) {
@@ -168,6 +170,68 @@ describe("ManagedDocument", () => {
 			assert.include(error.message, 'region "body"');
 			const structural = new ManagedDocumentError({ kind: "unterminatedRegion", line: 3 });
 			assert.include(structural.message, "line 3");
+		});
+	});
+
+	describe("region metadata", () => {
+		it("meta round-trips verbatim through triples, regions and entry", () => {
+			const meta = { at: "2024-01-01T00:00:00Z", runId: "42" };
+			const doc = apply(fresh(), [["header", "the table", meta]]);
+			assert.deepStrictEqual(
+				doc.regions.map((region) => ({ key: region.key, meta: region.meta })),
+				[{ key: "header", meta }],
+			);
+			assert.deepStrictEqual(doc.entry("header"), Option.some({ content: "the table", meta }));
+			assert.deepStrictEqual(doc.entry("missing"), Option.none());
+			// Addressability is untouched: content-only reads see the same region.
+			assert.deepStrictEqual(doc.region("header"), Option.some("the table"));
+			// And a re-parse of the rendered text reads the same metadata back.
+			const reread = Result.getOrThrow(ManagedDocument.parseResult({ namespace: NS, key: KEY, text: doc.text }));
+			assert.deepStrictEqual(reread.entry("header"), Option.some({ content: "the table", meta }));
+		});
+
+		it("a two-tuple keeps today's behavior exactly, reporting empty meta", () => {
+			const doc = apply(fresh(), [["header", "plain"]]);
+			assert.include(doc.text, marker("BEGIN", "header"));
+			assert.deepStrictEqual(doc.entry("header"), Option.some({ content: "plain", meta: {} }));
+			// A triple with empty meta renders the identical document.
+			const withEmpty = apply(fresh(), [["header", "plain", {}]]);
+			assert.strictEqual(withEmpty.text, doc.text);
+		});
+
+		it("meta survives a write by a party that does not know about it", () => {
+			const meta = { owner: "run-a" };
+			const seeded = apply(fresh(), [
+				["header", "the table", meta],
+				["footer", "the link"],
+			]);
+			// A later caller updates ONLY the footer, never mentioning metadata.
+			const updated = apply(seeded, [["footer", "the NEW link"]]);
+			assert.deepStrictEqual(updated.entry("header"), Option.some({ content: "the table", meta }));
+			assert.deepStrictEqual(updated.region("footer"), Option.some("the NEW link"));
+		});
+
+		it("applying identical triples is byte-identical — suppression holds with meta", () => {
+			const meta = { at: "2024-01-01T00:00:00Z", runId: "42" };
+			const doc = apply(fresh(), [["header", "same", meta]]);
+			const again = apply(doc, [["header", "same", meta]]);
+			assert.strictEqual(again.text, doc.text);
+		});
+
+		it("invalidAttribute — a bad meta name fails typed, naming region and attribute", () => {
+			const error = failureOf(fresh().withRegionsResult([["header", "x", { "bad name": "v" }]]));
+			assert.strictEqual(error.kind, "invalidAttribute");
+			assert.strictEqual(error.key, "header", "the key is the consumer's region key, not the wire key");
+			assert.strictEqual(error.attribute, "bad name");
+			assert.include(error.message, 'attribute "bad name"');
+		});
+
+		it("invalidAttribute — a value carrying a quote or a line break fails typed", () => {
+			for (const value of ['say "hi"', "one\ntwo"]) {
+				const error = failureOf(fresh().withRegionsResult([["header", "x", { note: value }]]));
+				assert.strictEqual(error.kind, "invalidAttribute");
+				assert.strictEqual(error.attribute, "note");
+			}
 		});
 	});
 

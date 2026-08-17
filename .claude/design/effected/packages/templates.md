@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 95
 related:
   - ../effect-standards.md
@@ -37,7 +37,7 @@ The line matters because it decides, per symbol, whether something belongs here 
 
 **Boundary tier**, per the [dependency policy](../effect-standards.md#dependency-policy).
 
-- `effect` is the only peer. **No `@effected` edges and no external runtime dependencies.** The pure half imports `Schema`, `Data`, `Option` and `Result`; the service half adds `Context`, `Effect` and `Layer`.
+- `effect` is the only peer. **No `@effected` edges and no external runtime dependencies.** The pure half imports `Schema`, `Data`, `Option` and `Result`, plus `Effect` **as a value** in `Section.ts` alone — `Schema.withConstructorDefault` takes an effect, so the [attribute default](#attributes-ride-the-begin-marker) buys a value-level `Effect` import on the pure side. It is `effect`, not a new dependency, and it does not move the split; note it before reading the pure half's import list as evidence of anything.
 - `FileSystem` arrives in `R` from the consumer's platform layer — the walker / xdg / git pattern, free under [R3](../effect-standards.md#dependency-policy).
 - **`Path` is deliberately NOT required.** Paths are opaque strings handed straight to `FileSystem`; this package never joins, resolves or splits one. Requiring `Path` "for symmetry" would be surface a consumer has to satisfy for nothing. If a future member needs to derive a sibling path, `Path` joins `R` then and the change is recorded.
 - `@effect/platform-node` is a devDependency, for the integration suite.
@@ -54,7 +54,7 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 - `SectionDocument.ts` — **the pure core**: parse, inspect, reconcile, render; `SectionParseError`.
 - `SectionOutcome.ts` — the `SyncOutcome` / `CheckOutcome` unions.
 - `ManagedSection.ts` — the `Context.Service`, its layers, `SectionFileError`.
-- `internal/scan.ts` — the marker scanner (regex construction and escaping); `internal/reconcile.ts` — the spans and placeholder algorithm.
+- `internal/scan.ts` — the marker scanner (regex construction and escaping); `internal/reconcile.ts` — the spans and placeholder algorithm; `internal/attributes.ts` — the [attribute grammar](#attributes-ride-the-begin-marker), shared by renderer and scanner so the two cannot disagree.
 
 `SectionOutcome.ts` holds two unions rather than splitting them one per file: they are variants of one concept, share a module and reach nothing heavier than each other — the [grouped-statics carve-out](../effect-standards.md#no-barrel-re-exports) exactly as written.
 
@@ -66,7 +66,7 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 
 **The key is stored, rendered and compared verbatim, case-sensitively.** Rendering verbatim and matching exactly go together: an uppercasing renderer with case-sensitive keys would let two distinct keys produce one marker, and an uppercasing *transformation* on the schema would break the encoded-side round trip the [schema standards](../effect-standards.md#schema-standards) require. A file already carrying `SAVVY-LINT` markers is managed by declaring exactly that key. **This is the migration hazard for anyone porting from a predecessor whose marker formatting normalized case:** the emitted markers match nothing on disk, `check` reports every section absent and `sync` appends a second copy of every block beside the original — silent duplication, no compile error, and only round-tripping real files catches it. The fix is one documented line at id construction.
 
-**No custom `Equal`/`Hash`.** A predecessor compared *normalized* content — trimmed and whitespace-collapsed — which is a silent-no-op generator: a template change that only alters indentation compares equal, reports `Unchanged` and never reaches the file. Structural equality is used instead, with exactly one normalization ([line endings](#line-endings-are-a-first-class-invariant)) that exists to *preserve* idempotency rather than defeat drift detection. Schema-class equality recurses into nested class fields deeply, which was probed before any comparison code was written: the discriminating case is that the same key with a *different* `CommentStyle` compares `false`, so `syncAll` cannot silently merge two different-language blocks.
+**No custom `Equal`/`Hash`.** A predecessor compared *normalized* content — trimmed and whitespace-collapsed — which is a silent-no-op generator: a template change that only alters indentation compares equal, reports `Unchanged` and never reaches the file. Structural equality is used instead — over content **and** [marker attributes](#attributes-ride-the-begin-marker), neither of which is identity — with exactly one normalization ([line endings](#line-endings-are-a-first-class-invariant)) that exists to *preserve* idempotency rather than defeat drift detection. Schema-class equality recurses into nested class fields deeply, which was probed before any comparison code was written: the discriminating case is that the same key with a *different* `CommentStyle` compares `false`, so `syncAll` cannot silently merge two different-language blocks.
 
 ## The dialect owns the marker vocabulary
 
@@ -77,6 +77,26 @@ The corollary is a fail-loud guard: **a declared section whose comment style the
 **Marker injection is refused, not written.** If a section's content contains a line the scanner would read as a marker, rendering it produces a document that re-parses into a *different* set of sections — the block boundary moves and the next sync eats user content. `render` fails typed. Content is caller-supplied, and a template interpolating a user string is one substitution away from corrupting the file; this is the package's one genuine integrity guard.
 
 **Regex construction is escaped.** Prefix, suffix and phrase are all caller-supplied and all reach the scanning pattern; every one is escaped before interpolation. The compiled pattern is anchored per line, uses a bounded key character class and contains no nested quantifier, so scanning is linear in document length, and it is memoized per dialect instance.
+
+## Attributes ride the BEGIN marker
+
+A `BEGIN` marker may carry `name="value"` pairs between the phrase and the closing rule; an `END` never carries any. They exist for the one thing content cannot do: say something a reader — a *later run* — can act on **without opening the block**. The motivating case is a stamp identifying which run last wrote a region, read to decide whether writing again is allowed at all; encoding that in content would mean parsing a block to find out whether to rewrite it, and would make the metadata drift-visible prose rather than marker state.
+
+**Attributes participate in equality but never in identity.** Identity stays key plus comment style, so an attribute change **updates the block in place** — the alternative orphans the existing block and appends a second one, the duplication failure this package exists to prevent. Equality includes them, so changing only an attribute is real drift that reaches the file; excluding them would make a stamp unwritable, since the run that wanted to refresh it would compare `Unchanged`.
+
+**`attributes` is an always-present record, not an optional key**, and the optional shape was probed and rejected on a specific ground: a section parsed from a bare marker (field absent) and a section declared with `{}` compare **unequal** under class equality, so a consumer that never uses attributes would see permanent drift against every marker already on disk. `Schema.withConstructorDefault` fills the canonical empty record on both sides, and the scanner **omits** the field rather than passing `undefined`, so the default fires. Omitting the field and passing `{}` are the same section — that equivalence is the property to protect if this ever gets touched.
+
+**Emission is insertion-ordered; equality is not.** A rewrite renders pairs in the record's insertion order, which is the caller's declared order, while record equality is order-insensitive, so a marker a human reordered by hand carrying the same pairs is `Unchanged` and is left alone. The two rules together mean order is a rendering convention, never a drift signal.
+
+**The grammar is deliberately small and has no escaping.** Names match `[A-Za-z][A-Za-z0-9_-]*` — a leading digit, underscore or dash is refused, which is also what makes a `__proto__`-shaped name unrepresentable — and values are double-quoted and may contain neither `"` nor a line break. **No escape mechanism, by design:** an escape grammar is a second parser hiding inside the first, and every value refused here is precisely one the scanner could not have read back verbatim. A violation **fails typed at render** (`SectionRenderError`, reason `invalidAttribute`, naming the attribute), not at construction, because attribute names and values are runtime data and construction-time validation would turn a data problem into a defect.
+
+**The scanner reads the run as one loose group and validates it separately.** A repeated capture group would keep only its last pair, so the marker pattern captures the whole run lazily under a once-only optional group and `internal/attributes.ts` parses that capture afterwards. Three properties survive that: the pattern is still a **single lazy quantifier with no nested quantifier**, the CRLF lookahead is untouched, and the lazy interior is what lets a quoted value contain `---` without being mistaken for the closing rule.
+
+**The second pass is a hand-rolled character walk, not a second regex** — and that is a hardening decision, not a style one. The natural re-validation is an anchored `(pair)(sep pair)*$` pattern, and that shape backtracks **polynomially** on an adversarial near-miss: a run comes off a document line, which is untrusted and of unbounded length, so a near-match spoiled by one trailing character makes the engine re-partition the whole run. `parseAttributeRun` walks the run instead, touching each character exactly once, with the same grammar and the same refusals — a mangled pair, a duplicate name, an unterminated value, a trailing separator or a stray CR/LF all return `undefined`, meaning *this line is not a marker*. A megabyte of hostile line therefore costs a megabyte of work. Linear-in-input is the property the whole scanning surface holds: the marker pattern and `CommentStyle`'s prefix/suffix checks avoid nested quantifiers for the same reason, and a future "simplification" back into a regex would quietly reintroduce the class.
+
+**An unreadable run makes the line ordinary content, never a guessed marker.** A run that does not parse, a duplicate attribute name, or attributes on an `END` all mean *this line is not a marker* — and any structural ambiguity that creates (a `BEGIN` now unterminated, an `END` now orphaned) fails typed downstream, where [ambiguity already fails](#reconciliation), rather than being resolved by a guess in the scanner. The marker-injection guard mirrors that rule **exactly**: `render` refuses content only for lines the scanner would genuinely read back as markers, because refusing more than the scanner reads would reject content that round-trips fine.
+
+**Compatibility is one-way, and that is the consumer's constraint to hold.** A current scanner reads an old unattributed marker as it always did, but a scanner from before this feature does not recognize an attributed marker at all — the line falls out as ordinary content, and the block it opened stops being a managed section. So writing attributes into a file that other tooling manages is a decision, not a free addition.
 
 ## Reconciliation
 
@@ -93,7 +113,7 @@ The corollary is a fail-loud guard: **a declared section whose comment style the
 
 **Ambiguity fails; it is not resolved silently.** An unterminated `BEGIN`, an orphaned `END`, overlapping spans and a duplicate identity all fail typed with the offending line. A predecessor skipped an unterminated marker and picked the first `BEGIN`/`END` pair by `indexOf`, both silent wrong answers with a file-corrupting tail: a skipped marker means the next write appends a **second** copy of the section, and a duplicate means every sync updates the first copy while the stale second stays on disk forever. Under the [failure-versus-defect boundary](../effect-standards.md#input-hardening-standards) a malformed document is malformed *input*, so it fails through `E` and the user fixes their file. Declaring one identity twice in a **single call** fails the same way, on the same argument: two intentions for one block, and any choice between them is a guess.
 
-The algorithm is a bounded linear pass rather than a recursion, so the [nesting-depth cap](../effect-standards.md#input-hardening-standards) that governs the format packages has no analogue here. The hardening surface is the regex construction and the marker-injection guard, both above.
+The algorithm is a bounded linear pass rather than a recursion, so the [nesting-depth cap](../effect-standards.md#input-hardening-standards) that governs the format packages has no analogue here. The hardening surface is the regex construction, the attribute-run walk and the marker-injection guard, all above.
 
 ## Line endings are a first-class invariant
 
@@ -119,7 +139,7 @@ Only `parse` gets the `Result` primitive plus `Effect` twin pair, because only `
 
 ## Errors and outcomes
 
-Three typed errors, each defined in the module of the concept that raises it, none carrying a `reason: string` — see `src/`. `SectionParseError` names the ambiguity and the 1-based line (with the path filled in by the service, since the pure core has none); `SectionRenderError` names the refusal (marker in content, unrecognized comment style, duplicate declaration); `SectionFileError` carries `path`, `operation` and the underlying `PlatformError` **structurally** rather than stringified, because which half of a read-modify-write failed is what a consumer needs and a bare `PlatformError` does not say.
+Three typed errors, each defined in the module of the concept that raises it, none carrying a `reason: string` — see `src/`. `SectionParseError` names the ambiguity and the 1-based line (with the path filled in by the service, since the pure core has none); `SectionRenderError` names the refusal (marker in content, unrecognized comment style, duplicate declaration, [invalid attribute](#attributes-ride-the-begin-marker) — the last carrying the offending attribute's name as an optional key, since the other three name none); `SectionFileError` carries `path`, `operation` and the underlying `PlatformError` **structurally** rather than stringified, because which half of a read-modify-write failed is what a consumer needs and a bare `PlatformError` does not say.
 
 Use `Schema.Literals`, never the variadic `Schema.Literal`: the variadic form silently ignores every argument after the first, quietly narrowing a union to its first member (recorded in [walker.md](walker.md)).
 
@@ -156,6 +176,8 @@ Two mutation lessons generalize: dropping EOL normalization in `check` left the 
 ## Consumers
 
 - **[`@effected/github-actions`](github-actions.md)' `ManagedDocument`** — the in-kit consumer, and the one that tested the mechanism-versus-content line as a claim rather than a plan. It needed a marker-delimited PR comment or check summary whose regions an action rewrites while the human's prose survives, which is `SectionDocument` with three parameters fixed: HTML comment style, a `MANAGED REGION` phrase and namespaced wire keys. **It is a domain fixing of the dialect, not a second engine** — the region grammar, the line-ending invariant and the idempotence proof all stayed here, which is the outcome the split was designed for. Worth recording that the consumer wanted the dialect's parameters *narrowed*, not extended: nothing was missing from the mechanism.
+
+  [Marker attributes](#attributes-ride-the-begin-marker) are the one thing a later round *did* find missing, and the shape of that ask is the useful part. The consumer needed a run stamp readable from the marker line so a delayed re-run could see it had been overtaken — a decision about whether to write at all, which no amount of content can carry without parsing a block to find out whether to rewrite it. The mechanism absorbed it as marker syntax with an equality rule; the *meaning* of the pairs, including which keys constitute a stamp, stayed entirely with the consumer, which is the [mechanism-versus-content line](#mechanism-here-content-elsewhere) holding under pressure rather than by assertion.
 - **Marketplace and docs tooling** — the wrapped-comment case a line-prefix-only predecessor could not represent; managed blocks in Markdown.
 - Any consumer that writes into a user-owned file. This is the mechanism; it has no opinion about what goes in the block.
 

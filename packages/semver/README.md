@@ -23,7 +23,7 @@ Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas. `SemVer`
 
 The version parsers most projects reach for are lenient by default. They coerce `v1.2.3` and `=1.2.3` into a version, then hand back `null` — or throw — when they finally decide something is wrong, leaving you to reconstruct what failed and where. Once parsed, the result is a bag of numbers you stringify to store and re-parse to compare. This package inverts that. The class *is* the schema, so a version field anywhere in your own schemas decodes to a real `SemVer` and re-encodes to its canonical string with no glue code, and the operations you want live on the value you already have.
 
-Failures are `Schema.TaggedErrorClass` values you route with `Effect.catchTag`, each one structured rather than stringly: `InvalidVersionError` carries `input` and `position`, `UnsatisfiedRangeError` carries the range *and* every version that was available to match against it. The strictness is deliberate. Coercion is a decision about your data taken inside a library you did not write, and it is where version bugs hide. `Range.intersect` holds the same line: intersecting `^1.0.0` with `^2.0.0` does not quietly hand back a range that matches nothing, it fails with `UnsatisfiableConstraintError` carrying both constraints. Nothing here repairs your input behind your back.
+Failures are `Schema.TaggedError` values you route with `Effect.catchTag`, each one structured rather than stringly: `InvalidVersionError` carries `input` and `position`, `UnsatisfiedRangeError` carries the range *and* every version that was available to match against it. The strictness is deliberate. Coercion is a decision about your data taken inside a library you did not write, and it is where version bugs hide. `Range.intersect` holds the same line: intersecting `^1.0.0` with `^2.0.0` does not quietly hand back a range that matches nothing, it fails with `UnsatisfiableConstraintError` carrying both constraints. Nothing here repairs your input behind your back.
 
 ## Install
 
@@ -160,7 +160,7 @@ The two kinds of absence stay apart. `next` and `prev` fail with `VersionNotFoun
 
 ## Errors
 
-Every failure is a `Schema.TaggedErrorClass` routed with `Effect.catchTag`, carrying structured fields. The `message` getter is derived from those fields, never stored.
+Every failure is a `Schema.TaggedError` routed with `Effect.catchTag`, carrying structured fields. The `message` getter is derived from those fields, never stored.
 
 | Tag | Raised by | Carries |
 | --- | --------- | ------- |

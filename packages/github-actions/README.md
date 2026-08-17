@@ -193,12 +193,40 @@ const program = Effect.gen(function* () {
   const doc = yield* CheckDocument;
   yield* doc.report("build", CheckReport.make({ state: "running" }));
   yield* doc.report("build", CheckReport.make({ state: "pass", outcome: "clean" }));
-  yield* doc.flush;
+  return yield* doc.flush;
 });
-// one write carrying the final state; a render byte-identical to the last one writes nothing
+// "written"   — one write carrying the final state
+// "unchanged" — the render was byte-identical to the last one, so nothing was sent
+// "stale"     — a newer run owns the document; this pass was dropped (see below)
 ```
 
-The debounce is trailing with a max-wait, so a burst of reports coalesces into one write carrying the *final* state while a steady stream still surfaces progress. `CheckState` is the vocabulary both of them speak, and it is deliberately wider than GitHub's conclusion set — `running` is a state rather than the absence of one, and `user_interaction_required` names a pipeline waiting on a human. `projectCheckState` maps each onto the wire form GitHub wants, as a status plus a conclusion exactly when the status is `completed`.
+The debounce is trailing with a max-wait, so a burst of reports coalesces into one write carrying the *final* state while a steady stream still surfaces progress.
+
+A region can also carry metadata: `withRegions` takes `[key, content, meta]` triples, the pairs ride the region's own marker, and `entry(key)` reads them back verbatim. Metadata survives a writer that knows nothing about it — a region a call does not name keeps its content *and* its metadata — and never takes part in addressing a region, so changing it updates that region in place rather than growing a second one.
+
+`CheckDocument` uses exactly that to survive two runs writing one document — a re-run overlapping the delayed run it replaced. Give the layer this run's `stamp` and a sink that can `read` as well as `write`, and each pass reconciles against the live document instead of a private shadow of what this process last wrote:
+
+```ts
+import { CheckDocument } from "@effected/github-actions";
+import type { Effect } from "effect";
+
+declare const startedAt: string;
+declare const runId: string;
+declare const readComment: Effect.Effect<string | undefined>;
+declare const writeComment: (text: string) => Effect.Effect<void>;
+
+const layer = CheckDocument.layer({
+  namespace: "release-bot",
+  key: "checks",
+  render: (checks) => [...checks].map(([name, report]) => [name, report.state] as const),
+  sink: { write: writeComment, read: readComment },
+  stamp: { at: startedAt, runId }, // a per-run constant — mint it once at startup
+});
+```
+
+Every region the run writes then carries its `at` and `runId`, and a pass whose stamp is strictly older than the newest stamp already on the document is dropped rather than written — `flush` answers `"stale"` and the reconciler logs the drop once, at the transition. Equal stamps pass, so a run always may refine its own regions. Keeping the stamp constant is what preserves write suppression: the same run rendering the same state still produces byte-identical text.
+
+`CheckState` is the vocabulary both of them speak, and it is deliberately wider than GitHub's conclusion set — `running` is a state rather than the absence of one, and `user_interaction_required` names a pipeline waiting on a human. `projectCheckState` maps each onto the wire form GitHub wants, as a status plus a conclusion exactly when the status is `completed`.
 
 ## Testing
 
@@ -239,9 +267,9 @@ const TestOutputs = ActionOutputs.layerTest({
 - `OidcTokenIssuer` — the runner's OIDC token service, with unverified claim decoding for provenance predicates.
 - `ActionsIdentityToken` / `ActionsProvenance` — the `@effected/sbom` seam: `layer` serves that package's `IdentityToken` contract from the runner's issuer, and `capture` builds a `SlsaProvenance` predicate out of the runner's OIDC claims.
 - `GitHubMarkdown` — the escaping-safe writer for GitHub surfaces: `table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details` and `raw`, and the package's only importer of `@effected/markdown`.
-- `ManagedDocument` — marker-delimited named regions in text a human also edits, for a sticky comment or a managed pull request description; content outside the regions survives byte-for-byte.
+- `ManagedDocument` — marker-delimited named regions in text a human also edits, for a sticky comment or a managed pull request description; content outside the regions survives byte-for-byte, and each region can carry marker metadata that round-trips through `entry(key)` without ever addressing the region.
 - `CheckState` / `projectCheckState` — the kit's check vocabulary, wider than GitHub's conclusions, and its projection onto the check-run wire form.
-- `CheckDocument` — the debounced check-to-document reconciler: report states as they change, and one write lands carrying the final one.
+- `CheckDocument` — the debounced check-to-document reconciler: report states as they change, and one write lands carrying the final one. `stamp` plus a readable sink lets two runs share one document, dropping a strictly older run's pass instead of clobbering the newer one; `flush` reports `written`, `unchanged` or `stale`.
 - `ToolInstaller` — download, extract and cache a toolchain in the runner's tool cache, with no `@actions/tool-cache` dependency.
 - `BlobStore` — durable `get`/`put`/`has` over bytes plus a metadata channel, backed by `layerS3` (SigV4-signed, no `@aws-sdk/*` dependency) or `GitHubCacheBlobStore.layer` (the runner's own cache); `layerMemory` runs the real envelope framing for tests.
 

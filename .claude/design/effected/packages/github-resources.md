@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 93
 related:
   - github.md
@@ -31,6 +31,29 @@ A predecessor's branch error carried no structured "already exists" discriminant
 `GitBranch.upsert` and `GitTag.upsert` are the answer: create, and on an [already-exists](github-errors.md#four-errors-and-classification-happens-once) failure force-update. **One round trip in the common case, two in the raced one**, and the recovery still *resets* rather than inheriting a branch a concurrent creator rooted elsewhere, which is the semantics the workaround was defending. **Prefer the upsert over catching the discriminant yourself** — it exists so the library can implement these, not so consumers can re-derive them.
 
 **Absence is not an error.** An existence check degrades a not-found to `false`, and the option-returning read variants degrade it to none — the [`@effected/git`](git.md) invariant, same shape.
+
+## Say-once is a different idempotence from say-again
+
+`GitHubIssue.commentOnce` posts a marked comment **once, and never edits it**: find the marker, or create it. The guarantee is idempotence across *sequential* invocations — a re-run workflow, the motivating case — not mutual exclusion across concurrent ones, and the race that leaves is named below rather than implied away. It is the counterpart to `PullRequestComment.upsert`, not a variant of it, and the pair is worth stating together because a caller reaching for one usually thinks it wants the other. An upsert **edits in place**, which is right for a status comment that must converge on the current truth. A one-time announcement — "this shipped in release X" on the issue it closed — must **never** be rewritten: an edit either restates a fact that was true when it was said, or re-notifies everyone watching, and neither is what the sender meant.
+
+**The marker is the existence check**, appended to the body in exactly the spelling `upsert` uses, so a comment either member writes stays findable by the other. That shared spelling is precisely why this belongs in the library: two members formatting the same sentinel slightly differently is a duplicate comment on every run, and it is invisible until it has happened a dozen times.
+
+**The obvious wrong guess is cross-reference.** `isCrossReferencedBy` looks like the right question and cannot answer it: an issue reached through `linkedIssues` is cross-referenced by construction, from the moment the pull request named it, so the check is `true` before anything has been said. Only the marker answers "have I commented yet?" — recorded here because the cross-reference member's own docstring sends readers toward building this guard, and the guard is now the member.
+
+**The lookup paginates**, for the reason [every list read on this package does](#the-configuration-write-half): a first-page-only check on a busy issue finds no marker and announces again.
+
+**The remaining race is named rather than implied away.** GitHub offers no conditional create, so two runs that both miss the marker both post. The window is a page read wide and the failure is one duplicate comment; the honest posture is to document it on the member rather than let the name promise an atomicity the API cannot provide — which the docstring now does in those words, stating the check-then-create is **not atomic** and sending a caller who needs mutual exclusion to serialize externally. The result value is a `CommentOnceResult` carrying `wrote` **and** the comment either way, so a caller can report "already announced" without a second read.
+
+## The closing-reference grammar is a pure module, and it is two dialects
+
+`IssueReferences` is strings in, values out — no service, no layer, nothing but `effect` on its import graph. It models GitHub's nine closing keywords and the two dialects that actually occur, and the deliberate part is that there are **two**:
+
+- **Inline-in-prose** (`harvestIssueReferences`) scans running text — `"fixes #12 and closes #13"` — with mandatory whitespace and **no colon**, because that is the spelling GitHub's own scanner honours when it decides what a pull request closes. This is what a release pipeline harvests out of commit subjects and PR bodies.
+- **Bare-line** (`parseBareLineReference`) takes the whole trimmed line as the reference — `"Closes: #12"` — with an **optional** colon, because a generated references region writes one reference per line and the colon reads better there.
+
+**One regex for both is the tempting simplification and it is wrong in a way nobody would notice.** Accepting the colon inline would harvest references GitHub will *not* link, so a pipeline would report an issue as closing when merging the pull request leaves it open. The dialects differ because their producers differ — prose is written by humans for GitHub's scanner, the region is written by tooling for humans — and that is the rule to apply if a third dialect ever shows up.
+
+Two smaller decisions: an inline reference carries **offsets** and a bare-line one deliberately does not (the line *is* the reference, so an offset would be a constant restated), and a digit run outside the safe-integer range is **skipped rather than parsed**, since rounding it silently yields a different, existing issue number. Cross-repo (`owner/repo#N`) and full-URL references are **out of scope this round** — both are real GitHub spellings, neither dialect's consumers emit them, and guessing their shape would freeze an API nobody has driven.
 
 ## The hazard that costs production data
 

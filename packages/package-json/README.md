@@ -186,7 +186,7 @@ The `workspace:` range modifier is honored: `workspace:*` takes the bare version
 
 ## Errors
 
-Every failure is a `Schema.TaggedErrorClass` routed with `Effect.catchTag`. Causes are preserved structurally on a `Schema.Defect` field — a `PackageDecodeError` hands you the `SchemaError` issue tree, not `String(error)`.
+Every failure is a `Schema.TaggedError` routed with `Effect.catchTag`. Causes are preserved structurally on a `Schema.Defect` field — a `PackageDecodeError` hands you the `SchemaError` issue tree, not `String(error)`.
 
 | Tag | Means |
 | --- | ----- |

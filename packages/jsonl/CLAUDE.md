@@ -164,7 +164,7 @@ the next session does not rediscover them:
 - **A stale `issues.json` looks identical to a fresh one on `warnings`/
   `errors`.** The tell is the `suppressed` count: this package's prod build
   suppresses exactly 10 `ae-forgotten-export` entries (one `_base` symbol per
-  `Schema.Class`/`Schema.TaggedErrorClass` factory). A lower count on a build
+  `Schema.Class`/`Schema.TaggedError` factory). A lower count on a build
   you did not just run cold is a stale artifact, not a clean one — force a
   rebuild (`rm -rf dist .turbo && pnpm build --filter @effected/jsonl --force`)
   before trusting it.
@@ -179,7 +179,7 @@ the next session does not rediscover them:
 
 `savvy.build.ts` carries the narrow `{ messageId: "ae-forgotten-export",
 pattern: "_base" }` suppression for the synthesized `Schema.Class` /
-`Schema.TaggedErrorClass` heritage types. **Never widen it** — an internal type
+`Schema.TaggedError` heritage types. **Never widen it** — an internal type
 named on a public signature is a different symbol and stays un-masked.
 
 Gate on `pnpm build --filter @effected/jsonl`, never the raw

@@ -307,6 +307,17 @@ compare unequal and hash differently); the `optionalKey` present-vs-absent and
 comparator for a class tree: `Equal.equals` already is one. (It is also what
 keeps assertions stable across the identity churn the table above documents.)
 
+Two `Schema.Record` rows, probed at rc.109 with discriminating controls: a
+plain `Schema.Record(String, String)` field compares structurally and
+**order-insensitively** (same pairs in different insertion orders are equal; a
+value-change control is unequal), and the `optionalKey` present-vs-absent rule
+above applies to records too — a PRESENT `{}` and an ABSENT key compare
+**unequal**. The design consequence: a field whose contract is "absent ≡
+empty" must be always-present with a constructor default
+(`Schema.Record(...).pipe(Schema.withConstructorDefault(Effect.succeed({})))`),
+because the `optionalKey` shape makes an explicit-`{}` value drift forever
+against an omitted one.
+
 **But nothing is frozen.** A `Schema.Class` instance is a plain object at
 runtime; `Schema.ts` calls `Object.freeze` nowhere. Validation happens at
 construction and never again, so a mutated instance keeps **stale derived and
@@ -410,6 +421,15 @@ the **identifier in the first call** and fields in the second, while
 `Schema.TaggedClass<Self>()("Tag", fields)` takes an **optional identifier
 first** and the tag+fields in the second. Mixing them up produces confusing
 inference errors, not a clear TS message.
+
+For any other field, the general form is `Schema.withConstructorDefault`, and
+its argument is an **Effect**, not a thunk and not an `Option`
+(`defaultValue: Effect.Effect<...>`, `Schema.ts:5810`):
+`field.pipe(Schema.withConstructorDefault(Effect.succeed(value)))`. Passing a
+thunk like `() => Option.some(value)` typechecks against nothing helpful and
+dies at construction with the unhelpful defect `Fiber.runLoop: Not a valid
+effect`. The default runs per construction — a `succeed({})` object is NOT
+shared across instances (probed rc.109).
 
 ## A `Schema.check` narrowing is ERASED from the published type
 

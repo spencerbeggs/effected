@@ -38,7 +38,7 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
   are `Fn.dual` statics on the owning class (`SemVer.gt`, `Range.filter`, ...).
 - **Construct with `.make()`**, never `new` — `make` runs validation.
   `SemVer.of(1, 2, 3)` is the positional convenience form.
-- **Errors** are `Schema.TaggedErrorClass` with a `message` getter derived from
+- **Errors** are `Schema.TaggedError` with a `message` getter derived from
   structured fields; never store a preformatted message.
 - **`Effect.fn("Name.op")` spans on fallible public boundaries only** — `parse`
   statics, `Range.intersect`, every fallible `VersionCache` method.

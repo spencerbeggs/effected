@@ -46,6 +46,8 @@ export {
 	type CheckDocumentOptions,
 	type CheckDocumentShape,
 	type CheckDocumentSink,
+	CheckDocumentStamp,
+	type CheckFlushOutcome,
 	CheckReport,
 } from "./CheckDocument.js";
 export {

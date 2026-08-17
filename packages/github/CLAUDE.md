@@ -93,7 +93,12 @@ surface this replaced cost four consumer repos sixteen cast sites.
   `BotIdentity`, `RepoRef`, `RetryPolicy` — reach nothing but `effect` and need
   no layer. `BotIdentity.signoff` renders the DCO trailer, because a commit
   through the Git Data API bypasses `git commit -s` and a hand-built trailer
-  fails late as a red DCO check.
+  fails late as a red DCO check. `IssueReferences` is the same thing without the
+  classes: plain functions over strings.
+- **Pure-but-GitHub-shaped belongs here, not in a consumer.** The grammar is
+  GitHub's, so a consumer re-deriving it re-derives a vendor rule — the
+  duplication this package exists to end — and hosting it costs nothing, because
+  it links no client. Its two dialects are in `@./CLAUDE.resources.md`.
 - **Resource-service rules, including the rebase-ordering landmine that cost a
   consumer its release PR, are in `@./CLAUDE.resources.md`.**
 

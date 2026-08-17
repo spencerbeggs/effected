@@ -112,7 +112,7 @@ failure rather than degrading to an empty provider.
 ## The error ladder
 
 The headline port work: one stringly mega-error became **eight
-`Schema.TaggedErrorClass` types** with per-method unions narrowed to what can
+`Schema.TaggedError` types** with per-method unions narrowed to what can
 actually happen (`ConfigLoadError`, `ConfigReadError`, `ConfigWriteError`,
 `ConfigSaveError`, `ConfigUpdateError`). Causes and schema issues are carried
 **structurally** via `Schema.Defect()` — never stringified.

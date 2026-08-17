@@ -18,7 +18,7 @@ govern them live in the parent.
   `versionOf(packageName)` returns the concrete version, range modifier
   stripped. Ships `WorkspaceResolver.noop`.
 - `DependencyResolutionError` (`src/WorkspaceResolver.ts`) —
-  `Schema.TaggedErrorClass` with `specifier` and `cause: Schema.Defect()`. Both
+  `Schema.TaggedError` with `specifier` and `cause: Schema.Defect()`. Both
   resolvers raise it.
 - `CatalogAssemblyError` (`src/CatalogAssemblyError.ts`) — the typed failure of
   catalog *assembly* (`source: manifest | catalog | hooks`), relocated from

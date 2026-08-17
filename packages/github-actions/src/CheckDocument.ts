@@ -29,45 +29,173 @@ export class CheckReport extends Schema.Class<CheckReport>("CheckReport")({
 }) {}
 
 /**
- * Raised when the check document cannot be regenerated or written.
+ * Raised when the check document cannot be regenerated, read back or written.
  *
  * @remarks
  * `render` — projecting the registry onto the document failed, almost always
  * because a reported `detail` contains a line the region scanner would read
  * as a marker; the underlying `ManagedDocumentError` rides in `cause`.
- * `sink` — the consumer's write effect failed; its error rides in `cause`.
- * Callers of `flush` branch on `kind`; the background reconciler never fails
- * a fiber with this — it logs and retries on the next report.
+ * `read` — the sink's read-back of the live document failed; its error rides
+ * in `cause`. `sink` — the consumer's write effect failed; its error rides in
+ * `cause`. Callers of `flush` branch on `kind`; the background reconciler
+ * never fails a fiber with this — it logs and retries on the next report.
  *
  * @public
  */
 export class CheckDocumentError extends Schema.TaggedError<CheckDocumentError>()("CheckDocumentError", {
-	/** Which half failed: regenerating the document, or writing it. */
-	kind: Schema.Literals(["render", "sink"]),
+	/** Which phase failed: regenerating the document, reading it back, or writing it. */
+	kind: Schema.Literals(["render", "read", "sink"]),
 	/** The underlying failure. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
 		return this.kind === "render"
 			? "The check document could not be regenerated from the reported state"
-			: "Writing the check document failed";
+			: this.kind === "read"
+				? "Reading the check document's current text failed"
+				: "Writing the check document failed";
 	}
 }
+
+/**
+ * A run's identity for staleness ordering: when it started and which run it
+ * is.
+ *
+ * @remarks
+ * Two delayed workflows can race for one document — a re-run's stale pass
+ * must not overwrite a newer run's regions. The ordering is **total**:
+ * `at` compares first (as epoch milliseconds when both sides `Date.parse`
+ * cleanly, lexically otherwise), `runId` breaks ties (numerically when both
+ * parse to finite numbers, lexically otherwise), and two equal stamps compare
+ * as at-least-as-recent — a run may refine its own regions.
+ *
+ * @public
+ */
+export class CheckDocumentStamp extends Schema.Class<CheckDocumentStamp>("CheckDocumentStamp")({
+	/** When the run started — ideally an ISO-8601 instant. */
+	at: Schema.String,
+	/** The run's identifier — on GitHub, `GITHUB_RUN_ID`. */
+	runId: Schema.String,
+}) {
+	/**
+	 * Is `incoming` allowed to overwrite regions stamped `existing`?
+	 *
+	 * @remarks
+	 * Total and reflexive: equal stamps answer `true`, so a run always may
+	 * rewrite what it wrote itself. Only a strictly older `incoming` answers
+	 * `false`.
+	 */
+	static isAtLeastAsRecent(
+		incoming: { readonly at: string; readonly runId: string },
+		existing: { readonly at: string; readonly runId: string },
+	): boolean {
+		const at = compareAt(incoming.at, existing.at);
+		if (at !== 0) {
+			return at > 0;
+		}
+		return compareRunId(incoming.runId, existing.runId) >= 0;
+	}
+}
+
+/** Epoch order when both sides parse as dates, lexical otherwise. */
+const compareAt = (left: string, right: string): number => {
+	const leftEpoch = Date.parse(left);
+	const rightEpoch = Date.parse(right);
+	if (!Number.isNaN(leftEpoch) && !Number.isNaN(rightEpoch)) {
+		return leftEpoch === rightEpoch ? 0 : leftEpoch < rightEpoch ? -1 : 1;
+	}
+	return left === right ? 0 : left < right ? -1 : 1;
+};
+
+/**
+ * Numeric order when both sides are non-blank finite numbers, lexical
+ * otherwise.
+ *
+ * @remarks
+ * The blank guard exists because `Number("")` and `Number("  ")` are both a
+ * finite `0` — without it a blank `runId` (plausible when `GITHUB_RUN_ID` is
+ * unset in a local or self-hosted run) would compare numerically equal to
+ * `"0"` and outrank `"-1"`. Blank sides fall to the lexical branch, which
+ * stays total and deterministic.
+ */
+const compareRunId = (left: string, right: string): number => {
+	if (left.trim() !== "" && right.trim() !== "") {
+		const leftNumber = Number(left);
+		const rightNumber = Number(right);
+		if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
+			return leftNumber === rightNumber ? 0 : leftNumber < rightNumber ? -1 : 1;
+		}
+	}
+	return left === right ? 0 : left < right ? -1 : 1;
+};
+
+/** The stamp a document's own regions carry, when they carry one. */
+const stampOf = (meta: Readonly<Record<string, string>>): { at: string; runId: string } | undefined => {
+	const at = meta.at;
+	const runId = meta.runId;
+	return at === undefined || runId === undefined ? undefined : { at, runId };
+};
+
+/** The most recent stamp among a document's own regions, if any carry one. */
+const maxStampOf = (
+	regions: ReadonlyArray<{ readonly meta: Readonly<Record<string, string>> }>,
+): { at: string; runId: string } | undefined => {
+	let max: { at: string; runId: string } | undefined;
+	for (const region of regions) {
+		const stamp = stampOf(region.meta);
+		if (stamp !== undefined && (max === undefined || CheckDocumentStamp.isAtLeastAsRecent(stamp, max))) {
+			max = stamp;
+		}
+	}
+	return max;
+};
+
+/**
+ * What one reconcile pass did.
+ *
+ * @remarks
+ * `written` — the render changed and the sink wrote it. `unchanged` — the
+ * render was byte-identical, so no write was issued. `stale` — the document
+ * already carries regions from a more recent run, so the pass was dropped
+ * without writing (only possible when {@link CheckDocumentOptions.stamp} is
+ * set). A plain literal union: callers that ignored `flush`'s old `void`
+ * success stay compile-compatible.
+ *
+ * @public
+ */
+export type CheckFlushOutcome = "written" | "unchanged" | "stale";
 
 /**
  * How a rendered document leaves the process: the narrow sink contract.
  *
  * @remarks
- * One rendered document in, one write effect out — nothing else. That is
- * what lets the sticky PR comment (`PullRequestComment.upsert`), the PR
- * description (`PATCH` on the pull request) and a test's recording `Ref` all
- * fit the same reconciler. The success value is ignored; a failure surfaces
- * as {@link CheckDocumentError} with `kind: "sink"`. Provide any services the
- * write needs when constructing the sink — the reconciler runs it as given.
+ * The function form is one rendered document in, one write effect out —
+ * nothing else. That is what lets the sticky PR comment
+ * (`PullRequestComment.upsert`), the PR description (`PATCH` on the pull
+ * request) and a test's recording `Ref` all fit the same reconciler. The
+ * write's success value is ignored; a failure surfaces as
+ * {@link CheckDocumentError} with `kind: "sink"`. Provide any services the
+ * effects need when constructing the sink — the reconciler runs them as
+ * given.
+ *
+ * The object form adds an optional `read`: the live document's current text,
+ * fetched at the start of every pass and used as the base to reconcile
+ * against instead of the last text this process wrote. `undefined` means
+ * "nothing there yet" — a fresh document. That is what lets two runs share
+ * one document: each pass sees what the *other* run wrote, not a private
+ * shadow. A failed read surfaces as `kind: "read"`. A bare function is
+ * exactly `{ write }`.
  *
  * @public
  */
-export type CheckDocumentSink = (rendered: string) => Effect.Effect<unknown, unknown>;
+export type CheckDocumentSink =
+	| ((rendered: string) => Effect.Effect<unknown, unknown>)
+	| {
+			/** Write one rendered document. */
+			readonly write: (rendered: string) => Effect.Effect<unknown, unknown>;
+			/** The live document's current text, or `undefined` for none yet. */
+			readonly read?: Effect.Effect<string | undefined, unknown> | undefined;
+	  };
 
 /**
  * Options for {@link CheckDocument.layer}.
@@ -100,6 +228,24 @@ export interface CheckDocumentOptions {
 	/** Where the rendered document goes. */
 	readonly sink: CheckDocumentSink;
 	/**
+	 * This run's identity, for staleness ordering against other runs.
+	 *
+	 * @remarks
+	 * A **per-run constant** — mint it once at startup, never per pass. When
+	 * present, every region a pass writes carries `at`/`runId` metadata, and a
+	 * pass whose stamp is strictly older than the most recent stamp already on
+	 * the document is **dropped** rather than written, so a delayed re-run can
+	 * never clobber a newer run's regions. Equal stamps pass: a run may refine
+	 * its own regions.
+	 *
+	 * The constant is what preserves write suppression: the same run rendering
+	 * the same state produces byte-identical text (stamp included), so no
+	 * write is issued. The accepted corner is that a content-identical pass
+	 * therefore does not refresh the document's stamp to "now" — suppression
+	 * wins — which is sound because only strictly-older stamps drop.
+	 */
+	readonly stamp?: { readonly at: string; readonly runId: string } | undefined;
+	/**
 	 * Debounce parameters: `quiet` is the trailing settle window, `maxWait`
 	 * the staleness bound under a steady stream of reports. Defaults: 500
 	 * milliseconds and 3 seconds.
@@ -108,8 +254,9 @@ export interface CheckDocumentOptions {
 		| { readonly quiet?: Duration.Input | undefined; readonly maxWait?: Duration.Input | undefined }
 		| undefined;
 	/**
-	 * How long one sink write may run before the pass fails with
-	 * `kind: "sink"`. Default: 30 seconds.
+	 * How long one sink write — or one read-back, when the sink carries a
+	 * `read` — may run before the pass fails with `kind: "sink"` (or
+	 * `kind: "read"`). Default: 30 seconds.
 	 *
 	 * @remarks
 	 * The reconciler serializes passes behind one permit, and the finalizer's
@@ -146,9 +293,11 @@ export interface CheckDocumentShape {
 	 * @remarks
 	 * Rendering unchanged state issues no write. Call it at the end of a run;
 	 * the layer's finalizer also runs it, so the last burst of reports lands
-	 * even when the scope closes inside the quiet window.
+	 * even when the scope closes inside the quiet window. The outcome says
+	 * what the pass did — `written`, `unchanged` or `stale` — and callers
+	 * that ignore it stay exactly as they were.
 	 */
-	readonly flush: Effect.Effect<void, CheckDocumentError>;
+	readonly flush: Effect.Effect<CheckFlushOutcome, CheckDocumentError>;
 }
 
 /**
@@ -225,29 +374,77 @@ export class CheckDocument extends Context.Service<CheckDocument, CheckDocumentS
 				const versionRef = yield* Ref.make(0);
 				const signal = yield* Latch.make(false);
 				const gate = yield* Semaphore.make(1);
+				const passTimeout = options.sinkTimeout ?? "30 seconds";
+				// Normalized once: the bare-function sink is exactly `{ write }`.
+				const sink = typeof options.sink === "function" ? { write: options.sink } : options.sink;
+				const stamp = options.stamp;
+				const stampMeta = stamp === undefined ? undefined : { at: stamp.at, runId: stamp.runId };
+				const staleLoggedRef = yield* Ref.make(false);
 
 				const reconcile = Effect.fn("CheckDocument.reconcile")(function* () {
 					const checks = yield* Ref.get(checksRef);
-					const current = yield* Ref.get(writtenRef);
+					// With a readable sink each pass reconciles against the LIVE
+					// document — what another run wrote, not this process's shadow.
+					// `undefined` is "nothing there yet": a fresh document. The same
+					// timeout bounds the read as the write, and for the same reason:
+					// this pass holds the single permit.
+					const current =
+						sink.read === undefined
+							? yield* Ref.get(writtenRef)
+							: ((yield* sink.read.pipe(
+									Effect.timeout(passTimeout),
+									Effect.mapError((cause) => new CheckDocumentError({ kind: "read", cause })),
+								)) ?? "");
 					const document = yield* ManagedDocument.parse({
 						namespace: options.namespace,
 						key: options.key,
 						text: current,
 					}).pipe(Effect.mapError((cause) => new CheckDocumentError({ kind: "render", cause })));
+					if (stamp !== undefined) {
+						// The drop rule: regions already stamped by a more recent run
+						// win; a strictly older pass must not clobber them. Regions
+						// carrying no stamp are ignored — they are not evidence of a
+						// newer run.
+						const existing = maxStampOf(document.regions);
+						if (existing !== undefined && !CheckDocumentStamp.isAtLeastAsRecent(stamp, existing)) {
+							yield* Effect.annotateCurrentSpan("outcome", "stale");
+							// Once stale, every later pass of this run is stale too — the
+							// stamp is a per-run constant. INFO on the transition only;
+							// repeats (the debounced pass plus an explicit flush is the
+							// common pair) log at debug so a chatty run does not repeat
+							// the same drop per report.
+							const alreadyLogged = yield* Ref.getAndSet(staleLoggedRef, true);
+							yield* (alreadyLogged ? Effect.logDebug : Effect.logInfo)(
+								"CheckDocument pass dropped: the document carries a more recent run's regions",
+								{
+									incomingAt: stamp.at,
+									incomingRunId: stamp.runId,
+									existingAt: existing.at,
+									existingRunId: existing.runId,
+								},
+							);
+							return "stale" as const;
+						}
+						yield* Ref.set(staleLoggedRef, false);
+					}
+					const entries = options.render(checks);
 					const next = yield* document
-						.withRegions(options.render(checks))
+						.withRegions(
+							stampMeta === undefined ? entries : entries.map(([key, content]) => [key, content, stampMeta] as const),
+						)
 						.pipe(Effect.mapError((cause) => new CheckDocumentError({ kind: "render", cause })));
 					if (next.text === current) {
-						return;
+						return "unchanged" as const;
 					}
 					// The timeout is load-bearing, not defensive: this pass holds the
 					// single permit, and the finalizer's last flush waits on it — an
 					// unbounded hung sink would stall reconciling AND scope teardown.
-					yield* options.sink(next.text).pipe(
-						Effect.timeout(options.sinkTimeout ?? "30 seconds"),
+					yield* sink.write(next.text).pipe(
+						Effect.timeout(passTimeout),
 						Effect.mapError((cause) => new CheckDocumentError({ kind: "sink", cause })),
 					);
 					yield* Ref.set(writtenRef, next.text);
+					return "written" as const;
 				});
 
 				// One pass at a time: the debounce fiber and a manual `flush` must

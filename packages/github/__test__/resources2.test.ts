@@ -690,6 +690,82 @@ describe("GitHubIssue REST", () => {
 	);
 });
 
+describe("GitHubIssue.commentOnce", () => {
+	const marker = CommentMarker.make({ namespace: "acme", key: "once" });
+	const comment = (id: number, body: string) => ({ id, body, html_url: `https://x/${id}` });
+
+	it.effect("skips when the marker is already there — even on a later page", () =>
+		Effect.gen(function* () {
+			const { value, script } = yield* drive(
+				[
+					{
+						status: 200,
+						body: [comment(1, "chatter"), comment(2, "more chatter")],
+						headers: linkNext("https://api.github.com/repositories/1/issues/5/comments?page=2"),
+					},
+					{ status: 200, body: [comment(3, `already said\n\n${marker.html}`)] },
+				],
+				GitHubIssue,
+				GitHubIssue,
+				(issues) => issues.commentOnce(5, marker, "the body"),
+			);
+			// Found on page TWO: a single-page read would have posted a duplicate.
+			assert.isFalse(value.wrote);
+			assert.strictEqual(value.comment.id, 3);
+			assert.strictEqual(script.count(), 2);
+			// Create-or-skip, never edit: nothing was posted or patched.
+			assert.isTrue(script.calls.every((call) => call.method === "GET"));
+		}),
+	);
+
+	it.effect("creates with the marker appended exactly as upsert formats it", () =>
+		Effect.gen(function* () {
+			const { value, script } = yield* drive(
+				[
+					{ status: 200, body: [comment(1, "unrelated chatter")] },
+					{ status: 201, body: comment(9, `the body\n\n${marker.html}`) },
+				],
+				GitHubIssue,
+				GitHubIssue,
+				(issues) => issues.commentOnce(5, marker, "the body"),
+			);
+			assert.isTrue(value.wrote);
+			assert.strictEqual(value.comment.id, 9);
+			const post = script.calls[1];
+			assert.strictEqual(post?.method, "POST");
+			assert.strictEqual(post.path, "/repos/acme/widget/issues/5/comments");
+			// The exact `upsert` spelling, so either member's comment is findable
+			// by the other's marker check.
+			const sent = (JSON.parse(post.body ?? "{}") as Record<string, unknown>).body;
+			assert.strictEqual(sent, `the body\n\n${marker.html}`);
+			// The pinned api-version rides on the read AND the write.
+			for (const call of script.calls) {
+				assert.strictEqual(call.headers["x-github-api-version"], "2026-03-10");
+			}
+		}),
+	);
+
+	it.effect("passes the client's GitHubError through untouched", () =>
+		Effect.gen(function* () {
+			const { base } = harness([{ status: 404, body: { message: "Not Found" } }]);
+			const error = yield* Effect.flip(
+				Effect.provide(
+					Effect.flatMap(GitHubIssue, (issues) => issues.commentOnce(5, marker, "the body")),
+					GitHubIssue.layer.pipe(Layer.provideMerge(base)),
+				),
+			);
+			assert.strictEqual(error.kind, "notFound");
+		}),
+	);
+
+	it("makeTest dies loudly on the unstubbed member, naming it", () => {
+		assert.throws(
+			() => GitHubIssue.makeTest({}).commentOnce(1, marker, "x"),
+			/commentOnce\(\) was called but not stubbed/,
+		);
+	});
+});
+
 describe("GitHubIssue GraphQL documents", () => {
 	it.effect("linkedIssues distinguishes human links from inferred ones", () =>
 		Effect.gen(function* () {

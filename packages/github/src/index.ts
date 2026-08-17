@@ -55,7 +55,7 @@ export {
 } from "./GitHubCommit.js";
 export { GitHubContent, type GitHubContentShape } from "./GitHubContent.js";
 export { GitHubError, GitHubErrorKind } from "./GitHubError.js";
-export { GitHubIssue, type GitHubIssueShape, IssueInfo, LinkedIssue } from "./GitHubIssue.js";
+export { CommentOnceResult, GitHubIssue, type GitHubIssueShape, IssueInfo, LinkedIssue } from "./GitHubIssue.js";
 export { GitHubRelease, type GitHubReleaseShape, ReleaseAsset, ReleaseInfo } from "./GitHubRelease.js";
 export {
 	type AppliedSettings,
@@ -78,6 +78,14 @@ export {
 	versionFromTag,
 } from "./GitTag.js";
 export { GitHubGraphQLError, GraphQLDocument, GraphQLErrorEntry } from "./GraphQL.js";
+export {
+	type BareLineReference,
+	CLOSING_KEYWORDS,
+	type ClosingKeyword,
+	type IssueReference,
+	harvestIssueReferences,
+	parseBareLineReference,
+} from "./IssueReferences.js";
 export {
 	MergeMethod,
 	PullRequest,

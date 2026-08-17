@@ -30,7 +30,48 @@ are shaped that way.
   an import.
 - **`ManagedDocument` is not a second region engine.** The `BEGIN`/`END` grammar,
   the line-ending invariant and the idempotence proof stay in `@effected/templates`,
-  which has them under test.
+  which has them under test. Region **metadata** rides that same mechanism and adds
+  no meaning here: `withRegions` takes a `[key, content, meta?]` triple beside the
+  unchanged two-tuple, `entry(key)` answers content and metadata together, and
+  `meta` is **always present** (`{}` for a bare marker) so no reader branches on
+  absence. Metadata is **not addressable** — a region is found by key alone, so
+  changing metadata updates it in place. `invalidAttribute` reports the consumer's
+  region key, never the namespaced wire key.
+
+## The staleness guard: two runs, one document (2026-08-17)
+
+The reconciler shipped assuming it was the only writer — each pass reconciled
+against **the last text this process wrote** — so a re-run racing a slow original
+rewrote over it and the report flickered between two runs' states. Two opt-in,
+separable mechanisms close it: reading fixes *what a pass reconciles against*,
+stamping fixes *whether a pass may write at all*.
+
+- **The sink widened to `{write, read?}`; a bare function is exactly `{write}`,
+  so no caller moved.** With a `read`, every pass fetches the live text and
+  reconciles against that. It carries the **same timeout bound as the write**, for
+  the same non-defensive reason: the pass holds the single permit and the
+  finalizer's last flush waits on it, so an unbounded read stalls scope teardown.
+  A failed read is `kind: "read"` — "GitHub would not tell us the current comment"
+  is a different problem from "the state could not be rendered".
+- **`stamp` is a per-run constant, minted once at startup, never per pass.** That
+  is what preserves write suppression: the same run rendering the same state
+  produces byte-identical text, stamp included. Per-pass "now" would turn the
+  cheapest property in the reconciler into a write per debounce window. The
+  accepted corner is that a content-identical pass does not refresh the document's
+  stamp — sound because only a **strictly older** stamp drops.
+- **`CheckDocumentStamp.isAtLeastAsRecent` is total and reflexive.** Equal stamps
+  pass, so a run may refine its own regions; a comparator with an "I cannot tell"
+  case would have to choose between dropping and clobbering on garbage input, and
+  both are wrong somewhere. Unstamped regions are ignored — they are evidence of a
+  run that never opted in, not of a newer one.
+- **`flush` answers `written | unchanged | stale`**, and a drop announces itself
+  **once, at the transition** (INFO), repeats at debug: the stamp is constant, so a
+  stale run stays stale and a per-report line would bury the one fact in the log a
+  person reads when the report looks wrong.
+- **The guard narrows the window; it does not make the write atomic.** A
+  read-then-write still races inside one pass, and nothing on GitHub's comment API
+  offers a conditional write to build a compare-and-swap on. Never restate it as
+  the stronger claim.
 
 ## Attestation: `ActionsProvenance.capture` owns the OIDC-claims rename once
 

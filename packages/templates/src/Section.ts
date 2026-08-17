@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { CommentStyle } from "./CommentStyle.js";
 
 /**
@@ -52,9 +52,22 @@ export class SectionId extends Schema.Class<SectionId>("SectionId")({
 	/** How this section's markers are commented out. */
 	commentStyle: CommentStyle,
 }) {
-	/** Pair this identity with the content a tool wants inside it. */
-	section(content: string): Section {
-		return Section.make({ key: this.key, commentStyle: this.commentStyle, content });
+	/**
+	 * Pair this identity with the content a tool wants inside it.
+	 *
+	 * @remarks
+	 * `attributes` become `name="value"` pairs on the section's BEGIN marker,
+	 * emitted in the record's insertion order. They are metadata, not identity:
+	 * see {@link Section} for the grammar and the equality rules.
+	 */
+	section(content: string, attributes?: Readonly<Record<string, string>>): Section {
+		return Section.make({
+			key: this.key,
+			commentStyle: this.commentStyle,
+			content,
+			// An absent optional argument must be OMITTED, not passed as undefined.
+			...(attributes === undefined ? {} : { attributes }),
+		});
 	}
 }
 
@@ -71,6 +84,21 @@ export class SectionId extends Schema.Class<SectionId>("SectionId")({
  * parse time rather than inside equality, so `Equal.equals` stays honest for
  * a consumer comparing two sections directly.
  *
+ * `attributes` are `name="value"` pairs carried on the BEGIN marker — metadata
+ * a tool wants readable from the marker line itself, without opening the
+ * content. They **participate in equality** (an attribute change is real
+ * drift) but **never in identity**: the section a marker names is decided by
+ * key and comment style alone, so changing an attribute updates a block in
+ * place rather than orphaning it. Equality over attributes is record equality
+ * — order-insensitive, so two sections carrying the same pairs in different
+ * insertion orders compare equal — while an actual rewrite renders the pairs
+ * in the record's insertion order. Omitting the field and passing `{}` are
+ * the same section: the constructor defaults to an empty record.
+ *
+ * Attribute names must match `[A-Za-z][A-Za-z0-9_-]*` and values may not
+ * contain `"` or a line break; violations fail typed at render, not here, so
+ * runtime data can never turn construction into a defect.
+ *
  * @public
  */
 export class Section extends Schema.Class<Section>("Section")({
@@ -80,15 +108,17 @@ export class Section extends Schema.Class<Section>("Section")({
 	commentStyle: CommentStyle,
 	/** Everything between the markers, exclusive of the boundary line breaks. */
 	content: Schema.String,
+	/** The BEGIN marker's `name="value"` pairs. Empty when the marker carries none. */
+	attributes: Schema.Record(Schema.String, Schema.String).pipe(Schema.withConstructorDefault(Effect.succeed({}))),
 }) {
 	/** This section's identity, without its content. */
 	get id(): SectionId {
 		return SectionId.make({ key: this.key, commentStyle: this.commentStyle });
 	}
 
-	/** The same section carrying different content. */
+	/** The same section carrying different content. Attributes are preserved. */
 	withContent(content: string): Section {
-		return Section.make({ key: this.key, commentStyle: this.commentStyle, content });
+		return Section.make({ key: this.key, commentStyle: this.commentStyle, content, attributes: this.attributes });
 	}
 }
 

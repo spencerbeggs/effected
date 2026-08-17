@@ -1,9 +1,9 @@
 # Resource services — @effected/github
 
 Child context file for the domain half: one service per GitHub noun, the
-configuration-write six, and the landmines a write can step on. The
-package-wide rules live in the parent; this file is what a resource author
-needs on top of them.
+configuration-write six, the pure closing-reference grammar, and the landmines a
+write can step on. The package-wide rules live in the parent; this file is what a
+resource author needs on top of them.
 
 **Parent:** [CLAUDE.md](./CLAUDE.md)
 **Design depth:**
@@ -100,3 +100,46 @@ empty diff, and GitHub auto-closes it. A consumer lost its release PR to that
 ~3-second window while the run went green. Build the commit first (`get` the
 target's `treeSha` → `createTree` → `createCommit` with the target as parent)
 and `upsert` **once**, to the finished sha.
+
+## Say-once is a different idempotence from say-again
+
+`GitHubIssue.commentOnce` creates or skips and **never edits**; `upsert` edits in
+place. Choose by what the comment *is*: a status comment must converge on the
+current truth, a one-time announcement ("shipped in release X" on the issue it
+closed) must never be rewritten — an edit either restates a fact that was true
+when it was said, or re-notifies everyone watching.
+
+- **The marker is the existence check**, appended in exactly `upsert`'s spelling
+  so a comment either member writes stays findable by the other. Two spellings of
+  one sentinel is a duplicate comment every run, invisible until it has happened
+  a dozen times.
+- **Not `isCrossReferencedBy`** — an issue reached through `linkedIssues` is
+  cross-referenced from the moment the pull request named it, so that check is
+  `true` before anything has been said. Only the marker answers "have I commented
+  yet?".
+- **The lookup paginates**, like every list read here: a first-page-only check on
+  a busy issue announces again.
+- **The remaining race is named, not designed away.** GitHub offers no
+  conditional create, so two runs that both miss the marker both post; the cost is
+  one duplicate comment. `CommentOnceResult` carries `wrote` **and** the comment
+  either way, so "already announced" needs no second read.
+
+## The closing-reference grammar is two dialects on purpose
+
+`IssueReferences` is strings in, values out — no service, no layer, nothing but
+`effect` on its graph — and it carries **two** dialects because their producers
+differ:
+
+- `harvestIssueReferences` scans running prose (`fixes #12 and closes #13`),
+  whitespace mandatory and **no colon**, because that is the spelling GitHub's own
+  scanner honours when it decides what a pull request closes.
+- `parseBareLineReference` takes a whole trimmed line (`Closes: #12`), colon
+  **optional**, because a generated references region writes one per line.
+
+**One regex for both is the tempting simplification and it fails invisibly**:
+accepting the colon inline harvests references GitHub will *not* link, so a
+pipeline reports an issue as closing that merging leaves open. Apply that rule
+if a third dialect appears. An inline reference carries offsets and a bare-line
+one deliberately does not, and a digit run past the safe-integer range is
+**skipped, never rounded** into a different, existing issue. Cross-repo and
+full-URL spellings are out of scope until a consumer emits them.

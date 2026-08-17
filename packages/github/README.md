@@ -101,6 +101,45 @@ const program = Effect.gen(function* () {
 
 `GitTag.latestSemver` walks tags and picks the newest version-shaped one in a single pass, over `@effected/semver`'s synchronous comparator — no round trip per candidate. `PullRequest.upsert` and `PullRequestComment.upsert` (a marker-tagged sticky comment) follow the same one-call-one-intent shape.
 
+## Issues and closing references
+
+`GitHubIssue` covers issues: read, list, create, close, comment, and the GraphQL side that answers which issues a pull request closes. `commentOnce` is the create-or-skip counterpart to `PullRequestComment.upsert` — it posts a marked comment and never edits one, which is what you want for an announcement that would read as a rewrite of history if it changed after the fact:
+
+```ts
+import { CommentMarker, GitHubIssue } from "@effected/github";
+import { Effect } from "effect";
+
+const marker = CommentMarker.make({ namespace: "release-bot", key: "shipped" });
+
+const program = Effect.gen(function* () {
+  const issues = yield* GitHubIssue;
+  return yield* issues.commentOnce(1873, marker, "Shipped in the release just published.");
+});
+// CommentOnceResult — `wrote: true` when this call posted the comment,
+// `wrote: false` when the marker was already there and nothing was sent.
+// `comment` is the marked comment either way.
+```
+
+The existence check pages the issue's comments to the end and matches the marker in `upsert`'s exact spelling, so a comment either member writes stays findable by the other. It is a look-before-write: two runs racing on the same issue can both see no marker and both post, so treat the marker as the record rather than the check as a lock.
+
+Whether a run should comment at all usually turns on which issues a pull request closes, and that is a grammar rather than an API call. `IssueReferences` is that grammar as plain functions — no service, no layer, nothing but strings in — in the two dialects consumers actually write:
+
+```ts
+import { harvestIssueReferences, parseBareLineReference } from "@effected/github";
+
+console.log(harvestIssueReferences("Fixes #12 and closes #13."));
+// [ { issueNumber: 12, keyword: "fixes", start: 0, end: 9 },
+//   { issueNumber: 13, keyword: "closes", start: 14, end: 24 } ]
+
+console.log(parseBareLineReference("Closes: #12"));
+// Option.some({ issueNumber: 12, keyword: "closes" })
+
+console.log(parseBareLineReference("closes #12 for real"));
+// Option.none() — the bare-line dialect takes the whole line or nothing
+```
+
+`harvestIssueReferences` reads the **inline-in-prose** dialect: one of the nine closing keywords (`CLOSING_KEYWORDS`) followed by whitespace and `#<number>`, anywhere in the text, no colon — the spelling GitHub itself scans a pull request body for. Duplicates come back as written, because whether `fixes #1, fixes #1` means one intent or two is the caller's question. `parseBareLineReference` reads the **bare-line** dialect, where the whole trimmed line is the reference and the colon is optional — the shape a generated references block writes, one per line. Cross-repo (`owner/repo#12`) and full-URL references are out of scope.
+
 ## Repository configuration
 
 Six services cover the half of a repository that is policy rather than content: `RepositorySecret`, `RepositoryVariable`, `Ruleset`, `DeploymentEnvironment`, `RepositorySecurity` and `CodeScanning`. They are shaped for a program applying the same configuration across a fleet, so every list read paginates to the end and a truncated page never becomes a wrong decision.
@@ -233,6 +272,8 @@ const TestClient = GitHubClient.layerFixture(fixtures);
 - `GitBranch` / `GitTag` — Git Database API refs, with `upsert` collapsing the create-or-reset dance to one call and `GitTag.latestSemver` picking the newest version-shaped tag in one pass.
 - `CheckRun` — `withCheckRun` concludes on every exit path; `CheckRunOutput.truncated()` cuts rendered output to GitHub's byte limits.
 - `PullRequest` / `PullRequestComment` — upserts for both, `listFiles` answering with the same full `CommitFile` records a commit read returns, `headSha`/`baseSha` on `PullRequestInfo`, plus `CommentMarker` for finding a sticky comment again.
+- `GitHubIssue` — issues and their comments, including `commentOnce` for a marked comment that is posted exactly once and never edited, and `linkedIssues` for what a pull request closes.
+- `IssueReferences` — GitHub's nine closing keywords as pure functions: `harvestIssueReferences` for references inline in prose, `parseBareLineReference` for one-per-line generated ones.
 - `GitHubRelease` — releases and asset uploads, including the one route (`uploadAsset`, with the endpoint's optional display label) outside GitHub's generated endpoint map.
 - `RepositorySecret` / `RepositoryVariable` — repository and environment secrets and variables, with the sealed-box encryption GitHub's secrets API demands kept in one module nothing else imports.
 - `Ruleset` / `DeploymentEnvironment` / `RepositorySecurity` / `CodeScanning` — the rest of the configuration tier: rulesets matched by name and scope, idempotent environment writes, the three security toggles GitHub keeps off the repository endpoint, and CodeQL default setup with the language detection that gates it.

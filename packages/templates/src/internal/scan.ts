@@ -11,6 +11,7 @@
 import type { CommentStyle } from "../CommentStyle.js";
 import { PlacedSection, Section } from "../Section.js";
 import type { Eol, SectionDialect } from "../SectionDialect.js";
+import { parseAttributeRun } from "./attributes.js";
 
 /** The ways a document can be structurally unreadable. */
 export const SCAN_FAILURE_REASONS = [
@@ -87,6 +88,8 @@ interface MarkerHit {
 	readonly style: CommentStyle;
 	readonly start: number;
 	readonly end: number;
+	/** The BEGIN marker's parsed attribute pairs, in document order. */
+	readonly attributes?: Record<string, string>;
 }
 
 /** The identity two sections must share to be duplicates of each other. */
@@ -103,6 +106,23 @@ const collectHits = (text: string, dialect: SectionDialect): ReadonlyArray<Marke
 			if (start === undefined || seen.has(start)) {
 				continue;
 			}
+			// The loosely-captured attribute run decides whether this line is a
+			// marker at all. An END never carries attributes, and a run that does
+			// not parse cleanly is not a marker — the line is ordinary content,
+			// and any structural ambiguity that creates (an END now orphaned, a
+			// BEGIN now unterminated) fails typed downstream rather than being
+			// resolved by a guess here.
+			const run = match[3];
+			let attributes: Record<string, string> | undefined;
+			if (run !== undefined) {
+				if (match[1] === "END") {
+					continue;
+				}
+				attributes = parseAttributeRun(run);
+				if (attributes === undefined) {
+					continue;
+				}
+			}
 			seen.add(start);
 			hits.push({
 				kind: match[1] === "BEGIN" ? "BEGIN" : "END",
@@ -110,6 +130,8 @@ const collectHits = (text: string, dialect: SectionDialect): ReadonlyArray<Marke
 				style: matcher.style,
 				start,
 				end: start + match[0].length,
+				// An absent optional field must be OMITTED, not set to undefined.
+				...(attributes === undefined ? {} : { attributes }),
 			});
 		}
 	}
@@ -159,6 +181,10 @@ export const scan = (text: string, dialect: SectionDialect): ScanResult => {
 					key: open.key,
 					commentStyle: open.style,
 					content: normalizeEol(inner),
+					// Omitted when the marker carries none: the constructor default
+					// fills the canonical empty record, so a bare marker and an
+					// explicit `attributes: {}` are the same section under equality.
+					...(open.attributes === undefined ? {} : { attributes: open.attributes }),
 				}),
 				start: open.start,
 				end: hit.end,
