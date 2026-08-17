@@ -1,6 +1,6 @@
 {
 	"name": "@effected/github",
-	"version": "0.6.0",
+	"version": "0.6.1",
 	"private": true,
 	"description": "Typed GitHub REST and GraphQL services over the octokit core request surface, with app auth and resource helpers.",
 	"keywords": ["github", "octokit", "rest", "graphql", "app-auth", "effect", "effected"],
