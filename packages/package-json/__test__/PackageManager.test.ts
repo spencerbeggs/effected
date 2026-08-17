@@ -226,7 +226,7 @@ describe("PackageManager consolidation", () => {
 		);
 		// The control: the assertion discriminates, and is not satisfied by the
 		// unrestricted brand the shared schema narrows.
-		assert.notStrictEqual(PackageManager.fields.integrity.value, IntegrityHash);
+		assert.notStrictEqual<unknown>(PackageManager.fields.integrity.value, IntegrityHash);
 	});
 
 	// The version half is a shared VALUE too since it became
