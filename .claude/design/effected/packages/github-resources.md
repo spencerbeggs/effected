@@ -34,7 +34,7 @@ A predecessor's branch error carried no structured "already exists" discriminant
 
 ## Say-once is a different idempotence from say-again
 
-`GitHubIssue.commentOnce` posts a marked comment **exactly once**: find the marker, or create it. It is the counterpart to `PullRequestComment.upsert`, not a variant of it, and the pair is worth stating together because a caller reaching for one usually thinks it wants the other. An upsert **edits in place**, which is right for a status comment that must converge on the current truth. A one-time announcement — "this shipped in release X" on the issue it closed — must **never** be rewritten: an edit either restates a fact that was true when it was said, or re-notifies everyone watching, and neither is what the sender meant.
+`GitHubIssue.commentOnce` posts a marked comment **once, and never edits it**: find the marker, or create it. The guarantee is idempotence across *sequential* invocations — a re-run workflow, the motivating case — not mutual exclusion across concurrent ones, and the race that leaves is named below rather than implied away. It is the counterpart to `PullRequestComment.upsert`, not a variant of it, and the pair is worth stating together because a caller reaching for one usually thinks it wants the other. An upsert **edits in place**, which is right for a status comment that must converge on the current truth. A one-time announcement — "this shipped in release X" on the issue it closed — must **never** be rewritten: an edit either restates a fact that was true when it was said, or re-notifies everyone watching, and neither is what the sender meant.
 
 **The marker is the existence check**, appended to the body in exactly the spelling `upsert` uses, so a comment either member writes stays findable by the other. That shared spelling is precisely why this belongs in the library: two members formatting the same sentinel slightly differently is a duplicate comment on every run, and it is invisible until it has happened a dozen times.
 
@@ -42,7 +42,7 @@ A predecessor's branch error carried no structured "already exists" discriminant
 
 **The lookup paginates**, for the reason [every list read on this package does](#the-configuration-write-half): a first-page-only check on a busy issue finds no marker and announces again.
 
-**The remaining race is named rather than implied away.** GitHub offers no conditional create, so two runs that both miss the marker both post. The window is a page read wide and the failure is one duplicate comment; the honest posture is to document it on the member rather than let the name promise an atomicity the API cannot provide. The result value is a `CommentOnceResult` carrying `wrote` **and** the comment either way, so a caller can report "already announced" without a second read.
+**The remaining race is named rather than implied away.** GitHub offers no conditional create, so two runs that both miss the marker both post. The window is a page read wide and the failure is one duplicate comment; the honest posture is to document it on the member rather than let the name promise an atomicity the API cannot provide — which the docstring now does in those words, stating the check-then-create is **not atomic** and sending a caller who needs mutual exclusion to serialize externally. The result value is a `CommentOnceResult` carrying `wrote` **and** the comment either way, so a caller can report "already announced" without a second read.
 
 ## The closing-reference grammar is a pure module, and it is two dialects
 

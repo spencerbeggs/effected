@@ -107,12 +107,24 @@ const compareAt = (left: string, right: string): number => {
 	return left === right ? 0 : left < right ? -1 : 1;
 };
 
-/** Numeric order when both sides are finite numbers, lexical otherwise. */
+/**
+ * Numeric order when both sides are non-blank finite numbers, lexical
+ * otherwise.
+ *
+ * @remarks
+ * The blank guard exists because `Number("")` and `Number("  ")` are both a
+ * finite `0` — without it a blank `runId` (plausible when `GITHUB_RUN_ID` is
+ * unset in a local or self-hosted run) would compare numerically equal to
+ * `"0"` and outrank `"-1"`. Blank sides fall to the lexical branch, which
+ * stays total and deterministic.
+ */
 const compareRunId = (left: string, right: string): number => {
-	const leftNumber = Number(left);
-	const rightNumber = Number(right);
-	if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
-		return leftNumber === rightNumber ? 0 : leftNumber < rightNumber ? -1 : 1;
+	if (left.trim() !== "" && right.trim() !== "") {
+		const leftNumber = Number(left);
+		const rightNumber = Number(right);
+		if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
+			return leftNumber === rightNumber ? 0 : leftNumber < rightNumber ? -1 : 1;
+		}
 	}
 	return left === right ? 0 : left < right ? -1 : 1;
 };

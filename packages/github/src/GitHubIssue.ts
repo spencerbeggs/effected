@@ -147,13 +147,19 @@ export interface GitHubIssueShape {
 	/** Post a comment. */
 	readonly comment: (number: number, body: string) => Effect.Effect<number, GitHubError, Repo>;
 	/**
-	 * Post a marked comment exactly once: create it, or skip if it exists.
+	 * Post a marked comment once: create it, or skip if it already exists.
 	 *
 	 * @remarks
 	 * Create-or-skip, **never edit** — the counterpart to
 	 * `PullRequestComment.upsert`, which edits in place. The marker is appended
 	 * to the body exactly as `upsert` formats it, so a comment either member
 	 * writes stays findable by the other.
+	 *
+	 * The check-then-create is **not atomic** — GitHub offers no conditional
+	 * create, so two callers racing the same issue can both observe no marker
+	 * and both post. The guard is idempotence across *sequential* invocations
+	 * (a re-run workflow, the motivating case), not mutual exclusion across
+	 * concurrent ones; a caller needing the latter must serialize externally.
 	 *
 	 * The existence check is the comment itself: the issue's comments are
 	 * paginated and the first body carrying the marker means skip. That is the

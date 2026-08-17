@@ -322,6 +322,17 @@ describe("CheckDocument", () => {
 			assert.isTrue(CheckDocumentStamp.isAtLeastAsRecent(stamp("beta", "1"), stamp("alpha", "2")));
 			assert.isFalse(CheckDocumentStamp.isAtLeastAsRecent(stamp("alpha", "2"), stamp("beta", "1")));
 		});
+
+		it("treats a blank runId lexically, never as the number zero", () => {
+			const at = "2024-01-01T00:00:00Z";
+			// Number("") is a finite 0 — without the blank guard "" would compare
+			// numerically equal to "0" and outrank "-1".
+			assert.isFalse(CheckDocumentStamp.isAtLeastAsRecent(stamp(at, ""), stamp(at, "0")));
+			assert.isTrue(CheckDocumentStamp.isAtLeastAsRecent(stamp(at, "0"), stamp(at, "")));
+			assert.isTrue(CheckDocumentStamp.isAtLeastAsRecent(stamp(at, "-1"), stamp(at, "")));
+			assert.isTrue(CheckDocumentStamp.isAtLeastAsRecent(stamp(at, ""), stamp(at, "")));
+			assert.isFalse(CheckDocumentStamp.isAtLeastAsRecent(stamp(at, " "), stamp(at, "0")));
+		});
 	});
 
 	describe("the staleness guard", () => {

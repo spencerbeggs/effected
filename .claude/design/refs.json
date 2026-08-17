@@ -154,7 +154,7 @@
 		{
 			"source": "packages/github-actions/CLAUDE.md",
 			"target": ".claude/design/effected/packages/github-actions-reporting.md",
-			"hash": "2ada61848d8a2b2c22d9549e5d247bacf9b735dea0f41fd57516d5afa22c1099",
+			"hash": "bbeaf7de43e84dd5d30f474b7fb84c26800d53d04ff05f80e25c6675da7dc410",
 			"recordedAt": "2026-08-17"
 		},
 		{
@@ -190,7 +190,7 @@
 		{
 			"source": "packages/github-actions/CLAUDE.reporting.md",
 			"target": ".claude/design/effected/packages/github-actions-reporting.md",
-			"hash": "2ada61848d8a2b2c22d9549e5d247bacf9b735dea0f41fd57516d5afa22c1099",
+			"hash": "bbeaf7de43e84dd5d30f474b7fb84c26800d53d04ff05f80e25c6675da7dc410",
 			"recordedAt": "2026-08-17"
 		},
 		{
@@ -226,7 +226,7 @@
 		{
 			"source": "packages/github/CLAUDE.md",
 			"target": ".claude/design/effected/packages/github-resources.md",
-			"hash": "e4b6e4d55aaa6a99549b77ab834505898c32bcaccf534c1b153702d4a6e9706f",
+			"hash": "2a9a1e89dfd6db551af0756308be2956e03206f289169ab49f9905649a11745c",
 			"recordedAt": "2026-08-17"
 		},
 		{
@@ -244,7 +244,7 @@
 		{
 			"source": "packages/github/CLAUDE.resources.md",
 			"target": ".claude/design/effected/packages/github-resources.md",
-			"hash": "e4b6e4d55aaa6a99549b77ab834505898c32bcaccf534c1b153702d4a6e9706f",
+			"hash": "2a9a1e89dfd6db551af0756308be2956e03206f289169ab49f9905649a11745c",
 			"recordedAt": "2026-08-17"
 		},
 		{
@@ -400,7 +400,7 @@
 		{
 			"source": "packages/templates/CLAUDE.md",
 			"target": ".claude/design/effected/packages/templates.md",
-			"hash": "0c1e39a3d84c8001a79798f5ebf9963f986190351a86576af718d4062b40daa0",
+			"hash": "9c34a20142217f1600bd347de6f00300f9e858f7c2ed0373c243c5281ecf278c",
 			"recordedAt": "2026-08-17"
 		},
 		{

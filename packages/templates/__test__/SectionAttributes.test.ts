@@ -244,6 +244,15 @@ describe("marker attributes", () => {
 			assert.strictEqual(parseFailure(text).reason, "orphanedEnd");
 		});
 
+		it("treats an adversarial near-miss run as content, at any length", () => {
+			// The backtracking shape a validating regex would melt on: one valid
+			// pair, then a long tail that is almost-but-never a second pair. The
+			// run parser is a single linear walk, so this is just a big line of
+			// prose — the whole document is content, not a marker.
+			const hostile = beginWith("k", `a="v"${" a".repeat(20_000)}`);
+			assert.strictEqual(parse(lines(hostile, "")).sections.length, 0);
+		});
+
 		it("treats an END marker carrying attributes as content, so the section is unterminated", () => {
 			const text = lines(begin("k"), "x", `# --- END k MANAGED SECTION a="1" ---`, "");
 			assert.strictEqual(parseFailure(text).reason, "unterminatedSection");

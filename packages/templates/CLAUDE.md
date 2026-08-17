@@ -146,11 +146,18 @@ instead of by a guess in the scanner. The marker-injection guard mirrors that
 rule exactly — refusing more than the scanner reads back would reject content
 that round-trips fine.
 
-**The run is captured as one loose group, then re-validated anchored** (a
-repeated capture group keeps only its last pair), as a single lazy quantifier
-under a once-only `(?:…)?`. That keeps the pattern free of nested quantifiers,
-leaves the CRLF lookahead untouched, and is what lets a quoted value contain
-`---` without being read as the closing rule.
+**The run is captured as one loose group, then validated by a hand-rolled
+single-pass walk — never a second regex.** The marker pattern takes the whole run
+in one group (a repeated capture group keeps only its last pair) as a single lazy
+quantifier under a once-only `(?:…)?`: no nested quantifiers, the CRLF lookahead
+untouched, and a quoted value may contain `---` without being read as the closing
+rule. `parseAttributeRun` then walks it character by character. The anchored
+`(pair)(sep pair)*$` pattern that used to do this backtracks **polynomially** on
+adversarial near-miss runs, and these runs come off untrusted document lines
+(CodeQL flagged it). The walk is the same grammar with the same refusals —
+mangled pair, duplicate name, unterminated value — touching each character
+exactly once, so a megabyte of hostile line costs a megabyte of work. Do not
+"simplify" it back into a regex.
 
 **Attributed markers are a one-way compatibility break.** A scanner predating
 the feature does not recognize one at all — the line falls out as ordinary

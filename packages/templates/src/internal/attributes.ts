@@ -11,20 +11,16 @@
 /** The attribute name grammar. No leading digit, underscore or dash. */
 export const ATTRIBUTE_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/;
 
-/**
- * A whole attribute run, fully anchored: one or more `name="value"` pairs
- * separated by whitespace. The scanner captures the run as a single loose
- * group and validates it here — a repeated capture group in the marker regex
- * would keep only its last match.
- */
-const ATTRIBUTE_RUN = /^[A-Za-z][A-Za-z0-9_-]*="[^"\r\n]*"(?:[ \t]+[A-Za-z][A-Za-z0-9_-]*="[^"\r\n]*")*$/;
-
-/** One pair, for extraction after {@link parseAttributeRun} has validated the run. */
-const ATTRIBUTE_PAIR = /([A-Za-z][A-Za-z0-9_-]*)="([^"\r\n]*)"/g;
-
 /** True when a value can appear inside an attribute's double quotes verbatim. */
 export const isValidAttributeValue = (value: string): boolean =>
 	!value.includes('"') && !value.includes("\n") && !value.includes("\r");
+
+const isNameStart = (code: number): boolean => (code >= 65 && code <= 90) || (code >= 97 && code <= 122); // A-Z a-z
+
+const isNameChar = (code: number): boolean =>
+	isNameStart(code) || (code >= 48 && code <= 57) || code === 95 || code === 45; // 0-9 _ -
+
+const isSeparator = (code: number): boolean => code === 32 || code === 9; // space, tab
 
 /**
  * Parse a captured attribute run, or refuse it.
@@ -37,20 +33,74 @@ export const isValidAttributeValue = (value: string): boolean =>
  *
  * Document order is preserved: the returned record's insertion order is the
  * order the pairs appear in the marker.
+ *
+ * A hand-rolled single pass rather than a validating regex: the run comes off
+ * an untrusted document line, and the natural `(pair)(sep pair)*$` pattern
+ * backtracks polynomially on hostile near-misses. This walk touches each
+ * character exactly once, so a megabyte of adversarial line costs a megabyte
+ * of work.
  */
 export const parseAttributeRun = (run: string): Record<string, string> | undefined => {
-	if (!ATTRIBUTE_RUN.test(run)) {
-		return undefined;
-	}
 	const attributes: Record<string, string> = {};
-	// `matchAll` clones the regex internally, so the shared `lastIndex` of the
-	// `g`-flagged pattern never leaks between calls.
-	for (const match of run.matchAll(ATTRIBUTE_PAIR)) {
-		const name = match[1] ?? "";
+	const length = run.length;
+	let index = 0;
+	let first = true;
+	while (index < length) {
+		if (!first) {
+			// Between pairs: one or more spaces/tabs.
+			if (!isSeparator(run.charCodeAt(index))) {
+				return undefined;
+			}
+			while (index < length && isSeparator(run.charCodeAt(index))) {
+				index += 1;
+			}
+			if (index >= length) {
+				// A trailing separator is not part of a valid captured run.
+				return undefined;
+			}
+		}
+		first = false;
+		// Name: [A-Za-z][A-Za-z0-9_-]*
+		if (!isNameStart(run.charCodeAt(index))) {
+			return undefined;
+		}
+		const nameStart = index;
+		index += 1;
+		while (index < length && isNameChar(run.charCodeAt(index))) {
+			index += 1;
+		}
+		const name = run.slice(nameStart, index);
+		// `="`
+		if (index + 1 >= length || run.charCodeAt(index) !== 61 || run.charCodeAt(index + 1) !== 34) {
+			return undefined;
+		}
+		index += 2;
+		// Value: every character up to the closing quote. The scanner only hands
+		// this function single-line text, but refuse a stray CR/LF regardless so
+		// the grammar cannot drift from the renderer's refusal.
+		const valueStart = index;
+		while (index < length) {
+			const code = run.charCodeAt(index);
+			if (code === 34) {
+				break;
+			}
+			if (code === 10 || code === 13) {
+				return undefined;
+			}
+			index += 1;
+		}
+		if (index >= length) {
+			// Unterminated value.
+			return undefined;
+		}
+		const value = run.slice(valueStart, index);
+		index += 1; // consume the closing quote
 		if (Object.hasOwn(attributes, name)) {
 			return undefined;
 		}
-		attributes[name] = match[2] ?? "";
+		attributes[name] = value;
 	}
-	return attributes;
+	// An empty run is not a run — the marker regex only captures non-empty text,
+	// but keep the contract honest for direct callers.
+	return first ? undefined : attributes;
 };
