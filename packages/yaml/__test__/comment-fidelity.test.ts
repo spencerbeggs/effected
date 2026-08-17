@@ -699,6 +699,66 @@ describe("comment fidelity (#127)", () => {
 			);
 		});
 
+		describe("comment slots surfaced by the PR #384 review", () => {
+			// Each of these is a distinct missing or mis-shared slot. All four
+			// are byte-intact round trips: the source shapes are legal YAML a
+			// consumer writes, and a format pass has no licence to move or drop
+			// any of them.
+
+			it("keeps a blank line on the side of the marker it was written on", () => {
+				// One shared `lastLeadingCommentOffset` embedded the blank below
+				// an AFTER-marker comment into the PRE-marker block, moving it
+				// across the marker — and the result was not even a fixed point.
+				const source = "# a\n---\n# b\n\nx: 1\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual(out, source);
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+
+			it("keeps an after-marker comment when the document has no content", () => {
+				// `headerForDocument` was already taken by the pre-marker run, and
+				// there is no content node to lead, so the after-marker run fell
+				// through both branches and was discarded.
+				const source = "# a\n---\n# b\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual((out.match(/#/g) ?? []).length, 2);
+				assert.include(out, "# a");
+				assert.include(out, "# b");
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+
+			it("leaves a value's trailing comment on the value's line under a leading block", () => {
+				// The key line routed through `entryTrailing`, which reaches past
+				// an absent key comment to the VALUE's — printing it on the key
+				// line and then skipping the value's own.
+				const source = "a:\n  # lead\n  1 # vc\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual(out, source);
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+
+			it("keeps a key-line comment on an ALIAS key's line", () => {
+				// `keyIsSimple` rejected every non-scalar, but the stringifier
+				// emits an alias key in implicit form, so the key does own its
+				// line and the comment belongs on it.
+				const source = "a: &x 1\n*x : # c\n  2\n";
+				const out = YamlFormat.formatToString(source);
+				assert.include(out, "# c");
+				assert.notInclude(out, "2 # c");
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+
+			it("emits a marker-LESS header over a scalar root", () => {
+				// The header is stored on the root node itself for a scalar root,
+				// and the emission slot was gated on a `---` marker being present,
+				// so without one the comment was captured and dropped.
+				const source = "# h\n42\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual(out, source);
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+		});
+
 		describe("explicit-key pairs emit their value's leading comment (#348)", () => {
 			// Every sibling branch of the block-mapping stringifier consults the
 			// value node's own `commentBefore`; the explicit-key (`? k` / `: v`)
@@ -722,6 +782,9 @@ describe("comment fidelity (#127)", () => {
 
 			it("reaches its fixed point on the FIRST format pass", () => {
 				const once = YamlFormat.formatToString("? - seq1\n: # lala\n - #lala\n  seq2\n");
+				// Pin the bytes too, not just the idempotence: asserting only
+				// `f(f(x)) === f(x)` stays green no matter how `f(x)` drifts.
+				assert.strictEqual(once, "? - seq1\n:\n  #lala\n  - seq2\n  # lala\n");
 				assert.strictEqual(YamlFormat.formatToString(once), once);
 			});
 

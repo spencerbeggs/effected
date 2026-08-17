@@ -6,7 +6,7 @@
 // `FlowComposers` in `state.ts`) so this module never imports `flow.ts`.
 
 import type { CollectionStyle, ScalarStyle, YamlNode } from "../../YamlNode.js";
-import { YamlMap, YamlPair, YamlScalar, YamlSeq } from "../../YamlNode.js";
+import { YamlAlias, YamlMap, YamlPair, YamlScalar, YamlSeq } from "../../YamlNode.js";
 import type { CstNode } from "../cst.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import type { CommentFields, EscapedComment } from "./comments.js";
@@ -1088,6 +1088,9 @@ export function buildPairs(
  * `? key` / `: value` spelling, where the `:` gets a line of its own.
  */
 function keyIsSimple(keyNode: YamlNode | undefined): boolean {
+	// An alias key emits in implicit form (`*x : value`), so it owns its line
+	// exactly as a plain scalar key does and can carry a trailing comment.
+	if (keyNode instanceof YamlAlias) return true;
 	if (!(keyNode instanceof YamlScalar)) return false;
 	if (typeof keyNode.value === "string" && keyNode.value.includes("\n")) return false;
 	return keyNode.style !== "block-literal" && keyNode.style !== "block-folded";

@@ -1513,14 +1513,18 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			// carries a trailing comment — which in this model means the value was
 			// written below in the first place. Hoisting it back onto the key line
 			// would put two comments on one line and silently drop one of them.
+			// Each node's trailing comment goes on that node's OWN line. Routing
+			// the key line through `entryTrailing` reached past an absent key
+			// comment to the VALUE's, printing it on the key line and skipping
+			// the value's own — `a:\n  # lead\n  1 # vc\n` lost the line it was
+			// written on.
 			lines.push(`${keyStr}${sep}`);
-			appendTrailing(lines.length - 1, entryTrailing(pair, ctx));
+			appendTrailing(lines.length - 1, keyOwnComment);
 			if (valLeading !== undefined) {
 				for (const cl of commentBlockLines(valLeading)) lines.push(`${pad}${cl}`);
 			}
 			lines.push(valLines[0] === "" ? "" : `${pad}${valLines[0]}`);
-			// The value keeps its OWN trailing comment on its own line.
-			if (keyOwnComment !== undefined) appendTrailing(lines.length - 1, valueOwnComment);
+			appendTrailing(lines.length - 1, valueOwnComment);
 		} else if (valLines.length === 1) {
 			// Empty value: `key:` with no trailing space
 			lines.push(valLines[0] === "" ? `${keyStr}${sep}` : `${keyStr}${sep} ${valLines[0]}`);
@@ -1928,8 +1932,11 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 	// the root is the one position with no parent to emit a node's leading
 	// block for it — the same missing-slot shape as the root block-scalar
 	// header (#349). Emit it on the marker's far side.
+	// Not gated on the marker: a marker-LESS header over a scalar or empty
+	// collection root is stored the same way (a non-empty collection takes it
+	// on its first entry instead), and gating dropped it entirely.
 	const rootLeading =
-		!ctx.forceDefaultStyles && contents !== null && doc.hasDocumentStart && contents.commentBefore !== undefined
+		!ctx.forceDefaultStyles && contents !== null && contents.commentBefore !== undefined
 			? `${commentBlockLines(contents.commentBefore).join("\n")}\n`
 			: "";
 
@@ -1970,5 +1977,6 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 		const afterMarker = `---\n${rootLeading}${body}${docEnd}`;
 		return docComment ? `${docComment}\n${afterMarker}` : afterMarker;
 	}
-	return docComment ? `${docComment}\n${body}${docEnd}` : `${body}${docEnd}`;
+	const plain = `${rootLeading}${body}${docEnd}`;
+	return docComment ? `${docComment}\n${plain}` : plain;
 }

@@ -233,9 +233,12 @@ export function composeDocument(
 	let contents: YamlNode | null = null;
 	let documentComment: string | undefined;
 	let documentCommentAfter: string | undefined;
-	// Offset of the LAST leading-comment line — used after the loop to embed a
-	// blank line separating the header block from the first content node.
+	// Offset of the LAST leading-comment line on each side of the `---` marker
+	// — used after the loop to embed a blank line separating that side's block
+	// from the first content node. One per buffer: the two runs are separate
+	// blocks and a shared offset attributes a blank to the wrong one.
 	let lastLeadingCommentOffset = -1;
+	let lastAfterMarkerCommentOffset = -1;
 	// A comment after the `...` marker is the TRAILING block even when the
 	// document is empty (`---\n...\n# tail\n` has no contents to flip the
 	// header/trailer split below).
@@ -325,18 +328,23 @@ export function composeDocument(
 			// the marker are the document's header, comments after it lead the
 			// content. Deciding once from the first comment merged both sides into
 			// one block and re-emitted the whole thing above the marker.
+			// Each side tracks its OWN last offset. Sharing one made the blank
+			// line below an after-marker comment embed into the PRE-marker
+			// block instead, so `# a\n---\n# b\n\nx: 1\n` moved the blank across
+			// the marker and never reached a fixed point.
 			if (sawDocStartMarker) {
 				if (afterMarkerComment !== undefined && hasBlankLineAbove(state.text, child.offset)) {
 					afterMarkerComment = `${afterMarkerComment}\n`;
 				}
 				afterMarkerComment = afterMarkerComment === undefined ? text : `${afterMarkerComment}\n${text}`;
+				lastAfterMarkerCommentOffset = child.offset;
 			} else {
 				if (documentComment !== undefined && hasBlankLineAbove(state.text, child.offset)) {
 					documentComment = `${documentComment}\n`;
 				}
 				documentComment = documentComment === undefined ? text : `${documentComment}\n${text}`;
+				lastLeadingCommentOffset = child.offset;
 			}
-			lastLeadingCommentOffset = child.offset;
 			i++;
 			continue;
 		}
@@ -662,6 +670,13 @@ export function composeDocument(
 	if (documentComment !== undefined && contents !== null && hasBlankLineBelow(state.text, lastLeadingCommentOffset)) {
 		documentComment = `${documentComment}\n`;
 	}
+	if (
+		afterMarkerComment !== undefined &&
+		contents !== null &&
+		hasBlankLineBelow(state.text, lastAfterMarkerCommentOffset)
+	) {
+		afterMarkerComment = `${afterMarkerComment}\n`;
+	}
 
 	// Escaped comments that reached document scope have no carrier on the
 	// document model — drop them and clear the queue so nothing leaks into a
@@ -704,8 +719,13 @@ export function composeDocument(
 	// After the marker: leads the root node.
 	if (afterMarkerComment !== undefined && decorated !== null) {
 		decorated = withCommentFields(decorated, { commentBefore: afterMarkerComment });
-	} else if (afterMarkerComment !== undefined && headerForDocument === undefined) {
-		headerForDocument = afterMarkerComment;
+	} else if (afterMarkerComment !== undefined) {
+		// No content node for it to lead. It still has to go somewhere, so it
+		// joins the document's own header rather than being discarded — with a
+		// pre-marker header present, taking only one of the two dropped `# b`
+		// from `# a\n---\n# b\n` outright.
+		headerForDocument =
+			headerForDocument === undefined ? afterMarkerComment : `${headerForDocument}\n${afterMarkerComment}`;
 	}
 
 	return {

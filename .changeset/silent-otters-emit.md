@@ -36,5 +36,10 @@ These now match the names the node classes use. Attribution is marker-aware: `co
 * A document header comment above a `---` marker was stored as the document's *trailing* comment, so every format pass relocated it below the marker. Headers on both sides of a marker were merged into one block and emitted above it; each now keeps its own side
 * An entry carrying trailing comments on both its key and its value below (`a: # kc` / `  1 # vc`) emitted only the key's, hoisting the value onto the key's line and dropping its comment
 * An inline flow collection carrying a trailing comment (`a: {b: 1} # t`) was expanded into a multi-line flow with the comment moved inside the brackets. A comment after the closing bracket cannot swallow it, so only a comment *inside* forces that layout now
+* A header comment over a scalar document root was dropped unless the document had a `---` marker; the emission slot was gated on the marker
+* An after-marker comment was discarded when the document had no content and a pre-marker header already existed (`# a\n---\n# b\n` kept only `# a`)
+* A blank line below an after-marker comment was attributed to the pre-marker block, moving it across the marker and never reaching a fixed point
+* Under a value's leading comment block, the value's own trailing comment was printed on the key's line instead of its own (`a:\n  # lead\n  1 # vc`)
+* A trailing comment on an alias key (`*x : # c`) collapsed onto the value's line; an alias key emits in implicit form, so it owns its line like any scalar key
 
 Both `push: # only main` and an own-line comment above a value now round-trip byte-intact through a format pass. Previously the two source shapes collapsed to the same AST, so formatting one always rewrote it into the other.
