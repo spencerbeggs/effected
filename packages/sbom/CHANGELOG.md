@@ -1,5 +1,22 @@
 # @effected/sbom
 
+## 0.4.0
+
+### Dependencies
+
+| Dependency             | Type       | Action  | From  | To     |
+| ---------------------- | ---------- | ------- | ----- | ------ |
+| @effected/package-json | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/spdx         | dependency | updated | 0.2.0 | 0.3.0  |
+
+* | Dependency | Type           | Action  | From           | To           |                                                                       |
+  | :--------- | :------------- | :------ | :------------- | :----------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#389]: https://github.com/spencerbeggs/effected/pull/389
+
 ## 0.3.1
 
 ### Dependencies

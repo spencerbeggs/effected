@@ -1,5 +1,23 @@
 # @effected/jsonl
 
+## 0.3.0
+
+### Refactoring
+
+* Adopted effect rc.108's relocation of `SchemaError` into the `Schema` module: `InvalidData`'s self-schema now declares via `Schema.isSchemaError`. The error surface and call shapes are unchanged; no consumer action is required. [#389][#389]
+
+### Dependencies
+
+* | Dependency | Type           | Action  | From           | To           |
+  | :--------- | :------------- | :------ | :------------- | :----------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 |
+
+### Minor Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#389]: https://github.com/spencerbeggs/effected/pull/389
+
 ## 0.2.0
 
 ### Refactoring

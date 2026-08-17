@@ -1,5 +1,22 @@
 # @effected/npm
 
+## 0.10.0
+
+### Dependencies
+
+| Dependency         | Type       | Action  | From  | To    |
+| ------------------ | ---------- | ------- | ----- | ----- |
+| @effected/commands | dependency | updated | 0.4.0 | 0.5.0 |
+| @effected/semver   | dependency | updated | 0.4.0 | 0.5.0 |
+
+* | Dependency | Type           | Action  | From           | To           |                                                                       |
+  | :--------- | :------------- | :------ | :------------- | :----------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#389]: https://github.com/spencerbeggs/effected/pull/389
+
 ## 0.9.0
 
 ### Bug Fixes
