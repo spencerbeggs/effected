@@ -57,9 +57,11 @@ A `Vfs` keyed by `node_modules/`-prefixed paths, with merge/prefix helpers and a
 
 The verified boundary is that **`Slice` is load-bearing for subscription, query and projection, and is not load-bearing for current-state or lifecycle.** The open work is `latest(slice)` as a per-scope `SubscriptionRef` plus per-scope terminal semantics. Consumer-gated: build it when a real consumer needs the collapse.
 
-### `github-references`: the three additive gaps
+### `github-references`: the three additive gaps — closed
 
-[`@effected/github-references`](packages/github-references.md) shipped its two asks — the extraction and the closing-list dialect — and the first downstream adoption found no discrepancy against any ruling. It did find three additive gaps, filed rather than absorbed: an inline, list-aware harvester (effected#402, the only one that cost the consumer a workaround), text-level per-line conveniences (#403) and a keyword-family projection (#404). All three are surface a second consumer should confirm before it is frozen; none is licence to widen `github`'s compat re-export.
+**Shipped 2026-08-17**, before the package's first release: the inline list-aware harvester (effected#402, the only gap that had cost the consumer a workaround), the text-level per-line forms (#403) and the keyword-family projection (#404). Surfaces and settled grammar are in [packages/github-references.md](packages/github-references.md#the-four-additive-follow-ups).
+
+The recorded caveat — that all three wanted a second consumer to confirm the shape before freezing — is resolved by shipping them inside the initial surface rather than as a later widening, so there is no version to be compatible with. `github`'s compat re-export is unchanged and still holds only the six moved names. Adoption evidence for the three arrives when savvy-web/systems consumes the released package — round 1 ran against the unreleased workspace — and a discrepancy it finds then is a package change, not a roadmap item.
 
 ### `markdown`: the consumer-side finish
 

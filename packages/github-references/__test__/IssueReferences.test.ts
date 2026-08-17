@@ -1,6 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
-import { CLOSING_KEYWORDS, harvestIssueReferences, parseBareLineReference } from "../src/IssueReferences.js";
+import {
+	CLOSING_KEYWORDS,
+	harvestIssueReferences,
+	parseBareLineReference,
+	parseBareLines,
+} from "../src/IssueReferences.js";
 
 // Pure classes get pure tests, with no layer at all.
 
@@ -118,5 +123,38 @@ describe("IssueReferences.parseBareLineReference", () => {
 	it("rejects a number past Number.MAX_SAFE_INTEGER rather than rounding it", () => {
 		assert.isTrue(Option.isNone(parseBareLineReference("fixes #9007199254740993")));
 		assert.isTrue(Option.isSome(parseBareLineReference(`fixes #${Number.MAX_SAFE_INTEGER}`)));
+	});
+});
+
+describe("IssueReferences.parseBareLines", () => {
+	it("collects the accepted lines in order, skipping the rejecting ones", () => {
+		const text = ["Closes: #12", "some prose between", "fixes #7", "", "fixes #1 trailing prose", "Resolved #9"].join(
+			"\n",
+		);
+		assert.deepStrictEqual(parseBareLines(text), [
+			{ issueNumber: 12, keyword: "closes" },
+			{ issueNumber: 7, keyword: "fixes" },
+			{ issueNumber: 9, keyword: "resolved" },
+		]);
+	});
+
+	it("handles CRLF input — the per-line trim absorbs the carriage return", () => {
+		const text = "Closes: #1\r\nfixes #2\r\n";
+		assert.deepStrictEqual(parseBareLines(text), [
+			{ issueNumber: 1, keyword: "closes" },
+			{ issueNumber: 2, keyword: "fixes" },
+		]);
+	});
+
+	it("returns an empty array for empty text and for text with no references", () => {
+		assert.deepStrictEqual(parseBareLines(""), []);
+		assert.deepStrictEqual(parseBareLines("just prose\nacross lines\n"), []);
+	});
+
+	it("keeps duplicate lines — dedup is the caller's business", () => {
+		assert.deepStrictEqual(parseBareLines("fixes #1\nfixes #1"), [
+			{ issueNumber: 1, keyword: "fixes" },
+			{ issueNumber: 1, keyword: "fixes" },
+		]);
 	});
 });
