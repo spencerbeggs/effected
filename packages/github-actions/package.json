@@ -1,6 +1,6 @@
 {
 	"name": "@effected/github-actions",
-	"version": "0.9.0",
+	"version": "0.9.1",
 	"private": true,
 	"description": "The GitHub Actions runtime: env, inputs, outputs, state, logging, cache, artifacts, blob storage, OIDC and the token bridge.",
 	"keywords": ["github-actions", "actions", "runtime", "cache", "oidc", "effect", "effected"],
