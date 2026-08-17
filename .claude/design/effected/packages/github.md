@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 95
 related:
   - ../effect-standards.md
@@ -81,7 +81,7 @@ Three mechanisms carry it, in order of weight:
 
 1. **Module-per-layer-variant.** The token and config client layers live in the client module, which imports only octokit core and the paginator; the App-authenticated client layer lives in the App module, the only module importing the JWT signer. A consumer that is a pure token-only REST reader reaches none of it.
 2. **No namespace object, anywhere.** A predecessor's `{ fromEnv, fromToken, fromApp }` object is precisely what defeats mechanism 1: a namespace object is a single live binding, so referencing it retains every member's whole module graph ([effect-standards](../effect-standards.md#no-barrel-re-exports)). The entry point re-exports by name only.
-3. **The pure surface is genuinely pure.** The permission comparator, bot identity, the repo reference, the comment marker, the check-run output budgeter and the retry policy are schema classes in modules importing nothing but `effect`. A consumer that only compares token permissions bundles a few hundred bytes.
+3. **The pure surface is genuinely pure.** The permission comparator, bot identity, the repo reference, the comment marker, the check-run output budgeter and the retry policy are schema classes in modules importing nothing but `effect`, and [the closing-reference grammar](github-resources.md#the-closing-reference-grammar-is-a-pure-module-and-it-is-two-dialects) is the same thing without the classes — plain functions over strings. A consumer that only compares token permissions, or only harvests `fixes #12` out of a commit subject, bundles a few hundred bytes. **Pure-but-GitHub-shaped belongs here rather than in a consumer**: the grammar is GitHub's, so a consumer re-deriving it is re-deriving a vendor rule, which is the duplication this package exists to end — the cost of hosting it is zero because it links no client.
 
 The crypto pair rides mechanism 1 as well: `internal/crypto.ts` is imported by `RepositorySecret` and by nothing else, so the row above is a property of the module graph rather than a hope. **It is the one confinement in this table the suite does not yet assert** — the signer has both a positive and a negative test and the crypto pair has neither, which is worth closing on the same pattern rather than leaving as prose.
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 95
 related:
   - ../effect-standards.md
@@ -117,6 +117,8 @@ Four testing facts have bitten repeatedly and are worth carrying: **interleaving
 Adoption against real actions added modules and options to a package declared complete, and the *shape* of that feedback is the useful part: **not one round was a service gap.** Every one was a **projection** a consumer had to write between two things this kit already owned, and got wrong in a way that typechecked — an eleven-field claim rename, GFM escaping, a step-summary shape, a table's columns respelled per call site.
 
 That is the class this package should keep absorbing, and the reason the reporting suite's formatters are type-*required* rather than defaulted: the defect these modules delete is never "no API for it", it is **"the obvious spelling is silently wrong"**.
+
+**One later round broke that pattern, and the break is the finding.** The [staleness guard](github-actions-reporting.md#the-staleness-guard-two-runs-one-document) came from a *coordination* gap, not a projection: two workflow runs writing one living document, where the reconciler's private "last text I wrote" shadow meant neither could see the other. No consumer could have fixed that by projecting better, because the missing thing was an assumption — that a reporting document has one writer — baked into the reconciler and stated nowhere. It still landed as **options on an existing service** rather than a module, which is the right shape for it: the coordination is opt-in, and a consumer that genuinely has one writer pays nothing. The generalisation worth carrying past this suite: **survey feedback finds wrong projections easily and unstated single-writer assumptions only by racing them**, so a service that writes anything shared should say in its own doc what it assumes about other writers.
 
 Two standing rulings came out of the same rounds without code. A reported footgun in core's noop filesystem traced back to a consumer's own override, and the residual composability ask belongs **upstream**, not here. And `optionalDependencies` was rejected outright for the heavy dependencies: all of them are hard static imports that throw at module load rather than degrade, and several sit on the common reporting path, so the easy subpath split does not work.
 

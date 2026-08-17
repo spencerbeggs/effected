@@ -120,6 +120,9 @@ Each line is the rule; its reasoning is in the child beside it.
   "fix" it into an import.
 - `CheckDocument` writes only when the render changed, and only `flush` surfaces
   the error.
+- `CheckDocument`'s `stamp` is a **per-run constant**; a strictly older pass is
+  dropped, announced once, and `flush` answers `written | unchanged | stale`.
+- `ManagedDocument` region `meta` is always present and **never addressable**.
 - `ActionsProvenance.capture` owns the OIDC-claims rename **once**: eleven
   all-string fields where a transposition typechecks and signs the wrong
   provenance.

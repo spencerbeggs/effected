@@ -65,11 +65,40 @@ Effect.runPromise(program.pipe(Effect.provide(ManagedSection.layer), Effect.prov
 // example output on a second, identical run: [ "Unchanged", "Unchanged" ]
 ```
 
+## Marker attributes
+
+A `BEGIN` marker can carry `name="value"` pairs, so a tool reads a block's provenance — which run wrote it, and when — off the marker line without opening the block:
+
+```ts
+import { CommentStyle, SectionDocument, SectionId } from "@effected/templates";
+import { Result } from "effect";
+
+const Tool = SectionId.make({ key: "tool", commentStyle: CommentStyle.hash });
+const doc = SectionDocument.parseResult("#!/usr/bin/env sh\n");
+
+if (Result.isSuccess(doc)) {
+  const next = doc.success.reconcile([Tool.section("npx tool run", { origin: "ci", runId: "1873" })]);
+  console.log(Result.isSuccess(next) ? next.success.text : next.failure.message);
+  // #!/usr/bin/env sh
+  //
+  // # --- BEGIN tool MANAGED SECTION origin="ci" runId="1873" ---
+  // npx tool run
+  // # --- END tool MANAGED SECTION ---
+}
+```
+
+Attributes are metadata, never identity: a section is found by key and comment style alone, so bumping `runId` updates that block in place instead of orphaning it and appending a second one. They do count as difference — `check` answers `Drifted` when a declared attribute disagrees with the marker on disk, which is what lets a tool rewrite a block whose only change is its metadata. Omitting the argument and passing `{}` are the same section, so a caller that never uses attributes sees no drift against a bare marker.
+
+The grammar has no escaping, deliberately: names match `[A-Za-z][A-Za-z0-9_-]*`, values are double-quoted and carry neither `"` nor a line break, and anything outside that fails typed as a `SectionRenderError` with `reason: "invalidAttribute"` naming the attribute — before a byte is written. An `END` marker never carries attributes, and an attribute run that does not parse cleanly (a mangled pair, one name declared twice) makes the whole line ordinary content rather than a marker.
+
+Attributed markers are a one-way compatibility break: a scanner predating this feature does not recognize one at all, so the block it opens stops being a managed section for that tool. Writing attributes into a file another tool also manages is a decision, not a detail.
+
 ## Features
 
 - `SectionDocument` — the pure core: `parse` / `read` / `has` / `check` / `reconcile` / `remove` over a plain string, with no `Effect`, no IO and no runtime needed to test it.
 - `ManagedSection` — the service: `read`, `readAll`, `isManaged`, `sync`, `syncAll`, `check`, `checkAll` and `remove`, each writing back only when the text changed.
 - `CommentStyle` — an open set of `{prefix, suffix?}` presets (`hash`, `slash`, `semicolon`, `dash`, `html`, `block`) covering both line comments and wrapped ones like `<!-- … -->`, so a managed section can live in Markdown or HTML, not just source files.
+- Marker attributes — `name="value"` pairs on a `BEGIN` marker, via `SectionId.section(content, attributes)` and `Section.attributes`: metadata for the tool, never part of a section's identity.
 - `SyncOutcome` / `CheckOutcome` — tagged results (`Created` / `Updated` / `Unchanged`, `Absent` / `UpToDate` / `Drifted`) that carry the sections involved rather than a diff, so a caller renders exactly the comparison it needs.
 - Byte-preserving outside managed blocks: every character outside a declared section's span survives a sync, in order, including a leading BOM.
 - Idempotent by construction: syncing an already-up-to-date document writes nothing and touches no mtime.

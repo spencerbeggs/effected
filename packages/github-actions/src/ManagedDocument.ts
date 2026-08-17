@@ -32,10 +32,14 @@ const REGION_DIALECT: SectionDialect = SectionDialect.make({
  * The four structural kinds (`unterminatedRegion`, `orphanedEnd`,
  * `overlappingRegions`, `duplicateRegion`) surface at parse time and name an
  * ambiguity whose silent resolution would corrupt content a human wrote by
- * hand. The two declaration kinds surface when regions are applied:
+ * hand. The three declaration kinds surface when regions are applied:
  * `markerInContent` refuses region content that itself contains a line the
- * scanner would read as a region marker, and `duplicateDeclaration` refuses
- * one call that states two intentions for the same region.
+ * scanner would read as a region marker, `duplicateDeclaration` refuses
+ * one call that states two intentions for the same region, and
+ * `invalidAttribute` refuses region metadata whose name is outside the
+ * `[A-Za-z][A-Za-z0-9_-]*` grammar or whose value contains `"` or a line
+ * break — either would write a marker the region scanner could not read
+ * back verbatim.
  *
  * @public
  */
@@ -48,16 +52,20 @@ export class ManagedDocumentError extends Schema.TaggedError<ManagedDocumentErro
 		"duplicateRegion",
 		"markerInContent",
 		"duplicateDeclaration",
+		"invalidAttribute",
 	]),
 	/** 1-based line of the offending marker, for the structural kinds. */
 	line: Schema.optionalKey(Schema.Number),
 	/** The region key involved, when the failure names one. */
 	key: Schema.optionalKey(Schema.String),
+	/** The offending metadata attribute's name, for `invalidAttribute`. */
+	attribute: Schema.optionalKey(Schema.String),
 }) {
 	override get message(): string {
 		const which = this.key === undefined ? "" : ` for region "${this.key}"`;
+		const named = this.attribute === undefined ? "" : ` (attribute "${this.attribute}")`;
 		const where = this.line === undefined ? "" : ` at line ${this.line}`;
-		return `${KIND_PROSE[this.kind]}${which}${where}`;
+		return `${KIND_PROSE[this.kind]}${which}${named}${where}`;
 	}
 }
 
@@ -68,6 +76,7 @@ const KIND_PROSE: Record<ManagedDocumentError["kind"], string> = {
 	duplicateRegion: "Managed region appears twice",
 	markerInContent: "Region content contains a managed-region marker",
 	duplicateDeclaration: "Region was declared twice in one call",
+	invalidAttribute: "Region metadata has an invalid attribute name or value",
 };
 
 /** Map a templates scan failure onto this surface's vocabulary. */
@@ -201,8 +210,32 @@ export class ManagedDocument extends Schema.Class<ManagedDocument>("ManagedDocum
 		return found === undefined ? Option.none() : Option.some(found.content);
 	}
 
-	/** Every region this document carries, in document order. */
-	get regions(): ReadonlyArray<{ readonly key: string; readonly content: string }> {
+	/**
+	 * One region's content and metadata together, if the document carries it.
+	 *
+	 * @remarks
+	 * `meta` is the region's `name="value"` marker attributes, empty when the
+	 * marker carries none. Metadata never participates in region
+	 * addressability — this looks up by key exactly as
+	 * {@link ManagedDocument.region} does.
+	 */
+	entry(key: string): Option.Option<{ readonly content: string; readonly meta: Readonly<Record<string, string>> }> {
+		const found = this.ownRegions().find((candidate) => candidate.key === key);
+		return found === undefined ? Option.none() : Option.some({ content: found.content, meta: found.meta });
+	}
+
+	/**
+	 * Every region this document carries, in document order.
+	 *
+	 * @remarks
+	 * `meta` is always present: a region whose marker carries no attributes
+	 * reports an empty record, so callers never branch on absence.
+	 */
+	get regions(): ReadonlyArray<{
+		readonly key: string;
+		readonly content: string;
+		readonly meta: Readonly<Record<string, string>>;
+	}> {
 		return this.ownRegions();
 	}
 
@@ -211,19 +244,29 @@ export class ManagedDocument extends Schema.Class<ManagedDocument>("ManagedDocum
 	 *
 	 * @remarks
 	 * The synchronous primitive; {@link ManagedDocument.withRegions} derives
-	 * from it. Each entry pairs a region key with its full new content. A
-	 * region already present is **replaced in place**; a region not present
-	 * yet is added; regions not named are left exactly as they are; and every
-	 * byte outside a managed region survives untouched. Applying entries that
-	 * change nothing returns byte-identical text, which is what lets a caller
-	 * compare-and-skip instead of issuing a write.
+	 * from it. Each entry pairs a region key with its full new content, plus
+	 * optional metadata. A region already present is **replaced in place**; a
+	 * region not present yet is added; regions not named are left exactly as
+	 * they are; and every byte outside a managed region survives untouched.
+	 * Applying entries that change nothing returns byte-identical text, which
+	 * is what lets a caller compare-and-skip instead of issuing a write.
+	 *
+	 * `meta` becomes `name="value"` attributes on the region's BEGIN marker.
+	 * It round-trips verbatim through {@link ManagedDocument.entry}, survives
+	 * writes by parties that do not know about it — a region not named in a
+	 * call keeps its content *and* its metadata untouched — and never
+	 * participates in region addressability: a region is found by key alone,
+	 * so changing metadata updates the region in place. A two-element entry
+	 * behaves exactly as it always has. Names must match
+	 * `[A-Za-z][A-Za-z0-9_-]*` and values may not contain `"` or a line
+	 * break; violations fail typed as `invalidAttribute`.
 	 *
 	 * Region keys share the name grammar `namespace` and `key` obey; a key
 	 * outside it is a wiring error and throws at construction rather than
 	 * surfacing in the typed channel.
 	 */
 	withRegionsResult(
-		entries: ReadonlyArray<readonly [key: string, content: string]>,
+		entries: ReadonlyArray<readonly [key: string, content: string, meta?: Readonly<Record<string, string>>]>,
 	): Result.Result<ManagedDocument, ManagedDocumentError> {
 		const parsed = SectionDocument.parseResult(this.text, REGION_DIALECT);
 		if (Result.isFailure(parsed)) {
@@ -236,8 +279,8 @@ export class ManagedDocument extends Schema.Class<ManagedDocument>("ManagedDocum
 				}),
 			);
 		}
-		const declared = entries.map(([key, content]) =>
-			SectionId.make({ key: this.wireKey(key), commentStyle: CommentStyle.html }).section(content),
+		const declared = entries.map(([key, content, meta]) =>
+			SectionId.make({ key: this.wireKey(key), commentStyle: CommentStyle.html }).section(content, meta),
 		);
 		const reconciled = parsed.success.reconcile(declared);
 		if (Result.isFailure(reconciled)) {
@@ -247,7 +290,13 @@ export class ManagedDocument extends Schema.Class<ManagedDocument>("ManagedDocum
 				// with the one style the module's own dialect recognizes.
 				throw new Error("ManagedDocument: the region dialect rejected its own comment style");
 			}
-			return Result.fail(new ManagedDocumentError({ kind: failure.reason, key: this.regionKeyOf(failure.key) }));
+			return Result.fail(
+				new ManagedDocumentError({
+					kind: failure.reason,
+					key: this.regionKeyOf(failure.key),
+					...(failure.attribute === undefined ? {} : { attribute: failure.attribute }),
+				}),
+			);
 		}
 		const withSentinel = this.ensureSentinel(reconciled.success.text, parsed.success.eol);
 		return Result.succeed(ManagedDocument.make({ namespace: this.namespace, key: this.key, text: withSentinel }));
@@ -261,7 +310,7 @@ export class ManagedDocument extends Schema.Class<ManagedDocument>("ManagedDocum
 	 * synchronous callers can use that variant directly.
 	 */
 	withRegions(
-		entries: ReadonlyArray<readonly [key: string, content: string]>,
+		entries: ReadonlyArray<readonly [key: string, content: string, meta?: Readonly<Record<string, string>>]>,
 	): Effect.Effect<ManagedDocument, ManagedDocumentError> {
 		return Effect.fromResult(this.withRegionsResult(entries));
 	}
@@ -288,7 +337,11 @@ export class ManagedDocument extends Schema.Class<ManagedDocument>("ManagedDocum
 	 * the same text (another namespace or key) are not this document's and are
 	 * never reported.
 	 */
-	private ownRegions(): ReadonlyArray<{ readonly key: string; readonly content: string }> {
+	private ownRegions(): ReadonlyArray<{
+		readonly key: string;
+		readonly content: string;
+		readonly meta: Readonly<Record<string, string>>;
+	}> {
 		const parsed = SectionDocument.parseResult(this.text, REGION_DIALECT);
 		if (Result.isFailure(parsed)) {
 			return [];
@@ -296,7 +349,11 @@ export class ManagedDocument extends Schema.Class<ManagedDocument>("ManagedDocum
 		const prefix = `${this.namespace}.${this.key}.`;
 		return parsed.success.sections
 			.filter((placed) => placed.section.key.startsWith(prefix))
-			.map((placed) => ({ key: placed.section.key.slice(prefix.length), content: placed.section.content }));
+			.map((placed) => ({
+				key: placed.section.key.slice(prefix.length),
+				content: placed.section.content,
+				meta: placed.section.attributes,
+			}));
 	}
 
 	/**

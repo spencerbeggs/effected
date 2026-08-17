@@ -32,6 +32,6 @@ Use `Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, ChildProcessSpawner.
 
 ## Build
 
-`savvy.build.ts` carries the **narrow** `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized bases behind every `Schema.TaggedErrorClass`/`Schema.Class` export — the error taxonomy, the parsed models, `Git`, the round-2 models and errors, and the `GitConfig`/`Gitmodules` class families (29 suppressed entries at last clean build). **Never widen it**, and never run `node savvy.build.ts --target prod` directly.
+`savvy.build.ts` carries the **narrow** `_base` suppression (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized bases behind every `Schema.TaggedError`/`Schema.Class` export — the error taxonomy, the parsed models, `Git`, the round-2 models and errors, and the `GitConfig`/`Gitmodules` class families (29 suppressed entries at last clean build). **Never widen it**, and never run `node savvy.build.ts --target prod` directly.
 
 **Related:** [surface](./CLAUDE.surface.md) · [classification](./CLAUDE.classification.md) · [mutating tier](./CLAUDE.mutating.md)

@@ -3,6 +3,8 @@ import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
 import type { GitHubGraphQLError } from "./GraphQL.js";
 import { GraphQLDocument } from "./GraphQL.js";
+import type { CommentMarker } from "./PullRequestComment.js";
+import { CommentRecord } from "./PullRequestComment.js";
 import { Repo } from "./Repo.js";
 import type { PageOptions } from "./Rest.js";
 
@@ -44,6 +46,23 @@ export class LinkedIssue extends Schema.Class<LinkedIssue>("LinkedIssue")({
 	 * document in the survey.
 	 */
 	userLinked: Schema.Boolean,
+}) {}
+
+/**
+ * What {@link GitHubIssueShape.commentOnce} found or wrote.
+ *
+ * @remarks
+ * `wrote` is the field the caller branches on: `true` means this call created
+ * the comment, `false` means the marker was already on the issue and nothing
+ * was posted. Either way `comment` is the marked comment itself.
+ *
+ * @public
+ */
+export class CommentOnceResult extends Schema.Class<CommentOnceResult>("CommentOnceResult")({
+	/** Did this call post the comment (`true`), or find it already there (`false`)? */
+	wrote: Schema.Boolean,
+	/** The marked comment — the one created, or the one that made us skip. */
+	comment: CommentRecord,
 }) {}
 
 const IssueNodes = Schema.Struct({
@@ -127,6 +146,26 @@ export interface GitHubIssueShape {
 	readonly close: (number: number, reason?: "completed" | "not_planned") => Effect.Effect<void, GitHubError, Repo>;
 	/** Post a comment. */
 	readonly comment: (number: number, body: string) => Effect.Effect<number, GitHubError, Repo>;
+	/**
+	 * Post a marked comment exactly once: create it, or skip if it exists.
+	 *
+	 * @remarks
+	 * Create-or-skip, **never edit** — the counterpart to
+	 * `PullRequestComment.upsert`, which edits in place. The marker is appended
+	 * to the body exactly as `upsert` formats it, so a comment either member
+	 * writes stays findable by the other.
+	 *
+	 * The existence check is the comment itself: the issue's comments are
+	 * paginated and the first body carrying the marker means skip. That is the
+	 * guard {@link GitHubIssueShape.isCrossReferencedBy}'s docstring tells you
+	 * to build — an issue reached via `linkedIssues` is cross-referenced from
+	 * the outset, so only the marker answers "have I commented yet?".
+	 */
+	readonly commentOnce: (
+		issueNumber: number,
+		marker: CommentMarker,
+		body: string,
+	) => Effect.Effect<CommentOnceResult, GitHubError, Repo>;
 	/** The issues a pull request closes, with `userLinked` telling you who linked them. */
 	readonly linkedIssues: (prNumber: number) => Effect.Effect<ReadonlyArray<LinkedIssue>, GitHubGraphQLError, Repo>;
 	/**
@@ -172,6 +211,7 @@ export class GitHubIssue extends Context.Service<GitHubIssue, GitHubIssueShape>(
 		list: overrides.list ?? (() => unstubbed("list")),
 		close: overrides.close ?? (() => unstubbed("close")),
 		comment: overrides.comment ?? (() => unstubbed("comment")),
+		commentOnce: overrides.commentOnce ?? (() => unstubbed("commentOnce")),
 		linkedIssues: overrides.linkedIssues ?? (() => unstubbed("linkedIssues")),
 		isCrossReferencedBy: overrides.isCrossReferencedBy ?? (() => unstubbed("isCrossReferencedBy")),
 	});
@@ -291,6 +331,39 @@ const make = (client: GitHubClient["Service"]): GitHubIssueShape => ({
 			headers: API_VERSION_HEADERS,
 		});
 		return created.id;
+	}),
+
+	commentOnce: Effect.fn("GitHubIssue.commentOnce")(function* (
+		issueNumber: number,
+		marker: CommentMarker,
+		body: string,
+	) {
+		const { owner, repo } = yield* Repo;
+		yield* Effect.annotateCurrentSpan({ owner, repo, issueNumber, marker: marker.key });
+		const comments = yield* client.paginate("GET /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+			owner,
+			repo,
+			issue_number: issueNumber,
+			headers: API_VERSION_HEADERS,
+		});
+		const existing = comments.find((comment) => marker.matches(comment.body ?? ""));
+		if (existing !== undefined) {
+			return CommentOnceResult.make({
+				wrote: false,
+				comment: CommentRecord.make({ id: existing.id, body: existing.body ?? "", url: existing.html_url }),
+			});
+		}
+		const created = yield* client.request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+			owner,
+			repo,
+			issue_number: issueNumber,
+			body: `${body}\n\n${marker.html}`,
+			headers: API_VERSION_HEADERS,
+		});
+		return CommentOnceResult.make({
+			wrote: true,
+			comment: CommentRecord.make({ id: created.id, body: created.body ?? "", url: created.html_url }),
+		});
 	}),
 
 	linkedIssues: Effect.fn("GitHubIssue.linkedIssues")(function* (prNumber: number) {

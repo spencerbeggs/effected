@@ -1,5 +1,6 @@
 import { Equal, Result, Schema } from "effect";
 import { CommentStyle } from "./CommentStyle.js";
+import { ATTRIBUTE_NAME_PATTERN, isValidAttributeValue, parseAttributeRun } from "./internal/attributes.js";
 import type { Section, SectionId } from "./Section.js";
 
 /**
@@ -30,10 +31,16 @@ export class SectionRenderError extends Schema.TaggedError<SectionRenderError>()
 	 * declared twice in one call, so the caller stated two intentions for one
 	 * block and any choice between them would be a guess; this is the
 	 * caller-side twin of the document-side `duplicateSection`.
+	 * `invalidAttribute` — an attribute's name is outside the
+	 * `[A-Za-z][A-Za-z0-9_-]*` grammar, or its value contains `"` or a line
+	 * break; either would render a marker the scanner could not read back
+	 * verbatim, and there is no escaping mechanism by design.
 	 */
-	reason: Schema.Literals(["markerInContent", "unknownCommentStyle", "duplicateDeclaration"]),
+	reason: Schema.Literals(["markerInContent", "unknownCommentStyle", "duplicateDeclaration", "invalidAttribute"]),
 	/** The key of the section that could not be rendered. */
 	key: Schema.String,
+	/** The offending attribute's name, when the refusal names one. */
+	attribute: Schema.optionalKey(Schema.String),
 }) {
 	override get message(): string {
 		switch (this.reason) {
@@ -41,6 +48,10 @@ export class SectionRenderError extends Schema.TaggedError<SectionRenderError>()
 				return `Section "${this.key}" has content containing a managed-section marker`;
 			case "unknownCommentStyle":
 				return `Section "${this.key}" uses a comment style this dialect does not recognize`;
+			case "invalidAttribute":
+				return this.attribute === undefined
+					? `Section "${this.key}" declares an attribute with an invalid name or value`
+					: `Section "${this.key}" declares attribute "${this.attribute}" with an invalid name or value`;
 			default:
 				return `Section "${this.key}" was declared twice in one call`;
 		}
@@ -131,11 +142,21 @@ export class SectionDialect extends Schema.Class<SectionDialect>("SectionDialect
 		if (!this.recognizes(section.commentStyle)) {
 			return Result.fail(new SectionRenderError({ reason: "unknownCommentStyle", key: section.key }));
 		}
+		for (const [name, value] of Object.entries(section.attributes)) {
+			// Attribute names and values are runtime data, so a violation is a
+			// typed failure here rather than a defect at construction. Either kind
+			// of violation would emit a marker the scanner reads differently — or
+			// not at all — so both are refused before anything is written.
+			if (!ATTRIBUTE_NAME_PATTERN.test(name) || !isValidAttributeValue(value)) {
+				return Result.fail(new SectionRenderError({ reason: "invalidAttribute", key: section.key, attribute: name }));
+			}
+		}
 		if (this.containsMarker(section.content)) {
 			return Result.fail(new SectionRenderError({ reason: "markerInContent", key: section.key }));
 		}
 		const body = eol === "\n" ? section.content : section.content.replace(/\n/g, eol);
-		return Result.succeed(`${this.beginMarker(section.id)}${eol}${body}${eol}${this.endMarker(section.id)}`);
+		const begin = this.marker("BEGIN", section.id, section.attributes);
+		return Result.succeed(`${begin}${eol}${body}${eol}${this.endMarker(section.id)}`);
 	}
 
 	/**
@@ -147,7 +168,22 @@ export class SectionDialect extends Schema.Class<SectionDialect>("SectionDialect
 		// `matchAll` clones the regex internally; `regex.test` would advance the
 		// shared `lastIndex` and make a second call on the same text answer
 		// differently from the first.
-		return this.matchers().some((matcher) => text.matchAll(matcher.regex).next().done === false);
+		for (const matcher of this.matchers()) {
+			for (const match of text.matchAll(matcher.regex)) {
+				const run = match[3];
+				if (run === undefined) {
+					return true;
+				}
+				// The scanner's rule, mirrored exactly: an END never carries
+				// attributes, and a run that does not parse cleanly makes the line
+				// ordinary content rather than a marker. Refusing more than the
+				// scanner reads back would reject content that round-trips fine.
+				if (match[1] !== "END" && parseAttributeRun(run) !== undefined) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -173,7 +209,7 @@ export class SectionDialect extends Schema.Class<SectionDialect>("SectionDialect
 			const tail = style.suffix === undefined ? "" : `${GAP}${escapeRegex(style.suffix)}`;
 			return {
 				style,
-				// Two subtleties, both load-bearing for CRLF documents.
+				// Three subtleties, the first two load-bearing for CRLF documents.
 				//
 				// The `\r?` is what makes them match at all: under `m`, `$` matches
 				// before the LF and leaves the CR sitting in the line.
@@ -183,8 +219,17 @@ export class SectionDialect extends Schema.Class<SectionDialect>("SectionDialect
 				// that consumed it would put the CR inside the span while the
 				// canonical render emits none, so every reconciliation would strip
 				// one CR and the document would never reach a fixed point.
+				//
+				// The optional group between the phrase and the closing rule is the
+				// attribute run, captured LOOSELY as one group — a repeated capture
+				// group would keep only its last pair — and validated by the
+				// anchored grammar in internal/attributes.ts afterwards. It is a
+				// single lazy quantifier under a once-only `(?:…)?`, so the pattern
+				// still carries no nested quantifier and backtracking stays bounded
+				// by the line. The lazy interior is also what lets a quoted value
+				// contain `---` without being mistaken for the closing rule.
 				regex: new RegExp(
-					`^${escapeRegex(style.prefix)}${GAP}---${GAP}(BEGIN|END)${GAP}${KEY_CAPTURE}${GAP}${phrase}${GAP}---${tail}[ \\t]*(?=\r?$)`,
+					`^${escapeRegex(style.prefix)}${GAP}---${GAP}(BEGIN|END)${GAP}${KEY_CAPTURE}${GAP}${phrase}(?:${GAP}([^ \\t\\r\\n][^\\r\\n]*?))?${GAP}---${tail}[ \\t]*(?=\r?$)`,
 					"gm",
 				),
 			};
@@ -193,8 +238,18 @@ export class SectionDialect extends Schema.Class<SectionDialect>("SectionDialect
 		return compiled;
 	}
 
-	private marker(kind: "BEGIN" | "END", id: SectionId): string {
+	private marker(kind: "BEGIN" | "END", id: SectionId, attributes?: Readonly<Record<string, string>>): string {
 		const tail = id.commentStyle.suffix === undefined ? "" : ` ${id.commentStyle.suffix}`;
-		return `${id.commentStyle.prefix} --- ${kind} ${id.key} ${this.phrase} ---${tail}`;
+		// Emission order is the record's insertion order — the caller's declared
+		// order — while equality over attributes is order-insensitive, so a
+		// hand-reordered marker with equal pairs compares Unchanged and an actual
+		// rewrite renders in declared order.
+		const run =
+			attributes === undefined
+				? ""
+				: Object.entries(attributes)
+						.map(([name, value]) => ` ${name}="${value}"`)
+						.join("");
+		return `${id.commentStyle.prefix} --- ${kind} ${id.key} ${this.phrase}${run} ---${tail}`;
 	}
 }

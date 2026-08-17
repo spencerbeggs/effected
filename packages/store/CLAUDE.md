@@ -35,7 +35,7 @@ A migration's `up`/`down` return `Effect<unknown, SqlError>`, **not `Effect<void
 
 ## Error model and what stays a defect
 
-Three `Schema.TaggedErrorClass` types (`StoreError`, `StoreMigrationError`, `CacheError`), each carrying the underlying `SqlError` structurally in a `cause: Schema.Defect()` field. `SqlError` is **wrapped, never leaked**.
+Three `Schema.TaggedError` types (`StoreError`, `StoreMigrationError`, `CacheError`), each carrying the underlying `SqlError` structurally in a `cause: Schema.Defect()` field. `SqlError` is **wrapped, never leaked**.
 
 The line between failure and defect is the package's sharpest rule, and v3 got it wrong:
 

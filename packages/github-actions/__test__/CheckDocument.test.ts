@@ -1,8 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { Duration } from "effect";
-import { Effect, Fiber, Option, Ref, Result } from "effect";
+import { Effect, Fiber, Logger, Option, Ref, Result } from "effect";
 import { TestClock } from "effect/testing";
-import { CheckDocument, CheckDocumentError, CheckReport } from "../src/CheckDocument.js";
+import { CheckDocument, CheckDocumentError, CheckDocumentStamp, CheckReport } from "../src/CheckDocument.js";
 import { ManagedDocument } from "../src/ManagedDocument.js";
 
 const NS = "savvy-web";
@@ -275,6 +275,267 @@ describe("CheckDocument", () => {
 		);
 	});
 
+	describe("the stamp ordering", () => {
+		const stamp = (at: string, runId: string) => ({ at, runId });
+
+		it("compares at as epoch when both sides parse — format differences do not order", () => {
+			// The same instant spelled two ways is a TIE, decided by runId; a
+			// lexical comparison would have ordered the strings instead.
+			assert.isTrue(
+				CheckDocumentStamp.isAtLeastAsRecent(
+					stamp("2024-01-01T00:00:00.000Z", "2"),
+					stamp("2024-01-01T00:00:00Z", "1"),
+				),
+			);
+			assert.isFalse(
+				CheckDocumentStamp.isAtLeastAsRecent(
+					stamp("2024-01-01T00:00:00.000Z", "1"),
+					stamp("2024-01-01T00:00:00Z", "2"),
+				),
+			);
+			// And a genuinely later instant wins regardless of runId.
+			assert.isTrue(
+				CheckDocumentStamp.isAtLeastAsRecent(stamp("2024-01-02T00:00:00Z", "1"), stamp("2024-01-01T00:00:00Z", "999")),
+			);
+		});
+
+		it("equal stamps compare at-least-as-recent — a run may refine its own regions", () => {
+			assert.isTrue(
+				CheckDocumentStamp.isAtLeastAsRecent(stamp("2024-01-01T00:00:00Z", "42"), stamp("2024-01-01T00:00:00Z", "42")),
+			);
+		});
+
+		it("breaks at-ties on runId numerically when both parse — 10 beats 9", () => {
+			const at = "2024-01-01T00:00:00Z";
+			// Lexically "10" < "9"; numerically 10 > 9. The numeric order must win.
+			assert.isTrue(CheckDocumentStamp.isAtLeastAsRecent(stamp(at, "10"), stamp(at, "9")));
+			assert.isFalse(CheckDocumentStamp.isAtLeastAsRecent(stamp(at, "9"), stamp(at, "10")));
+		});
+
+		it("falls back to lexical runId order when either side is not a number", () => {
+			const at = "2024-01-01T00:00:00Z";
+			assert.isTrue(CheckDocumentStamp.isAtLeastAsRecent(stamp(at, "run-b"), stamp(at, "run-a")));
+			assert.isFalse(CheckDocumentStamp.isAtLeastAsRecent(stamp(at, "run-a"), stamp(at, "run-b")));
+		});
+
+		it("falls back to lexical at order when either side does not parse as a date", () => {
+			assert.isTrue(CheckDocumentStamp.isAtLeastAsRecent(stamp("beta", "1"), stamp("alpha", "2")));
+			assert.isFalse(CheckDocumentStamp.isAtLeastAsRecent(stamp("alpha", "2"), stamp("beta", "1")));
+		});
+	});
+
+	describe("the staleness guard", () => {
+		const NEWER = { at: "2024-01-02T00:00:00Z", runId: "200" };
+		const OLDER = { at: "2024-01-01T00:00:00Z", runId: "100" };
+
+		/**
+		 * A layer over a SHARED live document — the sink's `read` sees what any
+		 * other layer wrote, which is exactly the two-runs-one-document race the
+		 * guard exists for. Each layer records its own writes.
+		 */
+		const sharedHarness = (
+			remote: Ref.Ref<string | undefined>,
+			stamp?: { readonly at: string; readonly runId: string },
+		) =>
+			Effect.gen(function* () {
+				const writes = yield* Ref.make<ReadonlyArray<string>>([]);
+				const layer = CheckDocument.layer({
+					namespace: NS,
+					key: KEY,
+					render: perCheck,
+					sink: {
+						write: (rendered) =>
+							Ref.set(remote, rendered).pipe(Effect.andThen(Ref.update(writes, (all) => [...all, rendered]))),
+						read: Ref.get(remote),
+					},
+					...(stamp === undefined ? {} : { stamp }),
+					debounce: { quiet: "500 millis", maxWait: "3 seconds" },
+				});
+				return { writes, layer };
+			});
+
+		it.effect("an older run's pass against a newer document is dropped — the #284 race", () =>
+			Effect.gen(function* () {
+				const remote = yield* Ref.make<string | undefined>(undefined);
+				const newer = yield* sharedHarness(remote, NEWER);
+				const older = yield* sharedHarness(remote, OLDER);
+
+				// The newer run writes first.
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "pass", outcome: "newer run" }));
+					assert.strictEqual(yield* doc.flush, "written");
+				}).pipe(Effect.provide(newer.layer));
+				const afterNewer = yield* Ref.get(remote);
+
+				// The delayed older run flushes against the live document.
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "fail", outcome: "stale rerun" }));
+					assert.strictEqual(yield* doc.flush, "stale");
+				}).pipe(Effect.provide(older.layer));
+
+				assert.deepStrictEqual(yield* Ref.get(older.writes), [], "the stale run must not write");
+				assert.strictEqual(yield* Ref.get(remote), afterNewer, "the newer run's document is intact");
+				const parsed = Result.getOrThrow(
+					ManagedDocument.parseResult({ namespace: NS, key: KEY, text: afterNewer ?? "" }),
+				);
+				assert.deepStrictEqual(parsed.region("check-build"), Option.some("pass — newer run"));
+			}),
+		);
+
+		it.effect("a run that stays stale announces the drop once — repeats fall to debug", () =>
+			Effect.gen(function* () {
+				const lines = yield* Ref.make<ReadonlyArray<string>>([]);
+				const collector = Logger.make((entry) =>
+					Effect.runSync(Ref.update(lines, (all) => [...all, String(entry.message)])),
+				);
+				const remote = yield* Ref.make<string | undefined>(undefined);
+				const newer = yield* sharedHarness(remote, NEWER);
+				const older = yield* sharedHarness(remote, OLDER);
+
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "pass", outcome: "newer run" }));
+					assert.strictEqual(yield* doc.flush, "written");
+				}).pipe(Effect.provide(newer.layer));
+
+				// The stale run flushes twice — the report-driven pass plus an
+				// explicit flush is the pair the consumer observed logging twice.
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "fail", outcome: "stale rerun" }));
+					assert.strictEqual(yield* doc.flush, "stale");
+					assert.strictEqual(yield* doc.flush, "stale");
+				}).pipe(Effect.provide(older.layer), Effect.provide(Logger.layer([collector])));
+
+				// The debug-level repeat is below the default minimum level, so the
+				// consumer-visible count across both stale passes is exactly one.
+				const dropped = (yield* Ref.get(lines)).filter((line) => line.includes("pass dropped"));
+				assert.strictEqual(dropped.length, 1, "one INFO drop line across two stale passes");
+			}),
+		);
+
+		it.effect("a newer run's pass against an older document writes and replaces", () =>
+			Effect.gen(function* () {
+				const remote = yield* Ref.make<string | undefined>(undefined);
+				const older = yield* sharedHarness(remote, OLDER);
+				const newer = yield* sharedHarness(remote, NEWER);
+
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "running", outcome: "older run" }));
+					assert.strictEqual(yield* doc.flush, "written");
+				}).pipe(Effect.provide(older.layer));
+
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "pass", outcome: "newer run" }));
+					assert.strictEqual(yield* doc.flush, "written");
+				}).pipe(Effect.provide(newer.layer));
+
+				const final = (yield* Ref.get(remote)) ?? "";
+				const parsed = Result.getOrThrow(ManagedDocument.parseResult({ namespace: NS, key: KEY, text: final }));
+				assert.deepStrictEqual(parsed.region("check-build"), Option.some("pass — newer run"));
+				assert.deepStrictEqual(
+					parsed.entry("check-build"),
+					Option.some({ content: "pass — newer run", meta: { at: NEWER.at, runId: NEWER.runId } }),
+				);
+			}),
+		);
+
+		it.effect("an equal stamp passes — a run refines its own regions", () =>
+			Effect.gen(function* () {
+				const remote = yield* Ref.make<string | undefined>(undefined);
+				const first = yield* sharedHarness(remote, NEWER);
+				const second = yield* sharedHarness(remote, NEWER);
+
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "running" }));
+					assert.strictEqual(yield* doc.flush, "written");
+				}).pipe(Effect.provide(first.layer));
+
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "pass" }));
+					assert.strictEqual(yield* doc.flush, "written");
+				}).pipe(Effect.provide(second.layer));
+
+				const final = (yield* Ref.get(remote)) ?? "";
+				assert.include(final, "pass");
+			}),
+		);
+
+		it.effect("regions carrying no stamp are not evidence of a newer run", () =>
+			Effect.gen(function* () {
+				const remote = yield* Ref.make<string | undefined>(undefined);
+				// An unstamped layer writes first — the pre-stamp world.
+				const unstamped = yield* sharedHarness(remote);
+				const stamped = yield* sharedHarness(remote, OLDER);
+
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "running" }));
+					assert.strictEqual(yield* doc.flush, "written");
+				}).pipe(Effect.provide(unstamped.layer));
+
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "pass" }));
+					assert.strictEqual(yield* doc.flush, "written", "no stamp on the document, so any stamped pass may write");
+				}).pipe(Effect.provide(stamped.layer));
+			}),
+		);
+
+		it.effect("a byte-identical pass reports unchanged — the stamp does not defeat suppression", () =>
+			Effect.gen(function* () {
+				const remote = yield* Ref.make<string | undefined>(undefined);
+				const { writes, layer } = yield* sharedHarness(remote, NEWER);
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "pass" }));
+					assert.strictEqual(yield* doc.flush, "written");
+					// The same state, the same per-run stamp: byte-identical render.
+					assert.strictEqual(yield* doc.flush, "unchanged");
+					assert.strictEqual((yield* Ref.get(writes)).length, 1);
+				}).pipe(Effect.provide(layer));
+			}),
+		);
+
+		it.effect("kind read: a failing read-back surfaces from flush", () =>
+			Effect.gen(function* () {
+				const layer = CheckDocument.layer({
+					namespace: NS,
+					key: KEY,
+					render: perCheck,
+					sink: { write: () => Effect.void, read: Effect.fail("404: comment vanished") },
+					debounce: { quiet: "500 millis", maxWait: "3 seconds" },
+				});
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "pass" }));
+					const failure = yield* Effect.flip(doc.flush);
+					assert.instanceOf(failure, CheckDocumentError);
+					assert.strictEqual(failure.kind, "read");
+				}).pipe(Effect.provide(layer));
+			}),
+		);
+
+		it.effect("the function-form sink still reports written and unchanged outcomes", () =>
+			Effect.gen(function* () {
+				const { writes, layer } = yield* harness();
+				yield* Effect.gen(function* () {
+					const doc = yield* CheckDocument;
+					yield* doc.report("build", CheckReport.make({ state: "pass" }));
+					assert.strictEqual(yield* doc.flush, "written");
+					assert.strictEqual(yield* doc.flush, "unchanged");
+					assert.strictEqual((yield* Ref.get(writes)).length, 1);
+				}).pipe(Effect.provide(layer));
+			}),
+		);
+	});
+
 	describe("test double", () => {
 		it.effect("an unstubbed member dies loudly, naming itself", () =>
 			Effect.gen(function* () {
@@ -289,6 +550,13 @@ describe("CheckDocument", () => {
 				const doc = yield* CheckDocument;
 				yield* doc.report("build", CheckReport.make({ state: "pass" }));
 			}).pipe(Effect.provide(CheckDocument.layerTest({ report: () => Effect.void }))),
+		);
+
+		it.effect("a stubbed flush carries the outcome type", () =>
+			Effect.gen(function* () {
+				const doc = yield* CheckDocument;
+				assert.strictEqual(yield* doc.flush, "unchanged");
+			}).pipe(Effect.provide(CheckDocument.layerTest({ flush: Effect.succeed("unchanged" as const) }))),
 		);
 	});
 });

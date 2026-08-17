@@ -26,7 +26,10 @@ parameters *fixed* (HTML comment style, the `MANAGED REGION` phrase,
 `ns.key.region` keys), **a domain fixing of the dialect, not a second engine**:
 the region grammar, the line-ending invariant and the idempotence proof all
 stayed here. It asked for `SectionDialect`'s parameters to be narrowed, never
-extended — keep it that way when the next consumer arrives.
+extended — keep it that way when the next consumer arrives. The one thing it
+later added, **marker attributes**, landed here as syntax plus an equality rule
+while the *meaning* of the pairs stayed entirely with the consumer: mechanism
+here, content there.
 
 ## The one architectural rule: pure core, thin edge
 
@@ -59,11 +62,16 @@ probably in the wrong file.
 | `ManagedSection.ts` | the service, its layers, `SectionFileError` |
 | `internal/scan.ts` | the marker scanner, EOL detection/normalization |
 | `internal/reconcile.ts` | the spans/placeholder algorithm |
+| `internal/attributes.ts` | the marker attribute grammar, shared by renderer and scanner |
 
 Import direction is one-way: `CommentStyle → Section → SectionDialect →
 SectionDocument → ManagedSection`. `internal/` may import concept modules;
 concept modules must not import `SectionDocument` (that is why the scanner
 returns a plain tagged result and `SectionDocument` mints the error).
+
+`Section.ts` imports `Effect` **as a value** (`Schema.withConstructorDefault`
+takes an effect) — still `effect`, still no new dependency, and not evidence of
+anything about the pure/service split.
 
 ## Invariants — do not break these
 
@@ -83,8 +91,18 @@ returns a plain tagged result and `SectionDocument` mints the error).
    declared order, so a consumer can say "the preamble precedes the tool block"
    by listing them in that order. Do not soften this into "update in place".
 5. **Rendering refuses what it cannot read back.** Content containing a marker,
-   a comment style the dialect cannot scan, and one identity declared twice all
-   fail typed **before** anything is written.
+   a comment style the dialect cannot scan, one identity declared twice, and an
+   attribute outside the grammar (`invalidAttribute`, naming it) all fail typed
+   **before** anything is written. Attributes are runtime data, so that refusal
+   is typed at render, never a defect at construction.
+6. **Marker attributes are metadata, never identity.** `name="value"` pairs ride
+   the `BEGIN` marker; an `END` never carries any. They count in **equality** —
+   an attribute change is real drift, or a stamp would be unwritable — but never
+   in identity, so changing one updates the block **in place** rather than
+   orphaning it and appending a second. `attributes` is an always-present record
+   with a constructor default: a bare marker and an explicit `{}` must stay the
+   same section, or a consumer that never uses attributes sees permanent drift
+   against every marker on disk. Emission is insertion-ordered, equality is not.
 
 ## Sharp edges
 
@@ -117,6 +135,27 @@ memoized in a module-level `WeakMap` keyed by dialect instance, not a field, so
 
 **`matchAll`, never `regex.test`.** The scanners carry `g`; `test` advances the
 shared `lastIndex` and makes a second call on the same text answer differently.
+
+**One attribute grammar, in `internal/attributes.ts`, so scanner and renderer
+cannot disagree.** Names are `[A-Za-z][A-Za-z0-9_-]*`, values double-quoted and
+free of `"` and line breaks, and **there is no escaping, by design** — an escape
+grammar is a second parser hiding inside the first. A run that does not parse, a
+duplicate name, or attributes on an `END` all mean *the line is not a marker*:
+it is ordinary content, and the ambiguity that creates fails typed downstream
+instead of by a guess in the scanner. The marker-injection guard mirrors that
+rule exactly — refusing more than the scanner reads back would reject content
+that round-trips fine.
+
+**The run is captured as one loose group, then re-validated anchored** (a
+repeated capture group keeps only its last pair), as a single lazy quantifier
+under a once-only `(?:…)?`. That keeps the pattern free of nested quantifiers,
+leaves the CRLF lookahead untouched, and is what lets a quoted value contain
+`---` without being read as the closing rule.
+
+**Attributed markers are a one-way compatibility break.** A scanner predating
+the feature does not recognize one at all — the line falls out as ordinary
+content and the block it opened stops being a managed section. Writing
+attributes into a file other tooling also manages is a decision.
 
 ## Testing
 

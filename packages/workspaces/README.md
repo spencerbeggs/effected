@@ -185,7 +185,7 @@ Windows correctness is therefore the operations you pass, and nothing else. Both
 
 ## Error handling
 
-Every failure is a `Schema.TaggedErrorClass` with structured fields you can branch on, not a prose string:
+Every failure is a `Schema.TaggedError` with structured fields you can branch on, not a prose string:
 
 ```ts
 import { WorkspaceDiscovery, WorkspacePatternError } from "@effected/workspaces";
