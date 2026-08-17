@@ -1,6 +1,6 @@
 {
 	"name": "@effected/templates",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"private": true,
 	"description": "Managed-section blocks in user-editable files: parse, reconcile, sync and check delimited regions.",
 	"keywords": ["templates", "managed-section", "codegen", "sync", "effect", "effected"],
