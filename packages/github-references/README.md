@@ -110,13 +110,67 @@ console.log(parseClosingList("Refs #7, #8"));
 // Option.none() — a reference list, but not a closing one
 ```
 
+## Harvesting reference lists inline
+
+`harvestReferenceLists` generalizes the closing-list grammar to the inline-in-prose posture: several lists can share one line of running text, each ending at its own last valid item.
+
+```ts
+import { harvestReferenceLists } from "@effected/github-references";
+
+console.log(harvestReferenceLists("Closes #123, Fixes #456"));
+// [ { keyword: "closes", closing: true, issueNumbers: [123], start: 0, end: 11 },
+//   { keyword: "fixes", closing: true, issueNumbers: [456], start: 13, end: 23 } ]
+```
+
+Both keyword sets play, exactly as in `parseReferenceList`, and each hit carries `start` / `end` offsets like `harvestIssueReferences`. An issue number past `Number.MAX_SAFE_INTEGER` anywhere in a candidate drops the whole candidate, never a partial list, and scanning resumes after it.
+
+## Reading a multi-line text
+
+`parseBareLines`, `parseClosingLists` and `parseReferenceLists` apply their single-line parser across every line of a text and collect the hits in order. Rejected lines contribute nothing, and results carry no line numbers — a caller that needs positions keeps its own split loop.
+
+```ts
+import { parseBareLines, parseClosingLists } from "@effected/github-references";
+
+console.log(parseBareLines("Closes: #12\nsome unrelated line\nFixed #34"));
+// [ { issueNumber: 12, keyword: "closes" }, { issueNumber: 34, keyword: "fixed" } ]
+
+console.log(parseClosingLists("Fixes #1, #2\nRefs #9\nCloses #3 and #4"));
+// [ { keyword: "fixes", issueNumbers: [1, 2] }, { keyword: "closes", issueNumbers: [3, 4] } ]
+```
+
+`parseReferenceLists` reads the same lines the wider way, admitting `REFERENCE_KEYWORDS` alongside the closing nine.
+
+### Collecting both postures at once
+
+`collectReferenceLists` reads a text the way a real trailer/prose interleave actually looks: each line is tried as a whole-line reference list first (colon-tolerant, per `parseReferenceList`), and only a line that isn't one is harvested inline (no colon, per `harvestReferenceLists`). That preference order means a colon-less trailer line contributes its list exactly once, never once per posture. Results carry no offsets — this is the line-granular reading; a caller that needs spans reaches for `harvestReferenceLists` directly.
+
+```ts
+import { collectReferenceLists } from "@effected/github-references";
+
+console.log(collectReferenceLists("Fixes: #10\nprose mentioning closes #11"));
+// [ { keyword: "fixes", closing: true, issueNumbers: [10] },
+//   { keyword: "closes", closing: true, issueNumbers: [11] } ]
+```
+
+## Keyword families
+
+`keywordFamily(keyword)` collapses any of the twelve keywords across both sets to one of four families — `"close"`, `"fix"`, `"resolve"`, `"ref"` — for a caller building a Closes/Fixes/Refs-style map instead of switching on all twelve spellings by hand.
+
+```ts
+import { keywordFamily } from "@effected/github-references";
+
+console.log(keywordFamily("resolved"));
+// "resolve"
+```
+
 ## Grammar rules worth knowing
 
 - **The `#` is mandatory in every dialect.** `closes: 123` is not a reference; GitHub does not link it, and a parser that accepts it reports links that were never made.
 - **The list dialects are whole-line.** Same-line whitespace is `[ \t]` only, so an embedded newline cannot smuggle a second line past a parser whose contract is one line, and trailing content rejects the line instead of yielding a partial reading.
+- **A list never continues past a newline, inline or whole-line.** `harvestReferenceLists`'s separators are `[ \t]` only too, so a candidate that started before a newline ends there; and like `harvestIssueReferences`, it takes no colon — the colon spelling belongs to `parseReferenceList` and the bare-line dialect.
 - **Duplicates are preserved, in order.** Whether `#12, #12` means one issue or two is the caller's business; collapsing them would destroy evidence a caller may be linting for.
 - **Keyword case does not matter, and the result is canonical.** `CLOSES`, `Closes` and `closes` all match, and `keyword` always comes back lowercased.
-- **Unsafe issue numbers are treated differently on purpose.** Digits past `Number.MAX_SAFE_INTEGER` make the prose harvest *skip that one match*, while the list dialects reject the *whole line*: surrounding prose makes no claim about a skipped number, but a list line is a single claim about a set of issues that a partial result would misrepresent.
+- **Unsafe issue numbers are treated differently on purpose.** Digits past `Number.MAX_SAFE_INTEGER` make the prose harvest *skip that one match*, while the list dialects — whole-line and inline — reject the *whole line or candidate*: surrounding prose makes no claim about a skipped number, but a list is a single claim about a set of issues that a partial result would misrepresent.
 - **No input is truncated and no length cap applies.** The list dialect is parsed by a single character-by-character scan — no regular expressions at all — so a hostile line cannot trigger catastrophic backtracking and there is nothing to defend with truncation.
 
 ## Out of scope
@@ -130,12 +184,19 @@ The grammar used to live in `@effected/github`, which still re-exports exactly t
 ## Features
 
 - `harvestIssueReferences(text)` — every inline closing reference in running text, in document order, each with `issueNumber`, canonical `keyword` and `start` / `end` offsets.
+- `harvestReferenceLists(text)` — every reference list found inline in running text, in document order, each with `keyword`, `closing`, `issueNumbers` and `start` / `end` offsets.
 - `parseBareLineReference(line)` — the one reference a whole trimmed line carries, colon optional, as an `Option`.
+- `parseBareLines(text)` — every bare-line reference in a multi-line text, one per line, collected in order.
 - `parseClosingList(line)` — the issues a whole line names under one of the nine closing keywords, comma-, `and`- or Oxford-separated.
+- `parseClosingLists(text)` — `parseClosingList` applied across every line of a text, collected in order.
 - `parseReferenceList(line)` — the same line under the closing *and* non-closing keyword sets, reporting which matched through a `closing` flag.
+- `parseReferenceLists(text)` — `parseReferenceList` applied across every line of a text, collected in order.
+- `collectReferenceLists(text)` — every reference list in a multi-line text, whole-line first and inline only for a line that isn't one, so a colon-less trailer line never counts twice.
+- `keywordFamily(keyword)` — a keyword's tense-collapsed family: `close`, `fix`, `resolve` or `ref`, total over both keyword sets.
 - `CLOSING_KEYWORDS` / `ClosingKeyword` — the nine keywords GitHub acts on, and the type of one of them.
 - `REFERENCE_KEYWORDS` / `ReferenceKeyword` — the three non-closing keywords that associate without closing.
-- `IssueReference`, `BareLineReference`, `ClosingList`, `ReferenceList` — the result types, one per dialect reading.
+- `IssueReference`, `BareLineReference`, `ClosingList`, `ReferenceList`, `HarvestedReferenceList` — the result types, one per dialect reading.
+- `KeywordFamily` — the type of `keywordFamily`'s return value.
 
 ## License
 

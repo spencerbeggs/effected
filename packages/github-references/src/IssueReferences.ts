@@ -163,3 +163,26 @@ export const parseBareLineReference = (line: string): Option.Option<BareLineRefe
 	if (issueNumber === undefined) return Option.none();
 	return Option.some({ issueNumber, keyword: (match[1] ?? "").toLowerCase() as ClosingKeyword });
 };
+
+/**
+ * Every bare-line reference a whole text carries, one per line.
+ *
+ * @remarks
+ * The per-line convenience over {@link parseBareLineReference}: split on
+ * `"\n"` (the parser's own trim absorbs a `"\r"`, so CRLF input needs no
+ * special case), parse each line, and collect the accepted references in
+ * line order. Rejected lines simply contribute nothing. The results carry
+ * **no line numbers** — deliberately, because {@link BareLineReference} has
+ * none and most consumers only aggregate the references; a consumer that
+ * needs positions keeps its own split loop.
+ *
+ * @public
+ */
+export const parseBareLines = (text: string): ReadonlyArray<BareLineReference> => {
+	const references: Array<BareLineReference> = [];
+	for (const line of text.split("\n")) {
+		const parsed = parseBareLineReference(line);
+		if (Option.isSome(parsed)) references.push(parsed.value);
+	}
+	return references;
+};
