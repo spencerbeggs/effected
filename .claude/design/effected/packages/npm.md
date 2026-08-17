@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 94
 related:
   - ../architecture.md
@@ -98,9 +98,22 @@ A `FromString` codec decodes the brand to a **coarse five-case tagged union** �
 ## The vocabulary modules
 
 - **`DependencySection`** — one concept as two literal schemas: the short dependency kinds and the manifest field names, with a single source-of-truth mapping and its inverse derived from it. Replaces the private copies package-json, lockfiles and workspaces each carried.
-- **`IntegrityHash`** — an SRI brand covering **three** textual forms, because lockfile integrity is not all-SRI: npm/pnpm record SRI, corepack records its own pin form, and yarn Berry records cache checksums. Dropping the yarn form would silently discard integrity the [lockfiles](lockfiles.md) model treats as load-bearing. `CorepackIntegrityHash` is the corepack-only narrowing shared with package-json's manifest field, so both sides assert against one home.
+- **`IntegrityHash`** — an SRI brand covering **three** textual forms, because lockfile integrity is not all-SRI: npm/pnpm record SRI, corepack records its own pin form, and yarn Berry records cache checksums. Dropping the yarn form would silently discard integrity the [lockfiles](lockfiles.md) model treats as load-bearing. `CorepackIntegrityHash` is the corepack-only narrowing shared with package-json's manifest field, so both sides assert against one home, and it is where the [SRI bridge](#sri-to-corepack-conversion) hangs.
 - **`PackageManagerPin`** — the corepack pin triple as a first-class class, independent of any package.json field. It shares the strict version ruling with package-json's field model but deliberately diverges on the name grammar: the pin vocabulary is a closed literal set where the field model is permissive.
 - **`PackageManagerCache`** — the per-manager default-cache-directory facts table: a pure function of manager, platform and home that a CI action, a workspace tool or a doctor command can all read without a runner, a filesystem or a subprocess. The alternative is shelling a config query per run for a value that on a freshly provisioned machine is always the default. **Every row is cited to the manager's own authority on the member**, because two of the three prior-art rows it replaces were folklore and wrong. yarn is two rows, because the two majors cache differently and nothing about a bare manager name says which is in play.
+
+### SRI-to-corepack conversion
+
+The two integrity spellings the kit already types — npm's SRI `sha512-<base64>` and corepack's `sha512.<hex>` — encode the same digest, and moving between them is a real consumer need: writing a `packageManager` pin from a registry read means converting a value the registry hands over in SRI form. silk-update-action hand-rolled a `corepackHashFromIntegrity` for exactly that, which is the evidence this belongs here (effected#281).
+
+The conversion is a **`Schema` transformation**, `CorepackIntegrityHash.FromSri`, decoding a `string` to the same branded value every other integrity field carries, plus `CorepackIntegrityHash.fromSri` — the `Effect` convenience over it for the imperative call site, failing with a typed `InvalidSriIntegrityHashError` that carries the offending input. Schema-first because the transformation then **composes with `PackageManagerPin`'s decoding**, whose `integrity` field *is* `CorepackIntegrityHash` rather than a copy that agrees with it: a pin assembled from registry data decodes through one pipeline instead of a caller converting by hand and hoping the result parses.
+
+Four rulings carry it:
+
+- **Non-sha512 input fails typed decode** rather than producing garbage. The other algorithms are valid `IntegrityHash` values and a lenient converter would emit a pin corepack rejects at install time, which is the worst place to learn about it. The **digest length is checked too** — sha512 is 64 bytes, and an SRI value carrying anything else cannot be one.
+- **The base64 reader is strict and hand-rolled.** `Buffer` is Node-only *and* lenient — it drops invalid characters and truncates — and lenience is exactly what an integrity conversion must not have. A non-canonical spelling (a length no base64 output has, mismatched padding, an interior `=`, non-zero trailing bits) is rejected rather than repaired, because a second spelling of the same bytes is a value npm never emits.
+- **The conversion is one-way from SRI.** An already-corepack-form input does **not** pass through decode; accepting it would let a caller feed pins back in and mask a wiring bug. The codec's *encode* direction is the exact inverse — corepack back to canonical padded SRI, failing typed for the corepack forms SRI cannot carry, such as corepack's own sha224 default pins — which is a codec being a codec, not a second acceptance rule.
+- **JSON-quoted registry values are tolerated.** Registry payloads round-trip through JSON in enough consumer paths that one surrounding pair of quotes is a normal input, not a malformed one. One layer only, and encode never re-quotes.
 
 ## ReleaseAgeGate
 

@@ -1,3 +1,14 @@
+// The issue-reference grammar moved to @effected/github-references; these six
+// re-exports keep existing consumers working. The new closing-list dialect is
+// deliberately NOT re-exported here — new consumers take the grammar package.
+export {
+	type BareLineReference,
+	CLOSING_KEYWORDS,
+	type ClosingKeyword,
+	type IssueReference,
+	harvestIssueReferences,
+	parseBareLineReference,
+} from "@effected/github-references";
 export { ArtifactMetadata, type ArtifactMetadataShape, StorageRecordInput } from "./ArtifactMetadata.js";
 export { Attestation, AttestationListEntry, AttestationRecord, type AttestationShape } from "./Attestation.js";
 export {
@@ -78,14 +89,6 @@ export {
 	versionFromTag,
 } from "./GitTag.js";
 export { GitHubGraphQLError, GraphQLDocument, GraphQLErrorEntry } from "./GraphQL.js";
-export {
-	type BareLineReference,
-	CLOSING_KEYWORDS,
-	type ClosingKeyword,
-	type IssueReference,
-	harvestIssueReferences,
-	parseBareLineReference,
-} from "./IssueReferences.js";
 export {
 	MergeMethod,
 	PullRequest,

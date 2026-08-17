@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-16
-last-synced: 2026-08-14
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 88
 related:
   - architecture.md
@@ -27,6 +27,8 @@ related:
   - packages/npm.md
   - packages/commands.md
   - packages/github.md
+  - packages/github-references.md
+  - packages/memfs.md
   - packages/jsonl.md
   - consumers/README.md
 ---
@@ -77,7 +79,7 @@ The release criterion is "the kit can replace the business logic of these five."
 
 ## The gate
 
-The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion. It is a closed historical set — the table below is the record of why each one had to exist before the kit could publish at all, not a filter on anything now. The kit is twenty-eight publishable packages today ([package-inventory.md](package-inventory.md)); how the other nine arrived is [below](#joining-the-release-stream-after-the-gate).
+The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion. It is a closed historical set — the table below is the record of why each one had to exist before the kit could publish at all, not a filter on anything now. The kit is thirty publishable packages today ([package-inventory.md](package-inventory.md)); how the other eleven arrived is [below](#joining-the-release-stream-after-the-gate).
 
 | Package | Tier | Why it is on the gate |
 | --- | --- | --- |
@@ -107,13 +109,14 @@ The gate is the union of what those consumers need, and it is met. The gate set 
 
 ### Joining the release stream after the gate
 
-Nine packages arrived after the gate: `markdown`, `schemastore`, `jsonl`, `cli`, and the [github-split five](package-inventory.md#the-github-split-packages) — `commands`, `templates`, `github`, `github-actions` and `sbom`. None entered through this document's criterion, because that criterion is the union of what the five applications need and it was met without them.
+Eleven packages arrived after the gate: `markdown`, `schemastore`, `jsonl`, `cli`, `memfs`, `github-references`, and the [github-split five](package-inventory.md#the-github-split-packages) — `commands`, `templates`, `github`, `github-actions` and `sbom`. None entered through this document's criterion, because that criterion is the union of what the five applications need and it was met without them.
 
 What scoped them instead:
 
 - The github-split five are scoped by the program's six consumer repos — the five savvy-web action repos plus claude-code-marketplace-manager — all mapped in [consumers/](consumers/README.md), and **all six have since completed the migration onto them**. Only silk-update-action of those is also one of the five applications.
-- `markdown`, `schemastore` and `jsonl` were each scoped by a named consumer and built design-doc-first, then published in the next wave whose changesets named them.
-- [`cli`](packages/cli.md) is the newest and the only one not yet released. It was scoped by [reposets](consumers/reposets.md) — the kit's first consumer that runs at a terminal rather than on a runner — and follows the same design-doc-first shape, with the doc written and reviewed by that consumer before the port.
+- `markdown`, `schemastore`, `jsonl` and [`cli`](packages/cli.md) were each scoped by a named consumer and built design-doc-first, then published in the next wave whose changesets named them. `cli` came out of the [reposets](consumers/reposets.md) loop — the kit's first consumer that runs at a terminal rather than on a runner — with its doc written and reviewed by that consumer before the port.
+- [`memfs`](packages/memfs.md) was scoped by the kit itself: it is the filesystem test double every other package's suite needs, which is why it carries **no `@effected/*` edge, ever**.
+- [`github-references`](packages/github-references.md) is the newest and the only one not yet released. It is the kit's first **extraction driven by install weight rather than by design**: a pure grammar left `github` because an octokit-free consumer could not reach it, and `github` keeps a droppable compat re-export so the move is not a breaking change for the consumer that adopted it in its old home.
 
 That is the whole mechanism, and it is deliberately the same one a version bump uses: **gate membership is history, not a filter.** The gate answered "what must exist before the kit publishes at all", and that question is closed.
 

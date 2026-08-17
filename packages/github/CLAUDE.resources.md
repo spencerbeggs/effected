@@ -1,9 +1,6 @@
 # Resource services — @effected/github
 
-Child context file for the domain half: one service per GitHub noun, the
-configuration-write six, the pure closing-reference grammar, and the landmines a
-write can step on. The package-wide rules live in the parent; this file is what a
-resource author needs on top of them.
+Child context file for the domain half: one service per GitHub noun, the configuration-write six, and the landmines a write can step on. The package-wide rules live in the parent; this file is what a resource author needs on top of them.
 
 **Parent:** [CLAUDE.md](./CLAUDE.md)
 **Design depth:**
@@ -124,22 +121,6 @@ when it was said, or re-notifies everyone watching.
   one duplicate comment. `CommentOnceResult` carries `wrote` **and** the comment
   either way, so "already announced" needs no second read.
 
-## The closing-reference grammar is two dialects on purpose
+## The closing-reference grammar lives in @effected/github-references
 
-`IssueReferences` is strings in, values out — no service, no layer, nothing but
-`effect` on its graph — and it carries **two** dialects because their producers
-differ:
-
-- `harvestIssueReferences` scans running prose (`fixes #12 and closes #13`),
-  whitespace mandatory and **no colon**, because that is the spelling GitHub's own
-  scanner honours when it decides what a pull request closes.
-- `parseBareLineReference` takes a whole trimmed line (`Closes: #12`), colon
-  **optional**, because a generated references region writes one per line.
-
-**One regex for both is the tempting simplification and it fails invisibly**:
-accepting the colon inline harvests references GitHub will *not* link, so a
-pipeline reports an issue as closing that merging leaves open. Apply that rule
-if a third dialect appears. An inline reference carries offsets and a bare-line
-one deliberately does not, and a digit run past the safe-integer range is
-**skipped, never rounded** into a different, existing issue. Cross-repo and
-full-URL spellings are out of scope until a consumer emits them.
+It moved out on 2026-08-17, along with the dialect rules that used to be documented here. This package keeps a compat re-export of the six moved names and nothing else — see the parent's convention list. Work on the grammar itself in `@../github-references/CLAUDE.md`, with depth in `@../../.claude/design/effected/packages/github-references.md`.

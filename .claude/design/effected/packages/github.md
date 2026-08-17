@@ -16,6 +16,7 @@ related:
   - github-auth.md
   - github-resources.md
   - github-graphql.md
+  - github-references.md
   - github-actions.md
   - git.md
   - semver.md
@@ -57,6 +58,7 @@ The dependency set is **deliberately smaller than the package it replaces**, and
 | `universal-github-app-jwt` | signs the App JWT; zero dependencies, and the exact leaf the official auth package uses |
 | `tweetnacl` + `blakejs` | the libsodium **sealed box** GitHub's secrets API requires. Added 2026-08-13 with `RepositorySecret` |
 | [`@effected/semver`](semver.md) | semver-aware tag selection. Pure tier, so the edge is free under [R3](../effect-standards.md#dependency-policy) |
+| [`@effected/github-references`](github-references.md) | the issue-reference grammar, extracted 2026-08-17 (effected#399). Pure tier, free under R3, and the edge exists **only** to keep the [six-name compat re-export](github-resources.md#the-closing-reference-grammar-moved-to-effectedgithub-references) working |
 
 **The crypto pair is not a free-hand choice, and `node:crypto` is not an alternative.** A sealed box is `crypto_box` under an ephemeral keypair with a nonce **derived** as `blake2b(ephemeral_pk ‖ recipient_pk, 24)`; Node ships neither X25519 `crypto_box` nor blake2b, so the options were these two leaves or a full libsodium build. They are the first non-octokit runtime dependencies here and the tier does not move — the package is already integrated and nothing depends on it but `github-actions`, itself integrated — but **treat a third addition as a fresh decision** rather than a free ride on this one, the same guardrail [`schemastore`](schemastore.md#the-validation-gate-ajv-ships-closed) carries. See `src/internal/crypto.ts`, whose header records the CommonJS trap that bit here: Node's `cjs-module-lexer` detects `blakejs`' `blake2b` as a named export and not its nine siblings, so a named import works for one function and throws for its neighbour.
 
@@ -81,7 +83,7 @@ Three mechanisms carry it, in order of weight:
 
 1. **Module-per-layer-variant.** The token and config client layers live in the client module, which imports only octokit core and the paginator; the App-authenticated client layer lives in the App module, the only module importing the JWT signer. A consumer that is a pure token-only REST reader reaches none of it.
 2. **No namespace object, anywhere.** A predecessor's `{ fromEnv, fromToken, fromApp }` object is precisely what defeats mechanism 1: a namespace object is a single live binding, so referencing it retains every member's whole module graph ([effect-standards](../effect-standards.md#no-barrel-re-exports)). The entry point re-exports by name only.
-3. **The pure surface is genuinely pure.** The permission comparator, bot identity, the repo reference, the comment marker, the check-run output budgeter and the retry policy are schema classes in modules importing nothing but `effect`, and [the closing-reference grammar](github-resources.md#the-closing-reference-grammar-is-a-pure-module-and-it-is-two-dialects) is the same thing without the classes — plain functions over strings. A consumer that only compares token permissions, or only harvests `fixes #12` out of a commit subject, bundles a few hundred bytes. **Pure-but-GitHub-shaped belongs here rather than in a consumer**: the grammar is GitHub's, so a consumer re-deriving it is re-deriving a vendor rule, which is the duplication this package exists to end — the cost of hosting it is zero because it links no client.
+3. **The pure surface is genuinely pure.** The permission comparator, bot identity, the repo reference, the comment marker, the check-run output budgeter and the retry policy are schema classes in modules importing nothing but `effect`. A consumer that only compares token permissions bundles a few hundred bytes. **Pure-but-GitHub-shaped belongs in the kit rather than in a consumer**: a vendor rule a consumer re-derives is exactly the duplication this package exists to end. The closing-reference grammar was the case without the classes — plain functions over strings — and it has since [moved to `@effected/github-references`](github-resources.md#the-closing-reference-grammar-moved-to-effectedgithub-references), because "in the kit" turned out not to mean "in this package": hosting it here cost `github`'s own consumers nothing and cost the octokit-free ones the whole client tree. `github` keeps a six-name compat re-export and nothing else.
 
 The crypto pair rides mechanism 1 as well: `internal/crypto.ts` is imported by `RepositorySecret` and by nothing else, so the row above is a property of the module graph rather than a hope. **It is the one confinement in this table the suite does not yet assert** — the signer has both a positive and a negative test and the crypto pair has neither, which is worth closing on the same pattern rather than leaving as prose.
 

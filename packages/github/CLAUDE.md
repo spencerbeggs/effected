@@ -39,6 +39,7 @@ Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 2).
 | `universal-github-app-jwt` | signs the App JWT. Zero dependencies |
 | `tweetnacl` + `blakejs` | the libsodium **sealed box** GitHub's secrets API requires (added with `RepositorySecret`, 2026-08-13) |
 | `@effected/semver` (`workspace:^`) | `GitTag.latestSemver` |
+| `@effected/github-references` (`workspace:^`) | the compat re-export of the six moved issue-reference names, and nothing else |
 
 **The crypto pair is not a free-hand choice, and `node:crypto` is not an
 alternative** — Node ships neither X25519 `crypto_box` nor blake2b. The
@@ -96,12 +97,9 @@ surface this replaced cost four consumer repos sixteen cast sites.
   `BotIdentity`, `RepoRef`, `RetryPolicy` — reach nothing but `effect` and need
   no layer. `BotIdentity.signoff` renders the DCO trailer, because a commit
   through the Git Data API bypasses `git commit -s` and a hand-built trailer
-  fails late as a red DCO check. `IssueReferences` is the same thing without the
-  classes: plain functions over strings.
-- **Pure-but-GitHub-shaped belongs here, not in a consumer.** The grammar is
-  GitHub's, so a consumer re-deriving it re-derives a vendor rule — the
-  duplication this package exists to end — and hosting it costs nothing, because
-  it links no client. Its two dialects are in `@./CLAUDE.resources.md`.
+  fails late as a red DCO check.
+- **The issue-reference grammar moved out (2026-08-17).** It is `@effected/github-references` — pure-but-GitHub-shaped still belongs in the kit, but hosting it beside the client made the vendor rule unreachable for the zero-octokit consumers most likely to re-derive it. Detail: `@../github-references/CLAUDE.md`.
+- **What stays here is a compat re-export and nothing more.** `src/index.ts` re-exports exactly the six moved names, pinned by `__test__/IssueReferencesCompat.test.ts` and **droppable at a later bump** — that affordance is the only reason the dependency exists. The closing-list dialect is deliberately **not** re-exported.
 - **Resource-service rules, including the rebase-ordering landmine that cost a
   consumer its release PR, are in `@./CLAUDE.resources.md`.**
 

@@ -8,6 +8,7 @@ last-synced: 2026-08-17
 completeness: 93
 related:
   - github.md
+  - github-references.md
   - ../consumers/reposets.md
   - github-rest.md
   - github-errors.md
@@ -44,16 +45,13 @@ A predecessor's branch error carried no structured "already exists" discriminant
 
 **The remaining race is named rather than implied away.** GitHub offers no conditional create, so two runs that both miss the marker both post. The window is a page read wide and the failure is one duplicate comment; the honest posture is to document it on the member rather than let the name promise an atomicity the API cannot provide — which the docstring now does in those words, stating the check-then-create is **not atomic** and sending a caller who needs mutual exclusion to serialize externally. The result value is a `CommentOnceResult` carrying `wrote` **and** the comment either way, so a caller can report "already announced" without a second read.
 
-## The closing-reference grammar is a pure module, and it is two dialects
+## The closing-reference grammar moved to `@effected/github-references`
 
-`IssueReferences` is strings in, values out — no service, no layer, nothing but `effect` on its import graph. It models GitHub's nine closing keywords and the two dialects that actually occur, and the deliberate part is that there are **two**:
+`IssueReferences` shipped here in 0.6.0 and **left in the extraction** (effected#399): the module, its tests and its two dialects now live in [`@effected/github-references`](github-references.md), a pure package `github` takes as a regular `workspace:^` dependency. That doc is authoritative for the grammar — the inline-in-prose and bare-line dialects, why one regex for both is wrong, the offsets and safe-integer rulings, and the third **closing-list** dialect added with the move.
 
-- **Inline-in-prose** (`harvestIssueReferences`) scans running text — `"fixes #12 and closes #13"` — with mandatory whitespace and **no colon**, because that is the spelling GitHub's own scanner honours when it decides what a pull request closes. This is what a release pipeline harvests out of commit subjects and PR bodies.
-- **Bare-line** (`parseBareLineReference`) takes the whole trimmed line as the reference — `"Closes: #12"` — with an **optional** colon, because a generated references region writes one reference per line and the colon reads better there.
+What stays here is the boundary, and it is exactly one line wide: `src/index.ts` **re-exports the six moved names** — `CLOSING_KEYWORDS`, `ClosingKeyword`, `IssueReference`, `harvestIssueReferences`, `BareLineReference`, `parseBareLineReference` — so consumers that adopted the grammar in its old home keep compiling. The re-export is a migration affordance, **droppable at a later bump**, and the closing-list surfaces are deliberately **not** added to it; `__test__/IssueReferencesCompat.test.ts` is the promise as a test.
 
-**One regex for both is the tempting simplification and it is wrong in a way nobody would notice.** Accepting the colon inline would harvest references GitHub will *not* link, so a pipeline would report an issue as closing when merging the pull request leaves it open. The dialects differ because their producers differ — prose is written by humans for GitHub's scanner, the region is written by tooling for humans — and that is the rule to apply if a third dialect ever shows up.
-
-Two smaller decisions: an inline reference carries **offsets** and a bare-line one deliberately does not (the line *is* the reference, so an offset would be a constant restated), and a digit run outside the safe-integer range is **skipped rather than parsed**, since rounding it silently yields a different, existing issue number. Cross-repo (`owner/repo#N`) and full-URL references are **out of scope this round** — both are real GitHub spellings, neither dialect's consumers emit them, and guessing their shape would freeze an API nobody has driven.
+The reason the grammar could leave without contradicting [the pure-but-GitHub-shaped rule](github.md#bundle-reachability) is that the rule says a *vendor rule* belongs in the kit rather than in a consumer — it never said which kit package. Hosting it beside the client cost nothing to `github`'s own consumers and everything to the octokit-free ones, which is what the extraction settles.
 
 ## The hazard that costs production data
 

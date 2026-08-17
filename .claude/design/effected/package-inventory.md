@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 90
 related:
   - architecture.md
@@ -37,6 +37,8 @@ related:
   - packages/templates.md
   - packages/github.md
   - packages/github-actions.md
+  - packages/github-references.md
+  - packages/memfs.md
   - packages/sbom.md
   - packages/schemastore.md
   - packages/jsonl.md
@@ -48,7 +50,7 @@ related:
 
 ## Overview
 
-The current `@effected/*` package set and where each package came from. The kit is **twenty-eight publishable packages** — twenty-seven libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). Twenty-seven have published; `@effected/cli` was built 2026-08-13 and is pending its first release. The directory listing of `packages/` is the authority on membership; this document is the authority on where each package came from and why it is shaped the way it is. Tier definitions are in [effect-standards.md](effect-standards.md); the release mechanics and consumer mapping are in [releases.md](releases.md); open work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
+The current `@effected/*` package set and where each package came from. The kit is **thirty publishable packages** — twenty-nine libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). Twenty-nine have published; `@effected/github-references` was built 2026-08-17 and is pending its first release. The directory listing of `packages/` is the authority on membership; this document is the authority on where each package came from and why it is shaped the way it is. Tier definitions are in [effect-standards.md](effect-standards.md); the release mechanics and consumer mapping are in [releases.md](releases.md); open work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
 
 The kit's scope is closed by the consuming applications in [releases.md](releases.md), not by how many predecessor libraries exist. A predecessor is not by itself a commitment to carry it forward: the JSON Schema package fell off under that test (see [Off the roadmap](#off-the-roadmap)).
 
@@ -56,7 +58,7 @@ The kit's scope is closed by the consuming applications in [releases.md](release
 
 Provenance is one of: **port** (redesigned from a v3 `*-effect` repo or a `@savvy-web/*` package), **extraction** (carved out of another package during its build), **part-port** (one service generalized out of a predecessor, the rest invented) or **invention** (new, scoped by a consumer survey rather than by an existing implementation).
 
-Nineteen of these were the `0.1.0` gate set ([releases.md](releases.md#the-gate)); the other eight joined the release stream afterwards, which is the ordinary path for a package the gate never named.
+Nineteen of these were the `0.1.0` gate set ([releases.md](releases.md#the-gate)); the other eleven joined afterwards, which is the ordinary path for a package the gate never named.
 
 | Package | Tier | Provenance | Design doc |
 | --- | --- | --- | --- |
@@ -82,7 +84,9 @@ Nineteen of these were the `0.1.0` gate set ([releases.md](releases.md#the-gate)
 | `@effected/markdown` | pure | invention; CommonMark + GFM as pure schemas, the kit's typed communication layer with AI agents | [packages/markdown.md](packages/markdown.md) |
 | `@effected/commands` | boundary | part-port of `@savvy-web/silk-effects`' `ToolDiscovery` plus invention; tool discovery and structured running over core's `ChildProcessSpawner` | [packages/commands.md](packages/commands.md) |
 | `@effected/templates` | boundary | port of `@savvy-web/silk-effects`' `ManagedSection`; managed `BEGIN`/`END` blocks in user-owned files | [packages/templates.md](packages/templates.md) |
+| `@effected/memfs` | pure | invention; a virtual POSIX volume behind core's `FileSystem` key — the kit's filesystem test double, with **no `@effected/*` edge, ever** | [packages/memfs.md](packages/memfs.md) |
 | `@effected/github` | integrated | port-with-redesign of `@savvy-web/github-action-effects`' GitHub half; owns the octokit runtime, and since the configuration-write services the sealed-box crypto pair | [packages/github.md](packages/github.md) |
+| `@effected/github-references` | pure | extraction from `github`; GitHub's issue-reference grammar as pure functions, plus the closing-list dialect added with the move | [packages/github-references.md](packages/github-references.md) |
 | `@effected/github-actions` | integrated | port-with-redesign of the same package's Actions half; the runner-side runtime | [packages/github-actions.md](packages/github-actions.md) |
 | `@effected/sbom` | integrated | port-with-redesign of the same package's `Attest` knot; owned CycloneDX 1.6 emitter plus Sigstore signing | [packages/sbom.md](packages/sbom.md) |
 | `@effected/schemastore` | integrated (was boundary) | invention; SchemaStore-shaped Draft-07 JSON Schema documents, catalog entries, versioning, lints and the emit pipeline from Effect Schema sources — generalizes silk-release-action's schema-generation script | [packages/schemastore.md](packages/schemastore.md) |
@@ -94,6 +98,7 @@ Tiers classify libraries by dependency surface; the companion is not a library a
 - **`app` is a thin composition layer, not an umbrella.** It wires `xdg`, `config-file` and `store` into an application control plane and the glue that exists only when all three are present. It owns no domain logic, defines no service/schema/error and **re-exports nothing** — a consumer wanting config files alone takes `config-file` alone, so the [no-barrel-re-exports](effect-standards.md#no-barrel-re-exports) rule holds. Nothing may depend on it: a library taking an application control plane would be an [R2](effect-standards.md#dependency-policy) tier-3 leak.
 - **`npm`'s contracts are implemented by `workspaces`.** `npm` defines `CatalogResolver`/`WorkspaceResolver` but cannot implement them; `workspaces` ships the layers, because catalog resolution needs `pnpm-workspace.yaml` plus the lockfile and workspace-version resolution needs the discovered package list. Provide either alongside `Package.resolve` and a manifest's `catalog:` / `workspace:` specifiers resolve for real. The same inversion now runs twice: `commands` declares `LocalExec` and `workspaces` ships that layer too ([packages/workspaces.md](packages/workspaces.md)).
 - **`npm` is boundary, not integrated, and a guardrail keeps it there.** Its `NpmRegistry`/`PackagePublish` services do IO themselves through core-declared contracts in `R`, which is what boundary means (R4) — but only while they stay core-contracts-plus-`commands`. The first non-core runtime dependency makes the package integrated, and R2 would then drag `lockfiles` (pure) and `package-json` (boundary) with it; the recorded answer to that day is a split, not an accepted retier. The rule and its reachability test are in [packages/npm.md](packages/npm.md#the-tier-guardrail-and-it-is-enforced).
+- **A pure grammar hosted beside a heavy client is reachable only by that client's consumers.** `github-references` is the extraction that made the point: the issue-reference grammar shipped inside `github` under the rule that *pure-but-vendor-shaped belongs in the kit rather than in a consumer*, which is right and does not say **which** kit package. Hosting it beside octokit cost `github`'s own consumers nothing and cost an octokit-free consumer six runtime dependencies for forty lines of regex, so it moved to a pure package `github` now depends on for a droppable [six-name compat re-export](packages/github-references.md#the-github-compat-re-export). The test to apply before hosting the next pure vendor rule is not "does it link a client here" but "can the consumers most likely to re-derive it actually reach it".
 - **`schemastore` is the kit's one accepted retier**, boundary → integrated when `ajv` became a direct dependency and `SchemaValidator.layer` started shipping a real engine instead of a contract seam the consumer had to close. It is the counter-case to `npm`'s guardrail above: nothing in the kit depends on `schemastore`, so R2 propagates to no one, and the package is build-time tooling a consumer installs as a devDependency — the cost R1 exists to prevent was never actually paid here. The reasoning is recorded in [packages/schemastore.md](packages/schemastore.md#the-validation-gate-ajv-ships-closed); read it before citing this as precedent, because the two facts that made it safe are what make it narrow.
 - **`workspaces`' `@pnpm/catalogs.*` deps are what make it integrated**, confined to one internal module so the tier-3 blast radius is a single file. Its git reads run through `@effected/git` (`ChangeDetector` and the snapshot service), one boundary edge that keeps it integrated.
 - **`store` is named for its primitive, not its backend** — a schema-versioned migrated `SqlClient` and a `key → Uint8Array` cache sharing one migration-ledger engine, so a non-SQLite implementation never forces a rename. Its single `@effect/sql-sqlite-node` dependency is what makes it tier 3, and is why the SQLite services were split out of `xdg`.

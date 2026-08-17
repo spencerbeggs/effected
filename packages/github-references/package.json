@@ -1,17 +1,17 @@
 {
-	"name": "@effected/github",
-	"version": "0.6.1",
+	"name": "@effected/github-references",
+	"version": "0.0.0",
 	"private": true,
-	"description": "Typed GitHub REST and GraphQL services over the octokit core request surface, with app auth and resource helpers.",
-	"keywords": ["github", "octokit", "rest", "graphql", "app-auth", "effect", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/github#readme",
+	"description": "GitHub's issue-reference grammar as pure functions: inline-in-prose harvesting, bare-line parsing and the closing-list dialect.",
+	"keywords": ["github", "issue", "reference", "closing-keyword", "grammar", "parser", "effect", "effected"],
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/github-references#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/spencerbeggs/effected.git",
-		"directory": "packages/github"
+		"directory": "packages/github-references"
 	},
 	"license": "MIT",
 	"author": {
@@ -31,18 +31,7 @@
 		"prepare": "turbo run build:dev",
 		"types:check": "tsc --noEmit"
 	},
-	"dependencies": {
-		"@effected/github-references": "workspace:^",
-		"@effected/semver": "workspace:^",
-		"@octokit/core": "^7.0.6",
-		"@octokit/plugin-paginate-rest": "^15.0.0",
-		"@octokit/types": "^17.0.0",
-		"blakejs": "1.2.1",
-		"tweetnacl": "1.0.3",
-		"universal-github-app-jwt": "^2.2.2"
-	},
 	"devDependencies": {
-		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
 		"@savvy-web/bundler": "^2.1.14",
 		"@types/node": "catalog:build",

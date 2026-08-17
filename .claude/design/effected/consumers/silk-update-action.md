@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 88
 related:
   - README.md
@@ -30,6 +30,8 @@ It reaches `workspaces`, `npm`, `runtimes`, `lockfiles`, `semver`, `yaml`, `comm
 **The registry axis.** `NpmRegistry` is keyed registry → package → version here, and it is this repo that proved the axis: its release-age gate asks about publish times for specific versions from specific registries, which a package-keyed model could not answer. `src/services/release-age.ts` now composes `NpmRegistry` and `ReleaseAgeGate` from `@effected/npm` over `WorkspaceCatalogs.releaseAgeGate()` from `@effected/workspaces` — discovery on one side of the seam, registry facts on the other.
 
 **Catalog and lockfile reality.** pnpm catalogs, `configDependencies`, workspace discovery, the dependency graph and lockfile reading, all against a real monorepo rather than a fixture. It is the kit's most demanding `@effected/workspaces` consumer after savvy-web/systems.
+
+**A hand-roll that became kit surface.** Its `corepackHashFromIntegrity` converted a registry SRI hash into the corepack pin form, which is now [`CorepackIntegrityHash.FromSri` / `fromSri`](../packages/npm.md#sri-to-corepack-conversion) in `@effected/npm` (effected#281). The generalizing part is why it could not stay downstream: the two spellings are both kit-typed vocabulary, so a consumer converting between them by hand is re-deciding the kit's own edge cases — non-sha512 input, non-canonical base64, JSON-quoted registry values — one call site at a time.
 
 **Runtime resolution as a manifest concern.** `@effected/runtimes` resolves which Node, Bun or Deno version satisfies a range; this repo is what makes that useful, because it then writes the answer into `devEngines.runtime`.
 
