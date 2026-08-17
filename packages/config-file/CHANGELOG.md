@@ -1,5 +1,13 @@
 # @effected/config-file
 
+## 0.4.2
+
+### Dependencies
+
+| Dependency     | Type       | Action  | From  | To    |
+| -------------- | ---------- | ------- | ----- | ----- |
+| @effected/yaml | dependency | updated | 0.8.0 | 0.9.0 |
+
 ## 0.4.1
 
 ### Documentation
