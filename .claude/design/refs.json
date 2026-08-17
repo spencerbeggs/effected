@@ -232,13 +232,13 @@
 		{
 			"source": "packages/github/CLAUDE.md",
 			"target": ".claude/design/effected/packages/github-rest.md",
-			"hash": "555a819754917a63710771e826034cbf05947f083ee3b717371bde99b186a78a",
-			"recordedAt": "2026-08-12"
+			"hash": "fee9b5d1ab02fa224bdc62901aeb1310be4393a3c7b1ca0778ac50c2df615aa2",
+			"recordedAt": "2026-08-17"
 		},
 		{
 			"source": "packages/github/CLAUDE.md",
 			"target": ".claude/design/effected/packages/github.md",
-			"hash": "1524c68fe78041ff3af3689117e76a411c8b88af3c08637b76b81f1e0c78350c",
+			"hash": "20e974cdaf4e4b6509ca6cbf1491eed3c22025ad45c683938ef0ce06faa31dd4",
 			"recordedAt": "2026-08-17"
 		},
 		{
@@ -292,8 +292,8 @@
 		{
 			"source": "packages/markdown/CLAUDE.md",
 			"target": ".claude/design/effected/packages/markdown.md",
-			"hash": "79320b68e36bac58f2846088109cabdd180c28b14be6224521d70c9031177481",
-			"recordedAt": "2026-08-12"
+			"hash": "d0f4ee8d1c26094d6b713e58374c88d458bb564bb0bd5a1c9d8d1ebe788ae5e1",
+			"recordedAt": "2026-08-17"
 		},
 		{
 			"source": "packages/memfs/CLAUDE.md",
@@ -388,8 +388,8 @@
 		{
 			"source": "packages/spdx/CLAUDE.md",
 			"target": ".claude/design/effected/packages/spdx.md",
-			"hash": "5808910a5072cfc4f5a8c88a380eeb3170dbd05ad19eaa3b762010a27fa48f56",
-			"recordedAt": "2026-08-12"
+			"hash": "2422a51974bdc50f72cd078c1cd690227cec70e3f565bff2c8b316c817c2296b",
+			"recordedAt": "2026-08-17"
 		},
 		{
 			"source": "packages/store/CLAUDE.md",

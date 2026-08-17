@@ -33,13 +33,14 @@ const licenseRefNode = fc
 		// Conditional spread — never pass an explicit `undefined` for `optionalKey`.
 		documentRef !== undefined ? LicenseRefNode.make({ documentRef, ref }) : LicenseRefNode.make({ ref }),
 	);
+// `WITH` binds to any simple expression — a license id (optionally `+`) OR a
+// `LicenseRef` reference — so the arbitrary generates both license shapes.
 const withExceptionNode = fc
 	.record({
-		id: fc.constantFrom(...KNOWN_LICENSES),
-		plus: fc.boolean(),
+		license: fc.oneof(licenseNode, licenseRefNode),
 		exception: fc.constantFrom(...KNOWN_EXCEPTIONS),
 	})
-	.map(({ id, plus, exception }) => WithExceptionNode.make({ license: LicenseNode.make({ id, plus }), exception }));
+	.map(({ license, exception }) => WithExceptionNode.make({ license, exception }));
 const spdxExpressionArb: fc.Arbitrary<SpdxExpressionAst> = fc.letrec<{ expr: SpdxExpressionAst }>((tie) => ({
 	expr: fc.oneof(
 		{ maxDepth: 4, depthIdentifier: "spdx" },
@@ -57,10 +58,22 @@ const VALID = [
 	"GPL-2.0-or-later WITH Bison-exception-2.2",
 	"LicenseRef-Proprietary",
 	"DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2",
+	"LicenseRef-Foo WITH Bison-exception-2.2",
+	"DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2 WITH Classpath-exception-2.0",
 	"MIT and BSD-3-Clause",
 	"(MIT AND (Apache-2.0 OR BSD-3-Clause))",
 ];
-const INVALID = ["NOPE-1.0", "MIT AND", "(MIT", "MIT OR OR Apache-2.0", ""];
+const INVALID = [
+	"NOPE-1.0",
+	"MIT AND",
+	"(MIT",
+	"MIT OR OR Apache-2.0",
+	"",
+	// an unknown exception id after a reference
+	"LicenseRef-Foo WITH Bogus-exception",
+	// a reference never carries the `+` marker
+	"LicenseRef-Foo+ WITH Bison-exception-2.2",
+];
 
 describe("SpdxExpression", () => {
 	for (const s of VALID) {
@@ -113,6 +126,8 @@ describe("SpdxExpression", () => {
 		"(MIT OR Apache-2.0)",
 		"Apache-2.0+",
 		"GPL-2.0-or-later WITH Bison-exception-2.2",
+		"LicenseRef-Foo WITH Bison-exception-2.2",
+		"DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2 WITH Classpath-exception-2.0",
 		"(MIT AND (Apache-2.0 OR BSD-3-Clause))",
 	]) {
 		it.effect(`FromString encode round-trips ${s}`, () =>
@@ -128,6 +143,17 @@ describe("SpdxExpression", () => {
 			}),
 		);
 	}
+	it.effect("binds WITH to a LicenseRef reference", () =>
+		Effect.gen(function* () {
+			const expr = yield* SpdxExpression.parse("LicenseRef-Foo WITH Bison-exception-2.2");
+			assert.instanceOf(expr, WithExceptionNode);
+			if (expr instanceof WithExceptionNode) {
+				assert.instanceOf(expr.license, LicenseRefNode);
+				assert.strictEqual(expr.exception, "Bison-exception-2.2");
+			}
+			assert.strictEqual(expr.toString(), "LicenseRef-Foo WITH Bison-exception-2.2");
+		}),
+	);
 	it.effect("preserves the + marker", () =>
 		Effect.gen(function* () {
 			const expr = yield* SpdxExpression.parse("Apache-2.0+");

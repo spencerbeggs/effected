@@ -22,10 +22,11 @@ The `SpdxExpression` facade stays an `as const` object, NOT a static class: `exp
 
 ## Conventions and gotchas
 
+- **`WITH` binds to a simple *expression*, and a reference is one.** Per the SPDX ABNF, `LicenseRef-Foo WITH Bison-exception-2.2` is grammatical, so `WithExceptionNode.license` is a **union** of `LicenseNode` and `LicenseRefNode` — never narrow it back. The parser materializes all three simple-license forms into one internal leaf and applies **one** shared `WITH <known exception>` check; never re-branch that tail, which is how the reference forms drifted from the id form. The exception must still be cataloged, and only a cataloged id may carry `+` (`LicenseRef-Foo+` is rejected).
 - **`parse` / `parseResult`, never `make`.** `Schema.Class` reserves `make`, so the validating constructors take these names. The sync `Result` form is the primitive; the `Effect` twin derives from it — kit convention, `@../../.claude/design/effected/formatter-convention.md`.
 - **Vendored datasets are real TypeScript under `src/internal/`** — 695 active + 26 deprecated license ids and 66 exceptions, committed as data literals (`licenseIds.ts`, `exceptions.ts`). Deprecated ids are valid-but-flagged, never rejected.
 - **The datasets are devDep-only vendoring.** `spdx-license-ids`, `spdx-exceptions`, `spdx-expression-parse` and `oxc-parser` are **devDependencies only** — never import them from `src/**` at runtime. `scripts/generate-data.ts` regenerates the literals by rewriting their byte-spans via `oxc-parser`; re-run it and diff when the upstream data bumps (it is idempotent).
-- **Differential oracle test.** `__test__/oracle.int.test.ts` checks the engine against `spdx-expression-parse` and must agree on 695/695 ids. If the engine disagrees with the oracle, **fix the engine.** A test-only ambient shim `types/spdx-expression-parse.d.ts` types the oracle dependency.
+- **Differential oracle test.** `__test__/oracle.int.test.ts` checks the engine against `spdx-expression-parse` and must agree on 695/695 ids. If the engine disagrees with the oracle, **fix the engine** — never pin the oracle back or exclude the case. **An oracle bump is a grammar review, not a version bump:** probe the new oracle's answers for the forms around the change and let the corpus record each accept and reject. A test-only ambient shim `types/spdx-expression-parse.d.ts` types the oracle dependency.
 - `package.json` stays `"private": true`. The bundler emits the publishable manifest.
 
 ## Test and build

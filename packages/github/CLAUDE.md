@@ -35,7 +35,7 @@ Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 2).
 | --- | --- |
 | `@octokit/core` | the `Octokit` class: `request` (route-keyed, typed) and `graphql` |
 | `@octokit/plugin-paginate-rest` | `composePaginateRest.iterator` + the `PaginatingEndpoints` type |
-| `@octokit/types` | the generated `Endpoints` map. **Ships no JavaScript** — types only |
+| `@octokit/types` | the generated `Endpoints` map. **Ships no JavaScript** — types only. Its v17 resource ids are `number \| bigint` |
 | `universal-github-app-jwt` | signs the App JWT. Zero dependencies |
 | `tweetnacl` + `blakejs` | the libsodium **sealed box** GitHub's secrets API requires (added with `RepositorySecret`, 2026-08-13) |
 | `@effected/semver` (`workspace:^`) | `GitTag.latestSemver` |
@@ -89,6 +89,9 @@ surface this replaced cost four consumer repos sixteen cast sites.
   fixture double and `GitHubCommit.changedFiles` (a route octokit does not list
   as paginating) all build a `PageSource` for the same walk.
 - **One retry policy**, in the client. Resources never retry.
+- **Resource ids narrow through `src/internal/ids.ts` (`numericId`), never a
+  cast.** The public surface stays `id: number`; a new mapping site that reads an
+  id adds a call to the funnel.
 - Pure classes — `TokenPermissions`, `CheckRunOutput`, `CommentMarker`,
   `BotIdentity`, `RepoRef`, `RetryPolicy` — reach nothing but `effect` and need
   no layer. `BotIdentity.signoff` renders the DCO trailer, because a commit

@@ -5,6 +5,7 @@ import type { GitHubClientShape } from "./GitHubClient.js";
 import { GitHubClient, makeClientShape } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { GitHubGraphQLError } from "./GraphQL.js";
+import { numericId } from "./internal/ids.js";
 import type { RetryPolicy } from "./Resilience.js";
 
 /**
@@ -406,7 +407,7 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 			const raw = yield* client.paginate("GET /app/installations", {}).pipe(Effect.catch(appFailure("installation")));
 			return raw.map((entry) =>
 				Installation.make({
-					id: entry.id,
+					id: numericId(entry.id),
 					...(entry.account !== null && entry.account !== undefined && "login" in entry.account
 						? { account: entry.account.login }
 						: {}),
@@ -486,7 +487,7 @@ function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
 			return AppIdentity.make({
 				slug,
 				name,
-				...(Option.isSome(user) ? { userId: user.value.id } : {}),
+				...(Option.isSome(user) ? { userId: numericId(user.value.id) } : {}),
 			});
 		});
 

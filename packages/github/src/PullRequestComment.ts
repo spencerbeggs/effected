@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import type { GitHubError } from "./GitHubError.js";
+import { numericId } from "./internal/ids.js";
 import { Repo } from "./Repo.js";
 import type { PageOptions } from "./Rest.js";
 
@@ -110,8 +111,8 @@ const unstubbed = (member: string): never => {
 	throw new Error(`PullRequestComment.makeTest: ${member}() was called but not stubbed — pass an override.`);
 };
 
-const recordOf = (raw: { id: number; body?: string | null; html_url: string }): CommentRecord =>
-	CommentRecord.make({ id: raw.id, body: raw.body ?? "", url: raw.html_url });
+const recordOf = (raw: { id: number | bigint; body?: string | null; html_url: string }): CommentRecord =>
+	CommentRecord.make({ id: numericId(raw.id), body: raw.body ?? "", url: raw.html_url });
 
 const make = (client: GitHubClient["Service"]): PullRequestCommentShape => {
 	const create = Effect.fn("PullRequestComment.create")(function* (issueNumber: number, body: string) {

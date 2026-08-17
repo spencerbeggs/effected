@@ -51,8 +51,11 @@ Each line is the rule; its reasoning is in the child beside it.
 - **The inline pass builds a mutable linked list**, materializing immutable Schema
   nodes only once it is final. Do not "clean this up" into an array — that
   reintroduces the quadratic behavior the delimiter stack exists to prevent.
-- `internal/entityMap.ts` is **generated** from `entities@6.0.1`: never edit it by
-  hand, and never move `entities` into `dependencies`.
+- `internal/entityMap.ts` is **generated** from the `entities` devDependency:
+  never edit it by hand, and never move `entities` into `dependencies`. The
+  packed trie is an upstream internal that re-encodes across majors, so a bump
+  re-derives the walker — accept a regeneration on **entry-for-entry data
+  equality** with the old map, never on a clean run.
 - `MAX_NESTING_DEPTH = 256` guards every **recursive** surface, and iterative
   surfaces are deliberately unguarded. Know what NOT to guard.
 - **Parse is near-total**: every string is a valid CommonMark document, so the `E`

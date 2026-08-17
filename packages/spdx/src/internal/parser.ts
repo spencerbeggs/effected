@@ -19,16 +19,17 @@ import { LicenseException } from "../LicenseException.js";
 export const MAX_NESTING_DEPTH = 256;
 
 /**
- * A raw, engine-level license leaf: an SPDX identifier with the trailing `+`
- * ("or later") marker. Emitted by the parser and materialized into the public
- * AST by the facade; carries no validation behavior of its own.
+ * A raw, engine-level simple-expression leaf: a cataloged SPDX identifier with
+ * the trailing `+` ("or later") marker, or a `LicenseRef`/`DocumentRef`
+ * reference. This is the SPDX ABNF's `simple-expression`, and therefore the
+ * shape a `WITH` clause may bind to. Emitted by the parser and materialized
+ * into the public AST by the facade; carries no validation behavior of its own.
  *
  * @internal
  */
-export interface RawLicense {
-	readonly id: string;
-	readonly plus: boolean;
-}
+export type RawSimpleLicense =
+	| { readonly kind: "license"; readonly id: string; readonly plus: boolean }
+	| { readonly kind: "licenseRef"; readonly documentRef: string | undefined; readonly ref: string };
 
 /**
  * The raw expression tree the parser emits. It is a plain-object mirror of the
@@ -39,9 +40,8 @@ export interface RawLicense {
  * @internal
  */
 export type RawExpression =
-	| { readonly kind: "license"; readonly id: string; readonly plus: boolean }
-	| { readonly kind: "licenseRef"; readonly documentRef: string | undefined; readonly ref: string }
-	| { readonly kind: "with"; readonly license: RawLicense; readonly exception: string }
+	| RawSimpleLicense
+	| { readonly kind: "with"; readonly license: RawSimpleLicense; readonly exception: string }
 	| { readonly kind: "and"; readonly left: RawExpression; readonly right: RawExpression }
 	| { readonly kind: "or"; readonly left: RawExpression; readonly right: RawExpression };
 
@@ -226,16 +226,20 @@ export function parse(input: string): RawExpression | undefined {
 		}
 	}
 
-	// A simple license (`LICENSE ["+"] ["WITH" EXCEPTION]`) or a
-	// `LicenseRef`/`DocumentRef` reference. Non-recursive, so it needs no depth
-	// guard of its own.
+	// A simple expression (`LICENSE ["+"]` or a `LicenseRef`/`DocumentRef`
+	// reference), optionally followed by `WITH <exception>` — the ABNF's
+	// `simple-expression` and `with-expression`. Only a cataloged id may carry
+	// the `+` marker; a `+` after a reference is left unconsumed and rejected by
+	// the caller's trailing-token check, matching the oracle. Non-recursive, so
+	// it needs no depth guard of its own.
 	function parseLicenseLike(): RawExpression | undefined {
 		const head = peek();
 		if (head === undefined || head.type !== TOKEN_ID) return undefined;
 		const value = head.value;
+		let license: RawSimpleLicense;
 
-		// DocumentRef-<idstring> ":" LicenseRef-<idstring>
 		if (value.startsWith(DOCUMENT_REF_PREFIX)) {
+			// DocumentRef-<idstring> ":" LicenseRef-<idstring>
 			pos++; // consume DocumentRef- idstring
 			if (peek()?.type !== TOKEN_COLON) return undefined;
 			pos++; // consume :
@@ -246,28 +250,28 @@ export function parse(input: string): RawExpression | undefined {
 			const full = `${value}:${refToken.value}`;
 			if (!License.isLicenseRef(full)) return undefined;
 			pos++; // consume LicenseRef- idstring
-			return {
+			license = {
 				kind: "licenseRef",
 				documentRef: value.slice(DOCUMENT_REF_PREFIX.length),
 				ref: refToken.value.slice(LICENSE_REF_PREFIX.length),
 			};
-		}
-
-		// Bare LicenseRef-<idstring>
-		if (value.startsWith(LICENSE_REF_PREFIX)) {
+		} else if (value.startsWith(LICENSE_REF_PREFIX)) {
+			// Bare LicenseRef-<idstring>
 			if (!License.isLicenseRef(value)) return undefined;
 			pos++; // consume LicenseRef- idstring
-			return { kind: "licenseRef", documentRef: undefined, ref: value.slice(LICENSE_REF_PREFIX.length) };
+			license = { kind: "licenseRef", documentRef: undefined, ref: value.slice(LICENSE_REF_PREFIX.length) };
+		} else {
+			// A cataloged SPDX license id, optionally `+`.
+			if (!License.isKnownId(value)) return undefined;
+			pos++; // consume license id
+			let plus = false;
+			if (peek()?.type === TOKEN_PLUS) {
+				pos++; // consume +
+				plus = true;
+			}
+			license = { kind: "license", id: value, plus };
 		}
 
-		// A cataloged SPDX license id, optionally `+` and `WITH <exception>`.
-		if (!License.isKnownId(value)) return undefined;
-		pos++; // consume license id
-		let plus = false;
-		if (peek()?.type === TOKEN_PLUS) {
-			pos++; // consume +
-			plus = true;
-		}
 		if (peek()?.type === TOKEN_WITH) {
 			pos++; // consume WITH
 			const exceptionToken = peek();
@@ -279,9 +283,9 @@ export function parse(input: string): RawExpression | undefined {
 				return undefined;
 			}
 			pos++; // consume exception id
-			return { kind: "with", license: { id: value, plus }, exception: exceptionToken.value };
+			return { kind: "with", license, exception: exceptionToken.value };
 		}
-		return { kind: "license", id: value, plus };
+		return license;
 	}
 
 	const node = parseOr();
