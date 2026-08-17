@@ -1,6 +1,6 @@
 {
 	"name": "@effected/cli",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"private": true,
 	"description": "The boundary layer of an effect/unstable/cli program: plain CLI output, failure reporting, and schema-issue rendering",
 	"keywords": ["effect", "cli", "logger", "terminal"],

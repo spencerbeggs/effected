@@ -1,5 +1,17 @@
 # @effected/semver
 
+## 0.5.0
+
+### Dependencies
+
+* | Dependency | Type           | Action  | From           | To           |                                                                       |
+  | :--------- | :------------- | :------ | :------------- | :----------- | --------------------------------------------------------------------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Minor Changes
+
+[#389]: https://github.com/spencerbeggs/effected/pull/389
+
 ## 0.4.0
 
 ### Bug Fixes

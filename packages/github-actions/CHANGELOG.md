@@ -1,5 +1,27 @@
 # @effected/github-actions
 
+## 0.8.0
+
+### Dependencies
+
+| Dependency          | Type       | Action  | From  | To     |
+| ------------------- | ---------- | ------- | ----- | ------ |
+| @effected/github    | dependency | updated | 0.4.3 | 0.5.0  |
+| @effected/glob      | dependency | updated | 0.3.0 | 0.4.0  |
+| @effected/markdown  | dependency | updated | 0.5.2 | 0.6.0  |
+| @effected/npm       | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/sbom      | dependency | updated | 0.3.1 | 0.4.0  |
+| @effected/templates | dependency | updated | 0.2.0 | 0.3.0  |
+
+* | Dependency            | Type           | Action  | From           | To           |                                                                       |
+  | :-------------------- | :------------- | :------ | :------------- | :----------- | --------------------------------------------------------------------- |
+  | effect                | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 |                                                                       |
+  | @effect/platform-node | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+
+### Patch Changes
+
+[#389]: https://github.com/spencerbeggs/effected/pull/389
+
 ## 0.7.0
 
 ### Features

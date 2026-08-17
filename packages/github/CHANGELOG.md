@@ -1,5 +1,27 @@
 # @effected/github
 
+## 0.5.0
+
+### Refactoring
+
+* Adopted effect rc.108's relocation of `SchemaError` into the `Schema` module: the GraphQL `decode` signature now types its failure as `Schema.SchemaError`. The error surface is unchanged; no consumer action is required. [#389][#389]
+
+### Dependencies
+
+| Dependency       | Type       | Action  | From  | To    |
+| ---------------- | ---------- | ------- | ----- | ----- |
+| @effected/semver | dependency | updated | 0.4.0 | 0.5.0 |
+
+* | Dependency | Type           | Action  | From           | To           |
+  | :--------- | :------------- | :------ | :------------- | :----------- |
+  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 |
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#389]: https://github.com/spencerbeggs/effected/pull/389
+
 ## 0.4.3
 
 ### Bug Fixes
