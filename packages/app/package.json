@@ -37,7 +37,7 @@
 		"@effected/config-file": "workspace:*",
 		"@effected/store": "workspace:*",
 		"@effected/xdg": "workspace:*",
-		"@savvy-web/bundler": "^2.1.13",
+		"@savvy-web/bundler": "^2.1.14",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
