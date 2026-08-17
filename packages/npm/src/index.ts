@@ -43,6 +43,7 @@ export {
 	IntegrityHash,
 	type IntegrityHashBrand,
 	InvalidIntegrityHashError,
+	InvalidSriIntegrityHashError,
 	isValidIntegrityHash,
 } from "./IntegrityHash.js";
 export {

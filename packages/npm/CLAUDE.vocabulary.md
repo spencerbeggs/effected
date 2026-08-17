@@ -78,7 +78,10 @@ manifests are arbitrary user records.
   CorepackIntegrityHash` (an `optionalKey` keeps the inner schema on `.schema`)
   and `PackageManager.fields.integrity.value === CorepackIntegrityHash` (a
   `Schema.Option` keeps it on `.value`). Both fire on a faithful re-fork
-  ("compared values have no visual difference" — that IS the point).
+  ("compared values have no visual difference" — that IS the point). It also
+  carries the **SRI bridge**: the `FromSri` codec (npm's `sha512-<base64>` in,
+  corepack form out, one layer of JSON quotes tolerated), the `fromSri` `Effect`
+  convenience and `InvalidSriIntegrityHashError`. The rule is in the parent.
 - `PackageManagerPin` / `PackageManagerPinName` (`src/PackageManagerPin.ts`) —
   the corepack pin triple `<name>@<version>[+<integrity>]` as a first-class
   `Schema.Class`, independent of any package.json field: `name` is a

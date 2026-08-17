@@ -122,7 +122,7 @@ const program = Effect.gen(function* () {
 
 The existence check pages the issue's comments to the end and matches the marker in `upsert`'s exact spelling, so a comment either member writes stays findable by the other. It is a look-before-write: two runs racing on the same issue can both see no marker and both post, so treat the marker as the record rather than the check as a lock.
 
-Whether a run should comment at all usually turns on which issues a pull request closes, and that is a grammar rather than an API call. `IssueReferences` is that grammar as plain functions — no service, no layer, nothing but strings in — in the two dialects consumers actually write:
+Whether a run should comment at all usually turns on which issues a pull request closes, and that is a grammar rather than an API call. That grammar now lives in [`@effected/github-references`](https://www.npmjs.com/package/@effected/github-references), a pure package with no octokit behind it; this package re-exports the two dialects it used to own so existing code keeps compiling:
 
 ```ts
 import { harvestIssueReferences, parseBareLineReference } from "@effected/github";
@@ -139,6 +139,8 @@ console.log(parseBareLineReference("closes #12 for real"));
 ```
 
 `harvestIssueReferences` reads the **inline-in-prose** dialect: one of the nine closing keywords (`CLOSING_KEYWORDS`) followed by whitespace and `#<number>`, anywhere in the text, no colon — the spelling GitHub itself scans a pull request body for. Duplicates come back as written, because whether `fixes #1, fixes #1` means one intent or two is the caller's question. `parseBareLineReference` reads the **bare-line** dialect, where the whole trimmed line is the reference and the colon is optional — the shape a generated references block writes, one per line. Cross-repo (`owner/repo#12`) and full-URL references are out of scope.
+
+The re-export covers exactly six names — `CLOSING_KEYWORDS`, `ClosingKeyword`, `IssueReference`, `harvestIssueReferences`, `BareLineReference`, `parseBareLineReference` — and may be dropped at a later release. Import from `@effected/github-references` directly for new code; it also carries a third dialect this package does not re-export, the closing list (`Closes #247, #248 and #251`).
 
 ## Repository configuration
 
@@ -273,7 +275,7 @@ const TestClient = GitHubClient.layerFixture(fixtures);
 - `CheckRun` — `withCheckRun` concludes on every exit path; `CheckRunOutput.truncated()` cuts rendered output to GitHub's byte limits.
 - `PullRequest` / `PullRequestComment` — upserts for both, `listFiles` answering with the same full `CommitFile` records a commit read returns, `headSha`/`baseSha` on `PullRequestInfo`, plus `CommentMarker` for finding a sticky comment again.
 - `GitHubIssue` — issues and their comments, including `commentOnce` for a marked comment that is posted exactly once and never edited, and `linkedIssues` for what a pull request closes.
-- `IssueReferences` — GitHub's nine closing keywords as pure functions: `harvestIssueReferences` for references inline in prose, `parseBareLineReference` for one-per-line generated ones.
+- `harvestIssueReferences` / `parseBareLineReference` — a compatibility re-export of the two closing-reference dialects that moved to `@effected/github-references`, with `CLOSING_KEYWORDS` and their result types.
 - `GitHubRelease` — releases and asset uploads, including the one route (`uploadAsset`, with the endpoint's optional display label) outside GitHub's generated endpoint map.
 - `RepositorySecret` / `RepositoryVariable` — repository and environment secrets and variables, with the sealed-box encryption GitHub's secrets API demands kept in one module nothing else imports.
 - `Ruleset` / `DeploymentEnvironment` / `RepositorySecurity` / `CodeScanning` — the rest of the configuration tier: rulesets matched by name and scope, idempotent environment writes, the three security toggles GitHub keeps off the repository endpoint, and CodeQL default setup with the language detection that gates it.

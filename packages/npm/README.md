@@ -143,6 +143,23 @@ A `github-packages` target reads through the packument instead: that registry an
 
 `PackagePublish` runs the rest of a release through `@effected/commands`' `Run`: `pack` writes the tarball and reports both its npm integrity and a local sha256 (the attestation subject), `publishTarball` uploads bytes packed earlier, and `dryRun` reports packability without contacting a registry. Every step fails typed as `PublishError`, routed by `kind`, rather than throwing on a non-zero npm exit. `NpmExecutor.ambient` runs the runner's own npm; `NpmExecutor.dlx("npm@11")` fetches a pinned one through the project's launcher, which is what OIDC trusted publishing needs on runners that still ship npm 10.x. `classifyRegistry` tells npm, GitHub Packages, JSR and a custom registry apart as a `RegistryKind`, since provenance and auth differ by kind.
 
+## Integrity hashes
+
+`IntegrityHash` is a brand over the three textual integrity forms a dependency graph carries — npm's SRI `sha512-<base64>`, corepack's `sha512.<hex>` and yarn's — with `algorithmOf` reading the algorithm out of any of them. `CorepackIntegrityHash` narrows the brand to the corepack spelling, which is what a `packageManager` pin has to be written in, and carries the bridge from the form npm actually hands you:
+
+```ts
+import { CorepackIntegrityHash } from "@effected/npm";
+import { Effect } from "effect";
+
+declare const npmIntegrity: string; // "sha512-<base64>", as the registry reports it
+
+Effect.runPromise(CorepackIntegrityHash.fromSri(npmIntegrity)).then(console.log);
+// "sha512.<the same digest, lowercase hex>" — the spelling a packageManager pin takes
+// Failure: InvalidSriIntegrityHashError, carrying the offending `input`
+```
+
+`FromSri` is the same conversion as a `Schema.Codec`, for decoding an integrity field inside your own schemas; `fromSri` is the `Effect` convenience over it. The bridge is deliberately **one-way**: an input that is already in the corepack form fails typed rather than passing through, so a caller feeding pins back into the converter finds the wiring bug instead of masking it. The base64 reader is strict and canonical for the same reason — a lenient one mints pins corepack rejects at install time.
+
 ## Who consumes this
 
 `@effected/package-json` is the reason the package exists. `Package.resolve` walks all four dependency maps, expands every `catalog:` and `workspace:` specifier through these two services, and leaves untouched any specifier the resolvers answered `None` for. `@effected/lockfiles` came second, which is why the specifier and integrity vocabulary lives here rather than in package-json. `@effected/workspaces` sits on the other side of the seam and provides the implementations that read a real pnpm workspace — its `Workspaces.resolveManifest` runs `Manifest.resolve()` for you over a freshly discovered workspace. Nothing in this package points outward at any of them.
@@ -157,6 +174,7 @@ A `github-packages` target reads through the packument instead: that registry an
 - `DependencySpecifier` — the specifier taxonomy: an eleven-protocol classifier, a codec decoding any specifier into a matchable tagged union that encodes back byte-for-byte, and the resolution statics (`catalogNameOf`, `resolveWorkspace`, `workspaceTargetOf`) implementing pnpm's publish-time projection.
 - `DependencySection` — the kit-wide dependency vocabulary: `DependencyKind`, `DependencyField` and the mapping between them.
 - `IntegrityHash` — a brand over the three textual integrity forms (SRI, corepack, yarn), with `algorithmOf`.
+- `CorepackIntegrityHash` — the corepack-form narrowing a `packageManager` pin needs, plus the one-way SRI bridge: the `FromSri` codec, the `fromSri` effect over it, and `InvalidSriIntegrityHashError` carrying the input that would not convert.
 - `ReleaseAgeGate` / `PartialReleaseAgeGate` — pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` gate as pure vocabulary: `combine` merges contributions from multiple config sources strictest-age-wins, and `filterVersions` / `isExcluded` drop candidate versions younger than the cutoff against a caller-supplied clock, so a resolver never picks a version pnpm would reject. `matchesExclude` is pnpm's flat-`*` matcher, deliberately not `@effected/glob`'s dialect. `PartialReleaseAgeGate` is the permissive inbound form each source contributes.
 - `NpmRegistry` — registry reads over `HttpClient`: `version`, `versions`, `distTags` and `publishTimes`, each taking a per-call `RegistryTarget`, with `version` reading a GitHub Packages target through the packument; `layerTest` and the fully-working `layerSeeded` are the test doubles.
 - `PackagePublish` — the pack/publish workflow over `@effected/commands`: `setupAuth`, `pack`, `publishTarball` and `dryRun`, with `PackedTarball` carrying both npm's integrity and a local sha256 digest.

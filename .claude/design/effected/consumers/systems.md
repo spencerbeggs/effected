@@ -3,11 +3,12 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 88
 related:
   - README.md
+  - ../packages/github-references.md
   - ../packages/commands.md
   - ../packages/templates.md
   - ../packages/workspaces.md
@@ -26,7 +27,7 @@ Both halves of that move have completed. `packages/github-action-effects` no lon
 
 ## What it exercises
 
-**Nearly the whole monorepo tier.** `packages/silk-effects` alone reaches `commands`, `git`, `glob`, `jsonc`, `package-json`, `templates`, `walker`, `workspaces` and `yaml`; the CLI and MCP server take overlapping subsets, and `tsdown-plugins` drives `npm`, `package-json`, `tsconfig-json` and `workspaces`. It is the kit's most demanding consumer of `@effected/git` and, with silk-update-action, of `@effected/workspaces`.
+**Nearly the whole monorepo tier.** `packages/silk-effects` alone reaches `commands`, `git`, `github-references`, `glob`, `jsonc`, `package-json`, `templates`, `walker`, `workspaces` and `yaml`; the CLI and MCP server take overlapping subsets, and `tsdown-plugins` drives `npm`, `package-json`, `tsconfig-json` and `workspaces`. It is the kit's most demanding consumer of `@effected/git` and, with silk-update-action, of `@effected/workspaces`.
 
 **The inverted `LocalExec` contract, from both ends.** `@effected/commands` declares the narrow contract and `@effected/workspaces` implements it, which is what keeps a monorepo engine out of a single-package action's bundle. Systems is where both sides are exercised against a real workspace.
 
@@ -42,6 +43,9 @@ Four modules left `packages/silk-effects` for the kit:
 | Managed file sections | `ManagedSection` plus the pure section document core (`@effected/templates`) |
 | Tag strategy and versioning detection | `ReleaseTag` and `VersioningStrategy` — pure values and a total classifier, not services (`@effected/workspaces`) |
 | Commit metadata lookups | `GitHubCommit` (`@effected/github`) |
+| Three hand-rolled issue-reference grammars | the two shipped dialects plus the new closing-list one ([`@effected/github-references`](../packages/github-references.md)) |
+
+**The fifth move-up is also the kit's one install-weight extraction.** The grammar already existed in the kit — inside `@effected/github` — and systems#507 recorded why that was unreachable here: `packages/silk-effects` has zero octokit and is the foundation dependency of three downstream packages, so adopting it would have dragged six runtime dependencies into four installs for forty lines of regex. effected#399 extracted it to a pure package instead. Round-1 adoption reported **zero discrepancies** against the kit's rulings, including the three drift settlements that overrode the local copies (the canonical nine keywords, mandatory `#`, and `Refs` as a separate non-closing set); the three gaps it did find are additive and filed as effected#402/#403/#404. The one real breakage — `Closes #123, Fixes #456` on a single line, which neither shipped dialect reads — was worked around downstream by declaring trailers whole-line, and is what #402 exists to remove.
 
 Two candidates were considered and declined, and the reasons are the load-bearing part:
 

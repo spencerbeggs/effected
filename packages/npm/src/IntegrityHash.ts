@@ -17,10 +17,13 @@
 // `<name>@<version>+<integrity>` only ever carries the corepack form, and both
 // schemas that model it (`PackageManagerPin` here, `@effected/package-json`'s
 // `PackageManager`) consume that export rather than restricting the brand
-// themselves.
+// themselves. It also carries the bridge between the two textual forms the kit
+// meets at the registry boundary: `CorepackIntegrityHash.FromSri` decodes
+// npm's SRI `sha512-<base64>` (the shape `NpmRegistry.version()` returns)
+// into the corepack `sha512.<hex>` form a `packageManager` pin carries.
 
 import type { Brand } from "effect";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 /**
  * A supported integrity hash algorithm.
@@ -144,11 +147,210 @@ export const IntegrityHash = Object.assign(brandedIntegrity, {
 	decode,
 } satisfies IntegrityHashStatics);
 
+const corepackRestricted = brandedIntegrity.pipe(
+	Schema.check(
+		Schema.makeFilter((value) => (isCorepack(value) ? undefined : "Expected a corepack (<algo>.<hex>) integrity hash")),
+	),
+);
+
+// --- The SRI → corepack bridge ---------------------------------------------
+//
+// npm's registry (and every lockfile) speaks the SRI form `sha512-<base64>`;
+// a `packageManager` pin speaks corepack's `sha512.<hex>`. The conversion is
+// mechanical — base64 → lowercase hex, `-` → `.` — but every consumer that
+// hand-rolls it re-decides the same edge cases (quoted JSON tokens, non-sha512
+// algorithms, sloppy base64), so the bridge lives here, once, as a codec.
+
+// Canonical base64 alphabet; index = 6-bit value.
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+// Decode canonical base64 to bytes without a runtime dependency. `Buffer` is
+// Node-only AND lenient — it silently drops invalid characters and truncates —
+// and lenience is exactly what an integrity conversion must not have.
+// `undefined` for anything non-canonical: a length no base64 output has
+// (remainder 1), padding that does not match the body length, a character
+// outside the alphabet, an interior `=`, or non-zero trailing bits (a second
+// spelling of the same bytes; npm emits only the canonical one).
+const decodeBase64 = (value: string): ReadonlyArray<number> | undefined => {
+	const firstPad = value.indexOf("=");
+	const body = firstPad === -1 ? value : value.slice(0, firstPad);
+	const padding = firstPad === -1 ? "" : value.slice(firstPad);
+	if (padding !== "" && padding !== "=" && padding !== "==") return undefined;
+	const remainder = body.length % 4;
+	if (body.length === 0 || remainder === 1) return undefined;
+	if (padding.length > 0 && padding.length !== (4 - remainder) % 4) return undefined;
+	let buffer = 0;
+	let bits = 0;
+	const bytes: Array<number> = [];
+	for (const char of body) {
+		const sextet = BASE64_ALPHABET.indexOf(char);
+		if (sextet < 0) return undefined;
+		buffer = (buffer << 6) | sextet;
+		bits += 6;
+		if (bits >= 8) {
+			bits -= 8;
+			bytes.push((buffer >>> bits) & 0xff);
+		}
+	}
+	if ((buffer & ((1 << bits) - 1)) !== 0) return undefined;
+	return bytes;
+};
+
+// Canonical (padded) base64 of a byte sequence — the exact inverse of
+// `decodeBase64`, used by the codec's encode direction.
+const encodeBase64 = (bytes: ReadonlyArray<number>): string => {
+	let out = "";
+	for (let index = 0; index < bytes.length; index += 3) {
+		const b0 = bytes[index] ?? 0;
+		const b1 = bytes[index + 1];
+		const b2 = bytes[index + 2];
+		const buffer = (b0 << 16) | ((b1 ?? 0) << 8) | (b2 ?? 0);
+		out += BASE64_ALPHABET.charAt((buffer >>> 18) & 0x3f);
+		out += BASE64_ALPHABET.charAt((buffer >>> 12) & 0x3f);
+		out += b1 === undefined ? "=" : BASE64_ALPHABET.charAt((buffer >>> 6) & 0x3f);
+		out += b2 === undefined ? "=" : BASE64_ALPHABET.charAt(buffer & 0x3f);
+	}
+	return out;
+};
+
+const hexOfBytes = (bytes: ReadonlyArray<number>): string =>
+	bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+
+const bytesOfHex = (hex: string): ReadonlyArray<number> => {
+	const bytes: Array<number> = [];
+	for (let index = 0; index < hex.length; index += 2) {
+		bytes.push(Number.parseInt(hex.slice(index, index + 2), 16));
+	}
+	return bytes;
+};
+
+const SHA512_SRI_PREFIX = "sha512-";
+const SHA512_COREPACK_PREFIX = "sha512.";
+// A sha512 digest is always 64 bytes. An SRI value with any other payload
+// length cannot be a sha512 digest, and converting it would mint a pin
+// corepack rejects at install time — fail typed here instead.
+const SHA512_DIGEST_BYTES = 64;
+const COREPACK_SHA512_RE = /^sha512\.[0-9a-f]{128}$/;
+
+// One layer of surrounding double quotes is tolerated and unwrapped:
+// registry-adjacent tooling sometimes hands over the raw JSON token
+// (`"sha512-…"`) rather than the decoded string.
+const unwrapJsonQuotes = (value: string): string =>
+	value.length >= 2 && value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value;
+
+// SRI `sha512-<base64>` → corepack `sha512.<hex>`; `undefined` when the input
+// is not a canonical sha512 SRI hash carrying a 64-byte digest. Deliberately
+// one-way: an already-corepack-form input does NOT pass through — silently
+// accepting it would let a caller feed pins back in and mask a wiring bug.
+const corepackOfSri = (input: string): string | undefined => {
+	const value = unwrapJsonQuotes(input);
+	if (!value.startsWith(SHA512_SRI_PREFIX)) return undefined;
+	const bytes = decodeBase64(value.slice(SHA512_SRI_PREFIX.length));
+	if (bytes === undefined || bytes.length !== SHA512_DIGEST_BYTES) return undefined;
+	return `${SHA512_COREPACK_PREFIX}${hexOfBytes(bytes)}`;
+};
+
+// corepack `sha512.<128-hex>` → canonical SRI `sha512-<base64>`. `undefined`
+// for the corepack forms SRI cannot carry (sha224, a truncated digest).
+const sriOfCorepack = (value: string): string | undefined =>
+	COREPACK_SHA512_RE.test(value)
+		? `${SHA512_SRI_PREFIX}${encodeBase64(bytesOfHex(value.slice(SHA512_COREPACK_PREFIX.length)))}`
+		: undefined;
+
+// The codec: decode converts and then validates through the corepack-restricted
+// schema, so the result carries the same brand every other integrity field
+// uses; encode is the exact inverse (canonical padded base64, no re-quoting).
+const corepackFromSri: Schema.Codec<IntegrityHashBrand, string> = Schema.String.pipe(
+	Schema.decodeTo(
+		corepackRestricted,
+		SchemaTransformation.transformOrFail<string, string>({
+			decode: (input) => {
+				const corepack = corepackOfSri(input);
+				return corepack === undefined
+					? Effect.fail(
+							new SchemaIssue.InvalidValue(
+								{ message: `Expected an SRI sha512-<base64> integrity hash carrying a 64-byte digest, got "${input}"` },
+								input,
+							),
+						)
+					: Effect.succeed(corepack);
+			},
+			encode: (value) => {
+				const sri = sriOfCorepack(value);
+				return sri === undefined
+					? Effect.fail(
+							new SchemaIssue.InvalidValue(
+								{ message: `Expected a corepack sha512.<128-hex-digit> integrity hash, got "${value}"` },
+								value,
+							),
+						)
+					: Effect.succeed(sri);
+			},
+		}),
+	),
+);
+
+/**
+ * Indicates that a string could not be converted from npm's SRI form to the
+ * corepack integrity form.
+ *
+ * Raised by {@link (CorepackIntegrityHash:variable)}'s `fromSri`. The offending
+ * string is preserved on `input`. Only a canonical `sha512-<base64>` value
+ * carrying a 64-byte digest converts — corepack pins accept nothing weaker
+ * than sha512, so a sha256/sha1 SRI hash, malformed base64, a wrong-length
+ * digest and an already-corepack-form input all raise this error.
+ *
+ * @public
+ */
+export class InvalidSriIntegrityHashError extends Schema.TaggedError<InvalidSriIntegrityHashError>()(
+	"InvalidSriIntegrityHashError",
+	{
+		/** The raw input string that failed conversion. */
+		input: Schema.String,
+	},
+) {
+	override get message(): string {
+		return `Invalid SRI integrity hash "${this.input}": expected a sha512-<base64> value carrying a 64-byte digest (corepack accepts only sha512)`;
+	}
+}
+
+const fromSri = (input: string): Effect.Effect<IntegrityHashBrand, InvalidSriIntegrityHashError> =>
+	Schema.decodeUnknownEffect(corepackFromSri)(input).pipe(
+		Effect.mapError(() => new InvalidSriIntegrityHashError({ input })),
+	);
+
+/** Conversion statics attached to the `CorepackIntegrityHash` schema value. */
+interface CorepackIntegrityHashStatics {
+	/**
+	 * Codec between npm's SRI `sha512-<base64>` form (the encoded side) and the
+	 * corepack `sha512.<hex>` form (the decoded side). Decoding tolerates one
+	 * layer of surrounding JSON quotes and fails typed on any non-sha512
+	 * algorithm, malformed base64, a digest that is not 64 bytes, and an input
+	 * already in corepack form (the conversion is one-way from SRI). Encoding
+	 * emits the canonical padded SRI spelling.
+	 */
+	readonly FromSri: Schema.Codec<IntegrityHashBrand, string>;
+	/**
+	 * Convert npm's SRI `sha512-<base64>` form to the corepack `sha512.<hex>`
+	 * form, failing with a typed {@link InvalidSriIntegrityHashError}. The
+	 * `Effect` convenience over the `FromSri` codec.
+	 */
+	readonly fromSri: (input: string) => Effect.Effect<IntegrityHashBrand, InvalidSriIntegrityHashError>;
+}
+
 /**
  * {@link (IntegrityHash:variable)} narrowed to the corepack `<algo>.<hex>` form
  * — `sha512.deadbeef`, and corepack's own sha224 default pins
  * (`sha224.877304e3…`). An SRI (`sha512-<base64>`) or yarn (`10c0/<hex>`)
  * hash, both valid `IntegrityHash` values, fails this schema.
+ *
+ * The schema value also carries the SRI bridge: the `FromSri` codec decodes
+ * npm's `sha512-<base64>` form (what `NpmRegistry.version()` returns, with one
+ * layer of JSON quotes tolerated) into the corepack form, and `fromSri` is its
+ * `Effect` convenience, failing with a typed
+ * {@link InvalidSriIntegrityHashError}. The conversion is deliberately one-way
+ * and sha512-only — corepack pins accept nothing weaker, so a sha256/sha1 SRI
+ * hash fails typed rather than minting a pin corepack would reject.
  *
  * @remarks
  * The corepack pin tail (`<name>@<version>+<integrity>`) is the one place the
@@ -195,8 +397,7 @@ export const IntegrityHash = Object.assign(brandedIntegrity, {
  *
  * @public
  */
-export const CorepackIntegrityHash = brandedIntegrity.pipe(
-	Schema.check(
-		Schema.makeFilter((value) => (isCorepack(value) ? undefined : "Expected a corepack (<algo>.<hex>) integrity hash")),
-	),
-);
+export const CorepackIntegrityHash = Object.assign(corepackRestricted, {
+	FromSri: corepackFromSri,
+	fromSri,
+} satisfies CorepackIntegrityHashStatics);

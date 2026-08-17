@@ -1,6 +1,13 @@
+import { Buffer } from "node:buffer";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
-import { CorepackIntegrityHash, IntegrityHash, InvalidIntegrityHashError, PackageManagerPin } from "../src/index.js";
+import {
+	CorepackIntegrityHash,
+	IntegrityHash,
+	InvalidIntegrityHashError,
+	InvalidSriIntegrityHashError,
+	PackageManagerPin,
+} from "../src/index.js";
 
 describe("IntegrityHash schema", () => {
 	const sri = "sha512-tsPuRLBpQ2xk6+8HB4vP0Wq1v0EYlv6q6qz1oqTgU5U+lgY7Zp3Xf5sT2xM2mQ==";
@@ -142,7 +149,136 @@ describe("CorepackIntegrityHash", () => {
 		);
 		// The control: the assertion discriminates. It is NOT satisfied by the
 		// unrestricted brand, so it fails if the pin falls back to `IntegrityHash`
-		// — the mutant a type error would never catch.
-		assert.notStrictEqual(PackageManagerPin.fields.integrity.schema, IntegrityHash);
+		// — the mutant a type error would never catch. (Widened to `unknown`: the
+		// two schema values now carry DIFFERENT statics, so their types no longer
+		// unify — the comparison is about runtime identity, not assignability.)
+		assert.notStrictEqual<unknown>(PackageManagerPin.fields.integrity.schema, IntegrityHash);
 	});
+});
+
+// The SRI → corepack bridge: npm's registry speaks `sha512-<base64>`, a
+// `packageManager` pin speaks `sha512.<hex>`, and this codec is the one
+// sanctioned conversion between them. The fixture is a REAL pair — both
+// spellings of the 64-byte sha512 digest of "hello" — and the suite re-derives
+// the hex from the base64 bytes independently, so a transposed fixture cannot
+// vouch for itself.
+describe("CorepackIntegrityHash.FromSri", () => {
+	const sriBase64 = "m3HSJL1i83hdltRq0+o9czGb+8KJDKra4t/3JRlnPKcjI8PZm6XBHXx6zG4UuMXaDEZjR1wuXDre9G9zvN7AQw==";
+	const sri = `sha512-${sriBase64}`;
+	const corepack =
+		"sha512.9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca72323c3d99ba5c11d7c7acc6e14b8c5da0c4663475c2e5c3adef46f73bcdec043";
+
+	const decode = Schema.decodeUnknownEffect(CorepackIntegrityHash.FromSri);
+	const encode = Schema.encodeUnknownEffect(CorepackIntegrityHash.FromSri);
+
+	it.effect("converts a known SRI value to the corepack form", () =>
+		Effect.gen(function* () {
+			const converted = yield* decode(sri);
+			assert.strictEqual(converted, corepack);
+			// The independent oracle: the same hex, derived from the base64 bytes
+			// here in the test rather than copied from the fixture.
+			assert.strictEqual(converted, `sha512.${Buffer.from(sriBase64, "base64").toString("hex")}`);
+			// The result is corepack-form and decodes through the shared schema.
+			assert.isTrue(IntegrityHash.isCorepack(converted));
+			assert.strictEqual(yield* Schema.decodeUnknownEffect(CorepackIntegrityHash)(converted), converted);
+		}),
+	);
+
+	it.effect("tolerates one layer of JSON quotes around the input and unwraps it", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* decode(`"${sri}"`), corepack);
+			// Only ONE layer, and only a matched pair: a lone quote is malformed.
+			const error = yield* Effect.flip(decode(`"${sri}`));
+			assert.strictEqual(error._tag, "SchemaError");
+		}),
+	);
+
+	it.effect("accepts the unpadded canonical spelling", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* decode(`sha512-${sriBase64.slice(0, -2)}`), corepack);
+		}),
+	);
+
+	it.effect("rejects non-sha512 SRI hashes — corepack accepts nothing weaker", () =>
+		Effect.gen(function* () {
+			for (const bad of [`sha256-${sriBase64}`, `sha1-${sriBase64}`, `sha384-${sriBase64}`]) {
+				// The control: the wide brand DOES accept these, so the failure below
+				// is the sha512 restriction firing, not a malformed fixture.
+				assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)(bad), bad, bad);
+				const error = yield* Effect.flip(decode(bad));
+				assert.strictEqual(error._tag, "SchemaError", bad);
+			}
+			const error = yield* Effect.flip(decode("garbage"));
+			assert.strictEqual(error._tag, "SchemaError");
+		}),
+	);
+
+	it.effect("rejects an already-corepack-form input — the conversion is one-way from SRI", () =>
+		Effect.gen(function* () {
+			// The control: the corepack schema itself accepts the value, so the
+			// rejection below is the one-way rule, not an invalid fixture.
+			assert.strictEqual(yield* Schema.decodeUnknownEffect(CorepackIntegrityHash)(corepack), corepack);
+			const error = yield* Effect.flip(decode(corepack));
+			assert.strictEqual(error._tag, "SchemaError");
+		}),
+	);
+
+	it.effect("rejects malformed and non-canonical base64", () =>
+		Effect.gen(function* () {
+			for (const bad of [
+				// A valid base64 payload that is not a 64-byte digest (the wide brand
+				// accepts this spelling; the bridge must not mint a bad pin from it).
+				"sha512-YWJj",
+				// Empty payload.
+				"sha512-",
+				// A length no base64 output has (remainder 1).
+				`sha512-${"A".repeat(85)}`,
+				// Padding that does not match the body length (lenient decoders
+				// accept this; the canonical form ends `==`).
+				`sha512-${sriBase64.slice(0, -1)}`,
+				// Interior `=`.
+				`sha512-${sriBase64.slice(0, -4)}=${sriBase64.slice(-4)}`,
+				// A character outside the alphabet.
+				"sha512-ab!c",
+				// Non-zero trailing bits: `Qx==` decodes to the same byte as `Qw==`
+				// under a lenient decoder but is not the canonical spelling npm emits.
+				`sha512-${sriBase64.slice(0, -3)}x==`,
+			]) {
+				const error = yield* Effect.flip(decode(bad));
+				assert.strictEqual(error._tag, "SchemaError", bad);
+			}
+		}),
+	);
+
+	it.effect("fromSri is the Effect convenience: same conversion, typed error", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* CorepackIntegrityHash.fromSri(sri), corepack);
+			assert.strictEqual(yield* CorepackIntegrityHash.fromSri(`"${sri}"`), corepack);
+			const error = yield* Effect.flip(CorepackIntegrityHash.fromSri(`sha256-${sriBase64}`));
+			assert.instanceOf(error, InvalidSriIntegrityHashError);
+			assert.strictEqual(error._tag, "InvalidSriIntegrityHashError");
+			assert.strictEqual(error.input, `sha256-${sriBase64}`);
+		}),
+	);
+
+	it.effect("encodes back to the canonical padded SRI spelling", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* encode(corepack), sri);
+			// A value decoded from the quoted spelling re-encodes UNQUOTED: the
+			// quote tolerance is decode-side lenience, not a remembered wire form.
+			assert.strictEqual(yield* encode(yield* decode(`"${sri}"`)), sri);
+		}),
+	);
+
+	it.effect("encode fails typed for corepack hashes SRI cannot carry", () =>
+		Effect.gen(function* () {
+			// Both are valid CorepackIntegrityHash values — the control below
+			// proves it — but neither is a 64-byte sha512 digest.
+			for (const bad of ["sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447", "sha512.deadbeef"]) {
+				assert.strictEqual(yield* Schema.decodeUnknownEffect(CorepackIntegrityHash)(bad), bad, bad);
+				const error = yield* Effect.flip(encode(bad));
+				assert.strictEqual(error._tag, "SchemaError", bad);
+			}
+		}),
+	);
 });

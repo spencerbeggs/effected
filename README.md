@@ -60,6 +60,8 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 | [@effected/lockfiles](packages/lockfiles) | unstable | Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
 | [@effected/spdx](packages/spdx) | unstable | SPDX license identifiers, exceptions and license expressions as Effect Schema classes |
 | [@effected/markdown](packages/markdown) | unstable | CommonMark 0.31.2 and GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, edit, format and project to and from mdast |
+| [@effected/memfs](packages/memfs) | unstable | An isolated virtual POSIX volume behind Effect's core FileSystem service: the kit's filesystem test double, for tests and dry-run programs |
+| [@effected/github-references](packages/github-references) | unstable | GitHub's issue-reference grammar as pure functions: inline-in-prose harvesting with offsets, bare-line parsing and the closing-list dialect |
 
 ### Companion
 

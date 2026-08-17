@@ -39,7 +39,7 @@ Detail lifted out of this file. Load on demand:
 
 ### Kit composition
 
-**The migration program is complete (2026-07-12).** The kit is **29 publishable packages**: 28 libraries plus the `pnpm-plugin-effect` companion. `@effected/memfs` is the newest; `@effected/cli` came out of the `@spencerbeggs/reposets` dogfood loop and is unreleased. New packages follow the migration playbook: design doc first, then port.
+**The migration program is complete (2026-07-12).** The kit is **30 publishable packages**: 29 libraries plus the `pnpm-plugin-effect` companion. `@effected/github-references` is the newest; it and `@effected/cli` are unreleased. New packages follow the migration playbook: design doc first, then port.
 
 **The config-file consolidation is done.** `@effected/config-file` absorbed the three codec packages; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. **Never collect them into a namespace object**: referencing one would reach every codec and drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
@@ -51,7 +51,7 @@ Detail lifted out of this file. Load on demand:
 - `plugin/` — "effected", a Claude Code plugin (skills and specialist agents) dogfooded during package work; in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
 - `scratchpad/` — private agent-probe workspace: every kit package at `workspace:*`, three runners, never published, invisible to CI. Read `scratchpad/CLAUDE.md` before working there.
-- `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. **Never write to anything under `.repos/`**, by any means, with any tool — silk's PreToolUse guards deny it. Fresh clones start empty. Detail → `@./CLAUDE.vendored-effect.md`.
+- `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. **Never write to anything under `.repos/`**, with any tool — silk's PreToolUse guards deny it. Fresh clones start empty. Detail → `@./CLAUDE.vendored-effect.md`.
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
 
 ### Package context files
@@ -67,6 +67,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `spdx` — SPDX identifiers, exceptions and license expressions as Schema classes; vendors the datasets as devDep-generated TypeScript (pure).
 - `lockfiles` — bun/npm/pnpm/yarn lockfile parsers normalized into one `Lockfile` model, plus pure integrity checking (pure).
 - `memfs` — a virtual POSIX volume behind core's `FileSystem` key: the kit's filesystem test double (pure). **No `@effected/*` edge, ever.**
+- `github-references` — GitHub's issue-reference grammar as pure functions: three dialects; `github` keeps a droppable compat re-export (pure).
 - `package-json` — package.json schemas, validation and file IO; delegates core SPDX validity to `@effected/spdx` (boundary).
 - `tsconfig-json` — tsconfig.json schemas, `extends`-chain resolution and config discovery (boundary).
 - `config-file` — composable config file loading: codec × resolver × strategy, the four codecs as free-standing named exports (boundary). Zero *external* runtime dependencies; peers on `jsonc`, `yaml` and `toml`.
@@ -86,7 +87,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `schemastore` — Effect Schemas published as SchemaStore-shaped Draft-07 documents: `StoreDocument` assembly, catalog modes, fileMatch lint, `DocumentDiff`, write-if-changed `SchemaFile` IO, ajv-backed validation (integrated).
 - `cli` — the CLI **boundary**: `CliLogger` (plain lines, `Error`+ to stderr), `CliRuntime` (report failures through the program's own logger, set the exit code) and the two issue renderers. Not a CLI framework — `effect/unstable/cli` owns parsing and this must never grow a second one. `@effected/config-file` is an **optional** peer — it holds only because `ConfigIssueRenderer` is a module nothing else imports (boundary).
 - `app` — the application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place (integrated). Nothing may depend on it.
-- `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: published and installable but not a library, so it has **no tier**. It **is published to npm** like every library here, not an exception.
+- `pnpm-plugin-effect` — pnpm catalog/config plugin. The kit's one **companion**: **published to npm like every library here**, not an exception, but not a library either, so it has **no tier**.
 
 ## Build Pipeline
 
@@ -96,7 +97,7 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.buil
 
 **Never put `@savvy-web/bundler` in `dependencies`** — it is every building package's `devDependency`; in `dependencies` the publishable manifest ships a build tool at runtime.
 
-**Source `package.json` files are `"private": true` — intentional; never set `"private": false` in source, and never infer from it that a package will not publish.** Every source manifest here is private; the bundler's `publishConfig` transform produces the publishable manifest at build time.
+**Source `package.json` files are `"private": true` — intentional; never set `"private": false` in source, and never infer from it that a package will not publish.** The bundler's `publishConfig` transform produces the publishable manifest at build time.
 
 **Every package typechecks with `tsc --noEmit`** (`types:check`), on `typescript` from `catalog:build` — which is deliberately **absent** from `pnpm-workspace.yaml` (a configDependency injects it) and must never be "repaired" by adding it.
 

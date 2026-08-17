@@ -3,11 +3,12 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-17
+last-synced: 2026-08-17
 completeness: 85
 related:
   - consumers/reposets.md
+  - packages/github-references.md
   - releases.md
   - package-inventory.md
   - architecture.md
@@ -55,6 +56,10 @@ A `Vfs` keyed by `node_modules/`-prefixed paths, with merge/prefix helpers and a
 [`@effected/jsonl`](packages/jsonl.md) shipped with three of its four acceptance criteria met. The fourth — collapsing a dogfood file fan-out into one journal partitioned by `scope` — failed on two counts: terminal and quiescent semantics are journal-wide, so one scope's terminal event freezes every other scope's appends; and `latest` has no sliced counterpart, so per-scope current state costs `O(history)`.
 
 The verified boundary is that **`Slice` is load-bearing for subscription, query and projection, and is not load-bearing for current-state or lifecycle.** The open work is `latest(slice)` as a per-scope `SubscriptionRef` plus per-scope terminal semantics. Consumer-gated: build it when a real consumer needs the collapse.
+
+### `github-references`: the three additive gaps
+
+[`@effected/github-references`](packages/github-references.md) shipped its two asks — the extraction and the closing-list dialect — and the first downstream adoption found no discrepancy against any ruling. It did find three additive gaps, filed rather than absorbed: an inline, list-aware harvester (effected#402, the only one that cost the consumer a workaround), text-level per-line conveniences (#403) and a keyword-family projection (#404). All three are surface a second consumer should confirm before it is frozen; none is licence to widen `github`'s compat re-export.
 
 ### `markdown`: the consumer-side finish
 
