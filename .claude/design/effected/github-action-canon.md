@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-04
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-16
+last-synced: 2026-08-16
 completeness: 90
 related:
   - plugin.md
@@ -18,6 +18,7 @@ related:
   - consumers/silk-release-action.md
   - consumers/silk-runtime-action.md
   - consumers/silk-update-action.md
+  - packages/memfs.md
 ---
 
 # GitHub Action repository canon
@@ -149,7 +150,7 @@ Order matters — this is the sequence in which an action's design decisions are
 - **9. Design reporting on one stack.** The kit suite — `GitHubMarkdown`, `CheckState`, `CheckDocument`, `ManagedDocument` — conditioned on what the installed kit actually covers; a genuine gap goes through a shim, not a hand-rolled namespace object. (silk-release-action accreted three and a half markdown stacks; silk-update-action re-implemented one the kit already shipped.) Check conclusions include `neutral`. Sticky comments follow silk-release-action's five managed-section rules: write the running state before doing the work, never blank a section, sha-stamp staleness, keep sections independent, and write monotonically. **Payload budgets are a design step**: the 65535-byte check-body cap forced silk-release-action to strip release notes at runtime — design the truncation instead of discovering it.
 - **10. Write the logging contract.** A run-context opening block; the detect-headline pattern (what was detected first, evidence at debug); every skipped step logging `Step: X — SKIPPED: <reason>`; warnings reserved for acceptance signals; a closing Result block. Enforce it with a test that asserts on the captured log stream — the log **is** the decision record.
 - **11. Compose steps into a pipeline.** One module per step; `program.ts` is pure composition holding only cross-step joins; the output fold starts from all-disabled defaults so a feature that never ran still reports its default. silk-update-action's 550-line comment-divider `innerProgram` is the recorded anti-pattern; silk-runtime-action's `steps/` is the model.
-- **12. Plan the tests with the structure.** The doubles convention (unstubbed members die loudly); the realism gradient — real detectors over temp fixtures, kit in-memory layers, faked domain services with spies; the three-way input sync test; log-stream assertions; mutate the edges before declaring green. On a migration: **doubles first, runner conversion separately** (effected#185) — the passing suite is the characterization gate, and converting the runner installs a `TestClock` at the epoch, so doing both at once rewrites the gate alongside the thing it gates.
+- **12. Plan the tests with the structure.** The doubles convention (unstubbed members die loudly); the realism gradient — real detectors over temp fixtures, kit in-memory layers, faked domain services with spies; **the filesystem double is [`@effected/memfs`](packages/memfs.md), never a hand-rolled `FileSystem.layerNoop` over a `Map`** ([the rule and its three riders](effect-standards.md#the-filesystem-double-is-a-real-volume)); the three-way input sync test; log-stream assertions; mutate the edges before declaring green. On a migration: **doubles first, runner conversion separately** (effected#185) — the passing suite is the characterization gate, and converting the runner installs a `TestClock` at the epoch, so doing both at once rewrites the gate alongside the thing it gates.
 - **13. Verify bundle truth.** `dist` is the artifact, and vitest runs source, so the suite can never see a bundle failure. Guard native dynamic imports (silk-update-action's assert script fails the build when the magic comment is deleted). Build-time data decode failures are **defects**, never degraded to empty: update#187 turned a broken bundle into a truthful-sounding "no versions found" via `orElseSucceed(() => [])`. Prefer bundle-safe standalone functions to post-class static aliases (`Range.parse` and tree-shaking). CI does a rebuild-and-diff dist-freshness check.
 - **14. Refresh the docs — it is in the definition of done.** All three tiers of `CLAUDE.md` (root, `src/`, `__test__/`) current; kit-surface claims re-verified against the installed version; the shim register re-audited. silk-release-action's stale docs taught the dead predecessor API to the next agent that read them.
 

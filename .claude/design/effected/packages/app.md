@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-16
+last-synced: 2026-08-16
 completeness: 92
 related:
   - ../effect-standards.md
@@ -16,6 +16,7 @@ related:
   - xdg.md
   - config-file.md
   - cli.md
+  - memfs.md
 ---
 
 # @effected/app design
@@ -102,7 +103,11 @@ Every export is a **parameterized layer factory**, so [store's layer-memoization
 
 ## Testing
 
-Suites in `__test__/`, integration under `__test__/integration/`. `@effect/platform-node` backs the integration suite because core ships no working in-memory `FileSystem`. The ordering proofs carry the design's weight — the ensure-before-open ordering is this package's only real claim, and a test that does not watch it fail proves nothing. Four properties are the ones to preserve if these suites are ever rewritten:
+Suites in `__test__/`, integration under `__test__/integration/`. `@effect/platform-node` backs the integration suite, and it keeps doing so on the merits — the ordering proofs are claims about a real filesystem. But the *stated* reason, that no working in-memory `FileSystem` existed, has **expired**: [`@effected/memfs`](memfs.md) is one, and this package's unit suites sit on its [pending migration list](memfs.md#in-kit-adoption).
+
+Re-examine [`layerTest`'s internal `FileSystem.layerNoop`](#applayertest--the-hermetic-control-plane) in that pass. A seeded volume would make its documented limit — that any path exercising `ensure*` dies — go away rather than stay documented, which is strictly better than a caveat. It is the same open question `@effected/github-actions` carries for `ActionEnvironment.layerTest`, and the two should be answered together: what a published `layerTest` provides for `FileSystem` is a kit convention, not a per-package taste.
+
+The ordering proofs carry the design's weight — the ensure-before-open ordering is this package's only real claim, and a test that does not watch it fail proves nothing. Four properties are the ones to preserve if these suites are ever rewritten:
 
 - **A fresh namespace with no pre-existing directories builds without a defect**, watched failing against a naive compose that skips the ensure.
 - **An unwritable ancestor surfaces a typed `AppDirsError`, never a die** — the anti-`orDie` regression.

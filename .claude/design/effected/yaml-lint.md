@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-16
+last-synced: 2026-08-16
 completeness: 95
 related:
   - formatter-convention.md
@@ -249,7 +249,7 @@ A differential against Python yamllint is **explicitly rejected**. It would inst
 Implementation was **phase 3** of the `feat/yaml-fidelity-lint` branch, and all three phases landed in order:
 
 1. [#323](https://github.com/spencerbeggs/effected/issues/323) — explicit-key spill in `Yaml.stringify`.
-2. [#127](https://github.com/spencerbeggs/effected/issues/127) — comment fidelity: the leading/trailing split on the four exported node classes, composer re-attribution forward, blank-line preservation, stringifier emission.
+2. [#127](https://github.com/spencerbeggs/effected/issues/127) — comment fidelity: the leading/trailing split on the exported node classes, composer re-attribution forward, blank-line preservation, stringifier emission. A follow-up branch finished the model by moving the fields off `YamlPair` onto the key and value nodes; the [comment model](packages/yaml.md#comment-model) is the current record.
 3. [#129](https://github.com/spencerbeggs/effected/issues/129) — this document.
 
 The dependency was real in both directions. `comments-spacing` needs to know whether a comment is an own-line comment or a trailing one to say anything true about the space before its `#`, and before #127 that distinction did not exist in the AST — the single `comment` field was documented as "trailing *or* leading" with no discriminator. It now does: see the [comment model](packages/yaml.md#comment-model) in the package doc. And the [autofix](#autofix-surgical-and-comment-safe) argument above — that fixes must never route through `YamlFormat.formatToString` because it dropped per-node comments — was the constraint #127 fixed; with it fixed, autofix stays surgical anyway, because surgical edits are the right shape for a linter, not merely the safe one.

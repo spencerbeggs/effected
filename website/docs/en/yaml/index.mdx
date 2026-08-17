@@ -64,7 +64,7 @@ The `YamlEdit`, `YamlRange`, `YamlPath` and `YamlSegment` vocabulary is delibera
 
 ## Comments are data, and they survive
 
-`YamlScalar`, `YamlMap`, `YamlSeq` and `YamlPair` each carry `commentBefore` (the own-line block above the node), `comment` (the trailing comment on the node's own line) and `spaceBefore` (a blank line came first); `YamlDocument` adds `commentAfter`. `YamlFormat.formatToString` and `YamlFormat.modify` reproduce leading, trailing and own-line comments — and the blank lines between them — byte for byte, which is what makes an automated edit to a human-maintained workflow reviewable. Pass `preserveComments: false` when you want the comments gone instead.
+Comments live on nodes. `YamlScalar`, `YamlMap`, `YamlSeq` and `YamlAlias` each carry `commentBefore` (the own-line block above the node), `comment` (the trailing comment on the node's own line) and `spaceBefore` (a blank line came first); `YamlPair` carries none, since an entry's comments belong to its `key` and `value`. `YamlDocument` uses the same two names, `commentBefore` and `comment`. `YamlFormat.formatToString` and `YamlFormat.modify` reproduce leading, trailing and own-line comments — and the blank lines between them — byte for byte, which is what makes an automated edit to a human-maintained workflow reviewable. Pass `preserveComments: false` when you want the comments gone instead.
 
 ## Linting
 

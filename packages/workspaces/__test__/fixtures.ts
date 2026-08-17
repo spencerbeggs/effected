@@ -1,27 +1,21 @@
 // In-memory filesystem fixtures.
 //
-// `FileSystem.layerNoop` and `Path.layer` both come from `effect` core, so the
-// whole package tests without `@effect/platform-node`. A suite-boundary
-// `layer(...)` cannot vary per test, so each distinct tree gets its own
-// `layer(...)` block — that is the house shape.
+// The volume is `@effected/memfs`, a real virtual POSIX filesystem, so the
+// package still tests without `@effect/platform-node`. It replaces a stub that
+// implemented the four operations this package happens to call — and a stub
+// only ever implements the semantics its author remembered, so a bug that
+// depends on anything else cannot surface in a test. Directories are created
+// by the volume rather than derived from file keys here.
+//
+// A suite-boundary `layer(...)` cannot vary per test, so each distinct tree
+// gets its own `layer(...)` block — that is the house shape.
 
-import { Effect, FileSystem, Layer, Path, PlatformError } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import type { FileSystem } from "effect";
+import { Effect, Layer, Path, PlatformError } from "effect";
 
 /** A virtual tree: absolute path → file contents. Directories are implied by their files. */
 export type Tree = Readonly<Record<string, string>>;
-
-const directoriesOf = (tree: Tree): Set<string> => {
-	const dirs = new Set<string>();
-	for (const file of Object.keys(tree)) {
-		let dir = file.slice(0, file.lastIndexOf("/"));
-		while (dir.length > 0) {
-			dirs.add(dir);
-			dir = dir.slice(0, dir.lastIndexOf("/"));
-		}
-		dirs.add("/");
-	}
-	return dirs;
-};
 
 /** Knobs for making a fixture tree misbehave in specific, realistic ways. */
 export interface FileSystemOptions {
@@ -51,80 +45,29 @@ export interface FileSystemOptions {
  * this package uses: `exists`, `readFileString`, `readDirectory`, `stat`.
  */
 export const fileSystem = (tree: Tree, options: FileSystemOptions = {}): Layer.Layer<FileSystem.FileSystem> => {
-	const dirs = directoriesOf(tree);
 	const unreadable = options.unreadable ?? new Set<string>();
 	const unreadableFiles = options.unreadableFiles ?? new Set<string>();
 	const unreadableExists = options.unreadableExists ?? new Set<string>();
 
 	// The v4 constructor is `PlatformError.systemError`, not a `new SystemError` —
 	// `SystemError` is the reason payload, `PlatformError` is the failure.
-	const notFound = (path: string) =>
+	const denied = (method: string, path: string) =>
 		Effect.fail(
 			PlatformError.systemError({
-				_tag: "NotFound",
+				_tag: "PermissionDenied",
 				module: "FileSystem",
-				method: "stat",
+				method,
 				pathOrDescriptor: path,
 			}),
 		);
 
-	return FileSystem.layerNoop({
-		exists: (path: string) => {
-			if (unreadableExists.has(path)) {
-				return Effect.fail(
-					PlatformError.systemError({
-						_tag: "PermissionDenied",
-						module: "FileSystem",
-						method: "access",
-						pathOrDescriptor: path,
-					}),
-				);
-			}
-			return Effect.succeed(Object.hasOwn(tree, path) || dirs.has(path));
-		},
-
-		readFileString: (path: string) => {
-			if (unreadableFiles.has(path)) {
-				return Effect.fail(
-					PlatformError.systemError({
-						_tag: "PermissionDenied",
-						module: "FileSystem",
-						method: "readFileString",
-						pathOrDescriptor: path,
-					}),
-				);
-			}
-			return Object.hasOwn(tree, path) ? Effect.succeed(tree[path]) : notFound(path);
-		},
-
-		readDirectory: (path: string) => {
-			if (unreadable.has(path)) {
-				return Effect.fail(
-					PlatformError.systemError({
-						_tag: "PermissionDenied",
-						module: "FileSystem",
-						method: "readDirectory",
-						pathOrDescriptor: path,
-					}),
-				);
-			}
-			if (!dirs.has(path)) return notFound(path);
-			const prefix = path === "/" ? "/" : `${path}/`;
-			const entries = new Set<string>();
-			for (const candidate of [...Object.keys(tree), ...dirs]) {
-				if (!candidate.startsWith(prefix) || candidate === path) continue;
-				const rest = candidate.slice(prefix.length);
-				const head = rest.includes("/") ? rest.slice(0, rest.indexOf("/")) : rest;
-				if (head.length > 0) entries.add(head);
-			}
-			return Effect.succeed([...entries].sort());
-		},
-
-		stat: (path: string) => {
-			if (dirs.has(path)) return Effect.succeed({ type: "Directory" } as FileSystem.File.Info);
-			if (Object.hasOwn(tree, path)) return Effect.succeed({ type: "File" } as FileSystem.File.Info);
-			return notFound(path);
-		},
+	// Each handler declines (returns `undefined`) for every path it does not
+	// name, delegating to the volume — so presence, directory listings and stat
+	// are the volume's real answers and only the misbehavior is simulated.
+	return MemoryFileSystem.layerFaultyWith(tree, {
+		exists: (path: string) => (unreadableExists.has(path) ? denied("access", path) : undefined),
+		readFileString: (path: string) => (unreadableFiles.has(path) ? denied("readFileString", path) : undefined),
+		readDirectory: (path: string) => (unreadable.has(path) ? denied("readDirectory", path) : undefined),
 	});
 };
 

@@ -37,8 +37,16 @@ layer(fixtureLayer(tree(["/proj/base", EMPTY], ["/proj/base.json", "SHADOWED"]))
 layer(fixtureLayer(tree(["/proj/dir/tsconfig.json", EMPTY])))("resolveExtendsTarget, no directory fallback", (it) => {
 	it.effect("a relative path to a directory never tries <dir>/tsconfig.json", () =>
 		Effect.gen(function* () {
+			// The volume creates real directories, so `/proj/dir` exists — which
+			// makes the package's documented file-only divergence OBSERVABLE here
+			// rather than hidden. `exists` is directory-true where tsc's
+			// `host.fileExists` is file-only, so the directory itself resolves; a
+			// directory hit then fails typed at `readFileString` (see the
+			// file-only contract in the loader header). What this test pins is
+			// that no `<dir>/tsconfig.json` fallback was tried — tsc would have
+			// retried `./dir.json`, and we resolve neither.
 			const result = yield* resolveExtendsTarget("./dir", "/proj/tsconfig.json");
-			assert.deepStrictEqual(result, Option.none());
+			assert.deepStrictEqual(result, Option.some("/proj/dir"));
 		}),
 	);
 });
@@ -237,17 +245,12 @@ layer(
 		tree(
 			["/proj/node_modules/emptyfield/package.json", '{"tsconfig":""}'],
 			["/proj/node_modules/emptyfield/tsconfig.json", EMPTY],
-			// The fixture map's `exists` is plain membership (see fixtures.ts), so
-			// this key is the trick: it puts the PACKAGE DIRECTORY itself in the
-			// tree, simulating a real filesystem's `fs.exists`, which is true for
-			// a directory too. `path.resolve(pkgDir, "")` resolves to exactly this
-			// path, so under the old `typeof tsField === "string"` guard this
-			// entry existing is what let the empty field "resolve" — to the
-			// directory, not a config file. Under the fixed guard the field is
-			// treated as falsy and the code never probes this path at all; the
-			// entry is dead weight then, which is the discriminating behavior
-			// this test is checking for.
-			["/proj/node_modules/emptyfield", EMPTY],
+			// `path.resolve(pkgDir, "")` resolves to the package DIRECTORY, which
+			// a directory-true `exists` accepts. The volume creates that directory
+			// on its own, so the discriminating condition is real here rather than
+			// simulated: under the old `typeof tsField === "string"` guard the
+			// empty field "resolved" to the directory instead of a config file.
+			// The fixed guard treats it as falsy and never probes the path.
 		),
 	),
 )("resolveExtendsTarget, empty-string tsconfig field falls through", (it) => {

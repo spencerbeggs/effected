@@ -714,6 +714,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)(vitest@4.1.10)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.1.12
         version: 2.1.12(@effected/jsonc@0.6.0(effect@4.0.0-beta.107))(@effected/semver@0.4.0(effect@4.0.0-beta.107))(@effected/walker@0.4.0(@effected/glob@0.3.0(effect@4.0.0-beta.107))(effect@4.0.0-beta.107))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tsx@4.23.12)(typescript@7.0.2)
@@ -758,6 +761,9 @@ importers:
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@effected/walker':
         specifier: workspace:*
         version: link:../walker/dist/dev/pkg
@@ -783,6 +789,9 @@ importers:
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.1.12
         version: 2.1.12(@effected/jsonc@0.6.0(effect@4.0.0-beta.107))(@effected/semver@0.4.0(effect@4.0.0-beta.107))(@effected/walker@0.4.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-beta.107))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tsx@4.23.12)(typescript@7.0.2)
@@ -845,6 +854,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)(vitest@4.1.10)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.1.12
         version: 2.1.12(@effected/jsonc@0.6.0(effect@4.0.0-beta.107))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(ioredis@5.11.1(supports-color@9.4.0))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tsx@4.23.12)(typescript@7.0.2)
@@ -867,6 +879,9 @@ importers:
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@effected/walker':
         specifier: workspace:*
         version: link:../walker/dist/dev/pkg

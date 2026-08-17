@@ -19,8 +19,7 @@ import is `compileAndExpand` (in `Expand.ts`), which calls
 `GlobPattern.compileResult` and references `GlobPatternError`; the peer was
 already declared, so the dependency graph is unchanged.
 
-Walker needs **no platform package, even in tests** — `Path.layer` and
-`FileSystem.layerNoop` come from core. Do not add `@effect/platform-node`.
+Walker needs **no platform package, even in tests** — core's `Path.layer` plus a real in-memory volume from `@effected/memfs` (a devDependency). Do not add `@effect/platform-node`, and do not hand-roll a `FileSystem.layerNoop` tree: `__test__/fixtures.ts` seeds files and symlinks into the volume, and injects the unreadable and vanished directories as `readDirectory` faults that decline for every other path. The volume owns the parent-directory arithmetic and the symlink semantics `descend` reads, so neither is re-derived in the fixture.
 
 `Walker` is a static class with a private constructor, not an `as const`
 namespace object — an `as const` object's member types are inferred in the

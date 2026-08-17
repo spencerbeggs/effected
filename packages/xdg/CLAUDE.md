@@ -17,8 +17,7 @@ tier; depending on it would propagate (R2) and drag `@effect/sql-sqlite-node`
 into every consumer. That split is the whole reason this package is small. The
 glue that wires an `AppDirs` path into a `Store` belongs in `@effected/app`.
 
-Needs **no platform package, even in tests** — `Path.layer` and
-`FileSystem.layerNoop` come from core.
+Needs **no platform package, even in tests** — core's `Path.layer`, plus a real in-memory volume from `@effected/memfs` (a devDependency) wherever a suite needs filesystem behavior.
 
 ## Resolve once, at layer construction
 
@@ -95,10 +94,8 @@ pnpm build --filter @effected/xdg   # from the repo root
   `ConfigProvider.layer(ConfigProvider.fromUnknown({...}))`. Never mutate
   `process.env`.
 - The platform is pinned with `Layer.succeed(CurrentPlatform, "win32")`.
-- **A `FileSystem.layerNoop` stub must record inside `Effect.suspend`.** The
-  `AppDirs` shape builds its `ensure*` effects once, at layer construction, so a
-  stub that pushes eagerly in its body records four directories that were never
-  created — and every assertion measures construction instead of execution. This
-  bit during the port.
+- **The `AppDirs` suite runs on `@effected/memfs` with a delegate-by-default `makeDirectory` spy.** The handler records the path and returns `undefined`, so the directory is really created rather than merely observed, and the suite still asserts *which* directories were made, in which order.
+- **Never record eagerly.** `AppDirs` builds its `ensure*` effects once, at layer construction, so a recorder that pushes in the stub body counts four directories that were never created and every assertion measures construction instead of execution. A fault handler is consulted when the method is *called*, so the property now comes free where the old `layerNoop` stub needed an explicit `Effect.suspend` — the trap still waits for any recorder written by hand.
+- `XdgConfig`'s suites have **not** migrated and still use core-only doubles.
 - `savvy.build.ts` carries the **narrow** `_base` suppression. Never widen it.
 - Never run `node savvy.build.ts --target prod` directly.

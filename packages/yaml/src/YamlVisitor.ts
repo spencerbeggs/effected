@@ -146,16 +146,16 @@ function* walkDocument(doc: RawYamlDocument, text: string): Generator<YamlVisito
 		yield YamlVisitorEvent.Error({ path, depth, diagnostic: YamlDiagnostic.fromRaw(raw, text) });
 	}
 
-	if (doc.comment !== undefined) {
-		yield YamlVisitorEvent.Comment({ path, depth, text: doc.comment, placement: "leading" });
+	if (doc.commentBefore !== undefined) {
+		yield YamlVisitorEvent.Comment({ path, depth, text: doc.commentBefore, placement: "leading" });
 	}
 
 	if (doc.contents !== null) {
 		yield* walkNode(doc.contents, path, depth);
 	}
 
-	if (doc.commentAfter !== undefined) {
-		yield YamlVisitorEvent.Comment({ path, depth, text: doc.commentAfter, placement: "trailing" });
+	if (doc.comment !== undefined) {
+		yield YamlVisitorEvent.Comment({ path, depth, text: doc.comment, placement: "trailing" });
 	}
 
 	yield YamlVisitorEvent.DocumentEnd({ path, depth });
@@ -178,6 +178,12 @@ function* walkNode(node: YamlNode, path: YamlPath, depth: number): Generator<Yam
 			...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
 		});
 	} else if (node instanceof YamlAlias) {
+		if (node.commentBefore !== undefined) {
+			yield YamlVisitorEvent.Comment({ path, depth, text: node.commentBefore, placement: "leading" });
+		}
+		if (node.comment !== undefined) {
+			yield YamlVisitorEvent.Comment({ path, depth, text: node.comment, placement: "trailing" });
+		}
 		yield YamlVisitorEvent.Alias({ path, depth, name: node.name });
 	} else if (node instanceof YamlMap) {
 		if (node.commentBefore !== undefined) {
@@ -228,12 +234,9 @@ function* walkPair(pair: YamlPair, parentPath: YamlPath, depth: number): Generat
 
 	const pairPath: YamlPath = [...parentPath, keySegment];
 
-	if (pair.commentBefore !== undefined) {
-		yield YamlVisitorEvent.Comment({ path: pairPath, depth, text: pair.commentBefore, placement: "leading" });
-	}
-	if (pair.comment !== undefined) {
-		yield YamlVisitorEvent.Comment({ path: pairPath, depth, text: pair.comment, placement: "trailing" });
-	}
+	// An entry's comments live on its key and value NODES, and both walks below
+	// run at this same pairPath — so the Comment events a consumer sees are
+	// unchanged, and emitting them here as well would duplicate every one.
 
 	yield YamlVisitorEvent.Pair({ path: pairPath, depth, key: resolvedKey, value: resolvedValue });
 

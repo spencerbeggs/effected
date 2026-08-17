@@ -38,7 +38,7 @@ The `extends`/merge semantics were **extracted from TypeScript 6.0.3 source** (`
 
 ## The file-only FileSystem contract
 
-Target probing uses `fs.exists`, which is true for a directory, where tsc's `host.fileExists` is file-only. The loader documents a **file-only contract** (see the `TsconfigLoader.ts` header): a directory hit fails typed via `readFileString`'s `PlatformError` — never a defect — where tsc would retry `"./dir.json"`. Accepted, documented divergence; do not "fix" it by rewriting the tsc-cited engine.
+Target probing uses `fs.exists`, which is true for a directory, where tsc's `host.fileExists` is file-only. The loader documents a **file-only contract** (see the `TsconfigLoader.ts` header): a directory hit fails typed via `readFileString`'s `PlatformError` — never a defect — where tsc would retry `"./dir.json"`. Accepted, documented divergence; do not "fix" it by rewriting the tsc-cited engine. A test now pins the directory hit itself (`./dir` → `Some("/proj/dir")`), so the divergence cannot regress unnoticed.
 
 ## Hardening (do not relax)
 
@@ -56,7 +56,7 @@ pnpm vitest run packages/tsconfig-json
 pnpm build --filter @effected/tsconfig-json   # from the repo root
 ```
 
-- Resolution suites run on in-memory fixture trees from `__test__/fixtures.ts`: `FileSystem.layerNoop` with `exists`/`readFileString` over a `Map`, merged with core `Path.layer` — **no platform package, even in tests**. The map holds file paths only, so `exists` is structurally file-only, matching the loader's contract.
+- Resolution suites run on in-memory fixture trees from `__test__/fixtures.ts`: `@effected/memfs` (a devDependency) seeded from a `Map`, merged with core `Path.layer` — **no platform package, even in tests**. The volume creates real parent directories, so `exists` is directory-true and the file-only divergence above is **observable in tests** rather than hidden; the previous `layerNoop`-over-a-`Map` stub was structurally file-only and masked it. The **discovery** suite keeps its own narrow `layerNoop` stub and has not moved.
 - `savvy.build.ts` carries the standard **narrow** suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }`; exactly 3 suppressed entries are expected in `issues.json` (the two error bases plus `JsxConfig_base`). Never widen it, and never run `node savvy.build.ts --target prod` directly.
 
 ## Consumers this API was designed against

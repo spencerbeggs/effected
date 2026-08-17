@@ -156,7 +156,7 @@ function toOutputDocument(doc: RawYamlDocument, preserveComments: boolean): RawY
 		errors: doc.errors,
 		warnings: doc.warnings,
 		directives: doc.directives,
-		...(preserveComments ? definedFields({ comment: doc.comment, commentAfter: doc.commentAfter }) : {}),
+		...(preserveComments ? definedFields({ commentBefore: doc.commentBefore, comment: doc.comment }) : {}),
 		hasDocumentStart: doc.hasDocumentStart,
 		hasDocumentEnd: doc.hasDocumentEnd,
 		hasDocumentStartTab: doc.hasDocumentStartTab,
@@ -270,15 +270,10 @@ function modifyNode(node: YamlNode, path: YamlPath, depth: number, value: unknow
 			if (pairIndex >= 0) {
 				const newItems = [...node.items];
 				const oldPair = newItems[pairIndex] as YamlPair;
-				newItems[pairIndex] = YamlPair.make({
-					key: oldPair.key,
-					value: newValueNode,
-					...definedFields({
-						commentBefore: oldPair.commentBefore,
-						comment: oldPair.comment,
-						spaceBefore: oldPair.spaceBefore,
-					}),
-				});
+				// Comments live on the key and value nodes, so the key carries its
+				// own through unchanged; the replacement value is a fresh node and
+				// deliberately starts with no comments of its own.
+				newItems[pairIndex] = YamlPair.make({ key: oldPair.key, value: newValueNode });
 				return rebuildMap(node, newItems);
 			}
 
@@ -303,15 +298,7 @@ function modifyNode(node: YamlNode, path: YamlPath, depth: number, value: unknow
 		}
 		const newValue = modifyNode(pair.value, path, depth + 1, value);
 		const newItems = [...node.items];
-		newItems[pairIndex] = YamlPair.make({
-			key: pair.key,
-			value: newValue,
-			...definedFields({
-				commentBefore: pair.commentBefore,
-				comment: pair.comment,
-				spaceBefore: pair.spaceBefore,
-			}),
-		});
+		newItems[pairIndex] = YamlPair.make({ key: pair.key, value: newValue });
 		return rebuildMap(node, newItems);
 	}
 

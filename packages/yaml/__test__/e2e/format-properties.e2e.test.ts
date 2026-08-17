@@ -58,20 +58,15 @@ function deepEqual(a: unknown, b: unknown): boolean {
 // - PRE-EXISTING on main (explicit-key, empty-key, tag-only and block-scalar
 //   edge shapes; independent of this branch): M2N8/00, M2N8/01, T26H, T4YY,
 //   WZ62 (idempotence); F6MC, R4YG, T26H, T4YY, WZ62, X38W, ZWK4 (meaning).
-// - COMMENT-CONVERGENCE gaps (comment preservation is new on this branch —
-//   main was trivially idempotent because it DROPPED these comments; the
-//   formatted output converges on the second pass and meaning is preserved):
-//   NKF9, RZP5, XW4D — open regressions, tracked: effected#348.
-const KNOWN_NON_IDEMPOTENT: ReadonlyArray<string> = [
-	"M2N8/00",
-	"M2N8/01",
-	"NKF9", // tracked: effected#348
-	"RZP5", // tracked: effected#348
-	"T26H",
-	"T4YY",
-	"WZ62",
-	"XW4D", // tracked: effected#348
-];
+//
+// NKF9, RZP5 and XW4D sat here as "comment-convergence gaps" until #348 found
+// what they actually were: two comment-LOSS defects, not slow convergence.
+// RZP5/XW4D — the explicit-key branch of the block-mapping stringifier never
+// emitted the value node's own `commentBefore`, unlike every sibling branch.
+// NKF9 — a mapping whose last pair had a null value swallowed the terminal
+// own-line comment while looking for a value that was not there, losing it on
+// a SINGLE pass. Both fixed; ids removed from this ledger.
+const KNOWN_NON_IDEMPOTENT: ReadonlyArray<string> = ["M2N8/00", "M2N8/01", "T26H", "T4YY", "WZ62"];
 
 const KNOWN_MEANING_CHANGES: ReadonlyArray<string> = ["F6MC", "R4YG", "T26H", "T4YY", "WZ62", "X38W", "ZWK4"];
 

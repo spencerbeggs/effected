@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, FileSystem, Layer, Redacted, Schema } from "effect";
 import { TestConsole } from "effect/testing";
 import { ActionEnvironment, ActionOutputError, ActionOutputs, Secret } from "../src/index.js";
@@ -10,19 +11,20 @@ const FILES = {
 	GITHUB_STEP_SUMMARY: "/rf/summary",
 };
 
-/** An append-only in-memory filesystem, fresh per test. */
+/**
+ * A real in-memory volume for the runner files, fresh per test.
+ *
+ * `ActionEnvironment`'s own TSDoc tells consumers to reach for `@effected/memfs`
+ * rather than a hand stub, and the append semantics are why: these writes are
+ * `flag: "a"` appends, and a stub that models them by concatenating into a Map
+ * is re-implementing the filesystem behavior under test. The volume performs
+ * the real append, and `/rf` is seeded because a write needs its parent.
+ */
 const runnerFiles = () => {
-	const written = new Map<string, string>();
-	const layer = FileSystem.layerNoop({
-		writeFileString: (path, data, options) =>
-			Effect.suspend(() => {
-				const key = String(path);
-				const previous = options?.flag === "a" ? (written.get(key) ?? "") : "";
-				written.set(key, previous + data);
-				return Effect.void;
-			}),
-	});
-	return { written, layer };
+	const { fileSystem, volume } = Effect.runSync(
+		MemoryFileSystem.makeInspectableWith({ "/rf": MemoryFileSystem.directory() }),
+	);
+	return { written: volume, layer: Layer.succeed(FileSystem.FileSystem, fileSystem) };
 };
 
 const live = <A, E>(program: Effect.Effect<A, E, ActionOutputs>, files: ReturnType<typeof runnerFiles>) =>
@@ -39,7 +41,7 @@ describe("ActionOutputs", () => {
 			return live(
 				Effect.gen(function* () {
 					yield* (yield* ActionOutputs).set("version", "1.2.3");
-					const body = files.written.get(FILES.GITHUB_OUTPUT) ?? "";
+					const body = files.written.text(FILES.GITHUB_OUTPUT) ?? "";
 					const [head, value, tail] = body.trimEnd().split("\n");
 					assert.isTrue(head?.startsWith("version<<"), `unexpected head: ${head}`);
 					assert.strictEqual(value, "1.2.3");
@@ -54,7 +56,7 @@ describe("ActionOutputs", () => {
 			return live(
 				Effect.gen(function* () {
 					yield* (yield* ActionOutputs).set("notes", "line one\nline two\n\nline four");
-					const body = files.written.get(FILES.GITHUB_OUTPUT) ?? "";
+					const body = files.written.text(FILES.GITHUB_OUTPUT) ?? "";
 					const lines = body.trimEnd().split("\n");
 					const delimiter = lines[0]?.slice("notes<<".length) ?? "";
 					assert.deepStrictEqual(lines.slice(1, -1), ["line one", "line two", "", "line four"]);
@@ -71,7 +73,7 @@ describe("ActionOutputs", () => {
 					// A value containing the default delimiter would, with a fixed
 					// delimiter, terminate the block early and corrupt every later entry.
 					yield* (yield* ActionOutputs).set("evil", "EFFECTED_EOF\nsmuggled=1");
-					const body = files.written.get(FILES.GITHUB_OUTPUT) ?? "";
+					const body = files.written.text(FILES.GITHUB_OUTPUT) ?? "";
 					const lines = body.trimEnd().split("\n");
 					const delimiter = lines[0]?.slice("evil<<".length) ?? "";
 					assert.notStrictEqual(delimiter, "EFFECTED_EOF");
@@ -89,7 +91,7 @@ describe("ActionOutputs", () => {
 					const outputs = yield* ActionOutputs;
 					yield* outputs.set("a", "1");
 					yield* outputs.set("b", "2");
-					const body = files.written.get(FILES.GITHUB_OUTPUT) ?? "";
+					const body = files.written.text(FILES.GITHUB_OUTPUT) ?? "";
 					assert.include(body, "a<<");
 					assert.include(body, "b<<");
 				}),
@@ -105,9 +107,9 @@ describe("ActionOutputs", () => {
 					yield* outputs.exportVariable("FOO", "bar");
 					yield* outputs.addPath("/opt/bin");
 					yield* outputs.summary("## Results\n");
-					assert.include(files.written.get(FILES.GITHUB_ENV) ?? "", "FOO<<");
-					assert.strictEqual(files.written.get(FILES.GITHUB_PATH), "/opt/bin\n");
-					assert.strictEqual(files.written.get(FILES.GITHUB_STEP_SUMMARY), "## Results\n");
+					assert.include(files.written.text(FILES.GITHUB_ENV) ?? "", "FOO<<");
+					assert.strictEqual(files.written.text(FILES.GITHUB_PATH), "/opt/bin\n");
+					assert.strictEqual(files.written.text(FILES.GITHUB_STEP_SUMMARY), "## Results\n");
 				}),
 				files,
 			);
@@ -119,7 +121,7 @@ describe("ActionOutputs", () => {
 			return live(
 				Effect.gen(function* () {
 					yield* (yield* ActionOutputs).setJson("result", { count: 2, tag: "x" }, Payload);
-					const body = files.written.get(FILES.GITHUB_OUTPUT) ?? "";
+					const body = files.written.text(FILES.GITHUB_OUTPUT) ?? "";
 					assert.include(body, '{"count":2,"tag":"x"}');
 				}),
 				files,
@@ -146,7 +148,7 @@ describe("ActionOutputs", () => {
 				Effect.gen(function* () {
 					const error = yield* Effect.flip((yield* ActionOutputs).set("bad\nname", "1"));
 					assert.strictEqual(error.reason, "invalidName");
-					assert.strictEqual(files.written.size, 0, "nothing may be written when the name is refused");
+					assert.strictEqual(files.written.paths().length, 0, "nothing may be written when the name is refused");
 				}),
 				files,
 			);

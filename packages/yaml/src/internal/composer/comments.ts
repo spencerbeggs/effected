@@ -3,62 +3,48 @@
 // comment field triple (`commentBefore` / `comment` / `spaceBefore`) onto an
 // already-composed node.
 //
-// Attribution semantics (the #127 model, prior art: the `yaml` npm package):
-// an own-line comment attaches FORWARD to the following pair/item as
-// `commentBefore`; a comment on the same line as the end of a pair/item
-// attaches to it as the trailing `comment`; own-line comments after a
-// collection's last entry become the collection's `comment` when at (or
-// beyond) the collection's content column and escape to the outer scope when
-// shallower; `spaceBefore` is set when a blank line precedes the entry (and
-// its `commentBefore` block); blank lines within/after a comment run embed
-// as extra `\n`s in the joined string; comment text is the RAW post-`#`
-// slice (see `rawCommentText`).
+// Attribution semantics (the NODE-LEVEL model, prior art: the `yaml` npm
+// package). Comments live on NODES; `YamlPair` carries none. An own-line
+// comment attaches FORWARD to the following entry's KEY node as
+// `commentBefore`; a comment on the same line as the end of an entry attaches
+// to that entry's VALUE node as the trailing `comment`; own-line comments
+// after a collection's last entry become the collection's own `comment` when
+// at (or beyond) the collection's content column and escape to the outer
+// scope when shallower; `spaceBefore` is set on the key node when a blank
+// line precedes the entry (and its `commentBefore` block); blank lines
+// within/after a comment run embed as extra `\n`s in the joined string;
+// comment text is the RAW post-`#` slice (see `rawCommentText`).
+//
+// Two node slots per entry rather than one pair slot is the whole point: a
+// key-line comment (`a: # kc`) and a value's trailing comment are different
+// fields, so neither has to relocate onto the other's line.
 //
 // ── Recorded divergences from the reference `yaml` npm package ─────────────
 //
 // The one place the divergences live; each is deliberate, and the emitted
-// bytes remain reparse-stable in every case.
+// bytes remain reparse-stable in every case. The list used to have six
+// entries. Four of them — pair-level placement, the alias drop, the
+// multi-line complex-key drop, and the document field naming — were all
+// symptoms of storing comments on the pair, and went away with the move to
+// node-level fields rather than being patched one at a time.
 //
-// 1. PAIR-LEVEL fields. `commentBefore`/`comment`/`spaceBefore` live on
-//    `YamlPair` (plus the three value node classes); the reference attaches
-//    them to the key/value NODES and `Pair` carries none. One consequence: a
-//    key-line comment and an inline value's trailing comment are the same
-//    field here, so `a: # kc\n  1` re-emits as `a: 1 # kc` (relocation
-//    ratified in review) and a key comment never forces explicit-key form
-//    on a null-value pair (the reference's `? a # kc` spelling).
-// 2. ALIAS comments drop. `YamlAlias` carries no comment fields (the #127
-//    split covers the four classes); a comment attributed to an alias node
-//    is dropped.
-// 3. TRAILING-comment drop on multi-line complex keys only: a multi-line
-//    key has no line that can carry a `#` comment without swallowing it
-//    into the key content, so the pair's comment is dropped there. Block
-//    scalars are no longer part of this divergence (#341): the header line
-//    carries a comment legally (`key: | # c`), `makeScalar` captures it as
-//    the SCALAR's `comment` (reference parity — the comment sits inside the
-//    scalar's own CST token) and the stringifier re-emits it on the header
-//    line in the pair, seq-item and explicit-key paths. A pair-level comment
-//    COEXISTING with a scalar header comment no longer drops: the pair
-//    comment keeps the key line and the header spills to its own indented
-//    line (`a: # pair` / `  | # hdr` / `  body`). Residual drop: a DOCUMENT-
-//    ROOT block scalar's header comment, which is captured on the node but
-//    has no emission path.
-// 4. FLOW comment layout normalizes. A comment-carrying flow collection
-//    re-emits in multi-line flow layout (single-line flow cannot carry `#`
-//    without swallowing the closing bracket); byte-stable from the second
-//    format pass. The reference makes the same one-line-per-entry choice.
-// 5. PRE-`#` spacing normalizes to one space on trailing comments
+// 1. ABSENT-value placement. A trailing comment on an entry with no value
+//    (`a: # kc`) lands on the KEY node; the reference materializes `a:` as
+//    `Scalar(null)` and puts it on that. Our `value` is `null` for an absent
+//    value, and making it always-a-node for parity would silently break every
+//    consumer's `pair.value === null` check at RUNTIME rather than at compile
+//    time. The emitted bytes are identical, so this is invisible to a
+//    formatter and visible only to a consumer reading the field.
+// 2. PRE-`#` spacing normalizes to one space on trailing comments
 //    (`a: 1   # t` → `a: 1 # t`) — the post-`#` storage form cannot carry
 //    it. The reference behaves identically.
-// 6. DOCUMENT comment naming. `RawYamlDocument.comment` is the LEADING
-//    header block and `commentAfter` the trailing block (after content or
-//    `...`); the reference spells these `commentBefore`/`comment`. The
-//    pre-existing `comment`-as-header field stays stable. Comments after a
-//    `...` marker in a MULTI-document stream may attach to the following
-//    document's header rather than the preceding document's trailer,
-//    depending on CST document splitting.
+// 3. MULTI-document `...` trailers. A comment after a `...` marker in a
+//    multi-document stream may attach to the following document's header
+//    rather than the preceding document's trailer, depending on CST document
+//    splitting.
 
 import type { YamlNode } from "../../YamlNode.js";
-import { YamlMap, YamlScalar, YamlSeq } from "../../YamlNode.js";
+import { YamlAlias, YamlMap, YamlScalar, YamlSeq } from "../../YamlNode.js";
 
 /** The comment field triple accepted by {@link withCommentFields}. */
 export interface CommentFields {
@@ -100,6 +86,32 @@ export function isOwnLineAt(text: string, offset: number): boolean {
 		return ch === "\n" || ch === "\r";
 	}
 	return true;
+}
+
+/**
+ * True when the only thing before `offset` on its line is a block indicator —
+ * `?`, `:` or `-` — plus whitespace. Such a comment sits on an indicator line
+ * with its node BELOW, so it leads that node rather than trailing whatever
+ * came before (`? # c` / ` - seq1`). Without this, the `? ` prefix makes the
+ * comment look like a trailing comment on the previous entry.
+ */
+export function isAfterIndicatorOnly(text: string, offset: number): boolean {
+	let i = offset - 1;
+	let sawIndicator = false;
+	while (i >= 0) {
+		const ch = text[i];
+		if (ch === " " || ch === "\t") {
+			i--;
+			continue;
+		}
+		if (!sawIndicator && (ch === "?" || ch === "-" || ch === ":")) {
+			sawIndicator = true;
+			i--;
+			continue;
+		}
+		return sawIndicator && (ch === "\n" || ch === "\r");
+	}
+	return sawIndicator;
 }
 
 /**
@@ -234,8 +246,8 @@ export interface EscapedComment {
 /**
  * Rebuild `node` with the given comment fields merged in (existing fields are
  * kept unless overridden; `commentBefore`/`comment` join with a newline when
- * both sides are present). Aliases are returned unchanged — they carry no
- * comment fields.
+ * both sides are present). Every node class carries the triple, aliases
+ * included.
  */
 export function withCommentFields(node: YamlNode, fields: CommentFields): YamlNode {
 	if (node instanceof YamlScalar) {
@@ -277,7 +289,12 @@ export function withCommentFields(node: YamlNode, fields: CommentFields): YamlNo
 			length: node.length,
 		});
 	}
-	return node;
+	return new YamlAlias({
+		name: node.name,
+		...mergedCommentFields(node, fields),
+		offset: node.offset,
+		length: node.length,
+	});
 }
 
 function mergedCommentFields(existing: CommentFields, incoming: CommentFields): CommentFields {

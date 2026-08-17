@@ -33,12 +33,14 @@ export class YamlDirective extends Schema.Class<YamlDirective>("YamlDirective")(
 /**
  * A parsed YAML document: the root {@link (YamlNode:type)} (or `null` when
  * empty), recovered `errors` and `warnings` as {@link YamlDiagnostic} data,
- * the {@link YamlDirective} list, the optional document-level comments
- * (`comment` is the LEADING header block, `commentAfter` the trailing block
- * after the content or the `...` marker — the reference `yaml` package calls
- * these `commentBefore`/`comment`; the naming here keeps the pre-existing
- * `comment`-as-header field stable), and the `---`/`...` framing flags
- * (absent flags read as `false`).
+ * the {@link YamlDirective} list, the optional document-level comments and the
+ * `---`/`...` framing flags (absent flags read as `false`).
+ *
+ * `commentBefore` is a header block sitting AHEAD of a `---` marker; `comment`
+ * is the trailing block after the content or the `...` marker. A header with
+ * no marker, or one after the marker, belongs to the content rather than the
+ * document — it leads the root node, or the first entry when there is no
+ * marker to separate it from the item stream.
  *
  * Construct via `YamlDocument.parse` / `parseAll`; `YamlDocument.make` is for
  * synthetic documents.
@@ -50,8 +52,8 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 	errors: Schema.Array(YamlDiagnostic),
 	warnings: Schema.Array(YamlDiagnostic),
 	directives: Schema.Array(YamlDirective),
+	commentBefore: Schema.optionalKey(Schema.String),
 	comment: Schema.optionalKey(Schema.String),
-	commentAfter: Schema.optionalKey(Schema.String),
 	hasDocumentStart: Schema.optionalKey(Schema.Boolean),
 	hasDocumentEnd: Schema.optionalKey(Schema.Boolean),
 	hasDocumentStartTab: Schema.optionalKey(Schema.Boolean),
@@ -239,8 +241,8 @@ function fromRawDocument(raw: RawYamlDocument, text: string): YamlDocument {
 		errors: raw.errors.map((e) => YamlDiagnostic.fromRaw(e, text)),
 		warnings: raw.warnings.map((w) => YamlDiagnostic.fromRaw(w, text)),
 		directives: raw.directives.map((d) => new YamlDirective({ name: d.name, parameters: d.parameters })),
+		...(raw.commentBefore !== undefined ? { commentBefore: raw.commentBefore } : {}),
 		...(raw.comment !== undefined ? { comment: raw.comment } : {}),
-		...(raw.commentAfter !== undefined ? { commentAfter: raw.commentAfter } : {}),
 		hasDocumentStart: raw.hasDocumentStart,
 		hasDocumentEnd: raw.hasDocumentEnd,
 		hasDocumentStartTab: raw.hasDocumentStartTab,
@@ -254,8 +256,8 @@ function toRawDocument(doc: YamlDocument): RawYamlDocument {
 		errors: [],
 		warnings: [],
 		directives: doc.directives,
+		...(doc.commentBefore !== undefined ? { commentBefore: doc.commentBefore } : {}),
 		...(doc.comment !== undefined ? { comment: doc.comment } : {}),
-		...(doc.commentAfter !== undefined ? { commentAfter: doc.commentAfter } : {}),
 		hasDocumentStart: doc.hasDocumentStart ?? false,
 		hasDocumentEnd: doc.hasDocumentEnd ?? false,
 		hasDocumentStartTab: doc.hasDocumentStartTab ?? false,

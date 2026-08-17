@@ -136,16 +136,15 @@ describe("YamlFormat", () => {
 			assert.strictEqual(YamlFormat.formatToString(text), text);
 		});
 
-		it("a comment between --- and content hoists above the marker (single-document parity), losslessly", () => {
-			// The composer reads a comment between `---` and the first content
-			// line as the document HEADER block, and the stringifier emits the
-			// header above the marker — the released single-document behavior
-			// (formatToString("---\n# c\nb: 2\n") does the same hoist). The
-			// stream path inherits it: no comment is lost, and the output is a
-			// fixed point.
-			const out = YamlFormat.formatToString("a: 1\n---\n# doc two\nb: 2\n");
-			assert.strictEqual(out, "a: 1\n# doc two\n---\nb: 2\n");
-			assert.strictEqual(YamlFormat.formatToString(out), out);
+		it("a comment between --- and content stays where it was written", () => {
+			// It leads the ROOT NODE of the following document, so it emits on the
+			// marker's far side. This used to hoist above the marker, because the
+			// comment was stored as a document-level header block with no way to
+			// say "after the marker"; a node-level leading slot says exactly that,
+			// so the input is now a byte-identical fixed point.
+			const text = "a: 1\n---\n# doc two\nb: 2\n";
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+			assert.strictEqual(YamlFormat.formatToString(YamlFormat.formatToString(text)), text);
 		});
 
 		it("preserves an explicit ... document-end separation between bare documents", () => {

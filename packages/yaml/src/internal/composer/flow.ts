@@ -125,7 +125,11 @@ function validateFlowContentIndent(cst: CstNode, state: ComposerState, parentBlo
 				continue;
 			}
 			const col = i - lineStart;
-			if (col <= parentBlockColumn) {
+			// A line holding only the collection's own CLOSING indicators is not
+			// content, and the spec puts no indentation floor on a flow closer —
+			// `x: {\n  a: 1\n}` is valid, and the reference accepts it (#340).
+			// Only real content has to clear the parent block column.
+			if (col <= parentBlockColumn && !isClosersOnly(text, i, end)) {
 				state.errors.push({
 					code: "InvalidIndentation",
 					message: "Flow content continuation line must be indented past the parent block",
@@ -138,6 +142,27 @@ function validateFlowContentIndent(cst: CstNode, state: ComposerState, parentBlo
 		}
 		i++;
 	}
+}
+
+/**
+ * True when everything from `start` to the end of that line (bounded by `end`)
+ * is flow closing punctuation — `}`, `]`, separating commas and whitespace.
+ * Such a line closes the collection rather than carrying content, so the
+ * continuation-indent floor does not apply to it.
+ */
+function isClosersOnly(text: string, start: number, end: number): boolean {
+	let sawCloser = false;
+	for (let i = start; i < end && i < text.length; i++) {
+		const ch = text[i];
+		if (ch === "\n") break;
+		if (ch === "}" || ch === "]") {
+			sawCloser = true;
+			continue;
+		}
+		if (ch === "," || ch === " " || ch === "\t" || ch === "\r") continue;
+		return false;
+	}
+	return sawCloser;
 }
 
 // ---------------------------------------------------------------------------

@@ -106,10 +106,9 @@ against `@effect/platform-node@4.0.0-beta.101`). Reading through it makes the
 first sync silently delete a user's BOM — a text-preservation violation. The
 service reads `fs.readFile` and decodes with `ignoreBOM: true`.
 
-**The test double must implement `readFile`.** `FileSystem.layerNoop` fails
-unimplemented members with a typed `NotFound`, which this package treats as "the
-file is absent" — so a double implementing only `readFileString` makes every
-test silently see an empty document instead of its fixture.
+**The caller guarantees the parent directory exists.** `Path` is absent from `R`, so this package cannot create one and a write into a missing directory fails typed. A `Map` fixture accepts any key, so that precondition went untested for years; the volume refuses the write, and the refusal *is* the contract surfacing. Never make the fixture create parents implicitly.
+
+**A partial `FileSystem` double reads as an empty file.** `layerNoop` fails unimplemented members with a typed `NotFound`, which this package treats as "the file is absent" — so a stub implementing only `readFileString` makes every test silently see an empty document. That deny-by-default cost is why the double is a real volume now.
 
 **Regex construction is escaped and cached.** Prefix, suffix and phrase are all
 caller-supplied and all end up in the scan pattern. The compiled matchers are
@@ -124,9 +123,9 @@ shared `lastIndex` and makes a second call on the same text answer differently.
 `@effect/vitest`, `assert.*` — never `expect`. Pure suites use plain `it` (there
 is no Effect to run); service suites use `it.effect`.
 
-- Unit suites run on the in-memory `FileSystem` in `__test__/fixtures.ts`, built
-  fresh per test and provided at the test boundary — it is mutable, so a
-  suite-level `layer(...)` cannot serve it.
+- Service suites run on the real volume in `__test__/fixtures.ts` (`@effected/memfs`, a devDependency), built fresh per test and provided at the test boundary — it is mutable, so a suite-level `layer(...)` cannot serve it. Every service test runs the code and then reads back what the run left behind, through the volume's inspection surface.
+- **Build it eagerly — `makeInspectableWith` under `Layer.succeed`, never `layerInspectableWith`.** A memfs layer re-seeds on every `Effect.provide`, so assertions running *after* the provide would read a volume nobody wrote to.
+- **The write counter is a fault handler that declines**, so the write is counted *and* really happens. The mutant it must kill swallows the write while still counting it; five tests fail when it does.
 - **Property tests must construct their `CommentStyle` inline**, not from a
   preset, so they exercise structural rather than reference identity.
 - The integration suite exists for the facts a fake cannot settle: the tag
