@@ -106,7 +106,7 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.buil
 
 `pnpm pnpm:up`, `pnpm pnpm:preview` and `pnpm pnpm:export` advance and export the Effect catalogs, mutating the lockfile and the root `pnpm-workspace.yaml`.
 
-**Agents must not invoke them** — surface the command and let the user run it (advancing the beta is `pnpm:up` then `pnpm:export`).
+**Agents must not invoke them** — surface the command and let the user run it (advancing the Effect pin is `pnpm:up` then `pnpm:export`).
 
 ## Code Quality and Hooks
 
@@ -122,7 +122,7 @@ Biome, commitlint, lint-staged and markdownlint take their presets from `@savvy-
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml`, managed via `packages/pnpm-plugin-effect`. Catalog detail and the expected peer-warning class → `@./CLAUDE.dependencies.md`.
 
-**`catalog:effect` uses the `lock` strategy: exact beta pins (`4.0.0-beta.107`), never a caret.** A caret on a prerelease floats across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports.
+**`catalog:effect` uses the `lock` strategy: exact prerelease pins (`4.0.0-rc.109`), never a caret.** A caret on a prerelease floats across the release line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports.
 
 **Always check the lockfile diff after an install** — a plain `pnpm install` once stripped turbo / biome / tsgo platform binaries from it.
 

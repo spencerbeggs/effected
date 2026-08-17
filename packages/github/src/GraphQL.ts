@@ -1,4 +1,4 @@
-import type { Effect, SchemaError } from "effect";
+import type { Effect } from "effect";
 import { Schema } from "effect";
 import { retryAfterMillisFrom } from "./internal/headers.js";
 
@@ -183,7 +183,7 @@ export class GraphQLDocument<A, V extends Record<string, unknown>> {
 		/** The document text sent to GitHub. */
 		readonly document: string,
 		/** Decodes the raw `data` payload into the domain value. */
-		readonly decode: (raw: unknown) => Effect.Effect<A, SchemaError.SchemaError>,
+		readonly decode: (raw: unknown) => Effect.Effect<A, Schema.SchemaError>,
 		/**
 		 * Turns the caller's variables into the wire object.
 		 *

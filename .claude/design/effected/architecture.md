@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-16
+last-synced: 2026-08-16
 completeness: 88
 related:
   - effect-standards.md
@@ -38,11 +38,11 @@ The libraries-only rule and the app kit framing are not in tension: the applicat
 
 ## Effect v4-first
 
-All `@effected/*` packages target Effect v4 (currently beta, pinned via the `effect` catalog in `pnpm-workspace.yaml`), tracking beta releases until v4 stabilizes. See the [v4 beta announcement](https://effect.website/blog/releases/effect/40-beta/). Packages are designed against v4 idioms rather than carried over from v3 shapes — the per-package cycle is in [migration-playbook.md](migration-playbook.md) and the API conventions in [effect-standards.md](effect-standards.md).
+All `@effected/*` packages target Effect v4 (currently prerelease, pinned via the `effect` catalog in `pnpm-workspace.yaml`), tracking v4 prereleases until v4 stabilizes — the release line renamed itself from `-beta` to `-rc` at `4.0.0-rc.108`, so both spellings name the same line. See the [v4 beta announcement](https://effect.website/blog/releases/effect/40-beta/). Packages are designed against v4 idioms rather than carried over from v3 shapes — the per-package cycle is in [migration-playbook.md](migration-playbook.md) and the API conventions in [effect-standards.md](effect-standards.md).
 
 ## Release posture
 
-Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. Releases are changeset-driven: CI builds the appropriate changesets and publishes the packages they name, whether that is the whole kit on a beta advance or a single package on a patch. The release mechanics — how a package joins the stream, and which consumers scope the kit — are in [releases.md](releases.md).
+Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. Releases are changeset-driven: CI builds the appropriate changesets and publishes the packages they name, whether that is the whole kit on a catalog advance or a single package on a patch. The release mechanics — how a package joins the stream, and which consumers scope the kit — are in [releases.md](releases.md).
 
 ## Layout
 
@@ -57,7 +57,7 @@ Build tooling comes from two `@savvy-web` packages: `bundler` (each package's `s
 
 ## Vendored source
 
-`.repos/effect` is a git submodule of [Effect-TS/effect](https://github.com/Effect-TS/effect), declared in `.gitmodules` and managed by the silk plugin's repos tooling through the `.repos/config.json` manifest (url, ref, purpose, sparse paths, orientation notes). It is pinned to the release tag matching the `effect` catalog pin in `pnpm-workspace.yaml` — **not** tracking `main`. Pinning is the whole point: a vendored tree at `main` drifts ahead of the beta we compile against, letting an agent assert, with source in hand, a surface that does not exist in the installed version. That is a worse failure than guessing, because the evidence looks conclusive.
+`.repos/effect` is a git submodule of [Effect-TS/effect](https://github.com/Effect-TS/effect), declared in `.gitmodules` and managed by the silk plugin's repos tooling through the `.repos/config.json` manifest (url, ref, purpose, sparse paths, orientation notes). It is pinned to the release tag matching the `effect` catalog pin in `pnpm-workspace.yaml` — **not** tracking `main`. Pinning is the whole point: a vendored tree at `main` drifts ahead of the prerelease we compile against, letting an agent assert, with source in hand, a surface that does not exist in the installed version. That is a worse failure than guessing, because the evidence looks conclusive.
 
 The checkout is **sparse** — only the trees agents actually read are materialized: `packages/effect` (the v4 export authority), `packages/vitest` (the `@effect/vitest` reference implementation) and `migration`, `ai-docs`, `LLMS.md`, `MIGRATION.md` (the rename evidence for the plugin's evidence ladder). The sparse set is recorded in `.repos/config.json`.
 
@@ -81,13 +81,19 @@ The tree also stays outside every build and lint graph: the silk Biome preset ce
 
 ## Dependency resolution
 
-The repo runs a v4 `effect` in its packages and a v3 `effect` in parts of its toolchain (`@savvy-web/*`, rspress, api-extractor), sharing one `node_modules` tree. Under pnpm's `autoInstallPeers: true` an unresolved `effect` peer once bound to the workspace-preferred v4 and leaked into v3-wanting importers; that resolver bug is fixed upstream (pnpm ≥ 11.12.0, which this repo runs), so the configuration below is ordinary, not a workaround.
+The workspace pins one v4 `effect` prerelease while parts of the toolchain (`@savvy-web/*`, rolldown-pnpm-config, vitest-agent) still ship against an older one, sharing one `node_modules` tree. The v3/v4 coexistence era is over — no Effect v3 remains anywhere in the lockfile — and the resolver bug that era exposed (an unresolved `effect` peer binding to the workspace-preferred version and leaking into importers wanting another) is fixed upstream in pnpm ≥ 11.12.0, which this repo runs.
 
-### The catalogs pin exact betas
+### The catalogs pin exact versions
 
-The Effect catalogs — `effect` and `effect:peers` in `pnpm-workspace.yaml` — pin **exact** beta versions with no caret, generated by [`packages/pnpm-plugin-effect`](packages/pnpm-plugin-effect.md) under a lock strategy so the whole workspace resolves to one pinned version on install. Exact pinning is load-bearing: a caret range on a prerelease floats freely across the beta line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule that is the authority on what v4 exports — the failure described in [Vendored source](#vendored-source), arriving through the lockfile. The peers catalog is the range `@effected/*` libraries advertise to their consumers; it is locked exact to match, so a consumer pins the same beta the kit was built against ([releases.md](releases.md#versioning)).
+The Effect catalogs — `effect` and `effect:peers` in `pnpm-workspace.yaml` — pin **exact** prerelease versions with no caret, generated by [`packages/pnpm-plugin-effect`](packages/pnpm-plugin-effect.md) under a lock strategy so the whole workspace resolves to one pinned version on install. Exact pinning is load-bearing: a caret range on a prerelease floats freely across the release line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule that is the authority on what v4 exports — the failure described in [Vendored source](#vendored-source), arriving through the lockfile. The peers catalog is the range `@effected/*` libraries advertise to their consumers; it is locked exact to match, so a consumer pins the same version the kit was built against ([releases.md](releases.md#versioning)).
 
-A separate `effect3` / `effect3:peers` interop catalog tracks the latest Effect v3 releases for dual-version testing; it is caret-ranged because it is not synced to the vendored tree.
+The `effect3` / `effect3:peers` interop catalogs that tracked the Effect v3 line for dual-version testing, and the camelCase `effectPeers` / `effect3Peers` compatibility aliases, were removed on the `rc.109` advance once nothing referenced them — ahead of the `1.0.0` graduation that was originally planned to retire them ([pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#the-retired-effect3-interop-catalogs)). Only `effect` and `effect:peers` exist now.
+
+### The temporary overrides bridge
+
+`pnpm-workspace.yaml` carries a small `overrides` block that is **temporary by design**: spec-scoped rules rewriting the toolchain's wanted `effect@4.0.0-beta.107` (and its `@effect/platform-node` / `@effect/sql-sqlite-node` companions) to the workspace's pinned `rc.109`. It exists because the `@savvy-web` build toolchain, rolldown-pnpm-config and vitest-agent still hard-depend on the older prerelease: with the workspace catalog ahead of them, `autoInstallPeers` glued the toolchain's embedded published `@effected/*` packages inconsistently — one bound to the toolchain's `effect`, its own `@effected/*` peer bound to the workspace's — putting two `effect` copies in one Schema decode pipeline and crashing every package's build (`text.charCodeAt is not a function` out of the jsonc scanner). The overrides collapse the tree back to one `effect` copy.
+
+Three properties keep the bridge safe. It is **spec-scoped**: each rule matches only the literal older wanted spec, so catalog-driven resolution is untouched. It affects **installation only**: published manifests come from the bundler's `publishConfig` transform reading the `effect:peers` catalog, never from the override. And it is **temporary**: remove it once the kit has released against the current pin and the toolchain has republished against it — do not let it accrete entries or outlive its cause.
 
 The build-tooling versions — `typescript`, `@types/node` and the bundler's own stack — come from `catalog:build`, which is **not** declared in `pnpm-workspace.yaml`: the `@savvy-web/pnpm-plugin-silk` config dependency injects it. Read the installed plugin under `node_modules/.pnpm-config/` when a `catalog:build` version needs checking, not the workspace file.
 

@@ -7,7 +7,7 @@
  *
  * @since 0.1.0
  */
-import { Option, Schema, SchemaError } from "effect";
+import { Option, Schema } from "effect";
 import { LineSlice } from "./LineSlice.js";
 
 /**
@@ -19,7 +19,7 @@ import { LineSlice } from "./LineSlice.js";
  * still carrying the failure **structurally** — `error.issue` keeps its paths
  * and expected types — instead of flattening it to a string at the boundary.
  */
-const SchemaErrorFromSelf = Schema.declare(SchemaError.isSchemaError);
+const SchemaErrorFromSelf = Schema.declare(Schema.isSchemaError);
 
 /**
  * A journal line that is not valid JSON.

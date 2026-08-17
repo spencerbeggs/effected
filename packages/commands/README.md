@@ -8,7 +8,7 @@
 Structured command running and CLI tool discovery over Effect's core `ChildProcessSpawner` contract. `Run.collect` / `text` / `lines` / `json` turn a spawned process into a typed result instead of a bag of streams to check by hand, and `ToolDiscovery` answers "is `biome` here, and which copy should I run" without a shell probe. `effect` is the only dependency of any kind.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 beta. Packages graduate to
+> development against a single pinned Effect v4 prerelease. Packages graduate to
 > `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
 > exactly the ones the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).

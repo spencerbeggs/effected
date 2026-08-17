@@ -8,7 +8,7 @@
 The boundary layer of a command-line program built on `effect/unstable/cli`: how output reaches a human, how a failure is reported, and how a schema issue becomes a sentence someone can act on. `CliLogger` renders log records as plain lines and routes diagnostics to stderr, reading the `Console` off the fiber so it needs no platform package and the stream split is actually testable. `CliRuntime.reportFailures` catches inside your program so a failure prints through *your* logger instead of Effect's default one on stdout, then re-fails with the exit code and the no-double-report mark. `SchemaIssueRenderer` and `ConfigIssueRenderer` turn issue trees into `unknown key at groups.g.rulesetz`.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 beta. Packages graduate to
+> development against a single pinned Effect v4 prerelease. Packages graduate to
 > `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
 > exactly the ones the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).

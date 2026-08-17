@@ -9,7 +9,7 @@
 A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to one [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effect:peers` catalog carries the same package set at a computed shared floor — the lowest version safe to advertise as a peer range — so a library you publish does not over-constrain the applications that install it. Install it once and both catalogs are available to every package in your workspace.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 beta. Packages graduate to
+> development against a single pinned Effect v4 prerelease. Packages graduate to
 > `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
 > exactly the ones the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
@@ -22,7 +22,7 @@ A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes
 
 ## Why @effected/pnpm-plugin-effect
 
-Effect ships as a couple of dozen packages that have to move together. Pin them by hand and the pins drift: one `@effect/*` package advances, its `effect` peer no longer matches the core you installed, and the failure surfaces as a type error in a file nobody touched. Keeping the pins in one place is the whole idea, and pnpm catalogs are the mechanism — `catalog:effect` in a manifest instead of a version string, and one place to edit when the beta advances.
+Effect ships as a couple of dozen packages that have to move together. Pin them by hand and the pins drift: one `@effect/*` package advances, its `effect` peer no longer matches the core you installed, and the failure surfaces as a type error in a file nobody touched. Keeping the pins in one place is the whole idea, and pnpm catalogs are the mechanism — `catalog:effect` in a manifest instead of a version string, and one place to edit when the pin advances.
 
 The second catalog is the part you cannot get from a catalog alone. A library's `peerDependencies` should be as *wide* as it can safely be, while its `devDependencies` should be as *specific* as possible; those are different numbers and computing the peer floor by hand across a whole ecosystem is grim. `effect:peers` is that computation, done once. This is a convenience, not a requirement — it packages the way [effected](https://github.com/spencerbeggs/effected) pins its own Effect dependencies, so a project that wants the same discipline can adopt it instead of rebuilding it. It ships catalogs and a pnpmfile, not a code API.
 
@@ -75,32 +75,16 @@ Libraries want both catalogs: the pinned versions to develop and test against, a
 
 pnpm rewrites `catalog:` specifiers to concrete ranges when it publishes, so what lands on the registry is an ordinary manifest. Nothing downstream needs this plugin, or pnpm.
 
-### Testing against both Effect versions
-
-During the Effect v3 → v4 transition the plugin also ships an `effect3` catalog — and its `effect3:peers` floor — tracking the latest Effect **v3** releases, so you can verify code against both Effect majors in a single monorepo. A package or test workspace that should build against v3 references `catalog:effect3` where another references `catalog:effect`:
-
-```json
-{
-  "devDependencies": {
-    "effect": "catalog:effect3"
-  }
-}
-```
-
-A handful of packages are excluded where their v3 line has known issues. The `effect3` catalogs are removed at this plugin's own `1.0.0`, once Effect `4.0.0` has shipped and there is nothing left to interoperate with.
-
 ## What it ships
 
 | Catalog | Contents | Use it in |
 | ------- | -------- | --------- |
 | `catalog:effect` | Every `effect` and `@effect/*` package, pinned to one v4 release | `dependencies` for applications, `devDependencies` for libraries |
 | `catalog:effect:peers` | The same package set at the computed shared peer floor | `peerDependencies` for libraries |
-| `catalog:effect3` | The same package set tracking the latest Effect **v3** releases, a few excluded | testing against Effect v3 alongside v4 |
-| `catalog:effect3:peers` | The v3 package set at its computed peer floor | `peerDependencies` when advertising v3 support |
 
 It also ships a pnpmfile, which pnpm loads from the config dependency automatically. There is nothing to import and nothing to call — the package has no code API, only configuration.
 
-While the whole ecosystem is pinned to a single beta of Effect v4, the two catalogs largely coincide. The floor computation earns its keep once the packages' releases desynchronize — and it earned it under Effect v3, where the floors genuinely diverged.
+While the whole ecosystem is pinned to a single Effect v4 prerelease, the two catalogs largely coincide. The floor computation earns its keep once the packages' releases desynchronize — and it earned it under Effect v3, where the floors genuinely diverged.
 
 ## License
 

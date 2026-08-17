@@ -8,7 +8,7 @@
 Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources. Core effect already owns the generation pipeline: `Schema.toJsonSchemaDocument` produces Draft 2020-12 and `JsonSchema.toDocumentDraft07` lowers it. This package owns what [SchemaStore](https://www.schemastore.org) expects around that output — the publication shape (`$schema` + `$id` + root + `$defs`, with the `#/definitions` → `#/$defs` ref rewrite the lowering makes necessary), annotation carriers that keep the language-server keyword families alive through the lowering, catalog entries in both versioning modes, structural and hygiene lints, ajv strict-mode validation, canonical JSON text and content-comparing write-if-changed file IO. `SchemaPipeline` runs that whole emit loop over a list of targets, so a build script calls one function.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 beta. Packages graduate to
+> development against a single pinned Effect v4 prerelease. Packages graduate to
 > `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
 > exactly the ones the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).

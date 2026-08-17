@@ -11,7 +11,7 @@ For consumers it is **optional but real**: installing it holds their `effect` ve
 **For full design rationale:**
 → `@../../.claude/design/effected/packages/pnpm-plugin-effect.md`
 
-Load when changing catalog strategy, advancing the Effect beta, or debugging workspace peer resolution.
+Load when changing catalog strategy, advancing the Effect pin, or debugging workspace peer resolution.
 
 ## What it is
 
@@ -20,17 +20,18 @@ A pnpm **config dependency** (installed with `pnpm add --config`, not as a norma
 - `src/index.ts` → `catalogs`
 - `src/pnpmfile.ts` → `hooks`
 
-All real configuration lives in `savvy.build.ts`, where `PnpmConfigPlugin` declares each `effect` / `@effect/*` package with a `range` (pinned version), a `peer` (input to the floor computation), and a `strategy` — `lock` for the v4 `effect` catalog, `interop` for the v3 `effect3` catalog. The build uses `bundleNodeModules: true` and `looseFiles` to emit `pnpmfile.mjs` / `pnpmfile.cjs`.
+All real configuration lives in `savvy.build.ts`, where `PnpmConfigPlugin` declares each `effect` / `@effect/*` package with a `range` (pinned version), a `peer` (input to the floor computation), and a `strategy` — `lock` throughout, now that the v3 `interop` catalogs are retired. The build uses `bundleNodeModules: true` and `looseFiles` to emit `pnpmfile.mjs` / `pnpmfile.cjs`.
 
 ## What it publishes
 
-Four catalogs, consumed by every `@effected/*` package:
+Two catalogs, consumed by every `@effected/*` package:
 
-- **`catalog:effect`** — pinned current Effect v4 beta, under the `lock` strategy. Used in `devDependencies` (and `peerDependencies` for `effect` itself).
-- **`catalog:effectPeers`** — the same v4 package set as the advertised peer range. Under `lock` its `peer` inputs equal the pinned versions, so it holds the same exact beta, not a caret floor.
-- **`catalog:effect3` / `catalog:effect3Peers`** — the latest Effect **v3** releases, under the `interop` strategy (caret-ranged, downlevelled to the widest safe floor), for testing a package against both v3 and v4 in one workspace. Transitional: removed at this plugin's `1.0.0` once Effect `4.0.0` ships.
+- **`catalog:effect`** — pinned current Effect v4 prerelease, under the `lock` strategy. Used in `devDependencies` (and `peerDependencies` for `effect` itself).
+- **`catalog:effect:peers`** — the same v4 package set as the advertised peer range. Under `lock` its `peer` inputs equal the pinned versions, so it holds the same exact pin, not a caret floor.
 
-Currently `effect` pins `4.0.0-beta.107` — **exact, never a caret**. A caret on a prerelease floats across the beta line and desynchronizes the installed `effect` from the `.repos/effect` submodule that is meant to be the authority on what v4 exports. `@effect/tsgo` sits at an exact `0.36.4` under the same `lock` strategy as the rest of the catalog. No workspace package consumes it anymore — d0599438 moved every package to `tsc --noEmit` with `typescript` (`catalog:build`, injected by the `@savvy-web/pnpm-plugin-silk` configDependency, not declared in `pnpm-workspace.yaml`) — but the catalog entry remains; do not reintroduce it as a typechecker devDependency.
+The Effect **v3** interop catalogs (`effect3` / `effect3:peers`, `interop` strategy) and the camelCase `effectPeers` alias are **removed** from the generator — retired on the rc.109 advance, ahead of the `1.0.0` sunset originally planned. Do not reintroduce them; the design doc records the retirement.
+
+Currently `effect` pins `4.0.0-rc.109` — **exact, never a caret** (Effect's release line renamed beta → rc at rc.108). A caret on a prerelease floats across the release line and desynchronizes the installed `effect` from the `.repos/effect` submodule that is meant to be the authority on what v4 exports. `@effect/tsgo` sits at an exact `0.36.5` under the same `lock` strategy as the rest of the catalog. No workspace package consumes it anymore — d0599438 moved every package to `tsc --noEmit` with `typescript` (`catalog:build`, injected by the `@savvy-web/pnpm-plugin-silk` configDependency, not declared in `pnpm-workspace.yaml`) — but the catalog entry remains; do not reintroduce it as a typechecker devDependency.
 
 ## Maintenance scripts (human-run only)
 
@@ -38,11 +39,11 @@ Currently `effect` pins `4.0.0-beta.107` — **exact, never a caret**. A caret o
 
 Root scripts, each delegating to this package via `pnpm --filter '@effected/pnpm-plugin-effect' run …`:
 
-- `pnpm pnpm:up` → `rolldown-pnpm-config upgrade savvy.build.ts` — pin each package to its latest v4 release and recompute the `effectPeers` floor. This is how the beta advances.
+- `pnpm pnpm:up` → `rolldown-pnpm-config upgrade savvy.build.ts` — pin each package to its latest v4 release and recompute the `effect:peers` floor. This is how the pin advances.
 - `pnpm pnpm:preview` → `rolldown-pnpm-config preview` — print the generated catalogs without writing.
 - `pnpm pnpm:export` → `rolldown-pnpm-config export` — write the catalogs and the derived allowed-versions table (below) into the root `pnpm-workspace.yaml`, and surface drift between the plugin's definitions and what the workspace pins.
 
-Advancing the beta is `pnpm pnpm:up` then `pnpm pnpm:export`.
+Advancing the pin is `pnpm pnpm:up` then `pnpm pnpm:export`.
 
 ## The derived allowed-versions table
 
@@ -52,7 +53,7 @@ Advancing the beta is `pnpm pnpm:up` then `pnpm pnpm:export`.
 one version-qualified rule per v4 lock-catalog package — `"<satellite>@<its
 pin>>effect"`, valued at the effect pin — straight into the root
 `pnpm-workspace.yaml`. That retires the recurring warning class where an
-`@effect/*` satellite sits at a different beta than the installed `effect`.
+`@effect/*` satellite sits at a different release than the installed `effect`.
 
 **There is no generator script and no checked-in table.** An earlier design had
 `allowed-versions.gen.ts` writing literals between sentinel comments, guarded by
@@ -77,7 +78,7 @@ Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key: `autoInstallP
 
 The v3/v4 peer-resolution defect is fixed in pnpm 11.12.0; there is no expected-residual set to ignore. The `@effect` satellite-drift class is retired structurally by the derived allowed-versions table above — **shipped, no longer the "proposed remedy"** earlier notes called it, though it binds only this checkout until `pnpm-plugin-effect` publishes and the toolchain adopts that release.
 
-**The root `CLAUDE.dependencies.md` context file is the authority on the live occupant — read it rather than trusting a count here.** As of the 2026-08-11 beta.107 adoption the one known issue class sits in the *toolchain* graph, not this workspace: `rolldown-pnpm-config` (this package's own build tool) hard-depends on older beta artifacts until it republishes against the current wave, which is why two betas legitimately coexist in the tree. The discipline it enforces is in [effect-standards.md](../../.claude/design/effected/effect-standards.md#peer-dependency-discipline) and the mechanism in [pnpm-plugin-effect.md](../../.claude/design/effected/packages/pnpm-plugin-effect.md). Do not silence it or treat it as license to tolerate a second: any peer warning outside that toolchain graph is a genuine closure defect to fix upstream.
+**The root `CLAUDE.dependencies.md` context file is the authority on the live expected state — read it rather than trusting a count here.** As of the rc.109 advance the toolchain graph (`rolldown-pnpm-config` — this package's own build tool — plus the `@savvy-web` and `@vitest-agent/*` packages) still pins beta.107, bridged onto rc.109 by a temporary spec-scoped `overrides` block in the root `pnpm-workspace.yaml` until it republishes against the rc.109 kit. The discipline it enforces is in [effect-standards.md](../../.claude/design/effected/effect-standards.md#peer-dependency-discipline) and the mechanism in [pnpm-plugin-effect.md](../../.claude/design/effected/packages/pnpm-plugin-effect.md). Do not silence it or treat it as license to tolerate a second: any peer warning outside that toolchain graph is a genuine closure defect to fix upstream.
 
 **The direct `effect` (`catalog:effect`) devDependency here is load-bearing — do not remove it as unused** (347ca229). It gives the resolver the right version to bind: without it, pnpm bound bundler 2.0's `@effected/*` peers to the v3 `effect` that `rolldown-pnpm-config` carries, loading v4 code against v3 at build time. The companion still ships no `effect`-importing code.
 

@@ -8,7 +8,7 @@
 Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot as a fallback. Ask for `>=20` in the `active-lts` phase and get back every match, newest first, plus the LTS pick and whatever you nominated as the default. Node's lifecycle phases come from the real `nodejs/Release` schedule and are evaluated against the clock, so `current`, `active-lts`, `maintenance-lts` and `end-of-life` mean what they mean today rather than on the day the package was published.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 beta. Packages graduate to
+> development against a single pinned Effect v4 prerelease. Packages graduate to
 > `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
 > exactly the ones the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).

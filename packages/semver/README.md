@@ -8,7 +8,7 @@
 Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas. `SemVer`, `Comparator` and `Range` are `Schema.Class`es, so a version is a validated value with methods on it rather than a string you re-parse at every call site, and each one carries a `FromString` codec that decodes the canonical form and encodes back to it. Parsing is strict: no `v` prefix, no `=` prefix, no leading zeros on numeric identifiers, no partially consumed input. Every failure is a tagged error carrying the offending string and the character position where the grammar gave up. Zero runtime dependencies, no IO.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
-> development against a single pinned Effect v4 beta. Packages graduate to
+> development against a single pinned Effect v4 prerelease. Packages graduate to
 > `1.0.0` once Effect `4.0.0` ships. To hold your own `effect` versions at
 > exactly the ones the kit is built and tested against, install
 > [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
