@@ -5,7 +5,7 @@ category: architecture
 created: 2026-08-14
 updated: 2026-08-16
 last-synced: 2026-08-16
-completeness: 88
+completeness: 90
 related:
   - ../effect-standards.md
   - ../package-inventory.md
@@ -136,7 +136,24 @@ The 0.2.0 wave is not speculative API design: every item was requested with a bl
 
 Built the same day, on the 0.2.0 fault-injection round's heels, and driven by *internal* consumers rather than a downstream request: the `templates` and `jsonl` fixtures whose whole shape is "run the code, then read the file back" (effected#383), plus the write-path migrations that were blocked because every read-back assertion had to become an `Effect`.
 
-Consumer-verified before release. The `@effected/templates` fixture double migrated off its hand-rolled `Map` onto `makeInspectable` + `makeFaulty` — 128/128 green — and the read-back was proven load-bearing by mutation rather than by the green alone: a mutant that swallows the write while still counting it fails five tests. The migration also surfaced a real untested precondition in `templates` that the old double had been hiding — memfs correctly refuses a write whose parent directory does not exist, where the `Map` silently accepted it. That is the same class of finding as the 0.2.0 round: the value of a faithful double is the tests it *stops* passing.
+Consumer-verified before release: `@effected/templates` migrated its fixture double onto `makeInspectable` + `makeFaulty` and is the worked example the inspection API was shaped against. What that migration found is recorded once, below in [in-kit adoption](#in-kit-adoption), rather than twice here.
+
+## In-kit adoption
+
+Six packages replaced hand-rolled `FileSystem.layerNoop` doubles with the volume in one wave — [`walker`](walker.md), [`tsconfig-json`](tsconfig-json.md), [`xdg`](xdg.md) (`AppDirs`), [`workspaces`](workspaces.md), [`templates`](templates.md) and [`github-actions`](github-actions.md)'s runner-file doubles. Each was mutation-checked rather than declared done on a green suite: disabling a fault handler, or swallowing a write while still counting it, has to kill tests, and in every package it did.
+
+**The wave surfaced four real defects across three packages**, which is the whole return on it:
+
+- `tsconfig-json`'s documented file-only divergence — it probes with `exists`, which is directory-true, where tsc uses a file-only `fileExists` — was **invisible** because map membership made directories not exist. A test asserting `None` had been passing for the wrong reason. Against the volume the directory exists, the divergence is observable, and the test now pins it.
+- A second `tsconfig-json` fixture had seeded a file *and* a directory at one path, a contradiction only map membership permits, and had been silently skipping its test.
+- `templates` requires `FileSystem` but deliberately not `Path`, so it cannot create a parent directory — meaning "the caller guarantees the directory exists" was an untested precondition. The `Map` accepted writes into directories that did not exist; the volume refuses them.
+- `github-actions`' runner-file doubles were re-implementing append (`flag: "a"`) by string concatenation — filesystem behavior hand-modelled inside the test of something else.
+
+The pattern in all four: a stub agreed with the code under test because the same person wrote both, and the agreement read as a passing test.
+
+**`@effected/jsonl` was deliberately not migrated.** Its `__test__/helpers/memfs.ts` is a **control harness**, not storage: a write gate with a vacuity guard, deterministic watch emission, a synchronous `unlink`. Migrating it would trade determinism for storage it does not need. The name collision is unfortunate and the distinction is the point — a double that exists to control *timing* is a different artifact from one that exists to hold *bytes*, and only the second is this package's job.
+
+Still pending on the write-path side: `schemastore`, `app`, xdg's `XdgConfig` and `jsonl`'s storage half.
 
 ## Test strategy: the differential oracle
 
@@ -157,6 +174,6 @@ The glob house pattern: `src/internal/volume.ts` opens with a `Ported from … /
 
 ## Open questions
 
-- Whether `ActionEnvironment.layerTest` (`@effected/github-actions`, effected#248) should default to a fresh seeded volume instead of hard-providing `FileSystem.layerNoop` — confirmed as a post-port follow-up owned by that package, not this one.
+- Whether a **published `layerTest`** should default to a fresh seeded volume instead of hard-providing `FileSystem.layerNoop`. Two carry the same question — `ActionEnvironment.layerTest` ([`@effected/github-actions`](github-actions.md), effected#248) and [`App.layerTest`](app.md#applayertest--the-hermetic-control-plane), whose documented limit is that any path exercising `ensure*` dies. Both are post-port follow-ups owned by those packages, not this one, and both should be answered the same way: the shape of the answer is a kit convention, not a per-package taste.
 
 Resolved at port time: the contract suite roots every path it touches under `makeTempDirectoryScoped({ prefix: "effect-filesystem-test-" })` with no `directory` option, so the node oracle runs confined to the host's `os.tmpdir()` and never touches the repository tree — verified by the green `integration/node.int.test.ts` run.

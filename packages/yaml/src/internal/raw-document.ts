@@ -18,9 +18,14 @@ export interface RawYamlDocument {
 	readonly errors: ReadonlyArray<RawDiagnostic>;
 	readonly warnings: ReadonlyArray<RawDiagnostic>;
 	readonly directives: ReadonlyArray<RawDirective>;
-	readonly comment?: string;
+	/**
+	 * Leading document comment: own-line comments AHEAD of a `---` marker. A
+	 * header with no marker, or one after the marker, belongs to the content
+	 * instead — see `attachHeaderToFirstEntry` in composer/document.ts.
+	 */
+	readonly commentBefore?: string;
 	/** Trailing document comment: own-line comments after the content (or after `...`). */
-	readonly commentAfter?: string;
+	readonly comment?: string;
 	readonly hasDocumentStart: boolean;
 	readonly hasDocumentEnd: boolean;
 	/**

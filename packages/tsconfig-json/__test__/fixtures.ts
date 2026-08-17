@@ -1,36 +1,26 @@
-import { Effect, FileSystem, Layer, Path, PlatformError } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import type { FileSystem } from "effect";
+import { Layer, Path } from "effect";
 
 /**
  * An in-memory fixture filesystem for the resolution suites. The map is
- * absolute file path -> file contents; a "directory" exists only implicitly,
- * as the parent of a file key, so a bare directory path is never present. That
- * matches the resolution engine's file-existence contract (config *files* are
- * probed, never directories).
+ * absolute file path -> file contents.
  *
- * `exists` is map membership; `readFileString` returns the contents or fails
- * with a `NotFound` `PlatformError` whose constructor is copied verbatim from
- * the core `FileSystem.makeNoop` example (`FileSystem.ts`), so a not-found flows
- * through the typed platform channel exactly as a real filesystem would. Task 8
- * and Task 9 reuse this builder.
+ * The volume is `@effected/memfs`, a real virtual POSIX filesystem, rather than
+ * a `FileSystem.layerNoop` answering the two methods the resolver happens to
+ * call. The difference is not cosmetic: a stub implements only the semantics
+ * its author remembered, and an unseeded read there returns whatever the stub
+ * decided rather than failing — the exact shape that made a hand stub answering
+ * `""` hide a real bug elsewhere in the kit. memfs fails an unseeded read typed
+ * `NotFound` and never fabricates content.
+ *
+ * One deliberate behavior change comes with it: memfs creates parent
+ * directories, so a directory path now *exists* where the old map-membership
+ * stub reported it absent. That is more faithful, and harmless here — the
+ * resolution engine probes config *files*, never directories.
  */
 export const fixtureFs = (tree: ReadonlyMap<string, string>): Layer.Layer<FileSystem.FileSystem> =>
-	FileSystem.layerNoop({
-		exists: (path: string) => Effect.succeed(tree.has(path)),
-		readFileString: (path: string) => {
-			const hit = tree.get(path);
-			return hit === undefined
-				? Effect.fail(
-						PlatformError.systemError({
-							_tag: "NotFound",
-							module: "FileSystem",
-							method: "readFileString",
-							description: "File not found",
-							pathOrDescriptor: path,
-						}),
-					)
-				: Effect.succeed(hit);
-		},
-	});
+	MemoryFileSystem.layerWith(Object.fromEntries(tree));
 
 /** The fixture filesystem merged with a POSIX `Path`, the layer every resolution suite provides. */
 export const fixtureLayer = (tree: ReadonlyMap<string, string>): Layer.Layer<FileSystem.FileSystem | Path.Path> =>

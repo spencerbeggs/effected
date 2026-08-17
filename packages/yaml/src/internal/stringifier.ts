@@ -833,9 +833,6 @@ function normalizeNodeTags(node: YamlNode, tagMap: Map<string, string>): YamlNod
 					new YamlPair({
 						key: normalizeNodeTags(pair.key, tagMap),
 						value: pair.value ? normalizeNodeTags(pair.value, tagMap) : null,
-						...(pair.commentBefore !== undefined ? { commentBefore: pair.commentBefore } : {}),
-						...(pair.comment !== undefined ? { comment: pair.comment } : {}),
-						...(pair.spaceBefore !== undefined ? { spaceBefore: pair.spaceBefore } : {}),
 					}),
 			),
 			style: node.style,
@@ -1076,6 +1073,88 @@ function commentBlockLines(comment: string): string[] {
 	return comment.split("\n").map((l) => (l === "" ? "" : `#${unescapeCommentLine(l)}`));
 }
 
+/**
+ * Splice a trailing comment onto the FIRST line of an already-rendered node —
+ * for a block scalar, the header line, which is the one line of the scalar
+ * that legally carries a `#` comment.
+ */
+function withHeaderComment(rendered: string, comment: string): string {
+	const nl = rendered.indexOf("\n");
+	return nl === -1
+		? `${rendered}${renderTrailingComment(comment)}`
+		: `${rendered.slice(0, nl)}${renderTrailingComment(comment)}${rendered.slice(nl)}`;
+}
+
+/**
+ * The leading comment block of a mapping entry. Under the node-level comment
+ * model it lives on the entry's KEY node, not on the pair.
+ */
+function pairLeading(pair: YamlPair): string | undefined {
+	return pair.key.commentBefore;
+}
+
+/**
+ * The trailing comment of a mapping entry: it belongs to whichever node owns
+ * the entry's last line — the value when there is one, otherwise the key. For
+ * a block-scalar value that line is the HEADER line, which is why a block
+ * scalar's header comment needs no separate concept.
+ */
+function pairTrailing(pair: YamlPair): string | undefined {
+	return (pair.value ?? pair.key).comment;
+}
+
+/** True when a blank line preceded the entry (recorded on its KEY node). */
+function pairSpaceBefore(pair: YamlPair): boolean | undefined {
+	return pair.key.spaceBefore;
+}
+
+/**
+ * The trailing comment to place on an entry's own line, given how its value
+ * actually rendered.
+ *
+ * A collection's `comment` field carries its TERMINAL comment run — the
+ * own-line comments after its last entry — and the collection emits those
+ * itself, after that last entry. Only when the collection renders on a single
+ * line (inline flow, `a: {b: 1} # t`) is its `comment` the entry's trailing
+ * comment. Reading it unconditionally emits the same comment twice: once on
+ * the entry's line and again as the terminal run.
+ */
+function entryTrailing(pair: YamlPair, ctx: StringifyContext): string | undefined {
+	// The KEY carries a trailing comment only when the value renders below it,
+	// so the key owns its line and the comment stays where it was written
+	// (`push: # only main`). A comment on its own line above the value is that
+	// value's `commentBefore` and keeps its own line — the two source shapes
+	// are different bytes and stay that way.
+	if (pair.key.comment !== undefined) return pair.key.comment;
+	const owner = pair.value ?? pair.key;
+	if (rendersAcrossLines(owner, ctx)) return undefined;
+	return owner.comment;
+}
+
+/**
+ * True when `node` renders across more than one line, so its own `comment` is
+ * a terminal run rather than something that can sit on the entry's line.
+ */
+function rendersAcrossLines(node: YamlNode, ctx: StringifyContext): boolean {
+	if (!(node instanceof YamlMap || node instanceof YamlSeq)) return false;
+	if (node.items.length === 0) return false;
+	const style = ctx.forceDefaultStyles ? ctx.defaultCollectionStyle : (node.style ?? ctx.defaultCollectionStyle);
+	if (style === "block" || node.sourceMultiline === true) return true;
+	// A flow collection carrying INNER comments is emitted one entry per line —
+	// a `#` between the brackets would swallow the closing one. The collection's
+	// OWN comment is not such a case: it renders after the closing bracket, so
+	// it neither swallows anything nor forces the layout, and `a: {b: 1} # t`
+	// stays on one line. Canonical mode emits no comments at all.
+	if (ctx.forceDefaultStyles) return false;
+	return node instanceof YamlMap
+		? node.items.some(
+				(p) => pairLeading(p) !== undefined || (p.value ?? p.key).comment !== undefined || pairSpaceBefore(p) === true,
+			)
+		: node.items.some(
+				(item) => item.commentBefore !== undefined || item.comment !== undefined || item.spaceBefore === true,
+			);
+}
+
 /** Render a trailing comment for appending after content on the same line. */
 function renderTrailingComment(comment: string): string {
 	const flat = comment.split("\n").map(unescapeCommentLine).join(" ");
@@ -1105,6 +1184,20 @@ function pushExplicitKeyValueLines(
 		return lines.length - 1;
 	}
 	const valLines = stringifyNodeLines(valNode, ctx, depth + 1);
+	// #348: the value node's OWN leading comment needs a line of its own above
+	// the value, which none of the compact spellings below can give it — take
+	// the non-compact `:` form so the comment block sits at the value's indent.
+	// Every sibling branch of the block-mapping stringifier already does this;
+	// the explicit-key branch dropped the comment instead. Aliases are included:
+	// they carry the comment triple like every other node class.
+	const valueLeading = !ctx.forceDefaultStyles ? valNode.commentBefore : undefined;
+	if (valueLeading !== undefined) {
+		const colonIdx = lines.length;
+		lines.push(":");
+		for (const cl of commentBlockLines(valueLeading)) lines.push(cl === "" ? "" : `${pad}${cl}`);
+		for (const vl of valLines) lines.push(vl === "" ? "" : `${pad}${vl}`);
+		return colonIdx;
+	}
 	if (valLines.length === 1) {
 		lines.push(`: ${valLines[0]}`);
 		return lines.length - 1;
@@ -1118,25 +1211,14 @@ function pushExplicitKeyValueLines(
 	const isInlineQuoted = valIsScalar && (firstStripped.startsWith("'") || firstStripped.startsWith('"'));
 	if (isBlockScalarHeader || isInlineQuoted) {
 		const headerIdx = lines.length;
-		if (isBlockScalarHeader) {
-			// #341: the block-scalar HEADER line carries the scalar's own
-			// captured header comment (`: | # c`); when the scalar carries
-			// none, the returned index lets the caller place the pair-level
-			// comment there instead (one comment slot per line).
-			const scalarComment = !ctx.forceDefaultStyles && valNode instanceof YamlScalar ? valNode.comment : undefined;
-			lines.push(scalarComment !== undefined ? `: ${first}${renderTrailingComment(scalarComment)}` : `: ${first}`);
-			for (let v = 1; v < valLines.length; v++) {
-				lines.push(valLines[v]);
-			}
-			return scalarComment !== undefined ? -1 : headerIdx;
-		}
 		lines.push(`: ${first}`);
 		for (let v = 1; v < valLines.length; v++) {
 			lines.push(valLines[v]);
 		}
-		// A multi-line quoted scalar closes on its last line, which can carry
-		// a trailing comment.
-		return lines.length - 1;
+		// A block scalar's header line, or a multi-line quoted scalar's closing
+		// line, is where this entry's trailing comment belongs — the caller owns
+		// placing it, exactly as for every other value shape.
+		return isBlockScalarHeader ? headerIdx : lines.length - 1;
 	}
 	if (first.startsWith("-")) {
 		// Block sequence value — compact notation: first item on the colon
@@ -1195,10 +1277,16 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 
 	if (style === "flow") {
 		const flowPrefix = buildMetadataPrefix(node.tag, node.anchor);
+		// Mirrors `rendersAcrossLines`: inner comments force the layout, and so
+		// does a terminal run that was written INSIDE the braces. A trailing
+		// comment written after the closing brace does not — it renders past
+		// the closer and the entry keeps its single line.
 		const flowHasComments =
 			!ctx.forceDefaultStyles &&
-			(node.comment !== undefined ||
-				items.some((p) => p.commentBefore !== undefined || p.comment !== undefined || p.spaceBefore === true));
+			(items.some(
+				(p) => pairLeading(p) !== undefined || pairTrailing(p) !== undefined || pairSpaceBefore(p) === true,
+			) ||
+				(node.comment !== undefined && node.sourceMultiline === true));
 		if (flowHasComments) {
 			// Comment-carrying flow mapping: one entry per line (multi-line
 			// flow layout), so a `#` comment cannot swallow the closing brace.
@@ -1206,16 +1294,18 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			const flowLines: string[] = [flowPrefix ? `${flowPrefix} {` : "{"];
 			for (let fi = 0; fi < items.length; fi++) {
 				const pair = items[fi] as YamlPair;
-				if (pair.spaceBefore === true) flowLines.push("");
-				if (pair.commentBefore !== undefined) {
+				if (pairSpaceBefore(pair) === true) flowLines.push("");
+				const flowLeading = pairLeading(pair);
+				if (flowLeading !== undefined) {
 					// An embedded blank line (`""`) stays unpadded — padding it
 					// would emit a whitespace-only line.
-					for (const cl of commentBlockLines(pair.commentBefore)) flowLines.push(cl === "" ? "" : `${flowPad}${cl}`);
+					for (const cl of commentBlockLines(flowLeading)) flowLines.push(cl === "" ? "" : `${flowPad}${cl}`);
 				}
 				const keyStr = pair.key ? stringifyMappingKeyLines(pair.key, ctx, depth + 1).join(" ") : "null";
 				const valStr = pair.value ? stringifyNodeLines(pair.value, ctx, depth + 1).join(" ") : "null";
 				const comma = fi < items.length - 1 ? "," : "";
-				const trailing = pair.comment !== undefined ? renderTrailingComment(pair.comment) : "";
+				const flowTrailing = pairTrailing(pair);
+				const trailing = flowTrailing !== undefined ? renderTrailingComment(flowTrailing) : "";
 				flowLines.push(`${flowPad}${keyStr}: ${valStr}${comma}${trailing}`);
 			}
 			if (node.comment !== undefined) {
@@ -1244,12 +1334,16 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 		lines[idx] = `${lines[idx]}${renderTrailingComment(comment)}`;
 	};
 	/** A value node's own leading comment block, or undefined. */
-	const valueLeading = (valNode: YamlNode): string | undefined =>
-		emitComments && !(valNode instanceof YamlAlias) ? valNode.commentBefore : undefined;
+	const valueLeading = (valNode: YamlNode): string | undefined => (emitComments ? valNode.commentBefore : undefined);
 	for (const pair of items) {
-		if (emitComments && pair.spaceBefore === true) lines.push("");
-		if (emitComments && pair.commentBefore !== undefined) {
-			for (const cl of commentBlockLines(pair.commentBefore)) lines.push(cl);
+		if (emitComments && pairSpaceBefore(pair) === true) lines.push("");
+		const leading = emitComments ? pairLeading(pair) : undefined;
+		// The key's own trailing comment is set only when the value renders below
+		// it; the value's own is whatever trails the value on the value's line.
+		const keyOwnComment = emitComments ? pair.key.comment : undefined;
+		const valueOwnComment = emitComments && pair.value !== null ? pair.value.comment : undefined;
+		if (leading !== undefined) {
+			for (const cl of commentBlockLines(leading)) lines.push(cl);
 		}
 		// Explicit `? key\n: value` syntax is required when:
 		// - Key is a YamlMap (mapping-as-key always uses `? ` so the inner
@@ -1300,7 +1394,10 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			// key cannot (the comment would land inside the key content), so
 			// the comment is dropped there.
 			const inlineIdx = pushExplicitKeyValueLines(lines, pair.value, ctx, depth, pad);
-			appendTrailing(inlineIdx >= 0 ? inlineIdx : keyLines.length === 1 ? explicitKeyLineIdx : -1, pair.comment);
+			appendTrailing(
+				inlineIdx >= 0 ? inlineIdx : keyLines.length === 1 ? explicitKeyLineIdx : -1,
+				entryTrailing(pair, ctx),
+			);
 			continue;
 		}
 
@@ -1335,7 +1432,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			lines.push(`? ${keyStr}`);
 			const spillKeyLineIdx = lines.length - 1;
 			const inlineIdx = pushExplicitKeyValueLines(lines, pair.value, ctx, depth, pad);
-			appendTrailing(inlineIdx >= 0 ? inlineIdx : spillKeyLineIdx, pair.comment);
+			appendTrailing(inlineIdx >= 0 ? inlineIdx : spillKeyLineIdx, entryTrailing(pair, ctx));
 			continue;
 		}
 		// Alias keys need a space before the colon to avoid the alias name
@@ -1364,7 +1461,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			} else {
 				lines.push(`${keyStr}${sep}`);
 			}
-			appendTrailing(lines.length - 1, pair.comment);
+			appendTrailing(lines.length - 1, entryTrailing(pair, ctx));
 			continue;
 		}
 		const valCtx: StringifyContext = { ...ctx, parentPosition: "block-map-value" };
@@ -1383,7 +1480,7 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			const seqMeta = buildMetadataPrefix(valNode.tag, valNode.anchor);
 			const startIdx = seqMeta ? 1 : 0; // skip metadata line if present
 			lines.push(seqMeta ? `${keyStr}${sep} ${seqMeta}` : `${keyStr}${sep}`);
-			appendTrailing(lines.length - 1, pair.comment);
+			appendTrailing(lines.length - 1, entryTrailing(pair, ctx));
 			if (valLeading !== undefined) {
 				// The sequence's own leading comment sits at the items' indent.
 				for (const cl of commentBlockLines(valLeading)) {
@@ -1403,24 +1500,35 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			const mapMeta = buildMetadataPrefix(valNode.tag, valNode.anchor);
 			const startIdx = mapMeta ? 1 : 0;
 			lines.push(mapMeta ? `${keyStr}${sep} ${mapMeta}` : `${keyStr}${sep}`);
-			appendTrailing(lines.length - 1, pair.comment);
+			appendTrailing(lines.length - 1, entryTrailing(pair, ctx));
 			if (valLeading !== undefined) {
 				for (const cl of commentBlockLines(valLeading)) lines.push(`${pad}${cl}`);
 			}
 			for (let i = startIdx; i < valLines.length; i++) {
 				lines.push(valLines[i] === "" ? "" : `${pad}${valLines[i]}`);
 			}
-		} else if (valLines.length === 1 && valLeading !== undefined) {
-			// An inline value cannot carry its own leading comment — spill the
-			// value to the next line so the comment block sits above it.
+		} else if (valLines.length === 1 && (valLeading !== undefined || keyOwnComment !== undefined)) {
+			// The value renders BELOW the key, for either of two reasons: it has a
+			// leading comment block that needs the line above it, or the key itself
+			// carries a trailing comment — which in this model means the value was
+			// written below in the first place. Hoisting it back onto the key line
+			// would put two comments on one line and silently drop one of them.
+			// Each node's trailing comment goes on that node's OWN line. Routing
+			// the key line through `entryTrailing` reached past an absent key
+			// comment to the VALUE's, printing it on the key line and skipping
+			// the value's own — `a:\n  # lead\n  1 # vc\n` lost the line it was
+			// written on.
 			lines.push(`${keyStr}${sep}`);
-			appendTrailing(lines.length - 1, pair.comment);
-			for (const cl of commentBlockLines(valLeading)) lines.push(`${pad}${cl}`);
+			appendTrailing(lines.length - 1, keyOwnComment);
+			if (valLeading !== undefined) {
+				for (const cl of commentBlockLines(valLeading)) lines.push(`${pad}${cl}`);
+			}
 			lines.push(valLines[0] === "" ? "" : `${pad}${valLines[0]}`);
+			appendTrailing(lines.length - 1, valueOwnComment);
 		} else if (valLines.length === 1) {
 			// Empty value: `key:` with no trailing space
 			lines.push(valLines[0] === "" ? `${keyStr}${sep}` : `${keyStr}${sep} ${valLines[0]}`);
-			appendTrailing(lines.length - 1, pair.comment);
+			appendTrailing(lines.length - 1, entryTrailing(pair, ctx));
 		} else {
 			const first = valLines[0];
 			// Detect block scalar headers and multi-line quoted scalars after the
@@ -1430,38 +1538,50 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 			const valIsScalar = valNode instanceof YamlScalar;
 			const isInlineQuoted = valIsScalar && (firstStripped.startsWith("'") || firstStripped.startsWith('"'));
 			if (isBlockScalarHeader || isInlineQuoted) {
-				const scalarComment = isBlockScalarHeader && valNode instanceof YamlScalar ? valNode.comment : undefined;
-				if (scalarComment !== undefined && pair.comment !== undefined) {
-					// #341: BOTH comments exist — the pair comment keeps the KEY
-					// line and the header spills to its own indented line, giving
-					// each comment its own legal line:
-					// `a: # pair` / `  | # hdr` / `  body`.
+				if (valLeading !== undefined) {
+					// The value has its own leading block, which needs the line above
+					// the value — so the value spills off the key line and the header
+					// goes with it, keeping one comment per line.
 					lines.push(`${keyStr}${sep}`);
-					appendTrailing(lines.length - 1, pair.comment);
-					const headerIdx = lines.length;
+					for (const cl of commentBlockLines(valLeading)) lines.push(cl === "" ? "" : `${pad}${cl}`);
+					const spilledIdx = lines.length;
 					lines.push(`${pad}${first}`);
 					for (let i = 1; i < valLines.length; i++) {
 						lines.push(valLines[i]);
 					}
-					appendTrailing(headerIdx, scalarComment);
-				} else {
-					const headerIdx = lines.length;
-					lines.push(`${keyStr}${sep} ${first}`);
+					appendTrailing(isBlockScalarHeader ? spilledIdx : lines.length - 1, entryTrailing(pair, ctx));
+					continue;
+				}
+				// The KEY's own comment and a block scalar's header comment both want
+				// the key line, because the header is emitted there. Give each a
+				// line: the key keeps its own, and the header spills to an indented
+				// line of its own (`a: # pair` / `  | # hdr` / `  body`).
+				const keyComment = !ctx.forceDefaultStyles ? pair.key.comment : undefined;
+				const scalarComment = isBlockScalarHeader && valNode instanceof YamlScalar ? valNode.comment : undefined;
+				if (keyComment !== undefined && scalarComment !== undefined) {
+					lines.push(`${keyStr}${sep}`);
+					appendTrailing(lines.length - 1, keyComment);
+					const spilledIdx = lines.length;
+					lines.push(`${pad}${first}`);
 					for (let i = 1; i < valLines.length; i++) {
 						lines.push(valLines[i]);
 					}
-					if (isBlockScalarHeader) {
-						// #341: the block-scalar HEADER line legally carries a trailing
-						// comment (`key: | # c`). The scalar's own captured header
-						// comment wins; a pair-level comment relocates there when
-						// the scalar carries none (one comment slot per line).
-						appendTrailing(headerIdx, scalarComment ?? pair.comment);
-					} else {
-						// A multi-line quoted scalar closes on its last line, which can
-						// carry the trailing comment.
-						appendTrailing(lines.length - 1, pair.comment);
-					}
+					appendTrailing(spilledIdx, scalarComment);
+					continue;
 				}
+				const headerIdx = lines.length;
+				lines.push(`${keyStr}${sep} ${first}`);
+				for (let i = 1; i < valLines.length; i++) {
+					lines.push(valLines[i]);
+				}
+				// The entry's trailing comment goes on the line its VALUE ends on:
+				// for a block scalar that is the header line (`key: | # c`, the one
+				// line of a block scalar that legally carries a `#`), for a
+				// multi-line quoted scalar its closing line. A block scalar's
+				// "header comment" and the entry's trailing comment are the same
+				// field on the same node under the node-level model, so there is no
+				// arbitration between them left to do.
+				appendTrailing(isBlockScalarHeader ? headerIdx : lines.length - 1, entryTrailing(pair, ctx));
 			} else {
 				// Check if this is a block map value with metadata prefix
 				const isBlockMapValue =
@@ -1472,13 +1592,13 @@ function stringifyMapNodeLines(node: YamlMap, ctx: StringifyContext, depth: numb
 				if (mapMeta) {
 					// Place metadata on key line, skip metadata line in valLines
 					lines.push(`${keyStr}${sep} ${mapMeta}`);
-					appendTrailing(lines.length - 1, pair.comment);
+					appendTrailing(lines.length - 1, entryTrailing(pair, ctx));
 					for (let i = 1; i < valLines.length; i++) {
 						lines.push(valLines[i] === "" ? "" : `${pad}${valLines[i]}`);
 					}
 				} else {
 					lines.push(`${keyStr}${sep}`);
-					appendTrailing(lines.length - 1, pair.comment);
+					appendTrailing(lines.length - 1, entryTrailing(pair, ctx));
 					if (valLeading !== undefined) {
 						for (const cl of commentBlockLines(valLeading)) lines.push(`${pad}${cl}`);
 					}
@@ -1555,15 +1675,21 @@ function stringifySeqNodeLines(node: YamlSeq, ctx: StringifyContext, depth: numb
 	const itemFields = (
 		item: YamlNode,
 	): { commentBefore?: string; comment?: string; spaceBefore?: boolean } | undefined => {
-		if (!emitComments || item instanceof YamlAlias) return undefined;
+		if (!emitComments) return undefined;
 		if (item.commentBefore === undefined && item.comment === undefined && item.spaceBefore !== true) return undefined;
 		return item;
 	};
 
 	if (style === "flow") {
 		const flowPrefix = buildMetadataPrefix(node.tag, node.anchor);
+		// Mirrors `rendersAcrossLines`: inner comments force the layout, and so
+		// does a terminal run that was written INSIDE the brackets. A trailing
+		// comment written after the closing bracket does not — it renders past
+		// the closer and the entry keeps its single line.
 		const flowHasComments =
-			emitComments && (node.comment !== undefined || items.some((it) => itemFields(it) !== undefined));
+			emitComments &&
+			(items.some((it) => itemFields(it) !== undefined) ||
+				(node.comment !== undefined && node.sourceMultiline === true));
 		if (flowHasComments) {
 			// Comment-carrying flow sequence: one entry per line (multi-line
 			// flow layout), so a `#` comment cannot swallow the closing bracket.
@@ -1691,7 +1817,7 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 
 	// Strip comments and normalize tags when producing canonical output
 	let contents = doc.contents;
-	const docCommentRaw = ctx.forceDefaultStyles ? undefined : doc.comment;
+	const docCommentRaw = ctx.forceDefaultStyles ? undefined : doc.commentBefore;
 	// Multi-line document comments render one `# ` line per stored line.
 	const docComment = docCommentRaw !== undefined ? commentBlockLines(docCommentRaw).join("\n") : undefined;
 	if (ctx.forceDefaultStyles && contents) {
@@ -1715,7 +1841,7 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 		// a fully bare empty document falls back to the `null` body.
 		if (
 			docComment !== undefined ||
-			doc.commentAfter !== undefined ||
+			doc.comment !== undefined ||
 			doc.hasDocumentStart === true ||
 			doc.hasDocumentEnd === true
 		) {
@@ -1723,7 +1849,7 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 			if (docComment !== undefined) parts.push(`${docComment}\n`);
 			if (doc.hasDocumentStart) parts.push("---\n");
 			if (doc.hasDocumentEnd) parts.push("...\n");
-			if (doc.commentAfter !== undefined) parts.push(`${commentBlockLines(doc.commentAfter).join("\n")}\n`);
+			if (doc.comment !== undefined) parts.push(`${commentBlockLines(doc.comment).join("\n")}\n`);
 			const out = parts.join("");
 			return finalNewline ? out : out.replace(/\n$/, "");
 		}
@@ -1731,6 +1857,20 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 	}
 
 	const result = stringifyNodeLines(contents, ctx, 0).join("\n");
+
+	// #349: a block scalar at the DOCUMENT ROOT carries its captured header
+	// comment on the header line, exactly as the pair, seq-item and
+	// explicit-key paths do (#341). Splicing before `body` is formed covers the
+	// bare, `---` and tag/anchor return branches alike; unlike those three
+	// paths the root has no competing pair-level comment, so the one header
+	// slot is never contested. Canonical mode stays comment-free.
+	const rootHeaderComment =
+		!ctx.forceDefaultStyles &&
+		contents instanceof YamlScalar &&
+		(contents.style === "block-literal" || contents.style === "block-folded")
+			? contents.comment
+			: undefined;
+	const rendered = rootHeaderComment === undefined ? result : withHeaderComment(result, rootHeaderComment);
 
 	// In canonical mode, an explicit `...` end marker is required when:
 	// - The final emitted scalar uses keep-chomp (`|+` or `>+`) — without it
@@ -1778,17 +1918,27 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 	// The document's TRAILING comment block renders after the content (and
 	// after the `...` marker when present); canonical mode stays comment-free.
 	const docCommentAfter =
-		ctx.forceDefaultStyles || doc.commentAfter === undefined
-			? undefined
-			: commentBlockLines(doc.commentAfter).join("\n");
+		ctx.forceDefaultStyles || doc.comment === undefined ? undefined : commentBlockLines(doc.comment).join("\n");
 	const docEndFull = docCommentAfter !== undefined ? `${docEndMarker}${docCommentAfter}\n` : docEndMarker;
 	// `finalNewline` governs the very end of the OUTPUT, not internal
 	// separators: when a `...` marker or trailing comment block follows the
 	// body, the body keeps its newline (gluing the marker onto the last
 	// content line would change the document's meaning — `a: 1...`) and the
 	// option trims the trailing newline of the marker/comment block instead.
-	const body = finalNewline || docEndFull !== "" ? `${result}\n` : result;
+	const body = finalNewline || docEndFull !== "" ? `${rendered}\n` : rendered;
 	const docEnd = finalNewline || docEndFull === "" ? docEndFull : docEndFull.replace(/\n$/, "");
+
+	// A header comment sitting AFTER the `---` marker leads the ROOT NODE, and
+	// the root is the one position with no parent to emit a node's leading
+	// block for it — the same missing-slot shape as the root block-scalar
+	// header (#349). Emit it on the marker's far side.
+	// Not gated on the marker: a marker-LESS header over a scalar or empty
+	// collection root is stored the same way (a non-empty collection takes it
+	// on its first entry instead), and gating dropped it entirely.
+	const rootLeading =
+		!ctx.forceDefaultStyles && contents !== null && contents.commentBefore !== undefined
+			? `${commentBlockLines(contents.commentBefore).join("\n")}\n`
+			: "";
 
 	if (doc.hasDocumentStart) {
 		const rootTag = contents && "tag" in contents ? contents.tag : undefined;
@@ -1816,16 +1966,17 @@ export function stringifyDocument(doc: RawYamlDocument, options?: StringifyOptio
 
 			const docStart = `--- ${metaStr}`;
 			const sep = isCollection ? "\n" : " ";
-			return docComment
-				? `${docComment}\n${docStart}${sep}${bodyClean}${docEnd}`
-				: `${docStart}${sep}${bodyClean}${docEnd}`;
+			const metaBody = rootLeading === "" ? `${sep}${bodyClean}` : `\n${rootLeading}${bodyClean}`;
+			return docComment ? `${docComment}\n${docStart}${metaBody}${docEnd}` : `${docStart}${metaBody}${docEnd}`;
 		}
 
 		// No tag/anchor — inline scalars after ---
-		if (isScalar) {
+		if (isScalar && rootLeading === "") {
 			return docComment ? `${docComment}\n--- ${body}${docEnd}` : `--- ${body}${docEnd}`;
 		}
-		return docComment ? `${docComment}\n---\n${body}${docEnd}` : `---\n${body}${docEnd}`;
+		const afterMarker = `---\n${rootLeading}${body}${docEnd}`;
+		return docComment ? `${docComment}\n${afterMarker}` : afterMarker;
 	}
-	return docComment ? `${docComment}\n${body}${docEnd}` : `${body}${docEnd}`;
+	const plain = `${rootLeading}${body}${docEnd}`;
+	return docComment ? `${docComment}\n${plain}` : plain;
 }

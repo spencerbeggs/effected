@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-16
+last-synced: 2026-08-16
 completeness: 95
 related:
   - architecture.md
@@ -180,6 +180,18 @@ Apply the guard at **every independent recursive surface**, not just the main pa
 - Property-based tests: `it.effect.prop` with FastCheck arbitraries; Schema inputs via `Schema.toArbitrary` (top-level `it.prop` does NOT support Schema inputs).
 - `assert.*` for uniform explicit checks; `flakyTest` only for genuinely flaky integration conditions.
 - Tests live in `__test__/` per repo convention (unit `*.test.ts`, `e2e/`, `integration/`).
+
+### The filesystem double is a real volume
+
+A test that needs a `FileSystem` provides [`@effected/memfs`](packages/memfs.md) as a devDependency, never a hand-rolled `FileSystem.layerNoop` over a `Map`. `layerNoop` is deny-by-default — it fails every member the fixture's author did not think to write — so a stub encodes only the semantics that author had in mind, and a bug depending on anything else cannot surface. The kit-wide migration off hand stubs is recorded in [memfs.md](packages/memfs.md#in-kit-adoption), and it is the argument: swapping the stubs for a real volume surfaced defects in three packages that had been passing tests for years. **The value of a faithful double is the tests it stops passing.**
+
+Three rules generalize out of that wave:
+
+- **Inject a misbehavior as a fault, not as a stub body.** `layerFaultyWith(seed, handlers)` delegates every method a handler declines, so the fixture survives the code under test growing a new call — where a `layerNoop` stub starts failing unimplemented. Then prove the fault is load-bearing by disabling it and watching tests die; a fault nothing depends on is decoration.
+- **A handler that records and returns `undefined` is a spy, not a replacement.** It counts the call *and* lets it really happen. The mutant such a fixture must kill is precisely the one that swallows the write while still counting it — a stub body does not kill it, a declining handler does.
+- **Assertion timing picks the constructor family.** The `layer*` forms re-seed a fresh volume per `Effect.provide`, so they fit tests asserting *inside* the effect; the `make*` forms plus `Layer.succeed` pin one volume's identity for tests asserting *after* it. Backwards, the post-run assertion reads a volume nobody wrote to.
+
+A double that exists to **control timing** rather than to hold bytes is a different artifact and stays hand-written — `@effected/jsonl`'s watch harness is the standing example.
 
 ### The oracle for a ported algorithm is external
 

@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Cause, Effect, Exit, Layer, Option, Path, PlatformError } from "effect";
 import type { AppDirsOptions, XdgPlatform } from "../src/index.js";
 import { AppDirs, AppDirsError, CurrentPlatform, Xdg, XdgPaths } from "../src/index.js";
 
@@ -12,18 +13,23 @@ const xdgPaths = (overrides: Partial<Omit<typeof XdgPaths.Type, "configDirs" | "
 	});
 
 /**
- * Records every `makeDirectory` call, in order, and never touches a disk.
+ * Records every `makeDirectory` call, in order, over a real in-memory volume.
  *
- * The recording happens inside `Effect.suspend`, not in the stub body: the
- * `AppDirs` shape builds its `ensure*` effects once, at layer construction, so a
- * stub that pushed eagerly would record four directories that were never
- * actually created — and every assertion here would be measuring construction
- * rather than execution.
+ * A fault handler runs when the method is CALLED, not when the layer is built,
+ * which is the property that matters here: `AppDirs` constructs its `ensure*`
+ * effects once at layer construction, so anything recording eagerly would count
+ * four directories that were never created and every assertion would be
+ * measuring construction rather than execution.
+ *
+ * Returning `undefined` delegates, so the directory is genuinely created rather
+ * than merely observed — and unlike `layerNoop`, every method this fixture does
+ * not name still works instead of failing as unimplemented.
  */
 const recordingFs = (made: Array<string>, failOn?: string) =>
-	FileSystem.layerNoop({
-		makeDirectory: (dir) =>
-			Effect.suspend(() => {
+	MemoryFileSystem.layerFaultyWith(
+		{},
+		{
+			makeDirectory: (dir) => {
 				if (failOn !== undefined && dir === failOn) {
 					return Effect.fail(
 						PlatformError.systemError({
@@ -35,9 +41,10 @@ const recordingFs = (made: Array<string>, failOn?: string) =>
 					);
 				}
 				made.push(dir);
-				return Effect.void;
-			}),
-	});
+				return undefined; // delegate: the volume really creates it
+			},
+		},
+	);
 
 const base = Layer.mergeAll(Path.layer, recordingFs([]));
 

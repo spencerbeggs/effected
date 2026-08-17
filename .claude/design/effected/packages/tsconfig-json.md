@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-13
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-16
+last-synced: 2026-08-16
 completeness: 95
 related:
   - ../roadmap.md
@@ -15,6 +15,7 @@ related:
   - jsonc.md
   - walker.md
   - config-file.md
+  - memfs.md
 ---
 
 # @effected/tsconfig-json design
@@ -164,7 +165,9 @@ An extends error carries one tag with a `reason` literal covering not-found, cyc
 
 Per the [testing standards](../effect-standards.md#testing-standards): `@effect/vitest`, `it.effect`, `assert.*` never `expect`, tests in `__test__/`.
 
-Resolution suites run on **in-memory fixture trees** — a noop filesystem layer over a `Map`, merged with core's `Path` layer, so there is **no platform package even in tests**. The map holds file paths only, so the fixture filesystem is structurally file-only, matching the loader's documented contract.
+Resolution suites run on **in-memory fixture trees** — a real volume from [`@effected/memfs`](memfs.md) (a devDependency) seeded from a `Map`, merged with core's `Path` layer, so there is still **no platform package even in tests**.
+
+**The migration off the previous `layerNoop`-over-a-`Map` stub is this package's own cautionary tale.** Map membership made directories not exist, which made the fixture's `exists` structurally file-only — accidentally *agreeing* with the loader's file-only contract and thereby hiding the very divergence that contract exists to record. A test asserting `Option.none()` for a relative path to a directory had been passing for the wrong reason; against the volume the directory genuinely exists, the divergence is observable, and the test pins the real answer (`./dir` resolves to the directory, and no `<dir>/tsconfig.json` fallback is tried). A second fixture had seeded a file *and* a directory at one path — a contradiction only map membership permits — and had been silently skipping its test. Never reintroduce a structurally file-only double to make either of those reads tidier: the divergence must stay visible to a test, because that is the only thing stopping it regressing unnoticed. The **discovery** suite is a separate, narrow `layerNoop` stub and has not moved.
 
 The families that matter: fixture trees with real extends chains asserting merge semantics and the extended-path ordering; data-driven parity tests recorded from the TypeScript-source verification; hostile inputs (cycles, deep chains, malformed JSONC, dunder keys) each failing with its typed error; round-trip properties on the document schema including unknown-key preservation; and the compile-time assignability test on the encode return.
 

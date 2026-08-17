@@ -1,12 +1,16 @@
 import { assert } from "@effect/vitest";
-import type { Layer } from "effect";
-import { Effect, FileSystem, PlatformError, Result } from "effect";
+import type { MemoryFileSystemSeed, MemoryFileSystemVolume } from "@effected/memfs";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem, Layer, PlatformError, Result } from "effect";
 import type { SectionParseError } from "../src/index.js";
 import { CommentStyle, SectionDialect, SectionDocument, SectionId } from "../src/index.js";
 
 /** A writable in-memory filesystem, built fresh per test. */
 export interface MemoryFs {
-	readonly files: Map<string, string>;
+	/** The volume's inspection surface — `text`, `bytes`, `has`, `paths`, `snapshot`. */
+	readonly volume: MemoryFileSystemVolume;
+	/** The UTF-8 contents at `path`, or `undefined` when absent. `""` is an empty file. */
+	readonly text: (path: string) => string | undefined;
 	/** How many times `writeFileString` actually ran. */
 	readonly writes: () => number;
 	readonly layer: Layer.Layer<FileSystem.FileSystem>;
@@ -18,51 +22,50 @@ const systemError = (tag: "NotFound" | "PermissionDenied", method: string, path:
 	);
 
 /**
- * An in-memory `FileSystem` over a `Map`.
+ * A real in-memory volume (`@effected/memfs`) paired with its inspection
+ * surface, plus a write counter and the two permission knobs.
  *
  * @remarks
- * Every operation is wrapped in `Effect.suspend` so it observes the map as it
- * is when the effect RUNS. An eager implementation would capture state at
- * construction time and record calls that never actually happened.
+ * The volume is built EAGERLY, with `makeInspectableWith` under `runSync`, and
+ * handed to `Layer.succeed` — deliberately, not as `layerInspectableWith`. A
+ * memfs layer re-seeds a fresh volume on every `Effect.provide`, which is the
+ * right default and the wrong thing for this fixture: each test builds its own
+ * double, provides it once, and then inspects what the run left behind. Making
+ * the instance first and wrapping it in a layer pins the volume the assertions
+ * read to the volume the code under test wrote to.
  *
- * The double is mutable, so each test builds its own and provides it at the
- * test boundary — a suite-level `layer(...)` cannot vary per test.
+ * The permission knobs and the write counter are fault handlers rather than
+ * stub bodies. The counter returns `undefined` to decline, so the write is
+ * counted AND really happens — a stub that swallowed it would leave every
+ * later read reporting the pre-write contents.
  */
 export const memoryFs = (
-	initial: Record<string, string> = {},
+	initial: MemoryFileSystemSeed = {},
 	options: { readonly unreadable?: string; readonly unwritable?: string } = {},
 ): MemoryFs => {
-	const files = new Map(Object.entries(initial));
+	const { fileSystem, volume } = Effect.runSync(MemoryFileSystem.makeInspectableWith(initial));
 	let writeCount = 0;
-	const layer = FileSystem.layerNoop({
-		// `ManagedSection` reads BYTES (so a BOM survives decoding), so the double
-		// must implement `readFile`. Implementing only `readFileString` would leave
-		// `readFile` unimplemented, and `layerNoop` fails unimplemented members with
-		// a typed NotFound — which this package treats as "the file is absent", so
-		// every test would silently see an empty document instead of its fixture.
+
+	const faulty = MemoryFileSystem.makeFaulty(fileSystem, {
 		readFile: (path) =>
-			Effect.suspend(() => {
-				const key = String(path);
-				if (options.unreadable === key) {
-					return Effect.fail(systemError("PermissionDenied", "readFile", key));
-				}
-				const content = files.get(key);
-				return content === undefined
-					? Effect.fail(systemError("NotFound", "readFile", key))
-					: Effect.succeed(new TextEncoder().encode(content));
-			}),
-		writeFileString: (path, data) =>
-			Effect.suspend(() => {
-				const key = String(path);
-				if (options.unwritable === key) {
-					return Effect.fail(systemError("PermissionDenied", "writeFileString", key));
-				}
-				writeCount += 1;
-				files.set(key, data);
-				return Effect.void;
-			}),
+			options.unreadable === String(path)
+				? Effect.fail(systemError("PermissionDenied", "readFile", String(path)))
+				: undefined,
+		writeFileString: (path) => {
+			if (options.unwritable === String(path)) {
+				return Effect.fail(systemError("PermissionDenied", "writeFileString", String(path)));
+			}
+			writeCount += 1;
+			return undefined; // decline: the volume performs the real write
+		},
 	});
-	return { files, writes: () => writeCount, layer };
+
+	return {
+		volume,
+		text: volume.text,
+		writes: () => writeCount,
+		layer: Layer.succeed(FileSystem.FileSystem, faulty),
+	};
 };
 
 /** A section identity in the default `#` style. */

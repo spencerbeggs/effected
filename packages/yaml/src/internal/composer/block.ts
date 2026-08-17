@@ -6,7 +6,7 @@
 // `FlowComposers` in `state.ts`) so this module never imports `flow.ts`.
 
 import type { CollectionStyle, ScalarStyle, YamlNode } from "../../YamlNode.js";
-import { YamlMap, YamlPair, YamlScalar, YamlSeq } from "../../YamlNode.js";
+import { YamlAlias, YamlMap, YamlPair, YamlScalar, YamlSeq } from "../../YamlNode.js";
 import type { CstNode } from "../cst.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import type { CommentFields, EscapedComment } from "./comments.js";
@@ -14,6 +14,7 @@ import {
 	blankAboveIsKeepChompContent,
 	columnAt,
 	hasBlankLineAbove,
+	isAfterIndicatorOnly,
 	isOwnLineAt,
 	joinComments,
 	rawCommentText,
@@ -843,6 +844,33 @@ export function buildPairs(
 
 	const nodeEnd = (n: YamlNode): number => n.offset + n.length;
 
+	/**
+	 * Rebuild `pair` with `text` appended to the trailing comment of whichever
+	 * node owns the pair's last line: the value when present, otherwise the key.
+	 */
+	const withTrailingComment = (pair: YamlPair, text: string, onKey = false): YamlPair =>
+		pair.value !== null && !onKey
+			? new YamlPair({ key: pair.key, value: withCommentFields(pair.value, { comment: text }) })
+			: new YamlPair({ key: withCommentFields(pair.key, { comment: text }), value: pair.value });
+
+	/**
+	 * Finish a pair: the pending leading fields go to its KEY node, the entry's
+	 * trailing comment to whichever node owns the last line. The one place the
+	 * node-level split is applied, so no construction site has to know it.
+	 */
+	const pushPair = (
+		pair: YamlPair,
+		leading: CommentFields,
+		trailing: string | undefined,
+		trailingOnKey = false,
+	): YamlPair => {
+		const withLeading =
+			Object.keys(leading).length === 0
+				? pair
+				: new YamlPair({ key: withCommentFields(pair.key, leading), value: pair.value });
+		return trailing === undefined ? withLeading : withTrailingComment(withLeading, trailing, trailingOnKey);
+	};
+
 	const noteContentColumn = (offset: number): void => {
 		if (contentColumn < 0 && offset >= 0) contentColumn = columnAt(text, offset);
 	};
@@ -891,18 +919,17 @@ export function buildPairs(
 			// Own-line vs trailing is decided purely from the comment's own
 			// line (content before it or not) — span-based checks mislead when
 			// a preceding block collection's span over-extends.
-			const ownLine = cOff < 0 ? true : isOwnLineAt(text, cOff);
+			// An indicator-only prefix (`? # c`, `- # c`) still means the node is
+			// below, so the comment LEADS it rather than trailing the entry
+			// before it.
+			const ownLine = cOff < 0 ? true : isOwnLineAt(text, cOff) || isAfterIndicatorOnly(text, cOff);
 			if (!ownLine && pairs.length > 0) {
-				// Trailing: content precedes the comment on its line.
+				// Trailing: content precedes the comment on its line, so it belongs
+				// to the node that owns that line — the value when there is one,
+				// otherwise the key (divergence 1 in comments.ts).
 				const last = pairs[pairs.length - 1];
 				if (last) {
-					pairs[pairs.length - 1] = new YamlPair({
-						key: last.key,
-						value: last.value,
-						...(last.commentBefore !== undefined ? { commentBefore: last.commentBefore } : {}),
-						comment: last.comment !== undefined ? `${last.comment}\n${cText}` : cText,
-						...(last.spaceBefore !== undefined ? { spaceBefore: last.spaceBefore } : {}),
-					});
+					pairs[pairs.length - 1] = withTrailingComment(last, cText);
 				}
 			} else {
 				// Own-line: attribute forward to the next pair. A blank line
@@ -941,12 +968,12 @@ export function buildPairs(
 				length: 0,
 			});
 			if (valueNode) {
-				pairs.push(new YamlPair({ key: nullKey, value: valueNode.node ?? null, ...pendingFields }));
+				pairs.push(pushPair(new YamlPair({ key: nullKey, value: valueNode.node ?? null }), pendingFields, undefined));
 				i = valueNode.nextIdx;
 				lastEnd = valueNode.node ? nodeEnd(valueNode.node) : valueSepOffset + 1;
 				lastNode = valueNode.node ?? undefined;
 			} else {
-				pairs.push(new YamlPair({ key: nullKey, value: null, ...pendingFields }));
+				pairs.push(pushPair(new YamlPair({ key: nullKey, value: null }), pendingFields, undefined));
 				lastEnd = valueSepOffset + 1;
 				lastNode = undefined;
 			}
@@ -991,38 +1018,29 @@ export function buildPairs(
 						valNode = withCommentFields(valNode, { commentBefore: valueResult.leadingComments.join("\n") });
 					}
 					pairs.push(
-						new YamlPair({
-							key: keyOrNull(),
-							value: valNode,
-							...pendingFields,
-							...(pairTrailing !== undefined ? { comment: pairTrailing } : {}),
-						}),
+						pushPair(
+							new YamlPair({ key: keyOrNull(), value: valNode }),
+							pendingFields,
+							pairTrailing,
+							// Decided from the COMPOSED value: when it does not sit on
+							// the `:` line, that line belongs to the key — but only in
+							// implicit `key: value` form. A complex key renders as
+							// `? key` / `: value`, where the `:` line is not the key's
+							// line at all, so the comment stays with the value there.
+							keyIsSimple(keyNode) && (valNode === null || !sameLineSpan(text, sepOffset, valNode.offset)),
+						),
 					);
 					i = valueResult.nextIdx;
 					lastEnd = valNode ? nodeEnd(valNode) : sepOffset + 1;
 					lastNode = valNode ?? undefined;
 				} else {
-					pairs.push(
-						new YamlPair({
-							key: keyOrNull(),
-							value: null,
-							...pendingFields,
-							...(pairTrailing !== undefined ? { comment: pairTrailing } : {}),
-						}),
-					);
+					pairs.push(pushPair(new YamlPair({ key: keyOrNull(), value: null }), pendingFields, pairTrailing));
 					lastEnd = sepOffset + 1;
 					lastNode = undefined;
 				}
 			} else {
 				// Key with no value
-				pairs.push(
-					new YamlPair({
-						key: keyOrNull(),
-						value: null,
-						...pendingFields,
-						...(pairTrailing !== undefined ? { comment: pairTrailing } : {}),
-					}),
-				);
+				pairs.push(pushPair(new YamlPair({ key: keyOrNull(), value: null }), pendingFields, pairTrailing));
 				lastEnd = keyNode ? nodeEnd(keyNode) : lastEnd;
 				if (keyNode) lastNode = keyNode;
 			}
@@ -1064,6 +1082,20 @@ export function buildPairs(
 	return withLeadingBlank(pending);
 }
 
+/**
+ * True when a key renders in implicit `key: value` form, so the `:` sits on
+ * the key's own line. A multi-line or block-scalar key forces the explicit
+ * `? key` / `: value` spelling, where the `:` gets a line of its own.
+ */
+function keyIsSimple(keyNode: YamlNode | undefined): boolean {
+	// An alias key emits in implicit form (`*x : value`), so it owns its line
+	// exactly as a plain scalar key does and can carry a trailing comment.
+	if (keyNode instanceof YamlAlias) return true;
+	if (!(keyNode instanceof YamlScalar)) return false;
+	if (typeof keyNode.value === "string" && keyNode.value.includes("\n")) return false;
+	return keyNode.style !== "block-literal" && keyNode.style !== "block-folded";
+}
+
 interface ConsumedValue {
 	node: YamlNode | null;
 	nextIdx: number;
@@ -1103,6 +1135,9 @@ function consumeValueNode(
 	let i = startIdx;
 	const sameLineComments: string[] = [];
 	const leadingComments: string[] = [];
+	// Index of the first OWN-LINE comment after the `:` — the rewind point when
+	// it turns out no value node follows.
+	let firstOwnLineIdx = -1;
 	while (i < items.length) {
 		const item = items[i];
 		if (!item) break;
@@ -1111,15 +1146,32 @@ function consumeValueNode(
 			if (item.offset !== undefined && sameLineSpan(text, sepOffset, item.offset)) {
 				sameLineComments.push(cText);
 			} else {
+				if (firstOwnLineIdx < 0) firstOwnLineIdx = i;
 				leadingComments.push(cText);
 			}
 			i++;
 			continue;
 		}
 		if (item.kind === "node") {
+			// Whether the value shares the `:` line decides who owns that line's
+			// comment slot: the VALUE when it ends there (`a: 1 # t`), the KEY
+			// when the value sits below (`a: # kc`). Keeping the two apart is
+			// what lets both source shapes round-trip — a key-line comment and a
+			// comment on its own line above the value are different bytes and
+			// must stay different fields.
 			return { node: item.node ?? null, nextIdx: i + 1, sameLineComments, leadingComments };
 		}
 		break;
+	}
+	// #348: no value node follows, so these own-line comments never had a value
+	// to lead — they belong to the enclosing mapping (its terminal comment run,
+	// or the next pair's `commentBefore`). Consuming them here dropped them on
+	// the floor, because the caller can only attach `leadingComments` to a value
+	// node that exists. Rewind to the first of them and let the caller's own
+	// forward-attribution and terminal column partition decide. Same-line
+	// comments stay consumed — they are the pair's trailing comment.
+	if (firstOwnLineIdx >= 0) {
+		return { node: null, nextIdx: firstOwnLineIdx, sameLineComments, leadingComments: [] };
 	}
 	return i > startIdx ? { node: null, nextIdx: i, sameLineComments, leadingComments } : null;
 }
@@ -1140,10 +1192,17 @@ function consumeValueNodeForNullKey(
 	valueSepOffset: number,
 ): { node: YamlNode | null; nextIdx: number } | null {
 	let i = startIdx;
+	// Index of the first OWN-LINE comment after the `:` — the rewind point when
+	// no value node follows (#348; mirrors consumeValueNode, and matters here
+	// for the empty-key document `:\n# c\n`).
+	let firstOwnLineIdx = -1;
 	while (i < items.length) {
 		const item = items[i];
 		if (!item) break;
 		if (item.kind === "comment") {
+			if (firstOwnLineIdx < 0 && item.offset !== undefined && !sameLineSpan(text, valueSepOffset, item.offset)) {
+				firstOwnLineIdx = i;
+			}
 			i++;
 			continue;
 		}
@@ -1162,6 +1221,9 @@ function consumeValueNodeForNullKey(
 		}
 		break;
 	}
+	// No value node followed: leave the own-line comments to the caller's own
+	// attribution rather than consuming them into nothing (#348).
+	if (firstOwnLineIdx >= 0) return { node: null, nextIdx: firstOwnLineIdx };
 	return i > startIdx ? { node: null, nextIdx: i } : null;
 }
 

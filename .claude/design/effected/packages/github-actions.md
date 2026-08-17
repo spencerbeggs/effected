@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-16
+last-synced: 2026-08-16
 completeness: 95
 related:
   - ../effect-standards.md
@@ -17,6 +17,7 @@ related:
   - commands.md
   - sbom.md
   - templates.md
+  - memfs.md
 ---
 
 # @effected/github-actions design
@@ -106,6 +107,7 @@ Per the [observability standard](../effect-standards.md#observability-standards)
 - **Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`,** with unstubbed members dying loudly and naming themselves. This is the direct fix for a predecessor double that returned **exit 0 for unregistered commands**, leaving consumer tests green on a documented lie.
 - **Honest-default exceptions are recorded rather than assumed.** Three doubles get real defaults because dying would make them useless: the environment double seeds the standard context variables (a block a survey found duplicated byte-identically across six consumer test files), the logger double defaults to silent, and the dry-run double defaults to *on* — the safe direction. Every other member dies.
 - **Real IO where the claim is about the filesystem**, and **opt-in integration** for the two network protocols, skipped-not-green without credentials.
+- **The runner-file doubles are a real in-memory volume** ([`@effected/memfs`](memfs.md), a devDependency) — the shape `ActionEnvironment`'s own TSDoc points consumers at. `ActionOutputs` and `ActionState` both write with `flag: "a"`, and the previous `Map` stubs were **re-implementing append by concatenation**: filesystem behaviour hand-modelled inside the test of something else, where any disagreement with the real semantics would read as a passing test. The volume appends; the fixture only seeds the runner-file directory, because a write needs its parent.
 - **Mutate the edges before declaring green.** The subsystem docs each name the mutants that discriminate.
 
 Four testing facts have bitten repeatedly and are worth carrying: **interleaving tests must use a `Latch`, never `Effect.sleep`** (a sleep under the virtual clock hangs to the vitest timeout); **a two-latch interleaving is load-bearing**, because a single-latch version passes against a deliberately wrong save-and-restore implementation, which is LIFO-correct whenever two overrides nest properly; **a spy on a process global must be released on the failure path** with `acquireUseRelease`, since a try/finally inside `Effect.gen` leaks when an assertion fails and a leaked spy produces a false *green* in a later test; and **a test that sets the process exit code must restore it**, or a green suite fails the vitest process instead.

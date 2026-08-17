@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-16
+last-synced: 2026-08-16
 completeness: 95
 related:
   - ../effect-standards.md
@@ -19,6 +19,7 @@ related:
   - package-json.md
   - git.md
   - commands.md
+  - memfs.md
 ---
 
 # @effected/workspaces design
@@ -331,9 +332,11 @@ Workspaces reads a filesystem, not a hostile string — but **a filesystem is st
 
 Suite-boundary `layer(...)` blocks, never a per-test `Effect.provide`.
 
-**The whole package tests without a platform package**: core's path layer and a partial stub filesystem drive discovery, enumeration and detection, and git-dependent tests use git's own shipped double, so they need no repository on disk. **One integration test discovers this repository for real** — it is the test that surfaces real-world file shapes, and it is what surfaced the config-dependencies lockfile-framing shape now owned in lockfiles.
+**The whole package tests without a platform package**: core's path layer and a real in-memory volume ([`@effected/memfs`](memfs.md), a devDependency) drive discovery, enumeration and detection, and git-dependent tests use git's own shipped double, so they need no repository on disk. The volume replaced a stub implementing the four operations this package happens to call; the tree is seeded and the three misbehaviours the suites need — an unreadable directory, an unreadable *file*, and an `exists` probe that fails with something other than `NotFound` — are injected as fault handlers that decline for every other path. Each of the three earns its place: they are exactly the cases a `orElseSucceed(() => …)` fallback would make indistinguishable from an empty directory, an empty file and genuine absence. **One integration test discovers this repository for real** — it is the test that surfaces real-world file shapes, and it is what surfaced the config-dependencies lockfile-framing shape now owned in lockfiles.
 
 **The doubles die as defects, and the TSDoc says what that costs a caller.** An unstubbed member is **not absorbed by `Effect.catch`** or any typed-error handler. That is the point rather than an omission: code under test with a best-effort catch around its discovery or snapshot reads would otherwise make a mandatory stub look optional, taking the catch branch and passing. Only a defect-catching combinator or an exit sees it. Consumers hit this reading a green test as proof their stubs were complete, so every double's TSDoc states it.
+
+**The suite therefore carries both postures deliberately, and the split is by what the double is for.** The *service* doubles deny by default, because an unstubbed service call is a wiring mistake the test must not survive. The *filesystem* double delegates by default, because the filesystem is not the thing under test — a deny-by-default volume would break the fixture every time the code under test grew a new call, which is what forced the old stub to keep growing members nobody had reasoned about.
 
 Mutation-proven edges worth preserving if the suites are rewritten:
 

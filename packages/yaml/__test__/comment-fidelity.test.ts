@@ -25,10 +25,10 @@ describe("comment fidelity (#127)", () => {
 				const doc = yield* YamlDocument.parse("a: 1\n\n# section\nb: 2\n");
 				const map = firstMap(doc);
 				const [a, b] = map.items;
-				assert.isUndefined(a?.comment);
-				assert.isUndefined(a?.commentBefore);
-				assert.strictEqual(b?.commentBefore, " section");
-				assert.strictEqual(b?.spaceBefore, true);
+				assert.isUndefined(a?.key.commentBefore);
+				assert.isUndefined(a?.value?.comment);
+				assert.strictEqual(b?.key.commentBefore, " section");
+				assert.strictEqual(b?.key.spaceBefore, true);
 			}),
 		);
 
@@ -36,8 +36,8 @@ describe("comment fidelity (#127)", () => {
 			Effect.gen(function* () {
 				const doc = yield* YamlDocument.parse("a: 1 # trailing a\nb: 2\n");
 				const map = firstMap(doc);
-				assert.strictEqual(map.items[0]?.comment, " trailing a");
-				assert.isUndefined(map.items[1]?.comment);
+				assert.strictEqual(map.items[0]?.value?.comment, " trailing a");
+				assert.isUndefined(map.items[1]?.value?.comment);
 			}),
 		);
 
@@ -45,7 +45,7 @@ describe("comment fidelity (#127)", () => {
 			Effect.gen(function* () {
 				const doc = yield* YamlDocument.parse("a: 1\n# line one\n# line two\nb: 2\n");
 				const map = firstMap(doc);
-				assert.strictEqual(map.items[1]?.commentBefore, " line one\n line two");
+				assert.strictEqual(map.items[1]?.key.commentBefore, " line one\n line two");
 			}),
 		);
 
@@ -53,9 +53,9 @@ describe("comment fidelity (#127)", () => {
 			Effect.gen(function* () {
 				const doc = yield* YamlDocument.parse("a: 1\n\nb: 2\n");
 				const map = firstMap(doc);
-				assert.isUndefined(map.items[0]?.spaceBefore);
-				assert.strictEqual(map.items[1]?.spaceBefore, true);
-				assert.isUndefined(map.items[1]?.commentBefore);
+				assert.isUndefined(map.items[0]?.key.spaceBefore);
+				assert.strictEqual(map.items[1]?.key.spaceBefore, true);
+				assert.isUndefined(map.items[1]?.key.commentBefore);
 			}),
 		);
 
@@ -66,8 +66,8 @@ describe("comment fidelity (#127)", () => {
 				const aValue = map.items[0]?.value;
 				assert.instanceOf(aValue, YamlMap);
 				assert.strictEqual((aValue as YamlMap).comment, " end of a");
-				// It must NOT have attached backward to the b pair.
-				assert.isUndefined((aValue as YamlMap).items[0]?.comment);
+				// It must NOT have attached backward to the b entry.
+				assert.isUndefined((aValue as YamlMap).items[0]?.value?.comment);
 			}),
 		);
 
@@ -89,11 +89,34 @@ describe("comment fidelity (#127)", () => {
 			}),
 		);
 
-		it.effect("a key-line comment ahead of a block value stays on the pair", () =>
+		it.effect("a key comment and a value comment both survive — neither shadows the other", () =>
 			Effect.gen(function* () {
+				// Both slots are legitimately occupied: the key line carries its own
+				// comment because the value renders below, and the value carries a
+				// trailing comment on its own line. An emitter that returns the key's
+				// comment and stops drops the value's silently.
+				const source = "a: # kc\n  1 # vc\n";
+				const doc = yield* YamlDocument.parse(source);
+				const pair = firstMap(doc).items[0];
+				assert.strictEqual(pair?.key.comment, " kc");
+				assert.strictEqual(pair?.value?.comment, " vc");
+				const out = yield* doc.stringify();
+				assert.strictEqual((out.match(/#/g) ?? []).length, 2, `a comment was dropped: ${JSON.stringify(out)}`);
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			}),
+		);
+
+		it.effect("a key-line comment ahead of a block value trails the KEY", () =>
+			Effect.gen(function* () {
+				// It was written on the key's line and it stays there. The own-line
+				// form below it is a different shape and keeps its own line, so both
+				// round-trip byte-intact.
 				const doc = yield* YamlDocument.parse("a: # c\n  b: 1\n");
-				const map = firstMap(doc);
-				assert.strictEqual(map.items[0]?.comment, " c");
+				assert.strictEqual(firstMap(doc).items[0]?.key.comment, " c");
+
+				const spilled = yield* YamlDocument.parse("a:\n  # c\n  b: 1\n");
+				assert.isUndefined(firstMap(spilled).items[0]?.key.comment);
+				assert.strictEqual(firstMap(spilled).items[0]?.value?.commentBefore, " c");
 			}),
 		);
 
@@ -113,8 +136,10 @@ describe("comment fidelity (#127)", () => {
 				const map = firstMap(doc);
 				// Reference parity: raw slices; a bare `#` stores " " so it is
 				// distinguishable from an embedded blank line ("").
-				assert.strictEqual(doc.comment, "no-space\n   aligned\n ");
-				assert.isUndefined(map.items[0]?.commentBefore);
+				// With no `---` to separate it, a header block is just the first
+				// own-line comment in the item stream, so it leads the first key.
+				assert.strictEqual(map.items[0]?.key.commentBefore, "no-space\n   aligned\n ");
+				assert.isUndefined(doc.commentBefore);
 			}),
 		);
 
@@ -122,18 +147,18 @@ describe("comment fidelity (#127)", () => {
 			Effect.gen(function* () {
 				const interior = yield* YamlDocument.parse("a: 1\n# one\n\n# two\nb: 2\n");
 				const im = firstMap(interior);
-				assert.strictEqual(im.items[1]?.commentBefore, " one\n\n two");
-				assert.isUndefined(im.items[1]?.spaceBefore);
+				assert.strictEqual(im.items[1]?.key.commentBefore, " one\n\n two");
+				assert.isUndefined(im.items[1]?.key.spaceBefore);
 
 				const before = yield* YamlDocument.parse("a: 1\n\n# one\n# two\nb: 2\n");
 				const bm = firstMap(before);
-				assert.strictEqual(bm.items[1]?.commentBefore, " one\n two");
-				assert.strictEqual(bm.items[1]?.spaceBefore, true);
+				assert.strictEqual(bm.items[1]?.key.commentBefore, " one\n two");
+				assert.strictEqual(bm.items[1]?.key.spaceBefore, true);
 
 				const after = yield* YamlDocument.parse("a: 1\n# one\n\nb: 2\n");
 				const am = firstMap(after);
-				assert.strictEqual(am.items[1]?.commentBefore, " one\n");
-				assert.isUndefined(am.items[1]?.spaceBefore);
+				assert.strictEqual(am.items[1]?.key.commentBefore, " one\n");
+				assert.isUndefined(am.items[1]?.key.spaceBefore);
 			}),
 		);
 
@@ -147,22 +172,61 @@ describe("comment fidelity (#127)", () => {
 				const cValue = map.items[0]?.value;
 				assert.instanceOf(cValue, YamlMap);
 				assert.isUndefined((cValue as YamlMap).comment);
-				assert.strictEqual(map.items[1]?.commentBefore, " tail\n");
+				assert.strictEqual(map.items[1]?.key.commentBefore, " tail\n");
 			}),
 		);
 
-		it.effect("joins a multi-line document header comment", () =>
+		it.effect("joins a multi-line header comment onto the first key", () =>
 			Effect.gen(function* () {
 				const doc = yield* YamlDocument.parse("# one\n# two\na: 1\n");
-				assert.strictEqual(doc.comment, " one\n two");
+				assert.strictEqual(firstMap(doc).items[0]?.key.commentBefore, " one\n two");
 			}),
 		);
 
-		it.effect("captures comments after the document end marker as commentAfter", () =>
+		it.effect("comments on BOTH sides of a `---` marker keep their sides", () =>
+			Effect.gen(function* () {
+				// The marker partitions the leading run per comment. Deciding once
+				// from the first comment merged both sides into one block and
+				// re-emitted the whole thing above the marker — lossless, but wrong,
+				// and a fixed point, so it stayed wrong quietly.
+				const doc = yield* YamlDocument.parse("# before\n---\n# after\na: 1\n");
+				assert.strictEqual(doc.commentBefore, " before");
+				assert.strictEqual(doc.contents?.commentBefore, " after");
+				for (const text of ["# before\n---\n# after\na: 1\n", "# b1\n# b2\n---\n# a1\n# a2\na: 1\n"]) {
+					assert.strictEqual(YamlFormat.formatToString(text), text);
+				}
+			}),
+		);
+
+		it.effect("a header AFTER a `---` marker leads the root node", () =>
+			Effect.gen(function* () {
+				const after = yield* YamlDocument.parse("---\n# hdr\na: 1\n");
+				assert.isUndefined(after.commentBefore);
+				assert.strictEqual(after.contents?.commentBefore, " hdr");
+			}),
+		);
+
+		it.effect("a header AHEAD of a `---` marker is the document's commentBefore", () =>
+			Effect.gen(function* () {
+				// This was recorded as a known gap on the theory that the CST handed
+				// the comment over in a position the leading branch could not claim.
+				// It was not: `decorateDocumentSourceMultiline` — which runs on every
+				// parse — wrote `commentBefore` into the `comment` key, so every
+				// document header became a trailing comment on the way out. The two
+				// sibling sites of that rename were caught by TS1117 as duplicate
+				// keys; this one used conditional spreads and compiled clean.
+				const doc = yield* YamlDocument.parse("# hdr\n---\na: 1\n");
+				assert.strictEqual(doc.commentBefore, " hdr");
+				assert.isUndefined(doc.comment);
+				assert.strictEqual(YamlFormat.formatToString("# hdr\n---\na: 1\n"), "# hdr\n---\na: 1\n");
+			}),
+		);
+
+		it.effect("captures comments after the document end marker as the document's comment", () =>
 			Effect.gen(function* () {
 				const doc = yield* YamlDocument.parse("a: 1\n...\n# after\n");
-				assert.strictEqual(doc.commentAfter, " after");
-				assert.isUndefined(doc.comment);
+				assert.strictEqual(doc.comment, " after");
+				assert.isUndefined(doc.commentBefore);
 			}),
 		);
 	});
@@ -211,7 +275,7 @@ describe("comment fidelity (#127)", () => {
 				yield* roundtrips("---\n");
 				const doc = yield* YamlDocument.parse("---\n...\n# tail\n");
 				assert.isNull(doc.contents);
-				assert.strictEqual(doc.commentAfter, " tail");
+				assert.strictEqual(doc.comment, " tail");
 				assert.strictEqual(YamlFormat.formatToString("---\n...\n# tail\n"), "---\n...\n# tail\n");
 			}),
 		);
@@ -220,7 +284,9 @@ describe("comment fidelity (#127)", () => {
 			roundtrips("a: 1\n# one\n\n# two\nb: 2\nc:\n  d: 1\n# tail\n\ne: 3\n"),
 		);
 
-		it.effect("emits key-line comments ahead of block values", () => roundtrips("a: # c\n  b: 1\n"));
+		it.effect("keeps a key-line comment on the key line when the value starts below", () =>
+			roundtrips("a: # c\n  b: 1\n"),
+		);
 
 		it.effect("emits the document trailing comment after the end marker", () =>
 			roundtrips("a: 1\n...\n# after\n# more\n"),
@@ -338,8 +404,8 @@ describe("comment fidelity (#127)", () => {
 					const doc = yield* YamlDocument.parse(source);
 					const map = firstMap(doc).items[0]?.value;
 					assert.instanceOf(map, YamlMap);
-					assert.strictEqual((map as YamlMap).items[1]?.commentBefore, " c");
-					assert.strictEqual((map as YamlMap).items[1]?.spaceBefore, true);
+					assert.strictEqual((map as YamlMap).items[1]?.key.commentBefore, " c");
+					assert.strictEqual((map as YamlMap).items[1]?.key.spaceBefore, true);
 					const out = YamlFormat.formatToString(source);
 					assert.strictEqual(out, "m:\n  {\n    a: 1,\n\n    # c\n    b: 2\n  }\n");
 					assert.strictEqual(YamlFormat.formatToString(out), out);
@@ -373,6 +439,37 @@ describe("comment fidelity (#127)", () => {
 					assert.strictEqual(YamlFormat.formatToString(out), out);
 				}),
 			);
+
+			// A collection's OWN trailing comment renders AFTER the closing
+			// bracket, so it cannot swallow it and is no reason to expand a
+			// single-line flow. Only a comment on an ITEM forces the
+			// one-entry-per-line layout. The reference agrees: yaml@2.9.0
+			// re-emits both spellings as `a: { b: 1 } # t`.
+			it.effect("an inline flow map with only a trailing comment stays on one line", () =>
+				Effect.gen(function* () {
+					const source = "a: {b: 1} # t\n";
+					const map = firstMap(yield* YamlDocument.parse(source)).items[0]?.value;
+					assert.instanceOf(map, YamlMap);
+					assert.strictEqual((map as YamlMap).comment, " t");
+					const out = YamlFormat.formatToString(source);
+					assert.strictEqual(out, "a: {b: 1} # t\n");
+					assert.strictEqual(YamlFormat.formatToString(out), out);
+				}),
+			);
+
+			it("an inline flow seq with only a trailing comment stays on one line", () => {
+				const source = "a: [1, 2] # t\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual(out, "a: [1, 2] # t\n");
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+
+			it("an INNER comment still forces the multi-line flow layout", () => {
+				const source = "a: {\n  b: 1 # inner\n  }\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual(out, "a:\n  {\n    b: 1 # inner\n  }\n");
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
 
 			it.effect("flow seq nested in a block mapping keeps the blank line", () =>
 				Effect.gen(function* () {
@@ -435,11 +532,14 @@ describe("comment fidelity (#127)", () => {
 				);
 			}
 
-			it.effect("captures the header comment on the SCALAR node, not the pair", () =>
+			it.effect("captures the header comment on the SCALAR node", () =>
 				Effect.gen(function* () {
+					// A block scalar's header comment is simply the entry's trailing
+					// comment: the header line IS the line the value ends on, so it
+					// needs no concept of its own.
 					const doc = yield* YamlDocument.parse("a: | # hdr\n  body\n");
 					const pair = firstMap(doc).items[0];
-					assert.isUndefined(pair?.comment);
+					assert.isUndefined(pair?.key.commentBefore);
 					assert.instanceOf(pair?.value, YamlScalar);
 					assert.strictEqual((pair?.value as YamlScalar).comment, " hdr");
 					assert.strictEqual((pair?.value as YamlScalar).value, "body\n");
@@ -468,25 +568,32 @@ describe("comment fidelity (#127)", () => {
 				}),
 			);
 
-			it.effect("emits BOTH a pair comment and a header comment, each on its own legal line", () =>
+			it.effect("a key-line comment and a header comment both land on the value, in different slots", () =>
 				Effect.gen(function* () {
-					// The spilled form is itself legal YAML that reparses with the
-					// same two comments, so it is a byte fixed point.
+					// Two slots on one node rather than a pair slot competing with a
+					// scalar slot: the key-line comment LEADS the value, the header
+					// comment TRAILS it. Neither has to displace the other.
 					const source = "a: # pair\n  | # hdr\n  body\n";
 					const doc = yield* YamlDocument.parse(source);
 					const pair = firstMap(doc).items[0];
-					assert.strictEqual(pair?.comment, " pair");
+					assert.strictEqual(pair?.key.comment, " pair");
 					assert.instanceOf(pair?.value, YamlScalar);
 					assert.strictEqual((pair?.value as YamlScalar).comment, " hdr");
+					// Both want the key line, because the block-scalar header hoists
+					// onto it. The header wins the line and the key's comment spills
+					// above — one comment per line, neither dropped.
 					const out = yield* doc.stringify();
-					assert.strictEqual(out, source);
+					assert.strictEqual((out.match(/#/g) ?? []).length, 2);
 					const again = yield* YamlDocument.parse(out);
 					assert.strictEqual(yield* again.stringify(), out);
 				}),
 			);
 
-			it.effect("a pair comment ALONE still relocates to the header line (ratified relocation)", () =>
+			it.effect("a key-line comment rides along when the header hoists onto the key line", () =>
 				Effect.gen(function* () {
+					// The scalar's header is emitted on the key line, so a comment
+					// written on that line lands after it. Relocation within the same
+					// line, not across lines — and a fixed point.
 					const doc = yield* YamlDocument.parse("a: # pair\n  |\n  body\n");
 					const out = yield* doc.stringify();
 					assert.strictEqual(out, "a: | # pair\n  body\n");
@@ -538,6 +645,209 @@ describe("comment fidelity (#127)", () => {
 			it("survives the YamlFormat path", () => {
 				const text = "a: | # hdr\n  body\nb: 1\n";
 				assert.strictEqual(YamlFormat.formatToString(text), text);
+			});
+		});
+
+		describe("document-root block-scalar header comments (#349)", () => {
+			// The pair, seq-item and explicit-key paths each splice the scalar's
+			// captured header comment back onto the header line (#341); the
+			// DOCUMENT ROOT was the fourth caller and had no slot, so the comment
+			// was captured on the node and silently dropped on emit. Every root
+			// spelling is a byte-pinned fixed point — including the two that
+			// return through the tag/anchor branch of stringifyDocument.
+			const roundtrips: ReadonlyArray<readonly [string, string]> = [
+				["literal", "| # hdr\n  body\n"],
+				["folded", "> # hdr\n  body\n"],
+				["strip-chomp", "|- # hdr\n  body\n"],
+				["keep-chomp", "|+ # hdr\n  body\n"],
+				["indent indicator", "|2 # hdr\n  body\n"],
+				["after a document start marker", "--- | # hdr\n  body\n"],
+				["with an anchor", "&a | # hdr\n  body\n"],
+				["with a tag", "!!str | # hdr\n  body\n"],
+			];
+			for (const [name, source] of roundtrips) {
+				it.effect(`roundtrips byte-intact: ${name}`, () =>
+					Effect.gen(function* () {
+						const doc = yield* YamlDocument.parse(source);
+						const out = yield* doc.stringify();
+						assert.strictEqual(out, source);
+						const again = yield* YamlDocument.parse(out);
+						assert.strictEqual(yield* again.stringify(), out);
+					}),
+				);
+			}
+
+			it.effect("captures the header comment on the root scalar", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("| # hdr\n  body\n");
+					assert.instanceOf(doc.contents, YamlScalar);
+					assert.strictEqual((doc.contents as YamlScalar).comment, " hdr");
+					assert.strictEqual((doc.contents as YamlScalar).value, "body\n");
+				}),
+			);
+
+			it("survives the YamlFormat path", () => {
+				const text = "| # hdr\n  body\n";
+				assert.strictEqual(YamlFormat.formatToString(text), text);
+			});
+
+			it.effect("canonical mode still drops it", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("| # hdr\n  body\n");
+					assert.notInclude(yield* doc.stringify({ forceDefaultStyles: true }), "#");
+				}),
+			);
+		});
+
+		describe("comment slots surfaced by the PR #384 review", () => {
+			// Each of these is a distinct missing or mis-shared slot. All four
+			// are byte-intact round trips: the source shapes are legal YAML a
+			// consumer writes, and a format pass has no licence to move or drop
+			// any of them.
+
+			it("keeps a blank line on the side of the marker it was written on", () => {
+				// One shared `lastLeadingCommentOffset` embedded the blank below
+				// an AFTER-marker comment into the PRE-marker block, moving it
+				// across the marker — and the result was not even a fixed point.
+				const source = "# a\n---\n# b\n\nx: 1\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual(out, source);
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+
+			it("keeps an after-marker comment when the document has no content", () => {
+				// `headerForDocument` was already taken by the pre-marker run, and
+				// there is no content node to lead, so the after-marker run fell
+				// through both branches and was discarded.
+				const source = "# a\n---\n# b\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual((out.match(/#/g) ?? []).length, 2);
+				assert.include(out, "# a");
+				assert.include(out, "# b");
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+
+			it("leaves a value's trailing comment on the value's line under a leading block", () => {
+				// The key line routed through `entryTrailing`, which reaches past
+				// an absent key comment to the VALUE's — printing it on the key
+				// line and then skipping the value's own.
+				const source = "a:\n  # lead\n  1 # vc\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual(out, source);
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+
+			it("keeps a key-line comment on an ALIAS key's line", () => {
+				// `keyIsSimple` rejected every non-scalar, but the stringifier
+				// emits an alias key in implicit form, so the key does own its
+				// line and the comment belongs on it.
+				const source = "a: &x 1\n*x : # c\n  2\n";
+				const out = YamlFormat.formatToString(source);
+				assert.include(out, "# c");
+				assert.notInclude(out, "2 # c");
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+
+			it("emits a marker-LESS header over a scalar root", () => {
+				// The header is stored on the root node itself for a scalar root,
+				// and the emission slot was gated on a `---` marker being present,
+				// so without one the comment was captured and dropped.
+				const source = "# h\n42\n";
+				const out = YamlFormat.formatToString(source);
+				assert.strictEqual(out, source);
+				assert.strictEqual(YamlFormat.formatToString(out), out);
+			});
+		});
+
+		describe("explicit-key pairs emit their value's leading comment (#348)", () => {
+			// Every sibling branch of the block-mapping stringifier consults the
+			// value node's own `commentBefore`; the explicit-key (`? k` / `: v`)
+			// branch did not, so a value-level leading comment was dropped on
+			// emit. RZP5 and XW4D in the yaml-test-suite corpus are this shape.
+
+			it.effect("keeps both comments on an explicit-key entry and stays a fixed point", () =>
+				Effect.gen(function* () {
+					const source = "? - seq1\n: # lala\n  #lala\n  - seq2\n";
+					const doc = yield* YamlDocument.parse(source);
+					const value = firstMap(doc).items[0]?.value;
+					assert.instanceOf(value, YamlSeq);
+					// Both comments sit on the `:` side with the value below, so both
+					// lead the value and join into one run — neither is dropped.
+					assert.include((value as YamlSeq).commentBefore ?? "", "lala");
+					const out = yield* doc.stringify();
+					assert.strictEqual(YamlFormat.formatToString(out), out);
+					assert.strictEqual((out.match(/#/g) ?? []).length, 2);
+				}),
+			);
+
+			it("reaches its fixed point on the FIRST format pass", () => {
+				const once = YamlFormat.formatToString("? - seq1\n: # lala\n - #lala\n  seq2\n");
+				// Pin the bytes too, not just the idempotence: asserting only
+				// `f(f(x)) === f(x)` stays green no matter how `f(x)` drifts.
+				assert.strictEqual(once, "? - seq1\n:\n  #lala\n  - seq2\n  # lala\n");
+				assert.strictEqual(YamlFormat.formatToString(once), once);
+			});
+
+			it.effect("a value leading comment ALONE survives an explicit-key pair", () =>
+				Effect.gen(function* () {
+					const source = "? - seq1\n:\n  #lead\n  - seq2\n";
+					const doc = yield* YamlDocument.parse(source);
+					assert.strictEqual((firstMap(doc).items[0]?.value as YamlSeq).commentBefore, "lead");
+					assert.strictEqual(yield* doc.stringify(), source);
+				}),
+			);
+		});
+
+		describe("a terminal comment survives a last pair with a NULL value (#348)", () => {
+			// An own-line comment after a mapping's last pair is the mapping's
+			// own trailing `comment` (the control below pins the model). When the
+			// last pair's value was EMPTY, consumeValueNode consumed the comment
+			// looking for a value and the caller then discarded it, because a
+			// leading comment can only attach to a value node that exists. The
+			// comment was lost on a single format pass. NKF9 in the corpus.
+
+			// At the ROOT the terminal run belongs to the DOCUMENT — the document
+			// is the root collection's enclosing scope, so the same escape rule
+			// that hands a shallow terminal comment outward applies at the top.
+			it.effect("control: a non-null last value keeps it", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("x: 1\n# c\n");
+					assert.strictEqual(doc.comment, " c");
+				}),
+			);
+
+			it.effect("a null last value keeps it too", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("x:\n# c\n");
+					assert.strictEqual(doc.comment, " c");
+				}),
+			);
+
+			it.effect("an empty KEY and value keeps it", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse(":\n# c\n");
+					assert.strictEqual(doc.comment, " c");
+				}),
+			);
+
+			it("a null last value is a fixed point through the format path", () => {
+				for (const text of ["x:\n# c\n", ":\n# c\n", ":\n# c\n---\n{: null}\n"]) {
+					assert.strictEqual(YamlFormat.formatToString(text), text);
+				}
+			});
+
+			it("the comment still forward-attributes when a pair follows it", () => {
+				// Rewinding must not steal the comment from the NEXT pair: with a
+				// following key this is `commentBefore`, not a terminal run.
+				const text = "x:\n# c\ny: 2\n";
+				assert.strictEqual(YamlFormat.formatToString(text), text);
+			});
+
+			it("keeps both header comments across two empty-key documents", () => {
+				const once = YamlFormat.formatToString("---\n# c1\n:\n---\n# c2\n{ : }\n");
+				assert.include(once, "# c1");
+				assert.include(once, "# c2");
+				assert.strictEqual(YamlFormat.formatToString(once), once);
 			});
 		});
 
@@ -604,10 +914,10 @@ describe("comment fidelity (#127)", () => {
 			assert.strictEqual(YamlFormat.formatToString(fixture, undefined, { indentSequences: true }), fixture);
 		});
 
-		it.effect("captures the header's trailing blank as a trailing empty line in doc.comment", () =>
+		it.effect("captures the header's trailing blank as a trailing empty line", () =>
 			Effect.gen(function* () {
 				const doc = yield* YamlDocument.parse("# hdr\n\nversion: 2\n");
-				assert.strictEqual(doc.comment, " hdr\n");
+				assert.strictEqual(firstMap(doc).items[0]?.key.commentBefore, " hdr\n");
 			}),
 		);
 

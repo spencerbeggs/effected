@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-16
+last-synced: 2026-08-16
 completeness: 95
 related:
   - ../effect-standards.md
@@ -15,6 +15,7 @@ related:
   - config-file.md
   - store.md
   - app.md
+  - memfs.md
 ---
 
 # @effected/xdg design
@@ -127,11 +128,13 @@ Named spans on **every public fallible boundary, uniformly**, per the [ceiling-a
 
 Suites in `__test__/`, one per concept module, with suite-boundary `layer(...)` blocks rather than a per-test `Effect.provide`.
 
-**The platform matrix is tested with no platform IO at all** — the requirement that shaped the design. Because the platform is a `Context.Reference` and the native map is pure, a suite pins darwin/win32/linux behaviour by providing the reference at the group boundary and asserting on strings. The environment is injected the same way. Filesystem behaviour uses core layers only, with a recording `makeDirectory` stub asserting *which* directory was created, in which order.
+**The platform matrix is tested with no platform IO at all** — the requirement that shaped the design. Because the platform is a `Context.Reference` and the native map is pure, a suite pins darwin/win32/linux behaviour by providing the reference at the group boundary and asserting on strings. The environment is injected the same way. `AppDirs`' filesystem behaviour runs on a real in-memory volume ([`@effected/memfs`](memfs.md), a devDependency) with `makeDirectory` intercepted by a **delegate-by-default spy**: the handler records the path and returns `undefined`, so the directory is genuinely created rather than merely observed, and the suite still asserts *which* directories were made, in which order.
 
 The mutation-prone edges the suite pins: **one test per precedence rung**, each with the higher rungs absent and the lower present, so a rung that stopped mattering would be caught; the **native matrix** including win32 with and without its environment variables and linux skipping the rung entirely; **search-path order**, including that a file in an earlier system directory wins over a later one and that the app's own config directory beats both; **per-candidate absorption**, where a failure on the first candidate must not hide a hit on the second; that a **missing `HOME`** fails with the package's own error rather than a raw `ConfigError`, driven through a config provider rather than environment mutation; that a **namespace containing a separator dies** at layer construction; and that the **save path composes into config-file's default-path slot** end-to-end, which is the whole reason resolution moved to layer-construction time.
 
-One stub-authoring hazard worth recording: a `FileSystem.layerNoop` stub must record inside `Effect.suspend`. The `AppDirs` shape builds its `ensure*` effects once, at layer construction, so a stub whose `makeDirectory` pushes eagerly records directories that were never created, and every assertion then measures construction instead of execution.
+One fixture-authoring hazard survives the migration in changed form. `AppDirs` builds its `ensure*` effects **once, at layer construction**, so anything that records eagerly counts directories that were never created and every assertion measures construction instead of execution. The old `layerNoop` stub needed an explicit `Effect.suspend` around its recording to avoid that; a fault handler is consulted when the method is *called*, so the property now comes free. That is a reason to prefer the handler — not a reason to stop knowing why it matters, because the same trap waits for any recorder written by hand.
+
+`XdgConfig`'s suites have not migrated yet and still use core-only doubles.
 
 ## Hardening
 

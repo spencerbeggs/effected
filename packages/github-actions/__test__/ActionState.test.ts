@@ -1,21 +1,22 @@
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, FileSystem, Layer, Option, Schema } from "effect";
 import { TestConsole } from "effect/testing";
 import { ActionEnvironment, ActionOutputs, ActionState } from "../src/index.js";
 
 const Token = Schema.Struct({ value: Schema.String, expires: Schema.Number });
 
+/**
+ * A real in-memory volume for the runner files, fresh per test — the shape
+ * `ActionEnvironment`'s TSDoc points consumers at. The writes are `flag: "a"`
+ * appends and the volume performs them, rather than a stub re-implementing
+ * append by concatenation. `/rf` is seeded because a write needs its parent.
+ */
 const runnerFiles = () => {
-	const written = new Map<string, string>();
-	const layer = FileSystem.layerNoop({
-		writeFileString: (path, data, options) =>
-			Effect.suspend(() => {
-				const key = String(path);
-				written.set(key, (options?.flag === "a" ? (written.get(key) ?? "") : "") + data);
-				return Effect.void;
-			}),
-	});
-	return { written, layer };
+	const { fileSystem, volume } = Effect.runSync(
+		MemoryFileSystem.makeInspectableWith({ "/rf": MemoryFileSystem.directory() }),
+	);
+	return { written: volume, layer: Layer.succeed(FileSystem.FileSystem, fileSystem) };
 };
 
 const live = <A, E>(
@@ -39,7 +40,7 @@ describe("ActionState", () => {
 			}),
 		);
 		return Effect.map(run, () => {
-			const body = files.written.get("/rf/state") ?? "";
+			const body = files.written.text("/rf/state") ?? "";
 			assert.isTrue(body.startsWith("token<<"));
 			assert.include(body, '{"value":"abc","expires":1}');
 		});
@@ -126,7 +127,7 @@ describe("ActionState", () => {
 				assert.include(error.message, "plain JSON");
 				// The failure must precede the write: a state file carrying the bad
 				// value would resurrect the phase-later mystery this exists to kill.
-				assert.isUndefined(files.written.get("/rf/state"));
+				assert.isUndefined(files.written.text("/rf/state"));
 			});
 		});
 
@@ -139,7 +140,7 @@ describe("ActionState", () => {
 				}),
 			);
 			return Effect.map(run, () => {
-				const body = files.written.get("/rf/state") ?? "";
+				const body = files.written.text("/rf/state") ?? "";
 				assert.include(body, '"x"');
 				assert.include(body, "null");
 			});
@@ -173,7 +174,7 @@ describe("ActionState", () => {
 				assert.include(lines, "::add-mask::ghs_abc123");
 				// GITHUB_STATE is plaintext by GitHub's protocol; the mask is the only
 				// available defense, so it must have happened.
-				assert.include(files.written.get("/rf/state") ?? "", "ghs_abc123");
+				assert.include(files.written.text("/rf/state") ?? "", "ghs_abc123");
 			});
 		});
 	});

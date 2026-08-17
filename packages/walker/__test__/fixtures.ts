@@ -1,17 +1,22 @@
 // In-memory filesystem fixtures for the descend suite.
 //
-// `FileSystem.layerNoop` and `Path.layer` both come from `effect` core, so the
-// whole package tests without `@effect/platform-node`. A suite-boundary
-// `layer(...)` cannot vary per test, so each distinct tree gets its own
-// `layer(...)` block — that is the house shape.
+// The volume is `@effected/memfs` — a real virtual POSIX filesystem — rather
+// than a hand-rolled `FileSystem.layerNoop` answering the three methods
+// `descend` happens to call. That distinction matters: a stub only implements
+// the semantics its author remembered, so a walker bug that depends on
+// anything else (mode bits, parent-directory creation, a symlink hop the stub
+// resolved in one step) cannot show up in a test. memfs still needs no
+// platform package, so the "no `@effect/platform-node`, even in tests" rule
+// holds.
 //
-// Faithful to the node backend where it matters to `descend`: `stat` FOLLOWS
-// symlinks (a link to a file stats as a File, a dangling link fails NotFound),
-// and `readLink` succeeds only on links — it is the walker's "is this a
-// symlink" probe. `layerNoop`'s default `readLink` fails, so only the symlink
-// entries here override it.
+// Symlinks are seeded; the two misbehaviors are injected as faults, which is
+// the sanctioned way to reach a permission failure (memfs records modes but
+// never enforces them).
 
-import { Effect, FileSystem, Layer, Path, PlatformError } from "effect";
+import type { MemoryFileSystemSeedEntry } from "@effected/memfs";
+import { MemoryFileSystem } from "@effected/memfs";
+import type { FileSystem } from "effect";
+import { Effect, Layer, Path, PlatformError } from "effect";
 
 /** A virtual tree: absolute path → file contents. Directories are implied by their files. */
 export type Tree = Readonly<Record<string, string>>;
@@ -34,83 +39,40 @@ export interface FileSystemOptions {
 	readonly vanished?: ReadonlySet<string>;
 }
 
-const ancestorsInto = (dirs: Set<string>, leaf: string): void => {
-	let dir = leaf.slice(0, leaf.lastIndexOf("/"));
-	while (dir.length > 0) {
-		dirs.add(dir);
-		dir = dir.slice(0, dir.lastIndexOf("/"));
-	}
-	dirs.add("/");
-};
-
-const directoriesOf = (tree: Tree, symlinks: Readonly<Record<string, string>>, vanished: ReadonlySet<string>) => {
-	const dirs = new Set<string>();
-	for (const file of Object.keys(tree)) ancestorsInto(dirs, file);
-	for (const link of Object.keys(symlinks)) ancestorsInto(dirs, link);
-	for (const gone of vanished) {
-		dirs.add(gone);
-		ancestorsInto(dirs, gone);
-	}
-	return dirs;
-};
+// The v4 constructor is `PlatformError.systemError`, not a `new SystemError` —
+// `SystemError` is the reason payload, `PlatformError` is the failure.
+const readDirFailure = (reason: "NotFound" | "PermissionDenied", path: string) =>
+	Effect.fail(
+		PlatformError.systemError({
+			_tag: reason,
+			module: "FileSystem",
+			method: "readDirectory",
+			pathOrDescriptor: path,
+		}),
+	);
 
 /**
- * A `FileSystem` over a virtual tree, implementing exactly the three
- * operations `descend` uses: `stat`, `readDirectory`, `readLink`.
+ * A `FileSystem` over a virtual tree. Files and symlinks are seeded into the
+ * volume; `unreadable` and `vanished` directories are seeded too (so they
+ * appear in their parent's listing and stat as directories) and then have
+ * their `readDirectory` intercepted.
  */
 export const fileSystem = (tree: Tree, options: FileSystemOptions = {}): Layer.Layer<FileSystem.FileSystem> => {
 	const unreadable = options.unreadable ?? new Set<string>();
-	const symlinks = options.symlinks ?? {};
 	const vanished = options.vanished ?? new Set<string>();
-	const dirs = directoriesOf(tree, symlinks, vanished);
 
-	// The v4 constructor is `PlatformError.systemError`, not a `new SystemError` —
-	// `SystemError` is the reason payload, `PlatformError` is the failure.
-	const notFound = (method: "stat" | "readDirectory" | "readLink", path: string) =>
-		Effect.fail(
-			PlatformError.systemError({
-				_tag: "NotFound",
-				module: "FileSystem",
-				method,
-				pathOrDescriptor: path,
-			}),
-		);
+	const seed: Record<string, MemoryFileSystemSeedEntry> = {};
+	for (const [path, contents] of Object.entries(tree)) seed[path] = contents;
+	for (const [link, target] of Object.entries(options.symlinks ?? {})) seed[link] = MemoryFileSystem.symlink(target);
+	// Seeded as real (empty) directories: the misbehavior is on the read, not on
+	// their existence — both cases must still be listed by their parent.
+	for (const dir of [...unreadable, ...vanished]) seed[dir] ??= MemoryFileSystem.directory();
 
-	/** Resolve one symlink hop, node-`stat` style. */
-	const resolved = (path: string): string => symlinks[path] ?? path;
-
-	return FileSystem.layerNoop({
-		stat: (path: string) => {
-			const target = resolved(path);
-			if (dirs.has(target)) return Effect.succeed({ type: "Directory" } as FileSystem.File.Info);
-			if (Object.hasOwn(tree, target)) return Effect.succeed({ type: "File" } as FileSystem.File.Info);
-			return notFound("stat", path);
-		},
-
-		readLink: (path: string) =>
-			Object.hasOwn(symlinks, path) ? Effect.succeed(symlinks[path] as string) : notFound("readLink", path),
-
+	return MemoryFileSystem.layerFaultyWith(seed, {
 		readDirectory: (path: string) => {
-			if (unreadable.has(path)) {
-				return Effect.fail(
-					PlatformError.systemError({
-						_tag: "PermissionDenied",
-						module: "FileSystem",
-						method: "readDirectory",
-						pathOrDescriptor: path,
-					}),
-				);
-			}
-			if (vanished.has(path) || !dirs.has(path)) return notFound("readDirectory", path);
-			const prefix = path === "/" ? "/" : `${path}/`;
-			const entries = new Set<string>();
-			for (const candidate of [...Object.keys(tree), ...Object.keys(symlinks), ...dirs]) {
-				if (!candidate.startsWith(prefix) || candidate === path) continue;
-				const rest = candidate.slice(prefix.length);
-				const head = rest.includes("/") ? rest.slice(0, rest.indexOf("/")) : rest;
-				if (head.length > 0) entries.add(head);
-			}
-			return Effect.succeed([...entries].sort());
+			if (unreadable.has(path)) return readDirFailure("PermissionDenied", path);
+			if (vanished.has(path)) return readDirFailure("NotFound", path);
+			return undefined; // delegate to the real volume
 		},
 	});
 };

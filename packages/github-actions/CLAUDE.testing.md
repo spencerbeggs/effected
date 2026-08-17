@@ -27,6 +27,7 @@ the reachability walker. The rules live in the parent; this file is the detail.
   detection algorithm is a function of the payload rebuilt `makeTest` plus its own
   filesystem stub at every site. `undefined` means *not served*, so an unarranged
   payload still fails typed naming `GITHUB_EVENT_PATH`.
+- **The runner-file doubles are a real in-memory volume** (`@effected/memfs`, a devDependency) — the shape `ActionEnvironment`'s own TSDoc points consumers at. `ActionOutputs` and `ActionState` both write with `flag: "a"`, and the `Map` stubs they replaced were **re-implementing append by concatenation**: filesystem behavior hand-modelled inside the test of something else, where any disagreement with the real semantics reads as a passing test. Build the pair eagerly (`makeInspectableWith` + `Layer.succeed`, never the re-seeding `layer*` form) so the assertions read the volume the run wrote to, and seed the runner-file directory — a write needs its parent. `ActionEnvironment.layerTest` itself has **not** moved; whether a published `layerTest` should seed a volume instead is effected#248, answered kit-wide with `App.layerTest` or not at all.
 - **`OidcTokenIssuer.layerFor(claims)`** returns a **real decodable** unsigned JWT
   built from the same claims `claims()` reports. That is what makes the provenance
   path reachable; the source package's synthetic non-JWT made it structurally

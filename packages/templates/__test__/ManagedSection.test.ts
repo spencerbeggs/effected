@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Cause, Effect, Exit, Option } from "effect";
 import { ManagedSection } from "../src/index.js";
 import { block, id, lines, memoryFs, section } from "./fixtures.js";
@@ -56,14 +57,17 @@ describe("ManagedSection", () => {
 
 	describe("sync", () => {
 		it.effect("creates the file when it does not exist", () => {
-			const fs = memoryFs();
+			// The hook's PARENT must exist: this package requires no `Path`, so it
+			// cannot derive a directory to create, and a real filesystem refuses a
+			// write into a missing one. The file itself is what this test creates.
+			const fs = memoryFs({ ".husky": MemoryFileSystem.directory() });
 			return withFs(
 				fs,
 				Effect.gen(function* () {
 					const service = yield* ManagedSection;
 					const outcome = yield* service.sync(HOOK, section("example-tool", "echo hi"));
 					assert.strictEqual(outcome._tag, "Created");
-					assert.strictEqual(fs.files.get(HOOK), `${block("example-tool", "echo hi")}\n`);
+					assert.strictEqual(fs.text(HOOK), `${block("example-tool", "echo hi")}\n`);
 				}),
 			);
 		});
@@ -76,7 +80,7 @@ describe("ManagedSection", () => {
 					const service = yield* ManagedSection;
 					const outcome = yield* service.sync(HOOK, section("example-tool", "new"));
 					assert.strictEqual(outcome._tag, "Updated");
-					assert.strictEqual(fs.files.get(HOOK), lines("#!/bin/sh", block("example-tool", "new"), "tail", ""));
+					assert.strictEqual(fs.text(HOOK), lines("#!/bin/sh", block("example-tool", "new"), "tail", ""));
 				}),
 			);
 		});
@@ -91,7 +95,7 @@ describe("ManagedSection", () => {
 					const outcome = yield* service.sync(HOOK, section("example-tool", "echo hi"));
 					assert.strictEqual(outcome._tag, "Unchanged");
 					assert.strictEqual(fs.writes(), 0, "an unchanged sync must not touch the file");
-					assert.strictEqual(fs.files.get(HOOK), text);
+					assert.strictEqual(fs.text(HOOK), text);
 				}),
 			);
 		});
@@ -107,7 +111,7 @@ describe("ManagedSection", () => {
 						outcomes.map((o) => o._tag),
 						["Created", "Created"],
 					);
-					const written = fs.files.get(HOOK) ?? "";
+					const written = fs.text(HOOK) ?? "";
 					assert.isBelow(
 						written.indexOf("BEGIN base"),
 						written.indexOf("BEGIN tool"),
@@ -124,7 +128,7 @@ describe("ManagedSection", () => {
 				Effect.gen(function* () {
 					const service = yield* ManagedSection;
 					yield* service.syncAll(HOOK, [section("base", "preamble"), section("tool", "run")]);
-					const after = fs.files.get(HOOK);
+					const after = fs.text(HOOK);
 					const writesAfterFirst = fs.writes();
 					const second = yield* service.syncAll(HOOK, [section("base", "preamble"), section("tool", "run")]);
 					assert.deepStrictEqual(
@@ -132,7 +136,7 @@ describe("ManagedSection", () => {
 						["Unchanged", "Unchanged"],
 					);
 					assert.strictEqual(fs.writes(), writesAfterFirst, "the second sync must not write");
-					assert.strictEqual(fs.files.get(HOOK), after);
+					assert.strictEqual(fs.text(HOOK), after);
 				}),
 			);
 		});
@@ -176,7 +180,7 @@ describe("ManagedSection", () => {
 				Effect.gen(function* () {
 					const service = yield* ManagedSection;
 					assert.isTrue(yield* service.remove(HOOK, id("example-tool")));
-					assert.strictEqual(fs.files.get(HOOK), lines("#!/bin/sh", "", "tail", ""));
+					assert.strictEqual(fs.text(HOOK), lines("#!/bin/sh", "", "tail", ""));
 				}),
 			);
 		});

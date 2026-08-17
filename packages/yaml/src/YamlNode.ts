@@ -161,12 +161,19 @@ export class YamlScalar extends Schema.TaggedClass<YamlScalar>()("YamlScalar", {
  * A YAML alias AST node, referencing a previously defined anchor by name
  * (without the leading `*`).
  *
+ * Carries the same comment triple as every other node class — see
+ * {@link YamlScalar} for the field semantics. An alias is a node like any
+ * other and a comment can legally sit above or after one.
+ *
  * @public
  */
 export class YamlAlias extends Schema.TaggedClass<YamlAlias>()("YamlAlias", {
 	name: Schema.String,
 	offset: Schema.Number,
 	length: Schema.Number,
+	commentBefore: Schema.optionalKey(Schema.String),
+	comment: Schema.optionalKey(Schema.String),
+	spaceBefore: Schema.optionalKey(Schema.Boolean),
 }) {
 	/** See `YamlScalar.find`. Pure. */
 	find(path: YamlPath): Option.Option<YamlNode> {
@@ -252,20 +259,18 @@ export type YamlNode = YamlScalar | YamlMap | YamlSeq | YamlAlias;
  * A YAML key-value pair AST node, representing one entry within a mapping.
  * `value` is `null` when absent (e.g. `key:` with no value).
  *
- * - `commentBefore` — own-line comment text directly above the pair's key
- *   (multiple consecutive comment lines join with `\n`).
- * - `comment` — trailing comment text on the pair's line (strictly trailing).
- * - `spaceBefore` — `true` when a blank line precedes the pair (and its
- *   `commentBefore` block, when present) in the source.
+ * A pair carries **no comment fields**. Comments belong to the pair's `key`
+ * and `value` nodes, which have one comment slot each: an own-line comment
+ * above the entry leads the `key`, and a trailing comment on the entry's line
+ * follows the `value`. Two slots rather than one is what lets `a: # kc` keep
+ * its comment where the author wrote it instead of relocating it onto the
+ * value's line.
  *
  * @public
  */
 export class YamlPair extends Schema.TaggedClass<YamlPair>()("YamlPair", {
 	key: Schema.suspend((): typeof YamlNode => YamlNode),
 	value: Schema.NullOr(Schema.suspend((): typeof YamlNode => YamlNode)),
-	commentBefore: Schema.optionalKey(Schema.String),
-	comment: Schema.optionalKey(Schema.String),
-	spaceBefore: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 /**

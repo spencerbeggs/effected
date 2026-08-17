@@ -16,7 +16,7 @@ import type { ParseOptionsInput } from "../options.js";
 import type { RawDirective, RawYamlDocument } from "../raw-document.js";
 import { checkAnchorOnAlias, getAnchorName, makeAlias, registerAnchor } from "./anchors.js";
 import { composeBlockMap, composeBlockSeq, composeFlatBlockMap } from "./block.js";
-import { hasBlankLineAbove, hasBlankLineBelow, rawCommentText } from "./comments.js";
+import { hasBlankLineAbove, hasBlankLineBelow, rawCommentText, withCommentFields } from "./comments.js";
 import { composeFlowMap, composeFlowSeq } from "./flow.js";
 import {
 	collectMultilinePlainScalar,
@@ -233,13 +233,23 @@ export function composeDocument(
 	let contents: YamlNode | null = null;
 	let documentComment: string | undefined;
 	let documentCommentAfter: string | undefined;
-	// Offset of the LAST leading-comment line — used after the loop to embed a
-	// blank line separating the header block from the first content node.
+	// Offset of the LAST leading-comment line on each side of the `---` marker
+	// — used after the loop to embed a blank line separating that side's block
+	// from the first content node. One per buffer: the two runs are separate
+	// blocks and a shared offset attributes a blank to the wrong one.
 	let lastLeadingCommentOffset = -1;
+	let lastAfterMarkerCommentOffset = -1;
 	// A comment after the `...` marker is the TRAILING block even when the
 	// document is empty (`---\n...\n# tail\n` has no contents to flip the
 	// header/trailer split below).
 	let sawDocEndMarker = false;
+	// Whether a `---` marker has been passed, and whether the leading comment
+	// run began after it — `hasDocStart` only says a marker exists SOMEWHERE.
+	let sawDocStartMarker = false;
+	// The leading run, split at the `---` marker: `documentComment` holds what
+	// precedes it, `afterMarkerComment` what follows and therefore leads the
+	// content node.
+	let afterMarkerComment: string | undefined;
 
 	// Whether this document has a `---` marker — used to determine if
 	// metadata (tag/anchor) applies to the root mapping or the first key.
@@ -294,6 +304,7 @@ export function composeDocument(
 		}
 		if (child.type === "whitespace" || child.type === "newline") {
 			if (child.type === "whitespace" && child.source === "...") sawDocEndMarker = true;
+			if (child.type === "whitespace" && child.source === "---") sawDocStartMarker = true;
 			// Detect stray flow-closing brackets at document level
 			if (child.type === "whitespace" && (child.source === "]" || child.source === "}")) {
 				state.errors.push({
@@ -312,17 +323,34 @@ export function composeDocument(
 		// line within the run embeds as an empty line (reference parity).
 		if (child.type === "comment" && contents === null && !sawDocEndMarker) {
 			const text = rawCommentText(child.source);
-			if (documentComment !== undefined && hasBlankLineAbove(state.text, child.offset)) {
-				documentComment = `${documentComment}\n`;
+			// The `---` marker is a boundary, and it partitions the leading run
+			// PER COMMENT rather than by where the run started: comments ahead of
+			// the marker are the document's header, comments after it lead the
+			// content. Deciding once from the first comment merged both sides into
+			// one block and re-emitted the whole thing above the marker.
+			// Each side tracks its OWN last offset. Sharing one made the blank
+			// line below an after-marker comment embed into the PRE-marker
+			// block instead, so `# a\n---\n# b\n\nx: 1\n` moved the blank across
+			// the marker and never reached a fixed point.
+			if (sawDocStartMarker) {
+				if (afterMarkerComment !== undefined && hasBlankLineAbove(state.text, child.offset)) {
+					afterMarkerComment = `${afterMarkerComment}\n`;
+				}
+				afterMarkerComment = afterMarkerComment === undefined ? text : `${afterMarkerComment}\n${text}`;
+				lastAfterMarkerCommentOffset = child.offset;
+			} else {
+				if (documentComment !== undefined && hasBlankLineAbove(state.text, child.offset)) {
+					documentComment = `${documentComment}\n`;
+				}
+				documentComment = documentComment === undefined ? text : `${documentComment}\n${text}`;
+				lastLeadingCommentOffset = child.offset;
 			}
-			documentComment = documentComment === undefined ? text : `${documentComment}\n${text}`;
-			lastLeadingCommentOffset = child.offset;
 			i++;
 			continue;
 		}
 		// Comments after content (including after a `...` marker) — the
 		// document's TRAILING comment block (`commentAfter`), reference parity
-		// with the yaml npm package's doc.comment.
+		// with the yaml npm package's doc.commentBefore.
 		if (child.type === "comment") {
 			const text = rawCommentText(child.source);
 			if (documentCommentAfter !== undefined && hasBlankLineAbove(state.text, child.offset)) {
@@ -642,22 +670,74 @@ export function composeDocument(
 	if (documentComment !== undefined && contents !== null && hasBlankLineBelow(state.text, lastLeadingCommentOffset)) {
 		documentComment = `${documentComment}\n`;
 	}
+	if (
+		afterMarkerComment !== undefined &&
+		contents !== null &&
+		hasBlankLineBelow(state.text, lastAfterMarkerCommentOffset)
+	) {
+		afterMarkerComment = `${afterMarkerComment}\n`;
+	}
 
 	// Escaped comments that reached document scope have no carrier on the
-	// document model (its one `comment` field is the LEADING header) — drop
-	// them and clear the queue so nothing leaks into a following document.
+	// document model — drop them and clear the queue so nothing leaks into a
+	// following document.
 	state.escapedComments.length = 0;
 
+	// The ROOT collection's terminal comment run belongs to the DOCUMENT, not
+	// to the collection: the document is that collection's enclosing scope, and
+	// the escape rule that hands a shallow terminal comment to the outer scope
+	// keeps applying at the top. A NESTED collection's terminal run is
+	// unaffected — it still ends on the collection that encloses it.
+	if (documentCommentAfter === undefined && contents !== null && contents.comment !== undefined) {
+		// BLOCK style only: a flow collection's terminal comment sits INSIDE its
+		// brackets, so it has nowhere to escape to and stays on the collection.
+		if ((contents instanceof YamlMap || contents instanceof YamlSeq) && contents.style !== "flow") {
+			documentCommentAfter = contents.comment;
+			contents = stripOwnComment(contents);
+		}
+	}
+
+	// Where a leading header block lands. A `---` between the comment and the
+	// content is a boundary:
+	// - ahead of the marker, the comment is the DOCUMENT's `commentBefore`;
+	// - after the marker, it leads the ROOT NODE;
+	// - with no marker at all it is simply the first thing in the document's
+	//   item stream, so it forward-attributes to the first ENTRY exactly as any
+	//   other own-line comment would.
+	let headerForDocument: string | undefined;
+	let decorated = contents;
+	// Ahead of the marker: the document's own header.
+	if (documentComment !== undefined) {
+		if (hasDocStart || contents === null) {
+			headerForDocument = documentComment;
+		} else {
+			// No marker to separate it from the item stream, so it is simply the
+			// first own-line comment there and forward-attributes to the first entry.
+			decorated = attachHeaderToFirstEntry(contents, documentComment);
+		}
+	}
+	// After the marker: leads the root node.
+	if (afterMarkerComment !== undefined && decorated !== null) {
+		decorated = withCommentFields(decorated, { commentBefore: afterMarkerComment });
+	} else if (afterMarkerComment !== undefined) {
+		// No content node for it to lead. It still has to go somewhere, so it
+		// joins the document's own header rather than being discarded — with a
+		// pre-marker header present, taking only one of the two dropped `# b`
+		// from `# a\n---\n# b\n` outright.
+		headerForDocument =
+			headerForDocument === undefined ? afterMarkerComment : `${headerForDocument}\n${afterMarkerComment}`;
+	}
+
 	return {
-		contents,
+		contents: decorated,
 		errors: [...state.errors],
 		warnings: [...state.warnings],
 		directives,
 		hasDocumentStart: hasDocStart,
 		hasDocumentEnd: hasDocEnd,
 		hasDocumentStartTab: hasDocStartTab,
-		...(documentComment !== undefined ? { comment: documentComment } : {}),
-		...(documentCommentAfter !== undefined ? { commentAfter: documentCommentAfter } : {}),
+		...(headerForDocument !== undefined ? { commentBefore: headerForDocument } : {}),
+		...(documentCommentAfter !== undefined ? { comment: documentCommentAfter } : {}),
 	};
 }
 
@@ -926,7 +1006,6 @@ function decorateSourceMultiline(node: YamlNode | null, text: string): YamlNode 
 				new YamlPair({
 					key: decorateSourceMultiline(pair.key, text) ?? pair.key,
 					value: pair.value === null ? null : decorateSourceMultiline(pair.value, text),
-					...commentProps(pair),
 				}),
 		);
 		const multiline = isSourceMultiline(text, node.offset, node.length);
@@ -966,8 +1045,8 @@ function decorateDocumentSourceMultiline(doc: RawYamlDocument, text: string): Ra
 		errors: doc.errors,
 		warnings: doc.warnings,
 		directives: doc.directives,
+		...(doc.commentBefore !== undefined ? { commentBefore: doc.commentBefore } : {}),
 		...(doc.comment !== undefined ? { comment: doc.comment } : {}),
-		...(doc.commentAfter !== undefined ? { commentAfter: doc.commentAfter } : {}),
 		hasDocumentStart: doc.hasDocumentStart,
 		hasDocumentEnd: doc.hasDocumentEnd,
 		hasDocumentStartTab: doc.hasDocumentStartTab,
@@ -1054,4 +1133,65 @@ export function composeAllDocuments(
 	}
 
 	return { documents, streamErrors: crossDocState.errors };
+}
+
+/**
+ * Attach a marker-less document header to the FIRST entry of the content — the
+ * first pair's key for a mapping, the first item for a sequence, the node
+ * itself for a scalar. Without a `---` boundary the header is just the first
+ * own-line comment in the document's item stream, so it forward-attributes
+ * like any other.
+ */
+function attachHeaderToFirstEntry(contents: YamlNode, header: string): YamlNode {
+	if (contents instanceof YamlMap && contents.items.length > 0) {
+		const first = contents.items[0] as YamlPair;
+		const items = [...contents.items];
+		items[0] = new YamlPair({ key: withCommentFields(first.key, { commentBefore: header }), value: first.value });
+		return new YamlMap({
+			items,
+			style: contents.style,
+			...(contents.tag !== undefined ? { tag: contents.tag } : {}),
+			...(contents.anchor !== undefined ? { anchor: contents.anchor } : {}),
+			...(contents.commentBefore !== undefined ? { commentBefore: contents.commentBefore } : {}),
+			...(contents.comment !== undefined ? { comment: contents.comment } : {}),
+			...(contents.spaceBefore !== undefined ? { spaceBefore: contents.spaceBefore } : {}),
+			...(contents.sourceMultiline !== undefined ? { sourceMultiline: contents.sourceMultiline } : {}),
+			offset: contents.offset,
+			length: contents.length,
+		});
+	}
+	if (contents instanceof YamlSeq && contents.items.length > 0) {
+		const items = [...contents.items];
+		items[0] = withCommentFields(items[0] as YamlNode, { commentBefore: header });
+		return new YamlSeq({
+			items,
+			style: contents.style,
+			...(contents.tag !== undefined ? { tag: contents.tag } : {}),
+			...(contents.anchor !== undefined ? { anchor: contents.anchor } : {}),
+			...(contents.commentBefore !== undefined ? { commentBefore: contents.commentBefore } : {}),
+			...(contents.comment !== undefined ? { comment: contents.comment } : {}),
+			...(contents.spaceBefore !== undefined ? { spaceBefore: contents.spaceBefore } : {}),
+			...(contents.sourceMultiline !== undefined ? { sourceMultiline: contents.sourceMultiline } : {}),
+			offset: contents.offset,
+			length: contents.length,
+		});
+	}
+	return withCommentFields(contents, { commentBefore: header });
+}
+
+/** Rebuild a collection without its own trailing `comment`. */
+function stripOwnComment(node: YamlMap | YamlSeq): YamlNode {
+	const shared = {
+		style: node.style,
+		...(node.tag !== undefined ? { tag: node.tag } : {}),
+		...(node.anchor !== undefined ? { anchor: node.anchor } : {}),
+		...(node.commentBefore !== undefined ? { commentBefore: node.commentBefore } : {}),
+		...(node.spaceBefore !== undefined ? { spaceBefore: node.spaceBefore } : {}),
+		...(node.sourceMultiline !== undefined ? { sourceMultiline: node.sourceMultiline } : {}),
+		offset: node.offset,
+		length: node.length,
+	};
+	return node instanceof YamlMap
+		? new YamlMap({ items: node.items, ...shared })
+		: new YamlSeq({ items: node.items, ...shared });
 }
