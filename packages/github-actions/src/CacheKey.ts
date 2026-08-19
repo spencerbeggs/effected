@@ -320,12 +320,17 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 		if (ordered.length === 0) {
 			return Option.none<string>();
 		}
+		const digests = yield* Effect.all(
+			ordered.map((path) =>
+				fs.readFile(path).pipe(
+					Effect.mapError((cause) => new CacheKeyError({ reason: "readFailed", path, cause })),
+					Effect.map((bytes) => createHash("sha256").update(bytes).digest()),
+				),
+			),
+		);
 		const accumulator = createHash("sha256");
-		for (const path of ordered) {
-			const bytes = yield* fs
-				.readFile(path)
-				.pipe(Effect.mapError((cause) => new CacheKeyError({ reason: "readFailed", path, cause })));
-			accumulator.update(createHash("sha256").update(bytes).digest());
+		for (const digest of digests) {
+			accumulator.update(digest);
 		}
 		return Option.some(accumulator.digest("hex"));
 	});
