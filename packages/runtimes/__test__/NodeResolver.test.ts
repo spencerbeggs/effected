@@ -228,4 +228,55 @@ describe("NodeResolver", () => {
 			assert.strictEqual(error.runtime, "node");
 		}),
 	);
+
+	it.live("fetches the node index and schedule with real overlap", () =>
+		Effect.gen(function* () {
+			let inFlight = 0;
+			let maxInFlight = 0;
+			const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+			const delayedNetwork = Layer.provide(
+				FetchHttpClient.layer,
+				Layer.succeed(FetchHttpClient.Fetch)(async (input) => {
+					inFlight += 1;
+					maxInFlight = Math.max(maxInFlight, inFlight);
+					try {
+						await sleep(25);
+						const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+						if (url.includes("nodejs.org/dist/index.json")) {
+							return new Response(JSON.stringify([{ version: "v20.12.0", date: "2024-04-10", npm: "10.5.0" }]), {
+								status: 200,
+								headers: { "content-type": "application/json" },
+							});
+						}
+						return new Response(
+							JSON.stringify({
+								"20": {
+									start: "2023-04-18",
+									lts: "2023-10-24",
+									maintenance: "2024-10-22",
+									end: "2026-04-30",
+								},
+							}),
+							{
+								status: 200,
+								headers: { "content-type": "application/json" },
+							},
+						);
+					} finally {
+						inFlight -= 1;
+					}
+				}),
+			);
+
+			const result = yield* Effect.gen(function* () {
+				const resolver = yield* NodeResolver;
+				return yield* resolver.resolve({ range: ">=20", phases: ["maintenance-lts"], date: NOW });
+			}).pipe(Effect.provide(NodeResolver.layerFresh.pipe(Layer.provide(delayedNetwork))));
+
+			assert.strictEqual(result.source, "api");
+			assert.isAbove(result.versions.length, 0);
+			assert.isAbove(maxInFlight, 1, "independent feed requests must overlap");
+		}),
+	);
 });
