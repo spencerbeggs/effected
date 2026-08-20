@@ -1,6 +1,6 @@
 ---
 name: effect-v4-testing
-description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail. Covers the sharp edges (no it.scoped, it.prop throws on a Schema, vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `0 tests passed` run that exits 0, TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch. Also covers structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, and the reporter fields — unhandledErrors, a stray process.exitCode — that make a green suite lie.
+description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail — including the discriminating input that is wrong in exactly one way, per-clause and per-path mutation, and the positive control that must expect a non-zero answer before any "nothing found" is believed. Covers the sharp edges (no it.scoped, it.prop throws on a Schema, vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `0 tests passed` run that exits 0, TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch. Also covers structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, and the reporter fields — unhandledErrors, a stray process.exitCode — that make a green suite lie.
 ---
 
 # Effect v4 testing with `@effect/vitest`
@@ -511,11 +511,36 @@ that it is empty.
 
 - **The assertion must DISCRIMINATE** — confirm the test fails *for the right
   reason*, not merely that it fails.
+- **The failure to look for is a rule with no input that could falsify it** —
+  not a missing test. Ask of every rule: *what input would make this rule fire
+  alone, and does it exist?* That input is one that is **wrong in exactly one
+  way**; if you cannot name it, the rule is decoration however green the suite.
+  A rule can be unfalsifiable because a sibling clause always catches the
+  fixture first, because every near-miss also misses a second requirement,
+  because only one of the rule's **two code paths** ever exercises it, or
+  because a depth is never reached. So mutate **per clause and per path**:
+  **two code paths implementing one rule are two things to pin, not one**, and
+  a test covering *a* path through a rule does not pin the rule.
+- **One assertion, one rule.** A single assertion covering two rules goes red
+  for either and proves neither — split it.
+- **A passing test is evidence about the path it takes, not about the rule it
+  appears to test.**
+- **Before acting on "nothing found", run a control that FIRES.** An absence
+  result and a broken query are indistinguishable at the call site — a
+  surviving mutant, a zero-match grep and a projection that dropped the field
+  all look like a true negative. Prove the query matches something you know is
+  there first, and **make the control's expected answer non-zero**: a control
+  returning zero when zero is correct looks exactly like success on a broken
+  query. And **run the control against a KNOWN-GOOD input, never the suspect
+  one** — a control that varies more than the thing under test confirms whatever
+  you already believe (a `grep -c ""` run against the one pathological file
+  "proved" `grep` itself was broken; it was not).
 - **Read the failure TEXT; never infer a catch from a missing pass line.** A
   mutant is verified only once you have seen the assertion message and it names
-  the property you expected to break. Empty output means the tooling is
-  suspect — a grep too narrow to match the failure, a filter that dropped it —
-  not that the mutant died.
+  the property you expected to break. Empty output is a **failed experiment**,
+  not a dead mutant and not a broken toolchain: re-run unfiltered, and scope the
+  suspicion to the input — the filter, the invocation, the fixture — before the
+  tool.
 - **Never verify a change by grepping for the text you just wrote.** Grep finds
   the declaration; only a mutation finds the emit site.
 - **A semantics-preserving perf fix cannot be pinned** — report it as
@@ -575,6 +600,25 @@ stale-dist signature.
 
 - Tests live in each package's `__test__/` directory (`*.test.ts`), never
   co-located in `src/`.
+- **A probe writes no file.** A temporary probe left under `__test__/` is
+  collected by the ordinary suite and inflates the `Tests:` count, and that
+  inflation is indistinguishable from added coverage — which is exactly what a
+  count-delta review ("+5 new, −1 removed, no assertion changed") depends on.
+  **Do not fix this with an exclude pattern**: an exclude catches only names
+  someone predicted and fails silently when it misses. Instead run the probe as
+  a script that never touches disk, **from inside the package**:
+
+  ```bash
+  cd packages/<name> && node --input-type=module -e '<script>'
+  ```
+
+  `-e` writes nothing. Running from inside the package is what makes bare
+  specifiers (`effect`, a workspace sibling) resolve: under pnpm's store layout
+  the **importer's** location decides resolution, so the same script run from
+  the repo root fails with `ERR_MODULE_NOT_FOUND`. If a probe genuinely needs a
+  file, put it in the repo's sanctioned scratch venue (in this monorepo,
+  `scratchpad/`), never in `__test__/`. The zero-collection warning from
+  `@vitest-agent/plugin` is a backstop, not the mechanism.
 - Construct domain values via the schema's `X.make`, never `new`.
 - **In this monorepo, assert with `assert.*` from `@effect/vitest`, never
   `expect`** — the root `CLAUDE.md` mandates it and every test file here obeys.
