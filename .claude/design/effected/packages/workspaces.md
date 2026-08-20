@@ -267,6 +267,18 @@ itself. It carries four fields — `supported`, `unsatisfied`,
 parents }`, where `found` is `null` when nothing resolved at all and `parents`
 is the `{ name, version }` chain from the importer to the declaring package.
 
+**A row is one per `(importer, peer, declaring instance)` — never one per parent
+chain**, and that is pnpm's own collapse rather than a convenience. Measured on
+the `diamond` fixture, where a single importer reaches
+`use-sync-external-store@1.2.2` through both `react-redux` and `zustand` (an
+override pins the two parents onto one instance; without it pnpm resolves two
+versions and there is no diamond to observe): `pnpm peers check --json` emits
+that instance's unsatisfied `react` **once**, carrying the chain it reached
+first and saying nothing about the other. So **`parents` is *a* route to the
+declaring package, not the set of routes**, and a consumer must not read it as
+exhaustive. The emit-time key is what holds that invariant even if the walk is
+ever replaced by a per-chain one.
+
 The shape is the design. **A bare array would make every limitation below
 indistinguishable from a clean workspace**, so each one occupies a field of its
 own and a consumer has to walk past it deliberately.
@@ -391,12 +403,29 @@ reasons, closed by measurement rather than left open for future additions:
   positive, declining it silently is a false negative, and only doing both
   halves is honest.
 
-Rule application replicates two pnpm behaviours exactly, because approximating
-either produces a different suppression set than pnpm's and every row in the
-difference is a false positive: **the parent version in a rule key is ignored**
-(`react-dom@18.0.0>react` suppresses an 18.3.1 instance), and **both key
-spellings** work — versioned as `pnpm:export` materializes them, unversioned as
-a plugin injects them.
+Rule application replicates pnpm's key semantics exactly, because approximating
+them produces a different suppression set than pnpm's and every row in the
+difference is a false positive. **The parent version in a rule key is ignored**
+(`react-dom@18.0.0>react` suppresses an 18.3.1 instance), and there are
+**three key spellings, not two**:
+
+| Key | What it names |
+| --- | --- |
+| `react-dom@18.3.1>react` | a parent with a version — how `pnpm:export` materializes the block |
+| `react-dom>react` | a parent without one — how a config-dependency plugin injects it |
+| `react` | **no parent at all** — pnpm applies it to *every* parent declaring that peer |
+
+The bare spelling was skipped outright by a `separator <= 0` guard until it was
+measured, so the kit reported rows pnpm suppresses **while still reporting the
+result as verified** — the worst combination available, since the fail-closed
+marker would at least have said the policy was not applied. Suppression stays
+**range-driven under every spelling**: a bare `react: "17"` suppresses a
+`react@17.0.2` finding and a bare `react: "16"` does not. That second half is a
+committed oracle rather than an inference, and without it "pnpm suppressed it"
+would be indistinguishable from "a bare key suppresses everything". A key
+carrying a `>` with an empty parent (`">react"`) is malformed and suppresses
+nothing — it must never degrade into the bare case, which would silently widen
+suppression past what pnpm does.
 
 A peer satisfied by a **workspace package is accepted without a version check**.
 That reads like a hole and is not: pnpm records no version for an importer, so a
@@ -448,6 +477,26 @@ hooks**, and says nothing either way about workspaces with them — a
 disagreement has been observed on one that uses them, and these fixtures can
 only report that it is not reproduced here. Stating the boundary matters
 because agreement across several cases reads like broader coverage than it is.
+
+**An oracle is per verdict, not per lockfile, and the control run is half of
+it.** `barerule/` carries two verdicts over one byte-identical lockfile, because
+there the interesting variable is the *rule* rather than the tree: pnpm calls
+the workspace clean under a bare `react: "17"` and reports the row under a bare
+`react: "16"`. Only the pair establishes anything — a single clean run is
+equally consistent with "bare keys suppress unconditionally", which is a wrong
+rule that would hide real findings. **A fixture whose oracle cannot fail proves
+nothing**, so a suppression fixture owes a run that fires alongside the run that
+does not.
+
+**Both of the semantics above were settled by the committed oracle against a
+reviewer's proposal, and in both cases the proposal was wrong** — one held that
+bare keys need no handling, the other that a diamond should yield a row per
+parent chain. Neither is decidable by reading pnpm's docs or reasoning about
+what would be tidy; both took one generated workspace and one `pnpm peers check
+--json`. That is what the oracle is *for*, and it is worth recording as the
+working method rather than as two entries in a changelog: in this module a
+disagreement about pnpm's behaviour is a request for a fixture, never an
+argument to win.
 
 Where the two differ, the difference is investigated and recorded rather than
 tuned away: a disagreement may be pnpm seeing something the model cannot (or the
@@ -572,7 +621,8 @@ Mutation-proven edges worth preserving if the suites are rewritten:
 - **Release-age assembly**, including a malformed inline value hard-failing and a malformed hook value being tolerantly dropped.
 - **Peer-rule replay through the seam**, against a fixture pnpmfile that injects `peerDependencyRules`, pinning that the seeded workspace-file block survives a hook that does not touch it.
 - **The peer check's two fail-closed states**, which are the edges most likely to be optimized away: omitting the rules option reports `peerRulesNotApplied` while supplying `NoPeerDependencyRules` does not — the assertion is the **key's presence**, not its contents — and a peer whose edge the model could not name is declined *and* reported as `unresolvedEdge`, never one without the other.
-- **Rule-key semantics**: a wrong parent *version* in a rule key still suppresses (pnpm ignores it), the unversioned spelling suppresses too, and a rule for a different parent or a different version leaves the row alone.
+- **Rule-key semantics**, all three spellings: a wrong parent *version* in a rule key still suppresses (pnpm ignores it), the unversioned spelling suppresses too, and a **bare** key suppresses against every parent — each against its own oracle, with the negative cases that discriminate them (a different parent, a different version, a bare key whose range does not cover the found version, a bare key naming a different peer, and the malformed `">react"` that must not degrade into the bare case).
+- **The diamond collapse**, asserted twice deliberately: against the oracle, and directly on the row count with the second chain shown to be reachable — the oracle comparison alone would still pass if both sides grew the second chain.
 - **The ambiguous-join skip and its disambiguation**, driven by a fixture holding two peer variants of one `name@version` — the false negative that shape once hid.
 - **Format agnosticism**, asserting npm and bun answer identically through one code path, and yarn returns `supported: false` rather than an empty pass.
 - **TTL-cache discipline**: a failed at-ref init is retried, not memoized.
