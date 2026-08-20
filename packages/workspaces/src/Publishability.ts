@@ -48,7 +48,16 @@ export class PublishTarget extends Schema.Class<PublishTarget>("PublishTarget")(
  * @public
  */
 export interface PublishabilityDetectorShape {
-	/** The publish targets for a package; empty means it does not publish. */
+	/**
+	 * The publish targets for a package; empty means it does not publish.
+	 *
+	 * @remarks
+	 * `VersioningStrategy.detect` probes a whole workspace by invoking this
+	 * concurrently — up to ten packages in flight at once, in no guaranteed
+	 * order. An overriding implementation backed by shared mutable state or a
+	 * rate-limited client must tolerate that interleaving itself; the caller
+	 * does not serialize on its behalf.
+	 */
 	readonly detect: (pkg: WorkspacePackage) => Effect.Effect<ReadonlyArray<PublishTarget>>;
 }
 
