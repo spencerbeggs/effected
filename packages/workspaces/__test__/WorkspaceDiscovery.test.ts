@@ -179,6 +179,11 @@ const withNodeModules: Tree = {
 	"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),
 	"/repo/packages/alpha/package.json": manifest("@x/alpha"),
 	"/repo/packages/private-thing/package.json": manifest("@x/private"),
+	// A package NESTED under an excluded directory. `!packages/private-*` rejects
+	// `packages/private-thing` and nothing else — a `*` does not cross a segment
+	// boundary — so `packages/**` still selects this one. It exists to pin that
+	// the exclusion gate stays at ACCEPTANCE and never becomes a descent gate.
+	"/repo/packages/private-thing/nested/package.json": manifest("@x/nested"),
 	"/repo/packages/alpha/node_modules/evil/package.json": manifest("evil"),
 	"/repo/packages/alpha/.git/hooks/package.json": manifest("git-junk"),
 };
@@ -207,6 +212,20 @@ describe("WorkspaceDiscovery — pruning and exclusion", () => {
 				const packages = yield* discovery.listPackages();
 				assert.isTrue(packages.some((pkg) => pkg.name === "@x/alpha"));
 				assert.isFalse(packages.some((pkg) => pkg.name === "@x/private"));
+			}),
+		);
+
+		it.effect("an excluded directory is still DESCENDED — a package under it stays discovered", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const packages = yield* discovery.listPackages();
+				// Excluding `packages/private-*` says nothing about what lives BELOW
+				// it. Turning the acceptance gate into a descent gate — skipping
+				// `traversal.push` for an excluded directory — would drop this member
+				// with no diagnostic, which is the same silent-degradation shape as
+				// the trailing-`/**` bug the enumerator exists to fix.
+				assert.isFalse(packages.some((pkg) => pkg.name === "@x/private"));
+				assert.isTrue(packages.some((pkg) => pkg.name === "@x/nested"));
 			}),
 		);
 	});

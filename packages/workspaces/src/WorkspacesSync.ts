@@ -362,10 +362,16 @@ export const getWorkspacePackagesSync = (
 	const compiled = Effect.runSyncExit(GlobSet.compile(patterns));
 	if (Exit.isFailure(compiled)) return [];
 	const globs = compiled.value;
+	const excludes = globs.excludes;
+	const isExcluded =
+		excludes.length === 0
+			? (_: string): boolean => false
+			: (relative: string): boolean => excludes.some((exclude) => exclude.matches(relative));
 
 	const included = new Map<string, string>();
 
 	for (const literal of globs.literals) {
+		if (isExcluded(literal)) continue;
 		const absolute = path.join(root, literal);
 		if (isPackage(options, absolute)) included.set(literal, absolute);
 	}
@@ -408,7 +414,9 @@ export const getWorkspacePackagesSync = (
 					break;
 				}
 
-				if (wildcard.matches(relative) && isPackage(options, absolute)) included.set(relative, absolute);
+				if (wildcard.matches(relative) && !isExcluded(relative) && isPackage(options, absolute)) {
+					included.set(relative, absolute);
+				}
 				if (!wildcard.crossesSegments) continue;
 
 				traversal.push(current, relative, absolute);
@@ -419,7 +427,6 @@ export const getWorkspacePackagesSync = (
 	const members: Array<WorkspacePackage> = [];
 	for (const [relativePath, absolute] of [...included.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
 		if (relativePath === "." || absolute === root) continue;
-		if (globs.excludes.some((exclude: GlobPattern) => exclude.matches(relativePath))) continue;
 		const pkg = readPackageSync(options, root, absolute, relativePath);
 		if (pkg !== null) members.push(pkg);
 	}

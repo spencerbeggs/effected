@@ -73,6 +73,12 @@ export const enumerate = (
 				Effect.orElseSucceed(() => false),
 			);
 
+		const excludes = globs.excludes;
+		const isExcluded =
+			excludes.length === 0
+				? (_: string): boolean => false
+				: (relative: string): boolean => excludes.some((exclude) => exclude.matches(relative));
+
 		const included = new Map<string, string>();
 
 		/** A shared-traversal stop, materialized as this module's failure record. */
@@ -81,6 +87,7 @@ export const enumerate = (
 
 		// Literals: an exact lookup, no directory read at all.
 		for (const literal of globs.literals) {
+			if (isExcluded(literal)) continue;
 			const absolute = path.join(root, literal);
 			if (yield* isPackage(absolute)) included.set(literal, absolute);
 		}
@@ -147,7 +154,9 @@ export const enumerate = (
 						return yield* Effect.fail(failureOf(traversal.depthStop(), wildcard.source));
 					}
 
-					if (wildcard.matches(relative) && (yield* isPackage(absolute))) included.set(relative, absolute);
+					if (wildcard.matches(relative) && !isExcluded(relative) && (yield* isPackage(absolute))) {
+						included.set(relative, absolute);
+					}
 
 					// Only a segment-crossing pattern earns a descent. `packages/*`
 					// reads one level, exactly as v3 did — correctly, for that pattern.
@@ -160,7 +169,6 @@ export const enumerate = (
 
 		const results: Array<EnumeratedDirectory> = [];
 		for (const [relativePath, absolute] of included) {
-			if (globs.excludes.some((exclude) => exclude.matches(relativePath))) continue;
 			results.push({ relativePath, path: absolute });
 		}
 		results.sort((a, b) => (a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0));
