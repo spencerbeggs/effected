@@ -39,7 +39,63 @@ interface HookConfig {
 	catalogs: Record<string, Record<string, string>>;
 	minimumReleaseAge: number | undefined;
 	minimumReleaseAgeExclude: readonly string[] | undefined;
+	peerDependencyRules: PeerDependencyRules | undefined;
 }
+
+/**
+ * pnpm's `peerDependencyRules` block — the suppression policy pnpm applies
+ * **after** computing peer violations, in pnpm's own shape.
+ *
+ * @remarks
+ * The shape is pnpm's rather than ours because that is what comes back off the
+ * threaded config: measured against `@savvy-web/pnpm-plugin-silk@0.27.0`, a
+ * replayed hook returns `{ allowedVersions, ignoreMissing, allowAny }` intact,
+ * needing no reshaping.
+ *
+ * Two keys are **carried but not yet consumed**. `ignoreMissing` and
+ * `allowAny` are separate suppression axes that have not been measured, and an
+ * unmeasured suppression is precisely what produced the false positives this
+ * seam exists to remove — so they travel through the seam and no kit code acts
+ * on them. Only `allowedVersions` is consumed today.
+ *
+ * `allowedVersions` keys come in two spellings in the wild, and both must be
+ * handled: parent-versioned (`"@effect/ai-anthropic@4.0.0-rc.109>effect"`, as
+ * `pnpm:export` materializes them into `pnpm-workspace.yaml`) and unversioned
+ * (`"@effect/vitest>vitest"`, as a config-dependency plugin injects them).
+ *
+ * @public
+ */
+export interface PeerDependencyRules {
+	/** `parent>peer` → the peer version or range the rule permits. */
+	readonly allowedVersions: Readonly<Record<string, string>>;
+	/** Peer names whose absence pnpm does not report. Carried, not consumed. */
+	readonly ignoreMissing: ReadonlyArray<string>;
+	/** Peer names for which any version is accepted. Carried, not consumed. */
+	readonly allowAny: ReadonlyArray<string>;
+}
+
+/**
+ * The empty {@link PeerDependencyRules}: every axis present and empty.
+ *
+ * @remarks
+ * Exported so that "I assert this workspace's rules are empty" is **one token**
+ * rather than three hand-written empty axes. That matters where the distinction
+ * is load-bearing — supplying rules asserts they were looked up, while omitting
+ * them asserts nothing — and a caller spelling the object out by hand will
+ * eventually fill two of the three axes and mean the third.
+ *
+ * Frozen, since it is shared.
+ *
+ * @public
+ */
+export const NoPeerDependencyRules: PeerDependencyRules = Object.freeze({
+	allowedVersions: Object.freeze({}),
+	ignoreMissing: Object.freeze([]),
+	allowAny: Object.freeze([]),
+});
+
+/** Internal alias, kept short at the many call sites in this module. */
+const NO_PEER_RULES: PeerDependencyRules = NoPeerDependencyRules;
 
 /**
  * The result of replaying a workspace's `configDependencies` hooks: the catalogs
@@ -60,6 +116,24 @@ export interface HookInjection {
 	readonly catalogs: Readonly<Record<string, Readonly<Record<string, string>>>>;
 	/** The release-age gate contribution the replayed hooks leave on the config. */
 	readonly releaseAge: PartialReleaseAgeGate;
+	/**
+	 * The **effective** peer-dependency rules: the seeded workspace-file rules
+	 * with every replayed hook's contribution threaded over them.
+	 *
+	 * @remarks
+	 * Effective rather than hook-only because the rules are **seeded** into the
+	 * threaded config and the hooks merge onto them, exactly as pnpm seeds its
+	 * own config and takes back what the hooks return. That is deliberate: a
+	 * kit-owned merge function would be a second implementation of a rule this
+	 * seam already enforces, and the two would drift the first time pnpm changed
+	 * its threading.
+	 *
+	 * Measured caveat, and **not a bug to fix**: this repo's plugin *merges*
+	 * onto the seeded rules; another plugin could overwrite them. Under seeding
+	 * that is pnpm's own behaviour reproduced — a hook that overwrites
+	 * overwrites for pnpm too — so do not "repair" it into a merger.
+	 */
+	readonly peerDependencyRules: PeerDependencyRules;
 }
 
 /**
@@ -98,11 +172,16 @@ export interface ConfigDependencyHooksShape {
 	 * @param configDependencies - The `configDependencies` map (name →
 	 *   version+integrity) declared in `pnpm-workspace.yaml`.
 	 * @param seed - The inline catalogs, as `catalog name → dependency → range`.
+	 * @param rules - The workspace file's `peerDependencyRules`, seeded into the
+	 *   threaded config so hooks merge onto them rather than replacing them.
+	 *   Omitted means "the workspace file declares none", which is different
+	 *   from "nobody looked" — the caller owns that distinction.
 	 */
 	readonly inject: (
 		root: string,
 		configDependencies: Readonly<Record<string, string>>,
 		seed: Readonly<Record<string, Readonly<Record<string, string>>>>,
+		rules?: PeerDependencyRules,
 	) => Effect.Effect<HookInjection, CatalogAssemblyError>;
 }
 
@@ -138,15 +217,26 @@ const moduleNotFoundUrl = (cause: unknown): string | undefined =>
 const hasTraversalSegment = (name: string): boolean => name.split(/[/\\]/).includes("..");
 
 /** Turn the seed record into the pnpm hook config, with the default catalog split out under `catalog`. */
-const seedToConfig = (seed: Readonly<Record<string, Readonly<Record<string, string>>>>): HookConfig => {
+const seedToConfig = (
+	seed: Readonly<Record<string, Readonly<Record<string, string>>>>,
+	rules: PeerDependencyRules | undefined,
+): HookConfig => {
 	const catalogs: Record<string, Record<string, string>> = {};
 	let catalog: Record<string, string> = {};
 	for (const [name, entries] of Object.entries(seed)) {
 		if (name === "default") catalog = { ...entries };
 		else catalogs[name] = { ...entries };
 	}
-	// The seed carries no release-age keys — only a replayed hook sets them.
-	return { catalog, catalogs, minimumReleaseAge: undefined, minimumReleaseAgeExclude: undefined };
+	// The seed carries no release-age keys — only a replayed hook sets them. It
+	// DOES carry the peer-dependency rules, because those have a workspace-file
+	// source that hooks merge onto rather than replace.
+	return {
+		catalog,
+		catalogs,
+		minimumReleaseAge: undefined,
+		minimumReleaseAgeExclude: undefined,
+		peerDependencyRules: rules,
+	};
 };
 
 /** A finite number if `value` is one, else the prior threaded value — a garbage age is dropped, not fatal. */
@@ -176,8 +266,34 @@ const configOf = (value: unknown, fallback: HookConfig): HookConfig => {
 		catalogs: isObject(value.catalogs) ? (value.catalogs as Record<string, Record<string, string>>) : fallback.catalogs,
 		minimumReleaseAge: finiteNumberOr(value.minimumReleaseAge, fallback.minimumReleaseAge),
 		minimumReleaseAgeExclude: stringArrayOr(value.minimumReleaseAgeExclude, fallback.minimumReleaseAgeExclude),
+		peerDependencyRules: peerRulesOr(value.peerDependencyRules, fallback.peerDependencyRules),
 	};
 };
+
+/**
+ * A peer-rules block if `value` is one, else the prior threaded value — a
+ * malformed block is dropped, not fatal, matching the other slices.
+ *
+ * Each axis is normalized independently: a hook that rewrites `allowedVersions`
+ * and leaves `ignoreMissing` alone must not blank the latter.
+ */
+const peerRulesOr = (value: unknown, fallback: PeerDependencyRules | undefined): PeerDependencyRules | undefined => {
+	if (!isObject(value)) return fallback;
+	const allowed = isObject(value.allowedVersions)
+		? (value.allowedVersions as Record<string, string>)
+		: fallback?.allowedVersions;
+	const ignoreMissing = stringArrayOr(value.ignoreMissing, fallback?.ignoreMissing);
+	const allowAny = stringArrayOr(value.allowAny, fallback?.allowAny);
+	if (allowed === undefined && ignoreMissing === undefined && allowAny === undefined) return fallback;
+	return {
+		allowedVersions: allowed ?? {},
+		ignoreMissing: ignoreMissing ?? [],
+		allowAny: allowAny ?? [],
+	};
+};
+
+/** Project the threaded config's rules into the slice, defaulting every axis to empty. */
+const peerRulesOf = (config: HookConfig): PeerDependencyRules => config.peerDependencyRules ?? NO_PEER_RULES;
 
 /**
  * Project the threaded config's release-age keys into a partial gate
@@ -238,13 +354,21 @@ const updateConfigOf = (mod: unknown): UpdateConfig | undefined => {
  * noise on stdout.
  */
 const REPLAY_SCRIPT = `
-const [root, seedJson, ...names] = process.argv.slice(1);
+const [root, seedJson, rulesJson, ...names] = process.argv.slice(1);
 const { pathToFileURL } = await import("node:url");
 const { join } = await import("node:path");
 const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 const finiteNumberOr = (value, fallback) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
 const stringArrayOr = (value, fallback) =>
 	Array.isArray(value) && value.every((entry) => typeof entry === "string") ? value : fallback;
+const peerRulesOr = (value, fallback) => {
+	if (!isObject(value)) return fallback;
+	const allowed = isObject(value.allowedVersions) ? value.allowedVersions : fallback && fallback.allowedVersions;
+	const ignoreMissing = stringArrayOr(value.ignoreMissing, fallback && fallback.ignoreMissing);
+	const allowAny = stringArrayOr(value.allowAny, fallback && fallback.allowAny);
+	if (allowed === undefined && ignoreMissing === undefined && allowAny === undefined) return fallback;
+	return { allowedVersions: allowed || {}, ignoreMissing: ignoreMissing || [], allowAny: allowAny || [] };
+};
 const configOf = (value, fallback) =>
 	isObject(value)
 		? {
@@ -252,6 +376,7 @@ const configOf = (value, fallback) =>
 				catalogs: isObject(value.catalogs) ? value.catalogs : fallback.catalogs,
 				minimumReleaseAge: finiteNumberOr(value.minimumReleaseAge, fallback.minimumReleaseAge),
 				minimumReleaseAgeExclude: stringArrayOr(value.minimumReleaseAgeExclude, fallback.minimumReleaseAgeExclude),
+				peerDependencyRules: peerRulesOr(value.peerDependencyRules, fallback.peerDependencyRules),
 			}
 		: fallback;
 const failure = (name, cause) => ({
@@ -267,7 +392,13 @@ const replay = async () => {
 		if (name === "default") catalog = { ...entries };
 		else catalogs[name] = { ...entries };
 	}
-	let config = { catalog, catalogs, minimumReleaseAge: undefined, minimumReleaseAgeExclude: undefined };
+	let config = {
+		catalog,
+		catalogs,
+		minimumReleaseAge: undefined,
+		minimumReleaseAgeExclude: undefined,
+		peerDependencyRules: JSON.parse(rulesJson),
+	};
 	for (const name of names) {
 		let loaded;
 		let found = false;
@@ -375,7 +506,11 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * the default catalog path provably executes no config-dependency code.
 	 */
 	static readonly layerNoop: Layer.Layer<ConfigDependencyHooks> = Layer.succeed(ConfigDependencyHooks, {
-		inject: (_root, _configDependencies, seed) => Effect.succeed({ catalogs: seed, releaseAge: {} }),
+		inject: (_root, _configDependencies, seed, rules) =>
+			// The seed passes through untouched on every slice, rules included: a
+			// no-op replay changes nothing, and returning empty rules here would be
+			// indistinguishable from a workspace that declares none.
+			Effect.succeed({ catalogs: seed, releaseAge: {}, peerDependencyRules: rules ?? NO_PEER_RULES }),
 	});
 
 	/**
@@ -395,12 +530,12 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * `WorkspaceCatalogs.layerWithConfigDependencies`.
 	 */
 	static readonly layerLive: Layer.Layer<ConfigDependencyHooks> = Layer.succeed(ConfigDependencyHooks, {
-		inject: (root, configDependencies, seed) =>
+		inject: (root, configDependencies, seed, rules) =>
 			Effect.gen(function* () {
 				const names = Object.keys(configDependencies);
-				if (names.length === 0) return { catalogs: seed, releaseAge: {} };
+				if (names.length === 0) return { catalogs: seed, releaseAge: {}, peerDependencyRules: rules ?? NO_PEER_RULES };
 
-				let config = seedToConfig(seed);
+				let config = seedToConfig(seed, rules);
 				for (const name of names) {
 					// Validate the name BEFORE building the path it feeds to `import()`: a
 					// `..` segment would escape `.pnpm-config`. Fails typed, on the same
@@ -465,7 +600,11 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 						catch: (cause) => new CatalogAssemblyError({ source: "hooks", path: name, cause }),
 					});
 				}
-				return { catalogs: configToEntries(config), releaseAge: releaseAgeOf(config) };
+				return {
+					catalogs: configToEntries(config),
+					releaseAge: releaseAgeOf(config),
+					peerDependencyRules: peerRulesOf(config),
+				};
 			}),
 	});
 
@@ -526,10 +665,11 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 			Effect.gen(function* () {
 				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 				return {
-					inject: (root, configDependencies, seed) =>
+					inject: (root, configDependencies, seed, rules) =>
 						Effect.gen(function* () {
 							const names = Object.keys(configDependencies);
-							if (names.length === 0) return { catalogs: seed, releaseAge: {} };
+							if (names.length === 0)
+								return { catalogs: seed, releaseAge: {}, peerDependencyRules: rules ?? NO_PEER_RULES };
 
 							// Validate every name BEFORE spawning: a `..` segment would escape
 							// `.pnpm-config` inside the child. Fails typed on the same
@@ -562,6 +702,11 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 								REPLAY_SCRIPT,
 								root,
 								JSON.stringify(seed),
+								// The rules seed rides the same argv channel as the catalog seed —
+								// never spliced into the program text, which must stay a static
+								// string (a bundler compiles an interpolated dynamic import into an
+								// unresolvable context module).
+								JSON.stringify(rules ?? NO_PEER_RULES),
 								...names,
 							]);
 							// The replay executes arbitrary config-dependency code; bound it, or a
@@ -590,8 +735,12 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 							// The child returned the raw threaded config slice; fold and normalize
 							// in the parent exactly as layerLive does, reading the slice tolerantly
 							// against the seed (a hook's returned data is never fatal).
-							const config = configOf(payload.config, seedToConfig(seed));
-							return { catalogs: configToEntries(config), releaseAge: releaseAgeOf(config) };
+							const config = configOf(payload.config, seedToConfig(seed, rules));
+							return {
+								catalogs: configToEntries(config),
+								releaseAge: releaseAgeOf(config),
+								peerDependencyRules: peerRulesOf(config),
+							};
 						}),
 				};
 			}),

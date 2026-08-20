@@ -7,10 +7,10 @@ import { LockfileIntegrity, WorkspaceManifest } from "../src/LockfileIntegrity.j
 import { ResolvedPackage } from "../src/ResolvedPackage.js";
 
 const workspace = (name: string, relativePath: string): ResolvedPackage =>
-	ResolvedPackage.make({ name, version: "1.0.0", isWorkspace: true, relativePath });
+	ResolvedPackage.make({ name, version: "1.0.0", instanceId: relativePath, isWorkspace: true, relativePath });
 
 const registry = (name: string, version: string): ResolvedPackage =>
-	ResolvedPackage.make({ name, version, isWorkspace: false });
+	ResolvedPackage.make({ name, version, instanceId: `${name}@${version}`, isWorkspace: false });
 
 const lockfileWith = (packages: ReadonlyArray<ResolvedPackage>): Lockfile =>
 	Lockfile.make({ format: "npm", lockfileVersion: "3", packages, workspaceDependencies: [] });
@@ -67,7 +67,12 @@ describe("LockfileIntegrity.compare", () => {
 	});
 
 	it("ignores workspace packages without a relativePath for presence checks", () => {
-		const pathless = ResolvedPackage.make({ name: "@acme/ghost", version: "1.0.0", isWorkspace: true });
+		const pathless = ResolvedPackage.make({
+			name: "@acme/ghost",
+			version: "1.0.0",
+			instanceId: "@acme/ghost",
+			isWorkspace: true,
+		});
 		const lockfile = lockfileWith([workspace("@acme/core", "packages/core"), pathless]);
 		const manifests = [WorkspaceManifest.make({ name: "@acme/core" })];
 

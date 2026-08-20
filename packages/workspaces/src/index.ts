@@ -38,6 +38,8 @@ export {
 	ConfigDependencyHooks,
 	type ConfigDependencyHooksShape,
 	type HookInjection,
+	NoPeerDependencyRules,
+	type PeerDependencyRules,
 } from "./ConfigDependencyHooks.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";
 export {
@@ -56,6 +58,13 @@ export {
 	PackageManagerEvidence,
 	PackageManagerName,
 } from "./PackageManagerName.js";
+export {
+	PeerCheck,
+	type PeerCheckOptions,
+	PeerParent,
+	UnsatisfiedPeer,
+	type UnverifiedReason,
+} from "./PeerCheck.js";
 export { PublishTarget, PublishabilityDetector, type PublishabilityDetectorShape } from "./Publishability.js";
 export {
 	ReleaseTag,

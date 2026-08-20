@@ -1,9 +1,13 @@
 /**
  * Pure lockfile parsing for all four package-manager formats — bun
- * (`bun.lock`), npm (`package-lock.json` v2/v3), pnpm (`pnpm-lock.yaml`)
+ * (`bun.lock`), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`)
  * and yarn Berry (`yarn.lock`) — normalized into one unified `Lockfile`
  * model, plus pure integrity checking of that model against workspace
  * manifests.
+ *
+ * Supported lockfile *format* versions are pnpm `lockfileVersion` 9+ and npm
+ * `lockfileVersion` 3+; older formats fail typed rather than parsing into a
+ * model that cannot answer resolution questions.
  *
  * Every entrypoint takes content as a string; this package performs no IO.
  *
@@ -29,4 +33,5 @@ export { LockfileImporter } from "./LockfileImporter.js";
 export { LockfileIntegrity, WorkspaceManifest } from "./LockfileIntegrity.js";
 export { type PnpmCatalogs, PnpmExtension } from "./PnpmExtension.js";
 export { ResolvedPackage } from "./ResolvedPackage.js";
+export { type UnsupportedLockfileVersion, isUnsupportedLockfileVersion } from "./UnsupportedLockfileVersion.js";
 export { WorkspaceDependency } from "./WorkspaceDependency.js";

@@ -192,9 +192,14 @@ describe("LockfileReader.makeTest — resolvedVersion derives from a supplied re
 		format: "pnpm",
 		lockfileVersion: "9.0",
 		packages: [
-			ResolvedPackage.make({ name: "left-pad", version: "1.0.0", isWorkspace: false }),
-			ResolvedPackage.make({ name: "left-pad", version: "2.0.0", isWorkspace: false }),
-			ResolvedPackage.make({ name: "effect", version: "4.0.0-beta.101", isWorkspace: false }),
+			ResolvedPackage.make({ name: "left-pad", version: "1.0.0", instanceId: "left-pad@1.0.0", isWorkspace: false }),
+			ResolvedPackage.make({ name: "left-pad", version: "2.0.0", instanceId: "left-pad@2.0.0", isWorkspace: false }),
+			ResolvedPackage.make({
+				name: "effect",
+				version: "4.0.0-beta.101",
+				instanceId: "effect@4.0.0-beta.101",
+				isWorkspace: false,
+			}),
 		],
 		workspaceDependencies: [],
 	});
@@ -219,7 +224,16 @@ describe("LockfileReader.makeTest — resolvedVersion derives from a supplied re
 			const double = LockfileReader.makeTest({
 				read: () => Effect.succeed(stubbedLockfile),
 				resolvedVersion: () =>
-					Effect.succeed(Option.some(ResolvedPackage.make({ name: "left-pad", version: "9.9.9", isWorkspace: false }))),
+					Effect.succeed(
+						Option.some(
+							ResolvedPackage.make({
+								name: "left-pad",
+								version: "9.9.9",
+								instanceId: "left-pad@9.9.9",
+								isWorkspace: false,
+							}),
+						),
+					),
 			});
 			const resolved = yield* double.resolvedVersion("left-pad");
 			assert.isTrue(Option.isSome(resolved));

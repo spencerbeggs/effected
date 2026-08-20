@@ -17,7 +17,6 @@
 // `packages/**` means the same thing in both worlds — the issue-#62 fix
 // included.
 
-import type { GlobPattern } from "@effected/glob";
 import { GlobSet } from "@effected/glob";
 import { Yaml } from "@effected/yaml";
 import { Effect, Exit, Schema } from "effect";

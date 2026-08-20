@@ -6,6 +6,7 @@ import { ImporterDependency } from "../ImporterDependency.js";
 import type { LockfileImporter } from "../LockfileImporter.js";
 import type { PnpmExtension } from "../PnpmExtension.js";
 import type { ResolvedPackage } from "../ResolvedPackage.js";
+import type { UnsupportedLockfileVersion } from "../UnsupportedLockfileVersion.js";
 import { WorkspaceDependency } from "../WorkspaceDependency.js";
 
 /**
@@ -136,6 +137,104 @@ export const importerDependencies = <V>(
 		}
 	}
 	return deps;
+};
+
+/**
+ * The two peer fields of a `ResolvedPackage`, always present. Spread
+ * straight into `ResolvedPackage.make`.
+ *
+ * @internal
+ */
+export interface PeerDeclarations {
+	readonly peerDependencies: Readonly<Record<string, string>>;
+	readonly peerDependenciesMeta: Readonly<Record<string, { readonly optional: boolean }>>;
+}
+
+const EMPTY_PEERS: PeerDeclarations = { peerDependencies: {}, peerDependenciesMeta: {} };
+
+/**
+ * Normalize one format's peer declarations into the unified pair.
+ *
+ * Every format records the ranges the same way (a name→range map), but the
+ * optional flag has two spellings: a `peerDependenciesMeta` object (pnpm, npm,
+ * yarn Berry) and bun's `optionalPeers` array of names. Both are accepted and
+ * collapse to `{ optional: boolean }` per peer, so a consumer reads one shape
+ * regardless of which manager wrote the lockfile.
+ *
+ * Absence yields empty records, never `undefined` — an absent section means
+ * "declares no peers", which is a fact, not a gap. Records are built with
+ * `Object.fromEntries` (own-property semantics), so a `__proto__` peer name
+ * neither pollutes nor drops.
+ *
+ * @internal
+ */
+export const peerDeclarations = (
+	peers: Readonly<Record<string, string>> | undefined,
+	meta: Readonly<Record<string, { readonly optional?: boolean }>> | undefined,
+	optionalPeers?: ReadonlyArray<string> | undefined,
+): PeerDeclarations => {
+	if (peers === undefined && meta === undefined && optionalPeers === undefined) return EMPTY_PEERS;
+	const flags = new Map<string, boolean>();
+	if (meta !== undefined) {
+		for (const [name, value] of Object.entries(meta)) {
+			flags.set(name, value?.optional === true);
+		}
+	}
+	if (optionalPeers !== undefined) {
+		for (const name of optionalPeers) flags.set(name, true);
+	}
+	return {
+		peerDependencies: peers === undefined ? {} : Object.fromEntries(Object.entries(peers)),
+		peerDependenciesMeta: Object.fromEntries([...flags].map(([name, optional]) => [name, { optional }])),
+	};
+};
+
+/**
+ * The minimum lockfile-format version each gated format is parsed at.
+ *
+ * This is a deliberate narrowing of the supported input domain, not an
+ * implementation detail: an older lockfile fails typed rather than parsing
+ * into a model that cannot answer resolution questions. Note the gate is on
+ * the **lockfile format version**, which is the only version a lockfile
+ * records — the writing package manager's version is not recoverable from the
+ * file, so no manager-version claim could be enforced here.
+ *
+ * @internal
+ */
+export const MINIMUM_LOCKFILE_VERSION = { pnpm: 9, npm: 3 } as const;
+
+/**
+ * Fail typed when a lockfile predates the supported format version.
+ *
+ * Routed through {@link validationFailure} rather than {@link framingFailure}:
+ * the document was located perfectly well, so this is a shape judgement about
+ * a located document, not a framing problem. The cause is a structured record
+ * rather than an engine error, so a consumer can tell "your lockfile is too
+ * old" from "your lockfile is malformed" without parsing a message.
+ *
+ * A version that is not a number at all (`lockfileVersion: "next"`) is not a
+ * supported version either, and fails the same way.
+ *
+ * @internal
+ */
+export const requireLockfileVersion = (
+	format: keyof typeof MINIMUM_LOCKFILE_VERSION,
+	raw: string | number,
+): Effect.Effect<void, ParseFailure> => {
+	const minimum = MINIMUM_LOCKFILE_VERSION[format];
+	const parsed = typeof raw === "number" ? raw : Number.parseFloat(raw);
+	if (Number.isFinite(parsed) && parsed >= minimum) return Effect.void;
+	// Typed as the exported public shape, so the record a consumer narrows to
+	// with `isUnsupportedLockfileVersion` and the record built here cannot
+	// drift apart silently.
+	const cause: UnsupportedLockfileVersion = {
+		_tag: "UnsupportedLockfileVersion",
+		format,
+		lockfileVersion: raw,
+		minimumSupported: minimum,
+		message: `${format} lockfileVersion ${JSON.stringify(raw)} is not supported: @effected/lockfiles parses ${format} lockfileVersion ${minimum} and newer`,
+	};
+	return Effect.fail(validationFailure(cause));
 };
 
 /**

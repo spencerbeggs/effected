@@ -14,6 +14,16 @@ Child context file for how builds and tests actually run. The rules that bite li
 
 The bundler's `publishConfig`-driven transform produces the publishable manifest at build time from the `"private": true` source manifest.
 
+### A turbo cache hit is indistinguishable from a fresh build in the log
+
+A cache hit replays the previous run's output **verbatim** — `FULL TURBO` plus the same emitted-file count and the same `suppressed` figure a clean gate prints — so a stale artifact and a fresh one read identically. Never take the numbers as proof the build ran; check the timestamp:
+
+```bash
+node -pe "require('./dist/prod/issues.json').generatedAt"   # vs. the mtime of what you changed
+```
+
+`generatedAt` must **postdate your last source edit**. A replay against unchanged inputs is legitimate and its artifacts are current; one predating your edit means you are reading someone else's gate.
+
 ## Typechecking
 
 **Every package typechecks with `tsc --noEmit`** (the `types:check` script), with `typescript` (`catalog:build`) as the devDependency behind it. **`catalog:build` is not declared in `pnpm-workspace.yaml`** — grep for it there and you find nothing. It is injected by the `@savvy-web/pnpm-plugin-silk` configDependency; its absence from the workspace file is expected, not a bug to repair by adding it. `@effect/tsgo` was removed from all packages (d0599438) and survives only as a catalog entry with no consumer — do not reintroduce it as a package's typechecker.

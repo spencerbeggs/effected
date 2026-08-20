@@ -1,11 +1,11 @@
 ---
 title: "@effected/workspaces"
-description: "Monorepo workspace tooling for Effect: discovery, the dependency graph, package-manager detection, pnpm catalogs and git change detection."
+description: "Monorepo workspace tooling for Effect: discovery, the dependency graph, package-manager detection, pnpm catalogs, peer-dependency checking and git change detection."
 ---
 
 # @effected/workspaces
 
-Monorepo workspace tooling for Effect. Find the workspace root, enumerate its packages, walk the dependency graph, detect the package manager, resolve pnpm catalogs, read the lockfile, and work out which packages a git range touches. Works with npm, pnpm, yarn Berry and bun.
+Monorepo workspace tooling for Effect. Find the workspace root, enumerate its packages, walk the dependency graph, detect the package manager, resolve pnpm catalogs, read the lockfile, check it for unsatisfied peer dependencies, and work out which packages a git range touches. Works with npm, pnpm, yarn Berry and bun.
 
 ## Why @effected/workspaces
 
@@ -95,6 +95,35 @@ const Resolvers = Workspaces.resolvers.pipe(Layer.provide(WorkspacesLive));
 
 // Package.resolve now rewrites `catalog:` and `workspace:` to concrete ranges.
 ```
+
+## An empty peer report is not a clean one
+
+`PeerCheck.run(lockfile, options?)` reports unsatisfied peer dependencies as a pure value over a lockfile [`@effected/lockfiles`](/lockfiles) has parsed — no IO, no error channel, and no per-format branch. The answer comes from the resolved graph rather than from a package manager's own peer command, because bun has none and the check has to work for every manager this package supports.
+
+```ts
+import { LockfileReader, PeerCheck, WorkspaceCatalogs } from "@effected/workspaces";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const reader = yield* LockfileReader;
+  const catalogs = yield* WorkspaceCatalogs;
+
+  const lockfile = yield* reader.read();
+  const report = PeerCheck.run(lockfile, { peerDependencyRules: yield* catalogs.peerDependencyRules() });
+
+  return (
+    report.supported &&
+    report.unresolvedImporters.length === 0 &&
+    report.unverified.length === 0 &&
+    report.required.length === 0
+  );
+});
+// true only when the workspace is proven clean, never merely unchecked
+```
+
+The report is four fields rather than an array because an empty array is the most dangerous success shape this domain has: it is indistinguishable from "this lockfile cannot be checked". `supported` is `false` for yarn, which resolves peers virtually and records nothing about which virtual instance satisfied which peer. `unresolvedImporters` names importers that could not be joined to package instances — the root importer under npm and bun. `unverified` says why the answer is incomplete, and both of its reasons mean fail closed. `required` filters to the non-optional rows a gate should act on.
+
+`WorkspaceCatalogs.peerDependencyRules()` supplies the workspace's effective pnpm suppression rules, which the lockfile records nowhere; without them a checker reports findings pnpm itself calls clean. Presence of the option key is the assertion, not its contents — `NoPeerDependencyRules` asserts there are none, while omitting the key says nobody looked and always leaves the report unverified.
 
 ## The synchronous escape hatch
 

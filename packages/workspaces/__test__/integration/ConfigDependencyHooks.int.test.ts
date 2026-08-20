@@ -23,6 +23,7 @@ const NESTED_MISSING_FIXTURE = join(FIXTURES, "hook-pnpmfile-nested-missing.mjs"
 const AGE_4320_FIXTURE = join(FIXTURES, "hook-pnpmfile-age-4320.mjs");
 const AGE_1440_FIXTURE = join(FIXTURES, "hook-pnpmfile-age-1440.mjs");
 const AGE_GARBAGE_FIXTURE = join(FIXTURES, "hook-pnpmfile-age-garbage.mjs");
+const PEER_RULES_FIXTURE = join(FIXTURES, "hook-pnpmfile-peer-rules.mjs");
 
 const DEP_NAME = "cfg-fixture";
 // A config dependency shipping ONLY `pnpmfile.mjs` — the pnpm-11-native shape.
@@ -35,6 +36,8 @@ const NESTED_DEP_NAME = "cfg-fixture-nested-missing";
 const AGE_4320_DEP_NAME = "cfg-fixture-age-4320";
 const AGE_1440_DEP_NAME = "cfg-fixture-age-1440";
 const AGE_GARBAGE_DEP_NAME = "cfg-fixture-age-garbage";
+// A config dependency whose hook contributes a peerDependencyRules entry.
+const PEER_RULES_DEP_NAME = "cfg-fixture-peer-rules";
 const SEED = { default: { effect: "^4.0.0" } } as const;
 
 let root: string;
@@ -68,6 +71,9 @@ beforeAll(() => {
 	const ageGarbageDir = configDepDir(AGE_GARBAGE_DEP_NAME);
 	mkdirSync(ageGarbageDir, { recursive: true });
 	copyFileSync(AGE_GARBAGE_FIXTURE, join(ageGarbageDir, "pnpmfile.mjs"));
+	const peerRulesDir = configDepDir(PEER_RULES_DEP_NAME);
+	mkdirSync(peerRulesDir, { recursive: true });
+	copyFileSync(PEER_RULES_FIXTURE, join(peerRulesDir, "pnpmfile.mjs"));
 });
 
 afterAll(() => {
@@ -107,7 +113,11 @@ describe("ConfigDependencyHooks.layerLive — replays the pnpmfile", () => {
 			// the `.mjs` and `.cjs` candidate imports fail ERR_MODULE_NOT_FOUND for the
 			// candidate itself and it is skipped; the seed passes through unchanged.
 			const result = yield* hooks.inject(root, { "absent-dep": "1.0.0" }, SEED);
-			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {} });
+			assert.deepStrictEqual(result, {
+				catalogs: SEED,
+				releaseAge: {},
+				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+			});
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
 });
@@ -143,7 +153,11 @@ describe("ConfigDependencyHooks.layerLive — pnpm 11 .mjs pnpmfile and load dis
 			// The directory exists but carries neither candidate, so both imports fail
 			// ERR_MODULE_NOT_FOUND for the candidate itself — the legitimate skip.
 			const result = yield* hooks.inject(root, { [NEITHER_DEP_NAME]: "1.0.0" }, SEED);
-			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {} });
+			assert.deepStrictEqual(result, {
+				catalogs: SEED,
+				releaseAge: {},
+				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+			});
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
 
@@ -181,7 +195,11 @@ describe("ConfigDependencyHooks.layerLive — rejects a traversal name before im
 			// `@scope/pkg` contains a `/` but no `..`; it resolves inside `.pnpm-config`,
 			// finds no pnpmfile, and contributes nothing — the seed passes through.
 			const result = yield* hooks.inject(root, { "@scope/pkg": "1.0.0" }, SEED);
-			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {} });
+			assert.deepStrictEqual(result, {
+				catalogs: SEED,
+				releaseAge: {},
+				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+			});
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
 });
@@ -242,7 +260,11 @@ describe("ConfigDependencyHooks.layerNoop — provably never loads the pnpmfile"
 			const result = yield* hooks.inject(root, { [DEP_NAME]: "1.0.0" }, SEED);
 			// Same root and same declared config dependency as the live test — the ONLY
 			// difference is the layer. The seed is unchanged and the fixture never ran.
-			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {} });
+			assert.deepStrictEqual(result, {
+				catalogs: SEED,
+				releaseAge: {},
+				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+			});
 			assert.isFalse(existsSync(markerPath));
 		}).pipe(
 			Effect.provide(ConfigDependencyHooks.layerNoop),
@@ -349,6 +371,56 @@ describe("WorkspaceCatalogs.releaseAgeGate — combines inline + hook sources st
 			assert.strictEqual(gate.ageMinutes, 10_000);
 			// Only the hook set an exclude here.
 			assert.deepStrictEqual([...gate.exclude], ["@scope/b"]);
+		}).pipe(Effect.provide(appLayer));
+	});
+});
+
+// The link this suite exists to pin: rules computed by `inject` must actually be
+// READ BACK at the WorkspaceCatalogs call site. That link was written correctly
+// and had no test — a discard-by-projection there would have compiled, passed
+// every seam unit test, and returned an empty rules set indistinguishable from
+// "this workspace declares none".
+describe("WorkspaceCatalogs.peerDependencyRules — the injected rules reach the caller", () => {
+	const tree = (): Tree => ({
+		[`${root}/pnpm-workspace.yaml`]: [
+			"packages:",
+			"  - packages/*",
+			// The workspace-file half, in the parent-VERSIONED spelling `pnpm:export`
+			// materializes.
+			"peerDependencyRules:",
+			"  allowedVersions:",
+			'    "inline-parent@1.2.3>inline-peer": "^1.0.0"',
+			"configDependencies:",
+			`  ${PEER_RULES_DEP_NAME}: '1.0.0'`,
+			"",
+		].join("\n"),
+		[`${root}/package.json`]: JSON.stringify({ name: "root", version: "0.0.0", private: true }),
+		[`${root}/packages/a/package.json`]: manifest("@x/a"),
+	});
+
+	it.effect("a hook-injected rule arrives, alongside the seeded workspace-file rule", () => {
+		const appLayer = Workspaces.layerWithConfigDependencies({ cwd: root }).pipe(Layer.provideMerge(platform(tree())));
+		return Effect.gen(function* () {
+			const catalogs = yield* WorkspaceCatalogs;
+			const rules = yield* catalogs.peerDependencyRules();
+
+			// The hook's contribution — the assertion that fails if the call site
+			// stops reading `injection.peerDependencyRules`, and only then.
+			assert.strictEqual(rules.allowedVersions["hooked-parent>hooked-peer"], "^9.0.0");
+			// And the seeded half survives the replay, which is why seeding works.
+			assert.strictEqual(rules.allowedVersions["inline-parent@1.2.3>inline-peer"], "^1.0.0");
+			// Both key spellings coexist, unversioned from the plugin and versioned
+			// from the file.
+			assert.strictEqual(Object.keys(rules.allowedVersions).length, 2);
+		}).pipe(Effect.provide(appLayer));
+	});
+
+	it.effect("the unconsumed axes arrive empty rather than absent", () => {
+		const appLayer = Workspaces.layerWithConfigDependencies({ cwd: root }).pipe(Layer.provideMerge(platform(tree())));
+		return Effect.gen(function* () {
+			const rules = yield* (yield* WorkspaceCatalogs).peerDependencyRules();
+			assert.deepStrictEqual(rules.ignoreMissing, []);
+			assert.deepStrictEqual(rules.allowAny, []);
 		}).pipe(Effect.provide(appLayer));
 	});
 });

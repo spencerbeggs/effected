@@ -5,7 +5,7 @@ description: "Lockfile parsing for bun, npm, pnpm and yarn Berry into one unifie
 
 # @effected/lockfiles
 
-Pure lockfile parsing for Effect: bun (`bun.lock`), npm (`package-lock.json` v2/v3), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) normalized into one unified `Lockfile` schema model, plus pure integrity checking of that model against workspace manifests.
+Pure lockfile parsing for Effect: bun (`bun.lock`), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) normalized into one unified `Lockfile` schema model, plus pure integrity checking of that model against workspace manifests.
 
 ## Why @effected/lockfiles
 
@@ -16,14 +16,14 @@ Every entrypoint takes content as a **string**. The package performs no IO: read
 ## Install
 
 ```bash
-npm install @effected/lockfiles @effected/jsonc @effected/semver @effected/yaml effect
+npm install @effected/lockfiles @effected/jsonc @effected/npm @effected/semver @effected/yaml effect
 ```
 
 ```bash
-pnpm add @effected/lockfiles @effected/jsonc @effected/semver @effected/yaml effect
+pnpm add @effected/lockfiles @effected/jsonc @effected/npm @effected/semver @effected/yaml effect
 ```
 
-Requires Node.js >=24.11.0. `effect` v4, `@effected/jsonc`, `@effected/semver` and `@effected/yaml` are peer dependencies — the text-parsing engines arrive through those sibling packages, so nothing else reaches your tree.
+Requires Node.js >=24.11.0. `effect` v4, `@effected/jsonc`, `@effected/npm`, `@effected/semver` and `@effected/yaml` are peer dependencies — the text-parsing engines arrive through those sibling packages, so nothing else reaches your tree.
 
 ## Quick start
 
@@ -69,6 +69,12 @@ pnpm name resolution is a second stage. `Lockfile.parse` emits pnpm workspace pa
 Integrity checking is total. `LockfileIntegrity.compare(lockfile, manifests)` takes `WorkspaceManifest` values and returns a report with `valid`, `missingWorkspaces`, `extraWorkspaces` and `unsatisfiedConstraints` infallibly. There is no error channel because a mismatch is a finding, not a failure.
 
 Malformed input always exits through `LockfileParseError` (`stage: "syntax"` for text-level failures, `"validation"` for shape failures), never as a defect. Yarn support is Berry only: classic v1 content fails typed and is never mis-normalized.
+
+## Supported lockfile versions
+
+The supported input domain is pnpm `lockfileVersion` 9+ and npm `lockfileVersion` 3+; bun and yarn record no comparable format-version line and are not gated. Older pnpm and npm input fails typed at `stage: "validation"` with a structured `{ _tag: "UnsupportedLockfileVersion", format, lockfileVersion, minimumSupported, message }` cause, which the exported `isUnsupportedLockfileVersion` predicate narrows — so "your lockfile is too old" and "your lockfile is malformed" are told apart on a tag rather than on prose. Older formats are rejected rather than parsed because they record resolution in a shape this model does not describe.
+
+The gate is on the **lockfile format** version, which is the only version a lockfile records. The writing package manager's version is not recoverable from the file and the mapping is many-to-one — pnpm 9, 10 and 11 all write format `9.0` — so no package-manager requirement is claimed here. Testing is against pnpm 11.22.0, npm 11.19.0, bun 1.3.14 and yarn 4.9.1, which is a separate claim from the gate.
 
 ## API reference
 

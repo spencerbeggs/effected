@@ -34,4 +34,4 @@ Every query uses `relative: true` so paths come back relative to the workspace r
 
 `Git` requires core's `ChildProcessSpawner` in `R`, discharged by the consumer's platform layer at the edge. A test provides `Git.layerTest({ … })` — git's own shipped double, whose unstubbed members die named — and needs no repository on disk; hand-enumerating the whole `GitShape` breaks on every growth of that service.
 
-**Related:** [surface](./CLAUDE.surface.md) · [discovery](./CLAUDE.discovery.md) · [catalogs](./CLAUDE.catalogs.md)
+**Related:** [surface](./CLAUDE.surface.md) · [discovery](./CLAUDE.discovery.md) · [catalogs](./CLAUDE.catalogs.md) · [peers](./CLAUDE.peers.md)

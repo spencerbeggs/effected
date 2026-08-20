@@ -176,7 +176,11 @@ describe("ConfigDependencyHooks.layerSubprocess — pnpm 11 loader order and ski
 			// `cfg-fixture-neither` exists but ships neither candidate. Both are the
 			// legitimate skip: ERR_MODULE_NOT_FOUND for the candidate itself.
 			const result = yield* hooks.inject(root, { "absent-dep": "1.0.0", [NEITHER_DEP_NAME]: "1.0.0" }, SEED);
-			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {} });
+			assert.deepStrictEqual(result, {
+				catalogs: SEED,
+				releaseAge: {},
+				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+			});
 		}).pipe(Effect.provide(HooksSubprocess)),
 	);
 

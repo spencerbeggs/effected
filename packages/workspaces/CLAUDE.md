@@ -10,7 +10,8 @@ Reasoning behind the rules below. Load on demand:
 
 - Public surface → `@./CLAUDE.surface.md` — Load when: locating a type, wiring a composite, or touching an entry point.
 - Discovery → `@./CLAUDE.discovery.md` — Load when: touching enumeration, traversal, the root ascent, `WorkspacePackage` or the detector.
-- Catalogs → `@./CLAUDE.catalogs.md` — Load when: touching catalog assembly, the release-age gate or `ConfigDependencyHooks`.
+- Catalogs → `@./CLAUDE.catalogs.md` — Load when: touching catalog assembly, the release-age gate, `ConfigDependencyHooks` or `peerDependencyRules` seeding.
+- Peers → `@./CLAUDE.peers.md` — Load when: touching `PeerCheck`, the `unverified` reasons, the suppression axes or the peer fixtures.
 - Snapshots → `@./CLAUDE.snapshots.md` — Load when: touching at-ref reads, `WorkspaceStateSnapshot` or `ChangeDetector`.
 
 ## Tier: integrated
@@ -46,13 +47,15 @@ That is a correctness fix, not ergonomics: when the composite supplied npm seman
 - **`PackageManagerDetector` refuses to guess — do not give it a default.** Nothing matching its three tiers is `PackageManagerDetectionError`, and an unstubbed `detect` on the double **dies** rather than fabricating or failing typed. A consumer wanting a default writes `Effect.orElseSucceed` at its own call site.
 - **`localExecLayer`: `None` is success, and only a BROKEN manifest is an error.** No workspace root and `PackageManagerDetectionError` → `Option.none()`; `WorkspaceManifestError` → `LocalExecError`. Mutation-pinned both directions in `__test__/LocalExec.test.ts`. `directory` is the resolved **workspace root**, not the caller's cwd, and all three argv prefixes come from `LocalExec.prefixes(name)` — **never hard-code an exec, dlx or script-runner prefix here.**
 - **Tracking tags never float onto a prerelease.** `TrackingTag.forVersion("1.0.0-beta.3")` returns `[]`. Two related traps: `+build` is NOT a prerelease (strip build metadata *before* the `-` test), and derivation is **total** (junk yields `[]`, never a throw). `classifyTag` tells the families apart by **segment count, not the `v`**. The grammar deliberately avoids `@effected/semver`; route there only for real semver *comparison*.
+- **`PeerCheck` answers from the resolved graph, never from a subprocess.** It is a pure value over a parsed `@effected/lockfiles` `Lockfile` (`instanceId` / `resolved` / `peerDependencies`), so **no per-format branch exists** and none may be added. `PeerCheck.run(lockfile, options?)` **fails closed** through a two-reason `unverified` (`"peerRulesNotApplied"`, `"unresolvedEdge"`), surfaces its three unanswerable limits in the value rather than swallowing them, and applies only `allowedVersions` — `ignoreMissing` and `allowAny` are carried unwired and force `"peerRulesNotApplied"` when non-empty. Read [peers](./CLAUDE.peers.md) **before touching any of it**; every clause there is a defect someone already paid for.
+- **The `pnpm peers check` oracle is committed, never shelled out to.** `__test__/fixtures/peers/*/peers-check.json` is pnpm's verbatim output captured at fixture-generation time (provenance in that directory's `README.md`); a test needing a live pnpm on PATH would breach the no-new-subprocess-seam rule and would not be reproducible in CI.
 - **Catalog assembly hard-fails on the live path** — a malformed inline block, or a default catalog declared twice, fails typed, because a silently-empty catalog is the "every dependency looks newly added" bug. The at-ref readers are deliberately tolerant of the same shapes.
 - **The default composite runs no config-dependency code.** `Workspaces.layer` / `WorkspaceCatalogs.layer` wire `layerNoop`; replay is opt-in (`layerWithConfigDependencies`, or `…Subprocess`). Never replay a hook to repair an at-ref `catalog:` lookup — the fallback reads that ref's own lockfile importer entry.
 - **Layers memoize by reference**, so bind a parameterized factory to a `const`. `Workspaces.resolverLayer` is the exception: fresh and unmemoized per call is the feature.
 
 ## Testing and building
 
-416 tests, on core's `Path.layer` + `@effected/memfs` (a devDependency) — a real virtual filesystem, no platform package (`__test__/fixtures.ts` seeds one from a `Tree` record and injects its three misbehaviors as faults).
+454 tests, on core's `Path.layer` + `@effected/memfs` (a devDependency) — a real virtual filesystem, no platform package (`__test__/fixtures.ts` seeds one from a `Tree` record and injects its three misbehaviors as faults).
 
 - A suite-boundary `layer(...)` cannot vary per test, so **each distinct tree gets its own `layer(...)` block**.
 - `__test__/integration/self.int.test.ts` is the one exception: it discovers **this repository** through `@effect/platform-node` (a devDependency), the only proof the stack composes against a real pnpm workspace.

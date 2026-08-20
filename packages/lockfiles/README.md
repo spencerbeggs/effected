@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Lockfile parsing for [Effect](https://effect.website) v4: bun (`bun.lock`), npm (`package-lock.json` v2/v3), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) all normalized into one `Lockfile` schema model, plus pure integrity checking of that model against workspace manifests. Four formats, one model, no IO and no external runtime dependencies.
+Lockfile parsing for [Effect](https://effect.website) v4: bun (`bun.lock`), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) all normalized into one `Lockfile` schema model, plus pure integrity checking of that model against workspace manifests. Four formats, one model, no IO and no external runtime dependencies.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 prerelease. Packages graduate to
@@ -77,9 +77,43 @@ Effect.runPromise(program).then(console.log);
 | Format | Filename | Dialect | Notes |
 | ------ | -------- | ------- | ----- |
 | `"bun"` | `bun.lock` | JSONC | Trusted dependencies preserved on `BunExtension` |
-| `"npm"` | `package-lock.json` | JSON | v2 and v3 |
-| `"pnpm"` | `pnpm-lock.yaml` | YAML | Catalogs preserved on `PnpmExtension`; see below |
+| `"npm"` | `package-lock.json` | JSON | `lockfileVersion` 3+ — v2 and older fail typed |
+| `"pnpm"` | `pnpm-lock.yaml` | YAML | `lockfileVersion` 9+ — older fails typed. Catalogs preserved on `PnpmExtension`; see below |
 | `"yarn"` | `yarn.lock` | YAML | Berry only — classic v1 fails typed |
+
+### Supported lockfile versions
+
+The gate is on the **lockfile format version**, which is the only version a lockfile records:
+
+| Format | Minimum | Older input |
+| ------ | ------- | ----------- |
+| pnpm | `lockfileVersion` 9 | `LockfileParseError`, `stage: "validation"` |
+| npm | `lockfileVersion` 3 | `LockfileParseError`, `stage: "validation"` |
+| bun, yarn | not gated | — |
+
+The `cause` is a structured `{ _tag: "UnsupportedLockfileVersion", format, lockfileVersion, minimumSupported, message }`, so a consumer can distinguish "your lockfile is too old" from "your lockfile is malformed" without parsing prose. `isUnsupportedLockfileVersion` is the exported predicate that narrows to it — discriminate on the tag, never on `message`, which is a summary rather than contract:
+
+```ts
+import { isUnsupportedLockfileVersion, Lockfile } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const content: string;
+
+const program = Lockfile.parse(content, { format: "pnpm" }).pipe(
+  Effect.catchTag("LockfileParseError", (error) =>
+    isUnsupportedLockfileVersion(error.cause)
+      ? Effect.fail(`lockfileVersion ${error.cause.lockfileVersion}; need ${error.cause.minimumSupported}+`)
+      : Effect.fail("malformed lockfile"),
+  ),
+);
+// a pre-v9 pnpm lockfile takes the first branch, a truncated one the second
+```
+
+`cause` stays an open channel deliberately: it carries whatever the delegated parsing engines throw, so declaring it as a closed union would present an open channel as an exhaustive one. The predicate is what makes narrowing it honest.
+
+Older formats are rejected rather than parsed because they cannot answer the questions the model now asks: pre-v9 pnpm has no `snapshots:` section, and npm v1/v2 trees record no per-instance nesting, so both would decode into rows with no resolution data.
+
+**Tested against** pnpm 11.22.0, npm 11.19.0, bun 1.3.14 and yarn 4.9.1 — a separate claim from the gate, and deliberately so. A lockfile does not record which package manager wrote it, and the mapping is many-to-one (pnpm 9, 10 and 11 all write format `9.0`), so no manager-version requirement could be enforced here even in principle.
 
 ## Errors
 
@@ -94,6 +128,21 @@ The framing error exists because `pnpm-lock.yaml` is a YAML **stream**, not a YA
 
 yarn defines no document framing at all, so multi-document `yarn.lock` content fails with `"unexpectedDocuments"` rather than being silently truncated to its first document. Where a format states no rule, this package refuses to guess.
 
+## Instances and resolution
+
+A row in `lockfile.packages` is one package **instance**, not one package. A dependency installed twice under different peers is two rows, and `instanceId` is that row's lockfile-native identity, carried verbatim. Treat it as **opaque**: look an id up in the model, never split or pattern-match one, because its spelling is the format's business and differs per manager.
+
+`resolved` maps each dependency name — and each peer name the lockfile records a resolution for — to the `instanceId` it actually resolved to, which is what lets a consumer walk the real graph rather than re-resolving ranges itself. `peerDependencies` and `peerDependenciesMeta` carry the declarations as written, defaulting to `{}`.
+
+```ts
+const [instance] = lockfile.packagesNamed("react-dom");
+const reactId = instance?.resolved["react"];
+const react = lockfile.packages.find((p) => p.instanceId === reactId);
+// react?.version: the version this particular react-dom instance resolved to
+```
+
+`unresolvedEdges` names the edges the lockfile **records** but the model could not name. A name listed there is not absent — it is unanswered, so a missing `resolved` key must not be read as "nothing is there". A gate that cares about completeness checks that array before trusting an empty result.
+
 ## Features
 
 - `Lockfile.parse(content, { format })` — the package's only fallible boundary; fails with `LockfileParseError` or `LockfileFramingError`.
@@ -102,7 +151,8 @@ yarn defines no document framing at all, so multi-document `yarn.lock` content f
 - `LockfileFormat` with `filenameFor` / `fromFilename` — the format literal and its mapping to lockfile filenames.
 - `LockfileIntegrity.compare(lockfile, manifests)` — total, pure integrity checking with no error channel; the report carries `valid`, `missingWorkspaces`, `extraWorkspaces` and `unsatisfiedConstraints`. Constraint checking is best-effort by design: `workspace:` / `link:` / `file:` specifiers and rows whose range does not parse as SemVer are skipped.
 - `WorkspaceManifest` — the manifest input shape for integrity checking: a package name plus four optional dependency records. Deliberately a plain value rather than a strict manifest model, so consumers can derive it from anything.
-- `ResolvedPackage` — name, version, optional integrity hash, workspace flag and relative path, dependency map.
+- `ResolvedPackage` — one package *instance*: name, version, optional integrity hash, workspace flag and relative path, dependency map, the peer declarations (`peerDependencies`, `peerDependenciesMeta`), the opaque `instanceId`, the `resolved` name-to-instance map and the `unresolvedEdges` the model could not name.
+- `isUnsupportedLockfileVersion` and the `UnsupportedLockfileVersion` type — the predicate that narrows a `LockfileParseError.cause` to a version-gate rejection, so "too old" and "malformed" are told apart on a tag rather than on prose.
 - `WorkspaceDependency` — a `from`/`to` edge between workspace packages, with `depType` spelled in `@effected/npm`'s `DependencyField` vocabulary and its declared constraint.
 - `PnpmExtension` and `BunExtension` — format-specific data such as pnpm catalogs and bun trusted dependencies, preserved on the model's optional `extension` field.
 
