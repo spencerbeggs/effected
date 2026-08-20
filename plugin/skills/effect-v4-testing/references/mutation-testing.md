@@ -73,6 +73,110 @@ compared against the captured baseline is the outer check; the per-file read is
 the inner one, and the inner one is what catches a revert that restored the
 wrong bytes.
 
+### The rule with no input that could falsify it
+
+The commonest defect a sweep finds is **not** a missing test. It is a rule that
+was written deliberately, is covered by tests that pass, and that **no fixture
+can make fire alone**. One branch produced five instances of it in a session.
+
+> **A passing test is evidence about the path it takes, not about the rule it
+> appears to test.**
+
+The question to ask when you write a rule is therefore not *"is there a test for
+this?"* but **"what input would make this rule fire alone, and does it exist?"**
+If you cannot name that input, the rule is decoration regardless of suite
+colour. The input you need is one that is **wrong in exactly one way**.
+
+The five shapes it wears, all the same defect:
+
+| Shape | Why nothing could falsify the rule |
+| --- | --- |
+| **Sibling clauses mask it** | Identity settled by three `hasOwn` conjuncts; every impostor fixture was caught by one of the other two, so the third could be deleted freely. |
+| **Every near-miss misses twice** | A `format` clause where every candidate fixture *also* omitted a second required field — so the fixture failed for the other reason. |
+| **One of two code paths** | Compose-then-verify ran on two paths; only one had a composition that matched nothing, so dropping verification on the other path changed no test. Fixed by adding one edge (`phantom: 9.9.9`) that misses on that path. |
+| **A depth never reached** | A walk-up loop where no fixture required an intermediate ancestor — the loop's whole point was untested. |
+| **Two rules, one assertion** | One test asserting both rules goes red for either and proves neither. The fix is to **split the assertion**. |
+
+The detection methods follow from the shapes:
+
+- **Mutate per clause.** Delete each conjunct of a predicate independently. A
+  clause a sibling always shadows is one nothing can falsify.
+- **Mutate per path.** **Two code paths implementing one rule are two things to
+  pin, not one.** A test covering *a* path through a rule does not pin the rule;
+  break the rule separately on each path.
+- **Enumerate the ways the rule can be REACHED**, not only the ways an input can
+  be wrong. Per-clause mutation catches rows 1–2; per-path mutation catches
+  row 3.
+- **One assertion, one rule.** If a single assertion would go red for two
+  independent reasons, split it before you trust either.
+
+The common failure underneath all of it: believing a rule is pinned because
+something red goes green when you break it — **without checking *which*
+something**, and whether it fails for the rule you meant.
+
+### Before acting on "nothing found", run a control that FIRES
+
+**An absence result and a broken query are indistinguishable at the call site.**
+A surviving mutant, a grep returning zero, a `str.replace` that matched nothing
+and a projection that dropped the field all produce the same shape as a true
+negative. Verification and review work is disproportionately made of absence
+claims — "no stale references remain", "no test regressed", "the mutant
+survived", "the field is not in the artifact" — and each is worthless without a
+control.
+
+> Before acting on "nothing found", run the same query against something you
+> know is present. A query that cannot find the thing that *is* there cannot be
+> trusted to report the thing that is not.
+
+Three sharp riders:
+
+- **The control's expected answer must be NON-ZERO.** A control that returns
+  zero when zero is correct looks exactly like success on a broken query.
+- **The control must vary ONLY the thing under test** — and that means running
+  it against a **known-good input**, not the input that surprised you. A control
+  run on the suspect input cannot separate "the tool is broken" from "this input
+  is special", so it will happily confirm whichever you already believe. This is
+  the rider that gets skipped, and it is the one that fails: a `grep -c ""`
+  returning nothing was once read as proof that `grep` was broken, when it had
+  been run against the single pathological file that caused the original
+  mystery. The tool was fine.
+- **Distinguish a wrong pattern from a wrong tool before you switch tools.** A
+  wrong pattern is corrected by re-reading the file format. A tool genuinely not
+  matching invalidates every negative it produced, however the query was
+  written — but that verdict needs a known-good control behind it, because
+  "switch to `rg`/`sed`/`node`" is a permanent tax to hand the next reader on a
+  misdiagnosis.
+
+The pathological input worth knowing by name: **a single NUL (`U+0000`) byte
+makes a file binary to `grep` and `rg`, which then skip its contents.** Measured
+on two files differing only by that byte, `grep` prints **nothing and exits 1** —
+byte-identical to a real no-match — while `rg` reports `binary file matches`.
+`grep -a` / `rg --text` search it correctly. A NUL lands in a source file
+legitimately (a delimiter inside a template string), so suspect the **file**
+before the environment.
+
+**Empty output means the experiment did not distinguish your hypotheses.** A run
+that printed nothing is not a result; it is a failed experiment, and it is
+consistent with the mutant surviving, the filter being too narrow, the reporter
+being wrong, the invocation selecting no test, and the input being
+unsearchable — all at once. So **scope the suspicion to the INPUT before the
+tool**: the file, the fixture, the filter, the invocation are all cheaper to be
+wrong about than the toolchain, and indicting the toolchain first is what
+manufactures a permanent workaround for a problem that does not exist. What
+tells the two apart is a control on a **known-good input**; until you have run
+one, you have a question, not a finding.
+
+What survives from the older, tool-first phrasing is the operational half:
+re-run **unfiltered** before drawing any conclusion, and **a mutant that
+produced no output has not been shown to survive.** Silence is never evidence of
+survival — see [how to read the run](#how-to-read-the-run-the-failure-text-never-a-missing-pass-line).
+
+The discipline pays directly in mutation work: a surviving mutant is only
+*found* by probing the drop against a case known to exercise it, never by
+observing that no test went red. Likewise a suppression claim holds only if you
+first ran the fixture **without** the suppressing rule and watched the row
+appear.
+
 ### A surviving mutant is a question about the CODE, not the test
 
 The reflex on a survivor is to strengthen the test. Ask first whether the
@@ -120,9 +224,10 @@ genuinely failed — the evidence simply was not in the filtered output.
 
 The operating rules:
 
-- **Empty output indicts the tooling, not the mutant.** A run that prints
-  nothing means the filter, the reporter or the invocation is wrong. Re-run
-  unfiltered before drawing any conclusion.
+- **Empty output is a failed experiment, not a surviving mutant.** Re-run
+  unfiltered before drawing any conclusion — and scope the suspicion to the
+  input (the filter, the invocation, the fixture) **before** the tool. Full rule
+  → [run a control that FIRES](#before-acting-on-nothing-found-run-a-control-that-fires).
 - **Grep for the test NAME or the file, not for a phrase you expect in the
   failure.** You do not know what the failure will say — that is why you are
   running it — and a pattern written from your expectation matches only the
