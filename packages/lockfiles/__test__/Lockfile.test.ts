@@ -713,6 +713,95 @@ describe("instance identity and resolved edges", () => {
 			}),
 		);
 
+		it.effect("resolves a workspace: link into a package's publish directory to that importer", () =>
+			Effect.gen(function* () {
+				// pnpm's `publishConfig.linkDirectory` records a workspace link against
+				// the package's PUBLISH directory, not its root:
+				//
+				//   '@savvy-web/bundler':
+				//     specifier: workspace:*
+				//     version: link:../bundler/dist/dev/pkg
+				//
+				// `packages/bundler` is an importer; `packages/bundler/dist/dev/pkg` is a
+				// build output and never will be. Leaving the edge unnameable makes every
+				// such workspace permanently unverifiable downstream, on a lockfile pnpm
+				// itself reports as clean (savvy-web/systems: 25 such edges, 12 packages).
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .: {}",
+					"  packages/app:",
+					"    devDependencies:",
+					"      '@scope/lib':",
+					"        specifier: workspace:*",
+					"        version: link:../lib/dist/dev/pkg",
+					"  packages/lib: {}",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const app = lockfile.packagesNamed("packages/app")[0];
+
+				assert.strictEqual(app?.resolved["@scope/lib"], "packages/lib");
+				assert.deepStrictEqual(app?.unresolvedEdges, []);
+			}),
+		);
+
+		it.effect("declines a publish-directory link whose specifier is not workspace:", () =>
+			Effect.gen(function* () {
+				// The discriminating half: identical TARGET, different specifier. A
+				// hand-written `link:` names a directory pnpm never claimed belongs to a
+				// workspace package — it may hold a vendored stub with its own identity —
+				// so naming the enclosing importer would answer with the wrong package's
+				// peers rather than admit the edge could not be named.
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .: {}",
+					"  packages/app:",
+					"    devDependencies:",
+					"      '@scope/stub':",
+					"        specifier: link:../lib/vendor/stub",
+					"        version: link:../lib/vendor/stub",
+					"  packages/lib: {}",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const app = lockfile.packagesNamed("packages/app")[0];
+
+				assert.isUndefined(app?.resolved["@scope/stub"]);
+				assert.deepStrictEqual(app?.unresolvedEdges, ["@scope/stub"]);
+			}),
+		);
+
+		it.effect("a publish-directory link resolves to the NEAREST enclosing importer", () =>
+			Effect.gen(function* () {
+				// Nested importers: the owner is the longest ancestor that is one, so a
+				// package nested inside another package's tree is not swallowed by its
+				// parent. The root importer is excluded outright — it is an ancestor of
+				// every path, so admitting it would resolve every stray link to the root.
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .: {}",
+					"  packages/app:",
+					"    dependencies:",
+					"      '@scope/inner':",
+					"        specifier: workspace:*",
+					"        version: link:../lib/nested/inner/dist/pkg",
+					"      '@scope/nowhere':",
+					"        specifier: workspace:*",
+					"        version: link:../../elsewhere/dist/pkg",
+					"  packages/lib: {}",
+					"  packages/lib/nested/inner: {}",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const app = lockfile.packagesNamed("packages/app")[0];
+
+				assert.strictEqual(app?.resolved["@scope/inner"], "packages/lib/nested/inner");
+				// Under no importer at all: still unnameable, even under `workspace:`.
+				assert.isUndefined(app?.resolved["@scope/nowhere"]);
+				assert.deepStrictEqual(app?.unresolvedEdges, ["@scope/nowhere"]);
+			}),
+		);
+
 		it.effect("emits no edge for a link: target that is not an importer", () =>
 			Effect.gen(function* () {
 				// The honest half of the same rule. A `link:` target that names no
