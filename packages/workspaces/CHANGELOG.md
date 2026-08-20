@@ -1,5 +1,19 @@
 # @effected/workspaces
 
+## 0.14.3
+
+### Performance
+
+* `VersioningStrategy.detect` now runs independent publishability checks with bounded concurrency (`10`) instead of serially probing one package at a time.
+
+  * Classification output, tag semantics, and public API are unchanged; only probe scheduling changed. [#416][#416]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#416]: https://github.com/spencerbeggs/effected/pull/416
+
 ## 0.14.2
 
 ### Dependencies
