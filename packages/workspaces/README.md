@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Monorepo workspace tooling for [Effect](https://effect.website) v4: find the workspace root, enumerate its packages, walk the dependency graph, detect the package manager, resolve pnpm catalogs, read the lockfile and work out which packages a git range touches. Every capability is a service you provide at the edge and swap in tests. Works with npm, pnpm, yarn Berry and bun.
+Monorepo workspace tooling for [Effect](https://effect.website) v4: find the workspace root, enumerate its packages, walk the dependency graph, detect the package manager, resolve pnpm catalogs, read the lockfile, check it for unsatisfied peer dependencies and work out which packages a git range touches. Every capability is a service you provide at the edge and swap in tests. Works with npm, pnpm, yarn Berry and bun.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 prerelease. Packages graduate to
@@ -142,6 +142,43 @@ const program = Effect.gen(function* () {
 
 A specifier the workspace cannot answer fails typed as `UnresolvedDependencyError`: at the manifest level "no catalog entry" means the manifest cannot be projected to concrete ranges.
 
+## Peer dependency checking
+
+`PeerCheck.run(lockfile, options?)` reports unsatisfied peer dependencies as a pure value: no IO, no error channel, nothing in `R`, and no per-manager traversal logic. It reads `lockfile.format` once, to reject a format whose lockfile does not record peer resolution; past that gate the walk is the same for every manager. The answer comes from the resolved graph `@effected/lockfiles` normalizes, not from shelling out to a package manager's own peer command — bun has none, so the subprocess route cannot answer for every manager the rest of this package supports.
+
+```ts
+import { LockfileReader, PeerCheck, WorkspaceCatalogs } from "@effected/workspaces";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const reader = yield* LockfileReader;
+  const catalogs = yield* WorkspaceCatalogs;
+
+  const lockfile = yield* reader.read();
+  // Presence of the key is the assertion — see below.
+  const report = PeerCheck.run(lockfile, { peerDependencyRules: yield* catalogs.peerDependencyRules() });
+
+  return {
+    clean:
+      report.supported &&
+      report.unresolvedImporters.length === 0 &&
+      report.unverified.length === 0 &&
+      report.required.length === 0,
+    required: report.required.length,
+  };
+});
+// { clean: whether the workspace is proven clean, required: count of non-optional findings }
+```
+
+**An empty `unsatisfied` is not the same as clean**, and reading it that way is the mistake this report's shape exists to prevent. Three other fields carry the difference between "nothing is wrong" and "nothing was checked", and a gate must read all four:
+
+- `supported` is `false` for yarn, which resolves peers virtually and does not record which virtual instance satisfied which peer. The answer is unrecoverable, so it is not fabricated.
+- `unresolvedImporters` names importers that could not be joined to package instances — in practice the root importer under npm and bun, neither of which records a resolved version per importer dependency.
+- `unverified` says why the report is not a complete answer: `"peerRulesNotApplied"` when the suppression policy could not be applied, `"unresolvedEdge"` when an instance records an edge the model could not name. Both mean fail closed.
+- `required` is the getter for the rows a gate should act on — the non-optional ones. An unsatisfied *optional* peer is normal, so `optional` travels with the row rather than being filtered out at the source.
+
+`WorkspaceCatalogs.peerDependencyRules()` returns the workspace's effective merged pnpm suppression rules, which the lockfile records nowhere; without them a checker reports findings pnpm itself calls clean. **Presence of the `peerDependencyRules` option key is the assertion, not its contents.** Passing `NoPeerDependencyRules` asserts the workspace has none, so the report carries no `"peerRulesNotApplied"` — though it can still be unverified for another reason, or unsupported; omitting the key says nobody looked, and always yields `"peerRulesNotApplied"`. Only `allowedVersions` is applied — rules populating `ignoreMissing` or `allowAny` describe a policy this package does not replicate, so they fail closed through the same reason rather than being silently ignored. All three key spellings pnpm accepts are honoured: `parent@version>peer` (what `pnpm:export` writes), `parent>peer` (what a config-dependency plugin injects) and a bare `peer`, which pnpm applies to every parent that declares it.
+
 ## The synchronous escape hatch
 
 Vitest's config-time project discovery cannot await. Two functions exist for exactly that case, and they run synchronously over file and path operations you supply. On Node you do not have to write them: the `@effected/workspaces/node-sync` subpath exports `nodeSyncOps`, the ready-made `node:fs` and `node:path` bindings, so adopting the sync path is one extra import.
@@ -242,6 +279,8 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 - `PackageManagerDetector` — npm, pnpm, yarn or bun from lockfiles and the `packageManager` field.
 - `WorkspaceCatalogs` — pnpm catalog assembly and `catalog:` resolution, on pnpm's own catalog packages; `releaseAgeGate()` assembles the effective `@effected/npm` `ReleaseAgeGate` from inline `pnpm-workspace.yaml` release-age keys and replayed hook contributions, strictest-wins, in the same pass as the catalogs.
 - `LockfileReader` — locate and parse the workspace's lockfile through `@effected/lockfiles`.
+- `PeerCheck` — unsatisfied peer-dependency detection as a pure, total value over a parsed lockfile, with `UnsatisfiedPeer` and `PeerParent` as the report's rows. Read `supported`, `unresolvedImporters` and `unverified` alongside `unsatisfied`: an empty finding list is a clean bill of health only when those three say so.
+- `NoPeerDependencyRules` / `PeerDependencyRules` — the effective pnpm suppression policy `WorkspaceCatalogs.peerDependencyRules()` assembles, and the "I assert none apply" value for callers that have checked.
 - `ChangeDetector` — git-range change detection over `@effected/git`'s `Git` service; swap the layer to mock it with no repository.
 - `PublishabilityDetector` — whether a package publishes and to where, as a `PublishTarget` (registry, directory, access, provenance). No composite provides one: pick `PublishabilityDetector.layerNpm` (standard npm semantics) or `.layerNone` (nothing publishes) and provide it explicitly.
 - `ReleaseTag` / `TrackingTag` — release-tag formatting (`ReleaseTag.single` / `.scoped`, strict SemVer by default with no `v` prefix) and the floating major/minor alias derivation GitHub Actions-style consumers expect (`v1`, `v1.2`), plus `classifyTag` to tell a release tag from a tracking alias.

@@ -16,6 +16,7 @@ import {
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { PeerDependencyRules } from "./ConfigDependencyHooks.js";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
@@ -276,6 +277,42 @@ const inlineReleaseAge = (document: unknown): Effect.Effect<PartialReleaseAgeGat
 	);
 };
 
+/**
+ * The `peerDependencyRules` a `pnpm-workspace.yaml` declares inline — the half
+ * `pnpm:export` materializes into the file, as opposed to the half a config
+ * dependency injects at replay time.
+ *
+ * @remarks
+ * **Tolerant, unlike the catalog blocks**, and the asymmetry is deliberate: a
+ * malformed catalog block must hard-fail because a silently-empty catalog makes
+ * every dependency look newly added, whereas a malformed rules block costs only
+ * suppression — the failure mode is reporting a peer pnpm would have hidden,
+ * which is visible and safe. Failing the whole assembly over it would take the
+ * catalogs down with it.
+ *
+ * Every axis is read independently, so a malformed `ignoreMissing` does not
+ * discard a well-formed `allowedVersions`.
+ */
+const EMPTY_PEER_RULES: PeerDependencyRules = { allowedVersions: {}, ignoreMissing: [], allowAny: [] };
+
+const inlinePeerDependencyRules = (document: unknown): PeerDependencyRules => {
+	if (!isObject(document) || !isObject(document.peerDependencyRules)) return EMPTY_PEER_RULES;
+	const block = document.peerDependencyRules;
+	const allowedVersions: Record<string, string> = {};
+	if (isObject(block.allowedVersions)) {
+		for (const [key, value] of Object.entries(block.allowedVersions)) {
+			if (typeof value === "string") allowedVersions[key] = value;
+		}
+	}
+	const strings = (value: unknown): ReadonlyArray<string> =>
+		Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+	return {
+		allowedVersions,
+		ignoreMissing: strings(block.ignoreMissing),
+		allowAny: strings(block.allowAny),
+	};
+};
+
 /** A hard-fail catalog-assembly failure naming the malformed part of a `workspaces` field. */
 const malformed = (source: "manifest" | "catalog", path: string, detail: string): CatalogAssemblyError =>
 	new CatalogAssemblyError({ source, path, cause: new Error(detail) });
@@ -418,6 +455,7 @@ interface Assembled {
 	readonly catalogs: CatalogSet;
 	readonly releaseAgeGate: ReleaseAgeGate;
 	readonly importerVersions: ImporterVersions;
+	readonly peerDependencyRules: PeerDependencyRules;
 }
 
 /**
@@ -447,6 +485,26 @@ export interface WorkspaceCatalogsShape {
 	 * workspace) has no release-age keys, so the gate is the inert zero gate.
 	 */
 	readonly releaseAgeGate: () => Effect.Effect<ReleaseAgeGate, CatalogAssemblyFailure>;
+	/**
+	 * The workspace's **effective** `peerDependencyRules` — pnpm's post-hoc
+	 * suppression policy, which the lockfile does not record at all.
+	 *
+	 * @remarks
+	 * Assembled from the same single read and hook replay as `set`, and memoized
+	 * with it. The `pnpm-workspace.yaml` block (what `pnpm:export` materializes)
+	 * is **seeded** into the replayed config and the config-dependency hooks
+	 * merge onto it, so one object carries both sources — the kit never merges
+	 * them itself, because that would be a second implementation of a rule the
+	 * hook seam already enforces.
+	 *
+	 * A consumer needs these to avoid **reporting** what pnpm suppresses: pnpm
+	 * computes the same peer violations and then hides the ones a rule allows,
+	 * so a checker without them reports findings pnpm calls clean.
+	 *
+	 * `ignoreMissing` and `allowAny` are carried but unmeasured — no kit code
+	 * acts on them today.
+	 */
+	readonly peerDependencyRules: () => Effect.Effect<PeerDependencyRules, CatalogAssemblyFailure>;
 	/**
 	 * Each importer's dependency-name → resolved-version map, as the manager's
 	 * lockfile records it. Read from the same single lockfile read as `set`, and
@@ -581,6 +639,11 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				// is a pnpm feature and config dependencies live only in pnpm-workspace.yaml).
 				let inlineGate: PartialReleaseAgeGate = {};
 				let hookGate: PartialReleaseAgeGate = {};
+				// The EFFECTIVE rules: the workspace file's block seeded into the
+				// threaded config, with every replayed hook's contribution merged onto
+				// it. Read back off the injection rather than recomputed here — the
+				// point of seeding is that one object carries the answer.
+				let peerDependencyRules: PeerDependencyRules = EMPTY_PEER_RULES;
 				if (hasPnpmWorkspace) {
 					const text = yield* fs
 						.readFileString(workspaceYaml)
@@ -605,9 +668,18 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					// top. The default layer's no-op hooks return the seed untouched, so
 					// this executes no config-dependency code. It surfaces both the injected
 					// catalogs and the hooks' release-age contribution from one replay.
-					const injection = yield* hooks.inject(root, configDependenciesOf(document), inline.entries);
+					// Rules are SEEDED, not merged afterwards: the workspace file's block
+					// goes into the threaded config so the hooks merge onto it, exactly as
+					// pnpm seeds its own config and takes back what the hooks return.
+					const injection = yield* hooks.inject(
+						root,
+						configDependenciesOf(document),
+						inline.entries,
+						inlinePeerDependencyRules(document),
+					);
 					injected = CatalogSet.fromCatalogs(injection.catalogs);
 					hookGate = injection.releaseAge;
+					peerDependencyRules = injection.peerDependencyRules;
 				} else {
 					const manifestPath = path.join(root, "package.json");
 					// The presence probe must distinguish genuine absence from a probe
@@ -617,7 +689,12 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					// added" bug on the bun branch. `probeExists` already does this.
 					const hasManifest = yield* probeExists(manifestPath);
 					if (!hasManifest)
-						return { catalogs: fromLockfile, releaseAgeGate: ReleaseAgeGate.combine(), importerVersions };
+						return {
+							catalogs: fromLockfile,
+							releaseAgeGate: ReleaseAgeGate.combine(),
+							importerVersions,
+							peerDependencyRules: EMPTY_PEER_RULES,
+						};
 					const text = yield* fs
 						.readFileString(manifestPath)
 						.pipe(
@@ -639,7 +716,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 						"workspace.releaseAgeMinutes": releaseAgeGate.ageMinutes,
 					}),
 				);
-				return { catalogs: assembled, releaseAgeGate, importerVersions };
+				return { catalogs: assembled, releaseAgeGate, importerVersions, peerDependencyRules };
 			});
 
 			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(assemble, Duration.infinity);
@@ -654,6 +731,9 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					specifier: string,
 				) {
 					return (yield* memo).catalogs.resolveSpecifier(dependency, specifier);
+				}),
+				peerDependencyRules: Effect.fn("WorkspaceCatalogs.peerDependencyRules")(function* () {
+					return (yield* memo).peerDependencyRules;
 				}),
 				releaseAgeGate: Effect.fn("WorkspaceCatalogs.releaseAgeGate")(function* () {
 					return (yield* memo).releaseAgeGate;
@@ -768,6 +848,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					? (dependency: string, specifier: string) =>
 							Effect.map(set(), (catalogs) => catalogs.resolveSpecifier(dependency, specifier))
 					: () => unstubbed("resolveSpecifier"),
+			peerDependencyRules: () => unstubbed("peerDependencyRules"),
 			releaseAgeGate: () => unstubbed("releaseAgeGate"),
 			importerVersions: () => unstubbed("importerVersions"),
 			...overrides,

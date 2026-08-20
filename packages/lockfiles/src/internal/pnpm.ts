@@ -8,6 +8,8 @@ import {
 	extractWorkspaceDeps,
 	framingFailure,
 	importerDependencies,
+	peerDeclarations,
+	requireLockfileVersion,
 	splitPeerSuffix,
 	toIntegrityHash,
 	validationFailure,
@@ -24,6 +26,21 @@ const PnpmImporter = Schema.Struct({
 	devDependencies: PnpmImporterDeps,
 	peerDependencies: PnpmImporterDeps,
 	optionalDependencies: PnpmImporterDeps,
+});
+
+/**
+ * The version gate's own input: `lockfileVersion` and nothing else.
+ *
+ * The gate has to read the version *before* the shape decode, because the
+ * shape it decodes against is the shape of a supported version. `importers` is
+ * a required key here and a pre-v9 single-project lockfile has none — it
+ * records its dependencies at the top level — so a shape-first order reports a
+ * lockfile we reject for being too old as merely malformed instead.
+ *
+ * @internal
+ */
+const PnpmVersionProbe = Schema.Struct({
+	lockfileVersion: Schema.Union([Schema.String, Schema.Number]),
 });
 
 const PnpmLockfileRaw = Schema.Struct({
@@ -50,6 +67,25 @@ const PnpmLockfileRaw = Schema.Struct({
 			Schema.String,
 			Schema.Struct({
 				resolution: Schema.optionalKey(Schema.Struct({ integrity: Schema.optionalKey(Schema.String) })),
+				peerDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+				peerDependenciesMeta: Schema.optionalKey(
+					Schema.Record(Schema.String, Schema.Struct({ optional: Schema.optionalKey(Schema.Boolean) })),
+				),
+				// Pre-v9 lockfiles carry resolution inline here, since they have no
+				// `snapshots:` section to carry it.
+				dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+				optionalDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+			}),
+		),
+	),
+	// Lockfile v9 split per-*instance* resolution out of `packages:` into its
+	// own section; earlier versions carry both in `packages:`.
+	snapshots: Schema.optionalKey(
+		Schema.Record(
+			Schema.String,
+			Schema.Struct({
+				dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+				optionalDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 			}),
 		),
 	),
@@ -57,6 +93,7 @@ const PnpmLockfileRaw = Schema.Struct({
 
 type PnpmLockfileRawType = typeof PnpmLockfileRaw.Type;
 type PnpmImporterType = typeof PnpmImporter.Type;
+type PnpmPackageEntry = NonNullable<PnpmLockfileRawType["packages"]>[string];
 
 /**
  * Parse pnpm `pnpm-lock.yaml` content into the unified field bundle.
@@ -77,6 +114,20 @@ type PnpmImporterType = typeof PnpmImporter.Type;
 export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
 		const { document, documents } = yield* selectPnpmDocument(content);
+		// Format-version gate. Deliberately NOT a check for `snapshots:` being
+		// present or populated: a dependency-free v9 workspace legitimately has
+		// zero snapshot entries, so an emptiness guard would reject a valid
+		// lockfile. Version is the format's own identity; emptiness is a
+		// coincidence of content.
+		//
+		// It runs BEFORE the shape decode, and must: a pre-v9 single-project
+		// lockfile carries no `importers` map, so decoding first would report a
+		// too-old lockfile as malformed — losing the distinction the
+		// `UnsupportedLockfileVersion` cause exists to carry.
+		const probe = yield* Schema.decodeUnknownEffect(PnpmVersionProbe)(document).pipe(
+			Effect.mapError(validationFailure),
+		);
+		yield* requireLockfileVersion("pnpm", probe.lockfileVersion);
 		const validated = yield* Schema.decodeUnknownEffect(PnpmLockfileRaw)(document).pipe(
 			Effect.mapError(validationFailure),
 		);
@@ -92,6 +143,134 @@ export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseF
 	});
 
 // ── Transform ──────────────────────────────────────────────────────────────
+
+/**
+ * Resolve one instance's outgoing edges to instance ids.
+ *
+ * pnpm names a resolved dependency as `name` → `version`, where the version may
+ * itself carry a peer suffix (`1.6.0(react@17.0.2)`); the referenced instance's
+ * key is those two composed back together. The composition is *verified*
+ * against the lockfile's own key set rather than trusted — the composed key is
+ * v9's bare `name@version` and nothing else, because the format gate admits no
+ * lockfile that spells keys the pre-v9 leading-slash way — and an edge that
+ * matches nothing is **omitted**. That is what keeps a `link:`/`file:`
+ * resolution, which names no instance in this lockfile, from becoming a
+ * plausible lie.
+ *
+ * @internal
+ */
+const resolveEdges = (
+	sections: ReadonlyArray<Readonly<Record<string, string>> | undefined>,
+	instanceIds: ReadonlySet<string>,
+): ResolvedEdges => {
+	const edges = new Map<string, string>();
+	const unnameable = new Set<string>();
+	for (const section of sections) {
+		if (!section) continue;
+		for (const [name, version] of Object.entries(section)) {
+			if (name === "") continue;
+			// A `link:` resolution names a directory, not a registry version, so
+			// `name@link:...` composes to nothing. pnpm records the same edge twice
+			// in two spellings: the snapshot body keeps the readable `link:<path>`
+			// while the peer suffix carries a MANGLED identity
+			// (`react@packages+fakereact`) that appears nowhere as a key. Neither
+			// spelling composes, so the edge used to be dropped — and one layer up
+			// a dropped edge for a peer reads as an unsatisfied peer, turning a
+			// satisfied `link:` into a false positive.
+			//
+			// A snapshot's `link:` target is recorded relative to the workspace
+			// ROOT (importer sections record theirs relative to the importer), so
+			// it is normalized against the root and matched against the instance
+			// ids, where a workspace importer's id is its path.
+			if (version.startsWith(LINK_PREFIX)) {
+				const target = resolveLinkTarget("", version.slice(LINK_PREFIX.length));
+				if (target !== undefined && instanceIds.has(target)) edges.set(name, target);
+				// A `link:` into a directory that is no importer — a build output, a
+				// vendored stub — names no instance in this lockfile. The edge is
+				// RECORDED, so its absence from `resolved` must not read as "nothing
+				// resolved".
+				else unnameable.add(name);
+				continue;
+			}
+			const bare = `${name}@${version}`;
+			if (instanceIds.has(bare)) edges.set(name, bare);
+			else unnameable.add(name);
+		}
+	}
+	// Map-backed until the last step: `Object.fromEntries` defines own data
+	// properties, so a "__proto__" dependency name neither pollutes nor drops.
+	return { resolved: Object.fromEntries(edges), unresolvedEdges: [...unnameable].sort() };
+};
+
+/**
+ * One instance's outgoing edges, split: those that could be named, and those
+ * the lockfile records but this model could not name.
+ *
+ * @internal
+ */
+interface ResolvedEdges {
+	readonly resolved: Record<string, string>;
+	readonly unresolvedEdges: ReadonlyArray<string>;
+}
+
+/** The protocol pnpm records a workspace-directory resolution under. @internal */
+const LINK_PREFIX = "link:";
+
+/**
+ * Normalize a `link:` target against the linking importer's path, so a
+ * workspace edge can name the workspace importer's instance id.
+ * Total: a target that walks above the root yields `undefined`.
+ *
+ * @internal
+ */
+const resolveLinkTarget = (importerPath: string, target: string): string | undefined => {
+	const segments: Array<string> = [];
+	for (const segment of `${importerPath}/${target}`.split("/")) {
+		if (segment === "" || segment === ".") continue;
+		if (segment === "..") {
+			if (segments.pop() === undefined) return undefined;
+			continue;
+		}
+		segments.push(segment);
+	}
+	return segments.length === 0 ? undefined : segments.join("/");
+};
+
+/**
+ * Resolve one importer's outgoing edges. pnpm records `{ specifier, version }`
+ * per importer dependency, where the version is either a registry version (the
+ * instance-id composition {@link resolveEdges} performs) or a `link:` target
+ * naming another importer — normalized against this importer's own path. Both
+ * are checked against the lockfile's instance ids before being emitted.
+ *
+ * @internal
+ */
+const resolveImporterEdges = (
+	importer: PnpmImporterType,
+	importerPath: string,
+	instanceIds: ReadonlySet<string>,
+): ResolvedEdges => {
+	const edges = new Map<string, string>();
+	const unnameable = new Set<string>();
+	for (const group of importerDepGroups(importer)) {
+		if (!group) continue;
+		for (const [name, info] of Object.entries(group)) {
+			if (name === "") continue;
+			if (info.version.startsWith(LINK_PREFIX)) {
+				const target = resolveLinkTarget(importerPath, info.version.slice(LINK_PREFIX.length));
+				if (target !== undefined && instanceIds.has(target)) edges.set(name, target);
+				else unnameable.add(name);
+				continue;
+			}
+			const bare = `${name}@${info.version}`;
+			if (instanceIds.has(bare)) edges.set(name, bare);
+			else unnameable.add(name);
+		}
+	}
+	// Map-backed until the last step: `Object.fromEntries` defines own data
+	// properties, so a "__proto__" dependency name neither pollutes nor drops.
+	return { resolved: Object.fromEntries(edges), unresolvedEdges: [...unnameable].sort() };
+};
 
 const toVersionMap = (
 	deps: Record<string, { readonly specifier: string; readonly version: string }> | undefined,
@@ -157,38 +336,91 @@ const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, Parse
 
 		const packages: Array<ResolvedPackage> = [];
 
-		for (const importerPath of Object.keys(raw.importers)) {
+		// One row per *instance*: one per `snapshots:` entry, because `packages:`
+		// is per-*version* metadata and collapses every peer-resolved variant onto
+		// one key. An empty (or absent) `snapshots:` map is valid — a workspace
+		// with no dependencies has no instances to record — and simply yields no
+		// snapshot rows. Importer paths join the id space because a `link:` edge
+		// names one.
+		const snapshots = raw.snapshots;
+		const instanceIds = new Set<string>([
+			...(snapshots ? Object.keys(snapshots) : []),
+			...(raw.packages ? Object.keys(raw.packages) : []),
+			...Object.keys(raw.importers),
+		]);
+		const emitted = new Set<string>();
+
+		for (const [importerPath, importer] of Object.entries(raw.importers)) {
 			if (importerPath === "." || importerPath === "") continue;
+			// No peers here by design: a pnpm lockfile records a workspace
+			// project's *resolved* dependencies only, never its own peer
+			// declarations — probed against pnpm 11.22.0 both with and without
+			// autoInstallPeers. Workspace rows keep the empty peer defaults, and the
+			// importer path is both the name and the instance id.
 			packages.push(
 				ResolvedPackage.make({
 					name: importerPath,
 					version: "0.0.0",
+					instanceId: importerPath,
 					isWorkspace: true,
 					relativePath: importerPath,
+					...resolveImporterEdges(importer, importerPath, instanceIds),
 				}),
 			);
 		}
 
-		if (raw.packages) {
-			for (const [key, pkg] of Object.entries(raw.packages)) {
+		const emit = (
+			instanceId: string,
+			meta: PnpmPackageEntry | undefined,
+			edges: ReadonlyArray<Readonly<Record<string, string>> | undefined>,
+		) =>
+			Effect.gen(function* () {
 				// Keys may carry a peer-resolution suffix — "fdir@6.5.0(picomatch@4.0.4)" —
 				// whose inner "@" would corrupt the split; splitPeerSuffix (the one
 				// stripping implementation, shared with the importer path) drops
 				// everything from the first "(".
-				const { plain: bare } = splitPeerSuffix(key);
+				const { plain: bare } = splitPeerSuffix(instanceId);
 				const atIndex = bare.lastIndexOf("@");
-				if (atIndex <= 0) continue; // malformed "name@version" keys are skipped, never thrown on
+				if (atIndex <= 0) return; // malformed "name@version" keys are skipped, never thrown on
 				const name = bare.slice(0, atIndex);
 				const version = bare.slice(atIndex + 1);
-				const integrity = yield* toIntegrityHash(pkg.resolution?.integrity);
+				const integrity = yield* toIntegrityHash(meta?.resolution?.integrity);
+				emitted.add(instanceId);
 				packages.push(
 					ResolvedPackage.make({
 						name,
 						version,
+						instanceId,
 						...(integrity !== undefined ? { integrity } : {}),
 						isWorkspace: false,
+						...peerDeclarations(meta?.peerDependencies, meta?.peerDependenciesMeta),
+						...resolveEdges(edges, instanceIds),
 					}),
 				);
+			});
+
+		if (snapshots) {
+			for (const [key, snapshot] of Object.entries(snapshots)) {
+				// Peer declarations live on the matching per-version `packages:` entry,
+				// which is keyed by the plain "name@version" the suffix hangs off.
+				// Own-property lookup, matching the rest of this package: a key-shaped
+				// intermediate is never read through the prototype chain.
+				const plain = splitPeerSuffix(key).plain;
+				const meta = raw.packages !== undefined && Object.hasOwn(raw.packages, plain) ? raw.packages[plain] : undefined;
+				yield* emit(key, meta, [snapshot.dependencies, snapshot.optionalDependencies]);
+			}
+		}
+
+		// Which `packages:` keys a snapshot already spoke for.
+		const covered = new Set([...emitted].map((key) => splitPeerSuffix(key).plain));
+
+		if (raw.packages) {
+			for (const [key, pkg] of Object.entries(raw.packages)) {
+				// A `packages:` entry no snapshot covers is an orphan — still emitted
+				// rather than dropped, since an unexplained disappearance is the worse
+				// failure. It carries no resolution, which is honest: none was recorded.
+				if (covered.has(key)) continue;
+				yield* emit(key, pkg, [pkg.dependencies, pkg.optionalDependencies]);
 			}
 		}
 

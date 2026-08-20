@@ -36,4 +36,4 @@ Adding a fallback default is the tempting wrong fix. silk-release-action did it 
 
 `makeTest` / `layerTest` is the sanctioned double, and an unstubbed `detect` **dies**. Failing typed is the subtler wrong shape, because `PackageManagerDetectionError` looks like a legitimate "no manager here" answer a consumer branches on, so the forgotten stub never surfaces. Both are mutation-pinned in `__test__/PackageManagerDetectorDouble.test.ts`.
 
-**Related:** [surface](./CLAUDE.surface.md) · [catalogs](./CLAUDE.catalogs.md) · [snapshots](./CLAUDE.snapshots.md)
+**Related:** [surface](./CLAUDE.surface.md) · [catalogs](./CLAUDE.catalogs.md) · [snapshots](./CLAUDE.snapshots.md) · [peers](./CLAUDE.peers.md)

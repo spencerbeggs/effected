@@ -1,6 +1,6 @@
 # @effected/workspaces
 
-Monorepo tooling as Effect services: workspace root discovery, package enumeration, the dependency graph, package-manager detection, pnpm/bun catalog resolution, lockfile IO, git change detection and point-in-time snapshots. Integrated tier: real runtime deps on the `@pnpm/catalogs.*` quartet (confined to one internal module) plus most of the kit's lower tiers.
+Monorepo tooling as Effect services: workspace root discovery, package enumeration, the dependency graph, package-manager detection, pnpm/bun catalog resolution, lockfile IO, unsatisfied peer-dependency detection, git change detection and point-in-time snapshots. Integrated tier: real runtime deps on the `@pnpm/catalogs.*` quartet (confined to one internal module) plus most of the kit's lower tiers.
 
 ## Import
 
@@ -42,20 +42,23 @@ The platform-agnostic sync functions (`findWorkspaceRootSync`, `getWorkspacePack
 - **`PublishabilityDetector`** — `Context.Service`; `detect(pkg: WorkspacePackage) => Effect<ReadonlyArray<PublishTarget>>` — an intentionally TOTAL (`never`-erroring) question: empty means "does not publish". `PublishabilityDetector.layer` implements standard npm semantics (private + no `publishConfig.access` → publishes nowhere; explicit `access` overrides `private`; otherwise public with defaults). An overriding layer with a fallible lookup must degrade to a safe answer or `Effect.die` — it cannot widen the `never` channel. `PublishTarget` — `name`, `registry`, `directory`, `access: "public" | "restricted"`, `provenance` (defaulted).
 - **`DependencyGraph`** — pure value class: `sort`, `sortSubset`, `levels` (deterministic Kahn), `hasCycle`, `dependenciesOf`/`dependentsOf`, `toMermaid()` (total, deterministic `flowchart TD` via core `Graph.toMermaid`); `CyclicDependencyError.cycle` names the actual cycle members (SCC union via core `Graph.stronglyConnectedComponents`), never packages merely downstream of the cycle.
 - **`PackageManagerDetector`** — `"npm" | "pnpm" | "yarn" | "bun"` from lockfile evidence + `packageManager`/`devEngines` fields.
-- **`WorkspaceCatalogs` / `CatalogSet`** — pnpm/bun catalog assembly; `WorkspaceCatalogs.catalogResolver` implements the `CatalogResolver` contract. `releaseAgeGate()` folds the inline `minimumReleaseAge` keys and the hook contributions into one gate.
-- **`ConfigDependencyHooks`** — the opt-in pnpmfile-replay seam, with **three** layers and matching composites on both `WorkspaceCatalogs` and `Workspaces`. `inject` returns one `HookInjection { catalogs, releaseAge }` — one replay, both outputs.
+- **`WorkspaceCatalogs` / `CatalogSet`** — pnpm/bun catalog assembly; `WorkspaceCatalogs.catalogResolver` implements the `CatalogResolver` contract. `releaseAgeGate()` folds the inline `minimumReleaseAge` keys and the hook contributions into one gate. **`peerDependencyRules()`** → `Effect<PeerDependencyRules, CatalogAssemblyFailure>` — the workspace's **effective** `peerDependencyRules`, i.e. pnpm's post-hoc peer-violation suppression policy, obtained by replaying config-dependency pnpmfile hooks the same way catalogs and release-age are; feed the result straight to `PeerCheck.run`'s `peerDependencyRules` option. `PeerDependencyRules` is pnpm's own shape verbatim: `{ allowedVersions: Record<string, string>, ignoreMissing: readonly string[], allowAny: readonly string[] }`. `NoPeerDependencyRules` is the exported "I looked, there are none" value — see the trap below.
+- **`ConfigDependencyHooks`** — the opt-in pnpmfile-replay seam, with **three** layers and matching composites on both `WorkspaceCatalogs` and `Workspaces`. `inject` returns one `HookInjection { catalogs, releaseAge, peerDependencyRules }` — one replay, three outputs.
 
 | Layer | What it does | Composite | Requires |
 | --- | --- | --- | --- |
-| `layerNoop` | executes NO config-dependency code (`{ catalogs: seed, releaseAge: {} }`) | `layer` — the **default** | — |
-| `layerLive` | dynamic `import()` of each pnpmfile **in process**, then replays `updateConfig` | `layerWithConfigDependencies` | — |
-| `layerSubprocess` | the same replay in a `node` child process | `layerWithConfigDependenciesSubprocess` | core's `ChildProcessSpawner` |
+| `layerNoop` | executes NO config-dependency code (the seed through: `{ catalogs: seed, releaseAge: {}, peerDependencyRules: the rules it was handed }`) | `layer` — the **default** | — |
+| `layerLive` | dynamic `import()` of each pnpmfile **in process**, then replays `updateConfig`, threading all three outputs | `layerWithConfigDependencies` | — |
+| `layerSubprocess` | the same replay, and the same three outputs, in a `node` child process | `layerWithConfigDependenciesSubprocess` | core's `ChildProcessSpawner` |
+
+Every layer answers the **same three-output contract** — `inject` returns one `HookInjection { catalogs, releaseAge, peerDependencyRules }`. A layer that contributed only two would be a different seam, not a lighter one.
 
 **Reach for `layerSubprocess` in any BUNDLED consumer** — a GitHub Action, above all. `layerLive` computes its `import()` target at runtime, and a bundler (rspack) compiles a computed dynamic import into a context module that throws `Cannot find module 'file:///…'`, so `releaseAgeGate()` — the reason to opt into hooks at all — was simply uncallable from a bundled action. `layerSubprocess` moves the computed load out of the bundle graph via a **static** argv script; the two layers are drop-in interchangeable and typed-semantics parity is pinned by an integration test driving both against one fixture. The child prints one JSON envelope line, which the parent decodes with `@effected/commands`' `Run.jsonLine` (never a hand-rolled last-line parse); folding and normalization stay in the parent, and the `..`-segment guard runs **before** any spawn.
 
 - **`ChangeDetector`** — `changedFiles`/`workingChanges` over `@effected/git` (`includeUncommitted` option).
 - **`WorkspaceSnapshots`** — `at(ref)` (git-only, no checkout, cached per `(root, ref)`) and `worktree()` (live tree, uncached), both returning `WorkspaceStateSnapshot` (`versions`, `package(name)`, `resolve(...)`, snapshot-scoped resolver layers).
 - **`LockfileReader`** — root → PM detection → file read → `Lockfile.parse`.
+- **`PeerCheck`** — unsatisfied peer-dependency detection as a **pure value class**, not a service: no IO, nothing in `R`, no error channel. `PeerCheck.run(lockfile, options?)` reads a parsed `@effected/lockfiles` `Lockfile` — `instanceId`/`resolved`/`peerDependencies` — and past a single `lockfile.format` support gate the traversal is format-free, which is the point: shelling out to each manager's own peer command cannot deliver bun (no such command exists, and its one warning line appears only on the install that changes the tree), so the answer has to come from the resolved graph. Returns `{ supported, unsatisfied, unresolvedImporters, unverified }` plus a `required` getter (the non-optional rows). `UnsatisfiedPeer` — `{ importer, dependency, wanted, found: string | null, optional, parents: PeerParent[] }`; `parents` is *a* route to the declaring package, and a package an importer reaches by several routes yields ONE row, as pnpm reports it. Reach for this over hand-rolling a peer check, or over shelling out to `npm`/`pnpm`/`bun`, for anything asking "is this workspace's peer graph satisfied".
 - **Sync escape hatch (bare consts, NOT a `WorkspacesSync` namespace)** — `findWorkspaceRootSync(cwd, options)` / `getWorkspacePackagesSync(root, options)`, both re-exported from the MAIN entrypoint and platform-agnostic. There is no `WorkspacesSync` namespace object; each is a free-standing const taking the path positionally first, then a required options bag that carries a consumer-supplied `SyncFileSystem`/`SyncPath` — nothing defaults to Node, and nothing reads `process.cwd()` ambiently. Pass `nodeSyncOps` from `@effected/workspaces/node-sync` as shown above. For config-time discovery that cannot `await` (e.g. a vitest config). Both are **total** — an unenumerable pattern or unreadable manifest is skipped, never raised, and only truncate at a depth/budget bound where the async surface fails typed.
 
 ## Usage
@@ -131,6 +134,25 @@ const ReporterLive = Layer.effect(
 ).pipe(Layer.provide(KitGraph), Layer.provide(NodeServices.layer));
 ```
 
+`PeerCheck` gating a build — the predicate that actually means "clean", and threading `peerDependencyRules()` so the report is verified rather than fail-closed:
+
+```ts
+import { LockfileReader, PeerCheck, WorkspaceCatalogs } from "@effected/workspaces";
+import { Effect } from "effect";
+
+const isClean = (report: PeerCheck): boolean =>
+ report.supported && report.unresolvedImporters.length === 0 && report.unverified.length === 0 && report.required.length === 0;
+
+const program = Effect.gen(function* () {
+ const reader = yield* LockfileReader;
+ const catalogs = yield* WorkspaceCatalogs;
+ const lockfile = yield* reader.read();
+ const peerDependencyRules = yield* catalogs.peerDependencyRules();
+ const report = PeerCheck.run(lockfile, { peerDependencyRules });
+ return isClean(report);
+});
+```
+
 ## Testing machinery
 
 None exported by this package. Unit-test consumers with core's `Path.layer` + `FileSystem.layerNoop`; stub git-backed services with `@effected/git`'s own shipped `Git.layerTest({ … })` (unstubbed members die named — never hand-enumerate `GitShape`, which breaks on every growth of that service) and publishability with `Layer.succeed(PublishabilityDetector, ...)` — no real repo or platform package needed.
@@ -143,3 +165,7 @@ None exported by this package. Unit-test consumers with core's `Path.layer` + `F
 - `WorkspaceSnapshots.at(ref)` never replays config-dependency pnpmfile hooks (an at-ref read must not execute historical code) — `at()` and `worktree()` catalogs can diverge under `layerWithConfigDependencies`.
 - `PublishabilityDetector`'s error channel is `never` by contract — an overriding layer backed by something fallible must fold failures into a safe answer or `Effect.die`; it cannot widen the channel the shape declares.
 - `matchesDependency` compiles a raw string pattern on every call; an uncompilable literal throws as a defect (developer wiring, not untrusted input) rather than a typed error.
+- **`PeerCheck.run` fails closed, and an empty `unsatisfied` is NOT the same as clean.** The real "nothing wrong" predicate is `supported && !report.unresolvedImporters.length && !report.unverified.length && !report.required.length` — check all four, not just `unsatisfied`. `unverified` is `"peerRulesNotApplied" | "unresolvedEdge"`; both mean fail closed, and no distinction between them is meaningful to a consumer.
+- **Presence of the `peerDependencyRules` option key is the assertion, not its contents.** Omitting the key entirely means "nobody looked" and always yields `"peerRulesNotApplied"`; passing `NoPeerDependencyRules` means "I looked, there are none" and yields a verified report. The two are deliberately different results — never normalize an omitted option to `NoPeerDependencyRules` before calling `run`, and never treat the two as equivalent.
+- `PeerCheck` is unsupported for yarn (`supported: false`) — yarn resolves peers virtually and the lockfile does not record which virtual instance satisfied which peer, so the answer is not recoverable rather than merely unimplemented.
+- `WorkspaceCatalogs.peerDependencyRules()` only applies its `allowedVersions` axis; a rule with a non-empty `ignoreMissing` or `allowAny` makes `PeerCheck.run` report `"peerRulesNotApplied"` for the whole check rather than silently ignoring the unimplemented axis.

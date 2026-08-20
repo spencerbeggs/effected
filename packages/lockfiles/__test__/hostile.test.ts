@@ -182,6 +182,14 @@ describe("hostile input", () => {
 				const evil = lockfile.packagesNamed("__proto__")[0];
 				const protoEntry = Object.entries(evil?.dependencies ?? {}).find(([k]) => k === "__proto__");
 				assert.deepStrictEqual(protoEntry, ["__proto__", "1.0.0"]); // own enumerable property, not dropped
+				// The edge resolver walks those same hostile names and writes a record
+				// keyed by them: still own properties, still no prototype write.
+				assert.strictEqual(evil?.instanceId, "node_modules/__proto__");
+				assert.deepStrictEqual(
+					Object.entries(evil?.resolved ?? {}).find(([k]) => k === "__proto__"),
+					["__proto__", "node_modules/__proto__"],
+				);
+				assertPrototypeUnpolluted();
 			}),
 		);
 
@@ -209,6 +217,60 @@ describe("hostile input", () => {
 				assert.strictEqual(dep?.specifier._tag, "range");
 
 				assert.isTrue(Option.isSome(lockfile.importer(".")));
+			}),
+		);
+
+		it.effect("__proto__-keyed peer maps neither pollute nor drop, in every format", () =>
+			Effect.gen(function* () {
+				// A hostile peer *name* is the same attacker-adjacent string class as a
+				// package key: build the own properties for real, since a `__proto__:`
+				// literal would be swallowed by the object literal itself.
+				const hostilePeers = Object.fromEntries([
+					["__proto__", "^1.0.0"],
+					["constructor", "^2.0.0"],
+				]);
+				const hostileMeta = Object.fromEntries([["__proto__", { optional: true }]]);
+
+				const npmContent = JSON.stringify({
+					lockfileVersion: 3,
+					packages: {
+						"": { name: "root" },
+						"node_modules/evil": {
+							version: "1.0.0",
+							peerDependencies: hostilePeers,
+							peerDependenciesMeta: hostileMeta,
+						},
+					},
+				});
+				assert.include(npmContent, '"__proto__":"^1.0.0"'); // the hostile key survived serialization
+
+				const bunContent = JSON.stringify({
+					lockfileVersion: 1,
+					workspaces: { "": { name: "root" } },
+					packages: {
+						evil: ["evil@1.0.0", "", { peerDependencies: hostilePeers, optionalPeers: ["__proto__"] }],
+					},
+				});
+
+				for (const [format, content] of [
+					["npm", npmContent],
+					["bun", bunContent],
+				] as const) {
+					const lockfile = yield* Lockfile.parse(content, { format });
+					assertPrototypeUnpolluted();
+					const evil = lockfile.packagesNamed("evil")[0];
+					// Own enumerable properties, not prototype writes and not dropped.
+					assert.deepStrictEqual(
+						Object.entries(evil?.peerDependencies ?? {}).find(([k]) => k === "__proto__"),
+						["__proto__", "^1.0.0"],
+						`${format}: hostile peer range`,
+					);
+					assert.deepStrictEqual(
+						Object.entries(evil?.peerDependenciesMeta ?? {}).find(([k]) => k === "__proto__"),
+						["__proto__", { optional: true }],
+						`${format}: hostile peer meta`,
+					);
+				}
 			}),
 		);
 

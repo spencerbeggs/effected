@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-20
+last-synced: 2026-08-20
 completeness: 96
 related:
   - ../effect-standards.md
@@ -22,7 +22,7 @@ related:
 
 ## Overview
 
-`@effected/lockfiles` is lockfile parsing as pure string→model decoding. It holds the four package-manager lockfile parsers — bun's JSONC, npm's v2/v3 JSON, pnpm's YAML and yarn Berry's YAML — the unified `Lockfile` model they all normalize into, and pure integrity checking of that model against workspace manifests.
+`@effected/lockfiles` is lockfile parsing as pure string→model decoding. It holds the four package-manager lockfile parsers — bun's JSONC, npm's JSON, pnpm's YAML and yarn Berry's YAML — the unified `Lockfile` model they all normalize into, and pure integrity checking of that model against workspace manifests.
 
 Its consumer is [`@effected/workspaces`](workspaces.md), whose `LockfileReader` service does the root find, package-manager detection and file read, then calls into this package. It is on the [release gate](../releases.md#the-gate) because workspaces reads lockfiles and downstream tooling consumes workspaces transitively.
 
@@ -63,6 +63,56 @@ Module-per-concept, with the value classes as leaf modules so the parser interna
 
 The per-format **raw schemas stay private** under `internal/`: they are permissive validation scaffolding, not API. Each internal transform returns a raw failure record, and the public parse error — with the format attached — is materialized by the dispatcher, which keeps the error class in the public module without an import cycle back into the internals.
 
+## The supported input domain
+
+The package parses **pnpm `lockfileVersion` 9+ and npm `lockfileVersion` 3+**;
+an older format fails typed. This is a **deliberate narrowing of the supported
+input domain**, recorded as contract rather than implementation detail: a
+consumer parsing some other repository's older lockfile now receives a typed
+failure by design, not by accident. Pre-v9 pnpm and pre-v3 npm record
+resolution in shapes this model does not describe, and parsing them would hand
+a consumer rows that silently cannot answer a resolution question — the exact
+failure class the rest of this document exists to remove.
+
+Three properties make the gate honest:
+
+- **It is on the lockfile *format* version, and the docs say so.** A lockfile
+  records no package-manager version, and the mapping is many-to-one — pnpm 9,
+  10 and 11 all write format `9.0`, and npm wrote format `3` long before npm
+  11. A "requires pnpm 11+" claim is therefore unenforceable by any means, so
+  the contract is stated in format terms and the manager versions are listed
+  separately as *what the suite is tested against*. A support claim the gate
+  cannot back up is the same docs-disagree-with-behavior defect as a stale
+  one, merely pointing the other way.
+- **It reads the version and nothing else.** Not whether `snapshots:` exists,
+  not whether it has entries: a dependency-free v9 workspace legitimately
+  records zero snapshots, and an emptiness guard would reject that valid
+  lockfile. Both directions are mutation-checked — replacing the version gate
+  with an emptiness guard turns the suite red.
+- **The cause is a public type, narrowed by a public predicate.**
+  `LockfileParseError.cause` is `Schema.Defect` because it must carry whatever
+  the delegated engines throw; that channel is genuinely open and widening it
+  to a union would misrepresent it as exhaustive. So the *record* is exported
+  as a type with an `isUnsupportedLockfileVersion` predicate beside it, which
+  is what makes "discriminate on the tag, never parse the message" a claim a
+  consumer can actually typecheck rather than an instruction they satisfy with
+  a cast. The predicate reads the discriminant as an **own** property, so a
+  foreign throwable that inherits one is not reported as a too-old lockfile.
+  It is deliberately **a plain tagged record, not a `TaggedError`**: extending
+  `Error` makes `message` non-enumerable, so a consumer round-tripping the cause
+  through `JSON.stringify` — which is how a cause reaches a log line or a CI
+  annotation — would silently lose the one field explaining the failure. The
+  cause is data being carried, not a throwable being raised, and it is shaped as
+  data.
+- **It fails through validation, not framing.** The document was located
+  perfectly well, so this is a shape judgement about a located document. The
+  failure is a `LockfileParseError` at `stage: "validation"` carrying a
+  structured `UnsupportedLockfileVersion` cause, so a consumer can distinguish
+  "too old" from "malformed" without parsing prose. No `FramingReason` literal
+  was added; that public union stays closed at three.
+
+bun and yarn are ungated, recording no comparable format-version line.
+
 ## The model
 
 `Lockfile` is a `Schema.Class` carrying the format, the lockfile version, the resolved packages, the workspace dependency edges, the importers and an optional per-format extension. See `src/Lockfile.ts` for the full shape.
@@ -70,6 +120,128 @@ The per-format **raw schemas stay private** under `internal/`: they are permissi
 `Lockfile.parse` is the package's **only fallible boundary**. Everything else is total: the importer-name rewrite, name and importer lookup (both backed by lazily built private indexes outside the schema — the array fields stay for serialization and iteration), the workspace-packages getter and integrity comparison.
 
 Three vocabulary decisions point outward rather than re-declaring shapes: a resolved package's integrity is [npm](npm.md#the-vocabulary-modules)'s branded hash — an unparseable checksum is dropped rather than thrown, and the brand's yarn cache-key form is what keeps yarn Berry's checksums from silently vanishing; the dependency-type fields use npm's shared field literal; and the pnpm extension exports its catalog record type so workspaces types against it instead of re-declaring the shape.
+
+### A row is an instance, not a package
+
+`ResolvedPackage` rows are package **instances**. npm and bun always were —
+one row per lockfile key — but pnpm's rows were per *declaration*, and that
+inconsistency was the bug behind the model's inability to answer any
+resolution question. The model is now coherent across all four formats, which
+is what lets one format-agnostic algorithm live downstream.
+
+Two fields carry it. **`instanceId`** is the format's own canonical identity,
+verbatim and **opaque**: pnpm's snapshot key, npm's full entry key, bun's
+`packages` key, yarn's locator. No scheme is synthesized, because every format
+already has one and the only thing discarding it bought was ambiguity. It is
+required, not optional — 0.x, and the one kit dependent never constructs a
+`ResolvedPackage`. **`resolved`** maps a dependency (and, where the format
+records it, peer) name to the `instanceId` that name resolved to *in this
+instance's context*.
+
+### A gap is safer than a lie — but only in this layer
+
+`resolved` omits an edge it cannot name, and that rule is right *here*: no
+consumer is ever handed a wrong edge. It does **not compose upward**, and that
+is worth stating as a rule rather than as an anecdote.
+
+A consumer that treats an absent edge as evidence of *absence* converts this
+package's gap into its own lie. `@effected/workspaces`' peer check did exactly
+that: a `link:`-satisfied peer whose identity this package could not compose
+produced no edge, and one layer up "no recorded provider" read as "unsatisfied
+peer" — a false positive reported against a peer that was satisfied. The
+verified-only guarantee held perfectly and the answer was still wrong.
+
+**The transferable rule: a package that omits data on uncertainty owes its
+consumers a way to tell "absent because nothing is there" from "absent because
+I could not name it."** Widening what legitimately matches — as the `link:`
+normalization does — shrinks the second category but does not remove it: a
+`link:` into a build-output directory names no instance at all, and no
+normalization can invent one.
+
+That obligation is discharged by **`unresolvedEdges`**, a sibling field naming
+the dependencies whose edge the lockfile records and this model could not name.
+`resolved` deliberately stays a clean name→instanceId lookup with no union to
+handle, and the uncertainty lives where a consumer must opt in to reading it.
+The population rule is the whole point and is easy to get backwards: only a
+**recorded** edge that compose-then-verify declines belongs there. A dependency
+the lockfile does not record is an absence — npm and bun therefore contribute
+nothing, since their sections are declarations resolved positionally. A
+fail-closed signal that fires constantly is a signal nobody reads.
+
+This is the second instance of the same inversion, after the importer-join
+ambiguity skip, and both were found by someone else asking what happened on a
+path the author had not pictured.
+
+The invariant that makes `resolved` trustworthy: **every edge is verified
+against the lockfile's own id set before it is emitted, and an edge that
+cannot be named honestly is omitted.** A composed pnpm id that matches no
+snapshot, a `link:` target outside the workspace, an npm dependency npm never
+recorded — all absent rather than plausible. An absent edge is a visible gap a
+consumer can handle; a wrong one is exactly the silent-wrong-answer class that
+[the npm defects](#known-limitations) were.
+
+How each format is read:
+
+- **pnpm** splits per-version metadata (`packages:`) from per-instance
+  resolution (`snapshots:`) at lockfile v9. Rows follow `snapshots:`, joining
+  peer declarations back on from the matching `packages:` entry, so two
+  peer-resolved variants of one `name@version` are two rows — correctly, since
+  they genuinely are two instances. A `packages:` entry no snapshot covers is
+  emitted as an orphan carrying no resolution rather than dropped. Importer
+  rows resolve registry versions by composition and `link:` targets by
+  normalizing against the importer's own path.
+
+- **npm and bun** resolve positionally: both encode install position in the
+  key, so resolution is replayed by walking outward from the depending
+  package's own position, **deepest-first, first hit wins**. Direction is the
+  whole algorithm — outermost-first returns the hoisted copy and silently
+  mis-reports every shadowed dependency, which is why the suite mutation-checks
+  it. bun's parent chain is read off the key space rather than split on `/`,
+  since scoped package names contain slashes.
+- **yarn** resolves through the lockfile's own descriptor→locator index: every
+  key enumerates the descriptors that resolve to that entry, so the lookup is a
+  read, not a reconstruction. Peer edges are deliberately **not** emitted —
+  yarn resolves peers virtually and the lockfile does not record which virtual
+  instance satisfied which peer.
+
+### Peer declarations
+
+Every format records peer declarations, and the model carries them: a
+`peerDependencies` range map plus a `peerDependenciesMeta` flag map, both
+defaulting to `{}` at construction and on decode. **An absent section is an
+empty record, never `undefined`** — "declares no peers" is a fact, not a gap,
+and a consumer that has to null-check before every read will eventually forget.
+
+The fields hold **declarations only** — what a package *asks for*. What
+actually resolved is the separate question [`resolved`](#a-row-is-an-instance-not-a-package)
+answers, per instance and verified-only; the two are deliberately different
+fields because a declaration is always a fact while a resolution can be one the
+model cannot name.
+
+The one normalization worth naming: the optional flag has two upstream
+spellings. pnpm, npm and yarn Berry write a `peerDependenciesMeta` object;
+bun writes an `optionalPeers` **array of names**, on package tuples and
+workspace entries alike. Both collapse into `{ optional: boolean }` per peer in
+one shared internal helper, so a single consumer algorithm serves every
+manager. A peer with no meta entry is required.
+
+Two per-format facts are contract, not incident, both probed against the live
+tools rather than inferred:
+
+- **pnpm records no peer declarations for workspace projects.** Its importer
+  sections carry resolved dependencies only, with or without
+  `autoInstallPeers`; `pnpm peers check` correspondingly never reports a
+  workspace project's own unmet peers. pnpm workspace rows therefore keep the
+  empty defaults, and a consumer wanting them must read the manifests.
+- **yarn is populated but not consumed by the downstream peer check.** Yarn is
+  out of scope for [silk-update-action](../consumers/silk-update-action.md)'s
+  feature, but populating it is nearly free and a normalized model that
+  silently drops one format's data is a trap for the next consumer.
+
+bun's tuple index 2 is read *out of band* — decoded through a permissive schema
+whose failure is a skip, not a parse error — because the tuple shape is
+under-documented upstream and an unexpected info object must not cost a
+consumer their whole lockfile.
 
 The filename functions distinguish **detection vocabulary from parse routing**: one format can be written under several filenames (a shrinkwrap, a binary variant), so the plural form lists them primary-first while the reverse lookup answers for the primary names only. Workspace-config extras are a consumer's cache policy and stay out.
 
@@ -99,7 +271,7 @@ The importers field records each workspace importer's *declared* dependencies �
 
 **`ImporterDependency`** holds one declared dependency. Its specifier is [npm](npm.md#dependencyspecifier)'s branded specifier via that package's string codec, so a decoded value is tag-matchable while **encoding round-trips the exact original string** — the brownfield guarantee. Its version is **pnpm-only**, because pnpm records a specifier-and-version pair per importer dependency while bun and npm record resolved versions on package entries, so consumers there join by name against the packages array.
 
-That version is always the **plain** version: pnpm's peer-disambiguation context is split off into a separate optional field holding the raw parenthesized chain, and `link:`/`file:` resolutions pass through verbatim. The split has **one implementation** in `internal/shared.ts`, shared with the pnpm package-key parser, so the two cannot disagree about where a version ends.
+That version is always the **plain** version: pnpm's peer-disambiguation context is split off into a separate optional `peerSuffix` field holding the raw parenthesized chain — which is what lets a consumer recompose an importer dependency's instance identity rather than guess at it, and `link:`/`file:` resolutions pass through verbatim. The split has **one implementation** in `internal/shared.ts`, shared with the pnpm package-key parser, so the two cannot disagree about where a version ends.
 
 **`LockfileImporter`** holds the root-relative importer path — the same keys the consumer's own importer map uses — plus the dependencies.
 
@@ -144,3 +316,23 @@ Workspaces defines its **own** package-manager literal rather than aliasing this
 
 - **The importer-name map carries names only.** pnpm workspace packages keep their placeholder version after the rewrite. If a consumer needs real versions in the model, the map value can widen to carry one.
 - **Bun's package-tuple shape is under-documented upstream**, so integrity is read from an assumed tuple position. The permissive reading is kept, pinned by a fixture from a current bun release.
+- **Two npm defects are fixed, and both were live in published 0.5.1** — both
+  silent-wrong-answer class, and neither was reachable by any test the package
+  had, which is why they survived a release. A
+  nested entry (`node_modules/express/node_modules/debug`) used to be *named*
+  `"express/node_modules/debug"`, because name derivation stripped the first
+  `node_modules/` prefix rather than the last; and an entry nested under a
+  workspace directory (`packages/lib/node_modules/react`) used to be dropped
+  entirely, because the branch condition tested for a `node_modules/` *prefix*
+  that such a key does not have. The second is the worse one: the model
+  reported a workspace's shadowed dependency as absent, which a peer check
+  would read as an unmet peer that is in fact satisfied. Both reproduce against
+  generated fixtures, both are now pinned, and no fixture previously exercised
+  either shape.
+- **The pnpm root importer (`.`) is not a package row.** Only non-root
+  importers become workspace rows, so the root importer's own resolution is
+  not represented in `packages`. This is load-bearing for a consumer that
+  reports per importer — the root is one — and is called out here so a
+  downstream designs around it rather than discovering it.
+- **yarn carries no peer edges** (see above) and its `resolved` is dependency
+  edges only. Documented gap, not an approximation.

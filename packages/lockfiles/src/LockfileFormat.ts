@@ -2,7 +2,7 @@ import { Option, Schema } from "effect";
 
 /**
  * The lockfile formats this package parses: bun's `bun.lock` (JSONC), npm's
- * `package-lock.json` (v2/v3 JSON), pnpm's `pnpm-lock.yaml` and yarn Berry's
+ * `package-lock.json` (JSON), pnpm's `pnpm-lock.yaml` and yarn Berry's
  * `yarn.lock` (both YAML).
  *
  * @remarks
@@ -10,6 +10,10 @@ import { Option, Schema } from "effect";
  * happens to write it — this package models lockfiles. Yarn support is
  * Berry only; classic (v1) `yarn.lock` is not YAML and fails
  * `Lockfile.parse` with a typed `LockfileParseError`.
+ *
+ * The format literal says nothing about which *versions* of that format are
+ * supported: pnpm `lockfileVersion` 9+ and npm `lockfileVersion` 3+ parse,
+ * and older ones fail typed. See `Lockfile.parse`.
  *
  * @public
  */

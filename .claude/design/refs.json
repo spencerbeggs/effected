@@ -76,8 +76,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/roadmap.md",
-			"hash": "241cb705cd422482acd4674bb306b22266ac5ee471129f27d70d568b2dc597f6",
-			"recordedAt": "2026-08-17"
+			"hash": "f5d69b3ba3d59c51ad873b13fa33e4d4f67225e38153f6ac03dd12bd85f3d36e",
+			"recordedAt": "2026-08-20"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -298,8 +298,8 @@
 		{
 			"source": "packages/lockfiles/CLAUDE.md",
 			"target": ".claude/design/effected/packages/lockfiles.md",
-			"hash": "13ef267d2f02d7731fbff2b81ff9fa705dcca3ea860d1d111cff7a073730e32c",
-			"recordedAt": "2026-08-12"
+			"hash": "de0a257b2100efc77e9044587955119286b7da64141ff7fe35e3ca1fa1eff9f7",
+			"recordedAt": "2026-08-20"
 		},
 		{
 			"source": "packages/markdown/CLAUDE.md",
@@ -448,8 +448,8 @@
 		{
 			"source": "packages/workspaces/CLAUDE.md",
 			"target": ".claude/design/effected/packages/workspaces.md",
-			"hash": "81bde103496479f87f38c70fe8494a44fdc05db90f4a3943a71b6092e2426fb6",
-			"recordedAt": "2026-08-16"
+			"hash": "daff3636d126c291ddc7b711af3881a40e6bdf0408da4157832a01aac9b6ff7b",
+			"recordedAt": "2026-08-20"
 		},
 		{
 			"source": "packages/xdg/CLAUDE.md",

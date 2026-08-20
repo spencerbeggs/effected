@@ -204,13 +204,21 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 			if (!pkg.isWorkspace || pkg.relativePath === undefined) return pkg;
 			const realName = names.get(pkg.relativePath);
 			if (realName === undefined || realName === "" || realName === pkg.name) return pkg;
+			// Every field carries over: this rewrites the *name*, and dropping any
+			// other field here would be silent data loss (the peer and resolved
+			// maps in particular are what a peer check reads).
 			return ResolvedPackage.make({
 				name: realName,
 				version: pkg.version,
+				instanceId: pkg.instanceId,
 				...(pkg.integrity !== undefined ? { integrity: pkg.integrity } : {}),
 				isWorkspace: pkg.isWorkspace,
 				relativePath: pkg.relativePath,
 				dependencies: pkg.dependencies,
+				peerDependencies: pkg.peerDependencies,
+				peerDependenciesMeta: pkg.peerDependenciesMeta,
+				resolved: pkg.resolved,
+				unresolvedEdges: pkg.unresolvedEdges,
 			});
 		});
 		const workspaceDependencies = this.workspaceDependencies.map((dep) => {

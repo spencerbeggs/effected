@@ -1,8 +1,22 @@
 # @effected/lockfiles
 
-Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` JSONC), npm (`package-lock.json` v2/v3), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) — normalized into one unified `Lockfile` model, plus pure integrity checking of that model against workspace manifests. Extracted from `workspaces-effect` per the workspaces review; the `LockfileReader` service (root find, PM detect, file IO, dispatch) stays in the future `@effected/workspaces` that consumes this package.
+Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` JSONC), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) — normalized into one unified `Lockfile` model, plus pure integrity checking of that model against workspace manifests. The `LockfileReader` service (root find, PM detect, file IO, dispatch) lives in the consumer, `@effected/workspaces`, never here.
 
 **Design doc:** `@../../.claude/design/effected/packages/lockfiles.md` — load when changing the model, the parse pipeline or either seam repair.
+
+**Child context:** Instances and resolution → `@./CLAUDE.resolution.md` — Load when: touching `instanceId`, `resolved`, `unresolvedEdges`, peer declarations or any per-format resolution walk.
+
+## Supported input domain
+
+**pnpm `lockfileVersion` 9+ and npm `lockfileVersion` 3+. Older formats fail typed** (`LockfileParseError`, `stage: "validation"`, with a structured `UnsupportedLockfileVersion` cause carrying the version found and the minimum supported). This is a deliberate narrowing of the supported input domain, not an implementation detail: a consumer parsing some other repo's older lockfile now gets a typed failure by design. Older formats record resolution in a shape this model does not describe, and parsing them would hand a consumer rows that cannot answer a resolution question.
+
+**Tested against** pnpm 11.22.0, npm 11.19.0, bun 1.3.14 and yarn 4.9.1 — a separate claim from the gate, and deliberately so. The gate is on the **lockfile format** version, which is the only version a lockfile records; the writing package manager's version is not recoverable from the file, and the mapping is many-to-one (pnpm 9, 10 and 11 all write format `9.0`). So the code cannot enforce a "requires pnpm 11+" claim and the docs must not make one.
+
+The gate runs **before** the shape decode, in every gated format, and the order is load-bearing: the shape decoded against is the shape of a *supported* version, so a shape-first order reports the oldest formats as malformed rather than as too old. npm v1 has no `packages` object and a pre-v9 single-project pnpm lockfile has no `importers` map — both decoded straight into a `ParseFailure` cause, which `isUnsupportedLockfileVersion` answers `false` for, exactly as it does for a corrupt file. Both directions are pinned (`npm/unsupported-v1`, `pnpm/unsupported-v6-single`, and a well-formed-version/broken-shape case that must still fail as malformed).
+
+The gate reads `lockfileVersion` and **nothing else** — never whether `snapshots:` is present or populated. A dependency-free v9 workspace legitimately records zero snapshot entries; an emptiness guard would reject that valid lockfile. Version is the format's identity, emptiness is a coincidence of content. Both directions are mutation-checked.
+
+bun and yarn are ungated: neither records a comparable format-version line this parser keys on.
 
 ## Tier
 
@@ -17,7 +31,8 @@ Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` J
 - `LockfileImporter` — from `src/LockfileImporter.ts`
 - `ImporterDependency` — from `src/ImporterDependency.ts`
 - `LockfileIntegrity`, `WorkspaceManifest` — from `src/LockfileIntegrity.ts`
-- `ResolvedPackage` — from `src/ResolvedPackage.ts`
+- `UnsupportedLockfileVersion` (type) and `isUnsupportedLockfileVersion` — from `src/UnsupportedLockfileVersion.ts`. The structured cause a version-gate failure carries, plus the predicate that narrows to it. **`LockfileParseError.cause` stays `Schema.Defect` and must**: it carries whatever the delegated engines throw, so widening it to a union would misrepresent an open channel as an exhaustive one. Exporting the type and narrowing with a predicate is the honest shape, and it is what makes the documented "discriminate on `cause._tag`, never parse prose" instruction actually typecheck. The predicate reads `_tag` as an **own** property — a foreign throwable inheriting one must not be reported to a consumer as "your lockfile is too old".
+- `ResolvedPackage` — from `src/ResolvedPackage.ts`. **A row is one package *instance*, not one package**: `instanceId` is the lockfile-native identity verbatim (opaque — look it up, never parse it), `resolved` maps a dependency (and, where recorded, peer) name to the `instanceId` it resolved to, and `unresolvedEdges` names the edges the lockfile **records** but the model could not name — distinct from genuine absence, which is why a consumer must not read a missing `resolved` key as "nothing is there". Also carries `peerDependencies` and `peerDependenciesMeta` — declarations only, defaulting to `{}` on construction and on decode. Per-format identity, the resolution walks and the npm/bun exemption → `@./CLAUDE.resolution.md`.
 - `WorkspaceDependency` — from `src/WorkspaceDependency.ts`
 - `PnpmExtension`, `PnpmCatalogs` (type) — from `src/PnpmExtension.ts`
 - `BunExtension` — from `src/BunExtension.ts`
@@ -62,11 +77,22 @@ Per-format raw schemas and transforms are **private** in `src/internal/{bun,npm,
 
 ## Testing and building
 
-Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`. 94 tests across five families: per-format fixture tests (`Lockfile.test.ts` over `__test__/fixtures/{pnpm,npm,yarn,bun}/v*`), seam-repair tests (`withImporterNames` in `Lockfile.test.ts`, `LockfileIntegrity.test.ts`), the importer surface (`importers.test.ts` — `Lockfile.importers`, `importer(path)`), the hostility suite (`hostile.test.ts`) and codec round-trips (`roundtrip.property.test.ts`, `it.effect.prop` over `Schema.toArbitrary`).
+Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`. 132 tests across six families: per-format fixture tests (`Lockfile.test.ts` over `__test__/fixtures/{pnpm,npm,yarn,bun}/v*`, plus the peer-declaration and instance-identity blocks over `<format>/peers/`, `pnpm/variants`, `pnpm/emptysnapshots`, `npm/nested`, `npm/ancestor-walk`, `bun/nested`, `pnpm/linkedpeer`, `pnpm/unnameablelink` and `yarn/devdeps`), the supported-version suite (`pnpm/unsupported-v6`, `pnpm/unsupported-v6-single`, `npm/unsupported-v1` and `npm/unsupported-v2`, all negative), seam-repair tests (`withImporterNames` in `Lockfile.test.ts`, `LockfileIntegrity.test.ts`), the importer surface (`importers.test.ts` — `Lockfile.importers`, `importer(path)`), the hostility suite (`hostile.test.ts`) and codec round-trips (`roundtrip.property.test.ts`, `it.effect.prop` over `Schema.toArbitrary`).
+
+Fixture naming carries two conventions, both load-bearing:
+
+- **A directory named `unsupported-*` holds input the parser must reject.** That prefix is the exclusion mechanism, not decoration: the version-gate guard (*"every non-negative fixture sits at or above its format's gate"*) **enumerates the fixtures directory** and skips exactly those, so a fixture added tomorrow is covered automatically and a negative one cannot silently opt a positive one out. Never re-hard-code that list — the one that existed had already drifted two fixtures behind reality.
+- **The npm `v*` directories denote fixture *sets*, not lockfile versions.** `npm/v1` and `npm/v2` are both `lockfileVersion: 3` — the positive corpus has never held a genuine npm v1 or v2 tree, which is why the negative fixtures carry the `unsupported-` prefix and their own version in the name (`npm/unsupported-v1`, `npm/unsupported-v2`).
+
+**Fixtures are real manager output except three**, each hand-authored for a reason no install can produce: `pnpm/emptysnapshots` (a dependency-free v9 document), `npm/unsupported-v2` (the point is the version field, not the tree) and `npm/ancestor-walk` (npm's hoisting actively avoids the intermediate-ancestor shape it encodes — a package at depth 2 resolving a name that lives at depth 1 *and* at the root).
+
+**A pnpm fixture's `packages.length` is an instance count**, so a fixture carrying peer-variant snapshot keys has one row per variant. Expect the count to move when peer variants are added, and do not "fix" it back to a per-package number.
 
 ```bash
-pnpm vitest run packages/lockfiles          # 94 tests, from the repo root
+pnpm vitest run packages/lockfiles          # 132 tests, from the repo root
 pnpm build --filter @effected/lockfiles     # from the repo root
 ```
 
 Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. A clean `dist/prod/issues.json` carries **11** `_base` `suppressed` entries; `suppressed: 0` in the *prod* gate means the build did not run.
+
+**`suppressed: 11` in the log does not prove the build ran** — a turbo cache hit replays `FULL TURBO`, the same `✓ npm 21 files` and the same `suppressed 11` verbatim. Check that `dist/prod/issues.json`'s `generatedAt` postdates your last source edit; trust the timestamp, never the number (`@../../CLAUDE.build-and-test.md`).

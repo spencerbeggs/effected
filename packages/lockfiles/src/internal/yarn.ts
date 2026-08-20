@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { ResolvedPackage } from "../ResolvedPackage.js";
 import { selectSoleDocument } from "./documents.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
-import { extractWorkspaceDeps, toIntegrityHash, validationFailure } from "./shared.js";
+import { extractWorkspaceDeps, peerDeclarations, toIntegrityHash, validationFailure } from "./shared.js";
 
 // ── Raw schemas (permissive validation scaffolding, not API) ───────────────
 
@@ -19,6 +19,9 @@ const YarnEntry = Schema.Struct({
 	dependencies: DepRecord,
 	devDependencies: DepRecord,
 	peerDependencies: DepRecord,
+	peerDependenciesMeta: Schema.optionalKey(
+		Schema.Record(Schema.String, Schema.Struct({ optional: Schema.optionalKey(Schema.Boolean) })),
+	),
 	optionalDependencies: DepRecord,
 	checksum: Schema.optionalKey(Schema.String),
 	languageName: Schema.optionalKey(Schema.String),
@@ -76,6 +79,18 @@ const toFields = (
 		const packages: Array<ResolvedPackage> = [];
 		const workspaceNames = new Set<string>();
 		const workspaceEntries = new Map<string, WorkspaceEntry>();
+		// yarn's own identity is the locator, and its lockfile *is* the
+		// descriptor→locator index — every key lists the descriptors that resolve
+		// to that entry. Building the index is therefore a read, not a guess.
+		const locators = new Map<string, string>();
+		for (const [key, entry] of decoded) {
+			const descriptors = key.split(", ");
+			const locator = entry.resolution ?? descriptors[0];
+			if (locator === undefined || locator === "") continue;
+			for (const descriptor of descriptors) {
+				if (descriptor !== "") locators.set(descriptor, locator);
+			}
+		}
 
 		// First pass: identify workspace names.
 		for (const [key, entry] of decoded) {
@@ -96,14 +111,21 @@ const toFields = (
 			// (the yarn textual form), so they are preserved; a present but unparseable
 			// checksum fails typed at validation rather than being dropped.
 			const integrity = yield* toIntegrityHash(entry.checksum);
+			const instanceId = entry.resolution ?? key.split(", ")[0] ?? "";
+			if (instanceId === "") continue; // no identity, no row; skip, never throw
 
 			packages.push(
 				ResolvedPackage.make({
 					name,
 					version: entry.version ?? "0.0.0",
+					instanceId,
 					...(integrity !== undefined ? { integrity } : {}),
 					isWorkspace,
 					...(relativePath !== undefined ? { relativePath } : {}),
+					// Peer ranges are recorded plainly (no `npm:` protocol prefix),
+					// so unlike the dependency sections they need no cleaning.
+					...peerDeclarations(entry.peerDependencies, entry.peerDependenciesMeta),
+					...resolveYarnEdges(entry, locators),
 				}),
 			);
 
@@ -126,6 +148,51 @@ const toFields = (
 		// yarn does not record importers; the field is always empty.
 		return { lockfileVersion, packages, workspaceDependencies, importers: [] };
 	});
+
+/**
+ * Resolve one entry's outgoing edges through the descriptor→locator index.
+ *
+ * A yarn dependency value is a *descriptor* range (`"npm:5.3.0"`), and the
+ * lockfile keys enumerate exactly which descriptors resolve to which locator,
+ * so the lookup is exact rather than reconstructed.
+ *
+ * **`devDependencies` is not a section a Berry lockfile has.** yarn folds a
+ * workspace's dev declarations into the entry's `dependencies` map — the
+ * lockfile a project produces is byte-identical whether a dependency is
+ * declared under `dependencies` or `devDependencies` (probed against yarn
+ * 4.9.1). Dev edges are therefore already resolved here; iterating
+ * `entry.devDependencies` would be dead code, and the schema keeps the field
+ * only as permissive scaffolding for hand-edited input.
+ *
+ * **Dependency edges only.** yarn resolves peers virtually — a peer-bearing
+ * package gets a `@virtual:` locator per consumer, and this lockfile shape does
+ * not record which one satisfied which peer. Emitting a peer edge here would
+ * mean guessing, so peers are left out: an absent edge is a true statement, a
+ * plausible one would not be.
+ *
+ * @internal
+ */
+const resolveYarnEdges = (
+	entry: YarnEntryType,
+	locators: ReadonlyMap<string, string>,
+): { readonly resolved: Record<string, string>; readonly unresolvedEdges: ReadonlyArray<string> } => {
+	const edges = new Map<string, string>();
+	const unnameable = new Set<string>();
+	for (const section of [entry.dependencies, entry.optionalDependencies]) {
+		if (!section) continue;
+		for (const [name, range] of Object.entries(section)) {
+			if (name === "") continue;
+			const locator = locators.get(`${name}@${range}`);
+			if (locator !== undefined) edges.set(name, locator);
+			// The descriptor IS the recorded edge; a descriptor the key index does
+			// not name is an inconsistent lockfile, not an absent dependency.
+			else unnameable.add(name);
+		}
+	}
+	// Map-backed until the last step: `Object.fromEntries` defines own data
+	// properties, so a "__proto__" dependency name neither pollutes nor drops.
+	return { resolved: Object.fromEntries(edges), unresolvedEdges: [...unnameable].sort() };
+};
 
 /**
  * Extract the package name from a yarn lockfile key. Handles compound keys
