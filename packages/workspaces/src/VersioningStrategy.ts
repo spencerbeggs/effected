@@ -165,10 +165,22 @@ export class VersioningStrategy extends Schema.Class<VersioningStrategy>("Versio
 		const publishability = yield* PublishabilityDetector;
 
 		const packages = yield* discovery.listPackages();
+		// `Effect.forEach` defaults to concurrency 1; this explicit bound is what
+		// makes independent publishability checks overlap at all.
+		const detected = yield* Effect.forEach(
+			packages,
+			(candidate) =>
+				publishability.detect(candidate).pipe(
+					Effect.map((targets) => ({
+						name: candidate.name,
+						publishable: targets.length > 0,
+					})),
+				),
+			{ concurrency: 10 },
+		);
 		const publishable: Array<string> = [];
-		for (const candidate of packages) {
-			const targets = yield* publishability.detect(candidate);
-			if (targets.length > 0) publishable.push(candidate.name);
+		for (const candidate of detected) {
+			if (candidate.publishable) publishable.push(candidate.name);
 		}
 
 		return VersioningStrategy.classify({

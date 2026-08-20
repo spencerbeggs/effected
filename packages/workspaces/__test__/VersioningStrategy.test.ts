@@ -4,7 +4,7 @@
 // `PublishabilityDetector`, so nothing here touches a filesystem.
 
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Ref } from "effect";
 import {
 	PublishTarget,
 	PublishabilityDetector,
@@ -235,4 +235,47 @@ describe("VersioningStrategy.detect — nothing publishes", () => {
 			}),
 		);
 	});
+});
+
+describe("VersioningStrategy.detect — concurrency", () => {
+	it.effect("overlaps independent publishability checks and keeps output stable", () =>
+		Effect.gen(function* () {
+			const inFlight = yield* Ref.make(0);
+			const maxInFlight = yield* Ref.make(0);
+
+			const publishingDetector = Layer.succeed(PublishabilityDetector, {
+				detect: (candidate: WorkspacePackage) =>
+					Effect.gen(function* () {
+						yield* Ref.update(inFlight, (n) => n + 1);
+						const running = yield* Ref.get(inFlight);
+						yield* Ref.update(maxInFlight, (n) => Math.max(n, running));
+						yield* Effect.yieldNow;
+						yield* Ref.update(inFlight, (n) => n - 1);
+						return [
+							PublishTarget.make({
+								name: candidate.name,
+								registry: "https://registry.npmjs.org/",
+								directory: ".",
+								access: "public",
+							}),
+						];
+					}),
+			});
+
+			const strategy = yield* VersioningStrategy.detect().pipe(
+				Effect.provide(
+					Layer.mergeAll(
+						WorkspaceDiscovery.layerTest({
+							listPackages: () => Effect.succeed([pkg("d"), pkg("b"), pkg("a"), pkg("c")]),
+						}),
+						publishingDetector,
+					),
+				),
+			);
+
+			assert.deepStrictEqual(strategy.publishablePackages, ["a", "b", "c", "d"]);
+			const max = yield* Ref.get(maxInFlight);
+			assert.isTrue(max > 1, `expected concurrent publishability checks, got max in flight = ${max}`);
+		}),
+	);
 });
