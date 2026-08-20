@@ -177,7 +177,11 @@ function build<E extends FreshnessError, RIn>(
 			const scheduleRef = yield* Ref.make(NodeSchedule.empty);
 
 			const live: Load = Effect.gen(function* () {
-				const [raw, scheduleData] = yield* Effect.all([fetchNodeReleases(), fetchNodeSchedule()]);
+				// `Effect.all` defaults to `concurrency: 1` (sequential). These two
+				// network calls are independent, so we must opt into overlap explicitly.
+				const [raw, scheduleData] = yield* Effect.all([fetchNodeReleases(), fetchNodeSchedule()], {
+					concurrency: 2,
+				});
 				yield* Ref.set(scheduleRef, yield* NodeSchedule.fromData(scheduleData));
 				return yield* buildNodeReleases(raw);
 			}).pipe(
