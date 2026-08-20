@@ -75,8 +75,17 @@ export const make = <R extends Versioned>(): Effect.Effect<ReleaseIndex<R>> =>
 			releases: Ref.get(state).pipe(Effect.map(({ releases }) => releases)),
 			source: Ref.get(state).pipe(Effect.map(({ source }) => source)),
 			filter,
-			// `filter` is already newest-first, so the first match is the newest.
-			resolve: (range) => filter(range).pipe(Effect.map((matches) => Option.fromUndefinedOr(matches[0]))),
+			// `releases` is newest-first; stop at the first match instead of building
+			// a full filtered array only to read index 0.
+			resolve: (range) =>
+				Ref.get(state).pipe(
+					Effect.map(({ releases }) => {
+						for (const release of releases) {
+							if (range.test(release.version)) return Option.some(release);
+						}
+						return Option.none<R>();
+					}),
+				),
 		};
 	});
 
