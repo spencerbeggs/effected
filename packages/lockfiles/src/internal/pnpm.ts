@@ -236,6 +236,34 @@ const resolveLinkTarget = (importerPath: string, target: string): string | undef
 	return segments.length === 0 ? undefined : segments.join("/");
 };
 
+/** The specifier protocol pnpm resolves through the workspace itself. @internal */
+const WORKSPACE_PREFIX = "workspace:";
+
+/**
+ * The importer a `link:` target lands INSIDE, longest path first.
+ *
+ * pnpm's `publishConfig.linkDirectory` makes a workspace link point at the
+ * package's publish directory rather than its root — `link:../bundler/dist/dev/pkg`
+ * where `packages/bundler` is the importer — so the target itself is a build
+ * output that is no importer and never will be. The owning importer is the
+ * longest ancestor of the target that IS one; longest-first so a nested importer
+ * beats its parent.
+ *
+ * The root importer (`"."`) is deliberately unreachable here: it is an ancestor
+ * of every path in the workspace, so admitting it would resolve every stray link
+ * to the root rather than leaving it unnamed.
+ *
+ * @internal
+ */
+const owningImporter = (target: string, importerPaths: ReadonlySet<string>): string | undefined => {
+	const segments = target.split("/");
+	for (let end = segments.length - 1; end > 0; end--) {
+		const candidate = segments.slice(0, end).join("/");
+		if (importerPaths.has(candidate)) return candidate;
+	}
+	return undefined;
+};
+
 /**
  * Resolve one importer's outgoing edges. pnpm records `{ specifier, version }`
  * per importer dependency, where the version is either a registry version (the
@@ -243,12 +271,26 @@ const resolveLinkTarget = (importerPath: string, target: string): string | undef
  * naming another importer — normalized against this importer's own path. Both
  * are checked against the lockfile's instance ids before being emitted.
  *
+ * A `link:` target that is no importer gets one further chance, and only under
+ * a `workspace:` SPECIFIER: pnpm resolved that edge through the workspace, so
+ * the target directory is known to belong to a workspace package, and
+ * {@link owningImporter} names it. The specifier is what makes this a
+ * resolution rather than a guess — a hand-written `link:../vendor/stub`
+ * specifier names a directory pnpm never claimed was a workspace package, and
+ * attributing it to whichever importer happens to contain it would answer with
+ * the wrong package's peers instead of admitting it could not name the edge.
+ *
+ * The snapshot path ({@link resolveEdges}) deliberately does NOT do this: a
+ * snapshot body records `name: link:<path>` with no specifier beside it, so the
+ * evidence this rule turns on is not available there.
+ *
  * @internal
  */
 const resolveImporterEdges = (
 	importer: PnpmImporterType,
 	importerPath: string,
 	instanceIds: ReadonlySet<string>,
+	importerPaths: ReadonlySet<string>,
 ): ResolvedEdges => {
 	const edges = new Map<string, string>();
 	const unnameable = new Set<string>();
@@ -258,7 +300,15 @@ const resolveImporterEdges = (
 			if (name === "") continue;
 			if (info.version.startsWith(LINK_PREFIX)) {
 				const target = resolveLinkTarget(importerPath, info.version.slice(LINK_PREFIX.length));
-				if (target !== undefined && instanceIds.has(target)) edges.set(name, target);
+				const owner =
+					target === undefined
+						? undefined
+						: instanceIds.has(target)
+							? target
+							: info.specifier.startsWith(WORKSPACE_PREFIX)
+								? owningImporter(target, importerPaths)
+								: undefined;
+				if (owner !== undefined) edges.set(name, owner);
 				else unnameable.add(name);
 				continue;
 			}
@@ -348,6 +398,10 @@ const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, Parse
 			...(raw.packages ? Object.keys(raw.packages) : []),
 			...Object.keys(raw.importers),
 		]);
+		// Importer paths alone — the ancestor walk that resolves a `linkDirectory`
+		// target must not match a `name@version` key, and must not treat the root
+		// importer as every path's owner.
+		const importerPaths = new Set<string>(Object.keys(raw.importers).filter((path) => path !== "." && path !== ""));
 		const emitted = new Set<string>();
 
 		for (const [importerPath, importer] of Object.entries(raw.importers)) {
@@ -364,7 +418,7 @@ const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, Parse
 					instanceId: importerPath,
 					isWorkspace: true,
 					relativePath: importerPath,
-					...resolveImporterEdges(importer, importerPath, instanceIds),
+					...resolveImporterEdges(importer, importerPath, instanceIds, importerPaths),
 				}),
 			);
 		}
