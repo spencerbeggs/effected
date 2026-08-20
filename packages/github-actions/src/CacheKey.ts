@@ -327,6 +327,14 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 					Effect.map((bytes) => createHash("sha256").update(bytes).digest()),
 				),
 			),
+			// The `concurrency` option is load-bearing, not a tuning knob: `Effect.all`
+			// defaults to `concurrency: 1`, so omitting it reads every file one at a
+			// time and this whole shape buys nothing over the sequential loop it
+			// replaced. Bounded rather than `"unbounded"` because a pattern set can
+			// match thousands of files and one fiber per file would exhaust the
+			// runner's descriptors; 8 is the width `ActionCache` and `Artifact`
+			// already use for their own IO fan-out.
+			{ concurrency: 8 },
 		);
 		const accumulator = createHash("sha256");
 		for (const digest of digests) {

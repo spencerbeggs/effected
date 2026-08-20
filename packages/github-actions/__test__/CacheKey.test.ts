@@ -254,6 +254,46 @@ describe("CacheKey", () => {
 			),
 		);
 
+		it.effect("reads the files concurrently rather than one at a time", () =>
+			Effect.gen(function* () {
+				// The discriminating observation, and the only one that catches the
+				// mistake this guards against: `Effect.all` defaults to `concurrency: 1`,
+				// so a version that merely *looks* parallel — an array of effects handed
+				// to `Effect.all` with no option — still reads one file at a time, and
+				// every other test in this describe block passes for it. Two reads have to
+				// be in flight at once.
+				//
+				// Deliberately NOT a latch the second read opens: a sequential run would
+				// then block forever, and `it.effect` runs on the TestClock, so no timeout
+				// inside the program can fire and the mutant reports as a five-second hang
+				// rather than a failed assertion. Yielding instead keeps both branches
+				// terminating and leaves the sequential one with `overlapped === false`.
+				let active = 0;
+				let overlapped = false;
+				const observed = FileSystem.layerNoop({
+					readFile: (path) =>
+						Effect.gen(function* () {
+							active += 1;
+							if (active > 1) {
+								overlapped = true;
+							}
+							// A suspension point, so a sibling fiber gets to run before this
+							// read completes. Without one, a concurrent `Effect.all` could still
+							// finish each read in a single uninterrupted step and never overlap.
+							yield* Effect.yieldNow;
+							yield* Effect.yieldNow;
+							active -= 1;
+							return new TextEncoder().encode(FILES[String(path)] ?? "");
+						}),
+				});
+				const digest = yield* CacheKey.hashFiles(["/w/alpha.txt", "/w/beta.txt"]).pipe(Effect.provide(observed));
+				assert.isTrue(overlapped, "the two reads never overlapped — Effect.all ran sequentially");
+				// And concurrency did not cost correctness: the digest still folds the
+				// per-file digests in sorted order, not completion order.
+				assert.deepStrictEqual(digest, Option.some(ALPHA_BETA));
+			}),
+		);
+
 		it.effect("fails typed, naming the file, when one cannot be read", () =>
 			hashing(
 				Effect.gen(function* () {
