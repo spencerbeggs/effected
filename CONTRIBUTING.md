@@ -104,22 +104,63 @@ git commit -s -m "fix(semver): reject leading zeros in prerelease identifiers"
 
 The sign-off appends a `Signed-off-by:` trailer using your configured git name and email, which certifies you have the right to submit the change under the project license.
 
-A few rules the tooling enforces:
+### What the preset enforces
 
-- Commit bodies are plain prose — no backticks, bullets or code spans.
-- `design` is not a valid commit type.
+The type must be one of `ai`, `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `release`, `revert`, `style`, `tdd` or `test`. Anything else is rejected — `design` in particular is not a valid type. A `tdd` commit additionally requires a structured scope of the form `goalId:state`, where the state is one of `spike`, `red`, `green` or `refactor` (`tdd(42:green)`).
 
-The `commit-msg` hook runs commitlint against every message, and the `pre-commit` hook runs lint-staged over your staged files, so a malformed message or a lint failure stops the commit locally before it reaches CI.
+Commit bodies are optional, and an absent body is fine when the subject already says the whole thing. When you do write one, **dash bullets are allowed and are the preferred shape**:
+
+```text
+fix(semver): reject leading zeros in prerelease identifiers
+
+- Treat a leading zero in a numeric identifier as invalid per SemVer 2.0.0
+- Keep alphanumeric identifiers untouched, where a leading zero is legal
+
+Signed-off-by: Ada Lovelace <ada@example.com>
+```
+
+The `silk/body-no-markdown` rule rejects a specific set of markdown in the body: code fences, links, bold, horizontal rules, numbered lists, and more than two inline-code spans. One or two inline-code spans are fine. Body lines are capped at 300 characters, though anything approaching that is usually a sign the content belongs in the pull request instead.
+
+Keep bodies short. This repository squash-merges, so a long commit body is discarded at merge; reasoning, benchmarks and investigation notes belong in the pull request description, the changeset, or a design doc, all of which outlive the commit.
+
+If a commit closes tracked issues, put them on **one comma-separated line** above the sign-off — `Closes #12, #34` — rather than one trailer per line. Trailer lines are capped at 100 characters, as is the whole `type(scope): subject` header.
+
+The `commit-msg` hook runs commitlint against every message, and the `pre-commit` hook runs lint-staged over your staged files, so a malformed message or a lint failure stops the commit locally before it reaches CI. Do not reach for `--no-verify`; if a hook blocks you, the message or the code is what needs fixing.
+
+Note that lint-staged **reformats staged files for you** and re-stages the result — Biome over JavaScript and TypeScript, markdownlint over markdown. Do not hand-format to pre-empt it. It also strips the executable bit from `.sh` files, which is deliberate rather than a bug: every shell script here is invoked as `bash <script>`.
 
 ## Changesets
 
-Releases are managed with [Changesets](https://github.com/changesets/changesets). Any change that affects a publishable package needs a changeset describing it, in its own file under `.changeset/`.
+Releases are managed with [Changesets](https://github.com/changesets/changesets), and CI releases the packages the pending changesets name. Any change that affects a publishable package needs a changeset describing it, in its own file under `.changeset/`. Purely internal changes that touch no published package — tests, tooling, CI — do not need one.
 
-```bash
-pnpm dlx @changesets/cli add     # answer the prompts to draft a changeset
+The kit uses a house changeset format that the stock `changesets` prompt does not produce, so write the file yourself: pick a filename of three kebab-case words, declare the affected packages and their bump levels in YAML frontmatter, and put the body under one or more `##` category headings.
+
+```markdown
+---
+"@effected/semver": patch
+---
+
+## Bug Fixes
+
+Rejects a leading zero in a numeric prerelease identifier, which SemVer 2.0.0 disallows.
+
+- Alphanumeric identifiers are unaffected, where a leading zero is legal
 ```
 
-The kit uses a house changeset format with a fixed set of section headings; the existing files in `.changeset/` are the best reference for the shape and depth expected. Purely internal changes that touch no published package — tests, tooling, CI — do not need one.
+Bump levels follow the usual rule: `patch` for fixes, docs, internal refactoring and tests; `minor` for new exports and other non-breaking additions; `major` for removed exports, changed signatures and behavior breaks.
+
+Every `##` heading must match one of thirteen categories exactly, and matching is case-sensitive: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Use `###` sub-headings under a category when a change has several distinct parts.
+
+A few structural rules the validator enforces: no `#` heading and no skipped heading depths; nothing before the first `##` heading; no empty sections or empty list items; every code fence carries a language; and a `## Dependencies` section must contain a five-column table (Dependency, Type, Action, From, To) rather than prose or bullets.
+
+Validate before you commit — the pre-commit hook checks changeset files too:
+
+```bash
+pnpm exec savvy changeset check     # validate every pending changeset
+pnpm exec savvy changeset lint      # the same rules, file by file
+```
+
+Write for someone reading the release notes, not for the reviewer of the diff. What does a person upgrading this package need to know? Internal implementation detail that has no bearing on how the package is used does not belong here. The existing files in `.changeset/` are the reference for depth.
 
 ## Branch and pull-request flow
 
@@ -127,8 +168,14 @@ The kit uses a house changeset format with a fixed set of section headings; the 
 
 1. Branch from an up-to-date `main`.
 2. Make your change with tests and, where it applies, a changeset.
-3. Make sure `pnpm build`, `pnpm test`, `pnpm typecheck` and `pnpm lint` all pass locally.
+3. Make sure `pnpm build`, `pnpm test`, `pnpm typecheck`, `pnpm lint` and `pnpm lint:md` all pass locally.
 4. Open a pull request. CI re-runs the build and test suite, and a reviewer takes it from there.
+
+The **pull request title is validated as a conventional-commit subject**, the same format and 100-character limit as a commit subject — CI fails the PR if it does not parse. Pull requests are squash-merged, so the title is what lands in the history on `main`.
+
+The description itself is ordinary markdown and is not held to the commit-message rules: headings, bullets, tables and code fences are all welcome. Use it for what the commit message cannot carry — what you ruled out, what surprised you, what you verified and how, and anything a reviewer needs to check by hand. Please do not paste a file-by-file recap of the diff; GitHub renders that already.
+
+To link an issue, put a bare `Closes #123` on its own line, one per issue, outside any code fence — a reference inside a fenced block is inert and will not link.
 
 Keep pull requests focused — one logical change per branch is far easier to review than a mixed bag.
 
