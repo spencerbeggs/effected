@@ -310,6 +310,36 @@ describe("getWorkspacePackagesSync over pure in-memory ops (no ambient Node fs)"
 	});
 });
 
+// ── exclusions: the gate is at ACCEPTANCE, never at descent ────────────────
+//
+// The sync hatch mirrors the async enumerator's exclusion handling, so it owes
+// the same proof. `!packages/private-*` rejects `packages/private-thing` and
+// nothing below it — a `*` does not cross a segment boundary — so a package
+// nested under an excluded directory is still a member. Gating `traversal.push`
+// on the exclusion instead would drop it silently.
+
+describe("getWorkspacePackagesSync — exclusions", () => {
+	const files: Record<string, string> = {
+		"/repo/pnpm-workspace.yaml": "packages:\n  - 'packages/**'\n  - '!packages/private-*'\n",
+		"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0", private: true }),
+		"/repo/packages/alpha/package.json": JSON.stringify({ name: "@mem/alpha", version: "1.0.0" }),
+		"/repo/packages/private-thing/package.json": JSON.stringify({ name: "@mem/private", version: "1.0.0" }),
+		"/repo/packages/private-thing/nested/package.json": JSON.stringify({ name: "@mem/nested", version: "1.0.0" }),
+	};
+	const ops: WorkspacesSyncOptions = { fileSystem: fakeFs(files), path: nodePath.posix };
+
+	it("a leading-bang pattern excludes the package the includes matched", () => {
+		const names = getWorkspacePackagesSync("/repo", ops).map((pkg) => pkg.name);
+		assert.include(names, "@mem/alpha");
+		assert.notInclude(names, "@mem/private");
+	});
+
+	it("an excluded directory is still DESCENDED — a package under it stays discovered", () => {
+		const names = getWorkspacePackagesSync("/repo", ops).map((pkg) => pkg.name);
+		assert.include(names, "@mem/nested");
+	});
+});
+
 // ── the consumer's path implementation is respected end to end ─────────────
 //
 // A win32-flavored `SyncPath` (drive-letter roots, backslash output) drives the
