@@ -138,6 +138,43 @@ required, not optional — 0.x, and the one kit dependent never constructs a
 records it, peer) name to the `instanceId` that name resolved to *in this
 instance's context*.
 
+### `publishConfig.linkDirectory`: the target is a directory, the identity is the package
+
+pnpm's `publishConfig.linkDirectory` records a workspace link against the
+package's **publish directory** rather than its root:
+`link:../bundler/dist/dev/pkg`, where `packages/bundler` is the importer. That
+target is a build output, so it is no importer and never will be. Normalizing
+against the linking importer's path — the rule that made a bare `link:../lib`
+work — cannot reach it, and neither can renaming importers: the target is not an
+importer path at all.
+
+Left alone, every workspace edge in such a repository lands in
+`unresolvedEdges`, which one layer up makes `PeerCheck` report
+`unverified: ["unresolvedEdge"]` **permanently**, on a workspace `pnpm peers
+check` calls clean. That is not a gap a consumer can work around by trying
+harder; it is the whole report declining, forever, for a documented pnpm
+feature. Found by a live consumer run, not by a fixture — no fixture contained a
+`linkDirectory` workspace.
+
+So a `link:` target that is no instance id resolves to the **longest ancestor of
+the target that is an importer path**, and the rule is fenced on both sides:
+
+- **Only under a `workspace:` specifier.** The specifier is the evidence, not
+  the path shape. Under `workspace:*` pnpm resolved the edge through the
+  workspace, so the target directory is known to belong to a workspace package.
+  A hand-written `link:../lib/vendor/stub` names a directory pnpm never claimed
+  was a workspace package — it may hold a vendored stub with its own identity —
+  and attributing it to whatever importer encloses it would answer with the
+  wrong package's peers. A wrong edge, which this layer never emits, in place of
+  an honest gap.
+- **Never the root importer.** `"."` is an ancestor of every path in the
+  workspace, so admitting it would resolve every stray link to the root.
+
+The snapshot path deliberately does not do this. A snapshot body records
+`name: link:<path>` with no specifier beside it, so the evidence the rule turns
+on is not available there — and the reproduction's edges were all importer edges
+under `workspace:*`, checked before the cut was chosen.
+
 ### A gap is safer than a lie — but only in this layer
 
 `resolved` omits an edge it cannot name, and that rule is right *here*: no
@@ -189,7 +226,8 @@ How each format is read:
   they genuinely are two instances. A `packages:` entry no snapshot covers is
   emitted as an orphan carrying no resolution rather than dropped. Importer
   rows resolve registry versions by composition and `link:` targets by
-  normalizing against the importer's own path.
+  normalizing against the importer's own path — and, when the normalized target
+  is no importer, by the `linkDirectory` rule below.
 
 - **npm and bun** resolve positionally: both encode install position in the
   key, so resolution is replayed by walking outward from the depending

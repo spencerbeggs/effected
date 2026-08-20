@@ -382,6 +382,35 @@ reads as a feature; this one now announces that it did nothing. Measuring the
 two axes and applying them is filed as **effected#430**; until it lands, the
 degradation above *is* the behaviour, not a stopgap to be quietly removed.
 
+### How pnpm matches an `allowedVersions` key — measured, not documented
+
+The key spelling is `parent>peer`, and both halves behave in ways pnpm's docs do
+not state. Measured against pnpm 11.22.0 on a crafted lockfile, one axis at a
+time, with the row's presence as the readout:
+
+- **The version qualifier on the parent is ignored.** A rule keyed
+  `@effect/platform-node-shared@4.0.0-rc.109>effect` suppresses a
+  `4.0.0-rc.110` instance — and so do `@1.0.0` and `@^9.9.9`. Matching is by
+  parent **name**. Replicating this is not optional: keying on the version would
+  suppress a strictly smaller set than pnpm does, and every row in the
+  difference is a false positive.
+- **The parent is the DECLARING package, not an ancestor.** A rule keyed on a
+  package higher in the chain does not suppress a peer declared further down,
+  even when that ancestor declares the same peer itself.
+- A key with no `>` names no parent and applies to every parent declaring that
+  peer, which is also what pnpm does with it.
+
+`PeerCheck` implements exactly this, and the two were verified against each
+other rather than assumed: the same lockfile, the same 36 effective rules read
+from `pnpm config list --json`, both reporting the workspace clean — and both
+reporting the same 16 rows when the rules are withheld. The 16 are the tell
+worth keeping: they are what `allowedVersions` is suppressing, so a caller that
+supplies the rules **wrongly** now gets a confident wrong answer where it
+previously got an honest `unverified`. That is the argument for
+presence-is-the-assertion stated from the other direction — a degradation that
+omits the key fails closed with no rows, while one that passes an empty rule set
+manufactures all 16 against a healthy repository.
+
 ### Failing closed: the two unverified reasons
 
 `PeerCheck` returns a report, and the report knows what it could not check. Two

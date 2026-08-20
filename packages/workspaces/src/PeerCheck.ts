@@ -448,7 +448,11 @@ const collect = (
  * `"react-dom@18.0.0>react"` suppresses a `react-dom@18.3.1` instance too.
  * Replicating that is not optional: matching on the version would suppress a
  * strictly smaller set than pnpm does, and every row in the difference is a
- * false positive.
+ * false positive. Measured against pnpm 11.22.0, one axis at a time: a rule
+ * keyed at a version the installed parent does not have still suppresses, and
+ * so does one keyed at a wildly different version, while a rule keyed on an
+ * ANCESTOR of the declaring package suppresses nothing. The parent is the
+ * declarer, matched by name.
  *
  * Both spellings occur in the wild and both must work — parent-versioned, as
  * `pnpm:export` materializes into `pnpm-workspace.yaml`, and unversioned, as a
