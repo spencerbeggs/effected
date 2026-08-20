@@ -123,8 +123,21 @@ export class UnsatisfiedPeer extends Schema.Class<UnsatisfiedPeer>("UnsatisfiedP
 	parents: Schema.Array(PeerParent),
 }) {}
 
-/** The formats whose lockfiles record peer resolution. @internal */
-const supportsPeerResolution = (format: Lockfile["format"]): boolean => format !== "yarn";
+/**
+ * The formats whose lockfiles record peer resolution.
+ *
+ * An allowlist rather than a `!== "yarn"` denylist, so a format added to
+ * `Lockfile["format"]` is unsupported until someone says otherwise. A denylist
+ * would report the new format `supported: true` with an empty `unsatisfied`
+ * before any parser records peer resolution for it — a clean bill of health
+ * produced by a limitation, which is the failure this module exists to avoid.
+ *
+ * @internal
+ */
+const PEER_RESOLVING_FORMATS: ReadonlySet<Lockfile["format"]> = new Set(["npm", "pnpm", "bun"]);
+
+/** @internal */
+const supportsPeerResolution = (format: Lockfile["format"]): boolean => PEER_RESOLVING_FORMATS.has(format);
 
 interface Walk {
 	readonly instance: ResolvedPackage;

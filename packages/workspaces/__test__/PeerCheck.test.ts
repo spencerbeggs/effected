@@ -167,9 +167,14 @@ describe("PeerCheck.run", () => {
 			);
 			// The other chain really is reachable — without this the assertion above
 			// could pass because zustand never reaches the package at all.
+			// Compare against the provider's own instanceId rather than spelling one:
+			// the id is opaque, and hardcoding its shape would couple this test to a
+			// spelling @effected/lockfiles is free to change while PeerCheck stays correct.
 			const lockfile = yield* parse("diamond");
 			const zustand = lockfile.packagesNamed("zustand")[0];
-			assert.strictEqual(zustand?.resolved["use-sync-external-store"], "use-sync-external-store@1.2.2");
+			const provider = lockfile.packagesNamed("use-sync-external-store").find((p) => p.version === "1.2.2");
+			assert.isDefined(provider);
+			assert.strictEqual(zustand?.resolved["use-sync-external-store"], provider?.instanceId);
 		}),
 	);
 
