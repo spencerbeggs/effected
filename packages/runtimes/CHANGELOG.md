@@ -1,5 +1,28 @@
 # @effected/runtimes
 
+## 0.4.1
+
+### Performance
+
+* `ReleaseIndex.resolve` now short-circuits on the first matching release instead of materializing a full filtered array first.
+
+  In a local microbenchmark over 20,000 releases, this reduced resolve time by about 9.5x when the first match was mid-list and about 1.8x when no release matched.
+
+  * Output and ordering are unchanged: resolution still returns the newest matching release.
+  * Public APIs and compatibility guarantees are unchanged. [#420][#420]
+
+- `NodeResolver` now fetches the Node dist index and the Node schedule feed concurrently instead of serializing two independent network requests.
+
+  * Resolution results, errors, public API, and offline fallback behavior are unchanged; only the live-feed load path overlaps the two HTTP calls. [#414][#414]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#414]: https://github.com/spencerbeggs/effected/pull/414
+
+[#420]: https://github.com/spencerbeggs/effected/pull/420
+
 ## 0.4.0
 
 ### Dependencies
