@@ -1,7 +1,9 @@
 # Peer-check oracle fixtures
 
 Each directory holds a `pnpm-lock.yaml` and the verdict `pnpm peers check --json`
-gave for the workspace that produced it. The JSON is pnpm's output **verbatim** —
+gave for the workspace that produced it. `barerule/` carries two verdicts, one
+per rule configuration over the same lockfile; every other directory carries at
+most one. The JSON is pnpm's output **verbatim** —
 that is the point of an oracle, so do not reformat or hand-edit it.
 
 Generated with **pnpm 11.22.0** on 2026-08-20, via `pnpm install --lockfile-only`
@@ -91,3 +93,76 @@ The required behaviour there is to **skip**, not to guess a variant: attributing
 `react-dom@18.3.1(react@17.0.2)`'s unmet peer to an importer that may have
 resolved the other variant would be a fabricated finding, which is worse than a
 missing one. No oracle accompanies it, since pnpm cannot produce the input.
+
+## `unnameable/`
+
+Real pnpm 11.22.0 output, and regenerable — a byte-identical copy comes back
+from a workspace globbing `packages/*`, with `packages/host` depending on
+`react-redux@9.2.0` plus `react: link:../../vendor/react-stub`, and the root
+`pnpm-workspace.yaml` carrying `overrides: { react: link:vendor/react-stub }`.
+The link target is a `package.json` at `vendor/react-stub` (name `react`,
+version `18.3.1`) that the workspace globs deliberately **do not** cover, so it
+is no importer and the resolved edge names no instance in the lockfile.
+
+That is the whole point of the fixture: `react-redux`'s `react` peer *is*
+satisfied, by something this model cannot name. The oracle says the workspace is
+clean, so reporting the peer unsatisfied would be a false positive — and
+declining without saying so would be a false negative. Both halves are pinned.
+
+## `workspacepeer/`
+
+The same recipe with one difference, which is the case it exists for: the link
+target is `packages/fakereact`, **inside** the workspace globs, so it is an
+importer and the edge resolves to a workspace row. Oracle: clean. A workspace row
+carries the placeholder version `0.0.0`, so a checker that version-compared it
+against `^18.0 || ^19` would invent a finding pnpm does not have.
+
+## `npm-root/`
+
+Real npm 11.19.0 output, copied verbatim from `@effected/lockfiles`'
+`__test__/fixtures/npm/nested` — a nested-resolution tree whose root importer
+declares dependencies. It carries no oracle: npm has no peer-check command that
+reports a wanted range (see `npm/` and `bun/` above).
+
+It is here for the *root* importer, which npm records as the `""` entry and emits
+no package row for — so the root cannot be joined to instances at all. The
+required behaviour is to report the importer as unverifiable rather than to pass
+it silently, which is a different case from the pnpm fixtures, where every
+importer is joinable.
+
+## `barerule/`
+
+Real pnpm 11.22.0 output: one importer with `react@17.0.2` and
+`react-dom@18.3.1`, i.e. the same unmet-required-peer shape as `mixed/`'s
+`packages/unmet`, reduced to the single case a rule can suppress.
+
+It is the one fixture carrying **two** oracles, because the interesting
+variable is the *rule*, not the lockfile — and the lockfile is byte-identical
+under all three rule configurations, which was checked rather than assumed:
+
+- `peers-check.json` — `peerDependencyRules.allowedVersions: { react: '17' }`,
+  a **bare** key naming no parent. pnpm reports the workspace **clean**, which
+  is what establishes that a bare key applies to every parent that declares the
+  peer.
+- `peers-check-nonmatching.json` — the same bare key at `'16'`. pnpm reports
+  the row. Without this second run, "pnpm suppressed it" would be
+  indistinguishable from "a bare key suppresses everything".
+
+A third run with `react-dom>react: '17'` (not committed, since it duplicates
+the first verdict) is clean too — that is the control proving the two spellings
+agree on the same workspace.
+
+## `diamond/`
+
+Real pnpm 11.22.0 output for a workspace where one importer depends on both
+`react-redux@9.2.0` and `zustand@4.5.5`, with an override pinning
+`use-sync-external-store` to `1.2.2` so **both** parents resolve the same
+instance. Without the override pnpm resolves two versions and there is no
+diamond — that is the whole point of the fixture, and it cannot be produced by
+declaring the two dependencies alone.
+
+`use-sync-external-store@1.2.2` declares an unsatisfied `react` peer reachable
+by two chains. The oracle is the decision this fixture exists to record: pnpm
+reports that peer **once**, carrying the react-redux chain, and says nothing
+about the zustand one — it collapses per (importer, peer, package) rather than
+emitting a row per parent chain.

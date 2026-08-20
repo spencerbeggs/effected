@@ -29,6 +29,7 @@ const MJS_FIXTURE = join(FIXTURES, "hook-pnpmfile.mjs");
 const NESTED_MISSING_FIXTURE = join(FIXTURES, "hook-pnpmfile-nested-missing.mjs");
 const AGE_4320_FIXTURE = join(FIXTURES, "hook-pnpmfile-age-4320.mjs");
 const AGE_1440_FIXTURE = join(FIXTURES, "hook-pnpmfile-age-1440.mjs");
+const PEER_RULES_FIXTURE = join(FIXTURES, "hook-pnpmfile-peer-rules.mjs");
 
 const DEP_NAME = "cfg-fixture";
 // A config dependency shipping BOTH pnpmfiles — the precedence probe.
@@ -43,6 +44,11 @@ const SYNTAX_DEP_NAME = "cfg-fixture-syntax-error";
 const THROWING_DEP_NAME = "cfg-fixture-throwing";
 // A config dependency whose hook returns a MALFORMED value for every key.
 const MALFORMED_DEP_NAME = "cfg-fixture-malformed";
+// A config dependency whose hook returns a peer-rules block that is an object
+// but carries a NON-STRING allowedVersions entry.
+const PEER_RULES_GARBAGE_DEP_NAME = "cfg-fixture-peer-rules-garbage";
+// A config dependency whose hook MERGES onto whatever rules it is handed.
+const PEER_RULES_DEP_NAME = "cfg-fixture-peer-rules";
 const AGE_4320_DEP_NAME = "cfg-fixture-age-4320";
 const AGE_1440_DEP_NAME = "cfg-fixture-age-1440";
 const SEED = { default: { effect: "^4.0.0" } } as const;
@@ -96,6 +102,18 @@ beforeAll(() => {
 		join(malformedDir, "pnpmfile.mjs"),
 		'export const hooks = {\n\tupdateConfig() {\n\t\treturn { catalog: 42, catalogs: ["nope"], minimumReleaseAge: "soon", minimumReleaseAgeExclude: "nope" };\n\t},\n};\n',
 	);
+	// A pnpmfile whose peer-rules block is an OBJECT but whose allowedVersions
+	// carries a non-string entry — the axis-level malformation an
+	// object-shaped-only check accepts.
+	const peerRulesGarbageDir = configDepDir(PEER_RULES_GARBAGE_DEP_NAME);
+	mkdirSync(peerRulesGarbageDir, { recursive: true });
+	writeFileSync(
+		join(peerRulesGarbageDir, "pnpmfile.mjs"),
+		'export const hooks = {\n\tupdateConfig(config) {\n\t\treturn { ...config, peerDependencyRules: { allowedVersions: { "a>b": 1 }, ignoreMissing: ["from-hook"] } };\n\t},\n};\n',
+	);
+	const peerRulesDir = configDepDir(PEER_RULES_DEP_NAME);
+	mkdirSync(peerRulesDir, { recursive: true });
+	copyFileSync(PEER_RULES_FIXTURE, join(peerRulesDir, "pnpmfile.mjs"));
 	// Config dependencies whose hooks set pnpm's release-age keys.
 	const age4320Dir = configDepDir(AGE_4320_DEP_NAME);
 	mkdirSync(age4320Dir, { recursive: true });
@@ -151,6 +169,38 @@ describe("ConfigDependencyHooks.layerSubprocess — replays the pnpmfile in a ch
 			// last-wins threading, not a strictest-wins merge inside the replay.
 			const result = yield* hooks.inject(root, { [AGE_4320_DEP_NAME]: "1.0.0", [AGE_1440_DEP_NAME]: "1.0.0" }, SEED);
 			assert.deepStrictEqual(result.releaseAge, { ageMinutes: 1440, exclude: ["@scope/b"] });
+		}).pipe(Effect.provide(HooksSubprocess)),
+	);
+});
+
+describe("ConfigDependencyHooks.layerSubprocess — a malformed peer-rules axis", () => {
+	it.effect("drops a non-string allowedVersions entry INSIDE the child, before the next hook reads it", () =>
+		Effect.gen(function* () {
+			// The replay script carries its own copy of the threading helpers, so
+			// the axis rules have to hold on BOTH sides or the two layers stop being
+			// drop-in interchangeable — and the child's copy is only observable
+			// through a SECOND hook that merges onto what the first one left.
+			//
+			// `peer-rules-garbage` writes `{ "a>b": 1 }`, then `peer-rules` merges
+			// its own well-formed entry onto whatever it is handed. If the child
+			// kept the garbage, the merged block would carry the number, the
+			// parent's own check would reject the whole axis, and the good hooked
+			// entry would be lost with it. Dropping the malformed write where it
+			// happens is what keeps the later well-formed one.
+			const hooks = yield* ConfigDependencyHooks;
+			const result = yield* hooks.inject(
+				root,
+				{ [PEER_RULES_GARBAGE_DEP_NAME]: "1.0.0", [PEER_RULES_DEP_NAME]: "1.0.0" },
+				SEED,
+				{ allowedVersions: { "seeded>peer": "1.0.0" }, ignoreMissing: [], allowAny: [] },
+			);
+			assert.deepStrictEqual(result.peerDependencyRules.allowedVersions, {
+				"seeded>peer": "1.0.0",
+				"hooked-parent>hooked-peer": "^9.0.0",
+			});
+			// The garbage hook's well-formed sibling axis still lands: one bad axis
+			// never takes a good one down with it.
+			assert.deepStrictEqual(result.peerDependencyRules.ignoreMissing, ["from-hook"]);
 		}).pipe(Effect.provide(HooksSubprocess)),
 	);
 });

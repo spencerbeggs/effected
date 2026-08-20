@@ -101,6 +101,11 @@ export class PeerParent extends Schema.Class<PeerParent>("PeerParent")({
  * package because a peer declared by a transitive dependency is still that
  * importer's problem, and the chain is what makes the report actionable.
  *
+ * A package an importer reaches by more than one path yields **one** row, not
+ * one per path, carrying the path the walk reached first — which is what
+ * `pnpm peers check` reports for the same graph. Read `parents` as *a* route to
+ * the declaring package, never as the complete set of them.
+ *
  * @public
  */
 export class UnsatisfiedPeer extends Schema.Class<UnsatisfiedPeer>("UnsatisfiedPeer")({
@@ -381,10 +386,21 @@ const collect = (
 			// permits the version that resolved. Replicating that is the whole
 			// point: without it we report findings pnpm calls clean.
 			if (suppressedByRule(allowed, current.instance.name, peer, verdict.found)) continue;
-			// One row per (importer, peer, declaring chain); the same package
-			// reached twice by different paths is two distinct facts, but the same
-			// path twice is one.
-			const key = `${importerPath} ${peer} ${current.path.map((p) => `${p.name}@${p.version}`).join(">")}`;
+			// One row per (importer, peer, declaring INSTANCE) — which is what pnpm
+			// reports. Measured on `peers/diamond`, where one importer reaches
+			// `use-sync-external-store@1.2.2` through both react-redux and zustand:
+			// `pnpm peers check --json` emits that package's unsatisfied `react`
+			// once, carrying the chain it reached first, and says nothing about the
+			// other. So a second chain is not a second fact, and the walk below
+			// judges each instance once per importer for the same reason.
+			//
+			// The set is a guard rather than a live filter under the current walk —
+			// the per-importer `visited` set already admits each instance once, and
+			// deleting the guard changes no test. It earns its place by holding the
+			// invariant at the point the row is emitted: swap the walk for a
+			// per-chain one and this is what still collapses the diamond, which is
+			// mutation-checked in both directions.
+			const key = `${importerPath}\u0000${peer}\u0000${current.instance.instanceId}`;
 			if (seen.has(key)) continue;
 			seen.add(key);
 			rows.push(
@@ -427,6 +443,10 @@ const collect = (
  * version separator is the LAST `@`, and only when it is not the first
  * character.
  *
+ * A key naming no parent at all (`"react"`, with no `>`) never reaches this
+ * function: {@link suppressedByRule} matches it against every parent, which is
+ * what pnpm does with it.
+ *
  * @internal
  */
 const ruleParentName = (parent: string): string => {
@@ -462,9 +482,22 @@ const suppressedByRule = (
 	if (Result.isFailure(version)) return false;
 	for (const [key, permitted] of Object.entries(allowed)) {
 		const separator = key.indexOf(">");
-		if (separator <= 0) continue;
-		if (key.slice(separator + 1) !== peer) continue;
-		if (ruleParentName(key.slice(0, separator)) !== parentName) continue;
+		// A key starting with ">" names no parent at all — malformed, and a
+		// malformed rule suppresses nothing.
+		if (separator === 0) continue;
+		if (separator === -1) {
+			// A BARE key applies to every parent that declares this peer. Measured
+			// against pnpm 11.22.0: with `allowedVersions: { react: "17" }` and
+			// nothing else, `pnpm peers check --json` reports the same workspace
+			// clean that it reports `react-dom>react` for — and still reports the
+			// row when the bare key's range does not cover the found version.
+			// Skipping bare keys therefore reports rows pnpm suppresses, while
+			// `rulesApplied` claims the policy was applied.
+			if (key !== peer) continue;
+		} else {
+			if (key.slice(separator + 1) !== peer) continue;
+			if (ruleParentName(key.slice(0, separator)) !== parentName) continue;
+		}
 		const range = Range.parseResult(permitted);
 		// A rule whose own value is unparseable suppresses nothing — it cannot be
 		// evaluated, and treating it as a wildcard would hide real findings.

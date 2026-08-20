@@ -28,6 +28,21 @@ const PnpmImporter = Schema.Struct({
 	optionalDependencies: PnpmImporterDeps,
 });
 
+/**
+ * The version gate's own input: `lockfileVersion` and nothing else.
+ *
+ * The gate has to read the version *before* the shape decode, because the
+ * shape it decodes against is the shape of a supported version. `importers` is
+ * a required key here and a pre-v9 single-project lockfile has none — it
+ * records its dependencies at the top level — so a shape-first order reports a
+ * lockfile we reject for being too old as merely malformed instead.
+ *
+ * @internal
+ */
+const PnpmVersionProbe = Schema.Struct({
+	lockfileVersion: Schema.Union([Schema.String, Schema.Number]),
+});
+
 const PnpmLockfileRaw = Schema.Struct({
 	lockfileVersion: Schema.Union([Schema.String, Schema.Number]),
 	settings: Schema.optionalKey(
@@ -99,6 +114,20 @@ type PnpmPackageEntry = NonNullable<PnpmLockfileRawType["packages"]>[string];
 export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
 		const { document, documents } = yield* selectPnpmDocument(content);
+		// Format-version gate. Deliberately NOT a check for `snapshots:` being
+		// present or populated: a dependency-free v9 workspace legitimately has
+		// zero snapshot entries, so an emptiness guard would reject a valid
+		// lockfile. Version is the format's own identity; emptiness is a
+		// coincidence of content.
+		//
+		// It runs BEFORE the shape decode, and must: a pre-v9 single-project
+		// lockfile carries no `importers` map, so decoding first would report a
+		// too-old lockfile as malformed — losing the distinction the
+		// `UnsupportedLockfileVersion` cause exists to carry.
+		const probe = yield* Schema.decodeUnknownEffect(PnpmVersionProbe)(document).pipe(
+			Effect.mapError(validationFailure),
+		);
+		yield* requireLockfileVersion("pnpm", probe.lockfileVersion);
 		const validated = yield* Schema.decodeUnknownEffect(PnpmLockfileRaw)(document).pipe(
 			Effect.mapError(validationFailure),
 		);
@@ -110,12 +139,6 @@ export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseF
 		if (Object.keys(validated.importers).length === 0) {
 			return yield* Effect.fail(framingFailure("noImporters", documents));
 		}
-		// Format-version gate. Deliberately NOT a check for `snapshots:` being
-		// present or populated: a dependency-free v9 workspace legitimately has
-		// zero snapshot entries, so an emptiness guard would reject a valid
-		// lockfile. Version is the format's own identity; emptiness is a
-		// coincidence of content.
-		yield* requireLockfileVersion("pnpm", validated.lockfileVersion);
 		return yield* toFields(validated);
 	});
 
@@ -127,8 +150,9 @@ export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseF
  * pnpm names a resolved dependency as `name` → `version`, where the version may
  * itself carry a peer suffix (`1.6.0(react@17.0.2)`); the referenced instance's
  * key is those two composed back together. The composition is *verified*
- * against the lockfile's own key set rather than trusted — both spellings are
- * tried (v9's bare key and the pre-v9 leading-slash form) and an edge that
+ * against the lockfile's own key set rather than trusted — the composed key is
+ * v9's bare `name@version` and nothing else, because the format gate admits no
+ * lockfile that spells keys the pre-v9 leading-slash way — and an edge that
  * matches nothing is **omitted**. That is what keeps a `link:`/`file:`
  * resolution, which names no instance in this lockfile, from becoming a
  * plausible lie.
@@ -379,7 +403,10 @@ const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, Parse
 			for (const [key, snapshot] of Object.entries(snapshots)) {
 				// Peer declarations live on the matching per-version `packages:` entry,
 				// which is keyed by the plain "name@version" the suffix hangs off.
-				const meta = raw.packages?.[splitPeerSuffix(key).plain];
+				// Own-property lookup, matching the rest of this package: a key-shaped
+				// intermediate is never read through the prototype chain.
+				const plain = splitPeerSuffix(key).plain;
+				const meta = raw.packages !== undefined && Object.hasOwn(raw.packages, plain) ? raw.packages[plain] : undefined;
 				yield* emit(key, meta, [snapshot.dependencies, snapshot.optionalDependencies]);
 			}
 		}

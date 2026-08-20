@@ -125,6 +125,8 @@ The report is four fields rather than an array because an empty array is the mos
 
 `WorkspaceCatalogs.peerDependencyRules()` supplies the workspace's effective pnpm suppression rules, which the lockfile records nowhere; without them a checker reports findings pnpm itself calls clean. Presence of the option key is the assertion, not its contents — `NoPeerDependencyRules` asserts there are none, while omitting the key says nobody looked and always leaves the report unverified.
 
+**Only `allowedVersions` is applied**, in all three key spellings pnpm accepts: `parent@version>peer`, `parent>peer`, and a bare `peer` that applies to every parent. Rules whose `ignoreMissing` or `allowAny` is non-empty describe a policy this check does not implement, so they leave `unverified: ["peerRulesNotApplied"]` rather than being silently ignored — an unimplemented axis fails closed instead of producing a wrong answer. Rules with both of those axes empty are fully applied and stay verified.
+
 ## The synchronous escape hatch
 
 Vitest's config-time project discovery cannot await. Two functions exist for exactly that case, and they are Node-only and synchronous:

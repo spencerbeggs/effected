@@ -72,9 +72,10 @@ const EMPTY_EDGE_NAMES: ReadonlyArray<string> = [];
  *   "the walk found nothing" is genuine absence. A fail-closed signal that is
  *   always on is a signal nobody reads.
  *
- * The three map fields and both peer fields default to `{}` at construction
- * and when decoding, so an absent section is an empty record — never
- * `undefined`.
+ * All four record fields — `dependencies`, `peerDependencies`,
+ * `peerDependenciesMeta` and `resolved` — default to `{}` at construction and
+ * when decoding, and `unresolvedEdges` defaults to `[]`. An absent section is
+ * therefore an empty collection, never `undefined`.
  *
  * @public
  */

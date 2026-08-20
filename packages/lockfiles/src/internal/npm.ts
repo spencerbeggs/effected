@@ -34,6 +34,22 @@ const NpmPackageEntry = Schema.Struct({
 	optionalDependencies: DepRecord,
 });
 
+/**
+ * The version gate's own input: `lockfileVersion` and nothing else.
+ *
+ * The gate has to read the version *before* the shape decode, because the
+ * shape it would decode against is the shape of a supported version. `packages`
+ * is a required key here and a v1 tree does not have one, so a shape-first
+ * order reports npm v1 as **malformed** rather than as **too old** — losing
+ * exactly the distinction the `UnsupportedLockfileVersion` cause exists to
+ * carry.
+ *
+ * @internal
+ */
+const NpmVersionProbe = Schema.Struct({
+	lockfileVersion: Schema.Union([Schema.Number, Schema.String]),
+});
+
 const NpmLockfileRaw = Schema.Struct({
 	name: Schema.optionalKey(Schema.String),
 	version: Schema.optionalKey(Schema.String),
@@ -133,10 +149,16 @@ export const parseNpm = (content: string): Effect.Effect<LockfileFields, ParseFa
 			try: () => JSON.parse(content) as unknown,
 			catch: syntaxFailure,
 		});
-		const validated = yield* Schema.decodeUnknownEffect(NpmLockfileRaw)(raw).pipe(Effect.mapError(validationFailure));
 		// Format-version gate: npm lockfileVersion 3 and newer. v1/v2 trees record
 		// resolution in a different shape this parser does not model.
-		yield* requireLockfileVersion("npm", validated.lockfileVersion);
+		//
+		// It runs BEFORE the shape decode, and must: a v1 tree carries no
+		// `packages` object at all, so decoding first would report the oldest
+		// format we reject as merely malformed. "Too old" is the more specific
+		// true statement, and the only one a consumer can act on.
+		const probe = yield* Schema.decodeUnknownEffect(NpmVersionProbe)(raw).pipe(Effect.mapError(validationFailure));
+		yield* requireLockfileVersion("npm", probe.lockfileVersion);
+		const validated = yield* Schema.decodeUnknownEffect(NpmLockfileRaw)(raw).pipe(Effect.mapError(validationFailure));
 		return yield* toFields(validated);
 	});
 

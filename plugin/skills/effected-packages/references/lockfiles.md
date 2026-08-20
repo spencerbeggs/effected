@@ -1,8 +1,8 @@
 # @effected/lockfiles
 
-String-in, model-out parsing for all four package-manager lockfile formats (bun `bun.lock`, npm `package-lock.json` v2/v3, pnpm `pnpm-lock.yaml`, yarn Berry `yarn.lock`) normalized into one `Lockfile` model of package *instances*, plus pure integrity checking against workspace manifests. Pure tier: no IO, no services, no `R` anywhere — every entrypoint takes a string or plain values.
+String-in, model-out parsing for all four package-manager lockfile formats (bun `bun.lock`, npm `package-lock.json`, pnpm `pnpm-lock.yaml`, yarn Berry `yarn.lock`) normalized into one `Lockfile` model of package *instances*, plus pure integrity checking against workspace manifests. Pure tier: no IO, no services, no `R` anywhere — every entrypoint takes a string or plain values.
 
-**Input domain is narrower than "any lockfile of that manager"**: `Lockfile.parse` requires pnpm `lockfileVersion` **9+** and npm `lockfileVersion` **3+** — stated in lockfile-*format* terms, never manager-version terms, because a lockfile records no manager version and format 9 is not exclusive to pnpm 11. An older format fails typed rather than parsing into a wrong or partial model.
+**Input domain is narrower than "any lockfile of that manager"**: `Lockfile.parse` requires pnpm `lockfileVersion` **9+** and npm `lockfileVersion` **3+** — stated in lockfile-*format* terms, never manager-version terms, because a lockfile records no manager version and format 9 is not exclusive to pnpm 11. An older format fails typed rather than parsing into a wrong or partial model — and it fails as *too old* (`isUnsupportedLockfileVersion(cause)`), never as malformed, because the version gate runs ahead of the shape decode.
 
 ## Import
 
@@ -60,4 +60,4 @@ None exported — none needed; everything is pure.
 - Integrity is `compare`, not `check` — `static check` is reserved by v4 `Schema.Class`.
 - Yarn support is Berry only (classic v1 fails typed); yarn lockfiles always have `importers: []`.
 - **Never write "requires pnpm 11+" or similar manager-version claims** — the gate is on `lockfileVersion`, and a lockfile does not record which manager version wrote it; format 9 is not exclusive to pnpm 11.
-- A package appearing in `resolved` but absent from `unresolvedEdges` and absent from `resolved`'s keys is a genuine absence, not a gap — `unresolvedEdges` exists precisely so "nothing here" and "something here I couldn't name" stay distinguishable; don't conflate them when consuming `ResolvedPackage`.
+- A dependency name absent from BOTH `resolved`'s keys and `unresolvedEdges` is a genuine absence, not a gap — `unresolvedEdges` exists precisely so "nothing here" and "something here I couldn't name" stay distinguishable; don't conflate them when consuming `ResolvedPackage`.

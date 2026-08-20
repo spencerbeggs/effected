@@ -295,6 +295,52 @@ describe("ConfigDependencyHooks.layerSubprocess — result folding in the parent
 		}).pipe(Effect.provide(layer));
 	});
 
+	it.effect("an allowedVersions entry that is not a string is a malformed axis too", () => {
+		// The sibling of the test above, on the axis it does not cover: the block
+		// IS an object, so an object-shaped check accepts it, but one entry is a
+		// number. The public contract is name→RANGE, and a non-string value
+		// reaches range parsing as a rule nobody can evaluate — so the whole axis
+		// is malformed and the prior value stands.
+		const { layer } = harness(() => ({
+			stdout: emitted({
+				ok: true,
+				config: { peerDependencyRules: { allowedVersions: { "a>b": 1 }, ignoreMissing: ["from-hook"] } },
+			}),
+		}));
+		return Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			const result = yield* hooks.inject(ROOT, { dep: "1.0.0" }, SEED, {
+				allowedVersions: { "seeded>peer": "1.0.0" },
+				ignoreMissing: [],
+				allowAny: [],
+			});
+			assert.deepStrictEqual(result.peerDependencyRules.allowedVersions, { "seeded>peer": "1.0.0" });
+			// And it does not blank its siblings, exactly as the array axes do not.
+			assert.deepStrictEqual(result.peerDependencyRules.ignoreMissing, ["from-hook"]);
+		}).pipe(Effect.provide(layer));
+	});
+
+	it.effect("an allowedVersions block whose entries are ALL strings still wins", () => {
+		// The regression guard for the test above, wrong in exactly one way
+		// against it: the same shape with a string value. A check that fired on
+		// the block's presence rather than on its entries would fail here.
+		const { layer } = harness(() => ({
+			stdout: emitted({
+				ok: true,
+				config: { peerDependencyRules: { allowedVersions: { "a>b": "1" } } },
+			}),
+		}));
+		return Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			const result = yield* hooks.inject(ROOT, { dep: "1.0.0" }, SEED, {
+				allowedVersions: { "seeded>peer": "1.0.0" },
+				ignoreMissing: [],
+				allowAny: [],
+			});
+			assert.deepStrictEqual(result.peerDependencyRules.allowedVersions, { "a>b": "1" });
+		}).pipe(Effect.provide(layer));
+	});
+
 	it.effect("hooks that touch no rules return the seeded rules unchanged", () => {
 		const { layer } = harness(() => ({ stdout: emitted({ ok: true, config: { catalog: {} } }) }));
 		return Effect.gen(function* () {

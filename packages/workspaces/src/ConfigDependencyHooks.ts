@@ -277,11 +277,22 @@ const configOf = (value: unknown, fallback: HookConfig): HookConfig => {
  * Each axis is normalized independently: a hook that rewrites `allowedVersions`
  * and leaves `ignoreMissing` alone must not blank the latter.
  */
+const stringRecordOr = (
+	value: unknown,
+	fallback: Readonly<Record<string, string>> | undefined,
+): Readonly<Record<string, string>> | undefined =>
+	isObject(value) && Object.values(value).every((entry) => typeof entry === "string")
+		? (value as Record<string, string>)
+		: fallback;
+
 const peerRulesOr = (value: unknown, fallback: PeerDependencyRules | undefined): PeerDependencyRules | undefined => {
 	if (!isObject(value)) return fallback;
-	const allowed = isObject(value.allowedVersions)
-		? (value.allowedVersions as Record<string, string>)
-		: fallback?.allowedVersions;
+	// Every entry must be a string, not merely the block an object: the public
+	// contract is name→RANGE, and a non-string value reaches range parsing as a
+	// rule nobody can evaluate. The same all-entries rule `stringArrayOr`
+	// applies to the two array axes — a malformed axis keeps the prior threaded
+	// value rather than passing junk through.
+	const allowed = stringRecordOr(value.allowedVersions, fallback?.allowedVersions);
 	const ignoreMissing = stringArrayOr(value.ignoreMissing, fallback?.ignoreMissing);
 	const allowAny = stringArrayOr(value.allowAny, fallback?.allowAny);
 	if (allowed === undefined && ignoreMissing === undefined && allowAny === undefined) return fallback;
@@ -361,9 +372,11 @@ const isObject = (value) => typeof value === "object" && value !== null && !Arra
 const finiteNumberOr = (value, fallback) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
 const stringArrayOr = (value, fallback) =>
 	Array.isArray(value) && value.every((entry) => typeof entry === "string") ? value : fallback;
+const stringRecordOr = (value, fallback) =>
+	isObject(value) && Object.values(value).every((entry) => typeof entry === "string") ? value : fallback;
 const peerRulesOr = (value, fallback) => {
 	if (!isObject(value)) return fallback;
-	const allowed = isObject(value.allowedVersions) ? value.allowedVersions : fallback && fallback.allowedVersions;
+	const allowed = stringRecordOr(value.allowedVersions, fallback && fallback.allowedVersions);
 	const ignoreMissing = stringArrayOr(value.ignoreMissing, fallback && fallback.ignoreMissing);
 	const allowAny = stringArrayOr(value.allowAny, fallback && fallback.allowAny);
 	if (allowed === undefined && ignoreMissing === undefined && allowAny === undefined) return fallback;

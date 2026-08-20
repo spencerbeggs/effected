@@ -64,8 +64,8 @@ type Oracle = Readonly<
 	>
 >;
 
-const theirs = (dir: string): ReadonlyArray<Row> => {
-	const oracle = JSON.parse(fixture(`peers/${dir}/peers-check.json`)) as Oracle;
+const theirs = (dir: string, file = "peers-check.json"): ReadonlyArray<Row> => {
+	const oracle = JSON.parse(fixture(`peers/${dir}/${file}`)) as Oracle;
 	const rows: Array<Row> = [];
 	for (const [importer, report] of Object.entries(oracle)) {
 		// A clean importer still emits its key with empty objects, so emptiness
@@ -136,6 +136,40 @@ describe("PeerCheck.run", () => {
 			// must never reach it.
 			assert.isTrue(report.required.every((r) => !r.optional));
 			assert.isUndefined(report.required.find((r) => r.dependency === "redux"));
+		}),
+	);
+
+	it.effect("collapses a DIAMOND to one row per package, as pnpm does", () =>
+		Effect.gen(function* () {
+			// `use-sync-external-store@1.2.2` is reached twice from one importer —
+			// via react-redux and via zustand (an override pins both to one version,
+			// which is what makes it a diamond rather than two instances) — and it
+			// declares an unsatisfied `react` peer.
+			//
+			// pnpm reports that peer ONCE, carrying the react-redux chain, and says
+			// nothing about the zustand chain: it collapses per (importer, peer,
+			// package) rather than emitting one row per parent chain. The oracle is
+			// the decision here, not our preference, and this fixture exists because
+			// no other one has two chains to a single peer-declaring package.
+			const report = PeerCheck.run(yield* parse("diamond"));
+			assert.isTrue(report.supported);
+			assert.deepStrictEqual(ours(report.unsatisfied), theirs("diamond"));
+
+			// Stated directly as well, because the oracle comparison above would
+			// also pass if BOTH sides grew the second chain.
+			const rows = report.unsatisfied.filter(
+				(r) => r.dependency === "react" && r.parents.some((p) => p.name === "use-sync-external-store"),
+			);
+			assert.strictEqual(rows.length, 1);
+			assert.deepStrictEqual(
+				rows[0]?.parents.map((p) => p.name),
+				["react-redux", "use-sync-external-store"],
+			);
+			// The other chain really is reachable — without this the assertion above
+			// could pass because zustand never reaches the package at all.
+			const lockfile = yield* parse("diamond");
+			const zustand = lockfile.packagesNamed("zustand")[0];
+			assert.strictEqual(zustand?.resolved["use-sync-external-store"], "use-sync-external-store@1.2.2");
 		}),
 	);
 
@@ -433,6 +467,63 @@ describe("PeerCheck.run — peerDependencyRules and the unverified states", () =
 		}),
 	);
 
+	it.effect("a BARE rule key suppresses too — pnpm applies it to every parent", () =>
+		Effect.gen(function* () {
+			// The third spelling. `pnpm-workspace.yaml` writes `parent@version>peer`,
+			// a plugin injects `parent>peer`, and pnpm's own documented form is a
+			// parentless `peer` that applies project-wide. Measured against pnpm
+			// 11.22.0 on the fixture's own workspace: with `{ react: "17" }` and
+			// nothing else, `pnpm peers check --json` reports it clean — the oracle
+			// beside the lockfile IS that run. Skipping bare keys reports a row pnpm
+			// suppresses while `rulesApplied` claims the policy was applied.
+			const report = PeerCheck.run(yield* parse("barerule"), {
+				peerDependencyRules: rules({ react: "17" }),
+			});
+			assert.isUndefined(report.required.find((r) => r.dependency === "react"));
+			assert.deepStrictEqual(report.unverified, []);
+			assert.deepStrictEqual(ours(report.unsatisfied), theirs("barerule"));
+		}),
+	);
+
+	it.effect("a bare rule permitting a DIFFERENT version leaves the row alone", () =>
+		Effect.gen(function* () {
+			// Wrong in exactly one way against the test above: same bare key, same
+			// lockfile, a range that does not cover the version that resolved. Its
+			// oracle is a SECOND pnpm run over the same workspace with `react: "16"`,
+			// and pnpm reports the row — so "bare keys suppress unconditionally"
+			// fails here while passing above.
+			const report = PeerCheck.run(yield* parse("barerule"), {
+				peerDependencyRules: rules({ react: "16" }),
+			});
+			assert.isDefined(report.required.find((r) => r.dependency === "react"));
+			assert.deepStrictEqual(ours(report.unsatisfied), theirs("barerule", "peers-check-nonmatching.json"));
+		}),
+	);
+
+	it.effect("a bare rule naming a DIFFERENT peer leaves the row alone", () =>
+		Effect.gen(function* () {
+			// Wrong in the other single way: a permitting range, but the key names a
+			// peer this row is not about. Matching bare keys must not become
+			// matching every bare key.
+			const report = PeerCheck.run(yield* parse("barerule"), {
+				peerDependencyRules: rules({ redux: "17" }),
+			});
+			assert.isDefined(report.required.find((r) => r.dependency === "react"));
+		}),
+	);
+
+	it.effect("a rule key that names no parent at all suppresses nothing", () =>
+		Effect.gen(function* () {
+			// `">react"` is neither spelling: a separator with an empty parent. It
+			// is malformed, and a malformed rule must not degrade into the bare-key
+			// case, which would silently widen suppression past what pnpm does.
+			const report = PeerCheck.run(yield* parse("barerule"), {
+				peerDependencyRules: rules({ ">react": "17" }),
+			});
+			assert.isDefined(report.required.find((r) => r.dependency === "react"));
+		}),
+	);
+
 	it.effect("declines a peer whose edge the model could not name", () =>
 		Effect.gen(function* () {
 			// react-redux's peer `react` is satisfied by `link:vendor/react-stub`,
@@ -445,6 +536,10 @@ describe("PeerCheck.run — peerDependencyRules and the unverified states", () =
 				peerDependencyRules: NoPeerDependencyRules,
 			});
 			assert.isUndefined(report.required.find((r) => r.dependency === "react"));
+			// pnpm's own verdict on the workspace that produced this lockfile: clean.
+			// Declining is therefore agreement, not a gap — the `unverified` marker
+			// the next test pins is what keeps the agreement honest.
+			assert.deepStrictEqual(ours(report.unsatisfied), theirs("unnameable"));
 		}),
 	);
 
@@ -478,6 +573,11 @@ describe("PeerCheck.run — peerDependencyRules and the unverified states", () =
 
 			assert.isUndefined(report.required.find((r) => r.dependency === "react"));
 			assert.deepStrictEqual(report.unverified, []);
+			// pnpm calls this workspace clean, and so do we. Agreement here is
+			// agreement by silence — that both sides emit nothing — which is why the
+			// `unverified` assertion above sits next to it: the interesting claim is
+			// that we are silent for a reason, not merely silent.
+			assert.deepStrictEqual(ours(report.unsatisfied), theirs("workspacepeer"));
 			// The edge really does point at a workspace row at the placeholder
 			// version — without that, the assertion above could pass for the wrong
 			// reason.

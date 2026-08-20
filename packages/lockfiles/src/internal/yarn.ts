@@ -156,6 +156,14 @@ const toFields = (
  * lockfile keys enumerate exactly which descriptors resolve to which locator,
  * so the lookup is exact rather than reconstructed.
  *
+ * **`devDependencies` is not a section a Berry lockfile has.** yarn folds a
+ * workspace's dev declarations into the entry's `dependencies` map — the
+ * lockfile a project produces is byte-identical whether a dependency is
+ * declared under `dependencies` or `devDependencies` (probed against yarn
+ * 4.9.1). Dev edges are therefore already resolved here; iterating
+ * `entry.devDependencies` would be dead code, and the schema keeps the field
+ * only as permissive scaffolding for hand-edited input.
+ *
  * **Dependency edges only.** yarn resolves peers virtually — a peer-bearing
  * package gets a `@virtual:` locator per consumer, and this lockfile shape does
  * not record which one satisfied which peer. Emitting a peer edge here would

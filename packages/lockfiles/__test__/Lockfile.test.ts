@@ -4,7 +4,7 @@
 // edges and extension payloads — plus the model's own instance surface
 // (packagesNamed, workspacePackages) and the withImporterNames seam repair.
 
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
@@ -876,6 +876,46 @@ describe("instance identity and resolved edges", () => {
 				assert.isUndefined(lib.resolved["left-pad"]);
 			}),
 		);
+
+		it.effect("npm and bun: a declaration nothing installed is ABSENCE, not an unresolved edge", () =>
+			Effect.gen(function* () {
+				// The npm/bun exemption, pinned. Their sections are *declarations*
+				// (name → range) resolved positionally against the key space, so a
+				// name the walk does not find means "not installed" — the ordinary
+				// state of every unmet optional peer. Reporting those as
+				// `unresolvedEdges` would raise the fail-closed marker on both
+				// formats' every real-world lockfile, and a signal that is always on
+				// is one nobody reads.
+				for (const [relative, format] of [
+					["npm/peers/package-lock.json", "npm"],
+					["npm/v2/package-lock.json", "npm"],
+					["bun/peers/bun.lock", "bun"],
+					["bun/v2/bun.lock", "bun"],
+				] as ReadonlyArray<[string, LockfileFormat]>) {
+					const lockfile = yield* parseFixture(relative, format);
+					for (const row of lockfile.packages) {
+						assert.deepStrictEqual(row.unresolvedEdges, [], `${relative}: ${row.instanceId}`);
+					}
+					// Non-vacuous: these fixtures really do carry declarations the walk
+					// finds nothing for. `react-redux` asks for `redux`, which neither
+					// lockfile installs.
+					const redux = lockfile.packagesNamed("react-redux")[0];
+					if (redux !== undefined) {
+						assert.strictEqual(redux.peerDependencies.redux, "^5.0.0", relative);
+						assert.isUndefined(redux.resolved.redux, relative);
+					}
+				}
+
+				// The control on a known-good input: the field is reachable, and a
+				// lockfile that RECORDS an edge this model cannot name still fills it.
+				const unnameable = yield* parseFixture("pnpm/unnameablelink/pnpm-lock.yaml", "pnpm");
+				assert.isAbove(
+					unnameable.packages.filter((p) => p.unresolvedEdges.length > 0).length,
+					0,
+					"the control fixture must populate unresolvedEdges, or the assertions above prove nothing",
+				);
+			}),
+		);
 	});
 
 	describe("bun", () => {
@@ -936,6 +976,26 @@ describe("instance identity and resolved edges", () => {
 				// An absent edge is a true statement; a guessed one would not be.
 				assert.deepStrictEqual(reactDom.peerDependencies, { react: "^18.3.1" });
 				assert.isUndefined(reactDom.resolved.react);
+			}),
+		);
+
+		it.effect("resolves a workspace's DEV edges — yarn records them as dependencies", () =>
+			Effect.gen(function* () {
+				// Real yarn 4.9.1 output. In `yarn/devdeps`, `typescript` is declared
+				// ONLY in devDependencies and `chalk` only in dependencies, and the
+				// lockfile writes both under one `dependencies:` map — a Berry
+				// lockfile has no `devDependencies` section to iterate. The pair is
+				// what makes this discriminating: a resolver that visited only some
+				// declared section would show one of these two edges and not the
+				// other.
+				const lockfile = yield* parseFixture("yarn/devdeps/yarn.lock", "yarn");
+				const root = lockfile.packagesNamed("@devdeps/root")[0] as ResolvedPackage;
+				assert.strictEqual(root.resolved.chalk, "chalk@npm:5.3.0");
+				assert.strictEqual(root.resolved.typescript, "typescript@npm:5.3.3");
+				const lib = lockfile.packagesNamed("@devdeps/lib")[0] as ResolvedPackage;
+				assert.strictEqual(lib.resolved.chalk, "chalk@npm:5.3.0");
+				assert.strictEqual(lib.resolved.typescript, "typescript@npm:5.3.3");
+				assert.deepStrictEqual(root.unresolvedEdges, []);
 			}),
 		);
 	});
@@ -1029,7 +1089,14 @@ describe("supported lockfile versions", () => {
 				Object.create({ _tag: "UnsupportedLockfileVersion", format: "npm", minimumSupported: 3 }),
 			),
 		);
-		// The complete record, and only it, passes.
+		// What passes is identity plus the two checked value clauses. The
+		// predicate deliberately validates neither `lockfileVersion` nor
+		// `message`, so a record carrying only the checked fields passes too —
+		// stating that here keeps the next reader from "fixing" the predicate to
+		// match a stronger claim than it makes.
+		assert.isTrue(
+			isUnsupportedLockfileVersion({ _tag: "UnsupportedLockfileVersion", format: "npm", minimumSupported: 3 }),
+		);
 		assert.isTrue(
 			isUnsupportedLockfileVersion({
 				_tag: "UnsupportedLockfileVersion",
@@ -1072,6 +1139,58 @@ describe("supported lockfile versions", () => {
 		}),
 	);
 
+	it.effect("npm: a lockfileVersion 1 lockfile fails as TOO OLD, not as malformed", () =>
+		Effect.gen(function* () {
+			// Real npm 11.19.0 output (`npm install --lockfile-version=1`). A v1
+			// tree carries no `packages` object at all, so a gate that ran after
+			// the shape decode would report the oldest format we reject as merely
+			// malformed — a `ParseFailure` cause the predicate says no to, which is
+			// the same answer it gives for a corrupt file.
+			const error = yield* failure("npm/unsupported-v1/package-lock.json", "npm");
+			assert.strictEqual(error._tag, "LockfileParseError");
+			if (error._tag !== "LockfileParseError") return;
+			assert.strictEqual(error.format, "npm");
+			assert.strictEqual(error.stage, "validation");
+			assert.isTrue(isUnsupportedLockfileVersion(error.cause), "v1 must fail through the typed version cause");
+			if (!isUnsupportedLockfileVersion(error.cause)) return;
+			assert.strictEqual(error.cause.lockfileVersion, 1);
+			assert.strictEqual(error.cause.minimumSupported, 3);
+		}),
+	);
+
+	it.effect("pnpm: a pre-v9 SINGLE-PROJECT lockfile fails as too old, not as malformed", () =>
+		Effect.gen(function* () {
+			// Real pnpm 8.15.9 output for a non-workspace project: it records its
+			// dependencies at the top level and has no `importers` map, the key the
+			// v9 shape requires. The gate has to read the version first or this
+			// file — too old, and nothing else wrong with it — reports as a shape
+			// failure. The workspace-shaped `unsupported-v6` fixture cannot catch
+			// that ordering, because it decodes fine.
+			const error = yield* failure("pnpm/unsupported-v6-single/pnpm-lock.yaml", "pnpm");
+			assert.strictEqual(error._tag, "LockfileParseError");
+			if (error._tag !== "LockfileParseError") return;
+			assert.strictEqual(error.format, "pnpm");
+			assert.strictEqual(error.stage, "validation");
+			assert.isTrue(isUnsupportedLockfileVersion(error.cause), "a pre-v9 lockfile must fail through the typed cause");
+			if (!isUnsupportedLockfileVersion(error.cause)) return;
+			assert.strictEqual(error.cause.lockfileVersion, "6.0");
+			assert.strictEqual(error.cause.minimumSupported, 9);
+		}),
+	);
+
+	it.effect("a supported lockfile with a broken shape still fails as MALFORMED", () =>
+		Effect.gen(function* () {
+			// The other side of the ordering: reading the version first must not
+			// turn shape failures into version failures. A v9 document whose
+			// `importers` is the wrong type is malformed, and says so.
+			const error = yield* Effect.flip(Lockfile.parse("lockfileVersion: '9.0'\nimporters: 7\n", { format: "pnpm" }));
+			assert.strictEqual(error._tag, "LockfileParseError");
+			if (error._tag !== "LockfileParseError") return;
+			assert.strictEqual(error.stage, "validation");
+			assert.isFalse(isUnsupportedLockfileVersion(error.cause));
+		}),
+	);
+
 	it.effect("the gate is on version, not on emptiness or content", () =>
 		Effect.gen(function* () {
 			// Two lockfiles the gate must NOT reject, for two different reasons: one
@@ -1104,6 +1223,14 @@ describe("supported lockfile versions", () => {
 				for (const entry of readdirSync(formatDir, { withFileTypes: true })) {
 					if (!entry.isDirectory() || entry.name.startsWith(NEGATIVE_FIXTURE_PREFIX)) continue;
 					const relative = `${format}/${entry.name}/${filename}`;
+					// `filenameFor` names the PRIMARY filename only, and `fixture()` reads
+					// eagerly — so a directory holding, say, `npm-shrinkwrap.json` instead
+					// would throw ENOENT OUTSIDE the Effect, where `Effect.result` cannot
+					// capture it and the path is lost from the message. Report it here.
+					assert.isTrue(
+						existsSync(join(formatDir, entry.name, filename)),
+						`${relative} is missing: this guard reads each format's primary filename`,
+					);
 					// Through `Effect.result` so a fixture that has aged below the gate
 					// reports *which* fixture, rather than surfacing as a bare parse
 					// error with no path in it — this guard is read by whoever added
