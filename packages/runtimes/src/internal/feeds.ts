@@ -99,15 +99,18 @@ export const fetchNodeSchedule = (): Effect.Effect<NodeScheduleData, GitHubError
 export const buildNodeReleases = (
 	raw: ReadonlyArray<RawNodeRelease>,
 ): Effect.Effect<ReadonlyArray<NodeRelease>, InvalidVersionError> =>
-	Effect.forEach(raw, (entry) =>
-		Effect.gen(function* () {
+	Effect.gen(function* () {
+		const releases: Array<NodeRelease> = [];
+		for (const entry of raw) {
 			const version = yield* tryParseSemVer(entry.version);
 			const npm = yield* tryParseSemVer(entry.npm);
 			const date = yield* tryParseDate(entry.date);
-			if (Option.isNone(version) || Option.isNone(npm) || Option.isNone(date)) return Option.none<NodeRelease>();
-			return Option.some(NodeRelease.make({ version: version.value, npm: npm.value, date: date.value }));
-		}),
-	).pipe(Effect.map((results) => results.flatMap(Option.toArray)));
+			if (Option.isNone(version) || Option.isNone(npm) || Option.isNone(date)) continue;
+			releases.push(NodeRelease.make({ version: version.value, npm: npm.value, date: date.value }));
+		}
+		// Keep output identical while avoiding an intermediate Option[] + flatMap.
+		return releases;
+	});
 
 // ── GitHub-hosted runtimes (Bun, Deno) ───────────────────────────────────────
 
@@ -142,11 +145,14 @@ export const buildReleases = <R>(
 	raw: ReadonlyArray<RawRelease>,
 	make: (fields: { readonly version: SemVer; readonly date: DateTime.Utc }) => R,
 ): Effect.Effect<ReadonlyArray<R>> =>
-	Effect.forEach(raw, (entry) =>
-		Effect.gen(function* () {
+	Effect.gen(function* () {
+		const releases: Array<R> = [];
+		for (const entry of raw) {
 			const version = yield* tryParseSemVer(entry.version);
 			const date = yield* tryParseDate(entry.date);
-			if (Option.isNone(version) || Option.isNone(date)) return Option.none<R>();
-			return Option.some(make({ version: version.value, date: date.value }));
-		}),
-	).pipe(Effect.map((results) => results.flatMap(Option.toArray)));
+			if (Option.isNone(version) || Option.isNone(date)) continue;
+			releases.push(make({ version: version.value, date: date.value }));
+		}
+		// Keep output identical while avoiding an intermediate Option[] + flatMap.
+		return releases;
+	});
