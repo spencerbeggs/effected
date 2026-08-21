@@ -832,6 +832,233 @@ describe("instance identity and resolved edges", () => {
 			}),
 		);
 
+		it.effect("resolves the alias edges pnpm itself records (real fixture)", () =>
+			Effect.gen(function* () {
+				// Generated with pnpm 11.22.0: `glob@10.4.5` pulls in `@isaacs/cliui`,
+				// whose snapshot body records four aliased edges the ecosystem ships
+				// every day (`string-width-cjs: string-width@4.2.3`, ...), and the
+				// root importer declares `semver-classic: npm:semver@7.6.3`. Before
+				// the alias reading, every one of those landed in unresolvedEdges —
+				// on a lockfile pnpm reports as clean.
+				const lockfile = yield* parseFixture("pnpm/alias/pnpm-lock.yaml", "pnpm");
+				const cliui = lockfile.packagesNamed("@isaacs/cliui")[0] as ResolvedPackage;
+
+				assert.strictEqual(cliui.resolved["string-width-cjs"], "string-width@4.2.3");
+				assert.strictEqual(cliui.resolved["strip-ansi-cjs"], "strip-ansi@6.0.1");
+				// And the whole lockfile is as clean as pnpm says it is.
+				assert.isTrue(lockfile.packages.every((p) => p.unresolvedEdges.length === 0));
+			}),
+		);
+
+		it.effect("resolves the publish-directory link pnpm itself records (real fixture)", () =>
+			Effect.gen(function* () {
+				// Generated with pnpm 11.22.0: `packages/react` declares
+				// `publishConfig.directory: dist/pkg` (+ linkDirectory), so the
+				// registry `react-dom`'s satisfied peer is recorded in its snapshot
+				// body as `react: link:packages/react/dist/pkg` — a build output that
+				// is no importer, with no specifier beside it. The importer entry's
+				// own `publishDirectory: dist/pkg` is the evidence that names it.
+				const lockfile = yield* parseFixture("pnpm/publishdir/pnpm-lock.yaml", "pnpm");
+				const byId = new Map(lockfile.packages.map((p) => [p.instanceId, p]));
+
+				const reactDom = byId.get("react-dom@18.2.0(react@packages+react+dist+pkg)") as ResolvedPackage;
+				assert.strictEqual(reactDom.resolved.react, "packages/react");
+				// The importer path resolves the same target — the map answers before
+				// the `workspace:`-gated ancestor walk has to.
+				const app = lockfile.packagesNamed("packages/app")[0];
+				assert.strictEqual(app?.resolved.react, "packages/react");
+				assert.isTrue(lockfile.packages.every((p) => p.unresolvedEdges.length === 0));
+			}),
+		);
+
+		it.effect("resolves an npm: alias in an importer section by the recorded version", () =>
+			Effect.gen(function* () {
+				// pnpm records an aliased dependency (`npm:typescript@^6.0.3`) with the
+				// REFERENCED package's identity as the version: `typescript@6.0.3`. The
+				// bare composition `typescript-classic@typescript@6.0.3` matches
+				// nothing, so the edge used to land in unresolvedEdges — a false
+				// fail-closed marker on a lockfile pnpm itself reports as clean
+				// (spencerbeggs/type-registry-effect is the real reproduction).
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .: {}",
+					"  packages/app:",
+					"    devDependencies:",
+					"      typescript-classic:",
+					"        specifier: npm:typescript@^6.0.3",
+					"        version: typescript@6.0.3",
+					"packages:",
+					"  typescript@6.0.3: {}",
+					"snapshots:",
+					"  typescript@6.0.3: {}",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const app = lockfile.packagesNamed("packages/app")[0];
+
+				// The recorded version IS the referenced instance's key.
+				assert.strictEqual(app?.resolved["typescript-classic"], "typescript@6.0.3");
+				assert.deepStrictEqual(app?.unresolvedEdges, []);
+			}),
+		);
+
+		it.effect("resolves an npm: alias in a snapshot body, with and without a peer suffix", () =>
+			Effect.gen(function* () {
+				// Snapshot bodies record aliases the same way — `name: realname@realversion`,
+				// the peer-resolution suffix included when one applies — with no
+				// specifier beside them. The recorded version being the referenced
+				// instance's key is exact evidence on both paths; a plain version like
+				// `9.9.9` never is one (instance ids always carry a name), so the
+				// dangling control must stay unresolved.
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .: {}",
+					"packages:",
+					"  host@1.0.0: {}",
+					"  typescript@6.0.3: {}",
+					"  react-dom@18.3.1: {}",
+					"  react@18.3.1: {}",
+					"snapshots:",
+					"  host@1.0.0:",
+					"    dependencies:",
+					"      typescript-classic: typescript@6.0.3",
+					"      renderer: react-dom@18.3.1(react@18.3.1)",
+					"      phantom: 9.9.9",
+					"  typescript@6.0.3: {}",
+					"  react-dom@18.3.1(react@18.3.1): {}",
+					"  react@18.3.1: {}",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const host = lockfile.packagesNamed("host")[0];
+
+				assert.strictEqual(host?.resolved["typescript-classic"], "typescript@6.0.3");
+				assert.strictEqual(host?.resolved.renderer, "react-dom@18.3.1(react@18.3.1)");
+				assert.deepStrictEqual(host?.unresolvedEdges, ["phantom"]);
+			}),
+		);
+
+		it.effect("resolves an aliased importer edge that carries a peer suffix", () =>
+			Effect.gen(function* () {
+				// The importer-section spelling of the suffixed case: the recorded
+				// version names the peer-resolved INSTANCE, suffix and all, and that
+				// full string is the key it must match.
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .: {}",
+					"  packages/app:",
+					"    dependencies:",
+					"      renderer:",
+					"        specifier: npm:react-dom@^18.0.0",
+					"        version: react-dom@18.3.1(react@18.3.1)",
+					"packages:",
+					"  react-dom@18.3.1: {}",
+					"  react@18.3.1: {}",
+					"snapshots:",
+					"  react-dom@18.3.1(react@18.3.1): {}",
+					"  react@18.3.1: {}",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const app = lockfile.packagesNamed("packages/app")[0];
+
+				assert.strictEqual(app?.resolved.renderer, "react-dom@18.3.1(react@18.3.1)");
+				assert.deepStrictEqual(app?.unresolvedEdges, []);
+			}),
+		);
+
+		it.effect("resolves a snapshot link: into a declared publishDirectory to its importer", () =>
+			Effect.gen(function* () {
+				// `publishConfig.linkDirectory` reaches snapshot bodies too: a registry
+				// package whose peer a workspace override satisfies records
+				// `@scope/lib: link:packages/lib/dist/dev/pkg`, a build output that is
+				// no importer. Snapshot edges carry no specifier, but the lockfile
+				// itself supplies exact evidence — the importer entry declares
+				// `publishDirectory: dist/dev/pkg` — so the target is matched against
+				// the declared publish directories, not guessed from ancestry.
+				// (effected's own pnpm-lock.yaml is the real reproduction.)
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .: {}",
+					"  packages/lib:",
+					"    publishDirectory: dist/dev/pkg",
+					"packages:",
+					"  host@1.0.0: {}",
+					"snapshots:",
+					"  host@1.0.0:",
+					"    dependencies:",
+					"      '@scope/lib': link:packages/lib/dist/dev/pkg",
+					// A link into a directory NO importer declares as its publish
+					// directory stays unnameable — the map is evidence, not a guess.
+					"      '@scope/stray': link:packages/lib/dist/prod/pkg",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const host = lockfile.packagesNamed("host")[0];
+
+				assert.strictEqual(host?.resolved["@scope/lib"], "packages/lib");
+				assert.deepStrictEqual(host?.unresolvedEdges, ["@scope/stray"]);
+			}),
+		);
+
+		it.effect('resolves a link: into the ROOT importer\'s publishDirectory to "."', () =>
+			Effect.gen(function* () {
+				// The root importer may declare a publishDirectory of its own (a
+				// single-package repo publishing from a build directory). The declared
+				// directory is root-relative already, so the map key is the normalized
+				// publishDirectory itself and the owner is the root importer's id "." —
+				// exact evidence reaches the one importer the ancestor walk must
+				// exclude on principle.
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .:",
+					"    publishDirectory: dist/dev/pkg",
+					"packages:",
+					"  host@1.0.0: {}",
+					"snapshots:",
+					"  host@1.0.0:",
+					"    dependencies:",
+					"      '@scope/root': link:dist/dev/pkg",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const host = lockfile.packagesNamed("host")[0];
+
+				assert.strictEqual(host?.resolved["@scope/root"], ".");
+				assert.deepStrictEqual(host?.unresolvedEdges, []);
+			}),
+		);
+
+		it.effect("consults publishDirectory evidence on importer edges before the ancestor walk", () =>
+			Effect.gen(function* () {
+				// The importer-path spelling: the same publish-directory link under a
+				// plain `link:` specifier, which the `workspace:`-gated ancestor walk
+				// declines. The declared publishDirectory is exact evidence, so it
+				// resolves regardless of specifier — while the sibling target no
+				// importer declares stays unnameable, exactly as before.
+				const content = [
+					"lockfileVersion: '9.0'",
+					"importers:",
+					"  .: {}",
+					"  packages/app:",
+					"    devDependencies:",
+					"      '@scope/lib':",
+					"        specifier: link:../lib/dist/dev/pkg",
+					"        version: link:../lib/dist/dev/pkg",
+					"      '@scope/stub':",
+					"        specifier: link:../lib/vendor/stub",
+					"        version: link:../lib/vendor/stub",
+					"  packages/lib:",
+					"    publishDirectory: dist/dev/pkg",
+				].join("\n");
+				const lockfile = yield* Lockfile.parse(content, { format: "pnpm" });
+				const app = lockfile.packagesNamed("packages/app")[0];
+
+				assert.strictEqual(app?.resolved["@scope/lib"], "packages/lib");
+				assert.deepStrictEqual(app?.unresolvedEdges, ["@scope/stub"]);
+			}),
+		);
+
 		it.effect("a v9 lockfile with an empty snapshots map is valid input", () =>
 			Effect.gen(function* () {
 				// The support gate is on the format VERSION, never on whether

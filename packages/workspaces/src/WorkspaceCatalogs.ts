@@ -518,6 +518,26 @@ export interface WorkspaceCatalogsShape {
 	 * nothing rather than failing.
 	 */
 	readonly importerVersions: () => Effect.Effect<ImporterVersions, CatalogAssemblyFailure>;
+	/**
+	 * Discard the memoized assembly so the **next** read re-assembles — the same
+	 * single read and hook replay as the first, over the workspace as it stands
+	 * then.
+	 *
+	 * @remarks
+	 * The explicit memoization boundary for a tool that **mutates the workspace
+	 * mid-run** — installs, bumps a config dependency, regenerates the lockfile.
+	 * Release-age gating wants the before-state, a post-install peer check the
+	 * after-state, and one infinite memo cannot serve both without this call in
+	 * between; without it, `peerDependencyRules` keeps answering from the
+	 * pre-mutation hook replay and the checker reports findings the new rules
+	 * suppress.
+	 *
+	 * Unconditional and infallible: the memo is already success-only (a failed
+	 * or interrupted assembly retries by itself), so `refresh` exists solely to
+	 * discard a *successful* assembly that mutation has made stale. Calling it
+	 * before any read is harmless.
+	 */
+	readonly refresh: () => Effect.Effect<void>;
 }
 
 /**
@@ -741,6 +761,9 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				importerVersions: Effect.fn("WorkspaceCatalogs.importerVersions")(function* () {
 					return (yield* memo).importerVersions;
 				}),
+				// Infallible bookkeeping, not a fallible boundary — no span. The next
+				// read after this runs the full assembly again.
+				refresh: () => invalidate,
 			};
 		});
 
@@ -828,6 +851,11 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	 * the importer index from the lockfile's importer blocks — neither is in a
 	 * `CatalogSet`) and always die unless stubbed.
 	 *
+	 * `refresh` defaults to `Effect.void` honestly: the double holds no memo,
+	 * so "drop the memoized assembly" is genuinely a no-op — the stubs answer
+	 * fresh on every call already. This mirrors `WorkspaceDiscovery.makeTest`'s
+	 * `refresh`.
+	 *
 	 * @example
 	 * ```ts
 	 * import { CatalogSet, WorkspaceCatalogs } from "@effected/workspaces";
@@ -851,6 +879,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 			peerDependencyRules: () => unstubbed("peerDependencyRules"),
 			releaseAgeGate: () => unstubbed("releaseAgeGate"),
 			importerVersions: () => unstubbed("importerVersions"),
+			refresh: () => Effect.void,
 			...overrides,
 		};
 	};
