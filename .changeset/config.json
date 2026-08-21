@@ -1,9 +1,10 @@
 {
 	"$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+	"access": "restricted",
+	"baseBranch": "main",
 	"changelog": [
 		"@savvy-web/changelog",
 		{
-			"repo": "spencerbeggs/effected",
 			"packages": {
 				"@effected/app": {
 					"additionalScopes": ["plugin/**"],
@@ -14,16 +15,15 @@
 						}
 					]
 				}
-			}
+			},
+			"repo": "spencerbeggs/effected"
 		}
 	],
 	"commit": false,
-	"access": "restricted",
-	"baseBranch": "main",
-	"updateInternalDependencies": "patch",
 	"ignore": ["docs", "scratchpad"],
 	"privatePackages": {
 		"tag": true,
 		"version": true
-	}
+	},
+	"updateInternalDependencies": "patch"
 }

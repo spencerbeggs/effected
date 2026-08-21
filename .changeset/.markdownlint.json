@@ -1,10 +1,10 @@
 {
-	"extends": "../lib/configs/.markdownlint-cli2.jsonc",
-	"default": false,
-	"MD041": false,
+	"changeset-content-structure": true,
+	"changeset-dependency-table-format": true,
 	"changeset-heading-hierarchy": true,
 	"changeset-required-sections": true,
-	"changeset-content-structure": true,
 	"changeset-uncategorized-content": true,
-	"changeset-dependency-table-format": true
+	"default": false,
+	"extends": "../lib/configs/.markdownlint-cli2.jsonc",
+	"MD041": false
 }

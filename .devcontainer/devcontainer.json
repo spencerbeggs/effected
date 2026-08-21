@@ -1,13 +1,4 @@
 {
-	"name": "savvy-web-standard",
-	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-	"features": {
-		"ghcr.io/savvy-web/features/biome:0.1.0": {},
-		"ghcr.io/savvy-web/features/node:0.1.0": {},
-		"ghcr.io/savvy-web/features/bats:0.1.0": {},
-		"ghcr.io/savvy-web/features/kcov:0.1.0": {},
-		"ghcr.io/savvy-web/features/package-manager:0.1.0": {}
-	},
 	"customizations": {
 		"vscode": {
 			"extensions": [
@@ -38,8 +29,8 @@
 				"terminal.integrated.defaultProfile.linux": "zsh",
 				"terminal.integrated.profiles.linux": {
 					"bash": {
-						"path": "bash",
-						"icon": "terminal-bash"
+						"icon": "terminal-bash",
+						"path": "bash"
 					},
 					"zsh": {
 						"path": "zsh"
@@ -48,10 +39,19 @@
 			}
 		}
 	},
-	"remoteUser": "vscode",
-	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
-	"workspaceFolder": "/workspace",
+	"features": {
+		"ghcr.io/savvy-web/features/bats:0.1.0": {},
+		"ghcr.io/savvy-web/features/biome:0.1.0": {},
+		"ghcr.io/savvy-web/features/kcov:0.1.0": {},
+		"ghcr.io/savvy-web/features/node:0.1.0": {},
+		"ghcr.io/savvy-web/features/package-manager:0.1.0": {}
+	},
+	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+	"name": "savvy-web-standard",
 	"postCreateCommand": "bash .devcontainer/postCreate.sh",
 	"postStartCommand": "if [ -x /usr/local/bin/init-firewall.sh ] && command -v sudo >/dev/null 2>&1; then sudo /usr/local/bin/init-firewall.sh; else echo 'Skipping firewall init (script or sudo unavailable).'; fi",
-	"waitFor": "postStartCommand"
+	"remoteUser": "vscode",
+	"waitFor": "postStartCommand",
+	"workspaceFolder": "/workspace",
+	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated"
 }
