@@ -26,6 +26,11 @@ const PnpmImporter = Schema.Struct({
 	devDependencies: PnpmImporterDeps,
 	peerDependencies: PnpmImporterDeps,
 	optionalDependencies: PnpmImporterDeps,
+	// `publishConfig.directory` surfaces here: pnpm records the directory a
+	// workspace package's links actually point AT, importer-relative. It is the
+	// exact evidence that lets a `link:<importer>/<publishDirectory>` edge name
+	// its importer.
+	publishDirectory: Schema.optionalKey(Schema.String),
 });
 
 /**
@@ -157,11 +162,26 @@ export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseF
  * resolution, which names no instance in this lockfile, from becoming a
  * plausible lie.
  *
+ * A failed composition gets one second reading: the recorded version ITSELF as
+ * an instance id. That is how pnpm spells an `npm:` alias — the dependency
+ * `typescript-classic: npm:typescript@^6.0.3` is recorded as
+ * `typescript-classic: typescript@6.0.3`, the referenced instance's own key,
+ * peer suffix included when one applies. Still compose-then-verify, not a
+ * guess: a plain version (`6.0.3`) can never be an instance id, because ids
+ * always carry a name, so the reading admits exactly the alias shape.
+ *
+ * Unlike {@link resolveImporterEdges}, there is no `workspace:`-specifier
+ * ancestor walk here — a snapshot body records no specifier, so that evidence
+ * does not exist on this path. The publish-directory map needs no specifier:
+ * the importer entry's own `publishDirectory` declaration is exact evidence,
+ * available to both paths, and is consulted unconditionally.
+ *
  * @internal
  */
 const resolveEdges = (
 	sections: ReadonlyArray<Readonly<Record<string, string>> | undefined>,
 	instanceIds: ReadonlySet<string>,
+	publishDirTargets: ReadonlyMap<string, string>,
 ): ResolvedEdges => {
 	const edges = new Map<string, string>();
 	const unnameable = new Set<string>();
@@ -185,15 +205,25 @@ const resolveEdges = (
 			if (version.startsWith(LINK_PREFIX)) {
 				const target = resolveLinkTarget("", version.slice(LINK_PREFIX.length));
 				if (target !== undefined && instanceIds.has(target)) edges.set(name, target);
-				// A `link:` into a directory that is no importer — a build output, a
-				// vendored stub — names no instance in this lockfile. The edge is
-				// RECORDED, so its absence from `resolved` must not read as "nothing
-				// resolved".
+				// A target that is no importer may still be one's DECLARED publish
+				// directory — `link:packages/lib/dist/dev/pkg` where `packages/lib`
+				// declares `publishDirectory: dist/dev/pkg`. The declaration is exact
+				// evidence, so the map is consulted unconditionally.
+				else if (target !== undefined && publishDirTargets.has(target)) {
+					edges.set(name, publishDirTargets.get(target) as string);
+				}
+				// A `link:` into a directory that is no importer and no declared
+				// publish directory — a build output, a vendored stub — names no
+				// instance in this lockfile. The edge is RECORDED, so its absence from
+				// `resolved` must not read as "nothing resolved".
 				else unnameable.add(name);
 				continue;
 			}
 			const bare = `${name}@${version}`;
 			if (instanceIds.has(bare)) edges.set(name, bare);
+			// The alias reading: the recorded version is the referenced instance's
+			// own key (`realname@realversion(peers)`), which a plain version never is.
+			else if (instanceIds.has(version)) edges.set(name, version);
 			else unnameable.add(name);
 		}
 	}
@@ -220,6 +250,13 @@ const LINK_PREFIX = "link:";
  * Normalize a `link:` target against the linking importer's path, so a
  * workspace edge can name the workspace importer's instance id.
  * Total: a target that walks above the root yields `undefined`.
+ *
+ * A target that normalizes to NOTHING — `link:.` recorded root-relative —
+ * also yields `undefined` rather than the root importer's ".": the root
+ * importer deliberately emits no `ResolvedPackage` row (its path cannot serve
+ * as a package name), so mapping the empty target to "." would hand back an id
+ * no row carries, and no pnpm output recording that shape has been observed.
+ * The edge stays honestly unnameable instead.
  *
  * @internal
  */
@@ -271,18 +308,24 @@ const owningImporter = (target: string, importerPaths: ReadonlySet<string>): str
  * naming another importer — normalized against this importer's own path. Both
  * are checked against the lockfile's instance ids before being emitted.
  *
- * A `link:` target that is no importer gets one further chance, and only under
- * a `workspace:` SPECIFIER: pnpm resolved that edge through the workspace, so
- * the target directory is known to belong to a workspace package, and
- * {@link owningImporter} names it. The specifier is what makes this a
- * resolution rather than a guess — a hand-written `link:../vendor/stub`
- * specifier names a directory pnpm never claimed was a workspace package, and
- * attributing it to whichever importer happens to contain it would answer with
- * the wrong package's peers instead of admitting it could not name the edge.
+ * A `link:` target that is no importer gets two further chances. First the
+ * publish-directory map: an importer that DECLARES `publishDirectory` has told
+ * the lockfile exactly which build directory its links point at, so a target
+ * matching a declared publish directory names that importer on evidence, no
+ * specifier required — {@link resolveEdges} consults the same map for the same
+ * reason. Then, and only under a `workspace:` SPECIFIER, the ancestor walk:
+ * pnpm resolved that edge through the workspace, so the target directory is
+ * known to belong to a workspace package, and {@link owningImporter} names it.
+ * The specifier is what makes the walk a resolution rather than a guess — a
+ * hand-written `link:../vendor/stub` specifier names a directory pnpm never
+ * claimed was a workspace package, and attributing it to whichever importer
+ * happens to contain it would answer with the wrong package's peers instead of
+ * admitting it could not name the edge. The snapshot path has no specifier and
+ * therefore no walk; the publish-directory map is the evidence it does get.
  *
- * The snapshot path ({@link resolveEdges}) deliberately does NOT do this: a
- * snapshot body records `name: link:<path>` with no specifier beside it, so the
- * evidence this rule turns on is not available there.
+ * A failed `name@version` composition gets the same alias reading as
+ * {@link resolveEdges}: the recorded version itself as an instance id, which is
+ * how pnpm spells `npm:` aliases.
  *
  * @internal
  */
@@ -291,6 +334,7 @@ const resolveImporterEdges = (
 	importerPath: string,
 	instanceIds: ReadonlySet<string>,
 	importerPaths: ReadonlySet<string>,
+	publishDirTargets: ReadonlyMap<string, string>,
 ): ResolvedEdges => {
 	const edges = new Map<string, string>();
 	const unnameable = new Set<string>();
@@ -305,15 +349,17 @@ const resolveImporterEdges = (
 						? undefined
 						: instanceIds.has(target)
 							? target
-							: info.specifier.startsWith(WORKSPACE_PREFIX)
-								? owningImporter(target, importerPaths)
-								: undefined;
+							: (publishDirTargets.get(target) ??
+								(info.specifier.startsWith(WORKSPACE_PREFIX) ? owningImporter(target, importerPaths) : undefined));
 				if (owner !== undefined) edges.set(name, owner);
 				else unnameable.add(name);
 				continue;
 			}
 			const bare = `${name}@${info.version}`;
 			if (instanceIds.has(bare)) edges.set(name, bare);
+			// The alias reading: the recorded version is the referenced instance's
+			// own key (`realname@realversion(peers)`), which a plain version never is.
+			else if (instanceIds.has(info.version)) edges.set(name, info.version);
 			else unnameable.add(name);
 		}
 	}
@@ -402,6 +448,22 @@ const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, Parse
 		// target must not match a `name@version` key, and must not treat the root
 		// importer as every path's owner.
 		const importerPaths = new Set<string>(Object.keys(raw.importers).filter((path) => path !== "." && path !== ""));
+		// Normalized `<importerPath>/<publishDirectory>` → importer instance id,
+		// for every importer that declares one. This is the exact evidence that
+		// names a `link:` into a publish directory: the importer itself declared
+		// which build directory its links point at, so consulting the map is a
+		// lookup of the lockfile's own claim, not a guess — which is why even the
+		// root importer "." participates (its key is the normalized
+		// publishDirectory alone), despite being excluded from the ancestor walk.
+		const publishDirTargets = new Map<string, string>();
+		for (const [importerPath, importer] of Object.entries(raw.importers)) {
+			if (importerPath === "") continue;
+			if (importer.publishDirectory === undefined) continue;
+			// The root importer's path is "." — resolveLinkTarget skips "." segments,
+			// so passing it through normalizes both shapes identically.
+			const key = resolveLinkTarget(importerPath, importer.publishDirectory);
+			if (key !== undefined) publishDirTargets.set(key, importerPath);
+		}
 		const emitted = new Set<string>();
 
 		for (const [importerPath, importer] of Object.entries(raw.importers)) {
@@ -418,7 +480,7 @@ const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, Parse
 					instanceId: importerPath,
 					isWorkspace: true,
 					relativePath: importerPath,
-					...resolveImporterEdges(importer, importerPath, instanceIds, importerPaths),
+					...resolveImporterEdges(importer, importerPath, instanceIds, importerPaths, publishDirTargets),
 				}),
 			);
 		}
@@ -448,7 +510,7 @@ const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, Parse
 						...(integrity !== undefined ? { integrity } : {}),
 						isWorkspace: false,
 						...peerDeclarations(meta?.peerDependencies, meta?.peerDependenciesMeta),
-						...resolveEdges(edges, instanceIds),
+						...resolveEdges(edges, instanceIds, publishDirTargets),
 					}),
 				);
 			});

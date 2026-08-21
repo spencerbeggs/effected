@@ -1,6 +1,6 @@
 import { assert, describe, it, layer } from "@effect/vitest";
 import { CatalogAssemblyError, CatalogResolver, WorkspaceResolver } from "@effected/npm";
-import { Effect, Layer, Option } from "effect";
+import { Effect, FileSystem, Layer, Option } from "effect";
 import {
 	CatalogSet,
 	LockfileReadError,
@@ -504,6 +504,73 @@ describe("WorkspaceCatalogs.releaseAgeGate — the inline pnpm-workspace.yaml so
 				assert.instanceOf(error, CatalogAssemblyError);
 				assert.strictEqual(error.source, "manifest");
 				assert.strictEqual(error.path, "pnpm-workspace.yaml");
+			}),
+		);
+	});
+});
+
+// ── refresh: the explicit memoization boundary ──────────────────────────────
+
+// The consumer story: a tool that MUTATES the workspace mid-run (installs,
+// bumps a config dependency) must read post-mutation state — release-age
+// gating wants the before-state, a post-install peer check the after-state,
+// and one infinite memo cannot serve both without an explicit boundary.
+const workspaceYamlWithRules = (allowedKey: string): string =>
+	[
+		"packages:",
+		"  - 'packages/*'",
+		"catalog:",
+		"  effect: ^4.0.0",
+		"peerDependencyRules:",
+		"  allowedVersions:",
+		`    "${allowedKey}": ^4.0.0`,
+		"",
+	].join("\n");
+
+const refreshTree: Tree = {
+	"/repo/pnpm-workspace.yaml": workspaceYamlWithRules("@x/before>effect"),
+	"/repo/package.json": JSON.stringify({ name: "root", version: "0.0.0" }),
+};
+
+describe("WorkspaceCatalogs.refresh — the explicit memoization boundary", () => {
+	// The whole before/pin/refresh/after sequence lives in ONE test: a `layer`
+	// block shares its service instance across tests, so splitting the sequence
+	// would order-couple the assertions.
+	layer(workspacesOver(refreshTree))((it) => {
+		it.effect("a mutation is invisible to the memo until refresh() discards it", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				const fs = yield* FileSystem.FileSystem;
+
+				const before = yield* catalogs.peerDependencyRules();
+				assert.deepStrictEqual(before.allowedVersions, { "@x/before>effect": "^4.0.0" });
+
+				// The mid-run mutation: what a config-dependency bump rewrites.
+				yield* fs.writeFileString("/repo/pnpm-workspace.yaml", workspaceYamlWithRules("@x/after>effect"));
+
+				// Pins the memo: the pre-mutation assembly is STILL served — this is
+				// the assertion that fails if the memo is ever quietly dropped.
+				const pinned = yield* catalogs.peerDependencyRules();
+				assert.deepStrictEqual(pinned.allowedVersions, { "@x/before>effect": "^4.0.0" });
+
+				yield* catalogs.refresh();
+
+				// The next read re-assembles: same single read + hook replay, now
+				// over the post-mutation workspace.
+				const after = yield* catalogs.peerDependencyRules();
+				assert.deepStrictEqual(after.allowedVersions, { "@x/after>effect": "^4.0.0" });
+			}),
+		);
+	});
+
+	// A fresh layer block: the service must not have assembled yet.
+	layer(workspacesOver(refreshTree))((it) => {
+		it.effect("refresh() before any read is harmless", () =>
+			Effect.gen(function* () {
+				const catalogs = yield* WorkspaceCatalogs;
+				yield* catalogs.refresh();
+				const rules = yield* catalogs.peerDependencyRules();
+				assert.deepStrictEqual(rules.allowedVersions, { "@x/before>effect": "^4.0.0" });
 			}),
 		);
 	});
