@@ -1,5 +1,19 @@
 # @effected/npm
 
+## 0.11.1
+
+### Performance
+
+* Speed up `CorepackIntegrityHash.FromSri` decoding by replacing per-character base64 alphabet scans with a precomputed ASCII lookup table.
+
+  * The conversion output and validation behavior stay the same; only the character-to-sextet lookup path changed. [#441][#441]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#441]: https://github.com/spencerbeggs/effected/pull/441
+
 ## 0.11.0
 
 ### Features
