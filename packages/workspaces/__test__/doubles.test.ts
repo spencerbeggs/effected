@@ -53,6 +53,10 @@ describe("WorkspaceCatalogs.makeTest — everything dies until stubbed", () => {
 					yield* Effect.exit(catalogs.importerVersions()),
 					"WorkspaceCatalogs.makeTest: importerVersions() was called but not stubbed",
 				);
+				// The one honest default besides the derivation: the double holds no
+				// memo, so "drop the memoized assembly" is genuinely a no-op —
+				// mirroring WorkspaceDiscovery.makeTest's refresh.
+				assert.deepStrictEqual(yield* catalogs.refresh(), undefined);
 			}),
 		);
 	});
