@@ -1,5 +1,20 @@
 # @effected/runtimes
 
+## 0.4.2
+
+### Performance
+
+* Reduced allocation overhead while building runtime release lists in `@effected/runtimes` by avoiding an intermediate `Option[]` and second-pass flatten step in feed-to-model projection.
+
+  * Output ordering and filtering semantics are unchanged.
+  * Public API and compatibility guarantees are unchanged. [#442][#442]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#442]: https://github.com/spencerbeggs/effected/pull/442
+
 ## 0.4.1
 
 ### Performance
