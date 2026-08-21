@@ -11,8 +11,9 @@ export const assertGuardExit = (exit: Exit.Exit<unknown, unknown>): void => {
 	const reasons = Option.getOrThrow(cause).reasons;
 	assert.isFalse(reasons.some(Cause.isFailReason));
 	const die = reasons.find(Cause.isDieReason);
-	assert.instanceOf(die?.defect, Error);
-	assert.match((die?.defect as Error).message, guardMessage);
+	const defect = die?.defect;
+	assert.instanceOf(defect, Error);
+	assert.match((defect as Error).message, guardMessage);
 };
 
 /** Whatever this exit died on, it must NOT be the guard — the proof the guard stays quiet on good input. */

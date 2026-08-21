@@ -29,9 +29,10 @@ describe("Git.makeTest", () => {
 				assert.isTrue(Cause.hasDies(exit.cause));
 				const die = exit.cause.reasons.find(Cause.isDieReason);
 				assert.isDefined(die);
-				assert.instanceOf(die?.defect, Error);
+				const defect = die?.defect;
+				assert.instanceOf(defect, Error);
 				assert.strictEqual(
-					(die?.defect as Error).message,
+					(defect as Error).message,
 					"Git.makeTest: status() was called but not stubbed — no honest default exists for a test double; pass a `status` override.",
 				);
 			}

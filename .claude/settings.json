@@ -1,13 +1,13 @@
 {
-	"permissions": {
-		"allow": ["Edit(./**)", "Edit(.claude/design/**)", "Edit(.claude/plans/**)"]
-	},
 	"enableAllProjectMcpServers": true,
 	"enabledPlugins": {
 		"design-docs@spencerbeggs": true,
+		"effected@spencerbeggs": true,
 		"silk@savvy-web-systems": true,
-		"vitest-agent@spencerbeggs": true,
-		"effected@spencerbeggs": true
+		"vitest-agent@spencerbeggs": true
+	},
+	"permissions": {
+		"allow": ["Edit(./**)", "Edit(.claude/design/**)", "Edit(.claude/plans/**)"]
 	},
 	"plansDirectory": ".claude/plans"
 }
