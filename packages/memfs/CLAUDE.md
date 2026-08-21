@@ -18,6 +18,15 @@ In-memory implementation of core Effect's `FileSystem` service: one module, `Mem
 - **Typed errors always**: malformed input is `badArgument`/`systemError`, never a defect; the only `Effect.die` sites are inherited internal-invariant violations.
 - **Deltas from the pinned upstream live in the design doc's adaptation ledger** (watch honors `recursive`; depth guards at `MAX_NESTING_DEPTH = 256`; seeding API; `access` options documented as ignored). Anything else diverging from `c0528bd5` is drift, not design.
 - **Never edit the attribution/license notice text** in the ported file headers.
+- **Ledger entry 10 (0.5.0)**: `VolumeEntrySnapshot` carries `mtime`, and `collectEntrySnapshots` now emits the **root** entry — released 0.4.0 answered `has("/") === false`.
+
+## The sync view and `syncFileSystem`
+
+`MemoryFileSystemVolume` also answers `readDirectory`, `isDirectory` and `mtime` (epoch ms). They are **literal** — a symlink pointing at a directory is not one, and links are never followed — and honestly absent: `undefined` for nothing there, because `[]` and `0` are real answers a signature must not conflate with absence.
+
+`MemoryFileSystem.syncFileSystem(volume)` adapts that view to the `node:fs` sync subset (`exists`, `readFile`, `readDirectory`, `isDirectory`) for code that takes an injected sync port instead of requiring `FileSystem`. Absence **throws**, carrying `code`/`syscall`/`path` — the only failure channel a sync signature has; it never fabricates `""` or `[]`. It satisfies `@effected/workspaces`' `SyncFileSystem` **structurally, with no import in either direction: the zero-edges law above is intact** — never "finish the wiring" by adding one. Not a general escape hatch either: code calling `node:fs` directly still does not see the volume.
+
+Two mtime traps. `file(content, { mtime })` seeds through a `Date`, because `FileSystem.utimes` reads a bare number as Unix **seconds** while the option is milliseconds. And writes stamp the Effect `Clock`, so under `it.effect` every written entry reads as `0` until `TestClock` advances.
 
 ## Layer discipline
 

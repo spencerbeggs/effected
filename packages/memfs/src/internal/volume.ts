@@ -2651,6 +2651,8 @@ export interface VolumeEntrySnapshot {
 	readonly type: "File" | "Directory" | "SymbolicLink";
 	/** The live data reference for a `File` entry (callers must copy), `undefined` otherwise. */
 	readonly data: Uint8Array | undefined;
+	/** The entry's modification time as epoch milliseconds — the same clock `stat` reports. */
+	readonly mtime: number;
 }
 
 const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
@@ -2659,6 +2661,12 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 	if (root === undefined || root._tag !== "Directory") {
 		return output;
 	}
+	// The root itself, which the walk below never reaches — it starts FROM the
+	// root and reports descendants. Emitting it lets the inspection view answer
+	// `has`/`isDirectory`/`mtime` for "/" from real state rather than a
+	// synthesized stand-in. `snapshot`/`paths` filter on `data`, so a directory
+	// entry does not disturb them.
+	output.push({ path: "/", type: "Directory", data: undefined, mtime: DateTime.toEpochMillis(root.mtime) });
 	interface Frame {
 		readonly names: Array<string>;
 		readonly directory: DirectoryInode;
@@ -2682,7 +2690,12 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 			continue;
 		}
 		const path = `${frame.prefix}/${name}`;
-		output.push({ path, type: entry._tag, data: entry._tag === "File" ? entry.data : undefined });
+		output.push({
+			path,
+			type: entry._tag,
+			data: entry._tag === "File" ? entry.data : undefined,
+			mtime: DateTime.toEpochMillis(entry.mtime),
+		});
 		if (entry._tag === "Directory") {
 			frames.push({ names: [...HashMap.keys(entry.entries)].sort(), directory: entry, prefix: path, index: 0 });
 		}

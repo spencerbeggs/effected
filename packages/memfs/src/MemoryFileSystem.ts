@@ -64,6 +64,71 @@ export interface MemoryFileSystemVolume {
 	 * exactly the key set of {@link MemoryFileSystemVolume.snapshot}.
 	 */
 	readonly paths: () => ReadonlyArray<string>;
+	/**
+	 * The entry names directly inside the directory at `path`, sorted
+	 * lexicographically, or `undefined` when the path is absent or holds
+	 * something other than a directory. `[]` means a genuinely empty
+	 * directory, never an absent one — the honest-absence contract carried
+	 * into the sync view.
+	 *
+	 * Names only, not paths, matching `readdir`. Symbolic links are listed by
+	 * their own name and never followed.
+	 */
+	readonly readDirectory: (path: string) => ReadonlyArray<string> | undefined;
+	/**
+	 * Whether `path` holds a directory.
+	 *
+	 * Literal, like the rest of this view: a symbolic link pointing AT a
+	 * directory answers `false`, because the link itself is not one. This is a
+	 * deliberate divergence from `statSync(p).isDirectory()`, which resolves
+	 * the link first.
+	 */
+	readonly isDirectory: (path: string) => boolean;
+	/**
+	 * The modification time of the entry at `path` as epoch milliseconds, or
+	 * `undefined` when nothing lives there — the same clock `stat` reports
+	 * through `File.Info.mtime`.
+	 *
+	 * @remarks
+	 * Seeded entries take the volume's clock at seed time, so a seed alone
+	 * cannot express "this file is older than that one". Give an entry an
+	 * explicit time with {@link MemoryFileSystem.file}'s `mtime` option, or
+	 * change it afterwards through the `FileSystem` service's `utimes`.
+	 *
+	 * Distinguishing `undefined` from a real `0` matters: `0` is a legitimate
+	 * modification time (the epoch), and a signature built over mtimes must not
+	 * read an absent file as one modified in 1970.
+	 */
+	readonly mtime: (path: string) => number | undefined;
+}
+
+/**
+ * The four synchronous file operations a consumer-supplied filesystem port
+ * needs, as {@link MemoryFileSystem.syncFileSystem} exposes them over a
+ * volume.
+ *
+ * @remarks
+ * The shape is the `node:fs` synchronous subset — `existsSync`,
+ * `readFileSync(p, "utf8")`, `readdirSync`, `statSync(p).isDirectory()` — which
+ * is also the port `@effected/workspaces` asks its sync entry points for.
+ * Satisfaction is **structural**: this package declares its own type and
+ * imports nothing, so no kit edge is created in either direction.
+ *
+ * Absence is reported by throwing, because a synchronous non-`Effect` signature
+ * has no other failure channel. It is never papered over with `""` or `[]` —
+ * that fabricated-content case is the bug this package exists to prevent.
+ *
+ * @public
+ */
+export interface MemoryFileSystemSyncFileSystem {
+	/** Whether anything exists at `path`. Never throws. */
+	readonly exists: (path: string) => boolean;
+	/** The UTF-8 contents of the regular file at `path`. Throws when absent or not a regular file. */
+	readonly readFile: (path: string) => string;
+	/** The entry names inside the directory at `path`. Throws when absent or not a directory. */
+	readonly readDirectory: (path: string) => ReadonlyArray<string>;
+	/** Whether `path` holds a directory. Never throws; links are not followed. */
+	readonly isDirectory: (path: string) => boolean;
 }
 
 /**
@@ -91,6 +156,13 @@ export interface MemoryFileSystemSeedFile {
 	readonly content: string | Uint8Array;
 	/** Initial permission bits (defaults to the volume's `0o644`). */
 	readonly mode?: number;
+	/**
+	 * Initial modification time as epoch milliseconds. Defaults to the volume's
+	 * clock at seed time, which makes every seeded entry effectively
+	 * simultaneous — set this when a test needs one file to read as older than
+	 * another.
+	 */
+	readonly mtime?: number;
 }
 
 /**
@@ -243,6 +315,19 @@ const seedVolume = (
 				case "MemoryFileSystemSeedFile": {
 					const data = typeof entry.content === "string" ? encoder.encode(entry.content) : entry.content;
 					yield* fs.writeFile(path, data, entry.mode !== undefined ? { mode: entry.mode } : undefined);
+					// Applied after the write, which stamps the volume's clock. Both
+					// times are set together because `utimes` takes the pair; a seed
+					// that pins mtime without pinning atime would leave the two
+					// disagreeing for no stated reason.
+					//
+					// A `Date`, NOT the bare number: `utimes` reads a numeric
+					// argument as Unix SECONDS (as `fs.utimesSync` does), while this
+					// option is epoch milliseconds — passing it through unconverted
+					// silently multiplies every seeded time by 1000.
+					if (entry.mtime !== undefined) {
+						const stamp = new Date(entry.mtime);
+						yield* fs.utimes(path, stamp, stamp);
+					}
 					break;
 				}
 				case "MemoryFileSystemSeedDirectory": {
@@ -313,6 +398,49 @@ const makeVolumeService = (entries: () => Array<internal.VolumeEntrySnapshot>): 
 			.filter((entry) => entry.data !== undefined)
 			.map((entry) => entry.path)
 			.sort(),
+	readDirectory: (path) => {
+		const snapshot = entries();
+		const normalized = normalizeQueryPath(path);
+		if (findEntryAt(snapshot, normalized)?.type !== "Directory") {
+			return undefined;
+		}
+		// "/" would otherwise build the prefix "//" and match nothing.
+		const prefix = normalized === "/" ? "/" : `${normalized}/`;
+		return snapshot
+			.filter(
+				(entry) =>
+					entry.path !== normalized && entry.path.startsWith(prefix) && !entry.path.slice(prefix.length).includes("/"),
+			)
+			.map((entry) => entry.path.slice(prefix.length))
+			.sort();
+	},
+	isDirectory: (path) => findEntryAt(entries(), path)?.type === "Directory",
+	mtime: (path) => findEntryAt(entries(), path)?.mtime,
+});
+
+// Absence in a synchronous, non-`Effect` signature can only be reported by
+// throwing — the honest-absence contract's sync form. `code` mirrors the
+// `node:fs` errno a consumer written against the Node binding may inspect.
+const syncAbsence = (code: "ENOENT" | "ENOTDIR", syscall: string, path: string): Error =>
+	Object.assign(new Error(`${code}: ${syscall} '${path}'`), { code, syscall, path });
+
+const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem => ({
+	exists: (path) => volume.has(path),
+	readFile: (path) => {
+		const text = volume.text(path);
+		if (text === undefined) {
+			throw syncAbsence(volume.has(path) ? "ENOTDIR" : "ENOENT", "readFile", path);
+		}
+		return text;
+	},
+	readDirectory: (path) => {
+		const names = volume.readDirectory(path);
+		if (names === undefined) {
+			throw syncAbsence(volume.has(path) ? "ENOTDIR" : "ENOENT", "readDirectory", path);
+		}
+		return names;
+	},
+	isDirectory: (path) => volume.isDirectory(path),
 });
 
 const inspectableContext = ({
@@ -710,11 +838,12 @@ export class MemoryFileSystem {
 	 */
 	static readonly file = (
 		content: string | Uint8Array,
-		options?: { readonly mode?: number | undefined },
+		options?: { readonly mode?: number | undefined; readonly mtime?: number | undefined },
 	): MemoryFileSystemSeedFile => ({
 		_tag: "MemoryFileSystemSeedFile",
 		content,
 		...(options?.mode !== undefined ? { mode: options.mode } : {}),
+		...(options?.mtime !== undefined ? { mtime: options.mtime } : {}),
 	});
 
 	/**
@@ -820,6 +949,43 @@ export class MemoryFileSystem {
 	static readonly Volume: Context.Service<MemoryFileSystemVolume, MemoryFileSystemVolume> = Context.Service(
 		"@effected/memfs/MemoryFileSystemVolume",
 	);
+
+	/**
+	 * Adapts a {@link MemoryFileSystemVolume} to the synchronous `node:fs`
+	 * subset — `exists`, `readFile`, `readDirectory`, `isDirectory` — for code
+	 * that takes a consumer-supplied sync filesystem port rather than requiring
+	 * `FileSystem` from the environment.
+	 *
+	 * @remarks
+	 * A pure adapter over the inspection view: no service, no layer, no
+	 * `Effect`. Get a volume from
+	 * {@link MemoryFileSystem.makeInspectableWith} (or resolve
+	 * {@link MemoryFileSystem.Volume}) and pass the result wherever the port is
+	 * expected. The shape is structural, so `@effected/workspaces`'s
+	 * `SyncFileSystem` — and anything else asking for the same four operations —
+	 * is satisfied without either package importing the other.
+	 *
+	 * This is deliberately NOT a general escape hatch from the `FileSystem`
+	 * service. Code that calls `node:fs` directly still does not see the volume;
+	 * only code that accepts an injected port does. Reaching for the service
+	 * remains the better answer whenever the call site can be changed.
+	 *
+	 * Absence throws rather than returning `""` or `[]`, carrying honest
+	 * absence into a signature that has no error channel. Thrown errors carry
+	 * `code`/`syscall`/`path`, matching what the `node:fs` binding would raise.
+	 *
+	 * @example
+	 * ```ts
+	 * const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith({
+	 * 	"/repo/package.json": `{ "name": "root" }`,
+	 * 	"/repo/packages": MemoryFileSystem.directory(),
+	 * });
+	 * const sync = MemoryFileSystem.syncFileSystem(volume);
+	 * sync.readDirectory("/repo"); // => ["package.json", "packages"]
+	 * ```
+	 */
+	static readonly syncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem =>
+		makeSyncFileSystem(volume);
 
 	/**
 	 * Builds a fresh, empty volume exposed twice: as the `FileSystem` service

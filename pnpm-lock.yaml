@@ -963,6 +963,9 @@ importers:
       '@effected/github-actions':
         specifier: workspace:*
         version: link:../packages/github-actions/dist/dev/pkg
+      '@effected/github-references':
+        specifier: workspace:*
+        version: link:../packages/github-references/dist/dev/pkg
       '@effected/glob':
         specifier: workspace:*
         version: link:../packages/glob/dist/dev/pkg
@@ -978,6 +981,9 @@ importers:
       '@effected/markdown':
         specifier: workspace:*
         version: link:../packages/markdown/dist/dev/pkg
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../packages/memfs/dist/dev/pkg
       '@effected/npm':
         specifier: workspace:*
         version: link:../packages/npm/dist/dev/pkg

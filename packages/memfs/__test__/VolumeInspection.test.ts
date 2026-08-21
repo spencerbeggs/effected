@@ -4,7 +4,8 @@
 // routing every assertion through an Effect read.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, PlatformError } from "effect";
+import { Effect, FileSystem, Layer, Option, PlatformError } from "effect";
+import { TestClock } from "effect/testing";
 import { MemoryFileSystem } from "../src/index.js";
 
 const encoder = new TextEncoder();
@@ -249,5 +250,185 @@ describe("the templates-fixture acceptance sketch", () => {
 			assert.isTrue(vol.has("/repo/.github"));
 			assert.deepStrictEqual(vol.paths(), [path]);
 		}).pipe(Effect.provide(MemoryFileSystem.layerInspectable)),
+	);
+});
+
+// The sync filesystem port (effected#396 item 1b): the volume exposed through
+// the four-operation `node:fs` sync subset, for code that takes an injected
+// port instead of requiring `FileSystem` from the environment. Structural
+// satisfaction only — this package imports nothing from the kit.
+describe("MemoryFileSystem.syncFileSystem", () => {
+	const seed = {
+		"/repo/package.json": `{ "name": "root" }`,
+		"/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+		"/repo/packages": MemoryFileSystem.directory(),
+		"/repo/latest": MemoryFileSystem.symlink("/repo/package.json"),
+	} as const;
+
+	const withSync = <A>(use: (sync: ReturnType<typeof MemoryFileSystem.syncFileSystem>) => A) =>
+		Effect.map(MemoryFileSystem.makeInspectableWith(seed), ({ volume }) =>
+			use(MemoryFileSystem.syncFileSystem(volume)),
+		);
+
+	it.effect("reads files and lists directories by name, sorted", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				assert.strictEqual(sync.readFile("/repo/package.json"), `{ "name": "root" }`);
+				assert.deepStrictEqual(sync.readDirectory("/repo"), [
+					"latest",
+					"package.json",
+					"packages",
+					"pnpm-workspace.yaml",
+				]);
+				assert.isTrue(sync.exists("/repo/package.json"));
+				assert.isTrue(sync.isDirectory("/repo/packages"));
+				assert.isFalse(sync.isDirectory("/repo/package.json"));
+			});
+		}),
+	);
+
+	it.effect("an empty directory lists [] — never confused with an absent one", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				assert.deepStrictEqual(sync.readDirectory("/repo/packages"), []);
+				assert.throws(() => sync.readDirectory("/repo/absent"), /ENOENT/);
+			});
+		}),
+	);
+
+	it.effect('HONEST ABSENCE: an unseeded path throws rather than answering ""', () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				assert.isFalse(sync.exists("/repo/absent"));
+				assert.throws(() => sync.readFile("/repo/absent"), /ENOENT/);
+				// A directory is not a regular file: reading it as one must fail
+				// too, rather than degrading to an empty string.
+				assert.throws(() => sync.readFile("/repo/packages"), /ENOTDIR/);
+			});
+		}),
+	);
+
+	it.effect("a symbolic link is listed by its own name and is not a directory", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				// Literal, like the rest of the inspection view: the link points AT
+				// a file, and is reported as neither followed nor a directory.
+				assert.isTrue(sync.exists("/repo/latest"));
+				assert.isFalse(sync.isDirectory("/repo/latest"));
+			});
+		}),
+	);
+
+	it.effect("the virtual root lists its top-level entries", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				// "/" must not build the prefix "//", which would match nothing.
+				assert.include(sync.readDirectory("/"), "repo");
+				assert.isTrue(sync.isDirectory("/"));
+			});
+		}),
+	);
+
+	it.effect("thrown absence carries the node:fs errno fields a port consumer may inspect", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				try {
+					sync.readFile("/repo/absent");
+					assert.fail("readFile should have thrown on an unseeded path");
+				} catch (error) {
+					assert.strictEqual((error as { code?: string }).code, "ENOENT");
+					assert.strictEqual((error as { syscall?: string }).syscall, "readFile");
+					assert.strictEqual((error as { path?: string }).path, "/repo/absent");
+				}
+			});
+		}),
+	);
+});
+
+// Modification time on the inspection view (effected#396 item 6): the piece a
+// signature-diff test needs — "this file changed and that one did not" —
+// expressible in a seed and readable synchronously.
+describe("MemoryFileSystemVolume.mtime", () => {
+	it.effect("a seeded mtime is readable, and distinct files keep distinct times", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/pkg/src/old.ts": MemoryFileSystem.file("old", { mtime: 1_000 }),
+				"/pkg/src/new.ts": MemoryFileSystem.file("new", { mtime: 9_000 }),
+			});
+			assert.strictEqual(volume.mtime("/pkg/src/old.ts"), 1_000);
+			assert.strictEqual(volume.mtime("/pkg/src/new.ts"), 9_000);
+		}),
+	);
+
+	it.effect("HONEST ABSENCE: an absent path is undefined, never a 1970 timestamp", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/epoch.txt": MemoryFileSystem.file("at the epoch", { mtime: 0 }),
+			});
+			// 0 is a REAL modification time. A signature over mtimes must be able to
+			// tell it apart from a file that is not there at all — conflating them
+			// is the silent-green this contract exists to prevent.
+			assert.strictEqual(volume.mtime("/epoch.txt"), 0);
+			assert.strictEqual(volume.mtime("/absent.txt"), undefined);
+		}),
+	);
+
+	it.effect("a write restamps the entry from the Effect Clock — which under test starts at the epoch", () =>
+		Effect.gen(function* () {
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/tracked.txt": MemoryFileSystem.file("before", { mtime: 1_000 }),
+			});
+			assert.strictEqual(volume.mtime("/tracked.txt"), 1_000);
+
+			// The volume stamps writes from the Effect `Clock`, not `Date.now()`.
+			// That is what makes mtime drivable — but it also means the default
+			// test clock sits at the EPOCH, so a write reads as 0 and a seeded
+			// 1_000 looks like the FUTURE. A signature test that assumes writes
+			// move time forward is a false green waiting to happen.
+			yield* fileSystem.writeFileString("/tracked.txt", "after");
+			assert.strictEqual(volume.mtime("/tracked.txt"), 0);
+
+			// Advance the clock and the next write lands where it was moved to.
+			yield* TestClock.adjust("5 seconds");
+			yield* fileSystem.writeFileString("/tracked.txt", "later");
+			assert.strictEqual(volume.mtime("/tracked.txt"), 5_000);
+		}),
+	);
+
+	it.effect("utimes through the FileSystem is visible to the view", () =>
+		Effect.gen(function* () {
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/a.txt": "contents",
+			});
+			// `utimes` reads a NUMBER as Unix seconds, so 5_000 there means
+			// 5_000_000 ms — the unit trap the seed option converts away from.
+			yield* fileSystem.utimes("/a.txt", 5_000, 5_000);
+			assert.strictEqual(volume.mtime("/a.txt"), 5_000_000);
+			// A Date is unambiguous and round-trips in milliseconds.
+			const stamp = new Date(1_234_567);
+			yield* fileSystem.utimes("/a.txt", stamp, stamp);
+			assert.strictEqual(volume.mtime("/a.txt"), 1_234_567);
+		}),
+	);
+
+	it.effect("mtime agrees with what stat reports through the FileSystem", () =>
+		Effect.gen(function* () {
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/a.txt": MemoryFileSystem.file("contents", { mtime: 4_242 }),
+			});
+			const info = yield* fileSystem.stat("/a.txt");
+			// One clock, two views — the sync accessor must not drift from `stat`.
+			const fromStat = Option.getOrThrow(info.mtime).getTime();
+			assert.strictEqual(volume.mtime("/a.txt"), fromStat);
+		}),
+	);
+
+	it.effect("directories carry an mtime too", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/dir": MemoryFileSystem.directory(),
+			});
+			assert.isDefined(volume.mtime("/dir"));
+		}),
 	);
 });

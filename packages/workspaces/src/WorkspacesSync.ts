@@ -58,6 +58,54 @@ export interface SyncFileSystem {
 	readonly readDirectory: (path: string) => ReadonlyArray<string>;
 	/** Whether `path` is a directory. May throw; a throw reads as `false`. */
 	readonly isDirectory: (path: string) => boolean;
+	/**
+	 * Optional fast path: the entries inside `path` with their types already
+	 * known, in ONE call.
+	 *
+	 * @remarks
+	 * Package enumeration otherwise costs a `readDirectory` plus one
+	 * `isDirectory` per entry — the readdir-then-stat-per-entry shape, which on
+	 * a large workspace is a syscall per file. Supplying this collapses that to
+	 * a single `readdirSync(path, { withFileTypes: true })`; `nodeFileSystem`
+	 * does. Omit it and enumeration falls back to the four required operations
+	 * with identical results, so this is purely a cost optimization and never a
+	 * behavior switch.
+	 *
+	 * May throw; a throw skips the directory, exactly like `readDirectory`.
+	 */
+	readonly readDirectoryWithTypes?: ((path: string) => ReadonlyArray<SyncDirectoryEntry>) | undefined;
+}
+
+/**
+ * One directory entry with its type resolved, as the optional
+ * {@link SyncFileSystem.readDirectoryWithTypes} fast path reports it. Node's
+ * `Dirent` satisfies it after mapping its predicate methods to booleans.
+ *
+ * @remarks
+ * `isSymbolicLink` is not decoration. A `Dirent` describes the entry ITSELF, so
+ * a symbolic link pointing at a directory reports `isDirectory: false` — while
+ * the `stat`-based slow path, which resolves the link, calls the same entry a
+ * directory. Enumeration therefore re-resolves links through `isDirectory`
+ * rather than trusting `isDirectory` on a link, which is what keeps the fast
+ * and slow paths in agreement on a workspace whose packages are symlinked.
+ *
+ * Which behavior is *correct* is domain-dependent, so the flag is reported
+ * rather than resolved away. Enumeration follows links because a symlinked
+ * package is still a package. A test-file discovery walk usually must NOT: in a
+ * pnpm workspace `node_modules` is a farm of links into the content-addressed
+ * store, and following them walks the whole store or hits a cycle. A consumer
+ * building its own walker on this shape wants `isDirectory` verbatim — there,
+ * not following is the requirement, not the hazard.
+ *
+ * @public
+ */
+export interface SyncDirectoryEntry {
+	/** The entry's own name, not a path. */
+	readonly name: string;
+	/** Whether the entry itself is a directory. `false` for a symbolic link, even one targeting a directory. */
+	readonly isDirectory: boolean;
+	/** Whether the entry itself is a symbolic link. */
+	readonly isSymbolicLink: boolean;
 }
 
 /**
@@ -138,6 +186,51 @@ const isDirectory = (fileSystem: SyncFileSystem, dir: string): boolean => {
 	} catch {
 		return false;
 	}
+};
+
+/** One enumerated child, with directory-ness resolved under `stat` semantics. */
+interface ResolvedEntry {
+	readonly name: string;
+	readonly directory: boolean;
+}
+
+/**
+ * The entries of `absoluteDir`, each carrying whether it is a directory, or
+ * `undefined` when the directory could not be read at all (the degraded-skip
+ * case). Uses {@link SyncFileSystem.readDirectoryWithTypes} when the consumer
+ * supplied it and the four-operation fallback otherwise — the two agree by
+ * construction, including on symbolic links, which are always re-resolved
+ * through `isDirectory` because a `Dirent` describes the link and not its
+ * target.
+ */
+const readResolvedEntries = (
+	options: WorkspacesSyncOptions,
+	absoluteDir: string,
+): ReadonlyArray<ResolvedEntry> | undefined => {
+	const { fileSystem, path } = options;
+	const withTypes = fileSystem.readDirectoryWithTypes;
+	if (withTypes !== undefined) {
+		try {
+			return withTypes(absoluteDir).map((entry) => ({
+				name: entry.name,
+				directory: entry.isSymbolicLink
+					? isDirectory(fileSystem, path.join(absoluteDir, entry.name))
+					: entry.isDirectory,
+			}));
+		} catch {
+			return undefined;
+		}
+	}
+	let names: ReadonlyArray<string>;
+	try {
+		names = fileSystem.readDirectory(absoluteDir);
+	} catch {
+		return undefined;
+	}
+	return names.map((name) => ({
+		name,
+		directory: isDirectory(fileSystem, path.join(absoluteDir, name)),
+	}));
 };
 
 /** Whether `dir` holds a `package.json`. */
@@ -391,18 +484,14 @@ export const getWorkspacePackagesSync = (
 		for (let current = traversal.next(); current !== undefined && !stopped; current = traversal.next()) {
 			if (traversal.charge() !== undefined) break;
 
-			let entries: ReadonlyArray<string> = [];
-			try {
-				entries = fileSystem.readDirectory(current.absolute);
-			} catch {
-				continue;
-			}
+			const entries = readResolvedEntries(options, current.absolute);
+			if (entries === undefined) continue;
 
 			for (const entry of entries) {
-				if (isPruned(entry)) continue;
-				const relative = joinRelative(current.relative, entry);
-				const absolute = path.join(current.absolute, entry);
-				if (!isDirectory(fileSystem, absolute)) continue;
+				if (isPruned(entry.name)) continue;
+				const relative = joinRelative(current.relative, entry.name);
+				const absolute = path.join(current.absolute, entry.name);
+				if (!entry.directory) continue;
 
 				// Depth BEFORE acceptance, exactly as the Effect enumerator does it.
 				// Gating only the descent is what made this function return a package

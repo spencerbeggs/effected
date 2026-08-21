@@ -16,6 +16,7 @@ import {
 	readdirSync,
 	rmSync,
 	statSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -380,5 +381,78 @@ describe("WorkspacesSync with a win32 SyncPath", () => {
 		assert.strictEqual(nodePath.posix.dirname("C:\\repo\\packages\\a"), ".");
 		assert.strictEqual(nodePath.win32.dirname("C:\\repo\\packages\\a"), "C:\\repo\\packages");
 		assert.isNull(findWorkspaceRootSync("C:\\repo\\packages\\a", { ...ops, path: nodePath.posix }));
+	});
+});
+
+// The optional `readDirectoryWithTypes` fast path. It must be a pure syscall
+// saving: identical results to the four-operation fallback on every tree,
+// including one whose package directories are SYMLINKS — the case where a
+// naive implementation trusting `Dirent.isDirectory()` silently drops packages,
+// because a dirent describes the link and not its target.
+describe("SyncFileSystem.readDirectoryWithTypes (optional fast path)", () => {
+	let root: string;
+
+	beforeAll(() => {
+		root = mkdtempSync(join(tmpdir(), "ws-dirent-"));
+		mkdirSync(join(root, "packages/a"), { recursive: true });
+		mkdirSync(join(root, "real/b"), { recursive: true });
+		writeFileSync(join(root, "package.json"), `{ "name": "root", "version": "0.0.0", "private": true }`);
+		writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
+		writeFileSync(join(root, "packages/a/package.json"), `{ "name": "@x/a", "version": "1.0.0" }`);
+		writeFileSync(join(root, "real/b/package.json"), `{ "name": "@x/b", "version": "2.0.0" }`);
+		// packages/b is a SYMLINK to a directory holding a real package.
+		symlinkSync(join(root, "real/b"), join(root, "packages/b"), "dir");
+	});
+
+	afterAll(() => {
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	// The fallback: exactly the documented four-operation wiring, no fast path.
+	const slow: SyncFileSystem = {
+		exists: existsSync,
+		readFile: (p) => readFileSync(p, "utf8"),
+		readDirectory: (p) => readdirSync(p),
+		isDirectory: (p) => statSync(p).isDirectory(),
+	};
+
+	const fast: SyncFileSystem = {
+		...slow,
+		readDirectoryWithTypes: (p) =>
+			readdirSync(p, { withFileTypes: true }).map((entry) => ({
+				name: entry.name,
+				isDirectory: entry.isDirectory(),
+				isSymbolicLink: entry.isSymbolicLink(),
+			})),
+	};
+
+	it("agrees with the fallback, symlinked package directories included", () => {
+		const viaSlow = getWorkspacePackagesSync(root, { fileSystem: slow, path: nodePath });
+		const viaFast = getWorkspacePackagesSync(root, { fileSystem: fast, path: nodePath });
+
+		// The positive control: the symlinked package must actually be found, or
+		// "the two agree" would be satisfied by both finding nothing.
+		assert.deepStrictEqual(
+			viaSlow.map((pkg) => pkg.name).sort(),
+			["@x/a", "@x/b", "root"],
+			"fallback must resolve the symlinked package",
+		);
+		assert.deepStrictEqual(viaFast.map((pkg) => pkg.name).sort(), viaSlow.map((pkg) => pkg.name).sort());
+		assert.deepStrictEqual(viaFast, viaSlow);
+	});
+
+	it("a throwing fast path skips the directory rather than propagating", () => {
+		const throwing: SyncFileSystem = {
+			...slow,
+			readDirectoryWithTypes: () => {
+				throw new Error("EACCES");
+			},
+		};
+		// The whole wildcard base is unreadable, so no wildcard member survives —
+		// but the root package still resolves and nothing escapes.
+		assert.deepStrictEqual(
+			getWorkspacePackagesSync(root, { fileSystem: throwing, path: nodePath }).map((pkg) => pkg.name),
+			["root"],
+		);
 	});
 });
