@@ -86,10 +86,22 @@ export const enumerate = (
 			({ kind: stop.kind, pattern, detail: stop.detail }) as EnumerationFailure;
 
 		// Literals: an exact lookup, no directory read at all.
-		for (const literal of globs.literals) {
-			if (isExcluded(literal)) continue;
-			const absolute = path.join(root, literal);
-			if (yield* isPackage(absolute)) included.set(literal, absolute);
+		//
+		// `Effect.forEach` defaults to concurrency 1, so the explicit bound is what
+		// lets independent `package.json` existence probes overlap.
+		const literalHits = yield* Effect.forEach(
+			globs.literals,
+			(literal) =>
+				Effect.gen(function* () {
+					if (isExcluded(literal)) return undefined;
+					const absolute = path.join(root, literal);
+					return (yield* isPackage(absolute)) ? ([literal, absolute] as const) : undefined;
+				}),
+			{ concurrency: 10 },
+		);
+		for (const hit of literalHits) {
+			if (hit === undefined) continue;
+			included.set(hit[0], hit[1]);
 		}
 
 		for (const wildcard of globs.wildcards) {
