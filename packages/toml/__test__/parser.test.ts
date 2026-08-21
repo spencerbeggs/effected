@@ -186,7 +186,8 @@ describe("parser", () => {
 			const table = outer.items[1] as TomlInlineTable;
 			assert.isTrue(table instanceof TomlInlineTable);
 			assert.strictEqual(table.entries.length, 1);
-			assert.strictEqual((table.entries[0]?.value as TomlInteger).value, 1);
+			const entryValue = table.entries[0]?.value as TomlInteger;
+			assert.strictEqual(entryValue.value, 1);
 		});
 		it("parses a heterogeneous array", () => {
 			const kv = keyValueAt(parseExpressions('a = [1, "two", 3.5, true, 1979-05-27]'), 0);

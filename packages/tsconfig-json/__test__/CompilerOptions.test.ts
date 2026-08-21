@@ -80,7 +80,8 @@ describe("CompilerOptions", () => {
 				plugins: [{ name: "x", extra: 1 }],
 			});
 			assert.strictEqual(decoded.plugins?.[0]?.name, "x");
-			assert.strictEqual((decoded.plugins?.[0] as unknown as Record<string, unknown>).extra, 1);
+			const plugin = decoded.plugins?.[0] as unknown as Record<string, unknown>;
+			assert.strictEqual(plugin.extra, 1);
 		}),
 	);
 
