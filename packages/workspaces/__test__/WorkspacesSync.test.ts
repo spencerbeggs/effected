@@ -16,12 +16,14 @@ import {
 	readdirSync,
 	rmSync,
 	statSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import nodePath, { dirname, join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, Layer } from "effect";
 import type { SyncFileSystem, WorkspacesSyncOptions } from "../src/index.js";
 import {
@@ -381,4 +383,116 @@ describe("WorkspacesSync with a win32 SyncPath", () => {
 		assert.strictEqual(nodePath.win32.dirname("C:\\repo\\packages\\a"), "C:\\repo\\packages");
 		assert.isNull(findWorkspaceRootSync("C:\\repo\\packages\\a", { ...ops, path: nodePath.posix }));
 	});
+});
+
+// The optional `readDirectoryWithTypes` fast path. It must be a pure syscall
+// saving: identical results to the four-operation fallback on every tree,
+// including one whose package directories are SYMLINKS — the case where a
+// naive implementation trusting `Dirent.isDirectory()` silently drops packages,
+// because a dirent describes the link and not its target.
+describe("SyncFileSystem.readDirectoryWithTypes (optional fast path)", () => {
+	let root: string;
+
+	beforeAll(() => {
+		root = mkdtempSync(join(tmpdir(), "ws-dirent-"));
+		mkdirSync(join(root, "packages/a"), { recursive: true });
+		mkdirSync(join(root, "real/b"), { recursive: true });
+		writeFileSync(join(root, "package.json"), `{ "name": "root", "version": "0.0.0", "private": true }`);
+		writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
+		writeFileSync(join(root, "packages/a/package.json"), `{ "name": "@x/a", "version": "1.0.0" }`);
+		writeFileSync(join(root, "real/b/package.json"), `{ "name": "@x/b", "version": "2.0.0" }`);
+		// packages/b is a SYMLINK to a directory holding a real package.
+		symlinkSync(join(root, "real/b"), join(root, "packages/b"), "dir");
+	});
+
+	afterAll(() => {
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	// The fallback: exactly the documented four-operation wiring, no fast path.
+	const slow: SyncFileSystem = {
+		exists: existsSync,
+		readFile: (p) => readFileSync(p, "utf8"),
+		readDirectory: (p) => readdirSync(p),
+		isDirectory: (p) => statSync(p).isDirectory(),
+	};
+
+	const fast: SyncFileSystem = {
+		...slow,
+		readDirectoryWithTypes: (p) =>
+			readdirSync(p, { withFileTypes: true }).map((entry) => ({
+				name: entry.name,
+				isDirectory: entry.isDirectory(),
+				isSymbolicLink: entry.isSymbolicLink(),
+			})),
+	};
+
+	it("agrees with the fallback, symlinked package directories included", () => {
+		const viaSlow = getWorkspacePackagesSync(root, { fileSystem: slow, path: nodePath });
+		const viaFast = getWorkspacePackagesSync(root, { fileSystem: fast, path: nodePath });
+
+		// The positive control: the symlinked package must actually be found, or
+		// "the two agree" would be satisfied by both finding nothing.
+		assert.deepStrictEqual(
+			viaSlow.map((pkg) => pkg.name).sort(),
+			["@x/a", "@x/b", "root"],
+			"fallback must resolve the symlinked package",
+		);
+		assert.deepStrictEqual(viaFast.map((pkg) => pkg.name).sort(), viaSlow.map((pkg) => pkg.name).sort());
+		assert.deepStrictEqual(viaFast, viaSlow);
+	});
+
+	it("a throwing fast path skips the directory rather than propagating", () => {
+		const throwing: SyncFileSystem = {
+			...slow,
+			readDirectoryWithTypes: () => {
+				throw new Error("EACCES");
+			},
+		};
+		// The whole wildcard base is unreadable, so no wildcard member survives —
+		// but the root package still resolves and nothing escapes.
+		assert.deepStrictEqual(
+			getWorkspacePackagesSync(root, { fileSystem: throwing, path: nodePath }).map((pkg) => pkg.name),
+			["root"],
+		);
+	});
+});
+
+// The port is consumer-supplied, so `@effected/memfs` is a sanctioned backend
+// for it — and a backend that answered symlinks LITERALLY would silently drop a
+// symlinked package, giving two different package lists for one workspace
+// depending on which backend supplied the port. Caught in review of #445; this
+// pins the two backends against each other on the tree that discriminates.
+describe("SyncFileSystem over a memfs volume", () => {
+	const seed = {
+		"/repo/package.json": `{ "name": "root", "version": "0.0.0", "private": true }`,
+		"/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+		"/repo/packages/a/package.json": `{ "name": "@x/a", "version": "1.0.0" }`,
+		"/repo/real/b/package.json": `{ "name": "@x/b", "version": "2.0.0" }`,
+		// packages/b is a SYMLINK to a directory holding a real package.
+		"/repo/packages/b": MemoryFileSystem.symlink("/repo/real/b"),
+	};
+
+	it.effect("enumerates a symlinked package directory, as the node binding does", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+
+			const found = getWorkspacePackagesSync("/repo", { fileSystem, path: nodePath.posix })
+				.map((pkg) => pkg.name)
+				.sort();
+
+			// The positive control: the symlinked package must actually be found,
+			// or this would pass on an empty result.
+			assert.deepStrictEqual(found, ["@x/a", "@x/b", "root"]);
+		}),
+	);
+
+	it.effect("resolves the workspace root through a symlinked directory", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+			assert.strictEqual(findWorkspaceRootSync("/repo/packages/b", { fileSystem, path: nodePath.posix }), "/repo");
+		}),
+	);
 });

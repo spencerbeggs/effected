@@ -22,8 +22,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "257cc0201403539ab535cceb88ead37951f55300279d3c98c958e7ddcd05d2e5",
-			"recordedAt": "2026-08-16"
+			"hash": "46b3ffef431679b2d68077b1436cbd9f0104079aad0dbef9aac1ef81bff636d3",
+			"recordedAt": "2026-08-20"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -40,8 +40,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/migration-playbook.md",
-			"hash": "2ff9a650d8682eb5775c8241a7d896864533b7d7a8652621405daaa6726cdbe6",
-			"recordedAt": "2026-08-12"
+			"hash": "eb76eecc984ecb090785dd58c16b129c134ab0494cdcea9a9e674aeda38a8047",
+			"recordedAt": "2026-08-20"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -82,8 +82,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/scratchpad.md",
-			"hash": "20d744b7478240593021e87e8fa0e6d0bcd88ca06c7f3f42996a60045c86bfb7",
-			"recordedAt": "2026-08-14"
+			"hash": "ee197eaf054156b688b1818f92b30adc374cba62e3fb15314bcea68bb2128041",
+			"recordedAt": "2026-08-20"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -310,8 +310,8 @@
 		{
 			"source": "packages/memfs/CLAUDE.md",
 			"target": ".claude/design/effected/packages/memfs.md",
-			"hash": "1d7f999655fdbe914d4beaa66e114119e226634f42a72aaf0fd08b153d081cc0",
-			"recordedAt": "2026-08-16"
+			"hash": "d09bc6dc6e56b96067d45a5e98f2d6c3bbed6a2ec20af3a959cff70ddc3898a1",
+			"recordedAt": "2026-08-20"
 		},
 		{
 			"source": "packages/npm/CLAUDE.md",
@@ -448,7 +448,7 @@
 		{
 			"source": "packages/workspaces/CLAUDE.md",
 			"target": ".claude/design/effected/packages/workspaces.md",
-			"hash": "daff3636d126c291ddc7b711af3881a40e6bdf0408da4157832a01aac9b6ff7b",
+			"hash": "a36293ba5f5f652e89bad43be2e880d73b46e50ad2259220f0bb532893cd6d38",
 			"recordedAt": "2026-08-20"
 		},
 		{

@@ -28,7 +28,7 @@ Read the module for its types; this is the index, not the API.
 - `ReleaseTag.ts` — `ReleaseTag`, `TagStyle`, `TagFormatOptions`, the floating-alias family `TrackingTag` / `TrackingTagOptions`, and `classifyTag` / `TagClassification` (all **value classes**; a leaf importing nothing else here)
 - `VersioningStrategy.ts` — `VersioningStrategy` (a **value class**: `classify` / `detect` / `tagsFor`), `VersioningStrategyType`, `ClassifyOptions`, `VersioningDetectOptions`, `PackageRelease`
 - `Workspaces.ts` — the composites, the one-call manifest path, `localExecLayer`
-- `WorkspacesSync.ts` — `findWorkspaceRootSync`, `getWorkspacePackagesSync` over consumer-supplied `SyncFileSystem` / `SyncPath` ops
+- `WorkspacesSync.ts` — `findWorkspaceRootSync`, `getWorkspacePackagesSync` over consumer-supplied `SyncFileSystem` / `SyncPath` ops (`SyncDirectoryEntry` types the optional `readDirectoryWithTypes` fast path)
 - `node-sync.ts` — the node-bound ops preset (`node:fs` / `node:path`), published only under `./node-sync`
 
 `CatalogAssemblyError` lives in `@effected/npm`, beside the contract that names it in its channel, and is deliberately **not re-exported** here. `catalogResolver` passes assembly failures through **typed** as that error; only an unfindable workspace root wraps as `DependencyResolutionError`.
