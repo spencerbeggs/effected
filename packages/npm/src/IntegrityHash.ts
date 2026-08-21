@@ -163,6 +163,15 @@ const corepackRestricted = brandedIntegrity.pipe(
 
 // Canonical base64 alphabet; index = 6-bit value.
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_INVALID = 0xff;
+const BASE64_INDEX = (() => {
+	const table = new Uint8Array("z".charCodeAt(0) + 1);
+	table.fill(BASE64_INVALID);
+	for (let index = 0; index < BASE64_ALPHABET.length; index += 1) {
+		table[BASE64_ALPHABET.charCodeAt(index)] = index;
+	}
+	return table;
+})();
 
 // Decode canonical base64 to bytes without a runtime dependency. `Buffer` is
 // Node-only AND lenient — it silently drops invalid characters and truncates —
@@ -182,9 +191,11 @@ const decodeBase64 = (value: string): ReadonlyArray<number> | undefined => {
 	let buffer = 0;
 	let bits = 0;
 	const bytes: Array<number> = [];
-	for (const char of body) {
-		const sextet = BASE64_ALPHABET.indexOf(char);
-		if (sextet < 0) return undefined;
+	for (let index = 0; index < body.length; index += 1) {
+		const code = body.charCodeAt(index);
+		if (code >= BASE64_INDEX.length) return undefined;
+		const sextet = BASE64_INDEX[code];
+		if (sextet === BASE64_INVALID) return undefined;
 		buffer = (buffer << 6) | sextet;
 		bits += 6;
 		if (bits >= 8) {
