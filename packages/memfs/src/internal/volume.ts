@@ -2653,6 +2653,8 @@ export interface VolumeEntrySnapshot {
 	readonly data: Uint8Array | undefined;
 	/** The entry's modification time as epoch milliseconds — the same clock `stat` reports. */
 	readonly mtime: number;
+	/** The stored target of a `SymbolicLink` entry (never resolved), `undefined` otherwise. */
+	readonly target: string | undefined;
 }
 
 const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
@@ -2666,7 +2668,13 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 	// `has`/`isDirectory`/`mtime` for "/" from real state rather than a
 	// synthesized stand-in. `snapshot`/`paths` filter on `data`, so a directory
 	// entry does not disturb them.
-	output.push({ path: "/", type: "Directory", data: undefined, mtime: DateTime.toEpochMillis(root.mtime) });
+	output.push({
+		path: "/",
+		type: "Directory",
+		data: undefined,
+		mtime: DateTime.toEpochMillis(root.mtime),
+		target: undefined,
+	});
 	interface Frame {
 		readonly names: Array<string>;
 		readonly directory: DirectoryInode;
@@ -2695,6 +2703,7 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 			type: entry._tag,
 			data: entry._tag === "File" ? entry.data : undefined,
 			mtime: DateTime.toEpochMillis(entry.mtime),
+			target: entry._tag === "SymbolicLink" ? entry.target : undefined,
 		});
 		if (entry._tag === "Directory") {
 			frames.push({ names: [...HashMap.keys(entry.entries)].sort(), directory: entry, prefix: path, index: 0 });

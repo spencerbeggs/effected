@@ -301,21 +301,85 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 			yield* withSync((sync) => {
 				assert.isFalse(sync.exists("/repo/absent"));
 				assert.throws(() => sync.readFile("/repo/absent"), /ENOENT/);
-				// A directory is not a regular file: reading it as one must fail
-				// too, rather than degrading to an empty string.
-				assert.throws(() => sync.readFile("/repo/packages"), /ENOTDIR/);
+				// Reading a directory as a file is EISDIR in readFileSync — verified
+				// against real node:fs — not ENOTDIR, and certainly not "".
+				assert.throws(() => sync.readFile("/repo/packages"), /EISDIR/);
 			});
 		}),
 	);
 
-	it.effect("a symbolic link is listed by its own name and is not a directory", () =>
+	it.effect("a symbolic link is listed by its own name and reads through to its target", () =>
 		Effect.gen(function* () {
 			yield* withSync((sync) => {
-				// Literal, like the rest of the inspection view: the link points AT
-				// a file, and is reported as neither followed nor a directory.
 				assert.isTrue(sync.exists("/repo/latest"));
+				// The PORT follows links even though the view under it is literal:
+				// this one points at a file, so it is not a directory but IS readable.
 				assert.isFalse(sync.isDirectory("/repo/latest"));
+				assert.strictEqual(sync.readFile("/repo/latest"), `{ "name": "root" }`);
 			});
+		}),
+	);
+
+	// THE REGRESSION THIS PORT SHIPPED WITH (caught in review of #445): the view
+	// underneath is deliberately literal, and answering literally here made a
+	// symlinked package directory invisible to any consumer enumerating a
+	// workspace — the exact failure a naive dirent fast path causes, reached
+	// through the test double instead. Verified against real node:fs, which
+	// resolves all four operations through links.
+	it.effect("FOLLOWS LINKS like stat: a link to a directory is a directory and lists its target", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/real/pkg/package.json": `{ "name": "@x/a" }`,
+				"/links/pkg": MemoryFileSystem.symlink("/real/pkg"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+
+			assert.isTrue(sync.isDirectory("/links/pkg"), "a link to a directory must read as a directory");
+			assert.deepStrictEqual(sync.readDirectory("/links/pkg"), ["package.json"]);
+			assert.strictEqual(sync.readFile("/links/pkg/package.json"), `{ "name": "@x/a" }`);
+
+			// The literal view keeps its own contract underneath, unchanged.
+			assert.isFalse(volume.isDirectory("/links/pkg"));
+			assert.strictEqual(volume.readLink("/links/pkg"), "/real/pkg");
+		}),
+	);
+
+	it.effect("a dangling link is ABSENT to the port, though the literal view still sees it", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/dangling": MemoryFileSystem.symlink("/nowhere"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+
+			// existsSync answers false for a dangling link; the port matches it.
+			assert.isFalse(sync.exists("/dangling"));
+			assert.isFalse(sync.isDirectory("/dangling"));
+			assert.throws(() => sync.readFile("/dangling"), /ENOENT/);
+			// …while the view, being literal, reports the link itself as present.
+			assert.isTrue(volume.has("/dangling"));
+		}),
+	);
+
+	it.effect("a relative link target resolves against the link's own directory", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/a/b/target.txt": "found",
+				"/a/b/rel": MemoryFileSystem.symlink("target.txt"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.strictEqual(sync.readFile("/a/b/rel"), "found");
+		}),
+	);
+
+	it.effect("a link cycle resolves to absence rather than spinning", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/loop/a": MemoryFileSystem.symlink("/loop/b"),
+				"/loop/b": MemoryFileSystem.symlink("/loop/a"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.isFalse(sync.exists("/loop/a"));
+			assert.throws(() => sync.readFile("/loop/a"), /ENOENT/);
 		}),
 	);
 

@@ -100,6 +100,17 @@ export interface MemoryFileSystemVolume {
 	 * read an absent file as one modified in 1970.
 	 */
 	readonly mtime: (path: string) => number | undefined;
+	/**
+	 * The stored target of the symbolic link at `path`, or `undefined` when the
+	 * path is absent or holds something else. The target is returned verbatim —
+	 * it may be relative, and it may dangle.
+	 *
+	 * @remarks
+	 * Literal, like the rest of this view: this reports the link, it does not
+	 * resolve it. {@link MemoryFileSystem.syncFileSystem} is the surface that
+	 * follows links, because the port it implements is defined in `stat` terms.
+	 */
+	readonly readLink: (path: string) => string | undefined;
 }
 
 /**
@@ -114,20 +125,31 @@ export interface MemoryFileSystemVolume {
  * Satisfaction is **structural**: this package declares its own type and
  * imports nothing, so no kit edge is created in either direction.
  *
+ * Unlike the literal {@link MemoryFileSystemVolume} it is built on, this port
+ * **follows symbolic links**, because the operations it stands in for are
+ * defined in `stat` terms: a link to a directory IS a directory here, a link is
+ * read through to its target, and a dangling link is absent (as `existsSync`
+ * reports it). A backend that answered literally would silently drop symlinked
+ * package directories from any consumer that enumerates a workspace — the same
+ * failure a naive dirent fast path causes, reached through the test double.
+ *
  * Absence is reported by throwing, because a synchronous non-`Effect` signature
  * has no other failure channel. It is never papered over with `""` or `[]` —
  * that fabricated-content case is the bug this package exists to prevent.
+ * Errors carry the `code` the Node binding would raise: `ENOENT` for an absent
+ * path, `EISDIR` for reading a directory as a file, `ENOTDIR` for listing a
+ * non-directory.
  *
  * @public
  */
 export interface MemoryFileSystemSyncFileSystem {
-	/** Whether anything exists at `path`. Never throws. */
+	/** Whether anything exists at `path`, following links. A dangling link is absent. Never throws. */
 	readonly exists: (path: string) => boolean;
-	/** The UTF-8 contents of the regular file at `path`. Throws when absent or not a regular file. */
+	/** The UTF-8 contents of the file at `path`, following links. Throws `ENOENT`/`EISDIR`/`ENOTDIR`. */
 	readonly readFile: (path: string) => string;
-	/** The entry names inside the directory at `path`. Throws when absent or not a directory. */
+	/** The entry names inside the directory at `path`, following links. Throws `ENOENT`/`ENOTDIR`. */
 	readonly readDirectory: (path: string) => ReadonlyArray<string>;
-	/** Whether `path` holds a directory. Never throws; links are not followed. */
+	/** Whether `path` resolves to a directory, following links — as `statSync(p).isDirectory()` does. */
 	readonly isDirectory: (path: string) => boolean;
 }
 
@@ -416,32 +438,90 @@ const makeVolumeService = (entries: () => Array<internal.VolumeEntrySnapshot>): 
 	},
 	isDirectory: (path) => findEntryAt(entries(), path)?.type === "Directory",
 	mtime: (path) => findEntryAt(entries(), path)?.mtime,
+	readLink: (path) => {
+		const entry = findEntryAt(entries(), path);
+		return entry?.type === "SymbolicLink" ? entry.target : undefined;
+	},
 });
 
 // Absence in a synchronous, non-`Effect` signature can only be reported by
 // throwing — the honest-absence contract's sync form. `code` mirrors the
 // `node:fs` errno a consumer written against the Node binding may inspect.
-const syncAbsence = (code: "ENOENT" | "ENOTDIR", syscall: string, path: string): Error =>
+const syncAbsence = (code: "ENOENT" | "ENOTDIR" | "EISDIR", syscall: string, path: string): Error =>
 	Object.assign(new Error(`${code}: ${syscall} '${path}'`), { code, syscall, path });
 
-const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem => ({
-	exists: (path) => volume.has(path),
-	readFile: (path) => {
-		const text = volume.text(path);
-		if (text === undefined) {
-			throw syncAbsence(volume.has(path) ? "ENOTDIR" : "ENOENT", "readFile", path);
+// The port is defined in `stat` terms, so it FOLLOWS symbolic links — unlike
+// the literal inspection view it is built on. `MAX_LINK_HOPS` mirrors the
+// ELOOP guard a real filesystem applies; a cycle resolves to absence rather
+// than spinning.
+const MAX_LINK_HOPS = 40;
+
+const resolveLinks = (volume: MemoryFileSystemVolume, path: string): string | undefined => {
+	// Resolution is per COMPONENT, not just the final one: `/links/pkg/a.json`
+	// has to follow the link at `/links/pkg` before it can see `a.json`, exactly
+	// as a real filesystem walks a path. Resolving only the last component makes
+	// every path *underneath* a symlinked directory read as absent.
+	let current = "";
+	let hops = 0;
+	for (const part of path.split("/")) {
+		if (part === "" || part === ".") continue;
+		if (part === "..") {
+			// Applied to the RESOLVED location, so ".." after a link ascends from
+			// the target rather than from the link's own parent.
+			current = current.slice(0, Math.max(0, current.lastIndexOf("/")));
+			continue;
 		}
-		return text;
-	},
-	readDirectory: (path) => {
-		const names = volume.readDirectory(path);
-		if (names === undefined) {
-			throw syncAbsence(volume.has(path) ? "ENOTDIR" : "ENOENT", "readDirectory", path);
+		let candidate = `${current}/${part}`;
+		for (;;) {
+			const target = volume.readLink(candidate);
+			if (target === undefined) break;
+			hops += 1;
+			if (hops > MAX_LINK_HOPS) return undefined;
+			candidate = target.startsWith("/") ? target : `${current}/${target}`;
 		}
-		return names;
-	},
-	isDirectory: (path) => volume.isDirectory(path),
-});
+		if (!volume.has(candidate)) return undefined;
+		current = candidate;
+	}
+	const final = current === "" ? "/" : current;
+	return volume.has(final) ? final : undefined;
+};
+
+const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem => {
+	// A dangling link is ABSENT to this port, matching `existsSync`, even though
+	// the literal view reports the link itself as present.
+	const resolved = (path: string) => resolveLinks(volume, path);
+	return {
+		exists: (path) => resolved(path) !== undefined,
+		readFile: (path) => {
+			const target = resolved(path);
+			if (target === undefined) {
+				throw syncAbsence("ENOENT", "readFile", path);
+			}
+			const text = volume.text(target);
+			if (text === undefined) {
+				// Reading a directory as a file is EISDIR in `readFileSync`;
+				// anything else that is not a regular file is ENOTDIR.
+				throw syncAbsence(volume.isDirectory(target) ? "EISDIR" : "ENOTDIR", "readFile", path);
+			}
+			return text;
+		},
+		readDirectory: (path) => {
+			const target = resolved(path);
+			if (target === undefined) {
+				throw syncAbsence("ENOENT", "readDirectory", path);
+			}
+			const names = volume.readDirectory(target);
+			if (names === undefined) {
+				throw syncAbsence("ENOTDIR", "readDirectory", path);
+			}
+			return names;
+		},
+		isDirectory: (path) => {
+			const target = resolved(path);
+			return target !== undefined && volume.isDirectory(target);
+		},
+	};
+};
 
 const inspectableContext = ({
 	fileSystem,
@@ -970,8 +1050,10 @@ export class MemoryFileSystem {
 	 * only code that accepts an injected port does. Reaching for the service
 	 * remains the better answer whenever the call site can be changed.
 	 *
-	 * Absence throws rather than returning `""` or `[]`, carrying honest
-	 * absence into a signature that has no error channel. Thrown errors carry
+	 * The port follows symbolic links even though the view underneath is literal,
+	 * because the operations it stands in for are `stat`-defined. Absence throws
+	 * rather than returning `""` or `[]`, carrying honest absence into a
+	 * signature that has no error channel; thrown errors carry
 	 * `code`/`syscall`/`path`, matching what the `node:fs` binding would raise.
 	 *
 	 * @example

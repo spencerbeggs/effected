@@ -104,6 +104,8 @@ const program = Effect.gen(function* () {
 });
 ```
 
+Unlike the inspection view it is built on, the port **follows symbolic links**, because the operations it stands in for are defined in `stat` terms: a link to a directory is a directory, a link is read through to its target, and a dangling link is absent exactly as `existsSync` reports it. Answering literally here would silently drop symlinked package directories from any consumer enumerating a workspace, which is the failure the port most needs to avoid. Errors carry the `code` the Node binding raises — `ENOENT` absent, `EISDIR` reading a directory as a file, `ENOTDIR` listing a non-directory.
+
 The shape is structural, so `@effected/workspaces`' `SyncFileSystem` — and anything else asking for those four operations — is satisfied with neither package importing the other.
 
 Absence throws, because a synchronous non-`Effect` signature has no other failure channel. The thrown error carries `code`, `syscall` and `path`, matching what the `node:fs` binding would raise, so a consumer written against the builtin reads it unchanged. It is never papered over with `""` or `[]`.

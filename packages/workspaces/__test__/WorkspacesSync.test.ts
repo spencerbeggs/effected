@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import nodePath, { dirname, join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, Layer } from "effect";
 import type { SyncFileSystem, WorkspacesSyncOptions } from "../src/index.js";
 import {
@@ -455,4 +456,43 @@ describe("SyncFileSystem.readDirectoryWithTypes (optional fast path)", () => {
 			["root"],
 		);
 	});
+});
+
+// The port is consumer-supplied, so `@effected/memfs` is a sanctioned backend
+// for it — and a backend that answered symlinks LITERALLY would silently drop a
+// symlinked package, giving two different package lists for one workspace
+// depending on which backend supplied the port. Caught in review of #445; this
+// pins the two backends against each other on the tree that discriminates.
+describe("SyncFileSystem over a memfs volume", () => {
+	const seed = {
+		"/repo/package.json": `{ "name": "root", "version": "0.0.0", "private": true }`,
+		"/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+		"/repo/packages/a/package.json": `{ "name": "@x/a", "version": "1.0.0" }`,
+		"/repo/real/b/package.json": `{ "name": "@x/b", "version": "2.0.0" }`,
+		// packages/b is a SYMLINK to a directory holding a real package.
+		"/repo/packages/b": MemoryFileSystem.symlink("/repo/real/b"),
+	};
+
+	it.effect("enumerates a symlinked package directory, as the node binding does", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+
+			const found = getWorkspacePackagesSync("/repo", { fileSystem, path: nodePath.posix })
+				.map((pkg) => pkg.name)
+				.sort();
+
+			// The positive control: the symlinked package must actually be found,
+			// or this would pass on an empty result.
+			assert.deepStrictEqual(found, ["@x/a", "@x/b", "root"]);
+		}),
+	);
+
+	it.effect("resolves the workspace root through a symlinked directory", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+			assert.strictEqual(findWorkspaceRootSync("/repo/packages/b", { fileSystem, path: nodePath.posix }), "/repo");
+		}),
+	);
 });
