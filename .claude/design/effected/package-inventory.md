@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-21
+last-synced: 2026-08-21
 completeness: 90
 related:
   - architecture.md
@@ -50,7 +50,7 @@ related:
 
 ## Overview
 
-The current `@effected/*` package set and where each package came from. The kit is **thirty publishable packages** — twenty-nine libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). Twenty-nine have published; `@effected/github-references` was built 2026-08-17 and is pending its first release. The directory listing of `packages/` is the authority on membership; this document is the authority on where each package came from and why it is shaped the way it is. Tier definitions are in [effect-standards.md](effect-standards.md); the release mechanics and consumer mapping are in [releases.md](releases.md); open work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
+The current `@effected/*` package set and where each package came from. The kit is **thirty publishable packages** — twenty-nine libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). All thirty have published; `@effected/github-references`, built and released 2026-08-17, was the last to do so. The directory listing of `packages/` is the authority on membership; this document is the authority on where each package came from and why it is shaped the way it is. Tier definitions are in [effect-standards.md](effect-standards.md); the release mechanics and consumer mapping are in [releases.md](releases.md); open work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
 
 The kit's scope is closed by the consuming applications in [releases.md](releases.md), not by how many predecessor libraries exist. A predecessor is not by itself a commitment to carry it forward: the JSON Schema package fell off under that test (see [Off the roadmap](#off-the-roadmap)).
 

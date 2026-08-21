@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-21
+last-synced: 2026-08-21
 completeness: 88
 related:
   - architecture.md
@@ -116,7 +116,7 @@ What scoped them instead:
 - The github-split five are scoped by the program's six consumer repos — the five savvy-web action repos plus claude-code-marketplace-manager — all mapped in [consumers/](consumers/README.md), and **all six have since completed the migration onto them**. Only silk-update-action of those is also one of the five applications.
 - `markdown`, `schemastore`, `jsonl` and [`cli`](packages/cli.md) were each scoped by a named consumer and built design-doc-first, then published in the next wave whose changesets named them. `cli` came out of the [reposets](consumers/reposets.md) loop — the kit's first consumer that runs at a terminal rather than on a runner — with its doc written and reviewed by that consumer before the port.
 - [`memfs`](packages/memfs.md) was scoped by the kit itself: it is the filesystem test double every other package's suite needs, which is why it carries **no `@effected/*` edge, ever**.
-- [`github-references`](packages/github-references.md) is the newest and the only one not yet released. It is the kit's first **extraction driven by install weight rather than by design**: a pure grammar left `github` because an octokit-free consumer could not reach it, and `github` keeps a droppable compat re-export so the move is not a breaking change for the consumer that adopted it in its old home.
+- [`github-references`](packages/github-references.md) is the newest, released 2026-08-17 and completing the set. It is the kit's first **extraction driven by install weight rather than by design**: a pure grammar left `github` because an octokit-free consumer could not reach it, and `github` keeps a droppable compat re-export so the move is not a breaking change for the consumer that adopted it in its old home.
 
 That is the whole mechanism, and it is deliberately the same one a version bump uses: **gate membership is history, not a filter.** The gate answered "what must exist before the kit publishes at all", and that question is closed.
 

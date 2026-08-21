@@ -39,7 +39,7 @@ Detail lifted out of this file. Load on demand:
 
 ### Kit composition
 
-The kit is **30 publishable packages**: 29 libraries plus the `pnpm-plugin-effect` companion (the migration program closed 2026-07-12). `@effected/github-references` is the newest; it and `@effected/cli` are unreleased. New packages follow the migration playbook: design doc first, then port.
+The kit is **30 publishable packages**: 29 libraries plus the `pnpm-plugin-effect` companion (the migration program closed 2026-07-12). `@effected/github-references` is the newest; every package in the kit has published. New packages follow the migration playbook: design doc first, then port.
 
 `@effected/config-file` holds every config **codec**; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. **Never collect them into a namespace object**: referencing one would reach every codec and drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
