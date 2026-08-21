@@ -120,6 +120,7 @@ export { PackageStateSnapshot, WorkspaceStateSnapshot } from "./WorkspaceStateSn
 export { Workspaces, type WorkspacesOptions, type WorkspacesServices } from "./Workspaces.js";
 export {
 	type GetWorkspacePackagesSyncOptions,
+	type SyncDirectoryEntry,
 	type SyncFileSystem,
 	type SyncPath,
 	type WorkspacesSyncOptions,

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-14
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-20
+last-synced: 2026-08-20
 completeness: 95
 related:
   - architecture.md
@@ -25,7 +25,7 @@ The motivation is the yaml #338 branch, where every hard question was settled by
 `scratchpad/` is a real pnpm workspace member — listed in `pnpm-workspace.yaml` — so `workspace:*` dependencies resolve and the tooling ecosystem (turbo, vitest-agent, pnpm) treats it normally. But it is a **fixture, not a package**:
 
 - `"name": "scratchpad"`, `"private": true`, `"type": "module"`, **no** `publishConfig`. No `savvy.build.ts`, no build scripts — its only scripts are the three runners (`probe`, `check`, `reset`).
-- Dependencies: `effect: catalog:effect` and **all 28** `@effected/*` packages at `workspace:*`. DevDeps: `@effect/vitest` (`catalog:effect`), `tsx`, `typescript` and `@types/node` (`catalog:build`). **No `vitest` devDep** — the project runs through the root vitest install; adding one locally would only invite version skew.
+- Dependencies: `effect: catalog:effect` and every published `@effected/*` package at `workspace:*` — the manifest is the list, and a package missing from it is simply unprobeable here, which is how `memfs` went unprobed until 2026-08-20. DevDeps: `@effect/vitest` (`catalog:effect`), `tsx`, `typescript` and `@types/node` (`catalog:build`). **No `vitest` devDep** — the project runs through the root vitest install; adding one locally would only invite version skew.
 - Exclusions make it a "ghost": `"scratchpad"` in the `ignore` array of `.changeset/config.json` (alongside `"docs"`); skipped by the vitest discover strategy when `CI` is set; `scratchpad/**` in the root coverage `exclude`.
 
 The manifest **is committed**. A fully gitignored workspace member would cause lockfile importer churn on fresh clones — only the probe working areas are ignored.

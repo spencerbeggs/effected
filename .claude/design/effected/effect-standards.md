@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-20
+last-synced: 2026-08-20
 completeness: 95
 related:
   - architecture.md
@@ -190,6 +190,8 @@ Three rules generalize out of that wave:
 - **Inject a misbehavior as a fault, not as a stub body.** `layerFaultyWith(seed, handlers)` delegates every method a handler declines, so the fixture survives the code under test growing a new call — where a `layerNoop` stub starts failing unimplemented. Then prove the fault is load-bearing by disabling it and watching tests die; a fault nothing depends on is decoration.
 - **A handler that records and returns `undefined` is a spy, not a replacement.** It counts the call *and* lets it really happen. The mutant such a fixture must kill is precisely the one that swallows the write while still counting it — a stub body does not kill it, a declining handler does.
 - **Assertion timing picks the constructor family.** The `layer*` forms re-seed a fresh volume per `Effect.provide`, so they fit tests asserting *inside* the effect; the `make*` forms plus `Layer.succeed` pin one volume's identity for tests asserting *after* it. Backwards, the post-run assertion reads a volume nobody wrote to.
+
+**A consumer-supplied sync filesystem port takes a volume too.** A [sync escape hatch](packages/workspaces.md#workspacessync--the-escape-hatch) does not require `FileSystem` — it takes a small structural port from its caller — so the double for it is `MemoryFileSystem.syncFileSystem(volume)`, which [satisfies such a port structurally](packages/memfs.md#the-sync-filesystem-port-050) without either package importing the other. A test driving both an `Effect` path and a sync facade can therefore run both over one volume rather than falling back to a tmpdir for the sync half.
 
 A double that exists to **control timing** rather than to hold bytes is a different artifact and stays hand-written — `@effected/jsonl`'s watch harness is the standing example.
 

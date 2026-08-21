@@ -33,7 +33,7 @@ import type { SyncFileSystem, SyncPath, WorkspacesSyncOptions } from "./Workspac
 // appear in this entry's public declarations — without the re-export the
 // build reports ae-forgotten-export for all three. It also lets a consumer
 // type against the subpath alone.
-export type { SyncFileSystem, SyncPath, WorkspacesSyncOptions } from "./WorkspacesSync.js";
+export type { SyncDirectoryEntry, SyncFileSystem, SyncPath, WorkspacesSyncOptions } from "./WorkspacesSync.js";
 
 /**
  * `SyncFileSystem` over `node:fs`.
@@ -50,6 +50,15 @@ export const nodeFileSystem: SyncFileSystem = {
 	readFile: (p) => readFileSync(p, "utf8"),
 	readDirectory: (p) => readdirSync(p),
 	isDirectory: (p) => statSync(p).isDirectory(),
+	// The optional fast path: one `readdirSync` carries every entry's type, so
+	// enumeration stops paying a `statSync` per entry. Links keep reporting as
+	// links — enumeration re-resolves those itself.
+	readDirectoryWithTypes: (p) =>
+		readdirSync(p, { withFileTypes: true }).map((entry) => ({
+			name: entry.name,
+			isDirectory: entry.isDirectory(),
+			isSymbolicLink: entry.isSymbolicLink(),
+		})),
 };
 
 /**

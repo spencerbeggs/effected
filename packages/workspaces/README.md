@@ -218,6 +218,25 @@ const packages = root === null ? [] : getWorkspacePackagesSync(root, options);
 // packages: the discovered workspace packages, empty when there is no root
 ```
 
+Those four operations are the whole requirement. A fifth, `readDirectoryWithTypes`, is optional: supply it and package enumeration reads a directory's entries and their types in one call instead of a `readDirectory` plus an `isDirectory` per entry, which on a large workspace is a syscall per file. `nodeFileSystem` already implements it over `readdirSync(p, { withFileTypes: true })`, so the `node-sync` bindings get the fast path for free. Omit it and enumeration falls back to the four required operations with identical results — a cost optimization, never a behavior switch.
+
+Each entry reports `name`, `isDirectory` and `isSymbolicLink` as a `SyncDirectoryEntry`, which Node's `Dirent` satisfies once its predicate methods are called. The link flag is load-bearing: a `Dirent` describes the entry itself, so a symlink pointing at a directory reports `isDirectory: false`, while the `stat`-based path resolves the link and calls the same entry a directory. Enumeration re-resolves links through `isDirectory` rather than trusting the flag, which is what keeps a workspace with symlinked packages discovered identically on both paths.
+
+```ts
+import { readdirSync } from "node:fs";
+import type { SyncDirectoryEntry } from "@effected/workspaces";
+
+const readDirectoryWithTypes = (p: string): ReadonlyArray<SyncDirectoryEntry> =>
+  readdirSync(p, { withFileTypes: true }).map((entry) => ({
+    name: entry.name,
+    isDirectory: entry.isDirectory(),
+    isSymbolicLink: entry.isSymbolicLink(),
+  }));
+// pass alongside the four required operations: { ...options.fileSystem, readDirectoryWithTypes }
+```
+
+For a test fake, `@effected/memfs`' `MemoryFileSystem.syncFileSystem(volume)` satisfies `SyncFileSystem` structurally — neither package imports the other — so a config-time discovery path can be exercised against a virtual workspace with nothing on disk.
+
 Windows correctness is therefore the operations you pass, and nothing else. Both entry points drive one traversal state machine (the same dequeue order, depth rule, visit budget and `node_modules` prune), so the sync and Effect surfaces can never disagree about what a pattern means. The one deliberate difference is at a bound: the Effect enumerator fails typed, the sync one truncates. Prefer the Effect API everywhere you can run one.
 
 ## Error handling
@@ -286,7 +305,7 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 - `ReleaseTag` / `TrackingTag` — release-tag formatting (`ReleaseTag.single` / `.scoped`, strict SemVer by default with no `v` prefix) and the floating major/minor alias derivation GitHub Actions-style consumers expect (`v1`, `v1.2`), plus `classifyTag` to tell a release tag from a tracking alias.
 - `VersioningStrategy` — classify a workspace as `single`, `fixed-group` or `independent` from package names and fixed groups, or detect it live against `PublishabilityDetector`, and produce the release tags for a batch with `tagsFor`.
 - `findWorkspaceRootSync` / `getWorkspacePackagesSync` — the synchronous escape hatch for config-time callers that cannot await, over file and path operations you supply.
-- `@effected/workspaces/node-sync` — a second entry point holding the Node bindings for those operations (`nodeFileSystem`, `nodePath` and the `nodeSyncOps` bag), kept off the main entry so `node:*` never reaches a consumer that supplies its own.
+- `@effected/workspaces/node-sync` — a second entry point holding the Node bindings for those operations (`nodeFileSystem`, `nodePath` and the `nodeSyncOps` bag), kept off the main entry so `node:*` never reaches a consumer that supplies its own. `nodeFileSystem` implements the optional `readDirectoryWithTypes` fast path, so the bindings enumerate a workspace in one `readdirSync` per directory.
 
 ## License
 

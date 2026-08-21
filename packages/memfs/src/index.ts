@@ -37,6 +37,7 @@ export {
 	type MemoryFileSystemSeedEntry,
 	type MemoryFileSystemSeedFile,
 	type MemoryFileSystemSeedSymlink,
+	type MemoryFileSystemSyncFileSystem,
 	type MemoryFileSystemTransientFault,
 	type MemoryFileSystemVolume,
 } from "./MemoryFileSystem.js";
