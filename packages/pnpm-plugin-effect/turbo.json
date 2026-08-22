@@ -1,5 +1,76 @@
 {
 	"$schema": "https://turborepo.com/schema.v2.json",
 	"extends": ["//"],
-	"tasks": {}
+	"tasks": {
+		"build:dev": {
+			"inputs": [
+				"$TURBO_EXTENDS$",
+				"$TURBO_ROOT$/.changeset/**",
+				"../app/package.json",
+				"../cli/package.json",
+				"../commands/package.json",
+				"../config-file/package.json",
+				"../git/package.json",
+				"../github/package.json",
+				"../github-actions/package.json",
+				"../github-references/package.json",
+				"../glob/package.json",
+				"../jsonc/package.json",
+				"../jsonl/package.json",
+				"../lockfiles/package.json",
+				"../markdown/package.json",
+				"../memfs/package.json",
+				"../npm/package.json",
+				"../package-json/package.json",
+				"../runtimes/package.json",
+				"../sbom/package.json",
+				"../schemastore/package.json",
+				"../semver/package.json",
+				"../spdx/package.json",
+				"../store/package.json",
+				"../templates/package.json",
+				"../toml/package.json",
+				"../tsconfig-json/package.json",
+				"../walker/package.json",
+				"../workspaces/package.json",
+				"../xdg/package.json",
+				"../yaml/package.json"
+			]
+		},
+		"build:prod": {
+			"inputs": [
+				"$TURBO_EXTENDS$",
+				"$TURBO_ROOT$/.changeset/**",
+				"../app/package.json",
+				"../cli/package.json",
+				"../commands/package.json",
+				"../config-file/package.json",
+				"../git/package.json",
+				"../github/package.json",
+				"../github-actions/package.json",
+				"../github-references/package.json",
+				"../glob/package.json",
+				"../jsonc/package.json",
+				"../jsonl/package.json",
+				"../lockfiles/package.json",
+				"../markdown/package.json",
+				"../memfs/package.json",
+				"../npm/package.json",
+				"../package-json/package.json",
+				"../runtimes/package.json",
+				"../sbom/package.json",
+				"../schemastore/package.json",
+				"../semver/package.json",
+				"../spdx/package.json",
+				"../store/package.json",
+				"../templates/package.json",
+				"../toml/package.json",
+				"../tsconfig-json/package.json",
+				"../walker/package.json",
+				"../workspaces/package.json",
+				"../xdg/package.json",
+				"../yaml/package.json"
+			]
+		}
+	}
 }

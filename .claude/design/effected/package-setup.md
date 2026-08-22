@@ -3,10 +3,11 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-08-16
-last-synced: 2026-08-12
+updated: 2026-08-21
+last-synced: 2026-08-21
 completeness: 92
 related:
+  - catalog-sync.md
   - architecture.md
   - effect-standards.md
   - migration-playbook.md
@@ -81,6 +82,7 @@ Wiring is mostly automatic once the files exist:
 
 - The `packages/*` glob in `pnpm-workspace.yaml` picks the package up — no manual registration.
 - The Effect catalogs (`catalog:effect` for the `effect`/`@effect/vitest` devDependencies, `catalog:effect:peers` for the `effect` peer) live in `pnpm-workspace.yaml`. `catalog:build`, which supplies `@types/node` and `typescript`, does **not** — the `@savvy-web/pnpm-plugin-silk` config dependency injects it ([architecture.md](architecture.md#the-catalogs-pin-exact-versions)).
+- **The `effected` catalog is not automatic.** A new publishable package must be added to the `effected` catalog literal in `packages/pnpm-plugin-effect/savvy.build.ts` and to that package's `turbo.json` build `inputs` lists (both `build:dev` and `build:prod`). The plugin's catalog test asserts the catalog covers every package whose manifest has `publishConfig.access === "public"`, so skipping this turns a scaffold into a failing test suite. `pnpm catalog:sync` does the rewrite ([catalog-sync.md](catalog-sync.md)).
 - The api-extractor model is wired by the `turbo.json` `outputs` entry plus the `savvy.build.ts` `localPaths` (both `../../website/lib/models/X`). The generated model under `website/lib/models/X` is a `build:prod` artifact, **not** committed — `.gitignore` ignores `website/lib/models/*`, and no package's model is tracked. Website docs pages are a separate, later step (migration-playbook step 5).
 
 ## Steps to add a package

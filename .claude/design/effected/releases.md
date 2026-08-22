@@ -8,6 +8,7 @@ last-synced: 2026-08-21
 completeness: 88
 related:
   - architecture.md
+  - catalog-sync.md
   - packages/cli.md
   - consumers/reposets.md
   - package-inventory.md
@@ -58,7 +59,9 @@ The rule that follows: **a linked consumer must not derive its pin from the link
 
 **Below `1.0.0`, breaking changes ride minors, and the exact-pin discipline is what makes them survivable.** Read a minor here as "may break" and consult the package's changeset before advancing a pin. [`@effected/schemastore`](packages/schemastore.md) is the worked example: one minor carried a changed `SchemaFile.write` return type, a narrowed `SchemaVersion` grammar and a tier flip to integrated. That is the contract working as designed, not an exception to it.
 
-`@effected/pnpm-plugin-effect` publishes with the kit, not apart from it. It is the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) — published and installable but not a library, exposing no API and carrying no tier. Its reason to exist is consumer-facing: it carries the two Effect catalogs this repo pins against, so a consumer can hold their own `effect` versions and peer floors at the values the kit was built and tested against. **Installing it is optional for the consumer; shipping it is not optional for the release.** Do not read `"private": true` in a source manifest as evidence about release intent — every source manifest here is private, and the bundler's `publishConfig` transform emits the publishable manifest at build time ([architecture.md](architecture.md)).
+`@effected/pnpm-plugin-effect` publishes with the kit, not apart from it. It is the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) — published and installable but not a library, exposing no API and carrying no tier. Its reason to exist is consumer-facing: it carries the Effect catalogs this repo pins against **and the `effected` catalog naming the kit's own next-release versions**, so a consumer can hold both halves of what the kit was built and tested against at the values the kit used ([packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#the-effected-catalog-the-kits-own-version-surface)). **Installing it is optional for the consumer; shipping it is not optional for the release.** Do not read `"private": true` in a source manifest as evidence about release intent — every source manifest here is private, and the bundler's `publishConfig` transform emits the publishable manifest at build time ([architecture.md](architecture.md)). **The machine-checkable publishability signal is `publishConfig.access === "public"`**, and any tooling that asks the question must ask it that way; asking `private === false` classifies all thirty packages as unpublishable and fails open.
+
+The plugin's catalog carries the version each package will publish **next**, so a pending changeset alone moves an entry with no manifest edit anywhere. It is synced by automation on every push to `main`, and one changeset per sync bumps the plugin — the plugin's own absence from its catalog is what stops that from recurring forever ([catalog-sync.md](catalog-sync.md)).
 
 ## The five applications
 

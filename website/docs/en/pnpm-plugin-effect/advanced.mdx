@@ -1,6 +1,6 @@
 ---
 title: Advanced
-description: Coordinate Effect versions across a real application, its libraries, and their peer ranges with the lock catalog strategy.
+description: Coordinate Effect and @effected versions across a real application, its libraries, and their peer ranges with the lock and lock-minor catalog strategies.
 ---
 
 # Advanced
@@ -27,17 +27,26 @@ a manifest says `"effect": "catalog:effect"`, pnpm substitutes the version the c
 before it ever writes the lockfile. The catalogs are workspace-level data; your packages
 reference them by name and stay ignorant of the concrete versions.
 
-Installing the config dependency gives your workspace two catalogs, both produced by the
-`lock` strategy:
+Installing the config dependency gives your workspace four catalogs, as two pairs over two
+package sets.
 
-- **`catalog:effect`** — the current Effect **v4** package set, with `effect` pinned to an
-  exact prerelease (never a caret). Develop against this one.
-- **`catalog:effect:peers`** — the same package set at the computed shared peer floor; under
-  `lock` that floor equals the pin. Advertise this one.
+The Effect pair is produced by the `lock` strategy:
+
+- **`catalog:effect`** — the current Effect **v4** package set, with `effect` pinned to an exact prerelease (never a caret). Develop against this one.
+- **`catalog:effect:peers`** — the same package set at the computed shared peer floor; under `lock` that floor equals the pin. Advertise this one.
 
 The `lock` strategy is deliberate. A caret on a prerelease floats across the whole release
 line, which would silently desynchronize the `effect` you install from the exact prerelease
 the kit was built and tested against. Exact pins keep every consumer on one version.
+
+The kit pair is produced by `lock-minor`:
+
+- **`catalog:effected`** — every published `@effected/*` package at its current release, except this package, which the catalog ships inside.
+- **`catalog:effected:peers`** — the same set with the patch floored off, so a peer range accepts any patch of the minor it names.
+
+That is why the two halves of the kit pair routinely disagree while the Effect pair does not:
+a dependency entry names an exact release, and a peer entry names the widest range a `0.x`
+package can honestly promise.
 
 ## Pattern: pinning the `@effect/*` satellites in lockstep
 
@@ -108,9 +117,31 @@ against, in one step, instead of reconstructing a dozen pins and peer floors by 
 agreement composes: the app, the `@effected/*` packages it wires together, and your own libraries
 all resolve the same single `effect`.
 
+The `effected` pair closes the other half of that loop. Your manifests name the kit packages
+through a catalog too, so the versions you consume and the Effect closure underneath them both
+come from one place:
+
+```json
+{
+  "dependencies": {
+    "effect": "catalog:effect",
+    "@effected/app": "catalog:effected",
+    "@effected/workspaces": "catalog:effected",
+    "@effected/git": "catalog:effected"
+  }
+}
+```
+
+The plugin itself never appears in those catalogs. It is the package they ship inside, so
+listing it would make each catalog rewrite bump the package that carries the catalog.
+
 ## Advancing the pin and detecting drift
 
-Three workspace scripts move the pin forward. They mutate the lockfile and the root
+The `effected` catalogs advance on their own: they are rebuilt as kit packages release, so a
+newer version of the config dependency carries newer kit pins, and `pnpm update --config` is the
+whole upgrade. The Effect pin is the deliberate one.
+
+Three workspace scripts move it forward. They mutate the lockfile and the root
 `pnpm-workspace.yaml`, so they are meant to be run by a person, not by CI or an agent:
 
 ```bash

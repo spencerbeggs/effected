@@ -48,9 +48,11 @@ is nothing to import and nothing to call. Companion is a category, not a fourth 
 on one axis, dependency surface, and that axis is meaningless for a package nothing can depend on. A
 companion has no tier rather than a fourth one.
 
-[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) is the only companion today. It ships two pnpm catalogs
-and a pnpmfile — configuration, not code. Installing it is optional for you; publishing it is not optional
-for the kit, since it is what holds a consumer's Effect versions where the libraries expect them.
+[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) is the only companion today. It ships four pnpm catalogs
+and a pnpmfile — configuration, not code. Two of them pin Effect; the other two, `catalog:effected` and
+`catalog:effected:peers`, name every published package on this page except the companion itself, so a consumer references a catalog
+instead of maintaining a version range per package. Installing it is optional for you; publishing it is not
+optional for the kit, since it is what holds a consumer's versions where the libraries expect them.
 
 ## Packages
 
@@ -82,10 +84,11 @@ for the kit, since it is what holds a consumer's Effect versions where the libra
 | [@effected/sbom](/sbom) | integrated | CycloneDX 1.6 SBOM construction, SLSA provenance, NTIA validation and Sigstore signing as typed services |
 | [@effected/schemastore](/schemastore) | integrated | Build, validate, version and publish SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources |
 | [@effected/app](/app) | integrated | The application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite store, a TTL cache and a config file to the same place |
-| [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) | companion — no tier | The pnpm config dependency publishing the two Effect catalogs every package here pins against |
+| [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) | companion — no tier | The pnpm config dependency publishing the Effect catalogs every package here pins against, plus the `effected` catalogs that name the packages themselves |
 
-Installing [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) holds your `effect` versions and peer floors
-at exactly the values this kit was built and tested against, rather than leaving you to resolve your own.
+Installing [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) holds your `effect` versions, your
+`@effected/*` versions and both sets of peer floors at exactly the values this kit was built and tested
+against, rather than leaving you to resolve your own.
 
 ## What comes next
 

@@ -15,7 +15,7 @@ Each package sits in one of four categories describing its runtime surface:
 - **Integrated** — imports at least one runtime package outside `effect` core.
 - **Boundary** — the same `@effected/*`-only dependency surface as a pure package, but does IO through Effect's core `FileSystem` and `Path` services.
 - **Pure** — peers on `effect` and takes only `@effected/*` edges, with no IO.
-- **Companion** — not a library and exposes no API; published and installable, it ships pnpm catalogs and a pnpmfile that pin your `effect` versions and peer floors to the ones the kit was built against.
+- **Companion** — not a library and exposes no API; published and installable, it ships pnpm catalogs and a pnpmfile that pin your `effect` versions, your `@effected/*` versions and both sets of peer floors to the ones the kit was built against.
 
 Every package is `unstable`; see [release strategy](#release-strategy).
 
@@ -67,7 +67,7 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 
 | Package | Stability | Description |
 | ------- | --------- | ----------- |
-| [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | unstable | pnpm config dependency for centralized catalog management across the Effected ecosystem |
+| [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | unstable | pnpm config dependency shipping the catalogs that pin Effect and the `@effected/*` kit, for dependencies and peer ranges alike |
 
 ## Release strategy
 
@@ -90,7 +90,20 @@ Every package is `unstable` today. Treat the two as separate: even a package mar
 
 ### Version alignment
 
-[`@effected/pnpm-plugin-effect`](packages/pnpm-plugin-effect) keeps a consumer's Effect versions aligned with the kit's. It is a pnpm config dependency, installed ahead of the rest of the tree, that ships the `effect` catalog: the exact pinned prerelease for every `effect` and `@effect/*` package. The catalog entries use a `lock` strategy, so once the plugin is installed everything in your workspace resolves to that one pinned version rather than drifting apart.
+[`@effected/pnpm-plugin-effect`](packages/pnpm-plugin-effect) keeps a consumer's versions aligned with the kit's. It is a pnpm config dependency, installed ahead of the rest of the tree, that ships four pnpm catalogs: two for Effect and two for the kit itself.
+
+The `effect` catalog carries the exact pinned prerelease for `effect` and its `@effect/*` satellites, under a `lock` strategy (`@effect/tsgo` is the exception: it versions independently and is pinned exactly at its own release), so once the plugin is installed everything in your workspace resolves to that one pinned version rather than drifting apart. `effect:peers` carries the same package set at the peer floor a library should advertise.
+
+The `effected` catalog does the same job for the kit's own packages — every one except `@effected/pnpm-plugin-effect` itself, which is the package the catalog ships inside. Write `"@effected/workspaces": "catalog:effected"` in `dependencies`, or `catalog:effected:peers` in `peerDependencies`, instead of a hand-maintained range. That matters more than it sounds on `0.x`, where a caret does not cross a minor: a range written by hand stops resolving anything current as soon as the package it names cuts a minor, and it does so silently across every manifest that repeats it. The catalog is rebuilt as packages release, so upgrading the config dependency advances the whole kit surface in one step.
+
+```json
+{
+  "dependencies": {
+    "effect": "catalog:effect",
+    "@effected/workspaces": "catalog:effected"
+  }
+}
+```
 
 ### A note on peers
 

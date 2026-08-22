@@ -1,11 +1,11 @@
 ---
 title: Getting Started
-description: Install the config dependency, give an app the kit's exact Effect versions, split dev pins from peer floors in a library, and verify what pnpm resolved — the whole workflow, one step at a time.
+description: Install the config dependency, give an app the kit's exact Effect and @effected versions, split dev pins from peer floors in a library, and verify what pnpm resolved — the whole workflow, one step at a time.
 ---
 
 # Getting Started
 
-Effect does not ship as one package. It ships as `effect` plus a couple of dozen `@effect/*` satellites — `@effect/platform`, `@effect/ai-openai`, `@effect/sql`, and so on — that all have to move together. Pin them by hand and the pins drift: one satellite advances, its `effect` peer no longer matches the core you installed, and the break surfaces as a type error in a file nobody touched. `@effected/pnpm-plugin-effect` keeps every one of those versions in a single place — a pair of [pnpm catalogs](https://pnpm.io/catalogs) — so a manifest says `catalog:effect` instead of a version string, and there is exactly one line to edit when the Effect pin advances. Reach for it when you are building on Effect v4 and want your `effect` versions held at exactly the ones this kit is built and tested against, rather than at whatever your own resolution happens to pick.
+Effect does not ship as one package. It ships as `effect` plus a couple of dozen `@effect/*` satellites — `@effect/platform`, `@effect/ai-openai`, `@effect/sql`, and so on — that all have to move together. Pin them by hand and the pins drift: one satellite advances, its `effect` peer no longer matches the core you installed, and the break surfaces as a type error in a file nobody touched. `@effected/pnpm-plugin-effect` keeps every one of those versions in a single place — a pair of [pnpm catalogs](https://pnpm.io/catalogs) — so a manifest says `catalog:effect` instead of a version string, and there is exactly one line to edit when the Effect pin advances. A second pair does the same for the `@effected/*` kit. Reach for it when you are building on Effect v4, or on the kit, and want those versions held at exactly the ones the kit is built and tested against, rather than at whatever your own resolution happens to pick.
 
 ## Install
 
@@ -26,12 +26,14 @@ Requires pnpm 11 or newer and Node.js >=24.11.0. There is **no npm or yarn equiv
 
 ## A one-minute mental model
 
-Two catalogs carry the whole package, and the difference between them is the entire point:
+Four catalogs carry the whole package, as two pairs over two package sets. Within a pair, the difference between the halves is the entire point:
 
-- **`catalog:effect`** pins every `effect` and `@effect/*` package to one specific Effect v4 release. This is the version you *develop and test against* — as exact as possible.
+- **`catalog:effect`** pins `effect` and its `@effect/*` satellites to one specific Effect v4 release (`@effect/tsgo` versions independently and carries its own exact pin). This is the version you *develop and test against* — as exact as possible.
 - **`catalog:effect:peers`** carries the same package set at a *computed shared floor*: the lowest version safe to advertise as a peer range. This is the version a library you publish *asks its consumers for* — as wide as it can safely be.
+- **`catalog:effected`** carries every published `@effected/*` package at its current release — except the plugin itself — for the same job on the kit.
+- **`catalog:effected:peers`** carries that set floored to the minor, which is the widest range a `0.x` package can honestly promise.
 
-Developing against a pinned version and advertising the widest peer range you can safely support are two different questions with two different answers. Computing that second number by hand across a whole ecosystem of `@effect/*` packages is the grim part; `catalog:effect:peers` is that computation, done once.
+Developing against a pinned version and advertising the widest peer range you can safely support are two different questions with two different answers. Computing that second number by hand across a whole ecosystem is the grim part; the `:peers` half of each pair is that computation, done once.
 
 You reference a catalog by name in `package.json`, in place of a version range. Which field it goes in depends on whether you are shipping an application or a library.
 
@@ -84,16 +86,34 @@ A library wants **both** catalogs. It develops and tests against the pinned vers
   "name": "@acme/effect-utils",
   "devDependencies": {
     "effect": "catalog:effect",
-    "@effect/ai-openai": "catalog:effect"
+    "@effect/ai-openai": "catalog:effect",
+    "@effected/semver": "catalog:effected"
   },
   "peerDependencies": {
     "effect": "catalog:effect:peers",
-    "@effect/ai-openai": "catalog:effect:peers"
+    "@effect/ai-openai": "catalog:effect:peers",
+    "@effected/semver": "catalog:effected:peers"
   }
 }
 ```
 
 pnpm rewrites `catalog:` specifiers to concrete ranges when it publishes, so what lands on the registry is an ordinary manifest. Nothing downstream of your library needs this plugin, or even needs pnpm.
+
+### Pin the kit itself
+
+The plugin's second pair of catalogs covers the `@effected/*` packages. Reference them the same way, and stop maintaining a version range per package:
+
+```json
+{
+  "dependencies": {
+    "@effected/workspaces": "catalog:effected",
+    "@effected/git": "catalog:effected",
+    "@effected/semver": "catalog:effected"
+  }
+}
+```
+
+This is worth more on `0.x` than the `catalog:` habit usually is. A caret does not cross a minor below `1.0.0`, so `^0.14.0` stops resolving anything current as soon as that package cuts `0.15.0` — and nothing tells you. Spread over a dozen manifests, hand-written kit ranges fall behind independently and silently. One catalog name and one config-dependency upgrade replace all of them.
 
 ### Add another `@effect/*` satellite
 
@@ -129,7 +149,9 @@ catalogs:
     ...
 ```
 
-While the whole ecosystem sits on a single Effect v4 prerelease, the two catalogs largely coincide. The floor computation earns its keep once the packages' releases desynchronize — as they genuinely did under Effect v3.
+Only the `effect` pair is written into the file. The `effected` pair is supplied to consumers by the plugin itself and is never exported here, so do not expect to find it under this key — a `catalog:effected` reference resolves regardless.
+
+While the whole ecosystem sits on a single Effect v4 prerelease, the two `effect` catalogs largely coincide. The floor computation earns its keep once the packages' releases desynchronize — as they genuinely did under Effect v3. The `effected` pair differs the same way by design: a kit package's dependency entry tracks its exact release, while its peer entry is floored to the minor.
 
 ### Advance every pin at once
 
@@ -138,15 +160,16 @@ To move onto a newer Effect release, bump the config dependency itself — a new
 ```bash
 pnpm update --config @effected/pnpm-plugin-effect
 pnpm install
+# every catalog: specifier in the workspace re-resolves to the new pins
 ```
 
-One version bump, one place, and the whole `effect` / `@effect/*` set advances together.
+One version bump, one place, and the whole `effect` / `@effect/*` set advances together — along with the `@effected/*` set, whose catalog is rebuilt as kit packages release.
 
 ## When versions don't line up
 
 This package ships no code, so it raises no runtime errors and there is nothing to `try`/`catch`. What it can produce instead are a few install-time signals worth recognizing:
 
-- **`catalog:effect` does not resolve.** pnpm cannot find the catalog. Confirm the plugin is installed as a **config** dependency (under `configDependencies:` in `pnpm-workspace.yaml`, added with `pnpm add --config`), not as a regular `dependencies` entry — a plain install does not contribute catalogs.
+- **`catalog:effect` or `catalog:effected` does not resolve.** pnpm cannot find the catalog. Confirm the plugin is installed as a **config** dependency (under `configDependencies:` in `pnpm-workspace.yaml`, added with `pnpm add --config`), not as a regular `dependencies` entry — a plain install does not contribute catalogs.
 - **pnpm reports an unmet `effect` peer.** A satellite is asking for an `effect` your resolution did not provide. Referencing every `effect` and `@effect/*` package through the **same** catalog (`catalog:effect` throughout) keeps them on one mutually-compatible set; mixing a catalog reference with a hand-written version range on a related package is the usual cause.
 - **The install requires pnpm 11.** Config dependencies and catalogs are recent pnpm features. On an older pnpm the `--config` flag and the `catalog:` protocol are simply not understood; upgrade pnpm before installing.
 

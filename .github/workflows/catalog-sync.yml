@@ -1,0 +1,169 @@
+name: Catalog Sync
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: catalog-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  catalog-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate App Token
+        id: app-token
+        # Scoped down twice: to this repository, and to the two permissions the job
+        # actually uses — createCommitOnBranch and the ref write need contents, the
+        # PR open and auto-merge need pull-requests.
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: spencerbeggs
+          repositories: effected
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          # Do not leave the App token in .git/config for later steps to reuse. Every
+          # write this job makes goes through the API with an explicit token; the only
+          # git commands here are local reads and staging.
+          persist-credentials: false
+
+      - name: Setup Runtime
+        id: runtime
+        uses: savvy-web/silk-runtime-action@v1
+
+      - name: Sync the catalog
+        # Resolves each catalogued package's next release version from the local
+        # workspace, rewrites the catalog literal in place, and writes the
+        # fixed-name changeset when anything moved. No build is required: the
+        # versions come from the manifests and the pending changesets.
+        run: pnpm catalog:sync
+
+      - name: Format the rewrite
+        # Scope Biome to the only file the sync rewrites, so an unrelated
+        # unfixable lint diagnostic elsewhere in the repo cannot abort this job.
+        run: pnpm exec biome check --write packages/pnpm-plugin-effect/savvy.build.ts
+
+      - name: Check for changes
+        id: changes
+        # `git status --porcelain`, not `git diff --quiet` — do not "simplify" this
+        # back. The precedent workflow can use `git diff` because a separate step
+        # writes its changeset; here `catalog:sync` writes both the rewrite and
+        # `.changeset/catalog-sync.md`, which is untracked on a first sync. `git diff`
+        # cannot see an untracked file, so it would report changed=false on exactly
+        # the run that had a changeset to propose — a check that reports success
+        # while doing nothing, which is the failure class this whole design exists
+        # to eliminate.
+        run: |
+          if [ -z "$(git status --porcelain -- packages/pnpm-plugin-effect/savvy.build.ts .changeset/catalog-sync.md)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and test
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          pnpm build --filter @effected/pnpm-plugin-effect
+          # The catalog tests are the guard on the exclusion that makes this loop
+          # terminate, so they run against the rewrite before it is proposed.
+          # Coverage is disabled: this repo's vitest config enforces global
+          # thresholds a single-package subset run cannot meet, which would abort
+          # the job.
+          pnpm vitest run packages/pnpm-plugin-effect --coverage.enabled=false
+
+      - name: Open auto-merging PR
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: chore/catalog-sync
+          BASE_BRANCH: main
+          HEADLINE: "chore(pnpm-plugin-effect): sync the effected catalog"
+          # DCO only requires a well-formed trailer; keep the exact identity the
+          # previous `git commit --signoff` produced under this App.
+          SIGNOFF: "Signed-off-by: ${{ steps.app-token.outputs.app-slug }}[bot] <${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com>"
+        run: |
+          set -euo pipefail
+
+          # The commit is created through the GraphQL API, not `git commit` plus
+          # `git push`: GitHub signs commits it creates on the caller's behalf, so
+          # the bot's commits land verified. Locally made ones are unsigned (#159).
+
+          # Stage exactly the paths this job owns, then read the staged status back:
+          # that picks up the untracked changeset file alongside the rewritten
+          # catalog, and normalizes both into a path list.
+          git add -- packages/pnpm-plugin-effect/savvy.build.ts .changeset/catalog-sync.md
+
+          additions='[]'
+          while IFS= read -r -d '' path; do
+            additions=$(jq -c --arg path "$path" --arg contents "$(base64 -w0 <"$path")" \
+              '. + [{path: $path, contents: $contents}]' <<<"$additions")
+          done < <(git diff --cached --name-only -z --diff-filter=d)
+
+          deletions='[]'
+          while IFS= read -r -d '' path; do
+            deletions=$(jq -c --arg path "$path" '. + [{path: $path}]' <<<"$deletions")
+          done < <(git diff --cached --name-only -z --diff-filter=D)
+
+          if [ "$additions" = '[]' ] && [ "$deletions" = '[]' ]; then
+            echo "::notice::Nothing staged for $BRANCH"
+            exit 0
+          fi
+
+          # createCommitOnBranch cannot force-push, so reset the branch pointer to
+          # the current base tip first — the old `git push --force` semantics of one
+          # fresh commit on top of main. Moving a ref creates no commit, so nothing
+          # unsigned enters history.
+          base_oid=$(gh api "repos/$REPO/git/ref/heads/$BASE_BRANCH" --jq '.object.sha')
+
+          if gh api "repos/$REPO/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$REPO/git/refs/heads/$BRANCH" \
+              -f sha="$base_oid" -F force=true >/dev/null
+          else
+            gh api -X POST "repos/$REPO/git/refs" \
+              -f ref="refs/heads/$BRANCH" -f sha="$base_oid" >/dev/null
+          fi
+
+          jq -n \
+            --arg repo "$REPO" \
+            --arg branch "$BRANCH" \
+            --arg oid "$base_oid" \
+            --arg headline "$HEADLINE" \
+            --arg body "$SIGNOFF" \
+            --argjson additions "$additions" \
+            --argjson deletions "$deletions" \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid url } } }",
+              variables: {
+                input: {
+                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                  message: { headline: $headline, body: $body },
+                  expectedHeadOid: $oid,
+                  fileChanges: { additions: $additions, deletions: $deletions }
+                }
+              }
+            }' \
+            | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.url'
+
+          gh pr create \
+            --base "$BASE_BRANCH" \
+            --head "$BRANCH" \
+            --title "$HEADLINE" \
+            --body "Automated sync of the \`effected\` catalog to the next release versions resolved from this repo's manifests and pending changesets." \
+            || echo "::notice::PR already open for $BRANCH"
+
+          gh pr merge "$BRANCH" --auto --squash

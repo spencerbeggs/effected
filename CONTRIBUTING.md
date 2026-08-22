@@ -36,6 +36,27 @@ pnpm install     # install every workspace package and its peers
 
 Dependency versions are shared through pnpm catalogs in `pnpm-workspace.yaml`, so every package builds and tests against the same Effect v4 prerelease.
 
+## Dependency catalogs
+
+`@effected/pnpm-plugin-effect` defines the catalogs the repo and its consumers use: the `effect` pair, which pins Effect itself, and the `effected` pair, which names every publishable kit package except `@effected/pnpm-plugin-effect` itself, for consumers to reference as `catalog:effected`.
+
+Advancing the Effect pin is a two-step, human-run flow. `pnpm:up` rewrites the catalog ranges in `packages/pnpm-plugin-effect/savvy.build.ts`; `pnpm:export` writes the catalogs into the root `pnpm-workspace.yaml`. Neither touches `pnpm-lock.yaml` — the lockfile moves on your next install. Review the diff before committing:
+
+```bash
+pnpm pnpm:preview   # print the generated catalogs without writing anything
+pnpm pnpm:up        # move every Effect package to its latest v4 release
+pnpm pnpm:export    # write the catalogs into pnpm-workspace.yaml
+```
+
+The `effected` catalog is maintained for you. A workflow runs the sync on every push to `main` and opens an auto-merging pull request, so a release you cut is reflected in the catalog without anyone editing it. Two scripts exist if you need to do it locally:
+
+```bash
+pnpm catalog:check  # read-only: report where the catalog has drifted from the workspace
+pnpm catalog:sync   # rewrite the catalog and write a changeset if anything moved
+```
+
+`catalog:sync` touches only `packages/pnpm-plugin-effect/savvy.build.ts` and one fixed-name changeset. Catalog entries hold each package's **next** release, so a pending changeset alone can move an entry — and because `lock-minor` floors peer patches, a first sync normalizing a peer range down by a patch is correct rather than drift.
+
 ## Build pipeline
 
 [Turbo](https://turbo.build/) orchestrates the build graph across packages. Each package builds with [@savvy-web/bundler](https://github.com/savvy-web/bundler) and emits dual outputs: a development build under `dist/dev/` and a production build under `dist/prod/`.
