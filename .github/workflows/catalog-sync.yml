@@ -18,10 +18,10 @@ jobs:
     steps:
       - name: Generate App Token
         id: app-token
-        # Pinned to a commit SHA, and scoped down twice: to this repository, and to
-        # the two permissions the job actually uses — createCommitOnBranch and the
-        # ref write need contents, the PR open and auto-merge need pull-requests.
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        # Scoped down twice: to this repository, and to the two permissions the job
+        # actually uses — createCommitOnBranch and the ref write need contents, the
+        # PR open and auto-merge need pull-requests.
+        uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -31,7 +31,7 @@ jobs:
           permission-pull-requests: write
 
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -43,7 +43,7 @@ jobs:
 
       - name: Setup Runtime
         id: runtime
-        uses: savvy-web/silk-runtime-action@131a7ce5af172a2730337aa74a39733c0b14f686 # v1
+        uses: savvy-web/silk-runtime-action@v1
 
       - name: Sync the catalog
         # Resolves each catalogued package's next release version from the local
