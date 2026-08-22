@@ -1,5 +1,19 @@
 # @effected/workspaces
 
+## 0.17.1
+
+### Performance
+
+* Workspace pattern enumeration now probes literal package directories with bounded concurrency (`10`) instead of serial `exists` checks, reducing latency in workspaces that declare many literal entries.
+
+  * Output ordering, pattern semantics, and public APIs are unchanged; this only reduces time spent on independent filesystem probes. [#448][#448]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#448]: https://github.com/spencerbeggs/effected/pull/448
+
 ## 0.17.0
 
 ### Features
