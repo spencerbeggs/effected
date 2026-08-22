@@ -38,9 +38,9 @@ Dependency versions are shared through pnpm catalogs in `pnpm-workspace.yaml`, s
 
 ## Dependency catalogs
 
-`@effected/pnpm-plugin-effect` defines the catalogs the repo and its consumers use: the `effect` pair, which pins Effect itself, and the `effected` pair, which names every publishable kit package for consumers to reference as `catalog:effected`.
+`@effected/pnpm-plugin-effect` defines the catalogs the repo and its consumers use: the `effect` pair, which pins Effect itself, and the `effected` pair, which names every publishable kit package except `@effected/pnpm-plugin-effect` itself, for consumers to reference as `catalog:effected`.
 
-Advancing the Effect pin is a two-step, human-run flow — both commands rewrite the lockfile and the root `pnpm-workspace.yaml`, so review the diff before committing:
+Advancing the Effect pin is a two-step, human-run flow. `pnpm:up` rewrites the catalog ranges in `packages/pnpm-plugin-effect/savvy.build.ts`; `pnpm:export` writes the catalogs into the root `pnpm-workspace.yaml`. Neither touches `pnpm-lock.yaml` — the lockfile moves on your next install. Review the diff before committing:
 
 ```bash
 pnpm pnpm:preview   # print the generated catalogs without writing anything

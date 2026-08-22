@@ -6,7 +6,7 @@
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-f69220.svg)](https://pnpm.io/)
 
-A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes versioning for two package sets through four [pnpm catalogs](https://pnpm.io/catalogs). The `effect` pair covers every `effect` and `@effect/*` package on one [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release; the `effected` pair covers every published `@effected/*` package in the kit. Each pair has a catalog for the versions you depend on and a second one for the ranges you advertise as peers, so a library does not over-constrain the applications that install it. Install it once and all four catalogs are available to every package in your workspace.
+A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes versioning for two package sets through four [pnpm catalogs](https://pnpm.io/catalogs). The `effect` pair covers `effect` and its `@effect/*` satellites on one [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release, plus `@effect/tsgo` at its own independent pin; the `effected` pair covers every published `@effected/*` package except this one. Each pair has a catalog for the versions you depend on and a second one for the ranges you advertise as peers, so a library does not over-constrain the applications that install it. Install it once and all four catalogs are available to every package in your workspace.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 prerelease. Packages graduate to

@@ -41,7 +41,7 @@ the kit was built and tested against. Exact pins keep every consumer on one vers
 
 The kit pair is produced by `lock-minor`:
 
-- **`catalog:effected`** — every published `@effected/*` package at its current release.
+- **`catalog:effected`** — every published `@effected/*` package at its current release, except this package, which the catalog ships inside.
 - **`catalog:effected:peers`** — the same set with the patch floored off, so a peer range accepts any patch of the minor it names.
 
 That is why the two halves of the kit pair routinely disagree while the Effect pair does not:

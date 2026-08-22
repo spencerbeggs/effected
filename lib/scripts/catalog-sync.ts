@@ -10,6 +10,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** One upgrade CLI invocation: its exit code and whatever it wrote to stdout. */
 export interface UpgradeResult {
@@ -46,7 +47,7 @@ const CHANGESET_BODY = `---
 - Synced the \`effected\` catalog to the current kit release versions
 `;
 
-const DEFAULT_ROOT = new URL("../../", import.meta.url).pathname;
+const DEFAULT_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 const defaultRunner: UpgradeRunner = (args, cwd) =>
 	new Promise((resolve, reject) => {

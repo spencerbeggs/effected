@@ -1,9 +1,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "vitest";
 
-const PACKAGE_ROOT = new URL("../", import.meta.url).pathname;
-const PACKAGES_DIR = new URL("../../", import.meta.url).pathname;
+const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
+const PACKAGES_DIR = fileURLToPath(new URL("../../", import.meta.url));
 const PLUGIN = "@effected/pnpm-plugin-effect";
 
 /**
@@ -99,7 +100,13 @@ describe("effected catalog", () => {
 		for (const [name, spec] of readCatalogEntries("effected")) {
 			assert.match(spec, /\brange:/, `${name} must declare a range`);
 			assert.match(spec, /\bpeer:/, `${name} must declare a peer range or no peers catalog is emitted`);
-			assert.match(spec, /\bstrategy:/, `${name} must declare a recompute strategy`);
+			// The VALUES, not just the keys: `lock-minor` is what floors the patch while a
+			// caret still keeps 0.x minors disjoint, and `source: "workspace"` is what makes
+			// the entry resolve to this repo's next release instead of the registry. Either
+			// one silently changed is a different policy, and a presence-only check cannot
+			// tell the difference.
+			assert.match(spec, /\bstrategy:\s*"lock-minor"/, `${name} must recompute peers with lock-minor`);
+			assert.match(spec, /\bsource:\s*"workspace"/, `${name} must resolve from this workspace`);
 		}
 	});
 

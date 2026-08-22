@@ -50,7 +50,7 @@ companion has no tier rather than a fourth one.
 
 [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) is the only companion today. It ships four pnpm catalogs
 and a pnpmfile — configuration, not code. Two of them pin Effect; the other two, `catalog:effected` and
-`catalog:effected:peers`, name every published package on this page, so a consumer references a catalog
+`catalog:effected:peers`, name every published package on this page except the companion itself, so a consumer references a catalog
 instead of maintaining a version range per package. Installing it is optional for you; publishing it is not
 optional for the kit, since it is what holds a consumer's versions where the libraries expect them.
 

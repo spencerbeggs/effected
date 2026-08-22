@@ -28,9 +28,9 @@ Requires pnpm 11 or newer and Node.js >=24.11.0. There is **no npm or yarn equiv
 
 Four catalogs carry the whole package, as two pairs over two package sets. Within a pair, the difference between the halves is the entire point:
 
-- **`catalog:effect`** pins every `effect` and `@effect/*` package to one specific Effect v4 release. This is the version you *develop and test against* — as exact as possible.
+- **`catalog:effect`** pins `effect` and its `@effect/*` satellites to one specific Effect v4 release (`@effect/tsgo` versions independently and carries its own exact pin). This is the version you *develop and test against* — as exact as possible.
 - **`catalog:effect:peers`** carries the same package set at a *computed shared floor*: the lowest version safe to advertise as a peer range. This is the version a library you publish *asks its consumers for* — as wide as it can safely be.
-- **`catalog:effected`** carries every published `@effected/*` package at its current release, for the same job on the kit itself.
+- **`catalog:effected`** carries every published `@effected/*` package at its current release — except the plugin itself — for the same job on the kit.
 - **`catalog:effected:peers`** carries that set floored to the minor, which is the widest range a `0.x` package can honestly promise.
 
 Developing against a pinned version and advertising the widest peer range you can safely support are two different questions with two different answers. Computing that second number by hand across a whole ecosystem is the grim part; the `:peers` half of each pair is that computation, done once.
@@ -147,15 +147,11 @@ catalogs:
   effect:peers:
     effect: 4.0.0-rc.109
     ...
-  effected:
-    "@effected/workspaces": ...
-    ...
-  effected:peers:
-    "@effected/workspaces": ...
-    ...
 ```
 
-While the whole ecosystem sits on a single Effect v4 prerelease, the two `effect` catalogs largely coincide. The floor computation earns its keep once the packages' releases desynchronize — as they genuinely did under Effect v3. The `effected` pair differs by design: a kit package's dependency entry tracks its exact release, while its peer entry is floored to the minor.
+Only the `effect` pair is written into the file. The `effected` pair is supplied to consumers by the plugin itself and is never exported here, so do not expect to find it under this key — a `catalog:effected` reference resolves regardless.
+
+While the whole ecosystem sits on a single Effect v4 prerelease, the two `effect` catalogs largely coincide. The floor computation earns its keep once the packages' releases desynchronize — as they genuinely did under Effect v3. The `effected` pair differs the same way by design: a kit package's dependency entry tracks its exact release, while its peer entry is floored to the minor.
 
 ### Advance every pin at once
 

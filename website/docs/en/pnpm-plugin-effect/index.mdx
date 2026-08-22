@@ -5,7 +5,7 @@ description: "A pnpm config dependency that centralizes Effect and @effected ver
 
 # @effected/pnpm-plugin-effect
 
-A pnpm config dependency that centralizes versioning through four [pnpm catalogs](https://pnpm.io/catalogs), in two pairs. The `effect` catalog pins every `effect` and `@effect/*` package to the current [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release, and `effect:peers` resolves the same packages down to a calculated shared floor — the lowest common version safe to declare as a peer range — so your libraries do not over-constrain the projects that depend on them. The `effected` and `effected:peers` catalogs do the same for the kit's own packages, covering every published `@effected/*` package.
+A pnpm config dependency that centralizes versioning through four [pnpm catalogs](https://pnpm.io/catalogs), in two pairs. The `effect` catalog pins every `effect` and `@effect/*` package to the current [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release, and `effect:peers` resolves the same packages down to a calculated shared floor — the lowest common version safe to declare as a peer range — so your libraries do not over-constrain the projects that depend on them. The `effected` and `effected:peers` catalogs do the same for the kit's own packages, covering every published `@effected/*` package except this one.
 
 ## Where it fits
 

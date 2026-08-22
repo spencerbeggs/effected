@@ -43,7 +43,7 @@ The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCa
 
 ## Two script classes — do not merge them
 
-**User-run only. Agents must not invoke these**; they mutate the lockfile and the root `pnpm-workspace.yaml`. Surface the right command and let the user run it:
+**User-run only. Agents must not invoke these**; they rewrite this package's `savvy.build.ts` and the root `pnpm-workspace.yaml`, which moves every resolved version on the next install. Surface the right command and let the user run it:
 
 - `pnpm pnpm:up` → pin each Effect package to its latest v4 release and recompute the peer floor.
 - `pnpm pnpm:preview` → print the generated catalogs without writing.
